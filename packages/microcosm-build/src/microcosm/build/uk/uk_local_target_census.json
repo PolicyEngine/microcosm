@@ -65,7 +65,8 @@
       "high_value_homes/over_2m",
       "energy/electricity_kwh",
       "energy/gas_kwh",
-      "energy/gas_connected_households"
+      "energy/gas_connected_households",
+      "council_tax/single_adult_discount"
     ]
   },
   "area_types": [
@@ -82,11 +83,11 @@
       "rule": "No local target family may bind facts banded by SPI Total Income: the FRS instrument cannot materialize complete Total Income, so band membership is unassignable. This is the census's application of the national adjudication that holds all 208 published banded facts as fenced exclusions (the canonical fence text lives with the national constants); minting banded local variants is forbidden."
     },
     {
-      "authority": "microcosm.build.uk_runtime.local_targets.compute_household_metrics (in_spi_frame definition); microcosm#495 scoping.",
+      "authority": "uk_population_targets.json declarations hmrc.employment_income.amount, hmrc.employment_income.count, hmrc.self_employment_income.amount, hmrc.self_employment_income.count and hmrc.higher_rate_taxpayers.count (their income_tax_before_winter_fuel_payment_charge_annual filter); microcosm#495 scoping.",
       "enforcement": "review_required_before_binding",
       "fence_id": "hmrc_spi_frame_model_proxy",
       "fenced_fact_count": null,
-      "rule": "The in-code HMRC area metrics gate frame membership on modeled income_tax > 0 \u2014 a model-output proxy for 'taxpayer in the SPI frame', not a source-faithful frame. Binding any HMRC area family requires an explicit adjudication accepting or replacing that proxy before targets enter a solve."
+      "rule": "The declared HMRC area metrics gate frame membership on modeled income_tax_before_winter_fuel_payment_charge_annual > 0 (each person's income tax over the 12 months before their FRS interview, a proxy for the tax year, before the Winter Fuel Payment charge) \u2014 a model-output proxy for 'taxpayer in the SPI frame', not a source-faithful frame. Binding any HMRC area family requires an explicit adjudication accepting or replacing that proxy before targets enter a solve."
     },
     {
       "authority": "ONS income estimates for small areas QMI (FRS-based method); microcosm#495 scoping.",
@@ -103,11 +104,11 @@
       "rule": "The runtime's ons/equiv_housing_costs metric has no declared supplier: ONS states its small-area BHC and AHC income estimates are independently modelled and should not be directly compared, so their difference is not a publishable housing-costs target. Binding the equivalised-income family must target the published BHC and AHC measures separately or document a different housing-costs source."
     },
     {
-      "authority": "DWP Universal Credit official statistics Stat-Xplore user guide (household definition); microcosm.build.uk_runtime.local_targets.compute_household_metrics (benunit-to-household mapping); microcosm#495 scoping (cross-family review finding).",
+      "authority": "DWP Universal Credit official statistics Stat-Xplore user guide (household definition); uk_population_targets.json declarations dwp.uc.households_by_area and dwp.uc.households_by_area_children_{0,1,2,3plus} (benefit-unit bindings mapped to households, which local_targets.compute_household_metrics sums); microcosm#495 scoping (cross-family review finding).",
       "enforcement": "review_required_before_binding",
       "fence_id": "uc_unit_vs_household_grain",
       "fenced_fact_count": null,
-      "rule": "The runtime maps benefit-unit-level UC receipt and each UC benefit unit's num_children band onto household rows by sum: a physical household containing two UC benefit units contributes 2 to uc_households and one contribution to each unit's child band. This aligns the runtime with DWP UC claim households, which correspond to benefit units rather than physical FRS households; binding must preserve this reviewed grain crosswalk."
+      "rule": "The runtime maps benefit-unit-level UC receipt and each UC benefit unit's uc_calibration_child_count band (the FRS-role UC child count) onto household rows by sum: a physical household containing two UC benefit units contributes 2 to uc_households and one contribution to each unit's child band. This aligns the runtime with DWP UC claim households, which correspond to benefit units rather than physical FRS households; binding must preserve this reviewed grain crosswalk."
     },
     {
       "authority": "ONS/NRS/NISRA statistical disclosure control documentation; microcosm#495 scoping (cross-family review measurement).",
@@ -224,7 +225,7 @@
       "adjudications": [
         "uc_unit_vs_household_grain"
       ],
-      "description": "Universal Credit benefit units summed onto household rows, and (constituency only) their split by benefit-unit num_children.",
+      "description": "Universal Credit benefit units summed onto household rows, and (constituency only) their split by each benefit unit's uc_calibration_child_count (the FRS-role UC child count).",
       "family": "uc_households",
       "sources": [
         "dwp_stat_xplore_uc"
@@ -288,7 +289,7 @@
       "adjudications": [
         "voa_dwellings_vs_household_frame"
       ],
-      "description": "Dwellings charged council tax by band at local-authority grain, from the councils' taxbase returns (England A-H, Wales A-I, Scotland A-H), represented on the household frame (microcosm#929). The nine composed English region controls sum all 296 authority facts, including the two support-floor-deferred authorities (Isles of Scilly in the South West, City of London in London), so the cross-grain operator rescales those regions' bound cells by the whole-region sum over the bound sum: about a thousand dwellings on the South West's band A, the same shape the VOA basis had.",
+      "description": "Dwellings charged council tax by band at local-authority grain, from the councils' taxbase returns (England A-H, Wales A-I, Scotland A-H), represented on the household frame (microcosm#929). The nine composed English region controls sum all 296 authority facts, including the two support-floor-deferred authorities (Isles of Scilly in the South West, City of London in London), so the cross-grain operator rescales those regions' bound cells by the whole-region sum over the bound sum: about a thousand dwellings on the South West's band A, the same shape the VOA basis had. England's authorities also bind line 8, the dwellings with the single adult household 25% discount (microcosm#1095): the cells share the national single adult row's measurement, so the England row is their control.",
       "family": "council_tax",
       "retired_deferrals": [
         {
@@ -470,6 +471,14 @@
       ],
       "family": "council_tax",
       "name": "council_tax/band_i",
+      "status": "bound_in_code"
+    },
+    {
+      "area_types": [
+        "la"
+      ],
+      "family": "council_tax",
+      "name": "council_tax/single_adult_discount",
       "status": "bound_in_code"
     },
     {
@@ -703,11 +712,11 @@
       "ledger_fact_pin": {
         "artifact": ".codex-work/consumer_facts_uk.jsonl",
         "build": "build-bundle --suite uk -> build-consumer-artifact",
-        "fact_row_count": 1499301,
-        "facts_sha256": "2b64fecfe746164203dac1726aae6ffdb3e5d8e478bd3d64d118ac76cb00780b",
+        "fact_row_count": 1503315,
+        "facts_sha256": "084ddf46fa34b1e03b5f0a7287617aeafaf7f614e3619d87a6565409e4adac85",
         "manifest": ".codex-work/consumer_facts_uk_manifest.json",
-        "manifest_sha256": "b90fb1b8f1a910458fac41425360209d101796e6de0b134f952ad93323ca6e21",
-        "source_commit": "abf0921b896d29ee0745ed2aefde8d6337ed7164",
+        "manifest_sha256": "229afc18d8201bbd59a41777453f487ad750be2802425240ac26ee54849bfafd",
+        "source_commit": "272c987af175687aca21f82851ef349521802b12",
         "source_repo": "PolicyEngine/chronicle"
       },
       "notes": "Unbanded area statistics in the pinned Ledger fact feed supply the local HMRC count targets directly and the amount targets via the signed count_x_mean construction. The feed publishes SPI target count/mean measures for 650/650 constituencies except self_employment_income_mean at E14001416 (so that one amount row is signed deferred), and for 359/361 crosswalk local authorities; E06000027 has only median SPI measures and E06000053 has no SPI local-authority target-measure rows. This remains a different surface from the 208 banded Total Income facts held fenced by the national adjudication.",
@@ -726,11 +735,11 @@
       "ledger_fact_pin": {
         "artifact": ".codex-work/consumer_facts_uk.jsonl",
         "build": "build-bundle --suite uk -> build-consumer-artifact",
-        "fact_row_count": 1499301,
-        "facts_sha256": "2b64fecfe746164203dac1726aae6ffdb3e5d8e478bd3d64d118ac76cb00780b",
+        "fact_row_count": 1503315,
+        "facts_sha256": "084ddf46fa34b1e03b5f0a7287617aeafaf7f614e3619d87a6565409e4adac85",
         "manifest": ".codex-work/consumer_facts_uk_manifest.json",
-        "manifest_sha256": "b90fb1b8f1a910458fac41425360209d101796e6de0b134f952ad93323ca6e21",
-        "source_commit": "abf0921b896d29ee0745ed2aefde8d6337ed7164",
+        "manifest_sha256": "229afc18d8201bbd59a41777453f487ad750be2802425240ac26ee54849bfafd",
+        "source_commit": "272c987af175687aca21f82851ef349521802b12",
         "source_repo": "PolicyEngine/chronicle"
       },
       "notes": "The pinned Ledger fact feed carries the PCON24 constituency population age specs for all 650 constituencies across the ONS, NRS, and NISRA publisher legs. Mid-year estimates cover the total usual-resident population \u2014 see the population_universe_private_households adjudication.",
@@ -749,11 +758,11 @@
       "ledger_fact_pin": {
         "artifact": ".codex-work/consumer_facts_uk.jsonl",
         "build": "build-bundle --suite uk -> build-consumer-artifact",
-        "fact_row_count": 1499301,
-        "facts_sha256": "2b64fecfe746164203dac1726aae6ffdb3e5d8e478bd3d64d118ac76cb00780b",
+        "fact_row_count": 1503315,
+        "facts_sha256": "084ddf46fa34b1e03b5f0a7287617aeafaf7f614e3619d87a6565409e4adac85",
         "manifest": ".codex-work/consumer_facts_uk_manifest.json",
-        "manifest_sha256": "b90fb1b8f1a910458fac41425360209d101796e6de0b134f952ad93323ca6e21",
-        "source_commit": "abf0921b896d29ee0745ed2aefde8d6337ed7164",
+        "manifest_sha256": "229afc18d8201bbd59a41777453f487ad750be2802425240ac26ee54849bfafd",
+        "source_commit": "272c987af175687aca21f82851ef349521802b12",
         "source_repo": "PolicyEngine/chronicle"
       },
       "notes": "The pinned Ledger fact feed carries local-authority population age specs for all 361 crosswalk local authorities. Covers the total usual-resident population \u2014 see the population_universe_private_households adjudication.",
@@ -773,11 +782,11 @@
       "ledger_fact_pin": {
         "artifact": ".codex-work/consumer_facts_uk.jsonl",
         "build": "build-bundle --suite uk -> build-consumer-artifact",
-        "fact_row_count": 1499301,
-        "facts_sha256": "2b64fecfe746164203dac1726aae6ffdb3e5d8e478bd3d64d118ac76cb00780b",
+        "fact_row_count": 1503315,
+        "facts_sha256": "084ddf46fa34b1e03b5f0a7287617aeafaf7f614e3619d87a6565409e4adac85",
         "manifest": ".codex-work/consumer_facts_uk_manifest.json",
-        "manifest_sha256": "b90fb1b8f1a910458fac41425360209d101796e6de0b134f952ad93323ca6e21",
-        "source_commit": "abf0921b896d29ee0745ed2aefde8d6337ed7164",
+        "manifest_sha256": "229afc18d8201bbd59a41777453f487ad750be2802425240ac26ee54849bfafd",
+        "source_commit": "272c987af175687aca21f82851ef349521802b12",
         "source_repo": "PolicyEngine/chronicle"
       },
       "notes": "The pinned Ledger fact feed carries the compiled household cells.",
@@ -797,11 +806,11 @@
       "ledger_fact_pin": {
         "artifact": ".codex-work/consumer_facts_uk.jsonl",
         "build": "build-bundle --suite uk -> build-consumer-artifact",
-        "fact_row_count": 1499301,
-        "facts_sha256": "2b64fecfe746164203dac1726aae6ffdb3e5d8e478bd3d64d118ac76cb00780b",
+        "fact_row_count": 1503315,
+        "facts_sha256": "084ddf46fa34b1e03b5f0a7287617aeafaf7f614e3619d87a6565409e4adac85",
         "manifest": ".codex-work/consumer_facts_uk_manifest.json",
-        "manifest_sha256": "b90fb1b8f1a910458fac41425360209d101796e6de0b134f952ad93323ca6e21",
-        "source_commit": "abf0921b896d29ee0745ed2aefde8d6337ed7164",
+        "manifest_sha256": "229afc18d8201bbd59a41777453f487ad750be2802425240ac26ee54849bfafd",
+        "source_commit": "272c987af175687aca21f82851ef349521802b12",
         "source_repo": "PolicyEngine/chronicle"
       },
       "notes": "The pinned Ledger fact feed carries the compiled household cells; the source specification defines HouseholdCount as occupied households.",
@@ -821,11 +830,11 @@
       "ledger_fact_pin": {
         "artifact": ".codex-work/consumer_facts_uk.jsonl",
         "build": "build-bundle --suite uk -> build-consumer-artifact",
-        "fact_row_count": 1499301,
-        "facts_sha256": "2b64fecfe746164203dac1726aae6ffdb3e5d8e478bd3d64d118ac76cb00780b",
+        "fact_row_count": 1503315,
+        "facts_sha256": "084ddf46fa34b1e03b5f0a7287617aeafaf7f614e3619d87a6565409e4adac85",
         "manifest": ".codex-work/consumer_facts_uk_manifest.json",
-        "manifest_sha256": "b90fb1b8f1a910458fac41425360209d101796e6de0b134f952ad93323ca6e21",
-        "source_commit": "abf0921b896d29ee0745ed2aefde8d6337ed7164",
+        "manifest_sha256": "229afc18d8201bbd59a41777453f487ad750be2802425240ac26ee54849bfafd",
+        "source_commit": "272c987af175687aca21f82851ef349521802b12",
         "source_repo": "PolicyEngine/chronicle"
       },
       "notes": "The pinned Ledger fact feed carries the compiled household cells.",
@@ -845,11 +854,11 @@
       "ledger_fact_pin": {
         "artifact": ".codex-work/consumer_facts_uk.jsonl",
         "build": "build-bundle --suite uk -> build-consumer-artifact",
-        "fact_row_count": 1499301,
-        "facts_sha256": "2b64fecfe746164203dac1726aae6ffdb3e5d8e478bd3d64d118ac76cb00780b",
+        "fact_row_count": 1503315,
+        "facts_sha256": "084ddf46fa34b1e03b5f0a7287617aeafaf7f614e3619d87a6565409e4adac85",
         "manifest": ".codex-work/consumer_facts_uk_manifest.json",
-        "manifest_sha256": "b90fb1b8f1a910458fac41425360209d101796e6de0b134f952ad93323ca6e21",
-        "source_commit": "abf0921b896d29ee0745ed2aefde8d6337ed7164",
+        "manifest_sha256": "229afc18d8201bbd59a41777453f487ad750be2802425240ac26ee54849bfafd",
+        "source_commit": "272c987af175687aca21f82851ef349521802b12",
         "source_repo": "PolicyEngine/chronicle"
       },
       "notes": "The pinned Ledger fact feed carries DWP Stat-Xplore UC household facts for 632/650 constituencies and 350/361 local authorities, plus the four constituency child-bucket specs. DWP UC official statistics in this feed cover Great Britain; the 18 Northern Ireland constituencies and 11 Northern Ireland local authorities are signed deferred. DWP counts UC claim households \u2014 see the uc_unit_vs_household_grain adjudication.",
@@ -868,11 +877,11 @@
       "ledger_fact_pin": {
         "artifact": ".codex-work/consumer_facts_uk.jsonl",
         "build": "build-bundle --suite uk -> build-consumer-artifact",
-        "fact_row_count": 1499301,
-        "facts_sha256": "2b64fecfe746164203dac1726aae6ffdb3e5d8e478bd3d64d118ac76cb00780b",
+        "fact_row_count": 1503315,
+        "facts_sha256": "084ddf46fa34b1e03b5f0a7287617aeafaf7f614e3619d87a6565409e4adac85",
         "manifest": ".codex-work/consumer_facts_uk_manifest.json",
-        "manifest_sha256": "b90fb1b8f1a910458fac41425360209d101796e6de0b134f952ad93323ca6e21",
-        "source_commit": "abf0921b896d29ee0745ed2aefde8d6337ed7164",
+        "manifest_sha256": "229afc18d8201bbd59a41777453f487ad750be2802425240ac26ee54849bfafd",
+        "source_commit": "272c987af175687aca21f82851ef349521802b12",
         "source_repo": "PolicyEngine/chronicle"
       },
       "notes": "Model-based estimates built from the Family Resources Survey \u2014 see the frs_model_based_target_circularity adjudication. The BHC and AHC measures are independently modelled and not directly comparable \u2014 see the ons_bhc_ahc_noncomparable adjudication. MSOA-to-local-authority aggregation is signed deferred for this run; England and Wales only.",
@@ -900,11 +909,11 @@
       "ledger_fact_pin": {
         "artifact": ".codex-work/consumer_facts_uk.jsonl",
         "build": "build-bundle --suite uk -> build-consumer-artifact",
-        "fact_row_count": 1499301,
-        "facts_sha256": "2b64fecfe746164203dac1726aae6ffdb3e5d8e478bd3d64d118ac76cb00780b",
+        "fact_row_count": 1503315,
+        "facts_sha256": "084ddf46fa34b1e03b5f0a7287617aeafaf7f614e3619d87a6565409e4adac85",
         "manifest": ".codex-work/consumer_facts_uk_manifest.json",
-        "manifest_sha256": "b90fb1b8f1a910458fac41425360209d101796e6de0b134f952ad93323ca6e21",
-        "source_commit": "abf0921b896d29ee0745ed2aefde8d6337ed7164",
+        "manifest_sha256": "229afc18d8201bbd59a41777453f487ad750be2802425240ac26ee54849bfafd",
+        "source_commit": "272c987af175687aca21f82851ef349521802b12",
         "source_repo": "PolicyEngine/chronicle"
       },
       "notes": "Chronicle registers the three inputs raw-only (PolicyEngine/chronicle#343); every count is Microcosm's computation and none is a Chronicle fact. The feed supplies the census tenure shares, the OBR costing note's non-owner-occupied share and the ONS HPSSA parity series.",
@@ -924,11 +933,11 @@
       "ledger_fact_pin": {
         "artifact": ".codex-work/consumer_facts_uk.jsonl",
         "build": "build-bundle --suite uk -> build-consumer-artifact",
-        "fact_row_count": 1499301,
-        "facts_sha256": "2b64fecfe746164203dac1726aae6ffdb3e5d8e478bd3d64d118ac76cb00780b",
+        "fact_row_count": 1503315,
+        "facts_sha256": "084ddf46fa34b1e03b5f0a7287617aeafaf7f614e3619d87a6565409e4adac85",
         "manifest": ".codex-work/consumer_facts_uk_manifest.json",
-        "manifest_sha256": "b90fb1b8f1a910458fac41425360209d101796e6de0b134f952ad93323ca6e21",
-        "source_commit": "abf0921b896d29ee0745ed2aefde8d6337ed7164",
+        "manifest_sha256": "229afc18d8201bbd59a41777453f487ad750be2802425240ac26ee54849bfafd",
+        "source_commit": "272c987af175687aca21f82851ef349521802b12",
         "source_repo": "PolicyEngine/chronicle"
       },
       "notes": "The pinned Ledger fact feed carries tenure specs for all 361 crosswalk local authorities across ONS Census 2021, NRS Census 2022, and NISRA Census 2021 publisher legs. Private-rent and social-rent tenure rows are additive over publisher-native subclasses and compile through the signed sum operation.",
@@ -948,11 +957,11 @@
       "ledger_fact_pin": {
         "artifact": ".codex-work/consumer_facts_uk.jsonl",
         "build": "build-bundle --suite uk -> build-consumer-artifact",
-        "fact_row_count": 1499301,
-        "facts_sha256": "2b64fecfe746164203dac1726aae6ffdb3e5d8e478bd3d64d118ac76cb00780b",
+        "fact_row_count": 1503315,
+        "facts_sha256": "084ddf46fa34b1e03b5f0a7287617aeafaf7f614e3619d87a6565409e4adac85",
         "manifest": ".codex-work/consumer_facts_uk_manifest.json",
-        "manifest_sha256": "b90fb1b8f1a910458fac41425360209d101796e6de0b134f952ad93323ca6e21",
-        "source_commit": "abf0921b896d29ee0745ed2aefde8d6337ed7164",
+        "manifest_sha256": "229afc18d8201bbd59a41777453f487ad750be2802425240ac26ee54849bfafd",
+        "source_commit": "272c987af175687aca21f82851ef349521802b12",
         "source_repo": "PolicyEngine/chronicle"
       },
       "notes": "PIPR publishes average rent price levels, not additive rent totals; a bound cell composes the level into a total (see the signed rationale). Of the 361 local-authority cells, 316 bind for the 2025 compile and 45 remain signed deferred: two English cells are not published, 11 Northern Ireland cells have a country mean only, and 32 Scottish cells are represented at BRMA grain, where the 18 BRMA cells bind with each BRMA's private renters derived from the councils' through Census 2022 (microcosm#1090, #1262).",
@@ -973,14 +982,14 @@
       "ledger_fact_pin": {
         "artifact": ".codex-work/consumer_facts_uk.jsonl",
         "build": "build-bundle --suite uk -> build-consumer-artifact",
-        "fact_row_count": 1499301,
-        "facts_sha256": "2b64fecfe746164203dac1726aae6ffdb3e5d8e478bd3d64d118ac76cb00780b",
+        "fact_row_count": 1503315,
+        "facts_sha256": "084ddf46fa34b1e03b5f0a7287617aeafaf7f614e3619d87a6565409e4adac85",
         "manifest": ".codex-work/consumer_facts_uk_manifest.json",
-        "manifest_sha256": "b90fb1b8f1a910458fac41425360209d101796e6de0b134f952ad93323ca6e21",
-        "source_commit": "abf0921b896d29ee0745ed2aefde8d6337ed7164",
+        "manifest_sha256": "229afc18d8201bbd59a41777453f487ad750be2802425240ac26ee54849bfafd",
+        "source_commit": "272c987af175687aca21f82851ef349521802b12",
         "source_repo": "PolicyEngine/chronicle"
       },
-      "notes": "The pinned feed record-set specs uk.local_geography.council_tax.england_ctb.line_07_chargeable_dwellings_adjusted_for_disabled_relief.v1, line_11_second_homes.v1 and line_15_empty_dwellings.v1 supply the 296 English billing authorities by band A-, A-H at the October 2025 count. Each cell binds line 7 minus line 11 minus line 15 (band A adds line 7's A- column): the dwellings charged as someone's sole or main residence, the universe a household frame carries. Bands A-G bind 294 authorities after E06000053 and E09000001 are support-floor excluded; the 296-cell band H family stays signed deferred on spine support (microcosm#762 A14). Barnsley and Sheffield bind through the crosswalk's declared aliases of their April 2025 codes. The family is scoped to the 296 English authorities: Wales and Scotland bind their own returns below and Northern Ireland levies domestic rates.",
+      "notes": "The pinned feed record-set specs uk.local_geography.council_tax.england_ctb.line_07_chargeable_dwellings_adjusted_for_disabled_relief.v1, line_11_second_homes.v1 and line_15_empty_dwellings.v1 supply the 296 English billing authorities by band A-, A-H at the October 2025 count. Each cell binds line 7 minus line 11 minus line 15 (band A adds line 7's A- column): the dwellings charged as someone's sole or main residence, the universe a household frame carries. Bands A-G bind 294 authorities after E06000053 and E09000001 are support-floor excluded; the 296-cell band H family stays signed deferred on spine support (microcosm#762 A14). Barnsley and Sheffield bind through the crosswalk's declared aliases of their April 2025 codes. The family is scoped to the 296 English authorities: Wales and Scotland bind their own returns below and Northern Ireland levies domestic rates. The spec line_08_single_adult_discount_dwellings.v1 (all bands) supplies the same authorities' single adult discount cells (microcosm#1095), under the same support floor.",
       "product": "Council Taxbase 2025 in England: local-authority level data, CTB lines by valuation band (chronicle#262 / #264).",
       "publisher": "Ministry of Housing, Communities and Local Government",
       "source_id": "mhclg_council_taxbase_la",
@@ -996,11 +1005,11 @@
       "ledger_fact_pin": {
         "artifact": ".codex-work/consumer_facts_uk.jsonl",
         "build": "build-bundle --suite uk -> build-consumer-artifact",
-        "fact_row_count": 1499301,
-        "facts_sha256": "2b64fecfe746164203dac1726aae6ffdb3e5d8e478bd3d64d118ac76cb00780b",
+        "fact_row_count": 1503315,
+        "facts_sha256": "084ddf46fa34b1e03b5f0a7287617aeafaf7f614e3619d87a6565409e4adac85",
         "manifest": ".codex-work/consumer_facts_uk_manifest.json",
-        "manifest_sha256": "b90fb1b8f1a910458fac41425360209d101796e6de0b134f952ad93323ca6e21",
-        "source_commit": "abf0921b896d29ee0745ed2aefde8d6337ed7164",
+        "manifest_sha256": "229afc18d8201bbd59a41777453f487ad750be2802425240ac26ee54849bfafd",
+        "source_commit": "272c987af175687aca21f82851ef349521802b12",
         "source_repo": "PolicyEngine/chronicle"
       },
       "notes": "The pinned feed record-set specs uk.local_geography.council_tax.wales_ct1.a1_all_chargeable_dwellings.v1, h7_total_chargeable_empty_properties.v1 and h8_total_chargeable_second_homes.v1 supply the 22 Welsh authorities by band A-I per financial year. Each cell binds a1 minus h7 minus h8 on the 2025-26 row (the taxbase set for that year, counted on the 31 October 2024 list, one count-year behind England and Scotland by ruling of 2026-09-15); all 198 cells compile, band I included, and bind unless a signed small-cell rule defers them (uk/local_small_cell_rule.json).",
@@ -1019,11 +1028,11 @@
       "ledger_fact_pin": {
         "artifact": ".codex-work/consumer_facts_uk.jsonl",
         "build": "build-bundle --suite uk -> build-consumer-artifact",
-        "fact_row_count": 1499301,
-        "facts_sha256": "2b64fecfe746164203dac1726aae6ffdb3e5d8e478bd3d64d118ac76cb00780b",
+        "fact_row_count": 1503315,
+        "facts_sha256": "084ddf46fa34b1e03b5f0a7287617aeafaf7f614e3619d87a6565409e4adac85",
         "manifest": ".codex-work/consumer_facts_uk_manifest.json",
-        "manifest_sha256": "b90fb1b8f1a910458fac41425360209d101796e6de0b134f952ad93323ca6e21",
-        "source_commit": "abf0921b896d29ee0745ed2aefde8d6337ed7164",
+        "manifest_sha256": "229afc18d8201bbd59a41777453f487ad750be2802425240ac26ee54849bfafd",
+        "source_commit": "272c987af175687aca21f82851ef349521802b12",
         "source_repo": "PolicyEngine/chronicle"
       },
       "notes": "The pinned feed record-set spec uk.local_geography.council_tax_stock.scotland_ctaxbase_chargeable_dwellings.by_council_area.v1 supplies the 32 councils by band A-H, the concept the scotgov.council_tax_stock country rows already bind; 255 cells compile and bind unless a signed small-cell rule defers them (uk/local_small_cell_rule.json), and Shetland band H is signed deferred (no band-H clone at K=15). Chargeable dwellings run about 1 % above the household frame nationally, the residual the universe fence records.",
@@ -1042,11 +1051,11 @@
       "ledger_fact_pin": {
         "artifact": ".codex-work/consumer_facts_uk.jsonl",
         "build": "build-bundle --suite uk -> build-consumer-artifact",
-        "fact_row_count": 1499301,
-        "facts_sha256": "2b64fecfe746164203dac1726aae6ffdb3e5d8e478bd3d64d118ac76cb00780b",
+        "fact_row_count": 1503315,
+        "facts_sha256": "084ddf46fa34b1e03b5f0a7287617aeafaf7f614e3619d87a6565409e4adac85",
         "manifest": ".codex-work/consumer_facts_uk_manifest.json",
-        "manifest_sha256": "b90fb1b8f1a910458fac41425360209d101796e6de0b134f952ad93323ca6e21",
-        "source_commit": "abf0921b896d29ee0745ed2aefde8d6337ed7164",
+        "manifest_sha256": "229afc18d8201bbd59a41777453f487ad750be2802425240ac26ee54849bfafd",
+        "source_commit": "272c987af175687aca21f82851ef349521802b12",
         "source_repo": "PolicyEngine/chronicle"
       },
       "notes": "The pinned feed record set desnz.subnational.electricity.cy2024 supplies the 350 Great Britain authorities on the NSPL of the 2025 publication (publication_2025_nspl): the roster's boundaries, with Barnsley and Sheffield under their April 2025 codes through the crosswalk's aliases. Non-half-hourly meters are read from 31 January to 30 January and half-hourly meters over the calendar year; both are counted, as reported. Each cell binds the authority's consumption times one Great Britain factor (desnz.energy_trends.gb_domestic_level), so the cells keep DESNZ's split at the stage's level. Northern Ireland is published separately (desnz_subnational_electricity_ni); its row enters the factor only.",
@@ -1065,11 +1074,11 @@
       "ledger_fact_pin": {
         "artifact": ".codex-work/consumer_facts_uk.jsonl",
         "build": "build-bundle --suite uk -> build-consumer-artifact",
-        "fact_row_count": 1499301,
-        "facts_sha256": "2b64fecfe746164203dac1726aae6ffdb3e5d8e478bd3d64d118ac76cb00780b",
+        "fact_row_count": 1503315,
+        "facts_sha256": "084ddf46fa34b1e03b5f0a7287617aeafaf7f614e3619d87a6565409e4adac85",
         "manifest": ".codex-work/consumer_facts_uk_manifest.json",
-        "manifest_sha256": "b90fb1b8f1a910458fac41425360209d101796e6de0b134f952ad93323ca6e21",
-        "source_commit": "abf0921b896d29ee0745ed2aefde8d6337ed7164",
+        "manifest_sha256": "229afc18d8201bbd59a41777453f487ad750be2802425240ac26ee54849bfafd",
+        "source_commit": "272c987af175687aca21f82851ef349521802b12",
         "source_repo": "PolicyEngine/chronicle"
       },
       "notes": "The pinned feed record set desnz.subnational.gas.cy2024 supplies 347 authorities: the Isles of Scilly, Orkney and Shetland have no mains gas network and no row. The gas year runs from mid-May to mid-May and is weather-corrected. Each kWh cell binds the authority's consumption times one Great Britain factor; the authority's gas meters over its electricity meters (2024) give the share of its census households bound as gas-connected (desnz.subnational.gas_meter_share). Orkney and Shetland are signed deferrals, the Isles of Scilly sits under the support floor.",
@@ -1088,11 +1097,11 @@
       "ledger_fact_pin": {
         "artifact": ".codex-work/consumer_facts_uk.jsonl",
         "build": "build-bundle --suite uk -> build-consumer-artifact",
-        "fact_row_count": 1499301,
-        "facts_sha256": "2b64fecfe746164203dac1726aae6ffdb3e5d8e478bd3d64d118ac76cb00780b",
+        "fact_row_count": 1503315,
+        "facts_sha256": "084ddf46fa34b1e03b5f0a7287617aeafaf7f614e3619d87a6565409e4adac85",
         "manifest": ".codex-work/consumer_facts_uk_manifest.json",
-        "manifest_sha256": "b90fb1b8f1a910458fac41425360209d101796e6de0b134f952ad93323ca6e21",
-        "source_commit": "abf0921b896d29ee0745ed2aefde8d6337ed7164",
+        "manifest_sha256": "229afc18d8201bbd59a41777453f487ad750be2802425240ac26ee54849bfafd",
+        "source_commit": "272c987af175687aca21f82851ef349521802b12",
         "source_repo": "PolicyEngine/chronicle"
       },
       "notes": "The pinned feed record set desnz.subnational.northern_ireland.electricity.domestic.y2024 supplies Northern Ireland's row (N92000002) on the financial year from April 2024, as reported. No cell binds it: it enters Great Britain's share of the UK sub-national total, which sets the kWh cells' factor (desnz.energy_trends.gb_domestic_level). DESNZ calls Northern Ireland's figures not directly comparable with Great Britain's.",
@@ -1111,11 +1120,11 @@
       "ledger_fact_pin": {
         "artifact": ".codex-work/consumer_facts_uk.jsonl",
         "build": "build-bundle --suite uk -> build-consumer-artifact",
-        "fact_row_count": 1499301,
-        "facts_sha256": "2b64fecfe746164203dac1726aae6ffdb3e5d8e478bd3d64d118ac76cb00780b",
+        "fact_row_count": 1503315,
+        "facts_sha256": "084ddf46fa34b1e03b5f0a7287617aeafaf7f614e3619d87a6565409e4adac85",
         "manifest": ".codex-work/consumer_facts_uk_manifest.json",
-        "manifest_sha256": "b90fb1b8f1a910458fac41425360209d101796e6de0b134f952ad93323ca6e21",
-        "source_commit": "abf0921b896d29ee0745ed2aefde8d6337ed7164",
+        "manifest_sha256": "229afc18d8201bbd59a41777453f487ad750be2802425240ac26ee54849bfafd",
+        "source_commit": "272c987af175687aca21f82851ef349521802b12",
         "source_repo": "PolicyEngine/chronicle"
       },
       "notes": "The pinned feed record set desnz.subnational.northern_ireland.gas.domestic.y2024 supplies Northern Ireland's row (N92000002) on DESNZ's Northern Ireland gas year labelled 2024. No cell binds it: it enters Great Britain's share of the UK sub-national total, which sets the kWh cells' factor. DESNZ calls Northern Ireland's figures not directly comparable with Great Britain's.",
@@ -1128,7 +1137,7 @@
     }
   ],
   "status_definitions": {
-    "bound_in_code": "The household-side metric is computed by local_targets.compute_household_metrics today.",
+    "bound_in_code": "The household-side metric is computed today by local_targets.compute_household_metrics from its declaration's policyengine binding in uk_population_targets.json.",
     "documented_unpinned": "The official product exists and was verified at the recorded URL on verified_on, but no exact table, vintage, or hash is pinned; binding work pins it per family.",
     "pinned_in_derived_resource": "The official product is registered raw-only in Chronicle (its bytes are pinned by sha256 but parsed into no fact) and Microcosm's committed derived-facts resource, built by the recorded tool from those pins, carries the target values; derived_resource_pin records the resource and its row digest.",
     "pinned_in_ledger_facts": "The official product's target facts are present in the sha-pinned Ledger consumer fact feed recorded on the source row.",

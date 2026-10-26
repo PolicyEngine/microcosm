@@ -108,6 +108,11 @@
       "schema_id": "legacy_json"
     },
     {
+      "path": "dwp_uc_award_band_facts.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
       "path": "obr_hvcts_costing_facts.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
@@ -129,6 +134,16 @@
     },
     {
       "path": "salary_sacrifice_anchor.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "bonus_sacrifice_anchor.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "obr_salary_sacrifice_costing_facts.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
     },
@@ -184,6 +199,11 @@
     },
     {
       "path": "ons_single_year_age_populations.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "ons_mid2025_single_year_age_by_sex.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
     },
@@ -479,6 +499,16 @@
     },
     {
       "path": "desnz_road_fuel_by_vehicle.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "excise_facts.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "gambling_participation_facts.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
     },

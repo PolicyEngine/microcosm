@@ -468,6 +468,16 @@
     },
     {
       "classification": "red_line_local_contract_target",
+      "concern_id": "local_contract.mhclg.council_tax_stock.by_area.single_adult_discount",
+      "covers": [
+        "policyengine_uk_data.datasets.local_areas.local_authorities.loss",
+        "policyengine_uk_data.targets.sources.la_council_tax"
+      ],
+      "evidence": "Microcosm uk/uk_population_targets.json target mhclg.council_tax_stock.by_area.single_adult_discount; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/local_authorities/loss.py, uk-data targets/sources/la_council_tax.py.",
+      "status": "ported_local_declared"
+    },
+    {
+      "classification": "red_line_local_contract_target",
       "concern_id": "local_contract.microcosm.high_value_homes.over_1_5m",
       "covers": [
         "policyengine_uk_data.datasets.local_areas.constituencies.loss",

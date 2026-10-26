@@ -700,6 +700,94 @@ def test_consumption_drift_compares_design_and_final_weights() -> None:
     assert "full_rate_vat_base" not in drift["totals"]
 
 
+def test_consumption_drift_carries_the_heating_fuels_where_the_frame_has_them() -> None:
+    """The liquid and solid fuels the stage draws (pe-uk#2572), read only where
+    the frame carries them, so an older spine keeps its drift block."""
+
+    from microcosm.build.uk_runtime.diagnostics import uk_consumption_drift
+
+    household = pd.DataFrame(_consumption_columns(4))
+    design = np.array([1.0, 1.0, 1.0, 1.0])
+    final = np.array([2.0, 0.0, 1.0, 1.0])
+    assert (
+        "liquid_fuel_consumption"
+        not in uk_consumption_drift(household, design, final)["totals"]
+    )
+    household["liquid_fuel_consumption"] = [100.0, 0.0, 50.0, 0.0]
+    household["solid_fuel_consumption"] = [0.0, 30.0, 0.0, 0.0]
+    totals = uk_consumption_drift(household, design, final)["totals"]
+    assert totals["liquid_fuel_consumption"]["final"] == 250.0
+    assert totals["solid_fuel_consumption"]["relative_change"] == -1.0
+
+
+def test_drift_flags_mark_totals_past_two_percent_and_shares_past_half_a_point() -> (
+    None
+):
+    """Warn-only flags at #1278's R1 thresholds; the payload keeps its shape."""
+
+    from microcosm.build.uk_runtime.diagnostics import (
+        UK_DRIFT_SHARE_FLAG,
+        UK_DRIFT_TOTAL_FLAG,
+        uk_consumption_drift_flags,
+    )
+
+    drift = {
+        "totals": {
+            "moves": {"relative_change": 0.021, "change": 21.0},
+            "edge": {"relative_change": -0.02, "change": -20.0},
+            "none": {"relative_change": None, "change": 0.0},
+        },
+        "shares": {
+            "moves": {"change": -0.0051},
+            "edge": {"change": 0.005},
+        },
+    }
+    flags = uk_consumption_drift_flags(drift)
+    assert flags["total_relative_change_above"] == UK_DRIFT_TOTAL_FLAG == 0.02
+    assert flags["share_change_above"] == UK_DRIFT_SHARE_FLAG == 0.005
+    assert flags["totals"] == ["moves"]
+    assert flags["shares"] == ["moves"]
+
+
+def test_drift_flags_reach_the_payload_as_warnings() -> None:
+    """Vahid's review of #1383, item 11: the flags are wired, not a hand run.
+
+    Each flagged total or share is one warn-only diagnostic warning, naming it
+    and the threshold, never its figures.
+    """
+
+    from microcosm.build.uk_runtime.diagnostics import (
+        UK_CONSUMPTION_DRIFT_WARNING_CODE,
+        uk_consumption_drift_warnings,
+    )
+
+    drift = {
+        "totals": {"solid_fuel_consumption": {"relative_change": -0.3, "change": -1.0}},
+        "shares": {"gas_connected_households": {"change": 0.0001}},
+    }
+    (warning,) = uk_consumption_drift_warnings(drift)
+    assert warning["code"] == UK_CONSUMPTION_DRIFT_WARNING_CODE
+    assert warning["severity"] == "warning"
+    assert "solid_fuel_consumption" in warning["message"]
+    assert "2%" in warning["message"] and "-0.3" not in warning["message"]
+    result, frame, registry, geography = _diagnostics_case(with_consumption=True)
+    payload = uk_calibration_diagnostics_payload(
+        result,
+        frame,
+        target_geography_levels=geography,
+        target_registry=registry,
+        withheld=frozenset(),
+    )
+    flagged = [
+        warning
+        for warning in payload["diagnostic_warnings"]
+        if warning["code"] == UK_CONSUMPTION_DRIFT_WARNING_CODE
+    ]
+    assert flagged == uk_consumption_drift_warnings(
+        payload["uk_diagnostics"]["consumption_drift"]
+    )
+
+
 def test_consumption_drift_carries_the_full_rate_vat_base() -> None:
     """Consumption times the ETB VAT stage's full-rate share (#1207)."""
 
@@ -749,6 +837,35 @@ def test_consumption_drift_carries_the_stage_s_kwh() -> None:
         household.drop(columns="region"), design, final
     )
     assert "electricity_kwh" not in without_region["totals"]
+
+
+def test_consumption_drift_carries_the_excise_quantities() -> None:
+    """Each excise quantity and base as stored, at both weights (#1359)."""
+
+    from microcosm.build.uk_runtime.diagnostics import uk_consumption_drift
+
+    household = pd.DataFrame(_consumption_columns(4))
+    household["beer_litres"] = [100.0, 0.0, 50.0, 10.0]
+    household["cigarettes_per_week"] = [20.0, 0.0, 0.0, 40.0]
+    household["remote_gaming_net_losses"] = [0.0, 30.0, 0.0, 0.0]
+    household["beer_draught_share"] = 0.4
+    design = np.array([1.0, 1.0, 1.0, 1.0])
+    final = np.array([2.0, 0.0, 1.0, 1.0])
+
+    totals = uk_consumption_drift(household, design, final)["totals"]
+
+    assert totals["beer_litres"]["design"] == pytest.approx(160.0)
+    assert totals["beer_litres"]["final"] == pytest.approx(260.0)
+    assert totals["cigarettes_per_week"]["final"] == pytest.approx(80.0)
+    assert totals["remote_gaming_net_losses"]["relative_change"] == -1.0
+    # A draught share is a ratio, not a quantity, and no other input is on
+    # the frame.
+    assert "beer_draught_share" not in totals
+    assert "wine_litres" not in totals
+    plain = uk_consumption_drift(pd.DataFrame(_consumption_columns(4)), design, final)[
+        "totals"
+    ]
+    assert "beer_litres" not in plain
 
 
 def test_payload_carries_the_consumption_drift_when_the_frame_has_it() -> None:
@@ -1386,12 +1503,12 @@ def test_a_thin_national_row_keeps_its_place_but_not_its_model_figures() -> None
     assert payload["loss_trajectory"] == []
 
 
-def test_a_thin_local_area_row_stays_with_the_area_support_rule() -> None:
-    """Constituency and authority rows keep the local line's area-support rule.
+def test_a_thin_row_is_withheld_at_every_level() -> None:
+    """María's rule of 2026-10-21, and her ruling of 2026-10-23 on the local line.
 
-    María's rule of 2026-10-21 on thin rows reaches national, regional and
-    BRMA rows; whether it reaches the local line is still hers to rule, and
-    the report guard matches a withheld local row by its bare area code.
+    A row resting on fewer than ten source households keeps its place without
+    its figures at every level; the area-support rule still decides which
+    constituency and authority rows bind.
     """
 
     from types import SimpleNamespace
@@ -1404,7 +1521,7 @@ def test_a_thin_local_area_row_stays_with_the_area_support_rule() -> None:
     matrix = sparse.csr_array(
         (np.ones(3), (np.zeros(3, dtype=int), np.arange(3))), shape=(1, n)
     )
-    problem = SimpleNamespace(matrix=matrix, names=["thin_row@2025"])
+    problem = SimpleNamespace(matrix=matrix, names=["thin_row@E14000001@2025"])
     frame = Frame(
         {
             "person": pd.DataFrame(
@@ -1417,34 +1534,54 @@ def test_a_thin_local_area_row_stays_with_the_area_support_rule() -> None:
                 {
                     "household_id": np.arange(n, dtype=np.int64),
                     "source_household_id": np.arange(n, dtype=np.int64),
+                    "region": ["LONDON"] * n,
                 }
             ),
         },
         EntitySchema(group_entities=("household",)),
         {"household": Weights(np.ones(n), WeightKind.DESIGN)},
     )
-    rows = [{"name": "thin_row@2025"}]
+    # A local row names its contract target (Vahid's third review of #1383,
+    # item 33); this one ties to no family.
+    rows = [
+        {
+            "name": "thin_row@E14000001@2025",
+            "metadata": {"contract_target_id": "fixture.thin_row"},
+        }
+    ]
     for level, withheld in (
         ("national", True),
         ("region", True),
         ("brma", True),
         ("statistical_scope", True),
-        ("constituency", False),
-        ("local_authority", False),
-        ("la", False),
+        ("constituency", True),
+        ("local_authority", True),
+        ("la", True),
     ):
         found = uk_withheld_rows(
-            problem, np.ones(n), frame, rows, {"thin_row@2025": level}
+            problem, np.ones(n), frame, rows, {"thin_row@E14000001@2025": level}
         )
-        assert (found == {"thin_row@2025"}) is withheld, level
+        assert (found == {"thin_row@E14000001@2025"}) is withheld, level
 
 
 def _withheld_sets(
-    rows: dict[str, list[int]], n: int, values: dict[str, float] | None = None
+    rows: dict[str, list[int]],
+    n: int,
+    values: dict[str, float | list[float]] | None = None,
+    sources: list[float] | None = None,
+    levels: dict[str, str] | None = None,
+    regions: list[str] | None = None,
+    targets: dict[str, str] | None = None,
+    tie_targets: bool = True,
 ) -> tuple[set[str], set[str]]:
     """``uk_withheld_row_sets`` over rows given by the households that carry them.
 
-    Every household is its own source household and carries weight one.
+    Every household is its own source household (or ``sources``) and carries
+    weight one. A row's entries are one, or its ``values`` (one for all its
+    households, or one each). ``regions`` gives each household's region, and
+    ``targets`` a row's contract target. Any other row gets a contract target
+    no family holds, as a local row must name one; ``tie_targets=False``
+    leaves the other rows without one.
     """
 
     from types import SimpleNamespace
@@ -1469,16 +1606,30 @@ def _withheld_sets(
             "household": pd.DataFrame(
                 {
                     "household_id": np.arange(n, dtype=np.int64),
-                    "source_household_id": np.arange(n, dtype=np.int64),
+                    "source_household_id": (
+                        np.arange(n, dtype=np.int64)
+                        if sources is None
+                        else np.asarray(sources)
+                    ),
+                    **({} if regions is None else {"region": regions}),
                 }
             ),
         },
         EntitySchema(group_entities=("household",)),
         {"household": Weights(np.ones(n), WeightKind.DESIGN)},
     )
-    return uk_withheld_row_sets(
-        problem, np.ones(n), frame, [{"name": name} for name in names]
-    )
+    tied = {
+        name: (targets or {}).get(name)
+        or (f"test:{name.split('@')[0]}" if tie_targets else None)
+        for name in names
+    }
+    target_rows = [
+        {"name": name}
+        if tied[name] is None
+        else {"name": name, "metadata": {"contract_target_id": tied[name]}}
+        for name in names
+    ]
+    return uk_withheld_row_sets(problem, np.ones(n), frame, target_rows, levels)
 
 
 def test_a_band_its_total_gives_back_withholds_the_next_smallest_band() -> None:
@@ -1499,6 +1650,507 @@ def test_a_band_its_total_gives_back_withholds_the_next_smallest_band() -> None:
         30,
     )
     assert (thin, beside) == ({"band_a"}, {"band_b"})
+
+
+def test_a_thin_top_band_no_row_carries_withholds_the_next_smallest_band() -> None:
+    """Vahid's second review of #1344, item 17: a thin top band, no thin bound band.
+
+    The top band (above GBP 2,500 a month) is no row, so no row is thin and
+    no withheld row is given back, but the total less the bound bands gives
+    the top band's three households back. The smaller bound band is withheld,
+    so what the published rows give back rests on fifteen households.
+    """
+
+    thin, beside = _withheld_sets(
+        {
+            "total": list(range(30)),
+            "band_a": list(range(0, 15)),
+            "band_b": list(range(15, 27)),
+        },
+        30,
+    )
+    assert (thin, beside) == (set(), {"band_b"})
+
+
+def test_a_top_band_resting_on_no_household_withholds_nothing() -> None:
+    thin, beside = _withheld_sets(
+        {
+            "total": list(range(30)),
+            "band_a": list(range(0, 15)),
+            "band_b": list(range(15, 30)),
+        },
+        30,
+    )
+    assert (thin, beside) == (set(), set())
+
+
+def test_a_household_in_two_bands_still_leaves_the_bands_one_partition() -> None:
+    """Two benefit units of one household in two bands: half its total each.
+
+    The bands still partition the total, so its thin rest (the top band's
+    three households) is found and the smaller band withheld.
+    """
+
+    thin, beside = _withheld_sets(
+        {
+            "total": list(range(30)),
+            "band_a": list(range(0, 15)),
+            "band_b": [0, *range(15, 27)],
+        },
+        30,
+        values={"total": [2.0, *[1.0] * 29]},
+    )
+    assert (thin, beside) == (set(), {"band_b"})
+
+
+def test_bands_beside_regions_of_the_same_total_are_still_checked() -> None:
+    """The regions partition the total exactly; the bands leave a thin top band.
+
+    Each band crosses both regions, so a band and a region never stand in one
+    partition, and the bands' rest is measured on its own.
+    """
+
+    thin, beside = _withheld_sets(
+        {
+            "total": list(range(30)),
+            "region_1": list(range(0, 15)),
+            "region_2": list(range(15, 30)),
+            "band_a": [*range(0, 10), *range(15, 20)],
+            "band_b": [*range(10, 15), *range(20, 27)],
+        },
+        30,
+    )
+    assert (thin, beside) == (set(), {"band_b"})
+
+
+def test_a_constant_multiple_of_a_part_is_withheld_with_it() -> None:
+    """A count of people beside the count of their households is that part again.
+
+    The people row is four times the units row on the same households, so
+    once the units row is withheld, the total less a quarter of the people row
+    would give the three households back. Both are withheld (the adversarial
+    review of #1344's item 17 fix, 22 October).
+    """
+
+    thin, beside = _withheld_sets(
+        {"total": list(range(30)), "units": list(range(27)), "people": list(range(27))},
+        30,
+        values={"people": 4.0},
+    )
+    assert (thin, beside) == (set(), {"people", "units"})
+
+
+def test_bands_in_another_unit_than_their_total_are_scaled() -> None:
+    """Monthly bands under a yearly total: a twelfth of the total on each household."""
+
+    thin, beside = _withheld_sets(
+        {
+            "total": list(range(30)),
+            "band_a": list(range(15)),
+            "band_b": list(range(15, 27)),
+        },
+        30,
+        values={"total": 1200.0, "band_a": 100.0, "band_b": 100.0},
+    )
+    assert (thin, beside) == (set(), {"band_b"})
+
+
+def test_a_band_of_two_unit_households_only_still_partitions_its_total() -> None:
+    """Every household of band_b holds a second unit in band_a: half the total each."""
+
+    thin, beside = _withheld_sets(
+        {
+            "total": list(range(30)),
+            "band_a": list(range(27)),
+            "band_b": list(range(15, 27)),
+        },
+        30,
+        values={"total": [1.0] * 15 + [2.0] * 12 + [1.0] * 3},
+    )
+    assert (thin, beside) == (set(), {"band_b"})
+
+
+def test_income_components_less_their_total_band_are_checked() -> None:
+    """A total-income band less its published components gives back other income.
+
+    The components hold a different share of the total on each household, and
+    a count of the band's payers sits inside it too; the count is no member.
+    """
+
+    employment = [100.5 + h for h in range(40)]
+    pension = [20.25 + h / 2 for h in range(10, 40)]
+    total = [
+        employment[h] + (pension[h - 10] if h >= 10 else 0.0) + (3.25 if h < 5 else 0.0)
+        for h in range(40)
+    ]
+    thin, beside = _withheld_sets(
+        {
+            "total": list(range(40)),
+            "employment": list(range(40)),
+            "pension": list(range(10, 40)),
+            "payers": list(range(40)),
+        },
+        40,
+        values={"total": total, "employment": employment, "pension": pension},
+    )
+    assert (thin, beside) == (set(), {"pension"})
+
+
+def test_two_overlapping_parts_less_their_total_give_back_the_overlap() -> None:
+    """Claimants of either benefit less the claimants of each: five on both."""
+
+    thin, beside = _withheld_sets(
+        {
+            "total": list(range(40)),
+            "contrib": list(range(25)),
+            "income": list(range(20, 40)),
+        },
+        40,
+    )
+    assert (thin, beside) == (set(), {"income"})
+
+
+def test_a_set_smaller_than_the_largest_group_is_checked() -> None:
+    """Bands a and b and a third part fit pairwise but pass one together.
+
+    The total less bands a and b alone gives back the nine-household top band
+    and household 0, which the larger set covers.
+    """
+
+    thin, beside = _withheld_sets(
+        {
+            "total": list(range(40)),
+            "band_a": list(range(15)),
+            "band_b": [0, *range(15, 31)],
+            "c_other": [0, *range(31, 40)],
+        },
+        40,
+        values={"total": [2.0] + [1.0] * 39},
+    )
+    assert (thin, beside) == (set(), {"band_a"})
+
+
+def test_bands_crossing_larger_regions_are_still_grouped() -> None:
+    """Each band misses a region larger than it, which a greedy group takes first."""
+
+    cells = iter(range(39))
+    b0r0, b0r1, b1r1, b1r2, b2r0, b2r2 = (
+        [next(cells) for _ in range(6)] for _ in range(6)
+    )
+    top = [next(cells) for _ in range(3)]
+    thin, beside = _withheld_sets(
+        {
+            "total": list(range(39)),
+            "band_0": b0r0 + b0r1,
+            "band_1": b1r1 + b1r2,
+            "band_2": b2r0 + b2r2,
+            "region_0": b0r0 + b2r0 + top[:1],
+            "region_1": b0r1 + b1r1 + top[1:2],
+            "region_2": b1r2 + b2r2 + top[2:],
+        },
+        39,
+    )
+    assert (thin, beside) == (set(), {"band_0"})
+
+
+def test_a_total_past_the_search_cap_is_grouped_greedily(monkeypatch) -> None:
+    """With no work allowed, every total is grouped greedily and named in a warning."""
+
+    from microcosm.build.uk_runtime import diagnostics
+
+    monkeypatch.setattr(diagnostics, "_RESIDUAL_SEARCH_WORK", 0)
+    with pytest.warns(UserWarning, match="passed its cap"):
+        thin, beside = _withheld_sets(
+            {
+                "total": list(range(120)),
+                "region_1": list(range(41)),
+                "region_2": list(range(41, 82)),
+                "region_3": list(range(82, 120)),
+                "band_a": [*range(3, 22), *range(41, 53)],
+                "band_b": [*range(22, 41), *range(82, 94)],
+                "band_c": list(range(53, 82)),
+                "band_d": list(range(94, 120)),
+            },
+            120,
+        )
+    assert (thin, beside) == (set(), {"band_d"})
+
+
+def test_households_whose_shares_differ_slightly_stay_in_different_atoms() -> None:
+    """A large share elsewhere must not round band B's last five households away.
+
+    Band B holds 99.999 of the total's 100 on five households, so the total
+    less bands A and B rests on those five; a part with a share of a million
+    on another household beside them changes nothing.
+    """
+
+    total = [1.0] + [100.0] * 39
+    thin, beside = _withheld_sets(
+        {
+            "total": list(range(40)),
+            "band_a": list(range(20)),
+            "band_b": list(range(20, 40)),
+            "big": list(range(10)),
+        },
+        40,
+        values={
+            "total": total,
+            "band_a": total[:20],
+            "band_b": [100.0] * 15 + [99.999] * 5,
+            "big": [1e6] + [100.0] * 9,
+        },
+    )
+    assert (thin, beside) == (set(), {"band_a"})
+
+
+def test_a_component_in_whole_pounds_is_still_searched() -> None:
+    """An amount component of whole pounds is no count: three components less
+    their total give back other income on five households."""
+
+    whole = [100.0 + h for h in range(40)]
+    first = [10.25 + h for h in range(20)]
+    second = [20.5 + h for h in range(20)]
+    other = {3: 7.31, 8: 7.31, 25: 7.31, 30: 7.31, 33: 7.31}
+    total = [
+        whole[h] + (first[h] if h < 20 else second[h - 20]) + other.get(h, 0.0)
+        for h in range(40)
+    ]
+    thin, beside = _withheld_sets(
+        {
+            "total": list(range(40)),
+            "whole": list(range(40)),
+            "first": list(range(20)),
+            "second": list(range(20, 40)),
+        },
+        40,
+        values={"total": total, "whole": whole, "first": first, "second": second},
+    )
+    assert (thin, beside) == (set(), {"first"})
+
+
+def test_a_part_of_constant_negative_share_is_scaled() -> None:
+    """The total plus twice a part of share minus a half gives back three households."""
+
+    thin, beside = _withheld_sets(
+        {"total": list(range(30)), "loss": list(range(27))},
+        30,
+        values={"total": 100.0, "loss": -50.0},
+    )
+    assert (thin, beside) == (set(), {"loss"})
+
+
+def test_three_components_with_no_thin_pair_are_searched_together() -> None:
+    """Every component sits on every household, so no pair less the total is
+    thin; all three less it give back other income on five households."""
+
+    employment = [100.5 + h for h in range(40)]
+    pension = [20.25 + h / 4 for h in range(40)]
+    savings = [3.5 + h / 8 for h in range(40)]
+    total = [
+        employment[h] + pension[h] + savings[h] + (2.75 if h < 5 else 0.0)
+        for h in range(40)
+    ]
+    thin, beside = _withheld_sets(
+        {
+            "total": list(range(40)),
+            "employment": list(range(40)),
+            "pension": list(range(40)),
+            "savings": list(range(40)),
+        },
+        40,
+        values={
+            "total": total,
+            "employment": employment,
+            "pension": pension,
+            "savings": savings,
+        },
+    )
+    assert (thin, beside) == (set(), {"employment"})
+
+
+def test_a_part_above_its_total_on_one_household_is_checked_alone() -> None:
+    """Twice the total's entry on household 0, so no member; the total less it
+    still rests on four households."""
+
+    thin, beside = _withheld_sets(
+        {"total": list(range(30)), "part": list(range(27))},
+        30,
+        values={"part": [2.0] + [1.0] * 26},
+    )
+    assert (thin, beside) == (set(), {"part"})
+
+
+def test_a_missing_source_id_counts_as_a_source_of_its_own() -> None:
+    sources = [float(h) for h in range(29)] + [float("nan")]
+    thin, beside = _withheld_sets(
+        {
+            "total": list(range(30)),
+            "band_a": list(range(15)),
+            "band_b": list(range(15, 27)),
+        },
+        30,
+        sources=sources,
+    )
+    assert (thin, beside) == (set(), {"band_b"})
+
+
+def test_cells_of_ten_households_clear_a_total_without_a_search(monkeypatch) -> None:
+    """Twelve regions, each split in two cells of ten: every atom rests on ten
+    households, so no combination at any weights can be thin."""
+
+    from microcosm.build.uk_runtime import diagnostics
+
+    def refuse(*_args, **_kwargs):
+        raise AssertionError("the search ran")
+
+    monkeypatch.setattr(diagnostics._ResidualCheck, "_search", refuse)
+    rows = {"total": list(range(240))}
+    for g in range(12):
+        rows[f"region_{g:02d}"] = list(range(20 * g, 20 * g + 20))
+        rows[f"region_{g:02d}_a"] = list(range(20 * g, 20 * g + 10))
+        rows[f"region_{g:02d}_b"] = list(range(20 * g + 10, 20 * g + 20))
+    assert _withheld_sets(rows, 240) == (set(), set())
+
+
+def test_a_small_atom_in_the_span_of_large_ones_clears_its_total(monkeypatch) -> None:
+    """Household 20 holds two units, one in each band: its column is the mean of
+    the two bands' columns, so nothing can isolate it, and no search runs."""
+
+    from microcosm.build.uk_runtime import diagnostics
+
+    def refuse(*_args, **_kwargs):
+        raise AssertionError("the search ran")
+
+    monkeypatch.setattr(diagnostics._ResidualCheck, "_search", refuse)
+    thin, beside = _withheld_sets(
+        {
+            "total": list(range(21)),
+            "band_a": [*range(10), 20],
+            "band_b": [*range(10, 20), 20],
+        },
+        21,
+        values={"total": [1.0] * 20 + [2.0]},
+    )
+    assert (thin, beside) == (set(), set())
+
+
+def test_an_outlier_household_does_not_hide_a_gap_from_the_span_test() -> None:
+    """Employment less a huge offsetting loss on one household of total one.
+
+    The outlier squashes every other share once a row is scaled to its
+    largest; two households where the parts fall short of the total by a
+    hundredth still rest on two source households, and the total less both
+    parts gives them back (the third adversarial review of item 17).
+    """
+
+    total, x, y = {}, {}, {}
+    for h in range(12):
+        total[h] = x[h] = 30000.0 + 101.0 * h
+    for h in range(12, 24):
+        total[h] = y[h] = 30000.0 + 97.0 * h
+    for h in range(24, 44):
+        total[h] = 25000.0 + 89.0 * h
+        x[h], y[h] = 0.4 * total[h], 0.6 * total[h]
+    total[44], x[44], y[44] = 1.0, 1e6, 1.0 - 1e6
+    for h in (45, 46):
+        total[h] = 40000.0 + h
+        x[h], y[h] = 0.4 * total[h], 0.59 * total[h]
+    thin, beside = _withheld_sets(
+        {"total": sorted(total), "x": sorted(x), "y": sorted(y)},
+        47,
+        values={
+            "total": [total[h] for h in sorted(total)],
+            "x": [x[h] for h in sorted(x)],
+            "y": [y[h] for h in sorted(y)],
+        },
+    )
+    assert (thin, beside) == (set(), {"x"})
+
+
+def test_a_large_atom_short_of_one_by_less_than_the_rounding_is_covered() -> None:
+    """Twelve households hold 0.6 and 0.4 less five ten-millionths: the search
+    counts that as covered, so the span test must not count it as a direction
+    that hides the two-household atom."""
+
+    delta = 5e-7
+    shares = (
+        [(0.6, 0.4 - delta)] * 12
+        + [(0.3, 0.7)] * 12
+        + [(1.0, 0.0)] * 12
+        + [(0.2, 0.3)] * 2
+    )
+    first = [h for h, (a, _) in enumerate(shares) if a]
+    second = [h for h, (_, b) in enumerate(shares) if b]
+    thin, beside = _withheld_sets(
+        {"total": list(range(38)), "p1": first, "p2": second},
+        38,
+        values={
+            "total": 1000.0,
+            "p1": [1000 * shares[h][0] for h in first],
+            "p2": [1000 * shares[h][1] for h in second],
+        },
+    )
+    assert (thin, beside) == (set(), {"p2"})
+
+
+def test_a_share_exactly_one_rounding_short_of_one_counts_as_covered_everywhere() -> (
+    None
+):
+    """A part holding one less a millionth on ten households and a half on one:
+    the total less it rests on three, whether or not a copy of the total sits
+    beside it."""
+
+    almost = 1 - 1e-6
+    for rows in (
+        {"total": list(range(13)), "copy": list(range(13)), "part": list(range(11))},
+        {"total": list(range(13)), "part": list(range(11))},
+    ):
+        thin, beside = _withheld_sets(rows, 13, values={"part": [almost] * 10 + [0.5]})
+        assert (thin, beside) == (set(), {"part"})
+
+
+def test_an_outlier_on_the_gap_household_itself_is_measured_as_stored() -> None:
+    """Two households where employment is a thousand times the total and a
+    matching loss falls short of it by a ten-thousandth: as unit columns the
+    gap looks tiny, but the total less both parts rests on those two."""
+
+    total, x, y = {}, {}, {}
+    for h in range(12):
+        total[h] = x[h] = 30000.0 + 101.0 * h
+    for h in range(12, 24):
+        total[h] = y[h] = 30000.0 + 97.0 * h
+    for h in range(24, 44):
+        total[h] = 25000.0 + 89.0 * h
+        x[h], y[h] = 0.4 * total[h], 0.6 * total[h]
+    for h in (44, 45):
+        total[h] = 40000.0 + h
+        x[h], y[h] = 1000.0 * total[h], (1 - 1000.0 - 1e-4) * total[h]
+    thin, beside = _withheld_sets(
+        {"total": sorted(total), "x": sorted(x), "y": sorted(y)},
+        46,
+        values={
+            "total": [total[h] for h in sorted(total)],
+            "x": [x[h] for h in sorted(x)],
+            "y": [y[h] for h in sorted(y)],
+        },
+    )
+    assert (thin, beside) == (set(), {"x"})
+
+
+def test_a_small_shortfall_beside_many_bands_is_not_cleared() -> None:
+    """Three hundred bands of ten; two more households in band 1 hold one less
+    2.4 millionths of the total, above the rounding share, so the total less
+    every band rests on those two."""
+
+    rows = {"total": list(range(3002))}
+    for k in range(300):
+        rows[f"band_{k:03d}"] = list(range(10 * k, 10 * k + 10)) + (
+            [3000, 3001] if k == 1 else []
+        )
+    thin, beside = _withheld_sets(
+        rows, 3002, values={"band_001": [1.0] * 10 + [1 - 2.4e-6] * 2}
+    )
+    assert (thin, beside) == (set(), {"band_000"})
 
 
 def test_a_row_given_back_two_ways_loses_a_giver_from_each() -> None:
@@ -1556,6 +2208,9 @@ def test_a_row_withheld_beside_a_thin_one_says_so_and_meets_the_schema(
     tmp_path: Path,
 ) -> None:
     """The written diagnostics tell a row withheld beside a thin one from it.
+
+    (A row can also be withheld where no row is thin, when a total less its
+    parts would give back a cell that is no row; it carries the same flag.)
 
     BRMA rows: the thin band fails the ten-household floor; the band withheld
     beside it meets the floor and is flagged ``complementary_withholding``, as
@@ -1633,6 +2288,7 @@ def test_a_row_withheld_beside_a_thin_one_says_so_and_meets_the_schema(
     assert beside["model_figures_withheld"].startswith(
         "model figures withheld: with the published rows"
     )
+    assert "a row or a cell" in beside["model_figures_withheld"]
     assert rows["band_b"]["final_estimate"] is None
     assert rows["total"]["final_estimate"] == pytest.approx(30.0)
     assert document["uk_diagnostics"]["model_figures_withheld"]["targets"] == 2
@@ -1997,7 +2653,9 @@ def test_the_report_guard_refuses_any_mention_of_a_withheld_row(capsys) -> None:
     (key,) = keys
 
     def guard(report):
-        uk_refuse_named_withheld_rows(report, names=names, keys=keys)
+        uk_refuse_named_withheld_rows(
+            report, names=names, keys=keys, areas=frozenset({"S33999999"})
+        )
 
     # Counts, published rows and other areas pass.
     guard(
@@ -2088,3 +2746,238 @@ def test_an_explicit_zero_in_a_brma_row_carries_nothing() -> None:
     assert uk_withheld_brma_rows(problem, weights, frame, rows, levels) == {
         "brma_row@2025"
     }
+
+
+def test_the_local_line_withholds_thin_local_rows_by_block() -> None:
+    """María's ruling of 2026-10-23: thin local rows are withheld, by block.
+
+    In one constituency a family total less its published band gives a thin
+    band back, so the next-smallest band is withheld beside it, as nationally.
+    A thin row in another area is withheld on its own, and no row of one area
+    is withheld for a difference with another's that gives nothing back.
+    """
+
+    rows = {
+        "fam.total@E14000001@2025": list(range(30)),
+        "fam.band_1@E14000001@2025": list(range(25)),
+        "fam.band_2@E14000001@2025": list(range(25, 30)),
+        "other.total@E14000002@2025": list(range(30, 35)),
+        "other.total@E14000003@2025": list(range(35, 60)),
+    }
+    levels = {name: "constituency" for name in rows}
+    thin, beside = _withheld_sets(rows, 60, levels=levels, regions=["LONDON"] * 60)
+    assert thin == {"fam.band_2@E14000001@2025", "other.total@E14000002@2025"}
+    assert beside == {"fam.band_1@E14000001@2025"}
+    # The same rows as one national block would give the same verdict; the
+    # block split changes only which differences are looked for.
+    national = _withheld_sets(rows, 60)
+    assert national == (thin, beside)
+
+
+def test_a_region_row_less_its_published_local_cells_withholds_one_more() -> None:
+    """Vahid's review of #1383, item 1: the region and its cells are one block.
+
+    The region row binds beside its local-authority cells, so the region less
+    the published cell gives the thin one back, and the next-smallest giver
+    is withheld beside it. Per area, nothing was withheld beside it.
+    """
+
+    rows = {
+        "fam.region@E12000007@2025": list(range(30)),
+        "fam.cell@E09000001@2025": list(range(25, 30)),
+        "fam.cell@E09000002@2025": list(range(25)),
+        "fam.region@E12000008@2025": list(range(30, 60)),
+    }
+    levels = {
+        "fam.region@E12000007@2025": "region",
+        "fam.region@E12000008@2025": "region",
+        "fam.cell@E09000001@2025": "local_authority",
+        "fam.cell@E09000002@2025": "local_authority",
+    }
+    regions = ["LONDON"] * 30 + ["SOUTH_EAST"] * 30
+    thin, beside = _withheld_sets(rows, 60, levels=levels, regions=regions)
+    assert thin == {"fam.cell@E09000001@2025"}
+    assert beside == {"fam.cell@E09000002@2025"}
+
+
+def test_a_regions_constituencies_less_its_authorities_withhold_one_more() -> None:
+    """Both local grains partition a region, so each gives the other back."""
+
+    rows = {
+        "fam.cell@E14000001@2025": list(range(20)),
+        "fam.cell@E14000002@2025": list(range(20, 40)),
+        "fam.cell@E06000001@2025": list(range(35)),
+        "fam.cell@E06000002@2025": list(range(35, 40)),
+    }
+    levels = {
+        "fam.cell@E14000001@2025": "constituency",
+        "fam.cell@E14000002@2025": "constituency",
+        "fam.cell@E06000001@2025": "local_authority",
+        "fam.cell@E06000002@2025": "local_authority",
+    }
+    thin, beside = _withheld_sets(rows, 40, levels=levels, regions=["WALES"] * 40)
+    assert thin == {"fam.cell@E06000002@2025"}
+    # The constituencies less the larger authority give the thin one back;
+    # the smaller constituency is withheld (ties go by name), and what is left
+    # (the thin cell with it) rests on 25 households.
+    assert beside == {"fam.cell@E14000001@2025"}
+
+
+def _uc_family_rows() -> tuple[dict[str, list[int]], dict[str, str], dict[str, str]]:
+    # The national UC caseload and its constituency cells share one
+    # measurement, so they are one family with its parent (the contract).
+    rows = {
+        "dwp.uc.households@2025": list(range(60)),
+        "dwp.uc.households_by_area@E14000001@2025": list(range(30)),
+        "dwp.uc.households_by_area@E14000002@2025": list(range(30, 55)),
+        "dwp.uc.households_by_area@E14000003@2025": list(range(55, 60)),
+    }
+    levels = {name: "constituency" for name in rows}
+    levels["dwp.uc.households@2025"] = "country"
+    targets = {
+        name: "dwp.uc.households"
+        if name.startswith("dwp.uc.households@")
+        else ("dwp.uc.households_by_area")
+        for name in rows
+    }
+    return rows, levels, targets
+
+
+def test_a_national_row_less_a_familys_published_cells_withholds_one_more() -> None:
+    """A national parent less its family's cells across regions gives one back.
+
+    No region row binds, so no region block sees it: the family's own block
+    with its parent, the contract's national UC caseload, does.
+    """
+
+    rows, levels, targets = _uc_family_rows()
+    regions = ["NORTH_EAST"] * 30 + ["NORTH_WEST"] * 30
+    thin, beside = _withheld_sets(
+        rows, 60, levels=levels, regions=regions, targets=targets
+    )
+    assert thin == {"dwp.uc.households_by_area@E14000003@2025"}
+    assert beside == {"dwp.uc.households_by_area@E14000002@2025"}
+    # Without its contract target a local row would join no family block and
+    # nothing would be withheld beside the thin cell, so it refuses (Vahid's
+    # third review of #1383, item 33).
+    with pytest.raises(ValueError, match="name none"):
+        _withheld_sets(rows, 60, levels=levels, regions=regions, tie_targets=False)
+
+
+def test_no_parentless_local_family_shares_its_measurement_with_a_higher_row() -> None:
+    """A local family with no parent has no higher-grain row of its measurement.
+
+    The family check ties a family to its parents through the cross-grain
+    declarations or a nested measurement. A national or regional row of the
+    same measurement left untied would let a published total less the
+    family's cells give a thin cell back unchecked (Vahid's third review of
+    #1383, item 33). Today the parentless families are the two DESNZ kWh
+    families, the three equivalised income and housing cost families and the
+    two private rent families; the national energy rows are spend, not kWh.
+    """
+
+    from microcosm.build.uk_runtime.cross_grain_declarations import (
+        UK_LOCAL_GEOGRAPHY_LEVELS,
+    )
+    from microcosm.build.uk_runtime.diagnostics import uk_local_family_parents
+    from microcosm.build.uk_runtime.ledger_targets import (
+        uk_cross_grain_contract_signatures,
+    )
+
+    contract = uk_cross_grain_contract_signatures()
+
+    def concept(target_id: str) -> object:
+        return (contract[target_id].get("measurement") or {}).get("concept")
+
+    higher: dict[object, set[str]] = {}
+    for target_id, target in contract.items():
+        if set(target.get("geography_levels") or ()) - UK_LOCAL_GEOGRAPHY_LEVELS:
+            higher.setdefault(concept(target_id), set()).add(target_id)
+    parentless = [
+        members for members, parents in uk_local_family_parents() if not parents
+    ]
+    assert parentless
+    for members in parentless:
+        for target_id in members:
+            assert not higher.get(concept(target_id), set()) - members, target_id
+
+
+def test_a_row_one_block_withholds_stays_hidden_in_another() -> None:
+    """A row withheld beside a thin one is protected in every block holding it.
+
+    The family block withholds the second cell beside the thin third. A row
+    of the region's own, on exactly that cell's households, would give it
+    back, and with it the thin cell, so the region block withholds that too.
+    """
+
+    rows, levels, targets = _uc_family_rows()
+    rows["other.cell@E14000002@2025"] = list(range(30, 55))
+    levels["other.cell@E14000002@2025"] = "constituency"
+    regions = ["NORTH_EAST"] * 30 + ["NORTH_WEST"] * 30
+    thin, beside = _withheld_sets(
+        rows, 60, levels=levels, regions=regions, targets=targets
+    )
+    assert thin == {"dwp.uc.households_by_area@E14000003@2025"}
+    assert beside == {
+        "dwp.uc.households_by_area@E14000002@2025",
+        "other.cell@E14000002@2025",
+    }
+
+
+def test_local_rows_without_household_regions_refuse() -> None:
+    """A local row is checked against its region's rows, so it needs regions."""
+
+    rows = {"fam.cell@E14000001@2025": list(range(20))}
+    with pytest.raises(ValueError, match="household table needs a region column"):
+        _withheld_sets(rows, 20, levels={"fam.cell@E14000001@2025": "constituency"})
+
+
+def test_the_report_guard_matches_a_withheld_local_row_by_its_key(capsys) -> None:
+    """A constituency binds many families, so its bare code names published rows."""
+
+    from microcosm.build.uk_runtime.diagnostics import (
+        UKWithheldRowNamedError,
+        uk_refuse_named_withheld_rows,
+        uk_withheld_gate_areas,
+        uk_withheld_gate_keys,
+    )
+
+    rows = [
+        {
+            "family": "fam",
+            "area_code": "E14000001",
+            "metric": "band_2",
+            "geography_level": "constituency",
+            "model_figures_withheld": True,
+        },
+        {
+            "family": "private_rent",
+            "area_code": "S33999999",
+            "metric": "private_rent_brma",
+            "geography_level": "statistical_scope",
+            "model_figures_withheld": True,
+        },
+        {
+            "family": "other",
+            "area_code": "E14000001",
+            "metric": "total",
+            "geography_level": "constituency",
+        },
+    ]
+    keys = uk_withheld_gate_keys(rows)
+    areas = uk_withheld_gate_areas(rows)
+    assert keys == {"fam/E14000001/band_2", "private_rent/S33999999/private_rent_brma"}
+    assert areas == {"S33999999"}
+
+    def guard(report):
+        uk_refuse_named_withheld_rows(report, names=frozenset(), keys=keys, areas=areas)
+
+    # Another family's published row in the same constituency may be named.
+    guard({"failures": ["other/E14000001/total +30.0%"], "areas": ["E14000001"]})
+    for report in (
+        {"failures": ["fam/E14000001/band_2 +30.0%"]},
+        {"failures": ["S33999999 is beyond the bound"]},
+    ):
+        with pytest.raises(UKWithheldRowNamedError):
+            guard(report)
+        assert "names a withheld row" in capsys.readouterr().err

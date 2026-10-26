@@ -185,6 +185,14 @@ module or dependency. CI tests the merge ref, so merge main and re-pin rather
 than hunting for an environment leak. Editable installs hide packaging breaks;
 if you touch packaging, build wheels locally before pushing.
 
+For an intentional US source-stage change, regenerate the release input
+coverage manifest with `tools/build_us_release_input_coverage_manifest.py`,
+then follow the bundle/pin/coverage sequence documented in
+`tools/repin_us_spec_engine_contracts.py`. The repinner derives frozen source
+hashes, compiler field inventories and their test expectations; its `--check`
+mode refuses drift. Full bundle generation needs the US engine environment.
+These commands do not rebuild survey data or certify a release.
+
 The `integration-uk` job in `.github/workflows/test.yml` runs the
 `integration/uk/` directory serially on Python 3.13 whenever the unified
 changed-path selection includes the UK, and on every push to `main`. It skips
@@ -308,6 +316,18 @@ against both H5 files. The publisher refuses to point `latest.json` at this
 child, so publish it with `--no-latest --tag-only`. See
 [the reported-receipt runbook](us-reported-receipt-source-enrichment.md).
 
+`compatibility_recertification` is a separate release type
+(`microcosm.data.compatibility_recertification`,
+`tools/build_us_compatibility_recertification.py`): a published US
+calibration release, republished byte for byte with a measured claim for a
+newer policyengine-us. Its parent identity is the parent's own published
+`release_manifest.json`, carried and hashed, never a code constant; the
+publisher checks the parent tag on the Hub before any upload. A change in
+what the tested engine reads or ignores must have an entry in
+`RECERTIFICATION_COLUMN_CHANGES`. It takes `--compatibility-wheel` and no
+`--parent-h5`. National parents only for now. See
+[the recertification runbook](us-compatibility-recertification.md).
+
 Three US release seams refuse a stored column that is lowercase snake_case,
 not a variable of the engine the release is certified against, and not in the
 reviewed register `microcosm.data.stored_inputs.US_STORED_NON_VARIABLE_COLUMNS`
@@ -326,6 +346,17 @@ and the ACS local-area `stored_inputs` gate, each naming the built-with engine
 on which an SPM unit the built-with engine measures has no classified adult,
 and binds the `spm_measurement_composition` gate the publisher requires
 (microcosm#1263; `microcosm.build.us_runtime.spm_measurement_gate`).
+The same package stage requires complete occupation, industry and
+worked-last-year inputs on every final person row and binds that verdict to
+the H5 hash. ACS staging checks its preserved ASEC donor before acquisition;
+historical donors and staging files missing these inputs must be rebuilt
+through the exact ASEC restoration/fiscal carry and native ACS mapping.
+US household ladders carry both `county_fips` (2020 counties for the locked
+policyengine-us rules) and `county_fips_2023` (3,144 county-equivalents for
+calibration, including Connecticut's nine planning regions). The latter is
+registered non-engine metadata. Geography gates require both columns; older
+artifacts need the new mapping before they pass. County target joins must
+choose the 2023 column explicitly. See [the vintage investigation](us-county-2023-geography.md).
 A source-enrichment publisher claim widens the range
 consumers accept, not what was checked: the bundle's
 `compatibility.claim_measurement` names the one version the probe measured.
@@ -359,6 +390,15 @@ can replay it. See
 The ACS local-area release can build its fresh staging H5 on Modal with
 `us-acs-multispine-staging`, then consume its verified H5 and summary through
 `us-acs-local-release`; see [the Modal stage runbook](us-modal-stage-runbook.md#acs-multispine-staging).
+Its optional [county calibration rung](us-acs-local-county-rung.md) uses
+`--geographies state,cd,county --soi-mode state_county`, a county-inclusive
+Ledger feed, and matching county boundaries. Full runs require all 3,144
+county-equivalents and write `county_reliability.json`; the base year is 2024.
+County solves use a run-level loss cap of 10 and a per-record weight cap of 5,
+configurable with `--county-target-loss-cap` and `--county-max-weight-ratio`
+(the pilot also tested 20). Later calibration stages resolve this profile from
+the checkpoint's recorded county surface. Ordinary runs retain their historical
+solver settings. County grades use source-household ESS; row ESS is diagnostic.
 
 The independent US annual static-aging candidate builder lives in
 `microcosm.build.us_annual_static_aging`; it consumes a pinned published parent

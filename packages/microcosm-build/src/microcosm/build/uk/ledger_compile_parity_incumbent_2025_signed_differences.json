@@ -1,11 +1,11 @@
 {
- "compiled_count": 1322,
+ "compiled_count": 1347,
  "counts_by_kind": {
-  "calibration_drift": 561,
-  "fixture_only": 46,
-  "ledger_only": 731
+  "calibration_drift": 557,
+  "fixture_only": 48,
+  "ledger_only": 758
  },
- "difference_count": 1338,
+ "difference_count": 1363,
  "differences": [
   {
    "fixture_value": 1608000.0,
@@ -148,13 +148,6 @@
    "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
   },
   {
-   "fixture_value": 494000000.0,
-   "kind": "fixture_only",
-   "name": "obr.domestic_rates",
-   "period": 2025,
-   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
-  },
-  {
    "fixture_value": 24241874775.213375,
    "kind": "fixture_only",
    "name": "obr.fuel_duties",
@@ -174,6 +167,20 @@
    "name": "obr.state_pension",
    "period": 2025,
    "reason": "microcosm#1069 (ruling R4) moves the OBR FY2025-26 State Pension forecast out of the fit: it counts Great Britain plus pensioners paid abroad and leaves out Northern Ireland, a different quantity from the resident level the DWP Stat-Xplore and DfC rows bind. The exact forecast is retained as diagnostic provenance on dwp.state_pension.amount, so the frozen fixture's fitted row is fixture-only on the current surface."
+  },
+  {
+   "fixture_value": 66410800011.47837,
+   "kind": "fixture_only",
+   "name": "obr.universal_credit_in_cap",
+   "period": 2025,
+   "reason": "microcosm#1095 (María's ruling of 2026-10-22) retires OBR's split of Universal Credit spending at the welfare cap from the targets: the welfare cap is a spending limit, no household-level concept in the model marks the boundary, and the benefit-cap status the incumbent maps the split to is another concept (microcosm#757). obr.universal_credit binds the sum of the two cells, so the frozen fixture's fitted row is fixture-only on the current surface."
+  },
+  {
+   "fixture_value": 12875549128.065746,
+   "kind": "fixture_only",
+   "name": "obr.universal_credit_outside_cap",
+   "period": 2025,
+   "reason": "microcosm#1095 (María's ruling of 2026-10-22) retires OBR's split of Universal Credit spending at the welfare cap from the targets: the welfare cap is a spending limit, no household-level concept in the model marks the boundary, and the benefit-cap status the incumbent maps the split to is another concept (microcosm#757). obr.universal_credit binds the sum of the two cells, so the frozen fixture's fitted row is fixture-only on the current surface."
   },
   {
    "fixture_value": 2036402.0,
@@ -309,6 +316,13 @@
    "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
   },
   {
+   "fixture_value": 346409713.95,
+   "kind": "fixture_only",
+   "name": "slc.repayments.england_postgraduate",
+   "period": 2025,
+   "reason": "microcosm#1095 (María's ruling of 2026-10-22) retires SLC's England postgraduate repayments from the targets: the student-loans stage assigns no postgraduate plan and policyengine-uk holds one plan a person, so no record carries the repayments (microcosm#757). The frozen fixture's fitted row is fixture-only on the current surface."
+  },
+  {
    "fixture_value": 181700000.0,
    "kind": "fixture_only",
    "name": "slc/student_loan_repayment/northern_ireland",
@@ -359,6 +373,13 @@
   },
   {
    "kind": "ledger_only",
+   "ledger_value": 565954.0,
+   "name": "dfe.funded_childcare.universal_nursery_children_age_3",
+   "period": 2025,
+   "reason": "Requested by María on 2026-10-21 for the £100k childcare costing fixes (microcosm#1278, #1095): one of the five DfE funded-childcare counts by single age from the January 2025 census, England (working parent registrations at 9 to 11 months and at ages 1, 2 and 3, and universal nursery registrations at age 3), bound beside the working parent 2 to 4, early learning and universal-only rows and, with them, measured at the spring term by the age on 31 December (María's ruling of 2026-10-22). The age-4 cells are signed out, as the bound rows fix them. The incumbent binds no DfE row, so this row has no fixture counterpart."
+  },
+  {
+   "kind": "ledger_only",
    "ledger_value": 396965.0,
    "name": "dfe.funded_childcare.universal_only_children",
    "period": 2025,
@@ -370,6 +391,34 @@
    "name": "dfe.funded_childcare.working_parent_children_2_to_4",
    "period": 2025,
    "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 29155.0,
+   "name": "dfe.funded_childcare.working_parent_children_9_to_11_months",
+   "period": 2025,
+   "reason": "Requested by María on 2026-10-21 for the £100k childcare costing fixes (microcosm#1278, #1095): one of the five DfE funded-childcare counts by single age from the January 2025 census, England (working parent registrations at 9 to 11 months and at ages 1, 2 and 3, and universal nursery registrations at age 3), bound beside the working parent 2 to 4, early learning and universal-only rows and, with them, measured at the spring term by the age on 31 December (María's ruling of 2026-10-22). The age-4 cells are signed out, as the bound rows fix them. The incumbent binds no DfE row, so this row has no fixture counterpart."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 195104.0,
+   "name": "dfe.funded_childcare.working_parent_children_age_1",
+   "period": 2025,
+   "reason": "Requested by María on 2026-10-21 for the £100k childcare costing fixes (microcosm#1278, #1095): one of the five DfE funded-childcare counts by single age from the January 2025 census, England (working parent registrations at 9 to 11 months and at ages 1, 2 and 3, and universal nursery registrations at age 3), bound beside the working parent 2 to 4, early learning and universal-only rows and, with them, measured at the spring term by the age on 31 December (María's ruling of 2026-10-22). The age-4 cells are signed out, as the bound rows fix them. The incumbent binds no DfE row, so this row has no fixture counterpart."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 242453.0,
+   "name": "dfe.funded_childcare.working_parent_children_age_2",
+   "period": 2025,
+   "reason": "Requested by María on 2026-10-21 for the £100k childcare costing fixes (microcosm#1278, #1095): one of the five DfE funded-childcare counts by single age from the January 2025 census, England (working parent registrations at 9 to 11 months and at ages 1, 2 and 3, and universal nursery registrations at age 3), bound beside the working parent 2 to 4, early learning and universal-only rows and, with them, measured at the spring term by the age on 31 December (María's ruling of 2026-10-22). The age-4 cells are signed out, as the bound rows fix them. The incumbent binds no DfE row, so this row has no fixture counterpart."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 278640.0,
+   "name": "dfe.funded_childcare.working_parent_children_age_3",
+   "period": 2025,
+   "reason": "Requested by María on 2026-10-21 for the £100k childcare costing fixes (microcosm#1278, #1095): one of the five DfE funded-childcare counts by single age from the January 2025 census, England (working parent registrations at 9 to 11 months and at ages 1, 2 and 3, and universal nursery registrations at age 3), bound beside the working parent 2 to 4, early learning and universal-only rows and, with them, measured at the spring term by the age on 31 December (María's ruling of 2026-10-22). The age-4 cells are signed out, as the bound rows fix them. The incumbent binds no DfE row, so this row has no fixture counterpart."
   },
   {
    "kind": "ledger_only",
@@ -1836,6 +1885,41 @@
   },
   {
    "kind": "ledger_only",
+   "ledger_value": 3356385.0,
+   "name": "hmrc.child_benefit.families_in_payment.children_1",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 2524055.0,
+   "name": "hmrc.child_benefit.families_in_payment.children_2",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 725315.0,
+   "name": "hmrc.child_benefit.families_in_payment.children_3",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 191920.0,
+   "name": "hmrc.child_benefit.families_in_payment.children_4",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 70030.0,
+   "name": "hmrc.child_benefit.families_in_payment.children_5_plus",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
    "ledger_value": 15500.0,
    "name": "hmrc.itl.additional_rate_taxpayers@E12000001",
    "period": 2025,
@@ -2256,91 +2340,91 @@
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 1501942263.1528072,
+   "ledger_value": 1507127405.2826157,
    "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_100000",
    "period": 2025,
    "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 savings-interest rows by band, moved to the dataset's year by the household interest index and from there to the calibration year by GDP per head, the index the engine's dataset projection applies (microcosm#1095); the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 1478101909.7694294,
+   "ledger_value": 1483204748.0559075,
    "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_1000000",
    "period": 2025,
    "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 savings-interest rows by band, moved to the dataset's year by the household interest index and from there to the calibration year by GDP per head, the index the engine's dataset projection applies (microcosm#1095); the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 326612841.3522771,
+   "ledger_value": 327740404.0059021,
    "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_12570",
    "period": 2025,
    "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 savings-interest rows by band, moved to the dataset's year by the household interest index and from there to the calibration year by GDP per head, the index the engine's dataset projection applies (microcosm#1095); the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 1633064206.7613857,
+   "ledger_value": 1638702020.0295105,
    "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_15000",
    "period": 2025,
    "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 savings-interest rows by band, moved to the dataset's year by the household interest index and from there to the calibration year by GDP per head, the index the engine's dataset projection applies (microcosm#1095); the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 774811484.9597815,
+   "ledger_value": 777486359.868016,
    "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_150000",
    "period": 2025,
    "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 savings-interest rows by band, moved to the dataset's year by the household interest index and from there to the calibration year by GDP per head, the index the engine's dataset projection applies (microcosm#1095); the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 3731015304.49864,
+   "ledger_value": 3743895855.9798307,
    "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_20000",
    "period": 2025,
    "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 savings-interest rows by band, moved to the dataset's year by the household interest index and from there to the calibration year by GDP per head, the index the engine's dataset projection applies (microcosm#1095); the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 873748951.5007998,
+   "ledger_value": 876765387.3588549,
    "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_200000",
    "period": 2025,
    "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 savings-interest rows by band, moved to the dataset's year by the household interest index and from there to the calibration year by GDP per head, the index the engine's dataset projection applies (microcosm#1095); the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 3015804702.9973035,
+   "ledger_value": 3026216139.178585,
    "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_30000",
    "period": 2025,
    "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 savings-interest rows by band, moved to the dataset's year by the household interest index and from there to the calibration year by GDP per head, the index the engine's dataset projection applies (microcosm#1095); the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 802227891.350666,
+   "ledger_value": 804997415.6787304,
    "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_300000",
    "period": 2025,
    "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 savings-interest rows by band, moved to the dataset's year by the household interest index and from there to the calibration year by GDP per head, the index the engine's dataset projection applies (microcosm#1095); the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 2229073041.345833,
+   "ledger_value": 2236768450.697215,
    "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_40000",
    "period": 2025,
    "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 savings-interest rows by band, moved to the dataset's year by the household interest index and from there to the calibration year by GDP per head, the index the engine's dataset projection applies (microcosm#1095); the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 2789321345.8552136,
+   "ledger_value": 2798950895.5248575,
    "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_50000",
    "period": 2025,
    "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 savings-interest rows by band, moved to the dataset's year by the household interest index and from there to the calibration year by GDP per head, the index the engine's dataset projection applies (microcosm#1095); the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 778387537.9672881,
+   "ledger_value": 781074758.4520222,
    "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_500000",
    "period": 2025,
    "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 savings-interest rows by band, moved to the dataset's year by the household interest index and from there to the calibration year by GDP per head, the index the engine's dataset projection applies (microcosm#1095); the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 1931068624.0536094,
+   "ledger_value": 1937735235.3633628,
    "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_70000",
    "period": 2025,
    "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 savings-interest rows by band, moved to the dataset's year by the household interest index and from there to the calibration year by GDP per head, the index the engine's dataset projection applies (microcosm#1095); the incumbent registry binds neither (chronicle#282)."
@@ -5014,6 +5098,13 @@
   },
   {
    "kind": "ledger_only",
+   "ledger_value": 8496178.0,
+   "name": "mhclg.council_tax_stock.single_adult_discount",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
    "ledger_value": 561.168,
    "name": "microcosm.high_value_homes.over_1_5m_by_region@E12000001",
    "period": 2025,
@@ -5231,8 +5322,36 @@
   },
   {
    "kind": "ledger_only",
+   "ledger_value": 3746000000.0,
+   "name": "obr.beer_and_cider_duties",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 3616000000.0,
+   "name": "obr.betting_and_gaming_duties",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
    "ledger_value": 14400000000.0,
    "name": "obr.fuel_duties_cars",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 4113000000.0,
+   "name": "obr.spirits_duties",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 7927000000.0,
+   "name": "obr.tobacco_duties",
    "period": 2025,
    "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
   },
@@ -5245,21 +5364,28 @@
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 26522000000.0,
+   "ledger_value": 4686000000.0,
+   "name": "obr.wine_duties",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 28840000000.0,
    "name": "ons.household_electricity_expenditure",
    "period": 2025,
    "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 15339000000.0,
+   "ledger_value": 18958000000.0,
    "name": "ons.household_gas_expenditure",
    "period": 2025,
    "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 37025000000.0,
+   "ledger_value": 35460000000.0,
    "name": "ons.household_road_fuel_expenditure",
    "period": 2025,
    "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
@@ -5350,6 +5476,83 @@
   },
   {
    "kind": "ledger_only",
+   "ledger_value": 735292.0,
+   "name": "ons.population.age_3",
+   "period": 2025,
+   "reason": "Requested by María on 2026-10-21 for the £100k childcare costing fixes (item 6; microcosm#1278, #1095): one of the eleven all-persons rows that extend the single years of age, the UK's ages 3 to 6 and England's ages 0 to 6, bound so the fit holds the single years inside the 0_4 and 5_9 sex bands and the region 0_9 cells, which stay bound beside them. The incumbent binds only the bands, so this row has no fixture counterpart."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 723859.0,
+   "name": "ons.population.age_4",
+   "period": 2025,
+   "reason": "Requested by María on 2026-10-21 for the £100k childcare costing fixes (item 6; microcosm#1278, #1095): one of the eleven all-persons rows that extend the single years of age, the UK's ages 3 to 6 and England's ages 0 to 6, bound so the fit holds the single years inside the 0_4 and 5_9 sex bands and the region 0_9 cells, which stay bound beside them. The incumbent binds only the bands, so this row has no fixture counterpart."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 745129.0,
+   "name": "ons.population.age_5",
+   "period": 2025,
+   "reason": "Requested by María on 2026-10-21 for the £100k childcare costing fixes (item 6; microcosm#1278, #1095): one of the eleven all-persons rows that extend the single years of age, the UK's ages 3 to 6 and England's ages 0 to 6, bound so the fit holds the single years inside the 0_4 and 5_9 sex bands and the region 0_9 cells, which stay bound beside them. The incumbent binds only the bands, so this row has no fixture counterpart."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 760014.0,
+   "name": "ons.population.age_6",
+   "period": 2025,
+   "reason": "Requested by María on 2026-10-21 for the £100k childcare costing fixes (item 6; microcosm#1278, #1095): one of the eleven all-persons rows that extend the single years of age, the UK's ages 3 to 6 and England's ages 0 to 6, bound so the fit holds the single years inside the 0_4 and 5_9 sex bands and the region 0_9 cells, which stay bound beside them. The incumbent binds only the bands, so this row has no fixture counterpart."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 566856.0,
+   "name": "ons.population.england_age_0",
+   "period": 2025,
+   "reason": "Requested by María on 2026-10-21 for the £100k childcare costing fixes (item 6; microcosm#1278, #1095): one of the eleven all-persons rows that extend the single years of age, the UK's ages 3 to 6 and England's ages 0 to 6, bound so the fit holds the single years inside the 0_4 and 5_9 sex bands and the region 0_9 cells, which stay bound beside them. The incumbent binds only the bands, so this row has no fixture counterpart."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 583995.0,
+   "name": "ons.population.england_age_1",
+   "period": 2025,
+   "reason": "Requested by María on 2026-10-21 for the £100k childcare costing fixes (item 6; microcosm#1278, #1095): one of the eleven all-persons rows that extend the single years of age, the UK's ages 3 to 6 and England's ages 0 to 6, bound so the fit holds the single years inside the 0_4 and 5_9 sex bands and the region 0_9 cells, which stay bound beside them. The incumbent binds only the bands, so this row has no fixture counterpart."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 598812.0,
+   "name": "ons.population.england_age_2",
+   "period": 2025,
+   "reason": "Requested by María on 2026-10-21 for the £100k childcare costing fixes (item 6; microcosm#1278, #1095): one of the eleven all-persons rows that extend the single years of age, the UK's ages 3 to 6 and England's ages 0 to 6, bound so the fit holds the single years inside the 0_4 and 5_9 sex bands and the region 0_9 cells, which stay bound beside them. The incumbent binds only the bands, so this row has no fixture counterpart."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 632519.0,
+   "name": "ons.population.england_age_3",
+   "period": 2025,
+   "reason": "Requested by María on 2026-10-21 for the £100k childcare costing fixes (item 6; microcosm#1278, #1095): one of the eleven all-persons rows that extend the single years of age, the UK's ages 3 to 6 and England's ages 0 to 6, bound so the fit holds the single years inside the 0_4 and 5_9 sex bands and the region 0_9 cells, which stay bound beside them. The incumbent binds only the bands, so this row has no fixture counterpart."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 621735.0,
+   "name": "ons.population.england_age_4",
+   "period": 2025,
+   "reason": "Requested by María on 2026-10-21 for the £100k childcare costing fixes (item 6; microcosm#1278, #1095): one of the eleven all-persons rows that extend the single years of age, the UK's ages 3 to 6 and England's ages 0 to 6, bound so the fit holds the single years inside the 0_4 and 5_9 sex bands and the region 0_9 cells, which stay bound beside them. The incumbent binds only the bands, so this row has no fixture counterpart."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 639573.0,
+   "name": "ons.population.england_age_5",
+   "period": 2025,
+   "reason": "Requested by María on 2026-10-21 for the £100k childcare costing fixes (item 6; microcosm#1278, #1095): one of the eleven all-persons rows that extend the single years of age, the UK's ages 3 to 6 and England's ages 0 to 6, bound so the fit holds the single years inside the 0_4 and 5_9 sex bands and the region 0_9 cells, which stay bound beside them. The incumbent binds only the bands, so this row has no fixture counterpart."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 649939.0,
+   "name": "ons.population.england_age_6",
+   "period": 2025,
+   "reason": "Requested by María on 2026-10-21 for the £100k childcare costing fixes (item 6; microcosm#1278, #1095): one of the eleven all-persons rows that extend the single years of age, the UK's ages 3 to 6 and England's ages 0 to 6, bound so the fit holds the single years inside the 0_4 and 5_9 sex bands and the region 0_9 cells, which stay bound beside them. The incumbent binds only the bands, so this row has no fixture counterpart."
+  },
+  {
+   "kind": "ledger_only",
    "ledger_value": 408119.0,
    "name": "ons.population.female_15",
    "period": 2025,
@@ -5406,7 +5609,7 @@
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 21621100549.34064,
+   "ledger_value": 11857043948.140636,
    "name": "orr.rail_government_support",
    "period": 2025,
    "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
@@ -6649,7 +6852,7 @@
   {
    "fixture_value": 6870000000.0,
    "kind": "calibration_drift",
-   "ledger_value": 7437645796.711819,
+   "ledger_value": 7475572768.250349,
    "name": "hmrc/dividend_income_income_band_100_000_to_150_000",
    "period": 2025,
    "reason": "Declared uprating (PolicyEngine/chronicle#280 lane, María's ruling of 2026-09-22): ours moves the SPI 2023-24 band value to the 2025 calibration year by the index the reference declares (amounts by the pinned engine's per-variable OBR and ONS indices between 1 January 2023 and 1 January 2025, the state pension by the new State Pension rate the engine pays, counts by HMRC's projected taxpayer growth in the containing Table 2.5 band as the calendar-2025 window); the frozen incumbent fixture holds the 2023-24 values it projects one year forward with its own income-projection ratios."
@@ -6657,7 +6860,7 @@
   {
    "fixture_value": 175000000.0,
    "kind": "calibration_drift",
-   "ledger_value": 189459681.86674938,
+   "ledger_value": 190425798.31787643,
    "name": "hmrc/dividend_income_income_band_12_570_to_15_000",
    "period": 2025,
    "reason": "Declared uprating (PolicyEngine/chronicle#280 lane, María's ruling of 2026-09-22): ours moves the SPI 2023-24 band value to the 2025 calibration year by the index the reference declares (amounts by the pinned engine's per-variable OBR and ONS indices between 1 January 2023 and 1 January 2025, the state pension by the new State Pension rate the engine pays, counts by HMRC's projected taxpayer growth in the containing Table 2.5 band as the calendar-2025 window); the frozen incumbent fixture holds the 2023-24 values it projects one year forward with its own income-projection ratios."
@@ -6665,7 +6868,7 @@
   {
    "fixture_value": 3450000000.0,
    "kind": "calibration_drift",
-   "ledger_value": 3735062299.6587734,
+   "ledger_value": 3754108595.409564,
    "name": "hmrc/dividend_income_income_band_150_000_to_200_000",
    "period": 2025,
    "reason": "Declared uprating (PolicyEngine/chronicle#280 lane, María's ruling of 2026-09-22): ours moves the SPI 2023-24 band value to the 2025 calibration year by the index the reference declares (amounts by the pinned engine's per-variable OBR and ONS indices between 1 January 2023 and 1 January 2025, the state pension by the new State Pension rate the engine pays, counts by HMRC's projected taxpayer growth in the containing Table 2.5 band as the calendar-2025 window); the frozen incumbent fixture holds the 2023-24 values it projects one year forward with its own income-projection ratios."
@@ -6673,7 +6876,7 @@
   {
    "fixture_value": 855000000.0,
    "kind": "calibration_drift",
-   "ledger_value": 925645874.2632612,
+   "ledger_value": 930366043.2101963,
    "name": "hmrc/dividend_income_income_band_15_000_to_20_000",
    "period": 2025,
    "reason": "Declared uprating (PolicyEngine/chronicle#280 lane, María's ruling of 2026-09-22): ours moves the SPI 2023-24 band value to the 2025 calibration year by the index the reference declares (amounts by the pinned engine's per-variable OBR and ONS indices between 1 January 2023 and 1 January 2025, the state pension by the new State Pension rate the engine pays, counts by HMRC's projected taxpayer growth in the containing Table 2.5 band as the calendar-2025 window); the frozen incumbent fixture holds the 2023-24 values it projects one year forward with its own income-projection ratios."
@@ -6681,7 +6884,7 @@
   {
    "fixture_value": 11100000000.0,
    "kind": "calibration_drift",
-   "ledger_value": 12017156964.119532,
+   "ledger_value": 12078436350.448162,
    "name": "hmrc/dividend_income_income_band_1_000_000_to_inf",
    "period": 2025,
    "reason": "Declared uprating (PolicyEngine/chronicle#280 lane, María's ruling of 2026-09-22): ours moves the SPI 2023-24 band value to the 2025 calibration year by the index the reference declares (amounts by the pinned engine's per-variable OBR and ONS indices between 1 January 2023 and 1 January 2025, the state pension by the new State Pension rate the engine pays, counts by HMRC's projected taxpayer growth in the containing Table 2.5 band as the calendar-2025 window); the frozen incumbent fixture holds the 2023-24 values it projects one year forward with its own income-projection ratios."
@@ -6689,7 +6892,7 @@
   {
    "fixture_value": 3700000000.0,
    "kind": "calibration_drift",
-   "ledger_value": 4005718988.039844,
+   "ledger_value": 4026145450.1493874,
    "name": "hmrc/dividend_income_income_band_200_000_to_300_000",
    "period": 2025,
    "reason": "Declared uprating (PolicyEngine/chronicle#280 lane, María's ruling of 2026-09-22): ours moves the SPI 2023-24 band value to the 2025 calibration year by the index the reference declares (amounts by the pinned engine's per-variable OBR and ONS indices between 1 January 2023 and 1 January 2025, the state pension by the new State Pension rate the engine pays, counts by HMRC's projected taxpayer growth in the containing Table 2.5 band as the calendar-2025 window); the frozen incumbent fixture holds the 2023-24 values it projects one year forward with its own income-projection ratios."
@@ -6697,7 +6900,7 @@
   {
    "fixture_value": 3330000000.0,
    "kind": "calibration_drift",
-   "ledger_value": 3605147089.2358594,
+   "ledger_value": 3623530905.1344485,
    "name": "hmrc/dividend_income_income_band_20_000_to_30_000",
    "period": 2025,
    "reason": "Declared uprating (PolicyEngine/chronicle#280 lane, María's ruling of 2026-09-22): ours moves the SPI 2023-24 band value to the 2025 calibration year by the index the reference declares (amounts by the pinned engine's per-variable OBR and ONS indices between 1 January 2023 and 1 January 2025, the state pension by the new State Pension rate the engine pays, counts by HMRC's projected taxpayer growth in the containing Table 2.5 band as the calendar-2025 window); the frozen incumbent fixture holds the 2023-24 values it projects one year forward with its own income-projection ratios."
@@ -6705,7 +6908,7 @@
   {
    "fixture_value": 3430000000.0,
    "kind": "calibration_drift",
-   "ledger_value": 3713409764.588288,
+   "ledger_value": 3732345647.030378,
    "name": "hmrc/dividend_income_income_band_300_000_to_500_000",
    "period": 2025,
    "reason": "Declared uprating (PolicyEngine/chronicle#280 lane, María's ruling of 2026-09-22): ours moves the SPI 2023-24 band value to the 2025 calibration year by the index the reference declares (amounts by the pinned engine's per-variable OBR and ONS indices between 1 January 2023 and 1 January 2025, the state pension by the new State Pension rate the engine pays, counts by HMRC's projected taxpayer growth in the containing Table 2.5 band as the calendar-2025 window); the frozen incumbent fixture holds the 2023-24 values it projects one year forward with its own income-projection ratios."
@@ -6713,7 +6916,7 @@
   {
    "fixture_value": 4700000000.0,
    "kind": "calibration_drift",
-   "ledger_value": 5088345741.564126,
+   "ledger_value": 5114292869.108682,
    "name": "hmrc/dividend_income_income_band_30_000_to_40_000",
    "period": 2025,
    "reason": "Declared uprating (PolicyEngine/chronicle#280 lane, María's ruling of 2026-09-22): ours moves the SPI 2023-24 band value to the 2025 calibration year by the index the reference declares (amounts by the pinned engine's per-variable OBR and ONS indices between 1 January 2023 and 1 January 2025, the state pension by the new State Pension rate the engine pays, counts by HMRC's projected taxpayer growth in the containing Table 2.5 band as the calendar-2025 window); the frozen incumbent fixture holds the 2023-24 values it projects one year forward with its own income-projection ratios."
@@ -6721,7 +6924,7 @@
   {
    "fixture_value": 8400000000.0,
    "kind": "calibration_drift",
-   "ledger_value": 9094064729.60397,
+   "ledger_value": 9140438319.258068,
    "name": "hmrc/dividend_income_income_band_40_000_to_50_000",
    "period": 2025,
    "reason": "Declared uprating (PolicyEngine/chronicle#280 lane, María's ruling of 2026-09-22): ours moves the SPI 2023-24 band value to the 2025 calibration year by the index the reference declares (amounts by the pinned engine's per-variable OBR and ONS indices between 1 January 2023 and 1 January 2025, the state pension by the new State Pension rate the engine pays, counts by HMRC's projected taxpayer growth in the containing Table 2.5 band as the calendar-2025 window); the frozen incumbent fixture holds the 2023-24 values it projects one year forward with its own income-projection ratios."
@@ -6729,7 +6932,7 @@
   {
    "fixture_value": 3820000000.0,
    "kind": "calibration_drift",
-   "ledger_value": 4135634198.462758,
+   "ledger_value": 4156723140.424503,
    "name": "hmrc/dividend_income_income_band_500_000_to_1_000_000",
    "period": 2025,
    "reason": "Declared uprating (PolicyEngine/chronicle#280 lane, María's ruling of 2026-09-22): ours moves the SPI 2023-24 band value to the 2025 calibration year by the index the reference declares (amounts by the pinned engine's per-variable OBR and ONS indices between 1 January 2023 and 1 January 2025, the state pension by the new State Pension rate the engine pays, counts by HMRC's projected taxpayer growth in the containing Table 2.5 band as the calendar-2025 window); the frozen incumbent fixture holds the 2023-24 values it projects one year forward with its own income-projection ratios."
@@ -6737,7 +6940,7 @@
   {
    "fixture_value": 12500000000.0,
    "kind": "calibration_drift",
-   "ledger_value": 13532834419.053528,
+   "ledger_value": 13601842736.991173,
    "name": "hmrc/dividend_income_income_band_50_000_to_70_000",
    "period": 2025,
    "reason": "Declared uprating (PolicyEngine/chronicle#280 lane, María's ruling of 2026-09-22): ours moves the SPI 2023-24 band value to the 2025 calibration year by the index the reference declares (amounts by the pinned engine's per-variable OBR and ONS indices between 1 January 2023 and 1 January 2025, the state pension by the new State Pension rate the engine pays, counts by HMRC's projected taxpayer growth in the containing Table 2.5 band as the calendar-2025 window); the frozen incumbent fixture holds the 2023-24 values it projects one year forward with its own income-projection ratios."
@@ -6745,7 +6948,7 @@
   {
    "fixture_value": 9440000000.0,
    "kind": "calibration_drift",
-   "ledger_value": 10219996553.269224,
+   "ledger_value": 10272111634.975735,
    "name": "hmrc/dividend_income_income_band_70_000_to_100_000",
    "period": 2025,
    "reason": "Declared uprating (PolicyEngine/chronicle#280 lane, María's ruling of 2026-09-22): ours moves the SPI 2023-24 band value to the 2025 calibration year by the index the reference declares (amounts by the pinned engine's per-variable OBR and ONS indices between 1 January 2023 and 1 January 2025, the state pension by the new State Pension rate the engine pays, counts by HMRC's projected taxpayer growth in the containing Table 2.5 band as the calendar-2025 window); the frozen incumbent fixture holds the 2023-24 values it projects one year forward with its own income-projection ratios."
@@ -8575,34 +8778,10 @@
    "reason": "Period basis (PolicyEngine/chronicle#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR March 2026 line at the calendar-2025 window, three twelfths of FY2024-25 and nine twelfths of FY2025-26, on the same series; the frozen incumbent fixture holds the FY2025-26 value alone."
   },
   {
-   "fixture_value": 66410800011.47837,
-   "kind": "calibration_drift",
-   "ledger_value": 63016849758.31539,
-   "name": "obr.universal_credit_in_cap",
-   "period": 2025,
-   "reason": "Period basis (PolicyEngine/chronicle#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR March 2026 line at the calendar-2025 window, three twelfths of FY2024-25 and nine twelfths of FY2025-26, on the same series; the frozen incumbent fixture holds the FY2025-26 value alone."
-  },
-  {
-   "fixture_value": 12875549128.065746,
-   "kind": "calibration_drift",
-   "ledger_value": 13037904629.457691,
-   "name": "obr.universal_credit_outside_cap",
-   "period": 2025,
-   "reason": "Period basis (PolicyEngine/chronicle#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR March 2026 line at the calendar-2025 window, three twelfths of FY2024-25 and nine twelfths of FY2025-26, on the same series; the frozen incumbent fixture holds the FY2025-26 value alone."
-  },
-  {
    "fixture_value": 180168938685.41794,
    "kind": "calibration_drift",
    "ledger_value": 177875204014.06345,
    "name": "obr.vat",
-   "period": 2025,
-   "reason": "Period basis (PolicyEngine/chronicle#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR March 2026 line at the calendar-2025 window, three twelfths of FY2024-25 and nine twelfths of FY2025-26, on the same series; the frozen incumbent fixture holds the FY2025-26 value alone."
-  },
-  {
-   "fixture_value": 1911040880.4619167,
-   "kind": "calibration_drift",
-   "ledger_value": 1508660934.2839375,
-   "name": "obr.winter_fuel_allowance",
    "period": 2025,
    "reason": "Period basis (PolicyEngine/chronicle#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR March 2026 line at the calendar-2025 window, three twelfths of FY2024-25 and nine twelfths of FY2025-26, on the same series; the frozen incumbent fixture holds the FY2025-26 value alone."
   },
@@ -9819,14 +9998,6 @@
    "kind": "calibration_drift",
    "ledger_value": 73713378.39,
    "name": "slc.repayments.england_plan_5",
-   "period": 2025,
-   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
-  },
-  {
-   "fixture_value": 346409713.95,
-   "kind": "calibration_drift",
-   "ledger_value": 427019983.79,
-   "name": "slc.repayments.england_postgraduate",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
   },

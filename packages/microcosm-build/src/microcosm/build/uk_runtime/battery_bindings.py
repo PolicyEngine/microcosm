@@ -633,16 +633,25 @@ def _declared_property_shares(
     from microcosm.build.uk_runtime.uc_capital_coherence import (
         PENSION_CREDIT_PROPERTY_CAPITAL_SOURCES,
         PROPERTY_CAPITAL_OWNERS,
+        PROPERTY_CAPITAL_SECURED_DEBT,
         PROPERTY_CAPITAL_VALUATION,
         UC_PROPERTY_CAPITAL_REPORTER_RULE,
         UC_PROPERTY_CAPITAL_SOURCES,
     )
+
+    def secured_debt(sources: tuple[str, ...]) -> dict[str, str]:
+        return {
+            source: PROPERTY_CAPITAL_SECURED_DEBT[source]
+            for source in sources
+            if source in PROPERTY_CAPITAL_SECURED_DEBT
+        }
 
     rules = {
         "uc_reported_capital": {
             "sources": list(UC_PROPERTY_CAPITAL_SOURCES),
             "owners": PROPERTY_CAPITAL_OWNERS,
             "valuation": PROPERTY_CAPITAL_VALUATION,
+            "secured_debt": secured_debt(UC_PROPERTY_CAPITAL_SOURCES),
             # A unit that reports Universal Credit keeps its receipt.
             "units_reporting_universal_credit": UC_PROPERTY_CAPITAL_REPORTER_RULE,
         },
@@ -650,6 +659,7 @@ def _declared_property_shares(
             "sources": list(PENSION_CREDIT_PROPERTY_CAPITAL_SOURCES),
             "owners": PROPERTY_CAPITAL_OWNERS,
             "valuation": PROPERTY_CAPITAL_VALUATION,
+            "secured_debt": secured_debt(PENSION_CREDIT_PROPERTY_CAPITAL_SOURCES),
         },
     }
     declared = {
@@ -2145,6 +2155,12 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 # microcosm#1069 c7 pension_credit_take_up stage-health check.
                 "maximum_take_up_deviation",
                 "minimum_entitled_units",
+                # microcosm#1334 uc_take_up stage-health check.
+                "maximum_caseload_deviation",
+                # frs_annual_income_spells stage-health check.
+                "pay_concept_ratio_bounds",
+                "annual_over_current_earners_bounds",
+                "minimum_observed_pay_share",
                 # microcosm#1095 spi_benefit_coherence stage-health check.
                 "zeroed_columns",
                 "restored_columns",
@@ -2215,6 +2231,16 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 # #1113 road_fuel_level check: the ceiling on the LCFS donor
                 # share of other personal-transport fuels netted off 07.2.2.
                 "maximum_other_fuels_share",
+                # #1359 excise_quantities check: the ceiling on the donor
+                # share whose published total sits beside its diary lines, and
+                # the support band each excise share must rest on.
+                "maximum_parent_residual_share",
+                "required_support_band",
+                # #1359 gambling_participation check: how far a stratum's
+                # topped-up share may sit from its published target, and the
+                # bounds on the scale that anchors the added stakes.
+                "maximum_stratum_shortfall",
+                "amount_scale_bounds",
                 # #1113 road_fuel_incidence check: the ceiling on the chain's
                 # zero share among flagged fuel-car households.
                 "maximum_flagged_zero_share",
@@ -2228,6 +2254,18 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 "maximum_rows_receipts_below_profit",
                 "maximum_rows_with_profit_above_band",
                 "maximum_band_error_in_boundary_weights",
+                # #1308's three stages, gated with the next policyengine-uk
+                # bump (María's ruling of 2026-10-17): the purchase kinds and
+                # their fit, the home-value ranking, the Move to UC draw.
+                "kinds",
+                "maximum_transactions_relative_deviation",
+                "maximum_value_shortfall_share",
+                "regions",
+                "maximum_sources_at_cap",
+                "knots_basis_year",
+                "rank_basis",
+                "p_basis",
+                "rate_sources",
             }
         ),
         artifact_keys=frozenset({"stage_evidence"}),

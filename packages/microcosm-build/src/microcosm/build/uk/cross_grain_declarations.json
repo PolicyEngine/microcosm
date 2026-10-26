@@ -936,6 +936,26 @@
       "part": "hmrc.itl.higher_rate_taxpayers",
       "whole": "hmrc.itl.taxpayers_by_total_income_band",
       "reason": "Higher rate taxpayers by region and nation (ITL Table 2.2) are part of all UK income tax payers, whose projected ITL Table 2.5 bands partition the UK total; parts <= whole (microcosm#1123)."
+    },
+    {
+      "targets": [
+        "mhclg.council_tax_stock.single_adult_discount",
+        "ons.households.english_regions"
+      ],
+      "relation": "subset",
+      "part": "mhclg.council_tax_stock.single_adult_discount",
+      "whole": "ons.households.english_regions",
+      "reason": "England's households with the single adult council tax discount (MHCLG Council Taxbase line 8, all bands) are part of England's households, which the nine English regions' rows cover; parts <= whole (microcosm#953)."
+    },
+    {
+      "targets": [
+        "mhclg.council_tax_stock.by_area.single_adult_discount",
+        "ons.households.english_regions"
+      ],
+      "relation": "subset",
+      "part": "mhclg.council_tax_stock.by_area.single_adult_discount",
+      "whole": "ons.households.english_regions",
+      "reason": "Each English billing authority's households with the single adult council tax discount (MHCLG Council Taxbase line 8, all bands) are part of its region's households, which the nine English regions' rows cover; parts <= whole (microcosm#1095). The cells reconcile onto the national single adult row, whose measurement they share."
     }
   ],
   "signature_incomplete": [

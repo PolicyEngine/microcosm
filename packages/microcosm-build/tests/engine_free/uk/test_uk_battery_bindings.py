@@ -102,6 +102,54 @@ def test_declared_export_surface_preserves_claimants_and_matches_runtime(uk_gate
     assert outcome.status is GateStatus.PASSED
 
 
+def test_spine_export_surface_is_reference_or_allow_listed(uk_gates):
+    """Every column the spine declares leaves through the release boundary as
+    an enhanced-FRS input, an allow-listed extra or a reviewed drop.
+
+    The export-surface gate runs only at release-cut certification, on a built
+    file; war_widows_pension_reported (#1222) reached main without an
+    allow-list entry and blocked the first certification after it. This runs
+    the same gate on the spine's declared surface through the production
+    export path, against the checked-in enhanced-FRS reference.
+    """
+
+    from microcosm.build.uk_runtime.graph import uk_spine_endpoint, uk_spine_graph
+    from microcosm.build.uk_runtime.national_frame import (
+        uk_national_frame,
+        uk_release_export_frame,
+    )
+    from microcosm.build.uk_runtime.parity_reference import (
+        load_efrs_parity_reference,
+    )
+    from microcosm.build.uk_runtime.terminal_gates import (
+        uk_export_candidate_columns,
+        uk_export_surface_gate,
+    )
+
+    columns = {
+        "person": ["person_id", "person_benunit_id", "person_household_id"],
+        "benunit": ["benunit_id"],
+        "household": ["household_id"],
+    }
+    for cells in uk_spine_endpoint(uk_spine_graph()).inputs:
+        columns[cells.entity] = list(
+            dict.fromkeys([*columns[cells.entity], *cells.columns])
+        )
+    tables = {
+        entity: pd.DataFrame({column: np.array([1]) for column in names})
+        for entity, names in columns.items()
+    }
+    frame = uk_national_frame(**tables, time_period="2024", household_weights=[1.0])
+    candidate = uk_export_candidate_columns(uk_release_export_frame(frame))
+    reference = {
+        f"{entity}.{name}"
+        for name, entity in load_efrs_parity_reference().input_entities.items()
+    }
+    entry = next(entry for entry in uk_gates.gates if entry.id == "uk_export_surface")
+    result = uk_export_surface_gate(candidate, reference, **dict(entry.parameters))
+    assert result.passed, result.failures
+
+
 def _tables(*, n: int = 4, weights=None):
     if weights is None:
         weights = np.ones(n, dtype=float)
@@ -115,6 +163,15 @@ def _tables(*, n: int = 4, weights=None):
     other_property = 1_000.0 * (np.arange(n) % 2)
     non_residential = 500.0 * (np.arange(n) % 2)
     land = 250.0 * (np.arange(n) % 2)
+    # Debt secured on the last unit's property (microcosm#1095): the shares
+    # net it class by class, the non-residential debt above 90% of its
+    # property's value flooring that class at zero.
+    last = np.arange(n) == n - 1
+    other_property_debt = np.where(last, 300.0, 0.0)
+    non_residential_debt = np.where(last, 600.0, 0.0)
+    property_share = np.maximum(0.9 * other_property - other_property_debt, 0.0) + (
+        np.maximum(0.9 * non_residential - non_residential_debt, 0.0)
+    )
     carrier = np.arange(n, dtype=float)
     person = pd.DataFrame(
         {
@@ -136,9 +193,8 @@ def _tables(*, n: int = 4, weights=None):
             "benunit_id": np.arange(201, 201 + n, dtype=np.int64),
             "would_claim_uc": np.asarray([True, False] * n)[:n],
             "frs_benunit_capital": carrier,
-            "uc_reported_capital": carrier + 0.9 * (other_property + non_residential),
-            "pension_credit_reported_capital": carrier
-            + 0.9 * (land + other_property + non_residential),
+            "uc_reported_capital": carrier + property_share,
+            "pension_credit_reported_capital": carrier + 0.9 * land + property_share,
         }
     )
     household = pd.DataFrame(
@@ -150,6 +206,8 @@ def _tables(*, n: int = 4, weights=None):
             "owned_land": land,
             "other_residential_property_value": other_property,
             "non_residential_property_value": non_residential,
+            "other_residential_property_secured_debt": other_property_debt,
+            "non_residential_property_secured_debt": non_residential_debt,
         }
     )
     return person, benunit, household
@@ -708,12 +766,15 @@ class TestUKSurfaceAdapter:
         """
 
         from microcosm.build.uk_runtime.salary_sacrifice import (
+            BONUS_SACRIFICE_OUTPUT,
             SALSAC_OUTPUT,
             SALSAC_PRE_CONVERSION_PAY_COLUMN,
         )
 
         person, benunit, household = _tables()
         person[SALSAC_OUTPUT] = [0.0, 10.0, 0.0, 5.0]
+        # The stage's bonus route (#1340) is a declared non-negative output too.
+        person[BONUS_SACRIFICE_OUTPUT] = [0.0, 0.0, 3.0, 0.0]
         person["employee_pension_contributions"] = [1.0, 0.0, 2.0, 0.0]
         release = uk_national_frame(
             person=person.copy(),
@@ -1761,19 +1822,22 @@ class TestPreflightBindings:
         # all 1,725 constituency cells, which the region rows now control,
         # and the 598 authority cells under the 400-home floor.
         # microcosm#1262 adds Scotland's 18 PIPR BRMA cells, all compiled.
-        assert result.details["candidate_targets"] == 23_004
-        assert result.details["reference_targets"] == 27_133
-        # Only the 4,129 signed area deferrals and absences remain (2,100
+        # microcosm#1095 adds England's single adult discount cells: 296
+        # billing authorities, less the two the support floor defers.
+        assert result.details["candidate_targets"] == 23_298
+        assert result.details["reference_targets"] == 27_429
+        # Only the 4,131 signed area deferrals and absences remain (2,100
         # before microcosm#929 bound the Welsh and Scottish council-tax cells;
         # Shetland band H is the one Scottish support deferral; microcosm#1123
         # adds the three higher rate taxpayer gaps; microcosm#1240 the six
         # high-value homes cells above; microcosm#1278 signs the two
         # small-cell rules, which defer 16 council-tax band cells and 192
         # higher-rate cells; microcosm#1207 the ten energy cells above;
-        # microcosm#1301 the 2,323 high-value homes cells above); the 1,011
-        # household rows are ordinary Chronicle-compiled references.
+        # microcosm#1301 the 2,323 high-value homes cells above; microcosm#1095
+        # the two single adult discount cells above); the 1,011 household rows
+        # are ordinary Chronicle-compiled references.
         exclusions = result.details["reviewed_exclusions"]
-        assert len(exclusions) == 4_129
+        assert len(exclusions) == 4_131
         households = [
             name for name in exclusions if str(name).startswith("households@")
         ]

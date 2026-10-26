@@ -221,7 +221,9 @@ def test_every_committed_subset_names_its_part_and_whole():
         for relation in load_uk_cross_grain_declarations()["relations"]
         if relation["relation"] == "subset"
     ]
-    assert len(relations) == 17
+    # England's single adult discount within its households (microcosm#953),
+    # and its billing-authority cells within theirs (microcosm#1095).
+    assert len(relations) == 19
     for relation in relations:
         assert {relation["part"], relation["whole"]} == set(relation["targets"])
         assert 0.0 <= relation.get("max_excess", 0.0) <= 0.01

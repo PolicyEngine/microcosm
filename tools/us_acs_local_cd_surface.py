@@ -1116,7 +1116,7 @@ def district_row_parents(
 
 
 #: Digits of a ladder population target's geography code, by ladder geography.
-POPULATION_TARGET_CODE_DIGITS: Mapping[str, int] = {"state": 2, "cd": 4}
+POPULATION_TARGET_CODE_DIGITS: Mapping[str, int] = {"state": 2, "cd": 4, "county": 5}
 
 
 def population_target_name(geography: str, code: int) -> str:
@@ -1131,6 +1131,8 @@ def population_rows(
     household_size: np.ndarray,
     ladder_populations: Mapping[str, Mapping[int, float]],
     geographies: Sequence[str],
+    *,
+    county_column: str = "county_fips",
 ) -> tuple[list[dict], sparse.csr_array, list[str]]:
     """Ladder population marginals as sparse rows (household size x 1[geo]).
 
@@ -1138,6 +1140,13 @@ def population_rows(
     with no supporting household is dropped and named, as before.
     """
 
+    if "county" in geographies:
+        import us_acs_local_county_surface as county_surface
+
+        return county_surface.population_rows(
+            households, household_size, ladder_populations, geographies,
+            county_column=county_column,
+        )
     column_map = {
         "state": ("state_fips", "state", GEOGRAPHY_STATE),
         "cd": ("congressional_district_geoid", "cd", GEOGRAPHY_CD),
@@ -1474,7 +1483,10 @@ def score_cd_holdout(
 ) -> dict:
     """Held-out district targets: calibrated vs design vs pro-rata baseline."""
 
-    rows = holdout_rows(records)
+    rows = [
+        row for row in holdout_rows(records)
+        if records[row].get("geography_level") == GEOGRAPHY_CD
+    ]
     base = {"report_only": True, **dict(receipt or {})}
     if not rows:
         return {**base, "n_targets": 0}

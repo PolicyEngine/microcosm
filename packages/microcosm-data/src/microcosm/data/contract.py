@@ -452,13 +452,13 @@ _UK_GATE_BATTERY_SHIPPABLE_STATUSES = frozenset({"passed", "not_applicable"})
 # fingerprint derives from the manifest digest. Editing the spec moves all
 # three here in the same reviewed change.
 _UK_GATE_BATTERY_POLICY_SHA256 = (
-    "3e9896aa61e9d9340a3cf6ce4a7b85626288b4312f59b795a7aef77fb4c111d6"
+    "83ca8470cbc1801dc037b0b1d8c572846f6882f6e562a9db6b0c1bbb005efe0e"
 )
 _UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "2054ed4194fac38952f51832c7a30ca81abfec177dff0f22c3d34acf4e63a779"
+    "ac1ad35e724feaa36ed498d7a4d20a8bbe9ffee75535cba7f8a4a79a0330f0d7"
 )
 _UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "a6d9b3f1dcaeea839af81fda2388e60736fd41c1c7b2e9d23af9b9dbca4e8886"
+    "486d32ed31529cea44f38c8419c1ed3678a83af622784f9cb3ba4eb5b9966f5b"
 )
 #: Spec entry id -> the legacy gate name whose observable detail checks
 #: apply unchanged (the battery re-keys the report by entry id; the gate
@@ -513,6 +513,8 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
     "uk_stage_lcfs_consumption_road_fuel_incidence": ("stage_health", "transferred"),
     "uk_stage_lcfs_consumption_road_fuel_level": ("stage_health", "transferred"),
     "uk_stage_lcfs_consumption_recomposed_totals": ("stage_health", "transferred"),
+    "uk_stage_lcfs_consumption_excise_quantities": ("stage_health", "transferred"),
+    "uk_stage_lcfs_consumption_gambling_participation": ("stage_health", "transferred"),
     "uk_stage_lcfs_consumption_basis": ("stage_health", "transferred"),
     "uk_stage_etb_vat_support": ("stage_health", "transferred"),
     "uk_stage_etb_services_support": ("stage_health", "transferred"),
@@ -521,12 +523,14 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
         "stage_health",
         "transferred",
     ),
+    "uk_stage_frs_annual_income_spells": ("stage_health", "transferred"),
     "uk_stage_spi_support_channel_mass": ("stage_health", "transferred"),
     "uk_stage_hmrc_spi_income_spine_identity": (
         "stage_health",
         "transferred",
     ),
     "uk_stage_spi_benefit_coherence": ("stage_health", "transferred"),
+    "uk_stage_uc_take_up": ("stage_health", "transferred"),
     "uk_stage_pension_credit_take_up": ("stage_health", "transferred"),
     "uk_stage_child_benefit_take_up": ("stage_health", "transferred"),
     "uk_stage_cgt_incidence_clone_mass": ("stage_health", "transferred"),
@@ -551,6 +555,9 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
         "transferred",
     ),
     "uk_stage_student_loans_realization": ("stage_health", "transferred"),
+    "uk_stage_regional_home_values_ranking": ("stage_health", "transferred"),
+    "uk_stage_property_purchases_fit": ("stage_health", "transferred"),
+    "uk_stage_uc_legacy_closure_take_up_contract": ("stage_health", "transferred"),
     "uk_stage_age_tail_targets": ("stage_health", "assembled"),
     "uk_stage_frs_relationships_composition": ("stage_health", "assembled"),
     "uk_ledger_compile_parity_local_incumbent_2025": (
@@ -629,14 +636,18 @@ _UK_GATE_BATTERY_EVIDENCE_IDS = frozenset(
         "uk_stage_lcfs_consumption_road_fuel_incidence",
         "uk_stage_lcfs_consumption_road_fuel_level",
         "uk_stage_lcfs_consumption_recomposed_totals",
+        "uk_stage_lcfs_consumption_excise_quantities",
+        "uk_stage_lcfs_consumption_gambling_participation",
         "uk_stage_lcfs_consumption_basis",
         "uk_stage_etb_vat_support",
         "uk_stage_etb_services_support",
         "uk_stage_etb_services_support_pricing",
         "uk_stage_frs_hmrc_spine_leaves_signal",
+        "uk_stage_frs_annual_income_spells",
         "uk_stage_spi_support_channel_mass",
         "uk_stage_hmrc_spi_income_spine_identity",
         "uk_stage_spi_benefit_coherence",
+        "uk_stage_uc_take_up",
         "uk_stage_pension_credit_take_up",
         "uk_stage_child_benefit_take_up",
         "uk_stage_cgt_incidence_clone_mass",
@@ -649,6 +660,9 @@ _UK_GATE_BATTERY_EVIDENCE_IDS = frozenset(
         "uk_stage_cgt_incidence_anchor_composition",
         "uk_stage_salary_sacrifice_realization",
         "uk_stage_student_loans_realization",
+        "uk_stage_regional_home_values_ranking",
+        "uk_stage_property_purchases_fit",
+        "uk_stage_uc_legacy_closure_take_up_contract",
         "uk_stage_age_tail_targets",
         "uk_stage_frs_relationships_composition",
         "uk_cgt_projection_entrants",
@@ -868,6 +882,7 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
             "uk_stage_etb_services_support_pricing",
             "uk_stage_etb_vat_support",
             "uk_stage_frs_hmrc_spine_leaves_signal",
+            "uk_stage_frs_annual_income_spells",
             "uk_stage_frs_relationships_composition",
             "uk_stage_high_value_home_support_mass",
             "uk_stage_hmrc_cgt_asset_type_spine_summary",
@@ -876,6 +891,8 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
             "uk_stage_lcfs_consumption_basis",
             "uk_stage_lcfs_consumption_bus_pricing",
             "uk_stage_lcfs_consumption_energy_rake",
+            "uk_stage_lcfs_consumption_excise_quantities",
+            "uk_stage_lcfs_consumption_gambling_participation",
             "uk_stage_lcfs_consumption_recomposed_totals",
             "uk_stage_lcfs_consumption_road_fuel_incidence",
             "uk_stage_lcfs_consumption_road_fuel_level",
@@ -884,11 +901,15 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
             "uk_stage_nts_bus_travel_support",
             "uk_stage_pension_credit_take_up",
             "uk_stage_property_components",
+            "uk_stage_property_purchases_fit",
+            "uk_stage_regional_home_values_ranking",
             "uk_stage_salary_sacrifice_realization",
             "uk_stage_spi_benefit_coherence",
             "uk_stage_spi_support_channel_mass",
             "uk_stage_student_loans_realization",
             "uk_stage_uc_deduction_attributes",
+            "uk_stage_uc_legacy_closure_take_up_contract",
+            "uk_stage_uc_take_up",
             "uk_stage_was_lisa_support",
             "uk_stage_was_wealth_coherence",
             "uk_stage_was_wealth_support",
@@ -932,26 +953,26 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
 _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     "spine": {
         "gates_manifest_sha256": (
-            "39295b40f70be77bb59e2aa70c9429be512e5af4ea78b0189f15687fb8ef3e36"
+            "406c299c2623d1d4302ff3c0110963b2eb07c048827894171cc33d4b422e62fe"
         ),
         "policy_sha256": (
-            "53a7eb6d9e52eb54fe5d123e1f4393535d0e218d5cf5d9383b9ebf50d367cd1e"
+            "d1348b7e37d23ad5533b77dc54b223cb6d6210b753e54e394daf961ca582123c"
         ),
     },
     "calibration_seam": {
         "gates_manifest_sha256": (
-            "763df9874b4655caea7f6a54bb301fea0b02ba47dedde13f5fa65dd9428afad0"
+            "c398c52e908a4145afbb5967c284e575b226025473d2196a494bc00c280d7ecb"
         ),
         "policy_sha256": (
-            "5a78ad115f958eb20247534ff9fd52e5d5d4f277b608d55ad4251d48a7232049"
+            "98b174b57459d1f3a553e9a15efc8a47aaf322470207a448224c1c61bd19b621"
         ),
     },
     "release_cut": {
         "gates_manifest_sha256": (
-            "da420e28423aa685d82d65ff3367401b63be7dd37edcc4574bdd7d38faac5c19"
+            "a7b17431dd71284bf93b5337036bc1b9b64a17eab0b161f78549ed72ab0ca61c"
         ),
         "policy_sha256": (
-            "939309226c43641ded9402ab47b7b12b0c46fa5165f73da5ced9d97a38985d02"
+            "ab5f2a1c14ffe72cbc5d65c7658827b81b9470a56278e6f961f3b6dfa12ca2d7"
         ),
     },
 }
@@ -6776,6 +6797,31 @@ def validate_release_dir(
                 validate_source_enrichment_candidate(
                     release_dir,
                     parent_h5=parent_h5,
+                    artifact_root=artifact_root,
+                    require_compatibility=True,
+                    compatibility_wheels=compatibility_wheels,
+                )
+                return []
+            from microcosm.data.compatibility_recertification import (
+                RECERTIFICATION_RELEASE_TYPE,
+                validate_recertification_candidate,
+            )
+
+            if manifest_probe["release_type"] == RECERTIFICATION_RELEASE_TYPE:
+                # A published parent's bytes, re-measured under a newer
+                # engine: its own contract replays the parent's on the
+                # carried files. The child's H5 is the parent's, so it takes
+                # no parent_h5.
+                if parent_h5 is not None:
+                    raise ReleaseContractError(
+                        release_dir,
+                        [
+                            "a compatibility recertification republishes its "
+                            "parent's H5 unchanged and takes no parent_h5"
+                        ],
+                    )
+                validate_recertification_candidate(
+                    release_dir,
                     artifact_root=artifact_root,
                     require_compatibility=True,
                     compatibility_wheels=compatibility_wheels,

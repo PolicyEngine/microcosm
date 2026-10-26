@@ -3362,7 +3362,7 @@
     "ta_name": "territorial-authority name",
     "shares": "list of {as_area: 1-4, population_share: number in [0, 1]}; shares sum to 1 within share_tolerance",
     "population_source": "the pinned population source and its period",
-    "population_total": "sum of usable 2023 Census URP assigned to this TA; zero only for explicitly declared TA 999 placeholder",
+    "population_total": "sum of usable 2023 Census URP assigned to this TA; TA 999 has Census population 33, while no TA 999 ERP fact exists",
     "modal_area": "unique largest-population AS area, for scenario S3; ties refuse"
   },
   "provenance": {
@@ -3876,7 +3876,7 @@
       "containment": "Global even-odd parity over every ring of a feature, including nested rings supplied as separate MultiPolygon parts (observed for Motutangi-Kareponia enclosing Awanui). Disjoint parts are equivalent to their union. Boundary included with angular epsilon 1e-10 degrees. Every feature hit is inspected. Interior overlaps are repaired only when the point is within 20 m of every candidate boundary: choose the uniquely deepest interior (greatest boundary distance); tied distances within 1e-6 m or deeper overlaps refuse. Every candidate distance and selected code is reported. The 20 m sliver limit accommodates the approximately 10 m server simplification and 6-decimal rounding. Multiple boundary-only hits choose smallest code and are reported.",
       "no_hit": "Nearest polygon boundary in local equirectangular metres (Earth radius 6371008.8); positive population refuses beyond 20000 m; zero population may use an unlimited nearest boundary. Equal nearest distances within 1e-6 m refuse. All no-hit assignments reported.",
       "max_distance_m": 20000,
-      "zero_population_ta": "Area Outside Territorial Authority (999), if zero population, is explicitly represented by Area 4 share 1, modal 4; this is a non-population placeholder, not an estimated share.",
+      "zero_population_ta": "The harvested Area Outside Territorial Authority (999) row has Census population 33 and Area 4 share 1, modal 4. No corresponding ERP fact exists; preserve this Census/ERP support discrepancy. TA 999 is distinct from Census region 99 and cannot supply its growth operand.",
       "max_overlap_m": 20,
       "interior_point": {
         "algorithm": "deterministic best-first pole-of-inaccessibility search with global even-odd ring parity",

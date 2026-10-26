@@ -29,6 +29,7 @@ import uuid
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any
 
 import numpy as np
@@ -48,6 +49,9 @@ from microcosm.frame import (
 __all__ = [
     "UK_BUILD_IDENTIFIER_COLUMNS",
     "UK_ENGINE_IDENTIFIER_MAX",
+    "UK_ENERGY_PRICE_BASIS",
+    "UK_ENERGY_PRICE_BASIS_ATTR",
+    "UK_ENERGY_PRICE_BASIS_COLUMNS",
     "UK_EXPORTED_WEIGHT_COLUMNS",
     "UK_HOUSEHOLD_WEIGHT_KIND_ATTR",
     "UK_MASS_LOG_ATTR",
@@ -78,6 +82,27 @@ UK_TIME_PERIOD_METADATA_KEY = "time_period"
 UK_NATIONAL_H5_TABLES = ("person", "benunit", "household", "time_period")
 UK_HOUSEHOLD_WEIGHT_KIND_ATTR = "populace_household_weight_kind"
 UK_MASS_LOG_ATTR = "populace_mass_log_json"
+#: The root attribute in which policyengine-uk reads the price period of a
+#: dataset's stored energy spending (policyengine-uk 2.148.1,
+#: PolicyEngine/policyengine-uk#2571): a JSON object of ``period_type`` and
+#: ``period_value``. The engine projects declared energy spending from that
+#: period by its consumer price index; spending without a declaration stays
+#: at its stored prices in every later year (PolicyEngine/policyengine-uk#2526).
+UK_ENERGY_PRICE_BASIS_ATTR = "energy_price_basis"
+#: The household spending the declaration describes: the three columns
+#: policyengine-uk projects only from a declared period.
+UK_ENERGY_PRICE_BASIS_COLUMNS = (
+    "domestic_energy_consumption",
+    "electricity_consumption",
+    "gas_consumption",
+)
+#: Their price period. ``lcfs_consumption``, the one stage that writes them,
+#: sets every household spend column at calendar-2024 prices, and the
+#: stage-time gate ``uk_stage_lcfs_consumption_basis`` holds each step that
+#: sets a level to that year (microcosm#1113).
+UK_ENERGY_PRICE_BASIS: Mapping[str, object] = MappingProxyType(
+    {"period_type": "calendar_year", "period_value": 2024}
+)
 
 # The persisted weight columns of the materialized export contract above:
 # real columns on the tables, but plumbing rather than input mass. Consumers
@@ -178,6 +203,49 @@ def _write_weight_metadata(
         file.attrs[UK_MASS_LOG_ATTR] = json.dumps(
             [_mass_change_record_payload(record) for record in mass_log],
             sort_keys=True,
+        )
+
+
+def _write_energy_price_basis(path: Path, household: pd.DataFrame) -> None:
+    """Declare the energy spending's price period in an H5 that stores it.
+
+    The JSON is written as policyengine-uk writes its own declaration, keys
+    sorted, so the engine reads the basis the build priced the columns at.
+    """
+
+    if not any(column in household.columns for column in UK_ENERGY_PRICE_BASIS_COLUMNS):
+        return
+    try:
+        import h5py
+    except ImportError as exc:  # pragma: no cover - UK H5 runtime dependency
+        raise RuntimeError("h5py is required to write UK national metadata.") from exc
+    with h5py.File(path, mode="r+") as file:
+        file.attrs[UK_ENERGY_PRICE_BASIS_ATTR] = json.dumps(
+            dict(UK_ENERGY_PRICE_BASIS), sort_keys=True
+        )
+
+
+def _write_isa_income_contract(path: Path) -> None:
+    """Declare how the H5's savings interest holds ISA interest.
+
+    policyengine-uk 2.162.2 reads the contract from this root attribute and
+    takes the ISA part off gross interest when it loads a ``legacy_gross``
+    dataset, the frame's representation. Written as the engine writes its own
+    declaration, keys sorted (microcosm#1095).
+    """
+
+    from microcosm.frame.adapters.policyengine_uk import (
+        UK_ISA_INCOME_CONTRACT,
+        UK_ISA_INCOME_CONTRACT_ATTR,
+    )
+
+    try:
+        import h5py
+    except ImportError as exc:  # pragma: no cover - UK H5 runtime dependency
+        raise RuntimeError("h5py is required to write UK national metadata.") from exc
+    with h5py.File(path, mode="r+") as file:
+        file.attrs[UK_ISA_INCOME_CONTRACT_ATTR] = json.dumps(
+            dict(UK_ISA_INCOME_CONTRACT), sort_keys=True
         )
 
 
@@ -455,6 +523,8 @@ def _write_uk_single_year_tables(
         _write_weight_metadata(
             temporary_path, weight_kind=weight_kind, mass_log=mass_log
         )
+        _write_energy_price_basis(temporary_path, household)
+        _write_isa_income_contract(temporary_path)
         temporary_path.replace(path)
     finally:
         temporary_path.unlink(missing_ok=True)
@@ -499,6 +569,9 @@ UK_RELEASE_EXPORT_DROPPED_COLUMNS: Mapping[str, tuple[str, ...]] = {
         # that keeps loss-making landlords in the CGT residential signal; it is
         # no engine input.
         "reports_rent_from_other_property",
+        # The FRS bonus carrier (frs_spine.FRS_BONUS_CARRIER_COLUMN) the bonus
+        # sacrifice conversion reads (microcosm#1340); it is no engine input.
+        "frs_bonus_amount",
     ),
     # The value the spine's regional home values replaced (microcosm#1112):
     # the dense node ranks on it, and it is no engine input.
