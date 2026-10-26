@@ -146,14 +146,7 @@ def test_the_pr_body_leaves_every_judgment_to_a_person():
             "dropped_overlays": ["enhanced_frs_2024_25"],
             "warnings": ["regional release: certifying on a claim"],
             "tests_failed": ["tests/test_models.py::test_x"],
-            "uc_floor_receipt": {
-                "check": "uk_uc_floor",
-                "passed": False,
-                "measures": [
-                    {"name": "benefit_units", "ratio": 0.8, "passed": False},
-                    {"name": "spend", "ratio": 0.95, "passed": True},
-                ],
-            },
+            "uc_floor_passed": False,
         }
     )
     for needed in (
@@ -452,3 +445,90 @@ def test_an_unreadable_branch_listing_refuses(monkeypatch, tmp_path):
     _writer_listing(monkeypatch, ls_remote_code=128)
     with pytest.raises(handoff.CertifyError, match="could not list policyengine.py"):
         handoff.writer_check(NATIONAL, tmp_path)
+
+
+GOOD_UC_RECEIPT = {
+    "check": "uk_uc_floor",
+    "passed": True,
+    "measures": [
+        {"name": "benefit_units", "ratio": 0.92, "passed": True},
+        {"name": "spend", "ratio": 0.96, "passed": True},
+    ],
+}
+
+
+def _with(**changes):
+    receipt = json.loads(json.dumps(GOOD_UC_RECEIPT))
+    receipt.update(changes)
+    return receipt
+
+
+def _with_measure(index, **changes):
+    receipt = _with()
+    receipt["measures"][index].update(changes)
+    return receipt
+
+
+@pytest.mark.parametrize(
+    "receipt",
+    [
+        [GOOD_UC_RECEIPT],
+        "uk_uc_floor",
+        None,
+        {key: value for key, value in GOOD_UC_RECEIPT.items() if key != "passed"},
+        _with(passed="true"),
+        _with(check="other"),
+        _with(measures={"benefit_units": 1}),
+        _with(measures=[["benefit_units", 1.0, True]]),
+        _with(measures=[*GOOD_UC_RECEIPT["measures"], {"ratio": 1.0, "passed": True}]),
+        _with(measures=[*GOOD_UC_RECEIPT["measures"], GOOD_UC_RECEIPT["measures"][0]]),
+        _with(measures=GOOD_UC_RECEIPT["measures"][:1]),
+        _with_measure(0, passed=None),
+        _with_measure(0, ratio=True),
+        _with_measure(0, ratio="0.9"),
+        _with_measure(0, ratio=10**400),
+        _with_measure(0, ratio=float("nan")),
+        _with_measure(0, passed=False),
+    ],
+)
+def test_an_incomplete_uc_floor_receipt_fails_operationally(receipt):
+    with pytest.raises(handoff.CertifyError, match="failed operationally"):
+        handoff.uc_floor_summary(receipt)
+
+
+def test_a_complete_uc_floor_receipt_summarizes_its_measures():
+    passed, summary = handoff.uc_floor_summary(GOOD_UC_RECEIPT)
+    assert passed is True
+    assert summary == (
+        "passed; measured/benchmark ratios: benefit_units=0.920000, spend=0.960000"
+    )
+
+
+_json = st.recursive(
+    st.none()
+    | st.booleans()
+    | st.integers()
+    | st.floats(allow_nan=True)
+    | st.text(max_size=12)
+    | st.sampled_from(["uk_uc_floor", "benefit_units", "spend"]),
+    lambda children: (
+        st.lists(children, max_size=4)
+        | st.dictionaries(
+            st.sampled_from(["check", "passed", "measures", "name", "ratio"]),
+            children,
+            max_size=5,
+        )
+    ),
+    max_leaves=20,
+)
+
+
+@settings(max_examples=300, deadline=None)
+@given(receipt=_json)
+def test_any_json_receipt_summarizes_or_fails_operationally(receipt):
+    try:
+        passed, summary = handoff.uc_floor_summary(receipt)
+    except handoff.CertifyError as error:
+        assert "failed operationally" in str(error)
+    else:
+        assert isinstance(passed, bool) and summary

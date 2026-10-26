@@ -742,31 +742,51 @@ def overlay_diff(old_bundle: dict, new_bundle: dict) -> list[str]:
     return sorted(old - new)
 
 
-def uc_floor_summary(receipt: dict[str, Any]) -> str:
-    """Summarize a complete measured floor without truncating its JSON receipt."""
-    measures = receipt.get("measures") or []
-    if (
-        receipt.get("check") != "uk_uc_floor"
-        or not isinstance(receipt.get("passed"), bool)
-        or not {"benefit_units", "spend"}.issubset(
-            {measure.get("name") for measure in measures}
-        )
-        or any(
-            not isinstance(measure.get("passed"), bool)
-            or not isinstance(measure.get("ratio"), (int, float))
-            or not math.isfinite(measure["ratio"])
-            for measure in measures
-        )
-        or receipt["passed"] != all(measure["passed"] for measure in measures)
-    ):
-        raise CertifyError(
-            "UC floor failed operationally: incomplete measured receipt."
-        )
-    status = "passed" if receipt["passed"] else "FAILED"
-    ratios = ", ".join(
-        f"{measure['name']}={measure['ratio']:.6f}" for measure in measures
+def uc_floor_summary(receipt: object) -> tuple[bool, str]:
+    """The measured floor's verdict and a summary of its ratios.
+
+    Only a complete receipt is accepted: a mapping for the ``uk_uc_floor``
+    check with a boolean verdict, and a list of measures that includes
+    ``benefit_units`` and ``spend``. Each measure has a unique name, a
+    boolean verdict and a finite numeric ratio, and the overall verdict is
+    the conjunction of theirs. Any other value, whatever its shape, is the
+    floor failing operationally, never a crash.
+    """
+
+    incomplete = CertifyError(
+        "UC floor failed operationally: incomplete measured receipt."
     )
-    return f"{status}; measured/benchmark ratios: {ratios}"
+    if not isinstance(receipt, dict) or receipt.get("check") != "uk_uc_floor":
+        raise incomplete
+    passed, measures = receipt.get("passed"), receipt.get("measures")
+    if not isinstance(passed, bool) or not isinstance(measures, list):
+        raise incomplete
+    rows: list[tuple[str, float, bool]] = []
+    for measure in measures:
+        if not isinstance(measure, dict):
+            raise incomplete
+        name, ratio, verdict = (measure.get(k) for k in ("name", "ratio", "passed"))
+        if not isinstance(name, str) or not name or not isinstance(verdict, bool):
+            raise incomplete
+        if isinstance(ratio, bool) or not isinstance(ratio, (int, float)):
+            raise incomplete
+        try:
+            ratio = float(ratio)
+        except OverflowError:
+            raise incomplete from None
+        if not math.isfinite(ratio):
+            raise incomplete
+        rows.append((name, ratio, verdict))
+    names = [name for name, _, _ in rows]
+    if len(set(names)) != len(names) or not {"benefit_units", "spend"} <= set(names):
+        raise incomplete
+    if passed != all(verdict for _, _, verdict in rows):
+        raise incomplete
+    ratios = ", ".join(f"{name}={ratio:.6f}" for name, ratio, _ in rows)
+    return (
+        passed,
+        f"{'passed' if passed else 'FAILED'}; measured/benchmark ratios: {ratios}",
+    )
 
 
 def pr_body(context: dict[str, Any]) -> str:
@@ -806,7 +826,7 @@ def pr_body(context: dict[str, Any]) -> str:
         "Record any explicit reviewer-approved exception; this script waives "
         "no gate.",
     ]
-    if (context.get("uc_floor_receipt") or {}).get("passed") is False:
+    if context.get("uc_floor_passed") is False:
         lines.append(
             "- [ ] **UC floor acceptance.** This cut has a measured floor failure "
             "and needs explicit acceptance in its pull request "
@@ -1161,12 +1181,12 @@ def certify(args: argparse.Namespace) -> int:
         )
     try:
         receipt = json.loads(uc_path.read_text())
-        uc_summary = uc_floor_summary(receipt)
-    except (json.JSONDecodeError, AttributeError, TypeError) as error:
+    except json.JSONDecodeError as error:
         raise CertifyError(
             "UC floor failed operationally: invalid measured receipt."
         ) from error
-    if uc.returncode != (0 if receipt["passed"] else 1):
+    uc_passed, uc_summary = uc_floor_summary(receipt)
+    if uc.returncode != (0 if uc_passed else 1):
         raise CertifyError(
             f"UC floor failed operationally (exit {uc.returncode}); "
             "the measured receipt disagrees with the process exit status."
@@ -1202,7 +1222,7 @@ def certify(args: argparse.Namespace) -> int:
         "microcosm_commit": microcosm_commit,
         "commands": run.commands,
         "uc_floor": f"`{uc_summary}`",
-        "uc_floor_receipt": receipt,
+        "uc_floor_passed": uc_passed,
         "tests": tests_summary,
         "tests_failed": tests_failed,
         "constants": ", ".join(constants),
