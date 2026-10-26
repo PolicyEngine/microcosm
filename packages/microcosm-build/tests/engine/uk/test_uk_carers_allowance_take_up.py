@@ -1,11 +1,12 @@
 """Engine lockstep for the Carer's Allowance take-up stage (microcosm#1319).
 
-The stage opens the claim flag to carers outside Scotland whose care hours
-meet the engine's condition, who report no allowance, and whom the engine's
-earnings test holds gainfully employed at the survey year. These tests fail if
-policyengine-uk moves the hours condition or the earnings limit, adds a
-condition the stage does not read, or starts applying an earnings test to
-Carer Support Payment, whose absence keeps Scotland closed.
+The stage opens the claim flag to carers whose care hours meet the engine's
+condition, who report no allowance, and whom the engine's earnings test holds
+gainfully employed at the survey year; in Scotland the flag is Carer Support
+Payment's. These tests fail if policyengine-uk moves the hours condition or
+the earnings limit, adds a condition the stage does not read, or stops
+applying Carer Support Payment's own earnings limit, on which drawing Scotland
+rests.
 """
 
 from __future__ import annotations
@@ -112,27 +113,28 @@ def test_the_earnings_limit_is_the_only_bar_left_for_a_non_reporting_carer() -> 
     assert (entitled_2025[weekly_pay > 196.0] == 0).all()
 
 
-def test_scotland_stays_closed_though_carer_support_payment_now_tests_earnings() -> (
-    None
-):
-    simulation = _simulation(_carers([400.0]), 2025, region="SCOTLAND")
+def test_a_drawn_scottish_carer_is_paid_only_under_the_support_payments_limit() -> None:
+    simulation = _simulation(_carers([100.0, 400.0]), 2025, region="SCOTLAND")
     # The stage reads Scotland off the household region; the engine's country
     # follows it. A top-level calculate returns the enum decoded.
     country = simulation.calculate("country", 2025, decode_enums=True)
-    assert [str(value) for value in country] == ["SCOTLAND"]
-    assert np.asarray(simulation.calculate(_TEST, 2025)).all()
-    # From policyengine-uk 2.146.1 Carer Support Payment applies the earnings
-    # limit (PolicyEngine/policyengine-uk#2473): a gainfully employed carer is
-    # paid neither benefit with the flag true. Scotland stays closed until a
-    # follow-up opens it (microcosm#1319).
-    assert (
-        np.asarray(simulation.calculate("carer_support_payment_pre_overlap", 2025))[0]
-        == 0
+    assert [str(value) for value in country] == ["SCOTLAND", "SCOTLAND"]
+    # Scotland is drawn (María's ruling of 2026-10-23): with the flag true,
+    # Carer Support Payment pays a carer under its own earnings limit and not
+    # one over it (policyengine-uk 2.146.1, PolicyEngine/policyengine-uk#2473),
+    # and the allowance pays neither.
+    support = np.asarray(
+        simulation.calculate("carer_support_payment_pre_overlap", 2025)
     )
+    assert support[0] > 0
+    assert support[1] == 0
+    assert np.asarray(simulation.calculate(_TEST, 2025))[1]
     assert (
-        np.asarray(simulation.calculate("carers_allowance_pre_overlap", 2025))[0] == 0
+        np.asarray(simulation.calculate("carers_allowance_pre_overlap", 2025))[1] == 0
     )
-    assert "applies its earnings limit from 2.146.1" in ca.CARERS_ALLOWANCE_ELIGIBILITY
+    assert "In Scotland the flag is Carer Support Payment's" in (
+        ca.CARERS_ALLOWANCE_ELIGIBILITY
+    )
 
 
 class _CertainContract:
@@ -188,7 +190,8 @@ def test_the_stage_reaches_the_carers_the_2025_rise_entitles() -> None:
         _frame(), engine=engine, contract=_CertainContract()
     )
     flag = result.frame.table("person")["would_claim_carers_allowance"].tolist()
-    assert flag == [True, False, False, True]
+    # Scotland is drawn as Wales is (María's ruling of 2026-10-23).
+    assert flag == [True, True, False, True]
     assert result.evidence()["weekly_earnings_limit"] == 151.0
     # Projected from the survey year as the released file is, the Welsh carer
     # over the 2024-25 limit and under 2025-26's is entitled and would claim;
@@ -201,6 +204,12 @@ def test_the_stage_reaches_the_carers_the_2025_rise_entitles() -> None:
     )["carers_allowance_pre_overlap"]
     assert before[0] == 0
     assert after[0] > 0
-    # Scotland and the carer under the limit who reports nothing stay unpaid.
+    # The Scottish carer is paid Carer Support Payment under its own 2025-26
+    # limit, not the allowance; the carer under the limit who reports nothing
+    # stays unpaid.
+    support = engine.materialize(
+        result.frame, ["carer_support_payment_pre_overlap"], 2025, dataset_period=2024
+    )["carer_support_payment_pre_overlap"]
+    assert support[1] > 0
     assert after[1] == 0
     assert after[2] == 0

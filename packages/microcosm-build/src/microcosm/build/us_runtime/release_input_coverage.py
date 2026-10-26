@@ -70,6 +70,7 @@ from microcosm.build.us_runtime.educator_expenses import (
     US_EDUCATOR_EXPENSE_OUTPUT_COLUMNS,
 )
 from microcosm.build.us_runtime.energy_subsidy import US_ENERGY_SUBSIDY_OUTPUT_COLUMNS
+from microcosm.build.us_runtime.esi_premiums import US_ESI_EMPLOYER_PREMIUM_COLUMN
 from microcosm.build.us_runtime.farm_business_income import (
     US_FARM_BUSINESS_INCOME_OUTPUT_COLUMNS,
 )
@@ -189,6 +190,13 @@ POST_REFERENCE_ECPS_REQUIRED_INPUTS = frozenset(
         # pinned Census ASEC person files; the certified default carries it
         # through the Build P source enrichment.
         *US_SPM_INDEPENDENCE_ROLE_OUTPUT_COLUMNS,
+        # PolicyEngine/microcosm#719: the county-file person schema carries a
+        # working indicator and industry with occupation on every record.
+        # Written by the org_wages release stage from ASEC WEIND/WEMIND/WKSWORK
+        # (ACS spine: native INDP/WKWN through the release predictor join).
+        "detailed_industry_recode",
+        "major_industry_recode",
+        "worked_last_year",
     }
 )
 
@@ -209,6 +217,7 @@ RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS = frozenset(
         *US_EDUCATOR_EXPENSE_OUTPUT_COLUMNS,
         *US_DOMESTIC_PRODUCTION_ALD_OUTPUT_COLUMNS,
         *US_OTHER_HEALTH_INSURANCE_NONCONSTANT_PERSON_COLUMNS,
+        US_ESI_EMPLOYER_PREMIUM_COLUMN,
         *US_FARM_BUSINESS_INCOME_OUTPUT_COLUMNS,
         *US_FORM_4952_OUTPUT_COLUMNS,
         *US_CAPITAL_GAIN_DETAILS_OUTPUT_COLUMNS,

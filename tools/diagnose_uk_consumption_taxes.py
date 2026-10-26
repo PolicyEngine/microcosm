@@ -2,7 +2,8 @@
 
 The levels of these rows are set by the build or the engine, not by the
 weights (microcosm#1113, microcosm#1123 item 3): ``obr.vat`` by an engine
-coverage factor (policyengine-uk#1996), ``obr.fuel_duties_cars`` by fuel
+coverage factor until policyengine-uk 2.135.7 (policyengine-uk#1996, #2187;
+bound again since the next bump), ``obr.fuel_duties_cars`` by fuel
 that includes business-paid car fuel, and the ONS electricity and gas rows
 by a published-source residual against the stage's DESNZ volume at QEP
 prices. Rows held out of the objective by the measure-exclusion register stay

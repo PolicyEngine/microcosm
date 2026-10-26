@@ -16,6 +16,9 @@ import pytest
 
 from microcosm.build.gates import GateResult
 from microcosm.build.us_runtime import spm_measurement_gate
+from microcosm.build.us_runtime.org_wages import (
+    US_ORG_OCCUPATION_AND_WORK_EXPERIENCE_OUTPUT_COLUMNS,
+)
 from microcosm.data import stored_inputs
 from test_support.paths import paths_for
 
@@ -55,6 +58,11 @@ _PACKAGE_ENGINE = stored_inputs.CertifiedEngine(
             "weekly_hours_worked_before_lsr",
             "hours_worked_last_week",
             "takes_up_wic_if_eligible",
+            "self_employment_income_before_lsr",
+            "sstb_self_employment_income_before_lsr",
+            "farm_operations_income",
+            "partnership_self_employment_net_earnings",
+            *US_ORG_OCCUPATION_AND_WORK_EXPERIENCE_OUTPUT_COLUMNS,
         }
     ),
 )
@@ -504,6 +512,62 @@ def test_local_hours_gate_refuses_missing_source_audit() -> None:
         module._require_local_hours(None, {})
 
 
+class _SelfEmploymentFrame:
+    """A staging stand-in: one ACS row per case plus an ignored ASEC row."""
+
+    def __init__(self, person: pd.DataFrame) -> None:
+        self._person = person
+
+    def table(self, entity: str) -> pd.DataFrame:
+        assert entity == "person"
+        return self._person
+
+
+def _self_employment_person(sstb_on_acs: float) -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "person_spine": ["acs_2024_1yr", "acs_2024_1yr", "asec_puf"],
+            "SEMP": [0.0, 1_000.0, np.nan],
+            "ADJINC": [1_000_000.0, 1_000_000.0, np.nan],
+            "self_employment_income_before_lsr": [0.0, 1_000.0, 50_000.0],
+            "sstb_self_employment_income_before_lsr": [sstb_on_acs, 0.0, 9_000.0],
+            "farm_operations_income": [0.0, 0.0, 700.0],
+            "partnership_self_employment_net_earnings": [0.0, 0.0, 300.0],
+        }
+    )
+
+
+def test_release_refuses_staging_that_stacks_self_employment_on_semp() -> None:
+    module = _load_tool_module()
+
+    module._require_acs_self_employment_identity(
+        _SelfEmploymentFrame(_self_employment_person(0.0))
+    )
+    with pytest.raises(SystemExit, match="counts that income twice"):
+        module._require_acs_self_employment_identity(
+            _SelfEmploymentFrame(_self_employment_person(2_500.0))
+        )
+    with pytest.raises(SystemExit, match="no person_spine"):
+        module._require_acs_self_employment_identity(
+            _SelfEmploymentFrame(
+                _self_employment_person(0.0).drop(columns=["person_spine"])
+            )
+        )
+
+
+def test_release_checks_self_employment_wherever_it_loads_staging() -> None:
+    module = _load_tool_module()
+
+    for stage in (module.do_materialize, module._write_calibrated_artifact):
+        lines = [line.strip() for line in inspect.getsource(stage).splitlines()]
+        hours = next(
+            index
+            for index, line in enumerate(lines)
+            if line.startswith("_require_local_hours(frame")
+        )
+        assert lines[hours + 1] == "_require_acs_self_employment_identity(frame)"
+
+
 def test_local_hours_failure_propagates_to_release_boundary(monkeypatch) -> None:
     from microcosm.build.gates import GateResult
 
@@ -601,7 +665,9 @@ def _package_evidence_args(module, tmp_path: Path, monkeypatch, *, hours_report)
     for name, payload in evidence.items():
         (ckpt / name).write_text(json.dumps(payload))
     (tmp_path / "out.summary.json").write_text(json.dumps({"simulation_ready": True}))
-    monkeypatch.setattr(module, "_load_staging_frame", lambda *_a, **_k: object())
+    monkeypatch.setattr(
+        module, "_load_staging_frame", lambda *_a, **_k: _plausible_hours_frame()
+    )
     monkeypatch.setattr(
         module,
         "acs_local_hours_signal_gate",
@@ -644,6 +710,84 @@ def test_package_requires_a_passing_hours_gate_in_the_finalize_report(
     with pytest.raises(SystemExit, match="Re-run --stage finalize"):
         module.do_package(args)
     assert not (args.out / "package_result.json").exists()
+
+
+def _with_person_columns(frame, **columns):
+    from microcosm.frame import Frame
+
+    return Frame(
+        {
+            **{entity: frame.table(entity) for entity in frame.entities},
+            "person": frame.table("person").assign(**columns),
+        },
+        frame.schema,
+        {"household": frame.weights_for("household")},
+    )
+
+
+def test_package_refuses_a_checkpoint_calibrated_from_stacked_staging(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """A historical checkpoint cannot reach a release through qa and finalize.
+
+    Its run identity authenticates the old staging hash and its finalize
+    report is green, but the calibrated rows still carry a donor SSTB draw on
+    top of SEMP (#1380). The package stage grades those bytes and ships
+    nothing.
+    """
+
+    module = _load_tool_module()
+    args = _package_evidence_args(
+        module,
+        tmp_path,
+        monkeypatch,
+        hours_report={"passed": True, "failures": [], "detail": {}},
+    )
+    stacked = _with_person_columns(
+        _plausible_hours_frame(),
+        sstb_self_employment_income_before_lsr=[0.0, 0.0, 5_000.0, *[0.0] * 5],
+    )
+    loaded = []
+
+    def load_frame(path, *_a, **_k):
+        loaded.append(Path(path))
+        return stacked
+
+    monkeypatch.setattr(module, "_load_staging_frame", load_frame)
+    with pytest.raises(
+        SystemExit, match="ACS self-employment identity failed: 1 ACS person row"
+    ):
+        module.do_package(args)
+    assert loaded == [Path(args.out_h5)]
+    assert not (args.out / "package_result.json").exists()
+    assert not list((args.out / "releases").rglob("*.json"))
+    assert not (args.out / module.ARTIFACT_FILENAME).exists()
+
+
+def test_package_binds_the_self_employment_gate_to_the_packaged_bytes(
+    tmp_path: Path, monkeypatch
+) -> None:
+    module = _load_tool_module()
+    args = _package_evidence_args(
+        module,
+        tmp_path,
+        monkeypatch,
+        hours_report={"passed": True, "failures": [], "detail": {}},
+    )
+    result = module.do_package(args)
+    release_dir = Path(result["release_dir"])
+    expected_sha = module._sha256(args.out_h5)
+    for name in ("build_manifest.json", "gate_summary.json"):
+        gate = json.loads((release_dir / name).read_text())["gates"][
+            "acs_self_employment_identity"
+        ]
+        assert gate["passed"] is True
+        assert gate["failures"] == []
+        assert gate["artifact_sha256"] == expected_sha
+        assert gate["checked_at_stage"] == "package"
+        assert gate["detail"]["acs_person_rows"] == 8
+        assert gate["detail"]["semp_reported_rows"] == 6
+        assert gate["detail"]["mismatched_rows"] == 0
 
 
 def test_package_binds_the_hours_gate_to_the_packaged_bytes(
@@ -693,7 +837,7 @@ def test_package_refuses_when_the_packaged_bytes_fail_the_hours_gate(
 
     def load_frame(path, *_a, **_k):
         loaded.append(Path(path))
-        return object()
+        return _plausible_hours_frame()
 
     monkeypatch.setattr(module, "_load_staging_frame", load_frame)
     monkeypatch.setattr(
@@ -916,7 +1060,7 @@ def test_soi_mode_defaults_to_state_and_totals_and_full_are_explicit_opt_ins(
     asking for them."""
 
     module = _load_tool_module()
-    assert module.SOI_MODES == ("state", "totals", "full", "state_cd")
+    assert module.SOI_MODES == ("state", "totals", "full", "state_cd", "state_county")
     assert module.DEFAULT_SOI_MODE == module.SOI_MODE_STATE == "state"
     assert module._parse_args(_materialize_argv(tmp_path)).soi_mode == "state"
     for mode in ("totals", "full", "state_cd"):
@@ -1158,6 +1302,10 @@ def _staging_frame_with_hours(weekly: list[float], last_week: list[float]):
             "person_marital_unit_id": ids,
             "weekly_hours_worked_before_lsr": np.asarray(weekly, dtype=float),
             "hours_worked_last_week": np.asarray(last_week, dtype=float),
+            "detailed_occupation_recode": np.where(np.asarray(weekly) > 0, 8, 53),
+            "detailed_industry_recode": np.where(np.asarray(weekly) > 0, 13, 23),
+            "major_industry_recode": np.where(np.asarray(weekly) > 0, 9, 15),
+            "worked_last_year": np.asarray(weekly) > 0,
         }
     )
     tables = {
@@ -1294,9 +1442,37 @@ def _write_frame_h5(path: Path, frame) -> None:
 
 
 def _plausible_hours_frame():
-    return _staging_frame_with_hours(
+    """The hours frame as ACS rows whose self-employment leaves split SEMP.
+
+    The package stage grades the identity on the bytes it ships (#1380), so
+    the frame the package tests load carries the spine tag, SEMP, ADJINC and
+    the four self-employment leaves, all consistent.
+    """
+
+    from microcosm.frame import Frame
+
+    frame = _staging_frame_with_hours(
         [40.0, 38.0, 20.0, 45.0, 0.0, 0.0, 0.0, 0.0],
         [40.0, 35.0, 22.0, 40.0, 0.0, 0.0, 0.0, 5.0],
+    )
+    semp = np.asarray([0.0, 0.0, 12_000.0, 0.0, 0.0, 0.0, np.nan, np.nan])
+    adjinc = np.full(len(semp), 1_021_000.0)
+    person = frame.table("person").assign(
+        person_spine="acs_2024_1yr",
+        SEMP=semp,
+        ADJINC=adjinc,
+        self_employment_income_before_lsr=np.nan_to_num(semp * adjinc / 1e6),
+        sstb_self_employment_income_before_lsr=0.0,
+        farm_operations_income=0.0,
+        partnership_self_employment_net_earnings=0.0,
+    )
+    return Frame(
+        {
+            **{entity: frame.table(entity) for entity in frame.entities},
+            "person": person,
+        },
+        frame.schema,
+        {"household": frame.weights_for("household")},
     )
 
 
@@ -1597,6 +1773,70 @@ def test_package_accepts_passing_hours_gate_bound_to_the_packaged_bytes(
     copied_sha = module._sha256(Path(result["root_artifact"]["local_path"]))
     assert gate["passed"] is True
     assert gate["artifact_sha256"] == result["root_artifact"]["sha256"] == copied_sha
+    for name in ("build_manifest.json", "gate_summary.json"):
+        work_gate = json.loads((release_dir / name).read_text())["gates"][
+            "work_experience_inputs"
+        ]
+        assert work_gate == {
+            "passed": True,
+            "failures": [],
+            "columns": list(US_ORG_OCCUPATION_AND_WORK_EXPERIENCE_OUTPUT_COLUMNS),
+            "person_rows": 8,
+            "artifact_sha256": copied_sha,
+            "checked_at_stage": "package",
+        }
+
+
+@requires_pytables
+@pytest.mark.parametrize("defect", ["missing", "asec_null", "acs_null", "nonfinite"])
+def test_package_refuses_historical_staging_with_incomplete_work_experience(
+    tmp_path, monkeypatch, defect
+):
+    """A green historical staging/finalize summary cannot stand in for inputs."""
+    from microcosm.frame import Frame
+
+    module = _load_tool_module()
+    args = _package_args_with_hours(module, tmp_path, monkeypatch, gate_state="passed")
+    frame = _plausible_hours_frame()
+    person = frame.person.copy()
+    spines = ["asec_puf"] * 4 + ["acs_2024_1yr"] * 4
+    person["person_spine"] = spines
+    if defect == "missing":
+        person = person.drop(
+            columns=[
+                column
+                for column in US_ORG_OCCUPATION_AND_WORK_EXPERIENCE_OUTPUT_COLUMNS
+                if column != "detailed_occupation_recode"
+            ]
+        )
+    else:
+        person["major_industry_recode"] = person["major_industry_recode"].astype(float)
+        row = 7 if defect == "acs_null" else 0
+        person.loc[row, "major_industry_recode"] = (
+            np.inf if defect == "nonfinite" else np.nan
+        )
+    incomplete = Frame(
+        {
+            **{entity: frame.table(entity) for entity in frame.entities},
+            "person": person,
+            "household": frame.table("household").assign(household_spine=spines),
+        },
+        frame.schema,
+        {"household": frame.weights_for("household")},
+    )
+    _write_frame_h5(args.out_h5, incomplete)
+    args.staging_h5.write_bytes(args.out_h5.read_bytes())
+    identity_path = args.checkpoint_dir / "run_identity.json"
+    identity = json.loads(identity_path.read_text())
+    identity["staging_sha256"] = module._sha256(args.staging_h5)
+    identity_path.write_text(json.dumps(identity))
+    _refresh_package_evidence_bindings(module, args)
+
+    with pytest.raises(SystemExit, match="Refusing to package:.*work-experience"):
+        module.do_package(args)
+    assert not (args.out / "releases").exists()
+    assert not (args.out / "package_result.json").exists()
+    assert not (args.out / module.ARTIFACT_FILENAME).exists()
 
 
 @requires_pytables
@@ -1622,7 +1862,8 @@ def test_package_records_the_stored_input_gate_bound_to_the_packaged_bytes(
             "failures": [],
             "engine": "policyengine-us 2.2.1",
             "register_sha256": stored_inputs.register_sha256(),
-            "registered_non_variables": [],
+            # The ACS rows' base-spine tag, a reviewed register entry.
+            "registered_non_variables": ["person_spine"],
             "artifact_sha256": result["root_artifact"]["sha256"],
             "checked_at_stage": "package",
         }
@@ -2630,3 +2871,49 @@ def test_concentration_limitation_is_true_to_the_penalty_solved() -> None:
     assert "'chi_square'" in penalized["reason"]
     assert "'softmax'" in penalized["reason"]
     assert "l2_lambda=0 " not in penalized["reason"]
+
+
+def test_a_null_esi_premium_input_is_refused_before_any_default_fill(tmp_path) -> None:
+    """microcosm#454: an ACS-spine null in the ESI premium input is never a zero.
+
+    The ``meps_esi_premiums`` stage runs on the ASEC donor rows only. A pooled
+    frame therefore carries the input as NaN on its ACS rows, and the
+    reviewed-null register would default-fill it to zero for half the
+    population while input coverage reads green. The refusal comes first: it
+    needs neither the engine nor the register file.
+    """
+
+    from microcosm.build.source_runtime import SourceRuntimeError
+    from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
+
+    module = _load_tool_module()
+    ids = np.arange(1, 5)
+    person = pd.DataFrame(
+        {
+            "person_id": ids,
+            "person_household_id": ids,
+            "person_tax_unit_id": ids,
+            "person_spm_unit_id": ids,
+            "person_family_id": ids,
+            "person_marital_unit_id": ids,
+            # Two ASEC donor rows, two ACS rows the stage never saw.
+            "employer_sponsored_insurance_premiums": [9_000.0, 0.0, np.nan, np.nan],
+        }
+    )
+    frame = Frame(
+        {
+            "person": person,
+            "household": pd.DataFrame({"household_id": ids}),
+            "tax_unit": pd.DataFrame({"tax_unit_id": ids}),
+            "spm_unit": pd.DataFrame({"spm_unit_id": ids}),
+            "family": pd.DataFrame({"family_id": ids}),
+            "marital_unit": pd.DataFrame({"marital_unit_id": ids}),
+        },
+        US_SCHEMA,
+        {"household": Weights(values=np.ones(4), kind=WeightKind.DESIGN)},
+    )
+    absent_register = tmp_path / "no_such_summary.json"
+    with pytest.raises(SourceRuntimeError, match="never filled") as error:
+        module.fill_reviewed_nulls(frame, absent_register)
+    assert "ACS local release" in str(error.value)
+    assert "'employer_sponsored_insurance_premiums': 2" in str(error.value)

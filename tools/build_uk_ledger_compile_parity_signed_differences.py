@@ -167,6 +167,27 @@ _OBR_NI_DIAGNOSTIC_RATIONALE = (
     "retained as diagnostic provenance on obr.ni_employee, so the frozen fixture's "
     "fitted row is fixture-only on the current surface."
 )
+#: The next policyengine-uk bump (microcosm#1095, María's ruling of
+#: 2026-10-22) retires these rows from the targets to registry_parity.excluded.
+_OBR_UC_CAP_SPLIT_ROWS = frozenset(
+    {"obr.universal_credit_in_cap", "obr.universal_credit_outside_cap"}
+)
+_OBR_UC_CAP_SPLIT_RETIRED_RATIONALE = (
+    "microcosm#1095 (María's ruling of 2026-10-22) retires OBR's split of "
+    "Universal Credit spending at the welfare cap from the targets: the welfare "
+    "cap is a spending limit, no household-level concept in the model marks the "
+    "boundary, and the benefit-cap status the incumbent maps the split to is "
+    "another concept (microcosm#757). obr.universal_credit binds the sum of the "
+    "two cells, so the frozen fixture's fitted row is fixture-only on the current "
+    "surface."
+)
+_SLC_POSTGRADUATE_RETIRED_RATIONALE = (
+    "microcosm#1095 (María's ruling of 2026-10-22) retires SLC's England "
+    "postgraduate repayments from the targets: the student-loans stage assigns no "
+    "postgraduate plan and policyengine-uk holds one plan a person, so no record "
+    "carries the repayments (microcosm#757). The frozen fixture's fitted row is "
+    "fixture-only on the current surface."
+)
 _DWP_PIP_CASELOAD_DIAGNOSTIC_ROWS = frozenset(
     {
         "dwp.pip.daily_living_standard_claimants",
@@ -791,6 +812,13 @@ def _add_signed_rationale_notes(
             row["reason"] = _OBR_STATE_PENSION_DIAGNOSTIC_RATIONALE
         elif name == "obr.ni" and row.get("kind") == "fixture_only":
             row["reason"] = _OBR_NI_DIAGNOSTIC_RATIONALE
+        elif name in _OBR_UC_CAP_SPLIT_ROWS and row.get("kind") == "fixture_only":
+            row["reason"] = _OBR_UC_CAP_SPLIT_RETIRED_RATIONALE
+        elif (
+            name == "slc.repayments.england_postgraduate"
+            and row.get("kind") == "fixture_only"
+        ):
+            row["reason"] = _SLC_POSTGRADUATE_RETIRED_RATIONALE
         elif (
             name in _DWP_PIP_CASELOAD_DIAGNOSTIC_ROWS
             and row.get("kind") == "fixture_only"

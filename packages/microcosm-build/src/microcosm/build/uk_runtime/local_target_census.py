@@ -205,7 +205,8 @@ _FAMILIES: tuple[dict[str, Any], ...] = (
         "family": "uc_households",
         "description": (
             "Universal Credit benefit units summed onto household rows, and "
-            "(constituency only) their split by benefit-unit num_children."
+            "(constituency only) their split by each benefit unit's "
+            "uc_calibration_child_count (the FRS-role UC child count)."
         ),
         "sources": ["dwp_stat_xplore_uc"],
         "adjudications": [_UC_GRAIN_FENCE_ID],
@@ -859,15 +860,21 @@ _BINDING_FENCES: tuple[dict[str, Any], ...] = (
         "fenced_fact_count": None,
         "enforcement": FENCE_ENFORCEMENT_REVIEW,
         "rule": (
-            "The in-code HMRC area metrics gate frame membership on modeled "
-            "income_tax > 0 — a model-output proxy for 'taxpayer in the SPI "
-            "frame', not a source-faithful frame. Binding any HMRC area "
-            "family requires an explicit adjudication accepting or replacing "
-            "that proxy before targets enter a solve."
+            "The declared HMRC area metrics gate frame membership on modeled "
+            "income_tax_annual > 0 (each person's income tax over the 12 "
+            "months before their FRS interview, a proxy for the tax year) — a "
+            "model-output proxy for 'taxpayer in the SPI frame', not a "
+            "source-faithful frame. Binding any HMRC area family requires an "
+            "explicit adjudication accepting or replacing that proxy before "
+            "targets enter a solve."
         ),
         "authority": (
-            "microcosm.build.uk_runtime.local_targets.compute_household_metrics "
-            "(in_spi_frame definition); microcosm#495 scoping."
+            "uk_population_targets.json declarations "
+            "hmrc.employment_income.amount, hmrc.employment_income.count, "
+            "hmrc.self_employment_income.amount, "
+            "hmrc.self_employment_income.count and "
+            "hmrc.higher_rate_taxpayers.count (their income_tax_annual filter); "
+            "microcosm#495 scoping."
         ),
     },
     {
@@ -911,7 +918,8 @@ _BINDING_FENCES: tuple[dict[str, Any], ...] = (
         "enforcement": FENCE_ENFORCEMENT_REVIEW,
         "rule": (
             "The runtime maps benefit-unit-level UC receipt and each UC "
-            "benefit unit's num_children band onto household rows by sum: a "
+            "benefit unit's uc_calibration_child_count band (the FRS-role UC "
+            "child count) onto household rows by sum: a "
             "physical household containing two UC benefit units contributes "
             "2 to uc_households and one contribution to each unit's child "
             "band. This aligns the runtime with DWP UC claim households, "
@@ -920,10 +928,12 @@ _BINDING_FENCES: tuple[dict[str, Any], ...] = (
         ),
         "authority": (
             "DWP Universal Credit official statistics Stat-Xplore user "
-            "guide (household definition); "
-            "microcosm.build.uk_runtime.local_targets.compute_household_metrics "
-            "(benunit-to-household mapping); microcosm#495 scoping "
-            "(cross-family review finding)."
+            "guide (household definition); uk_population_targets.json "
+            "declarations dwp.uc.households_by_area and "
+            "dwp.uc.households_by_area_children_{0,1,2,3plus} (benefit-unit "
+            "bindings mapped to households, which "
+            "local_targets.compute_household_metrics sums); microcosm#495 "
+            "scoping (cross-family review finding)."
         ),
     },
     {
@@ -1109,8 +1119,9 @@ _BINDING_FENCES: tuple[dict[str, Any], ...] = (
 
 _STATUS_DEFINITIONS: dict[str, str] = {
     METRIC_STATUS_BOUND_IN_CODE: (
-        "The household-side metric is computed by "
-        "local_targets.compute_household_metrics today."
+        "The household-side metric is computed today by "
+        "local_targets.compute_household_metrics from its declaration's "
+        "policyengine binding in uk_population_targets.json."
     ),
     SOURCE_STATUS_DOCUMENTED_UNPINNED: (
         "The official product exists and was verified at the recorded URL "

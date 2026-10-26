@@ -319,6 +319,13 @@ _US_ENTITIES = ("person", "household", "tax_unit", "spm_unit", "family", "marita
 #: that rule against the installed engine.
 US_STORED_NON_VARIABLE_COLUMNS: Mapping[str, str] = MappingProxyType(
     {
+        "county_fips_2023": (
+            "The household's five-digit 2023 county-equivalent FIPS, produced "
+            "by microcosm.build.us_runtime.county_vintage and the block/PUMA "
+            "ladder assignments for county calibration. Connecticut uses its "
+            "nine planning regions. The separate county_fips input retains "
+            "2020 counties for policyengine-us 2.2.1 county-based rules."
+        ),
         **{
             f"{entity}_source_id": _SUPPORT_SOURCE_ID.format(entity=entity)
             for entity in _US_ENTITIES

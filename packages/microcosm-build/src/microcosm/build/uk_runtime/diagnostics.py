@@ -14,11 +14,13 @@ separately versioned ``uk_diagnostics`` block.  The common top-level
 
 from __future__ import annotations
 
+import functools
 import json
 import math
 import sys
 import warnings
 from collections.abc import Collection, Mapping, Sequence
+from dataclasses import dataclass
 from importlib import resources as importlib_resources
 from pathlib import Path
 from types import SimpleNamespace
@@ -57,6 +59,8 @@ __all__ = [
     "UK_TARGET_GEOGRAPHY_LEVELS",
     "uk_calibration_diagnostics_payload",
     "uk_consumption_drift",
+    "uk_consumption_drift_flags",
+    "uk_consumption_drift_warnings",
     "uk_fit_by_family",
     "uk_support_limited_misses",
     "uk_target_geography_levels",
@@ -665,6 +669,18 @@ _UK_DRIFT_TOTAL_COLUMNS: tuple[str, ...] = (
     "petrol_spending",
     "diesel_spending",
 )
+#: The heating fuels the stage draws without levelling (pe-uk#2572), read
+#: where the frame carries them: a spine built before them has a drift block
+#: without them.
+_UK_DRIFT_OPTIONAL_TOTAL_COLUMNS: tuple[str, ...] = (
+    "liquid_fuel_consumption",
+    "solid_fuel_consumption",
+)
+#: Warn-only drift flags (microcosm#1278, R1): a total moving more than 2
+#: percent between the design and the final weights, or a share more than half
+#: a percentage point. Nothing is gated on them.
+UK_DRIFT_TOTAL_FLAG = 0.02
+UK_DRIFT_SHARE_FLAG = 0.005
 
 
 def _drift_value(design: float, final: float) -> dict[str, float | None]:
@@ -720,7 +736,14 @@ def uk_consumption_drift(
 
     totals = {
         name: _drift_value(design @ column(name), final @ column(name))
-        for name in _UK_DRIFT_TOTAL_COLUMNS
+        for name in (
+            *_UK_DRIFT_TOTAL_COLUMNS,
+            *(
+                name
+                for name in _UK_DRIFT_OPTIONAL_TOTAL_COLUMNS
+                if name in household.columns
+            ),
+        )
     }
     consumption = sum(column(name) for name in UK_LCFS_COICOP_DIVISION_COLUMNS)
     totals["consumption"] = _drift_value(design @ consumption, final @ consumption)
@@ -754,6 +777,78 @@ def uk_consumption_drift(
         )
     }
     return {"report_only": True, "totals": totals, "shares": shares}
+
+
+def uk_consumption_drift_flags(drift: Mapping[str, object]) -> dict[str, object]:
+    """The warn-only flags over a consumption drift block (microcosm#1278, R1).
+
+    A total that moves more than ``UK_DRIFT_TOTAL_FLAG`` of its design value,
+    or a share that moves more than ``UK_DRIFT_SHARE_FLAG``, between the design
+    and the final weights. Report only: the calibration diagnostics carry them
+    as warnings (:func:`uk_consumption_drift_warnings`), nothing is gated on
+    them, and the diagnostics payload's schema stays as it is.
+    """
+
+    totals = drift.get("totals") or {}
+    shares = drift.get("shares") or {}
+    return {
+        "total_relative_change_above": UK_DRIFT_TOTAL_FLAG,
+        "share_change_above": UK_DRIFT_SHARE_FLAG,
+        "totals": sorted(
+            name
+            for name, value in totals.items()
+            if value.get("relative_change") is not None
+            and abs(float(value["relative_change"])) > UK_DRIFT_TOTAL_FLAG
+        ),
+        "shares": sorted(
+            name
+            for name, value in shares.items()
+            if abs(float(value["change"])) > UK_DRIFT_SHARE_FLAG
+        ),
+    }
+
+
+#: The ``diagnostic_warnings`` code of a consumption drift flag.
+UK_CONSUMPTION_DRIFT_WARNING_CODE = "uk_consumption_drift"
+
+
+def uk_consumption_drift_warnings(drift: Mapping[str, object]) -> list[dict[str, str]]:
+    """The drift flags as the payload's warn-only ``diagnostic_warnings``.
+
+    One warning per flagged total or share (:func:`uk_consumption_drift_flags`),
+    naming it and the threshold it passed, never its figures (Vahid's review
+    of #1383, item 11). Nothing is gated on them.
+    """
+
+    flags = uk_consumption_drift_flags(drift)
+    total = float(flags["total_relative_change_above"])
+    share = float(flags["share_change_above"])
+    return [
+        *(
+            {
+                "code": UK_CONSUMPTION_DRIFT_WARNING_CODE,
+                "severity": "warning",
+                "message": (
+                    f"Consumption drift (warn-only, microcosm#1278 R1): the total "
+                    f"{name} moves by more than {total:.0%} of its design value "
+                    "between the design and the final weights."
+                ),
+            }
+            for name in flags["totals"]
+        ),
+        *(
+            {
+                "code": UK_CONSUMPTION_DRIFT_WARNING_CODE,
+                "severity": "warning",
+                "message": (
+                    f"Consumption drift (warn-only, microcosm#1278 R1): the share "
+                    f"{name} moves by more than {share * 100:g} points between "
+                    "the design and the final weights."
+                ),
+            }
+            for name in flags["shares"]
+        ),
+    ]
 
 
 def uk_zero_weight_strata(
@@ -971,11 +1066,14 @@ def _declared_target_partition(
     return declared, compiled, skipped_names
 
 
-#: The local area levels whose rows the area-support rule governs
-#: (``uk_local_area_support``) rather than the per-row floor below: María's
-#: rule of 2026-10-21 has not been applied to the local line, and the report
-#: guard matches a withheld local row by its bare area code, which suits a
-#: BRMA's one family but not an area that binds many.
+#: The local area levels whose rows the area-support rule binds
+#: (``uk_local_area_support``). Their figures follow the per-row floor below
+#: like every other row's (María's ruling of 2026-10-23 on the local line):
+#: the support rule still decides which local rows bind, the floor which
+#: published figures are withheld. A local surface binds many families in
+#: each area, so its rows are checked by region and by family
+#: (:func:`_row_blocks`), and the report guard matches a withheld local row by
+#: its own key, never by its bare area code as it does a BRMA's one family.
 UK_AREA_SUPPORT_LEVELS = frozenset({"constituency", "local_authority"})
 
 
@@ -1009,64 +1107,328 @@ def _row_level(geography_levels: Mapping[str, object] | None):
     return level
 
 
-def _scoped_rows(
-    problem: Any,
-    weights: Sequence[float] | np.ndarray,
-    frame: Frame,
+def _row_area(row: Mapping[str, object]) -> str:
+    """A local row's area code: its own field, its metadata's, or its name's."""
+
+    area = str(row.get("area_code") or "").strip()
+    if not area:
+        metadata = row.get("metadata")
+        if isinstance(metadata, Mapping):
+            area = str(metadata.get("geography_id") or "").strip()
+    if not area:
+        # Local row names are ``target_id@area_code@period``.
+        parts = str(row["name"]).split("@")
+        area = parts[-2] if len(parts) >= 3 else ""
+    if not area:
+        raise ValueError(f"UK local row {row['name']!r} names no area.")
+    return area
+
+
+def _row_blocks(
     target_rows: Sequence[Mapping[str, object]],
     geography_levels: Mapping[str, object] | None,
-) -> tuple[list[str], sparse.csr_matrix, np.ndarray, np.ndarray, np.ndarray]:
-    """The rows the per-row floor governs, sorted, over the positive-weight households.
+    span: _CarrierSpan | None = None,
+) -> list[list[str]]:
+    """The rows each withholding check spans, each block sorted.
 
-    Returns their names, their problem rows (stored zeros dropped: a household
-    with a zero entry does not carry the row), those households' source ids,
-    each row's distinct source households and each row's floor.
+    The national, regional and BRMA rows form one block, as one span holds
+    them. A local surface is too large for one dense span, so its rows are
+    checked in blocks that may overlap (María's ruling of 2026-10-23 on the
+    local line; Vahid's review of #1383, item 1):
+
+    - one per region, holding every row whose carriers all live in it: the
+      local rows of both grains and the region's own rows, so a region row
+      less its published local rows, or a region's constituencies less its
+      local authorities, is caught (:func:`_region_blocks`);
+    - one per local family and its higher-grain parents, the targets the
+      cross-grain declarations or a nested measurement tie it to, so a
+      national or Great Britain row less a family's published cells is caught
+      too (:func:`_family_blocks`).
+
+    A local row whose carriers span regions, or that has none, is checked in
+    its own grain and area. Local rows need the frame's household region, so
+    a frame without one refuses. :func:`uk_withheld_row_sets` runs the blocks
+    until none withholds a row another needs.
     """
 
     level = _row_level(geography_levels)
-    names = sorted(
-        {
-            str(row["name"])
-            for row in target_rows
-            if level(str(row["name"])) not in UK_AREA_SUPPORT_LEVELS
-        }
-    )
-    if not names:
-        empty = np.zeros(0)
-        return [], sparse.csr_matrix((0, 0)), empty, empty, empty
-    household = frame.table("household")
-    if "source_household_id" not in household.columns:
+    national: set[str] = set()
+    local: dict[tuple[str, str], set[str]] = {}
+    for row in target_rows:
+        name = str(row["name"])
+        grain = level(name)
+        if grain in UK_AREA_SUPPORT_LEVELS:
+            local.setdefault((grain, _row_area(row)), set()).add(name)
+        else:
+            national.add(name)
+    blocks = [sorted(national)] if national else []
+    if not local:
+        return blocks
+    if span is None or span.regions is None:
         raise ValueError(
-            "UK diagnostics need household source_household_id to count each "
-            "row's carriers."
+            "UK local rows are checked against their regions' rows, so the "
+            "frame's household table needs a region column."
         )
-    sources = household["source_household_id"].to_numpy()
-    positive = np.asarray(weights, dtype=float) > 0
-    if positive.shape != sources.shape:
-        raise ValueError("UK row carriers need one weight per household.")
-    index = {str(name): position for position, name in enumerate(problem.names)}
-    for name in names:
-        if name not in index:
-            raise ValueError(f"UK target diagnostic {name!r} has no problem row.")
-    matrix = sparse.csr_matrix(problem.matrix)[[index[name] for name in names]]
-    matrix = sparse.csr_matrix(matrix[:, np.flatnonzero(positive)])
-    matrix.eliminate_zeros()
-    sources = sources[positive]
-    carriers = np.array(
-        [
-            len(pd.unique(sources[matrix.indices[start:stop]]))
-            for start, stop in zip(matrix.indptr[:-1], matrix.indptr[1:], strict=True)
-        ]
+    placed: set[str] = set()
+    for block in _region_blocks(target_rows, level, span):
+        blocks.append(block)
+        placed.update(block)
+    for _, names in sorted(local.items()):
+        unplaced = names - placed
+        if unplaced:
+            blocks.append(sorted(unplaced))
+    blocks.extend(_family_blocks(target_rows, level))
+    return blocks
+
+
+def _region_blocks(
+    target_rows: Sequence[Mapping[str, object]],
+    level: Any,
+    span: _CarrierSpan,
+) -> list[list[str]]:
+    """Per region, every row whose positive-weight carriers all live in it.
+
+    Local authorities and constituencies nest in regions, so a region's
+    block holds both local grains beside its own rows. A row whose carriers
+    span regions, or that has none, is in no region block. Only regions with
+    a local row form a block.
+    """
+
+    by_region: dict[str, set[str]] = {}
+    local_regions: set[str] = set()
+    names = [str(row["name"]) for row in target_rows]
+    for name, regions in zip(names, span.row_regions(names), strict=True):
+        if len(regions) != 1:
+            continue
+        (region,) = regions
+        by_region.setdefault(region, set()).add(name)
+        if level(name) in UK_AREA_SUPPORT_LEVELS:
+            local_regions.add(region)
+    return [sorted(by_region[region]) for region in sorted(local_regions)]
+
+
+def _family_blocks(
+    target_rows: Sequence[Mapping[str, object]],
+    level: Any,
+) -> list[list[str]]:
+    """Per local family with higher-grain parents, its rows and theirs.
+
+    A family is the local targets the cross-grain declarations' partitions
+    or a nested measurement tie together (:func:`uk_local_family_parents`);
+    its parents are the higher-grain targets tied to it. A row is matched to
+    its target by ``metadata.contract_target_id``.
+    """
+
+    by_target: dict[str, set[str]] = {}
+    for row in target_rows:
+        metadata = row.get("metadata")
+        if not isinstance(metadata, Mapping):
+            continue
+        target_id = metadata.get("contract_target_id")
+        if target_id:
+            by_target.setdefault(str(target_id), set()).add(str(row["name"]))
+    if not by_target:
+        return []
+    blocks: list[list[str]] = []
+    for members, parents in uk_local_family_parents():
+        local = set().union(*(by_target.get(target, set()) for target in members))
+        higher = set().union(*(by_target.get(target, set()) for target in parents))
+        if not local or not higher:
+            continue
+        if not any(level(name) in UK_AREA_SUPPORT_LEVELS for name in local):
+            continue
+        blocks.append(sorted(local | higher))
+    return blocks
+
+
+@functools.cache
+def uk_local_family_parents() -> tuple[tuple[frozenset[str], frozenset[str]], ...]:
+    """The local contract families and the higher-grain targets each is tied to.
+
+    Two targets are tied when a cross-grain declaration joins them (a bridge,
+    a fan-out or sum bridge, a band bridge or a partition), or when they share
+    a concept, entity and mapping and one's filters hold the other's: then one
+    measures a population inside the other's, as the cross-grain coverage
+    check reads the contract (microcosm#802, #1123). Local targets tied to
+    each other form one family (the census households and their tenure
+    shares; the UC households and their children's bands); a family's
+    parents are the targets outside the local grains tied to any of them.
+    """
+
+    from microcosm.build.uk_runtime.cross_grain_declarations import (
+        UK_LOCAL_GEOGRAPHY_LEVELS,
+        load_uk_cross_grain_declarations,
+        uk_cross_grain_bridges,
+        uk_cross_grain_partitions,
+        uk_fanout_sum_bridges,
     )
-    floors = np.array(
-        [
-            UK_BRMA_DIAGNOSTIC_MIN_SOURCE_HOUSEHOLDS
-            if level(name) == "brma"
-            else UK_DIAGNOSTIC_MIN_SOURCE_HOUSEHOLDS
-            for name in names
-        ]
+    from microcosm.build.uk_runtime.ledger_targets import (
+        uk_cross_grain_contract_signatures,
     )
-    return names, matrix, sources, carriers, floors
+
+    contract = uk_cross_grain_contract_signatures()
+    declarations = load_uk_cross_grain_declarations()
+    local = {
+        target_id
+        for target_id, target in contract.items()
+        if set(target.get("geography_levels") or ()) & UK_LOCAL_GEOGRAPHY_LEVELS
+    }
+    ties: dict[str, set[str]] = {}
+
+    def tie(left: str, right: str) -> None:
+        if left != right:
+            ties.setdefault(left, set()).add(right)
+            ties.setdefault(right, set()).add(left)
+
+    for bridge in uk_cross_grain_bridges(declarations):
+        for higher in bridge.higher_target_ids:
+            tie(higher, bridge.lower_side.removeprefix("contract:"))
+    for fanout in uk_fanout_sum_bridges(declarations):
+        tie(fanout.higher_target_id, fanout.lower_target_id)
+    for partition in uk_cross_grain_partitions(declarations):
+        for member in partition.member_target_ids:
+            tie(partition.parent_target_id, member)
+    for entry in declarations.get("band_bridges", ()):
+        for lower in entry["lower_target_ids"]:
+            tie(str(entry["higher_target_id"]), str(lower))
+    for entry in declarations.get("sum_bridges", ()):
+        for higher in entry["higher_target_ids"]:
+            for lower in entry["lower_target_ids"]:
+                tie(str(higher), str(lower))
+    by_measure: dict[tuple[object, ...], list[str]] = {}
+    for target_id, target in contract.items():
+        measurement = target.get("measurement") or {}
+        key = (
+            measurement.get("concept"),
+            measurement.get("entity"),
+            measurement.get("map_to"),
+        )
+        by_measure.setdefault(key, []).append(target_id)
+
+    def filters(target_id: str) -> frozenset[str]:
+        measurement = contract[target_id].get("measurement") or {}
+        return frozenset(
+            json.dumps(predicate, sort_keys=True)
+            for predicate in measurement.get("filters") or ()
+        )
+
+    for target_ids in by_measure.values():
+        for left in target_ids:
+            if left not in local:
+                continue
+            for right in target_ids:
+                if filters(left) <= filters(right) or filters(right) <= filters(left):
+                    tie(left, right)
+    families: list[tuple[frozenset[str], frozenset[str]]] = []
+    seen: set[str] = set()
+    for start in sorted(local):
+        if start in seen:
+            continue
+        family = {start}
+        frontier = [start]
+        while frontier:
+            for other in ties.get(frontier.pop(), ()):
+                if other in local and other not in family:
+                    family.add(other)
+                    frontier.append(other)
+        seen |= family
+        parents = set().union(*(ties.get(target, set()) for target in family)) - local
+        families.append((frozenset(family), frozenset(parents)))
+    return tuple(families)
+
+
+@dataclass(frozen=True)
+class _CarrierSpan:
+    """The problem's rows over its positive-weight households, sliced once."""
+
+    matrix: sparse.csr_matrix
+    sources: np.ndarray
+    index: Mapping[str, int]
+    level: Any
+    #: The positive-weight households' regions, where the frame carries them.
+    regions: np.ndarray | None = None
+
+    @classmethod
+    def build(
+        cls,
+        problem: Any,
+        weights: Sequence[float] | np.ndarray,
+        frame: Frame,
+        geography_levels: Mapping[str, object] | None,
+    ) -> _CarrierSpan:
+        household = frame.table("household")
+        if "source_household_id" not in household.columns:
+            raise ValueError(
+                "UK diagnostics need household source_household_id to count each "
+                "row's carriers."
+            )
+        sources = household["source_household_id"].to_numpy()
+        positive = np.asarray(weights, dtype=float) > 0
+        if positive.shape != sources.shape:
+            raise ValueError("UK row carriers need one weight per household.")
+        matrix = sparse.csr_matrix(
+            sparse.csr_matrix(problem.matrix)[:, np.flatnonzero(positive)]
+        )
+        matrix.eliminate_zeros()
+        regions = (
+            household["region"].astype(str).to_numpy()[positive]
+            if "region" in household.columns
+            else None
+        )
+        return cls(
+            matrix=matrix,
+            sources=sources[positive],
+            index={str(name): position for position, name in enumerate(problem.names)},
+            level=_row_level(geography_levels),
+            regions=regions,
+        )
+
+    def row_regions(self, names: Sequence[str]) -> list[frozenset[str]]:
+        """The regions of each row's carriers (none for a row nobody carries)."""
+
+        if self.regions is None:
+            raise ValueError("UK row regions need the frame's household region.")
+        found: list[frozenset[str]] = []
+        for name in names:
+            if name not in self.index:
+                raise ValueError(f"UK target diagnostic {name!r} has no problem row.")
+            row = self.index[name]
+            start, stop = self.matrix.indptr[row], self.matrix.indptr[row + 1]
+            found.append(frozenset(self.regions[self.matrix.indices[start:stop]]))
+        return found
+
+    def rows(
+        self, names: Sequence[str]
+    ) -> tuple[list[str], sparse.csr_matrix, np.ndarray, np.ndarray, np.ndarray]:
+        """One block's rows (stored zeros dropped: a household with a zero entry
+        does not carry the row), the households' source ids, each row's
+        distinct source households and each row's floor."""
+
+        names = list(names)
+        if not names:
+            empty = np.zeros(0)
+            return [], sparse.csr_matrix((0, 0)), empty, empty, empty
+        for name in names:
+            if name not in self.index:
+                raise ValueError(f"UK target diagnostic {name!r} has no problem row.")
+        matrix = sparse.csr_matrix(self.matrix[[self.index[name] for name in names]])
+        carriers = np.array(
+            [
+                len(pd.unique(self.sources[matrix.indices[start:stop]]))
+                for start, stop in zip(
+                    matrix.indptr[:-1], matrix.indptr[1:], strict=True
+                )
+            ]
+        )
+        floors = np.array(
+            [
+                UK_BRMA_DIAGNOSTIC_MIN_SOURCE_HOUSEHOLDS
+                if self.level(name) == "brma"
+                else UK_DIAGNOSTIC_MIN_SOURCE_HOUSEHOLDS
+                for name in names
+            ]
+        )
+        return names, matrix, self.sources, carriers, floors
 
 
 def uk_thin_rows(
@@ -1078,11 +1440,11 @@ def uk_thin_rows(
 ) -> set[str]:
     """The rows whose model figures rest on fewer than ten source households.
 
-    National, regional and BRMA rows: María's rule of 2026-10-21 binds a row
-    however few households carry it, and keeps its figures in the build, as
-    BRMA rows' have been kept since her ruling of 2026-10-17. A row whose
-    level in ``geography_levels`` is a constituency or a local authority is
-    left to the area-support rule (``UK_AREA_SUPPORT_LEVELS``). ``problem`` is
+    Every row: María's rule of 2026-10-21 binds a row however few households
+    carry it, and keeps its figures in the build, as BRMA rows' have been
+    kept since her ruling of 2026-10-17; her ruling of 2026-10-23 extends the
+    withholding to constituency and local-authority rows, whose binding the
+    area-support rule still decides (``UK_AREA_SUPPORT_LEVELS``). ``problem`` is
     the numerical problem the rows were scored on (its ``matrix`` and
     ``names``) and ``weights`` the weights they were scored at. A row's
     carriers are the distinct ``source_household_id`` values of the
@@ -1090,9 +1452,10 @@ def uk_thin_rows(
     area support counts them.
     """
 
-    names, _, _, carriers, floors = _scoped_rows(
-        problem, weights, frame, target_rows, geography_levels
-    )
+    if not target_rows:
+        return set()
+    span = _CarrierSpan.build(problem, weights, frame, geography_levels)
+    names, _, _, carriers, floors = span.rows([str(row["name"]) for row in target_rows])
     return {
         name
         for name, count, floor in zip(names, carriers, floors, strict=True)
@@ -1127,20 +1490,91 @@ def uk_withheld_row_sets(
     the UC family total less its bound bands gives back the unbound band
     above GBP 2,500 a month, which is no row and may rest on a handful of
     households. What neither check sees is set out in :class:`_ResidualCheck`.
-    Constituency and authority rows stay outside, as they stay outside the
-    per-row floor: whether a local row can give back a national one is part
-    of the local-line ruling still owed.
+    Both checks run per block (:func:`_row_blocks`; María's ruling of
+    2026-10-23): the national, regional and BRMA rows together; on a local
+    surface, each region's rows of every grain, and each local family with
+    its higher-grain parents (Vahid's review of #1383, item 1), so a local
+    family total less its published local bands is caught, and so are a
+    region or national row less its published local cells and a region's
+    constituencies less its local authorities. The blocks overlap, so a row
+    one block withholds beside a thin one is protected in every other block
+    that holds it: there, any combination that holds it counts as too small
+    to give back. Blocks run again until none withholds another row, which
+    ends, since a row once withheld stays withheld.
     """
 
-    names, matrix, sources, carriers, floors = _scoped_rows(
-        problem, weights, frame, target_rows, geography_levels
-    )
+    if not target_rows:
+        return set(), set()
+    span = _CarrierSpan.build(problem, weights, frame, geography_levels)
+    blocks = _row_blocks(target_rows, geography_levels, span)
+    block_rows = [span.rows(block) for block in blocks]
+    membership: dict[str, list[int]] = {}
+    for position, block in enumerate(blocks):
+        for name in block:
+            membership.setdefault(name, []).append(position)
+    thin: set[str] = set()
+    for names, _, _, carriers, floors in block_rows:
+        thin.update(
+            name
+            for name, count, floor in zip(names, carriers, floors, strict=True)
+            if count < floor
+        )
+    # A thin row is thin in every block that holds it; a row withheld beside
+    # one belongs to the block that withheld it.
+    owners = {name: set(membership[name]) for name in thin}
+    withheld = set(thin)
+    checked: dict[int, frozenset[str]] = {}
+    pending = list(range(len(blocks)))
+    while pending:
+        position = pending.pop(0)
+        names = block_rows[position][0]
+        held = frozenset(name for name in names if name in withheld)
+        if checked.get(position) == held:
+            continue
+        protected = frozenset(name for name in held if position not in owners[name])
+        added = _withheld_in_block(
+            *block_rows[position], held=held, protected=protected
+        )
+        checked[position] = held | added
+        for name in added:
+            owners.setdefault(name, set()).add(position)
+            withheld.add(name)
+            for other in membership[name]:
+                if other != position and other not in pending:
+                    pending.append(other)
+    return thin, withheld - thin
+
+
+def _withheld_in_block(
+    names: list[str],
+    matrix: sparse.csr_matrix,
+    sources: np.ndarray,
+    carriers: np.ndarray,
+    floors: np.ndarray,
+    *,
+    held: Collection[str] = frozenset(),
+    protected: Collection[str] = frozenset(),
+) -> set[str]:
+    """The published rows one block withholds beside the rows already withheld.
+
+    ``held`` rows are withheld already: the block's thin rows and the rows
+    other blocks withheld. A ``protected`` row is one another block withheld
+    beside a thin row of its own, so any combination that holds it counts as
+    resting on too few households: no published row of this block may give
+    it back, even within a sum this block would let stand.
+    """
+
     thin = {
         name
         for name, count, floor in zip(names, carriers, floors, strict=True)
         if count < floor
     }
-    withheld = set(thin)
+    already = thin | set(held)
+    withheld = set(already)
+    recovery_floors = np.asarray(floors, dtype=np.int64).copy()
+    for position, name in enumerate(names):
+        if name in protected:
+            recovery_floors[position] = np.iinfo(np.int64).max
     residuals = _ResidualCheck(matrix, sources, carriers, floors, names)
     norms = np.sqrt(np.asarray(matrix.multiply(matrix).sum(axis=1)).ravel())
     unit = matrix
@@ -1152,17 +1586,19 @@ def uk_withheld_row_sets(
         # greedy groups of a total too large to search exactly, so the
         # residuals are measured again on each pass.
         residuals.withhold(withheld)
-        held = [i for i, name in enumerate(names) if name in withheld and norms[i]]
+        hidden = [i for i, name in enumerate(names) if name in withheld and norms[i]]
         published = [
             i for i, name in enumerate(names) if name not in withheld and norms[i]
         ]
-        if not held or not published:
+        if not hidden or not published:
             break
         if gram is None:
             scale = np.divide(1.0, norms, out=np.zeros_like(norms), where=norms > 0)
             unit = sparse.csr_matrix(sparse.diags(scale) @ matrix)
             gram = (unit @ unit.T).toarray()
-        recovery = _small_recovery(unit, gram, sources, held, published, floors)
+        recovery = _small_recovery(
+            unit, gram, sources, hidden, published, recovery_floors
+        )
         if recovery is None:
             break
         coefficients, leverage = recovery
@@ -1184,7 +1620,7 @@ def uk_withheld_row_sets(
             key=lambda i: (carriers[i], names[i]),
         )
         withheld.add(names[pick])
-    return thin, withheld - thin
+    return withheld - already
 
 
 class _ResidualCheck:
@@ -1929,6 +2365,30 @@ def uk_withheld_gate_keys(rows: object) -> frozenset[str]:
     )
 
 
+def uk_withheld_gate_areas(rows: object) -> frozenset[str]:
+    """The bare area codes of withheld BRMA rows, for the report guard.
+
+    One family binds per BRMA, so a BRMA's area code names its row. A
+    constituency or local authority binds many families, so its code names
+    published rows too, and its withheld rows are matched by their keys alone
+    (María's ruling of 2026-10-23 on the local line).
+    """
+
+    records = rows.to_dict(orient="records") if hasattr(rows, "to_dict") else rows
+    return frozenset(
+        str(row.get("area_code", "")).strip()
+        for row in records or ()
+        if isinstance(row, Mapping)
+        and uk_withheld_flag(row.get("model_figures_withheld"))
+        and _GEOGRAPHY_LEVEL_ALIASES.get(
+            str(row.get("geography_level", "")).strip().lower(),
+            str(row.get("geography_level", "")).strip().lower(),
+        )
+        == "brma"
+        and str(row.get("area_code", "")).strip()
+    )
+
+
 def uk_withhold_brma_figures(
     rows: Sequence[Mapping[str, object]],
     withheld: frozenset[str],
@@ -1975,7 +2435,11 @@ class UKWithheldRowNamedError(ValueError):
 
 
 def uk_refuse_named_withheld_rows(
-    payload: object, *, names: frozenset[str], keys: frozenset[str]
+    payload: object,
+    *,
+    names: frozenset[str],
+    keys: frozenset[str],
+    areas: frozenset[str] = frozenset(),
 ) -> None:
     """Fail closed if a written gate report names a withheld row at all.
 
@@ -1987,12 +2451,14 @@ def uk_refuse_named_withheld_rows(
     leaves it. The error's message is constant; the place goes to this
     machine's stderr only.
 
-    It matches literal text, and a bare area code: one family is bound per
-    BRMA today, and a second would stop the build on its published rows
-    until the guard matched each withheld row's own keys instead.
+    It matches literal text: each withheld row's name and gate key, and the
+    bare area codes in ``areas``, which are those of withheld BRMA rows only
+    (:func:`uk_withheld_gate_areas`). One family is bound per BRMA, so its
+    code names its row; a constituency or local authority binds many, so a
+    withheld local row is matched by its key and a published row of the same
+    area may be named (María's ruling of 2026-10-23 on the local line).
     """
 
-    areas = {key.split("/")[1] for key in keys if key.count("/") >= 2}
     labels = {label.casefold() for label in (*names, *keys, *areas) if label}
     if not labels:
         return
@@ -2322,6 +2788,10 @@ def uk_calibration_diagnostics_payload(
     drift = uk_consumption_drift(household, result.initial_weights, result_weights)
     if drift is not None:
         uk_diagnostics["consumption_drift"] = drift
+        payload["diagnostic_warnings"] = [
+            *(payload.get("diagnostic_warnings") or []),
+            *uk_consumption_drift_warnings(drift),
+        ]
     if withheld_block is not None:
         uk_diagnostics["model_figures_withheld"] = withheld_block
     payload["uk_diagnostics"] = uk_diagnostics
