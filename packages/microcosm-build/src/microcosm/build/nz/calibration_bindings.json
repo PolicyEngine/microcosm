@@ -5249,6 +5249,6 @@
   "region_99_support": {
     "calibration": "national-growth proxy",
     "geography": "99 remains separate from every region and from TA 999",
-    "support": "G8-m2 supplies region-99 geography support (#1393, main 4e31e42e); that dependency is not in this stack's base. No ERP series exists for region 99 or TA 999. G8-r3b still supplies Census-family multiplicities."
+    "support": "G8-m2 supplies region-99 geography support (#1393, main 4e31e42e). No ERP series exists for region 99 or TA 999. G8-r3b still supplies Census-family multiplicities."
   }
 }

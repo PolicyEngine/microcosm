@@ -92,8 +92,8 @@ measure with a matching regional mask, including region 99. A household may
 contain several nuclei, so these measures retain multiplicities. The prepared
 region masks can evaluate now; `household.census_families_type_1`,
 `household.census_families_type_2` and `household.census_families_type_3`
-cannot evaluate until G8-r3b. Region-99 geography support is supplied separately
-by G8-m2 (#1393, main 4e31e42e), which is still a stack dependency here.
+cannot evaluate until G8-r3b. Region-99 geography support comes from G8-m2
+(#1393, main 4e31e42e).
 
 **Dollar-level calibration design (numerator/denominator):**
 - **Denominator (full-entitlement modelled $):** our own rules × calibrated population. Treasury DistributionExplorer CSVs (#5) are TAWA-modelled; AS values assigned by TAWA's take-up model; an independent comparison, not full entitlement, for AS; TAWA assumes full take-up for the WFF credits ([TAWA methodology](https://treasury.govt.nz/sites/default/files/2024-08/tawa-model-methodology.pdf), "Modelling take-up").
