@@ -64,8 +64,11 @@ def _write_run(root: Path, *, manifest_extra: dict | None = None) -> Path:
 class FakeHub:
     """Records commits and serves files back, like a private dataset repo."""
 
-    def __init__(self, root: Path, *, fail_commit: bool = False) -> None:
+    def __init__(
+        self, root: Path, *, fail_commit: bool = False, private: bool | None = True
+    ) -> None:
         self.root = root
+        self.private = private
         self.files: dict[str, bytes] = {}
         self.commits: list[dict] = []
         self.fail_commit = fail_commit
@@ -77,7 +80,7 @@ class FakeHub:
 
     def repo_info(self, *, repo_id, repo_type):
         assert repo_type == "dataset"
-        return SimpleNamespace(sha=self.sha)
+        return SimpleNamespace(sha=self.sha, private=self.private)
 
     def create_commit(
         self, *, repo_id, operations, commit_message, repo_type, parent_commit
@@ -270,6 +273,27 @@ def test_stage_bundle_records_transport_failure_without_raising(tmp_path, capsys
     err = capsys.readouterr().err
     assert "staged dataset upload failed" in err
     assert "do-not-record" not in err and "do-not-record" not in json.dumps(delivery)
+
+
+@pytest.mark.parametrize("private", [False, None])
+def test_stage_bundle_never_writes_to_a_repository_not_reported_private(
+    tmp_path, capsys, private
+):
+    """The bundle carries the build's full diagnostics and its repository id
+    can come from the environment (Vahid's review of microcosm#1396, S1)."""
+    run_dir = _write_run(tmp_path)
+    bundle = StagedDatasetBundle.from_manifest(
+        run_dir, run_id=RUN_ID, manifest_name=MANIFEST
+    )
+    write_sidecars(bundle, repository="someone/public-dataset")
+    hub = FakeHub(tmp_path, private=private)
+    delivery = stage_bundle(bundle, storage=_storage(hub))
+    assert (delivery["status"], delivery["error_code"]) == (
+        "failed",
+        "REPOSITORY_UNAVAILABLE",
+    )
+    assert hub.commits == [] and hub.files == {}
+    assert "not reported private" in capsys.readouterr().err
 
 
 def test_stage_bundle_requires_the_sidecars_first(tmp_path):

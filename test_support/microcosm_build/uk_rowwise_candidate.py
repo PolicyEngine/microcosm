@@ -449,9 +449,11 @@ class _FakeHub:
         fail_commit: bool = False,
         role: str = "write",
         scopes: list[dict] | None = None,
+        private: bool | None = True,
     ) -> None:
         self.role = role
         self.scopes = scopes
+        self.private = private
         self.commit_of: dict[tuple[str, str], str] = {}
         self.files: dict[tuple[str, str], bytes] = {}
         self.uploads: list[tuple[str, str]] = []
@@ -484,7 +486,7 @@ class _FakeHub:
 
     def repo_info(self, *, repo_id, repo_type):
         assert repo_type == "dataset"
-        return SimpleNamespace(sha=self.sha)
+        return SimpleNamespace(sha=self.sha, private=self.private)
 
     def whoami(self):
         token = {"role": self.role}

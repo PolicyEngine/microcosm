@@ -569,7 +569,11 @@ def stage_bundle(
     ``files`` equal the local digests is ``already_staged``; a differing one
     is refused as ``REMOTE_DIFFERS`` so a run id never silently changes
     meaning. Transport failures return ``status: failed`` with a reviewed
-    error code; the exception text goes to stderr only.
+    error code; the exception text goes to stderr only. A repository the Hub
+    does not report as private is ``REPOSITORY_UNAVAILABLE`` before anything
+    is read or written: the bundle carries the build's full diagnostics, and
+    its repository id can come from an environment variable (Vahid's review
+    of microcosm#1396, S1).
     """
 
     remote_prefix = bundle.remote_prefix(prefix)
@@ -596,11 +600,20 @@ def stage_bundle(
     }
     remote_manifest = f"{remote_prefix}/{STAGED_MANIFEST_FILENAME}"
     try:
-        exists = storage.file_exists(remote_manifest)
+        private = storage.private()
+        exists = private is True and storage.file_exists(remote_manifest)
     except Exception as error:
         _warn(
             f"staged dataset repository {storage.repo_id} is unavailable "
             f"({type(error).__name__}); the bundle stays local."
+        )
+        return validate_staged_dataset_delivery(
+            {**record, "error_code": "REPOSITORY_UNAVAILABLE"}
+        )
+    if private is not True:
+        _warn(
+            f"staged dataset repository {storage.repo_id} is not reported "
+            "private on the Hub; refusing to stage there. The bundle stays local."
         )
         return validate_staged_dataset_delivery(
             {**record, "error_code": "REPOSITORY_UNAVAILABLE"}

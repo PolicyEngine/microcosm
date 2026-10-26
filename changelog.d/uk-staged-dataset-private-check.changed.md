@@ -1,0 +1,1 @@
+A UK build refuses to start a remote dataset stage, and the staged-dataset upload refuses with `REPOSITORY_UNAVAILABLE`, when the Hub does not report the target repository as private. The bundle carries the build's full diagnostics, and its repository id can come from `POPULACE_UK_STAGED_DATASET_REPO_ID` or `--staged-dataset-repo-id`.
