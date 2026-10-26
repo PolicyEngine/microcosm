@@ -20,7 +20,7 @@ on for a re-cut; until then the hand-run launchers stay the fallback.
 | A clean checkout of `main` locked at the policyengine-uk you want | a "Lock policyengine-uk X" PR merged to main | `tools/run_uk_cut.py preflight` |
 | `HF_TOKEN` | write access to `policyengine/populace-uk-private` and `policyengine/populace-uk-staging`, and read access to the input repos below | preflight |
 | `MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY` | a key registered **active** in `microcosm.data.gate_signing_keys` (see [Signing keys](#signing-keys)) | `python -m microcosm.data.gate_signing_keys check` |
-| Cover under the UK Data Service licences for the FRS, SPI, WAS, LCFS, NTS and ETB | the licence holders | the gated input repository admits only covered users |
+| Cover under the UK Data Service licences for the FRS, SPI, WAS, LCFS, NTS and ETB | the licence holders | access to the input repositories (below) |
 | About 60 GB of free disk, AC power, a quiet host | the machine | preflight |
 
 ## One command
@@ -28,10 +28,16 @@ on for a re-cut; until then the hand-run launchers stay the fallback.
 ```bash
 cd <clean checkout of main>
 uv sync --all-packages --locked --extra uk
-export HF_TOKEN=…   MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY=…
-uv run --no-sync python tools/run_uk_cut.py all --label sat24              # build, certify, assemble
-uv run --no-sync python tools/run_uk_cut.py all --label sat24 --publish    # and publish for inspection
+export HF_TOKEN=…
+# The key goes to this one command, never to the whole shell:
+MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY="$(security find-generic-password -a "$USER" -s microcosm-uk-gate-signing-key -w)" \
+  uv run --no-sync python tools/run_uk_cut.py all --label sat24              # build, certify, assemble
+# add --publish to publish for inspection
 ```
+
+The runner passes the key on only to the steps that sign (spine, national
+build, certification) or verify (assembly, publication); the dry run, the
+scoring, the stage-1 comparison and the preflight tests never see it.
 
 Agent sessions on Max's build Mac read the team key, whose custodian is Max,
 with `agent-secret get microcosm/uk-gate-signing-key-team maxghenis`, and
@@ -117,13 +123,25 @@ the Mac is busy, short of disk or asleep. The container:
 - keeps the work directory, with its inputs and every step's outputs, on the
   `microcosm-uk-cuts` volume, so a rerun resumes.
 
-`HF_TOKEN` and the signing key are passed to that run only, never stored as
-Modal secrets. **Processing UKDS microdata on Modal needs the data owners'
-OK before first use.** Until then, run only the plan:
+**Processing UKDS microdata on Modal needs the data owners' OK before first
+use.** Three things move to Modal with a run:
+
+- `HF_TOKEN` and the signing key, as an ephemeral secret attached to that
+  run only. Modal holds both for the run; no named workspace secret keeps
+  them. A key used there is then also held on Modal, and its registry
+  entry's `held_in` must say so first.
+- The UKDS inputs and every output, on the `microcosm-uk-cuts` volume, which
+  anyone in the Modal workspace can read. Only a workspace or environment
+  restricted to licensed users may hold it.
+- The app and its image, built from the pushed commit.
+
+Planning contacts no Modal service and sends nothing. `modal run` creates
+the app before its entrypoint can refuse, so it attaches the credentials
+only when `MICROCOSM_UK_CUT_MODAL_RUN=1` is set:
 
 ```bash
-modal run tools/modal_uk_cut.py --commit <sha on main> --label sat24                    # plan, free
-modal run --detach tools/modal_uk_cut.py --commit <sha> --label sat24 --run [--publish] # paid
+python tools/modal_uk_cut.py --commit <sha on main> --label sat24                         # plan, sends nothing
+MICROCOSM_UK_CUT_MODAL_RUN=1 modal run --detach tools/modal_uk_cut.py --commit <sha> --label sat24 --run [--publish]  # paid
 ```
 
 ## Inputs
@@ -136,6 +154,13 @@ binds it by a canonical digest of its contents, so the manifest also carries
 the hosted file's byte sha256. A file is installed only if it
 is byte-identical to what the build will accept, and nothing unverified is
 ever left at an input's path.
+
+**Who can read them.** `policyengine/microcosm-uk-build-inputs`,
+`policyengine/populace-uk-private` and `policyengine/populace-uk-staging` are
+private. `policyengine/policyengine-uk-data-private`, which holds the UKDS
+zips, is a *gated* model repository: anyone can see its file list, and its
+files download only after an access request is approved. So that approval
+is what admits a builder to the licensed inputs.
 
 | Input | Hosted at | State |
 |---|---|---|
@@ -243,9 +268,14 @@ records that signer, whoever resumed it.
 
 **Add a builder or rotate a key.**
 
-1. Run `python -m microcosm.data.gate_signing_keys generate`. It prints the
-   key on stdout and the fingerprint on stderr.
-2. Store the key in a secret store. Never commit or print it.
+1. On macOS, run `uv run --no-sync python -m microcosm.data.gate_signing_keys
+   generate --keychain-service microcosm-uk-gate-signing-key`. It stores the
+   key in your login keychain through `security -i` on stdin, so the key is
+   in no process list, reads it back, and prints only its fingerprint.
+   Elsewhere, pipe `generate`'s stdout straight into a secret store: it
+   refuses to print a key to a terminal, where scrollback and agent
+   transcripts would keep it.
+2. Never commit, post or print the key.
 3. Open a pull request that adds the fingerprint as `active`.
 4. To rotate, set the old entry to `retired` with a `retired_on` date, in
    the same or a later PR. Its cuts still verify, but only for someone who
@@ -253,6 +283,23 @@ records that signer, whoever resumed it.
 
 **Revoke a leaked key.** Set it to `revoked`. Every cut it signed then fails
 verification, so re-sign or withdraw those cuts.
+
+**What the signature does not prove.** The reports are signed with HMAC,
+which is symmetric, so:
+
+- Verifying a cut needs the secret that signed it, and whoever can verify
+  can also sign. A "certified" cut is its key holder vouching for their own
+  reports. policyengine.py and anyone downstream rely on Hugging Face write
+  access to the private repositories and on this reviewed registry, not on
+  a signature they can check themselves.
+- Retiring a key stops the registry's checks from accepting new signatures
+  from it, but `retired_on` is only recorded: whoever still holds a retired
+  key can mint reports that verify.
+- Revocation binds only checkouts and wheels that include the revoking
+  commit.
+
+A public-key scheme (Ed25519) would let the registry hold public keys and
+anyone verify; that is tracked separately.
 
 ## Certifying into policyengine.py
 
