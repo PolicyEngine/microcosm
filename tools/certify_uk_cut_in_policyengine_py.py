@@ -878,6 +878,14 @@ def commit_message(national_tag: str, *, co_authors: Sequence[str] = ()) -> str:
     return message
 
 
+def readable(text: str | None) -> bool:
+    """At least one printable, non-space character, as policyengine.py requires
+    of a mismatch's reason, auditor and limitations (a zero-width space alone
+    is not readable)."""
+
+    return any(ch.isprintable() and not ch.isspace() for ch in text or "")
+
+
 def parse(argv: list[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--national-tag", required=True)
@@ -970,14 +978,16 @@ def parse(argv: list[str] | None) -> argparse.Namespace:
         if not CO_AUTHOR_PATTERN.match(author):
             parser.error(f"--co-author must be one line, 'Name <email>': {author!r}")
     if args.accept_regional_model_mismatch is not None:
-        if not args.accept_regional_model_mismatch.strip():
+        if not readable(args.accept_regional_model_mismatch):
             parser.error("--accept-regional-model-mismatch needs a reason.")
-        if not (args.audited_by or "").strip():
+        if not readable(args.audited_by):
             parser.error("--accept-regional-model-mismatch needs --audited-by.")
-        if not [text for text in args.regional_limitation if text.strip()]:
+        if not args.regional_limitation or not all(
+            readable(text) for text in args.regional_limitation
+        ):
             parser.error(
                 "--accept-regional-model-mismatch needs at least one "
-                "--regional-limitation."
+                "--regional-limitation, each with readable text."
             )
     elif args.audited_by or args.regional_limitation:
         parser.error(

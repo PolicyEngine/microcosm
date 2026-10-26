@@ -265,6 +265,21 @@ def test_an_accepted_mismatch_needs_an_auditor_and_a_limitation(drop):
         )  # fmt: skip
 
 
+@pytest.mark.parametrize("flag", MISMATCH[0::2])
+@pytest.mark.parametrize("text", ["   ", "\u200b"])
+def test_a_mismatch_needs_readable_text_in_every_field(flag, text):
+    """policyengine.py refuses these later; refuse them before any work."""
+
+    flags = list(MISMATCH)
+    flags[flags.index(flag) + 1] = text
+    with pytest.raises(SystemExit):
+        handoff.parse(
+            ["--national-tag", NATIONAL, "--keep-regional-release",
+             "--pepy-repo", "p", *flags]
+        )  # fmt: skip
+    assert handoff.readable("ok") and not handoff.readable(text)
+
+
 def test_the_audit_support_check_reads_the_base(monkeypatch, tmp_path):
     answers = {"cat-file": 0, "grep": 0}
 

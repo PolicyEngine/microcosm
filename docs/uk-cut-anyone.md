@@ -322,7 +322,9 @@ bundle) and at least one `--regional-limitation "<text>"`. The base needs
 policyengine.py#699's audit, and a base without it refuses before anything
 is downloaded. Until #699 merges, test the route with `--base-ref
 origin/accept-regional-model-mismatch --pr-base accept-regional-model-mismatch`.
-The audit also needs `uv` and PyPI.
+The audit and `certify-data` also need `uv` and PyPI: both read the build
+model through a pinned `uv` probe, and `certify-data` re-reads both models
+rather than trusting the evidence's lists.
 
 The certification commit and the pull request body credit nobody but the
 git identity that commits. An agent session adds its own credit:
