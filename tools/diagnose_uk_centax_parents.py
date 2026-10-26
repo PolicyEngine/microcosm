@@ -4,7 +4,8 @@
 Computes, through the production measure resolver at the calibration year, each
 cell of ``uk/centax_childcare_parent_facts.json``: the model's weighted parents,
 the records and households behind them, the Kish effective number of households
-and the share of the cell's weight on its ten heaviest households. With
+and the share of the cell's weight on its ten heaviest households, each also over
+the FRS source households the Microcosm copies come from. With
 ``--facts`` it also reports each cell's target and relative error, and the
 CenTax figures the resource keeps as diagnostics only (the Table A.1 levels and
 the Figure 3.12 non-working-partner shares). ``parent_count`` is the number the
@@ -42,6 +43,7 @@ from microcosm.build.uk_runtime.centax_childcare_parents import (
 )
 from microcosm.build.uk_runtime.measure_simulation import UKMeasureResolver
 from microcosm.build.uk_runtime.national_frame import load_uk_national_frame
+from microcosm.build.uk_runtime.support_floor import uk_household_source_ids
 from microcosm.build.uk_runtime.weight_year import uk_engine_year_frame
 
 #: The nominal ANI the free hours and Tax-Free Childcare taper away above.
@@ -58,14 +60,28 @@ def _sha256(path: Path) -> str:
 
 
 def _support(
-    mask: np.ndarray, person_weight: np.ndarray, person_household: np.ndarray
+    mask: np.ndarray,
+    person_weight: np.ndarray,
+    person_household: np.ndarray,
+    person_source: np.ndarray,
 ) -> dict[str, Any]:
-    """Weighted parents and the household support behind them."""
+    """Weighted parents and the household support behind them.
+
+    Microcosm copies an FRS household several times (the SPI, high-value-home
+    and CGT copies), and the copies of one source household are not
+    independent, so the support is also counted over source households: each
+    one's contribution is the weight of all its copies' parents in the cell.
+    """
 
     households, members = np.unique(person_household[mask], return_counts=True)
     count = float(person_weight[mask].sum())
     if not len(households):
-        return {"model_count": 0.0, "person_records": 0, "households": 0}
+        return {
+            "model_count": 0.0,
+            "person_records": 0,
+            "households": 0,
+            "source_households": 0,
+        }
     weight_by_household = dict(
         zip(person_household[mask], person_weight[mask], strict=True)
     )
@@ -74,6 +90,9 @@ def _support(
     )
     contribution = household_weight * members
     heaviest = np.sort(contribution)[::-1][:_TOP_HOUSEHOLDS]
+    sources, source_of_person = np.unique(person_source[mask], return_inverse=True)
+    source_contribution = np.bincount(source_of_person, weights=person_weight[mask])
+    heaviest_sources = np.sort(source_contribution)[::-1][:_TOP_HOUSEHOLDS]
     return {
         "model_count": count,
         "person_records": int(mask.sum()),
@@ -83,6 +102,11 @@ def _support(
         ),
         "kish_contributions": float(contribution.sum() ** 2 / (contribution**2).sum()),
         "top10_household_share": float(heaviest.sum() / contribution.sum()),
+        "source_households": int(len(sources)),
+        "kish_source_households": float(
+            source_contribution.sum() ** 2 / (source_contribution**2).sum()
+        ),
+        "top10_source_share": float(heaviest_sources.sum() / source_contribution.sum()),
     }
 
 
@@ -166,6 +190,16 @@ def main(argv: list[str] | None = None) -> int:
         )
     )
     person_household = person_table["person_household_id"].to_numpy()
+    source_of_household = dict(
+        zip(
+            household_table["household_id"].to_numpy(),
+            uk_household_source_ids(frame),
+            strict=True,
+        )
+    )
+    person_source = np.asarray(
+        [source_of_household[household] for household in person_household]
+    )
     person_benunit = person_table["person_benunit_id"].to_numpy()
     person_weight = np.asarray(
         [household_weight[household] for household in person_household], dtype=float
@@ -180,6 +214,7 @@ def main(argv: list[str] | None = None) -> int:
             _mask(columns, centax_cell_filters(cell, edges[cell])),
             person_weight,
             person_household,
+            person_source,
         )
         entry["model_ani_edges"] = edges[cell]
         if facts is not None:
@@ -225,18 +260,24 @@ def main(argv: list[str] | None = None) -> int:
         "model_ani_edges": edges,
         "parent_count": float(person_weight[parent & (ani > 0) & (ani <= top)].sum()),
         "parents": {
-            "all": _support(parent, person_weight, person_household),
+            "all": _support(parent, person_weight, person_household, person_source),
             "ani_not_positive": _support(
-                parent & (ani <= 0), person_weight, person_household
+                parent & (ani <= 0), person_weight, person_household, person_source
             ),
             "ani_above_top_edge": _support(
-                parent & (ani > top), person_weight, person_household
+                parent & (ani > top), person_weight, person_household, person_source
             ),
             "annual_ani_over_100k": _support(
-                parent & (ani > _CLIFF_GBP), person_weight, person_household
+                parent & (ani > _CLIFF_GBP),
+                person_weight,
+                person_household,
+                person_source,
             ),
             "current_ani_over_100k": _support(
-                parent & (current_ani > _CLIFF_GBP), person_weight, person_household
+                parent & (current_ani > _CLIFF_GBP),
+                person_weight,
+                person_household,
+                person_source,
             ),
         },
         "cells": cells,
@@ -262,7 +303,9 @@ def main(argv: list[str] | None = None) -> int:
         line = (
             f"{cell:38s} {entry['model_count']:>11,.0f} rec {entry['person_records']:>5} "
             f"kish {entry.get('kish_households', 0.0):7.1f} "
-            f"top10 {entry.get('top10_household_share', 0.0):5.2f}"
+            f"top10 {entry.get('top10_household_share', 0.0):5.2f} "
+            f"sources {entry['source_households']:>4} "
+            f"kish {entry.get('kish_source_households', 0.0):6.1f}"
         )
         if "target" in entry:
             line += (

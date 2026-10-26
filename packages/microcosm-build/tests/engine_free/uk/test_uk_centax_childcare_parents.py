@@ -13,6 +13,9 @@ Invariants, for every input the strategies draw:
   people when they are reordered;
 - the main-source measure is 0 or 1, 0 without positive pay, never turns off
   as pay rises, and ignores the scale of all sources together;
+- the diagnostic's support over FRS source households never exceeds its
+  support over Microcosm households (fewer sources, a lower Kish count, a
+  larger top-ten share), and equals it when each household is its own source;
 - the contract binds exactly the resource's cells, with its edges.
 """
 
@@ -69,6 +72,12 @@ _BUILDER_SPEC = importlib.util.spec_from_file_location(
 assert _BUILDER_SPEC is not None and _BUILDER_SPEC.loader is not None
 _builder = importlib.util.module_from_spec(_BUILDER_SPEC)
 _BUILDER_SPEC.loader.exec_module(_builder)
+_DIAGNOSTIC_SPEC = importlib.util.spec_from_file_location(
+    "diagnose_uk_centax_parents", ROOT / "tools/diagnose_uk_centax_parents.py"
+)
+assert _DIAGNOSTIC_SPEC is not None and _DIAGNOSTIC_SPEC.loader is not None
+_diagnostic = importlib.util.module_from_spec(_DIAGNOSTIC_SPEC)
+_DIAGNOSTIC_SPEC.loader.exec_module(_diagnostic)
 
 _PREFIX = "microcosm.centax_childcare_parents."
 _BANDS = tuple(band for band, _, _ in CENTAX_ANI_BANDS_2022)
@@ -381,6 +390,61 @@ def test_every_other_source_can_outrank_employment(source) -> None:
 def test_the_main_source_measure_refuses_a_missing_source() -> None:
     with pytest.raises(ValueError, match="needs"):
         employment_main_income_source({"employment_income_annual": np.ones(2)})
+
+
+# The diagnostic's support over FRS source households.
+
+
+@st.composite
+def _cell_people(draw):
+    """People of up to a dozen households, each a copy of one source household."""
+
+    households = draw(st.integers(1, 12))
+    sized = {"min_size": households, "max_size": households}
+    source = np.asarray(draw(st.lists(st.integers(0, households - 1), **sized)))
+    weight = np.asarray(draw(st.lists(st.floats(0.5, 500.0), **sized)))
+    members = draw(st.lists(st.integers(1, 3), **sized))
+    household = np.repeat(np.arange(households), members)
+    people = len(household)
+    in_cell = np.asarray(
+        draw(st.lists(st.booleans(), min_size=people, max_size=people))
+    )
+    return in_cell, weight[household], household, source[household]
+
+
+@settings(max_examples=200, deadline=None)
+@given(_cell_people())
+def test_source_support_never_exceeds_household_support(people) -> None:
+    in_cell, weight, household, source = people
+    support = _diagnostic._support(in_cell, weight, household, source)
+    if not in_cell.any():
+        assert support["source_households"] == 0
+        return
+    assert support["source_households"] <= support["households"]
+    assert support["kish_source_households"] <= support["kish_contributions"] * (
+        1 + 1e-12
+    )
+    assert support["top10_source_share"] >= support["top10_household_share"] - 1e-12
+    own = _diagnostic._support(in_cell, weight, household, household)
+    assert own["source_households"] == own["households"]
+    assert own["kish_source_households"] == pytest.approx(own["kish_contributions"])
+    assert own["top10_source_share"] == pytest.approx(own["top10_household_share"])
+
+
+def test_copies_of_one_source_household_count_once() -> None:
+    # Households 0 and 1 copy source 7; household 2 is source 8. Over households
+    # the cell's Kish count is 400^2 / (100^2 + 100^2 + 200^2) = 8/3; over
+    # sources it is 400^2 / (200^2 + 200^2) = 2.
+    support = _diagnostic._support(
+        np.ones(3, dtype=bool),
+        np.array([100.0, 100.0, 200.0]),
+        np.array([0, 1, 2]),
+        np.array([7, 7, 8]),
+    )
+    assert support["households"] == 3 and support["source_households"] == 2
+    assert support["kish_contributions"] == pytest.approx(8 / 3)
+    assert support["kish_source_households"] == pytest.approx(2.0)
+    assert support["top10_source_share"] == pytest.approx(1.0)
 
 
 # The contract and the compile.
