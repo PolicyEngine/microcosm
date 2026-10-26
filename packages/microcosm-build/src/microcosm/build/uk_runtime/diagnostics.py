@@ -67,6 +67,12 @@ _UK_DEFAULT_ZERO_WEIGHT_STRATUM_COLUMNS: tuple[str, ...] = (
 
 _TARGET_PASS_RELATIVE_ERROR = 0.10
 _AREA_FIT_LIMIT = 15
+#: The fewest distinct source households a published cell may rest on (UKDS
+#: CD137 clause 8). The build no longer withholds model figures (María's
+#: ruling of 2026-10-26), but the report tools that publish their own tables,
+#: such as the single years of age and the council tax liability comparison,
+#: still suppress the cells below it.
+UK_DIAGNOSTIC_MIN_SOURCE_HOUSEHOLDS = 10
 
 _COUNTRY_BY_AREA_PREFIX = {
     "E": "England",
