@@ -17,8 +17,9 @@ age_tail stage draws each such person's band from ONS's 80 to 84, 85 to 89
 and 90 and over, with a uniform age within the band, so the single years above
 80 show that draw. Every cell names its carriers as
 distinct source households and reads "<10" in place of its figures when fewer
-than 10 carry it, and a band that holds a withheld age reads "<10" too, so no
-difference gives a withheld age back (UKDS disclosure control).
+than 10 carry it. When any single year of a sex is withheld, every cell of that
+sex reads "<10", its bands too, so no difference from the sex's persons, which
+other reports give, gives a withheld age back (UKDS disclosure control).
 """
 
 from __future__ import annotations
@@ -149,20 +150,27 @@ def single_year_age_report(
             _age_key(year): cell(of_sex & (age == year), ons[(label, year)])
             for year in range(UK_OPEN_AGE + 1)
         }
-        bands: dict[str, Any] = {}
-        for lower, upper in UK_TAIL_AGE_BANDS:
-            years = range(lower, upper + 1)
-            if any(
-                single[_age_key(year)]["source_households"] == withheld
-                for year in years
-            ):
-                # A band beside its shown ages would give a withheld one back.
-                bands[_band_key(lower, upper)] = {"source_households": withheld}
-                continue
-            bands[_band_key(lower, upper)] = cell(
+        if any(entry["source_households"] == withheld for entry in single.values()):
+            # The sex's persons, which other reports give, less its shown ages
+            # would give a withheld one back, and so would a band beside them:
+            # the whole sex is withheld (microcosm#1095).
+            by_sex[label.lower()] = {
+                "single_years": {
+                    key: {"source_households": withheld} for key in single
+                },
+                "tail_bands": {
+                    _band_key(lower, upper): {"source_households": withheld}
+                    for lower, upper in UK_TAIL_AGE_BANDS
+                },
+            }
+            continue
+        bands = {
+            _band_key(lower, upper): cell(
                 of_sex & (age >= lower) & (age <= upper),
-                sum(ons[(label, year)] for year in years),
+                sum(ons[(label, year)] for year in range(lower, upper + 1)),
             )
+            for lower, upper in UK_TAIL_AGE_BANDS
+        }
         by_sex[label.lower()] = {"single_years": single, "tail_bands": bands}
     return {
         "schema_version": 1,

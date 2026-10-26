@@ -7,8 +7,9 @@ with their ratio, and the tail bands 80 to 84, 85 to 89, 90 and over and 80
 and over. It reads a built H5's frame tables and final household weights (no
 engine). Report-only: the estimates bind nothing. Every cell names its
 carriers as distinct source households and reads "<10" in place of its
-figures when fewer than 10 carry it, and so does a band that holds a
-withheld age (UKDS disclosure control). The receipt belongs in the run tree.
+figures when fewer than 10 carry it; when any single year of a sex is
+withheld, every cell of that sex is (UKDS disclosure control). The receipt
+belongs in the run tree.
 
     uv run python tools/report_uk_single_year_ages.py \\
         --h5 <run>/microcosm_uk_2024_25.h5 --output <run>/single_year_ages.json
