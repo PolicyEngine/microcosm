@@ -78,6 +78,17 @@ compares it with the fingerprint recorded there for the feed the provenance
 names. A stock rebuilt on a new feed records that feed's fingerprint beside it;
 the test reports it.
 
+The constituency domestic energy resource (`uk/desnz_constituency_energy_facts.json`,
+microcosm#1095) is built from feed facts too: DESNZ's authority and LSOA / data
+zone consumption and meter counts. Its loader refuses a resource built on
+another feed than the pin, as the vendored resources' readers do, so rebuild
+it on every re-pin beside step 5, before anything compiles, with
+`tools/build_uk_desnz_constituency_energy_facts.py` on the new artifact and
+the committed atomic supports (`tools/build_uk_atomic_area_supports.py`
+rebuilds those byte for byte from its cached publisher files; pass it a
+scratch `--provenance-json` so the committed provenance is left alone). The
+build streams the feed and takes well under a minute.
+
 Verify the complete compiled target diff on both surfaces, including targets
 outside the intended policy area, and record the value moves in the changelog
 fragment. A national reference whose metadata moves (a fact key or a

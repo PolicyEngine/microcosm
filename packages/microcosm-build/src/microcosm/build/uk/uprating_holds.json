@@ -410,7 +410,7 @@
       "target_ids": [
         "desnz.subnational.gas_connected_households"
       ],
-      "reason": "Census 2021 (Scotland 2022) households times DESNZ's 2024 gas-to-electricity meter share. The level follows the authority's household reconciliation through the census partition (census_gas_connected_share), so only the meter share is held at 2024 (microcosm#1207).",
+      "reason": "Census 2021 (Scotland 2022) households times DESNZ's 2024 gas-to-electricity meter share. The level follows the area's household reconciliation through the census partition (census_gas_connected_share), so only the meter share is held at 2024 (microcosm#1207; re-worded 2026-10-26 by juaristi22 for the constituency grain, microcosm#1095).",
       "tracking": "microcosm#1278",
       "approved_by": "juaristi22",
       "approved_on": "2026-10-15",
