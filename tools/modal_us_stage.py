@@ -85,13 +85,18 @@ _LOADED = _local_plan()
 def _image() -> modal.Image:
     image = (
         modal.Image.debian_slim(python_version=plan_lib.IMAGE_PYTHON_VERSION)
-        .apt_install("git", "build-essential")
+        # Naming ca-certificates upgrades the base image's copy to the
+        # distribution's current release, which drops the compromised
+        # eMudhra roots; git's GitHub fetch and the stdlib's ssl module
+        # verify against that system CA store.
+        .apt_install("git", "build-essential", "ca-certificates")
         # The runner itself (not the build) runs on the image's interpreter;
         # it needs the Hub client to stage hf:// inputs. The build runs in
         # IMAGE_VENV, synced from the pinned tree's own lock.
         .pip_install(
             f"uv=={plan_lib.IMAGE_UV_VERSION}",
             f"huggingface_hub=={plan_lib.RUNNER_HF_HUB_VERSION}",
+            f"certifi>={plan_lib.RUNNER_CERTIFI_MINIMUM_VERSION}",
         )
         .env(
             {
