@@ -156,7 +156,7 @@ class RunnerTests(unittest.TestCase):
                 return_value=types.SimpleNamespace(free=55_000_000_000),
             ),
         ):
-            runner.resource_guard(Path.cwd())
+            runner.resource_guard(Path.cwd(), max_load1=110)
         for load, free in ((110.1, 55_000_000_000), (1, 54_999_999_999)):
             with (
                 patch.object(runner.os, "getloadavg", return_value=(load, 1, 1)),
@@ -167,7 +167,7 @@ class RunnerTests(unittest.TestCase):
                 ),
             ):
                 with self.assertRaises(runner.CertifyError):
-                    runner.resource_guard(Path.cwd())
+                    runner.resource_guard(Path.cwd(), max_load1=110)
 
     def test_model_surface_is_guarded(self):
         with (
@@ -348,6 +348,8 @@ class RunnerTests(unittest.TestCase):
                         "--national-tag",
                         TAG,
                         "--drop-regional-release",
+                        "--pepy-repo",
+                        "pepy",
                         "--test-workers",
                         str(workers),
                     ]
@@ -358,6 +360,8 @@ class RunnerTests(unittest.TestCase):
                     "--national-tag",
                     TAG,
                     "--drop-regional-release",
+                    "--pepy-repo",
+                    "pepy",
                     "--test-workers",
                     "4",
                 ]
@@ -366,7 +370,13 @@ class RunnerTests(unittest.TestCase):
         )
 
     def test_pr_base_accepts_explicit_stack_target(self):
-        common = ["--national-tag", TAG, "--drop-regional-release"]
+        common = [
+            "--national-tag",
+            TAG,
+            "--drop-regional-release",
+            "--pepy-repo",
+            "pepy",
+        ]
         self.assertEqual(runner.parse(common).pr_base, "main")
         args = runner.parse(common + ["--pr-base", "budget-local-data-manifest"])
         self.assertEqual(args.pr_base, "budget-local-data-manifest")

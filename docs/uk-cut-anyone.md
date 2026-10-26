@@ -255,8 +255,13 @@ verification, so re-sign or withdraw those cuts.
 uv run --no-sync python tools/certify_uk_cut_in_policyengine_py.py \
   --national-tag microcosm-uk-2024-25-national-<ts>-<id> \
   (--dense-tag <tag> | --keep-regional-release | --area-coded-national-uri <uri> | --drop-regional-release) \
-  [--push --open-pr]
+  --pepy-repo <your clone of PolicyEngine/policyengine.py> \
+  [--max-load1 <load>] [--min-free-gb <GB>] [--push --open-pr]
 ```
+
+Each heavy step first checks the host. The disk floor defaults to 55 GB
+(`--min-free-gb`). There is no load limit unless you set one with
+`--max-load1`, because a sensible limit depends on the machine.
 
 The script does the mechanical part of what policyengine.py#685 did by hand,
 on a new branch from policyengine.py's main.

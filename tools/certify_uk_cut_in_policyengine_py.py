@@ -168,24 +168,33 @@ def regional_tag(flags: list[str]) -> str | None:
     )
 
 
-#: The shared build host's limits (UK hub rehearsal, 2026-10-23). Another
-#: machine sets its own with --max-load1 and --min-free-gb.
-RESOURCE_LIMITS = {"max_load1": 110.0, "min_free_bytes": 55_000_000_000}
+#: Free disk each heavy step needs by default: the certified environment,
+#: the snapshots and the test suite's fixtures (decimal bytes).
+DEFAULT_MIN_FREE_BYTES = 55_000_000_000
 
 
-def resource_guard(root: Path) -> dict[str, float | int]:
-    """Refuse work before spawning a process on an overloaded or full host."""
+def resource_guard(
+    root: Path,
+    *,
+    max_load1: float | None = None,
+    min_free_bytes: int = DEFAULT_MIN_FREE_BYTES,
+) -> dict[str, float | int]:
+    """Refuse work before spawning a process on an overloaded or full host.
 
-    max_load1 = RESOURCE_LIMITS["max_load1"]
-    min_free = RESOURCE_LIMITS["min_free_bytes"]
+    A load limit depends on the machine, so there is none unless the operator
+    sets one (``--max-load1``).
+    """
+
     load1 = os.getloadavg()[0]
     while not root.exists():
         root = root.parent
     free = shutil.disk_usage(root).free
-    if load1 > max_load1 or free < min_free:
+    overloaded = max_load1 is not None and load1 > max_load1
+    if overloaded or free < min_free_bytes:
+        maximum = "none" if max_load1 is None else f"{max_load1:g}"
         raise CertifyError(
-            f"resource guard: load1={load1:.2f} (maximum {max_load1:g}), "
-            f"free={free / 1e9:.2f} GB (minimum {min_free / 1e9:g} decimal GB)."
+            f"resource guard: load1={load1:.2f} (maximum {maximum}), "
+            f"free={free / 1e9:.2f} GB (minimum {min_free_bytes / 1e9:g} decimal GB)."
         )
     return {"load1": load1, "free_bytes": free}
 
@@ -416,11 +425,14 @@ class Shell:
         *,
         dry_run: bool = False,
         timings: Path | None = None,
+        max_load1: float | None = None,
+        min_free_bytes: int = DEFAULT_MIN_FREE_BYTES,
     ) -> None:
         self.cwd = cwd
         self.log = log
         self.dry_run = dry_run
         self.timings = timings or log.with_suffix(".timings.jsonl")
+        self.limits = {"max_load1": max_load1, "min_free_bytes": min_free_bytes}
         self.commands: list[str] = []
 
     def __call__(
@@ -444,7 +456,7 @@ class Shell:
             "returncode": None,
         }
         try:
-            timing.update(resource_guard(self.cwd))
+            timing.update(resource_guard(self.cwd, **self.limits))
             with self.log.open("a") as handle:
                 handle.write(f"\n# {datetime.now(UTC):%Y-%m-%dT%H:%M:%SZ} $ {line}\n")
                 handle.flush()
@@ -539,6 +551,8 @@ def model_surface(
     *,
     timings: Path | None = None,
     resource_root: Path | None = None,
+    max_load1: float | None = None,
+    min_free_bytes: int = DEFAULT_MIN_FREE_BYTES,
 ) -> dict[str, list[str]]:
     """Read the country's existing variable registry at the requested model/core."""
 
@@ -555,7 +569,13 @@ def model_surface(
     }
     print(f"[start] model_surface:{version}", flush=True)
     try:
-        timing.update(resource_guard(resource_root or Path.cwd()))
+        timing.update(
+            resource_guard(
+                resource_root or Path.cwd(),
+                max_load1=max_load1,
+                min_free_bytes=min_free_bytes,
+            )
+        )
         result = subprocess.run(
         [
             "uv", "run", "--no-project", "--python", PEPY_PYTHON,
@@ -835,7 +855,8 @@ def parse(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument(
         "--pepy-repo",
         type=Path,
-        default=Path("~/PolicyEngine/policyengine.py").expanduser(),
+        required=True,
+        help="a clone of PolicyEngine/policyengine.py with an origin remote",
     )
     parser.add_argument("--worktree", type=Path, help="default: beside the repo")
     parser.add_argument(
@@ -854,13 +875,12 @@ def parse(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument(
         "--max-load1",
         type=float,
-        default=RESOURCE_LIMITS["max_load1"],
-        help="refuse each heavy step above this 1-minute load (default %(default)s)",
+        help="refuse each heavy step above this 1-minute load (default: no limit)",
     )
     parser.add_argument(
         "--min-free-gb",
         type=float,
-        default=RESOURCE_LIMITS["min_free_bytes"] / 1e9,
+        default=DEFAULT_MIN_FREE_BYTES / 1e9,
         help="refuse each heavy step below this free disk (default %(default)s GB)",
     )
     parser.add_argument("--push", action="store_true")
@@ -882,9 +902,6 @@ def parse(argv: list[str] | None) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> int:
     args = parse(argv)
-    RESOURCE_LIMITS.update(
-        max_load1=args.max_load1, min_free_bytes=int(args.min_free_gb * 1e9)
-    )
     try:
         return certify(args)
     except CertifyError as error:
@@ -897,6 +914,10 @@ def certify(args: argparse.Namespace) -> int:
         ["git", "rev-parse", "HEAD"], cwd=Path(__file__).resolve().parents[1], text=True
     ).strip()
     repo = args.pepy_repo
+    limits = {
+        "max_load1": args.max_load1,
+        "min_free_bytes": int(args.min_free_gb * 1e9),
+    }
     suffix = args.national_tag.rsplit("-", 1)[-1]
     branch = f"certify-uk-{suffix}"
     worktree = args.worktree or repo.parent / "_worktrees" / f"pepy-{branch}"
@@ -994,9 +1015,15 @@ def certify(args: argparse.Namespace) -> int:
                 )
             surface = input_surface_change(
                 model_surface(
-                    dense.model, dense.core, timings=timings, resource_root=repo
+                    dense.model,
+                    dense.core,
+                    timings=timings,
+                    resource_root=repo,
+                    **limits,
                 ),
-                model_surface(model, core, timings=timings, resource_root=repo),
+                model_surface(
+                    model, core, timings=timings, resource_root=repo, **limits
+                ),
                 regional_stored_columns(new_regional, DENSE_RELEASE, timings=timings),
             )
             if surface["dropped"] and not args.allow_dropped_columns:
@@ -1047,7 +1074,7 @@ def certify(args: argparse.Namespace) -> int:
                 cwd=repo,
                 check=True,
             )
-    run = Shell(worktree, log, timings=timings)
+    run = Shell(worktree, log, timings=timings, **limits)
     python = str(worktree / ".venv/bin/python")
     sync = ["uv", "sync", "--frozen", "--extra", "uk", "--extra", "dev",
             "--python", PEPY_PYTHON]  # fmt: skip

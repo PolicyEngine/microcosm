@@ -62,8 +62,9 @@ def test_each_route_produces_its_certify_data_flags():
 
 
 def test_routes_are_mutually_exclusive_and_required():
+    repo = ["--pepy-repo", "pepy"]
     with pytest.raises(SystemExit):
-        handoff.parse(["--national-tag", NATIONAL])
+        handoff.parse(["--national-tag", NATIONAL, *repo])
     with pytest.raises(SystemExit):
         handoff.parse(
             [
@@ -72,12 +73,16 @@ def test_routes_are_mutually_exclusive_and_required():
                 "--dense-tag",
                 DENSE,
                 "--drop-regional-release",
+                *repo,
             ]
         )
     with pytest.raises(SystemExit):
         handoff.parse(
-            ["--national-tag", NATIONAL, "--drop-regional-release", "--open-pr"]
+            ["--national-tag", NATIONAL, "--drop-regional-release", "--open-pr", *repo]
         )
+    # The policyengine.py clone is the operator's to name; no machine's layout.
+    with pytest.raises(SystemExit):
+        handoff.parse(["--national-tag", NATIONAL, "--drop-regional-release"])
 
 
 def test_the_regional_tag_is_rewritten_only_as_a_literal(tmp_path):
@@ -367,14 +372,20 @@ def test_the_pr_body_lists_the_area_input_surface():
 
 
 def test_the_resource_limits_are_the_operators_to_set(monkeypatch, tmp_path):
-    """The shared build host's limits are defaults, not constants."""
+    """No load limit unless the operator sets one; the disk floor is a default."""
 
-    monkeypatch.setattr(handoff, "RESOURCE_LIMITS", dict(handoff.RESOURCE_LIMITS))
     monkeypatch.setattr(handoff.os, "getloadavg", lambda: (12.0, 0.0, 0.0))
-    monkeypatch.setattr(handoff, "certify", lambda args: 0)
-    args = ["--national-tag", NATIONAL, "--drop-regional-release"]
-    assert handoff.main([*args, "--max-load1", "20", "--min-free-gb", "0"]) == 0
-    assert handoff.resource_guard(tmp_path)["load1"] == 12.0
-    assert handoff.main([*args, "--max-load1", "8", "--min-free-gb", "0"]) == 0
+    args = handoff.parse(
+        ["--national-tag", NATIONAL, "--drop-regional-release", "--pepy-repo", "p"]
+    )
+    assert args.max_load1 is None
+    assert handoff.resource_guard(tmp_path, min_free_bytes=0)["load1"] == 12.0
+    assert handoff.resource_guard(tmp_path, max_load1=20, min_free_bytes=0)
     with pytest.raises(handoff.CertifyError, match="maximum 8"):
-        handoff.resource_guard(tmp_path)
+        handoff.resource_guard(tmp_path, max_load1=8, min_free_bytes=0)
+    shell = handoff.Shell(tmp_path, tmp_path / "run.log", max_load1=8, min_free_bytes=0)
+    spawned = []
+    monkeypatch.setattr(handoff, "run_logged", lambda *a, **k: spawned.append(a))
+    with pytest.raises(handoff.CertifyError, match="maximum 8"):
+        shell(["heavy"])
+    assert not spawned
