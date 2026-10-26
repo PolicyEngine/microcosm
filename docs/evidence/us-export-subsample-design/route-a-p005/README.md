@@ -166,7 +166,10 @@ What the record cannot show:
 - an ignored file whose name differs only in case from a staged one, which
   git lists or not by what is staged;
 - names that differ only in Unicode normalization, which count as a rename
-  (as on HFS+, where every non-ASCII name would).
+  (HFS+ stores names decomposed, so there a name such as `é.py`, though not
+  `α.py`, would);
+- the spelling of a path in a directory that cannot be listed (execute
+  without read): such a path is recorded as unreadable, changed or not.
 
 ## Result
 

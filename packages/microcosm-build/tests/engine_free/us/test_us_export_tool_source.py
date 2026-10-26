@@ -547,11 +547,15 @@ def test_a_path_replaced_by_a_fifo_after_its_lstat_is_never_read(
 def test_a_path_replaced_by_a_link_after_its_lstat_is_read_as_the_link(
     sampler, tmp_path, monkeypatch
 ) -> None:
-    """The open refuses to follow a link put there after the lstat, and the
-    path is read again as the link it now is, not recorded as unreadable."""
+    """The open refuses to follow a link put there after the lstat, so the
+    link's target is never opened, and the path is read again as the link it
+    now is, not recorded as unreadable. An open that followed the link would
+    return the same entry (the lstat after the read sees the link) but would
+    have opened and read the target first."""
     link = tmp_path / "link"
     link.symlink_to("target.py")
-    (tmp_path / "target.py").write_bytes(b"x\n")
+    target = tmp_path / "target.py"
+    target.write_bytes(b"x\n")
     regular = tmp_path / "regular"
     regular.write_bytes(b"x\n")
     real_lstat = Path.lstat
@@ -563,12 +567,55 @@ def test_a_path_replaced_by_a_link_after_its_lstat_is_read_as_the_link(
             return real_lstat(regular)  # the file that was there before
         return real_lstat(self, *args, **kwargs)
 
+    opened: list[int] = []
+    real_open = os.open
+
+    def recording_open(path, flags, *args, **kwargs):
+        descriptor = real_open(path, flags, *args, **kwargs)
+        opened.append(os.fstat(descriptor).st_ino)
+        return descriptor
+
     monkeypatch.setattr(Path, "lstat", lstat)
+    monkeypatch.setattr(os, "open", recording_open)
     assert sampler._worktree_entry(link, "sha1") == (
         "120000",
         _blob("sha1", b"target.py"),
         hashlib.sha256(b"target.py").hexdigest(),
     )
+    assert target.stat().st_ino not in opened
+
+
+@pytest.mark.skipif(
+    not hasattr(os, "geteuid") or os.geteuid() == 0, reason="root lists any directory"
+)
+@pytest.mark.parametrize("renamed", [False, True], ids=["unchanged", "case-renamed"])
+def test_a_path_in_a_directory_that_cannot_be_listed_is_never_read_as_head(
+    sampler, probe_tool, git_env, tmp_path, renamed
+) -> None:
+    """Execute without read lets a known name be opened but not its directory
+    be listed, so its spelling on disk cannot be checked: a case-only rename
+    there would read as HEAD's file on a case-insensitive file system. Such a
+    path is recorded as unreadable instead, a difference whether or not it
+    changed; readable again, the state is HEAD's."""
+    repo = Repo(tmp_path / "repo")
+    repo.write("tools/sub/Case.py", b"case\n")
+    repo.commit()
+    clean = _both(sampler, probe_tool, repo.root)
+    assert clean[1] is False
+    if renamed:
+        _rename(repo, "tools/sub/Case.py", "tools/sub/case.py")
+    sub = repo.root / "tools" / "sub"
+    sub.chmod(0o111)
+    try:
+        with pytest.raises(PermissionError):
+            os.listdir(sub)
+        state = _both(sampler, probe_tool, repo.root)
+    finally:
+        sub.chmod(0o755)
+    assert state[1] is True
+    if renamed:
+        _rename(repo, "tools/sub/case.py", "tools/sub/Case.py")
+    assert _both(sampler, probe_tool, repo.root) == clean
 
 
 @pytest.mark.parametrize("tool_name", ["sampler", "probe_tool"])

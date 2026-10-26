@@ -196,8 +196,9 @@ def _nested_repository(path: Path) -> tuple[str, str]:
         return ("unidentified", "HEAD not ascii")
 
 
-def _spelled(root: Path, path: bytes, listings: dict) -> bytes:
-    """``path`` as the directory entries on disk spell it.
+def _spelled(root: Path, path: bytes, listings: dict) -> bytes | None:
+    """``path`` as the directory entries on disk spell it, or ``None`` when
+    a directory above it exists but cannot be listed.
 
     On a case-insensitive file system ``tools/A.py`` opens the entry
     ``tools/a.py``, and git may list either spelling, by what HEAD and the
@@ -206,8 +207,11 @@ def _spelled(root: Path, path: bytes, listings: dict) -> bytes:
     spelling takes the entry it opens (the same device and inode; one equal
     ignoring case first, then in byte order). An absent path is returned as
     given. Names that differ only in Unicode normalization are different
-    names here, as they are on disk. ``listings`` caches each directory's
-    entries for one state.
+    names here, as they are on disk. A directory whose permissions let known
+    names be opened but not the directory be read (execute without read)
+    leaves the spelling unknown, so ``None``: the caller records the path as
+    unreadable, never as HEAD's. ``listings`` caches each directory's entries
+    for one state.
     """
     spelled: list[bytes] = []
     parent = os.fsencode(root)
@@ -215,9 +219,13 @@ def _spelled(root: Path, path: bytes, listings: dict) -> bytes:
         if parent not in listings:
             try:
                 listings[parent] = frozenset(os.listdir(parent))
+            except (FileNotFoundError, NotADirectoryError):
+                listings[parent] = None  # nothing is below it
             except OSError:
-                listings[parent] = None
+                listings[parent] = False  # there, but it cannot be listed
         names = listings[parent]
+        if names is False:
+            return None
         if names is not None and part not in names:
             try:
                 target = os.lstat(os.path.join(parent, part))
@@ -343,8 +351,11 @@ def _git_state(root: Path | None = None) -> tuple[str | None, bool | None, str |
     ``core.filemode`` and ``core.ignorecase`` change nothing, a case-only
     rename is a difference, and a file staged while this runs is still seen:
     one ``ls-files`` call lists the index and the untracked files together.
-    A skip-worktree entry missing from the working tree (a sparse checkout)
-    counts as unchanged, as git counts it. A submodule counts as unchanged
+    A path below a directory that cannot be listed is recorded as
+    unreadable, as its spelling cannot be checked (the digest then also
+    depends on which names git lists there). A skip-worktree entry missing
+    from the working tree (a sparse checkout) counts as unchanged, as git
+    counts it. A submodule counts as unchanged
     when its directory is at the commit HEAD records or is not checked out
     (no ``.git``), and as a difference when it is missing, replaced by a
     file, at another commit or unidentified, as git counts it.
@@ -406,7 +417,9 @@ def _git_state(root: Path | None = None) -> tuple[str | None, bool | None, str |
     listings: dict = {}
     for path in set(committed) | listed:
         spelled = _spelled(root, path, listings)
-        if spelled not in worktree:
+        if spelled is None:
+            worktree[path] = ("unreadable", "", "in a directory that cannot be listed")
+        elif spelled not in worktree:
             worktree[spelled] = _worktree_entry(
                 root / os.fsdecode(spelled), object_format
             )
