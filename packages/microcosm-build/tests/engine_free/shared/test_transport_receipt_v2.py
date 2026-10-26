@@ -10,11 +10,12 @@ from __future__ import annotations
 import copy
 import json
 import math
+from fractions import Fraction
 
 import numpy as np
 import pandas as pd
 import pytest
-from hypothesis import HealthCheck, given, settings
+from hypothesis import HealthCheck, example, given, settings
 from hypothesis import strategies as st
 
 from microcosm.build.transport import receipt_contract as receipt_module
@@ -673,12 +674,16 @@ def test_contract_refuses_a_draw_key_collision(monkeypatch):
 @PROPERTY
 @given(
     st.lists(
-        st.tuples(st.text(max_size=12), st.text(max_size=12)),
+        st.tuples(
+            st.text(alphabet='a:/|"[]\\', max_size=12),
+            st.text(alphabet='a:/|"[]\\', max_size=12),
+        ),
         min_size=1,
         max_size=15,
         unique=True,
     )
 )
+@example(pairs=[("a:b", "c"), ("a", "b:c"), ("", ":"), (":", "")])
 def test_property_draw_key_is_injective(pairs):
     assert len({receipt_draw_key(*pair) for pair in pairs}) == len(pairs)
 
@@ -765,8 +770,9 @@ def test_property_disjoint_strata_and_outside_partition_eligible_mass(ages, data
     )
 
 
-@PROPERTY
+@settings(max_examples=18, deadline=None, database=None, derandomize=True)
 @given(st.integers(1, 15), st.floats(min_value=0, max_value=0.25, allow_nan=False))
+@example(count=15, fraction=0.25)
 def test_property_exclusion_group_never_assigns_two_flags(count, fraction):
     contract = _contract(
         _program("alpha"),
@@ -942,3 +948,173 @@ def test_hall_diagnostic_checks_mixed_unstratified_and_stratified_subsets():
         and violation["eligible_mass"] == 2
         for violation in feasibility["violations"]
     )
+
+
+@st.composite
+def _hall_cases(draw):
+    count = draw(st.integers(0, 12))
+    size = draw(st.integers(0, 8))
+    # Binary fractions retain exact, varied float capacities without rounding
+    # away the comparison against the independent rational reference below.
+    capacity = st.integers(0, 32).map(lambda value: value / 8)
+    weights = np.asarray(draw(st.lists(capacity, min_size=count, max_size=count)))
+    demands = [
+        (
+            f"p{index}",
+            f"f{index % 3}",
+            draw(capacity),
+            np.asarray(
+                draw(st.lists(st.booleans(), min_size=count, max_size=count)),
+                dtype=bool,
+            ),
+        )
+        for index in range(size)
+    ]
+    return demands, weights
+
+
+@settings(max_examples=120, deadline=None, database=None, derandomize=True)
+@given(_hall_cases())
+def test_property_hall_flow_matches_exact_bruteforce(case):
+    demands, weights = case
+    scale = 1 - Fraction(receipt_module.RECEIPT_RELATIVE_TOLERANCE)
+
+    def deficiency(indices):
+        total = sum((Fraction(demands[index][2]) for index in indices), Fraction())
+        mask = np.zeros(len(weights), dtype=bool)
+        for index in indices:
+            mask |= demands[index][3]
+        mass = sum((Fraction(float(value)) for value in weights[mask]), Fraction())
+        return scale * total - mass
+
+    maximum = max(
+        (
+            deficiency([i for i in range(len(demands)) if subset & (1 << i)])
+            for subset in range(1, 1 << len(demands))
+        ),
+        default=Fraction(),
+    )
+    result = receipt_module.hall_diagnostics(demands, weights)
+    assert result["feasible"] == (maximum <= 0)
+    if result["feasible"]:
+        assert result["violations"] == []
+    else:
+        (violation,) = result["violations"]
+        indices = [
+            i for i, demand in enumerate(demands) if demand[0] in violation["programs"]
+        ]
+        assert deficiency(indices) == maximum
+        assert violation["target"] == float(
+            sum((Fraction(demands[i][2]) for i in indices), Fraction())
+        )
+        union = np.logical_or.reduce([demands[i][3] for i in indices])
+        assert violation["eligible_mass"] == float(
+            sum((Fraction(float(value)) for value in weights[union]), Fraction())
+        )
+        assert violation["filters"] == [demands[i][1] for i in indices]
+
+
+def test_hall_exact_relative_tolerance_boundary(monkeypatch):
+    monkeypatch.setattr(receipt_module, "RECEIPT_RELATIVE_TOLERANCE", 0.125)
+    demands = [("alpha", None, 8.0, np.ones(1, dtype=bool))]
+    assert receipt_module.hall_diagnostics(demands, np.array([7.0]))["feasible"]
+    assert not receipt_module.hall_diagnostics(
+        demands, np.array([np.nextafter(7.0, 0)])
+    )["feasible"]
+
+
+def test_hall_24_demands_collapses_supplies_without_enumerating_subsets(monkeypatch):
+    def no_subsets(*args, **kwargs):
+        raise AssertionError("Hall diagnostics must not enumerate demand subsets")
+
+    monkeypatch.setattr(receipt_module.itertools, "combinations", no_subsets)
+    people = np.arange(20_000)
+    demands = [
+        (f"p{program}", f"s{stratum}", 1.0, people % 6 == stratum)
+        for program in range(4)
+        for stratum in range(6)
+    ]
+    result = receipt_module.hall_diagnostics(demands, np.ones(len(people)))
+    assert result["feasible"]
+    assert result["violations"] == []
+
+
+def test_numerical_check_underflow_refuses_with_audit():
+    with pytest.raises(
+        ReceiptAssignmentRefused, match="numerical expected-mass check"
+    ) as refused:
+        _assign(
+            _people((20, 21, 22)), weights=[1e200] * 3, targets={"alpha_total": 1e-200}
+        )
+    audit = refused.value.audit
+    assert audit["status"] == "refused"
+    detail = audit["programs"]["receives_alpha"]["strata"][0]
+    assert detail["numerical_check"]["passed"] is False
+    assert detail["numerical_check"]["expected_mass"] == 0
+    assert detail["target"] == 1e-200
+
+
+@pytest.mark.parametrize("weight", [math.inf, -math.inf, math.nan])
+def test_v2_nonfinite_weights_refuse(weight):
+    with pytest.raises(ValueError, match="finite"):
+        _assign(_people((20,)), weights=[weight])
+
+
+def test_v2_overflowing_weight_sum_refuses_as_value_error():
+    with pytest.raises(ValueError, match="finite sum"):
+        _assign(_people((20, 21, 22)), weights=[1e308] * 3)
+
+
+def test_v2_cyclic_exclusion_groups_refuse_at_validation():
+    contract = _contract(
+        _program("alpha"),
+        _program("beta"),
+        groups=[
+            ["receives_alpha", "receives_beta"],
+            ["receives_beta", "receives_alpha"],
+        ],
+    )
+    with pytest.raises(ValueError, match="cyclic order"):
+        validate_receipt_contract(contract)
+
+
+@pytest.mark.parametrize("output", ["person_id", "person_household_id"])
+def test_v2_output_structural_column_refuses_in_pure_function(output):
+    row = _program()
+    row["output"] = output
+    with pytest.raises(ValueError, match="structural column"):
+        _assign(_people((20,)), _contract(row))
+
+
+@pytest.mark.parametrize("mismatch", ["length", "ids", "order", "missing"])
+def test_v2_person_table_must_match_argument(mismatch):
+    person = _people((20, 21))
+    table = person.copy()
+    if mismatch == "length":
+        table = table.iloc[:1]
+    elif mismatch == "ids":
+        table["person_id"] += 10
+    else:
+        table = table.iloc[::-1]
+    with pytest.raises(ValueError, match="align with person length and ids"):
+        receipt_module.assign_receipts_v2(
+            person,
+            _contract(),
+            weights=np.ones(2),
+            targets={"alpha_total": 0},
+            knobs={"assignment": "central"},
+            tables={} if mismatch == "missing" else {"person": table},
+        )
+
+
+@pytest.mark.parametrize("target", [np.int64(1), np.float32(1), np.float64(1)])
+def test_v2_numpy_real_targets_are_accepted(target):
+    out, audit = _assign(_people((20,)), targets={"alpha_total": target})
+    assert out["receives_alpha"].tolist() == [True]
+    assert type(audit["programs"]["receives_alpha"]["strata"][0]["target"]) is float
+
+
+@pytest.mark.parametrize("target", [True, np.bool_(True)])
+def test_v2_boolean_targets_refuse(target):
+    with pytest.raises(ValueError, match="target must be finite"):
+        _assign(_people((20,)), targets={"alpha_total": target})

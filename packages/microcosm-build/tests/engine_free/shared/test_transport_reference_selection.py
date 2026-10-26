@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import ast
+import importlib
+import inspect
 import json
 from copy import deepcopy
+from types import ModuleType
 
 import numpy as np
 import pandas as pd
@@ -193,7 +196,7 @@ def _v2_spec():
     spec["resources"]["calibration_bindings"] = {
         "schema_version": 1,
         "required_inputs": {"person": ["age"]},
-        "input_domains": {"person": {"age": {"kind": "integer", "minimum": 0}}},
+        "input_domains": {"person": {"age": {"kind": "nonnegative_integer"}}},
         "columns": [
             {
                 "entity": "person",
@@ -636,6 +639,208 @@ def test_legacy_selection_path_changed_mutant_frozen_surface_params_and_keys(
     assert keys[0] == keys[1]
 
 
+@pytest.mark.parametrize(
+    ("module_name", "kernel_name"),
+    [
+        ("column_kernels", "TAKEUP_ASSIGN"),
+        ("gate_kernels", "GateBatteryKernel"),
+        ("geography_kernels", "GEOGRAPHY_SUPPORT_FROM_FACTS"),
+        ("population_kernels", "TRANSPORT_CREATE"),
+        ("population_kernels", "TRANSPORT_QUANTILE_MAP"),
+        ("takeup_kernels", "TAKEUP_GAP"),
+        ("target_kernels", "TARGETS_COMPILE"),
+        ("target_kernels", "TARGETS_PROBLEM"),
+        ("target_kernels", "TAKEUP_COMPARE"),
+        ("terminal_kernels", "DIAGNOSTICS_CALIBRATION"),
+    ],
+)
+def test_surface_consumers_hash_selection_and_profile_modules(
+    monkeypatch, module_name, kernel_name
+):
+    # source_hash reads only each explicitly supplied module's bytes. Cover
+    # every kernel reaching decode_target_surface, including through helpers.
+    module = importlib.import_module(f"microcosm.build.transport.{module_name}")
+    hashed = set()
+
+    def capture(*objects, **kwargs):
+        for obj in objects:
+            defining_module = (
+                obj if isinstance(obj, ModuleType) else inspect.getmodule(obj)
+            )
+            hashed.add(defining_module.__name__)
+        return SHA
+
+    monkeypatch.setattr(module, "source_hash", capture)
+    kernel = getattr(module, kernel_name)
+    if kernel_name == "GateBatteryKernel":
+        kernel = kernel({})
+    kernel.implementation_hash()
+    assert {
+        "microcosm.build.reference_profiles",
+        "microcosm.build.transport.reference_selection",
+    } <= hashed
+
+
+def _compiled_surface_with_exemption(tmp_path):
+    facts = write_facts(
+        tmp_path / "facts.jsonl", [toy_fact("used", 3, entity="person")]
+    )
+    payload, _ = target_kernels.compile_target_surface(
+        facts,
+        _document(),
+        country="xx",
+        references_sha256=SHA,
+        reference_selection=_selection(),
+    )
+    return payload
+
+
+def test_surface_decode_refuses_active_exemption(tmp_path):
+    document = json.loads(_compiled_surface_with_exemption(tmp_path))
+    document["reference_selection"] = _selection(_exemption(status="active"))
+    with pytest.raises(ValueError, match="cannot exempt an active reference"):
+        target_kernels.decode_target_surface(canonical_json(document))
+
+
+def test_surface_decode_refuses_exempt_compiled_reference(tmp_path):
+    document = json.loads(_compiled_surface_with_exemption(tmp_path))
+    document["reference_selection"] = _selection(_exemption("used"))
+    with pytest.raises(ValueError, match="An exempt reference entered"):
+        target_kernels.decode_target_surface(canonical_json(document))
+
+
+def test_resolution_filters_transformed_exempt_reference(tmp_path):
+    from microcosm.build.reference_profiles import (
+        reference_document_sha256,
+        resolve_reference_profiles,
+    )
+
+    def selector(key, category=None):
+        value = {
+            "aggregate_fact_key": key,
+            "source_name": "publisher",
+            "source_measure_id": "count",
+            "source_concept": "people",
+            "entity_name": "person",
+            "record_set_id": "people",
+            "period_type": "calendar_year",
+            "period_value": 2023,
+            "geography_level": "region",
+            "geography_id": "a",
+            "geography_vintage": "v",
+            "dimensions": [] if category is None else ["category"],
+        }
+        if category is not None:
+            value["dimension_values"] = {"category": category}
+        return value
+
+    document = _document()
+    parked = document["target_references"][1]
+    parked.pop("ledger_fact_key", None)
+    parked["ledger_selector"] = selector("atom", 1)
+    transformation = {
+        "reference_names": ["parked"],
+        "operation": "allocated_residual_by_ratio",
+        "value_operands": [
+            {"role": "base", "expected_member_count": 1},
+            {"role": "total", **selector("total")},
+            {
+                "role": "partition",
+                "member_selectors": [selector("atom", 1)],
+                "allocation_member_keys": ["atom"],
+            },
+        ],
+        "metadata": {"allocation_ruling": "Declared allocation."},
+    }
+    declaration = {
+        "schema_version": 1,
+        "dimensions": {
+            "allocation": {
+                "default": "allocated",
+                "profiles": {"allocated": {"transformations": [transformation]}},
+            }
+        },
+    }
+    effective, _, receipt = resolve_reference_profiles(document, declaration, {})
+    assert receipt["transformed_names"] == ["parked"]
+    facts = write_facts(
+        tmp_path / "facts.jsonl", [toy_fact("used", 3, entity="person")]
+    )
+    payload, registry = target_kernels.compile_target_surface(
+        facts,
+        effective,
+        country="xx",
+        references_sha256=reference_document_sha256(effective),
+        reference_resolution=receipt,
+        reference_selection=_selection(),
+    )
+    surface = target_kernels.decode_target_surface(payload)
+    assert [spec.name for spec in registry.specs] == ["used"]
+    assert surface.reference_resolution == receipt
+    assert surface.references_sha256 == receipt["effective_references_sha256"]
+
+
+def test_v2_activation_refuses_unsupported_calibration_input_domain():
+    spec, _ = _v2_spec()
+    domain = spec["resources"]["calibration_bindings"]["input_domains"]["person"]["age"]
+    domain["kind"] = "integer"
+    with pytest.raises(
+        ValueError, match="Calibration input person.age has an unsupported domain"
+    ):
+        compose.validate_transport_activation(spec)
+
+
+@pytest.mark.parametrize("knob_scope", ["central", "scenario"])
+def test_v2_assignment_node_key_uses_only_assignment_knob(knob_scope):
+    spec, assignment = _v2_spec()
+    spec["resources"]["scenarios"]["central_knobs"]["unrelated"] = "before"
+    changed = deepcopy(spec)
+    before_selection = {"unrelated": "before"} if knob_scope == "scenario" else {}
+    after_selection = {"unrelated": "after"} if knob_scope == "scenario" else {}
+    if knob_scope == "central":
+        changed["resources"]["scenarios"]["central_knobs"]["unrelated"] = "after"
+
+    def assignment_key(selected_spec, selection):
+        node = compose._node(
+            selected_spec, assignment, CONFIG, {}, profile_selection=selection
+        )
+        graph = Graph(
+            "xx",
+            (SourceRef("seed", "raw-bytes-v1"),),
+            (
+                Node(
+                    "open",
+                    "fixture.create@1",
+                    sources=("seed",),
+                    structural=StructuralDelta.CREATE,
+                    outputs=CONFIG.create_outputs,
+                ),
+                node,
+            ),
+        )
+        return node_key(
+            compile_graph(graph),
+            node.id,
+            {"open": SHA},
+            SHA,
+            {},
+            kernel_capabilities=Capabilities(Determinism.DETERMINISTIC),
+        )
+
+    baseline_key = assignment_key(spec, before_selection)
+    assert baseline_key == assignment_key(changed, after_selection)
+    assert baseline_key != assignment_key(
+        changed, {**after_selection, "receipt_profile": "reverse"}
+    )
+
+
+def test_v2_assignment_node_refuses_unresolved_assignment_knob():
+    spec, assignment = _v2_spec()
+    del spec["resources"]["scenarios"]["central_knobs"]["receipt_profile"]
+    with pytest.raises(ValueError, match="'receipt_profile' is not a resolved knob"):
+        compose._node(spec, assignment, CONFIG, {}, profile_selection={})
+
+
 def test_full_effective_resolution_hash_survives_exemption_filtering(tmp_path):
     from microcosm.build.reference_profiles import (
         reference_document_sha256,
@@ -665,3 +870,18 @@ def test_full_effective_resolution_hash_survives_exemption_filtering(tmp_path):
     surface = target_kernels.decode_target_surface(payload)
     assert surface.references_sha256 == receipt["effective_references_sha256"]
     assert surface.reference_resolution == receipt
+
+
+def test_v2_activation_refuses_cyclic_exclusion_groups():
+    spec, _ = _v2_spec()
+    contract = spec["resources"]["receipt_contract"]["receipts"]
+    second = deepcopy(contract["programs"][0])
+    second.update(program="second", output="receives_second")
+    second["strata"][0]["target"] = "second_target"
+    contract["programs"].append(second)
+    contract["exclusion_groups"] = [
+        ["receives_benefit", "receives_second"],
+        ["receives_second", "receives_benefit"],
+    ]
+    with pytest.raises(ValueError, match="cyclic order"):
+        compose.validate_transport_activation(spec)

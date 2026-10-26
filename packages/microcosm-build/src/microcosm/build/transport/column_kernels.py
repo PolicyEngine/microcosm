@@ -703,6 +703,8 @@ class TakeupAssignKernel(_ColumnKernel):
             concepts_module,
             closure_module,
             target_kernels,
+            target_kernels.reference_profiles_module,
+            target_kernels.reference_selection_module,
             registry_module,
             hierarchy_module,
             calibration_predicates_module,
@@ -840,6 +842,12 @@ class TakeupAssignKernel(_ColumnKernel):
                         f"Receipt target {name!r} must be a {row['projection']} count of {row['output']!r} with declared stratum filter {stratum['filter']!r}."
                     )
                 targets[name] = target.value
+        if ("calibration_bindings" in context.params) != (
+            "calibration_bindings_sha256" in context.params
+        ):
+            raise ValueError(
+                f"{self.ref} calibration_bindings and its sha256 must be supplied together."
+            )
         bindings = (
             _document(context, self.ref, "calibration_bindings")
             if "calibration_bindings" in context.params

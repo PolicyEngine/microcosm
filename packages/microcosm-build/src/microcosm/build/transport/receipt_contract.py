@@ -5,7 +5,10 @@ from __future__ import annotations
 import itertools
 import json
 import math
+from collections import deque
 from collections.abc import Mapping
+from fractions import Fraction
+from numbers import Real
 
 import numpy as np
 
@@ -155,6 +158,12 @@ def validate_receipt_v2(contract):
                 raise ValueError(
                     f"Receipt non-person {field} reserved for the declared-unit receipt extension."
                 )
+        if (
+            item["output"] == f"{item['projection']}_id"
+            or item["output"].startswith("person_")
+            and item["output"].endswith("_id")
+        ):
+            raise ValueError("Receipt output cannot be a structural column.")
         if "strata" in row:
             if not isinstance(row["strata"], list | tuple) or not row["strata"]:
                 raise ValueError("Receipt strata must be a non-empty list.")
@@ -203,6 +212,7 @@ def validate_receipt_v2(contract):
             raise ValueError(
                 "Each receipt exclusion group names distinct declared outputs."
             )
+    _ordered_receipt_outputs([row["output"] for row in parsed], groups)
     unmodelled = _strings(
         contract.get("unmodelled_programs", []), "unmodelled_programs"
     )
@@ -225,63 +235,145 @@ def _ratio(target, mass):
     return target / mass if mass else (0 if target == 0 else None)
 
 
+def _ordered_receipt_outputs(outputs, groups):
+    pending, ordered = list(outputs), []
+    while pending:
+        available = [
+            output
+            for output in pending
+            if all(
+                not any(prior in pending for prior in group[: group.index(output)])
+                for group in groups
+                if output in group
+            )
+        ]
+        if not available:
+            raise ValueError("Receipt exclusion groups declare a cyclic order.")
+        output = available[0]
+        ordered.append(output)
+        pending.remove(output)
+    return ordered
+
+
 def hall_diagnostics(demands, weights):
-    """Check every subset, using fsum and a declared relative tolerance.
+    """Report one maximally deficient demand set using exact rational max-flow.
 
     A demand is (programme, filter, target, eligibility mask). Split people into
-    equal-neighbourhood weighted supplies. A network joins source to supplies,
-    supplies to eligible demands, and demands to sink with target capacities.
-    The max-flow/min-cut theorem says all targets can be filled iff every subset
-    of demands has total target at most its neighbouring supply (weighted Hall).
-    Dividing a flow by each person's weight gives mutually exclusive receipt
-    probabilities, and multiplying such probabilities gives a flow, proving
+    equal-neighbourhood weighted supplies. Join source to supplies, supplies to
+    eligible demands, and demands to sink. Convert each float weight, target and
+    relative tolerance r with Fraction, and scale demand capacities by (1 - r).
+    For T > N, the relative Hall rule permits a subset iff N >= (1 - r) * T.
+    Thus max-flow saturates every demand iff all subsets satisfy that rule.
+
+    The demand nodes on the sink side of a minimum cut maximise (1 - r) * T - N.
+    When infeasible, report this one set with its unscaled target and supply.
+    Edmonds-Karp uses O(V * E**2) rational operations, never demand subsets.
+    A flow divided by people's weights gives mutually exclusive receipt
+    probabilities, and multiplying those probabilities gives a flow, proving
     equivalence for expected counts. This is diagnostic only; draws and priority
     may still refuse even when the fractional allocation is feasible.
     """
-    # Collapse identical neighbourhoods once. Each subsequent cut reads only
-    # these weighted supplies, rather than scanning the person table again.
+    grouped_weights = {}
     if demands:
         packed = np.packbits(
             np.column_stack([item[3] for item in demands]), axis=1, bitorder="little"
         )
-        grouped_weights = {}
         for packed_pattern, weight in zip(packed, weights, strict=True):
             pattern = int.from_bytes(packed_pattern.tobytes(), "little")
             if pattern:
-                grouped_weights.setdefault(pattern, []).append(float(weight))
-        supplies = [
-            (pattern, math.fsum(grouped_weights[pattern]))
-            for pattern in sorted(grouped_weights)
-        ]
-    else:
-        supplies = []
+                grouped_weights[pattern] = grouped_weights.get(
+                    pattern, Fraction()
+                ) + Fraction(float(weight))
+    supplies = sorted(grouped_weights.items())
+    scale = 1 - Fraction(RECEIPT_RELATIVE_TOLERANCE)
+    targets = [Fraction(item[2]) for item in demands]
+    required = sum(targets, Fraction()) * scale
+    source, supply_start = 0, 1
+    demand_start = supply_start + len(supplies)
+    sink = demand_start + len(demands)
+    graph = [[] for _ in range(sink + 1)]
+
+    def edge(left, right, capacity):
+        graph[left].append([right, capacity, len(graph[right])])
+        graph[right].append([left, Fraction(), len(graph[left]) - 1])
+
+    for index, (pattern, mass) in enumerate(supplies):
+        supply = supply_start + index
+        edge(source, supply, mass)
+        for demand in range(len(demands)):
+            if pattern & (1 << demand):
+                edge(supply, demand_start + demand, required)
+    for index, target in enumerate(targets):
+        edge(demand_start + index, sink, scale * target)
+    flow = Fraction()
+    while True:
+        parents = {source: None}
+        queue = deque([source])
+        while queue and sink not in parents:
+            left = queue.popleft()
+            for index, (right, capacity, _) in enumerate(graph[left]):
+                if capacity > 0 and right not in parents:
+                    parents[right] = (left, index)
+                    queue.append(right)
+        if sink not in parents:
+            break
+        capacity, right = required, sink
+        while right != source:
+            left, index = parents[right]
+            capacity = min(capacity, graph[left][index][1])
+            right = left
+        right = sink
+        while right != source:
+            left, index = parents[right]
+            arc = graph[left][index]
+            arc[1] -= capacity
+            graph[right][arc[2]][1] += capacity
+            right = left
+        flow += capacity
     violations = []
-    for size in range(1, len(demands) + 1):
-        for indices in itertools.combinations(range(len(demands)), size):
-            subset = [demands[index] for index in indices]
-            subset_pattern = sum(1 << index for index in indices)
-            total = math.fsum(item[2] for item in subset)
-            mass = math.fsum(
-                supply for pattern, supply in supplies if pattern & subset_pattern
-            )
-            if total > mass and not math.isclose(
-                total, mass, rel_tol=RECEIPT_RELATIVE_TOLERANCE, abs_tol=0
-            ):
-                filters = {item[1] for item in subset}
-                violations.append(
-                    {
-                        "programs": [item[0] for item in subset],
-                        "filter": next(iter(filters)) if len(filters) == 1 else None,
-                        "filters": [item[1] for item in subset],
-                        "target": total,
-                        "eligible_mass": mass,
-                    }
-                )
+    if flow < required:
+        indices = [
+            index
+            for index in range(len(demands))
+            if demand_start + index not in parents
+        ]
+        subset = [demands[index] for index in indices]
+        subset_pattern = sum(1 << index for index in indices)
+        filters = {item[1] for item in subset}
+        violations.append(
+            {
+                "programs": [item[0] for item in subset],
+                "filter": next(iter(filters)) if len(filters) == 1 else None,
+                "filters": [item[1] for item in subset],
+                "target": float(sum((targets[index] for index in indices), Fraction())),
+                "eligible_mass": float(
+                    sum(
+                        (
+                            mass
+                            for pattern, mass in supplies
+                            if pattern & subset_pattern
+                        ),
+                        Fraction(),
+                    )
+                ),
+            }
+        )
     return {
         "violations": violations,
         "feasible": not violations,
         "relative_tolerance": RECEIPT_RELATIVE_TOLERANCE,
     }
+
+
+def _refuse_assignment(message, audit, out):
+    audit["status"] = "refused"
+    for group_audit in audit["exclusion_groups"]:
+        group_audit["status"] = (
+            "completed"
+            if all(name in out for name in group_audit["order"])
+            else "refused"
+        )
+    raise ReceiptAssignmentRefused(message, audit)
 
 
 def assign_receipts_v2(
@@ -314,11 +406,31 @@ def assign_receipts_v2(
         or (weights < 0).any()
     ):
         raise ValueError("Receipt weights must be aligned, finite and non-negative.")
+    try:
+        total_weight = math.fsum(weights.tolist())
+    except OverflowError as error:
+        raise ValueError("Receipt weights must have a finite sum.") from error
+    if not math.isfinite(total_weight):
+        raise ValueError("Receipt weights must have a finite sum.")
     tables = (
         dict(tables)
         if tables is not None
         else {row[field]: person for row in rows for field in RECEIPT_UNIT_FIELDS}
     )
+    for entity in {row[field] for row in rows for field in RECEIPT_UNIT_FIELDS}:
+        table = tables.get(entity)
+        id_column = f"{entity}_id"
+        if (
+            table is None
+            or len(table) != len(person)
+            or id_column not in table
+            or not np.array_equal(
+                table[id_column].to_numpy(), person[id_column].to_numpy()
+            )
+        ):
+            raise ValueError(
+                "Receipt entity tables must align with person length and ids."
+            )
     eligible, masks, target_values = {}, {}, {}
     before_payment = {}
     for row in rows:
@@ -355,12 +467,15 @@ def assign_receipts_v2(
                     f"Receipt target {name!r} needs a surface and weights."
                 )
             value = targets[name]
-            if (
-                isinstance(value, bool)
-                or not isinstance(value, int | float)
-                or not math.isfinite(value)
-                or value < 0
-            ):
+            if isinstance(value, bool | np.bool_) or not isinstance(value, Real):
+                raise ValueError("Receipt target must be finite and non-negative.")
+            try:
+                value = float(value)
+            except (OverflowError, ValueError) as error:
+                raise ValueError(
+                    "Receipt target must be finite and non-negative."
+                ) from error
+            if not math.isfinite(value) or value < 0:
                 raise ValueError("Receipt target must be finite and non-negative.")
             target_values[name] = value
             if filter_name is None:
@@ -422,8 +537,7 @@ def assign_receipts_v2(
             for row in group_rows
             for s in receipt_strata(row)
         ]
-        # This includes each stratum's 2**k - 1 programme subsets and the
-        # cross-filter cuts required when a group also has unstratified demands.
+        # One flow includes all strata and mixed-filter demand cuts.
         feasibility = hall_diagnostics(demands, weights)
         audit["exclusion_groups"].append(
             {
@@ -434,23 +548,9 @@ def assign_receipts_v2(
             }
         )
     by_output = {row["output"]: row for row in rows}
-    pending = list(by_output)
-    ordered = []
-    while pending:
-        available = [
-            output
-            for output in pending
-            if all(
-                not any(prior in pending for prior in group[: group.index(output)])
-                for group in groups
-                if output in group
-            )
-        ]
-        if not available:
-            raise ValueError("Receipt exclusion groups declare a cyclic order.")
-        output = available[0]
-        ordered.append(by_output[output])
-        pending.remove(output)
+    ordered = [
+        by_output[output] for output in _ordered_receipt_outputs(by_output, groups)
+    ]
     id_column = f"{rows[0]['projection']}_id"
     out = person.loc[:, [id_column]].copy()
     for row in ordered:
@@ -510,16 +610,10 @@ def assign_receipts_v2(
             }
             stratum_audits.append(detail)
             if target > mass:
-                audit["status"] = "refused"
-                for group_audit in audit["exclusion_groups"]:
-                    group_audit["status"] = (
-                        "completed"
-                        if all(name in out for name in group_audit["order"])
-                        else "refused"
-                    )
-                raise ReceiptAssignmentRefused(
+                _refuse_assignment(
                     f"Receipt target {name!r} exceeds eligible weighted mass in {order} order.",
                     audit,
+                    out,
                 )
             chosen = pool & (draws < rate)
             assigned |= chosen
@@ -540,6 +634,12 @@ def assign_receipts_v2(
                     },
                 }
             )
+            if not detail["numerical_check"]["passed"]:
+                _refuse_assignment(
+                    f"Receipt target {name!r} failed the numerical expected-mass check in {order} order.",
+                    audit,
+                    out,
+                )
         audit["programs"][output]["realized_mass"] = _mass(weights, assigned)
         audit["programs"][output]["n_receipts"] = int(assigned.sum())
         out[output] = assigned

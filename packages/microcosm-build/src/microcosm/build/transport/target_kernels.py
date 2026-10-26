@@ -966,6 +966,8 @@ class TargetsProblemKernel(KernelBase):
             hierarchy_module,
             calibrate_artifacts_module,
             reference_intervals_module,
+            reference_profiles_module,
+            reference_selection_module,
             *_MATRIX_MODULES,
             dependencies=self.capabilities.dependencies,
         )

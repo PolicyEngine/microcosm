@@ -2,6 +2,7 @@
 
 import copy
 import json
+from dataclasses import replace
 from types import SimpleNamespace
 
 import numpy as np
@@ -186,3 +187,23 @@ def test_v2_kernel_resolves_profile_from_declared_knob(tmp_path):
     )
     with pytest.raises(ValueError, match="assignment_knob"):
         TAKEUP_ASSIGN.run(context)
+
+
+@pytest.mark.parametrize(
+    "missing", ["calibration_bindings", "calibration_bindings_sha256"]
+)
+def test_v2_kernel_requires_bindings_and_sha_together(tmp_path, missing):
+    # No strata need bindings here: a lone SHA must refuse on its own, rather
+    # than falling through to the separate missing-stratum-bindings refusal.
+    context = _context(tmp_path, filter_name=None)
+    params = dict(context.params)
+    contract = json.loads(params["receipt_contract"])
+    row = contract["programs"][0]
+    del row["strata"]
+    del row["outside_strata"]
+    row["target"] = "alpha_target"
+    params["receipt_contract"] = canonical_text(contract)
+    params["receipt_contract_sha256"] = digest(contract)
+    del params[missing]
+    with pytest.raises(ValueError, match="supplied together"):
+        TAKEUP_ASSIGN.run(replace(context, params=params))

@@ -66,6 +66,7 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Protocol
 
+from microcosm.build.calibration_predicates import validate_calibration_inputs
 from microcosm.build.country_spec import load_country_spec
 from microcosm.build.graph_atomic_geography import (
     ATOMIC_GEOGRAPHY_VALIDATION_TYPE,
@@ -1139,6 +1140,8 @@ def validate_transport_activation(spec: Mapping[str, object]) -> None:
                     if strata_declared
                     else {}
                 )
+                if strata_declared:
+                    validate_calibration_inputs(None, bindings)
                 filters = {
                     (entry.get("entity"), entry.get("name"))
                     for entry in bindings.get("columns", ())
@@ -1741,8 +1744,14 @@ def _node(
                     spec, "calibration_bindings"
                 )
             central = transport_resource(spec, "scenarios").get("central_knobs", {})
+            assignment_knob = receipt_contract["assignment_knob"]
+            selected_knobs = {**central, **(profile_selection or {})}
+            if assignment_knob not in selected_knobs:
+                raise ValueError(
+                    f"Receipt assignment_knob {assignment_knob!r} is not a resolved knob."
+                )
             params["profile_selection"] = canonical_json(
-                {**central, **(profile_selection or {})}
+                {assignment_knob: selected_knobs[assignment_knob]}
             ).decode("utf-8")
     if (
         kernel in TARGET_COMPILATION_KERNELS | {"calibration.prepare@1"}

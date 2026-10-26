@@ -16,12 +16,13 @@ import pandas as pd
 
 
 def validate_calibration_inputs(
-    tables: Mapping[str, pd.DataFrame], bindings: Mapping[str, Any]
+    tables: Mapping[str, pd.DataFrame] | None, bindings: Mapping[str, Any]
 ) -> tuple[Mapping[str, Any], list[Any] | tuple[Any, ...]]:
     """Validate every declared input using preparation's original contract.
 
     Return the declarations so callers can validate their outputs without repeating
-    schema or input validation. No table or column is mutated.
+    schema or input validation. ``None`` validates the schema without data, for
+    activation preflight. No table or column is mutated.
     """
     if bindings.get("schema_version") != 1:
         raise ValueError("Calibration bindings require schema_version 1.")
@@ -33,18 +34,21 @@ def validate_calibration_inputs(
     if not isinstance(columns, (list, tuple)) or not columns:
         raise ValueError("Calibration bindings need nonempty columns.")
     for entity, names in required.items():
-        if entity not in tables:
+        if tables is not None and entity not in tables:
             raise ValueError(f"Calibration preparation needs the {entity!r} table.")
         if not isinstance(names, (list, tuple)) or not names:
             raise ValueError(f"Calibration required_inputs for {entity!r} are invalid.")
         entity_domains = domains.get(entity, {})
         for name in names:
-            if name not in tables[entity]:
+            if tables is not None and name not in tables[entity]:
                 raise ValueError(f"Calibration preparation needs {entity}.{name}.")
             domain = entity_domains.get(name)
             if not isinstance(domain, Mapping):
                 raise ValueError(f"Calibration input {entity}.{name} needs a domain.")
-            _validate_input(tables[entity][name], domain, f"{entity}.{name}")
+            if tables is None:
+                _input_domain_kind(domain, f"{entity}.{name}")
+            else:
+                _validate_input(tables[entity][name], domain, f"{entity}.{name}")
 
     return required, columns
 
@@ -142,27 +146,36 @@ def _identity(value: object) -> tuple[type, object]:
 def _validate_input(values: pd.Series, domain: Mapping[str, Any], name: str) -> None:
     if values.isna().any():
         raise ValueError(f"Calibration input {name} contains missing values.")
-    if domain.get("kind") == "identity":
+    kind = _input_domain_kind(domain, name)
+    if kind == "identity":
         for value in values.tolist():
             _identity(value)
         valid = True
-    elif domain.get("kind") == "signed_integer":
+    elif kind == "signed_integer":
         valid = all(
             isinstance(value, Integral) and not isinstance(value, (bool, np.bool_))
             for value in values.tolist()
         )
-    elif domain.get("kind") == "nonnegative_integer":
+    elif kind == "nonnegative_integer":
         valid = all(
             _finite_number(value) and value >= 0 and value == int(value)
             for value in values.tolist()
         )
-    elif isinstance(domain.get("values"), (list, tuple)) and domain["values"]:
+    else:
         allowed = domain["values"]
         valid = all(
             any(type(value) is type(member) and value == member for member in allowed)
             for value in values.tolist()
         )
-    else:
-        raise ValueError(f"Calibration input {name} has an unsupported domain.")
     if not valid:
         raise ValueError(f"Calibration input {name} is outside its declared domain.")
+
+
+def _input_domain_kind(domain: Mapping[str, Any], name: str) -> str:
+    """Share domain-schema validation between activation and table validation."""
+    kind = domain.get("kind")
+    if kind in ("identity", "signed_integer", "nonnegative_integer"):
+        return kind
+    if isinstance(domain.get("values"), (list, tuple)) and domain["values"]:
+        return "values"
+    raise ValueError(f"Calibration input {name} has an unsupported domain.")
