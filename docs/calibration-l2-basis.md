@@ -177,6 +177,15 @@ recalibrated from its own checkpoint (`experiments/us-acs-local-l2-basis-2026092
   `l2_lambda`, so the gain is optimistic.
 - **What limits ESS is the starting weights.** The experiment's README has the
   frontier, the holdout, candidate ESS floors and the recommendation.
+- **On the weighted loss.** With the national release's target weighting
+  (microcosm#1104), `l2_lambda` is in units of a different loss, so the
+  README's "On the weighted loss" section re-picks it. Held-out weighted error
+  is lowest at projection `l2_lambda = 0.1` on the default weights. But the
+  weighting gives each state's district populations one shared budget, and at
+  0.1 it leaves 135 of 436 trained district populations more than 10% off.
+  `l2_lambda = 0.03` with `--target-family-loss-multiplier
+  census_population=8` misfits 3 and has slightly lower held-out error (by
+  0.6%). The multiplier was chosen after the first pass of runs.
 
 ## Using it
 
