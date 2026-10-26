@@ -552,14 +552,12 @@ def _area_signed_deferrals(
         geography_level="local_authority",
         reason_id="council_tax_band_h_spine_support_absent",
         rationale=(
-            "Spine-m carries 170 band-H households from 49 raw FRS households "
-            "(London 13, Wales 11, South East 8, Scotland 6, West Midlands 4, "
-            "South West 3, East of England 3, East Midlands 1). At the ruled "
-            "K=15, 76 of the 296 authorities draw no band-H household and the "
-            "median of the rest draws five (84 of 296 at K=10), so the family "
-            "cannot bind at local-authority grain until a spine vintage "
-            "carries broader band-H support (microcosm#762 A14; carried onto "
-            "the MHCLG taxbase basis by microcosm#929)."
+            "Spine-m carries 170 band-H households from 49 raw FRS households. "
+            "At the ruled K=15, 76 of the 296 authorities draw no band-H "
+            "household and the median of the rest draws five (84 of 296 at "
+            "K=10), so the family cannot bind at local-authority grain until a "
+            "spine vintage carries broader band-H support (microcosm#762 A14; "
+            "carried onto the MHCLG taxbase basis by microcosm#929)."
         ),
         area_ids=english_local_authorities,
         defer_if_compiles=True,
