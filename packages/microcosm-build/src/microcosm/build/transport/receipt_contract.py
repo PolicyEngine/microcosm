@@ -17,6 +17,7 @@ from microcosm.frame.concepts import derive_take_up_draws
 from microcosm.frame.input_closure import UndeterminedAction, resolve_judgments
 
 RECEIPT_RELATIVE_TOLERANCE = 1 / 10**12
+_HALL_WEIGHT_CHUNK = 1 << 16
 RECEIPT_UNIT_FIELDS = ("entitlement_entity", "payee", "draw_unit", "projection")
 
 
@@ -256,86 +257,146 @@ def _ordered_receipt_outputs(outputs, groups):
 
 
 def hall_diagnostics(demands, weights):
-    """Report one maximally deficient demand set using exact rational max-flow.
+    """Report one maximally deficient demand set using an exact integer max-flow.
 
     A demand is (programme, filter, target, eligibility mask). Split people into
     equal-neighbourhood weighted supplies. Join source to supplies, supplies to
-    eligible demands, and demands to sink. Convert each float weight, target and
-    relative tolerance r with Fraction, and scale demand capacities by (1 - r).
-    For T > N, the relative Hall rule permits a subset iff N >= (1 - r) * T.
-    Thus max-flow saturates every demand iff all subsets satisfy that rule.
+    eligible demands, and demands to sink, and scale demand capacities by
+    (1 - r). For T > N, the relative Hall rule permits a subset iff
+    N >= (1 - r) * T. Thus max-flow saturates every demand iff all subsets
+    satisfy that rule.
 
-    The demand nodes on the sink side of a minimum cut maximise (1 - r) * T - N.
-    When infeasible, report this one set with its unscaled target and supply.
-    Edmonds-Karp uses O(V * E**2) rational operations, never demand subsets.
-    A flow divided by people's weights gives mutually exclusive receipt
-    probabilities, and multiplying those probabilities gives a flow, proving
-    equivalence for expected counts. This is diagnostic only; draws and priority
-    may still refuse even when the fractional allocation is feasible.
+    Every weight, target and 1 - r is rational, so one common denominator makes
+    every capacity an exact integer: the weights share one power of two, and a
+    rational target adds its own denominator. Each pattern's weights are summed
+    as integers, a chunk of people at a time.
+
+    Dinic's algorithm finds the flow. Each phase sets BFS levels, then routes a
+    blocking flow along level-increasing arcs with current-arc pointers. A
+    shortest augmenting path alternates supplies with distinct demands, so at
+    most len(demands) phases route flow, and nothing enumerates demand subsets.
+
+    When the flow falls short, no supply-to-demand arc is saturated, since each
+    can carry the whole requirement. The demands the source cannot reach in the
+    final residual graph then maximise (1 - r) * T - N. That set is the same for
+    every maximum flow, and it is the union of all maximising sets. Report it
+    with its unscaled target and supply. A flow divided by people's weights
+    gives mutually exclusive receipt probabilities, and multiplying those
+    probabilities gives a flow, proving equivalence for expected counts. This
+    is diagnostic only; draws and priority may still refuse even when the
+    fractional allocation is feasible.
     """
-    grouped_weights = {}
+    denominator, totals = 1, {}
     if demands:
         packed = np.packbits(
             np.column_stack([item[3] for item in demands]), axis=1, bitorder="little"
         )
-        for packed_pattern, weight in zip(packed, weights, strict=True):
-            pattern = int.from_bytes(packed_pattern.tobytes(), "little")
+        weights = np.asarray(weights, dtype=np.float64)
+        if weights.shape != (len(packed),):
+            raise ValueError("Receipt weights must align with the demand masks.")
+        rows, inverse = np.unique(packed, axis=0, return_inverse=True)
+        # People eligible for no demand join no supply, so their weights are
+        # never read.
+        active = packed.any(axis=1)
+        inverse = inverse.reshape(-1)[active]
+        weights = weights[active]
+        chunks = range(0, len(weights), _HALL_WEIGHT_CHUNK)
+        for start in chunks:
+            chunk = weights[start : start + _HALL_WEIGHT_CHUNK].tolist()
+            denominator = max(
+                denominator, max(value.as_integer_ratio()[1] for value in chunk)
+            )
+        sums = [0] * len(rows)
+        for start in chunks:
+            stop = start + _HALL_WEIGHT_CHUNK
+            for index, value in zip(
+                inverse[start:stop].tolist(),
+                weights[start:stop].tolist(),
+                strict=True,
+            ):
+                numerator, value_denominator = value.as_integer_ratio()
+                sums[index] += numerator * (denominator // value_denominator)
+        for row, total in zip(rows, sums, strict=True):
+            pattern = int.from_bytes(row.tobytes(), "little")
             if pattern:
-                grouped_weights[pattern] = grouped_weights.get(
-                    pattern, Fraction()
-                ) + Fraction(float(weight))
-    supplies = sorted(grouped_weights.items())
+                totals[pattern] = total
+    supplies = sorted(totals.items())
     scale = 1 - Fraction(RECEIPT_RELATIVE_TOLERANCE)
+    # Fraction keeps a NumPy integer's own type, whose products can overflow.
     targets = [Fraction(item[2]) for item in demands]
-    required = sum(targets, Fraction()) * scale
+    targets = [Fraction(int(t.numerator), int(t.denominator)) for t in targets]
+    needed = [scale * target for target in targets]
+    common = math.lcm(denominator, *(value.denominator for value in needed))
+    demand_capacity = [
+        value.numerator * (common // value.denominator) for value in needed
+    ]
+    required = sum(demand_capacity)
     source, supply_start = 0, 1
     demand_start = supply_start + len(supplies)
     sink = demand_start + len(demands)
-    graph = [[] for _ in range(sink + 1)]
+    arcs = [[] for _ in range(sink + 1)]
+    ends, capacity = [], []
 
-    def edge(left, right, capacity):
-        graph[left].append([right, capacity, len(graph[right])])
-        graph[right].append([left, Fraction(), len(graph[left]) - 1])
+    def edge(left, right, amount):
+        # Arc a's reverse is a ^ 1.
+        arcs[left].append(len(ends))
+        ends.append(right)
+        capacity.append(amount)
+        arcs[right].append(len(ends))
+        ends.append(left)
+        capacity.append(0)
 
-    for index, (pattern, mass) in enumerate(supplies):
+    for index, (pattern, total) in enumerate(supplies):
         supply = supply_start + index
-        edge(source, supply, mass)
+        edge(source, supply, total * (common // denominator))
         for demand in range(len(demands)):
-            if pattern & (1 << demand):
+            if pattern >> demand & 1:
                 edge(supply, demand_start + demand, required)
-    for index, target in enumerate(targets):
-        edge(demand_start + index, sink, scale * target)
-    flow = Fraction()
+    for index, amount in enumerate(demand_capacity):
+        edge(demand_start + index, sink, amount)
+    flow = 0
     while True:
-        parents = {source: None}
+        level = [-1] * (sink + 1)
+        level[source] = 0
         queue = deque([source])
-        while queue and sink not in parents:
-            left = queue.popleft()
-            for index, (right, capacity, _) in enumerate(graph[left]):
-                if capacity > 0 and right not in parents:
-                    parents[right] = (left, index)
-                    queue.append(right)
-        if sink not in parents:
+        while queue:
+            node = queue.popleft()
+            for arc in arcs[node]:
+                if capacity[arc] > 0 and level[ends[arc]] < 0:
+                    level[ends[arc]] = level[node] + 1
+                    queue.append(ends[arc])
+        if level[sink] < 0:
             break
-        capacity, right = required, sink
-        while right != source:
-            left, index = parents[right]
-            capacity = min(capacity, graph[left][index][1])
-            right = left
-        right = sink
-        while right != source:
-            left, index = parents[right]
-            arc = graph[left][index]
-            arc[1] -= capacity
-            graph[right][arc[2]][1] += capacity
-            right = left
-        flow += capacity
+        pointer = [0] * (sink + 1)
+        while True:
+            path, node = [], source
+            while node != sink:
+                out = arcs[node]
+                while pointer[node] < len(out) and not (
+                    capacity[out[pointer[node]]] > 0
+                    and level[ends[out[pointer[node]]]] == level[node] + 1
+                ):
+                    pointer[node] += 1
+                if pointer[node] < len(out):
+                    path.append(out[pointer[node]])
+                    node = ends[path[-1]]
+                elif path:
+                    node = ends[path.pop() ^ 1]
+                    pointer[node] += 1
+                else:
+                    break
+            if node != sink:
+                break
+            pushed = min(capacity[arc] for arc in path)
+            for arc in path:
+                capacity[arc] -= pushed
+                capacity[arc ^ 1] += pushed
+            flow += pushed
     violations = []
     if flow < required:
+        # The last BFS did not reach the sink, so level < 0 marks the sink side.
         indices = [
-            index
-            for index in range(len(demands))
-            if demand_start + index not in parents
+            index for index in range(len(demands)) if level[demand_start + index] < 0
         ]
         subset = [demands[index] for index in indices]
         subset_pattern = sum(1 << index for index in indices)
@@ -347,13 +408,13 @@ def hall_diagnostics(demands, weights):
                 "filters": [item[1] for item in subset],
                 "target": float(sum((targets[index] for index in indices), Fraction())),
                 "eligible_mass": float(
-                    sum(
-                        (
-                            mass
-                            for pattern, mass in supplies
+                    Fraction(
+                        sum(
+                            total
+                            for pattern, total in supplies
                             if pattern & subset_pattern
                         ),
-                        Fraction(),
+                        denominator,
                     )
                 ),
             }

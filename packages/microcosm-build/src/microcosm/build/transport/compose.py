@@ -1735,7 +1735,18 @@ def _node(
             params["reference_selection"] = canonical_json(selection).decode("utf-8")
     if kernel == "takeup.assign@1" and "receipt_contract" in params:
         receipt_contract = json.loads(params["receipt_contract"])
-        if receipt_contract.get("contract_version") == 2:
+        if (
+            isinstance(receipt_contract, Mapping)
+            and receipt_contract.get("contract_version") == 2
+        ):
+            # Activation checks receipt_contract.json, but a node may select
+            # another document: refuse it as the kernel would, before use.
+            try:
+                validate_receipt_contract(receipt_contract)
+            except (ValueError, TypeError) as error:
+                raise ValueError(
+                    f"Node {row.get('id')!r} receipt_contract: {error}"
+                ) from error
             if _has_resource(spec, "calibration_bindings"):
                 params["calibration_bindings"] = canonical_json(
                     transport_resource(spec, "calibration_bindings")

@@ -954,9 +954,13 @@ def test_hall_diagnostic_checks_mixed_unstratified_and_stratified_subsets():
 def _hall_cases(draw):
     count = draw(st.integers(0, 12))
     size = draw(st.integers(0, 8))
-    # Binary fractions retain exact, varied float capacities without rounding
-    # away the comparison against the independent rational reference below.
-    capacity = st.integers(0, 32).map(lambda value: value / 8)
+    # Binary fractions give varied capacities; the extremes (subnormal, 1/3,
+    # 1e300) stress the shared integer denominator. The rational reference
+    # below is exact for every float.
+    capacity = st.one_of(
+        st.integers(0, 32).map(lambda value: value / 8),
+        st.sampled_from([5e-324, 2.2250738585072014e-308, 1e-300, 1 / 3, 1e300]),
+    )
     weights = np.asarray(draw(st.lists(capacity, min_size=count, max_size=count)))
     demands = [
         (
@@ -1004,6 +1008,14 @@ def test_property_hall_flow_matches_exact_bruteforce(case):
             i for i, demand in enumerate(demands) if demand[0] in violation["programs"]
         ]
         assert deficiency(indices) == maximum
+        # The reported set is the union of every maximising set.
+        maximisers = [
+            members
+            for subset in range(1, 1 << len(demands))
+            for members in [[i for i in range(len(demands)) if subset >> i & 1]]
+            if deficiency(members) == maximum
+        ]
+        assert indices == sorted(set().union(*maximisers))
         assert violation["target"] == float(
             sum((Fraction(demands[i][2]) for i in indices), Fraction())
         )
@@ -1037,6 +1049,133 @@ def test_hall_24_demands_collapses_supplies_without_enumerating_subsets(monkeypa
     result = receipt_module.hall_diagnostics(demands, np.ones(len(people)))
     assert result["feasible"]
     assert result["violations"] == []
+
+
+@pytest.mark.parametrize(("share", "feasible"), [(0.066, True), (1.0, False)])
+def test_hall_distinct_patterns_at_scale(share, feasible):
+    # Independent masks give almost every person a pattern of their own: about
+    # 20,000 supplies, a shape Edmonds-Karp over Fractions did not finish.
+    rng = np.random.default_rng(0)
+    masks = rng.random((20_000, 24)) < 0.5
+    weights = rng.uniform(1, 100, 20_000)
+    demands = [
+        (f"p{index}", None, share * float(weights[masks[:, index]].sum()), mask)
+        for index, mask in enumerate(masks.T)
+    ]
+    result = receipt_module.hall_diagnostics(demands, weights)
+    assert result["feasible"] is feasible
+    if not feasible:
+        (violation,) = result["violations"]
+        assert violation["programs"] == [f"p{index}" for index in range(24)]
+
+
+@pytest.mark.parametrize(
+    "target", [4, 4.0, Fraction(4), np.int64(4), np.int32(4), np.float64(4)]
+)
+def test_hall_targets_of_every_real_type_agree(target):
+    weights = np.array([0.1, 3.3])
+
+    def diagnose(value):
+        return receipt_module.hall_diagnostics(
+            [
+                ("alpha", None, value, np.array([True, True])),
+                ("beta", "adult", 0.5, np.array([True, False])),
+            ],
+            weights,
+        )
+
+    assert diagnose(target) == diagnose(4)
+    assert not diagnose(4)["feasible"]
+
+
+def test_hall_rational_targets_are_exact():
+    scale = 1 - Fraction(receipt_module.RECEIPT_RELATIVE_TOLERANCE)
+    # A target whose denominator is not a power of two, at the exact boundary.
+    target = Fraction(7) / scale
+    assert target.denominator & (target.denominator - 1)
+    demands = [("alpha", None, target, np.ones(1, dtype=bool))]
+    assert receipt_module.hall_diagnostics(demands, np.array([7.0]))["feasible"]
+    assert not receipt_module.hall_diagnostics(
+        demands, np.array([np.nextafter(7.0, 0)])
+    )["feasible"]
+    # Capacities of 4/3 and 1/5 need the lcm of 3, 5 and the weights' 4. Alpha
+    # is short by 1/12, more than the pair's 1/30, so it alone is reported.
+    demands = [
+        ("alpha", None, Fraction(4, 3) / scale, np.array([True, False])),
+        ("beta", None, Fraction(1, 5) / scale, np.array([False, True])),
+    ]
+    result = receipt_module.hall_diagnostics(demands, np.array([1.25, 0.25]))
+    assert not result["feasible"]
+    assert result["violations"][0]["programs"] == ["alpha"]
+
+
+def test_hall_refuses_weights_that_do_not_align_with_masks():
+    demands = [("alpha", None, 1.0, np.ones(2, dtype=bool))]
+    with pytest.raises(ValueError, match="align with the demand masks"):
+        receipt_module.hall_diagnostics(demands, np.ones(3))
+
+
+def test_hall_keeps_targets_exact_below_float_resolution():
+    scale = 1 - Fraction(receipt_module.RECEIPT_RELATIVE_TOLERANCE)
+    # Both targets round to the same float but sit either side of the boundary.
+    below = 1 / scale - Fraction(1, 2**200)
+    above = 1 / scale + Fraction(1, 2**200)
+    assert float(below) == float(above)
+
+    def feasible(target):
+        demands = [("alpha", None, target, np.ones(1, dtype=bool))]
+        return receipt_module.hall_diagnostics(demands, np.ones(1))["feasible"]
+
+    assert feasible(below)
+    assert not feasible(above)
+
+
+def test_hall_reroutes_flow_along_reverse_arcs():
+    # The first blocking flow sends alpha through the first person and strands
+    # beta; only undoing that flow along a reverse arc finds the allocation.
+    demands = [
+        ("alpha", None, 1.0, np.array([True, True])),
+        ("beta", None, 1.0, np.array([True, False])),
+        ("gamma", None, 0.0, np.array([False, True])),
+    ]
+    assert receipt_module.hall_diagnostics(demands, np.ones(2))["feasible"]
+
+
+@pytest.mark.parametrize(("target", "feasible"), [(1.25, True), (2.0, False)])
+def test_hall_sums_weights_across_chunks(target, feasible):
+    people = receipt_module._HALL_WEIGHT_CHUNK + 1
+    weights = np.zeros(people)
+    # One weight in each chunk, each with its own power-of-two denominator.
+    weights[0], weights[-1] = 0.5, 1.0
+    demands = [("alpha", None, target, np.ones(people, dtype=bool))]
+    result = receipt_module.hall_diagnostics(demands, weights)
+    assert result["feasible"] is feasible
+    if not feasible:
+        assert result["violations"][0]["eligible_mass"] == 1.5
+
+
+def test_hall_keeps_pattern_indices_aligned_across_chunks():
+    people = receipt_module._HALL_WEIGHT_CHUNK + 1
+    weights = np.zeros(people)
+    weights[0], weights[-1] = 1.0, 1.0
+    # Only the last person, alone in the second chunk, is eligible for beta.
+    beta = np.zeros(people, dtype=bool)
+    beta[-1] = True
+    demands = [("alpha", None, 1.0, ~beta), ("beta", None, 1.0, beta)]
+    assert receipt_module.hall_diagnostics(demands, weights)["feasible"]
+
+
+@pytest.mark.parametrize("weight", [math.nan, math.inf, -math.inf])
+def test_hall_ignores_weights_of_people_eligible_for_nothing(weight):
+    demands = [("alpha", None, 1.0, np.array([False, True]))]
+    assert receipt_module.hall_diagnostics(
+        demands, np.array([weight, 1.0])
+    ) == receipt_module.hall_diagnostics(demands, np.array([0.0, 1.0]))
+    # The same weight on an eligible person still refuses.
+    eligible = [("alpha", None, 1.0, np.array([True, True]))]
+    error = ValueError if math.isnan(weight) else OverflowError
+    with pytest.raises(error, match="cannot convert"):
+        receipt_module.hall_diagnostics(eligible, np.array([weight, 1.0]))
 
 
 def test_numerical_check_underflow_refuses_with_audit():

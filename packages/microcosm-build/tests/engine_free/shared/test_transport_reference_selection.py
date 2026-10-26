@@ -790,6 +790,61 @@ def test_v2_activation_refuses_unsupported_calibration_input_domain():
         compose.validate_transport_activation(spec)
 
 
+@pytest.mark.parametrize("domains", [["age"], "age", None])
+def test_v2_activation_lists_non_mapping_entity_domains(domains):
+    spec, _ = _v2_spec()
+    spec["resources"]["calibration_bindings"]["input_domains"]["person"] = domains
+    with pytest.raises(ValueError, match="Calibration input person.age needs a domain"):
+        compose.validate_transport_activation(spec)
+
+
+@pytest.mark.parametrize("with_tables", [False, True])
+def test_calibration_inputs_refuse_non_mapping_entity_domains(with_tables):
+    from microcosm.build.calibration_predicates import validate_calibration_inputs
+
+    spec, _ = _v2_spec()
+    bindings = deepcopy(spec["resources"]["calibration_bindings"])
+    bindings["input_domains"]["person"] = ["age"]
+    tables = {"person": pd.DataFrame({"age": [30]})} if with_tables else None
+    with pytest.raises(ValueError, match="Calibration input person.age needs a domain"):
+        validate_calibration_inputs(tables, bindings)
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        "valid_contract",
+        "literal_not_an_object",
+        "drop_assignment_knob",
+        "unknown_field",
+    ],
+)
+def test_v2_assignment_node_validates_its_own_receipt_contract(change):
+    spec, assignment = _v2_spec()
+    contract = deepcopy(spec["resources"]["receipt_contract"]["receipts"])
+    if change == "drop_assignment_knob":
+        del contract["assignment_knob"]
+    elif change == "unknown_field":
+        contract["unexpected"] = True
+    # The node selects a document that activation does not check.
+    spec["resources"]["alt_receipt"] = {"receipts": contract}
+    assignment = deepcopy(assignment)
+    for name in ("receipt_contract", "receipt_contract_sha256"):
+        assignment["params"][name]["resource"] = "alt_receipt"
+    if change == "literal_not_an_object":
+        # A json resource selection must already be an object, but a literal
+        # string parameter need not be; the kernel refuses it at run time.
+        assignment["params"]["receipt_contract"] = '["receives_benefit"]'
+    if change in ("valid_contract", "literal_not_an_object"):
+        compose._node(spec, assignment, CONFIG, {}, profile_selection={})
+        return
+    with pytest.raises(
+        ValueError,
+        match="Node 'assign' receipt_contract: Receipt v2 contract has missing",
+    ):
+        compose._node(spec, assignment, CONFIG, {}, profile_selection={})
+
+
 @pytest.mark.parametrize("knob_scope", ["central", "scenario"])
 def test_v2_assignment_node_key_uses_only_assignment_knob(knob_scope):
     spec, assignment = _v2_spec()

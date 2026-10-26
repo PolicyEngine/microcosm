@@ -42,7 +42,11 @@ def validate_calibration_inputs(
         for name in names:
             if tables is not None and name not in tables[entity]:
                 raise ValueError(f"Calibration preparation needs {entity}.{name}.")
-            domain = entity_domains.get(name)
+            domain = (
+                entity_domains.get(name)
+                if isinstance(entity_domains, Mapping)
+                else None
+            )
             if not isinstance(domain, Mapping):
                 raise ValueError(f"Calibration input {entity}.{name} needs a domain.")
             if tables is None:
