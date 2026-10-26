@@ -520,6 +520,33 @@ def test_pay_concept_ratio_measures_few_reporters_and_refuses_none() -> None:
         )
 
 
+def _reporting_jobs(households: int, ratio: float) -> tuple:
+    """One current employee main job a household, at one DV-to-usual ratio."""
+    person_ids = np.arange(1, households + 1)
+    job = pd.DataFrame(
+        {
+            "person_id": person_ids,
+            "household_id": person_ids,
+            "jobtype": 1,
+            "etype": fai.ETYPE_EMPLOYEE_CODE,
+            "ugross": 500.0,
+            "ugrspay": 500.0 * ratio,
+        }
+    )
+    return person_ids, np.ones(households), job, np.ones(households, dtype=bool)
+
+
+@pytest.mark.parametrize("measured, used", [(1.5, 1.10), (0.5, 0.95), (1.02, 1.02)])
+def test_a_thin_pay_concept_ratio_is_held_to_its_bounds(measured, used) -> None:
+    """On fewer than ten households a ratio past the plausibility bounds is
+    noise: it is held to them, and the build goes on (Vahid's second review
+    of #1396). On ten or more it still refuses."""
+    ratio, support = fai.pay_concept_ratio(*_reporting_jobs(5, measured))
+    assert support == 5 and ratio == pytest.approx(used)
+    with pytest.raises(ValueError, match="lies outside"):
+        fai.pay_concept_ratio(*_reporting_jobs(10, 1.5))
+
+
 @pytest.mark.parametrize("key", ["pay_concept_ratio", "annual_over_current_earners"])
 def test_gate_flags_a_ratio_on_fewer_than_ten_households(key: str) -> None:
     gate = _gate({**_leaver_evidence(), key: "<10"})
