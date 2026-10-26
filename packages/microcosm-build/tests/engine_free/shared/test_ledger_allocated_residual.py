@@ -16,6 +16,7 @@ from microcosm.build.ledger_targets import (
     LedgerTargetReference,
     compile_ledger_target_references,
     fact_matches_selector,
+    reconcile_signed_partition,
     reference_fact_selectors,
     target_spec_from_ledger_reference,
 )
@@ -795,6 +796,39 @@ def test_signed_relative_only_bound_admits_more_than_three():
 
 
 @pytest.mark.parametrize("residual", [-4, 4])
+def test_signed_relative_bound_is_inclusive(residual):
+    # |R| / L == max_relative exactly: 4 / 4000 is 0.001, past max_abs=3.
+    receipt = _signed_receipt((2000, 1500, 500), residual=residual)
+    assert receipt["bounds_passed"] == ["relative"]
+    assert sum(map(_fraction, receipt["reconciled"].values())) == 4000 + residual
+    with pytest.raises(ValueError, match=r"R=5, L=4000.*exceeds either bound"):
+        _signed_receipt((2000, 1500, 500), residual=5)
+
+
+def test_signed_relative_bound_compares_exact_rationals():
+    # Fraction("0.1") is exactly 1/10; Fraction(float("0.1")) exceeds it by
+    # about 5.6e-18, so a gap 1e-18 past the bound tells the two apart.
+    policy = {**SIGNED_POLICY, "max_abs": 0, "max_relative": "0.1"}
+    partition = {"a": Fraction(6), "b": Fraction(4)}
+    _, _, bounds = reconcile_signed_partition(
+        partition, Fraction(11), policy, region="01"
+    )
+    assert bounds == ("relative",)
+    with pytest.raises(ValueError, match="exceeds either bound"):
+        reconcile_signed_partition(
+            partition, Fraction(11) + Fraction(1, 10**18), policy, region="01"
+        )
+
+
+@pytest.mark.parametrize("value", [41.5, "41.5", "83/2"])
+def test_signed_count_reader_refuses_non_integer_counts(value):
+    facts, reference = _signed_case()
+    facts[0]["value"] = value
+    with pytest.raises(ValueError, match="exact nonnegative integer count"):
+        _compile(facts, reference)
+
+
+@pytest.mark.parametrize("residual", [-4, 4])
 def test_signed_outside_either_bound_refuses_and_names_region_gap_leaves(residual):
     with pytest.raises(
         ValueError,
@@ -848,6 +882,7 @@ def test_signed_policy_closed_keys_and_exact_decimal_refusals(key, value):
         "positive_without_policy",
         "positive_outside",
         "multiple_positive",
+        "positive_null",
     ],
 )
 def test_signed_recipient_contract_refuses_incompatible_declarations(change):
@@ -859,6 +894,8 @@ def test_signed_recipient_contract_refuses_incompatible_declarations(change):
         del operands[2]["discrepancy_policy"]
     elif change == "positive_outside":
         operands[2]["positive_allocation_member_keys"] = ["fact:outside"]
+    elif change == "positive_null":
+        operands[2]["positive_allocation_member_keys"] = None
     else:
         operands[2]["positive_allocation_member_keys"] = ["fact:atom:2", "fact:atom:3"]
     with pytest.raises(ValueError):

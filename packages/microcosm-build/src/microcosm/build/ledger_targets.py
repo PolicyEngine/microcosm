@@ -2712,8 +2712,9 @@ def _validate_allocation_reference(reference: LedgerTargetReference) -> None:
             raise ValueError(
                 f"{prefix} signed central recipients must be the full partition."
             )
+        # Present means one recipient: an explicit null is not an absent key.
         positive = operands[2].get("positive_allocation_member_keys")
-        if positive is not None and (
+        if "positive_allocation_member_keys" in operands[2] and (
             not isinstance(positive, (list, tuple))
             or len(positive) != 1
             or not isinstance(positive[0], str)
