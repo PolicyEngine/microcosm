@@ -6,6 +6,7 @@ import base64
 import hashlib
 import json
 import re
+import subprocess
 
 import pytest
 from hypothesis import given
@@ -220,13 +221,62 @@ def test_check_fails_without_a_key(monkeypatch, capsys):
     assert json.loads(capsys.readouterr().out)["ok"] is False
 
 
-def test_generate_prints_a_fresh_key_and_its_fingerprint(capsys):
+def test_generate_pipes_a_fresh_key_and_its_fingerprint(capsys):
     assert registry.main(["generate"]) == 0
     captured = capsys.readouterr()
     key = decode_gate_signing_key(captured.out.strip(), env="E")
     assert captured.err.strip() == f"key_sha256 {gate_signing_key_fingerprint(key)}"
     assert registry.main(["generate"]) == 0
     assert capsys.readouterr().out.strip() != captured.out.strip()
+
+
+def test_generate_never_prints_a_key_to_a_terminal(capsys, monkeypatch):
+    monkeypatch.setattr(registry.sys.stdout, "isatty", lambda: True)
+    assert registry.main(["generate"]) == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "--keychain-service" in captured.err
+
+
+def test_generate_stores_the_key_without_it_in_any_argv(capsys, monkeypatch):
+    calls = []
+    store = {}
+
+    def run(argv, **kwargs):
+        calls.append((argv, kwargs.get("input")))
+        if argv[:2] == ["security", "-i"]:
+            store["value"] = kwargs["input"].split(" -w ", 1)[1].strip()
+            return subprocess.CompletedProcess(argv, 0, "", "")
+        return subprocess.CompletedProcess(argv, 0, store["value"] + "\n", "")
+
+    monkeypatch.setattr(registry.subprocess, "run", run)
+    monkeypatch.setattr(registry.getpass, "getuser", lambda: "builder")
+    monkeypatch.setattr(registry.sys.stdout, "isatty", lambda: True)
+    assert registry.main(["generate", "--keychain-service", "uk-gate-key"]) == 0
+    printed = capsys.readouterr().out.strip()
+    key = base64.b64decode(store["value"])
+    assert printed == f"key_sha256 {gate_signing_key_fingerprint(key)}"
+    assert store["value"] not in printed
+    for argv, _ in calls:
+        assert store["value"] not in " ".join(argv)
+    assert calls[0][1].startswith("add-generic-password -U -a builder -s uk-gate-key ")
+
+
+def test_a_key_that_does_not_read_back_is_reported(capsys, monkeypatch):
+    monkeypatch.setattr(
+        registry.subprocess,
+        "run",
+        lambda argv, **kw: subprocess.CompletedProcess(argv, 0, "other\n", ""),
+    )
+    monkeypatch.setattr(registry.getpass, "getuser", lambda: "builder")
+    assert registry.main(["generate", "--keychain-service", "uk-gate-key"]) == 1
+    assert "did not read back" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("name", ["two words", "quo'te", ""])
+def test_keychain_names_must_be_plain(name):
+    with pytest.raises(GateSigningKeyError, match="must be plain"):
+        registry.store_in_keychain(b"k" * 32, service=name, account="builder")
 
 
 @pytest.mark.committed_gate_key_registry

@@ -35,10 +35,13 @@ from __future__ import annotations
 import argparse
 import base64
 import binascii
+import getpass
 import hashlib
 import json
 import os
+import re
 import secrets
+import subprocess
 import sys
 from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass
@@ -55,6 +58,7 @@ __all__ = [
     "gate_signing_key_fingerprint",
     "registered_gate_signing_key",
     "require_registered_gate_signing_key",
+    "store_in_keychain",
     "unregistered_gate_signing_key_problem",
 ]
 
@@ -262,12 +266,69 @@ def _list(args: argparse.Namespace) -> int:
     return 0
 
 
+#: Account and service names ``security -i`` can take unquoted.
+_KEYCHAIN_NAME = re.compile(r"^[A-Za-z0-9._@-]+$")
+
+
+def store_in_keychain(key: bytes, *, service: str, account: str) -> None:
+    """Store a key in the macOS login keychain without putting it in any argv.
+
+    ``security`` reads the command from stdin (``security -i``), so the key
+    never appears in a process list. The stored value is then read back and
+    compared, and is never printed.
+    """
+
+    for name in (service, account):
+        if not _KEYCHAIN_NAME.match(name):
+            raise GateSigningKeyError(f"keychain name {name!r} must be plain.")
+    encoded = base64.b64encode(key).decode()
+    subprocess.run(
+        ["security", "-i"],
+        input=f"add-generic-password -U -a {account} -s {service} -w {encoded}\n",
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    stored = subprocess.run(
+        ["security", "find-generic-password", "-a", account, "-s", service, "-w"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if stored.returncode != 0 or stored.stdout.strip() != encoded:
+        raise GateSigningKeyError(
+            f"the key did not read back from keychain service {service}."
+        )
+
+
 def _generate(args: argparse.Namespace) -> int:
     key = secrets.token_bytes(32)
+    fingerprint = f"key_sha256 {gate_signing_key_fingerprint(key)}"
+    if args.keychain_service:
+        try:
+            store_in_keychain(
+                key, service=args.keychain_service, account=getpass.getuser()
+            )
+        except (GateSigningKeyError, OSError, subprocess.CalledProcessError) as exc:
+            print(f"key not stored: {exc}", file=sys.stderr)
+            return 1
+        # Only the fingerprint is printed: it is what a pull request registers.
+        print(fingerprint)
+        return 0
+    if sys.stdout.isatty():
+        # A key printed to a terminal stays in its scrollback and in any
+        # agent transcript.
+        print(
+            "refusing to print a signing key to a terminal: pass "
+            "--keychain-service NAME to store it in the login keychain, or pipe "
+            "stdout into a secret store.",
+            file=sys.stderr,
+        )
+        return 1
     # The key goes to stdout for the operator to pipe into a secret store;
     # the fingerprint goes to stderr so it can be pasted into a pull request.
     print(base64.b64encode(key).decode())
-    print(f"key_sha256 {gate_signing_key_fingerprint(key)}", file=sys.stderr)
+    print(fingerprint, file=sys.stderr)
     return 0
 
 
@@ -298,9 +359,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     generate = sub.add_parser(
         "generate",
         help=(
-            "print a fresh base64 key on stdout and its fingerprint on stderr "
-            "(store the key, then register the fingerprint)"
+            "make a fresh key and print its fingerprint: stored in the login "
+            "keychain with --keychain-service, otherwise written to stdout for "
+            "a pipe into a secret store (never to a terminal)"
         ),
+    )
+    generate.add_argument(
+        "--keychain-service",
+        metavar="NAME",
+        help="store the key in the macOS login keychain under this service",
     )
     generate.set_defaults(func=_generate)
     args = parser.parse_args(argv)
