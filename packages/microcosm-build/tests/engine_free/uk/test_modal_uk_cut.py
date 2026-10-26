@@ -8,6 +8,8 @@ import sys
 from pathlib import Path
 from unittest.mock import MagicMock
 
+import pytest
+
 from microcosm.data.gate_signing_keys import UK_GATE_SIGNING_KEY_ENV
 
 ROOT = Path(__file__).resolve().parents[5]
@@ -32,14 +34,44 @@ def _load_app(monkeypatch):
     return module, stub
 
 
-def test_the_launcher_passes_the_registry_variable(monkeypatch):
+def test_a_deliberate_run_passes_the_registry_variable(monkeypatch):
     monkeypatch.setenv("HF_TOKEN", "hf-test")
     monkeypatch.setenv(UK_GATE_SIGNING_KEY_ENV, "key-test")
+    monkeypatch.setenv("MICROCOSM_UK_CUT_MODAL_RUN", "1")
     module, stub = _load_app(monkeypatch)
     assert module.registry.UK_GATE_SIGNING_KEY_ENV == UK_GATE_SIGNING_KEY_ENV
     stub.Secret.from_dict.assert_called_once_with(
         {"HF_TOKEN": "hf-test", UK_GATE_SIGNING_KEY_ENV: "key-test"}
     )
+    assert module.cut.modal_options["secrets"] == [stub.Secret.from_dict.return_value]
+
+
+def test_without_the_opt_in_no_credential_is_attached(monkeypatch):
+    """modal run sends an app's secrets before its entrypoint runs."""
+
+    monkeypatch.setenv("HF_TOKEN", "hf-test")
+    monkeypatch.setenv(UK_GATE_SIGNING_KEY_ENV, "key-test")
+    monkeypatch.delenv("MICROCOSM_UK_CUT_MODAL_RUN", raising=False)
+    module, stub = _load_app(monkeypatch)
+    stub.Secret.from_dict.assert_not_called()
+    assert module.cut.modal_options["secrets"] == []
+    with pytest.raises(SystemExit, match="deliberate, paid run"):
+        module.main("a" * 40, "t", run=True)
+
+
+def test_planning_contacts_no_modal_service(monkeypatch, capsys):
+    monkeypatch.setenv("HF_TOKEN", "hf-test")
+    monkeypatch.delenv(UK_GATE_SIGNING_KEY_ENV, raising=False)
+    module, stub = _load_app(monkeypatch)
+    monkeypatch.setattr(
+        module.subprocess,
+        "run",
+        lambda argv, **kw: module.subprocess.CompletedProcess(argv, 0),
+    )
+    stub.reset_mock()
+    assert module.plan("a" * 40, "t") == [UK_GATE_SIGNING_KEY_ENV]
+    assert stub.mock_calls == []
+    assert "missing credentials" in capsys.readouterr().out
 
 
 def test_the_image_carries_the_registry_for_the_container(monkeypatch):
