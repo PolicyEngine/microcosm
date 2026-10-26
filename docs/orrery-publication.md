@@ -47,14 +47,16 @@ one, was closed unmerged. Builds still queue uploads as described above. A
 queued job stays pending in the emitter's local queue, its files stay in the
 preserved directory, and no retry can succeed.
 
-The collector will build and publish the Orrery graph files itself instead.
-Builds will submit the graph's inputs to the collector's artifact intake
+The collector will build the Orrery graph files itself instead. Builds will
+submit the graph's inputs to the collector's artifact intake
 (PolicyEngine/microcosm-collector#12): `graph.schema.json`,
 `graph.execution.json`, the `upstream-<sha256>.json` files and the native
 evidence files, which the collector keeps private. They will not submit
 `graph.orrery.json`: the collector's Orrery worker will build it from the
-schema and the execution overlay and publish it. The direct upload to the
-runs application will then be removed.
+schema and the execution overlay. The worker keeps the graph of a build that
+used licensed microdata, as UK builds do, private; it becomes public only
+after output clearance. The direct upload to the runs application will then
+be removed.
 
 By default, a build queues an upload only when remote staging is enabled, and
 after queuing it stages its artifact bundle to Hugging Face under
