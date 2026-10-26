@@ -38,7 +38,13 @@ Evidence for microcosm#1359, behind `experiments/1359-excise-quantities-receipts
 
   Two results are left for review:
   - carrying rises with income, so the betting and gaming base moves towards the top decile;
-  - outside London, the regional pattern follows GSGB only weakly.
+  - the regional pattern follows GSGB only weakly. London is the lowest region for the Lottery, as in GSGB, but the second lowest for betting and gaming.
+- **The propensity's features** (`scripts/stage_run_gsgb_variants.py`, `outputs/stage_run_gsgb_variants.json`). Vahid's round 4 found that the propensity read recreation with the stakes in it. The script runs the stage once as committed, then the top-up alone on the same inputs in three ways:
+  - recreation with the stakes in, as at `3a20860fb`. It reproduces `stage_run_gsgb.json` exactly;
+  - recreation net of the stakes, as committed;
+  - the walk ordered by the published chance alone.
+
+  Taking the stakes out flattens part of the income gradient. Betting and gaming now runs from 26.8% of households in the bottom equivalised-income decile to 34.8% in the top, against 24.5% to 36.2% with the stakes in. The Lottery runs from 51.5% to 67.3%, against 51.6% to 70.3%. Ordered by the chance alone, betting and gaming is flat (29.2% to 29.8%), but neither key's regional pattern then follows GSGB's. With the stakes out, the Lottery's correlation with GSGB's regional rates rises from 0.41 to 0.67, and betting and gaming's stays at 0.11. The stake scales hardly move (1.82 to 1.86 for the Lottery, 0.63 to 0.64 for betting and gaming), so the stake in the feature did not cause the raw draws' gap from the seen households' mean.
 - **The union and theta** (`scripts/union_theta_sensitivity.py`, `outputs/union_theta_sensitivity.json`). Vahid's round 4 asked how much the keys rest on two choices: activities independent within their population, and theta. GSGB's own tables check the first, by age band:
   - B.13, the number of activities each four-week gambler took part in, rules out independence among players. 45% of them took part in one activity, against 26% under independence.
   - A model in which each adult's activities share a gamma-distributed intensity comes within 2.5 points of B.13's one-activity share in every age band. It moves neither key's union by more than 9% in any age band.
@@ -79,6 +85,10 @@ python scripts/theta_calibration.py <lcfs 2024-25 tab directory> outputs/theta_c
 
 ```bash
 python scripts/stage_run_gsgb.py <tree> <spine.h5> <gsgb rows jsonl> outputs/stage_run_gsgb.json
+```
+
+```bash
+python scripts/stage_run_gsgb_variants.py <tree> <spine.h5> <gsgb rows jsonl> outputs/stage_run_gsgb_variants.json
 ```
 
 ```bash

@@ -1,6 +1,6 @@
 {
- "tree": "/Users/mariajuaristi/Desktop/PolicyEngine/repos/populace-1359",
- "spine": "/Users/mariajuaristi/Desktop/microcosm-1333-arm-spine/spine-b145-treat.h5",
+ "tree": "populace-1359",
+ "spine": "spine-b145-treat.h5",
  "households": 78440,
  "gates": {
   "uk_stage_lcfs_consumption_support": {

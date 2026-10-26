@@ -15,7 +15,8 @@
   "stage_dev_run.head-split.json": "the branch head once the gambling stakes are split (Vahid's review), on the 200bf6d feed",
   "stage_dev_run.head-main-rebase.json": "the branch head rebased onto main after microcosm#1383 merged, on the 200bf6d feed",
   "stage_run_gsgb.json": "the branch head 348d1209b on the 272c987 feed, as declared and with top_up_gambling_participation removed",
-  "union_theta_sensitivity.json": "not a stage run: the 272c987 feed's GSGB rows, and the frame's adults at the branch's declared rates and thetas (round 4 moves no rate)"
+  "union_theta_sensitivity.json": "not a stage run: the 272c987 feed's GSGB rows, and the frame's adults at the branch's declared rates and thetas (round 4 moves no rate)",
+  "stage_run_gsgb_variants.json": "the branch head 6fb55666f on the 272c987 feed: the stage once as declared, then the top-up alone three ways (recreation with the stakes in, as at 3a20860fb; net of them, as committed; the published chance alone)"
  },
  "not_committed": [
   "the spine and the LCFS tabs: licensed microdata",
@@ -23,7 +24,7 @@
   "donor minima and maxima"
  ],
  "files_sha256": {
-  "README.md": "c46cad23904ec00474d16d8195d4a50056110c0371cfa6fa4242f2bdcd531909",
+  "README.md": "dbc3628f1c24cd4a441db18d3d06ca9857c40caf0982fe3b0dea1f097422d908",
   "outputs/alcohol_channel_weights.json": "a954d7f712a17bc665cf2e4f6540fb26a8f7f34be61e4997f471e28395164dcd",
   "outputs/excise_incidence.json": "3c8421da17f3380f0874a3a797a1d0188c7700ce03a260134701c97d11dd54b3",
   "outputs/national_reconciliation.json": "8f6b38ced9dc39c3ad23f1bd0936dea1ff24a900a51cb7f18d244651e7536cbe",
@@ -34,7 +35,8 @@
   "outputs/stage_dev_run.head-split.json": "737e6bf88f1572e9162285b74da83b681dbf00fdb115c6cd299ad124d826752a",
   "outputs/stage_dev_run.rebase-comparison.json": "a0029dbf44e6c3814f593d9067a7a26a004d933cfc493bde9093910e9ebf2e36",
   "outputs/stage_dev_run.split-comparison.json": "357b620571609a735024e4cc329cdda07713d7bfa5da8d91e89431e62d997323",
-  "outputs/stage_run_gsgb.json": "086439da7b81c7089986566c82355bfaf2ae95258bb0179f80635b0c7e278b89",
+  "outputs/stage_run_gsgb.json": "e88cfef0c9784f776fdb99fe78c905b6cc83fb769d912693279279d2c2843c40",
+  "outputs/stage_run_gsgb_variants.json": "eac066de2e656667906c273231832f798bf0d4a1d13f00a08390ead9ab7bfc61",
   "outputs/theta_calibration.json": "91ceef47db82b738160ab7bac8d4663b88c6bf9debd9662f107b57acc218a755",
   "outputs/union_theta_sensitivity.json": "a76812cf951973f5ebb47154bdbfdba70f6607a1e4f1ab34425c8f7d050ae153",
   "scripts/alcohol_channel_weights.py": "61ce5ede7faa5c92ff62aa9fb27b0c89eb2c4cf7ee76ccddcd26a786405f6af6",
@@ -48,6 +50,7 @@
   "scripts/sanitize_outputs.py": "47330fdd8dd1865a1823d161267480e7528dad694e1ba79ab0fd0599f74d1e66",
   "scripts/stage_dev_run.py": "5a06e200e93698ccfc48a48cee293ecfe9aee213ad9e5f49735b44ad26813ef8",
   "scripts/stage_run_gsgb.py": "4589fa9c94f9f59a7a9fbef936f1f5962097462f8e7e0d01b3ce6eec26c9e2cb",
+  "scripts/stage_run_gsgb_variants.py": "a937cbfd19cbe6e4dbae9e6f8851d51b067b9308ad21590364df96154c8256c1",
   "scripts/theta_calibration.py": "58e8d5cb8dc1fb46f6f921cb4b516bbe588e4cc1af8ad74821e59f6db17ba0d0",
   "scripts/union_theta_sensitivity.py": "2c9ccce49381970877865af855c3a51c9ee55d19aed32f5c5186f258809f4441"
  }
