@@ -704,7 +704,7 @@ def _source_gate_evidence(context: KernelContext, engine):
 
 @cache
 def uk_terminal_only_code_hash() -> str:
-    """The source hash of the high-value homes code the calibrated gates run.
+    """The source hash of the code only the calibrated gates run.
 
     The high-value homes evidence is computed on the calibrated pool alone.
     The source preflight runs the gate kernel's code and the dense solve keys
@@ -716,12 +716,30 @@ def uk_terminal_only_code_hash() -> str:
     between two builds that must reuse the solve belongs in
     ``high_value_home_gates`` alone.
 
+    The calibrated gates also publish ``calibration_diagnostics`` as schema 9:
+    ``catalog_calibration_diagnostics`` with the UK label choices (which read
+    ``UK_GEOGRAPHY_ID_TO_LABEL``), dumped from ``CalibrationDiagnosticsV9``.
+    Those modules decide the published labels and bytes, so an edit to them
+    re-keys the calibrated node the same way, never the solve.
+
     Hashed once per process, as the code was imported: an edit to the files
     while a build runs cannot fail the calibrated gates after the solve.
     """
+    import microcosm.calibrate.geography_constants as geography_constants
+    import microcosm.calibrate.hierarchy_labels as hierarchy_labels
+    import microcosm.diagnostics.catalogs as diagnostics_catalogs
+    import microcosm.diagnostics.schema as diagnostics_schema
+
     from . import high_value_home_gates, high_value_homes
 
-    return source_hash(high_value_home_gates, high_value_homes)
+    return source_hash(
+        high_value_home_gates,
+        high_value_homes,
+        diagnostics_catalogs,
+        diagnostics_schema,
+        hierarchy_labels,
+        geography_constants,
+    )
 
 
 class UKFullGateKernel(KernelBase):
