@@ -120,10 +120,11 @@ UK_GATE_SIGNING_KEYS: Mapping[str, GateSigningKey] = MappingProxyType(
                 ),
                 label="uk-gate-team-2026",
                 status="active",
-                custodian="the PolicyEngine team (Max Ghenis's shared agent store)",
+                custodian="Max Ghenis (GitHub MaxGhenis)",
                 held_in=(
                     "agent-secret service microcosm/uk-gate-signing-key-team, "
-                    "account maxghenis, on Max's build Mac"
+                    "account maxghenis, on Max's build Mac; agent sessions on "
+                    "that Mac may read it"
                 ),
                 registered="2026-10-22",
                 evidence=(

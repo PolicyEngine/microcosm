@@ -29,10 +29,9 @@ uv run --no-sync python tools/run_uk_cut.py all --label sat24              # bui
 uv run --no-sync python tools/run_uk_cut.py all --label sat24 --publish    # and publish for inspection
 ```
 
-Agent sessions on Max's build Mac read the team key with
-`agent-secret get microcosm/uk-gate-signing-key-team maxghenis`. The key can
-sign once #1350 registers it, after María agrees. `HF_TOKEN` comes from
-`agent-secret get HUGGING_FACE_TOKEN_MAX maxghenis`.
+Agent sessions on Max's build Mac read the team key, whose custodian is Max,
+with `agent-secret get microcosm/uk-gate-signing-key-team maxghenis`, and
+`HF_TOKEN` with `agent-secret get HUGGING_FACE_TOKEN_MAX maxghenis`.
 
 `all` runs these steps in order:
 
@@ -226,7 +225,7 @@ per builder rather than one shared secret.
 | Label | Fingerprint | Held by | Status |
 |---|---|---|---|
 | `uk-gate-juaristi22-2026` | `66bf0e29…` | María Juaristi's build machine | active; signed every cut on record |
-| `uk-gate-team-2026` | `dd31e325…` | agent-secret `microcosm/uk-gate-signing-key-team` on Max's build Mac | proposed in #1350; registers when María agrees |
+| `uk-gate-team-2026` | `dd31e325…` | Max Ghenis: agent-secret `microcosm/uk-gate-signing-key-team` on his build Mac, readable by agent sessions on that Mac | active |
 
 **Add a builder or rotate a key.**
 

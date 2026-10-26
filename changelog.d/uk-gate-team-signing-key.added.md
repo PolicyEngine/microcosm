@@ -1,1 +1,1 @@
-Register a second UK gate signing key, held in the team's shared agent store, so cuts can be built and signed without the first builder's key. The key that signed every earlier cut stays active.
+Register a second UK gate signing key, `uk-gate-team-2026`, held by Max Ghenis in the agent store on his build Mac, so cuts can be built and signed without the first builder's key. The key that signed every earlier cut stays active.
