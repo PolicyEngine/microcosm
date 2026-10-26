@@ -1439,7 +1439,7 @@ def _validate_precalibration_ancestry(
                             f"{_INVENTORY_LAYERS} layers, so its stage bindings "
                             "cannot be read."
                         )
-                    # The checks below read only an ancestor's bindings.
+                    # The checks below use only an ancestor's bindings.
                     found = set()
                 node_bindings[name] = {
                     binding

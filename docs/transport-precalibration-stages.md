@@ -276,7 +276,9 @@ These are tested, as properties and examples, in
   property tested over fixed and random references in nested JSON, ASCII,
   quoteless and embedded spellings. A reference's JSON-escaped text counts
   wherever it appears, even after a stray backslash that decoding pairs with
-  the text's first escape.
+  the text's first escape. That holds within the 32-layer bound: a parameter
+  with any string still escaped after it gives no membership, and upstream
+  of calibration it refuses.
 - The composed pass gives every column read the writers the executor's
   static writer lists give it (`microcosm.graph.executor._input_writers`),
   on every generated graph, the writer and EXPAND examples, and the composed

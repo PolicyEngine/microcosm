@@ -6317,7 +6317,9 @@ def test_precalibration_stage_scan_counts_escaped_text_anywhere(
     (round 6's example, a newline, a backslash and ``n``). ``_embeds_engine_ref``
     matches the text as written, and so does the layered scan, in the text
     ``json.dumps`` writes without ASCII escapes, as ``_embeds_engine_ref``
-    matches it.
+    matches it. That holds within the 32-layer bound: a parameter with any
+    string still escaped after it gives ``None``, whatever was found. These
+    strings, at most 14 characters, cannot reach it.
     """
     value = prefix + json.dumps(reference, ensure_ascii=False)[1:-1] + suffix
     assert compose_module._embeds_engine_ref(value, {reference})
