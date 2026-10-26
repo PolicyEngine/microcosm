@@ -796,10 +796,13 @@ def pay_concept_ratio(
     dv = _numeric(jobs, "ugrspay")
     support = distinct_carriers(jobs["household_id"].to_numpy(), job_weights)
     denominator = float(np.nansum(job_weights * usual))
-    if support < 10 or denominator <= 0:
+    # Fewer than ten reporting households only flags: the receipt prints the
+    # ratio "<10" and the gate reads it unmeasured, since a small-cell rule
+    # never stops a build (María's ruling of 2026-10-26).
+    if support == 0 or denominator <= 0:
         raise ValueError(
             f"{FRS_ANNUAL_INCOME_STAGE_NAME} cannot measure the usual-to-DV pay "
-            "ratio: fewer than ten households report both."
+            "ratio: no household reports both."
         )
     ratio = float(np.nansum(job_weights * dv)) / denominator
     lower, upper = PAY_CONCEPT_RATIO_BOUNDS
@@ -924,7 +927,7 @@ def _receipt(
     return {
         "window_months": WINDOW_MONTHS,
         "weights": "household weights at the stage, carried by each person",
-        "pay_concept_ratio": ratio,
+        "pay_concept_ratio": ratio if ratio_support >= 10 else "<10",
         "pay_concept_ratio_support": support_band(ratio_support),
         "earnings_growth": float(earnings_growth),
         "spell_sources": sources,

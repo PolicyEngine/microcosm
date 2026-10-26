@@ -1,0 +1,4 @@
+A stage receipt's small-cell rule no longer fails a UK build (María's ruling of 2026-10-26); it flags.
+- The gambling top-up and the annual-income stage refuse only when their fits cannot run: fewer than two donor households on either side of a gambling key, or no household reporting both pay measures. With one to nine, they run, and the receipt prints "<10" as before.
+- A stage gate that reads a figure its receipt prints "<10" now names what it left unchecked in its details, and passes on it. That covers the gambling key withheld nationally, a property purchase kind, a UC family type's caseloads, the annual-income ratios, a region's rewritten rows, the excise residuals and the legacy-closure flags.
+- Counts a gate requires to be zero, and the declared donor-support floors, fail as before.

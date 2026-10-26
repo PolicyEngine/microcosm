@@ -81,9 +81,12 @@ UK_GAMBLING_PROPENSITY_SETTINGS = (
     "l2_regularization",
     "validation_fraction",
 )
-#: The fewest distinct source households a receipt cell may rest on, and the
-#: fewest donor households a key's fits may learn from (CD171 section 5.2.1).
+#: The fewest distinct source households a receipt cell may rest on (CD171
+#: section 5.2.1).
 SMALL_CELL = 10
+#: The fewest donor households on each side of a key the propensity fit
+#: needs: its held-out validation split is stratified by the key.
+_FIT_MINIMUM = 2
 
 
 @dataclass(frozen=True)
@@ -663,11 +666,15 @@ def top_up_gambling_participation(
         drawn = np.asarray(keys[key], dtype=float)
         donor_stakes = np.asarray(donor_keys[key], dtype=float)
         played = donor_stakes > 0
-        if not SMALL_CELL <= int(played.sum()) <= len(played) - SMALL_CELL:
+        # Fewer than ten donor households on a side only flags: the receipt
+        # bands the fits' donor support and withholds what rests on them, and
+        # a small-cell rule never stops a build (María's ruling of 2026-10-26).
+        # The fit itself needs two on each side.
+        if not _FIT_MINIMUM <= int(played.sum()) <= len(played) - _FIT_MINIMUM:
             raise ValueError(
                 f"{TOP_UP_GAMBLING_PARTICIPATION_KIND}: the donor must record {key} "
-                f"stakes on {SMALL_CELL} or more households and leave {SMALL_CELL} "
-                "or more without, to fit and report its share."
+                f"stakes on {_FIT_MINIMUM} or more households and leave "
+                f"{_FIT_MINIMUM} or more without, to fit its share."
             )
         chance = {
             window: household_participation(
