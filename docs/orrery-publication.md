@@ -2,7 +2,7 @@
 
 UK full, dense, size and national builds export `graph.orrery.json` from the
 saved graph schema and recorded execution evidence. They preserve the explicit
-public-safe file inventory in the attempt directory, attempt publication before
+allowlisted file inventory in the attempt directory, attempt publication before
 Hugging Face artifact staging when `--publish-orrery` asks for it, and register
 graph/evidence files and an `orrery.publication.json` receipt snapshot in the
 artifact manifest.
@@ -59,8 +59,12 @@ credentials and caches and use fake HTTP or explicit loopback services.
 A build exports locally without remote submission unless `--publish-orrery`
 enables it (María's ruling of 2026-10-26), whatever its staging:
 `--no-publish-orrery` states the default, and `--publish-orrery` submits even
-when dataset staging is local-only. A publication failure does not replace the
-dataset's validation result or prevent HF artifact staging.
+when dataset staging is local-only. The calibration summaries carry every
+target row's model figures, those of rows resting on fewer than ten source
+households included, since the build no longer withholds any (the same
+ruling), so check them against the UKDS licence before passing
+`--publish-orrery`. A publication failure does not replace the dataset's
+validation result or prevent HF artifact staging.
 
 Failed builds preserve recorded graph evidence before temporary-file cleanup.
 They publish it, with an `orrery.failure.json` marker, to `orrery-failure/` in

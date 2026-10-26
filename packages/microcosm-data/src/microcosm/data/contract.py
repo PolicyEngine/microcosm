@@ -4612,7 +4612,6 @@ def _validate_uk_dense_release_dir(release_dir: Path, release_id: str) -> list[s
         if gate_summary is not None:
             _check_local_area_gates(gate_summary, failures)
     diagnostics_path = release_dir / "calibration_diagnostics.json"
-    floor_warnings: list[str] = []
     if diagnostics_path.is_file():
         diagnostics = _load_json(diagnostics_path, failures)
         if diagnostics is not None:
@@ -4621,7 +4620,6 @@ def _validate_uk_dense_release_dir(release_dir: Path, release_id: str) -> list[s
             ):
                 _check_calibration_diagnostics(diagnostics, failures)
             _check_local_area_calibration_diagnostics(diagnostics, failures)
-            floor_warnings = _uk_brma_floor_verdict_warnings(diagnostics)
     report: Mapping | None = None
     report_path = release_dir / _UK_DENSE_GATE_REPORT_FILE
     if report_path.is_file():
@@ -4649,7 +4647,7 @@ def _validate_uk_dense_release_dir(release_dir: Path, release_id: str) -> list[s
             _check_uk_measure_exclusions(coverage.get("measure_exclusions"), failures)
     # Warned, not refused: the walk runs only after both builds, so a finding
     # is weighed rather than paid for with a rebuild (microcosm#1301).
-    disclosure_warnings = _uk_dense_disclosure_warnings(release_dir) + floor_warnings
+    disclosure_warnings = _uk_dense_disclosure_warnings(release_dir)
     # The core joins run whether or not the incumbent comparison is attached.
     candidate_identity = _check_uk_dense_surface_files(
         release_dir, release_manifest or {}, failures
@@ -6444,54 +6442,6 @@ def _uk_census_over(rows: list[Mapping], census: object) -> dict[str, object] | 
     return counts
 
 
-def _uk_brma_floor_verdict_warnings(diagnostics: Mapping) -> list[str]:
-    """BRMA rows whose ten-household verdict is missing or disagrees.
-
-    microcosm#1262: every BRMA row carries ``metadata.carrier_floor_met``, and
-    a row withholds its model figures exactly when the verdict is false or the
-    row is withheld beside a thin one (``metadata.complementary_withholding``,
-    Vahid's second review of #1333), so the contract can see a thin row the
-    build never flagged. María's ruling of 2026-10-19 on the fourth review of
-    #1305: this is warned, not refused. The warnings give counts only, never a
-    row.
-    """
-
-    missing = disagreeing = 0
-    for row in diagnostics.get("targets") or ():
-        metadata = row.get("metadata") if isinstance(row, Mapping) else None
-        if not isinstance(metadata, Mapping) or not _uk_brma_row(metadata):
-            continue
-        verdict = metadata.get("carrier_floor_met")
-        withheld = bool(metadata.get("model_figures_withheld"))
-        complementary = metadata.get("complementary_withholding") is True
-        if not isinstance(verdict, bool):
-            missing += 1
-        elif (not verdict and (complementary or not withheld)) or (
-            verdict and withheld != complementary
-        ):
-            disagreeing += 1
-    warnings = []
-    if missing:
-        warnings.append(
-            f"calibration_diagnostics.json has {missing} BRMA row(s) without a "
-            "ten-household carrier verdict (metadata.carrier_floor_met), so the "
-            "contract cannot see whether their model figures may be published "
-            "(microcosm#1262)."
-        )
-    if disagreeing:
-        warnings.append(
-            f"calibration_diagnostics.json has {disagreeing} BRMA row(s) whose "
-            "carrier verdict disagrees with their withheld flag (microcosm#1262)."
-        )
-    return warnings
-
-
-def _uk_brma_row(metadata: Mapping) -> bool:
-    level = str(metadata.get("geography_level") or "").strip().lower()
-    area_type = str(metadata.get("area_type") or "").strip().lower()
-    return area_type == "brma" or level in {"brma", "statistical_scope"}
-
-
 def _check_uk_candidate_restated_losses(
     candidate: Mapping, diagnostics: Mapping, failures: list[str]
 ) -> None:
@@ -6733,9 +6683,7 @@ def validate_release_dir(
     Returns:
         The contract's warnings, each a sentence naming the file, for the
         caller to print. Only the dense UK line has any: its disclosure walk
-        reports per-area support figures (microcosm#1301), and a BRMA row
-        without its ten-household carrier verdict, or with one its withheld
-        flag contradicts, is reported (microcosm#1262), without refusing.
+        reports per-area support figures (microcosm#1301), without refusing.
 
     Raises:
         ReleaseContractError: Naming every violation found — missing files,

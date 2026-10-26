@@ -771,21 +771,6 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
-        "--withhold-thin-rows-only",
-        action="store_true",
-        help=(
-            "Dense only: withhold the model figures of the rows resting on "
-            "fewer than ten source households, and skip the differencing "
-            "check that withholds published rows beside them (María's ruling "
-            "of 2026-10-26: on the dense surface its eigendecompositions ran "
-            "for hours and did not converge, and the release goes only to the "
-            "private licensed repository). It applies to the calibrated gates "
-            "and the run's evidence summaries; the calibrated gates node "
-            "records it, so only that node and what follows it re-key, never "
-            "the solve. Refuses --publish-orrery."
-        ),
-    )
-    parser.add_argument(
         "--resume-size-checkpoint",
         type=Path,
         help="Import an identity-verified historical size search, skipping its dense solve and search.",
@@ -873,7 +858,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help=(
             "Publish the saved graph to the public Orrery, including when "
-            "dataset staging is local-only. Off by default."
+            "dataset staging is local-only. Off by default. Its summaries "
+            "carry every target row's model figures, those of rows resting on "
+            "fewer than ten source households included, so check them against "
+            "the UKDS licence before passing it."
         ),
     )
     graph_publication.add_argument(
@@ -889,15 +877,6 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     args = parser.parse_args(argv)
     validate_staging_arguments(parser, args)
     validate_staged_dataset_arguments(parser, args)
-    if args.withhold_thin_rows_only:
-        if args.release_role != "dense":
-            parser.error("--withhold-thin-rows-only is a dense-role option.")
-        if args.publish_orrery:
-            parser.error(
-                "--withhold-thin-rows-only refuses --publish-orrery: the "
-                "public Orrery never takes figures the differencing check "
-                "has not cleared."
-            )
     if args.input_h5 is None and any(
         (args.input_sidecar, args.input_spine_gates, args.input_sha256)
     ):
@@ -1165,48 +1144,23 @@ def _stderr_progress(line: str) -> None:
     print(line, file=sys.stderr, flush=True)
 
 
-def _may_withhold_rows(args: argparse.Namespace) -> bool:
-    """Whether the request can bind a row whose model figures stay in the build.
-
-    Every request can: María's rule of 2026-10-21 binds a national row however
-    few source households carry it (the UC payment and benefit-cap bands), as
-    the dense role's area BRMAs have been bound since microcosm#1262, and a
-    thin row's figures stay in the build either way. So no role's staged
-    epochs keep their loss (the fourth review of #1305 kept it for the
-    national role while that role bound no thin row).
-    """
-
-    del args
-    return True
-
-
 def _solve_observer(args: argparse.Namespace, telemetry):
     """Readable stderr lines plus the thinned staging rows of every solve.
 
     The dense solve, the informed size search and the refit share this one
     observer; the size events carry the ``phase`` the stderr line names and
-    the staging row records. An epoch's loss covers every row, so a request
-    that can bind a thin row forwards its epochs without it: the staging rows
-    and the emitter carry null, and only the local stderr line keeps it
-    (the third review of #1305).
+    the staging row records.
     """
     from .solve_progress import uk_solve_progress_callback
 
-    withhold_loss = _may_withhold_rows(args)
     sinks = [uk_solve_progress_callback(_stderr_progress)]
     sinks.append(
-        thinned_epochs(
-            emit_calibration_progress,
-            every=staging_epoch_every(args),
-            withhold_loss=withhold_loss,
-        )
+        thinned_epochs(emit_calibration_progress, every=staging_epoch_every(args))
     )
     if telemetry is not None:
         sinks.append(
             thinned_epochs(
-                telemetry.calibration_progress,
-                every=staging_epoch_every(args),
-                withhold_loss=withhold_loss,
+                telemetry.calibration_progress, every=staging_epoch_every(args)
             )
         )
 
@@ -1464,9 +1418,6 @@ def prepare_full_build(
         spine_provenance=provenance,
         skip_holdout=args.skip_holdout,
     )
-    thin_rows_only = bool(getattr(args, "withhold_thin_rows_only", False))
-    if thin_rows_only:
-        graph = with_thin_row_withholding(graph)
     bindings = {
         "schema": "microcosm.uk.full-build-request.v1",
         "release_role": posture.role,
@@ -1486,11 +1437,6 @@ def prepare_full_build(
         **(
             {"inspection_export": True}
             if getattr(args, "inspection_export", False)
-            else {}
-        ),
-        **(
-            {"model_figure_withholding": UK_THIN_ROWS_ONLY_WITHHOLDING}
-            if thin_rows_only
             else {}
         ),
         "targets": {
@@ -1573,65 +1519,6 @@ def _gate_review_date(args: argparse.Namespace) -> date:
     """The calibrated gates' clock: ``--gate-review-date``, else the solve's."""
     gate_clock = getattr(args, "gate_review_date", None)
     return args.review_date if gate_clock is None else gate_clock
-
-
-#: ``--withhold-thin-rows-only``'s value on the calibrated gates node and in
-#: the build request.
-UK_THIN_ROWS_ONLY_WITHHOLDING = "thin_rows_only"
-
-
-def with_thin_row_withholding(graph: Graph) -> Graph:
-    """The graph under ``--withhold-thin-rows-only``, with the switch armed.
-
-    The withholding runs inside the calibrated gates, whose code the source
-    preflight shares, and the preflight keys the solve: an edit to that code
-    would re-solve. So the switch is armed here, at run time, and the
-    calibrated gates node alone records it, which re-keys that node and what
-    follows it, never the solve (María's ruling of 2026-10-26).
-    """
-
-    arm_thin_row_withholding()
-    return replace(
-        graph,
-        nodes=tuple(
-            replace(
-                node,
-                params={
-                    **node.params,
-                    "model_figure_withholding": UK_THIN_ROWS_ONLY_WITHHOLDING,
-                },
-            )
-            if node.id == _SOLVE_BOUNDARY
-            else node
-            for node in graph.nodes
-        ),
-    )
-
-
-def arm_thin_row_withholding() -> None:
-    """Withhold only the thin rows' model figures in this process.
-
-    :func:`~microcosm.build.uk_runtime.diagnostics.uk_withheld_row_sets` keeps
-    its thin rows (:func:`~microcosm.build.uk_runtime.diagnostics.uk_thin_rows`,
-    a carrier count) and gives no complementary rows, so the differencing
-    check is skipped wherever the build withholds: the calibrated gates, the
-    diagnostics writer and the evidence summaries. A thin row's figures stay
-    out, and its BRMA carrier verdict stays true to its count.
-    """
-
-    from . import diagnostics
-
-    if getattr(diagnostics.uk_withheld_row_sets, "thin_rows_only", False):
-        return
-
-    def thin_rows_only(problem, weights, frame, target_rows, geography_levels=None):
-        thin = diagnostics.uk_thin_rows(
-            problem, weights, frame, target_rows, geography_levels
-        )
-        return thin, set()
-
-    thin_rows_only.thin_rows_only = True
-    diagnostics.uk_withheld_row_sets = thin_rows_only
 
 
 #: The node the solve sub-graph ends before: its strict ancestors are the
@@ -3254,14 +3141,6 @@ def _execute_national_build(
         "score_vs_enhanced_frs": None,
     }
     stage(telemetry, "diagnostics", "started")
-    # The national gates flagged the rows whose model figures stay in the
-    # build; the diagnostics take that set rather than count it again, so it
-    # is computed once per build (Vahid's third review of #1383, item 32).
-    withheld = frozenset(
-        str(row["name"])
-        for row in evidence["diagnostics"]
-        if row.get("model_figures_withheld") is True
-    )
     diagnostics_outcome = write_uk_calibration_diagnostics(
         result,
         paths["calibration_diagnostics"],
@@ -3269,7 +3148,6 @@ def _execute_national_build(
         target_geography_levels=evidence["target_geography_levels"],
         target_registry=solved_registry,
         build=build_block,
-        withheld=withheld,
     )
     if isinstance(diagnostics_outcome, DiagnosticsWriteFailure):
         raise RuntimeError(

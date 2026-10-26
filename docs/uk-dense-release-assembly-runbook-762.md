@@ -120,15 +120,14 @@ at `<candidate-dir>/.graph-store` unless `--graph-store` says otherwise, and
 `--input-h5` must be a spine whose gate manifest matches the branch's gate
 declarations.
 
-**Thin rows only (María's ruling of 2026-10-26).** `--withhold-thin-rows-only`
-withholds the model figures of the rows resting on fewer than ten source
-households and skips the differencing check that withholds published rows
-beside them, which on the dense surface ran for hours and then failed to
-converge. The build command arms it at run time and the calibrated gates node
-records it, so a retry with it and `--require-solve-reuse` re-runs only the
-gates and what follows them. It refuses `--publish-orrery`, and the national
-role refuses it. A release built with it carries the figures the differencing check
-would have withheld, so it goes only to the private licensed repository.
+**Every row's figures ship (María's ruling of 2026-10-26).** The build no
+longer withholds the model figures of rows resting on fewer than ten source
+households, nor of the rows that would give them back by difference
+(microcosm#1262, #1383). Every row is judged by the fit gates and carries its
+figures in the diagnostics, the targets table and the gate reports, so a
+release goes only to the licensed private repository. The graph's evidence
+summaries carry them too, which is why a build publishes to the public Orrery
+only on `--publish-orrery`.
 
 ### Sized release (microcosm#1124)
 

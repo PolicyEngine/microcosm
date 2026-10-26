@@ -702,50 +702,21 @@ def test_the_candidate_manifest_restates_the_diagnostics_totals() -> None:
     assert len(failures) == 3, failures
 
 
-def test_a_brma_row_without_its_carrier_verdict_is_warned_not_refused() -> None:
-    """María's ruling of 2026-10-19 on the fourth review of #1305: warn only."""
+def test_a_brma_row_needs_no_carrier_verdict() -> None:
+    """María's ruling of 2026-10-26 dropped the withholding and its BRMA
+    carrier verdict; an earlier release's verdicts still read, unchecked."""
 
-    assert dc._uk_brma_floor_verdict_warnings(_withheld_diagnostics()) == []
     unflagged = _withheld_diagnostics()
     del unflagged["targets"][1]["metadata"]["carrier_floor_met"]
-    (warning,) = dc._uk_brma_floor_verdict_warnings(unflagged)
-    # A count, never a row.
-    assert warning.startswith("calibration_diagnostics.json has 1 BRMA row(s) without")
-    disagreeing = _withheld_diagnostics()
-    disagreeing["targets"][1]["metadata"]["carrier_floor_met"] = True
-    (warning,) = dc._uk_brma_floor_verdict_warnings(disagreeing)
-    assert "disagrees with their withheld flag" in warning
     failures: list[str] = []
     dc._check_local_area_calibration_diagnostics(unflagged, failures)
     assert failures == []
-
-
-def test_a_brma_row_withheld_beside_a_thin_one_agrees_with_its_verdict() -> None:
-    """Vahid's second review of #1333, item 10: a row withheld beside a thin
-    one meets the floor and says so (``metadata.complementary_withholding``)."""
-
-    beside = _withheld_diagnostics()
-    beside["targets"][1]["metadata"].update(
-        carrier_floor_met=True, complementary_withholding=True
-    )
-    assert dc._uk_brma_floor_verdict_warnings(beside) == []
-    # Flagged as withheld beside a thin row, yet published.
-    published = _withheld_diagnostics()
-    published["targets"][1]["metadata"].update(
-        carrier_floor_met=True, complementary_withholding=True
-    )
-    del published["targets"][1]["metadata"]["model_figures_withheld"]
-    (warning,) = dc._uk_brma_floor_verdict_warnings(published)
-    assert "disagrees with their withheld flag" in warning
-    # A thin row is withheld for itself, never only beside another.
-    thin = _withheld_diagnostics()
-    thin["targets"][1]["metadata"]["complementary_withholding"] = True
-    (warning,) = dc._uk_brma_floor_verdict_warnings(thin)
-    assert "disagrees with their withheld flag" in warning
+    assert not hasattr(dc, "_uk_brma_floor_verdict_warnings")
 
 
 def test_the_dense_validator_runs_the_withheld_checks(tmp_path, monkeypatch) -> None:
-    """The candidate cross-check and the verdict warnings run on a release."""
+    """The candidate cross-check still runs on a release, for the releases
+    built while rows were withheld."""
 
     seen: list[str] = []
 
@@ -753,15 +724,9 @@ def test_the_dense_validator_runs_the_withheld_checks(tmp_path, monkeypatch) -> 
         seen.append("restated")
         assert "solve" in candidate and "targets" in diagnostics
 
-    def verdicts(diagnostics) -> list[str]:
-        seen.append("verdicts")
-        return ["a synthetic verdict warning"]
-
     monkeypatch.setattr(dc, "_check_uk_candidate_restated_losses", restated)
-    monkeypatch.setattr(dc, "_uk_brma_floor_verdict_warnings", verdicts)
-    warnings = validate_release_dir(write_dense_bundle(tmp_path))
-    assert sorted(seen) == ["restated", "verdicts"]
-    assert "a synthetic verdict warning" in warnings
+    validate_release_dir(write_dense_bundle(tmp_path))
+    assert seen == ["restated"]
 
 
 def test_the_withheld_block_must_count_the_withheld_rows() -> None:

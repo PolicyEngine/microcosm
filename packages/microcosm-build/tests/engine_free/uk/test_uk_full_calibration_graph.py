@@ -47,27 +47,6 @@ from test_support.microcosm_build.uk_full_calibration_graph import (
 from test_support.microcosm_build.uk_local_rowwise import _clone_frame
 
 
-@pytest.fixture(autouse=True)
-def _every_toy_row_published(monkeypatch):
-    """Publish every row of the three-household toy graph.
-
-    A row's model figures leave a build only when ten distinct source
-    households carry it (María's rule of 2026-10-21 binds a thin row and
-    withholds its figures). The toy graph declares its columns exactly and
-    carries no source lineage to count, so these graph tests publish every
-    row; the withheld path has its own tests in test_uk_diagnostics.py and
-    test_uk_orrery_contract.py.
-    """
-
-    from microcosm.build.uk_runtime import diagnostics, full_gates
-
-    def none_withheld(*args, **kwargs):
-        return set()
-
-    monkeypatch.setattr(diagnostics, "uk_withheld_rows", none_withheld)
-    monkeypatch.setattr(full_gates, "uk_withheld_rows", none_withheld)
-
-
 def source_frame():
     frame = _clone_frame()
     tables = {entity: frame.table(entity).copy() for entity in frame.entities}
