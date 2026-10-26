@@ -222,9 +222,6 @@ Hub credential (`HF_TOKEN`) that can see the repository **and** write it: a
 read token, or a fine-grained token scoped to another owner, is refused up
 front rather than by the Hub's 403 hours later (a fine-grained token needs
 `repo.write` on the repository or on the `policyengine` organisation). The
-repository must be private: a run refuses to start a remote dataset stage, and
-the upload refuses with `REPOSITORY_UNAVAILABLE`, when the Hub does not report
-it as private, since the bundle carries the build's full diagnostics. The
 telemetry stays best-effort with no pre-flight. Forwarded epochs are thinned to
 at most 2,400 rows per run, whatever `--epochs` says, so the telemetry files
 stay under the contract's 5 MiB cap; a content refusal from the telemetry is

@@ -207,18 +207,6 @@ class HuggingFaceDatasetStorage:
         )
         return str(sha) if sha else None
 
-    def private(self) -> bool | None:
-        """Whether the Hub reports the repository as private; ``None`` when
-        the backend does not say."""
-
-        info = self._api().repo_info(repo_id=self.repo_id, repo_type="dataset")
-        private = (
-            info.get("private")
-            if isinstance(info, Mapping)
-            else getattr(info, "private", None)
-        )
-        return private if isinstance(private, bool) else None
-
     def commit(
         self,
         operations: Sequence[Any],

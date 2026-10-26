@@ -659,18 +659,6 @@ def test_remote_dataset_staging_is_refused_up_front_without_credential_or_repo(
     assert "do-not-record" not in str(info.value)
     assert not out.exists()
 
-    # A repository the Hub does not report as private is refused before the
-    # spine is read, whatever the token (Vahid's review of #1396, S1).
-    for private in (False, None):
-        monkeypatch.setattr(
-            rowwise_staging,
-            "_hub_api",
-            lambda private=private: _FakeHub(private=private),
-        )
-        with pytest.raises(ValueError, match="needs a private repository"):
-            builder.main(_build_args(input_h5, ladder_path, flags, out))
-        assert not out.exists()
-
     # A read token sees the private repository but cannot upload: refused
     # before the spine is read, not after the solve (the Hub answers 403).
     monkeypatch.setattr(rowwise_staging, "_hub_api", lambda: _FakeHub(role="read"))

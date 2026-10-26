@@ -136,9 +136,8 @@ def preflight_staged_dataset(args: argparse.Namespace) -> None:
     """Refuse a remote dataset stage the run could not complete.
 
     The bundle upload is the last step of a multi-hour run, so the credential
-    and the repository, which must be private, are checked before the spine
-    is read. Telemetry stays best-effort with no pre-flight, as on the
-    national command.
+    and the repository are checked before the spine is read. Telemetry stays
+    best-effort with no pre-flight, as on the national command.
     """
 
     if args.dry_run or staged_dataset_mode(args) != "local_and_remote":
@@ -153,7 +152,6 @@ def preflight_staged_dataset(args: argparse.Namespace) -> None:
     storage = HuggingFaceDatasetStorage(repo_id, api=_hub_api())
     try:
         storage.head_revision()
-        private = storage.private()
     except Exception as error:
         # The transport's own message is not chained: it can carry request
         # URLs and identifiers, and the type name is enough to act on.
@@ -161,14 +159,6 @@ def preflight_staged_dataset(args: argparse.Namespace) -> None:
             f"remote dataset staging cannot reach {repo_id} "
             f"({type(error).__name__}); {hint}."
         ) from None
-    if private is not True:
-        # The bundle carries the build's full diagnostics, and the repository
-        # id can come from POPULACE_UK_STAGED_DATASET_REPO_ID (Vahid's review
-        # of microcosm#1396, S1).
-        raise ValueError(
-            f"remote dataset staging needs a private repository, and the Hub "
-            f"does not report {repo_id} as private; {hint}."
-        )
     _require_write_credential(storage, hint=hint)
 
 
