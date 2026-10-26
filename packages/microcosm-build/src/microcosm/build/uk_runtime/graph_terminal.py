@@ -716,7 +716,8 @@ def uk_terminal_only_code_hash() -> str:
     between two builds that must reuse the solve belongs in
     ``high_value_home_gates`` alone.
 
-    The calibrated gates also publish ``calibration_diagnostics`` as schema 9:
+    The calibrated node (``uk.full.gates.calibrated``) also publishes its
+    ``calibration_diagnostics`` output as schema 9:
     ``catalog_calibration_diagnostics`` with the UK label choices (which read
     ``UK_GEOGRAPHY_ID_TO_LABEL``), dumped from ``CalibrationDiagnosticsV9``.
     Those modules decide the published labels and bytes, so an edit to them

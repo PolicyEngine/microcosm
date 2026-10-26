@@ -1586,13 +1586,15 @@ def test_the_gate_kernel_keys_the_solve_without_the_high_value_homes_code(
 def test_the_calibrated_node_keys_on_the_schema_9_publication_code_not_the_solve(
     monkeypatch,
 ):
-    # The calibrated gates publish their calibration_diagnostics output as
-    # schema 9: catalog_calibration_diagnostics with the UK label choices,
+    # The calibrated node (uk.full.gates.calibrated) publishes its
+    # calibration_diagnostics output as schema 9:
+    # catalog_calibration_diagnostics with the UK label choices,
     # dumped from CalibrationDiagnosticsV9. An edit to any of those modules
     # changes the output's bytes, so it must re-key the calibrated node (through
     # its terminal_code parameter); otherwise a store run with resume="auto"
     # serves the old labels. Like the high-value homes code, it stays out of
-    # the kernels' code hash, so it never re-keys the preflight or the solve.
+    # the two kernels' shared code hash, so it never re-keys the preflight node
+    # or the solve.
     import microcosm.calibrate.geography_constants as geography_constants_module
     import microcosm.calibrate.hierarchy_labels as hierarchy_labels_module
     import microcosm.diagnostics.catalogs as catalogs_module
