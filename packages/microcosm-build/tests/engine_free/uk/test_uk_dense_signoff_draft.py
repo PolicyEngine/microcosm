@@ -335,15 +335,16 @@ def _support_frame(support) -> pd.DataFrame:
 
 
 def _target_rows(national, local, withheld=frozenset()) -> list[dict]:
-    """The embedded rows; a ``withheld`` local key reads blank (microcosm#1262)."""
+    """The embedded rows; a ``withheld`` national name or local key reads
+    blank (microcosm#1262, María's rule of 2026-10-21)."""
     rows = [
         {
             "name": name,
             "target_name": name,
             "target": 100.0,
-            "estimate": 100.0 * (1.0 + error),
-            "relative_error": error,
-            "abs_relative_error": abs(error),
+            "estimate": None if name in withheld else 100.0 * (1.0 + error),
+            "relative_error": None if name in withheld else error,
+            "abs_relative_error": None if name in withheld else abs(error),
             "family": "synthetic_national",
             "geography_level": "country",
             "area_type": "country",
@@ -380,7 +381,7 @@ def _target_rows(national, local, withheld=frozenset()) -> list[dict]:
     if withheld:
         for row in rows:
             key = f"{row['family']}/{row['area_code']}/{row['metric']}"
-            row["model_figures_withheld"] = key in withheld
+            row["model_figures_withheld"] = key in withheld or row["name"] in withheld
     return rows
 
 
@@ -482,14 +483,16 @@ def write_run(
     targets = _target_rows(national, local, withheld)
     support_frame = _support_frame(support)
     results = {
+        # The national binding counts the surface's whole withheld set, as
+        # its parity evidence carries it; the local one its own cells.
         "uk_target_fit": _fit(
-            national, registers["uk_target_fit"]["exclusions"], clock
+            national, registers["uk_target_fit"]["exclusions"], clock, withheld
         ),
         "uk_local_target_fit": _fit(
             {f"{f}/{a}/{m}": e for f, a, m, e in local},
             registers["uk_local_target_fit"]["exclusions"],
             clock,
-            withheld,
+            frozenset(withheld) - set(national),
         ),
         "uk_local_area_support": _area(
             support_frame, registers["uk_local_area_support"], clock
@@ -2513,3 +2516,27 @@ def test_the_tool_drafts_only_gate_only_resources_when_they_are_declared():
     solve_scope = pytest.importorskip("microcosm.build.uk_runtime.solve_scope")
     declared = set(solve_scope.UK_GATE_ONLY_RESOURCES)
     assert {spec.resource for spec in TOOL.REGISTERS} <= declared
+
+
+def test_a_withheld_national_row_is_counted_and_never_signed(repo, tmp_path):
+    """A thin national row is withheld too (María's rule of 2026-10-21): the
+    national fit gate counts the surface's whole withheld set and decides on
+    the published rows, so the draft signs nothing for it."""
+
+    national = {**NATIONAL, "synthetic.national_thin@2025": -0.4567}
+    build = write_run(
+        tmp_path / "build-1",
+        registers=build_1_registers(),
+        national=national,
+        withheld=frozenset({"synthetic.national_thin@2025", BRMA_CELL}),
+        local=(*LOCAL, ("private_rent", "S33999999", "rent/private_rent_brma", 0.0)),
+    )
+    out = tmp_path / "draft"
+    assert draft(build, repo, out) == 0
+    receipt = json.loads((out / "signoff_draft.json").read_text())
+    assert receipt["signable"] is True
+    assert (
+        "synthetic.national_thin@2025"
+        not in receipt["registers"]["uk_target_fit"]["add"]
+    )
+    assert "4567" not in (out / "signoff.patch").read_text()
