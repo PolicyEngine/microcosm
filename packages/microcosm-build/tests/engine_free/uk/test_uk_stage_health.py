@@ -3254,30 +3254,60 @@ def test_apprentice_gate_holds_the_draw_to_the_contract_rate() -> None:
             "away from it",
         ),
         (_apprentice_receipt(realization_deviation=0.0), "realized minus target"),
-        (
-            _apprentice_receipt(
-                flagged_support="<10",
-                realized_mass="<10",
-                realization_deviation="<10",
-            ),
-            "fewer than ten",
-        ),
         (_apprentice_receipt(cap_bound=True), "cap_bound is True"),
         (_apprentice_receipt(implied_relief=400_000_000.0), "above the"),
         (_apprentice_receipt(implied_relief=None), "no implied relief"),
-        (
-            _apprentice_receipt(
-                population_support="<10",
-                population_mass="<10",
-                target="<10",
-                realization_deviation="<10",
-            ),
-            "population_mass, target",
-        ),
     ):
         result = _gate(gate_id, receipt)
         assert not result.passed
         assert any(fragment in failure for failure in result.failures), result.failures
+
+
+def test_apprentice_gate_flags_its_small_cells_without_failing() -> None:
+    """A "<10" figure is named unchecked, never failed (María's ruling, 10-26)."""
+
+    gate_id = "uk_stage_frs_person_draws_apprentices"
+    thin_flags = _gate(
+        gate_id,
+        _apprentice_receipt(
+            flagged_support="<10",
+            realized_mass="<10",
+            realization_deviation="<10",
+            implied_relief="<10",
+        ),
+    )
+    assert _passed(thin_flags)
+    assert thin_flags.details["figures_unchecked_small_cells"] == [
+        "realized_mass",
+        "realization_deviation",
+        "implied_relief",
+    ]
+    thin_population = _gate(
+        gate_id,
+        _apprentice_receipt(
+            population_support="<10",
+            population_mass="<10",
+            target="<10",
+            realization_deviation="<10",
+        ),
+    )
+    assert _passed(thin_population)
+    assert thin_population.details["figures_unchecked_small_cells"] == [
+        "population_mass",
+        "target",
+        "realization_deviation",
+    ]
+    assert (
+        _gate(gate_id, _apprentice_receipt()).details["figures_unchecked_small_cells"]
+        == []
+    )
+    # What the receipt still prints is checked beside a withheld figure.
+    off_rate = _gate(
+        gate_id,
+        _apprentice_receipt(eligible_support="<10", eligible_mass="<10", rate=0.05992),
+    )
+    assert not off_rate.passed
+    assert any("not the contract's" in failure for failure in off_rate.failures)
 
 
 def test_apprentice_gate_accepts_a_cap_bound_draw_that_flags_every_employee() -> None:

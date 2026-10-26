@@ -4520,12 +4520,13 @@ def _apprentice_draw_gate(
     aged 21 to 24, and its support as printed bands. Unless the eligible
     employees weigh no more than the target (cap-bound: every one of them is
     flagged), the flagged weight lies within
-    ``maximum_relative_realization_deviation`` of the target. A flagged weight
-    on fewer than ten source households fails: the receipt withholds it, and a
-    rate realized on so few records would not describe the population. The
-    relief the flags imply at the engine's own Class 1 schedule must stay at or
-    below ``maximum_implied_relief``, HMRC's apprentice relief for every
-    apprentice under 25 (Vahid's review of microcosm#1373, S1).
+    ``maximum_relative_realization_deviation`` of the target. The relief the
+    flags imply at the engine's own Class 1 schedule must stay at or below
+    ``maximum_implied_relief``, HMRC's apprentice relief for every apprentice
+    under 25 (Vahid's review of microcosm#1373, S1). A figure resting on fewer
+    than ten source households, which the receipt prints "<10", is named
+    unchecked, never failed: a small-cell rule never stops a build (María's
+    ruling of 2026-10-26).
     """
 
     from microcosm.build.uk_runtime.take_up_contract import load_uk_take_up_contract
@@ -4561,7 +4562,7 @@ def _apprentice_draw_gate(
             f"{stage}: the draw's rate {rate} is not the contract's {declared} "
             f"for {build_year}."
         )
-    withheld = [
+    unchecked = [
         key
         for key in (
             "population_mass",
@@ -4569,23 +4570,28 @@ def _apprentice_draw_gate(
             "target",
             "realized_mass",
             "realization_deviation",
+            "implied_relief",
         )
         if receipt.get(key) == "<10"
     ]
-    if withheld:
-        failures.append(
-            f"{stage}: {', '.join(withheld)} rest on fewer than ten source "
-            "households, so the draw cannot be checked against the rate."
+
+    def _figure(key: str) -> float | None:
+        if key in unchecked:
+            return None
+        return _finite_number(receipt.get(key), label=f"{stage}.{key}")
+
+    population = _figure("population_mass")
+    eligible = _figure("eligible_mass")
+    target = _figure("target")
+    realized = _figure("realized_mass")
+    printed = _figure("realization_deviation")
+    if (
+        target is not None
+        and population is not None
+        and not math.isclose(
+            target, rate * population, rel_tol=_FLOAT_RELATIVE_TOLERANCE
         )
-        return _fail(stage, check, failures, {"rate_key": rate_key, "rate": rate})
-    population = _finite_number(
-        receipt.get("population_mass"), label=f"{stage}.population_mass"
-    )
-    eligible = _finite_number(
-        receipt.get("eligible_mass"), label=f"{stage}.eligible_mass"
-    )
-    target = _finite_number(receipt.get("target"), label=f"{stage}.target")
-    if not math.isclose(target, rate * population, rel_tol=_FLOAT_RELATIVE_TOLERANCE):
+    ):
         failures.append(
             f"{stage}: target {target} is not the rate times the population aged "
             f"21 to 24 ({rate * population})."
@@ -4597,26 +4603,16 @@ def _apprentice_draw_gate(
     cap_bound = receipt.get("cap_bound")
     if not isinstance(cap_bound, bool):
         raise ValueError(f"{stage}.cap_bound must be a boolean, got {cap_bound!r}.")
-    shortfall = target > 0.0 and eligible <= target
-    if cap_bound != shortfall:
-        failures.append(
-            f"{stage}: cap_bound is {cap_bound} with eligible weight {eligible} "
-            f"against target {target}."
-        )
+    if target is not None and eligible is not None:
+        shortfall = target > 0.0 and eligible <= target
+        if cap_bound != shortfall:
+            failures.append(
+                f"{stage}: cap_bound is {cap_bound} with eligible weight {eligible} "
+                f"against target {target}."
+            )
     relative: float | None = None
-    if receipt.get("flagged_support") == "<10" or receipt.get("realized_mass") == "<10":
-        failures.append(
-            f"{stage}: the flagged weight rests on fewer than ten source households."
-        )
-    else:
-        realized = _finite_number(
-            receipt.get("realized_mass"), label=f"{stage}.realized_mass"
-        )
-        printed = _finite_number(
-            receipt.get("realization_deviation"),
-            label=f"{stage}.realization_deviation",
-        )
-        if not math.isclose(
+    if realized is not None and target is not None:
+        if printed is not None and not math.isclose(
             printed, realized - target, rel_tol=1e-9, abs_tol=1e-6 * max(target, 1.0)
         ):
             failures.append(
@@ -4624,7 +4620,9 @@ def _apprentice_draw_gate(
                 f"target ({realized - target})."
             )
         if cap_bound:
-            if not math.isclose(realized, eligible, rel_tol=1e-9):
+            if eligible is not None and not math.isclose(
+                realized, eligible, rel_tol=1e-9
+            ):
                 failures.append(
                     f"{stage}: a cap-bound draw flags every eligible employee, but "
                     f"{realized} of {eligible} is flagged."
@@ -4660,6 +4658,7 @@ def _apprentice_draw_gate(
         "relative_realization_deviation": relative,
         "implied_relief": implied,
         "maximum_implied_relief": ceiling,
+        "figures_unchecked_small_cells": unchecked,
     }
     if failures:
         return _fail(stage, check, failures, details)
