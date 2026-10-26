@@ -2483,3 +2483,40 @@ def test_the_main_source_measure_reads_other_investment_income(monkeypatch, tmp_
     # income, so it is not an employee.
     assert employee.tolist() == [0.0, 0.0, 0.0]
     assert "other_investment_income" in route.split(":", 1)[1].split(",")
+
+
+class _CenTaxClaimantSimulation(_CenTaxAnnualSimulation):
+    """Person 2 drew contributory ESA for a quarter of the year, and has no dividends."""
+
+    unearned = {
+        **_CenTaxAnnualSimulation.unearned,
+        "dividend_income": np.array([1_000.0, 0.0, 0.0]),
+    }
+
+    def __init__(self, *, dataset):
+        super().__init__(dataset=dataset)
+        self.stored[("esa_contrib_reported", 2024)] = np.array([0.0, 9_500.0, 0.0])
+
+
+def test_the_main_source_measure_reads_the_years_contributory_benefits(
+    monkeypatch, tmp_path
+):
+    from microcosm.build.uk_runtime.centax_childcare_parents import (
+        CENTAX_EMPLOYEE_MAIN_SOURCE,
+    )
+
+    monkeypatch.setitem(
+        sys.modules,
+        "policyengine_uk",
+        SimpleNamespace(__version__="9.9.9", Microsimulation=_CenTaxClaimantSimulation),
+    )
+    resolver = UKMeasureResolver(
+        simulation_source=tmp_path / "input.h5",
+        scratch_dir=tmp_path,
+        year=2025,
+        frame=_AnnualFrameStub(),
+    )
+    employee, _route = resolver.compute("person", CENTAX_EMPLOYEE_MAIN_SOURCE)
+    # Person 2's current ESA (9,690) is above its year's pay (9,450), but it was
+    # paid for a quarter of the year (2,422.50), so pay is its main source.
+    assert employee.tolist() == [1.0, 1.0, 0.0]

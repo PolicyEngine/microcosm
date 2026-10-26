@@ -1460,12 +1460,31 @@ class UKMeasureResolver:
         return values, f"annual_income_simulation:{route}"
 
     def _employment_main_income_source(self, entity: str) -> tuple[np.ndarray, str]:
-        """One where employment is the largest of the year's income sources."""
+        """One where employment is the largest of the year's income sources.
+
+        Every source is the year's, as in the annual ANI the cells band on: the
+        annual measures through their own route, and the rest on the annual
+        simulation, which carries the contributory benefits at their share of
+        the year and every other source as the engine computes it. At their
+        current amounts, a benefit paid for part of the year could outrank the
+        year's pay.
+        """
 
         if entity != "person":
             raise KeyError(f"{CENTAX_EMPLOYEE_MAIN_SOURCE} is person-only: {entity}")
+        simulation = (
+            self._annual_income_simulation()
+            if self._carries_annual_income_descriptors()
+            else self.simulation
+        )
         sources = {
-            name: self.compute("person", name)[0]
+            name: (
+                self.compute("person", name)[0]
+                if name in UK_ANNUAL_INCOME_MEASURES
+                else compute_uk_measure_input(
+                    self.frame, simulation, "person", name, self.year
+                )[0]
+            )
             for name in CENTAX_EMPLOYEE_SOURCE_INPUTS
         }
         return (
