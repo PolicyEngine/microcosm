@@ -68,7 +68,9 @@ def test_the_runner_pins_are_the_build_pins():
         "manifest.json": feed["manifest_sha256"],
         "consumer_facts.jsonl": feed["facts_sha256"],
     }
-    assert sources["chronicle_uk"].path_in_repo.endswith(feed["source_commit"])
+    assert (
+        sources["chronicle_uk"].path_in_repo == f"chronicle-uk/{feed['source_commit']}"
+    )
     frs = json.loads((cut.UK_DIR / "frs_release.json").read_text())["acquisition"]
     assert sources["frs_2024_25"].revision == frs["huggingface_revision"]
     assert sources["frs_2024_25"].archive_sha256 == frs["zip_sha256"]
@@ -82,6 +84,34 @@ def test_the_runner_pins_are_the_build_pins():
         for pin in sources[key].files:
             assert pin.sha256 == stage_pins[pin.name]["sha256"]
             assert pin.size_bytes == stage_pins[pin.name]["size_bytes"]
+
+
+def test_the_chronicle_path_follows_the_feed_pin(tmp_path):
+    """A re-pin of chronicle_feed.json needs no edit to the inputs manifest."""
+
+    for name in ("source_stages.json", "frs_release.json", "gates.json"):
+        (tmp_path / name).write_bytes((cut.UK_DIR / name).read_bytes())
+    feed = json.loads((cut.UK_DIR / "chronicle_feed.json").read_text())
+    feed["source_commit"] = "f" * 40
+    (tmp_path / "chronicle_feed.json").write_text(json.dumps(feed))
+    sources = {s.key: s for s in cut.load_input_sources(cut.CUT_INPUTS, tmp_path)}
+    assert sources["chronicle_uk"].path_in_repo == "chronicle-uk/" + "f" * 40
+    raw = next(
+        s
+        for s in json.loads(cut.CUT_INPUTS.read_text())["sources"]
+        if s["key"] == "chronicle_uk"
+    )
+    assert raw["revision"] is None
+    assert not re.search(r"[0-9a-f]{40}", json.dumps(raw))
+
+
+def test_an_unknown_pin_selector_is_refused(tmp_path):
+    manifest = json.loads(cut.CUT_INPUTS.read_text())
+    manifest["sources"][0]["revison_pin"] = "frs_release"
+    path = tmp_path / "uk_cut_inputs.json"
+    path.write_text(json.dumps(manifest))
+    with pytest.raises(cut.CutError, match="unknown pin selector"):
+        cut.load_input_sources(path)
 
 
 def test_the_hosted_mass_reference_is_the_one_the_gate_binds():

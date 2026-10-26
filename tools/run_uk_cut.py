@@ -156,6 +156,27 @@ def _gate_reference_identity(uk_dir: Path) -> Mapping[str, str]:
     raise CutError("gates.json declares no input_mass_parity reference identity.")
 
 
+#: The ``*_pin`` selectors a source may carry, each naming the committed pin
+#: a field is read from. Any other ``*_pin`` is refused, never ignored.
+PIN_SELECTORS: Mapping[str, frozenset[str]] = {
+    "archive_sha256_pin": frozenset({"frs_release"}),
+    "revision_pin": frozenset({"gates:input_mass_parity"}),
+    "path_in_repo_pin": frozenset({"chronicle_feed"}),
+}
+
+
+def _check_pin_selectors(raw: Mapping[str, Any]) -> None:
+    for name, value in raw.items():
+        if not name.endswith("_pin"):
+            continue
+        if name == "url_pin":
+            known = value in {f"source_stages:{member}" for member in raw["members"]}
+        else:
+            known = value in PIN_SELECTORS.get(name, frozenset())
+        if not known:
+            raise CutError(f"{raw['key']}: unknown pin selector {name}={value!r}.")
+
+
 def load_input_sources(
     manifest_path: Path = CUT_INPUTS, uk_dir: Path = UK_DIR
 ) -> list[InputSource]:
@@ -171,9 +192,15 @@ def load_input_sources(
     extra = manifest.get("file_pins", {})
     sources: list[InputSource] = []
     for raw in manifest["sources"]:
+        _check_pin_selectors(raw)
         key = raw["key"]
         revision = raw.get("revision")
         archive_sha256 = raw.get("archive_sha256")
+        path_in_repo = raw.get("path_in_repo")
+        if raw.get("path_in_repo_pin") == "chronicle_feed":
+            # The hosted artifact sits under its Chronicle commit, so the
+            # path follows every re-pin of chronicle_feed.json.
+            path_in_repo = f"{path_in_repo}/{feed['source_commit']}"
         url = None
         files: list[PinnedFile] = []
         for member in raw["members"]:
@@ -222,7 +249,7 @@ def load_input_sources(
                 repo_type=raw.get("repo_type"),
                 revision=revision,
                 filename=raw.get("filename"),
-                path_in_repo=raw.get("path_in_repo"),
+                path_in_repo=path_in_repo,
                 archive_sha256=archive_sha256,
                 url=url if raw["kind"] == "url" else None,
                 upload_note=raw.get("upload_note"),

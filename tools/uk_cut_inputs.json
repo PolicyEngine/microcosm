@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "about": "Where tools/run_uk_cut.py fetches each input of a Microcosm UK national cut. This file says only where; every expected sha256 and size is read from the committed pins (uk/source_stages.json, uk/frs_release.json, uk/chronicle_feed.json, uk/gates.json, weighted_integrity.py), so a file is accepted only if it is byte-identical to what the build itself will check. revision null means not yet uploaded: the runner then reads the repository's main branch and still verifies every file against its pin (docs/uk-cut-anyone.md).",
+  "about": "Where tools/run_uk_cut.py fetches each input of a Microcosm UK national cut. This file says only where; every expected sha256 and size is read from the committed pins (uk/source_stages.json, uk/frs_release.json, uk/chronicle_feed.json, uk/gates.json, weighted_integrity.py), so a file is accepted only if it is byte-identical to what the build itself will check. A *_pin field reads its value from those pins instead: path_in_repo_pin chronicle_feed puts the Chronicle artifact under chronicle-uk/<the feed's source commit>, so it follows every re-pin. revision null reads the repository's main branch, and every file is still verified against its pin (docs/uk-cut-anyone.md).",
   "sources": [
     {
       "key": "frs_2024_25",
@@ -115,8 +115,9 @@
       "kind": "hf_files",
       "repo_id": "policyengine/microcosm-uk-build-inputs",
       "repo_type": "dataset",
-      "revision": "d4c8b1917ee6e0b38fae4c6a03568f094fc682cc",
-      "path_in_repo": "chronicle-uk/abf0921b896d29ee0745ed2aefde8d6337ed7164",
+      "revision": null,
+      "path_in_repo": "chronicle-uk",
+      "path_in_repo_pin": "chronicle_feed",
       "directory": "chronicle_uk",
       "members": [
         "manifest.json",
