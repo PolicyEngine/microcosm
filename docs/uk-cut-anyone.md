@@ -8,6 +8,11 @@ against the pins the build itself enforces.
 This is the short path. The step-by-step reference behind it stays in
 [uk-national-release-assembly-runbook-806.md](uk-national-release-assembly-runbook-806.md).
 
+**Status (2026-10-26).** The runner's steps have so far run end to end only
+against stand-in tools. Its first real run, by Vahid Ahmadi from his own
+laptop with his own registered key, is the last check before it is relied
+on for a re-cut; until then the hand-run launchers stay the fallback.
+
 ## What you need
 
 | Need | Where it comes from | Check |
@@ -15,6 +20,7 @@ This is the short path. The step-by-step reference behind it stays in
 | A clean checkout of `main` locked at the policyengine-uk you want | a "Lock policyengine-uk X" PR merged to main | `tools/run_uk_cut.py preflight` |
 | `HF_TOKEN` | write access to `policyengine/populace-uk-private` and `policyengine/populace-uk-staging`, and read access to the input repos below | preflight |
 | `MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY` | a key registered **active** in `microcosm.data.gate_signing_keys` (see [Signing keys](#signing-keys)) | `python -m microcosm.data.gate_signing_keys check` |
+| Cover under the UK Data Service licences for the FRS, SPI, WAS, LCFS, NTS and ETB | the licence holders | the gated input repository admits only covered users |
 | About 60 GB of free disk, AC power, a quiet host | the machine | preflight |
 
 ## One command
@@ -299,17 +305,16 @@ certification dropped, warnings and failing tests.
 
 ## Regions: the dense cut
 
-policyengine.py refuses to route constituency and local-authority regions to
-a dense cut that does not cover the certified policyengine-uk. The only dense
-cut is on 2.132.6. A dense build takes 2–13 hours, and its two-build sign-off
-last took about 30 hours, so a new dense cut per re-cut is not workable
-before the Budget.
+policyengine.py routes constituency and local-authority runs only to a dense
+cut that covers the certified policyengine-uk. A dense build takes hours, and
+its two-build sign-off longer, so a national cut can move to a newer
+policyengine-uk before a dense cut on that version exists. There are four
+routes:
 
-There are four routes:
-
-1. **Ship together.** Build a new dense cut on the same version. This is
-   correct but slow, and it needs the atomic-support files that only María
-   holds.
+1. **Ship together.** Build a dense cut on the same version. This is correct
+   but slow, and it needs the atomic-support files that only María holds.
+   The policyengine-uk 2.151.0 pair (national `a6299504`, dense `c9df4b86`)
+   went this way.
 2. **Accept the older dense cut, recorded as a mismatch.** This needs a
    reviewed policyengine.py change (the `--accept-regional-model-mismatch`
    draft).
@@ -355,13 +360,5 @@ rehearsal probe agrees.
   It lists the result in the pull request, and refuses if a stored column
   would be dropped (unless `--allow-dropped-columns`).
 
-**Recommendation.**
-
-- Use route 2 for the rolling re-cuts (Sat 24, Mon 26), so area routing
-  stays on and the mismatch is recorded.
-- For the final Budget pair, prefer route 1: a dense cut on the final
-  policyengine-uk, started by Monday, with route 2 as the fallback if it
-  misses the Wed 07:00 UTC go/no-go.
-- Routes 3 and 4 are not recommended.
-
-The choice is María's (runbook Q13).
+Routes 3 and 4 are not recommended. Which route a cut takes is María's
+call.
