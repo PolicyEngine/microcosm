@@ -90,6 +90,10 @@ of a run (runbook §1).
   `latest-*.json` stay where they are (runbook Q12 and F14).
 - **It never promotes.** Promotion (`--promote-line national`) is a separate,
   reviewed call. The runner prints the command for it.
+- **It never publishes to the Orrery.** The national step always passes
+  `--no-publish-orrery`, as the hand-run launchers do. The graph files stay
+  in the run directory; publishing them is a separate, deliberate step
+  ([orrery-publication.md](orrery-publication.md)).
 - **It never certifies into policyengine.py.** That is a pull request in
   another repository; see [Certifying into policyengine.py](#certifying-into-policyenginepy).
 - **It builds only from main.** It refuses a commit that is not on

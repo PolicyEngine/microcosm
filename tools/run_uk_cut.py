@@ -669,6 +669,9 @@ def national_argv(
         "--ledger-manifest-sha256", chronicle["manifest.json"],
         "--incumbent-h5", str(paths.input_file("incumbent", incumbent.name)),
         "--incumbent-sha256", incumbent.sha256,
+        # The build otherwise submits its graph to the public Orrery whenever
+        # staging is remote; the graph files stay in the run directory.
+        "--no-publish-orrery",
         "--out", str(paths.run_dir),
     ]  # fmt: skip
     if logbook_prev_row_digest:
