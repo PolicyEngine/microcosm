@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import re
 import zipfile
 from contextlib import redirect_stdout
 from pathlib import Path
@@ -45,6 +46,16 @@ def test_every_declared_input_resolves_to_a_committed_pin():
         assert source.files
         for pin in source.files:
             assert len(pin.sha256) == 64 and int(pin.sha256, 16) >= 0
+
+
+def test_every_hosted_archive_is_pinned_to_a_revision_and_digest():
+    """Each zip is read at a fixed commit and checked whole before any member."""
+
+    for source in cut.load_input_sources():
+        if source.kind != "hf_zip_members":
+            continue
+        assert re.fullmatch(r"[0-9a-f]{40}", source.revision or ""), source.key
+        assert re.fullmatch(r"[0-9a-f]{64}", source.archive_sha256 or ""), source.key
 
 
 def test_the_runner_pins_are_the_build_pins():

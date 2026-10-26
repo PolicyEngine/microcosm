@@ -134,31 +134,32 @@ ever left at an input's path.
 | Incumbent enhanced FRS | `policyengine-uk-data-private` `enhanced_frs_2024_25.h5` @ `a9e52499` | fetched, matches |
 | Input-mass reference | `policyengine/microcosm-uk-build-inputs` (private) `input-mass-reference/fd41cb5f…/` | fetched, matches |
 | Chronicle UK consumer artifact (7.4 GB) | `policyengine/microcosm-uk-build-inputs` `chronicle-uk/abf0921b…/` @ `d4c8b191` | rebuilt on Modal from public Chronicle; both digests reproduce the pin byte for byte |
-| NTS 2002-2024 (5 tabs) | `policyengine-uk-data-private` `nts_2002_24.zip` | **needs a one-time upload** |
-| LCFS 2024-25 (2 tabs) | `policyengine-uk-data-private` `lcfs_2024_25.zip` | **needs a one-time upload** |
+| NTS 2002-2024 (5 tabs) | `policyengine-uk-data-private` `nts_2002_24.zip` @ `559b69e9` | fetched, every member matches its pin |
+| LCFS 2024-25 (2 tabs) | `policyengine-uk-data-private` `lcfs_2024_25.zip` @ `1105105### NTS and LCFS
 
-### Uploading NTS and LCFS (once, by a UKDS licence holder)
+Both were uploaded once by a UKDS licence holder (2026-10-25) and are pinned
+by revision and archive sha256 in `tools/uk_cut_inputs.json`:
 
-Upload the UK Data Service downloads unchanged: the TAB-format zips of SN 5340
-(19th edition) and SN 9603. The runner finds each tab by name inside the zip
-and checks it against its pin, so the folder layout inside does not matter.
+- `nts_2002_24.zip` is the UK Data Service TAB download of SN 5340 (19th
+  edition), unchanged.
+- `lcfs_2024_25.zip` (SN 9603, 2nd edition, TAB) is a repack of the
+  extracted files: all seven tabs and the two mrdoc workbooks, under
+  `lcfs_2024_25/`. The original download zip was no longer available.
 
-```bash
-hf upload policyengine/policyengine-uk-data-private ./<SN5340 tab zip> nts_2002_24.zip --repo-type model \
-  --commit-message "Add NTS 2002-2024 (UKDS SN 5340 ed. 19, TAB) for Microcosm UK builds"
-hf upload policyengine/policyengine-uk-data-private ./<SN9603 tab zip> lcfs_2024_25.zip --repo-type model \
-  --commit-message "Add LCFS 2024-25 (UKDS SN 9603, TAB) for Microcosm UK builds"
-```
-
-Then confirm, without building anything:
+The runner finds each tab by name inside the zip and checks it against its
+pin, so the folder layout inside does not matter. To check both without
+building anything:
 
 ```bash
 uv run --no-sync python tools/run_uk_cut.py fetch --only nts_2002_2024 --only lcfs_2024_25
 ```
 
-A tab that differs from its pin is refused by name. If that happens, the
-upload is a different edition from the one the build was reviewed against.
-Afterwards, pin the upload's revision and archive sha256 in
+A tab that differs from its pin is refused by name: that upload is a
+different edition from the one the build was reviewed against. A
+re-upload needs its new revision and archive sha256 pinned in
+`tools/uk_cut_inputs.json`.
+
+ion and archive sha256 in
 `tools/uk_cut_inputs.json`, in a small follow-up PR.
 
 ### Rebuilding the Chronicle artifact

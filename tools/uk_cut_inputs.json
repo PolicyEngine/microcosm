@@ -73,9 +73,9 @@
       "kind": "hf_zip_members",
       "repo_id": "policyengine/policyengine-uk-data-private",
       "repo_type": "model",
-      "revision": null,
+      "revision": "559b69e94f0e03e696c5b7a55feffc54b7423717",
       "filename": "nts_2002_24.zip",
-      "archive_sha256": null,
+      "archive_sha256": "bc9955021d12ca82230c75626d393574dc6a44d9cbd13f412af76c5af93bf136",
       "directory": "nts_2002_2024",
       "members": [
         "household_eul_2002-2024.tab",
@@ -84,22 +84,22 @@
         "stage_eul_2002-2024.tab",
         "ticket_eul_2002-2024.tab"
       ],
-      "upload_note": "UKDS SN 5340, 19th edition, TAB format. Upload the UKDS download zip unchanged as nts_2002_24.zip; any folder layout inside it is fine, the members are found by file name and checked against their pins."
+      "upload_note": "UKDS SN 5340, 19th edition, TAB format: the UKDS download zip, unchanged (its sha256 is the one UKDS puts in the download's file name). The members are found by file name and checked against their pins; if the file is ever lost, a UKDS licence holder re-uploads the same download."
     },
     {
       "key": "lcfs_2024_25",
       "kind": "hf_zip_members",
       "repo_id": "policyengine/policyengine-uk-data-private",
       "repo_type": "model",
-      "revision": null,
+      "revision": "1105105276991902d28e5fa3973d654ab09327bc",
       "filename": "lcfs_2024_25.zip",
-      "archive_sha256": null,
+      "archive_sha256": "66b5993b2b791874ab712bf03dca4688044857f24a357fc6d2d308037e3f2896",
       "directory": "lcfs_2024_25",
       "members": [
         "dvhh_uk_anon_v3_2024.tab",
         "dvper_uk_anon_2024.tab"
       ],
-      "upload_note": "UKDS SN 9603, TAB format. Upload the UKDS download zip unchanged as lcfs_2024_25.zip, alongside lcfs_2021_22.zip and lcfs_2023_24.zip."
+      "upload_note": "UKDS SN 9603, 2nd edition, TAB format: a repack of the extracted files (all seven tabs and the two mrdoc workbooks, under lcfs_2024_25/), because the original download zip was no longer available. The members are found by file name and checked against their pins."
     },
     {
       "key": "hmrc_personal_incomes_ods",
