@@ -3371,3 +3371,47 @@ def test_the_brma_and_rent_resource_flags_need_their_modes(tmp_path):
             {},
             {},
         )
+
+
+def test_thin_row_withholding_is_dense_only_and_needs_no_orrery(tmp_path):
+    """--withhold-thin-rows-only (María's ruling of 2026-10-26) never reaches
+    the public Orrery and is refused on the national role."""
+
+    with pytest.raises(SystemExit):
+        arguments(tmp_path, "--withhold-thin-rows-only")
+    with pytest.raises(SystemExit):
+        arguments(
+            tmp_path,
+            "--withhold-thin-rows-only",
+            "--no-publish-orrery",
+            role="national",
+        )
+    args = arguments(tmp_path, "--withhold-thin-rows-only", "--no-publish-orrery")
+    assert args.withhold_thin_rows_only is True
+    assert arguments(tmp_path).withhold_thin_rows_only is False
+
+
+def test_thin_row_withholding_marks_only_the_calibrated_gates(tmp_path, monkeypatch):
+    from microcosm.build.uk_runtime import diagnostics
+
+    # Restored at teardown: arming replaces the module's withholding.
+    monkeypatch.setattr(
+        diagnostics, "uk_withheld_row_sets", diagnostics.uk_withheld_row_sets
+    )
+    graph = prepared(tmp_path).full.graph
+    marked = cli.with_thin_row_withholding(graph)
+    changed = {
+        node.id
+        for node, before in zip(marked.nodes, graph.nodes, strict=True)
+        if node.params != before.params
+    }
+    assert changed == {"uk.full.gates.calibrated"}
+    calibrated = next(n for n in marked.nodes if n.id == "uk.full.gates.calibrated")
+    assert calibrated.params["model_figure_withholding"] == "thin_rows_only"
+    # The thin rows stay withheld; the differencing check adds none.
+    monkeypatch.setattr(diagnostics, "uk_thin_rows", lambda *args: {"thin.row@2025"})
+    assert diagnostics.uk_withheld_row_sets(None, None, None, [], {}) == (
+        {"thin.row@2025"},
+        set(),
+    )
+    assert diagnostics.uk_withheld_rows(None, None, None, [], {}) == {"thin.row@2025"}
