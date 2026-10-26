@@ -1347,7 +1347,24 @@ def run_score(runner: Runner) -> None:
         raise CutError(f"the candidate does not pass the incumbent score: {detail}")
 
 
-def run_certify(runner: Runner, *, logbook_prev_row_digest: str | None) -> None:
+def national_logbook_row(paths: CutPaths) -> str:
+    """The digest of the national build's own Logbook row.
+
+    The build spools exactly one row under ``logbook-spool/``, named by its
+    digest; the certification's row chains on it, as the hand-run launchers
+    chain it, so the two never share a predecessor.
+    """
+
+    rows = sorted((paths.run_dir / "logbook-spool").glob("*.json"))
+    if len(rows) != 1:
+        raise CutError(
+            f"{paths.run_dir / 'logbook-spool'} holds {len(rows)} Logbook rows; "
+            "certification chains on the national build's single row."
+        )
+    return rows[0].stem
+
+
+def run_certify(runner: Runner) -> None:
     paths = runner.paths
     done, detail = certify_done(paths)
     if done:
@@ -1367,7 +1384,7 @@ def run_certify(runner: Runner, *, logbook_prev_row_digest: str | None) -> None:
             candidate_sha256=candidate_sha256(paths),
             spine_sha256=spine_sha256(paths),
             sources=runner.sources,
-            logbook_prev_row_digest=logbook_prev_row_digest,
+            logbook_prev_row_digest=national_logbook_row(paths),
         ),
     )
     done, detail = certify_done(paths)
@@ -1583,7 +1600,13 @@ def _parse(argv: Sequence[str] | None) -> argparse.Namespace:
     )
     parser.add_argument("--retry-national", action="store_true")
     parser.add_argument("--previous-h5", type=Path, help="for the stage-1 comparison")
-    parser.add_argument("--logbook-prev-row-digest")
+    parser.add_argument(
+        "--logbook-prev-row-digest",
+        help=(
+            "the national build's Logbook predecessor (default: a new chain); "
+            "the certification always chains on the build's own row"
+        ),
+    )
     parser.add_argument(
         "--spine-telemetry",
         action="store_true",
@@ -1723,7 +1746,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             logbook_prev_row_digest=args.logbook_prev_row_digest,
         )
         run_score(runner)
-        run_certify(runner, logbook_prev_row_digest=args.logbook_prev_row_digest)
+        run_certify(runner)
         run_stage1(runner, args.previous_h5)
         summary = run_assemble(runner)
         tag = summary["tag"]

@@ -400,12 +400,16 @@ def test_the_archive_digest_is_checked_when_pinned(tmp_path):
 # --------------------------------------------------------------------------- #
 
 
+BUILD_ROW = "d" * 64
+
+
 class FakeBuild:
     """Stands in for the five tools: writes what each step writes."""
 
     def __init__(self, paths: cut.CutPaths, fail: set[str] | None = None) -> None:
         self.paths = paths
         self.calls: list[str] = []
+        self.argv: dict[str, list[str]] = {}
         self.fail = fail or set()
 
     def __call__(self, argv: list[str], cwd: Path, log_path: Path) -> int:
@@ -421,6 +425,7 @@ class FakeBuild:
             "microcosm.data.publish_cli": "publish",
         }[tool]
         self.calls.append(step)
+        self.argv[step] = argv
         if step in self.fail:
             return 1
         getattr(self, step.replace("-", "_"))(log_path)
@@ -450,6 +455,8 @@ class FakeBuild:
         (run / "build_record.json").write_text(
             json.dumps({"artifacts": {"staging_h5": {"sha256": _sha(b"candidate")}}})
         )
+        (run / "logbook-spool").mkdir()
+        (run / "logbook-spool" / f"{BUILD_ROW}.json").write_text("{}")
 
     def score(self, log_path):
         (self.paths.run_dir / "score_vs_incumbent.json").write_text(
@@ -494,8 +501,35 @@ def _all(runner):
     cut.run_spine(runner, staging_local_only=True)
     cut.run_national(runner, retry=False, logbook_prev_row_digest=None)
     cut.run_score(runner)
-    cut.run_certify(runner, logbook_prev_row_digest=None)
+    cut.run_certify(runner)
     return cut.run_assemble(runner)
+
+
+def test_certification_chains_on_the_national_build_row(tmp_path):
+    runner, fake = _runner(tmp_path)
+    cut.run_spine(runner, staging_local_only=True)
+    cut.run_national(runner, retry=False, logbook_prev_row_digest="a" * 64)
+    cut.run_score(runner)
+    cut.run_certify(runner)
+    national, certify = fake.argv["national"], fake.argv["certify"]
+    assert national[national.index("--logbook-prev-row-digest") + 1] == "a" * 64
+    assert certify[certify.index("--logbook-prev-row-digest") + 1] == BUILD_ROW
+
+
+@pytest.mark.parametrize("rows", [0, 2])
+def test_certification_needs_exactly_one_build_row(tmp_path, rows):
+    runner, fake = _runner(tmp_path)
+    cut.run_spine(runner, staging_local_only=True)
+    cut.run_national(runner, retry=False, logbook_prev_row_digest=None)
+    cut.run_score(runner)
+    spool = runner.paths.run_dir / "logbook-spool"
+    for row in spool.glob("*.json"):
+        row.unlink()
+    for index in range(rows):
+        (spool / f"{index:064x}.json").write_text("{}")
+    with pytest.raises(cut.CutError, match="Logbook rows"):
+        cut.run_certify(runner)
+    assert "certify" not in fake.calls
 
 
 def test_a_complete_run_executes_each_step_once_and_resumes_to_nothing(tmp_path):
@@ -680,7 +714,7 @@ def test_retried_score_and_certification_keep_the_earlier_evidence(tmp_path):
         runner.paths.run_dir / f"{cut.CANDIDATE_NAME}.release_certification.json"
     )
     certification.write_text('{"shippable": false}')
-    cut.run_certify(runner, logbook_prev_row_digest=None)
+    cut.run_certify(runner)
     kept = list(runner.paths.run_dir.glob(f"{certification.name}.superseded-*"))
     assert len(kept) == 1 and "false" in kept[0].read_text()
     assert cut.certify_done(runner.paths)[0]
