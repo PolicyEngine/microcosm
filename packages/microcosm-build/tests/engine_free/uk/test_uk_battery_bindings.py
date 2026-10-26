@@ -228,7 +228,6 @@ def _parity(**overrides) -> SimpleNamespace:
         "candidate_targets": {"ons/population"},
         "reference_targets": {"ons/population"},
         "target_relative_errors": {"ons/population": 0.01},
-        "withheld_targets": frozenset(),
     }
     fields.update(overrides)
     return SimpleNamespace(**fields)
@@ -264,7 +263,7 @@ def _fixture_coverage_registry():
             evaluator=lambda context, parameters: GateResult(
                 name="take_up_signal", passed=True
             ),
-            parameter_keys=frozenset({"maximum_share_deviation"}),
+            parameter_keys=UK_GATE_REGISTRY["take_up_signal"].parameter_keys,
         ),
         "enum_domain": UKGateBinding(
             name="enum_domain",
@@ -1147,36 +1146,21 @@ class TestBatteryRegressions:
             "uk_target_fit",
         } <= failed
 
-    def test_the_fit_gate_decides_on_the_published_national_rows(self) -> None:
-        """María's rule of 2026-10-21: a thin national row is bound, its figures kept.
-
-        The fit gate neither checks nor names a withheld row, and counts it; a
-        published row's breach still fails the gate.
-        """
+    def test_the_fit_gate_judges_a_thin_national_row(self) -> None:
+        """María's ruling of 2026-10-26: no row's figures are withheld, so the
+        fit gate judges a row however few source households carry it."""
 
         thin = "dwp.uc.payment_distribution_single_thin@2025"
-        withheld = _parity(
+        parity = _parity(
             candidate_targets={"ons/population", thin},
             reference_targets={"ons/population", thin},
             target_relative_errors={"ons/population": 0.01, thin: -0.60},
-            withheld_targets=frozenset({thin}),
         )
-        battery = _run_battery(_tables(), parity=withheld)
-        fit = {o.entry.id: o for o in battery.outcomes}["uk_target_fit"]
-        assert fit.status is GateStatus.PASSED, fit.result.failures
-        assert fit.result.details["withheld_targets"] == 1
-        assert thin not in str(fit.result.details)
-        breached = _parity(
-            candidate_targets={"ons/population", thin},
-            reference_targets={"ons/population", thin},
-            target_relative_errors={"ons/population": -0.40, thin: -0.60},
-            withheld_targets=frozenset({thin}),
-        )
-        battery = _run_battery(_tables(), parity=breached)
+        battery = _run_battery(_tables(), parity=parity)
         fit = {o.entry.id: o for o in battery.outcomes}["uk_target_fit"]
         assert fit.status is GateStatus.FAILED
-        assert fit.result.failures
-        assert all(thin not in failure for failure in fit.result.failures)
+        assert fit.result.details["failing_targets"] == {thin: -0.60}
+        assert "withheld_targets" not in fit.result.details
 
 
 class TestUnevidencedArms:
@@ -2624,18 +2608,18 @@ class TestLocalTargetFitRegister:
             self._evaluate(monkeypatch, uk_gates, {}, -0.30, parameters=parameters)
 
 
-class TestWithheldBrmaRows:
-    """The production local fit bindings on a withheld BRMA row (microcosm#1262).
+class TestThinRowsAreJudged:
+    """The production local fit bindings on a thin BRMA row.
 
-    María's rulings of 2026-10-17 and 2026-10-19: a BRMA row resting on fewer
-    than ten source households keeps its place without its figures, and both
-    fit gates decide on the published rows and count the withheld ones.
+    María's ruling of 2026-10-26 dropped the withholding of microcosm#1262: a
+    row resting on fewer than ten source households keeps its figures, and
+    both fit gates judge it with every other row.
     """
 
-    WITHHELD = "private_rent/S33999999/rent/private_rent_brma"
+    THIN = "private_rent/S33999999/rent/private_rent_brma"
 
     @staticmethod
-    def _rows(flag: bool = True) -> list[dict]:
+    def _rows() -> list[dict]:
         rows = [
             {
                 "family": "private_rent",
@@ -2651,7 +2635,6 @@ class TestWithheldBrmaRows:
                 "area_code": "S33999999",
                 "metric": "rent/private_rent_brma",
                 "relative_error": -0.4,
-                "model_figures_withheld": flag,
             },
             {
                 "family": "private_rent",
@@ -2682,109 +2665,41 @@ class TestWithheldBrmaRows:
             entry.parameters,
         )
 
-    def _guard(self, result: GateResult) -> None:
-        from microcosm.build.uk_runtime.diagnostics import (
-            uk_refuse_named_withheld_rows,
-        )
-
-        uk_refuse_named_withheld_rows(
-            {"failures": list(result.failures), "details": result.details},
-            names=frozenset(),
-            keys=frozenset({self.WITHHELD}),
-        )
-
-    def test_the_target_fit_decides_on_the_published_rows(
-        self, monkeypatch, uk_gates
-    ) -> None:
-        """María's ruling of 2026-10-19: a withheld row is neither checked nor named.
-
-        The withheld row misses its target by 40%, so a check over every row
-        would fail on it; the gate fails on the published row beyond the
-        bound alone, and counts the withheld one.
-        """
+    def test_the_target_fit_judges_the_thin_row(self, monkeypatch, uk_gates) -> None:
+        """The thin row misses its target by 40% and fails beside the
+        published row beyond the bound; nothing is counted as withheld."""
 
         result = self._evaluate(
             monkeypatch, uk_gates, "uk_local_target_fit", self._rows()
         )
         assert result.passed is False
         published = "private_rent/E06000004/rent/private_rent"
-        assert result.details["failing_targets"] == {published: 0.30}
-        assert result.details["targets_checked"] == 7
-        assert result.details["withheld_targets"] == 1
-        assert "withheld_failing_targets" not in result.details
-        self._guard(result)
+        assert result.details["failing_targets"] == {published: 0.30, self.THIN: -0.4}
+        assert result.details["targets_checked"] == 8
+        assert "withheld_targets" not in result.details
 
-    def test_a_withheld_row_inside_the_bound_reads_the_same(
+    def test_the_thin_rows_register_entry_excuses_it(
         self, monkeypatch, uk_gates
     ) -> None:
-        """Inside or beyond the bound, the gate's output does not move."""
-
-        rows = self._rows()
-        rows[6]["relative_error"] = 0.01
-        inside = self._evaluate(monkeypatch, uk_gates, "uk_local_target_fit", rows)
-        beyond = self._evaluate(
-            monkeypatch, uk_gates, "uk_local_target_fit", self._rows()
-        )
-        assert inside == beyond
-
-    def test_a_withheld_rows_register_entry_is_set_aside(
-        self, monkeypatch, uk_gates
-    ) -> None:
-        """An entry for a withheld row neither excuses, rots nor names it."""
-
         result = self._evaluate(
             monkeypatch,
             uk_gates,
             "uk_local_target_fit",
             self._rows(),
-            register={self.WITHHELD: _receipt()},
+            register={self.THIN: _receipt()},
         )
-        assert self.WITHHELD not in result.details["reviewed_exclusions"]
-        assert self.WITHHELD not in result.details["dormant_exclusions"]
-        assert self.WITHHELD not in result.details["stale_exclusions"]
-        self._guard(result)
+        assert self.THIN in result.details["reviewed_exclusions"]
+        assert self.THIN not in result.details["failing_targets"]
 
-    def test_a_withheld_rows_entry_for_another_line_is_set_aside(
-        self, monkeypatch, uk_gates
-    ) -> None:
-        """The fourth review of #1305: an out-of-line entry named the row.
-
-        An entry scoped to the national line is listed as set aside on the
-        local one; for a withheld row it is left out of that list too.
-        """
-
-        result = self._evaluate(
-            monkeypatch,
-            uk_gates,
-            "uk_local_target_fit",
-            self._rows(),
-            register={self.WITHHELD: _receipt(release_lines=("national",))},
-        )
-        assert "out_of_line_exclusions" not in result.details
-        self._guard(result)
-
-    def test_family_fit_rests_on_the_published_rows(
-        self, monkeypatch, uk_gates
-    ) -> None:
+    def test_family_fit_counts_every_row(self, monkeypatch, uk_gates) -> None:
         result = self._evaluate(
             monkeypatch, uk_gates, "uk_local_per_family_fit", self._rows()
         )
-        assert result.details["family_sizes"] == {"private_rent": 7}
+        assert result.details["family_sizes"] == {"private_rent": 8}
         assert result.details["family_within_shares"]["private_rent"] == pytest.approx(
-            6 / 7
+            6 / 8
         )
-        assert result.details["withheld_targets"] == {"private_rent": 1}
-        self._guard(result)
-
-    def test_an_unflagged_row_is_checked_and_named(self, monkeypatch, uk_gates) -> None:
-        """The guard bites: without the flag the row is named, and refused."""
-
-        result = self._evaluate(
-            monkeypatch, uk_gates, "uk_local_target_fit", self._rows(flag=False)
-        )
-        assert result.details["failing_targets"][self.WITHHELD] == -0.4
-        with pytest.raises(ValueError, match="names a withheld row"):
-            self._guard(result)
+        assert "withheld_targets" not in result.details
 
 
 class TestGateOnlyAreaSupport:

@@ -1,0 +1,1 @@
+UK builds no longer submit their saved graph to the public Orrery unless `--publish-orrery` asks for it (María's ruling of 2026-10-26). Before, a build that staged to Hugging Face published by default and `--no-publish-orrery` turned it off; that flag now states the default, and staging to the private repositories is unchanged.

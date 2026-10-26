@@ -451,13 +451,13 @@ _UK_GATE_BATTERY_SHIPPABLE_STATUSES = frozenset({"passed", "not_applicable"})
 # fingerprint derives from the manifest digest. Editing the spec moves all
 # three here in the same reviewed change.
 _UK_GATE_BATTERY_POLICY_SHA256 = (
-    "83ca8470cbc1801dc037b0b1d8c572846f6882f6e562a9db6b0c1bbb005efe0e"
+    "ce740f872559d9956314330765af414f7d8e767c1e666408fe9a7d209c41d04b"
 )
 _UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "ac1ad35e724feaa36ed498d7a4d20a8bbe9ffee75535cba7f8a4a79a0330f0d7"
+    "5be43f9fa28f0fa17c40b8d2035727b96e62d4e50bc674d266b425e67abb455d"
 )
 _UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "486d32ed31529cea44f38c8419c1ed3678a83af622784f9cb3ba4eb5b9966f5b"
+    "0fdeef15e7590d85b30dc301481f24d4a093b2b139eb06c79b5303ae74b4b53a"
 )
 #: Spec entry id -> the legacy gate name whose observable detail checks
 #: apply unchanged (the battery re-keys the report by entry id; the gate
@@ -968,10 +968,10 @@ _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     },
     "release_cut": {
         "gates_manifest_sha256": (
-            "a7b17431dd71284bf93b5337036bc1b9b64a17eab0b161f78549ed72ab0ca61c"
+            "d64809b38019b29bc7bb07b3119dc5b29d4b3f1c95cdb1726657d0612eae47c6"
         ),
         "policy_sha256": (
-            "ab5f2a1c14ffe72cbc5d65c7658827b81b9470a56278e6f961f3b6dfa12ca2d7"
+            "6c56029fafbd8eeb36693bdcb3a719675bbb9286a377953aa6050bb03cbe5d3e"
         ),
     },
 }
@@ -4551,8 +4551,8 @@ def _validate_uk_dense_release_dir(release_dir: Path, release_id: str) -> list[s
     the incumbent files ship all together or not at all, and the manifest's
     reviewed limitations must say what the release does not claim.
     Artifacts pin to the release id or to one of its immutable per-cut tags.
-    A shipped JSON document carrying a per-area support figure is a warning,
-    returned rather than refused (microcosm#1301).
+    Per-area support figures ship (María's ruling of 2026-10-26 dropped their
+    withholding, microcosm#1301), so the line returns no warnings.
     """
 
     failures: list[str] = []
@@ -4612,7 +4612,6 @@ def _validate_uk_dense_release_dir(release_dir: Path, release_id: str) -> list[s
         if gate_summary is not None:
             _check_local_area_gates(gate_summary, failures)
     diagnostics_path = release_dir / "calibration_diagnostics.json"
-    floor_warnings: list[str] = []
     if diagnostics_path.is_file():
         diagnostics = _load_json(diagnostics_path, failures)
         if diagnostics is not None:
@@ -4621,7 +4620,6 @@ def _validate_uk_dense_release_dir(release_dir: Path, release_id: str) -> list[s
             ):
                 _check_calibration_diagnostics(diagnostics, failures)
             _check_local_area_calibration_diagnostics(diagnostics, failures)
-            floor_warnings = _uk_brma_floor_verdict_warnings(diagnostics)
     report: Mapping | None = None
     report_path = release_dir / _UK_DENSE_GATE_REPORT_FILE
     if report_path.is_file():
@@ -4647,9 +4645,6 @@ def _validate_uk_dense_release_dir(release_dir: Path, release_id: str) -> list[s
                 coverage, failures, incumbent_attached=incumbent_attached
             )
             _check_uk_measure_exclusions(coverage.get("measure_exclusions"), failures)
-    # Warned, not refused: the walk runs only after both builds, so a finding
-    # is weighed rather than paid for with a rebuild (microcosm#1301).
-    disclosure_warnings = _uk_dense_disclosure_warnings(release_dir) + floor_warnings
     # The core joins run whether or not the incumbent comparison is attached.
     candidate_identity = _check_uk_dense_surface_files(
         release_dir, release_manifest or {}, failures
@@ -4682,7 +4677,7 @@ def _validate_uk_dense_release_dir(release_dir: Path, release_id: str) -> list[s
     _check_local_artifact_hashes(release_dir, release_manifest, failures)
     if failures:
         raise ReleaseContractError(release_dir, failures)
-    return disclosure_warnings
+    return []
 
 
 def _check_uk_dense_gate_report(
@@ -5096,12 +5091,13 @@ def _check_area_support_block(
         )
 
 
-# Per-area support figures a dense release withholds (microcosm#1301): an
-# area's rows, Kish ESS and distinct source households, under each name the
-# support table, the support gate, the diagnostics and the size evaluation
-# have used for them, and the plain synonyms a converted table would carry.
-# Weights and per-cell estimates are not support figures and ship as they are.
-# Names match whatever their case.
+# Per-area support figures (microcosm#1301): an area's rows, Kish ESS and
+# distinct source households, under each name the support table, the support
+# gate, the diagnostics and the size evaluation have used for them, and the
+# plain synonyms a converted table would carry. A release ships them since
+# María's ruling of 2026-10-26; the sign-off drafter still walks the entries
+# it drafts for them, since those go into a public pull request. Weights and
+# per-cell estimates are not support figures. Names match whatever their case.
 _UK_AREA_SUPPORT_FIGURE_KEYS = frozenset(
     {
         "rows",
@@ -5233,7 +5229,11 @@ def _uk_names_only_regions(value: object) -> bool:
 
 
 def _uk_dense_disclosure_findings(name: str, payload: object) -> list[str]:
-    """Per-area support figures in one shipped JSON document (microcosm#1301).
+    """Per-area support figures in one JSON document (microcosm#1301).
+
+    The sign-off drafter walks the entries it drafts with it, since they go
+    into a public pull request; a release no longer withholds these figures
+    (María's ruling of 2026-10-26).
 
     An area's rows, Kish ESS or distinct sources (a number, or a number
     written as text with or without thousands separators, under its name in
@@ -5360,46 +5360,11 @@ def _uk_dense_disclosure_findings(name: str, payload: object) -> list[str]:
         "text": "string(s) stating an area's measured support",
     }
     return [
-        f"{name} carries {len(paths)} {wording[kind]}, which a dense release "
-        "should withhold (microcosm#1301); first at "
+        f"{name} carries {len(paths)} {wording[kind]} (microcosm#1301); first at "
         f"{paths[:_UK_DISCLOSURE_PATHS_SHOWN]}."
         for kind, paths in found.items()
         if paths
     ]
-
-
-def _uk_dense_disclosure_file_warnings(path: Path) -> list[str]:
-    """The disclosure walk's warnings for one JSON file (microcosm#1301).
-
-    The file is read as the contract reads JSON, refusing NaN and the
-    infinities. A file the walk cannot read, parse or walk to the bottom of
-    (a nesting too deep to recurse) is reported, since a figure in it could
-    not be ruled out. The release pre-flight walks a run's files with it too.
-    """
-
-    try:
-        payload = json.loads(path.read_bytes(), parse_constant=_reject_json_constant)
-        return _uk_dense_disclosure_findings(path.name, payload)
-    except (OSError, ValueError, RecursionError):
-        return [
-            f"{path.name} cannot be read and walked as JSON, so the disclosure "
-            "walk cannot rule out a per-area support figure in it "
-            "(microcosm#1301)."
-        ]
-
-
-def _uk_dense_disclosure_warnings(release_dir: Path) -> list[str]:
-    """Shipped JSON documents carrying a per-area support figure (microcosm#1301).
-
-    Every ``*.json`` in the release directory is walked, the signed gate
-    report and the release manifest's strings included. A document the walk
-    cannot read is reported too, since a figure in it could not be ruled out.
-    """
-
-    warnings: list[str] = []
-    for path in sorted(release_dir.glob("*.json")):
-        warnings.extend(_uk_dense_disclosure_file_warnings(path))
-    return warnings
 
 
 def _check_local_area_release_manifest(
@@ -6444,54 +6409,6 @@ def _uk_census_over(rows: list[Mapping], census: object) -> dict[str, object] | 
     return counts
 
 
-def _uk_brma_floor_verdict_warnings(diagnostics: Mapping) -> list[str]:
-    """BRMA rows whose ten-household verdict is missing or disagrees.
-
-    microcosm#1262: every BRMA row carries ``metadata.carrier_floor_met``, and
-    a row withholds its model figures exactly when the verdict is false or the
-    row is withheld beside a thin one (``metadata.complementary_withholding``,
-    Vahid's second review of #1333), so the contract can see a thin row the
-    build never flagged. María's ruling of 2026-10-19 on the fourth review of
-    #1305: this is warned, not refused. The warnings give counts only, never a
-    row.
-    """
-
-    missing = disagreeing = 0
-    for row in diagnostics.get("targets") or ():
-        metadata = row.get("metadata") if isinstance(row, Mapping) else None
-        if not isinstance(metadata, Mapping) or not _uk_brma_row(metadata):
-            continue
-        verdict = metadata.get("carrier_floor_met")
-        withheld = bool(metadata.get("model_figures_withheld"))
-        complementary = metadata.get("complementary_withholding") is True
-        if not isinstance(verdict, bool):
-            missing += 1
-        elif (not verdict and (complementary or not withheld)) or (
-            verdict and withheld != complementary
-        ):
-            disagreeing += 1
-    warnings = []
-    if missing:
-        warnings.append(
-            f"calibration_diagnostics.json has {missing} BRMA row(s) without a "
-            "ten-household carrier verdict (metadata.carrier_floor_met), so the "
-            "contract cannot see whether their model figures may be published "
-            "(microcosm#1262)."
-        )
-    if disagreeing:
-        warnings.append(
-            f"calibration_diagnostics.json has {disagreeing} BRMA row(s) whose "
-            "carrier verdict disagrees with their withheld flag (microcosm#1262)."
-        )
-    return warnings
-
-
-def _uk_brma_row(metadata: Mapping) -> bool:
-    level = str(metadata.get("geography_level") or "").strip().lower()
-    area_type = str(metadata.get("area_type") or "").strip().lower()
-    return area_type == "brma" or level in {"brma", "statistical_scope"}
-
-
 def _check_uk_candidate_restated_losses(
     candidate: Mapping, diagnostics: Mapping, failures: list[str]
 ) -> None:
@@ -6732,10 +6649,9 @@ def validate_release_dir(
 
     Returns:
         The contract's warnings, each a sentence naming the file, for the
-        caller to print. Only the dense UK line has any: its disclosure walk
-        reports per-area support figures (microcosm#1301), and a BRMA row
-        without its ten-household carrier verdict, or with one its withheld
-        flag contradicts, is reported (microcosm#1262), without refusing.
+        caller to print; they never refuse a release. No line returns any
+        since María's ruling of 2026-10-26 dropped the dense line's
+        disclosure walk (microcosm#1301).
 
     Raises:
         ReleaseContractError: Naming every violation found — missing files,

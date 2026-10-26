@@ -5,11 +5,9 @@ weights: the solver's initialiser refuses a nonzero target with no support. A
 row that some households carry stays bound however few they are: a cell that
 rests on fewer than ten records is no reason to leave a row out, and only a
 measured distortion of the calibration is (María's rule of 2026-10-21, which
-replaced the floor of ten she signed on 2026-10-16). What the licence asks of
-such a row is that its model figures stay in the build: the diagnostics, the
-gate evidence and every written surface withhold the figures of a row that
-fewer than ten distinct source households carry
-(:func:`microcosm.build.uk_runtime.diagnostics.uk_withheld_rows`).
+replaced the floor of ten she signed on 2026-10-16). Such a row's model
+figures ship with every other row's: the outputs go only to the licensed
+private repository (her ruling of 2026-10-26).
 
 The floor is declared once, in the ``support_floor`` block of
 ``uk/calibration_measure_exclusions.json`` (schema 4), and signed there; its
@@ -182,7 +180,7 @@ def uk_support_floor_from_payload(block: Mapping[str, Any]) -> UKSupportFloor:
         raise ValueError(
             f"UK support floor must be {UK_SUPPORT_FLOOR_VALUE}: a row that any source "
             "household carries stays bound however few they are (María's rule of "
-            "2026-10-21), and the figures of a thin row are withheld, not the row."
+            "2026-10-21)."
         )
     scopes = _scopes_from_payload(block["scopes"])
     for field in _TEXT_FIELDS:
