@@ -21,10 +21,10 @@ keep the engine default (False), which leaves ``is_in_non_advanced_education``
 them.
 
 The flag is read twice in policyengine-uk: by the s.9B threshold (from 2.160.0,
-policyengine-uk#2505) and by the apprentice minimum wage. Before 2.162.7 the
+policyengine-uk#2505) and by the apprentice minimum wage. Before 2.162.8 the
 apprentice rate applied to every flagged person, so a flagged 21 to 24-year-old
 lost the adult minimum wage, which moves the Tax-Free Childcare, extended
-childcare and Childcare Offer for Wales income tests. From 2.162.7
+childcare and Childcare Offer for Wales income tests. From 2.162.8
 (policyengine-uk#2683) the rate applies only under 19 or with
 ``is_in_first_year_of_apprenticeship``, which the build leaves at its default
 (False), so the flagged keep their age-related minimum wage. The stage refuses
@@ -415,7 +415,7 @@ def apprentice_relief_schedule(system, period) -> dict[str, float | int] | None:
 
     Refuses an engine that would misread ``is_apprentice``: one without the
     s.9B threshold (policyengine-uk before 2.160.0) or without the minimum
-    wage's split from the flag (before 2.162.7, policyengine-uk#2683), which
+    wage's split from the flag (before 2.162.8, policyengine-uk#2683), which
     would give every flagged employee the apprentice minimum wage. The values
     are the ones the engine charges in the stage's year, at its start, as a
     year's ``parameters(period)`` reads them; weekly thresholds are annualized
@@ -429,7 +429,7 @@ def apprentice_relief_schedule(system, period) -> dict[str, float | int] | None:
     ]
     if missing:
         raise ValueError(
-            f"{APPRENTICE_OUTPUT} needs policyengine-uk 2.162.7 or later, which "
+            f"{APPRENTICE_OUTPUT} needs policyengine-uk 2.162.8 or later, which "
             "gives the apprentice minimum wage only under 19 or in the first year "
             f"(policyengine-uk#2683); the installed engine lacks {missing}."
         )
