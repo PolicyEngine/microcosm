@@ -138,6 +138,16 @@
       "schema_id": "legacy_json"
     },
     {
+      "path": "bonus_sacrifice_anchor.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "obr_salary_sacrifice_costing_facts.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
       "path": "slc_liable_stocks.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"

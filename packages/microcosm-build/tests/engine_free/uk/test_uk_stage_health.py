@@ -832,6 +832,8 @@ def _wealth_coherence_evidence() -> dict:
             "gross_financial_wealth_violation_rows": 0,
             "net_financial_wealth_violation_rows": 0,
             "mortgage_debt_violation_rows": 0,
+            "share_split_violation_rows": 0,
+            "secured_debt_violation_rows": 0,
             "property_wealth_capped_rows": 3,
         },
     }
@@ -872,6 +874,8 @@ def test_wealth_coherence_gate_passes_a_coherent_receipt() -> None:
         ("identities", "gross_financial_wealth_violation_rows"),
         ("identities", "net_financial_wealth_violation_rows"),
         ("identities", "mortgage_debt_violation_rows"),
+        ("identities", "share_split_violation_rows"),
+        ("identities", "secured_debt_violation_rows"),
     ],
 )
 def test_wealth_coherence_gate_requires_every_count_and_requires_it_zero(
@@ -1791,6 +1795,7 @@ def test_recomposed_totals_gate_holds_totals_above_their_components() -> None:
     from microcosm.build.country_spec import load_country_spec
     from microcosm.build.uk_runtime.calibration_run import UK_SPINE_GATE_SCOPE
     from microcosm.build.uk_runtime.lcfs_consumption import (
+        UK_LCFS_COICOP_DIVISION_COLUMNS,
         recompose_from_remainder_operation,
         recompose_parent_totals,
     )
@@ -1805,6 +1810,8 @@ def test_recomposed_totals_gate_holds_totals_above_their_components() -> None:
     drawn = pd.DataFrame(
         {
             "domestic_energy_consumption": [2000.0, 900.0],
+            "liquid_fuel_consumption": [0.0, 0.0],
+            "solid_fuel_consumption": [0.0, 0.0],
             "petrol_spending": [800.0, 0.0],
             "diesel_spending": [0.0, 700.0],
             "bus_fare_spending": [100.0, 0.0],
@@ -1815,12 +1822,24 @@ def test_recomposed_totals_gate_holds_totals_above_their_components() -> None:
             "housing_water_and_electricity_consumption": [7000.0, 600.0],
             "electricity_consumption": [900.0, 600.0],
             "gas_consumption": [700.0, 0.0],
+            "liquid_fuel_consumption": [0.0, 0.0],
+            "solid_fuel_consumption": [0.0, 0.0],
             "transport_consumption": [2000.0, 1000.0],
             "petrol_spending": [1500.0, 0.0],
             "diesel_spending": [0.0, 900.0],
             "bus_fare_spending": [0.0, 250.0],
         }
     )
+    housing = "housing_water_and_electricity_consumption"
+    food = "food_and_non_alcoholic_beverages_consumption"
+    # Every other division at its donor's level; food far above it, so food
+    # alone is levelled (microcosm#1278) and the two totals keep their draws.
+    means = dict.fromkeys(UK_LCFS_COICOP_DIVISION_COLUMNS, 100.0)
+    means.update({housing: 4600.0, "transport_consumption": 2300.0, food: 1.0})
+    for division in UK_LCFS_COICOP_DIVISION_COLUMNS:
+        if division not in draws:
+            draws[division] = [100.0, 100.0]
+    draws[food] = [1000.0, 1000.0]
     _, receipt = recompose_parent_totals(
         draws,
         drawn=drawn,
@@ -1830,7 +1849,10 @@ def test_recomposed_totals_gate_holds_totals_above_their_components() -> None:
             "housing_water_and_electricity_consumption": (0.0, 6000.0),
             "transport_consumption": (0.0, 1e9),
         },
+        donor_division_means=means,
     )
+    assert receipt["division_levelling"]["divisions"][food]["factor"] < 1.0
+    assert receipt["parents"][housing]["levelling_factor"] == 1.0
 
     def run(ev):
         return uk_stage_health_gate(
@@ -1851,8 +1873,9 @@ def test_recomposed_totals_gate_holds_totals_above_their_components() -> None:
 
     passed = run(receipt)
     assert passed.passed, passed.failures
-    assert passed.details["uncarried_total"] == receipt["uncarried"]["total"]
-    housing = "housing_water_and_electricity_consumption"
+    assert (
+        passed.details["published_fuels_total"] == receipt["published_fuels"]["total"]
+    )
     # 7000 - 2000 + 1600 is held at 6000 (microcosm#1164).
     assert receipt["parents"][housing]["rows_held_at_maximum"] == 1
     assert receipt["parents"][housing]["weighted_held_mass"] == 2.0 * 600.0
@@ -1895,7 +1918,35 @@ def test_recomposed_totals_gate_holds_totals_above_their_components() -> None:
         "drawn_subtracts",
     )
     failing(lambda r: r["parents"].pop("transport_consumption"), "not the declared")
-    failing(lambda r: r["uncarried"].update(total=0.0), "uncarried spend")
+    failing(lambda r: r["published_fuels"].update(total=0.0), "published fuel spend")
+    # The division levelling (microcosm#1278).
+    failing(lambda r: r.pop("division_levelling"), "records no division levelling")
+    failing(
+        lambda r: r["division_levelling"].update(rule="to_donor_totals"),
+        "not the declared levelling",
+    )
+    failing(
+        lambda r: r["division_levelling"]["divisions"].pop(food),
+        "not the declared",
+    )
+    failing(
+        lambda r: r["division_levelling"]["divisions"][food].update(factor=1.5),
+        "is not in [0, 1]",
+    )
+    failing(
+        lambda r: r["division_levelling"]["divisions"]["transport_consumption"].update(
+            factor=0.5
+        ),
+        "is not above the shared",
+    )
+    failing(
+        lambda r: r["parents"][housing].update(levelling_factor=1.5),
+        "is not in [0, 1]",
+    )
+    failing(
+        lambda r: r["parents"][housing].update(levelling_factor=0.5),
+        "is not its division's",
+    )
     with pytest.raises(ValueError, match="recomposed_totals must be an object"):
         run(None)
 
@@ -2630,3 +2681,187 @@ def test_consumption_basis_gate_checks_the_recorded_bridge_factor() -> None:
     result = run(evidence)
     assert not result.passed
     assert any("not after / base" in f and first in f for f in result.failures)
+
+
+def _packaged_parameters(gate_id: str) -> dict:
+    gates = json.loads(
+        (_TEST_PATHS.package / "src/microcosm/build/uk/gates.json").read_text()
+    )["gates"]
+    (gate,) = [entry for entry in gates if entry["id"] == gate_id]
+    return gate["parameters"]
+
+
+def _purchases_receipt() -> dict:
+    def kind(name, target, fitted, shortfall=0.0, value=1.0e9):
+        return {
+            "property_type": name,
+            "target_transactions": target,
+            "fitted_transactions": fitted,
+            "target_value": value,
+            "fitted_value": value * (1.0 - shortfall),
+            "value_shortfall_share": shortfall,
+        }
+
+    return {
+        "stage": "property_purchases",
+        "kinds": [
+            kind("additional_residential", 1000.0, 1010.0),
+            kind("non_residential", 200.0, 196.0, shortfall=0.1),
+        ],
+        "derivation": {
+            "residential_individuals_transaction_share": 0.9,
+            "residential_individuals_value_share": 0.8,
+        },
+    }
+
+
+def _gate(gate_id: str, evidence: dict):
+    parameters = _packaged_parameters(gate_id)
+    return uk_stage_health_gate(
+        evidence=evidence,
+        stage=parameters["stage"],
+        check=parameters["check"],
+        parameters=parameters,
+    )
+
+
+def test_property_purchases_gate_holds_each_kind_to_hmrc_within_the_contract() -> None:
+    assert _passed(_gate("uk_stage_property_purchases_fit", _purchases_receipt()))
+
+    missing = _purchases_receipt()
+    missing["kinds"] = missing["kinds"][:1]
+    assert (
+        "draws kinds" in _gate("uk_stage_property_purchases_fit", missing).failures[0]
+    )
+
+    far = _purchases_receipt()
+    far["kinds"][0]["fitted_transactions"] = 1100.0
+    assert "transactions" in _gate("uk_stage_property_purchases_fit", far).failures[0]
+
+    short = _purchases_receipt()
+    short["kinds"][1].update(value_shortfall_share=0.25, fitted_value=0.75e9)
+    assert (
+        "short of HMRC" in _gate("uk_stage_property_purchases_fit", short).failures[0]
+    )
+
+    unrecorded = _purchases_receipt()
+    unrecorded["kinds"][1]["fitted_value"] = 1.0e9
+    assert (
+        "recorded shortfall"
+        in (_gate("uk_stage_property_purchases_fit", unrecorded).failures[0])
+    )
+
+    no_share = _purchases_receipt()
+    no_share["derivation"]["residential_individuals_value_share"] = 1.2
+    assert (
+        "not a share" in _gate("uk_stage_property_purchases_fit", no_share).failures[0]
+    )
+
+
+def _home_values_receipt() -> dict:
+    regions = [f"E1200000{index}" for index in range(1, 10)] + ["W92000004"]
+    return {
+        "stage": "regional_home_values",
+        "rows": 100,
+        "rows_rewritten_by_region": {region: 5 for region in regions},
+        "sources_at_cap": 0,
+        "knots_basis_year": 2024,
+        "ranking": {"rank_basis": "weighted_midpoint_within_frs_region"},
+        "weighted_value_before": 1.0e9,
+        "weighted_value_after": 1.2e9,
+    }
+
+
+@pytest.mark.parametrize(
+    ("mutate", "fragment"),
+    [
+        (lambda r: r["rows_rewritten_by_region"].pop("W92000004"), "rewrites regions"),
+        (lambda r: r["rows_rewritten_by_region"].update(E12000007=0), "no row"),
+        (lambda r: r.update(rows=40), "more rows"),
+        (lambda r: r.update(sources_at_cap=1), "value cap"),
+        (lambda r: r.update(knots_basis_year=2023), "basis year"),
+        (lambda r: r["ranking"].update(rank_basis="national"), "ranking basis"),
+        (lambda r: r.update(weighted_value_after=0.0), "not positive"),
+    ],
+)
+def test_regional_home_values_gate_holds_the_ranking_contract(mutate, fragment) -> None:
+    assert _passed(
+        _gate("uk_stage_regional_home_values_ranking", _home_values_receipt())
+    )
+    receipt = _home_values_receipt()
+    mutate(receipt)
+    result = _gate("uk_stage_regional_home_values_ranking", receipt)
+    assert not result.passed
+    assert any(fragment in failure for failure in result.failures), result.failures
+
+
+def _legacy_closure_receipt() -> dict:
+    return {
+        "stage": "uc_legacy_closure_take_up",
+        "p_basis": "spine_design_weights_great_britain",
+        "great_britain_weighted_share_claiming_at_closure": 0.8,
+        "combinations": {
+            "housing_benefit": {
+                "rate": 0.75,
+                "rate_source": "combination",
+                "rate_unreachable": False,
+                "support": "30+",
+            },
+            "jsa_income": {
+                "rate": 0.6,
+                "rate_source": "all_households",
+                "rate_unreachable": "<10",
+                "support": "<10",
+            },
+        },
+    }
+
+
+def test_legacy_closure_gate_reads_what_the_receipt_prints() -> None:
+    gate_id = "uk_stage_uc_legacy_closure_take_up_contract"
+    assert _passed(_gate(gate_id, _legacy_closure_receipt()))
+    # A thin drawn cohort prints its share withheld.
+    withheld = _legacy_closure_receipt()
+    withheld["great_britain_weighted_share_claiming_at_closure"] = "<10"
+    assert _passed(_gate(gate_id, withheld))
+    for mutate, fragment in (
+        (lambda r: r.update(p_basis="calibrated_weights"), "measured on"),
+        (lambda r: r["combinations"]["housing_benefit"].update(rate=1.2), "rate 1.2"),
+        (
+            lambda r: r["combinations"]["jsa_income"].update(rate_source="guess"),
+            "takes its rate",
+        ),
+        (lambda r: r["combinations"]["jsa_income"].update(support="3"), "support band"),
+        (
+            lambda r: r["combinations"]["jsa_income"].update(rate_unreachable="2"),
+            "unreachable",
+        ),
+        (lambda r: r.update(combinations={}), "no combinations"),
+    ):
+        receipt = _legacy_closure_receipt()
+        mutate(receipt)
+        result = _gate(gate_id, receipt)
+        assert not result.passed
+        assert any(fragment in failure for failure in result.failures), result.failures
+
+
+def test_the_1308_fact_gates_record_without_blocking_a_synthetic_smoke_build() -> None:
+    """A synthetic fixture is not the population HMRC and the knots describe (#1308).
+
+    The legacy closure gate holds the receipt's own contract, which a synthetic
+    fixture can meet, so it blocks a smoke build as it blocks every posture.
+    """
+
+    gates = {
+        entry["id"]: entry
+        for entry in json.loads(
+            (_TEST_PATHS.package / "src/microcosm/build/uk/gates.json").read_text()
+        )["gates"]
+    }
+    for gate_id in (
+        "uk_stage_regional_home_values_ranking",
+        "uk_stage_property_purchases_fit",
+    ):
+        assert gates[gate_id]["population_fact_check"] is True
+    contract = gates["uk_stage_uc_legacy_closure_take_up_contract"]
+    assert contract.get("population_fact_check", False) is False

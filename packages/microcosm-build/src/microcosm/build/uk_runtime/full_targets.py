@@ -27,6 +27,7 @@ from microcosm.build.uk_runtime.high_value_homes import (
     load_uk_high_value_home_stock_facts,
 )
 from microcosm.build.uk_runtime.ledger_targets import (
+    _uk_contract_targets,
     assert_uk_local_deferrals_in_force,
     compile_uk_local_target_registry,
     compile_uk_target_registry,
@@ -45,6 +46,7 @@ from microcosm.build.uk_runtime.national_reconciliation import (
     reconcile_uk_national_registry,
 )
 from microcosm.build.uk_runtime.support_floor import (
+    assert_uk_support_floor_units,
     load_uk_support_floor_declaration,
     uk_support_floor_from_payload,
 )
@@ -108,7 +110,8 @@ def _support_floor_input(
     """The register's signed support floor and the date it is evaluated on.
 
     The problem nodes apply it to the compiled matrix (microcosm#1095 U3); a
-    floor outside its window refuses here, before any engine runs.
+    floor outside its window, or with a scope labelled in a unit its targets
+    are not counted in, refuses here, before any engine runs.
     """
 
     declaration = load_uk_support_floor_declaration(
@@ -116,7 +119,9 @@ def _support_floor_input(
     )
     if declaration is None:
         return None
-    uk_support_floor_from_payload(declaration).assert_in_force(evaluated_on)
+    floor = uk_support_floor_from_payload(declaration)
+    floor.assert_in_force(evaluated_on)
+    assert_uk_support_floor_units(floor, _uk_contract_targets(national_only=False))
     return {"declaration": declaration, "evaluated_on": evaluated_on.isoformat()}
 
 

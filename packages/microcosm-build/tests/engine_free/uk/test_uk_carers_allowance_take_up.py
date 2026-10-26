@@ -117,26 +117,19 @@ def _stage():
     ]
 
 
-def test_eligibility_is_hours_no_report_and_over_the_limit_outside_scotland() -> None:
-    rows = list(
-        itertools.product(
-            [False, True], [34.0, 35.0, 50.0], [False, True], [False, True]
-        )
-    )
-    scotland, hours, reported, gainful = (
+def test_eligibility_is_hours_no_report_and_over_the_limit() -> None:
+    rows = list(itertools.product([34.0, 35.0, 50.0], [False, True], [False, True]))
+    hours, reported, gainful = (
         np.asarray(column) for column in zip(*rows, strict=True)
     )
     eligible = ca.carers_allowance_eligible(
         care_hours=hours,
         reported=reported,
         gainfully_employed=gainful,
-        scotland=scotland,
         min_hours=35.0,
     )
-    np.testing.assert_array_equal(
-        eligible, ~scotland & (hours >= 35.0) & ~reported & gainful
-    )
-    # 35 and 50 hours, outside Scotland, reporting nothing, over the limit.
+    np.testing.assert_array_equal(eligible, (hours >= 35.0) & ~reported & gainful)
+    # 35 and 50 hours, reporting nothing, over the limit.
     assert int(eligible.sum()) == 2
 
 
@@ -144,7 +137,7 @@ def _groups():
     """Carers on every side of each condition, a hundred or more in each."""
 
     groups = {
-        # Over the limit, no report, outside Scotland: the only drawn group.
+        # Over the limit and no report: the drawn groups, Scotland's included.
         "eligible": dict(care=35.0, reported=0.0, pay=200.0, region="WALES", n=400),
         "eligible_ni": dict(
             care=50.0, reported=0.0, pay=250.0, region="NORTHERN_IRELAND", n=100
@@ -183,10 +176,11 @@ def test_the_draw_opens_the_flag_to_the_eligible_carers_only() -> None:
     for group in ("reporter", "reporter_over_limit", "scotland_reporter"):
         assert flag[labels == group].all(), group
     # Under or at the limit the survey records them entitled and not claiming;
-    # Scotland stays closed; 20 hours do not meet the condition.
-    for group in ("under_limit", "at_limit", "scotland", "short_hours"):
+    # 20 hours do not meet the condition.
+    for group in ("under_limit", "at_limit", "short_hours"):
         assert not flag[labels == group].any(), group
-    eligible = np.isin(labels, ["eligible", "eligible_ni"])
+    # Scotland is drawn too: there the flag is Carer Support Payment's.
+    eligible = np.isin(labels, ["eligible", "eligible_ni", "scotland"])
     uniforms = stable_identity_uniforms(
         person["person_id"].to_numpy(), seed=0, salt=_OUTPUT
     )
@@ -203,10 +197,11 @@ def test_the_draw_opens_the_flag_to_the_eligible_carers_only() -> None:
     )
     evidence = result.evidence()
     assert evidence["stage"] == ca.CARERS_ALLOWANCE_TAKE_UP_STAGE_NAME
-    assert evidence["scotland_closed"] is True
-    assert evidence["scotland_left_closed_support"] == "30+"
+    assert evidence["scotland_eligible_support"] == "30+"
+    assert evidence["scotland_eligible_weighted_persons"] == pytest.approx(100.0)
+    assert evidence["scotland_drawn_support"] == "30+"
     assert evidence["eligible_support"] == "30+"
-    assert evidence["eligible_weighted_persons"] == pytest.approx(500.0)
+    assert evidence["eligible_weighted_persons"] == pytest.approx(600.0)
     assert evidence["realized_share"] == pytest.approx(flag[eligible].mean())
 
 
@@ -235,9 +230,7 @@ def test_the_weighted_share_drawn_is_the_rate() -> None:
     )
     result = _run(frame)
     flag = result.frame.table("person")[_OUTPUT].to_numpy()
-    eligible = (
-        (regions != "SCOTLAND") & (care >= 35.0) & (reported == 0.0) & (pay > _LIMIT)
-    )
+    eligible = (care >= 35.0) & (reported == 0.0) & (pay > _LIMIT)
     share = weights[eligible & flag].sum() / weights[eligible].sum()
     assert share == pytest.approx(0.6, abs=0.03)
     evidence = result.evidence()
@@ -357,15 +350,15 @@ def test_households_are_read_through_membership_not_position() -> None:
     region_of = dict(zip(household_ids, regions, strict=True))
     scottish = out["person_household_id"].map(region_of).eq("SCOTLAND").to_numpy()
     carer = out["care_hours"].to_numpy() >= 35.0
-    np.testing.assert_array_equal(out[_OUTPUT].to_numpy(), carer & ~scottish)
+    np.testing.assert_array_equal(out[_OUTPUT].to_numpy(), carer)
     evidence = result.evidence()
-    # Sixteen households outside Scotland, one eligible carer in each.
-    assert evidence["eligible_weighted_persons"] == pytest.approx(
-        weights[regions != "SCOTLAND"].sum()
-    )
+    # Twenty-four households, one eligible carer in each, eight in Scotland.
+    assert evidence["eligible_weighted_persons"] == pytest.approx(weights.sum())
     assert evidence["eligible_support"] == "10-29"
     assert evidence["realized_share"] == 1.0
-    assert evidence["scotland_left_closed_support"] == "<10"
+    assert evidence["scotland_eligible_support"] == "<10"
+    assert evidence["scotland_eligible_weighted_persons"] == "<10"
+    assert int(carer[scottish].sum()) == 8
 
 
 def test_a_frame_without_eligible_carers_draws_nothing() -> None:
