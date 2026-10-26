@@ -131,6 +131,7 @@ _HIGH_VALUE_HOME_STOCK_FENCE_ID = "high_value_home_stock_derived_estimate"
 _DESNZ_BASIS_FENCE_ID = "desnz_subnational_consumption_basis"
 _DESNZ_METERS_FENCE_ID = "desnz_meters_for_households"
 _DESNZ_STAGE_SHARE_FENCE_ID = "desnz_regional_meter_share_in_stage"
+_DESNZ_SEAT_SPLIT_FENCE_ID = "desnz_small_area_split_for_constituencies"
 #: The DESNZ and census pages were fetched and checked on this date
 #: (microcosm#1207).
 _ENERGY_SOURCES_VERIFIED_ON = "2026-10-14"
@@ -291,6 +292,7 @@ _FAMILIES: tuple[dict[str, Any], ...] = (
             _DESNZ_BASIS_FENCE_ID,
             _DESNZ_METERS_FENCE_ID,
             _DESNZ_STAGE_SHARE_FENCE_ID,
+            _DESNZ_SEAT_SPLIT_FENCE_ID,
         ],
     },
     {
@@ -1122,8 +1124,8 @@ _BINDING_FENCES: tuple[dict[str, Any], ...] = (
             "DESNZ sub-national electricity and gas consumption statistics "
             "methodology notes; DESNZ Energy Trends tables 4.1 and 5.5; "
             "microcosm#1207 plan rulings of 2026-10-14 (reconcile onto the "
-            "stage's level; local-authority grain only); DESNZ's Northern "
-            "Ireland sub-national electricity and gas statistics, with the "
+            "stage's level); DESNZ's Northern Ireland sub-national "
+            "electricity and gas statistics, with the "
             "Northern Ireland sentence re-worded in by María on 2026-10-17 "
             "(microcosm#1306 review)."
         ),
@@ -1133,13 +1135,13 @@ _BINDING_FENCES: tuple[dict[str, Any], ...] = (
         "fenced_fact_count": None,
         "enforcement": FENCE_ENFORCEMENT_REVIEW,
         "rule": (
-            "The gas-connected cells read an authority's domestic gas meters "
+            "The gas-connected cells read an area's domestic gas meters "
             "over its domestic electricity meters as the share of its "
             "households connected to gas. Meters are not households: a "
             "dwelling can carry more than one meter, a meter can serve an "
             "empty dwelling or a second home, and DESNZ classes a gas meter as "
             "domestic by a consumption threshold. The share is applied to the "
-            "authority's census households, whose level the household "
+            "area's census households, whose level the household "
             "controls set through the census partition. Binding needs an "
             "adjudication accepting the ratio as the household share."
         ),
@@ -1164,6 +1166,34 @@ _BINDING_FENCES: tuple[dict[str, Any], ...] = (
         "authority": (
             "uk_runtime.energy_pricing (published_gas_connected_shares, "
             "published_energy_level); microcosm#1207 plan of 2026-10-14."
+        ),
+    },
+    {
+        "fence_id": _DESNZ_SEAT_SPLIT_FENCE_ID,
+        "fenced_fact_count": None,
+        "enforcement": FENCE_ENFORCEMENT_REVIEW,
+        "rule": (
+            "DESNZ publishes no constituency cut. The constituency cells are "
+            "Microcosm's split of each authority's published total over its "
+            "constituencies, in proportion to DESNZ's own LSOA (England and "
+            "Wales, 2021) and data zone (Scotland, 2022) figures for the same "
+            "year and basis. An LSOA or data zone whose output areas fall in "
+            "two seats is split by their census households, and DESNZ's "
+            "unallocated meters (about 0.1% of Great Britain) follow the "
+            "split. Every authority keeps its published total, so the two "
+            "grains agree within each region and the single-winner rule "
+            "rescales the authority cells by one. The split assumes use per "
+            "household is uniform within a small area that straddles two "
+            "seats (2.4% of households). Binding needs an adjudication that a "
+            "seat's split is the target, not a published fact."
+        ),
+        "authority": (
+            "DESNZ sub-national electricity and gas consumption statistics, "
+            "and DESNZ LSOA and data zone domestic consumption statistics "
+            "(December 2025 release, 2024 data); the committed atomic supports "
+            "(uk/uk_atomic_area_supports.provenance.json); microcosm#1095 plan "
+            "approved by María on 2026-10-25 (split by DESNZ's small areas, "
+            "not by households)."
         ),
     },
 )

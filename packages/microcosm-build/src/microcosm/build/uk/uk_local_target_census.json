@@ -142,7 +142,7 @@
       "rule": "The high-value homes family binds a Microcosm-derived estimate of the owner-occupied dwelling stock above value thresholds, not a publisher count. Each assumption needs an in-force adjudication: the latest non-bulk category A sale values each dwelling sold since 1995; the UK HPI by local authority and property type moves it to the calendar-2024 average (region, then nation, as fallbacks; the Isles of Scilly take Cornwall's index); dwellings never sold since 1995 are assumed to share the sold stock's value distribution within a local authority (the private-sector VOA stock over the valued dwellings); the owner-occupied share is the census share of the private stock, rescaled to the OBR costing note's national control on dwellings over 2 million; registrations lag sales by weeks to months; England and Wales only. The coverage correction is the main sensitivity: it lifts the sold stock by a median authority ratio of about 1.5, and with it the England owner-occupied count over 2 million sits about a sixth above the OBR-implied figure (the no-correction and no-control variants are receipted in uk/high_value_home_stock.provenance.json). The English region and Wales rows of the same estimate bind on the local line only, as the cross-grain control for the area cells, so the fence covers them too (microcosm#1301)."
     },
     {
-      "authority": "DESNZ sub-national electricity and gas consumption statistics methodology notes; DESNZ Energy Trends tables 4.1 and 5.5; microcosm#1207 plan rulings of 2026-10-14 (reconcile onto the stage's level; local-authority grain only); DESNZ's Northern Ireland sub-national electricity and gas statistics, with the Northern Ireland sentence re-worded in by Mar\u00eda on 2026-10-17 (microcosm#1306 review).",
+      "authority": "DESNZ sub-national electricity and gas consumption statistics methodology notes; DESNZ Energy Trends tables 4.1 and 5.5; microcosm#1207 plan rulings of 2026-10-14 (reconcile onto the stage's level); DESNZ's Northern Ireland sub-national electricity and gas statistics, with the Northern Ireland sentence re-worded in by Mar\u00eda on 2026-10-17 (microcosm#1306 review).",
       "enforcement": "review_required_before_binding",
       "fence_id": "desnz_subnational_consumption_basis",
       "fenced_fact_count": null,
@@ -153,7 +153,7 @@
       "enforcement": "review_required_before_binding",
       "fence_id": "desnz_meters_for_households",
       "fenced_fact_count": null,
-      "rule": "The gas-connected cells read an authority's domestic gas meters over its domestic electricity meters as the share of its households connected to gas. Meters are not households: a dwelling can carry more than one meter, a meter can serve an empty dwelling or a second home, and DESNZ classes a gas meter as domestic by a consumption threshold. The share is applied to the authority's census households, whose level the household controls set through the census partition. Binding needs an adjudication accepting the ratio as the household share."
+      "rule": "The gas-connected cells read an area's domestic gas meters over its domestic electricity meters as the share of its households connected to gas. Meters are not households: a dwelling can carry more than one meter, a meter can serve an empty dwelling or a second home, and DESNZ classes a gas meter as domestic by a consumption threshold. The share is applied to the area's census households, whose level the household controls set through the census partition. Binding needs an adjudication accepting the ratio as the household share."
     },
     {
       "authority": "uk_runtime.energy_pricing (published_gas_connected_shares, published_energy_level); microcosm#1207 plan of 2026-10-14.",
@@ -161,6 +161,13 @@
       "fence_id": "desnz_regional_meter_share_in_stage",
       "fenced_fact_count": null,
       "rule": "The lcfs stage already imposes the same published ratio by region (gas meters over electricity meters by FRS region), so the authority cells constrain a quantity the stage set: within a region they add the split between authorities, and the region's weighted share follows from them. The kWh cells likewise sit on the level the stage raked to. An adjudication names this overlap."
+    },
+    {
+      "authority": "DESNZ sub-national electricity and gas consumption statistics, and DESNZ LSOA and data zone domestic consumption statistics (December 2025 release, 2024 data); the committed atomic supports (uk/uk_atomic_area_supports.provenance.json); microcosm#1095 plan approved by Mar\u00eda on 2026-10-25 (split by DESNZ's small areas, not by households).",
+      "enforcement": "review_required_before_binding",
+      "fence_id": "desnz_small_area_split_for_constituencies",
+      "fenced_fact_count": null,
+      "rule": "DESNZ publishes no constituency cut. The constituency cells are Microcosm's split of each authority's published total over its constituencies, in proportion to DESNZ's own LSOA (England and Wales, 2021) and data zone (Scotland, 2022) figures for the same year and basis. An LSOA or data zone whose output areas fall in two seats is split by their census households, and DESNZ's unallocated meters (about 0.1% of Great Britain) follow the split. Every authority keeps its published total, so the two grains agree within each region and the single-winner rule rescales the authority cells by one. The split assumes use per household is uniform within a small area that straddles two seats (2.4% of households). Binding needs an adjudication that a seat's split is the target, not a published fact."
     }
   ],
   "census_kind": "uk_local_target_census",
@@ -275,7 +282,8 @@
       "adjudications": [
         "desnz_subnational_consumption_basis",
         "desnz_meters_for_households",
-        "desnz_regional_meter_share_in_stage"
+        "desnz_regional_meter_share_in_stage",
+        "desnz_small_area_split_for_constituencies"
       ],
       "description": "Domestic electricity and gas consumption (kWh) and gas-connected households by local authority, Great Britain, from DESNZ's sub-national statistics (microcosm#1207). The kWh cells keep DESNZ's split between authorities at the lcfs stage's Energy Trends level (one factor per fuel); the gas-connected cells are each authority's census households times its gas meters over its electricity meters, a member of the census household partition. The frame reads each household's stored spend at the dataset period and turns it back into kWh at the stage's declared prices. DESNZ publishes no constituency cut, so the constituency cells bind Microcosm's split of each authority's totals by DESNZ's LSOA and data zone figures, which keeps every authority's total (microcosm#1095).",
       "family": "domestic_energy",
