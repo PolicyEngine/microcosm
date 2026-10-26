@@ -140,12 +140,9 @@ def cut(commit: str, label: str, publish: bool, extra: list[str]) -> int:
         label,
         "--work-dir",
         WORK,
-        # A volume reports no meaningful free space, and the Fleet ops
-        # reservation is a property of the build Mac, not of this container.
+        # A volume reports no meaningful free space.
         "--min-free-gb",
         "0",
-        "--reservation-caller",
-        "",
         *extra,
     ]
     if publish:

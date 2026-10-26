@@ -929,3 +929,46 @@ def test_reports_bind_one_key_or_none(tmp_path_factory, signers):
     else:
         expected = fingerprints[named.pop()] if named else None
         assert cut.reports_signing_key(reports) == expected
+
+
+# --------------------------------------------------------------------------- #
+# Host checks: nothing specific to one machine unless the operator asks         #
+# --------------------------------------------------------------------------- #
+
+
+def test_no_reservation_is_checked_unless_configured(tmp_path):
+    names = [check.name for check in cut.host_checks(tmp_path, min_free_gb=0)]
+    assert "host reservation" not in names
+
+
+def test_a_configured_reservation_tool_that_is_missing_fails(tmp_path):
+    checks = cut.host_checks(
+        tmp_path,
+        min_free_gb=0,
+        reservation_tool=tmp_path / "missing.py",
+        reservation_caller="builder",
+    )
+    reservation = next(check for check in checks if check.name == "host reservation")
+    assert not reservation.ok and reservation.blocking
+
+
+@pytest.mark.parametrize("caller, allowed", [("builder", True), ("other", False)])
+def test_the_reservation_tool_is_asked_about_the_caller(tmp_path, caller, allowed):
+    tool = tmp_path / "reservation.py"
+    tool.write_text(
+        "import sys\n"
+        "raise SystemExit(0 if sys.argv[1:] == ['allowed', 'builder'] else 1)\n"
+    )
+    checks = cut.host_checks(
+        tmp_path, min_free_gb=0, reservation_tool=tool, reservation_caller=caller
+    )
+    reservation = next(check for check in checks if check.name == "host reservation")
+    assert reservation.ok is allowed
+
+
+@pytest.mark.parametrize(
+    "flags", [["--reservation-tool", "r.py"], ["--reservation-caller", "builder"]]
+)
+def test_a_reservation_needs_both_its_tool_and_its_caller(flags):
+    with pytest.raises(SystemExit):
+        cut._parse(["preflight", "--label", "t", *flags])

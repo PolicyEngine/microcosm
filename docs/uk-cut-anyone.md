@@ -7,14 +7,12 @@ against the pins the build itself enforces.
 
 This is the short path. The step-by-step reference behind it stays in
 [uk-national-release-assembly-runbook-806.md](uk-national-release-assembly-runbook-806.md).
-The UK hub's runbook of the hand-run build is at
-`~/reviews/uk-hub/jobs/microcosm-cut-runbook/RUNBOOK.md` on Max's machine.
 
 ## What you need
 
 | Need | Where it comes from | Check |
 |---|---|---|
-| A clean checkout of `main` locked at the policyengine-uk you want | a "Lock policyengine-uk X" PR merged to main (runbook §2) | `tools/run_uk_cut.py preflight` |
+| A clean checkout of `main` locked at the policyengine-uk you want | a "Lock policyengine-uk X" PR merged to main | `tools/run_uk_cut.py preflight` |
 | `HF_TOKEN` | write access to `policyengine/populace-uk-private` and `policyengine/populace-uk-staging`, and read access to the input repos below | preflight |
 | `MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY` | a key registered **active** in `microcosm.data.gate_signing_keys` (see [Signing keys](#signing-keys)) | `python -m microcosm.data.gate_signing_keys check` |
 | About 60 GB of free disk, AC power, a quiet host | the machine | preflight |
@@ -80,14 +78,17 @@ derive from licensed data:
 | `cuts/<label>-<sha9>/logs/` | one log per step |
 | `cuts/<label>-<sha9>/cut_receipt.json` | commit, engine, the signing key's fingerprint (from the signed reports), input pins, step timings, tag |
 
-On Max's machine, protect the work directory from disk-guard for the length
-of a run (runbook §1).
+If the machine runs a disk cleaner, keep it away from the work directory for
+the length of a run. On a host booked through a reservation tool, pass
+`--reservation-tool <path> --reservation-caller <name>`: preflight then asks
+`<tool> allowed <name>` before anything is built, and fails if the tool is
+missing. Without them no reservation is checked.
 
 ### What it will not do
 
 - **It never moves a default.** `--publish` always passes `--no-latest
   --tag-only`, so `populace-uk-private`'s main branch, its root files and
-  `latest-*.json` stay where they are (runbook Q12 and F14).
+  `latest-*.json` stay where they are.
 - **It never promotes.** Promotion (`--promote-line national`) is a separate,
   reviewed call. The runner prints the command for it.
 - **It never publishes to the Orrery.** The national step always passes
@@ -221,7 +222,7 @@ Every UK signer refuses an unregistered or retired key:
 - the certifier;
 - the scoped re-signer;
 - the national role, which checks before it loads any input. Before, a
-  missing key failed only after the solve (runbook F8).
+  missing key failed only after the solve.
 
 HMAC verification needs the secret that signed. So a cut is signed,
 certified and published by one key holder, and the registry holds one key

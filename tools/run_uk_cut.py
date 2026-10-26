@@ -62,7 +62,6 @@ SPINE_NAME = "uk_frs_spine_2024_25.h5"
 PUBLISH_REPO = "policyengine/populace-uk-private"
 TELEMETRY_REPO = "policyengine/populace-uk-staging"
 STAGING_BRANCH = f"release-staging/{RELEASE_ID}"
-DEFAULT_RESERVATION_TOOL = Path("~/reviews/fleet-ops/tools/reservation.py").expanduser()
 
 
 class CutError(RuntimeError):
@@ -1147,8 +1146,21 @@ def _expiries(node: object):
 
 
 def host_checks(
-    work_dir: Path, *, min_free_gb: float, reservation_caller: str | None
+    work_dir: Path,
+    *,
+    min_free_gb: float,
+    reservation_tool: Path | None = None,
+    reservation_caller: str | None = None,
 ) -> list[Check]:
+    """Disk, power and load, and a host reservation only where one is configured.
+
+    A reservation tool belongs to one machine, so the check runs only when the
+    operator names the tool and the caller; a named tool that is missing fails
+    rather than being skipped.
+    """
+
+    if (reservation_tool is None) != (reservation_caller is None):
+        raise CutError("a host reservation needs both its tool and its caller.")
     checks = []
     probe = next(
         (path for path in (work_dir, *work_dir.parents) if path.exists()), Path.home()
@@ -1184,14 +1196,14 @@ def host_checks(
             blocking=False,
         )
     )
-    if reservation_caller and DEFAULT_RESERVATION_TOOL.exists():
+    if reservation_tool is not None:
+        if not reservation_tool.is_file():
+            checks.append(
+                Check("host reservation", False, f"{reservation_tool} not found")
+            )
+            return checks
         allowed = subprocess.run(
-            [
-                sys.executable,
-                str(DEFAULT_RESERVATION_TOOL),
-                "allowed",
-                reservation_caller,
-            ],
+            [sys.executable, str(reservation_tool), "allowed", reservation_caller],
             capture_output=True,
             text=True,
             check=False,
@@ -1669,9 +1681,16 @@ def _parse(argv: Sequence[str] | None) -> argparse.Namespace:
     parser.add_argument("--work-dir", type=Path, default=DEFAULT_WORK_DIR)
     parser.add_argument("--min-free-gb", type=float, default=60.0)
     parser.add_argument(
+        "--reservation-tool",
+        type=Path,
+        help=(
+            "a host reservation tool to ask before building (run as "
+            "`<tool> allowed <caller>`; exit 0 means allowed); off by default"
+        ),
+    )
+    parser.add_argument(
         "--reservation-caller",
-        default="uk-hub",
-        help="the caller name checked against the Fleet ops host reservation",
+        help="the caller name the reservation tool is asked about",
     )
     parser.add_argument(
         "--allow-off-main",
@@ -1706,9 +1725,13 @@ def _parse(argv: Sequence[str] | None) -> argparse.Namespace:
         help="publish for inspection (--no-latest --tag-only); outward-facing",
     )
     args = parser.parse_args(argv)
+    if (args.reservation_tool is None) != (args.reservation_caller is None):
+        parser.error("--reservation-tool and --reservation-caller go together.")
     # Steps run from different working directories (assembly and publication
     # from the release directory), so every path must be absolute.
     args.work_dir = args.work_dir.expanduser().resolve()
+    if args.reservation_tool is not None:
+        args.reservation_tool = args.reservation_tool.expanduser().resolve()
     if args.previous_h5 is not None:
         args.previous_h5 = args.previous_h5.expanduser().resolve()
     return args
@@ -1749,6 +1772,7 @@ def preflight(args: argparse.Namespace, paths: CutPaths) -> list[Check]:
     checks += host_checks(
         paths.work_dir,
         min_free_gb=args.min_free_gb,
+        reservation_tool=args.reservation_tool,
         reservation_caller=args.reservation_caller,
     )
     checks.append(contract_pin_check(sys.executable))
