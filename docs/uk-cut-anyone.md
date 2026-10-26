@@ -299,7 +299,7 @@ which is symmetric, so:
   commit.
 
 A public-key scheme (Ed25519) would let the registry hold public keys and
-anyone verify; that is tracked separately.
+anyone verify; that is tracked in microcosm#1406.
 
 ## Certifying into policyengine.py
 
