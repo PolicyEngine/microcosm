@@ -3158,6 +3158,7 @@ stages:
     - council_tax
     - domestic_rates
     - income_tax
+    - isa_cash_interest_flat_rate_charge
     - national_insurance
     - student_loan_repayments
     - employee_pension_contributions
@@ -3605,6 +3606,7 @@ stages:
     - council_tax
     - domestic_rates
     - income_tax
+    - isa_cash_interest_flat_rate_charge
     - national_insurance
     - student_loan_repayments
     - employee_pension_contributions
@@ -4343,6 +4345,7 @@ stages:
     - council_tax
     - domestic_rates
     - income_tax
+    - isa_cash_interest_flat_rate_charge
     - national_insurance
     - student_loan_repayments
     - employee_pension_contributions
