@@ -195,7 +195,7 @@
    "evidence": "irs_soi.historic_table_2 (compiled) carries the tax-return interest; sample fact bea_nipa.cy2023.personal_interest_income.a064rc.amount",
    "fence": {
     "origin": "us-data PR #994 (added) -> PR #1059 (removed)",
-    "purpose": "\"BEA personal interest/dividends include imputed interest, pension-plan dividends, and trust flows, so those macro totals should not directly calibrate tax/CPS interest and dividend variables\" (loss.py:67-70, added by PR #1059)",
+    "purpose": "\"BEA personal interest/dividends include imputed interest, pension-plan dividends, and trust flows, so those macro totals should not directly calibrate tax/CPS interest and dividend variables\" (utils/loss.py:67-70 at 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe, added by PR #1059)",
     "verdict_basis": "us-data itself declined it as a direct target (PR #1059): a macro benchmark, not a close microdata concept. Tax-return interest is calibrated from IRS SOI + CBO (compiled)."
    }
   },
