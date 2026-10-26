@@ -270,6 +270,7 @@ records that signer, whoever resumed it.
 |---|---|---|---|
 | `uk-gate-juaristi22-2026` | `66bf0e29…` | María Juaristi's build machine | active; signed every cut on record |
 | `uk-gate-team-2026` | `dd31e325…` | Max Ghenis: agent-secret `microcosm/uk-gate-signing-key-team` on his build Mac, readable by agent sessions on that Mac | active |
+| `uk-gate-vahid-ahmadi-2026` | `e9ab40bd…` | Vahid Ahmadi: his laptop's login keychain, service `microcosm-uk-gate-signing-key` | active |
 
 **Add a builder or rotate a key.**
 

@@ -137,6 +137,26 @@ UK_GATE_SIGNING_KEYS: Mapping[str, GateSigningKey] = MappingProxyType(
                 ),
             )
         ),
+        "e9ab40bddffa31e67c3f7c4a5fba2fe3d5f8a71d3200f92ecbc6592b877a7eb1": (
+            GateSigningKey(
+                key_sha256=(
+                    "e9ab40bddffa31e67c3f7c4a5fba2fe3d5f8a71d3200f92ecbc6592b877a7eb1"
+                ),
+                label="uk-gate-vahid-ahmadi-2026",
+                status="active",
+                custodian="Vahid Ahmadi (GitHub vahid-ahmadi)",
+                held_in=(
+                    "his laptop's login keychain, service "
+                    "microcosm-uk-gate-signing-key; not in a shared store"
+                ),
+                registered="2026-10-26",
+                evidence=(
+                    "Generated 2026-10-26 with `generate --keychain-service` for "
+                    "the verification run of microcosm#1405; only the fingerprint "
+                    "left the keychain (posted on #1405)."
+                ),
+            )
+        ),
     }
 )
 
