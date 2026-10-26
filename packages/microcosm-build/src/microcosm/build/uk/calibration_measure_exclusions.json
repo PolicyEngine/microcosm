@@ -331,6 +331,51 @@
       "expires_on": "2027-01-24"
     },
     {
+      "name": "obr.beer_and_cider_duties",
+      "reason": "Level set by the build, not the weights: the lcfs_consumption stage levels beer and cider litres to HMRC's FY2024-25 clearances at the engine's strengths, at prior weights (microcosm#1359), so the row reads those clearances at the engine's rates and reliefs: £4.050bn against OBR's £3.746bn accrued (+8.1 percent). The gap is the engine's one strength per product, the small producer relief and lower-strength rates it does not charge, sparkling cider, which the clearances count within cider, and the timing of receipts, none of which the frame holds, so binding the row would move weight onto the households that buy to cover them. Measured at its FY2024-25 period on every evaluation with tools/diagnose_uk_consumption_taxes.py, where any move from that gap is weight drift; rebind when the engine's duty on published clearances reproduces the receipts.",
+      "tracking": "microcosm#1359",
+      "approved_by": "juaristi22",
+      "adjudication": "María's ruling of 2026-10-23 on the microcosm#1359 plan (decision 3): the OBR alcohol and tobacco rows are compared at FY2024-25, the base year, as measured diagnostics, with the exclusions expiring beside the VAT and road-fuel ones; the betting and gaming row is the plan's Group C row. Receipts: experiments/1359-excise-quantities-receipts.md.",
+      "approved_on": "2026-10-23",
+      "expires_on": "2027-01-08"
+    },
+    {
+      "name": "obr.wine_duties",
+      "reason": "Level set by the build, not the weights: the lcfs_consumption stage levels wine and other fermented litres to HMRC's FY2024-25 clearances at the engine's strengths, at prior weights (microcosm#1359), so the row reads those clearances at the engine's rates and reliefs: £4.808bn against OBR's £4.686bn accrued (+2.6 percent). The gap is the engine's one strength per product against the strengths cleared, the small producer relief it does not charge and the timing of receipts, none of which the frame holds, so binding the row would move weight onto the households that buy to cover them. Measured at its FY2024-25 period on every evaluation with tools/diagnose_uk_consumption_taxes.py, where any move from that gap is weight drift; rebind when the engine's duty on published clearances reproduces the receipts.",
+      "tracking": "microcosm#1359",
+      "approved_by": "juaristi22",
+      "adjudication": "María's ruling of 2026-10-23 on the microcosm#1359 plan (decision 3): the OBR alcohol and tobacco rows are compared at FY2024-25, the base year, as measured diagnostics, with the exclusions expiring beside the VAT and road-fuel ones; the betting and gaming row is the plan's Group C row. Receipts: experiments/1359-excise-quantities-receipts.md.",
+      "approved_on": "2026-10-23",
+      "expires_on": "2027-01-08"
+    },
+    {
+      "name": "obr.spirits_duties",
+      "reason": "Level set by the build, not the weights: the lcfs_consumption stage levels spirits litres to HMRC's FY2024-25 clearances at the engine's strength, at prior weights (microcosm#1359), so the row reads those clearances at the engine's rates: £4.205bn against OBR's £4.113bn accrued (+2.2 percent). The gap is the engine's one strength against the strengths cleared and the timing of receipts, none of which the frame holds, so binding the row would move weight onto the households that buy to cover them. Measured at its FY2024-25 period on every evaluation with tools/diagnose_uk_consumption_taxes.py, where any move from that gap is weight drift; rebind when the engine's duty on published clearances reproduces the receipts.",
+      "tracking": "microcosm#1359",
+      "approved_by": "juaristi22",
+      "adjudication": "María's ruling of 2026-10-23 on the microcosm#1359 plan (decision 3): the OBR alcohol and tobacco rows are compared at FY2024-25, the base year, as measured diagnostics, with the exclusions expiring beside the VAT and road-fuel ones; the betting and gaming row is the plan's Group C row. Receipts: experiments/1359-excise-quantities-receipts.md.",
+      "approved_on": "2026-10-23",
+      "expires_on": "2027-01-08"
+    },
+    {
+      "name": "obr.tobacco_duties",
+      "reason": "Level set by the build, not the weights: the lcfs_consumption stage levels cigarettes and grams of tobacco to HMRC's FY2024-25 clearances, at prior weights (microcosm#1359), so the row reads those clearances at the engine's rates: £8.167bn against OBR's £7.927bn in cash (+3.0 percent). The gap is the engine's one pack price, on which it charges the ad valorem element and the minimum excise tax, against the prices sold, and cash receipts against the year's clearances, none of which the frame holds, so binding the row would move weight onto the households that buy to cover them. Measured at its FY2024-25 period on every evaluation with tools/diagnose_uk_consumption_taxes.py, where any move from that gap is weight drift; rebind when the engine's duty on published clearances reproduces the receipts.",
+      "tracking": "microcosm#1359",
+      "approved_by": "juaristi22",
+      "adjudication": "María's ruling of 2026-10-23 on the microcosm#1359 plan (decision 3): the OBR alcohol and tobacco rows are compared at FY2024-25, the base year, as measured diagnostics, with the exclusions expiring beside the VAT and road-fuel ones; the betting and gaming row is the plan's Group C row. Receipts: experiments/1359-excise-quantities-receipts.md.",
+      "approved_on": "2026-10-23",
+      "expires_on": "2027-01-08"
+    },
+    {
+      "name": "obr.betting_and_gaming_duties",
+      "reason": "An identity, not a check: the lcfs_consumption stage levels each gambling base to HMRC's FY2024-25 cash receipts for its duty, or Machine Games Duty's liabilities for its band, over the engine's own rate (Gaming Duty's over the engine's effective-rate proxy, itself those receipts over the Gambling Commission's casino yield), at prior weights (microcosm#1359), so the engine charges the receipts back by construction: £3.619bn against OBR's £3.616bn in cash (+0.1 percent), the gap being Machine Games Duty's £612.3m of liabilities against its £609.2m of receipts. Only weight drift can move it, so the row is measured for drift and is no evidence that the gambling inputs are right: their test is who carries them, by income decile. Binding it would move weight onto the households that gamble to hold a level the build already sets. Measured at its FY2024-25 period on every evaluation with tools/diagnose_uk_consumption_taxes.py; rebind if the bases come from published stakes or yield rather than receipts.",
+      "tracking": "microcosm#1359",
+      "approved_by": "juaristi22",
+      "adjudication": "María's ruling of 2026-10-23 on the microcosm#1359 plan (decision 3): the OBR alcohol and tobacco rows are compared at FY2024-25, the base year, as measured diagnostics, with the exclusions expiring beside the VAT and road-fuel ones; the betting and gaming row is the plan's Group C row. Receipts: experiments/1359-excise-quantities-receipts.md.",
+      "approved_on": "2026-10-23",
+      "expires_on": "2027-01-08"
+    },
+    {
       "name": "ons.household_electricity_expenditure",
       "reason": "Published-source residual, not a weight question: the lcfs_consumption stage sets electricity spend from the DESNZ Energy Trends domestic volume over the four quarters of calendar 2024 at QEP calendar-2024 average prices paid (the level the energy_rake gate checks), and ONS Consumer Trends 04.5.1 sits below it on every aligned basis. For calendar 2024 it is GBP 26.10bn against the stage's GBP 29.52bn on microcosm#1121's head spine (0.88). For calendar 2025 it is GBP 26.52bn against GBP 29.60bn for Energy Trends volume times QEP unit and fixed costs (0.90), and 1.11 times unit cost alone; meters against households explains about 2 percent. On the 2026-09-30 national problem the calibration took electricity from GBP 29.11bn at design weights to GBP 26.54bn (8.8 percent; 93.0 to 82.9 TWh, 10.9 percent). In a re-solve with the four consumption-tax rows masked together it stayed at GBP 28.70bn, and the other 1,086 rows fitted no worse. Measured on every evaluation with tools/diagnose_uk_consumption_taxes.py; retire if the reconciliation microcosm#1278 tracks finds a concept difference to bridge. On arm 2 of the next policyengine-uk bump (policyengine-uk 2.151.0, with the liquid and solid fuels drawn), held out, electricity spend stays within the consumption drift block's 2 percent flag of its design-weight level; the frame's energy totals rest in part on households of the SPI support channel, so no new figure is given (SN 9422).",
       "tracking": "microcosm#1278",

@@ -2231,6 +2231,16 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 # #1113 road_fuel_level check: the ceiling on the LCFS donor
                 # share of other personal-transport fuels netted off 07.2.2.
                 "maximum_other_fuels_share",
+                # #1359 excise_quantities check: the ceiling on the donor
+                # share whose published total sits beside its diary lines, and
+                # the support band each excise share must rest on.
+                "maximum_parent_residual_share",
+                "required_support_band",
+                # #1359 gambling_participation check: how far a stratum's
+                # topped-up share may sit from its published target, and the
+                # bounds on the scale that anchors the added stakes.
+                "maximum_stratum_shortfall",
+                "amount_scale_bounds",
                 # #1113 road_fuel_incidence check: the ceiling on the chain's
                 # zero share among flagged fuel-car households.
                 "maximum_flagged_zero_share",

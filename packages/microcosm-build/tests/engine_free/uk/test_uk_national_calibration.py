@@ -62,8 +62,9 @@ from microcosm.frame import EntitySchema, Frame, MassChange, WeightKind, Weights
 # months and ages 1-3, universal nursery 3; the age-4 cells are signed out);
 # the next policyengine-uk bump retires the OBR welfare-cap split and the
 # England postgraduate repayments (microcosm#1095), and England's single adult
-# council tax discount binds (microcosm#953).
-ACTIVE_REFERENCE_COUNT = 1336
+# council tax discount binds (microcosm#953); microcosm#1359 adds five OBR
+# excise receipts rows, measured at FY2024-25.
+ACTIVE_REFERENCE_COUNT = 1341
 
 
 def _uc_reference(**overrides) -> LedgerTargetReference:
