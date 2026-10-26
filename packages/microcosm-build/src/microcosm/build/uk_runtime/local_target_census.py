@@ -301,7 +301,10 @@ _FAMILIES: tuple[dict[str, Any], ...] = (
             "the cross-grain operator rescales those regions' bound cells by "
             "the whole-region sum over the bound sum: about a thousand "
             "dwellings on the South West's band A, the same shape the VOA "
-            "basis had."
+            "basis had. England's authorities also bind line 8, the dwellings "
+            "with the single adult household 25% discount (microcosm#1095): "
+            "the cells share the national single adult row's measurement, so "
+            "the England row is their control."
         ),
         "sources": [
             "mhclg_council_taxbase_la",
@@ -659,7 +662,10 @@ _SOURCES: tuple[dict[str, Any], ...] = (
             "Barnsley and Sheffield bind through the crosswalk's declared "
             "aliases of their April 2025 codes. The family is scoped to the "
             "296 English authorities: Wales and Scotland bind their own "
-            "returns below and Northern Ireland levies domestic rates."
+            "returns below and Northern Ireland levies domestic rates. The "
+            "spec line_08_single_adult_discount_dwellings.v1 (all bands) "
+            "supplies the same authorities' single adult discount cells "
+            "(microcosm#1095), under the same support floor."
         ),
     },
     {
@@ -861,8 +867,9 @@ _BINDING_FENCES: tuple[dict[str, Any], ...] = (
         "enforcement": FENCE_ENFORCEMENT_REVIEW,
         "rule": (
             "The declared HMRC area metrics gate frame membership on modeled "
-            "income_tax_annual > 0 (each person's income tax over the 12 "
-            "months before their FRS interview, a proxy for the tax year) — a "
+            "income_tax_before_winter_fuel_payment_charge_annual > 0 (each "
+            "person's income tax over the 12 months before their FRS interview, "
+            "a proxy for the tax year, before the Winter Fuel Payment charge) — a "
             "model-output proxy for 'taxpayer in the SPI frame', not a "
             "source-faithful frame. Binding any HMRC area family requires an "
             "explicit adjudication accepting or replacing that proxy before "
@@ -873,7 +880,8 @@ _BINDING_FENCES: tuple[dict[str, Any], ...] = (
             "hmrc.employment_income.amount, hmrc.employment_income.count, "
             "hmrc.self_employment_income.amount, "
             "hmrc.self_employment_income.count and "
-            "hmrc.higher_rate_taxpayers.count (their income_tax_annual filter); "
+            "hmrc.higher_rate_taxpayers.count (their "
+            "income_tax_before_winter_fuel_payment_charge_annual filter); "
             "microcosm#495 scoping."
         ),
     },

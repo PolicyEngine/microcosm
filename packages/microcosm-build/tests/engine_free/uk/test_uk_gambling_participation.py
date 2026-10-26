@@ -345,6 +345,18 @@ def test_occasional_players_take_the_declared_share_of_a_drawn_stake() -> None:
         assert np.average(topped[regular], weights=weight[regular]) == pytest.approx(
             np.average(drawn[seen], weights=weight[seen])
         )
+        # The receipt carries the scale's terms, so a moved scale shows which
+        # side moved (Vahid's review of #1400, round 3).
+        entry = low.receipt["keys"][key]
+        terms = entry["amount_scale_terms"]
+        assert terms["anchor"] == "seen_households"
+        assert terms["anchor_mean_stake"] == pytest.approx(
+            np.average(drawn[seen], weights=weight[seen])
+        )
+        assert entry["amount_scale"] == pytest.approx(
+            terms["anchor_mean_stake"] / terms["added_regular_drawn_mean_stake"]
+        )
+        assert terms["seen_drawn_mean_stake"] > 0
 
 
 def test_top_up_is_keyed_on_household_identity() -> None:
