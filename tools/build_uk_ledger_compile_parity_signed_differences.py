@@ -60,8 +60,7 @@ _SPI_UPRATED_DRIFT_RATIONALE = (
     "Declared uprating (PolicyEngine/chronicle#280 lane, María's ruling of 2026-09-22): ours "
     "moves the SPI 2023-24 band value to the 2025 calibration year by the index "
     "the reference declares (amounts by the pinned engine's per-variable OBR and "
-    "ONS indices between 1 January 2023 and 1 January 2025, the state pension by "
-    "the new State Pension rate the engine pays, counts by HMRC's projected "
+    "ONS indices between 1 January 2023 and 1 January 2025, counts by HMRC's projected "
     "taxpayer growth in the containing Table 2.5 band as the calendar-2025 "
     "window); the frozen incumbent fixture holds the 2023-24 values it projects "
     "one year forward with its own income-projection ratios."
@@ -218,6 +217,30 @@ _STATE_PENSION_LEDGER_ONLY_RATIONALE = (
     "has no State Pension caseload or resident-level row."
 )
 _INCOME_ANCHOR_PREFIXES = ("hmrc.itl.", "hmrc.spi.savings_interest_income.")
+#: microcosm#1069: Income Tax payers by age (ITL Table 2.2), a family the
+#: incumbent registry has no row of.
+_ITL_AGE_PREFIXES = (
+    "hmrc.itl.state_pension_age_taxpayers@",
+    "hmrc.itl.taxpayers_aged_65_and_over@",
+)
+_ITL_AGE_LEDGER_ONLY_RATIONALE = (
+    "Coverage the incumbent lacks (microcosm#1069): HMRC's Income Tax liabilities "
+    "Table 2.2 (July 2026) Income Tax payers of State Pension age and aged 65 and "
+    "over, one row per region-tier area as the calendar-2025 window of the 2024-25 "
+    "and 2025-26 projections. Table 2.2 counts residents; Table 2.1's United "
+    "Kingdom row, which adds taxpayers abroad or of unknown region, is vendored "
+    "but not bound. The incumbent registry binds no taxpayer count by age."
+)
+_SPI_STATE_PENSION_UPRATED_DRIFT_RATIONALE = (
+    "Declared uprating (microcosm#1069, after María's ruling of 2026-09-22): ours "
+    "moves the SPI 2023-24 State Pension band rows to the 2025 calibration year "
+    "by one factor for every band, the calendar-2025 window of HMRC's resident "
+    "Income Tax payers of State Pension age (Income Tax liabilities Table 2.2, "
+    "the twelve region-tier areas) over Table 2.1's 2023-24 United Kingdom count, "
+    "and the amount rows also by the new State Pension rate the engine pays; the "
+    "frozen incumbent fixture holds the 2023-24 values it projects one year "
+    "forward with its own income-projection ratios."
+)
 
 _CGT_OBSERVED_RATIONALES = {
     "hmrc.cgt.gains_total": (
@@ -850,11 +873,19 @@ def _add_signed_rationale_notes(
         ):
             row["reason"] = _SPI_PROPERTY_AMOUNT_DRIFT_RATIONALE
         elif (
+            name.startswith("hmrc/state_pension_")
+            and "_income_band_" in name
+            and row.get("kind") == "calibration_drift"
+        ):
+            row["reason"] = _SPI_STATE_PENSION_UPRATED_DRIFT_RATIONALE
+        elif (
             name.startswith("hmrc/")
             and "_income_band_" in name
             and row.get("kind") == "calibration_drift"
         ):
             row["reason"] = _SPI_UPRATED_DRIFT_RATIONALE
+        elif name.startswith(_ITL_AGE_PREFIXES) and row.get("kind") == "ledger_only":
+            row["reason"] = _ITL_AGE_LEDGER_ONLY_RATIONALE
         elif (
             name.startswith(_INCOME_ANCHOR_PREFIXES)
             and row.get("kind") == "ledger_only"

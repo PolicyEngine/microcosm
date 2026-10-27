@@ -1,6 +1,9 @@
 """Tests split from packages/microcosm-build/tests/test_uk_hmrc_uprating.py."""
 
 # ruff: noqa: F403, F405
+from hypothesis import given, settings
+from hypothesis import strategies as st
+
 from test_support.microcosm_build.uk_hmrc_uprating import *
 
 
@@ -14,6 +17,8 @@ def test_every_declared_engine_index_and_the_count_index_have_an_applier() -> No
         "hmrc.itl_2026.taxpayer_count_growth_all_bands",
         "hmrc.itl_2026.total_income_growth_all_bands",
         UK_SPI_STATE_PENSION_AMOUNT_INDEX_CONCEPT,
+        UK_HMRC_STATE_PENSION_AGE_GROWTH_INDEX_CONCEPT,
+        UK_SPI_STATE_PENSION_AGE_AMOUNT_INDEX_CONCEPT,
         UK_SPI_SAVINGS_INTEREST_INDEX_CONCEPT,
     }
     assert set(appliers) <= set(UK_UPRATING_APPLIERS)
@@ -447,3 +452,201 @@ def test_all_band_growth_moves_an_unbanded_area_row_by_the_all_ranges_window() -
         index_concept="hmrc.itl_2026.taxpayer_count_growth_all_bands",
     )
     assert passthrough is registry
+
+
+def _band_specs(*lower_bounds: int, period: str = "2023") -> TargetRegistry:
+    return TargetRegistry(
+        tuple(
+            _spec(
+                name=f"hmrc/state_pension_count_income_band_{lower}@2025",
+                value=1.0e6 + lower,
+                lower_bound=lower,
+                period=period,
+            )
+            for lower in lower_bounds
+        ),
+        country="uk",
+    )
+
+
+def test_state_pension_age_growth_moves_every_band_by_the_resident_level() -> None:
+    """microcosm#1069: the SPI State Pension rows hold their 2023-24 shares of
+    the bound State Pension age level, which grows from Table 2.1's United
+    Kingdom count to the window over Table 2.2's twelve region-tier areas."""
+
+    registry = _band_specs(12_570, 1_000_000)
+    aligned = align_hmrc_row_by_resident_state_pension_age_growth(
+        _reference(UK_HMRC_STATE_PENSION_AGE_GROWTH_INDEX_CONCEPT),
+        registry,
+        rows=_state_pension_age_rows(),
+    )
+
+    resident_window = 12 * (0.25 * 0.648e6 + 0.75 * 0.66744e6)
+    uk_window = 0.25 * 8.6e6 + 0.75 * 8.9e6
+    factor = resident_window / 8.0e6
+    for before, spec in zip(registry.specs, aligned.specs, strict=True):
+        assert spec.value == pytest.approx(before.value * factor)
+        metadata = spec.metadata
+        assert float(metadata["uprating_factor"]) == pytest.approx(factor)
+        assert float(metadata["uprating_index_united_kingdom_growth"]) == (
+            pytest.approx(uk_window / 8.0e6)
+        )
+        assert float(metadata["uprating_index_resident_share"]) == pytest.approx(
+            resident_window / uk_window
+        )
+        assert metadata["uprating_index"] == (
+            UK_HMRC_STATE_PENSION_AGE_GROWTH_INDEX_CONCEPT
+        )
+        assert metadata["uprating_index_measure_id"] == "state_pension_age"
+        assert metadata["uprating_index_resident_geographies"].split(";") == [
+            code for _, code in UK_REGION_TIER
+        ]
+        assert metadata["uprating_index_united_kingdom_values_by_year"] == (
+            "2023=8000000;2024=8600000;2025=8900000"
+        )
+        assert metadata["uprating_index_window_weights"] == "2024=0.25;2025=0.75"
+        # The UK opening count, then per window year the UK row and the
+        # twelve areas: England's own row and the other measures are not read.
+        record_ids = metadata["uprating_index_source_record_ids"].split(",")
+        assert len(record_ids) == 1 + 2 * 13
+        assert not any("E92000001" in record for record in record_ids)
+        assert metadata["ledger_value_before_alignment"] == f"{before.value:.15g}"
+    # Every band moves by the same factor: the level's growth, not the band's.
+    assert len({spec.metadata["uprating_factor"] for spec in aligned.specs}) == 1
+
+
+def test_state_pension_age_growth_refuses_a_missing_area_and_passes_others() -> None:
+    registry = _band_specs(20_000)
+    rows = [
+        row
+        for row in _state_pension_age_rows()
+        if not (
+            row.get("geography", {}).get("id") == "N92000002"
+            and row["period"]["value"] == 2025
+        )
+    ]
+    with pytest.raises(ValueError, match="N92000002 in 2025 matched 0"):
+        align_hmrc_row_by_resident_state_pension_age_growth(
+            _reference(UK_HMRC_STATE_PENSION_AGE_GROWTH_INDEX_CONCEPT),
+            registry,
+            rows=rows,
+        )
+    assert (
+        align_hmrc_row_by_resident_state_pension_age_growth(
+            _reference(UK_HMRC_TAXPAYER_GROWTH_INDEX_CONCEPT),
+            registry,
+            rows=rows,
+        )
+        is registry
+    )
+    # Compiled at the fact's own year the row binds as published; a fact
+    # after the calibration year is refused.
+    (own_year,) = align_hmrc_row_by_resident_state_pension_age_growth(
+        _reference(UK_HMRC_STATE_PENSION_AGE_GROWTH_INDEX_CONCEPT, period=2023),
+        registry,
+        rows=[],
+    ).specs
+    assert own_year.value == registry.specs[0].value
+    assert own_year.metadata["uprating_factor"] == "1"
+    with pytest.raises(ValueError, match="never moves a value backwards"):
+        align_hmrc_row_by_resident_state_pension_age_growth(
+            _reference(UK_HMRC_STATE_PENSION_AGE_GROWTH_INDEX_CONCEPT),
+            _band_specs(20_000, period="2026"),
+            rows=_state_pension_age_rows(),
+        )
+
+
+def test_state_pension_amount_moves_with_the_state_pension_age_level_and_the_rate() -> (
+    None
+):
+    registry = _band_specs(40_000)
+
+    def rate(path: str, instant: str) -> float:
+        assert path == UK_SPI_STATE_PENSION_RATE_PARAMETER
+        return {"2023-01-01": 200.0, "2025-01-01": 230.0}[instant]
+
+    appliers = hmrc_uprating_appliers()
+    assert appliers[UK_SPI_STATE_PENSION_AGE_AMOUNT_INDEX_CONCEPT].keywords[
+        "count_index_concept"
+    ] == (UK_HMRC_STATE_PENSION_AGE_GROWTH_INDEX_CONCEPT)
+    (spec,) = align_hmrc_amount_by_recipient_growth_and_rate(
+        _reference(UK_SPI_STATE_PENSION_AGE_AMOUNT_INDEX_CONCEPT),
+        registry,
+        index_concept=UK_SPI_STATE_PENSION_AGE_AMOUNT_INDEX_CONCEPT,
+        parameter_path=UK_SPI_STATE_PENSION_RATE_PARAMETER,
+        count_index_concept=UK_HMRC_STATE_PENSION_AGE_GROWTH_INDEX_CONCEPT,
+        parameter_value=rate,
+        rows=_state_pension_age_rows(),
+    ).specs
+
+    (count,) = align_hmrc_row_by_resident_state_pension_age_growth(
+        _reference(UK_HMRC_STATE_PENSION_AGE_GROWTH_INDEX_CONCEPT),
+        registry,
+        rows=_state_pension_age_rows(),
+    ).specs
+    count_factor = float(count.metadata["uprating_factor"])
+    assert spec.value == pytest.approx(registry.specs[0].value * count_factor * 1.15)
+    assert spec.metadata["uprating_index"] == (
+        UK_SPI_STATE_PENSION_AGE_AMOUNT_INDEX_CONCEPT
+    )
+    assert float(spec.metadata["uprating_count_factor"]) == pytest.approx(count_factor)
+    assert float(spec.metadata["uprating_rate_factor"]) == pytest.approx(1.15)
+    assert (
+        spec.metadata["uprating_index_resident_share"]
+        == (count.metadata["uprating_index_resident_share"])
+    )
+
+
+_counts = st.floats(min_value=1.0e3, max_value=1.0e8, allow_nan=False)
+
+
+@settings(max_examples=60, deadline=None)
+@given(
+    uk=st.tuples(_counts, _counts, _counts),
+    areas=st.lists(st.tuples(_counts, _counts), min_size=12, max_size=12),
+    scale=st.floats(min_value=1.0e-3, max_value=1.0e3, allow_nan=False),
+    lower_bounds=st.sets(st.sampled_from(sorted(SPI_BAND_TO_ITL_BANDS)), min_size=1),
+)
+def test_state_pension_age_factor_invariants(uk, areas, scale, lower_bounds) -> None:
+    """For every positive Table 2.1 and 2.2 input:
+
+    * the factor is United Kingdom growth times the resident share (the
+      receipted decomposition multiplies back to it);
+    * it is the same for every band;
+    * it is unchanged when every count is scaled by one positive constant
+      (a units change in the publisher's figures moves nothing).
+    """
+
+    def rows(factor: float):
+        out = [
+            _age_row(
+                year=year,
+                geography_id=UK_HMRC_ITL_UK_GEOGRAPHY_ID,
+                value=value * factor,
+            )
+            for year, value in zip((2023, 2024, 2025), uk, strict=True)
+        ]
+        for (_, code), (in_2024, in_2025) in zip(UK_REGION_TIER, areas, strict=True):
+            out.append(_age_row(year=2024, geography_id=code, value=in_2024 * factor))
+            out.append(_age_row(year=2025, geography_id=code, value=in_2025 * factor))
+        return out
+
+    registry = _band_specs(*sorted(lower_bounds))
+    reference = _reference(UK_HMRC_STATE_PENSION_AGE_GROWTH_INDEX_CONCEPT)
+    aligned = align_hmrc_row_by_resident_state_pension_age_growth(
+        reference, registry, rows=rows(1.0)
+    )
+    scaled = align_hmrc_row_by_resident_state_pension_age_growth(
+        reference, registry, rows=rows(scale)
+    )
+    factors = {float(spec.metadata["uprating_factor"]) for spec in aligned.specs}
+    assert len(factors) == 1
+    (factor,) = factors
+    for spec in aligned.specs:
+        growth = float(spec.metadata["uprating_index_united_kingdom_growth"])
+        share = float(spec.metadata["uprating_index_resident_share"])
+        assert growth * share == pytest.approx(factor, rel=1e-12)
+    for spec in scaled.specs:
+        assert float(spec.metadata["uprating_factor"]) == pytest.approx(
+            factor, rel=1e-12
+        )

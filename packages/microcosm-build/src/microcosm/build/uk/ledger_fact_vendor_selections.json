@@ -1012,7 +1012,7 @@
     },
     {
       "resource": "hmrc_itl_taxpayer_counts.json",
-      "purpose": "HMRC Income Tax liabilities statistics (15 July 2026) Table 2.5 by range of total income: Income Tax payers, total income and Income Tax liabilities for the 2023-24 outturn and HMRC's 2024-25, 2025-26 and 2026-27 projections, the eleven published bands and the all-ranges total. Consumed by the Table 2.5 growth appliers (hmrc.itl_2026.{taxpayer_count,total_income,total_tax}_growth_by_total_income_band), which move a 2023-24 SPI band row by the calendar-2025 window of the two overlapping projections over 2023-24 in the Table 2.5 band(s) the SPI band spans.",
+      "purpose": "HMRC Income Tax liabilities statistics (15 July 2026) for the 2023-24 outturn and HMRC's 2024-25, 2025-26 and 2026-27 projections. Table 2.5 by range of total income: Income Tax payers, total income and Income Tax liabilities, the eleven published bands and the all-ranges total, consumed by the Table 2.5 growth appliers (hmrc.itl_2026.{taxpayer_count,total_income,total_tax}_growth_by_total_income_band), which move a 2023-24 SPI band row by the calendar-2025 window of the two overlapping projections over 2023-24 in the Table 2.5 band(s) the SPI band spans. Tables 2.1 (United Kingdom) and 2.2 (England, its nine regions, Wales, Scotland and Northern Ireland): Income Tax payers of State Pension age and aged 65 and over, consumed by the State Pension age applier (hmrc.itl_2026.resident_state_pension_age_taxpayer_growth), which moves the SPI State Pension band rows by the calendar-2025 window of the twelve region-tier areas' State Pension age taxpayers over Table 2.1's 2023-24 United Kingdom count (microcosm#1069).",
       "consumers": [
         "uk_runtime.hmrc_uprating"
       ],
@@ -1053,6 +1053,34 @@
             "period_type": "tax_year"
           },
           "expected_row_count": 48
+        },
+        {
+          "label": "itl_2026_tables_2_1_2_2_state_pension_age_taxpayer_count",
+          "selector": {
+            "source_name": "hmrc",
+            "source_concept": "hmrc.spi_taxpayer_count",
+            "source_measure_id": "state_pension_age",
+            "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+            "dimension_values": {
+              "age_band": "state_pension_age"
+            },
+            "period_type": "tax_year"
+          },
+          "expected_row_count": 56
+        },
+        {
+          "label": "itl_2026_tables_2_1_2_2_age_65_and_over_taxpayer_count",
+          "selector": {
+            "source_name": "hmrc",
+            "source_concept": "hmrc.spi_taxpayer_count",
+            "source_measure_id": "age_65_and_over",
+            "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+            "dimension_values": {
+              "age_band": "65_and_over"
+            },
+            "period_type": "tax_year"
+          },
+          "expected_row_count": 56
         }
       ]
     },

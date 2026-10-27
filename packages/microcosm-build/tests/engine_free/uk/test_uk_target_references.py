@@ -76,8 +76,9 @@ _TEST_PATHS = paths_for("microcosm-build")
 # England's single adult council tax discount (microcosm#953); microcosm#1359
 # adds five OBR excise receipts rows, measured at FY2024-25; the bump after it
 # compiles obr.domestic_rates, pinned to the UK, and HMRC's five Child Benefit
-# family rows (microcosm#1095).
-ACTIVE_REFERENCE_COUNT = 1347
+# family rows (microcosm#1095); microcosm#1069 adds HMRC's Income Tax payers
+# of State Pension age and aged 65 and over in the twelve region-tier areas.
+ACTIVE_REFERENCE_COUNT = 1371
 REGION_TIER_LEVEL = {code: level for level, code in UK_REGION_TIER}
 
 
@@ -1075,6 +1076,22 @@ def test_uk_target_reference_membership_report_is_packaged() -> None:
                 "2025-26 projections, measured on the engine's tax_band. Each "
                 "region or nation row controls its higher rate area cells "
                 "(microcosm#1123)."
+            ),
+        },
+        {
+            "family": "hmrc_itl_age",
+            "status": "active_region_tier_calendar_year_window",
+            "active_reference_count": 24,
+            "signed_rationale": (
+                "The two HMRC Income Tax liabilities statistics targets for "
+                "Income Tax payers of State Pension age and aged 65 and over "
+                "(Table 2.2, July 2026) fan out over the twelve-area region "
+                "tier (microcosm#905) and bind at the calendar-2025 window of "
+                "HMRC's 2024-25 and 2025-26 projections. Table 2.2 counts "
+                "residents of a nation or region, as the frame does; Table "
+                "2.1's United Kingdom row, which adds taxpayers abroad or of "
+                "unknown region, opens the SPI State Pension rows' uprating "
+                "instead of binding (microcosm#1069)."
             ),
         },
         {
