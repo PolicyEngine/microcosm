@@ -105,6 +105,8 @@ def uk_stage_health_gate(
         return _regional_home_values_gate(stage, evidence, parameters)
     if check == "legacy_closure_take_up":
         return _legacy_closure_take_up_gate(stage, evidence, parameters)
+    if check == "apprentice_draw":
+        return _apprentice_draw_gate(stage, evidence, parameters)
     return GateResult(
         name="stage_health",
         passed=False,
@@ -4500,6 +4502,163 @@ def _legacy_closure_take_up_gate(
         "combinations": len(combinations),
         "unreachable_flags_withheld": withheld_flags,
         "share_claiming_at_closure_withheld": printed == "<10",
+    }
+    if failures:
+        return _fail(stage, check, failures, details)
+    return _pass(stage, check, details)
+
+
+def _apprentice_draw_gate(
+    stage: str,
+    evidence: Mapping[str, object],
+    parameters: Mapping[str, object],
+) -> GateResult:
+    """``is_apprentice`` realizes the contract's per-head rate (microcosm#1373).
+
+    The receipt must carry the contract's rate for its build year under the
+    declared key, a target equal to that rate times the weighted population
+    aged 21 to 24, and its support as printed bands. Unless the eligible
+    employees weigh no more than the target (cap-bound: every one of them is
+    flagged), the flagged weight lies within
+    ``maximum_relative_realization_deviation`` of the target. The relief the
+    flags imply at the engine's own Class 1 schedule must stay at or below
+    ``maximum_implied_relief``, HMRC's apprentice relief for every apprentice
+    under 25 (Vahid's review of microcosm#1373, S1). A figure resting on fewer
+    than ten source households, which the receipt prints "<10", is named
+    unchecked, never failed: a small-cell rule never stops a build (María's
+    ruling of 2026-10-26).
+    """
+
+    from microcosm.build.uk_runtime.take_up_contract import load_uk_take_up_contract
+
+    check = "apprentice_draw"
+    receipt = _mapping(
+        evidence.get("apprentice_receipt"), label=f"{stage}.apprentice_receipt"
+    )
+    tolerance = _finite_number(
+        parameters["maximum_relative_realization_deviation"],
+        label=f"{stage}.maximum_relative_realization_deviation",
+    )
+    if tolerance < 0.0:
+        raise ValueError(
+            f"{stage}: maximum_relative_realization_deviation must be >= 0."
+        )
+    ceiling = _finite_number(
+        parameters["maximum_implied_relief"], label=f"{stage}.maximum_implied_relief"
+    )
+    rate_key = str(parameters["rate_key"])
+    failures: list[str] = []
+    if receipt.get("rate_key") != rate_key:
+        failures.append(
+            f"{stage}: the draw reads {receipt.get('rate_key')!r}, not {rate_key!r}."
+        )
+    build_year = receipt.get("build_year")
+    if isinstance(build_year, bool) or not isinstance(build_year, int):
+        raise ValueError(f"{stage}.build_year must be an integer, got {build_year!r}.")
+    declared = load_uk_take_up_contract().rate(rate_key, build_year)
+    rate = _finite_number(receipt.get("rate"), label=f"{stage}.rate")
+    if rate != declared:
+        failures.append(
+            f"{stage}: the draw's rate {rate} is not the contract's {declared} "
+            f"for {build_year}."
+        )
+    unchecked = [
+        key
+        for key in (
+            "population_mass",
+            "eligible_mass",
+            "target",
+            "realized_mass",
+            "realization_deviation",
+            "implied_relief",
+        )
+        if receipt.get(key) == "<10"
+    ]
+
+    def _figure(key: str) -> float | None:
+        if key in unchecked:
+            return None
+        return _finite_number(receipt.get(key), label=f"{stage}.{key}")
+
+    population = _figure("population_mass")
+    eligible = _figure("eligible_mass")
+    target = _figure("target")
+    realized = _figure("realized_mass")
+    printed = _figure("realization_deviation")
+    if (
+        target is not None
+        and population is not None
+        and not math.isclose(
+            target, rate * population, rel_tol=_FLOAT_RELATIVE_TOLERANCE
+        )
+    ):
+        failures.append(
+            f"{stage}: target {target} is not the rate times the population aged "
+            f"21 to 24 ({rate * population})."
+        )
+    for key in ("population_support", "eligible_support", "flagged_support"):
+        band = receipt.get(key)
+        if band != 0 and band not in _SUPPORT_BANDS:
+            failures.append(f"{stage}: {key} {band!r} is not a printed band.")
+    cap_bound = receipt.get("cap_bound")
+    if not isinstance(cap_bound, bool):
+        raise ValueError(f"{stage}.cap_bound must be a boolean, got {cap_bound!r}.")
+    if target is not None and eligible is not None:
+        shortfall = target > 0.0 and eligible <= target
+        if cap_bound != shortfall:
+            failures.append(
+                f"{stage}: cap_bound is {cap_bound} with eligible weight {eligible} "
+                f"against target {target}."
+            )
+    relative: float | None = None
+    if realized is not None and target is not None:
+        if printed is not None and not math.isclose(
+            printed, realized - target, rel_tol=1e-9, abs_tol=1e-6 * max(target, 1.0)
+        ):
+            failures.append(
+                f"{stage}: realization_deviation {printed} is not realized minus "
+                f"target ({realized - target})."
+            )
+        if cap_bound:
+            if eligible is not None and not math.isclose(
+                realized, eligible, rel_tol=1e-9
+            ):
+                failures.append(
+                    f"{stage}: a cap-bound draw flags every eligible employee, but "
+                    f"{realized} of {eligible} is flagged."
+                )
+        else:
+            relative = (
+                abs(realized - target) / target if target > 0.0 else float(realized > 0)
+            )
+            if relative > tolerance:
+                failures.append(
+                    f"{stage}: the flagged weight is {relative:.4f} of the target "
+                    f"away from it, above {tolerance}."
+                )
+    relief = receipt.get("implied_relief")
+    implied: float | None = None
+    if relief is None:
+        failures.append(
+            f"{stage}: the receipt records no implied relief, so the draw cannot be "
+            "held below HMRC's apprentice relief."
+        )
+    elif relief != "<10":
+        implied = _finite_number(relief, label=f"{stage}.implied_relief")
+        if implied > ceiling:
+            failures.append(
+                f"{stage}: the flags imply {implied:,.0f} of relief, above the "
+                f"{ceiling:,.0f} ceiling."
+            )
+    details = {
+        "rate_key": rate_key,
+        "rate": rate,
+        "target": target,
+        "cap_bound": cap_bound,
+        "relative_realization_deviation": relative,
+        "implied_relief": implied,
+        "maximum_implied_relief": ceiling,
+        "figures_unchecked_small_cells": unchecked,
     }
     if failures:
         return _fail(stage, check, failures, details)
