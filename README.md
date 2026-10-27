@@ -68,7 +68,10 @@ The build finds the `microcosm-emitter` command through
 environment variables and user, so it uses the build's Hugging Face
 credential (`HF_TOKEN`, then `HUGGINGFACE_TOKEN`, then the `hf auth login`
 token). Without the command the build continues with no hosted telemetry and
-no remote staging. Microcosm supplies build metadata, graph files and staging
+no remote staging. The build reads the emitter's version when it starts and
+stops one older than 0.6.0, the first release that takes staging run files;
+it prints the installed and required versions and the upgrade command, and
+continues as it does without the command. Microcosm supplies build metadata, graph files and staging
 run files; the emitter owns authentication, durable queues and delivery.
 The telemetry module reports live progress to the hosted collector when the
 operator's Hugging Face login is accepted; otherwise it retains the events

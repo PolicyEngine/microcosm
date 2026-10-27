@@ -11,12 +11,17 @@ The child inherits the build's environment variables and runs as the same
 user, so it finds the build's Hugging Face credential (``HF_TOKEN``, then
 ``HUGGINGFACE_TOKEN``, then the token saved by ``hf auth login``). Its module
 settings travel on its standard input, never in environment variables or
-process arguments. No call raises into the build: a missing, slow or
-refusing emitter leaves the build running without it.
+process arguments. No call raises into the build: a missing, slow,
+refusing or outdated emitter leaves the build running without it.
+
+The adapter stops an emitter older than ``MINIMUM_EMITTER_VERSION`` as soon
+as it has started, after reading its version from the emitter's ``hello``
+answer (``EmitterClient.emitter_version``).
 """
 
 from __future__ import annotations
 
+import re
 import sys
 from collections.abc import Mapping, Sequence
 from pathlib import Path
@@ -48,6 +53,7 @@ from microcosm.build.telemetry_identity import runtime_identity
 
 __all__ = [
     "DEFAULT_HEARTBEAT_SECONDS",
+    "MINIMUM_EMITTER_VERSION",
     "EmitterClient",
     "LocalTelemetryEmitter",
     "TelemetryRun",
@@ -62,6 +68,54 @@ SETUP_WARNING = (
 #: The emitter took about four seconds to become ready on an M1 Max; this is
 #: only a ceiling on the wait.
 STARTUP_TIMEOUT_SECONDS = 15.0
+#: The first emitter release with everything a build hands over: the Hugging
+#: Face module (``stage_run_files``, ``run_files_receipt`` and
+#: ``read_back_run_files``) and its queue in ``events.handovers.sqlite3``.
+#: Releases 0.4.0 to 0.5.1 accept the same protocol version but start without
+#: that module; 0.7.0 added only release publication, which builds do not use.
+MINIMUM_EMITTER_VERSION = "0.6.0"
+OUTDATED_EMITTER_WARNING = (
+    "The installed microcosm-emitter {reported}; this build needs {required} "
+    "or later, so it stopped that emitter and will continue without it. "
+    "Upgrade it with `uv tool install --upgrade 'microcosm-emitter>={required}'`, "
+    "or point MICROCOSM_EMITTER_COMMAND at a newer one."
+)
+_RELEASE_NUMBER = re.compile(r"(\d+)\.(\d+)\.(\d+)")
+_MINIMUM_RELEASE = tuple(int(part) for part in MINIMUM_EMITTER_VERSION.split("."))
+
+
+def _release_number(version: object) -> tuple[int, ...] | None:
+    """``(major, minor, patch)`` of a release version, or None if it has none."""
+    found = _RELEASE_NUMBER.match(version) if isinstance(version, str) else None
+    return None if found is None else tuple(int(part) for part in found.groups())
+
+
+def _start_emitter(**options: Any) -> EmitterClient:
+    """Start the installed emitter; stop it again if it is too old.
+
+    ``EmitterClient.start`` returns only after the emitter's ``hello`` answer,
+    which names its release. An emitter that did not start is returned as it
+    is; an outdated one is closed, so every call reports it unavailable.
+    """
+    client = EmitterClient.start(**options)
+    if not client.available:
+        return client
+    installed = _release_number(client.emitter_version)
+    if installed is not None and installed >= _MINIMUM_RELEASE:
+        return client
+    reported = (
+        "reports no version"
+        if client.emitter_version is None
+        else f"reports version {client.emitter_version}"
+    )
+    print(
+        OUTDATED_EMITTER_WARNING.format(
+            reported=reported, required=MINIMUM_EMITTER_VERSION
+        ),
+        file=sys.stderr,
+    )
+    client.close()
+    return client
 
 
 class LocalTelemetryEmitter:
@@ -124,7 +178,7 @@ class LocalTelemetryEmitter:
             return cls(
                 run=run, client=None, close_service_on_finish=close_service_on_finish
             )
-        client = EmitterClient.start(
+        client = _start_emitter(
             telemetry=TelemetrySettings(
                 run=run,
                 identity=identity,
@@ -296,7 +350,7 @@ class LocalTelemetryEmitter:
 
 def _orrery_emitter() -> EmitterClient:
     """A short-lived emitter that runs only the Orrery module."""
-    return EmitterClient.start(
+    return _start_emitter(
         orrery=OrrerySettings(), startup_timeout=STARTUP_TIMEOUT_SECONDS
     )
 
