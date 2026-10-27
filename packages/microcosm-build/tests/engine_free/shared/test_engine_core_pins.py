@@ -30,10 +30,16 @@ US_ENGINE = {
     "spm-calculator": "1.0.0",
 }
 #: What every UK install path resolves: the locked policyengine-uk and the
-#: policyengine-core its own floor brings.
+#: policyengine-core its own floor brings. Until the release that carries
+#: PolicyEngine/policyengine-uk#2695, the lock installs policyengine-uk 2.162.10
+#: plus that pull request from its head commit, which uv exports as a direct
+#: reference rather than a version.
 UK_ENGINE = {
     "policyengine-core": "3.33.3",
-    "policyengine-uk": "2.162.8",
+    "policyengine-uk": (
+        "git+https://github.com/PolicyEngine/policyengine-uk"
+        "@ead3444d7b57284d8e90eab79c55bc206326e22a"
+    ),
 }
 ENGINE_PACKAGES = ("microcosm-build", "microcosm-data", "microcosm-frame")
 
@@ -71,12 +77,19 @@ def _uv_export(*args: str) -> subprocess.CompletedProcess[str]:
 
 
 def _resolved(requirements: str) -> dict[str, str]:
+    """Each exported package's version, or its URL for a direct reference."""
+
     versions = {}
     for line in requirements.splitlines():
         pin = line.split(";")[0].strip()
-        if "==" in pin and not pin.startswith(("#", "-")):
+        if pin.startswith(("#", "-")):
+            continue
+        if "==" in pin:
             name, version = pin.split("==", 1)
             versions[name.strip()] = version.strip()
+        elif " @ " in pin:
+            name, url = pin.split(" @ ", 1)
+            versions[name.strip()] = url.strip()
     return versions
 
 
