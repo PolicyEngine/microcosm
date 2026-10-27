@@ -398,6 +398,10 @@ def test_the_app_never_runs_an_emitter_installed_where_the_image_puts_it(
     command.write_text(f"#!/bin/sh\ntouch '{ran}'\necho '{{}}'\n")
     command.chmod(0o755)
     monkeypatch.setattr(plan_lib, "IMAGE_EMITTER_COMMAND", str(command))
+    # _runner_identity() also hashes the image clone's uv.lock. The image's
+    # /root/microcosm is unreadable on a CI runner, where Python 3.13's
+    # Path.exists() raises PermissionError, so point it at an empty folder.
+    monkeypatch.setattr(plan_lib, "IMAGE_REPO_ROOT", str(tmp_path / "repo"))
 
     recorded = {"emitter_version": "0.7.0", "protocol_versions": [1]}
     assert app._emitter_version() == recorded
