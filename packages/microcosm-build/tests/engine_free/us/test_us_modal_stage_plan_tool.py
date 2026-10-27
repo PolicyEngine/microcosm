@@ -388,6 +388,23 @@ def test_image_installs_the_emitter_command_on_its_own(app) -> None:
     assert "MICROCOSM_EMITTER_COMMAND" not in removed
 
 
+def test_the_app_never_runs_an_emitter_installed_where_the_image_puts_it(
+    app, monkeypatch, tmp_path: Path
+) -> None:
+    """A machine with a command at the image's emitter path never runs it here."""
+
+    ran = tmp_path / "emitter-ran"
+    command = tmp_path / "microcosm-emitter"
+    command.write_text(f"#!/bin/sh\ntouch '{ran}'\necho '{{}}'\n")
+    command.chmod(0o755)
+    monkeypatch.setattr(plan_lib, "IMAGE_EMITTER_COMMAND", str(command))
+
+    recorded = {"emitter_version": "0.7.0", "protocol_versions": [1]}
+    assert app._emitter_version() == recorded
+    assert app._runner_identity()["microcosm_emitter"] == recorded
+    assert not ran.exists()
+
+
 # --------------------------------------------------------------------------- #
 # Hashing, mirroring, receipts                                                 #
 # --------------------------------------------------------------------------- #
