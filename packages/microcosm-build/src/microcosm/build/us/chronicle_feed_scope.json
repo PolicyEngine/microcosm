@@ -2,9 +2,9 @@
  "version": 1,
  "country": "us",
  "source_repo": "PolicyEngine/chronicle",
- "source_commit": "9b91e8bc61802e5fd9d5fa19a8f991828c1025f8",
- "rule": "The (record_set_id, period) pairs of the pinned feed consumer_facts_buildn_v9_4.jsonl, plus the 51 TY2023 Historic Table 2 state AGI-band record sets (irs_soi.ty2023.historic_table_2.state_agi.<st>, microcosm#940); each built from the named package with `chronicle build-bundle --year <build_year> --source <package>`.",
- "pair_count": 637,
+ "source_commit": "a9026cc8f80307af0c4527fdb3779fab32ffad9f",
+ "rule": "The (record_set_id, period) pairs of the pinned feed consumer_facts_buildn_v9_4.jsonl, plus the 51 TY2023 Historic Table 2 state AGI-band record sets (irs_soi.ty2023.historic_table_2.state_agi.<st>, microcosm#940), plus the three BEA NIPA Table 7.8 line 17 (B4923C) record sets (bea_nipa.cy<year>.private_group_health_insurance, 2023 to 2025, microcosm#454); each built from the named package with `chronicle build-bundle --year <build_year> --source <package>`.",
+ "pair_count": 640,
  "runs": {
   "2020": [
    "packages/bea/nipa_total_wages_salaries",
@@ -28,6 +28,7 @@
    "packages/bea/nipa_pension_contributions",
    "packages/bea/nipa_personal_income_components",
    "packages/bea/nipa_personal_income_disposition",
+   "packages/bea/nipa_private_group_health_insurance",
    "packages/bea/nipa_total_wages_salaries",
    "packages/bea/regional_personal_income_state",
    "packages/cbo/individual_income_tax_receipts_2026_02",
@@ -54,6 +55,7 @@
    "packages/irs_soi/w2_statistics_2020"
   ],
   "2024": [
+   "packages/bea/nipa_private_group_health_insurance",
    "packages/bea/nipa_total_wages_salaries",
    "packages/cbo/revenue_projections_income_by_source_2026_02",
    "packages/census/pep_2024_national_age_sex",
@@ -74,6 +76,7 @@
    "packages/usda_snap/fy69_to_current"
   ],
   "2025": [
+   "packages/bea/nipa_private_group_health_insurance",
    "packages/cbo/revenue_projections_income_by_source_2026_02"
   ],
   "2026": [
@@ -260,6 +263,14 @@
    "build_year": 2023
   },
   {
+   "record_set_id": "bea_nipa.cy2023.private_group_health_insurance",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "bea-nipa-private-group-health-insurance",
+   "package": "packages/bea/nipa_private_group_health_insurance",
+   "build_year": 2023
+  },
+  {
    "record_set_id": "bea_nipa.cy2023.proprietors_income",
    "period_type": "calendar_year",
    "period_value": "2023",
@@ -316,12 +327,28 @@
    "build_year": 2023
   },
   {
+   "record_set_id": "bea_nipa.cy2024.private_group_health_insurance",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "bea-nipa-private-group-health-insurance",
+   "package": "packages/bea/nipa_private_group_health_insurance",
+   "build_year": 2024
+  },
+  {
    "record_set_id": "bea_nipa.cy2024.total_wages_salaries",
    "period_type": "calendar_year",
    "period_value": "2024",
    "package_id": "bea-nipa-total-wages-salaries",
    "package": "packages/bea/nipa_total_wages_salaries",
    "build_year": 2024
+  },
+  {
+   "record_set_id": "bea_nipa.cy2025.private_group_health_insurance",
+   "period_type": "calendar_year",
+   "period_value": "2025",
+   "package_id": "bea-nipa-private-group-health-insurance",
+   "package": "packages/bea/nipa_private_group_health_insurance",
+   "build_year": 2025
   },
   {
    "record_set_id": "bea_regional.cy2023.state_contributions_for_government_social_insurance",

@@ -102,6 +102,54 @@ def test_declared_export_surface_preserves_claimants_and_matches_runtime(uk_gate
     assert outcome.status is GateStatus.PASSED
 
 
+def test_spine_export_surface_is_reference_or_allow_listed(uk_gates):
+    """Every column the spine declares leaves through the release boundary as
+    an enhanced-FRS input, an allow-listed extra or a reviewed drop.
+
+    The export-surface gate runs only at release-cut certification, on a built
+    file; war_widows_pension_reported (#1222) reached main without an
+    allow-list entry and blocked the first certification after it. This runs
+    the same gate on the spine's declared surface through the production
+    export path, against the checked-in enhanced-FRS reference.
+    """
+
+    from microcosm.build.uk_runtime.graph import uk_spine_endpoint, uk_spine_graph
+    from microcosm.build.uk_runtime.national_frame import (
+        uk_national_frame,
+        uk_release_export_frame,
+    )
+    from microcosm.build.uk_runtime.parity_reference import (
+        load_efrs_parity_reference,
+    )
+    from microcosm.build.uk_runtime.terminal_gates import (
+        uk_export_candidate_columns,
+        uk_export_surface_gate,
+    )
+
+    columns = {
+        "person": ["person_id", "person_benunit_id", "person_household_id"],
+        "benunit": ["benunit_id"],
+        "household": ["household_id"],
+    }
+    for cells in uk_spine_endpoint(uk_spine_graph()).inputs:
+        columns[cells.entity] = list(
+            dict.fromkeys([*columns[cells.entity], *cells.columns])
+        )
+    tables = {
+        entity: pd.DataFrame({column: np.array([1]) for column in names})
+        for entity, names in columns.items()
+    }
+    frame = uk_national_frame(**tables, time_period="2024", household_weights=[1.0])
+    candidate = uk_export_candidate_columns(uk_release_export_frame(frame))
+    reference = {
+        f"{entity}.{name}"
+        for name, entity in load_efrs_parity_reference().input_entities.items()
+    }
+    entry = next(entry for entry in uk_gates.gates if entry.id == "uk_export_surface")
+    result = uk_export_surface_gate(candidate, reference, **dict(entry.parameters))
+    assert result.passed, result.failures
+
+
 def _tables(*, n: int = 4, weights=None):
     if weights is None:
         weights = np.ones(n, dtype=float)
@@ -115,6 +163,15 @@ def _tables(*, n: int = 4, weights=None):
     other_property = 1_000.0 * (np.arange(n) % 2)
     non_residential = 500.0 * (np.arange(n) % 2)
     land = 250.0 * (np.arange(n) % 2)
+    # Debt secured on the last unit's property (microcosm#1095): the shares
+    # net it class by class, the non-residential debt above 90% of its
+    # property's value flooring that class at zero.
+    last = np.arange(n) == n - 1
+    other_property_debt = np.where(last, 300.0, 0.0)
+    non_residential_debt = np.where(last, 600.0, 0.0)
+    property_share = np.maximum(0.9 * other_property - other_property_debt, 0.0) + (
+        np.maximum(0.9 * non_residential - non_residential_debt, 0.0)
+    )
     carrier = np.arange(n, dtype=float)
     person = pd.DataFrame(
         {
@@ -136,9 +193,8 @@ def _tables(*, n: int = 4, weights=None):
             "benunit_id": np.arange(201, 201 + n, dtype=np.int64),
             "would_claim_uc": np.asarray([True, False] * n)[:n],
             "frs_benunit_capital": carrier,
-            "uc_reported_capital": carrier + 0.9 * (other_property + non_residential),
-            "pension_credit_reported_capital": carrier
-            + 0.9 * (land + other_property + non_residential),
+            "uc_reported_capital": carrier + property_share,
+            "pension_credit_reported_capital": carrier + 0.9 * land + property_share,
         }
     )
     household = pd.DataFrame(
@@ -150,6 +206,8 @@ def _tables(*, n: int = 4, weights=None):
             "owned_land": land,
             "other_residential_property_value": other_property,
             "non_residential_property_value": non_residential,
+            "other_residential_property_secured_debt": other_property_debt,
+            "non_residential_property_secured_debt": non_residential_debt,
         }
     )
     return person, benunit, household
@@ -205,7 +263,7 @@ def _fixture_coverage_registry():
             evaluator=lambda context, parameters: GateResult(
                 name="take_up_signal", passed=True
             ),
-            parameter_keys=frozenset({"maximum_share_deviation"}),
+            parameter_keys=UK_GATE_REGISTRY["take_up_signal"].parameter_keys,
         ),
         "enum_domain": UKGateBinding(
             name="enum_domain",
@@ -530,6 +588,54 @@ class TestUKSurfaceAdapter:
         for column in ("uc_reported_capital", "pension_credit_reported_capital"):
             assert columns[f"benunit.{column}"]["same_source_mismatch_count"] == 1
 
+    @pytest.mark.parametrize(
+        ("reference_reports_uc", "expected"),
+        [
+            (False, {"uc_reported_capital": 1, "pension_credit_reported_capital": 1}),
+            (True, {"uc_reported_capital": 0, "pension_credit_reported_capital": 1}),
+        ],
+        ids=["both_schemes", "pension_credit_only"],
+    )
+    def test_uc_column_implication_binding_refuses_a_sentinel_unit_beside_property(
+        self, reference_reports_uc: bool, expected: dict[str, int]
+    ) -> None:
+        # From policyengine-uk 2.136.1 a unit on the sentinel takes its own
+        # share of its household's property, which the recording unit beside
+        # it already holds (Vahid's review of microcosm#1333). Unit 204 joins
+        # household 2 on the sentinel, beside the reference person's unit 202,
+        # which records the property: both schemes' shares, or Pension
+        # Credit's alone where unit 202 reports Universal Credit.
+        person, benunit, household = _tables()
+        person.loc[3, "person_household_id"] = 2
+        person.loc[3, "is_household_head"] = False
+        for column in (
+            "frs_benunit_capital",
+            "uc_reported_capital",
+            "pension_credit_reported_capital",
+        ):
+            benunit.loc[3, column] = -1.0
+        if reference_reports_uc:
+            person.loc[1, "universal_credit_reported"] = 10.0
+            benunit.loc[1, "would_claim_uc"] = True
+            benunit.loc[1, "uc_reported_capital"] = benunit.loc[
+                1, "frs_benunit_capital"
+            ]
+        frame = uk_national_frame(
+            person=person,
+            benunit=benunit,
+            household=household.iloc[:3].copy(),
+            time_period="2023",
+        )
+        entry = self._capital_gate()
+        result = UK_GATE_REGISTRY["column_implication"].evaluate(
+            EvidenceContext(frame=frame), entry.parameters
+        )
+
+        assert not result.passed
+        assert result.details["sentinel_units_beside_recorded_property"] == expected
+        beside = [failure for failure in result.failures if "would count" in failure]
+        assert len(beside) == sum(expected.values())
+
     def test_uc_column_implication_binding_keeps_a_reporters_receipt(
         self,
     ) -> None:
@@ -659,12 +765,15 @@ class TestUKSurfaceAdapter:
         """
 
         from microcosm.build.uk_runtime.salary_sacrifice import (
+            BONUS_SACRIFICE_OUTPUT,
             SALSAC_OUTPUT,
             SALSAC_PRE_CONVERSION_PAY_COLUMN,
         )
 
         person, benunit, household = _tables()
         person[SALSAC_OUTPUT] = [0.0, 10.0, 0.0, 5.0]
+        # The stage's bonus route (#1340) is a declared non-negative output too.
+        person[BONUS_SACRIFICE_OUTPUT] = [0.0, 0.0, 3.0, 0.0]
         person["employee_pension_contributions"] = [1.0, 0.0, 2.0, 0.0]
         release = uk_national_frame(
             person=person.copy(),
@@ -1036,6 +1145,22 @@ class TestBatteryRegressions:
             "uk_export_surface",
             "uk_target_fit",
         } <= failed
+
+    def test_the_fit_gate_judges_a_thin_national_row(self) -> None:
+        """María's ruling of 2026-10-26: no row's figures are withheld, so the
+        fit gate judges a row however few source households carry it."""
+
+        thin = "dwp.uc.payment_distribution_single_thin@2025"
+        parity = _parity(
+            candidate_targets={"ons/population", thin},
+            reference_targets={"ons/population", thin},
+            target_relative_errors={"ons/population": 0.01, thin: -0.60},
+        )
+        battery = _run_battery(_tables(), parity=parity)
+        fit = {o.entry.id: o for o in battery.outcomes}["uk_target_fit"]
+        assert fit.status is GateStatus.FAILED
+        assert fit.result.details["failing_targets"] == {thin: -0.60}
+        assert "withheld_targets" not in fit.result.details
 
 
 class TestUnevidencedArms:
@@ -1681,19 +1806,27 @@ class TestPreflightBindings:
         # all 1,725 constituency cells, which the region rows now control,
         # and the 598 authority cells under the 400-home floor.
         # microcosm#1262 adds Scotland's 18 PIPR BRMA cells, all compiled.
-        assert result.details["candidate_targets"] == 23_004
-        assert result.details["reference_targets"] == 27_133
-        # Only the 4,129 signed area deferrals and absences remain (2,100
+        # microcosm#1095 adds England's single adult discount cells: 296
+        # billing authorities, less the two the support floor defers; and
+        # 1,896 DESNZ energy cells by constituency (632 Great Britain seats,
+        # three rows), 1,894 of them compiled: the Orkney and Shetland seat has
+        # no gas kWh row and its gas-connected cell is deferred, as the two
+        # councils' are.
+        assert result.details["candidate_targets"] == 25_192
+        assert result.details["reference_targets"] == 29_325
+        # Only the 4,133 signed area deferrals and absences remain (2,100
         # before microcosm#929 bound the Welsh and Scottish council-tax cells;
         # Shetland band H is the one Scottish support deferral; microcosm#1123
         # adds the three higher rate taxpayer gaps; microcosm#1240 the six
         # high-value homes cells above; microcosm#1278 signs the two
         # small-cell rules, which defer 16 council-tax band cells and 192
         # higher-rate cells; microcosm#1207 the ten energy cells above;
-        # microcosm#1301 the 2,323 high-value homes cells above); the 1,011
-        # household rows are ordinary Chronicle-compiled references.
+        # microcosm#1301 the 2,323 high-value homes cells above; microcosm#1095
+        # the two single adult discount cells and the Orkney and Shetland
+        # seat's two gas cells above); the 1,011 household rows are ordinary
+        # Chronicle-compiled references.
         exclusions = result.details["reviewed_exclusions"]
-        assert len(exclusions) == 4_129
+        assert len(exclusions) == 4_133
         households = [
             name for name in exclusions if str(name).startswith("households@")
         ]
@@ -2475,18 +2608,18 @@ class TestLocalTargetFitRegister:
             self._evaluate(monkeypatch, uk_gates, {}, -0.30, parameters=parameters)
 
 
-class TestWithheldBrmaRows:
-    """The production local fit bindings on a withheld BRMA row (microcosm#1262).
+class TestThinRowsAreJudged:
+    """The production local fit bindings on a thin BRMA row.
 
-    María's rulings of 2026-10-17 and 2026-10-19: a BRMA row resting on fewer
-    than ten source households keeps its place without its figures, and both
-    fit gates decide on the published rows and count the withheld ones.
+    María's ruling of 2026-10-26 dropped the withholding of microcosm#1262: a
+    row resting on fewer than ten source households keeps its figures, and
+    both fit gates judge it with every other row.
     """
 
-    WITHHELD = "private_rent/S33999999/rent/private_rent_brma"
+    THIN = "private_rent/S33999999/rent/private_rent_brma"
 
     @staticmethod
-    def _rows(flag: bool = True) -> list[dict]:
+    def _rows() -> list[dict]:
         rows = [
             {
                 "family": "private_rent",
@@ -2502,7 +2635,6 @@ class TestWithheldBrmaRows:
                 "area_code": "S33999999",
                 "metric": "rent/private_rent_brma",
                 "relative_error": -0.4,
-                "model_figures_withheld": flag,
             },
             {
                 "family": "private_rent",
@@ -2533,109 +2665,41 @@ class TestWithheldBrmaRows:
             entry.parameters,
         )
 
-    def _guard(self, result: GateResult) -> None:
-        from microcosm.build.uk_runtime.diagnostics import (
-            uk_refuse_named_withheld_rows,
-        )
-
-        uk_refuse_named_withheld_rows(
-            {"failures": list(result.failures), "details": result.details},
-            names=frozenset(),
-            keys=frozenset({self.WITHHELD}),
-        )
-
-    def test_the_target_fit_decides_on_the_published_rows(
-        self, monkeypatch, uk_gates
-    ) -> None:
-        """María's ruling of 2026-10-19: a withheld row is neither checked nor named.
-
-        The withheld row misses its target by 40%, so a check over every row
-        would fail on it; the gate fails on the published row beyond the
-        bound alone, and counts the withheld one.
-        """
+    def test_the_target_fit_judges_the_thin_row(self, monkeypatch, uk_gates) -> None:
+        """The thin row misses its target by 40% and fails beside the
+        published row beyond the bound; nothing is counted as withheld."""
 
         result = self._evaluate(
             monkeypatch, uk_gates, "uk_local_target_fit", self._rows()
         )
         assert result.passed is False
         published = "private_rent/E06000004/rent/private_rent"
-        assert result.details["failing_targets"] == {published: 0.30}
-        assert result.details["targets_checked"] == 7
-        assert result.details["withheld_targets"] == 1
-        assert "withheld_failing_targets" not in result.details
-        self._guard(result)
+        assert result.details["failing_targets"] == {published: 0.30, self.THIN: -0.4}
+        assert result.details["targets_checked"] == 8
+        assert "withheld_targets" not in result.details
 
-    def test_a_withheld_row_inside_the_bound_reads_the_same(
+    def test_the_thin_rows_register_entry_excuses_it(
         self, monkeypatch, uk_gates
     ) -> None:
-        """Inside or beyond the bound, the gate's output does not move."""
-
-        rows = self._rows()
-        rows[6]["relative_error"] = 0.01
-        inside = self._evaluate(monkeypatch, uk_gates, "uk_local_target_fit", rows)
-        beyond = self._evaluate(
-            monkeypatch, uk_gates, "uk_local_target_fit", self._rows()
-        )
-        assert inside == beyond
-
-    def test_a_withheld_rows_register_entry_is_set_aside(
-        self, monkeypatch, uk_gates
-    ) -> None:
-        """An entry for a withheld row neither excuses, rots nor names it."""
-
         result = self._evaluate(
             monkeypatch,
             uk_gates,
             "uk_local_target_fit",
             self._rows(),
-            register={self.WITHHELD: _receipt()},
+            register={self.THIN: _receipt()},
         )
-        assert self.WITHHELD not in result.details["reviewed_exclusions"]
-        assert self.WITHHELD not in result.details["dormant_exclusions"]
-        assert self.WITHHELD not in result.details["stale_exclusions"]
-        self._guard(result)
+        assert self.THIN in result.details["reviewed_exclusions"]
+        assert self.THIN not in result.details["failing_targets"]
 
-    def test_a_withheld_rows_entry_for_another_line_is_set_aside(
-        self, monkeypatch, uk_gates
-    ) -> None:
-        """The fourth review of #1305: an out-of-line entry named the row.
-
-        An entry scoped to the national line is listed as set aside on the
-        local one; for a withheld row it is left out of that list too.
-        """
-
-        result = self._evaluate(
-            monkeypatch,
-            uk_gates,
-            "uk_local_target_fit",
-            self._rows(),
-            register={self.WITHHELD: _receipt(release_lines=("national",))},
-        )
-        assert "out_of_line_exclusions" not in result.details
-        self._guard(result)
-
-    def test_family_fit_rests_on_the_published_rows(
-        self, monkeypatch, uk_gates
-    ) -> None:
+    def test_family_fit_counts_every_row(self, monkeypatch, uk_gates) -> None:
         result = self._evaluate(
             monkeypatch, uk_gates, "uk_local_per_family_fit", self._rows()
         )
-        assert result.details["family_sizes"] == {"private_rent": 7}
+        assert result.details["family_sizes"] == {"private_rent": 8}
         assert result.details["family_within_shares"]["private_rent"] == pytest.approx(
-            6 / 7
+            6 / 8
         )
-        assert result.details["withheld_targets"] == {"private_rent": 1}
-        self._guard(result)
-
-    def test_an_unflagged_row_is_checked_and_named(self, monkeypatch, uk_gates) -> None:
-        """The guard bites: without the flag the row is named, and refused."""
-
-        result = self._evaluate(
-            monkeypatch, uk_gates, "uk_local_target_fit", self._rows(flag=False)
-        )
-        assert result.details["failing_targets"][self.WITHHELD] == -0.4
-        with pytest.raises(ValueError, match="names a withheld row"):
-            self._guard(result)
+        assert "withheld_targets" not in result.details
 
 
 class TestGateOnlyAreaSupport:

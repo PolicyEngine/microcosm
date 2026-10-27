@@ -7,9 +7,13 @@ two published ratios, so the calibration targets constrain something the
 stage did not set:
 
 * the yield per fare-paying boarding, ``y = R / (B - C)``: BUS05ai passenger
-  fare receipts over BUS01 passenger journeys less the concessionary journeys,
-  per area (London and England outside London; Scotland and Northern Ireland
-  from their own receipts and journeys);
+  fare receipts over BUS01 passenger journeys less the concessionary journeys
+  the area declares, per area (London and England outside London; Scotland
+  and Northern Ireland from their own receipts and journeys). England outside
+  London takes off only BUS01c's older and disabled concessions, as
+  policyengine-uk prices it from 2.158.3, so its other concessions stay in the
+  priced denominator, as the frame's eligibility flag leaves them priced
+  (microcosm#1095);
 * boardings per resident trip, ``k = B / (T x P)``: the published boardings over
   the published NTS trips per resident times the resident population, per
   series, which translates a survey trip (one-way, main mode, England
@@ -369,8 +373,9 @@ def own_fiscal_yield_price_factor(
 
 def bus_engine_parity(
     prices: BusFarePrices,
-    engine: Mapping[str, Mapping[str, float]],
+    engine: Mapping[str, Any],
     *,
+    alignment_factors: Mapping[str, float] | None = None,
     tolerance: float = UK_BUS_ENGINE_PARITY_TOLERANCE,
 ) -> dict[str, Any]:
     """The engine's bus pricing parameters against the stage's, area by area.
@@ -380,8 +385,16 @@ def bus_engine_parity(
     and ``yield_per_boarding``, while the national fare rows calibrate the
     stage's priced column; this is the check microcosm#1207 asks for. Both
     sides are fiscal-year values, before the stage's calendar re-pricing.
-    ``engine`` maps each parameter name to its value by engine area. Report
-    only: a gap beyond ``tolerance`` marks the area, it refuses nothing.
+    ``engine`` maps each parameter name to its value by engine area.
+
+    With ``alignment_factors`` (the fare-receipt rows' factor by engine area,
+    :func:`~microcosm.build.uk_runtime.ledger_targets.uk_bus_fare_alignment_factors`)
+    and the engine's ``local_bus_fares_index_ratio`` (its index in the
+    measurement year over the benchmark year), each area's factor is checked
+    against the engine's ratio too (microcosm#1331): the receipts move on the
+    engine's window, so the two must tie. Report only: a gap beyond
+    ``tolerance`` marks the area, it refuses nothing; the engine test holds
+    the tie at the locked engine.
     """
 
     stage_areas = {
@@ -409,16 +422,34 @@ def bus_engine_parity(
             }
         areas[label] = entry
     priced = [entry for entry in areas.values() if entry["engine_area"] is not None]
-    return {
+    within = all(
+        entry[name]["within_tolerance"]
+        for entry in priced
+        for name in ("boardings_per_trip", "yield_per_boarding")
+    )
+    result: dict[str, Any] = {
         "report_only": True,
         "tolerance": float(tolerance),
         "areas": areas,
-        "within_tolerance": all(
-            entry[name]["within_tolerance"]
-            for entry in priced
-            for name in ("boardings_per_trip", "yield_per_boarding")
-        ),
     }
+    ratios = engine.get("local_bus_fares_index_ratio")
+    if alignment_factors is not None and isinstance(ratios, Mapping):
+        index_ratio: dict[str, Any] = {}
+        for area, factor in sorted(alignment_factors.items()):
+            engine_ratio = float(ratios[area])
+            relative = float(factor) / engine_ratio - 1.0 if engine_ratio else None
+            index_ratio[area] = {
+                "targets": float(factor),
+                "engine": engine_ratio,
+                "relative_gap": relative,
+                "within_tolerance": relative is not None and abs(relative) <= tolerance,
+            }
+        result["fares_index_ratio"] = index_ratio
+        within = within and all(
+            entry["within_tolerance"] for entry in index_ratio.values()
+        )
+    result["within_tolerance"] = within
+    return result
 
 
 def bus_fare_prices(

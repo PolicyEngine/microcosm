@@ -1,0 +1,731 @@
+{
+ "gsgb": {
+  "all": {
+   "four_week_rate": {
+    "any_gambling": 0.4742,
+    "excluding_lottery_draw_only": 0.2702
+   },
+   "activities_among_four_week_players": {
+    "gsgb_b13": {
+     "one": 0.454,
+     "two_to_three": 0.385,
+     "four_to_six": 0.116,
+     "seven_or_more": 0.044,
+     "mean": 2.36
+    },
+    "independent_among_players": {
+     "one": 0.261,
+     "two_to_three": 0.598,
+     "four_to_six": 0.14,
+     "seven_or_more": 0.001,
+     "mean": 2.31,
+     "standard_deviation": 1.1,
+     "share_left_with_none": 0.065
+    },
+    "shared_intensity": {
+     "one": 0.441,
+     "two_to_three": 0.399,
+     "four_to_six": 0.146,
+     "seven_or_more": 0.014,
+     "mean": 2.16,
+     "standard_deviation": 1.43
+    }
+   },
+   "shared_intensity_shape": {
+    "national_lottery": 0.458,
+    "betting_and_gaming": 0.233
+   },
+   "published_unions": {
+    "excluding_lottery_draw_only": {
+     "published": 0.2702,
+     "independent_within_any_gambling": 0.3388,
+     "shared_intensity_fitted_to_any_gambling": 0.3232
+    },
+    "any_lottery_draw": {
+     "published": 0.3649,
+     "population": "any_gambling",
+     "independent_within_population": 0.3667,
+     "shared_intensity": 0.3682
+    },
+    "scratchcards": {
+     "published": 0.1221,
+     "population": "excluding_lottery_draw_only",
+     "independent_within_population": 0.1375,
+     "shared_intensity": 0.1363
+    },
+    "online_instant_win_games": {
+     "published": 0.0786,
+     "population": "excluding_lottery_draw_only",
+     "independent_within_population": 0.0907,
+     "shared_intensity": 0.0892
+    }
+   },
+   "keys": {
+    "national_lottery": {
+     "independent_within_population": 0.3648,
+     "shared_intensity": 0.3644,
+     "shared_intensity_over_independent": 0.999,
+     "bounds": [
+      0.3103,
+      0.4742
+     ]
+    },
+    "betting_and_gaming": {
+     "independent_within_population": 0.1919,
+     "shared_intensity": 0.1922,
+     "shared_intensity_over_independent": 1.001,
+     "bounds": [
+      0.0977,
+      0.2702
+     ]
+    }
+   }
+  },
+  "age_18_to_24": {
+   "four_week_rate": {
+    "any_gambling": 0.3295,
+    "excluding_lottery_draw_only": 0.2948
+   },
+   "activities_among_four_week_players": {
+    "gsgb_b13": {
+     "one": 0.345,
+     "two_to_three": 0.357,
+     "four_to_six": 0.16,
+     "seven_or_more": 0.138,
+     "mean": 3.6
+    },
+    "independent_among_players": {
+     "one": 0.137,
+     "two_to_three": 0.516,
+     "four_to_six": 0.334,
+     "seven_or_more": 0.013,
+     "mean": 3.05,
+     "standard_deviation": 1.4,
+     "share_left_with_none": 0.033
+    },
+    "shared_intensity": {
+     "one": 0.369,
+     "two_to_three": 0.329,
+     "four_to_six": 0.205,
+     "seven_or_more": 0.096,
+     "mean": 2.94,
+     "standard_deviation": 2.33
+    }
+   },
+   "shared_intensity_shape": {
+    "national_lottery": 0.2,
+    "betting_and_gaming": 0.183
+   },
+   "published_unions": {
+    "excluding_lottery_draw_only": {
+     "published": 0.2948,
+     "independent_within_any_gambling": 0.3086,
+     "shared_intensity_fitted_to_any_gambling": 0.3045
+    },
+    "any_lottery_draw": {
+     "published": 0.1234,
+     "population": "any_gambling",
+     "independent_within_population": 0.1572,
+     "shared_intensity": 0.1486
+    },
+    "scratchcards": {
+     "published": 0.103,
+     "population": "excluding_lottery_draw_only",
+     "independent_within_population": 0.1337,
+     "shared_intensity": 0.1268
+    },
+    "online_instant_win_games": {
+     "published": 0.1036,
+     "population": "excluding_lottery_draw_only",
+     "independent_within_population": 0.1281,
+     "shared_intensity": 0.1215
+    }
+   },
+   "keys": {
+    "national_lottery": {
+     "independent_within_population": 0.2004,
+     "shared_intensity": 0.1847,
+     "shared_intensity_over_independent": 0.922,
+     "bounds": [
+      0.1112,
+      0.2631
+     ]
+    },
+    "betting_and_gaming": {
+     "independent_within_population": 0.2545,
+     "shared_intensity": 0.2455,
+     "shared_intensity_over_independent": 0.965,
+     "bounds": [
+      0.1282,
+      0.2948
+     ]
+    }
+   }
+  },
+  "age_25_to_34": {
+   "four_week_rate": {
+    "any_gambling": 0.431,
+    "excluding_lottery_draw_only": 0.326
+   },
+   "activities_among_four_week_players": {
+    "gsgb_b13": {
+     "one": 0.403,
+     "two_to_three": 0.35,
+     "four_to_six": 0.156,
+     "seven_or_more": 0.091,
+     "mean": 2.94
+    },
+    "independent_among_players": {
+     "one": 0.188,
+     "two_to_three": 0.565,
+     "four_to_six": 0.243,
+     "seven_or_more": 0.005,
+     "mean": 2.69,
+     "standard_deviation": 1.27,
+     "share_left_with_none": 0.049
+    },
+    "shared_intensity": {
+     "one": 0.393,
+     "two_to_three": 0.365,
+     "four_to_six": 0.194,
+     "seven_or_more": 0.049,
+     "mean": 2.56,
+     "standard_deviation": 1.87
+    }
+   },
+   "shared_intensity_shape": {
+    "national_lottery": 0.342,
+    "betting_and_gaming": 0.242
+   },
+   "published_unions": {
+    "excluding_lottery_draw_only": {
+     "published": 0.326,
+     "independent_within_any_gambling": 0.3738,
+     "shared_intensity_fitted_to_any_gambling": 0.3629
+    },
+    "any_lottery_draw": {
+     "published": 0.2571,
+     "population": "any_gambling",
+     "independent_within_population": 0.2723,
+     "shared_intensity": 0.265
+    },
+    "scratchcards": {
+     "published": 0.1489,
+     "population": "excluding_lottery_draw_only",
+     "independent_within_population": 0.1713,
+     "shared_intensity": 0.1661
+    },
+    "online_instant_win_games": {
+     "published": 0.1131,
+     "population": "excluding_lottery_draw_only",
+     "independent_within_population": 0.1296,
+     "shared_intensity": 0.1249
+    }
+   },
+   "keys": {
+    "national_lottery": {
+     "independent_within_population": 0.31,
+     "shared_intensity": 0.2999,
+     "shared_intensity_over_independent": 0.967,
+     "bounds": [
+      0.2211,
+      0.427
+     ]
+    },
+    "betting_and_gaming": {
+     "independent_within_population": 0.2574,
+     "shared_intensity": 0.2501,
+     "shared_intensity_over_independent": 0.972,
+     "bounds": [
+      0.1351,
+      0.326
+     ]
+    }
+   }
+  },
+  "age_35_to_44": {
+   "four_week_rate": {
+    "any_gambling": 0.4927,
+    "excluding_lottery_draw_only": 0.3341
+   },
+   "activities_among_four_week_players": {
+    "gsgb_b13": {
+     "one": 0.387,
+     "two_to_three": 0.411,
+     "four_to_six": 0.147,
+     "seven_or_more": 0.055,
+     "mean": 2.61
+    },
+    "independent_among_players": {
+     "one": 0.217,
+     "two_to_three": 0.594,
+     "four_to_six": 0.187,
+     "seven_or_more": 0.002,
+     "mean": 2.5,
+     "standard_deviation": 1.17,
+     "share_left_with_none": 0.05
+    },
+    "shared_intensity": {
+     "one": 0.403,
+     "two_to_three": 0.391,
+     "four_to_six": 0.179,
+     "seven_or_more": 0.027,
+     "mean": 2.37,
+     "standard_deviation": 1.62
+    }
+   },
+   "shared_intensity_shape": {
+    "national_lottery": 0.433,
+    "betting_and_gaming": 0.295
+   },
+   "published_unions": {
+    "excluding_lottery_draw_only": {
+     "published": 0.3341,
+     "independent_within_any_gambling": 0.3918,
+     "shared_intensity_fitted_to_any_gambling": 0.3706
+    },
+    "any_lottery_draw": {
+     "published": 0.3638,
+     "population": "any_gambling",
+     "independent_within_population": 0.3713,
+     "shared_intensity": 0.3675
+    },
+    "scratchcards": {
+     "published": 0.165,
+     "population": "excluding_lottery_draw_only",
+     "independent_within_population": 0.1855,
+     "shared_intensity": 0.1835
+    },
+    "online_instant_win_games": {
+     "published": 0.1107,
+     "population": "excluding_lottery_draw_only",
+     "independent_within_population": 0.1277,
+     "shared_intensity": 0.1252
+    }
+   },
+   "keys": {
+    "national_lottery": {
+     "independent_within_population": 0.3978,
+     "shared_intensity": 0.3943,
+     "shared_intensity_over_independent": 0.991,
+     "bounds": [
+      0.3256,
+      0.4927
+     ]
+    },
+    "betting_and_gaming": {
+     "independent_within_population": 0.2338,
+     "shared_intensity": 0.2302,
+     "shared_intensity_over_independent": 0.985,
+     "bounds": [
+      0.1141,
+      0.3341
+     ]
+    }
+   }
+  },
+  "age_45_to_54": {
+   "four_week_rate": {
+    "any_gambling": 0.5296,
+    "excluding_lottery_draw_only": 0.3009
+   },
+   "activities_among_four_week_players": {
+    "gsgb_b13": {
+     "one": 0.435,
+     "two_to_three": 0.394,
+     "four_to_six": 0.139,
+     "seven_or_more": 0.033,
+     "mean": 2.32
+    },
+    "independent_among_players": {
+     "one": 0.253,
+     "two_to_three": 0.613,
+     "four_to_six": 0.134,
+     "seven_or_more": 0.001,
+     "mean": 2.31,
+     "standard_deviation": 1.07,
+     "share_left_with_none": 0.053
+    },
+    "shared_intensity": {
+     "one": 0.422,
+     "two_to_three": 0.415,
+     "four_to_six": 0.151,
+     "seven_or_more": 0.011,
+     "mean": 2.18,
+     "standard_deviation": 1.4
+    }
+   },
+   "shared_intensity_shape": {
+    "national_lottery": 0.503,
+    "betting_and_gaming": 0.292
+   },
+   "published_unions": {
+    "excluding_lottery_draw_only": {
+     "published": 0.3009,
+     "independent_within_any_gambling": 0.3674,
+     "shared_intensity_fitted_to_any_gambling": 0.3431
+    },
+    "any_lottery_draw": {
+     "published": 0.4426,
+     "population": "any_gambling",
+     "independent_within_population": 0.4387,
+     "shared_intensity": 0.4406
+    },
+    "scratchcards": {
+     "published": 0.1528,
+     "population": "excluding_lottery_draw_only",
+     "independent_within_population": 0.1646,
+     "shared_intensity": 0.1646
+    },
+    "online_instant_win_games": {
+     "published": 0.0875,
+     "population": "excluding_lottery_draw_only",
+     "independent_within_population": 0.0995,
+     "shared_intensity": 0.0985
+    }
+   },
+   "keys": {
+    "national_lottery": {
+     "independent_within_population": 0.4393,
+     "shared_intensity": 0.4393,
+     "shared_intensity_over_independent": 1.0,
+     "bounds": [
+      0.3853,
+      0.5296
+     ]
+    },
+    "betting_and_gaming": {
+     "independent_within_population": 0.1971,
+     "shared_intensity": 0.198,
+     "shared_intensity_over_independent": 1.005,
+     "bounds": [
+      0.1088,
+      0.2834
+     ]
+    }
+   }
+  },
+  "age_55_to_64": {
+   "four_week_rate": {
+    "any_gambling": 0.5483,
+    "excluding_lottery_draw_only": 0.2414
+   },
+   "activities_among_four_week_players": {
+    "gsgb_b13": {
+     "one": 0.493,
+     "two_to_three": 0.412,
+     "four_to_six": 0.076,
+     "seven_or_more": 0.018,
+     "mean": 1.93
+    },
+    "independent_among_players": {
+     "one": 0.344,
+     "two_to_three": 0.59,
+     "four_to_six": 0.067,
+     "seven_or_more": 0.0,
+     "mean": 2.0,
+     "standard_deviation": 0.93,
+     "share_left_with_none": 0.073
+    },
+    "shared_intensity": {
+     "one": 0.492,
+     "two_to_three": 0.422,
+     "four_to_six": 0.083,
+     "seven_or_more": 0.002,
+     "mean": 1.85,
+     "standard_deviation": 1.08
+    }
+   },
+   "shared_intensity_shape": {
+    "national_lottery": 0.687,
+    "betting_and_gaming": 0.294
+   },
+   "published_unions": {
+    "excluding_lottery_draw_only": {
+     "published": 0.2414,
+     "independent_within_any_gambling": 0.2952,
+     "shared_intensity_fitted_to_any_gambling": 0.2845
+    },
+    "any_lottery_draw": {
+     "published": 0.481,
+     "population": "any_gambling",
+     "independent_within_population": 0.4617,
+     "shared_intensity": 0.4746
+    },
+    "scratchcards": {
+     "published": 0.1015,
+     "population": "excluding_lottery_draw_only",
+     "independent_within_population": 0.1129,
+     "shared_intensity": 0.1144
+    },
+    "online_instant_win_games": {
+     "published": 0.0605,
+     "population": "excluding_lottery_draw_only",
+     "independent_within_population": 0.0657,
+     "shared_intensity": 0.0659
+    }
+   },
+   "keys": {
+    "national_lottery": {
+     "independent_within_population": 0.4448,
+     "shared_intensity": 0.4508,
+     "shared_intensity_over_independent": 1.014,
+     "bounds": [
+      0.4093,
+      0.5483
+     ]
+    },
+    "betting_and_gaming": {
+     "independent_within_population": 0.1458,
+     "shared_intensity": 0.153,
+     "shared_intensity_over_independent": 1.049,
+     "bounds": [
+      0.08,
+      0.1999
+     ]
+    }
+   }
+  },
+  "age_65_to_74": {
+   "four_week_rate": {
+    "any_gambling": 0.5011,
+    "excluding_lottery_draw_only": 0.1922
+   },
+   "activities_among_four_week_players": {
+    "gsgb_b13": {
+     "one": 0.536,
+     "two_to_three": 0.384,
+     "four_to_six": 0.071,
+     "seven_or_more": 0.009,
+     "mean": 1.8
+    },
+    "independent_among_players": {
+     "one": 0.368,
+     "two_to_three": 0.586,
+     "four_to_six": 0.047,
+     "seven_or_more": 0.0,
+     "mean": 1.91,
+     "standard_deviation": 0.87,
+     "share_left_with_none": 0.083
+    },
+    "shared_intensity": {
+     "one": 0.52,
+     "two_to_three": 0.418,
+     "four_to_six": 0.061,
+     "seven_or_more": 0.001,
+     "mean": 1.75,
+     "standard_deviation": 0.97
+    }
+   },
+   "shared_intensity_shape": {
+    "national_lottery": 0.619,
+    "betting_and_gaming": 0.273
+   },
+   "published_unions": {
+    "excluding_lottery_draw_only": {
+     "published": 0.1922,
+     "independent_within_any_gambling": 0.2277,
+     "shared_intensity_fitted_to_any_gambling": 0.2211
+    },
+    "any_lottery_draw": {
+     "published": 0.4471,
+     "population": "any_gambling",
+     "independent_within_population": 0.4245,
+     "shared_intensity": 0.4436
+    },
+    "scratchcards": {
+     "published": 0.0786,
+     "population": "excluding_lottery_draw_only",
+     "independent_within_population": 0.0854,
+     "shared_intensity": 0.0871
+    },
+    "online_instant_win_games": {
+     "published": 0.0301,
+     "population": "excluding_lottery_draw_only",
+     "independent_within_population": 0.0339,
+     "shared_intensity": 0.0341
+    }
+   },
+   "keys": {
+    "national_lottery": {
+     "independent_within_population": 0.3878,
+     "shared_intensity": 0.3924,
+     "shared_intensity_over_independent": 1.012,
+     "bounds": [
+      0.3609,
+      0.4609
+     ]
+    },
+    "betting_and_gaming": {
+     "independent_within_population": 0.1176,
+     "shared_intensity": 0.1281,
+     "shared_intensity_over_independent": 1.09,
+     "bounds": [
+      0.0586,
+      0.1617
+     ]
+    }
+   }
+  },
+  "age_75_plus": {
+   "four_week_rate": {
+    "any_gambling": 0.4153,
+    "excluding_lottery_draw_only": 0.1416
+   },
+   "activities_among_four_week_players": {
+    "gsgb_b13": {
+     "one": 0.581,
+     "two_to_three": 0.35,
+     "four_to_six": 0.065,
+     "seven_or_more": 0.004,
+     "mean": 1.7
+    },
+    "independent_among_players": {
+     "one": 0.396,
+     "two_to_three": 0.568,
+     "four_to_six": 0.035,
+     "seven_or_more": 0.0,
+     "mean": 1.84,
+     "standard_deviation": 0.83,
+     "share_left_with_none": 0.098
+    },
+    "shared_intensity": {
+     "one": 0.559,
+     "two_to_three": 0.395,
+     "four_to_six": 0.046,
+     "seven_or_more": 0.0,
+     "mean": 1.66,
+     "standard_deviation": 0.9
+    }
+   },
+   "shared_intensity_shape": {
+    "national_lottery": 0.487,
+    "betting_and_gaming": 0.201
+   },
+   "published_unions": {
+    "excluding_lottery_draw_only": {
+     "published": 0.1416,
+     "independent_within_any_gambling": 0.1679,
+     "shared_intensity_fitted_to_any_gambling": 0.1645
+    },
+    "any_lottery_draw": {
+     "published": 0.3685,
+     "population": "any_gambling",
+     "independent_within_population": 0.3472,
+     "shared_intensity": 0.3678
+    },
+    "scratchcards": {
+     "published": 0.063,
+     "population": "excluding_lottery_draw_only",
+     "independent_within_population": 0.0691,
+     "shared_intensity": 0.0715
+    },
+    "online_instant_win_games": {
+     "published": 0.019,
+     "population": "excluding_lottery_draw_only",
+     "independent_within_population": 0.0219,
+     "shared_intensity": 0.022
+    }
+   },
+   "keys": {
+    "national_lottery": {
+     "independent_within_population": 0.3095,
+     "shared_intensity": 0.3142,
+     "shared_intensity_over_independent": 1.015,
+     "bounds": [
+      0.287,
+      0.3621
+     ]
+    },
+    "betting_and_gaming": {
+     "independent_within_population": 0.0795,
+     "shared_intensity": 0.0864,
+     "shared_intensity_over_independent": 1.087,
+     "bounds": [
+      0.0373,
+      0.1055
+     ]
+    }
+   }
+  }
+ },
+ "frame": {
+  "households": 78440,
+  "keys": {
+   "national_lottery": {
+    "declared_theta": 0.9,
+    "theta": {
+     "0": {
+      "four_weeks": 0.3993,
+      "twelve_months": 0.4822
+     },
+     "0.5": {
+      "four_weeks": 0.4818,
+      "twelve_months": 0.5748
+     },
+     "0.9": {
+      "four_weeks": 0.5324,
+      "twelve_months": 0.6269
+     },
+     "1": {
+      "four_weeks": 0.5434,
+      "twelve_months": 0.6377
+     }
+    },
+    "union": {
+     "shared_intensity": {
+      "four_weeks": 0.5316,
+      "twelve_months": 0.6258
+     },
+     "lower_bound": {
+      "four_weeks": 0.4685,
+      "twelve_months": 0.5542
+     },
+     "upper_bound": {
+      "four_weeks": 0.6282,
+      "twelve_months": 0.7307
+     }
+    }
+   },
+   "betting_and_gaming": {
+    "declared_theta": 0.08,
+    "theta": {
+     "0": {
+      "four_weeks": 0.1965,
+      "twelve_months": 0.2853
+     },
+     "0.08": {
+      "four_weeks": 0.2055,
+      "twelve_months": 0.2981
+     },
+     "0.25": {
+      "four_weeks": 0.2239,
+      "twelve_months": 0.3233
+     },
+     "0.5": {
+      "four_weeks": 0.2492,
+      "twelve_months": 0.3566
+     },
+     "1": {
+      "four_weeks": 0.2941,
+      "twelve_months": 0.4123
+     }
+    },
+    "union": {
+     "shared_intensity": {
+      "four_weeks": 0.2064,
+      "twelve_months": 0.2991
+     },
+     "lower_bound": {
+      "four_weeks": 0.1066,
+      "twelve_months": 0.155
+     },
+     "upper_bound": {
+      "four_weeks": 0.2758,
+      "twelve_months": 0.3974
+     }
+    }
+   }
+  }
+ }
+}

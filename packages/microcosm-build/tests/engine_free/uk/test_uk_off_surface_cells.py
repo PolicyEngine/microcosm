@@ -611,3 +611,64 @@ def test_the_uc_bridge_bound_refuses_authorities_short_with_a_small_cell_deferra
     deferrals = [_off("local_authority", "S12000034", 10.0, target_id=_UC_AREA_TARGET)]
     with pytest.raises(ValueError, match=r"the la rows of leg .* by 1\.17"):
         _uc_surface(deferred_cells=deferrals, gb=200.0)
+
+
+def _membership_candidate(area: str, status: str, **fields) -> dict:
+    return {"geography_id": area, "status": status, "signed_reason_id": "r", **fields}
+
+
+def test_a_declared_value_replaces_the_compiled_one_and_fills_an_absent_cell():
+    # An area without the network measured holds none of it (microcosm#1095):
+    # its declared zero stands in for the census base a deferral compiled and
+    # for the fact a publisher does not carry.
+    membership = {
+        "targets": {
+            _TARGET: {
+                "geography_levels": {
+                    "local_authority": {
+                        "candidates": [
+                            _membership_candidate(
+                                "A-x",
+                                "signed_deferred",
+                                deferred_value=10.0,
+                                declared_value=0.0,
+                            ),
+                            _membership_candidate(
+                                "A-y", "no_fact_for_area", declared_value=0.0
+                            ),
+                            _membership_candidate("A-z", "no_fact_for_area"),
+                        ]
+                    }
+                }
+            }
+        }
+    }
+    cells = uk_signed_cells_off_the_surface(membership)
+    assert [(cell["geography_id"], cell["value"]) for cell in cells] == [
+        ("A-x", 0.0),
+        ("A-y", 0.0),
+        ("A-z", None),
+    ]
+
+
+def test_tiers_short_of_one_area_reconcile_at_its_declared_zero():
+    # Both tiers lack the same area in leg S (a seat that is the two councils
+    # without the network): undeclared, nothing implies it; declared zero,
+    # the leg's cells keep their own share.
+    bound = [*_both_tiers("A", 100.0, 100.0), *_both_tiers("S", 50.0, 50.0)]
+    controlled = {(_TARGET, "la", "S")}
+    with pytest.raises(ValueError, match="cannot be implied"):
+        uk_off_surface_frame_rows(
+            bound,
+            [_off("local_authority", "S-x", None), _off("constituency", "S-x", None)],
+            leg_of_area=_leg_of_area,
+            controlled_legs=controlled,
+        )
+    rows, receipt = uk_off_surface_frame_rows(
+        bound,
+        [_off("local_authority", "S-x", 0.0), _off("constituency", "S-x", 0.0)],
+        leg_of_area=_leg_of_area,
+        controlled_legs=controlled,
+    )
+    assert [row["value"] for row in rows] == [0.0, 0.0]
+    assert receipt["implied_absent"] == []

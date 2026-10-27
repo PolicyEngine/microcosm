@@ -566,6 +566,11 @@ TARGET_ID_GEOGRAPHY_PINS: Mapping[str, str] = {
     # substring rule would read "scotland" in its concept (microcosm#1095).
     # The binding scopes the model column to Great Britain.
     "obr.council_tax": "uk",
+    # Table 4.1's Northern Ireland domestic rates row is stamped K02000001 too;
+    # the substring rule would pin it to Northern Ireland, where no fact sits.
+    # domestic_rates is zero outside Northern Ireland, so the UK total is
+    # Northern Ireland's (microcosm#1095).
+    "obr.domestic_rates": "uk",
     # OBR table 4.9's DWP lines carry the geography DWP counts them over
     # (PolicyEngine/chronicle#357 item 4, from DWP's benefit expenditure and
     # caseload tables, Spring 2026): Great Britain for these eight, England and
@@ -1053,7 +1058,9 @@ def _add_uk_membership_accounting(
                 "nine English regions of the region tier (microcosm#905), each "
                 "cell composed as the linear combination of the billing-"
                 "authority facts the crosswalk places in that region "
-                "(microcosm#929)."
+                "(microcosm#929). England's single adult discount is one "
+                "national row, MHCLG Council Taxbase line 8 for all bands "
+                "(microcosm#953)."
             ),
         },
         {

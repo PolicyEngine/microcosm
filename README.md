@@ -348,6 +348,14 @@ type publishes the [reported-receipt child of the national default](docs/us-repo
 as a tag-only donor for the ACS local chain. It is never the `latest.json`
 default.
 
+A [compatibility recertification](docs/us-compatibility-recertification.md)
+republishes a published US calibration release byte for byte under a new id,
+with a measured `compatible_model_packages` claim for a newer policyengine-us:
+a loader replay under the tested country, Core and calculator wheels, the engine's reviewed column
+changes, and the drift of the critical rows and headline totals between the
+built-with and tested engines. It never recalibrates. Publication refuses a
+child whose parent tag on the Hub does not serve the carried manifest bytes.
+
 The non-default ACS local-area chain (`tools/build_us_acs_local_release.py`)
 calibrates to the SOI `state` surface by default, the 4,459-target contract of
 Build O and Build P; `--soi-mode totals` and `--soi-mode full` are explicit
@@ -374,6 +382,13 @@ are validated at construction, including their cross-field reconciliations.
 UK release workflows stop when diagnostics are unavailable because their later
 release checks require that evidence; historical schema-6 and schema-7 UK
 artifacts remain readable through isolated compatibility validation.
+
+A Draft 2020-12 JSON Schema for schema 8, generated from those models, is
+committed at
+`packages/microcosm-diagnostics/src/microcosm/diagnostics/schemas/calibration_diagnostics.v8.schema.json`
+for consumers that check the file without importing them, such as the
+collector. Its description lists the model rules a JSON Schema cannot express;
+see the [package README](packages/microcosm-diagnostics/README.md).
 
 Standard publication uploads the locally built `releases/<id>/` artifacts to
 the Hugging Face dataset, tags the release, and updates `latest.json`. It runs

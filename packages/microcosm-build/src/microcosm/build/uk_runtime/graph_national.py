@@ -1054,7 +1054,7 @@ class UKNationalGateKernel(_NationalKernel):
                 target_relative_errors={
                     str(row["name"]): float(row["relative_error"])
                     for row in diagnostics_rows
-                }
+                },
             ),
             "aggregate_admin": admin_totals,
             UK_CGT_PROJECTION_ARTIFACT_KEY: projection,
@@ -1070,6 +1070,7 @@ class UKNationalGateKernel(_NationalKernel):
             registry=UK_GATE_REGISTRY,
         )
         blocking = report.blocking_outcomes(release_candidate=False)
+        report_payload = gate_phase_report_payload(report, gates=gates)
         payload = {
             "schema_version": 1,
             "kind": "uk_national_gate_report",
@@ -1077,7 +1078,7 @@ class UKNationalGateKernel(_NationalKernel):
             "policy_suffix": str(context.params["gate_policy_suffix"]),
             "scope": list(scope),
             "scope_exclusions": dict(UK_CALIBRATION_GATE_SCOPE_EXCLUSIONS),
-            "report": gate_phase_report_payload(report, gates=gates),
+            "report": report_payload,
             "aggregate_admin_measurement": _json_safe(admin_receipt),
             "blocking": [outcome.entry.id for outcome in blocking],
             "artifact_permitted": not blocking,

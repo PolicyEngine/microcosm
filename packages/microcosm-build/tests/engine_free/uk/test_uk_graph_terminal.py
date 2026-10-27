@@ -21,6 +21,10 @@ from test_support.microcosm_build.uk_graph_terminal import _frame
 from test_support.microcosm_build.uk_hierarchy_fixtures import (
     uk_fixture_hierarchy,
 )
+from test_support.microcosm_diagnostics.json_schema import (
+    load_strict_json,
+    published_json_schema_errors,
+)
 
 
 def test_export_drops_native_aliases_and_keeps_identity_keyed_assignment(tmp_path):
@@ -950,11 +954,14 @@ def test_both_gate_kernels_are_registered():
 def _run_final_gate_kernel(monkeypatch, *, brma_row: bool = False, solved=None):
     """Run the terminal gate kernel on a two-household fixture.
 
+    Rebuilding the diagnostics is forbidden, so a returned document proves
+    the kernel reused the decoded calibration result.
+
     ``solved``, a list, receives the calibration result the kernel decodes.
 
-    ``brma_row`` adds a Scottish BRMA rent row far from its target: its two
-    carriers sit under the ten-household floor, so its figures are withheld
-    (microcosm#1262).
+    ``brma_row`` adds a Scottish BRMA rent row far from its target, resting
+    on two source households; every row carries its figures (María's ruling
+    of 2026-10-26).
     """
     from dataclasses import replace
     from types import SimpleNamespace
@@ -1045,6 +1052,9 @@ def _run_final_gate_kernel(monkeypatch, *, brma_row: bool = False, solved=None):
                 "area_type": "constituency",
                 "area_code": "E14000001",
                 "metric": "households",
+                # A local row names its contract target (Vahid's third review
+                # of #1383, item 33); this one ties to no family.
+                "contract_target_id": "fixture.census_households",
             },
         ),
     ]
@@ -1090,7 +1100,7 @@ def _run_final_gate_kernel(monkeypatch, *, brma_row: bool = False, solved=None):
             replace(specs[0].to_target(), measure=lambda f: np.ones(2)),
             replace(specs[1].to_target(), measure=lambda f: np.array([1.0, 0.0])),
             *(
-                [replace(specs[2].to_target(), measure=lambda f: np.ones(2))]
+                [replace(specs[2].to_target(), measure=lambda f: np.array([1.0, 0.5]))]
                 if brma_row
                 else []
             ),
@@ -1267,19 +1277,30 @@ def test_final_gate_kernel_owns_complete_diagnostics_and_reuses_decoded_result(
     assert support_csv["support_below_floor"].dtype == bool
 
 
-def test_the_gate_kernel_keeps_a_withheld_brma_row_out_of_its_gates(monkeypatch):
-    """The third review of #1305: the real bindings, through the kernel.
+@pytest.mark.parametrize(
+    "brma_row", [False, True], ids=["national_rows", "thin_brma_row"]
+)
+def test_final_gate_kernel_diagnostics_match_the_published_json_schema(
+    monkeypatch, brma_row
+):
+    # The BRMA row exercises the ``brma`` geography level.
+    stored = _run_final_gate_kernel(monkeypatch, brma_row=brma_row)
+    document = load_strict_json(stored.artifacts["calibration_diagnostics"])
 
-    The BRMA row misses its target by about 90% on two source households.
-    Both fit gates decide on the published rows and count it (María's ruling
-    of 2026-10-19); the targets table, the embedded rows and the calibration
-    diagnostics leave its figures out, and nothing the kernel writes gives
-    them back.
+    assert published_json_schema_errors(document) == []
+    assert "model_figures_withheld" not in document["uk_diagnostics"]
+
+
+def test_the_gate_kernel_judges_a_thin_brma_row_and_ships_its_figures(monkeypatch):
+    """María's ruling of 2026-10-26 dropped the withholding of microcosm#1262.
+
+    The BRMA row misses its target by about 90% on two source households,
+    through the real bindings: both fit gates judge it, and the targets
+    table, the embedded rows and the calibration diagnostics carry its
+    figures and the solve's own totals.
     """
     import io
     import json
-
-    from microcosm.build.uk_runtime.diagnostics import uk_refuse_named_withheld_rows
 
     solved: list = []
     stored = _run_final_gate_kernel(monkeypatch, brma_row=True, solved=solved)
@@ -1287,80 +1308,28 @@ def test_the_gate_kernel_keeps_a_withheld_brma_row_out_of_its_gates(monkeypatch)
     document = json.loads(stored.artifacts["gate_report"])
     outcomes = {row["id"]: row for row in document["report"]["outcomes"]}
     fit = outcomes["uk_local_target_fit"]
-    assert fit["details"]["withheld_targets"] == 1
-    assert key not in fit["details"]["failing_targets"]
-    assert not any(key in line for line in fit["failures"])
+    assert "withheld_targets" not in fit["details"]
+    assert key in fit["details"]["failing_targets"]
     family = outcomes["uk_local_per_family_fit"]["details"]
-    assert family["withheld_targets"] == {"private_rent": 1}
-    assert "private_rent" not in family["family_sizes"]
+    assert "withheld_targets" not in family
+    assert family["family_sizes"]["private_rent"] == 1
     (embedded,) = [
         row for row in document["target_diagnostics"] if row["family"] == "private_rent"
     ]
-    assert embedded["model_figures_withheld"] is True
-    assert embedded["estimate"] is None and embedded["relative_error"] is None
-    uk_refuse_named_withheld_rows(
-        document["report"], names=frozenset({embedded["name"]}), keys=frozenset({key})
-    )
+    assert "model_figures_withheld" not in embedded
+    assert np.isfinite(embedded["estimate"]) and np.isfinite(embedded["relative_error"])
     table = pd.read_csv(io.BytesIO(stored.artifacts["target_diagnostics_csv"]))
-    flags = dict(zip(table["family"], table["model_figures_withheld"], strict=True))
-    assert flags == {
-        "households": False,
-        "census_households": False,
-        "private_rent": True,
-    }
-    withheld = table.loc[table["family"] == "private_rent"].iloc[0]
-    assert pd.isna(withheld["estimate"]) and pd.isna(withheld["relative_error"])
+    assert "model_figures_withheld" not in table.columns
+    assert table[["estimate", "relative_error"]].notna().all().all()
     diagnostics = json.loads(stored.artifacts["calibration_diagnostics"])
     (row,) = [r for r in diagnostics["targets"] if r["target_name"] == "brma_rent"]
-    assert row["final_estimate"] is None and row["initial_estimate"] is None
-    assert row.get("final_loss_contribution") is None
-    # The totals cover the published rows (María's ruling of 2026-10-18), and
-    # no loss over every row survives, in the options or anywhere else (the
-    # third review of #1305).
-    assert diagnostics["loss_trajectory"] == []
-    assert diagnostics["uk_diagnostics"]["model_figures_withheld"]["targets"] == 1
+    assert np.isfinite(row["final_estimate"]) and np.isfinite(row["initial_estimate"])
+    assert "model_figures_withheld" not in (row.get("metadata") or {})
+    assert "carrier_floor_met" not in (row.get("metadata") or {})
     (result,) = solved
-    receipt = dict(result.options.get("iterate_selection_receipt") or {})
-    every_row = [
-        float(result.final_loss),
-        float(result.initial_loss),
-        *(
-            float(receipt[field])
-            for field in ("selected_loss_float32", "closing_iterate_loss_float32")
-            if isinstance(receipt.get(field), float)
-        ),
-    ]
-
-    def numbers(value):
-        if isinstance(value, bool):
-            return
-        if isinstance(value, (int, float)):
-            yield float(value)
-        elif isinstance(value, dict):
-            for item in value.values():
-                yield from numbers(item)
-        elif isinstance(value, list):
-            for item in value:
-                yield from numbers(item)
-
-    import math
-
-    for document in (diagnostics, json.loads(stored.artifacts["gate_report"])):
-        for number in numbers(document):
-            assert not any(
-                math.isclose(number, loss, rel_tol=1e-9) for loss in every_row
-            )
-
-
-def test_the_gate_kernel_fails_closed_on_a_binding_that_leaks(monkeypatch):
-    """A binding that wrote a withheld row's error stops the build."""
-    from microcosm.build.uk_runtime import battery_bindings
-
-    monkeypatch.setattr(
-        battery_bindings, "uk_withheld_gate_keys", lambda rows: frozenset()
-    )
-    with pytest.raises(ValueError, match="names a withheld row"):
-        _run_final_gate_kernel(monkeypatch, brma_row=True)
+    assert diagnostics["final_loss"] == pytest.approx(float(result.final_loss))
+    assert diagnostics["loss_trajectory"]
+    assert "model_figures_withheld" not in diagnostics["uk_diagnostics"]
 
 
 def test_package_validates_materialized_evidence_against_graph_bytes(tmp_path):

@@ -38,6 +38,7 @@ __all__ = [
     "match_national_rows",
     "national_family_status",
     "render_markdown",
+    "with_private_household_basis",
 ]
 
 #: Incumbent local metric name -> our metric name where the concept is the
@@ -52,6 +53,10 @@ _AREA_TYPE_TO_LEVEL = {
     "local_authority": "local_authority",
 }
 _AREA_TYPE_TO_METRIC_GRAIN = {"constituency": "constituency", "local_authority": "la"}
+#: The incumbent's local age rows: ten-year bands whose communal share the
+#: census residence-type tables give (``uk_runtime.communal_residents``).
+_LOCAL_AGE_METRIC_RE = re.compile(r"^age/(?P<lo>\d+)_(?P<hi>\d+)$")
+_PRIVATE_HOUSEHOLD_TARGET = "incumbent_target_private_households"
 
 _ONS_REGION_AGE_RE = re.compile(
     r"^ons/(?P<region>[a-z_]+)_age_(?P<lo>\d+)_(?P<hi>\d+)$"
@@ -414,6 +419,43 @@ def regional_rollup_estimates(
     return out
 
 
+def with_private_household_basis(
+    local: pd.DataFrame,
+    communal_shares: Mapping[tuple[str, str], Mapping[str, float]],
+) -> pd.DataFrame:
+    """The local rows, each age row also carrying a private-household target.
+
+    The incumbent's age rows are mid-year estimates, which count residents of
+    communal establishments that the household frame cannot hold. A row whose
+    area has a census communal share for its band
+    (``communal_residents.private_household_shares``, keyed by level and area)
+    also carries that share and its target less it, so the evaluation reports
+    the age rows on both bases (María's ruling of 2026-10-25,
+    microcosm#1095). Other rows carry neither.
+    """
+
+    shares: list[float | None] = []
+    for area_type, area, metric in zip(
+        local["area_type"],
+        local["geography_id"],
+        local["incumbent_metric"],
+        strict=True,
+    ):
+        match = _LOCAL_AGE_METRIC_RE.match(str(metric))
+        level = _AREA_TYPE_TO_LEVEL.get(str(area_type))
+        share = None
+        if match is not None and level is not None:
+            share = communal_shares.get((level, str(area)), {}).get(
+                f"{match['lo']}_{match['hi']}"
+            )
+        shares.append(share)
+    share = pd.Series(shares, index=local.index, dtype=float)
+    return local.assign(
+        communal_share=share,
+        **{_PRIVATE_HOUSEHOLD_TARGET: local["incumbent_target"] * (1.0 - share)},
+    )
+
+
 def _relative_error(estimate: pd.Series, target: pd.Series) -> pd.Series:
     denom = target.where(target.abs() > 0, np.nan)
     return (estimate - target) / denom
@@ -423,12 +465,15 @@ def evaluation_summary(national: pd.DataFrame, local: pd.DataFrame) -> dict[str,
     """Counts and fit shares by grain, family/metric and status."""
 
     def block(
-        frame: pd.DataFrame, group: str, estimate_col: str
+        frame: pd.DataFrame,
+        group: str,
+        estimate_col: str,
+        target_col: str = "incumbent_target",
     ) -> list[dict[str, Any]]:
         rows = []
         if frame.empty:
             return rows
-        rel = _relative_error(frame[estimate_col], frame["incumbent_target"])
+        rel = _relative_error(frame[estimate_col], frame[target_col])
         frame = frame.assign(_rel=rel)
         for key, sub in frame.groupby(group, dropna=False):
             measured = sub["_rel"].notna()
@@ -453,10 +498,12 @@ def evaluation_summary(national: pd.DataFrame, local: pd.DataFrame) -> dict[str,
             )
         return rows
 
-    def overall(frame: pd.DataFrame, estimate_col: str) -> dict[str, Any]:
+    def overall(
+        frame: pd.DataFrame, estimate_col: str, target_col: str = "incumbent_target"
+    ) -> dict[str, Any]:
         if frame.empty:
             return {"rows": 0, "measured": 0}
-        rel = _relative_error(frame[estimate_col], frame["incumbent_target"])
+        rel = _relative_error(frame[estimate_col], frame[target_col])
         measured = rel.notna()
         return {
             "rows": int(len(frame)),
@@ -487,6 +534,21 @@ def evaluation_summary(national: pd.DataFrame, local: pd.DataFrame) -> dict[str,
         summary["local"]["incumbent_by_metric"] = block(
             local, "incumbent_metric", "incumbent_estimate"
         )
+    if _PRIVATE_HOUSEHOLD_TARGET in local.columns:
+        # The same age rows on both bases (with_private_household_basis).
+        ages = local.loc[local[_PRIVATE_HOUSEHOLD_TARGET].notna()]
+        summary["local"]["age_rows_on_two_bases"] = {
+            "total_residents": overall(ages, "candidate_estimate"),
+            "private_households": overall(
+                ages, "candidate_estimate", _PRIVATE_HOUSEHOLD_TARGET
+            ),
+            "private_households_by_metric": block(
+                ages,
+                "incumbent_metric",
+                "candidate_estimate",
+                _PRIVATE_HOUSEHOLD_TARGET,
+            ),
+        }
     return summary
 
 
@@ -511,6 +573,15 @@ def render_markdown(
         lines.append(
             f"**Incumbent on its own local surface** (same mapped rows): within 10 % "
             f"{100 * inc.get('within_10pct', 0):.1f} %, within 25 % {100 * inc.get('within_25pct', 0):.1f} %."
+        )
+    if "age_rows_on_two_bases" in summary["local"]:
+        bases = summary["local"]["age_rows_on_two_bases"]
+        residents, households = bases["total_residents"], bases["private_households"]
+        lines.append(
+            f"**Local age rows on two bases** ({households['rows']} rows with a census "
+            f"communal share): within 25 % {100 * residents.get('within_25pct', 0):.1f} % "
+            f"of the mid-year estimates, {100 * households.get('within_25pct', 0):.1f} % "
+            "of the same estimates less their communal residents."
         )
     lines += [
         "",

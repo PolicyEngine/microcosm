@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import functools
 import json
 import math
 import re
@@ -959,6 +960,25 @@ def _prepared_column_values(
     )
 
 
+def prepared_binding_values(
+    adapter: Any,
+    entity: str,
+    binding: Mapping[str, Any],
+    *,
+    period: int | str | None = None,
+) -> np.ndarray:
+    """One binding's masked values at its own grain, as the national rows read it.
+
+    Its value variable or expression, kept where its filters and conditions
+    hold and zero elsewhere, through the same interpreter that materializes
+    every national target. A caller that needs one binding's column (the local
+    line's household metrics) reads it here, so a rebind moves every line
+    that reads the declaration.
+    """
+
+    return _prepared_column_values(adapter, entity, binding, period=period)
+
+
 class MeasurementPeriodError(RuntimeError):
     """A binding declares a measurement period its read route cannot honour.
 
@@ -982,7 +1002,9 @@ def _refuse_ignored_measurement_period(
     read at one of those two and is refused. So is the frame's period on a
     value the frame does not hold at that period: the engine computes it at
     the calibration period, so the row would be measured there under the
-    declared period.
+    declared period. Only the value terms are checked: a filter, condition or
+    band on an engine-computed variable is still read at the calibration
+    period under a declared frame period.
     """
 
     declared = binding.get("measurement_period")
@@ -1014,8 +1036,7 @@ def _value_variables(binding: Mapping[str, Any]) -> tuple[str, ...]:
     """The value variables a plain-column binding reads."""
 
     if "value_expression" in binding:
-        parts = str(binding["value_expression"]).split("+")
-        return tuple(part.strip() for part in parts if part.strip())
+        return expression_names(str(binding["value_expression"]))
     return (str(binding["value_variable"]),)
 
 
@@ -1086,6 +1107,12 @@ def _entity_reduction(adapter: Any, reduction: Mapping[str, Any]) -> np.ndarray:
     return np.asarray(adapter.entity_reduction(reduction), dtype=float)
 
 
+#: Predicate keys a declaration may carry that this interpreter does not
+#: honour: a predicate naming one would be read at the wrong period or price
+#: basis, so it refuses; such a row binds a measure that applies them instead.
+_UNHONOURED_PREDICATE_KEYS = ("input_period", "price_basis")
+
+
 def _predicate_mask(
     adapter: Any,
     default_entity: str,
@@ -1093,11 +1120,29 @@ def _predicate_mask(
 ) -> np.ndarray:
     if "reduce" in predicate and hasattr(adapter, "household_condition"):
         return np.asarray(adapter.household_condition(predicate), dtype=bool)
+    unhonoured = [key for key in _UNHONOURED_PREDICATE_KEYS if key in predicate]
+    if unhonoured:
+        raise ValueError(
+            f"predicate {dict(predicate)!r} declares {unhonoured}, which the "
+            "binding interpreter does not honour; bind a measure that applies "
+            "them instead."
+        )
     entity = str(predicate.get("entity") or default_entity)
     variable = str(predicate.get("variable") or predicate.get("concept"))
     values = _column(adapter, entity, variable)
     if "operator" in predicate:
         operator, expected = str(predicate["operator"]), predicate["value"]
+    elif "in" in predicate:
+        operator, expected = "in", predicate["in"]
+    elif "lower" in predicate or "upper" in predicate:
+        # A range: the lower bound inclusive, the upper bound exclusive.
+        numeric = values.astype(float)
+        mask = np.ones(numeric.shape, dtype=bool)
+        if predicate.get("lower") is not None:
+            mask &= numeric >= float(predicate["lower"])
+        if predicate.get("upper") is not None:
+            mask &= numeric < float(predicate["upper"])
+        return mask
     else:
         operator, expected = "==", predicate["equals"]
     return _compare(values, operator, expected)
@@ -1123,6 +1168,145 @@ def _compare(values: np.ndarray, operator: str, expected: object) -> np.ndarray:
     raise ValueError(f"unsupported predicate operator {operator!r}")
 
 
+_EXPRESSION_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+_EXPRESSION_TOKEN = re.compile(r"\s*([A-Za-z_][A-Za-z0-9_]*|\d+(?:\.\d+)?|[-+(),])")
+#: The one function the expression grammar admits: ``max(<sum>, 0)``, a sum
+#: floored at zero (the profit after losses brought forward, microcosm#1095).
+_ZERO_FLOOR = "max"
+
+
+def _refuse_expression(expression: str) -> ValueError:
+    return ValueError(f"unsupported value_expression {expression!r}")
+
+
+@functools.cache
+def _parsed_expression(expression: str) -> tuple[Any, ...]:
+    """A value expression's tree, from a sum of terms joined by ``+`` or ``-``.
+
+    A term is a name or ``max(<sum>, 0)``. Anything else (a product, a
+    constant, a leading sign) refuses.
+    """
+
+    text = expression.strip()
+    tokens: list[str] = []
+    position = 0
+    while position < len(text):
+        match = _EXPRESSION_TOKEN.match(text, position)
+        if match is None:
+            raise _refuse_expression(expression)
+        tokens.append(match.group(1))
+        position = match.end()
+
+    def term(at: int) -> tuple[tuple[Any, ...], int]:
+        if at >= len(tokens):
+            raise _refuse_expression(expression)
+        if tokens[at] == _ZERO_FLOOR and tokens[at + 1 : at + 2] == ["("]:
+            inner, at = total(at + 2)
+            close = tokens[at : at + 3]
+            if len(close) != 3 or close[0] != "," or close[2] != ")":
+                raise _refuse_expression(expression)
+            if not re.fullmatch(r"0(?:\.0+)?", close[1]):
+                raise _refuse_expression(expression)
+            return ("max0", inner), at + 3
+        if tokens[at] == _ZERO_FLOOR or not _EXPRESSION_NAME.fullmatch(tokens[at]):
+            raise _refuse_expression(expression)
+        return ("name", tokens[at]), at + 1
+
+    def total(at: int) -> tuple[tuple[Any, ...], int]:
+        terms: list[tuple[float, tuple[Any, ...]]] = []
+        sign = 1.0
+        while True:
+            node, at = term(at)
+            terms.append((sign, node))
+            if at < len(tokens) and tokens[at] in ("+", "-"):
+                sign = 1.0 if tokens[at] == "+" else -1.0
+                at += 1
+                continue
+            return ("sum", tuple(terms)), at
+
+    tree, end = total(0)
+    if end != len(tokens):
+        raise _refuse_expression(expression)
+    return tree
+
+
+def _tree_names(node: tuple[Any, ...]) -> tuple[str, ...]:
+    if node[0] == "name":
+        return (node[1],)
+    if node[0] == "max0":
+        return _tree_names(node[1])
+    return tuple(name for _, term in node[1] for name in _tree_names(term))
+
+
+def _evaluate_tree(
+    node: tuple[Any, ...], read: Callable[[str], np.ndarray]
+) -> np.ndarray:
+    if node[0] == "name":
+        return read(node[1])
+    if node[0] == "max0":
+        return np.maximum(_evaluate_tree(node[1], read), 0.0)
+    (sign, first), *rest = node[1]
+    values = _evaluate_tree(first, read)
+    total = (values if sign > 0 else -values).copy()
+    for sign, term in rest:
+        values = _evaluate_tree(term, read)
+        total = total + (values if sign > 0 else -values)
+    return total
+
+
+def expression_names(expression: str) -> tuple[str, ...]:
+    """Every name a value expression reads, in order, each once."""
+
+    return tuple(dict.fromkeys(_tree_names(_parsed_expression(expression))))
+
+
+def evaluate_expression(
+    expression: str, read: Callable[[str], np.ndarray]
+) -> np.ndarray:
+    """A value expression's values, each name read through ``read``.
+
+    Terms are summed left to right, a subtracted term as its negation, so a
+    sum is the same float operations whatever adapter supplies the names.
+    """
+
+    return _evaluate_tree(_parsed_expression(expression), read)
+
+
+def named_term_leaves(name: str, terms: Mapping[str, str]) -> tuple[str, ...]:
+    """The names a named term reads once the terms it nests are expanded."""
+
+    def leaves(current: str, seen: tuple[str, ...]) -> tuple[str, ...]:
+        if current in seen:
+            raise ValueError(f"named term {current!r} refers to itself")
+        found: list[str] = []
+        for part in expression_names(terms[current]):
+            found.extend(leaves(part, (*seen, current)) if part in terms else (part,))
+        return tuple(dict.fromkeys(found))
+
+    return leaves(name, ())
+
+
+def evaluate_named_term(
+    name: str, terms: Mapping[str, str], read: Callable[[str], np.ndarray]
+) -> np.ndarray:
+    """A named term's values from its leaves (microcosm#1095).
+
+    A named term is a measure declared once as an expression of this grammar
+    (``terms`` maps each name to its expression). A name the expression reads
+    that is itself a term is evaluated from its own expression; any other is
+    read through ``read``, as floats.
+    """
+
+    named_term_leaves(name, terms)
+
+    def value(part: str) -> np.ndarray:
+        if part in terms:
+            return evaluate_expression(terms[part], value)
+        return np.asarray(read(part), dtype=float)
+
+    return evaluate_expression(terms[name], value)
+
+
 def _expression(
     adapter: Any,
     entity: str,
@@ -1131,18 +1315,12 @@ def _expression(
     period: int | str | None = None,
     route_stored: bool = False,
 ) -> np.ndarray:
-    parts = [part.strip() for part in expression.split("+")]
-    if not parts or any(not part for part in parts):
-        raise ValueError(f"unsupported value_expression {expression!r}")
-    total: np.ndarray | None = None
-    for part in parts:
-        values = _value_column(
-            adapter, entity, part, period=period, route_stored=route_stored
-        )
-        total = values.copy() if total is None else total + values
-    if total is None:
-        raise ValueError(f"unsupported value_expression {expression!r}")
-    return total
+    return evaluate_expression(
+        expression,
+        lambda name: _value_column(
+            adapter, entity, name, period=period, route_stored=route_stored
+        ),
+    )
 
 
 def _value_column(

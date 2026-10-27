@@ -95,13 +95,13 @@ def _person(**columns) -> dict[str, pd.DataFrame]:
     }
 
 
-def test_savings_interest_holds_all_interest_and_isa_interest_a_part() -> None:
-    out = MAPPING.encode(
-        _person(interest_income=[400.0]),
-        shares={"uk.isa_interest_fraction": 0.25},
-    ).tables["person"]
+def test_savings_interest_holds_all_interest_and_binds_no_isa_part() -> None:
+    # policyengine-uk 2.162.2 gives individual_savings_account_interest_income
+    # a formula, so it is no engine input to bind; the release frame writes
+    # its own tax_free_savings_income (microcosm#1095).
+    out = MAPPING.encode(_person(interest_income=[400.0])).tables["person"]
     assert out.loc[0, "savings_interest_income"] == 400.0
-    assert out.loc[0, "individual_savings_account_interest_income"] == 100.0
+    assert "individual_savings_account_interest_income" not in out
 
 
 def test_self_employment_splits_the_farm_and_non_farm_sum_by_sign() -> None:

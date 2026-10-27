@@ -3,15 +3,15 @@
   "country": "us",
   "scope": "us_fiscal_targets",
   "source_repo": "PolicyEngine/chronicle",
-  "source_commit": "9b91e8bc61802e5fd9d5fa19a8f991828c1025f8",
-  "build": "tools/build_us_chronicle_feed.py --skip-artifact: one `chronicle build-bundle --year Y --source <package>` per build year in chronicle_feed_scope.json, rows kept for exactly the scope's (record set, period) pairs and sorted by aggregate_fact_key. The commit is c5e5bf8 plus the TY2023 Historic Table 2 state AGI-band package (51aa40f, tag microcosm-us-feed-940-v1, chronicle#291) plus three label-only commits that give adjusted gross income under_1 and all and age 85_plus one label each (branch feed/us-51aa40f-agi-age-labels, microcosm#1343). Bare feed: `chronicle build-consumer-artifact` refuses it at this commit; see docs/us-chronicle-feed-repin.md.",
+  "source_commit": "a9026cc8f80307af0c4527fdb3779fab32ffad9f",
+  "build": "tools/build_us_chronicle_feed.py --skip-artifact: one `chronicle build-bundle --year Y --source <package>` per build year in chronicle_feed_scope.json, rows kept for exactly the scope's (record set, period) pairs and sorted by aggregate_fact_key. The commit is c5e5bf8 plus the TY2023 Historic Table 2 state AGI-band package (51aa40f, tag microcosm-us-feed-940-v1, chronicle#291), the digit-text guard match from chronicle main's aa3e4de3, the BEA NIPA Table 7.8 line 17 (B4923C) package as chronicle#331 merged it (cf9ece2, branch feed/us-51aa40f-esi-b4923c, tag microcosm-us-feed-454-v1, microcosm#454), and three label-only commits that give adjusted gross income under_1 and all and age 85_plus one label each (branch feed/us-cf9ece2-agi-age-labels, tag microcosm-us-feed-1343-v1, microcosm#1343). Bare feed: `chronicle build-consumer-artifact` refuses it at this commit; see docs/us-chronicle-feed-repin.md.",
   "artifact_schema_version": null,
   "consumer_fact_schema_versions": [
     "chronicle.consumer_fact.v3"
   ],
   "consumer_fact_schema_sha256": "bdb51e2a8115634633ba7448c4005930fd9c0bfbade5e1b079b6bc24da485d3d",
-  "fact_row_count": 40178,
-  "facts_sha256": "e477e04aa7c73209df2bcbf484f029a2357da8c2339217d1d0518f7a8a47bcbf",
+  "fact_row_count": 40181,
+  "facts_sha256": "4d89e4a498ffd73a407821d9ce2c45837072901e0a29acf3206160d1fafd7c14",
   "manifest_sha256": null,
-  "scope_sha256": "8fedefb72789ad96f83f899090bd8f37cc8e0e1b81e6aebf9a32fd9e3e9a53c4"
+  "scope_sha256": "04460f39e5c2b79011724ce33cac4ccf3b0f42812bc7179b6b532773483fe04e"
 }

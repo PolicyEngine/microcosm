@@ -510,6 +510,30 @@ def test_national_gates_evaluate_the_seam_scope_and_record_the_evidence(
     }
 
 
+def test_national_gates_judge_a_thin_row_with_its_figures(tmp_path, monkeypatch):
+    """María's ruling of 2026-10-26 on the seam: the fixture's one row rests
+    on two source households, and it keeps its figures and is judged; the
+    manifest's losses are the solve's own."""
+
+    national, manifest, store, frame, registry = _run(tmp_path, monkeypatch)
+    row_name = registry.specs[0].to_target().row_name
+    evidence = json.loads(
+        _payload(manifest, store, NATIONAL_GATES_NODE, "calibration_evidence")
+    )
+    (row,) = evidence["diagnostics"]
+    assert row["name"] == row_name and "model_figures_withheld" not in row
+    assert np.isfinite(row["estimate"]) and np.isfinite(row["relative_error"])
+    calibration = evidence["calibration"]
+    assert "totals_basis" not in calibration
+    assert "model_figures_withheld" not in calibration
+    report = json.loads(_payload(manifest, store, NATIONAL_GATES_NODE, "gate_report"))
+    outcomes = {outcome["id"]: outcome for outcome in report["report"]["outcomes"]}
+    fit = outcomes["uk_target_fit"]
+    assert fit["status"] == "passed"
+    assert fit["details"]["targets_checked"] == 1
+    assert "withheld_targets" not in fit["details"]
+
+
 def test_national_problem_refuses_an_empty_register(tmp_path, monkeypatch):
     from microcosm.calibrate import TargetRegistry
 

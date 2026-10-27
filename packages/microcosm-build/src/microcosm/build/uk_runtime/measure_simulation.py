@@ -13,18 +13,38 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from microcosm.build.target_materialization import (
+    evaluate_named_term,
+    named_term_leaves,
+)
 from microcosm.build.uk_runtime.atomic_area_support import (
     without_uk_native_alias_columns,
 )
 from microcosm.build.uk_runtime.cgt_calibration import UK_CGT_DATED_MEASURE
+from microcosm.build.uk_runtime.dfe_spring_term import (
+    DFE_SPRING_TERM_ENGINE_INPUTS,
+    DFE_SPRING_TERM_MEASURES,
+    dfe_spring_term_status,
+)
+from microcosm.build.uk_runtime.domestic_energy_targets import (
+    household_energy_kwh,
+    household_energy_prices,
+)
+from microcosm.build.uk_runtime.energy_pricing import ELECTRICITY_KWH, GAS_KWH
+from microcosm.build.uk_runtime.frs_annual_income import (
+    CONTRIBUTORY_BENEFITS_ANNUAL_SHARE,
+    EMPLOYMENT_INCOME_ANNUAL_SHARE,
+    EMPLOYMENT_INCOME_OTHER_SPELLS,
+    FRS_ANNUAL_INCOME_OUTPUT_COLUMNS,
+    PRIVATE_PENSION_INCOME_ANNUAL_SHARE,
+    SELF_EMPLOYMENT_INCOME_ANNUAL_SHARE,
+    SELF_EMPLOYMENT_INCOME_OTHER_SPELLS,
+)
 from microcosm.build.uk_runtime.high_value_homes import (
     high_value_home_mask,
     uk_high_value_home_thresholds,
 )
-from microcosm.build.uk_runtime.hmrc_income import (
-    LOSS_RELIEF_COLUMN,
-    self_employment_income_after_loss_relief,
-)
+from microcosm.build.uk_runtime.hmrc_income import UK_LOSS_RELIEF_TERMS
 from microcosm.build.uk_runtime.income_tax_rate_classes import (
     UK_RATE_CLASS_ALLOCATION,
     UK_RATE_CLASS_ENGINE_FLOAT32_STEPS,
@@ -71,6 +91,13 @@ _ENTITY_ID = {
 _UC_CALIBRATION_VARIABLES = frozenset(
     {"uc_calibration_family_type", "uc_calibration_child_count"}
 )
+#: The children each benefit unit claims Child Benefit for (microcosm#1095),
+#: on policyengine-uk's own definition: a child or a qualifying young person
+#: who is not the unit's claimant or partner. HMRC bands its families in
+#: payment by these children; the engine's own child counts are deprecated
+#: age cut-offs.
+UK_CHILD_BENEFIT_CHILD_COUNT = "child_benefit_child_count"
+_CHILD_BENEFIT_CHILD = "is_child_or_qualifying_young_person_for_child_benefit"
 
 # Reserved, transient measurement names: using the model's input name here
 # would let a persisted base-period column bypass requested-year calculation.
@@ -223,23 +250,137 @@ def household_high_value_home(frame: Any, variable: str) -> np.ndarray:
     ).astype(float)
 
 
-#: HMRC's statistics count the year's profit after losses brought forward,
-#: which policyengine-uk keeps apart in loss_relief: the self-employment rows
-#: read that profit, and every row on HMRC's total income (its bands, its
-#: amounts, its regional filters) reads total income with that profit
-#: (microcosm#1095). The engine's total_income adds the profit before the
-#: relief, so the total-income measure swaps the one for the other.
+#: Savings interest outside ISAs, from the frame's stored columns: the frame
+#: stores savings_interest_income gross, ISA interest included, with the ISA
+#: part in tax_free_savings_income. SPI Table 3.7 counts the recipients of
+#: taxable interest, so its count rows filter on this, read at the frame as a
+#: filter's stored columns are (microcosm#1095). A reserved name: a persisted
+#: column would bypass the difference.
+UK_SAVINGS_INTEREST_OUTSIDE_ISAS = "savings_interest_income_outside_isas"
+
+
+def savings_interest_outside_isas(frame: Any) -> np.ndarray:
+    """Each person's stored gross savings interest less its ISA part, not below zero."""
+
+    person = frame.table("person")
+    if "savings_interest_income" not in person:
+        raise ValueError(
+            f"{UK_SAVINGS_INTEREST_OUTSIDE_ISAS} needs the stored person column "
+            "savings_interest_income."
+        )
+    gross = person["savings_interest_income"].to_numpy(dtype=float)
+    tax_free = (
+        person["tax_free_savings_income"].to_numpy(dtype=float)
+        if "tax_free_savings_income" in person
+        else np.zeros(len(person))
+    )
+    return np.maximum(gross - tax_free, 0.0)
+
+
+#: The named terms the resolver computes: measures declared once as
+#: expressions of the binding interpreter's grammar, evaluated from their
+#: leaves wherever a binding names them (a value, a band or a filter, on the
+#: national and the local line). Each is person-grain. HMRC's statistics
+#: count the year's profit after losses brought forward, which policyengine-uk
+#: keeps apart in loss_relief: the self-employment rows read that profit, and
+#: every row on HMRC's total income (its bands, its amounts, its regional
+#: filters) reads total income with that profit (microcosm#1095).
+UK_NAMED_TERMS: Mapping[str, str] = UK_LOSS_RELIEF_TERMS
 UK_SELF_EMPLOYMENT_INCOME_AFTER_LOSS_RELIEF = "self_employment_income_after_loss_relief"
 UK_TOTAL_INCOME_AFTER_LOSS_RELIEF = "total_income_after_loss_relief"
-_LOSS_RELIEF_MEASURES = (
-    UK_SELF_EMPLOYMENT_INCOME_AFTER_LOSS_RELIEF,
-    UK_TOTAL_INCOME_AFTER_LOSS_RELIEF,
+
+
+#: DESNZ's sub-national domestic energy (microcosm#1207): each household's
+#: electricity and gas kWh, and whether it is gas-connected. The lcfs stage
+#: stores each household's calendar-2024 spend; read at the dataset's period
+#: the engine does not uprate it, the stage's own prices turn it back into
+#: the kWh it raked, and a household that pays for gas is gas-connected.
+_GAS_CONNECTED = "gas_connected"
+UK_HOUSEHOLD_ENERGY_MEASURES: Mapping[str, str] = {
+    "domestic_electricity_kwh": ELECTRICITY_KWH,
+    "domestic_gas_kwh": GAS_KWH,
+    "domestic_gas_connected": _GAS_CONNECTED,
+}
+
+
+#: HMRC's income statistics count the income each taxpayer received over a
+#: tax year, banded by what they received; they cover individuals liable to UK
+#: income tax. The frame's incomes are current, annualised ones, and
+#: ``frs_annual_income_spells`` stores beside them what each adult received
+#: over the 12 months before the interview. Each annual measure is its current
+#: measure computed on a second simulation whose inputs are each person's year,
+#: so the engine's own rules give the tax on it. That year is a proxy for the
+#: tax year: the 12 months before the interview, applied to the engine's
+#: amounts at the calibration year (the stage module says how). Poverty,
+#: benefits and the engine's published tax keep reading current income.
+UK_ANNUAL_INCOME_MEASURES: Mapping[str, str] = {
+    "employment_income_annual": "employment_income",
+    "self_employment_income_after_loss_relief_annual": (
+        UK_SELF_EMPLOYMENT_INCOME_AFTER_LOSS_RELIEF
+    ),
+    "private_pension_income_annual": "private_pension_income",
+    "state_pension_annual": "state_pension",
+    "total_income_after_loss_relief_annual": UK_TOTAL_INCOME_AFTER_LOSS_RELIEF,
+    "income_tax_annual": "income_tax",
+    # The HMRC and OBR income tax rows read the tax before the Winter Fuel
+    # Payment charge, which policyengine-uk adds to income_tax from 2.157.0:
+    # HMRC's statistics predate the charge, and the OBR window's receipts hold
+    # almost none of 2025's recovery (María's ruling of 2026-10-25,
+    # microcosm#1095).
+    "income_tax_before_winter_fuel_payment_charge_annual": (
+        "income_tax_before_winter_fuel_payment_charge"
+    ),
+    "tax_band_annual": "tax_band",
+}
+#: The inputs the annual simulation replaces at the measurement year: the
+#: engine's current amount times its annual share, plus its other spells,
+#: carried from the dataset's year by the engine's own factor for the input.
+_ANNUAL_INCOME_INPUTS: tuple[tuple[str, str, str | None], ...] = (
+    (
+        "employment_income_before_lsr",
+        EMPLOYMENT_INCOME_ANNUAL_SHARE,
+        EMPLOYMENT_INCOME_OTHER_SPELLS,
+    ),
+    (
+        "self_employment_income",
+        SELF_EMPLOYMENT_INCOME_ANNUAL_SHARE,
+        SELF_EMPLOYMENT_INCOME_OTHER_SPELLS,
+    ),
+    ("private_pension_income", PRIVATE_PENSION_INCOME_ANNUAL_SHARE, None),
+    ("jsa_contrib_reported", CONTRIBUTORY_BENEFITS_ANNUAL_SHARE, None),
+    ("esa_contrib_reported", CONTRIBUTORY_BENEFITS_ANNUAL_SHARE, None),
+    ("incapacity_benefit_reported", CONTRIBUTORY_BENEFITS_ANNUAL_SHARE, None),
 )
-_LOSS_RELIEF_MEASURE_COMPONENTS = (
-    "self_employment_income",
-    LOSS_RELIEF_COLUMN,
-    "total_income",
+#: Taxable benefits whose entitlement reads earnings, held at their baseline
+#: values: a carer was paid in the year at the earnings of the time, which the
+#: current concept records, not at the year's total.
+_ANNUAL_INCOME_HELD_VARIABLES = (
+    "carers_allowance",
+    "carer_support_payment",
+    "scottish_carer_supplement",
 )
+#: ``months_since_state_pension_age`` counts to the middle of the fiscal year
+#: (6 October), so someone attaining State Pension age within the year was
+#: paid for that many months plus six of it.
+_FISCAL_HALF_YEAR_MONTHS = 6.0
+
+
+def state_pension_annual_share(months_since_state_pension_age: Any) -> np.ndarray:
+    """The share of the fiscal year a State Pension starting in it was paid.
+
+    Only someone attaining State Pension age within the year, less than six
+    months either side of its middle, is paid for part of it. Anyone else
+    keeps the whole year, an amount reported below the age included: the
+    current concept carries it, and the descriptors say nothing about it.
+    """
+
+    months = np.asarray(months_since_state_pension_age, dtype=float)
+    in_year = np.isfinite(months) & (np.abs(months) < _FISCAL_HALF_YEAR_MONTHS)
+    share = np.ones(months.shape)
+    share[in_year] = (months[in_year] + _FISCAL_HALF_YEAR_MONTHS) / (
+        2.0 * _FISCAL_HALF_YEAR_MONTHS
+    )
+    return share
 
 
 #: Every binding key that names a measured variable: a dated CGT measure in
@@ -326,9 +467,20 @@ def _measured_at_frame_period(frame: Any, year: int | str) -> bool:
 
 
 def compute_uk_measure_input(
-    frame: Any, simulation: Any, entity: str, variable: str, year: int
+    frame: Any,
+    simulation: Any,
+    entity: str,
+    variable: str,
+    year: int,
+    *,
+    frame_columns: bool = True,
 ) -> tuple[np.ndarray, str]:
-    """Compute one policyengine-uk variable at the requested entity grain."""
+    """Compute one policyengine-uk variable at the requested entity grain.
+
+    ``frame_columns`` is false for a simulation whose inputs are not the
+    frame's stored columns (the annual income simulation), so a named term
+    never reads those columns as its values.
+    """
 
     cgt_measure = _cgt_model_measure(variable, year)
     if cgt_measure is not None:
@@ -368,46 +520,30 @@ def compute_uk_measure_input(
             f"frame_columns:high_value_home_mask:{_HIGH_VALUE_HOME_MEASURES[variable]}",
         )
 
-    if variable in _LOSS_RELIEF_MEASURES:
+    if variable == UK_SAVINGS_INTEREST_OUTSIDE_ISAS:
         if entity != "person":
             raise KeyError(f"{variable} is person-only: {entity}")
-        person = frame.table("person")
-        if (
-            variable == UK_SELF_EMPLOYMENT_INCOME_AFTER_LOSS_RELIEF
-            and "self_employment_income" in person
-            and _measured_at_frame_period(frame, year)
-        ):
-            # At the frame's own period the stored columns are the values:
-            # the profit after the relief is read from them (microcosm#1095).
-            # At any other period the engine computes both components there,
-            # as it does every other stored value (microcosm#1324).
-            stored_relief = (
-                person[LOSS_RELIEF_COLUMN].to_numpy(dtype=float)
-                if LOSS_RELIEF_COLUMN in person
-                else np.zeros(len(person))
-            )
-            return (
-                self_employment_income_after_loss_relief(
-                    person["self_employment_income"].to_numpy(dtype=float),
-                    stored_relief,
-                ),
-                "frame_columns:self_employment_income_less_loss_relief",
-            )
-        profit = compute_uk_measure_input(
-            frame, simulation, "person", "self_employment_income", year
-        )[0]
-        relief = compute_uk_measure_input(
-            frame, simulation, "person", LOSS_RELIEF_COLUMN, year
-        )[0]
-        after = self_employment_income_after_loss_relief(profit, relief)
-        if variable == UK_SELF_EMPLOYMENT_INCOME_AFTER_LOSS_RELIEF:
-            return after, "engine_components:self_employment_income_less_loss_relief"
-        total = compute_uk_measure_input(
-            frame, simulation, "person", "total_income", year
-        )[0]
         return (
-            np.asarray(total, dtype=float) - np.asarray(profit, dtype=float) + after,
-            "engine_components:total_income_with_profit_after_loss_relief",
+            savings_interest_outside_isas(frame),
+            "frame_columns:savings_interest_income_less_tax_free_savings_income",
+        )
+
+    if variable in DFE_SPRING_TERM_MEASURES:
+        if entity != "person":
+            raise KeyError(f"DfE spring-term measures are person-only: {entity}")
+        status = dfe_spring_term_status(
+            lambda name: compute_uk_measure_input(
+                frame, simulation, "person", name, year
+            )[0],
+            year,
+        )
+        return status[variable], f"dfe_spring_term:{variable}"
+
+    if variable in UK_NAMED_TERMS:
+        if entity != "person":
+            raise KeyError(f"{variable} is person-only: {entity}")
+        return _named_term(
+            frame, simulation, variable, year, frame_columns=frame_columns
         )
 
     if variable in UC_TARGET_VARIABLES:
@@ -416,6 +552,19 @@ def compute_uk_measure_input(
         return compute_uc_target_measure(
             frame, simulation, variable, year
         ), "uc_claim_statistical_proxy"
+    if variable == UK_CHILD_BENEFIT_CHILD_COUNT:
+        if entity != "benunit":
+            raise KeyError(f"{variable} is benunit-only: {entity}")
+        children = _values(simulation.calculate(_CHILD_BENEFIT_CHILD, year))
+        members = frame.table("person")["person_benunit_id"].to_numpy()
+        ids = frame.table("benunit")["benunit_id"].to_numpy()
+        counts = (
+            pd.Series(children.astype(float))
+            .groupby(members)
+            .sum()
+            .reindex(ids, fill_value=0.0)
+        )
+        return counts.to_numpy(dtype=float), f"engine_members:{_CHILD_BENEFIT_CHILD}"
     if variable == "uc_calibration_child_entitlement":
         if entity != "benunit":
             raise KeyError(f"UC child entitlement is benunit-only: {entity}")
@@ -483,6 +632,42 @@ def compute_uk_measure_input(
     if values.dtype.kind not in {"O", "U", "S"}:
         values = values.astype(float)
     return values, route
+
+
+def _named_term(
+    frame: Any, simulation: Any, variable: str, year: int, *, frame_columns: bool
+) -> tuple[np.ndarray, str]:
+    """A named term from its leaves, all read from one source (microcosm#1095).
+
+    At the frame's own period the stored columns are the values, so a term
+    whose every leaf the frame stores reads them there (the profit after the
+    relief). Otherwise the engine computes every leaf at ``year``, as it does
+    every other stored value (microcosm#1324): a term never mixes the frame's
+    columns with the engine's, so total income after the relief takes the
+    profit from the engine, as it takes the total.
+    """
+
+    leaves = named_term_leaves(variable, UK_NAMED_TERMS)
+    person = frame.table("person")
+    if (
+        frame_columns
+        and _measured_at_frame_period(frame, year)
+        and all(leaf in person for leaf in leaves)
+    ):
+        values = evaluate_named_term(
+            variable,
+            UK_NAMED_TERMS,
+            lambda leaf: person[leaf].to_numpy(dtype=float),
+        )
+        return values, f"frame_columns:{variable}"
+    values = evaluate_named_term(
+        variable,
+        UK_NAMED_TERMS,
+        lambda leaf: compute_uk_measure_input(frame, simulation, "person", leaf, year)[
+            0
+        ],
+    )
+    return values, f"engine_components:{variable}"
 
 
 def compute_uc_paid_diagnostic_masks(
@@ -707,32 +892,51 @@ def _engine_scratch_frame(
     return engine_frame, dropped
 
 
-def engine_bus_pricing_parameters(
-    tax_benefit_system: Any, year: int
-) -> dict[str, dict[str, float]]:
+def engine_bus_pricing_parameters(tax_benefit_system: Any, year: int) -> dict[str, Any]:
     """policyengine-uk's bus boardings per trip and yield per boarding by area.
 
     Read at ``year`` in the resolver's own period form (the engine resolves
     a year to its 1 January instant) for every area the stage prices
     (``UK_ENGINE_BUS_AREA_BY_STAGE_AREA``); raises AttributeError when the
-    engine carries no such parameters.
+    engine carries no such parameters. An engine that moves the benchmark
+    yield by the published fares index adds its ``benchmark_year`` and
+    ``local_bus_fares_index_ratio``, the index in ``year`` over the benchmark
+    year's, by the areas the fare receipts move by.
     """
 
     from microcosm.build.uk_runtime.bus_fare_pricing import (
         UK_ENGINE_BUS_AREA_BY_STAGE_AREA,
+    )
+    from microcosm.build.uk_runtime.ledger_targets import (
+        UK_ENGINE_BUS_INDEX_AREA_BY_SERIES,
     )
 
     parameters = getattr(tax_benefit_system, "parameters", None)
     if parameters is None:
         raise AttributeError("the engine exposes no parameters")
     bus = parameters(str(int(year))).gov.dft.bus
-    return {
+    engine: dict[str, Any] = {
         name: {
             area: float(getattr(getattr(bus, name), area))
             for area in UK_ENGINE_BUS_AREA_BY_STAGE_AREA.values()
         }
         for name in ("boardings_per_trip", "yield_per_boarding")
     }
+    # From policyengine-uk 2.145.0 (PolicyEngine/policyengine-uk#2546) the
+    # benchmark yield moves with each area's fares index, read as the engine
+    # reads it: the model year's blend over the benchmark year's.
+    index = getattr(bus, "local_bus_fares_index", None)
+    benchmark_year = getattr(bus, "benchmark_year", None)
+    if index is not None and benchmark_year is not None:
+        benchmark = parameters(
+            f"{int(benchmark_year)}-01-01"
+        ).gov.dft.bus.local_bus_fares_index
+        engine["benchmark_year"] = int(benchmark_year)
+        engine["local_bus_fares_index_ratio"] = {
+            area: float(getattr(index, area)) / float(getattr(benchmark, area))
+            for area in UK_ENGINE_BUS_INDEX_AREA_BY_SERIES.values()
+        }
+    return engine
 
 
 class UKMeasureResolver:
@@ -793,6 +997,8 @@ class UKMeasureResolver:
         self._source_path = source_path
         self._counterfactuals: dict[tuple[str, str | None], Any] = {}
         self._counterfactual_measures: dict[str, dict[str, Any]] = {}
+        # The domestic energy measures, computed together on first read.
+        self._household_energy_cache: dict[str, np.ndarray] | None = None
         reserved = {
             str(name)
             for name in frame.table("person")
@@ -818,6 +1024,19 @@ class UKMeasureResolver:
             raise ValueError(
                 "High-value home measures must not be persisted as source inputs: "
                 f"{persisted_high_value}"
+            )
+        if UK_SAVINGS_INTEREST_OUTSIDE_ISAS in set(map(str, frame.table("person"))):
+            raise ValueError(
+                f"{UK_SAVINGS_INTEREST_OUTSIDE_ISAS} must not be persisted as a "
+                "source input."
+            )
+        persisted_spring_term = sorted(
+            set(DFE_SPRING_TERM_MEASURES) & set(map(str, frame.table("person")))
+        )
+        if persisted_spring_term:
+            raise ValueError(
+                "DfE spring-term measures must not be persisted as source inputs: "
+                f"{persisted_spring_term}"
             )
         self.simulation = factory(dataset=str(source_path))
         validate_uc_claimant_input(self.simulation, frame.table("person"), self.year)
@@ -871,6 +1090,37 @@ class UKMeasureResolver:
 
         self._uc_tcl_measures_used: set[str] = set()
         self._uc_paid_measures_used: set[str] = set()
+        self._annual_income_measures_used: set[str] = set()
+        self._annual_income_fallback: str | None = None
+        self._annual_income_simulation_cache: Any | None = None
+        self._annual_income_factors: dict[str, float] = {}
+
+    def use_current_income_for_annual_measures(self, *, reason: str) -> None:
+        """Let a frame without annual income descriptors read current values.
+
+        Only a file built before the descriptors existed (the incumbent a
+        candidate is scored against) takes this: its annual measures are its
+        current ones, a share of 1 and no other spells. A frame that carries
+        the descriptors still reads them, and any other frame without them
+        refuses every annual measure.
+        """
+
+        if not str(reason).strip():
+            raise ValueError("the current-income fallback needs a reason.")
+        self._annual_income_fallback = str(reason)
+
+    def _carries_annual_income_descriptors(self) -> bool:
+        person = self.frame.table("person")
+        present = [
+            column for column in FRS_ANNUAL_INCOME_OUTPUT_COLUMNS if column in person
+        ]
+        if present and len(present) != len(FRS_ANNUAL_INCOME_OUTPUT_COLUMNS):
+            missing = sorted(set(FRS_ANNUAL_INCOME_OUTPUT_COLUMNS) - set(present))
+            raise ValueError(
+                f"The frame carries only some annual income descriptors; missing "
+                f"{missing}."
+            )
+        return bool(present)
 
     def validate_period(self, period: int | str) -> None:
         """Refuse thresholds and simulated inputs from different periods."""
@@ -895,8 +1145,18 @@ class UKMeasureResolver:
             | UC_PAID_TARGET_VARIABLES
         ):
             return entity == "benunit"
+        if variable == UK_CHILD_BENEFIT_CHILD_COUNT:
+            return entity == "benunit" and self.knows("person", _CHILD_BENEFIT_CHILD)
         if variable in _BUS_BOARDING_MEASURES or variable in _HIGH_VALUE_HOME_MEASURES:
             return entity == "household"
+        if variable == UK_SAVINGS_INTEREST_OUTSIDE_ISAS:
+            return entity == "person" and "savings_interest_income" in set(
+                map(str, self.frame.table("person"))
+            )
+        if variable in DFE_SPRING_TERM_MEASURES:
+            return entity == "person" and all(
+                self.knows("person", name) for name in DFE_SPRING_TERM_ENGINE_INPUTS
+            )
         cgt_measure = _cgt_model_measure(variable, self.year)
         if cgt_measure is not None:
             return entity == "person" and self.knows(entity, cgt_measure[0])
@@ -904,10 +1164,19 @@ class UKMeasureResolver:
             return entity == "person" and all(
                 self.knows("person", name) for name in _CGT_TAXABLE_INCOME_COMPONENTS
             )
-        if variable in _LOSS_RELIEF_MEASURES:
+        if variable in UK_NAMED_TERMS:
             return entity == "person" and all(
-                self.knows("person", name) for name in _LOSS_RELIEF_MEASURE_COMPONENTS
+                self.knows("person", name)
+                for name in named_term_leaves(variable, UK_NAMED_TERMS)
             )
+        if variable in UK_HOUSEHOLD_ENERGY_MEASURES:
+            return entity == "household"
+        if variable in UK_ANNUAL_INCOME_MEASURES:
+            readable = (
+                self._carries_annual_income_descriptors()
+                or self._annual_income_fallback is not None
+            )
+            return readable and self.knows(entity, UK_ANNUAL_INCOME_MEASURES[variable])
         definition = self.simulation.tax_benefit_system.variables.get(variable)
         if definition is None or entity not in _ENTITY_ID:
             return False
@@ -926,10 +1195,18 @@ class UKMeasureResolver:
     def entity_for(self, variable: str) -> str | None:
         if variable in _BUS_BOARDING_MEASURES or variable in _HIGH_VALUE_HOME_MEASURES:
             return "household"
+        if variable == UK_CHILD_BENEFIT_CHILD_COUNT:
+            return "benunit"
+        if variable == UK_SAVINGS_INTEREST_OUTSIDE_ISAS:
+            return "person"
         if _cgt_model_measure(variable, self.year) is not None:
             return "person"
-        if variable in _LOSS_RELIEF_MEASURES:
+        if variable in UK_NAMED_TERMS or variable in DFE_SPRING_TERM_MEASURES:
             return "person"
+        if variable in UK_HOUSEHOLD_ENERGY_MEASURES:
+            return "household"
+        if variable in UK_ANNUAL_INCOME_MEASURES:
+            return self.entity_for(UK_ANNUAL_INCOME_MEASURES[variable])
         if (
             variable
             in _UC_CALIBRATION_VARIABLES
@@ -943,6 +1220,10 @@ class UKMeasureResolver:
         return str(definition.entity.key)
 
     def compute(self, entity: str, variable: str) -> tuple[np.ndarray, str]:
+        if variable in UK_ANNUAL_INCOME_MEASURES:
+            return self._annual_income_measure(entity, variable)
+        if variable in UK_HOUSEHOLD_ENERGY_MEASURES:
+            return self._household_energy(entity, variable)
         result = compute_uk_measure_input(
             self.frame, self.simulation, entity, variable, self.year
         )
@@ -1165,6 +1446,161 @@ class UKMeasureResolver:
         cache[key] = relief
         return relief
 
+    def _annual_income_measure(
+        self, entity: str, variable: str
+    ) -> tuple[np.ndarray, str]:
+        """An annual measure: its current measure on the annual simulation."""
+
+        current = UK_ANNUAL_INCOME_MEASURES[variable]
+        if not self._carries_annual_income_descriptors():
+            if self._annual_income_fallback is None:
+                raise KeyError(
+                    f"{variable} reads the annual income descriptors "
+                    f"(frs_annual_income_spells), which this frame does not carry."
+                )
+            self._annual_income_measures_used.add(variable)
+            values, route = compute_uk_measure_input(
+                self.frame, self.simulation, entity, current, self.year
+            )
+            return values, f"current_values_without_annual_income_descriptors:{route}"
+        simulation = self._annual_income_simulation()
+        self._annual_income_measures_used.add(variable)
+        # The annual simulation's inputs are each person's year: the frame's
+        # stored columns hold the current one, so a named term reads the
+        # engine's leaves there.
+        values, route = compute_uk_measure_input(
+            self.frame, simulation, entity, current, self.year, frame_columns=False
+        )
+        return values, f"annual_income_simulation:{route}"
+
+    def _household_energy(self, entity: str, variable: str) -> tuple[np.ndarray, str]:
+        """A household's domestic energy measure from its stored spend."""
+
+        if entity != "household":
+            raise KeyError(f"{variable} is household-only: {entity}")
+        cached = self._household_energy_cache
+        if cached is None:
+            year = self._dataset_year()
+            electricity = _values(
+                self.simulation.calculate("electricity_consumption", year)
+            ).astype(float)
+            gas = _values(self.simulation.calculate("gas_consumption", year)).astype(
+                float
+            )
+            raw_region = self.simulation.calculate("region", year)
+            region = (
+                np.asarray(raw_region.decode_to_str())
+                if hasattr(raw_region, "decode_to_str")
+                else _values(raw_region)
+            )
+            cached = self._household_energy_cache = {
+                **household_energy_kwh(
+                    electricity, gas, region=region, prices=household_energy_prices()
+                ),
+                _GAS_CONNECTED: (gas > 0).astype(float),
+            }
+        values = np.asarray(cached[UK_HOUSEHOLD_ENERGY_MEASURES[variable]], dtype=float)
+        return values, "stored_spend_at_dataset_period:household_energy"
+
+    def _dataset_year(self) -> int:
+        metadata = getattr(self.frame, "metadata", None) or {}
+        period = metadata.get(UK_TIME_PERIOD_METADATA_KEY)
+        if isinstance(period, str) and period.strip():
+            return int(period)
+        return self.year
+
+    def _annual_income_simulation(self) -> Any:
+        """The simulation of each person's year, built once from the same source.
+
+        The engine projects a dataset's inputs to its later years as it loads
+        it, so the year's inputs are set at the measurement year: pay, profit,
+        private pensions and the contributory benefits to the engine's current
+        amount times its annual share, plus the other spells carried from the
+        dataset's year by the factor the engine carries the current amount by.
+        The State Pension is set to the share of it paid in the fiscal year,
+        and the earnings-tested carer benefits to their baseline values.
+        Pension contributions and salary sacrifice keep their current values:
+        for a part-year entrant they can be large against the year's pay,
+        which lowers the year's income tax a little.
+        """
+
+        if self._annual_income_simulation_cache is not None:
+            return self._annual_income_simulation_cache
+        person = self.frame.table("person")
+        simulation = self._factory(dataset=str(self._source_path))
+        annual_inputs: dict[str, np.ndarray] = {}
+        for name, share_column, other_column in _ANNUAL_INCOME_INPUTS:
+            current = _values(self.simulation.calculate(name, self.year)).astype(float)
+            share = person[share_column].to_numpy(dtype=float)
+            other = (
+                person[other_column].to_numpy(dtype=float)
+                if other_column is not None
+                else np.zeros(len(person))
+            )
+            if current.shape != share.shape:
+                raise ValueError(
+                    f"{name} must align with the frame's person table to read "
+                    "its annual income descriptors."
+                )
+            factor = self._engine_projection_factor(name) if other.any() else 1.0
+            annual = current * share + other * factor
+            if not np.isfinite(annual).all():
+                raise ValueError(f"The annual {name} must be finite.")
+            simulation.set_input(name, self.year, annual)
+            annual_inputs[name] = annual
+        months = _values(
+            self.simulation.calculate("months_since_state_pension_age", self.year)
+        )
+        pension = _values(self.simulation.calculate("state_pension", self.year))
+        annual_pension = pension.astype(float) * state_pension_annual_share(months)
+        simulation.set_input("state_pension", self.year, annual_pension)
+        annual_inputs["state_pension"] = annual_pension
+        for name in _ANNUAL_INCOME_HELD_VARIABLES:
+            held = _values(self.simulation.calculate(name, self.year)).astype(float)
+            simulation.set_input(name, self.year, held)
+            annual_inputs[name] = held
+        for name, expected in annual_inputs.items():
+            read = _values(simulation.calculate(name, self.year)).astype(float)
+            tolerance = 1e-6 * np.maximum(np.abs(expected), 1.0) + 0.01
+            if (
+                read.shape != expected.shape
+                or (np.abs(read - expected) > tolerance).any()
+            ):
+                raise ValueError(
+                    f"The annual simulation does not read back the {name} set "
+                    f"for {self.year}."
+                )
+        self._annual_income_simulation_cache = simulation
+        return simulation
+
+    def _engine_projection_factor(self, name: str) -> float:
+        """The factor the engine carries ``name`` by from the dataset's year.
+
+        Read off the engine's own projection, so the other spells grow by the
+        series the current amount grows by; a projection that is not one
+        factor for every row refuses, since no single factor then carries the
+        other spells as the engine carries pay.
+        """
+
+        dataset_year = self._dataset_year()
+        then = _values(self.simulation.calculate(name, dataset_year)).astype(float)
+        now = _values(self.simulation.calculate(name, self.year)).astype(float)
+        carried = np.abs(then) > 0
+        if not carried.any():
+            raise ValueError(
+                f"No row carries {name} in {dataset_year}, so the engine's factor "
+                f"to {self.year} for the other spells cannot be read."
+            )
+        factors = now[carried] / then[carried]
+        factor = float(np.median(factors))
+        if (np.abs(factors - factor) > 1e-5 * max(abs(factor), 1.0)).any():
+            raise ValueError(
+                f"The engine does not carry {name} from {dataset_year} to "
+                f"{self.year} by one factor, so the other spells cannot follow it."
+            )
+        self._annual_income_factors[name] = factor
+        return factor
+
     def _counterfactual_simulation(self, zeroed: str, folded: str | None) -> Any:
         key = (zeroed, folded)
         if key in self._counterfactuals:
@@ -1222,9 +1658,20 @@ class UKMeasureResolver:
                 "reason": str(error),
             }
         else:
+            from microcosm.build.uk_runtime.ledger_targets import (
+                uk_bus_fare_alignment_factors,
+            )
+
             parity = bus_engine_parity(
                 bus_fare_prices(declared, allowed_resources=UK_LCFS_VENDORED_RESOURCES),
                 engine,
+                alignment_factors=(
+                    uk_bus_fare_alignment_factors(
+                        int(engine["benchmark_year"]), int(self.year)
+                    )
+                    if "benchmark_year" in engine
+                    else None
+                ),
             )
         self._bus_parity = parity
         return parity
@@ -1259,7 +1706,41 @@ class UKMeasureResolver:
                 **uc_paid_comparison_contract(self.year),
                 "computed_measures": sorted(self._uc_paid_measures_used),
             }
+        if getattr(self, "_annual_income_measures_used", None):
+            receipt["annual_income_measures"] = self._annual_income_receipt()
         return receipt
+
+    def _annual_income_receipt(self) -> dict[str, Any]:
+        measures = {
+            name: UK_ANNUAL_INCOME_MEASURES[name]
+            for name in sorted(self._annual_income_measures_used)
+        }
+        if not self._carries_annual_income_descriptors():
+            return {
+                "computed_measures": measures,
+                "route": "current_values_without_annual_income_descriptors",
+                "reason": self._annual_income_fallback,
+            }
+        return {
+            "computed_measures": measures,
+            "route": "annual_income_simulation",
+            "descriptors": list(FRS_ANNUAL_INCOME_OUTPUT_COLUMNS),
+            "dataset_year": self._dataset_year(),
+            "measurement_year": self.year,
+            "inputs": {
+                name: {"annual_share": share, "other_spells": other}
+                for name, share, other in _ANNUAL_INCOME_INPUTS
+            },
+            "other_spells_engine_factors": dict(
+                sorted(self._annual_income_factors.items())
+            ),
+            "state_pension": (
+                "state_pension at the measurement year times the share of the "
+                "fiscal year paid: (months_since_state_pension_age + 6) / 12 "
+                "within six months of the year's middle, else 1"
+            ),
+            "held_at_baseline": list(_ANNUAL_INCOME_HELD_VARIABLES),
+        }
 
 
 #: Every field a reviewed measure exclusion must carry (the
@@ -1292,18 +1773,20 @@ def load_uk_calibration_measure_exclusions(
     else:
         text = Path(path).read_text(encoding="utf-8")
     payload = json.loads(text)
-    # Schema 3 adds the signed sparse-band support floor (microcosm#1095 U3),
-    # which ``support_floor.load_uk_support_floor_declaration`` reads.
+    # Schema 4 carries the signed zero-support floor (microcosm#1095 U3) in
+    # scopes of one unit each, which
+    # ``support_floor.load_uk_support_floor_declaration`` reads; schema 3's
+    # single-scope floor is retired with it.
     schema_version = payload.get("schema_version")
     allowed_top = {"schema_version", "exclusions"}
-    if schema_version == 3:
+    if schema_version == 4:
         allowed_top.add("support_floor")
     unknown = sorted(set(payload) - allowed_top)
     if unknown:
         raise ValueError(f"unknown top-level exclusion key(s): {unknown}")
-    if schema_version not in (2, 3):
+    if schema_version not in (2, 4):
         raise ValueError(
-            "UK calibration measure exclusions schema_version must be 2 or 3."
+            "UK calibration measure exclusions schema_version must be 2 or 4."
         )
     exclusions = payload.get("exclusions")
     if not isinstance(exclusions, list):

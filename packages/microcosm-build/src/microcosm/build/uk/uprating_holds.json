@@ -21,6 +21,35 @@
       "scope": "national",
       "kind": "in_year_snapshot",
       "target_ids": [
+        "dfe.funded_childcare.universal_nursery_children_age_3",
+        "dfe.funded_childcare.working_parent_children_age_1",
+        "dfe.funded_childcare.working_parent_children_age_2",
+        "dfe.funded_childcare.working_parent_children_age_3"
+      ],
+      "reason": "DfE funded early-education registrations by single year of age and provision counted in the January 2025 census: a count at a date inside the calibration year, not a lagged period. Requested by María on 2026-10-21 with the single-age rows.",
+      "tracking": "microcosm#1278",
+      "approved_by": "juaristi22",
+      "approved_on": "2026-10-21",
+      "status": "approved",
+      "expires_on": "2026-12-11"
+    },
+    {
+      "scope": "national",
+      "kind": "in_year_snapshot",
+      "target_ids": [
+        "dfe.funded_childcare.working_parent_children_9_to_11_months"
+      ],
+      "reason": "DfE funded early-education working parent registrations at 9 to 11 months counted in the January 2025 census: a count at a date inside the calibration year, not a lagged period. Requested by María on 2026-10-22 with the row, which the spring-term measures and its own under-2 take-up let the model carry (microcosm#1338).",
+      "tracking": "microcosm#1278",
+      "approved_by": "juaristi22",
+      "approved_on": "2026-10-22",
+      "status": "approved",
+      "expires_on": "2026-12-11"
+    },
+    {
+      "scope": "national",
+      "kind": "in_year_snapshot",
+      "target_ids": [
         "dwp.benefit_cap.capped_households",
         "dwp.benefit_cap.capped_households_1000_01_to_1100",
         "dwp.benefit_cap.capped_households_100_01_to_200",
@@ -152,6 +181,23 @@
       "tracking": "microcosm#1324",
       "approved_by": "juaristi22",
       "approved_on": "2026-10-20",
+      "status": "approved",
+      "expires_on": "2026-12-11"
+    },
+    {
+      "scope": "national",
+      "kind": "matched_period",
+      "target_ids": [
+        "obr.beer_and_cider_duties",
+        "obr.wine_duties",
+        "obr.spirits_duties",
+        "obr.tobacco_duties",
+        "obr.betting_and_gaming_duties"
+      ],
+      "reason": "OBR's FY2024-25 alcohol, tobacco and betting and gaming receipts, measured on the engine's 2024 duty from the frame's stored FY2024-25 quantities and bases (measurement_period 2024, require_matching_fact_period). policyengine-uk charges model year 2024 at the FY2024-25 rates and holds the excise inputs flat after it (PolicyEngine/policyengine-uk#2596), so measuring a later year would read the engine's projection, not the data (microcosm#1359).",
+      "tracking": "microcosm#1359",
+      "approved_by": "juaristi22",
+      "approved_on": "2026-10-23",
       "status": "approved",
       "expires_on": "2026-12-11"
     },
@@ -364,7 +410,7 @@
       "target_ids": [
         "desnz.subnational.gas_connected_households"
       ],
-      "reason": "Census 2021 (Scotland 2022) households times DESNZ's 2024 gas-to-electricity meter share. The level follows the authority's household reconciliation through the census partition (census_gas_connected_share), so only the meter share is held at 2024 (microcosm#1207).",
+      "reason": "Census 2021 (Scotland 2022) households times DESNZ's 2024 gas-to-electricity meter share. The level follows the area's household reconciliation through the census partition (census_gas_connected_share), so only the meter share is held at 2024 (microcosm#1207; re-worded 2026-10-26 by juaristi22 for the constituency grain, microcosm#1095).",
       "tracking": "microcosm#1278",
       "approved_by": "juaristi22",
       "approved_on": "2026-10-15",
@@ -384,6 +430,49 @@
       "tracking": "microcosm#1278",
       "approved_by": "juaristi22",
       "approved_on": "2026-10-16",
+      "status": "approved",
+      "expires_on": "2026-12-11"
+    },
+    {
+      "scope": "national",
+      "kind": "in_year_snapshot",
+      "target_ids": [
+        "mhclg.council_tax_stock.single_adult_discount"
+      ],
+      "reason": "England's dwellings entitled to the single adult household 25% discount at the taxbase date (MHCLG Council Taxbase line 8, October 2025): a stock counted inside the calibration year, as the band rows' are (microcosm#953).",
+      "tracking": "microcosm#953",
+      "approved_by": "juaristi22",
+      "approved_on": "2026-10-23",
+      "status": "approved",
+      "expires_on": "2026-12-11"
+    },
+    {
+      "scope": "local",
+      "kind": "in_year_snapshot",
+      "target_ids": [
+        "mhclg.council_tax_stock.by_area.single_adult_discount"
+      ],
+      "reason": "England's dwellings entitled to the single adult household 25% discount by billing authority at the taxbase date (MHCLG Council Taxbase line 8, all bands; the feed labels the count 2025-10): a stock counted inside the calibration year, as the national row's and the band cells' are (microcosm#1095).",
+      "tracking": "microcosm#1095",
+      "approved_by": "juaristi22",
+      "approved_on": "2026-10-25",
+      "status": "approved",
+      "expires_on": "2026-12-11"
+    },
+    {
+      "scope": "national",
+      "kind": "in_year_snapshot",
+      "target_ids": [
+        "hmrc.child_benefit.families_in_payment.children_1",
+        "hmrc.child_benefit.families_in_payment.children_2",
+        "hmrc.child_benefit.families_in_payment.children_3",
+        "hmrc.child_benefit.families_in_payment.children_4",
+        "hmrc.child_benefit.families_in_payment.children_5_plus"
+      ],
+      "reason": "HMRC Child Benefit families in payment by number of children at the August 2025 count (Child Benefit Statistics, Annual Release, Table 2): a stock counted inside the calibration year, as the benefit cap's November count is (microcosm#1095).",
+      "tracking": "microcosm#1095",
+      "approved_by": "juaristi22",
+      "approved_on": "2026-10-25",
       "status": "approved",
       "expires_on": "2026-12-11"
     }
