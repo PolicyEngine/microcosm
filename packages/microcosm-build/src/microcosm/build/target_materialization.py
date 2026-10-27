@@ -1012,16 +1012,28 @@ def _refuse_ignored_measurement_period(
     if declared is None or frame_period is None or str(declared) == str(period):
         return
     name = getattr(spec, "name", "?")
-    if str(declared) != str(frame_period):
-        raise MeasurementPeriodError(
-            f"target {name!r} declares measurement period "
-            f"{declared!r}; a plain-column read honours only the calibration "
-            f"period {period!r} or the frame's period {frame_period!r}"
-        )
     value_period = getattr(adapter, "value_period", None)
+    entity = str(binding.get("from_entity") or spec.entity)
+    if str(declared) != str(frame_period):
+        # A measure dated by its name (spi_2023_state_pension) is computed at
+        # that year whatever the run's period. A row may declare that year
+        # when every variable it names, its filters and band included, is
+        # dated to it: a row read at two years would count one year's people
+        # by another's incomes.
+        dated = callable(value_period) and all(
+            value_period(entity, variable) == str(declared)
+            for variable in _binding_variable_names(binding)
+        )
+        if not dated:
+            raise MeasurementPeriodError(
+                f"target {name!r} declares measurement period "
+                f"{declared!r}; a plain-column read honours only the calibration "
+                f"period {period!r}, the frame's period {frame_period!r}, or a "
+                f"year every variable of the row is dated to"
+            )
+        return
     if not callable(value_period):
         return
-    entity = str(binding.get("from_entity") or spec.entity)
     for variable in _value_variables(binding):
         if value_period(entity, variable) != str(declared):
             raise MeasurementPeriodError(
@@ -1038,6 +1050,19 @@ def _value_variables(binding: Mapping[str, Any]) -> tuple[str, ...]:
     if "value_expression" in binding:
         return expression_names(str(binding["value_expression"]))
     return (str(binding["value_variable"]),)
+
+
+def _binding_variable_names(binding: Mapping[str, Any]) -> tuple[str, ...]:
+    """Every variable a plain-column binding reads: values, filters, band."""
+
+    names = list(_value_variables(binding))
+    for key in ("filters", "household_conditions"):
+        for predicate in binding.get(key, ()) or ():
+            if isinstance(predicate, Mapping) and predicate.get("variable"):
+                names.append(str(predicate["variable"]))
+    if binding.get("groupby_variable"):
+        names.append(str(binding["groupby_variable"]))
+    return tuple(dict.fromkeys(names))
 
 
 def _binding_mask(

@@ -70,6 +70,7 @@ from microcosm.build.uk_runtime.scotland_brma_la_overlap import (
     load_uk_scotland_brma_la_overlap,
     scotland_brma_council_overlaps,
 )
+from microcosm.build.uk_runtime.spi_dated_measures import uk_spi_dated_measure_year
 from microcosm.build.uk_runtime.tenure_drift import tenure_drift_appliers
 from microcosm.build.uk_runtime.uc_source_periods import (
     validate_uc_source_month_coverage,
@@ -1803,15 +1804,17 @@ class UKFrameTargetAdapter:
     def value_period(self, entity: str, variable: str) -> str | None:
         """The period a value variable holds without the engine (microcosm#1324).
 
-        A stored column holds the frame's own period, and a CGT calibration
-        measure dated by its name (``cgt_2024_gains``) is computed at that
-        year. Any other value comes from the engine at the run's calibration
+        A stored column holds the frame's own period, and a CGT or SPI
+        measure dated by its name (``cgt_2024_gains``,
+        ``spi_2023_state_pension``) is computed at that year. Any other value comes from the engine at the run's calibration
         period, so it holds no period of its own: None.
         """
 
         if variable in self.stored_columns.get(entity, ()):
             return self.frame_period
         year = uk_cgt_dated_measure_year(variable)
+        if year is None:
+            year = uk_spi_dated_measure_year(variable)
         return None if year is None else str(year)
 
     def column_at(

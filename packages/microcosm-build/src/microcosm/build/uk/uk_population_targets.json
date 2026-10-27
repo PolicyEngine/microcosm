@@ -3984,24 +3984,27 @@
             "operator": ">",
             "value": 0
           }
-        ]
+        ],
+        "observation_basis": "taxpayers_tax_year_2023_24_at_own_year"
       },
       "bindings": {
         "policyengine": {
           "metric_name": "hmrc/private_pension_income_income_band",
-          "value_variable": "private_pension_income_annual",
+          "value_variable": "spi_2023_private_pension_income",
           "from_entity": "person",
           "map_to": "household",
-          "groupby_variable": "total_income_after_loss_relief_annual",
+          "groupby_variable": "spi_2023_total_income",
           "band_filter_dimension": "total_income",
           "notes": "Banded by person-level total income; band edges come from the fact dimension (compute/income.py:8-20).",
           "filters": [
             {
-              "variable": "income_tax_before_winter_fuel_payment_charge_annual",
+              "variable": "spi_2023_income_tax",
               "operator": ">",
               "value": 0
             }
-          ]
+          ],
+          "measurement_period": 2023,
+          "require_matching_fact_period": true
         },
         "axiom": {
           "metric_name": "hmrc/private_pension_income_income_band",
@@ -4013,12 +4016,13 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_private_pension_income_amount",
         "groupby_dimension": "hmrc.total_income_band",
-        "entity_name": "person"
+        "entity_name": "person",
+        "period_type": "tax_year",
+        "period_value": 2023
       },
       "category_id": "hmrc.survey_of_personal_incomes",
       "label": "Amount by total income band",
-      "uprating_index": "hmrc.itl_2026.total_income_growth_by_total_income_band",
-      "selector_note": "Uprated from the SPI 2023-24 fact to calendar 2025 by HMRC's projected total income in the band (Income Tax Liabilities Table 2.5, hmrc.itl_2026), the index the count, total-income and tax rows by band already use: an amount held in a fixed nominal band moves with the band's membership, which a flat national private pension index ignores (microcosm#1063, 2026-10-02). The calibration binds at calendar 2025 under María's ruling of 2026-09-22 (PolicyEngine/chronicle#280 lane). Taxpayers only (income_tax_annual > 0, the tax on each person's income over the 12 months before their interview, a proxy for the tax year), as SPI Table 3.6 and the area Tables 3.14 and 3.15 are: the tables cover individuals liable to UK income tax (microcosm#1123, taxpayer basis everywhere)."
+      "selector_note": "Bound at its own tax year, 2023-24, with no uprating (option 1 of the pensioner calibration review, piloted under Max's approval of 2026-10-27): the row's total income band, taxpayer filter and pension are each person's 2023-24 values on the engine (spi_2023_*: the dataset's 2024-25 inputs carried back by the engine's own indices, the State Pension at 2023-24 rates, each person's year as the annual income simulation reads it), banded at the published 2023-24 edges, while the weights stay solved at calendar 2025. Projecting the band to 2025 by HMRC's all-taxpayer growth per nominal band grew State Pension taxpayers 4.8% against HMRC's 10.4% for taxpayers over State Pension age. The amount carries each person's population factor, as the count does. Taxpayers only (spi_2023_income_tax > 0, the tax on each person's 2023-24 income before the Winter Fuel Payment charge), as SPI Table 3.6 covers individuals liable to UK income tax (microcosm#1123)."
     },
     {
       "target_id": "hmrc.spi.private_pension_income.count_by_total_income_band",
@@ -4042,28 +4046,31 @@
             "operator": ">",
             "value": 0
           }
-        ]
+        ],
+        "observation_basis": "taxpayers_tax_year_2023_24_at_own_year"
       },
       "bindings": {
         "policyengine": {
           "metric_name": "hmrc/private_pension_income_count_income_band",
-          "groupby_variable": "total_income_after_loss_relief_annual",
+          "groupby_variable": "spi_2023_total_income",
           "band_filter_dimension": "total_income",
           "filters": [
             {
-              "variable": "private_pension_income_annual",
+              "variable": "spi_2023_private_pension_income",
               "operator": ">",
               "value": 0
             },
             {
-              "variable": "income_tax_before_winter_fuel_payment_charge_annual",
+              "variable": "spi_2023_income_tax",
               "operator": ">",
               "value": 0
             }
           ],
-          "value_variable": "person_count",
+          "value_variable": "spi_2023_person_count",
           "from_entity": "person",
-          "map_to": "household"
+          "map_to": "household",
+          "measurement_period": 2023,
+          "require_matching_fact_period": true
         },
         "axiom": {
           "metric_name": "hmrc/private_pension_income_count_income_band",
@@ -4074,12 +4081,13 @@
       "ledger_selector": {
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_private_pension_income_count",
-        "groupby_dimension": "hmrc.total_income_band"
+        "groupby_dimension": "hmrc.total_income_band",
+        "period_type": "tax_year",
+        "period_value": 2023
       },
       "category_id": "hmrc.survey_of_personal_incomes",
       "label": "Count by total income band",
-      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
-      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by HMRC's own projected growth in Income Tax payers for the Table 2.5 band containing this band (Income Tax liabilities statistics, July 2026): the calendar-2025 window of the 2024-25 and 2025-26 projections (3/12 and 9/12) over the 2023-24 outturn, from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): calendar 2025, months to the end of the year for fiscal- and tax-year facts. Taxpayers only (income_tax_annual > 0, the tax on each person's income over the 12 months before their interview, a proxy for the tax year), as SPI Table 3.6 and the area Tables 3.14 and 3.15 are: the tables cover individuals liable to UK income tax (microcosm#1123, taxpayer basis everywhere)."
+      "selector_note": "Bound at its own tax year, 2023-24, with no uprating (option 1 of the pensioner calibration review, piloted under Max's approval of 2026-10-27): the row's total income band, taxpayer filter and pension are each person's 2023-24 values on the engine (spi_2023_*: the dataset's 2024-25 inputs carried back by the engine's own indices, the State Pension at 2023-24 rates, each person's year as the annual income simulation reads it), banded at the published 2023-24 edges, while the weights stay solved at calendar 2025. Projecting the band to 2025 by HMRC's all-taxpayer growth per nominal band grew State Pension taxpayers 4.8% against HMRC's 10.4% for taxpayers over State Pension age. Counts carry each person's population factor (spi_2023_person_count): ONS's population of the person's sex and age band at 1 October 2023 over mid-2025, so a count of 2023-24 taxpayers is not read off 2025's population. Taxpayers only (spi_2023_income_tax > 0, the tax on each person's 2023-24 income before the Winter Fuel Payment charge), as SPI Table 3.6 covers individuals liable to UK income tax (microcosm#1123)."
     },
     {
       "target_id": "hmrc.spi.state_pension.amount_by_total_income_band",
@@ -4098,24 +4106,27 @@
             "operator": ">",
             "value": 0
           }
-        ]
+        ],
+        "observation_basis": "taxpayers_tax_year_2023_24_at_own_year"
       },
       "bindings": {
         "policyengine": {
           "metric_name": "hmrc/state_pension_income_band",
-          "value_variable": "state_pension_annual",
+          "value_variable": "spi_2023_state_pension",
           "from_entity": "person",
           "map_to": "household",
-          "groupby_variable": "total_income_after_loss_relief_annual",
+          "groupby_variable": "spi_2023_total_income",
           "band_filter_dimension": "total_income",
           "notes": "Banded by person-level total income; band edges come from the fact dimension (compute/income.py:8-20).",
           "filters": [
             {
-              "variable": "income_tax_before_winter_fuel_payment_charge_annual",
+              "variable": "spi_2023_income_tax",
               "operator": ">",
               "value": 0
             }
-          ]
+          ],
+          "measurement_period": 2023,
+          "require_matching_fact_period": true
         },
         "axiom": {
           "metric_name": "hmrc/state_pension_income_band",
@@ -4127,12 +4138,13 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_state_pension_amount",
         "groupby_dimension": "hmrc.total_income_band",
-        "entity_name": "person"
+        "entity_name": "person",
+        "period_type": "tax_year",
+        "period_value": 2023
       },
       "category_id": "hmrc.survey_of_personal_incomes",
       "label": "Amount by total income band",
-      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
-      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period as recipients times the amount per recipient: the band's recipients grow by HMRC's projected Income Tax payer growth for the Table 2.5 band containing it (the index its count row declares, the calendar-2025 window of the 2024-25 and 2025-26 projections over the 2023-24 outturn), and the amount per recipient by the new State Pension weekly rate the engine pays (203.85 at 2023, 230.25 at 2025 on the pinned engine). The rate alone held the band's recipients at the 2023-24 number while the count row grew them, so the two rows described different populations (microcosm#1069). Taxpayers only (income_tax_annual > 0, the tax on each person's income over the 12 months before their interview, a proxy for the tax year), as SPI Table 3.6 and the area Tables 3.14 and 3.15 are: the tables cover individuals liable to UK income tax (microcosm#1123, taxpayer basis everywhere)."
+      "selector_note": "Bound at its own tax year, 2023-24, with no uprating (option 1 of the pensioner calibration review, piloted under Max's approval of 2026-10-27): the row's total income band, taxpayer filter and pension are each person's 2023-24 values on the engine (spi_2023_*: the dataset's 2024-25 inputs carried back by the engine's own indices, the State Pension at 2023-24 rates, each person's year as the annual income simulation reads it), banded at the published 2023-24 edges, while the weights stay solved at calendar 2025. Projecting the band to 2025 by HMRC's all-taxpayer growth per nominal band grew State Pension taxpayers 4.8% against HMRC's 10.4% for taxpayers over State Pension age. The amount carries each person's population factor, as the count does. Taxpayers only (spi_2023_income_tax > 0, the tax on each person's 2023-24 income before the Winter Fuel Payment charge), as SPI Table 3.6 covers individuals liable to UK income tax (microcosm#1123)."
     },
     {
       "target_id": "hmrc.spi.state_pension.count_by_total_income_band",
@@ -4156,28 +4168,31 @@
             "operator": ">",
             "value": 0
           }
-        ]
+        ],
+        "observation_basis": "taxpayers_tax_year_2023_24_at_own_year"
       },
       "bindings": {
         "policyengine": {
           "metric_name": "hmrc/state_pension_count_income_band",
-          "groupby_variable": "total_income_after_loss_relief_annual",
+          "groupby_variable": "spi_2023_total_income",
           "band_filter_dimension": "total_income",
           "filters": [
             {
-              "variable": "state_pension_annual",
+              "variable": "spi_2023_state_pension",
               "operator": ">",
               "value": 0
             },
             {
-              "variable": "income_tax_before_winter_fuel_payment_charge_annual",
+              "variable": "spi_2023_income_tax",
               "operator": ">",
               "value": 0
             }
           ],
-          "value_variable": "person_count",
+          "value_variable": "spi_2023_person_count",
           "from_entity": "person",
-          "map_to": "household"
+          "map_to": "household",
+          "measurement_period": 2023,
+          "require_matching_fact_period": true
         },
         "axiom": {
           "metric_name": "hmrc/state_pension_count_income_band",
@@ -4188,12 +4203,13 @@
       "ledger_selector": {
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_state_pension_count",
-        "groupby_dimension": "hmrc.total_income_band"
+        "groupby_dimension": "hmrc.total_income_band",
+        "period_type": "tax_year",
+        "period_value": 2023
       },
       "category_id": "hmrc.survey_of_personal_incomes",
       "label": "Count by total income band",
-      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
-      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by HMRC's own projected growth in Income Tax payers for the Table 2.5 band containing this band (Income Tax liabilities statistics, July 2026): the calendar-2025 window of the 2024-25 and 2025-26 projections (3/12 and 9/12) over the 2023-24 outturn, from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): calendar 2025, months to the end of the year for fiscal- and tax-year facts. Taxpayers only (income_tax_annual > 0, the tax on each person's income over the 12 months before their interview, a proxy for the tax year), as SPI Table 3.6 and the area Tables 3.14 and 3.15 are: the tables cover individuals liable to UK income tax (microcosm#1123, taxpayer basis everywhere)."
+      "selector_note": "Bound at its own tax year, 2023-24, with no uprating (option 1 of the pensioner calibration review, piloted under Max's approval of 2026-10-27): the row's total income band, taxpayer filter and pension are each person's 2023-24 values on the engine (spi_2023_*: the dataset's 2024-25 inputs carried back by the engine's own indices, the State Pension at 2023-24 rates, each person's year as the annual income simulation reads it), banded at the published 2023-24 edges, while the weights stay solved at calendar 2025. Projecting the band to 2025 by HMRC's all-taxpayer growth per nominal band grew State Pension taxpayers 4.8% against HMRC's 10.4% for taxpayers over State Pension age. Counts carry each person's population factor (spi_2023_person_count): ONS's population of the person's sex and age band at 1 October 2023 over mid-2025, so a count of 2023-24 taxpayers is not read off 2025's population. Taxpayers only (spi_2023_income_tax > 0, the tax on each person's 2023-24 income before the Winter Fuel Payment charge), as SPI Table 3.6 covers individuals liable to UK income tax (microcosm#1123)."
     },
     {
       "target_id": "hmrc.cgt.taxpayers_total",

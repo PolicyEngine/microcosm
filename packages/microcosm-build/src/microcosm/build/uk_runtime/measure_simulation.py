@@ -62,6 +62,17 @@ from microcosm.build.uk_runtime.national_frame import (
     uk_release_identifier_tables,
     write_uk_national_frame,
 )
+from microcosm.build.uk_runtime.spi_dated_measures import (
+    UK_SPI_ADDITIVE_MEASURES,
+    UK_SPI_CLASSIFIER_MEASURES,
+    back_projected_inputs,
+    back_projection_factors,
+    population_factor_for_people,
+    population_factors,
+    round_trip_mismatches,
+    uk_spi_dated_measure_kind,
+    uk_spi_dated_measure_year,
+)
 from microcosm.build.uk_runtime.uc_relationships import (
     frs_uc_claimant_mask,
     uc_family_child_member,
@@ -387,6 +398,24 @@ def state_pension_annual_share(months_since_state_pension_age: Any) -> np.ndarra
 #: any of them must carry its own measurement period (microcosm#1014 bands
 #: and filters on dated measures, not only gates and values).
 _BINDING_VARIABLE_KEYS = ("gated_variable", "value_variable", "groupby_variable")
+#: Inputs the engine projects forward by a rule of their own that the dated
+#: SPI measures hold at the dataset's year instead of inverting: regional
+#: council tax, rent and water growth, and student loan plans that gain new
+#: entrants. None is income, and the engine test shows the measures do not
+#: move with them. The round trip refuses any other input it cannot return.
+_SPI_HELD_ENGINE_RULED_INPUTS: frozenset[str] = frozenset()
+#: The stored inputs policyengine-uk moves to another variable as it loads a
+#: dataset (``Simulation.move_values`` in its constructor): the bases of the
+#: behavioural responses and the reported amounts its formulas replace.
+#: Inputs set after loading move the same way, or they would override those
+#: formulas; the dated SPI simulation refuses an input the engine moved that
+#: is not listed here.
+_ENGINE_LOAD_MOVES: Mapping[str, str] = {
+    "capital_gains": "capital_gains_before_response",
+    "employment_income": "employment_income_before_lsr",
+    "employee_pension_contributions": "employee_pension_contributions_reported",
+    "bus_fare_spending": "bus_fare_spending_reported",
+}
 
 
 def _binding_variable_names(binding: Mapping[str, Any]) -> list[str]:
@@ -1009,6 +1038,16 @@ class UKMeasureResolver:
                 "CGT calibration measures must not be persisted as source inputs: "
                 f"{sorted(reserved)}"
             )
+        persisted_spi = sorted(
+            str(name)
+            for name in frame.table("person")
+            if uk_spi_dated_measure_year(str(name)) is not None
+        )
+        if persisted_spi:
+            raise ValueError(
+                "Dated SPI measures must not be persisted as source inputs: "
+                f"{persisted_spi}"
+            )
         persisted_boardings = sorted(
             set(_BUS_BOARDING_MEASURES) & set(map(str, frame.table("household")))
         )
@@ -1042,9 +1081,23 @@ class UKMeasureResolver:
         validate_uc_claimant_input(self.simulation, frame.table("person"), self.year)
         self.contract_targets = _uk_contract_targets()
         bound_cgt_periods = {}
+        bound_spi_periods: dict[str, dict[str, Any]] = {}
         for target_id, target in self.contract_targets.items():
             binding = target["bindings"]["policyengine"]
             for name in _binding_variable_names(binding):
+                spi_year = uk_spi_dated_measure_year(name)
+                if spi_year is not None:
+                    # A dated SPI row binds a published fact of its own year:
+                    # the binding declares that year and matches the fact's.
+                    if int(
+                        binding.get("measurement_period", self.year)
+                    ) != spi_year or not binding.get("require_matching_fact_period"):
+                        raise ValueError(
+                            f"SPI dated measure period mismatch: {target_id}"
+                        )
+                    bound_spi_periods.setdefault(name, {"measurement_period": spi_year})
+                    bound_spi_periods[name].setdefault("targets", []).append(target_id)
+                    continue
                 cgt_measure = _cgt_model_measure(name, self.year)
                 if cgt_measure is None:
                     continue
@@ -1094,6 +1147,13 @@ class UKMeasureResolver:
         self._annual_income_fallback: str | None = None
         self._annual_income_simulation_cache: Any | None = None
         self._annual_income_factors: dict[str, float] = {}
+        self._bound_spi_periods = bound_spi_periods
+        # Per tax year: the dated annual simulation, the population factor and
+        # the receipt of how the year's inputs were carried back.
+        self._spi_simulations: dict[int, Any] = {}
+        self._spi_population_factors: dict[int, np.ndarray] = {}
+        self._spi_year_receipts: dict[int, dict[str, Any]] = {}
+        self._spi_measures_used: set[str] = set()
 
     def use_current_income_for_annual_measures(self, *, reason: str) -> None:
         """Let a frame without annual income descriptors read current values.
@@ -1160,6 +1220,9 @@ class UKMeasureResolver:
         cgt_measure = _cgt_model_measure(variable, self.year)
         if cgt_measure is not None:
             return entity == "person" and self.knows(entity, cgt_measure[0])
+        spi_kind = uk_spi_dated_measure_kind(variable)
+        if spi_kind is not None:
+            return entity == "person" and self._carries_annual_income_descriptors()
         if variable == _CGT_TAXABLE_INCOME:
             return entity == "person" and all(
                 self.knows("person", name) for name in _CGT_TAXABLE_INCOME_COMPONENTS
@@ -1201,6 +1264,8 @@ class UKMeasureResolver:
             return "person"
         if _cgt_model_measure(variable, self.year) is not None:
             return "person"
+        if uk_spi_dated_measure_year(variable) is not None:
+            return "person"
         if variable in UK_NAMED_TERMS or variable in DFE_SPRING_TERM_MEASURES:
             return "person"
         if variable in UK_HOUSEHOLD_ENERGY_MEASURES:
@@ -1222,6 +1287,8 @@ class UKMeasureResolver:
     def compute(self, entity: str, variable: str) -> tuple[np.ndarray, str]:
         if variable in UK_ANNUAL_INCOME_MEASURES:
             return self._annual_income_measure(entity, variable)
+        if uk_spi_dated_measure_year(variable) is not None:
+            return self._spi_dated_measure(entity, variable)
         if variable in UK_HOUSEHOLD_ENERGY_MEASURES:
             return self._household_energy(entity, variable)
         result = compute_uk_measure_input(
@@ -1473,6 +1540,264 @@ class UKMeasureResolver:
         )
         return values, f"annual_income_simulation:{route}"
 
+    def _spi_dated_measure(self, entity: str, variable: str) -> tuple[np.ndarray, str]:
+        """A dated SPI measure: each person's tax year on the engine at that year.
+
+        See :mod:`microcosm.build.uk_runtime.spi_dated_measures`.
+        """
+
+        if entity != "person":
+            raise KeyError(f"dated SPI measures are person-only: {entity}")
+        if not self._carries_annual_income_descriptors():
+            raise KeyError(
+                f"{variable} reads the annual income descriptors "
+                "(frs_annual_income_spells), which this frame does not carry."
+            )
+        year = int(uk_spi_dated_measure_year(variable))
+        kind = str(uk_spi_dated_measure_kind(variable))
+        simulation = self._spi_annual_simulation(year)
+        self._spi_measures_used.add(variable)
+        if kind in UK_SPI_CLASSIFIER_MEASURES:
+            values, route = compute_uk_measure_input(
+                self.frame,
+                simulation,
+                "person",
+                UK_SPI_CLASSIFIER_MEASURES[kind],
+                year,
+                frame_columns=False,
+            )
+            return (
+                np.asarray(values, dtype=float),
+                f"spi_dated_annual_simulation:{year}:{route}",
+            )
+        factor = self._spi_population_factor(year)
+        engine_variable = UK_SPI_ADDITIVE_MEASURES[kind]
+        if engine_variable is None:
+            return factor.copy(), f"spi_dated_population_factor:{year}"
+        values, route = compute_uk_measure_input(
+            self.frame, simulation, "person", engine_variable, year, frame_columns=False
+        )
+        return (
+            np.asarray(values, dtype=float) * factor,
+            f"spi_dated_annual_simulation:{year}:{route}:population_factor",
+        )
+
+    def _spi_population_factor(self, year: int) -> np.ndarray:
+        """Each person's population at ``year`` over the calibration year's."""
+
+        cached = self._spi_population_factors.get(year)
+        if cached is not None:
+            return cached
+        dataset_year = self._dataset_year()
+        # Ages are held across years, as the engine holds them: the dataset
+        # year's age and sex are the person's at every year.
+        age = _values(self.simulation.calculate("age", dataset_year)).astype(float)
+        raw_sex = self.simulation.calculate("gender", dataset_year)
+        sex = (
+            np.asarray(raw_sex.decode_to_str())
+            if hasattr(raw_sex, "decode_to_str")
+            else _values(raw_sex)
+        )
+        factors = population_factors(year, self.year)
+        values = population_factor_for_people(age, sex, factors)
+        self._spi_population_factors[year] = values
+        self._spi_year_receipts.setdefault(year, {})["population_factors"] = {
+            f"{sex_key}_{lower}": round(value, 6)
+            for (sex_key, lower), value in sorted(factors.items())
+        }
+        return values
+
+    def _spi_annual_simulation(self, year: int) -> Any:
+        """The annual income simulation of tax year ``year``, before the data's.
+
+        The year's stored inputs are carried back from the dataset's year as
+        the engine's own uprating would carry them forward, set at ``year`` on
+        a simulation from the same source; the annual inputs (each person's
+        year) are then read off it and set on a second one, as the
+        calibration-year annual simulation sets them.
+        """
+
+        cached = self._spi_simulations.get(year)
+        if cached is not None:
+            return cached
+        dataset_year = self._dataset_year()
+        if year >= dataset_year:
+            raise ValueError(
+                f"Dated SPI measures carry the dataset back to an earlier tax "
+                f"year; {year} is not before the dataset's year {dataset_year}."
+            )
+        inputs = self._spi_back_projected_inputs(year)
+        base = self._factory(dataset=str(self._source_path))
+        # Every input is one the engine keeps where it loads it, at the
+        # dataset's year, or the moves above no longer mirror the engine's.
+        moved = sorted(
+            name
+            for name in inputs
+            if str(dataset_year)
+            not in {str(period) for period in base.get_holder(name).get_known_periods()}
+        )
+        if moved:
+            raise ValueError(
+                "policyengine-uk moves these inputs as it loads a dataset; "
+                f"declare where in _ENGINE_LOAD_MOVES: {moved}"
+            )
+        for name, values in inputs.items():
+            base.set_input(name, year, values)
+        annual_inputs, factors = self._annual_income_inputs(base, year)
+        simulation = self._factory(dataset=str(self._source_path))
+        for name, values in inputs.items():
+            if name not in annual_inputs:
+                simulation.set_input(name, year, values)
+        for name, values in annual_inputs.items():
+            simulation.set_input(name, year, values)
+        self._check_annual_readback(simulation, year, annual_inputs)
+        self._spi_year_receipts.setdefault(year, {})["other_spells_engine_factors"] = (
+            dict(sorted(factors.items()))
+        )
+        self._spi_simulations[year] = simulation
+        return simulation
+
+    def _spi_back_projected_inputs(self, year: int) -> dict[str, np.ndarray]:
+        """Every stored input at ``year``, carried back as the engine carries forward.
+
+        The engine loads a dataset by projecting its file forward from the
+        file's year: savings interest gross of ISA interest, every indexed
+        input by its year-on-year index, residential stocks by one cumulative
+        house price ratio. The same file is carried back by those rules and
+        the engine's own ``extend_single_year_dataset`` must return it from
+        ``year`` to the file's year as stored, every input column of it,
+        except the inputs the measures hold by declaration.
+        """
+
+        from policyengine_core.simulations.simulation import _uprating_index_value
+        from policyengine_uk.data import UKSingleYearDataset
+        from policyengine_uk.data.capital_gains_projection import CGT_DATASET_INPUTS
+        from policyengine_uk.data.economic_assumptions import (
+            RESIDENTIAL_PROPERTY_INDEX,
+            RESIDENTIAL_PROPERTY_INPUTS,
+            YEAR_SPECIFIC_INPUTS,
+            _uprating_index_map,
+            extend_single_year_dataset,
+        )
+        from policyengine_uk.data.isa_income import (
+            legacy_projection_source,
+            normalized_single_year,
+        )
+
+        dataset_year = self._dataset_year()
+        source = legacy_projection_source(UKSingleYearDataset(str(self._source_path)))
+        if int(source.time_period) != dataset_year:
+            raise ValueError(
+                f"The engine's source is of {source.time_period}, not the "
+                f"frame's year {dataset_year}."
+            )
+        system = self.simulation.tax_benefit_system
+        parameters = system.parameters
+        index_map = _uprating_index_map()
+        growth = {
+            index: {
+                y: float(parameters.get_child(index)(str(y)))
+                for y in range(year + 1, dataset_year + 1)
+            }
+            for index in index_map
+        }
+        factors = back_projection_factors(
+            index_map, growth, from_year=dataset_year, to_year=year
+        )
+        house_prices = parameters.get_child(RESIDENTIAL_PROPERTY_INDEX)
+        factors.update(
+            dict.fromkeys(
+                RESIDENTIAL_PROPERTY_INPUTS,
+                _uprating_index_value(house_prices, f"{dataset_year}-01-01")
+                / _uprating_index_value(house_prices, f"{year}-01-01"),
+            )
+        )
+        stored = {name: getattr(source, name) for name in source.table_names}
+        projected = back_projected_inputs(
+            stored, factors, dropped=sorted(YEAR_SPECIFIC_INPUTS)
+        )
+
+        def dataset(tables: Mapping[str, pd.DataFrame]) -> Any:
+            return UKSingleYearDataset(
+                **{name: table.copy() for name, table in tables.items()},
+                fiscal_year=year,
+                energy_price_basis=source.energy_price_basis,
+                isa_income_contract=source.isa_income_contract,
+            )
+
+        # The capital gains inputs, which no SPI measure reads, are carried
+        # back by their index but left out of the round trip: the engine's
+        # gains projection starts at its own base year.
+        excluded = set(CGT_DATASET_INPUTS) | set(YEAR_SPECIFIC_INPUTS)
+        forward = extend_single_year_dataset(
+            dataset(
+                {
+                    name: table.drop(columns=[c for c in excluded if c in table])
+                    for name, table in projected.items()
+                }
+            ),
+            parameters,
+            end_year=dataset_year,
+        )[dataset_year]
+        checked = sorted(
+            {
+                str(column)
+                for table in stored.values()
+                for column in table.columns
+                if column in system.variables and column not in excluded
+            }
+        )
+        misses = round_trip_mismatches(
+            stored,
+            {name: getattr(forward, name) for name in forward.table_names},
+            checked,
+        )
+        unexplained = {
+            name: gap
+            for name, gap in misses.items()
+            if name not in _SPI_HELD_ENGINE_RULED_INPUTS
+        }
+        if unexplained:
+            raise ValueError(
+                "The engine's uprating does not carry the back-projected inputs "
+                f"from {year} to {dataset_year} as stored: {unexplained}."
+            )
+        # As the engine loads it: interest net of ISA interest, and the
+        # inputs it moves to their bases moved.
+        loaded = normalized_single_year(dataset(projected))
+        inputs: dict[str, np.ndarray] = {}
+        for entity in loaded.table_names:
+            table = getattr(loaded, entity)
+            if entity in ("benunit", "household"):
+                # Group inputs in the population's sorted order, as the
+                # engine's own loader sets them.
+                table = table.iloc[np.argsort(table[f"{entity}_id"].to_numpy())]
+            for column in table.columns:
+                if column in system.variables:
+                    inputs[column] = table[column].to_numpy()
+        for donor, target in _ENGINE_LOAD_MOVES.items():
+            if donor in inputs:
+                inputs[target] = inputs.pop(donor)
+        self._spi_year_receipts.setdefault(year, {}).update(
+            {
+                "dataset_year": dataset_year,
+                "isa_income_contract": dict(source.isa_income_contract),
+                "carried_back_inputs": len(inputs),
+                "indexed_inputs": len([c for c in inputs if c in factors]),
+                "held_inputs": len([c for c in inputs if c not in factors]),
+                "residential_property_ratio": float(
+                    factors[RESIDENTIAL_PROPERTY_INPUTS[0]]
+                ),
+                "dropped_year_specific_inputs": sorted(YEAR_SPECIFIC_INPUTS),
+                "round_trip_checked_inputs": len(checked),
+                "round_trip_excluded_inputs": sorted(excluded),
+                "held_engine_ruled_inputs": {
+                    name: misses[name] for name in sorted(misses)
+                },
+            }
+        )
+        return inputs
+
     def _household_energy(self, entity: str, variable: str) -> tuple[np.ndarray, str]:
         """A household's domestic energy measure from its stored spend."""
 
@@ -1526,11 +1851,33 @@ class UKMeasureResolver:
 
         if self._annual_income_simulation_cache is not None:
             return self._annual_income_simulation_cache
-        person = self.frame.table("person")
         simulation = self._factory(dataset=str(self._source_path))
+        annual_inputs, factors = self._annual_income_inputs(self.simulation, self.year)
+        self._annual_income_factors.update(factors)
+        for name, values in annual_inputs.items():
+            simulation.set_input(name, self.year, values)
+        self._check_annual_readback(simulation, self.year, annual_inputs)
+        self._annual_income_simulation_cache = simulation
+        return simulation
+
+    def _annual_income_inputs(
+        self, base: Any, year: int
+    ) -> tuple[dict[str, np.ndarray], dict[str, float]]:
+        """Each person's year at ``year``, from ``base``'s values at that year.
+
+        Pay, profit, private pensions and the contributory benefits are the
+        current amount times its annual share, plus the other spells carried
+        from the dataset's year by the engine's factor for the input; the
+        State Pension is the share of it paid in the fiscal year, and the
+        earnings-tested carer benefits keep their baseline values. Returns the
+        inputs and the factors the other spells were carried by.
+        """
+
+        person = self.frame.table("person")
         annual_inputs: dict[str, np.ndarray] = {}
+        factors: dict[str, float] = {}
         for name, share_column, other_column in _ANNUAL_INCOME_INPUTS:
-            current = _values(self.simulation.calculate(name, self.year)).astype(float)
+            current = _values(base.calculate(name, year)).astype(float)
             share = person[share_column].to_numpy(dtype=float)
             other = (
                 person[other_column].to_numpy(dtype=float)
@@ -1542,25 +1889,30 @@ class UKMeasureResolver:
                     f"{name} must align with the frame's person table to read "
                     "its annual income descriptors."
                 )
-            factor = self._engine_projection_factor(name) if other.any() else 1.0
+            factor = 1.0
+            if other.any():
+                factor = factors[name] = self._engine_projection_factor(
+                    name, base=base, year=year
+                )
             annual = current * share + other * factor
             if not np.isfinite(annual).all():
                 raise ValueError(f"The annual {name} must be finite.")
-            simulation.set_input(name, self.year, annual)
             annual_inputs[name] = annual
-        months = _values(
-            self.simulation.calculate("months_since_state_pension_age", self.year)
-        )
-        pension = _values(self.simulation.calculate("state_pension", self.year))
-        annual_pension = pension.astype(float) * state_pension_annual_share(months)
-        simulation.set_input("state_pension", self.year, annual_pension)
-        annual_inputs["state_pension"] = annual_pension
+        months = _values(base.calculate("months_since_state_pension_age", year))
+        pension = _values(base.calculate("state_pension", year))
+        annual_inputs["state_pension"] = pension.astype(
+            float
+        ) * state_pension_annual_share(months)
         for name in _ANNUAL_INCOME_HELD_VARIABLES:
-            held = _values(self.simulation.calculate(name, self.year)).astype(float)
-            simulation.set_input(name, self.year, held)
-            annual_inputs[name] = held
+            annual_inputs[name] = _values(base.calculate(name, year)).astype(float)
+        return annual_inputs, factors
+
+    @staticmethod
+    def _check_annual_readback(
+        simulation: Any, year: int, annual_inputs: Mapping[str, np.ndarray]
+    ) -> None:
         for name, expected in annual_inputs.items():
-            read = _values(simulation.calculate(name, self.year)).astype(float)
+            read = _values(simulation.calculate(name, year)).astype(float)
             tolerance = 1e-6 * np.maximum(np.abs(expected), 1.0) + 0.01
             if (
                 read.shape != expected.shape
@@ -1568,12 +1920,12 @@ class UKMeasureResolver:
             ):
                 raise ValueError(
                     f"The annual simulation does not read back the {name} set "
-                    f"for {self.year}."
+                    f"for {year}."
                 )
-        self._annual_income_simulation_cache = simulation
-        return simulation
 
-    def _engine_projection_factor(self, name: str) -> float:
+    def _engine_projection_factor(
+        self, name: str, *, base: Any | None = None, year: int | None = None
+    ) -> float:
         """The factor the engine carries ``name`` by from the dataset's year.
 
         Read off the engine's own projection, so the other spells grow by the
@@ -1582,23 +1934,24 @@ class UKMeasureResolver:
         other spells as the engine carries pay.
         """
 
+        base = self.simulation if base is None else base
+        year = self.year if year is None else int(year)
         dataset_year = self._dataset_year()
         then = _values(self.simulation.calculate(name, dataset_year)).astype(float)
-        now = _values(self.simulation.calculate(name, self.year)).astype(float)
+        now = _values(base.calculate(name, year)).astype(float)
         carried = np.abs(then) > 0
         if not carried.any():
             raise ValueError(
                 f"No row carries {name} in {dataset_year}, so the engine's factor "
-                f"to {self.year} for the other spells cannot be read."
+                f"to {year} for the other spells cannot be read."
             )
         factors = now[carried] / then[carried]
         factor = float(np.median(factors))
         if (np.abs(factors - factor) > 1e-5 * max(abs(factor), 1.0)).any():
             raise ValueError(
                 f"The engine does not carry {name} from {dataset_year} to "
-                f"{self.year} by one factor, so the other spells cannot follow it."
+                f"{year} by one factor, so the other spells cannot follow it."
             )
-        self._annual_income_factors[name] = factor
         return factor
 
     def _counterfactual_simulation(self, zeroed: str, folded: str | None) -> Any:
@@ -1708,7 +2061,46 @@ class UKMeasureResolver:
             }
         if getattr(self, "_annual_income_measures_used", None):
             receipt["annual_income_measures"] = self._annual_income_receipt()
+        if getattr(self, "_spi_measures_used", None):
+            receipt["spi_dated_measures"] = self._spi_dated_receipt()
         return receipt
+
+    def _spi_dated_receipt(self) -> dict[str, Any]:
+        return {
+            "version": "uk-spi-dated-measurement-v1",
+            "naming": (
+                "spi_<tax_year>_<person_count|state_pension|private_pension_income|"
+                "total_income|income_tax>"
+            ),
+            "calibration_period": self.year,
+            "computed_measures": sorted(self._spi_measures_used),
+            "bound_measurements": {
+                name: dict(entry)
+                for name, entry in sorted(self._bound_spi_periods.items())
+            },
+            "additive_measures": dict(UK_SPI_ADDITIVE_MEASURES),
+            "classifier_measures": dict(UK_SPI_CLASSIFIER_MEASURES),
+            "inputs": (
+                "the dataset file's stored inputs set at the tax year, carried "
+                "back by the engine's own forward rules (savings interest gross "
+                "of ISA interest; indexed inputs divided by the engine's growth "
+                "for each year between; residential stocks by the cumulative "
+                "house price ratio; others held; year-specific inputs dropped), "
+                "checked by the engine's forward projection returning the file, "
+                "and moved to their bases as the engine moves them on loading; "
+                "then each person's year as the annual income simulation reads it"
+            ),
+            "population": (
+                "additive measures times the ONS population of the person's sex "
+                "and calibration age band at the tax year's midpoint (1 October, "
+                "linear between mid-year estimates) over the calibration year's "
+                "mid-year population; ages held"
+            ),
+            "years": {
+                str(year): dict(entry)
+                for year, entry in sorted(self._spi_year_receipts.items())
+            },
+        }
 
     def _annual_income_receipt(self) -> dict[str, Any]:
         measures = {
