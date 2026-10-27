@@ -25,12 +25,6 @@ conflicts = [
 [tool.uv.workspace]
 members = ["packages/*"]
 
-[tool.uv.sources]
-# policyengine-uk 2.162.12 plus PolicyEngine/policyengine-uk#2695 (the property
-# allowance election without the winter fuel payment charge where it cannot
-# change it), installed from its head until the release that carries it.
-policyengine-uk = { git = "https://github.com/PolicyEngine/policyengine-uk", rev = "b71ce793406a368465ad8b7f4000a1141bd60751" }
-
 [dependency-groups]
 # openpyxl parses the OMB CBSA delineation workbook and NISRA's published
 # DZ2021-to-PARLCON24 lookup in the US and UK ladder builders.

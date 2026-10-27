@@ -30,16 +30,10 @@ US_ENGINE = {
     "spm-calculator": "1.0.0",
 }
 #: What every UK install path resolves: the locked policyengine-uk and the
-#: policyengine-core its own floor brings. Until the release that carries
-#: PolicyEngine/policyengine-uk#2695, the lock installs policyengine-uk 2.162.12
-#: plus that pull request from its head commit, which uv exports as a direct
-#: reference rather than a version.
+#: policyengine-core its own floor brings.
 UK_ENGINE = {
     "policyengine-core": "3.33.3",
-    "policyengine-uk": (
-        "git+https://github.com/PolicyEngine/policyengine-uk"
-        "@b71ce793406a368465ad8b7f4000a1141bd60751"
-    ),
+    "policyengine-uk": "2.162.14",
 }
 ENGINE_PACKAGES = ("microcosm-build", "microcosm-data", "microcosm-frame")
 

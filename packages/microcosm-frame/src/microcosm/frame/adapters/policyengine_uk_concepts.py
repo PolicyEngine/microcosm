@@ -35,7 +35,7 @@ __all__ = [
 # ---------------------------------------------------------------------------
 #
 # Which PolicyEngine-UK inputs each engine-neutral concept feeds
-# (microcosm.frame.concepts), reviewed against policyengine-uk 2.162.12. Every
+# (microcosm.frame.concepts), reviewed against policyengine-uk 2.162.14. Every
 # target is a pure input (in ``PolicyEngineUKEngine.variables``). The UK
 # loader also accepts some formula-owned variables as overrides
 # (``employment_income``, ``state_pension_reported``, ``is_household_head``);
@@ -435,7 +435,7 @@ def _uk_take_up(program: str, entity: str) -> InputBinding:
 
 POLICYENGINE_UK_CONCEPT_MAPPING = ConceptMapping(
     engine="policyengine-uk",
-    engine_version="2.162.12",
+    engine_version="2.162.14",
     entity_correspondence={"person": "person", "household": "household"},
     input_declaration=InputDeclaration.ENGINE_TYPED,
     bindings=(
