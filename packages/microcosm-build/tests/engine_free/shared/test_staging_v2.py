@@ -941,10 +941,7 @@ def test_remote_read_back_covers_every_run_scoped_file(tmp_path):
     # The emitter compares each file it committed for the run with the Hub.
     expected = {remote for _, remote in telemetry._upload_paths()}
     assert set(_remote_files(emitter)) == expected
-    assert {
-        f"runs/uk-smoke-5-42/{item.relative_path}"
-        for item in emitter.run_file_requests[-1].files
-    } == expected
+    assert emitter.committed_paths(UK_STAGING, "uk-smoke-5-42") == expected
     assert telemetry.delivery_summary["read_back"] == "passed"
 
 

@@ -8,8 +8,10 @@ build must never abort on its own progress report.
 
 These helpers were moved from ``tools/build_uk_rowwise_candidate.py`` so the
 graph full-build driver and the rowwise tool stage identically; the tool
-imports them back. ``_hub_api`` and ``_hub_token`` are the test seams the
-drivers' tests patch on this module.
+imports them back. The run files go to the build's emitter, which commits
+them with the build's own credential; the staged dataset is still uploaded
+here. ``_hub_api`` and ``_hub_token`` are the test seams the drivers' tests
+patch on this module for the staged dataset.
 """
 
 from __future__ import annotations
@@ -105,8 +107,14 @@ def active_telemetry_emitter() -> LocalTelemetryEmitter | None:
     return _ACTIVE_EMITTER
 
 
+def _run_file_emitter() -> Any:
+    """The client of this build attempt's emitter, which takes its run files."""
+
+    return None if _ACTIVE_EMITTER is None else _ACTIVE_EMITTER.client
+
+
 def _hub_api() -> Any:
-    """The Hub client used for the run bundle and staged dataset (test seam)."""
+    """The Hub client used for the staged dataset (test seam)."""
 
     from huggingface_hub import HfApi
 
@@ -215,7 +223,7 @@ def create_staging_run_bundle(
         delivery_mode="local_only" if local_only else "local_and_remote",
         repo_id=None if local_only else args.staging_repo_id,
         upload_interval_seconds=args.staging_upload_interval_seconds,
-        api=None if local_only else _hub_api(),
+        emitter_client=None if local_only else _run_file_emitter(),
     )
 
 
