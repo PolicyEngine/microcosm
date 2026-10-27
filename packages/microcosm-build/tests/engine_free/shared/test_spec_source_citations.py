@@ -288,6 +288,12 @@ _LINE_LOCATORS = (
     "line {a} in {file}",
     "line {a} of `{file}`",
 )
+#: The spellings that name the file before its lines.
+_FORWARD_LOCATORS = tuple(
+    locator
+    for locator in _LINE_LOCATORS
+    if locator.index("{file}") < locator.index("{a}")
+)
 #: Symbol-citation spellings, which carry no line number.
 _SYMBOL_LOCATORS = (
     "{file} {symbol}",
@@ -338,7 +344,36 @@ _MOVING_REFS = (
     "On main",
     "at HEAD",
     "@master",
+    "on `main`",
+    "at 'HEAD'",
+    "@“master”",
+    "on refs/heads/main",
     "https://github.com/PolicyEngine/upstream-data/blob/main/x",
+    "https://github.com/PolicyEngine/upstream-data/blob/refs/heads/master/x",
+    "https://raw.githubusercontent.com/PolicyEngine/upstream-data/main/x",
+    "https://raw.githubusercontent.com/PolicyEngine/upstream-data/refs/heads/main/x",
+)
+#: URL prefixes of another repository's files at a moving ref.
+_MOVING_URLS = (
+    "https://github.com/PolicyEngine/upstream-data/blob/main/",
+    "https://github.com/PolicyEngine/upstream-data/blob/refs/heads/master/",
+    "https://raw.githubusercontent.com/PolicyEngine/upstream-data/main/",
+    "https://raw.githubusercontent.com/PolicyEngine/upstream-data/HEAD/",
+    "https://raw.githubusercontent.com/PolicyEngine/upstream-data/refs/heads/main/",
+)
+#: Quote marks a file name or a locator may carry.
+_QUOTE_MARKS = st.sampled_from(("", "`", "'", '"', "‘", "’", "“", "”"))
+#: Locators with quote slots before and after the file ({q1}, {q2}) and
+#: before and after its line numbers ({q3}, {q4}).
+_QUOTABLE_LOCATORS = (
+    "{q1}{file}{q2}:{q3}{a}-{b}{q4}",
+    "{q1}{file}{q2}:{q3}L{a}{q4}",
+    "{q1}{file}{q2}#{q3}L{a}{q4}",
+    "{q1}{file}{q2} {q3}lines {a}-{b}{q4}",
+    "{q1}{file}{q2}, {q3}lines {a}-{b}{q4}",
+    "{q1}{file}{q2} @ {q3}L{a}{q4}",
+    "{q1}{file}{q2}: {q3}lines {a}-{b}{q4}",
+    "{q3}lines {a}-{b}{q4} of {q1}{file}{q2}",
 )
 #: Clause breaks, each followed by text that opens the next clause.
 _CLAUSE_BREAKS = ("; ", ";", ". See ", "! See ", "? (", ". `")
@@ -412,6 +447,48 @@ def test_an_unpinned_line_citation_is_refused_at_any_depth(
     assert LineCitation(file, text) in unpinned_line_citations(document)
     assert unrecognised_line_locators(document) == []
     assert not resolves_in_repository(file)
+
+
+@settings(max_examples=300, deadline=None)
+@given(
+    stem=_STEM,
+    suffix=_SUFFIX,
+    directory=_FOREIGN_DIRECTORY,
+    here=st.one_of(st.none(), st.sampled_from(_IN_REPOSITORY_FILES)),
+    locator=st.sampled_from(_QUOTABLE_LOCATORS),
+    q1=_QUOTE_MARKS,
+    q2=_QUOTE_MARKS,
+    q3=_QUOTE_MARKS,
+    q4=_QUOTE_MARKS,
+    a=st.integers(1, 99_999),
+    b=st.integers(1, 99_999),
+    depth=st.integers(0, 3),
+    as_key=st.booleans(),
+)
+def test_a_quoted_line_locator_is_refused_as_a_value_or_a_key(
+    stem: str,
+    suffix: str,
+    directory: str,
+    here: str | None,
+    locator: str,
+    q1: str,
+    q2: str,
+    q3: str,
+    q4: str,
+    a: int,
+    b: int,
+    depth: int,
+    as_key: bool,
+) -> None:
+    file = here or f"{directory}{stem}.{suffix}"
+    text = locator.format(file=file, q1=q1, q2=q2, q3=q3, q4=q4, a=a, b=b)
+    document = _plant(text, depth, as_key)
+    assert line_citations(document) == [LineCitation(file, text)]
+    assert unrecognised_line_locators(document) == []
+    if here is None:
+        assert LineCitation(file, text) in unpinned_line_citations(document)
+    else:
+        assert in_repository_line_citations(document) == [LineCitation(file, text)]
 
 
 @settings(max_examples=200, deadline=None)
@@ -610,6 +687,38 @@ def test_an_earlier_commit_does_not_pin_a_citation_whose_clause_names_a_moving_r
 @settings(max_examples=200, deadline=None)
 @given(
     stem=_STEM,
+    suffix=_SUFFIX,
+    directory=_FOREIGN_DIRECTORY,
+    url=st.sampled_from(_MOVING_URLS),
+    locator=st.sampled_from(_LINE_LOCATORS),
+    pin=st.sampled_from(_INLINE_PINS),
+    sha=_SHA,
+    a=st.integers(1, 99_999),
+    b=st.integers(1, 99_999),
+    clause_break=st.sampled_from(_CLAUSE_BREAKS),
+)
+def test_an_earlier_commit_does_not_pin_a_cited_url_at_a_moving_ref(
+    stem: str,
+    suffix: str,
+    directory: str,
+    url: str,
+    locator: str,
+    pin: str,
+    sha: str,
+    a: int,
+    b: int,
+    clause_break: str,
+) -> None:
+    file = f"{url}{directory}{stem}.{suffix}"
+    citation = locator.format(file=file, a=a, b=b)
+    text = f"{pin.format(sha=sha)}{clause_break}{citation}"
+    assert [citing_commit(found) for found in line_citations(text)] == [None]
+    assert LineCitation(file, text) in unpinned_line_citations({"note": text})
+
+
+@settings(max_examples=200, deadline=None)
+@given(
+    stem=_STEM,
     other=_STEM,
     suffix=_SUFFIX,
     locator=st.sampled_from(_LINE_LOCATORS),
@@ -697,6 +806,34 @@ def test_a_decimal_a_word_a_digest_a_truncation_or_a_branch_names_no_commit(
     assert LineCitation(f"{stem}.{suffix}", text) in unpinned_line_citations(
         {"note": text}
     )
+
+
+@settings(max_examples=200, deadline=None)
+@given(
+    stem=_STEM,
+    suffix=_SUFFIX,
+    deeper=_PIN_ROOT,
+    locator=st.sampled_from(_FORWARD_LOCATORS),
+    keyword=st.sampled_from(("commit ", "Commit ", "at ", "At ", "uk-data@")),
+    sha=_SHA,
+    a=st.integers(1, 99_999),
+    b=st.integers(1, 99_999),
+)
+def test_a_hex_directory_after_a_pin_word_names_no_commit(
+    stem: str,
+    suffix: str,
+    deeper: str,
+    locator: str,
+    keyword: str,
+    sha: str,
+    a: int,
+    b: int,
+) -> None:
+    file = f"{sha}/{deeper}{stem}.{suffix}"
+    text = locator.format(file=f"{keyword}{file}", a=a, b=b)
+    assert not names_a_commit(text)
+    assert LineCitation(file, text) in unpinned_line_citations({"note": text})
+    assert misspelled_commit_pins({"note": text}) == []
 
 
 @settings(max_examples=200, deadline=None)
@@ -1033,6 +1170,28 @@ def test_the_round_one_review_counterexamples_are_refused() -> None:
         "x.py ll. 12-19",
     ):
         assert line_citations(text) == [LineCitation("x.py", text)], text
+
+
+def test_the_round_two_review_counterexamples_are_refused() -> None:
+    tool = "tools/build_us_puf_support_base.py"
+    for document in ({"note": f'{tool}:"12-19"'}, {f'{tool}:"12-19"': "cited"}):
+        assert [
+            citation.file for citation in in_repository_line_citations(document)
+        ] == [tool]
+    cps = (
+        "https://raw.githubusercontent.com/PolicyEngine/upstream-data/main/"
+        "upstream_data/datasets/cps/cps.py"
+    )
+    for text in (f"commit a1b2c3d; {cps}#L12", "commit a1b2c3d; x.py:12 on `main`"):
+        assert [citing_commit(found) for found in line_citations(text)] == [None]
+        assert len(unpinned_line_citations({"note": text})) == 1, text
+    text = "look at a1b2c3d/foo.py:12"
+    assert unpinned_line_citations({"note": text}) == [
+        LineCitation("a1b2c3d/foo.py", text)
+    ]
+    # A URL pin is still followed by its path.
+    pinned = "https://github.com/o/upstream-data/blob/a1b2c3d/foo.py#L12"
+    assert [citing_commit(found) for found in line_citations(pinned)] == ["a1b2c3d"]
 
 
 @settings(max_examples=200, deadline=None)

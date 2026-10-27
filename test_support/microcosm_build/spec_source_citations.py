@@ -12,8 +12,8 @@ is pinned at a commit, in one of two ways:
   ``/blame/``, ``/commit/`` or ``/commits/`` URL segment, or a
   ``raw.githubusercontent.com/<owner>/<repo>/<sha>/`` URL, where ``<sha>`` is
   7-40 lowercase hex digits with at least one digit and one letter, so a
-  decimal amount ("at 2500000"), a word ("at defaced") or a truncated hash
-  ("at e2de2b41…") pins nothing;
+  decimal amount ("at 2500000"), a word ("at defaced"), a truncated hash
+  ("at e2de2b41…") or a hex directory ("at a1b2c3d/foo.py") pins nothing;
 - the resource holds a mapping, at any depth, whose ``path`` ends with the
   cited path and whose ``commit`` is a sha of the same form (``source``-style
   pins): a pin of ``upstream_data/datasets/cps/cps.py`` covers
@@ -22,7 +22,8 @@ is pinned at a commit, in one of two ways:
 Each citation binds to one inline commit (``citing_commit``): the nearest one
 in the citation's own clause, else the nearest one before it in the string,
 unless the citation's clause names a moving ref (``on main``, ``@HEAD``,
-``/blob/master/``). A clause ends at a ``;`` or a sentence end. So
+``on `main` ``, ``/blob/master/``, ``raw.githubusercontent.com/<o>/<r>/main/``).
+A clause ends at a ``;`` or a sentence end. So
 "obr.py:302 on main; compare us-data at 42ed5d4" and "us-data at 42ed5d4;
 obr.py:302 on main" pin nothing, and in "x.py:12 at <a>; y.py:30 at <b>" each
 file binds its own commit. A commit-like token in no recognised
@@ -100,15 +101,15 @@ _LABEL = r"(?i:lines?\b\s+|ll?\.\s*)"
 #: - reverse: ``lines 12-19 of x.py``, ``line 12 in x.py``, ``L12 of x.py``.
 #:
 #: The numbers are any ``_NUMBERS``; the file name and the locator may be
-#: quoted or backticked (```x.py` lines 12-19``).
+#: quoted or backticked (```x.py` lines 12-19``, ``x.py:"12-19"``).
 _LINE_CITATIONS = (
     re.compile(
         _SOURCE
         + _QUOTE
-        + r"(?::(?=L?\d)"
+        + rf"(?::(?={_QUOTE}L?\d)"
         + rf"|\s*[:：]\s*{_QUOTE}{_LABEL}"
         + rf"|\s*@\s*{_QUOTE}(?:{_LABEL}|(?=L\d))"
-        + r"|#(?=L\d)"
+        + rf"|#(?={_QUOTE}L\d)"
         + r"|\s*(?:[,;—–]|\s-(?=\s))?\s*[\[(]?\s*(?:(?i:at|on)\s+)?"
         + rf"{_QUOTE}(?:{_LABEL}|(?=L\d)))"
         + _QUOTE
@@ -136,24 +137,32 @@ _SHA = r"(?=[0-9a-f]*[0-9])(?=[0-9a-f]*[a-f])[0-9a-f]{7,40}"
 _COMMIT_PIN = re.compile(_SHA)
 #: A commit named inline. The sha must not run on into a file name
 #: (``at a1b2c3d.py:12`` names a file), a longer token (``a1b2c3d-x``) or an
-#: ellipsis (``e2de2b41…`` and ``e2de2b41...`` are truncated hashes).
+#: ellipsis (``e2de2b41…`` and ``e2de2b41...`` are truncated hashes). After a
+#: prose spelling (``commit``, ``at``, ``@``) it must not run on into a path
+#: either: in ``at a1b2c3d/foo.py:12`` the hex is a directory. A URL segment
+#: is always followed by one.
 INLINE_COMMIT = re.compile(
-    r"(?:(?i:\bcommit\s+|\bat\s+)|@|/(?:blob|tree|raw|blame|commits?)/"
+    r"(?:(?P<prose>(?i:\bcommit\s+|\bat\s+)|@)|/(?:blob|tree|raw|blame|commits?)/"
     r"|githubusercontent\.com/[^/\s]+/[^/\s]+/)"
     + r"(?P<sha>"
     + _SHA
-    + r")(?![0-9A-Za-z_…-]|\.[0-9A-Za-z_.])"
+    + r")(?![0-9A-Za-z_…-]|\.[0-9A-Za-z_.])(?(prose)(?!/))"
 )
 #: A commit-like token in any spelling: not part of a path, a URL, an
 #: identifier, a longer token or a truncated hash.
 _COMMIT_LIKE = re.compile(
     r"(?<![0-9A-Za-z_/@.…-])" + _SHA + r"(?![0-9A-Za-z_/…-]|\.[0-9A-Za-z_.])"
 )
-#: A moving ref named in prose: ``on main``, ``at HEAD``, ``@master`` or a
-#: ``/blob/main/`` URL segment.
+#: A branch a moving ref names.
+_BRANCH = r"(?:refs/heads/)?(?:main|master|HEAD)"
+#: A moving ref named in prose, the branch quoted or not (``on main``,
+#: ``at `HEAD` ``, ``@master``), or a URL at one: a ``/blob/main/`` segment or
+#: ``raw.githubusercontent.com/<owner>/<repo>/main/``, either also under
+#: ``refs/heads/``.
 _MOVING_REF = re.compile(
-    r"\b(?i:on|at)\s+(?:main|master|HEAD)\b|@(?:main|master|HEAD)\b"
-    r"|/(?:blob|tree|raw|blame)/(?:main|master|HEAD)/"
+    rf"\b(?i:on|at)\s+{_QUOTE}{_BRANCH}\b|@{_QUOTE}{_BRANCH}\b"
+    rf"|/(?:blob|tree|raw|blame)/{_BRANCH}/"
+    rf"|githubusercontent\.com/[^/\s]+/[^/\s]+/{_BRANCH}/"
 )
 #: A clause break: a semicolon, or the space after a sentence end before a
 #: capital, a bracket or a backtick.
