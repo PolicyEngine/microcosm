@@ -1,17 +1,17 @@
 {
  "feeds": {
   "old": {
-   "name": "consumer_facts_us_51aa40f.jsonl",
-   "sha256": "965a29ac9458edb58a05184917ee4a19772fd3dc7b4588db6eb6da5803641aac"
+   "name": "consumer_facts_us_cf9ece2.jsonl",
+   "sha256": "054e5684005a7b143dcb84eabac634135ce9b2b33bb57b540602e474a4ba7c57"
   },
   "new": {
-   "name": "consumer_facts_us_9b91e8b.jsonl",
-   "sha256": "e477e04aa7c73209df2bcbf484f029a2357da8c2339217d1d0518f7a8a47bcbf"
+   "name": "consumer_facts_us_a9026cc.jsonl",
+   "sha256": "4d89e4a498ffd73a407821d9ce2c45837072901e0a29acf3206160d1fafd7c14"
   }
  },
  "rows": {
-  "old_rows": 40178,
-  "new_rows": 40178,
+  "old_rows": 40181,
+  "new_rows": 40181,
   "keys_only_in_old": [],
   "keys_only_in_new": [],
   "changed_rows": 816,
