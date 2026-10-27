@@ -1268,6 +1268,8 @@ def test_in_repository_paths_resolve_from_an_anchor_or_a_repository_prefix() -> 
     for file in (
         *_IN_REPOSITORY_FILES,
         "github.com/PolicyEngine/microcosm/blob/x/pyproject.toml",
+        "tools/x/../build_us_puf_support_base.py",
+        "a/../b/../tools/build_us_puf_support_base.py",
     ):
         assert resolves_in_repository(file), file
     for file in (
@@ -1279,6 +1281,8 @@ def test_in_repository_paths_resolve_from_an_anchor_or_a_repository_prefix() -> 
         "targets/sources/obr.py",
         "build_j_recert/buildj_base.sh",
         "../tools/build_us_puf_support_base.py",
+        "tools/../../tools/build_us_puf_support_base.py",
+        "tools/build_us_puf_support_base.py/..",
         "/tools/build_us_puf_support_base.py",
         "https://github.com/PolicyEngine/upstream-data/blob/main/tools/"
         "build_us_puf_support_base.py",
@@ -1775,13 +1779,87 @@ def test_the_round_eight_review_counterexamples_are_refused() -> None:
         } == {cited}, written
 
 
+def test_the_round_nine_review_counterexamples_are_refused() -> None:
+    blob = "https://github.com/PolicyEngine/microcosm/blob/"
+    blob += "29983852e5182266c9a4e565731920ea972fe695/"
+    cited = blob + "tools/ci_test_plan.py"
+    # parse5 7.3 decodes each attribute, markdown-it-py 4.2 renders each
+    # Markdown link, and bun 1.3's ``URL`` then reads each as a link to line
+    # 12 of the file.
+    for written in (
+        # HTML decodes the reference and leaves the backslash, which the URL
+        # Standard reads as ``/``. Markdown's one pass took ``\&`` as an
+        # escaped ``&``, so no reading decoded the reference.
+        f'<a href="{blob}tools\\&#99;i_test_plan.py#L12">a</a>',
+        f"<a href='{blob}tools\\&#x63;i_test_plan.py#L12'>a</a>",
+        f"<a href={blob}tools\\&#99i_test_plan.py#L12>a</a>",
+        f'<a href="{blob}tools\\&#0099;i_test_plan.py#L12">a</a>',
+        f'<a href="{blob[:-1]}\\&#116;ools/ci_test_plan.py#L12">a</a>',
+        f'<a href="{blob}tools\\&Tab;ci_test_plan.py#L12">a</a>',
+        # Whitespace in a segment that a later ``..`` removes. An attribute's
+        # quoted value and a destination in angle brackets hold any; a plain
+        # destination and an unquoted value hold a Unicode space, or one a
+        # reference decodes to. Each URL was read only up to it.
+        f'<a href="{blob}tools/ x/../ci_test_plan.py#L12">a</a>',
+        f"<a href='{blob}tools/x\x0c/../ci_test_plan.py#L12'>a</a>",
+        f'<a href=" {blob}tools/a b/../ci_test_plan.py#L12 ">a</a>',
+        f'<a href="{blob}tools/&quot; x/../ci_test_plan.py#L12">a</a>',
+        f"[a](<{blob}tools/ x/../ci_test_plan.py#L12>)",
+        f"[a]: <{blob}tools/ x/../ci_test_plan.py#L12>\n\n[a]",
+        f"[a]({blob}tools/\u00a0x/../ci_test_plan.py#L12)",
+        f"[a]({blob}tools/&#32;x/../ci_test_plan.py#L12)",
+        f"[a]({blob}tools/&nbsp;x/../ci\\_test\\_plan.py#L12)",
+        f"[https://example.org/?x]({blob}tools/&quot;/../ci_test_plan.py#L12)",
+        f"<a href={blob}tools/x&#32;/../ci_test_plan.py#L12>a</a>",
+        f"<a href={blob}tools/x\u00a0/../ci_test_plan.py#L12>a</a>",
+        f"<{blob}tools/x\u00a0/../ci_test_plan.py#L12>",
+        # An attribute's value is read after whitespace around its ``=``, and
+        # with the tabs and line breaks in it deleted before it is stripped.
+        f'<a href = " {blob}tools/a b/../ci_test_plan.py#L12 ">a</a>',
+        f'<a href=\n"{blob}tools/ x/../ci_test_plan.py#L12">a</a>',
+        f'<a href="ht\ttps://{blob[8:]}tools/a b/../ci_test_plan.py#L12">a</a>',
+        f'<a href="\thttps://{blob[8:]}tools/a b/../ci_test_plan.py#L12">a</a>',
+        # HTML reads ``&#1;`` as U+0001. Python's ``html.unescape`` dropped it,
+        # so ``.&#1;.`` became a ``..`` that removed ``tools``.
+        f'<a href="{blob}tools/.&#1;./../ci_test_plan.py#L12">a</a>',
+        # In an attribute, a legacy name before a letter is left as written.
+        f'<a href="{blob}tools/&notx/../&#99;i_test_plan.py#L12">a</a>',
+    ):
+        assert {
+            citation.file
+            for citation in in_repository_line_citations({"note": written})
+        } == {cited}, written
+    # A relative path's inner ``..`` is resolved too.
+    pinned = (
+        "tools/x/../ci_test_plan.py#L12 at 29983852e5182266c9a4e565731920ea972fe695"
+    )
+    assert [
+        citation.file for citation in in_repository_line_citations({"note": pinned})
+    ] == ["tools/x/../ci_test_plan.py"]
+    # Reading through a Unicode space or an attribute's value refuses
+    # nothing written plainly: a pinned citation with a no-break space, a
+    # title holding a URL and a space, and prose after a URL.
+    sha = "29983852e5182266c9a4e565731920ea972fe695"
+    for written in (
+        f"https://github.com/o/r/blob/{sha}/x.py\u00a0line 12",
+        f'<a title="https://example.org/a b" href="https://github.com/o/r/blob/{sha}/x.py#L12">',
+        f"see https://example.org/a\u00a0b and x.py line 12 at {sha}",
+    ):
+        document = {"note": written}
+        assert in_repository_line_citations(document) == [], written
+        assert unpinned_line_citations(document) == [], written
+        assert misspelled_commit_pins(document) == [], written
+        assert unrecognised_line_locators(document) == [], written
+
+
 def test_a_string_is_read_again_with_its_markup_escapes_decoded() -> None:
     def readings(text: str) -> list[str]:
         return list(citations._readable_strings(text))
 
     # Decoded in one pass, as CommonMark decodes: an escaped ``&`` starts no
-    # reference, and a decoded one starts no second.
-    assert readings("x\\&amp;y") == ["x\\&amp;y", "x&amp;y"]
+    # reference, and a decoded one starts no second. HTML leaves the
+    # backslash as written and decodes the reference after it.
+    assert readings("x\\&amp;y") == ["x\\&amp;y", "x&amp;y", "x\\&y"]
     assert readings("x&amp;#35;y") == ["x&amp;#35;y", "x&#35;y"]
     # A backslash before anything but ASCII punctuation stays.
     assert readings("x\\a\\é\\1") == ["x\\a\\é\\1"]
@@ -1794,8 +1872,32 @@ def test_a_string_is_read_again_with_its_markup_escapes_decoded() -> None:
         "&#" + "0" * 5_000 + "35;L1",
         "#L1",
     ]
-    for written in ("&#" + "9" * 5_000 + ";", "&#x" + "f" * 5_000 + ";", "&#x110000;"):
+    # So is one to 0 or to a surrogate.
+    for written in (
+        "&#" + "9" * 5_000 + ";",
+        "&#x" + "f" * 5_000 + ";",
+        "&#x110000;",
+        "&#0;",
+        "&#xD800;",
+    ):
         assert readings(written) == [written, "\ufffd"], written[:12]
+    # HTML reads a reference to a control as the control (Python's
+    # ``html.unescape`` drops it) and one to a C1 control as windows-1252
+    # does. A legacy name before a letter or ``=`` is decoded in text; in a
+    # URL, as in an attribute, it is left as written.
+    assert readings("&#1;&#128;&notit;&amp=x") == [
+        "&#1;&#128;&notit;&amp=x",
+        "\x01\u20ac\u00acit;&=x",
+        "\x01\u20ac&notit;&amp=x",
+    ]
+    # In a URL, whitespace a reference decodes to is held as a browser holds
+    # it: percent-encoded, or deleted where it is a tab or a line break.
+    assert readings("x&#32;y&nbsp;z&#9;") == [
+        "x&#32;y&nbsp;z&#9;",
+        "x y\xa0z\t",
+        "x y\xa0z",
+        "x%20y%C2%A0z",
+    ]
     # The escapes are decoded before a URL is read: ``%`` decoded from
     # ``&#37;`` starts an escape the URL's path decodes.
     url = "https://github.com/o/r/blob/a1b2c3d/x&#37;2Epy#L1"
@@ -1804,6 +1906,23 @@ def test_a_string_is_read_again_with_its_markup_escapes_decoded() -> None:
     # of its own.
     assert readings("a\tb\nc\r\nd") == ["a\tb\nc\r\nd", "abcd"]
     assert readings("x&#10;y") == ["x&#10;y", "x\ny", "xy"]
+    # An attribute's quoted value and a destination in angle brackets are
+    # read as the URL a browser follows: stripped at its ends, with what it
+    # holds held. A value that is no URL is left as written.
+    assert readings('<a title="a b" href=" https://example.org/a b/../x.py#L1 ">') == [
+        '<a title="a b" href=" https://example.org/a b/../x.py#L1 ">',
+        '<a title="a b" href="https://example.org/x.py#L1">',
+    ]
+    assert readings("[a](<https://example.org/a b/../x\\.py#L1>)") == [
+        "[a](<https://example.org/a b/../x\\.py#L1>)",
+        "[a](<https://example.org/x.py#L1>)",
+        "[a](<https://example.org/a b/../x.py#L1>)",
+    ]
+    # Where a string holds a Unicode space, its URLs are read through it too.
+    assert readings("https://example.org/a\xa0b/../x.py#L1 c") == [
+        "https://example.org/a\xa0b/../x.py#L1 c",
+        "https://example.org/x.py#L1 c",
+    ]
     # A string with nothing to decode is read as before.
     for written, read in (
         ("x.py:12", "x.py:12"),
@@ -1823,17 +1942,20 @@ _NAMED_REFERENCES = {
             if value == char and name.endswith(";")
         )
     )
-    for char in string.printable
+    for char in (*string.printable, "\u00a0")
 }
-#: Markdown and HTML around a link destination, and whether a backslash
-#: escape is decoded there (Markdown) or not (HTML).
+#: Markdown and HTML around a link destination: whether a backslash escape is
+#: decoded there (Markdown) or not (HTML), and the whitespace a URL there can
+#: hold as written. An HTML attribute's URL may hold a tab or a line break,
+#: which the URL Standard deletes; a Markdown destination may not.
 _MARKUP = (
-    ("[a]({})", True),
-    ("[a](<{}>)", True),
-    ("[a][r]\n\n[r]: {}", True),
-    ("See [the plan]({} 'title').", True),
-    ('<a href="{}">a</a>', False),
-    ("<a href='{}'>a</a>", False),
+    ("[a]({})", True, "\u00a0"),
+    ("[a](<{}>)", True, " \u00a0"),
+    ("[a][r]\n\n[r]: {}", True, "\u00a0"),
+    ("See [the plan]({} 'title').", True, "\u00a0"),
+    ('<a href="{}">a</a>', False, " \u00a0\x0c\t\n\r"),
+    ("<a href='{}'>a</a>", False, " \u00a0\x0c\t\n\r"),
+    ("<a href={}>a</a>", False, "\u00a0"),
 )
 
 
@@ -1891,6 +2013,22 @@ _URL_BREAK_SPELLINGS = ("\n", "\t", "\r\n", "&#10;", "&#x9;", "&NewLine;")
     breaks=st.dictionaries(
         st.integers(0, 200), st.sampled_from(_URL_BREAK_SPELLINGS), max_size=3
     ),
+    detour=st.integers(-1, 5),
+    backslashes=st.sets(st.integers(0, 20), max_size=2),
+)
+@example(
+    url=_THIS_REPOSITORY_URLS[0],
+    sha="a1b2c3d",
+    path=_ROOTED_FILES[0],
+    fragment="#L{a}",
+    a=12,
+    b=12,
+    markup=_MARKUP[4],
+    chosen={0: 0},
+    zeros=0,
+    breaks={},
+    detour=0,
+    backslashes={7},
 )
 def test_a_line_link_of_this_repository_is_refused_however_markup_escapes_it(
     url: str,
@@ -1899,27 +2037,52 @@ def test_a_line_link_of_this_repository_is_refused_however_markup_escapes_it(
     fragment: str,
     a: int,
     b: int,
-    markup: tuple[str, bool],
+    markup: tuple[str, bool, str],
     chosen: dict[int, int],
     zeros: int,
     breaks: dict[int, str],
+    detour: int,
+    backslashes: set[int],
 ) -> None:
-    template, backslash = markup
+    template, backslash, holds = markup
     link = f"{url}{sha}/{path}{fragment.format(a=a, b=b)}"
     plain = {
         citation.file
         for citation in in_repository_line_citations({"note": template.format(link)})
     }
     assert plain
+    # The link may go through a segment holding whitespace that a ``..``
+    # then removes.
+    if detour >= 0:
+        link = f"{url}{sha}/{holds[detour % len(holds)]}x/../{path}"
+        link += fragment.format(a=a, b=b)
     chosen = {index % len(link): kind for index, kind in chosen.items()}
+    # In HTML a slash after the authority may be written as a backslash,
+    # which the URL Standard reads as a slash, with a reference after it.
+    slashes = [
+        index
+        for index, char in enumerate(link)
+        if char == "/" and index > link.find("//") + 1
+    ]
+    if not backslash:
+        for index in {slashes[choice % len(slashes)] for choice in backslashes}:
+            link = link[:index] + "\\" + link[index + 1 :]
+            chosen.setdefault(index + 1, 1)
     # A URL in an HTML attribute may break anywhere: the URL Standard deletes
-    # its tabs and line breaks. A Markdown destination cannot hold one.
-    breaks = {index % len(link): spelled for index, spelled in breaks.items()}
+    # its tabs and line breaks. A Markdown destination cannot hold one, and an
+    # unquoted value only one a reference decodes to.
+    breaks = {
+        index % len(link): spelled
+        for index, spelled in breaks.items()
+        if spelled.startswith("&") or set(spelled) <= set(holds)
+    }
     escaped = template.format(
         _escape_markup(link, chosen, backslash, zeros, None if backslash else breaks)
     )
     event(f"escapes: {min(len(chosen), 3)}")
     event(f"breaks: {0 if backslash else min(len(breaks), 2)}")
+    event(f"detour: {'none' if detour < 0 else repr(holds[detour % len(holds)])}")
+    event(f"backslashes: {0 if backslash else len(backslashes)}")
     assert plain <= {
         citation.file for citation in in_repository_line_citations({"note": escaped})
     }
@@ -1986,6 +2149,21 @@ def test_a_long_string_is_scanned_in_linear_time() -> None:
         "&#x" * 30_000,
         "\\" * 100_000,
         "&a" * 50_000,
+    ):
+        line_citations(text)
+        unrecognised_line_locators(text)
+        assert time.process_time() - started < 2, text[:24]
+    # Since round 10: runs of what an attribute's value, a destination in
+    # angle brackets, a long legacy-looking name and a URL read through
+    # Unicode spaces start with.
+    for text in (
+        '="https:' * 20_000,
+        "='" + "x" * 100_000,
+        "](<https:" * 20_000,
+        "](<https:" + "\\x" * 50_000,
+        ("&amp" + "x" * 28) * 3_000,
+        "https:" + "\u00a0" * 100_000,
+        "https://a\u00a0" * 20_000,
     ):
         line_citations(text)
         unrecognised_line_locators(text)

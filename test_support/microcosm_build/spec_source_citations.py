@@ -50,18 +50,34 @@ string is also read that way where it reads differently
 (``_readable_strings``): in ``[https://a/?x](https://github.com/...#L12)``
 the label's query does not hide the link. Markdown and HTML decode a
 backslash before punctuation and a character reference before a link is
-followed, so a string holding one is read both ways again with them decoded:
+followed, so a string holding one is read again with them decoded:
 ``[a](https://github.com/.../x\\.py&#35;L12)`` links to line 12 of
-``x.py``. The URL Standard deletes ASCII tabs and line breaks from a URL
-wherever they are, so a string holding one is read again without them: in
-an HTML attribute, ``.../x.p&#10;y#L12`` links to line 12 of ``x.py``. A
-citation any reading finds is checked.
+``x.py``. They are decoded as Markdown decodes them and, apart, as HTML does,
+which leaves the backslash as written (``\\&#99;`` is ``\\c``, so
+``href="https:\\&#47;github.com/..."`` names github.com); and each of those
+once as text and once in a URL, where whitespace a reference decodes to is
+percent-encoded, or deleted where it is a tab or a line break. A reference
+is decoded as the HTML standard decodes it: a numeric one may lack its
+``;``, one to 0, a surrogate or past U+10FFFF is U+FFFD, one to a C1
+control is read as windows-1252 reads it, and in a URL, as in an attribute,
+a legacy name without ``;`` before a letter, a digit or ``=`` stays as
+written. The URL Standard deletes ASCII tabs and line breaks from a URL
+wherever they are, so each reading is read again without them: in an HTML
+attribute, ``.../x.p&#10;y#L12`` links to line 12 of ``x.py``. A browser
+follows a quoted attribute value, and a Markdown destination in angle
+brackets, as one URL, its ends stripped and the spaces inside it
+percent-encoded, so a string holding one that starts a URL is read again
+with it read so: ``href=" https://github.com/.../a b/../x.py#L12 "`` links to
+line 12 of ``x.py``. The URL Standard ends no URL at a Unicode space such as
+U+00A0 (it percent-encodes one), so where a string holds one, its URLs are
+read through it too. A citation any reading finds is checked.
 
 A cited path is in-repository when, after any prefix naming this repository
 is removed (a ``github.com/PolicyEngine/microcosm/blob/<ref>/`` URL, at a ref
 of any depth such as ``refs/heads/main``, or ``microcosm/`` before a
-top-level source directory), it is a file here or one of the path forms
-``_repository_path_tails`` lists. A line citation of it is
+top-level source directory) and its inner ``..`` segments resolved
+(``tools/x/../y.py`` is ``tools/y.py``), it is a file here or one of the path
+forms ``_repository_path_tails`` lists. A line citation of it is
 refused even when pinned. A bare file name cannot be told apart from another
 repository's, so it must be pinned.
 
@@ -88,6 +104,7 @@ from bisect import bisect_left, bisect_right
 from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass, field
 from functools import cache, lru_cache
+from html.entities import html5
 from itertools import accumulate
 from pathlib import Path, PurePosixPath
 from urllib.parse import unquote_to_bytes
@@ -209,15 +226,56 @@ _URL = re.compile(_URL_START + r"\S*[^\s\"'`‘’“”<>.,;:!?)\]]")
 #: ``<https://a/?x><https://b/...>`` and a URL quoted straight after another
 #: are each read on their own.
 _DELIMITED_URL = re.compile(_URL_START + r"[^\s\"'`‘’“”<>()]*[^\s\"'`‘’“”<>()\].,;:!?]")
-#: What Markdown and HTML decode before a link is followed: a backslash
-#: before ASCII punctuation (``x\.py``, Markdown) and a character reference,
-#: decimal (``&#35;``), hexadecimal (``&#x23;``) or named (``&num;``), with
-#: or without its ``;`` (HTML decodes some without one).
-_MARKUP_ESCAPE = re.compile(
-    r"\\(?P<punctuation>[!-/:-@\[-`{-~])"
-    r"|&#(?:[xX](?P<hexadecimal>[0-9A-Fa-f]++)|(?P<decimal>[0-9]++));?"
-    r"|&[A-Za-z][A-Za-z0-9]{0,31};?"
+_URLS = (_URL, _DELIMITED_URL)
+#: ``_URLS`` as a Markdown destination, an HTML attribute and the URL Standard
+#: hold a URL: only ASCII whitespace (``[\t\n\f\r ]``) ends one, so a no-break
+#: space or another Unicode space inside it is part of it
+#: (``.../tools/\u00a0x/../x.py``). They are tried where a string holds one.
+_URLS_THROUGH_UNICODE_SPACES = (
+    re.compile(_URL_START + r"[^\t\n\f\r ]*[^\s\"'`‘’“”<>.,;:!?)\]]"),
+    re.compile(_URL_START + r"[^\t\n\f\r \"'`‘’“”<>()]*[^\s\"'`‘’“”<>()\].,;:!?]"),
 )
+#: Whitespace other than ASCII whitespace: what ``_URLS_THROUGH_UNICODE_SPACES``
+#: reads a URL through.
+_UNICODE_SPACE = re.compile(r"[^\S\t\n\f\r ]")
+#: A character reference: decimal (``&#35;``) or hexadecimal (``&#x23;``),
+#: with or without its ``;``, or named (``&num;``, or a legacy name such as
+#: ``&amp`` without one).
+_REFERENCE = (
+    r"&#(?:[xX](?P<hexadecimal>[0-9A-Fa-f]++)|(?P<decimal>[0-9]++));?"
+    r"|&(?P<name>[A-Za-z][A-Za-z0-9]{0,31};?)"
+)
+#: What Markdown decodes in text and in a link destination: a backslash
+#: before ASCII punctuation (``x\.py``) and a character reference.
+_MARKDOWN_ESCAPE = re.compile(r"\\(?P<punctuation>[!-/:-@\[-`{-~])|" + _REFERENCE)
+#: What HTML decodes in text and in an attribute: a character reference. A
+#: backslash is left as written, so in ``tools\&#99;i.py`` the reference is
+#: decoded and the URL Standard then reads the backslash as ``/``.
+_HTML_REFERENCE = re.compile(_REFERENCE)
+#: What a numeric reference to a C1 control reads as in HTML: the character
+#: windows-1252 puts there, where it puts one (``&#128;`` is ``€``).
+_C1_REPLACEMENTS = {
+    number: bytes([number]).decode("cp1252")
+    for number in range(0x80, 0xA0)
+    if number not in (0x81, 0x8D, 0x8F, 0x90, 0x9D)
+}
+#: What a URL can hold but a reading would end it at: whitespace, a quote, an
+#: angle bracket or a parenthesis. A browser deletes an ASCII tab or line
+#: break from a URL and percent-encodes the rest (``_hold``).
+_HELD_IN_A_URL = re.compile(r"[\s\"'`‘’“”<>()]")
+#: Where a URL can hold any whitespace: an HTML attribute's quoted value
+#: (``href="..."``, ``href='...'``), to its closing quote, and a Markdown
+#: destination in angle brackets (``[a](<...>)``, ``[a]: <...>``), to an
+#: unescaped ``>``.
+_ENCLOSED_URL = re.compile(
+    r"=[\t\n\f\r ]*+(?:\"(?P<double>[^\"]*+)\"|'(?P<single>[^']*+)')"
+    r"|\](?:\(|:[\t ]*+(?:\r\n?|\n)?[\t ]*+)<(?P<angle>(?:\\[^\n\r]|[^<>\n\r\\])*+)>"
+)
+#: A URL start at the start of a string.
+_STARTS_A_URL = re.compile(_URL_START)
+#: What the URL Standard strips from both ends of a URL: C0 controls and
+#: spaces.
+_C0_OR_SPACE = "".join(map(chr, range(0x21)))
 #: What the URL Standard deletes from a URL, wherever it is, before reading
 #: it: an ASCII tab or line break.
 _URL_BREAKS = re.compile(r"[\t\n\r]")
@@ -462,54 +520,160 @@ def _read_url(url: re.Match[str]) -> str:
     return f"{lead}{host}{path}{'#' + fragment if fragment else ''}"
 
 
-def _decode_escape(escape: re.Match[str]) -> str:
-    """One ``_MARKUP_ESCAPE``, decoded as Markdown or HTML decodes it.
+def _code_point(digits: str, base: int) -> str:
+    """The character a numeric reference names, as HTML reads it.
 
-    A numeric reference is decoded from its value with its leading zeros
-    dropped, so a long run of digits is never converted whole; one past
-    U+10FFFF is U+FFFD, as HTML reads it.
+    Leading zeros are dropped first, so a long run of digits is never
+    converted whole. Zero, a surrogate and a number past U+10FFFF are U+FFFD,
+    a C1 control is its ``_C1_REPLACEMENTS`` character where it has one, and
+    any other code point, a control included, is itself.
     """
 
-    if escape["punctuation"] is not None:
-        return escape["punctuation"]
-    hexadecimal, decimal = escape["hexadecimal"], escape["decimal"]
-    if hexadecimal is None and decimal is None:
-        return html.unescape(escape[0])
-    digits = (hexadecimal or decimal).lstrip("0") or "0"
-    if len(digits) > (6 if hexadecimal is not None else 7):
+    digits = digits.lstrip("0")
+    if len(digits) > (6 if base == 16 else 7):
         return "\ufffd"
-    return html.unescape(f"&#{'x' if hexadecimal is not None else ''}{digits};")
+    number = int(digits or "0", base)
+    if number == 0 or number > 0x10FFFF or 0xD800 <= number <= 0xDFFF:
+        return "\ufffd"
+    return _C1_REPLACEMENTS.get(number, chr(number))
+
+
+def _named_in_an_attribute(reference: re.Match[str]) -> str:
+    """A named reference as HTML decodes it in an attribute.
+
+    The longest name in HTML's table that the reference starts with is read,
+    as in text, but a legacy name read without its ``;`` and followed by a
+    letter, a digit or ``=`` is left as written (``&notit;``, ``&amp=``).
+    """
+
+    name = reference["name"]
+    for length in range(len(name), 1, -1):
+        if name[:length] in html5:
+            following = (
+                name[length : length + 1]
+                or reference.string[reference.end() : reference.end() + 1]
+            )
+            if name[length - 1] == ";" or not (
+                following == "=" or following.isascii() and following.isalnum()
+            ):
+                return html5[name[:length]] + name[length:]
+            break
+    return reference[0]
+
+
+def _decode_in_text(escape: re.Match[str]) -> str:
+    """A ``_MARKDOWN_ESCAPE`` or ``_HTML_REFERENCE`` as text reads it.
+
+    A named reference is read as ``html.unescape`` reads one in text, and a
+    numeric one as ``_code_point`` reads it.
+    """
+
+    kind = escape.lastgroup
+    if kind == "punctuation":
+        return escape[kind]
+    if kind == "name":
+        return html.unescape(escape[0])
+    return _code_point(escape[kind], 16 if kind == "hexadecimal" else 10)
+
+
+def _hold(character: re.Match[str]) -> str:
+    """A ``_HELD_IN_A_URL`` character as a browser holds it in a URL.
+
+    An ASCII tab or line break is deleted and anything else percent-encoded.
+    """
+
+    if character[0] in "\t\n\r":
+        return ""
+    return "".join(f"%{byte:02X}" for byte in character[0].encode())
+
+
+def _decode_in_a_url(escape: re.Match[str]) -> str:
+    """A ``_MARKDOWN_ESCAPE`` or ``_HTML_REFERENCE`` inside a URL.
+
+    A named reference is read as ``_named_in_an_attribute`` reads it, and what
+    the escape stands for is held as a browser holds it (``_hold``): in
+    ``href=https://.../x&#32;/../y.py`` the space neither ends the URL nor
+    stops ``..`` from removing its segment.
+    """
+
+    if escape.lastgroup == "name":
+        decoded = _named_in_an_attribute(escape)
+    else:
+        decoded = _decode_in_text(escape)
+    return _HELD_IN_A_URL.sub(_hold, decoded)
+
+
+def _read_enclosed(enclosed: re.Match[str]) -> str:
+    """An ``_ENCLOSED_URL`` with its URL as a browser takes it.
+
+    An attribute's value has its references decoded (``_decode_in_a_url``),
+    the C0 controls and spaces at its ends stripped and its tabs and line
+    breaks deleted, as HTML and then the URL Standard read it. A
+    destination's backslash escapes and references are decoded, as Markdown
+    decodes them. What the URL then still holds that a reading would end it
+    at is held (``_hold``). A value that does not then start a URL is left as
+    written.
+    """
+
+    kind = enclosed.lastgroup
+    if kind == "angle":
+        url = _MARKDOWN_ESCAPE.sub(_decode_in_a_url, enclosed[kind])
+    else:
+        url = _HTML_REFERENCE.sub(_decode_in_a_url, enclosed[kind])
+        url = _URL_BREAKS.sub("", url.strip(_C0_OR_SPACE))
+    if not _STARTS_A_URL.match(url):
+        return enclosed[0]
+    start, end = (index - enclosed.start() for index in enclosed.span(kind))
+    return enclosed[0][:start] + _HELD_IN_A_URL.sub(_hold, url) + enclosed[0][end:]
 
 
 def _readable_strings(value: object) -> Iterator[str]:
     """``nested_strings``, with the URLs in them read as ``_read_url`` reads them.
 
-    Each string is read with each URL running to whitespace (``_URL``), as a
-    browser reads it. Where it reads differently with each URL also ending at
-    a quote, a parenthesis or an angle bracket (``_DELIMITED_URL``), as Markdown
-    and prose delimit one, it is read that way too, so a link's destination
-    is not lost in the query of a URL before it. Where it holds a
-    ``_MARKUP_ESCAPE``, it is read both ways again with each escape decoded,
-    as Markdown and HTML decode a link's destination before it is followed,
-    so ``[a](https://github.com/.../x\\.py&#35;L12)`` is read as linking to
-    line 12 of ``x.py``. Where it holds a ``_URL_BREAKS``, as written or
-    decoded, it is read again without them, as the URL Standard reads a URL
-    in an HTML attribute (``href=".../x.p&#10;y#L12"``). Each reading that
-    differs from the others is yielded once.
+    Each string is read from several sources, each the string as one kind of
+    reader takes it before following a link:
+
+    - as written;
+    - with each HTML attribute's quoted value and each Markdown destination
+      in angle brackets read as a browser takes its URL (``_read_enclosed``),
+      so a space inside one (``href=".../tools/ x/../y.py#L12"``) neither ends
+      it nor stops ``..`` from removing its segment;
+    - where it holds a backslash or a ``&``, decoded as Markdown decodes it
+      (``_MARKDOWN_ESCAPE``) and as HTML decodes it (``_HTML_REFERENCE``),
+      each as text reads it (``_decode_in_text``) and as a URL holds it
+      (``_decode_in_a_url``): ``[a](https://github.com/.../x\\.py&#35;L12)``
+      links to line 12 of ``x.py``, and so does
+      ``<a href="https://github.com/...\\&#120;.py#L12">``, where HTML decodes
+      the reference and leaves the backslash.
+
+    Each source is read again with its ``_URL_BREAKS`` deleted, as the URL
+    Standard reads a URL (``href=".../x.p&#10;y#L12"``). Each is read with each
+    URL running to whitespace (``_URL``), as a browser reads it, and with each
+    URL also ending at a quote, a parenthesis or an angle bracket
+    (``_DELIMITED_URL``), as Markdown and prose delimit one, so a link's
+    destination is not lost in the query of a URL before it. Where a source
+    holds a Unicode space, its URLs are also read through Unicode spaces
+    (``_URLS_THROUGH_UNICODE_SPACES``). Each reading that differs from the
+    others is yielded once.
     """
 
     for text in nested_strings(value):
-        decoded = _MARKUP_ESCAPE.sub(_decode_escape, text)
-        sources = (
-            text,
-            decoded,
-            _URL_BREAKS.sub("", text),
-            _URL_BREAKS.sub("", decoded),
-        )
+        sources = [text, _ENCLOSED_URL.sub(_read_enclosed, text)]
+        if "&" in text or "\\" in text:
+            sources += (
+                escapes.sub(decode, text)
+                for escapes in (_MARKDOWN_ESCAPE, _HTML_REFERENCE)
+                for decode in (_decode_in_text, _decode_in_a_url)
+            )
         yield from dict.fromkeys(
-            pattern.sub(_read_url, source)
+            pattern.sub(_read_url, joined)
             for source in dict.fromkeys(sources)
-            for pattern in (_URL, _DELIMITED_URL)
+            for joined in dict.fromkeys((source, _URL_BREAKS.sub("", source)))
+            for pattern in (
+                _URLS + _URLS_THROUGH_UNICODE_SPACES
+                if _UNICODE_SPACE.search(joined)
+                else _URLS
+            )
         )
 
 
@@ -820,17 +984,32 @@ def _repository_depth(root: Path) -> int:
 def resolves_in_repository(file: str, root: Path = REPOSITORY_ROOT) -> bool:
     """Whether a cited path names a file in this checkout.
 
-    A prefix naming this repository is removed first; what is left resolves
-    when it is a file here (after such a prefix) or one of the path forms
-    ``_repository_path_tails`` lists: ``tools/x.py``,
-    ``microcosm/tools/x.py``, ``packages/microcosm-build/src/...``,
-    ``microcosm/graph/executor.py`` and ``us_runtime/asec_pool.py`` all do.
+    A prefix naming this repository is removed first, and each ``..`` with a
+    segment before it removes that segment (``tools/x/../y.py`` is
+    ``tools/y.py``); a path that climbs above where it starts (``../y.py``)
+    names nothing here. What is left resolves when it is a file here (after
+    such a prefix) or one of the path forms ``_repository_path_tails`` lists:
+    ``tools/x.py``, ``microcosm/tools/x.py``,
+    ``packages/microcosm-build/src/...``, ``microcosm/graph/executor.py`` and
+    ``us_runtime/asec_pool.py`` all do.
     """
 
     named = _THIS_REPOSITORY.match(file)
     relative = PurePosixPath(file[named.end() :] if named else file)
-    if relative.is_absolute() or ".." in relative.parts:
+    if relative.is_absolute():
         return False
+    parts: list[str] = []
+    for part in relative.parts:
+        if part != "..":
+            parts.append(part)
+        elif parts:
+            parts.pop()
+        else:
+            # It climbs out of a directory it does not name.
+            return False
+    if not parts:
+        return False
+    relative = PurePosixPath(*parts)
     candidates: Iterable[PurePosixPath] = [relative]
     if named is not None and named["url"]:
         # A URL's ref comes first and may span segments (``main``,
