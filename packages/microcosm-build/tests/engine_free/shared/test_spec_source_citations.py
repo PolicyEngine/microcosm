@@ -1819,6 +1819,14 @@ def test_the_round_nine_review_counterexamples_are_refused() -> None:
         f'<a href=\n"{blob}tools/ x/../ci_test_plan.py#L12">a</a>',
         f'<a href="ht\ttps://{blob[8:]}tools/a b/../ci_test_plan.py#L12">a</a>',
         f'<a href="\thttps://{blob[8:]}tools/a b/../ci_test_plan.py#L12">a</a>',
+        # HTML decodes a reference before the URL Standard strips the value's
+        # ends, and markdown-it strips whitespace from a destination's ends
+        # before following it.
+        f'<a href="&#32;{blob}tools/a b/../ci_test_plan.py#L12">a</a>',
+        f'<a href="&#12;{blob}tools/a b/../ci_test_plan.py#L12&#32;">a</a>',
+        f"[a](< {blob}tools/x /../ci_test_plan.py#L12 >)",
+        f"[a](<\u3000{blob}tools/x /../ci_test_plan.py#L12\u00a0>)",
+        f"[a](<&#32;{blob}tools/x /../ci_test_plan.py#L12>)",
         # HTML reads ``&#1;`` as U+0001. Python's ``html.unescape`` dropped it,
         # so ``.&#1;.`` became a ``..`` that removed ``tools``.
         f'<a href="{blob}tools/.&#1;./../ci_test_plan.py#L12">a</a>',
@@ -2153,9 +2161,10 @@ def test_a_long_string_is_scanned_in_linear_time() -> None:
         line_citations(text)
         unrecognised_line_locators(text)
         assert time.process_time() - started < 2, text[:24]
-    # Since round 10: runs of what an attribute's value, a destination in
-    # angle brackets, a long legacy-looking name and a URL read through
-    # Unicode spaces start with.
+    # Since round 10, in 2 s of their own: runs of what an attribute's value,
+    # a destination in angle brackets, a long legacy-looking name and a URL
+    # read through Unicode spaces start with.
+    started = time.process_time()
     for text in (
         '="https:' * 20_000,
         "='" + "x" * 100_000,

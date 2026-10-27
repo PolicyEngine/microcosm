@@ -65,10 +65,11 @@ written. The URL Standard deletes ASCII tabs and line breaks from a URL
 wherever they are, so each reading is read again without them: in an HTML
 attribute, ``.../x.p&#10;y#L12`` links to line 12 of ``x.py``. A browser
 follows a quoted attribute value, and a Markdown destination in angle
-brackets, as one URL, its ends stripped and the spaces inside it
-percent-encoded, so a string holding one that starts a URL is read again
-with it read so: ``href=" https://github.com/.../a b/../x.py#L12 "`` links to
-line 12 of ``x.py``. The URL Standard ends no URL at a Unicode space such as
+brackets, as one URL: its escapes decoded, then its ends stripped (as the
+URL Standard strips a URL, and markdown-it a destination) and the spaces
+inside it percent-encoded. So a string holding one that starts a URL is read
+again with it read so: ``href="&#32;https://github.com/.../a b/../x.py#L12"``
+links to line 12 of ``x.py``. The URL Standard ends no URL at a Unicode space such as
 U+00A0 (it percent-encodes one), so where a string holds one, its URLs are
 read through it too. A citation any reading finds is checked.
 
@@ -587,39 +588,50 @@ def _hold(character: re.Match[str]) -> str:
     return "".join(f"%{byte:02X}" for byte in character[0].encode())
 
 
+def _decode_in_an_attribute(escape: re.Match[str]) -> str:
+    """A ``_MARKDOWN_ESCAPE`` or ``_HTML_REFERENCE`` as an attribute decodes it.
+
+    A named reference is read as ``_named_in_an_attribute`` reads it, and any
+    other escape as ``_decode_in_text`` reads it.
+    """
+
+    if escape.lastgroup == "name":
+        return _named_in_an_attribute(escape)
+    return _decode_in_text(escape)
+
+
 def _decode_in_a_url(escape: re.Match[str]) -> str:
     """A ``_MARKDOWN_ESCAPE`` or ``_HTML_REFERENCE`` inside a URL.
 
-    A named reference is read as ``_named_in_an_attribute`` reads it, and what
-    the escape stands for is held as a browser holds it (``_hold``): in
+    It is decoded as ``_decode_in_an_attribute`` decodes it, and what it
+    stands for is held as a browser holds it (``_hold``): in
     ``href=https://.../x&#32;/../y.py`` the space neither ends the URL nor
     stops ``..`` from removing its segment.
     """
 
-    if escape.lastgroup == "name":
-        decoded = _named_in_an_attribute(escape)
-    else:
-        decoded = _decode_in_text(escape)
-    return _HELD_IN_A_URL.sub(_hold, decoded)
+    return _HELD_IN_A_URL.sub(_hold, _decode_in_an_attribute(escape))
 
 
 def _read_enclosed(enclosed: re.Match[str]) -> str:
     """An ``_ENCLOSED_URL`` with its URL as a browser takes it.
 
-    An attribute's value has its references decoded (``_decode_in_a_url``),
-    the C0 controls and spaces at its ends stripped and its tabs and line
-    breaks deleted, as HTML and then the URL Standard read it. A
-    destination's backslash escapes and references are decoded, as Markdown
-    decodes them. What the URL then still holds that a reading would end it
-    at is held (``_hold``). A value that does not then start a URL is left as
-    written.
+    An attribute's value has its references decoded
+    (``_decode_in_an_attribute``), then the C0 controls and spaces at its ends
+    stripped and its tabs and line breaks deleted, as HTML and then the URL
+    Standard read it: ``href="&#32;https://..."`` is a URL. A destination's
+    backslash escapes and references are decoded, as Markdown decodes them,
+    and then the whitespace at its ends stripped, as markdown-it strips it
+    (Python's ``str.strip``, in mdurl) before following a link:
+    ``[a](< https://... >)`` is one. What the URL then still holds that a
+    reading would end it at is held (``_hold``). A value that does not then
+    start a URL is left as written.
     """
 
     kind = enclosed.lastgroup
     if kind == "angle":
-        url = _MARKDOWN_ESCAPE.sub(_decode_in_a_url, enclosed[kind])
+        url = _MARKDOWN_ESCAPE.sub(_decode_in_an_attribute, enclosed[kind]).strip()
     else:
-        url = _HTML_REFERENCE.sub(_decode_in_a_url, enclosed[kind])
+        url = _HTML_REFERENCE.sub(_decode_in_an_attribute, enclosed[kind])
         url = _URL_BREAKS.sub("", url.strip(_C0_OR_SPACE))
     if not _STARTS_A_URL.match(url):
         return enclosed[0]
