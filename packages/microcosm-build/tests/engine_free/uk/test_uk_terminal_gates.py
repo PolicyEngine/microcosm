@@ -876,6 +876,8 @@ def test_committed_degenerate_register_is_the_policy_of_record() -> None:
     register = uk_default_degenerate_reviewed_exclusions()
     assert set(register) == {
         "household.atomic_area_basis",
+        "household.beer_draught_share",
+        "household.cider_draught_share",
         "household.source_year",
         "person.tax_free_childcare_spend_routed_share",
     }
@@ -897,6 +899,16 @@ def test_committed_degenerate_register_is_the_policy_of_record() -> None:
     assert routed_share.approved_on == "2026-09-05"
     assert routed_share.expires_on == "2027-03-05"
     assert routed_share.reason.strip()
+    # The excise step writes HMRC's published draught-relief share to every
+    # household (microcosm#1359), on both lines.
+    for column in ("household.beer_draught_share", "household.cider_draught_share"):
+        draught = register[column]
+        assert draught.adjudication == "microcosm#1359"
+        assert draught.approved_by == "juaristi22"
+        assert draught.approved_on == "2026-10-27"
+        assert draught.expires_on == "2027-04-27"
+        assert not draught.release_lines
+        assert draught.reason.strip()
 
 
 def test_policy_of_record_is_immutable_and_loaded_once() -> None:

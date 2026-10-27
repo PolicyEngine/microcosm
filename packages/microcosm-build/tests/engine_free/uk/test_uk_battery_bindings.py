@@ -66,8 +66,8 @@ KEY = base64.b64encode(b"\x07" * 32).decode("ascii")
 # Midlands target-fit deferral is retired with microcosm#1106), and the
 # microcosm#1106 property_wealth input-mass entry on 2026-10-11. The earliest
 # expiry is 2026-10-15.
-# On or after the newest committed receipt's approval (2026-10-14).
-CLOCK = date(2026, 10, 14)
+# On or after the newest committed receipt's approval (2026-10-27).
+CLOCK = date(2026, 10, 27)
 
 VALIDATE_REFERENCE = (
     "microcosm.build.uk_runtime.weighted_integrity."
