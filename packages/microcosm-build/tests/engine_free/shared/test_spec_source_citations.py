@@ -443,12 +443,21 @@ def _plant(text: str, depth: int, as_key: bool) -> object:
     return planted
 
 
-def _escape(text: str, chosen: set[int], upper: bool, keep: str) -> str:
-    """``text`` with its characters at ``chosen`` written as ``%`` escapes."""
+def _escape(text: str, chosen: set[int], upper: bool, keep: str = "") -> str:
+    """``text`` with its characters at ``chosen`` written as ``%`` escapes.
 
+    A character in ``keep``, or in an escape already there, stays as written:
+    escaping the ``2`` of ``%2E`` would name another path (``%%32E``).
+    """
+
+    escaped = {
+        index
+        for escape in re.finditer(r"%[0-9A-Fa-f]{2}", text)
+        for index in range(escape.start(), escape.end())
+    }
     return "".join(
         (f"%{ord(char):02X}" if upper else f"%{ord(char):02x}")
-        if index in chosen and char not in keep
+        if index in chosen and index not in escaped and char not in keep
         else char
         for index, char in enumerate(text)
     )
@@ -1330,12 +1339,11 @@ def test_a_url_of_this_repository_is_refused_however_github_lets_it_be_written(
     written = (
         case(scheme)
         + (authority.format(host=case(host)) if scheme else case(host))
-        + _escape(route, chosen, upper, keep="/%")
+        + _escape(route, chosen, upper, keep="/")
         + _escape(
             f"{ref}/{detour}{path}",
             {index - len(route) for index in chosen},
             upper,
-            keep="%",
         )
     )
     text = f"{written}{query}{fragment.format(a=a, b=b)} {pin.format(sha=sha)}"
