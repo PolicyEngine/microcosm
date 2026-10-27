@@ -29,6 +29,10 @@ hide a broken check:
 - every dotted ``microcosm.*`` name in a resource resolves through import
   plus getattr (``resolve_dotted_symbol``).
 
+Each string is read with its URLs as a browser reads them and, where that
+differs, as Markdown delimits them (each URL also ending at a quote, a
+parenthesis or an angle bracket); every rule applies to both readings.
+
 Differential checks compare two records of one fact: the commit each UK
 citation binds to with the incumbent commit its resource declares, and the US
 known gaps' symbol citations with the code they name (the Census person-column
@@ -53,7 +57,7 @@ from pathlib import Path, PurePosixPath
 
 import pandas as pd
 import pytest
-from hypothesis import assume, example, given, settings
+from hypothesis import assume, event, example, given, settings
 from hypothesis import strategies as st
 
 from microcosm.build.us_runtime import asec_pool
@@ -1441,10 +1445,22 @@ def test_a_url_of_this_repository_is_refused_however_github_lets_it_be_written(
         + route_and_path
     )
     text = f"{written}{query}{fragment.format(a=a, b=b)} {pin.format(sha=sha)}"
-    found = in_repository_line_citations({"note": text})
+    # A quote or a parenthesis in the query ends the URL in the string's
+    # second reading, which may read what follows as a quoted locator of the
+    # same file (``x.py‘#L12``): the first reading is the URL's.
+    read = next(citations._readable_strings(text))
+    found = [
+        citation
+        for citation in in_repository_line_citations({"note": text})
+        if citation.text == read
+    ]
     assert [citation.file for citation in found] == [f"{lead}{host}{route}{ref}/{path}"]
     # A citation's text is already read: reading it again changes nothing.
-    assert in_repository_line_citations({"note": found[0].text}) == found
+    assert [
+        citation
+        for citation in in_repository_line_citations({"note": read})
+        if citation.text == read
+    ] == found
 
 
 @settings(max_examples=200, deadline=None)
@@ -1473,11 +1489,20 @@ def test_a_query_does_not_hide_a_line_citation(
     ref = sha if pinned else "main"
     url = f"https://github.com/PolicyEngine/upstream-data/blob/{ref}/{directory}{stem}.{suffix}"
     document = {"note": f"{url}?{query}{fragment.format(a=a, b=b)}"}
-    assert [
-        (citation.file, citing_commit(citation))
-        for citation in line_citations(document)
-    ] == [(url, sha if pinned else None)]
-    assert len(unpinned_line_citations(document)) == (0 if pinned else 1)
+    # A quote or a parenthesis in the query ends the URL in the string's
+    # second reading, which reads the rest of the query as prose: only the
+    # first reading is the URL's.
+    read = next(citations._readable_strings(document["note"]))
+    found = [citation for citation in line_citations(document) if citation.text == read]
+    assert [(citation.file, citing_commit(citation)) for citation in found] == [
+        (url, sha if pinned else None)
+    ]
+    unpinned = [
+        citation
+        for citation in unpinned_line_citations(document)
+        if citation.text == read
+    ]
+    assert unpinned == ([] if pinned else found)
 
 
 def test_the_round_four_review_counterexamples_are_refused() -> None:
@@ -1521,6 +1546,12 @@ def test_the_round_four_review_counterexamples_are_refused() -> None:
     assert unpinned_line_citations(
         {"note": "x.py:12, see https://example.org/doc?page=1; at a1b2c3d"}
     ) == [LineCitation("x.py", "x.py:12, see https://example.org/doc; at a1b2c3d")]
+    assert (
+        misspelled_commit_pins(
+            {"note": "x.py:12 at a1b2c3d, see https://example.org/doc?page=1; 9f8e7d6c"}
+        )
+        == []
+    )
     gitlab = "https://gitlab.com/o/upstream-data/-/blob/a1b2c3d/x.py"
     text = f"{gitlab}?ref_type=heads&view=plain&page=2 some_function, lines 12-19"
     assert unrecognised_line_locators({"note": text}) == [
@@ -1589,14 +1620,59 @@ def test_the_round_six_review_counterexample_is_refused() -> None:
         ] == [f"{blob}{tool}"], written
 
 
-def test_a_url_runs_to_whitespace() -> None:
+def test_the_round_seven_review_counterexamples_are_refused() -> None:
+    blob = "https://github.com/PolicyEngine/microcosm/blob/"
+    blob += "29983852e5182266c9a4e565731920ea972fe695/"
+    tool = "tools/ci_test_plan.py"
+    cited = blob + tool
+    network = cited.removeprefix("https:")
+    bare = cited.removeprefix("https://")
+    # CommonMark renders each of these with a link to the file at line 12,
+    # however the URL before it ends.
+    for written, file in (
+        (f"[https://example.org/?x](<{cited}#L12>)", cited),
+        (f"<https://example.org/?x><{cited}#L12>", cited),
+        (f"[https://example.org/?x]({cited}#L12)", cited),
+        (f"[https://example.org/?x]({network}#L12)", network),
+        (f"[https://example.org/?x]({bare}#L12)", bare),
+        (f"[https://example.org/?x]({tool}#L12)", tool),
+        (f'<a href="https://example.org/?x">{cited}#L12</a>', cited),
+        (f"'https://example.org/?x','{cited}#L12'", cited),
+    ):
+        assert [
+            citation.file
+            for citation in in_repository_line_citations({"note": written})
+        ] == [file], written
+
+
+def test_a_string_is_read_as_a_browser_and_as_markdown_delimit_its_urls() -> None:
     # As the URL Standard reads it (bun 1.3's ``URL``), a URL written straight
     # after another, with only a quote between, is part of the first one's
-    # path: its host is read as written.
+    # path, so its host is read as written; ended at the quote, as prose ends
+    # it, it is read on its own.
     written = "https://example.org/a'https://GitHub.com/o/r/blob/a1b2c3d/x.py#L12"
     assert [citation.text for citation in line_citations({"note": written})] == [
-        written
+        written,
+        "https://example.org/a'https://github.com/o/r/blob/a1b2c3d/x.py#L12",
     ]
+    # Ended at a quote in its query, a URL leaves the rest of the query to be
+    # read as prose: a quoted locator (``x.py‘#L1``) of the same file, or,
+    # with more between, a locator in no recognised spelling.
+    url = "https://github.com/o/r/blob/a1b2c3d/x.py"
+    assert [
+        (citation.file, citing_commit(citation))
+        for citation in line_citations({"note": f"{url}?0‘#L1"})
+    ] == [(url, "a1b2c3d"), (url, "a1b2c3d")]
+    assert unrecognised_line_locators({"note": f"{url}?q='v'#L1"}) == [
+        LineCitation(url, f"{url}'v'#L1")
+    ]
+    # A string read the same way both times is read once.
+    for written in (
+        "https://GitHub.com/o/r/blob/a1b2c3d/x.py#L12",
+        "(https://github.com/o/r/blob/a1b2c3d/x.py#L12).",
+        "https://[::1]:8080/o/r/blob/a1b2c3d/x.py#L12",
+    ):
+        assert len(line_citations({"note": written})) == 1, written
 
 
 def test_a_long_string_is_scanned_in_linear_time() -> None:
@@ -1626,6 +1702,27 @@ def test_a_long_string_is_scanned_in_linear_time() -> None:
         unpinned_line_citations(text)
         unrecognised_line_locators(text)
     assert time.process_time() - started < 2
+    # Each of these took 4 to 28 seconds: a list of line numbers that failed
+    # was retried once for each way to share its whitespace out (exponential
+    # in its length), a failed locator once for each way to share a run of
+    # spaces or quotes, a reverse locator was tried from each number of a
+    # failed list, and a long host label was encoded in Punycode (quadratic).
+    # The exponential ones come first, so a regression fails before the
+    # slower ones run.
+    for text in (
+        "L1 and " * 24,
+        "lines " + "1  and  " * 8 + "in x.py",
+        "lines " + "1 and     " * 10 + "in x.py",
+        "lines " + "1, " * 24 + "in x.py",
+        "x.py" + " " * 1_024 + "x",
+        "x.py" + "'" * 16_000 + "L1x",
+        "line " + " " * 32_768 + "1x in x.py",
+        "L1 and " * 8_000,
+        "https://" + "".join(map(chr, range(0x4000, 0x4000 + 8_000))) + "/a.py#L12",
+    ):
+        line_citations(text)
+        unrecognised_line_locators(text)
+        assert time.process_time() - started < 2, text[:24]
 
 
 #: Pieces of text around source names and line locators.
@@ -1658,6 +1755,14 @@ _LOCATOR_PIECES = (
     "at ",
     "(",
     "—",
+    "x.py:12",
+    "a/b.json#L3",
+    "x.py foo L9",
+    "x.py, lines 4-5",
+    "lines 4-5 of y.py",
+    "L1 and L2 in a/b.py",
+    "L1, ",
+    " and ",
 )
 
 
@@ -1665,12 +1770,130 @@ _LOCATOR_PIECES = (
 @given(text=st.lists(st.sampled_from(_LOCATOR_PIECES), max_size=40).map("".join))
 @example(text="x.py:12/y.py:13")
 @example(text="xhttps://a/b.py:12")
+@example(text="L1 and L2 x L3 of y.py")
+@example(text="lines 1, L2 of x.py")
+@example(text="L1 and L2 and L3 in L4 of x.py")
 def test_source_names_are_found_where_finditer_finds_them(text: str) -> None:
-    for pattern in (*citations._LINE_CITATIONS, citations._LOCATOR_NEAR_A_SOURCE):
-        assert [
+    for name, pattern in (
+        ("forward", citations._FORWARD_LOCATOR),
+        ("reverse", citations._REVERSE_LOCATOR),
+        ("near", citations._LOCATOR_NEAR_A_SOURCE),
+    ):
+        found = [
             (match.span(), match["file"])
             for match in citations._finditer(pattern, text)
-        ] == [(match.span(), match["file"]) for match in pattern.finditer(text)]
+        ]
+        assert found == [
+            (match.span(), match["file"]) for match in pattern.finditer(text)
+        ]
+        event(f"{name} matches: {min(len(found), 3)}")
+
+
+#: The locator patterns as ``ea912094`` wrote them, before their whitespace and
+#: quotes were read possessively: the reference the current ones must agree
+#: with.
+_REFERENCE_QUOTE = r"[`'\"‘’“”]*"
+_REFERENCE_NUMBER = r"L?\s*\d+(?!\w)"
+_REFERENCE_SPAN = (
+    rf"{_REFERENCE_NUMBER}(?:\s*(?:[-–—]|(?i:to|through))\s*{_REFERENCE_NUMBER})?"
+)
+_REFERENCE_NUMBERS = (
+    rf"{_REFERENCE_SPAN}(?:\s*(?:,|,?\s*(?i:and))\s*{_REFERENCE_SPAN})*"
+)
+_REFERENCE_LABEL = r"(?i:lines?\b\s+|ll?\.\s*)"
+_REFERENCE_FORWARD = re.compile(
+    citations._SOURCE
+    + _REFERENCE_QUOTE
+    + rf"(?::(?={_REFERENCE_QUOTE}L?\d)"
+    + rf"|\s*[:：]\s*{_REFERENCE_QUOTE}{_REFERENCE_LABEL}"
+    + rf"|\s*@\s*{_REFERENCE_QUOTE}(?:{_REFERENCE_LABEL}|(?=L\d))"
+    + rf"|#(?={_REFERENCE_QUOTE}L\d)"
+    + r"|\s*(?:[,;—–]|\s-(?=\s))?\s*[\[(]?\s*(?:(?i:at|on)\s+)?"
+    + rf"{_REFERENCE_QUOTE}(?:{_REFERENCE_LABEL}|(?=L\d)))"
+    + _REFERENCE_QUOTE
+    + _REFERENCE_NUMBERS
+)
+_REFERENCE_REVERSE = re.compile(
+    rf"\b(?:{_REFERENCE_LABEL}|(?=L\d)){_REFERENCE_QUOTE}{_REFERENCE_NUMBERS}"
+    rf"{_REFERENCE_QUOTE}\s+(?i:of|in)\s+{_REFERENCE_QUOTE}" + citations._SOURCE
+)
+#: Pieces of line locators, heavy in what reading possessively changed: runs
+#: of whitespace and quotes, separators, ranges and labels. The reference
+#: backtracks exponentially on a long list that fails, so a text holds at most
+#: 24 pieces.
+_LIST_PIECES = (
+    "x.py",
+    "a/b.json",
+    ":",
+    "：",
+    "#",
+    "@",
+    " ",
+    "  ",
+    "\t",
+    "\n",
+    ",",
+    ";",
+    "—",
+    "–",
+    "-",
+    " - ",
+    "(",
+    "[",
+    "at ",
+    "on ",
+    "line ",
+    "Lines",
+    "l.",
+    "ll. ",
+    "L",
+    "L1",
+    "12",
+    " to ",
+    "through",
+    " and ",
+    "AND",
+    ", and ",
+    " of ",
+    " in ",
+    "'",
+    "`",
+    "“",
+    "x",
+    "1x",
+    "x.py:12",
+    "x.py L3",
+    "x.py, lines 1-2",
+    "x.py @ L5",
+    "x.py (ll. 6–7)",
+    "lines 4 of y.py",
+    "L1 and L2 in a/b.py",
+)
+
+
+@settings(max_examples=1000, deadline=None)
+@given(text=st.lists(st.sampled_from(_LIST_PIECES), max_size=24).map("".join))
+@example(text="x.py - L12")
+@example(text="x.py- L12")
+@example(text="x.py -L12")
+@example(text="lines  '  12 ,  and  13 ' of x.py")
+@example(text="x.py ''L1 and L2")
+@example(text="x.py: lines 1 through  2, AND 3")
+def test_the_locators_match_as_before_their_whitespace_was_read_possessively(
+    text: str,
+) -> None:
+    for name, current, reference in (
+        ("forward", citations._FORWARD_LOCATOR, _REFERENCE_FORWARD),
+        ("reverse", citations._REVERSE_LOCATOR, _REFERENCE_REVERSE),
+    ):
+        found = [
+            (match.span(), match.span("file"))
+            for match in citations._finditer(current, text)
+        ]
+        assert found == [
+            (match.span(), match.span("file")) for match in reference.finditer(text)
+        ]
+        event(f"{name} matches: {min(len(found), 3)}")
 
 
 def _clause_from_the_whole_string(citation: LineCitation) -> tuple[int, int]:
@@ -1705,7 +1928,8 @@ def _misspelled_pins_from_the_whole_string(text: str) -> list[tuple[LineCitation
     found: list[tuple[LineCitation, str]] = []
     for citation in line_citations(text):
         pinned = {
-            match.start("sha") for match in citations.INLINE_COMMIT.finditer(text)
+            match.start("sha")
+            for match in citations.INLINE_COMMIT.finditer(citation.text)
         }
         start, end = _clause_from_the_whole_string(citation)
         binding = _binding_from_the_whole_string(citation)
@@ -1773,6 +1997,8 @@ _BINDING_PIECES = (
 @example(text="https://github.com/o/r/blob/d4e5f6a/z.py#L7 at a1b2c3d")
 @example(text="a1b2c3d; x.py:12; 9f8e7d6c y.py:3 on main")
 @example(text="x.py:1 y.py foo L1 x.py, lines 1-2 z.py foo L2")
+@example(text="at a1b2c3d; on main;x.py:12")
+@example(text="9f8e7d6c;x.py:12")
 def test_bindings_are_found_as_a_scan_of_the_whole_string_finds_them(
     text: str,
 ) -> None:
@@ -1840,6 +2066,19 @@ def test_a_trailing_dot_is_dropped_from_a_host() -> None:
         assert [citation.text for citation in line_citations({"note": written})] == [
             "https://github.com/o/r/blob/a1b2c3d/x.py#L12"
         ], written
+
+
+def test_a_label_longer_than_dns_allows_is_left_unencoded() -> None:
+    # Up to 63 characters a label is encoded as the standard encodes it (bun
+    # 1.3); a longer one names no host either way, so it is left as mapped.
+    for length, reading in (
+        (63, "https://xn--td" + "a" * 63 + ".com"),
+        (64, "https://" + "ü" * 64 + ".com"),
+    ):
+        written = f"https://{'Ü' * length}.com/o/r/blob/a1b2c3d/x.py#L12"
+        assert [citation.text for citation in line_citations({"note": written})] == [
+            f"{reading}/o/r/blob/a1b2c3d/x.py#L12"
+        ], length
 
 
 def test_a_break_inside_a_citation_does_not_end_its_clause() -> None:

@@ -44,7 +44,12 @@ escapes of unreserved characters and ``/`` in its path are decoded, ``.`` and
 cites ``https://github.com/o/r/blob/<sha>/tools/x.py`` at line 12. GitHub
 reads ``%23`` and ``%3F`` as part of a file name, so they stay escaped. A URL
 runs to whitespace: a quote or a bracket inside it is part of it, as it is to
-a browser, so ``x.py?q='a'#L12`` still cites line 12 of ``x.py``.
+a browser, so ``x.py?q='a'#L12`` still cites line 12 of ``x.py``. Markdown
+and prose end a URL at a quote, a parenthesis or an angle bracket too, so a
+string is also read that way where it reads differently
+(``_readable_strings``): in ``[https://a/?x](https://github.com/...#L12)``
+the label's query does not hide the link. A citation either reading finds
+is checked.
 
 A cited path is in-repository when, after any prefix naming this repository
 is removed (a ``github.com/PolicyEngine/microcosm/blob/<ref>/`` URL, at a ref
@@ -100,15 +105,23 @@ _SOURCE = (
 )
 #: Quotes or backticks around a file name or a locator.
 _QUOTE = r"[`'\"‘’“”]*"
+#: ``_QUOTE``, never given back (``*+``). Where it is used, what follows it
+#: cannot start with a quote, or is another ``_QUOTES`` that would only take
+#: the same quotes, so giving one back never helps a match.
+_QUOTES = r"[`'\"‘’“”]*+"
 #: A line number, plain or GitHub-style (``L12``).
-_NUMBER = r"L?\s*\d+(?!\w)"
+_NUMBER = r"L?\s*+\d++(?!\w)"
 #: One line or a range of them: ``12-19``, ``L12-L19``, ``12–19``,
 #: ``12 to 19``, ``12 through 19``.
-_SPAN = rf"{_NUMBER}(?:\s*(?:[-–—]|(?i:to|through))\s*{_NUMBER})?"
-#: Several lines or ranges: ``12-19, 30`` or ``12-19 and 30``.
-_NUMBERS = rf"{_SPAN}(?:\s*(?:,|,?\s*(?i:and))\s*{_SPAN})*"
+_SPAN = rf"{_NUMBER}(?:\s*+(?:[-–—]|(?i:to|through))\s*+{_NUMBER})?"
+#: Several lines or ranges: ``12-19, 30``, ``12-19 and 30`` or
+#: ``12, and 30``. Each run of whitespace is read by one possessive ``\s*+``
+#: and each separator can be read only one way, so a list that fails is given
+#: up in time linear in its length, not retried once for each way to share
+#: its whitespace out.
+_NUMBERS = rf"{_SPAN}(?:\s*+(?:,\s*+(?:(?i:and)\s*+)?|(?i:and)\s*+){_SPAN})*"
 #: A line label: ``line``, ``lines`` (any case), ``l.`` or ``ll.``.
-_LABEL = r"(?i:lines?\b\s+|ll?\.\s*)"
+_LABEL = r"(?i:lines?\b\s++|ll?\.\s*+)"
 #: A line locator into a source, in each spelling the packages have used or
 #: GitHub produces, followed by its line numbers:
 #:
@@ -121,25 +134,32 @@ _LABEL = r"(?i:lines?\b\s+|ll?\.\s*)"
 #: - reverse: ``lines 12-19 of x.py``, ``line 12 in x.py``, ``L12 of x.py``.
 #:
 #: The numbers are any ``_NUMBERS``; the file name and the locator may be
-#: quoted or backticked (```x.py` lines 12-19``, ``x.py:"12-19"``).
-_LINE_CITATIONS = (
-    re.compile(
-        _SOURCE
-        + _QUOTE
-        + rf"(?::(?={_QUOTE}L?\d)"
-        + rf"|\s*[:：]\s*{_QUOTE}{_LABEL}"
-        + rf"|\s*@\s*{_QUOTE}(?:{_LABEL}|(?=L\d))"
-        + rf"|#(?={_QUOTE}L\d)"
-        + r"|\s*(?:[,;—–]|\s-(?=\s))?\s*[\[(]?\s*(?:(?i:at|on)\s+)?"
-        + rf"{_QUOTE}(?:{_LABEL}|(?=L\d)))"
-        + _QUOTE
-        + _NUMBERS
-    ),
-    re.compile(
-        rf"\b(?:{_LABEL}|(?=L\d)){_QUOTE}{_NUMBERS}{_QUOTE}\s+(?i:of|in)\s+{_QUOTE}"
-        + _SOURCE
-    ),
+#: quoted or backticked (```x.py` lines 12-19``, ``x.py:"12-19"``). Each run
+#: of whitespace is read by one possessive ``\s*+``, and the space before a
+#: spaced ``-`` is looked behind for (``(?<=\s)``), so a locator that fails
+#: does so in time linear in its length.
+_FORWARD_LOCATOR = re.compile(
+    _SOURCE
+    + _QUOTES
+    + rf"(?::(?={_QUOTE}L?\d)"
+    + rf"|\s*+[:：]\s*+{_QUOTES}{_LABEL}"
+    + rf"|\s*+@\s*+{_QUOTES}(?:{_LABEL}|(?=L\d))"
+    + rf"|#(?={_QUOTE}L\d)"
+    + r"|\s*+(?:[,;—–]|(?<=\s)-(?=\s))?\s*+[\[(]?\s*+(?:(?i:at|on)\s++)?"
+    + rf"{_QUOTES}(?:{_LABEL}|(?=L\d)))"
+    + _QUOTES
+    + _NUMBERS
 )
+_REVERSE_LOCATOR = re.compile(
+    rf"\b(?:{_LABEL}|(?=L\d)){_QUOTES}{_NUMBERS}{_QUOTES}\s++(?i:of|in)\s++{_QUOTES}"
+    + _SOURCE
+)
+_LINE_CITATIONS = (_FORWARD_LOCATOR, _REVERSE_LOCATOR)
+#: How a reverse locator starts: a label or an ``L`` number, and the list of
+#: line numbers after it. What the locator needs after its list (`` of ``,
+#: `` in ``) cannot continue the list, so it matches after the whole list or
+#: not at all.
+_REVERSE_HEAD = re.compile(rf"\b(?:{_LABEL}|(?=L\d)){_QUOTES}{_NUMBERS}")
 #: A source name followed by a labelled line locator (``L12``, ``line 12``,
 #: ``ll. 12``) within 24 characters, with no ``.``, ``;`` or line break
 #: between: the shape of every forward spelling, recognised or not. A bare
@@ -154,23 +174,30 @@ _LOCATOR_NEAR_A_SOURCE = re.compile(
 #: or at ``http(s):``.
 _STARTING_A_RUN = {
     pattern: re.compile(r"(?:(?<![A-Za-z0-9_./-])|(?=https?:))" + pattern.pattern)
-    for pattern in (_LINE_CITATIONS[0], _LOCATOR_NEAR_A_SOURCE)
+    for pattern in (_FORWARD_LOCATOR, _LOCATOR_NEAR_A_SOURCE)
 }
-#: A URL: an ``http(s)`` one (``https:`` and anything after it), a
-#: network-path reference (``//host/...``, any two of ``/`` and ``\``), or a
-#: GitHub one written without its scheme (``github.com/...``, before an
-#: optional port; a user before it is left as prose). It runs to whitespace,
-#: so a quote or an angle bracket inside it is part of it, and it does not end
-#: in a quote, a bracket or punctuation that closes the sentence around it
-#: (``'``, ``>``, ``.``, ``,``, ``;``, ``)``, ...). A GitHub host is matched
-#: where it starts, so a long run of punctuation is scanned once.
-_URL = re.compile(
+#: Where a URL starts: at ``http(s):``, at a network-path reference
+#: (``//host/...``, any two of ``/`` and ``\``), or at a GitHub host written
+#: without a scheme (``github.com/...``, before an optional port; a user
+#: before it is left as prose). A GitHub host is matched where it starts, so
+#: a long run of punctuation is scanned once.
+_URL_START = (
     r"(?:(?i:https?):"
     r"|(?<![\w./\\@-])[/\\]{2}"
     r"|(?<![\w./\\-])"
     r"(?i:(?:www\.)?github\.com|raw\.githubusercontent\.com)\.?(?::[0-9]*)?(?=[/\\]))"
-    r"\S*[^\s\"'`‘’“”<>.,;:!?)\]]"
 )
+#: A URL as a browser reads it: it runs to whitespace, so a quote or an angle
+#: bracket inside it is part of it, and it does not end in a quote, a bracket
+#: or punctuation that closes the sentence around it (``'``, ``>``, ``.``,
+#: ``,``, ``;``, ``)``, ...).
+_URL = re.compile(_URL_START + r"\S*[^\s\"'`‘’“”<>.,;:!?)\]]")
+#: A URL as Markdown and prose delimit it: as ``_URL``, but it also ends at a
+#: quote, a parenthesis or an angle bracket, so the label and the destination
+#: of ``[https://a/?x](https://b/...)``, the two autolinks of
+#: ``<https://a/?x><https://b/...>`` and a URL quoted straight after another
+#: are each read on their own.
+_DELIMITED_URL = re.compile(_URL_START + r"[^\s\"'`‘’“”<>()]*[^\s\"'`‘’“”<>()\].,;:!?]")
 #: The scheme a URL starts with, when it has one.
 _SCHEME = re.compile(r"(?i:https?):")
 #: A URL up to its query or fragment.
@@ -190,6 +217,8 @@ _IGNORABLE_IN_HOST = re.compile(
 #: The code points UTS46 maps into ASCII that this Python's Unicode database
 #: (16.0) does not know: Unicode 17's U+A7F1 MODIFIER LETTER CAPITAL S.
 _MAPPED_AFTER_UNICODE_16 = str.maketrans({"\ua7f1": "s"})
+#: The most characters a DNS label holds (RFC 1035 section 2.3.4).
+_LONGEST_LABEL = 63
 #: A ``%`` escape in a URL.
 _ESCAPE = re.compile(r"%([0-9A-Fa-f]{2})")
 #: The characters a ``%`` escape in a URL path is read as: the unreserved ones
@@ -328,7 +357,10 @@ def _to_ascii(domain: str) -> str:
     Default-ignorable code points are dropped, the rest NFKC case-folded
     (``ｇ`` and ``ₒ`` are ``g`` and ``o``), ``。`` read as ``.``, and a label
     left outside ASCII written in Punycode. Where UTS46 refuses a character
-    this reads it anyway, so it never misses a host UTS46 reads.
+    this reads it anyway, so it never misses a host UTS46 reads. A label
+    longer than DNS allows (``_LONGEST_LABEL``) is left unencoded: it names
+    no host GitHub serves either way, and Python's Punycode encoder takes
+    time quadratic in a label's length.
     """
 
     domain = _IGNORABLE_IN_HOST.sub("", domain).translate(_MAPPED_AFTER_UNICODE_16)
@@ -336,7 +368,9 @@ def _to_ascii(domain: str) -> str:
         "NFKC", unicodedata.normalize("NFKC", domain).casefold()
     ).replace("\u3002", ".")
     return ".".join(
-        label if label.isascii() else "xn--" + label.encode("punycode").decode("ascii")
+        label
+        if label.isascii() or len(label) > _LONGEST_LABEL
+        else "xn--" + label.encode("punycode").decode("ascii")
         for label in folded.split(".")
     )
 
@@ -406,23 +440,50 @@ def _read_url(url: re.Match[str]) -> str:
 
 
 def _readable_strings(value: object) -> Iterator[str]:
-    """``nested_strings``, with each URL in them read as ``_read_url`` reads it."""
+    """``nested_strings``, with the URLs in them read as ``_read_url`` reads them.
+
+    Each string is read with each URL running to whitespace (``_URL``), as a
+    browser reads it. Where it reads differently with each URL also ending at
+    a quote, a parenthesis or an angle bracket (``_DELIMITED_URL``), as Markdown
+    and prose delimit one, it is read that way too, so a link's destination
+    is not lost in the query of a URL before it.
+    """
 
     for text in nested_strings(value):
-        yield _URL.sub(_read_url, text)
+        whole = _URL.sub(_read_url, text)
+        yield whole
+        delimited = _DELIMITED_URL.sub(_read_url, text)
+        if delimited != whole:
+            yield delimited
 
 
 def _finditer(pattern: re.Pattern[str], text: str) -> Iterator[re.Match[str]]:
-    """``pattern.finditer(text)``, reading a long run of path characters once.
+    """``pattern.finditer(text)``, in time linear in ``text``.
 
     A ``_SOURCE`` match that starts inside a run of the characters a path is
     made of (``[A-Za-z0-9_./-]``), other than at ``http(s):``, could start
     where the run does, so ``finditer`` starts each match at the start of a
     run, at ``http(s):``, or where its previous match ended. Trying only
     those starts, rather than every character of a run, finds the same
-    matches in time linear in the run.
+    matches.
+
+    A reverse locator starts with a label or an ``L`` number and a list of
+    line numbers (``_REVERSE_HEAD``). Inside a list it can start only at a
+    number, and from there it reads the rest of the list to the same end, so
+    when it fails after a list it fails from every number in it. Each list is
+    therefore read once, rather than once from each of its numbers.
     """
 
+    if pattern is _REVERSE_LOCATOR:
+        position = 0
+        while head := _REVERSE_HEAD.search(text, position):
+            match = pattern.match(text, head.start())
+            if match is not None:
+                yield match
+                position = match.end()
+            else:
+                position = head.end()
+        return
     anchored = _STARTING_A_RUN.get(pattern)
     if anchored is None:
         yield from pattern.finditer(text)
@@ -441,7 +502,11 @@ def _citation_matches(text: str) -> list[re.Match[str]]:
 
 
 def line_citations(value: object) -> list[LineCitation]:
-    """Each line citation of a source in a payload, in string order."""
+    """Each line citation of a source in a payload, in string order.
+
+    A string read two ways (``_readable_strings``) gives the citations of
+    each reading, so one both readings find is listed twice.
+    """
 
     return [
         LineCitation(match["file"], text, match.start(), match.end())
