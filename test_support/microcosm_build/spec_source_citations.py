@@ -32,6 +32,14 @@ binds to ("archived 42ed5d45 cps.py L197"), is refused as a misspelled pin
 (``misspelled_commit_pins``), so a stray sha cannot sit beside a citation
 that some other commit pins.
 
+Each URL is read the way GitHub reads it before anything is scanned
+(``_read_url``): the scheme and host lower-cased, a user or port dropped,
+``%`` escapes of unreserved characters and ``/`` decoded, ``.`` and ``..``
+segments resolved, and the query dropped. So
+``HTTPS://GitHub.com/o/r/blob/<sha>/docs/../%74ools/x%2Epy?plain=1#L12``
+cites ``https://github.com/o/r/blob/<sha>/tools/x.py`` at line 12. GitHub
+reads ``%23`` and ``%3F`` as part of a file name, so they stay escaped.
+
 A cited path is in-repository when, after any prefix naming this repository
 is removed (a ``github.com/PolicyEngine/microcosm/blob/<ref>/`` URL, at a ref
 of any depth such as ``refs/heads/main``, or ``microcosm/`` before a
@@ -56,10 +64,12 @@ import importlib
 import json
 import os
 import re
-from collections.abc import Iterator, Mapping
+import string
+from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass, field
 from functools import cache
 from pathlib import Path, PurePosixPath
+from urllib.parse import urlsplit
 
 from microcosm.build.spec_engine import load_yaml12
 from test_support.paths import REPOSITORY_ROOT
@@ -130,6 +140,23 @@ _LOCATOR_NEAR_A_SOURCE = re.compile(
     + _QUOTE
     + r"[^.;\n]{0,24}?(?<![A-Za-z0-9])(?=L\d|(?i:lines?)\s+\d|(?i:ll?)\.\s*\d)"
 )
+#: A URL: an ``http(s)`` one, or a GitHub one written without its scheme
+#: (``github.com/...``, ``//raw.githubusercontent.com/...``). It runs to
+#: whitespace, a quote or an angle bracket, and does not end in punctuation
+#: that closes the sentence around it (``.``, ``,``, ``;``, ``)``, ...).
+_URL = re.compile(
+    r"(?:(?i:https?://)"
+    r"|(?<![\w./@-])(?://)?(?i:(?:www\.)?github\.com|raw\.githubusercontent\.com)/)"
+    r"[^\s\"'`‘’“”<>]*[^\s\"'`‘’“”<>.,;:!?)\]]"
+)
+#: The scheme a URL starts with, when it has one.
+_SCHEME = re.compile(r"(?i:https?)://")
+#: A ``%`` escape in a URL.
+_ESCAPE = re.compile(r"%([0-9A-Fa-f]{2})")
+#: The characters a ``%`` escape in a URL path is read as: the unreserved ones
+#: (RFC 3986 section 2.3), and ``/``, which GitHub reads as a separator after
+#: the ref (``tools%2Fx.py``). Any other escape stays as written.
+_DECODED = frozenset(string.ascii_letters + string.digits + "-._~/")
 #: A commit sha: 7-40 lowercase hex with at least one digit and one letter,
 #: so a decimal amount ("2500000"), a word ("defaced") or a branch name such
 #: as ``main`` is not one.
@@ -202,8 +229,9 @@ MICROCOSM_SHARDS = frozenset(
 class LineCitation:
     """A line citation: the source as cited, and the string carrying it.
 
-    ``start`` and ``end`` locate the citation in ``text`` (-1 when built by
-    hand); they do not take part in equality.
+    Both read each URL as ``_read_url`` reads it. ``start`` and ``end``
+    locate the citation in ``text`` (-1 when built by hand); they do not take
+    part in equality.
     """
 
     file: str
@@ -230,6 +258,62 @@ def nested_strings(value: object) -> Iterator[str]:
         yield value
 
 
+def _decode(path: str) -> str:
+    """A URL path with each escape of a ``_DECODED`` character decoded."""
+
+    def read(escape: re.Match[str]) -> str:
+        character = chr(int(escape[1], 16))
+        return character if character in _DECODED else escape[0]
+
+    return _ESCAPE.sub(read, path)
+
+
+def _remove_dot_segments(path: str) -> str:
+    """A URL path with its ``.`` and ``..`` segments resolved (RFC 3986 5.2.4)."""
+
+    segments: list[str] = []
+    for segment in path.split("/"):
+        if segment == "..":
+            if len(segments) > 1:
+                segments.pop()
+        elif segment != ".":
+            segments.append(segment)
+    if path.endswith(("/.", "/..")):
+        segments.append("")
+    return "/".join(segments)
+
+
+def _read_url(url: re.Match[str]) -> str:
+    """A URL as GitHub reads it, without its query.
+
+    The scheme and host are lower-cased, a user and a port dropped, the
+    path's ``_DECODED`` escapes decoded and its dot segments resolved; the
+    fragment (``#L12``) is kept.
+    """
+
+    text = url[0]
+    has_scheme = _SCHEME.match(text) is not None
+    try:
+        parts = urlsplit(text if has_scheme or text.startswith("//") else f"//{text}")
+        host = parts.hostname
+    except ValueError:
+        return text
+    if not host:
+        return text
+    authority = "//" if has_scheme or text.startswith("//") else ""
+    path = _remove_dot_segments(_decode(parts.path))
+    fragment = f"#{parts.fragment}" if parts.fragment else ""
+    scheme = f"{parts.scheme}:" if has_scheme else ""
+    return f"{scheme}{authority}{host}{path}{fragment}"
+
+
+def _readable_strings(value: object) -> Iterator[str]:
+    """``nested_strings``, with each URL in them read as ``_read_url`` reads it."""
+
+    for text in nested_strings(value):
+        yield _URL.sub(_read_url, text)
+
+
 def _citation_matches(text: str) -> list[re.Match[str]]:
     return sorted(
         (match for pattern in _LINE_CITATIONS for match in pattern.finditer(text)),
@@ -242,7 +326,7 @@ def line_citations(value: object) -> list[LineCitation]:
 
     return [
         LineCitation(match["file"], text, match.start(), match.end())
-        for text in nested_strings(value)
+        for text in _readable_strings(value)
         for match in _citation_matches(text)
     ]
 
@@ -251,7 +335,7 @@ def unrecognised_line_locators(value: object) -> list[LineCitation]:
     """Source names followed by a line locator in no recognised spelling."""
 
     found: list[LineCitation] = []
-    for text in nested_strings(value):
+    for text in _readable_strings(value):
         matches = _citation_matches(text)
         files = {match.start("file") for match in matches}
         spans = [(match.start(), match.end()) for match in matches]
@@ -425,6 +509,15 @@ def _repository_path_tails(root: Path) -> frozenset[str]:
     return frozenset(tails)
 
 
+@cache
+def _repository_depth(root: Path) -> int:
+    """The most components a path form in ``root`` has."""
+
+    return max(
+        (tail.count("/") + 1 for tail in _repository_path_tails(root)), default=0
+    )
+
+
 def resolves_in_repository(file: str, root: Path = REPOSITORY_ROOT) -> bool:
     """Whether a cited path names a file in this checkout.
 
@@ -439,14 +532,15 @@ def resolves_in_repository(file: str, root: Path = REPOSITORY_ROOT) -> bool:
     relative = PurePosixPath(file[named.end() :] if named else file)
     if relative.is_absolute() or ".." in relative.parts:
         return False
-    candidates = [relative]
+    candidates: Iterable[PurePosixPath] = [relative]
     if named is not None and named["url"]:
         # A URL's ref comes first and may span segments (``main``,
         # ``refs/heads/main``, ``feature/x``), so try the path after each.
-        candidates = [
-            PurePosixPath(*relative.parts[cut:])
-            for cut in range(1, len(relative.parts))
-        ]
+        # No path form here is longer than ``_repository_depth`` segments, so
+        # only the paths that short are tried, however long the ref.
+        parts = relative.parts
+        first = max(1, len(parts) - _repository_depth(root))
+        candidates = (PurePosixPath(*parts[cut:]) for cut in range(first, len(parts)))
     tails = _repository_path_tails(root)
     return any(
         (named is not None and (root / candidate).is_file())

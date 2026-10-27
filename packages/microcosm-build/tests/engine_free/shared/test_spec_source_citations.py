@@ -45,6 +45,9 @@ from __future__ import annotations
 import ast
 import inspect
 import json
+import re
+import string
+from collections.abc import Callable
 from pathlib import Path, PurePosixPath
 
 import pandas as pd
@@ -422,6 +425,15 @@ _ROOTED_FILES = (
 )
 #: One segment of a git ref.
 _REF_SEGMENT = st.from_regex(r"[A-Za-z0-9_-]{1,12}", fullmatch=True)
+#: A URL up to its ref: the scheme, the host, and the owner, repository and
+#: route.
+_URL_PARTS = re.compile(r"(?P<scheme>(?:https?://)?)(?P<host>[^/]+)(?P<route>/.*)")
+#: Detours in a URL path that GitHub resolves away.
+_DOT_DETOURS = ("", "./", "%2e/", "docs/../", "x/%2E%2e/", "a/b/../../", "tools/./../")
+#: A URL query, without its ``?``: anything but a fragment, a quote or a space.
+_URL_QUERY = st.text(
+    alphabet=string.ascii_letters + string.digits + "=&.;:,%+-_~?/", max_size=120
+)
 
 
 def _plant(text: str, depth: int, as_key: bool) -> object:
@@ -429,6 +441,27 @@ def _plant(text: str, depth: int, as_key: bool) -> object:
     for level in range(depth):
         planted = {"level": level, "note": [planted]}
     return planted
+
+
+def _escape(text: str, chosen: set[int], upper: bool, keep: str) -> str:
+    """``text`` with its characters at ``chosen`` written as ``%`` escapes."""
+
+    return "".join(
+        (f"%{ord(char):02X}" if upper else f"%{ord(char):02x}")
+        if index in chosen and char not in keep
+        else char
+        for index, char in enumerate(text)
+    )
+
+
+class _CountingPath(type(REPOSITORY_ROOT)):  # type: ignore[misc]
+    """A path that counts the ``is_file`` checks made through it."""
+
+    checks = 0
+
+    def is_file(self, *, follow_symlinks: bool = True) -> bool:
+        type(self).checks += 1
+        return super().is_file(follow_symlinks=follow_symlinks)
 
 
 def _is_commit_like(sha: str) -> bool:
@@ -1253,6 +1286,159 @@ def test_the_round_three_review_counterexample_is_refused() -> None:
         assert in_repository_line_citations({"note": text}) == [
             LineCitation(f"{url}{tool}", text)
         ]
+
+
+@settings(max_examples=300, deadline=None)
+@given(
+    url=st.sampled_from(_THIS_REPOSITORY_URLS),
+    ref=st.one_of(_SHA, st.lists(_REF_SEGMENT, min_size=1, max_size=3).map("/".join)),
+    detour=st.sampled_from(_DOT_DETOURS),
+    path=st.sampled_from(_ROOTED_FILES),
+    chosen=st.sets(st.integers(0, 160), max_size=12),
+    upper=st.booleans(),
+    case=st.sampled_from((str.lower, str.upper, str.title)),
+    authority=st.sampled_from(
+        ("{host}", "{host}:443", "user@{host}", "u:p@{host}:443")
+    ),
+    query=st.one_of(st.just(""), _URL_QUERY.map("?".__add__)),
+    fragment=st.sampled_from(("#L{a}", "#L{a}-L{b}")),
+    pin=st.sampled_from(_INLINE_PINS),
+    sha=_SHA,
+    a=st.integers(1, 99_999),
+    b=st.integers(1, 99_999),
+)
+def test_a_url_of_this_repository_is_refused_however_github_lets_it_be_written(
+    url: str,
+    ref: str,
+    detour: str,
+    path: str,
+    chosen: set[int],
+    upper: bool,
+    case: Callable[[str], str],
+    authority: str,
+    query: str,
+    fragment: str,
+    pin: str,
+    sha: str,
+    a: int,
+    b: int,
+) -> None:
+    parts = _URL_PARTS.fullmatch(url)
+    assert parts is not None
+    scheme, host, route = parts["scheme"], parts["host"], parts["route"]
+    # A user or a port needs a scheme; GitHub 404s a ``%2F`` before the ref.
+    written = (
+        case(scheme)
+        + (authority.format(host=case(host)) if scheme else case(host))
+        + _escape(route, chosen, upper, keep="/%")
+        + _escape(
+            f"{ref}/{detour}{path}",
+            {index - len(route) for index in chosen},
+            upper,
+            keep="%",
+        )
+    )
+    text = f"{written}{query}{fragment.format(a=a, b=b)} {pin.format(sha=sha)}"
+    found = in_repository_line_citations({"note": text})
+    assert [citation.file for citation in found] == [f"{url}{ref}/{path}"]
+    # A citation's text is already read: reading it again changes nothing.
+    assert in_repository_line_citations({"note": found[0].text}) == found
+
+
+@settings(max_examples=200, deadline=None)
+@given(
+    directory=_FOREIGN_DIRECTORY,
+    stem=_STEM,
+    suffix=_SUFFIX,
+    query=_URL_QUERY,
+    fragment=st.sampled_from(("#L{a}", "#L{a}-L{b}")),
+    sha=_SHA,
+    pinned=st.booleans(),
+    a=st.integers(1, 99_999),
+    b=st.integers(1, 99_999),
+)
+def test_a_query_does_not_hide_a_line_citation(
+    directory: str,
+    stem: str,
+    suffix: str,
+    query: str,
+    fragment: str,
+    sha: str,
+    pinned: bool,
+    a: int,
+    b: int,
+) -> None:
+    ref = sha if pinned else "main"
+    url = f"https://github.com/PolicyEngine/upstream-data/blob/{ref}/{directory}{stem}.{suffix}"
+    document = {"note": f"{url}?{query}{fragment.format(a=a, b=b)}"}
+    assert [
+        (citation.file, citing_commit(citation))
+        for citation in line_citations(document)
+    ] == [(url, sha if pinned else None)]
+    assert len(unpinned_line_citations(document)) == (0 if pinned else 1)
+
+
+def test_the_round_four_review_counterexamples_are_refused() -> None:
+    blob = "https://github.com/PolicyEngine/microcosm/blob/"
+    blob += "1840bc92f8d155adb685f1090245058ebb990df0/"
+    tool = "tools/build_us_puf_support_base.py"
+    # GitHub served each of these (HTTP 200) on 2026-10-26.
+    for written in (
+        f"{blob}%74ools/build_us_puf_support_base.py#L12",
+        f"{blob}{tool}?plain=1&review={'x' * 32}#L12",
+        f"{blob}tools%2Fbuild_us_puf_support_base.py#L12",
+        f"{blob}tools/build_us_puf_support_base%2Epy#L12",
+        f"{blob}docs/../{tool}#L12",
+        f"{blob}docs/%2e%2e/{tool}#L12",
+        f"{blob}./{tool}#L12",
+        blob.replace("github.com", "GitHub.com") + f"{tool}#L12",
+        blob.replace("github.com", "github.com:443") + f"{tool}#L12",
+        blob.replace("github.com", "user@github.com") + f"{tool}#L12",
+        blob.replace("/blob/", "/%62lob/") + f"{tool}#L12",
+    ):
+        assert [
+            citation.file
+            for citation in in_repository_line_citations({"note": written})
+        ] == [f"{blob}{tool}"], written
+    path = blob.removeprefix("https://github.com")
+    for written, file in (
+        (f"see GitHub.com{path}{tool}#L12.", f"github.com{path}{tool}"),
+        (
+            f"//github.com{path}{tool}?plain=1&review={'x' * 32}#L12",
+            f"//github.com{path}{tool}",
+        ),
+    ):
+        assert [
+            citation.file
+            for citation in in_repository_line_citations({"note": written})
+        ] == [file], written
+    # GitHub reads %23 and %3F as part of a file name (HTTP 404).
+    for written in (f"{blob}{tool}%23L12", f"{blob}{tool}%3Fplain=1"):
+        assert line_citations({"note": written}) == [], written
+    # Punctuation after a URL is prose, so the clause still ends at the ``;``.
+    assert unpinned_line_citations(
+        {"note": "x.py:12, see https://example.org/doc?page=1; at a1b2c3d"}
+    ) == [LineCitation("x.py", "x.py:12, see https://example.org/doc; at a1b2c3d")]
+    gitlab = "https://gitlab.com/o/upstream-data/-/blob/a1b2c3d/x.py"
+    text = f"{gitlab}?ref_type=heads&view=plain&page=2 some_function, lines 12-19"
+    assert unrecognised_line_locators({"note": text}) == [
+        LineCitation(gitlab, f"{gitlab} some_function, lines 12-19")
+    ]
+
+
+def test_a_long_ref_is_searched_only_as_deep_as_the_deepest_path_here(
+    tmp_path: Path,
+) -> None:
+    deepest = "tools/lanes/emtr/check.py"
+    (tmp_path / deepest).parent.mkdir(parents=True)
+    (tmp_path / deepest).write_text("", encoding="utf-8")
+    root = _CountingPath(tmp_path)
+    url = "https://github.com/PolicyEngine/microcosm/blob/" + "x/" * 500
+    assert resolves_in_repository(url + deepest, root)
+    _CountingPath.checks = 0
+    assert not resolves_in_repository(url + "tools/lanes/emtr/missing.py", root)
+    # One check per suffix of at most four segments, not one per ref segment.
+    assert _CountingPath.checks == 4
 
 
 @settings(max_examples=200, deadline=None)
