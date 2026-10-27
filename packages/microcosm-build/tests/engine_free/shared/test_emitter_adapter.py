@@ -2,8 +2,12 @@
 
 The adapter starts the separately installed ``microcosm-emitter`` command
 through the interface's ``EmitterClient``; these tests replace that client
-with an in-memory one, or let the interface fail to find the command.
+with an in-memory one, or let the interface fail to find the command. A
+stand-in command answers ``microcosm-emitter version`` where a test needs an
+installed release; no test runs a real emitter.
 """
+
+import json
 
 import pytest
 from microcosm_emitter_interface import (
@@ -21,6 +25,13 @@ from test_support.microcosm_build.emitter import FakeEmitterClient
 START = adapter.LocalTelemetryEmitter.start.__func__
 #: The interface's own startup, captured before the shared fixture forbids it.
 INTERFACE_START_EMITTER = interface_launcher.start_emitter
+
+
+@pytest.fixture(autouse=True)
+def no_installed_emitter_command(monkeypatch, tmp_path_factory):
+    """Name a missing command, so no test finds an emitter installed on PATH."""
+    missing = tmp_path_factory.mktemp("no-emitter") / "microcosm-emitter"
+    monkeypatch.setenv("MICROCOSM_EMITTER_COMMAND", str(missing))
 
 
 def _record_starts(monkeypatch, client=None):
@@ -209,8 +220,41 @@ def test_a_missing_emitter_command_leaves_the_build_running(
     assert list(tmp_path.iterdir()) == []
 
 
-def _start_build_emitter(monkeypatch, tmp_path, client):
-    _record_starts(monkeypatch, client)
+def _version_answer(emitter_version):
+    """What ``microcosm-emitter version`` prints, for one installed release."""
+    description = {"protocol_versions": [1]}
+    if emitter_version is not None:
+        description["emitter_version"] = emitter_version
+    return json.dumps(description)
+
+
+def _install_emitter_command(monkeypatch, directory, version_answer):
+    """Name a stand-in ``microcosm-emitter`` command in MICROCOSM_EMITTER_COMMAND.
+
+    It prints ``version_answer`` for ``microcosm-emitter version``. Started
+    any other way, as the emitter itself would be, it creates the returned
+    file and exits.
+    """
+    directory.mkdir()
+    answer = directory / "version-answer"
+    answer.write_text(version_answer)
+    started = directory / "emitter-started"
+    command = directory / "microcosm-emitter"
+    command.write_text(
+        "#!/bin/sh\n"
+        'if [ "$1" = version ]; then\n'
+        f"  cat '{answer}'\n"
+        "  exit 0\n"
+        "fi\n"
+        f"touch '{started}'\n"
+        "exit 1\n"
+    )
+    command.chmod(0o755)
+    monkeypatch.setenv("MICROCOSM_EMITTER_COMMAND", str(command))
+    return command, started
+
+
+def _start_build_emitter(monkeypatch, tmp_path):
     monkeypatch.setattr(adapter, "runtime_identity", lambda: {"commit": "synthetic"})
     return START(
         adapter.LocalTelemetryEmitter,
@@ -222,32 +266,41 @@ def _start_build_emitter(monkeypatch, tmp_path, client):
 
 
 @pytest.mark.parametrize(
-    ("installed_version", "reported"),
+    ("version_answer", "reported"),
     [
-        # 0.5.x accepts protocol 1 but has no Hugging Face module.
-        ("0.5.1", "reports version 0.5.1"),
-        ("0.4.0", "reports version 0.4.0"),
-        (None, "reports no version"),
-        ("not-a-version", "reports version not-a-version"),
+        # 0.4.0 to 0.5.1 accept protocol 1 but have no Hugging Face module.
+        (_version_answer("0.5.1"), "reports version 0.5.1"),
+        (_version_answer("0.4.0"), "reports version 0.4.0"),
+        (_version_answer(None), "reports no version"),
+        (_version_answer("not-a-version"), "reports version not-a-version"),
+        ("not JSON", "reports no version"),
     ],
+    ids=["0.5.1", "0.4.0", "no-version", "not-a-version", "not-json"],
 )
-def test_an_emitter_older_than_0_6_0_is_stopped_and_the_build_continues(
-    monkeypatch, capsys, tmp_path, installed_version, reported
+def test_an_emitter_older_than_0_6_0_is_never_started_and_the_build_continues(
+    monkeypatch, capsys, tmp_path, version_answer, reported
 ):
+    # The emitter's telemetry module records the run's start as soon as the
+    # emitter starts, before it can answer ``hello``. An emitter started only
+    # to be stopped again would leave the collector a run that started and
+    # never finished, so the version is read before anything starts.
     client = FakeEmitterClient()
-    client.emitter_version = installed_version
-    emitter = _start_build_emitter(monkeypatch, tmp_path, client)
+    starts = _record_starts(monkeypatch, client)
+    _, started = _install_emitter_command(monkeypatch, tmp_path / "bin", version_answer)
+    emitter = _start_build_emitter(monkeypatch, tmp_path)
 
-    assert client.closed
+    assert starts == []
+    assert not started.exists()
     assert not emitter.available
     warning = capsys.readouterr().err
     assert f"The installed microcosm-emitter {reported};" in warning
     assert "this build needs 0.6.0 or later" in warning
     assert "uv tool install --upgrade 'microcosm-emitter>=0.6.0'" in warning
-    # Nothing more reaches the stopped emitter, and nothing raises.
+    # Nothing reaches an emitter, and nothing raises.
     emitter.transition_stage("solve")
     emitter.complete()
-    assert client.telemetry_messages == []
+    emitter.close()
+    assert client.calls == []
 
 
 @pytest.mark.parametrize("installed_version", ["0.6.0", "0.7.0", "0.10.0", "1.0.0"])
@@ -255,21 +308,28 @@ def test_an_emitter_from_0_6_0_on_starts(
     monkeypatch, capsys, tmp_path, installed_version
 ):
     client = FakeEmitterClient()
-    client.emitter_version = installed_version
-    emitter = _start_build_emitter(monkeypatch, tmp_path, client)
+    starts = _record_starts(monkeypatch, client)
+    command, started = _install_emitter_command(
+        monkeypatch, tmp_path / "bin", _version_answer(installed_version)
+    )
+    emitter = _start_build_emitter(monkeypatch, tmp_path)
 
+    # The command whose version was read is the one started.
+    assert [options["command"] for options in starts] == [str(command)]
+    assert not started.exists()
     assert emitter.available
-    assert not client.closed
     assert "microcosm-emitter" not in capsys.readouterr().err
 
 
 @pytest.mark.parametrize("operation", ["inventory", "publish"])
-def test_a_short_lived_graph_emitter_older_than_0_6_0_is_stopped(
+def test_a_short_lived_graph_emitter_older_than_0_6_0_is_never_started(
     monkeypatch, capsys, tmp_path, operation
 ):
     client = FakeEmitterClient(modules={"orrery"})
-    client.emitter_version = "0.5.1"
-    _record_starts(monkeypatch, client)
+    starts = _record_starts(monkeypatch, client)
+    _, started = _install_emitter_command(
+        monkeypatch, tmp_path / "bin", _version_answer("0.5.1")
+    )
     inventory = {"version": 1, "publication_id": "independent", "files": []}
 
     if operation == "inventory":
@@ -278,8 +338,9 @@ def test_a_short_lived_graph_emitter_older_than_0_6_0_is_stopped(
         receipt = adapter.publish_graph(tmp_path, inventory, wait_seconds=0)
         assert receipt["status"] == "failed"
 
-    assert client.closed
-    assert client.orrery_requests == []
+    assert starts == []
+    assert not started.exists()
+    assert client.calls == []
     assert "this build needs 0.6.0 or later" in capsys.readouterr().err
 
 
