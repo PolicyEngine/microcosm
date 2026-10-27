@@ -622,76 +622,24 @@ def test_a_release_candidate_needs_the_signing_key_and_local_targets(
     )
 
 
-def test_a_withheld_brma_row_projects_over_the_published_rows(tmp_path, monkeypatch):
-    """microcosm#1305 re-review: a withheld row reads blank, not NaN.
-
-    The terminal table leaves a withheld BRMA row's figures blank. The
-    manifest's error summaries and family fit cover the published rows, the
-    solve block counts the withheld one, and the manifest still writes as
-    strict JSON (it refuses NaN).
-    """
+def test_a_thin_brma_row_projects_with_its_figures(tmp_path, monkeypatch):
+    """María's ruling of 2026-10-26: a row resting on fewer than ten source
+    households carries its figures, so the manifest's error summaries and
+    family fit cover it, and the solve block counts nothing as withheld."""
     pytest.importorskip("tables")
-    monkeypatch.setattr(support, "WITHHELD_BRMA_ROW", True)
+    monkeypatch.setattr(support, "THIN_BRMA_ROW", True)
     args = arguments(tmp_path, "--release-candidate")
     assert cli.execute_full_build(prepared(tmp_path, release_candidate=True), args) == 0
     manifest = json.loads((args.out / "rowwise_candidate_manifest.json").read_text())
     solve = manifest["solve"]
     assert solve["n_targets"] == 2
-    assert solve["model_figures_withheld"] == {
-        "targets": 1,
-        "totals_basis": "published_rows",
-    }
-    assert solve["max_abs_relative_error"] == 0.0
-    assert solve["median_abs_relative_error"] == 0.0
-    assert [row["family"] for row in manifest["fit"]["local_by_family"]] == [
-        "census_households"
+    assert "model_figures_withheld" not in solve
+    assert solve["max_abs_relative_error"] == pytest.approx(0.1)
+    assert solve["median_abs_relative_error"] == pytest.approx(0.05)
+    assert sorted(row["family"] for row in manifest["fit"]["local_by_family"]) == [
+        "census_households",
+        "private_rent",
     ]
-
-
-def test_a_published_size_receipt_keeps_only_its_allow_list_while_rows_are_withheld():
-    """The third review of #1305: an allow-list, not a deny-list.
-
-    Every field a reader of the manifest uses stays; the losses, the refit's
-    distances, the search's probes and any field nobody listed read null.
-    """
-    from microcosm.build.uk_runtime.graph_terminal import _published_size_receipt
-
-    receipt = {
-        "requested_households": 2,
-        "realized_households": 2,
-        "pool_households": 4,
-        "protected_carriers": 1,
-        "refit_epochs": 10,
-        "selection_epochs": 10,
-        "selection_l0_lambda": 1e-7,
-        "selection_receipt": {"design": "sampford"},
-        "selection_search_bracket": {"lower": 1e-10, "upper": 1e-5},
-        "dense_loss": 0.2,
-        "compact_loss": 0.3,
-        "max_target_scaled_change": 0.4,
-        "compact_loss_under_dense_weights": 0.35,
-        "refit_l2": {"chi_square_distance_to_anchor": 0.01},
-        "selection_budget_search": {"probes": [{"loss": 0.5}]},
-        "a_field_nobody_listed": 0.6,
-    }
-    assert _published_size_receipt(receipt, withheld=0) == receipt
-    published = _published_size_receipt(receipt, withheld=1)
-    kept = {
-        "requested_households",
-        "realized_households",
-        "pool_households",
-        "protected_carriers",
-        "refit_epochs",
-        "selection_epochs",
-        "selection_l0_lambda",
-        "selection_receipt",
-        "selection_search_bracket",
-    }
-    for key, value in receipt.items():
-        assert published[key] == (value if key in kept else None), key
-    assert "1 row(s)" in published["withheld_totals_note"]
-    assert receipt["dense_loss"] == 0.2
-    assert _published_size_receipt(None, withheld=1) is None
 
 
 def test_dense_run_projects_the_rowwise_candidate_manifest(tmp_path):
@@ -702,6 +650,14 @@ def test_dense_run_projects_the_rowwise_candidate_manifest(tmp_path):
     manifest = json.loads((out / "rowwise_candidate_manifest.json").read_text())
     assert manifest["schema_version"] == 4
     assert manifest["build_kind"] == "uk_rowwise_calibrated_candidate"
+    # The support block counts areas and states the minima (María's ruling
+    # of 2026-10-26 dropped their withholding, microcosm#1301).
+    support = manifest["support"]
+    assert (support["areas_checked"], support["min_nonzero_households"]) == (4, 1)
+    assert (
+        support["by_geography_level"]["constituency"]["min_nonzero_source_households"]
+        == 1
+    )
     assert manifest["release_role"] == "dense"
     assert manifest["release_id"] == UK_DENSE_RELEASE_ID
     assert manifest["parameters"]["release_role"] == "dense"
@@ -1416,16 +1372,11 @@ def _staged_epoch_rows(out) -> list[dict]:
 
 
 @pytest.mark.parametrize("extra", [(), ("--target-geographies", "la")])
-def test_every_request_stages_its_epochs_without_loss(
+def test_every_request_stages_its_epochs_with_their_loss(
     tmp_path, monkeypatch, capsys, extra
 ):
-    """The third review of #1305: an epoch's loss covers every row.
-
-    Every request can bind a thin row now (María's rule of 2026-10-21 binds
-    thin national rows as well as BRMA rows), so every request stages its
-    epochs, and sends them to the emitter, with a null loss; only the local
-    stderr line keeps it.
-    """
+    """María's ruling of 2026-10-26 dropped the withholding of microcosm#1262,
+    so the staged epochs and the emitter carry each epoch's loss again."""
     pytest.importorskip("tables")
     emitted: list[dict] = []
     monkeypatch.setattr(
@@ -1442,65 +1393,19 @@ def test_every_request_stages_its_epochs_without_loss(
     rows = _staged_epoch_rows(out)
     assert rows and emitted
     losses = {row["loss"] for row in rows} | {event["loss"] for event in emitted}
-    assert losses == {None}
-    # The local stderr line keeps the last epoch's loss either way.
+    assert losses == {0.5, 0.25}
     assert "loss 0.25" in capsys.readouterr().err
 
 
-def test_the_thinned_epochs_null_the_loss_on_request():
-    from microcosm.build.uk_runtime.rowwise_staging import thinned_epochs
-
-    seen: list[dict] = []
-    forward = thinned_epochs(seen.append, every=1, withhold_loss=True)
-    forward({"kind": "calibration_epoch", "epoch": 1, "epochs": 1, "loss": 0.25})
-    assert seen == [
-        {"kind": "calibration_epoch", "epoch": 1, "epochs": 1, "loss": None}
-    ]
-    seen.clear()
-    thinned_epochs(seen.append, every=1)(
-        {"kind": "calibration_epoch", "epoch": 1, "epochs": 1, "loss": 0.25}
-    )
-    assert seen[0]["loss"] == 0.25
-
-
-@pytest.mark.parametrize(
-    "role,localisation,levels",
-    [
-        ("dense", "area", None),
-        ("dense", "area", ("la", "brma")),
-        ("dense", "area", ("la",)),
-        ("dense", "none", None),
-        ("national", "area", None),
-    ],
-)
-def test_every_request_may_withhold_a_row(role, localisation, levels):
-    """María's rule of 2026-10-21 binds thin national rows as well as BRMA rows."""
-
-    from types import SimpleNamespace
-
-    args = SimpleNamespace(
-        release_role=role, brma_localisation=localisation, target_geographies=levels
-    )
-    assert cli._may_withhold_rows(args) is True
-
-
-def test_a_national_request_stages_its_epochs_without_their_loss(tmp_path, monkeypatch):
-    """A national run binds thin UC payment and benefit-cap bands now.
-
-    An epoch's loss covers every row, so against the published rows it would
-    give a withheld row back: the staged epochs carry null, as the dense
-    role's have since the third review of #1305.
-    """
-
+def test_a_national_request_stages_its_epochs_with_their_loss(tmp_path, monkeypatch):
     args = cli.parse_args(_national_argv(tmp_path))
-    assert cli._may_withhold_rows(args) is True
     emitted: list[dict] = []
     monkeypatch.setattr(
         cli, "emit_calibration_progress", lambda event: emitted.append(dict(event))
     )
     observer = cli._solve_observer(args, None)
     observer({"kind": "calibration_epoch", "epoch": 1, "epochs": 1, "loss": 0.25})
-    assert [event["loss"] for event in emitted] == [None]
+    assert [event["loss"] for event in emitted] == [0.25]
 
 
 def test_telemetry_content_refusal_never_aborts_the_solve(
@@ -3375,3 +3280,22 @@ def test_the_brma_and_rent_resource_flags_need_their_modes(tmp_path):
             {},
             {},
         )
+
+
+def test_the_thin_rows_only_switch_is_gone(tmp_path):
+    """María's ruling of 2026-10-26 dropped the withholding, and with it
+    --withhold-thin-rows-only; a script that still passes it is refused."""
+
+    with pytest.raises(SystemExit):
+        arguments(tmp_path, "--withhold-thin-rows-only")
+
+
+def test_the_orrery_publication_is_off_unless_asked(tmp_path):
+    """María's ruling of 2026-10-26: no build submits its graph to the public
+    Orrery by default."""
+
+    from microcosm.build.uk_runtime.orrery_publication import publication_enabled
+
+    assert not publication_enabled(arguments(tmp_path))
+    assert not publication_enabled(arguments(tmp_path, "--no-publish-orrery"))
+    assert publication_enabled(arguments(tmp_path, "--publish-orrery"))

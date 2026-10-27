@@ -28,14 +28,17 @@ from .graph import _manifest_stages, uk_spine_operation_inventory
 from .graph_calibration import SIZE_DRAW_TYPE, SIZE_RECEIPT_TYPE, SIZE_SEARCH_TYPE
 from .graph_evidence import SPINE_GATE_REPORT_TYPE
 from .graph_national import (
-    NATIONAL_EVIDENCE_TYPE,
     NATIONAL_GATE_REPORT_TYPE,
     NATIONAL_TARGET_TYPE,
 )
 from .graph_targets import TARGET_SELECTION_TYPE, registry_from_payload
-from .graph_terminal import FULL_DIAGNOSTICS_TYPE, FULL_GATE_REPORT_TYPE
+from .graph_terminal import FULL_GATE_REPORT_TYPE
 
-#: A summary row's fields that the result's weights produce.
+#: A target row's fields that the result's weights produce. The summaries are
+#: the projection a build may publish to the Orrery, and since María's ruling
+#: of 2026-10-26 the build no longer marks the rows resting on fewer than ten
+#: source households, so the summaries carry no row's figures (Vahid's review
+#: of #1396, M1). The build's private diagnostics keep every row's.
 _SUMMARY_MODEL_FIELDS = (
     "initial",
     "achieved",
@@ -43,135 +46,21 @@ _SUMMARY_MODEL_FIELDS = (
     "relative_error",
     "within_tolerance",
 )
-
-
-#: The outputs in which a gate on a result records the rows it withheld: the
-#: national gates flag each row of their calibration evidence, and the full
-#: build's terminal gate notes each withheld row in its diagnostics' metadata.
-_RECORDED_WITHHELD = {
-    "calibration_evidence": (
-        NATIONAL_EVIDENCE_TYPE,
-        "diagnostics",
-        lambda row: row.get("model_figures_withheld") is True,
-    ),
-    "calibration_diagnostics": (
-        FULL_DIAGNOSTICS_TYPE,
-        "targets",
-        lambda row: bool((row.get("metadata") or {}).get("model_figures_withheld")),
-    ),
-}
-
-
-def _recorded_withheld(
-    context: ArtifactSummaryContext,
-) -> tuple[frozenset[str], frozenset[str]] | None:
-    """The rows a gate on this result saw, and those it recorded as withheld.
-
-    Only a gate that reads this result directly counts. The summary takes its
-    set rather than count it again, so a build computes the withholding once
-    (Vahid's third review of #1383, item 32). None when no such gate has run.
-    """
-
-    found: set[tuple[frozenset[str], frozenset[str]]] = set()
-    for node_id, predecessors in context.run.compiled.predecessors.items():
-        if context.node_id not in predecessors:
-            continue
-        receipt = context.run.manifest.nodes.get(node_id)
-        if receipt is None:
-            continue
-        for name, descriptor in receipt.typed_artifacts.get("outputs", {}).items():
-            reader = _RECORDED_WITHHELD.get(name)
-            if reader is None or name not in receipt.opaque_artifacts:
-                continue
-            type_, table, flagged = reader
-            if descriptor["type"] != {
-                "name": type_.name,
-                "schema_version": type_.schema_version,
-            }:
-                continue
-            rows = json.loads(context.store.load_bytes(descriptor["key"]))[table]
-            found.add(
-                (
-                    frozenset(str(row["name"]) for row in rows),
-                    frozenset(str(row["name"]) for row in rows if flagged(row)),
-                )
-            )
-    if len(found) > 1:
-        raise ValueError("Gates on one result recorded different withheld rows.")
-    return next(iter(found), None)
-
-
-def _withhold_summary_rows(
-    data: dict,
-    result,
-    ordered,
-    recorded: tuple[frozenset[str], frozenset[str]] | None = None,
-) -> None:
-    """Keep a thin row's figures out of the published summary (#1262).
-
-    María's ruling of 2026-10-17: a BRMA row's model figures leave a build
-    only when ten distinct source households carry them, here counted on this
-    result's own weights; her rule of 2026-10-21 extends it to national and
-    regional rows (local rows keep the area-support rule). A withheld row
-    keeps its target and its place, and the final loss covers the published
-    rows (her ruling of 2026-10-18). ``recorded`` is a gate's
-    (:func:`_recorded_withheld`): taken as it is when that gate saw every
-    summary row, and counted here otherwise.
-    """
-
-    from .diagnostics import _restate_totals_over_published_rows, uk_withheld_rows
-
-    rows = data["tables"]["targets"]
-    metadata_by_row = {
-        target.row_name: metadata
-        for target, metadata in zip(
-            ordered.problem.targets, ordered.target_metadata, strict=True
-        )
-    }
-    if recorded is not None and {row["name"] for row in rows} <= recorded[0]:
-        withheld = set(recorded[1])
-    else:
-        # The withholding ties a local family to its parents by contract
-        # target (Vahid's review of #1383, item 1).
-        withheld = uk_withheld_rows(
-            ordered.problem,
-            result.weights,
-            result.frame,
-            [
-                {
-                    **row,
-                    "metadata": {
-                        key: metadata_by_row.get(row["name"], {}).get(key)
-                        for key in ("contract_target_id", "geography_id")
-                    },
-                }
-                for row in rows
-            ],
-            {
-                name: metadata.get("geography_level", "")
-                for name, metadata in metadata_by_row.items()
-            },
-        )
-    if not withheld:
-        return
-    for row in rows:
-        if row["name"] in withheld:
-            for field in _SUMMARY_MODEL_FIELDS:
-                row[field] = None
-            row["model_figures_withheld"] = True
-    totals: dict = {}
-    _restate_totals_over_published_rows(totals, result, frozenset(withheld))
-    data["overview"]["final_loss"] = totals["final_loss"]
-    data["overview"]["model_figures_withheld"] = {
-        "targets": len(withheld),
-        "totals_basis": "published_rows",
-    }
+#: Size receipt fields left out of the summary: one target row's figure.
+_SIZE_ROW_FIELDS = ("max_target_scaled_change",)
+_RECORD_SCOPE = (
+    "Targets and the weight distribution; no entity IDs, record values or "
+    "target row's model figures."
+)
 
 
 def _uk_result_summary(context: ArtifactSummaryContext) -> dict:
     result, ordered = summary_result(context)
     data = result_summary_data(result, ordered)
-    _withhold_summary_rows(data, result, ordered, _recorded_withheld(context))
+    for row in data["tables"]["targets"]:
+        for field in _SUMMARY_MODEL_FIELDS:
+            del row[field]
+    data["overview"]["record_scope"] = _RECORD_SCOPE
     ancestors, pending = set(), [context.node_id]
     while pending:
         current = pending.pop()
@@ -226,7 +115,8 @@ def _uk_result_summary(context: ArtifactSummaryContext) -> dict:
 
 
 def _size_summary(context: ArtifactSummaryContext) -> dict:
-    """Project the maintained size artifact, excluding IDs, masks and draws."""
+    """Project the maintained size artifact, excluding IDs, masks, draws and
+    any one target row's figure; the losses are totals over every row."""
     value = json.loads(context.payload)
     problem = decode_problem(context.input_payload("problem"))
     if value.get("problem_sha256") != problem.sha256:
@@ -264,18 +154,10 @@ def _size_summary(context: ArtifactSummaryContext) -> dict:
         "baseline_mass_share_certainties",
         "dense_loss",
         "compact_loss",
-        "max_target_scaled_change",
         "certification",
         "pi_hi",
     )
     summary = {key: value[key] for key in fields if key in value}
-    # Totals over every row: with a row withheld they would give it back by
-    # difference (microcosm#1262). Without the weights behind them this
-    # summary cannot tell which rows are thin, and since María's rule of
-    # 2026-10-21 any problem may bind one, so it publishes none.
-    for key in ("dense_loss", "compact_loss", "max_target_scaled_change"):
-        if key in summary:
-            summary[key] = None
     summary["problem_sha256"] = problem.sha256
     for key in ("support", "protected", "household_ids", "pool_row_indices"):
         if key in value:
@@ -329,7 +211,9 @@ def _gate_rows(report: object) -> tuple[list[dict], dict]:
             isinstance(line, str) for line in failures
         ):
             raise ValueError("Gate failures must be text lines.")
-        row["failures"] = failures
+        # A line can state a row's model figures or an area's support, which
+        # the build no longer withholds; the gate report keeps the lines.
+        row["failure_count"] = len(failures)
         row["evidence_sha256"] = outcome.get("evidence_sha256")
         counts[row["status"]] += 1
         rows.append(row)
@@ -347,7 +231,8 @@ def _gate_report_summary(context: ArtifactSummaryContext) -> dict:
 
     The spine artifact is a bare phase report; the full and national artifacts
     wrap one in a document with enforcement or blocking verdicts. Gate detail
-    payloads and target or area tables are not projected.
+    payloads, target or area tables and failure lines are not projected; each
+    gate states how many failure lines it has.
     """
     document = json.loads(context.payload)
     if not isinstance(document, dict):
@@ -407,6 +292,37 @@ UK_SUMMARY_PROVIDERS = {
         NATIONAL_GATE_REPORT_TYPE.schema_version,
     ): _gate_report_summary,
 }
+
+
+def public_summary_findings(summaries: list[dict]) -> list[str]:
+    """Recorded summaries that carry a target row's figures or failure lines.
+
+    The providers above project neither. The publication runs this on the
+    summaries it is about to export, so a provider that regresses stops the
+    export rather than reaching the Orrery.
+    """
+
+    findings = []
+    for summary in summaries:
+        data = summary.get("data")
+        if not isinstance(data, dict):
+            continue
+        where = f"{summary.get('node')}/{summary.get('artifact')}"
+        tables = data.get("tables") or {}
+        fields = {
+            field
+            for row in tables.get("targets", [])
+            for field in _SUMMARY_MODEL_FIELDS
+            if field in row
+        }
+        fields.update(
+            field for field in _SIZE_ROW_FIELDS if field in data.get("overview", {})
+        )
+        if fields:
+            findings.append(f"{where} carries {', '.join(sorted(fields))}")
+        if any("failures" in row for row in tables.get("gates", [])):
+            findings.append(f"{where} carries gate failure lines")
+    return findings
 
 
 def checkpoint_references(sidecar_path: Path | None) -> tuple[list[dict], str | None]:

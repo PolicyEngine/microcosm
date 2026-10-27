@@ -1023,6 +1023,7 @@ class TestUKCountryPackage:
             "uprating_holds.json",
             "ons_spree_tenure_dwellings.json",
             "desnz_local_energy_facts.json",
+            "desnz_constituency_energy_facts.json",
             "local_small_cell_rule.json",
             "hmrc_spi_table_3_11_uk_rows.json",
         )
@@ -1181,6 +1182,7 @@ class TestExistingPackagesGeneralize:
             "uprating_holds.json",
             "ons_spree_tenure_dwellings.json",
             "desnz_local_energy_facts.json",
+            "desnz_constituency_energy_facts.json",
             "local_small_cell_rule.json",
             "hmrc_spi_table_3_11_uk_rows.json",
         )
@@ -1497,6 +1499,7 @@ class TestUKGatesManifest:
             "uk_stage_regional_home_values_ranking",
             "uk_stage_property_purchases_fit",
             "uk_stage_uc_legacy_closure_take_up_contract",
+            "uk_stage_frs_person_draws_apprentices",
             "uk_release_input_coverage",
             "uk_degenerate_release_surface",
             "uk_zero_weight_strata",
@@ -1627,6 +1630,7 @@ class TestUKGatesManifest:
             "uk_stage_regional_home_values_ranking",
             "uk_stage_property_purchases_fit",
             "uk_stage_uc_legacy_closure_take_up_contract",
+            "uk_stage_frs_person_draws_apprentices",
             "uk_weights_audit",
             # The #970 projection fence: a seam that cannot project cannot
             # certify the candidate's sub-exempt gainers.

@@ -406,10 +406,16 @@ def test_the_receipt_withholds_a_stratum_resting_on_few_households() -> None:
         assert "households" not in recorded["adults_1:youngest_35_to_54"]
 
 
-def test_top_up_refuses_a_donor_with_too_few_stakes() -> None:
+def test_top_up_flags_few_donor_stakes_and_refuses_too_few_to_fit() -> None:
+    """Fewer than ten donor households only flags (María's ruling of
+    2026-10-26): the fits' support reads "<10". The fit needs two."""
     inputs = participation_inputs()
     stakes = np.zeros(len(inputs["donor_weights"]))
     stakes[:5] = 10.0
     inputs["donor_keys"] = {**inputs["donor_keys"], "national_lottery": stakes}
-    with pytest.raises(ValueError, match="10 or more households"):
+    result = top_up_gambling_participation(**inputs)
+    key = result.receipt["keys"]["national_lottery"]
+    assert key["propensity"]["positive_support"] == "<10"
+    stakes[1:] = 0.0
+    with pytest.raises(ValueError, match="2 or more households"):
         top_up_gambling_participation(**inputs)
