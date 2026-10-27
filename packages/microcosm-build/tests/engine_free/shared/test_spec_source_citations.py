@@ -399,7 +399,29 @@ _IN_REPOSITORY_FILES = (
     "src/microcosm/build/us_runtime/asec_pool.py",
     "https://raw.githubusercontent.com/PolicyEngine/microcosm/main/tools/"
     "build_us_puf_support_base.py",
+    "https://raw.githubusercontent.com/PolicyEngine/microcosm/refs/heads/main/tools/"
+    "build_us_puf_support_base.py",
+    "https://github.com/PolicyEngine/microcosm/blob/refs/heads/main/tools/"
+    "build_us_puf_support_base.py",
+    "https://github.com/PolicyEngine/microcosm/tree/feature/citations/packages/"
+    "microcosm-build/src/microcosm/build/us_runtime/asec_pool.py",
 )
+#: URL prefixes of this repository, up to the ref.
+_THIS_REPOSITORY_URLS = (
+    "https://github.com/PolicyEngine/microcosm/blob/",
+    "https://github.com/policyengine/microcosm/tree/",
+    "github.com/PolicyEngine/microcosm/raw/",
+    "https://www.github.com/PolicyEngine/microcosm/blame/",
+    "https://raw.githubusercontent.com/PolicyEngine/microcosm/",
+)
+#: Files in this checkout, from the repository root.
+_ROOTED_FILES = (
+    "tools/build_us_puf_support_base.py",
+    "packages/microcosm-build/src/microcosm/build/us_runtime/asec_pool.py",
+    "experiments/build_j_recert/buildj_base.sh",
+)
+#: One segment of a git ref.
+_REF_SEGMENT = st.from_regex(r"[A-Za-z0-9_-]{1,12}", fullmatch=True)
 
 
 def _plant(text: str, depth: int, as_key: bool) -> object:
@@ -1064,6 +1086,33 @@ def test_a_line_citation_of_this_repository_is_refused_even_when_pinned(
     assert LineCitation(file, text) in in_repository_line_citations(document)
 
 
+@settings(max_examples=200, deadline=None)
+@given(
+    url=st.sampled_from(_THIS_REPOSITORY_URLS),
+    ref=st.lists(_REF_SEGMENT, min_size=1, max_size=4).map("/".join),
+    path=st.sampled_from(_ROOTED_FILES),
+    locator=st.sampled_from(_LINE_LOCATORS),
+    pin=st.sampled_from(_INLINE_PINS),
+    sha=_SHA,
+    a=st.integers(1, 99_999),
+    b=st.integers(1, 99_999),
+)
+def test_a_url_of_this_repository_is_refused_at_a_ref_of_any_depth(
+    url: str,
+    ref: str,
+    path: str,
+    locator: str,
+    pin: str,
+    sha: str,
+    a: int,
+    b: int,
+) -> None:
+    file = f"{url}{ref}/{path}"
+    text = f"{locator.format(file=file, a=a, b=b)} {pin.format(sha=sha)}"
+    assert resolves_in_repository(file)
+    assert in_repository_line_citations({"note": text}) == [LineCitation(file, text)]
+
+
 def test_in_repository_paths_resolve_from_an_anchor_or_a_repository_prefix() -> None:
     for file in (
         *_IN_REPOSITORY_FILES,
@@ -1192,6 +1241,18 @@ def test_the_round_two_review_counterexamples_are_refused() -> None:
     # A URL pin is still followed by its path.
     pinned = "https://github.com/o/upstream-data/blob/a1b2c3d/foo.py#L12"
     assert [citing_commit(found) for found in line_citations(pinned)] == ["a1b2c3d"]
+
+
+def test_the_round_three_review_counterexample_is_refused() -> None:
+    tool = "tools/build_us_puf_support_base.py"
+    for url in (
+        "https://raw.githubusercontent.com/PolicyEngine/microcosm/refs/heads/main/",
+        "https://github.com/PolicyEngine/microcosm/blob/refs/heads/main/",
+    ):
+        text = f"{url}{tool}#L12 at a1b2c3d"
+        assert in_repository_line_citations({"note": text}) == [
+            LineCitation(f"{url}{tool}", text)
+        ]
 
 
 @settings(max_examples=200, deadline=None)

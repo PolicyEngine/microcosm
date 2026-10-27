@@ -33,9 +33,10 @@ binds to ("archived 42ed5d45 cps.py L197"), is refused as a misspelled pin
 that some other commit pins.
 
 A cited path is in-repository when, after any prefix naming this repository
-is removed (a ``github.com/PolicyEngine/microcosm/blob/<ref>/`` URL, or
-``microcosm/`` before a top-level source directory), it is a file here or one
-of the path forms ``_repository_path_tails`` lists. A line citation of it is
+is removed (a ``github.com/PolicyEngine/microcosm/blob/<ref>/`` URL, at a ref
+of any depth such as ``refs/heads/main``, or ``microcosm/`` before a
+top-level source directory), it is a file here or one of the path forms
+``_repository_path_tails`` lists. A line citation of it is
 refused even when pinned. A bare file name cannot be told apart from another
 repository's, so it must be pinned.
 
@@ -171,12 +172,13 @@ _CLAUSE_BREAK = re.compile(r";|(?<=[.!?])\s+(?=[A-Z(\[`])")
 _SOURCE_ROOTS = ("packages", "tools", "experiments", "test_support", "docs")
 _SKIPPED_DIRECTORIES = {"__pycache__", ".venv", "node_modules", ".git"}
 #: A prefix naming this repository before a path in it: a GitHub URL of a
-#: file here at any ref, or ``microcosm/`` (after any ``./`` or ``../`` and
-#: an optional ``PolicyEngine/``) before a top-level source directory.
+#: file here, up to its ref (``url``), or ``microcosm/`` (after any ``./`` or
+#: ``../`` and an optional ``PolicyEngine/``) before a top-level source
+#: directory.
 _THIS_REPOSITORY = re.compile(
-    r"(?:https?:)?/*(?:www\.)?github\.com/(?i:policyengine/microcosm)/"
-    r"(?:blob|tree|raw|blame)/[^/]+/"
-    r"|(?:https?:)?/*raw\.githubusercontent\.com/(?i:policyengine/microcosm)/[^/]+/"
+    r"(?P<url>(?:https?:)?/*(?:www\.)?github\.com/(?i:policyengine/microcosm)/"
+    r"(?:blob|tree|raw|blame)/"
+    r"|(?:https?:)?/*raw\.githubusercontent\.com/(?i:policyengine/microcosm)/)"
     r"|(?:\.\.?/)*(?:(?i:policyengine)/)?microcosm/(?=(?:"
     + "|".join(_SOURCE_ROOTS)
     + r")/)"
@@ -437,10 +439,19 @@ def resolves_in_repository(file: str, root: Path = REPOSITORY_ROOT) -> bool:
     relative = PurePosixPath(file[named.end() :] if named else file)
     if relative.is_absolute() or ".." in relative.parts:
         return False
-    if named is not None and (root / relative).is_file():
-        return True
-    return len(relative.parts) >= 2 and relative.as_posix() in _repository_path_tails(
-        root
+    candidates = [relative]
+    if named is not None and named["url"]:
+        # A URL's ref comes first and may span segments (``main``,
+        # ``refs/heads/main``, ``feature/x``), so try the path after each.
+        candidates = [
+            PurePosixPath(*relative.parts[cut:])
+            for cut in range(1, len(relative.parts))
+        ]
+    tails = _repository_path_tails(root)
+    return any(
+        (named is not None and (root / candidate).is_file())
+        or (len(candidate.parts) >= 2 and candidate.as_posix() in tails)
+        for candidate in candidates
     )
 
 
