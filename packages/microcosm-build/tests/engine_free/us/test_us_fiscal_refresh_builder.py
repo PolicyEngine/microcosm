@@ -13788,6 +13788,8 @@ def test_us_release_id_guard() -> None:
 
 class _TestEmitter:
     available = True
+    #: No emitter process: a staging writer built with this one hands nothing over.
+    client = None
 
     def __init__(self) -> None:
         self.events = []
@@ -13860,6 +13862,57 @@ def test_staging_bundle_defaults_on_and_no_staging_disables_files(
     )
     assert progress.staging_bundle is None
     assert progress.staging_opt_out_reason == "--no-staging"
+
+
+def test_build_progress_hands_staging_files_to_the_build_emitter(
+    tmp_path, monkeypatch
+) -> None:
+    from microcosm.build import staging_storage
+    from microcosm.build.telemetry_emitter import TelemetryRun
+    from test_support.microcosm_build.telemetry import FakeTelemetryEmitter
+
+    module = _load_builder_module()
+    monkeypatch.setattr(
+        staging_storage.HuggingFaceDatasetStorage,
+        "_api",
+        lambda storage: pytest.fail("the build contacted the Hub itself"),
+    )
+    emitter = FakeTelemetryEmitter(TelemetryRun("rel-1", "US", "us_fiscal_refresh"))
+    args = SimpleNamespace(
+        no_staging=False,
+        staging_dir=tmp_path / "stage",
+        staging_repo_id="policyengine/populace-us-staging",
+        staging_run_id=None,
+        staging_prefix="runs",
+        staging_upload_interval_seconds=60.0,
+        epochs=module.DEFAULT_US_FISCAL_CALIBRATION_EPOCHS,
+        dense_default_dataset=False,
+    )
+
+    progress = module._build_progress(
+        args, release_root=tmp_path, release_id="rel-1", emitter=emitter
+    )
+    progress.stage("target_compilation", force_upload=True)
+    progress.fail(RuntimeError("build exploded"))
+
+    client = emitter.client
+    assert progress.staging_bundle.emitter_client is client
+    assert {request.repository for request in client.run_file_requests} == {
+        "policyengine/populace-us-staging"
+    }
+    # The failed state reaches the emitter before the build's telemetry
+    # outcome shuts the emitter down.
+    last_hand_over = max(
+        index for index, call in enumerate(client.calls) if call == "stage_run_files"
+    )
+    assert last_hand_over < client.calls.index("close")
+    remote = client.hub_json(
+        "policyengine/populace-us-staging", "runs/rel-1/progress.json"
+    )
+    assert remote["status"] == "failed"
+    assert [
+        event["status"] for event in emitter.events if event["event_type"] == "run"
+    ] == ["failed"]
 
 
 def test_hosted_progress_survives_staging_bundle_failure() -> None:

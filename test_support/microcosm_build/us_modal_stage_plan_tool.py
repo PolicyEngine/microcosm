@@ -34,6 +34,9 @@ def _load():
 
 
 plan_lib = _load()
+#: What the image's emitter answers to ``microcosm-emitter version``. Tests
+#: get this answer instead of running a command at the image's emitter path.
+RECORDED_EMITTER_VERSION = {"emitter_version": "0.7.0", "protocol_versions": [1]}
 
 
 def load_app(monkeypatch):
@@ -43,7 +46,9 @@ def load_app(monkeypatch):
     image and functions without reading a plan or contacting Modal; volume
     calls (commit, reload) are recorded, not performed. Each
     ``@app.function`` keeps its function and records its Modal options as
-    ``modal_options``.
+    ``modal_options``. ``_emitter_version`` answers
+    ``RECORDED_EMITTER_VERSION``, so no test runs an emitter installed at the
+    image's path (``/usr/local/bin/microcosm-emitter``) on the test machine.
     """
 
     from unittest.mock import MagicMock
@@ -65,6 +70,9 @@ def load_app(monkeypatch):
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
     spec.loader.exec_module(module)
+    monkeypatch.setattr(
+        module, "_emitter_version", lambda: copy.deepcopy(RECORDED_EMITTER_VERSION)
+    )
     return module
 
 

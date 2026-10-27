@@ -11651,9 +11651,13 @@ class _BuildProgress:
             self.staging_bundle.attach_artifact(name, path, **details)
 
     def fail(self, error: BaseException) -> None:
-        self.emitter.fail(error)
-        if self.staging_bundle is not None:
-            self.staging_bundle.fail(error)
+        # The staging run's failed state is handed to the emitter before the
+        # telemetry outcome shuts the emitter down.
+        try:
+            if self.staging_bundle is not None:
+                self.staging_bundle.fail(error)
+        finally:
+            self.emitter.fail(error)
 
     def complete(self) -> None:
         if self.staging_bundle is not None:
@@ -12365,6 +12369,8 @@ def _build_progress(
         run_dir=run_dir,
         repo_id=args.staging_repo_id,
         path_prefix=args.staging_prefix,
+        # The build's emitter commits the run files with its own credential.
+        emitter_client=emitter.client,
         upload_interval_seconds=args.staging_upload_interval_seconds,
     )
     _ACTIVE_PROGRESS = _BuildProgress(

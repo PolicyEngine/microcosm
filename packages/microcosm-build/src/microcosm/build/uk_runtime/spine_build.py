@@ -1388,6 +1388,10 @@ def _create_staging_run_bundle(
         delivery_mode="local_only" if local_only else "local_and_remote",
         repo_id=None if local_only else args.staging_repo_id,
         upload_interval_seconds=args.staging_upload_interval_seconds,
+        # The build's emitter commits the run files with its own credential.
+        emitter_client=(
+            None if local_only or _ACTIVE_EMITTER is None else _ACTIVE_EMITTER.client
+        ),
     )
 
 

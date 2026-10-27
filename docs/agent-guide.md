@@ -15,9 +15,10 @@ the PEP 420 namespace `microcosm.<x>`: `frame`, `fit`, `calibrate`, `build`,
 ## Commands
 
 UK build completion exports and stages Orrery graph evidence. Publication uses
-an independent worker inside the external `microcosm-emitter` service and a durable queue;
-see [configuration and retry](orrery-publication.md). No new producer secret or
-environment variable is required. Keep graph export/publication tests independent
+an independent module of the separately installed `microcosm-emitter`, which the
+build starts through `microcosm-emitter-interface`, and a durable queue; see
+[configuration and retry](orrery-publication.md). Staging run files go through
+the same emitter. No new producer secret is required. Keep graph export/publication tests independent
 of the hosted runs app and collector; use synthetic files and fake HTTP.
 
 ```bash
@@ -98,16 +99,18 @@ the one in `test_graph_reconstruction.py` uses it for the reconstruction marker
 of a declaration-only document.
 These CI tests perform no browser rendering.
 
-Workspace tests use an in-memory telemetry emitter by default. The shared
-fixture isolates Hugging Face credentials and cache paths. Adapter tests replace
-emitter startup, inventory and publication APIs with fakes. Emitter process, persistence
-and HTTP-delivery tests belong in microcosm-emitter; do not copy them
-into Microcosm. Build tests inspect `fake_telemetry_emitters` without creating
-sockets or service processes.
+Workspace tests use an in-memory emitter client by default
+(`test_support/microcosm_build/emitter.py`), and the shared fixture refuses to
+start the installed command. It also isolates Hugging Face credentials and cache
+paths. Build tests inspect `fake_telemetry_emitters`: their events follow the
+emitter's documented request-to-event rules, and the run files they were handed
+are in `client.hub_files`. Emitter process, persistence and HTTP-delivery tests
+belong in microcosm-emitter; do not copy them into Microcosm.
 
 The UK full-build caller sets `close_service_on_finish=False`: reporting an outcome
-leaves the graph worker available, and that caller's existing `finally` cleanup
-closes the combined service. Other callers close automatically when they finish.
+leaves the emitter running for graph and staging hand-overs, and that caller's
+existing `finally` cleanup closes it. Other callers close automatically when they
+finish, so they hand over their staging run's final state first.
 Keep validation-refused outcomes and structured
 failure codes intact when changing the adapter.
 

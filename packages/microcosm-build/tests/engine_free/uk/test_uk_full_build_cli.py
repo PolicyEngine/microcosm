@@ -1294,12 +1294,15 @@ def _drive_epochs(args, telemetry, epochs: int = 2) -> None:
 
 
 def _remote_hub(monkeypatch, **kwargs):
+    """One fake Hub for the staged dataset and the run files the emitter commits."""
     from microcosm.build.uk_runtime import rowwise_staging
+    from test_support.microcosm_build.telemetry import share_fake_hub
     from test_support.microcosm_build.uk_rowwise_candidate import _FakeHub
 
     hub = _FakeHub(**kwargs)
     monkeypatch.setattr(rowwise_staging, "_hub_api", lambda: hub)
     monkeypatch.setattr(rowwise_staging, "_hub_token", lambda: "hf_test_token")
+    share_fake_hub(monkeypatch, hub)
     return hub
 
 
@@ -1455,7 +1458,9 @@ def test_remote_staging_uploads_telemetry_and_the_bundle_in_one_commit(
     manifest = json.loads((out / cli.MANIFEST_FILENAME).read_text())
 
     # Telemetry went to runs/<run_id>/ of the staging repository, artifacts
-    # included, under the fixed prefix and nothing else.
+    # included, under the fixed prefix and nothing else. The build's emitter
+    # committed it: the build itself uploaded nothing to the Hub.
+    assert hub.uploads == []
     telemetry_paths = hub.paths("policyengine/populace-uk-staging")
     assert telemetry_paths == sorted(
         f"runs/{run_id}/{name}"
@@ -1631,27 +1636,28 @@ def test_a_failed_refresh_after_a_passed_read_back_still_records_the_attempt(
     """
 
     pytest.importorskip("tables")
-    from microcosm.build.uk_runtime import rowwise_staging
-    from test_support.microcosm_build.uk_rowwise_candidate import _FakeHub
+    from test_support.microcosm_build import telemetry as telemetry_support
+    from test_support.microcosm_build.emitter import FakeEmitterClient
 
-    class RefreshFailsHub(_FakeHub):
+    class RefreshFails(FakeEmitterClient):
+        """The emitter stops accepting run files once read-back has passed."""
+
         read_back_started = False
 
-        def hf_hub_download(self, *, repo_id, filename, repo_type, **kwargs):
-            if filename.startswith("runs/"):
-                self.read_back_started = True
-            return super().hf_hub_download(
-                repo_id=repo_id, filename=filename, repo_type=repo_type, **kwargs
+        def read_back_run_files(self, repository, run_id, *, wait_seconds=30.0):
+            answer = super().read_back_run_files(
+                repository, run_id, wait_seconds=wait_seconds
             )
+            RefreshFails.read_back_started = True
+            self.accept_run_files = False
+            return answer
 
-        def upload_file(self, **kwargs):
-            if self.read_back_started:
-                raise RuntimeError("503 token=do-not-record")
-            super().upload_file(**kwargs)
-
-    hub = RefreshFailsHub()
-    monkeypatch.setattr(rowwise_staging, "_hub_api", lambda: hub)
-    monkeypatch.setattr(rowwise_staging, "_hub_token", lambda: "hf_test_token")
+    hub = _remote_hub(monkeypatch)
+    monkeypatch.setattr(
+        telemetry_support,
+        "client_factory",
+        lambda: RefreshFails(hub_files=hub.files),
+    )
     status, out = run_dense_main(
         tmp_path,
         monkeypatch,
@@ -1662,10 +1668,9 @@ def test_a_failed_refresh_after_a_passed_read_back_still_records_the_attempt(
     )
 
     assert status == 0
-    assert hub.read_back_started
+    assert RefreshFails.read_back_started
     assert not (out / "failure.json").exists()
-    err = capsys.readouterr().err
-    assert "staging upload failed" in err and "do-not-record" not in err
+    assert "staging hand-over failed" in capsys.readouterr().err
     delivery = json.loads((out / cli.MANIFEST_FILENAME).read_text())["staging_delivery"]
     assert delivery["read_back"] == "passed"
     assert delivery["last_error_code"] is None

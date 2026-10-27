@@ -60,8 +60,12 @@ still read. Version 3 fixtures add a `blocked` run and a failure that carries
 its `failure_class`.
 
 The implementation separates versioned file serialization from country
-configuration. `microcosm.build.staging_storage` owns repository access and
-the repeated-upload failure policy used by both version 1 and version 2.
+configuration. `microcosm.build.staging_storage` owns the hand-over of run
+files to the build's emitter and its repeated-failure policy, used by both
+version 1 and version 2, and the repository access the staged dataset uses.
+The emitter commits every pending run file of a repository in one commit per
+upload interval, with the build's own credential, and reads a run back on
+request.
 `microcosm.build.staging_cli` adds and validates common command-line options
 from a supplied repository configuration. The UK repository identifier and
 environment-variable name live in `microcosm.build.uk_runtime.staging`; the
@@ -135,11 +139,20 @@ Common options are `--staging-dir`, `--staging-repo-id`,
 `--staging-run-id`, `--staging-candidate-id`,
 `--staging-upload-interval-seconds`, and `--staging-read-back`. An empty
 repository identifier is invalid in remote mode. Authenticated read-back is
-valid only in remote mode. Once read-back has passed or failed, its verdict
-owns the delivery's `last_error_code`: the refresh upload that follows a
-passed read-back is best effort, and if it fails the run keeps its verified
-delivery (the miss shows as an upload attempt without a success), while the
-remote copy may still show the delivery as it was before read-back.
+valid only in remote mode: the emitter commits the run's pending files and
+compares the Hub's copy of each with the bytes it committed. Once read-back
+has passed or failed, its verdict owns the delivery's `last_error_code`: the
+refresh hand-over that follows a passed read-back is best effort, and if the
+emitter does not accept it the run keeps its verified delivery (the miss shows
+as an upload attempt without a success), while the remote copy may still show
+the delivery as it was before read-back.
+
+A document's delivery counts are the emitter's as of that document's
+hand-over: `upload_successes` counts files the emitter committed and
+`upload_attempts` the files it attempted to commit plus any it did not
+accept. A document never counts the commit that carries it. Three hand-overs
+in a row that the emitter does not accept pause the run's hand-overs; the
+final state is handed over once more.
 
 Version 2 and 3 storage use the fixed repository prefix `runs/`. Individual runs
 cannot select another prefix, so consumers can enumerate that subtree without
@@ -386,9 +399,9 @@ Consumers discover runs by enumerating `runs/*/run_manifest.json`, then derive
 the latest run from manifest `updated_at` timestamps. Monitor each run's
 `progress.json` for current status and `events.ndjson` for ordered stage
 durations. A remote verification run downloads and validates only its own run
-manifest and progress document. Upload failures are recorded with counts and
-reviewed error codes while local recording continues; unrestricted remote
-exception text is not serialized.
+manifest and progress document. Hand-over and commit failures are recorded
+with counts and reviewed error codes while local recording continues;
+unrestricted remote exception text is not serialized.
 
 Rollback is configuration-first: use `--staging-local-only` to retain local
 evidence or `--no-staging` for a deliberate opt-out, disable the GitHub
