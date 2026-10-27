@@ -297,6 +297,24 @@ def test_receipt_records_no_relief_without_a_schedule() -> None:
     assert "implied_relief" not in derive_is_apprentice(person, rate=0.5).receipt
 
 
+def test_the_graph_node_reads_every_person_column_the_draw_needs() -> None:
+    """A node receives its declared cells alone, so the declaration must name
+    the pay the relief reads: the licensed spine at ab7c777e2 recorded no
+    implied relief, and the gate blocked it, before the declaration followed
+    (microcosm#1373)."""
+    from microcosm.build.uk_runtime.graph import uk_spine_graph
+
+    node = uk_spine_graph(source_mode="split").node("frs_person_draws")
+    inputs = {
+        (slice_.entity, column) for slice_ in node.inputs for column in slice_.columns
+    }
+    assert {
+        ("person", "age"),
+        ("person", "employment_status"),
+        ("person", "employment_income"),
+    } <= inputs
+
+
 def _system(*, variables, apprentice_threshold=966.73):
     thresholds = SimpleNamespace()
     if apprentice_threshold is not None:
