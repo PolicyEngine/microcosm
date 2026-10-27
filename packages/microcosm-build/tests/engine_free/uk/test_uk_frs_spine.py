@@ -3153,6 +3153,44 @@ def test_driver_refuses_synthetic_fixture_without_smoke(tmp_path: Path) -> None:
         )
 
 
+def test_remote_spine_staging_hands_its_run_files_to_the_build_emitter(
+    tmp_path: Path, fake_telemetry_emitters
+) -> None:
+    from microcosm.build.uk_runtime import spine_build
+
+    tool = _load_tool()
+    args = tool._parse_args(
+        [
+            "--frs-raw-dir",
+            str(tmp_path),
+            "--spine-h5",
+            str(tmp_path / "spine.h5"),
+            "--spi-tab",
+            str(tmp_path / "put2223uk.tab"),
+            "--hmrc-ods",
+            str(tmp_path / "hmrc.ods"),
+            "--staging-upload-interval-seconds",
+            "0",
+        ]
+    )
+    state = SimpleNamespace(build_id="uk-spine-attempt-fixture")
+    emitter = spine_build._start_telemetry_emitter(args, state=state)
+    bundle = spine_build._create_staging_run_bundle(args, state=state)
+
+    assert bundle.emitter_client is emitter.client
+    bundle.stage("input_verification", force_upload=True)
+    request = emitter.client.run_file_requests[-1]
+    assert (request.repository, request.run_id, request.prefix) == (
+        "policyengine/populace-uk-staging",
+        "uk-spine-attempt-fixture",
+        "runs",
+    )
+    assert "runs/uk-spine-attempt-fixture/progress.json" in emitter.client.paths(
+        "policyengine/populace-uk-staging"
+    )
+    emitter.close()
+
+
 def test_driver_exposes_all_staging_modes_and_rejects_empty_remote(
     tmp_path: Path,
 ) -> None:

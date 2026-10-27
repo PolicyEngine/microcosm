@@ -88,6 +88,7 @@ class FakeEmitterClient:
         *,
         modules: Iterable[str] = ALL_MODULES,
         accept_run_files: bool = True,
+        hub_files: dict[tuple[str, str], bytes] | None = None,
     ) -> None:
         self._modules = frozenset(modules)
         self.accept_run_files = accept_run_files
@@ -100,7 +101,8 @@ class FakeEmitterClient:
         self.run_file_requests: list[StageRunFiles] = []
         self.orrery_requests: list[dict[str, Any]] = []
         #: What the dataset repositories hold: ``(repository, path)`` to bytes.
-        self.hub_files: dict[tuple[str, str], bytes] = {}
+        #: A test may pass a fake Hub's own mapping to share it.
+        self.hub_files = hub_files if hub_files is not None else {}
         #: Override for ``read_back_run_files``, when a test needs one.
         self.read_back_answer: ReadBackResult | None = None
         self._committed: dict[tuple[str, str], tuple[str, str]] = {}
@@ -120,6 +122,13 @@ class FakeEmitterClient:
 
     def hub_json(self, repository: str, path: str) -> Any:
         return json.loads(self.hub_files[(repository, path)])
+
+    def committed_paths(self, repository: str, run_id: str) -> set[str]:
+        return {
+            path
+            for (repo, path), (owner, _) in self._committed.items()
+            if repo == repository and owner == run_id
+        }
 
     # Telemetry ---------------------------------------------------------------
 

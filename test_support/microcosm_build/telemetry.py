@@ -20,8 +20,9 @@ cover both.
 
 from __future__ import annotations
 
+import sys
 import uuid
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -227,6 +228,26 @@ def telemetry_events(messages: Sequence[Mapping[str, Any]]) -> list[dict[str, An
     return lifecycle.events
 
 
+#: Makes the in-memory client of each ``FakeTelemetryEmitter`` built without
+#: one; :func:`share_fake_hub` replaces it for one test.
+client_factory: Callable[[], FakeEmitterClient] = FakeEmitterClient
+
+
+def share_fake_hub(monkeypatch, hub: Any) -> None:
+    """Commit the run files every fake emitter receives into ``hub.files``.
+
+    ``hub`` is a fake Hub keyed by ``(repository, path)``; the build's other
+    uploads (staged dataset bundles, releases) still go to it directly, so a
+    test sees both in one place.
+    """
+
+    monkeypatch.setattr(
+        sys.modules[__name__],
+        "client_factory",
+        lambda: FakeEmitterClient(hub_files=hub.files),
+    )
+
+
 class FakeTelemetryEmitter(LocalTelemetryEmitter):
     """Microcosm's adapter over an in-memory emitter client."""
 
@@ -239,7 +260,7 @@ class FakeTelemetryEmitter(LocalTelemetryEmitter):
     ) -> None:
         super().__init__(
             run=run,
-            client=client if client is not None else FakeEmitterClient(),
+            client=client if client is not None else client_factory(),
             close_service_on_finish=close_service_on_finish,
         )
 
