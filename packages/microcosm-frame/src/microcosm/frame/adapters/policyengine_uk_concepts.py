@@ -35,7 +35,7 @@ __all__ = [
 # ---------------------------------------------------------------------------
 #
 # Which PolicyEngine-UK inputs each engine-neutral concept feeds
-# (microcosm.frame.concepts), reviewed against policyengine-uk 2.162.3. Every
+# (microcosm.frame.concepts), reviewed against policyengine-uk 2.162.8. Every
 # target is a pure input (in ``PolicyEngineUKEngine.variables``). The UK
 # loader also accepts some formula-owned variables as overrides
 # (``employment_income``, ``state_pension_reported``, ``is_household_head``);
@@ -399,6 +399,18 @@ UK_ENGINE_DEFAULT_INPUTS: dict[str, str] = {
         "Lifetime ISA withdrawals they change nothing, so they stay false "
         "(microcosm#1095; for María's signature).",
     ),
+    "is_in_first_year_of_apprenticeship": (
+        "Whether an apprentice is in the first 12 months of the apprenticeship "
+        "(policyengine-uk 2.162.8, policyengine-uk#2683): the apprentice "
+        "minimum wage applies under 19 or in that first year. The build flags "
+        "apprentices aged 21 to 24 only (frs_person_draws) and records no "
+        "apprenticeship start, so the input stays false and every flagged "
+        "apprentice takes the age-related minimum wage. A first-year apprentice "
+        "aged 21 to 24 is then held to the higher minimum income in the "
+        "Tax-Free Childcare, extended childcare and Childcare Offer for Wales "
+        "income tests, so those tests are slightly harder for them to pass; "
+        "employer NICs do not read it (microcosm#1373; for María's signature)."
+    ),
 }
 
 
@@ -423,7 +435,7 @@ def _uk_take_up(program: str, entity: str) -> InputBinding:
 
 POLICYENGINE_UK_CONCEPT_MAPPING = ConceptMapping(
     engine="policyengine-uk",
-    engine_version="2.162.3",
+    engine_version="2.162.8",
     entity_correspondence={"person": "person", "household": "household"},
     input_declaration=InputDeclaration.ENGINE_TYPED,
     bindings=(

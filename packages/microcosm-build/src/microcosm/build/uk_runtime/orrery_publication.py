@@ -29,6 +29,8 @@ from microcosm.graph.evidence import collect_execution_evidence, load_run_eviden
 from microcosm.graph.execution_overlay import execution_overlay_bytes
 from microcosm.graph.orrery import orrery_json_from_schema
 
+from .orrery_contract import public_summary_findings
+
 RECEIPT_NAME = "orrery.publication.json"
 INVENTORY_NAME = "orrery.upload.json"
 EVIDENCE_MANIFEST_NAME = "orrery.evidence-manifest.json"
@@ -56,14 +58,14 @@ class GraphFinalization:
 
 
 def publication_enabled(args: Namespace) -> bool:
-    explicit = getattr(args, "publish_orrery", None)
-    if explicit is not None:
-        return explicit
-    return not (
-        getattr(args, "no_staging", False)
-        or getattr(args, "staging_local_only", False)
-        or getattr(args, "no_staged_dataset", False)
-    )
+    """Whether the saved graph goes to the public Orrery: only on request.
+
+    A UK build keeps its graph evidence local unless ``--publish-orrery`` asks
+    for the submission (María's ruling of 2026-10-26), whatever its staging;
+    staging to the private repositories does not depend on it.
+    """
+
+    return getattr(args, "publish_orrery", None) is True
 
 
 def _urls(value: object) -> Iterator[str]:
@@ -130,6 +132,11 @@ def finalize_graph(
                 store = ContentStore(args.graph_store, create=False)
                 runs = load_run_evidence(index_path, store=store, reference_base=output)
                 execution = collect_execution_evidence(schema, runs=runs, store=store)
+                # Checked before anything is preserved: without the inventory
+                # neither the build nor the emitter's retry can submit them.
+                if public_summary_findings(execution["summaries"]):
+                    receipt.update(status="failed", error_code="unpublishable_summary")
+                    raise RuntimeError("Graph summaries carry unpublishable fields.")
                 roles[index_path.name] = "index"
                 index = json.loads(index_path.read_bytes())
                 for run in index["runs"]:

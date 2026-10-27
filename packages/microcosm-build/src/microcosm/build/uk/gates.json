@@ -901,6 +901,22 @@
       "notes": "Stage-time gate over the Move to UC take-up receipt (microcosm#1308, gated with the next policyengine-uk bump on María's ruling of 2026-10-17). The receipt withholds what a thin combination realizes, so the gate holds the contract it can read: the share is measured at the spine's design weights over Great Britain, every combination's rate is a probability taken from its combination or from all households, its support is a printed band, its unreachable flag is a boolean, a withheld \"<10\" or absent, and the share claiming at closure is a share or withheld."
     },
     {
+      "id": "uk_stage_frs_person_draws_apprentices",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "evidence_absent_blocks": true,
+      "population_fact_check": true,
+      "parameters": {
+        "stage": "frs_person_draws",
+        "check": "apprentice_draw",
+        "rate_key": "apprentice_stock_19_to_24",
+        "maximum_relative_realization_deviation": 0.05,
+        "maximum_implied_relief": 370000000.0
+      },
+      "notes": "Stage-time gate over the is_apprentice receipt (microcosm#1373). The draw's target is the contract's apprentice_stock_19_to_24 for the build year (DfE's England apprentices in learning at the start of the academic year, participation less starts, per head aged 19 to 24) times the weighted population aged 21 to 24 at the stage's weights, and eligible employees aged 21 to 24 are flagged in the order of their identity-keyed uniform until their weight is nearest it, so the stage misses it by at most half one person's weight. The gate checks that the receipt carries the contract's rate under the declared key, that its target is that rate times its population, that its support is printed in bands, and, unless the eligible employees weigh no more than the target (cap-bound, every one of them flagged), that the flagged weight lies within maximum_relative_realization_deviation (5 percent) of the target. That tolerance is a declared rule set above the half-weight bound, not a fact. A figure resting on fewer than ten source households, which the receipt withholds under the UKDS disclosure rule and prints \"<10\", is named unchecked, never failed: a small-cell rule never stops a build (María's ruling of 2026-10-26). The receipt also records the relief the flags imply at the installed engine's own Class 1 schedule for the build year (on a 2024 frame, 13.8 percent between GBP 9,100 and GBP 50,270), with each flagged employee's pay standing in for NIC earnings, and the gate holds it at or below maximum_implied_relief: GBP 370m, HMRC's NIC - NS1 for 2024-25 (tax relief statistics, January 2026, Table 2), which covers every apprentice under 25, under-21s included, since the apprentice relief takes precedence (Vahid's review of microcosm#1373, S1). It is a ceiling, not a target. The stage refuses an installed engine without the s.9B threshold or without policyengine-uk#2683's split of the apprentice minimum wage from the flag. The entry is a population_fact_check, so the synthetic smoke build over the H2 fixture records its outcome without blocking; every licensed build blocks on it."
+    },
+    {
       "id": "uk_release_input_coverage",
       "gate": "release_input_coverage",
       "phase": "terminal",
@@ -1235,6 +1251,7 @@
           "person.student_loan_balance",
           "person.student_loan_plan",
           "person.tax_free_childcare_spend_routed_share",
+          "person.is_apprentice",
           "person.trading_loss",
           "person.uc_is_in_startup_period",
           "person.uc_is_in_gainful_self_employment",
@@ -1317,9 +1334,10 @@
       "phase": "terminal",
       "criticality": "release_blocking",
       "parameters": {
-        "maximum_share_deviation": 0.05
+        "maximum_share_deviation": 0.05,
+        "under_two_usage_maximum_share_deviation": 0.1
       },
-      "notes": "Every contract-driven stochastic flag must be non-constant and have a weighted share within +/-0.05 of its contract target. would_claim_pc is measured by uk_stage_pension_credit_take_up instead (microcosm#1069 R9), would_claim_child_benefit and child_benefit_opts_out by uk_stage_child_benefit_take_up (microcosm#1063), and would_claim_uc by uk_stage_uc_take_up (microcosm#1334): frs_take_up and spi_benefit_coherence draw it at the contract rate, and uc_take_up redraws every entitled unit by award band and family type. would_claim_universal_childcare is nested under would_claim_extended_childcare, so its target is the nested marginal r_e + (1 - r_e) * r_u of the contract's conditional universal rate, and the gate fails on any benefit unit that claims the extended hours without the universal ones. max_free_entitlement_hours_used carries the under-2 usage draw: its share of persons with hours is measured over the children of DfE age 0 or 1 in units that claim the extended hours, against the weighted mean of their ages' contract rates (extended_childcare_age_0_usage, extended_childcare_age_1_usage)."
+      "notes": "Every contract-driven stochastic flag must be non-constant and have a weighted share within +/-0.05 of its contract target. would_claim_pc is measured by uk_stage_pension_credit_take_up instead (microcosm#1069 R9), would_claim_child_benefit and child_benefit_opts_out by uk_stage_child_benefit_take_up (microcosm#1063), and would_claim_uc by uk_stage_uc_take_up (microcosm#1334): frs_take_up and spi_benefit_coherence draw it at the contract rate, and uc_take_up redraws every entitled unit by award band and family type. would_claim_universal_childcare is nested under would_claim_extended_childcare, so its target is the nested marginal r_e + (1 - r_e) * r_u of the contract's conditional universal rate, and the gate fails on any benefit unit that claims the extended hours without the universal ones. max_free_entitlement_hours_used carries the under-2 usage draw: its share of persons with hours is measured over the children of DfE age 0 or 1 in units that claim the extended hours, against the weighted mean of their ages' contract rates (extended_childcare_age_0_usage, extended_childcare_age_1_usage), within +/-0.10: the DfE working-parent row at 9 to 11 months binds a thin cell of that draw's children, so the calibrated weights move the share from its rates where the spine's own weights hold it to them (ruling of 2026-10-25); tools/report_uk_childcare_realised_take_up.py records the share a file realises."
     },
     {
       "id": "uk_brma_enum_domain",

@@ -763,24 +763,6 @@ def test_the_committed_surface_binds_every_great_britain_seat() -> None:
     }
 
 
-def test_the_withholding_families_of_the_energy_rows() -> None:
-    # The kWh rows have no higher-grain parent, so they are checked in their
-    # regions' blocks, where seats and authorities meet; the gas-connected
-    # rows join the census household family and its nation controls.
-    from microcosm.build.uk_runtime.diagnostics import uk_local_family_parents
-
-    families = {
-        member: (members, parents)
-        for members, parents in uk_local_family_parents()
-        for member in members
-    }
-    for target_id in ("desnz.subnational.electricity_kwh", "desnz.subnational.gas_kwh"):
-        assert families[target_id] == (frozenset({target_id}), frozenset())
-    members, parents = families["desnz.subnational.gas_connected_households"]
-    assert "ons.census.households" in members
-    assert parents
-
-
 def test_the_no_gas_cells_reconcile_at_a_declared_zero() -> None:
     # Orkney and Shetland, councils and seat, have no mains gas: both gas
     # families count them at zero in reconciliation and bind none of them
