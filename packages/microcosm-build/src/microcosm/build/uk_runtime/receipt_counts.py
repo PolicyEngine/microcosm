@@ -16,7 +16,9 @@ the End User Licence (microcosm#1278): the FRS 2024-25 (SN 9563) has none
 (checked 2026-10-14). The SPI 2022-23 Public Use Tape (SN 9422, checked
 2026-10-16) adds two: no attempt may be made to attribute a record to a named
 individual, and material that includes analyses of the tape goes to HMRC at
-least ten working days before it is distributed or published.
+least ten working days before it is distributed or published. The build
+marks the outputs that rest on the tape
+(:mod:`microcosm.build.uk_runtime.spi_dependency`).
 """
 
 from __future__ import annotations

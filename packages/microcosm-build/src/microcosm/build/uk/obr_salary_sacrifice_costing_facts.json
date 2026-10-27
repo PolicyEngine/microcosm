@@ -1,0 +1,407 @@
+{
+  "schema_version": 1,
+  "country": "uk",
+  "kind": "uk_vendored_ledger_facts",
+  "resource": "obr_salary_sacrifice_costing_facts.json",
+  "purpose": "OBR supplementary forecast information on salary sacrifice pension contributions (5 February 2026), Table 1.1: the tax base above the GBP 2,000 annual threshold by sacrifice route (salary and bonus) for 2027-28 to 2030-31. The bonus-sacrifice anchor reads 2027-28's bonus line, which the salary_sacrifice stage's bonus conversion meets through the engine's projection (microcosm#1340).",
+  "consumers": [
+    "uk_runtime.salary_sacrifice"
+  ],
+  "planned_consumers": [],
+  "policy": "Rows are copied verbatim from the pinned Chronicle consumer feed named in source_fact_feed; every value is a publisher-stated fact. Consumers declare their own arithmetic on these rows and never edit this file by hand: regenerate it with tools/vendor_uk_ledger_facts.py.",
+  "generator": {
+    "tool": "tools/vendor_uk_ledger_facts.py",
+    "version": 1
+  },
+  "source_fact_feed": {
+    "source_repo": "PolicyEngine/chronicle",
+    "source_commit": "272c987af175687aca21f82851ef349521802b12",
+    "build": "build-bundle --suite uk -> build-consumer-artifact",
+    "artifact_schema_version": "policyengine_ledger.consumer_artifact.v2",
+    "fact_row_count": 1503315,
+    "facts_sha256": "084ddf46fa34b1e03b5f0a7287617aeafaf7f614e3619d87a6565409e4adac85",
+    "manifest_sha256": "229afc18d8201bbd59a41777453f487ad750be2802425240ac26ee54849bfafd"
+  },
+  "selections": [
+    {
+      "label": "salary_sacrifice_costing_tax_base",
+      "selector": {
+        "source_name": "obr",
+        "source_concept": "obr.salary_sacrifice_costing.tax_base",
+        "period_type": "fiscal_year"
+      },
+      "row_count": 8
+    }
+  ],
+  "row_count": 8,
+  "rows": [
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_7b5a078f91a71ef0c9379bd8",
+      "semantic_fact_key": "ledger_semantic_fact_v2_b29ffc3f2626ce898fdfff85",
+      "source_record_id": "obr.salary_sacrifice_costing_2026_02.tax_base.fy2027.bonus_sacrifice__above_2000.contributions",
+      "concept": "obr.salary_sacrifice_costing.tax_base",
+      "measure_id": "contributions",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "salary_sacrifice_pension_contributor"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2027
+      },
+      "period_coverage": {
+        "start_date": "2027-04-01",
+        "end_date": "2028-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "obr.salary_sacrifice_costing_2026_02.tax_base.fy2027",
+        "groupby_dimension": "obr.salary_sacrifice_costing_line",
+        "groupby_value_id": "bonus_sacrifice__above_2000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "contribution_portion": "above_2000_annual_threshold",
+        "sacrifice_route": "bonus_sacrifice"
+      },
+      "source": {
+        "source_name": "obr",
+        "source_table": "Costing of charging NICs on salary-sacrificed pension contributions, Table 1.1: tax base and static costing",
+        "source_file": "Supplementary-forecast-information-salary-sacrifice-costing-1.pdf",
+        "source_sha256": "1829b4150529da1a5dbbbe394724fa1a0c450d1c9f44f5917921e16c3a186b1d",
+        "vintage": "supplementary_forecast_information_2026_02_05",
+        "raw_r2_key": "raw/uk/obr/obr-salary-sacrifice-costing-february-2026/2026/1829b4150529da1a5dbbbe394724fa1a0c450d1c9f44f5917921e16c3a186b1d/Supplementary-forecast-information-salary-sacrifice-costing-1.pdf"
+      },
+      "value": 13000000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_11db03ebc2b7ad51bc4ace65",
+      "semantic_fact_key": "ledger_semantic_fact_v2_549251844db4406cac076741",
+      "source_record_id": "obr.salary_sacrifice_costing_2026_02.tax_base.fy2027.salary_sacrifice__above_2000.contributions",
+      "concept": "obr.salary_sacrifice_costing.tax_base",
+      "measure_id": "contributions",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "salary_sacrifice_pension_contributor"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2027
+      },
+      "period_coverage": {
+        "start_date": "2027-04-01",
+        "end_date": "2028-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "obr.salary_sacrifice_costing_2026_02.tax_base.fy2027",
+        "groupby_dimension": "obr.salary_sacrifice_costing_line",
+        "groupby_value_id": "salary_sacrifice__above_2000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "contribution_portion": "above_2000_annual_threshold",
+        "sacrifice_route": "salary_sacrifice"
+      },
+      "source": {
+        "source_name": "obr",
+        "source_table": "Costing of charging NICs on salary-sacrificed pension contributions, Table 1.1: tax base and static costing",
+        "source_file": "Supplementary-forecast-information-salary-sacrifice-costing-1.pdf",
+        "source_sha256": "1829b4150529da1a5dbbbe394724fa1a0c450d1c9f44f5917921e16c3a186b1d",
+        "vintage": "supplementary_forecast_information_2026_02_05",
+        "raw_r2_key": "raw/uk/obr/obr-salary-sacrifice-costing-february-2026/2026/1829b4150529da1a5dbbbe394724fa1a0c450d1c9f44f5917921e16c3a186b1d/Supplementary-forecast-information-salary-sacrifice-costing-1.pdf"
+      },
+      "value": 12900000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_d5b8a7095559008af0c81a16",
+      "semantic_fact_key": "ledger_semantic_fact_v2_12686ddfb8cc670071823330",
+      "source_record_id": "obr.salary_sacrifice_costing_2026_02.tax_base.fy2028.bonus_sacrifice__above_2000.contributions",
+      "concept": "obr.salary_sacrifice_costing.tax_base",
+      "measure_id": "contributions",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "salary_sacrifice_pension_contributor"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2028
+      },
+      "period_coverage": {
+        "start_date": "2028-04-01",
+        "end_date": "2029-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "obr.salary_sacrifice_costing_2026_02.tax_base.fy2028",
+        "groupby_dimension": "obr.salary_sacrifice_costing_line",
+        "groupby_value_id": "bonus_sacrifice__above_2000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "contribution_portion": "above_2000_annual_threshold",
+        "sacrifice_route": "bonus_sacrifice"
+      },
+      "source": {
+        "source_name": "obr",
+        "source_table": "Costing of charging NICs on salary-sacrificed pension contributions, Table 1.1: tax base and static costing",
+        "source_file": "Supplementary-forecast-information-salary-sacrifice-costing-1.pdf",
+        "source_sha256": "1829b4150529da1a5dbbbe394724fa1a0c450d1c9f44f5917921e16c3a186b1d",
+        "vintage": "supplementary_forecast_information_2026_02_05",
+        "raw_r2_key": "raw/uk/obr/obr-salary-sacrifice-costing-february-2026/2026/1829b4150529da1a5dbbbe394724fa1a0c450d1c9f44f5917921e16c3a186b1d/Supplementary-forecast-information-salary-sacrifice-costing-1.pdf"
+      },
+      "value": 13400000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_87b8086a9b4961c7f6221e93",
+      "semantic_fact_key": "ledger_semantic_fact_v2_7f5d063080944b213d0a27de",
+      "source_record_id": "obr.salary_sacrifice_costing_2026_02.tax_base.fy2028.salary_sacrifice__above_2000.contributions",
+      "concept": "obr.salary_sacrifice_costing.tax_base",
+      "measure_id": "contributions",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "salary_sacrifice_pension_contributor"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2028
+      },
+      "period_coverage": {
+        "start_date": "2028-04-01",
+        "end_date": "2029-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "obr.salary_sacrifice_costing_2026_02.tax_base.fy2028",
+        "groupby_dimension": "obr.salary_sacrifice_costing_line",
+        "groupby_value_id": "salary_sacrifice__above_2000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "contribution_portion": "above_2000_annual_threshold",
+        "sacrifice_route": "salary_sacrifice"
+      },
+      "source": {
+        "source_name": "obr",
+        "source_table": "Costing of charging NICs on salary-sacrificed pension contributions, Table 1.1: tax base and static costing",
+        "source_file": "Supplementary-forecast-information-salary-sacrifice-costing-1.pdf",
+        "source_sha256": "1829b4150529da1a5dbbbe394724fa1a0c450d1c9f44f5917921e16c3a186b1d",
+        "vintage": "supplementary_forecast_information_2026_02_05",
+        "raw_r2_key": "raw/uk/obr/obr-salary-sacrifice-costing-february-2026/2026/1829b4150529da1a5dbbbe394724fa1a0c450d1c9f44f5917921e16c3a186b1d/Supplementary-forecast-information-salary-sacrifice-costing-1.pdf"
+      },
+      "value": 13600000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_493504f83e3527ae183835cf",
+      "semantic_fact_key": "ledger_semantic_fact_v2_20c8d86a74e2bac04812a06d",
+      "source_record_id": "obr.salary_sacrifice_costing_2026_02.tax_base.fy2029.bonus_sacrifice__above_2000.contributions",
+      "concept": "obr.salary_sacrifice_costing.tax_base",
+      "measure_id": "contributions",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "salary_sacrifice_pension_contributor"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2029
+      },
+      "period_coverage": {
+        "start_date": "2029-04-01",
+        "end_date": "2030-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "obr.salary_sacrifice_costing_2026_02.tax_base.fy2029",
+        "groupby_dimension": "obr.salary_sacrifice_costing_line",
+        "groupby_value_id": "bonus_sacrifice__above_2000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "contribution_portion": "above_2000_annual_threshold",
+        "sacrifice_route": "bonus_sacrifice"
+      },
+      "source": {
+        "source_name": "obr",
+        "source_table": "Costing of charging NICs on salary-sacrificed pension contributions, Table 1.1: tax base and static costing",
+        "source_file": "Supplementary-forecast-information-salary-sacrifice-costing-1.pdf",
+        "source_sha256": "1829b4150529da1a5dbbbe394724fa1a0c450d1c9f44f5917921e16c3a186b1d",
+        "vintage": "supplementary_forecast_information_2026_02_05",
+        "raw_r2_key": "raw/uk/obr/obr-salary-sacrifice-costing-february-2026/2026/1829b4150529da1a5dbbbe394724fa1a0c450d1c9f44f5917921e16c3a186b1d/Supplementary-forecast-information-salary-sacrifice-costing-1.pdf"
+      },
+      "value": 13800000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_5e3baac559ecda332ba5bbd4",
+      "semantic_fact_key": "ledger_semantic_fact_v2_00f2d97a3a4b43dddf90090f",
+      "source_record_id": "obr.salary_sacrifice_costing_2026_02.tax_base.fy2029.salary_sacrifice__above_2000.contributions",
+      "concept": "obr.salary_sacrifice_costing.tax_base",
+      "measure_id": "contributions",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "salary_sacrifice_pension_contributor"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2029
+      },
+      "period_coverage": {
+        "start_date": "2029-04-01",
+        "end_date": "2030-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "obr.salary_sacrifice_costing_2026_02.tax_base.fy2029",
+        "groupby_dimension": "obr.salary_sacrifice_costing_line",
+        "groupby_value_id": "salary_sacrifice__above_2000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "contribution_portion": "above_2000_annual_threshold",
+        "sacrifice_route": "salary_sacrifice"
+      },
+      "source": {
+        "source_name": "obr",
+        "source_table": "Costing of charging NICs on salary-sacrificed pension contributions, Table 1.1: tax base and static costing",
+        "source_file": "Supplementary-forecast-information-salary-sacrifice-costing-1.pdf",
+        "source_sha256": "1829b4150529da1a5dbbbe394724fa1a0c450d1c9f44f5917921e16c3a186b1d",
+        "vintage": "supplementary_forecast_information_2026_02_05",
+        "raw_r2_key": "raw/uk/obr/obr-salary-sacrifice-costing-february-2026/2026/1829b4150529da1a5dbbbe394724fa1a0c450d1c9f44f5917921e16c3a186b1d/Supplementary-forecast-information-salary-sacrifice-costing-1.pdf"
+      },
+      "value": 14300000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_77e4d212236f78dc8a305e75",
+      "semantic_fact_key": "ledger_semantic_fact_v2_ee589b2840eea8c68c41e8f2",
+      "source_record_id": "obr.salary_sacrifice_costing_2026_02.tax_base.fy2030.bonus_sacrifice__above_2000.contributions",
+      "concept": "obr.salary_sacrifice_costing.tax_base",
+      "measure_id": "contributions",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "salary_sacrifice_pension_contributor"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2030
+      },
+      "period_coverage": {
+        "start_date": "2030-04-01",
+        "end_date": "2031-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "obr.salary_sacrifice_costing_2026_02.tax_base.fy2030",
+        "groupby_dimension": "obr.salary_sacrifice_costing_line",
+        "groupby_value_id": "bonus_sacrifice__above_2000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "contribution_portion": "above_2000_annual_threshold",
+        "sacrifice_route": "bonus_sacrifice"
+      },
+      "source": {
+        "source_name": "obr",
+        "source_table": "Costing of charging NICs on salary-sacrificed pension contributions, Table 1.1: tax base and static costing",
+        "source_file": "Supplementary-forecast-information-salary-sacrifice-costing-1.pdf",
+        "source_sha256": "1829b4150529da1a5dbbbe394724fa1a0c450d1c9f44f5917921e16c3a186b1d",
+        "vintage": "supplementary_forecast_information_2026_02_05",
+        "raw_r2_key": "raw/uk/obr/obr-salary-sacrifice-costing-february-2026/2026/1829b4150529da1a5dbbbe394724fa1a0c450d1c9f44f5917921e16c3a186b1d/Supplementary-forecast-information-salary-sacrifice-costing-1.pdf"
+      },
+      "value": 14200000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_27b398c7e84ce9bba9a8e1b0",
+      "semantic_fact_key": "ledger_semantic_fact_v2_eb9c100bff05f1e2ae8b813f",
+      "source_record_id": "obr.salary_sacrifice_costing_2026_02.tax_base.fy2030.salary_sacrifice__above_2000.contributions",
+      "concept": "obr.salary_sacrifice_costing.tax_base",
+      "measure_id": "contributions",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "salary_sacrifice_pension_contributor"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2030
+      },
+      "period_coverage": {
+        "start_date": "2030-04-01",
+        "end_date": "2031-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "obr.salary_sacrifice_costing_2026_02.tax_base.fy2030",
+        "groupby_dimension": "obr.salary_sacrifice_costing_line",
+        "groupby_value_id": "salary_sacrifice__above_2000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "contribution_portion": "above_2000_annual_threshold",
+        "sacrifice_route": "salary_sacrifice"
+      },
+      "source": {
+        "source_name": "obr",
+        "source_table": "Costing of charging NICs on salary-sacrificed pension contributions, Table 1.1: tax base and static costing",
+        "source_file": "Supplementary-forecast-information-salary-sacrifice-costing-1.pdf",
+        "source_sha256": "1829b4150529da1a5dbbbe394724fa1a0c450d1c9f44f5917921e16c3a186b1d",
+        "vintage": "supplementary_forecast_information_2026_02_05",
+        "raw_r2_key": "raw/uk/obr/obr-salary-sacrifice-costing-february-2026/2026/1829b4150529da1a5dbbbe394724fa1a0c450d1c9f44f5917921e16c3a186b1d/Supplementary-forecast-information-salary-sacrifice-costing-1.pdf"
+      },
+      "value": 15100000000
+    }
+  ]
+}

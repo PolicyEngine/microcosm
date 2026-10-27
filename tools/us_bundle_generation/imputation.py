@@ -885,6 +885,17 @@ def _normalise_transfer_execution(
         )
     )
     adult_care.pop("enabled")
+    # Always active: the runtime acts only on component cells a transfer
+    # actually fills, so an empty activation set matches its identity.
+    self_employment = deepcopy(
+        dict(
+            _mapping_like(
+                post_transfer["self_employment_components"],
+                "self-employment post-transfer contract",
+            )
+        )
+    )
+    self_employment.pop("enabled")
     result["predictor_bindings"] = {
         "person_required": "acs_person_required",
         "person_optional": [
@@ -911,6 +922,10 @@ def _normalise_transfer_execution(
             },
             "contract": schedule_base,
             "enabled_overrides": schedule_override,
+        },
+        "self_employment_components": {
+            "activation": {"all_targets": []},
+            "contract": self_employment,
         },
     }
     result["profiles"] = {

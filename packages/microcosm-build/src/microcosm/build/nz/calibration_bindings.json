@@ -1,0 +1,2130 @@
+{
+  "schema_version": 1,
+  "country": "nz",
+  "required_inputs": {
+    "person": [
+      "age",
+      "region_code"
+    ],
+    "household": [
+      "household_region_code",
+      "tenure"
+    ]
+  },
+  "input_domains": {
+    "person": {
+      "age": {
+        "kind": "nonnegative_integer"
+      },
+      "region_code": {
+        "values": [
+          "01",
+          "02",
+          "03",
+          "04",
+          "05",
+          "06",
+          "07",
+          "08",
+          "09",
+          "12",
+          "13",
+          "14",
+          "15",
+          "16",
+          "17",
+          "18",
+          "99"
+        ]
+      }
+    },
+    "household": {
+      "household_region_code": {
+        "values": [
+          "01",
+          "02",
+          "03",
+          "04",
+          "05",
+          "06",
+          "07",
+          "08",
+          "09",
+          "12",
+          "13",
+          "14",
+          "15",
+          "16",
+          "17",
+          "18",
+          "99"
+        ]
+      },
+      "tenure": {
+        "values": [
+          "owned_outright",
+          "owned_with_mortgage",
+          "rented_public_authority",
+          "rented_nonprofit_social",
+          "rented_private",
+          "rent_free"
+        ]
+      }
+    }
+  },
+  "columns": [
+    {
+      "entity": "person",
+      "name": "people",
+      "constant": 1
+    },
+    {
+      "entity": "household",
+      "name": "households",
+      "constant": 1
+    },
+    {
+      "entity": "person",
+      "name": "population_region_01_age_0_14_indicator",
+      "predicates": [
+        {
+          "column": "region_code",
+          "operator": "eq",
+          "value": "01"
+        },
+        {
+          "column": "age",
+          "operator": "ge",
+          "value": 0
+        },
+        {
+          "column": "age",
+          "operator": "lt",
+          "value": 15
+        }
+      ]
+    },
+    {
+      "entity": "person",
+      "name": "population_region_01_age_15_39_indicator",
+      "predicates": [
+        {
+          "column": "region_code",
+          "operator": "eq",
+          "value": "01"
+        },
+        {
+          "column": "age",
+          "operator": "ge",
+          "value": 15
+        },
+        {
+          "column": "age",
+          "operator": "lt",
+          "value": 40
+        }
+      ]
+    },
+    {
+      "entity": "person",
+      "name": "population_region_01_age_40_64_indicator",
+      "predicates": [
+        {
+          "column": "region_code",
+          "operator": "eq",
+          "value": "01"
+        },
+        {
+          "column": "age",
+          "operator": "ge",
+          "value": 40
+        },
+        {
+          "column": "age",
+          "operator": "lt",
+          "value": 65
+        }
+      ]
+    },
+    {
+      "entity": "person",
+      "name": "population_region_01_age_65_plus_indicator",
+      "predicates": [
+        {
+          "column": "region_code",
+          "operator": "eq",
+          "value": "01"
+        },
+        {
+          "column": "age",
+          "operator": "ge",
+          "value": 65
+        }
+      ]
+    },
+    {
+      "entity": "person",
+      "name": "population_region_02_age_0_14_indicator",
+      "predicates": [
+        {
+          "column": "region_code",
+          "operator": "eq",
+          "value": "02"
+        },
+        {
+          "column": "age",
+          "operator": "ge",
+          "value": 0
+        },
+        {
+          "column": "age",
+          "operator": "lt",
+          "value": 15
+        }
+      ]
+    },
+    {
+      "entity": "person",
+      "name": "population_region_02_age_15_39_indicator",
+      "predicates": [
+        {
+          "column": "region_code",
+          "operator": "eq",
+          "value": "02"
+        },
+        {
+          "column": "age",
+          "operator": "ge",
+          "value": 15
+        },
+        {
+          "column": "age",
+          "operator": "lt",
+          "value": 40
+        }
+      ]
+    },
+    {
+      "entity": "person",
+      "name": "population_region_02_age_40_64_indicator",
+      "predicates": [
+        {
+          "column": "region_code",
+          "operator": "eq",
+          "value": "02"
+        },
+        {
+          "column": "age",
+          "operator": "ge",
+          "value": 40
+        },
+        {
+          "column": "age",
+          "operator": "lt",
+          "value": 65
+        }
+      ]
+    },
+    {
+      "entity": "person",
+      "name": "population_region_02_age_65_plus_indicator",
+      "predicates": [
+        {
+          "column": "region_code",
+          "operator": "eq",
+          "value": "02"
+        },
+        {
+          "column": "age",
+          "operator": "ge",
+          "value": 65
+        }
+      ]
+    },
+    {
+      "entity": "person",
+      "name": "population_region_03_age_0_14_indicator",
+      "predicates": [
+        {
+          "column": "region_code",
+          "operator": "eq",
+          "value": "03"
+        },
+        {
+          "column": "age",
+          "operator": "ge",
+          "value": 0
+        },
+        {
+          "column": "age",
+          "operator": "lt",
+          "value": 15
+        }
+      ]
+    },
+    {
+      "entity": "person",
+      "name": "population_region_03_age_15_39_indicator",
+      "predicates": [
+        {
+          "column": "region_code",
+          "operator": "eq",
+          "value": "03"
+        },
+        {
+          "column": "age",
+          "operator": "ge",
+          "value": 15
+        },
+        {
+          "column": "age",
+          "operator": "lt",
+          "value": 40
+        }
+      ]
+    },
+    {
+      "entity": "person",
+      "name": "population_region_03_age_40_64_indicator",
+      "predicates": [
+        {
+          "column": "region_code",
+          "operator": "eq",
+          "value": "03"
+        },
+        {
+          "column": "age",
+          "operator": "ge",
+          "value": 40
+        },
+        {
+          "column": "age",
+          "operator": "lt",
+          "value": 65
+        }
+      ]
+    },
+    {
+      "entity": "person",
+      "name": "population_region_03_age_65_plus_indicator",
+      "predicates": [
+        {
+          "column": "region_code",
+          "operator": "eq",
+          "value": "03"
+        },
+        {
+          "column": "age",
+          "operator": "ge",
+          "value": 65
+        }
+      ]
+    },
+    {
+      "entity": "person",
+      "name": "population_region_04_age_0_14_indicator",
+      "predicates": [
+        {
+          "column": "region_code",
+          "operator": "eq",
+          "value": "04"
+        },
+        {
+          "column": "age",
+          "operator": "ge",
+          "value": 0
+        },
+        {
+          "column": "age",
+          "operator": "lt",
+          "value": 15
+        }
+      ]
+    },
+    {
+      "entity": "person",
+      "name": "population_region_04_age_15_39_indicator",
+      "predicates": [
+        {
+          "column": "region_code",
+          "operator": "eq",
+          "value": "04"
+        },
+        {
+          "column": "age",
+          "operator": "ge",
+          "value": 15
+        },
+        {
+          "column": "age",
+          "operator": "lt",
+          "value": 40
+        }
+      ]
+    },
+    {
+      "entity": "person",
+      "name": "population_region_04_age_40_64_indicator",
+      "predicates": [
+        {
+          "column": "region_code",
+          "operator": "eq",
+          "value": "04"
+        },
+        {
+          "column": "age",
+          "operator": "ge",
+          "value": 40
+        },
+        {
+          "column": "age",
+          "operator": "lt",
+          "value": 65
+        }
+      ]
+    },
+    {
+      "entity": "person",
+      "name": "population_region_04_age_65_plus_indicator",
+      "predicates": [
+        {
+          "column": "region_code",
+          "operator": "eq",
+          "value": "04"
+        },
+        {
+          "column": "age",
+          "operator": "ge",
+          "value": 65
+        }
+      ]
+    },
+    {
+      "entity": "person",
+      "name": "population_region_05_age_0_14_indicator",
+      "predicates": [
+        {
+          "column": "region_code",
+          "operator": "eq",
+          "value": "05"
+        },
+        {
+          "column": "age",
+          "operator": "ge",
+          "value": 0
+        },
+        {
+          "column": "age",
+          "operator": "lt",
+          "value": 15
+        }
+      ]
+    },
+    {
+      "entity": "person",
+      "name": "population_region_05_age_15_39_indicator",
+      "predicates": [
+        {
+          "column": "region_code",
+          "operator": "eq",
+          "value": "05"
+        },
+        {
+          "column": "age",
+          "operator": "ge",
+          "value": 15
+        },
+        {
+          "column": "age",
+          "operator": "lt",
+          "value": 40
+        }
+      ]
+    },
+    {
+      "entity": "person",
+      "name": "population_region_05_age_40_64_indicator",
+      "predicates": [
+        {
+          "column": "region_code",
+          "operator": "eq",
+          "value": "05"
+        },
+        {
+          "column": "age",
+          "operator": "ge",
+          "value": 40
+        },
+        {
+          "column": "age",
+          "operator": "lt",
+          "value": 65
+        }
+      ]
+    },
+    {
+      "entity": "person",
+      "name": "population_region_05_age_65_plus_indicator",
+      "predicates": [
+        {
+          "column": "region_code",
+          "operator": "eq",
+          "value": "05"
+        },
+        {
+          "column": "age",
+          "operator": "ge",
+          "value": 65
+        }
+      ]
+    },
+    {
+      "entity": "person",
+      "name": "population_region_06_age_0_14_indicator",
+      "predicates": [
+        {
+          "column": "region_code",
+          "operator": "eq",
+          "value": "06"
+        },
+        {
+          "column": "age",
+          "operator": "ge",
+          "value": 0
+        },
+        {
+          "column": "age",
+          "operator": "lt",
+          "value": 15
+        }
+      ]
+    },
+    {
+      "entity": "person",
+      "name": "population_region_06_age_15_39_indicator",
+      "predicates": [
+        {
+          "column": "region_code",
+          "operator": "eq",
+          "value": "06"
+        },
+        {
+          "column": "age",
+          "operator": "ge",
+          "value": 15
+        },
+        {
+          "column": "age",
+          "operator": "lt",
+          "value": 40
+        }
+      ]
+    },
+    {
+      "entity": "person",
+      "name": "population_region_06_age_40_64_indicator",
+      "predicates": [
+        {
+          "column": "region_code",
+          "operator": "eq",
+          "value": "06"
+        },
+        {
+          "column": "age",
+          "operator": "ge",
+          "value": 40
+        },
+        {
+          "column": "age",
+          "operator": "lt",
+          "value": 65
+        }
+      ]
+    },
+    {
+      "entity": "person",
+      "name": "population_region_06_age_65_plus_indicator",
+      "predicates": [
+        {
+          "column": "region_code",
+          "operator": "eq",
+          "value": "06"
+        },
+        {
+          "column": "age",
+          "operator": "ge",
+          "value": 65
+        }
+      ]
+    },
+    {
+      "entity": "person",
+      "name": "population_region_07_age_0_14_indicator",
+      "predicates": [
+        {
+          "column": "region_code",
+          "operator": "eq",
+          "value": "07"
+        },
+        {
+          "column": "age",
+          "operator": "ge",
+          "value": 0
+        },
+        {
+          "column": "age",
+          "operator": "lt",
+          "value": 15
+        }
+      ]
+    },
+    {
+      "entity": "person",
+      "name": "population_region_07_age_15_39_indicator",
+      "predicates": [
+        {
+          "column": "region_code",
+          "operator": "eq",
+          "value": "07"
+        },
+        {
+          "column": "age",
+          "operator": "ge",
+          "value": 15
+        },
+        {
+          "column": "age",
+          "operator": "lt",
+          "value": 40
+        }
+      ]
+    },
+    {
+      "entity": "person",
+      "name": "population_region_07_age_40_64_indicator",
+      "predicates": [
+        {
+          "column": "region_code",
+          "operator": "eq",
+          "value": "07"
+        },
+        {
+          "column": "age",
+          "operator": "ge",
+          "value": 40
+        },
+        {
+          "column": "age",
+          "operator": "lt",
+          "value": 65
+        }
+      ]
+    },
+    {
+      "entity": "person",
+      "name": "population_region_07_age_65_plus_indicator",
+      "predicates": [
+        {
+          "column": "region_code",
+          "operator": "eq",
+          "value": "07"
+        },
+        {
+          "column": "age",
+          "operator": "ge",
+          "value": 65
+        }
+      ]
+    },
+    {
+      "entity": "person",
+      "name": "population_region_08_age_0_14_indicator",
+      "predicates": [
+        {
+          "column": "region_code",
+          "operator": "eq",
+          "value": "08"
+        },
+        {
+          "column": "age",
+          "operator": "ge",
+          "value": 0
+        },
+        {
+          "column": "age",
+          "operator": "lt",
+          "value": 15
+        }
+      ]
+    },
+    {
+      "entity": "person",
+      "name": "population_region_08_age_15_39_indicator",
+      "predicates": [
+        {
+          "column": "region_code",
+          "operator": "eq",
+          "value": "08"
+        },
+        {
+          "column": "age",
+          "operator": "ge",
+          "value": 15
+        },
+        {
+          "column": "age",
+          "operator": "lt",
+          "value": 40
+        }
+      ]
+    },
+    {
+      "entity": "person",
+      "name": "population_region_08_age_40_64_indicator",
+      "predicates": [
+        {
+          "column": "region_code",
+          "operator": "eq",
+          "value": "08"
+        },
+        {
+          "column": "age",
+          "operator": "ge",
+          "value": 40
+        },
+        {
+          "column": "age",
+          "operator": "lt",
+          "value": 65
+        }
+      ]
+    },
+    {
+      "entity": "person",
+      "name": "population_region_08_age_65_plus_indicator",
+      "predicates": [
+        {
+          "column": "region_code",
+          "operator": "eq",
+          "value": "08"
+        },
+        {
+          "column": "age",
+          "operator": "ge",
+          "value": 65
+        }
+      ]
+    },
+    {
+      "entity": "person",
+      "name": "population_region_09_age_0_14_indicator",
+      "predicates": [
+        {
+          "column": "region_code",
+          "operator": "eq",
+          "value": "09"
+        },
+        {
+          "column": "age",
+          "operator": "ge",
+          "value": 0
+        },
+        {
+          "column": "age",
+          "operator": "lt",
+          "value": 15
+        }
+      ]
+    },
+    {
+      "entity": "person",
+      "name": "population_region_09_age_15_39_indicator",
+      "predicates": [
+        {
+          "column": "region_code",
+          "operator": "eq",
+          "value": "09"
+        },
+        {
+          "column": "age",
+          "operator": "ge",
+          "value": 15
+        },
+        {
+          "column": "age",
+          "operator": "lt",
+          "value": 40
+        }
+      ]
+    },
+    {
+      "entity": "person",
+      "name": "population_region_09_age_40_64_indicator",
+      "predicates": [
+        {
+          "column": "region_code",
+          "operator": "eq",
+          "value": "09"
+        },
+        {
+          "column": "age",
+          "operator": "ge",
+          "value": 40
+        },
+        {
+          "column": "age",
+          "operator": "lt",
+          "value": 65
+        }
+      ]
+    },
+    {
+      "entity": "person",
+      "name": "population_region_09_age_65_plus_indicator",
+      "predicates": [
+        {
+          "column": "region_code",
+          "operator": "eq",
+          "value": "09"
+        },
+        {
+          "column": "age",
+          "operator": "ge",
+          "value": 65
+        }
+      ]
+    },
+    {
+      "entity": "person",
+      "name": "population_region_12_age_0_14_indicator",
+      "predicates": [
+        {
+          "column": "region_code",
+          "operator": "eq",
+          "value": "12"
+        },
+        {
+          "column": "age",
+          "operator": "ge",
+          "value": 0
+        },
+        {
+          "column": "age",
+          "operator": "lt",
+          "value": 15
+        }
+      ]
+    },
+    {
+      "entity": "person",
+      "name": "population_region_12_age_15_39_indicator",
+      "predicates": [
+        {
+          "column": "region_code",
+          "operator": "eq",
+          "value": "12"
+        },
+        {
+          "column": "age",
+          "operator": "ge",
+          "value": 15
+        },
+        {
+          "column": "age",
+          "operator": "lt",
+          "value": 40
+        }
+      ]
+    },
+    {
+      "entity": "person",
+      "name": "population_region_12_age_40_64_indicator",
+      "predicates": [
+        {
+          "column": "region_code",
+          "operator": "eq",
+          "value": "12"
+        },
+        {
+          "column": "age",
+          "operator": "ge",
+          "value": 40
+        },
+        {
+          "column": "age",
+          "operator": "lt",
+          "value": 65
+        }
+      ]
+    },
+    {
+      "entity": "person",
+      "name": "population_region_12_age_65_plus_indicator",
+      "predicates": [
+        {
+          "column": "region_code",
+          "operator": "eq",
+          "value": "12"
+        },
+        {
+          "column": "age",
+          "operator": "ge",
+          "value": 65
+        }
+      ]
+    },
+    {
+      "entity": "person",
+      "name": "population_region_13_age_0_14_indicator",
+      "predicates": [
+        {
+          "column": "region_code",
+          "operator": "eq",
+          "value": "13"
+        },
+        {
+          "column": "age",
+          "operator": "ge",
+          "value": 0
+        },
+        {
+          "column": "age",
+          "operator": "lt",
+          "value": 15
+        }
+      ]
+    },
+    {
+      "entity": "person",
+      "name": "population_region_13_age_15_39_indicator",
+      "predicates": [
+        {
+          "column": "region_code",
+          "operator": "eq",
+          "value": "13"
+        },
+        {
+          "column": "age",
+          "operator": "ge",
+          "value": 15
+        },
+        {
+          "column": "age",
+          "operator": "lt",
+          "value": 40
+        }
+      ]
+    },
+    {
+      "entity": "person",
+      "name": "population_region_13_age_40_64_indicator",
+      "predicates": [
+        {
+          "column": "region_code",
+          "operator": "eq",
+          "value": "13"
+        },
+        {
+          "column": "age",
+          "operator": "ge",
+          "value": 40
+        },
+        {
+          "column": "age",
+          "operator": "lt",
+          "value": 65
+        }
+      ]
+    },
+    {
+      "entity": "person",
+      "name": "population_region_13_age_65_plus_indicator",
+      "predicates": [
+        {
+          "column": "region_code",
+          "operator": "eq",
+          "value": "13"
+        },
+        {
+          "column": "age",
+          "operator": "ge",
+          "value": 65
+        }
+      ]
+    },
+    {
+      "entity": "person",
+      "name": "population_region_14_age_0_14_indicator",
+      "predicates": [
+        {
+          "column": "region_code",
+          "operator": "eq",
+          "value": "14"
+        },
+        {
+          "column": "age",
+          "operator": "ge",
+          "value": 0
+        },
+        {
+          "column": "age",
+          "operator": "lt",
+          "value": 15
+        }
+      ]
+    },
+    {
+      "entity": "person",
+      "name": "population_region_14_age_15_39_indicator",
+      "predicates": [
+        {
+          "column": "region_code",
+          "operator": "eq",
+          "value": "14"
+        },
+        {
+          "column": "age",
+          "operator": "ge",
+          "value": 15
+        },
+        {
+          "column": "age",
+          "operator": "lt",
+          "value": 40
+        }
+      ]
+    },
+    {
+      "entity": "person",
+      "name": "population_region_14_age_40_64_indicator",
+      "predicates": [
+        {
+          "column": "region_code",
+          "operator": "eq",
+          "value": "14"
+        },
+        {
+          "column": "age",
+          "operator": "ge",
+          "value": 40
+        },
+        {
+          "column": "age",
+          "operator": "lt",
+          "value": 65
+        }
+      ]
+    },
+    {
+      "entity": "person",
+      "name": "population_region_14_age_65_plus_indicator",
+      "predicates": [
+        {
+          "column": "region_code",
+          "operator": "eq",
+          "value": "14"
+        },
+        {
+          "column": "age",
+          "operator": "ge",
+          "value": 65
+        }
+      ]
+    },
+    {
+      "entity": "person",
+      "name": "population_region_15_age_0_14_indicator",
+      "predicates": [
+        {
+          "column": "region_code",
+          "operator": "eq",
+          "value": "15"
+        },
+        {
+          "column": "age",
+          "operator": "ge",
+          "value": 0
+        },
+        {
+          "column": "age",
+          "operator": "lt",
+          "value": 15
+        }
+      ]
+    },
+    {
+      "entity": "person",
+      "name": "population_region_15_age_15_39_indicator",
+      "predicates": [
+        {
+          "column": "region_code",
+          "operator": "eq",
+          "value": "15"
+        },
+        {
+          "column": "age",
+          "operator": "ge",
+          "value": 15
+        },
+        {
+          "column": "age",
+          "operator": "lt",
+          "value": 40
+        }
+      ]
+    },
+    {
+      "entity": "person",
+      "name": "population_region_15_age_40_64_indicator",
+      "predicates": [
+        {
+          "column": "region_code",
+          "operator": "eq",
+          "value": "15"
+        },
+        {
+          "column": "age",
+          "operator": "ge",
+          "value": 40
+        },
+        {
+          "column": "age",
+          "operator": "lt",
+          "value": 65
+        }
+      ]
+    },
+    {
+      "entity": "person",
+      "name": "population_region_15_age_65_plus_indicator",
+      "predicates": [
+        {
+          "column": "region_code",
+          "operator": "eq",
+          "value": "15"
+        },
+        {
+          "column": "age",
+          "operator": "ge",
+          "value": 65
+        }
+      ]
+    },
+    {
+      "entity": "person",
+      "name": "population_region_16_age_0_14_indicator",
+      "predicates": [
+        {
+          "column": "region_code",
+          "operator": "eq",
+          "value": "16"
+        },
+        {
+          "column": "age",
+          "operator": "ge",
+          "value": 0
+        },
+        {
+          "column": "age",
+          "operator": "lt",
+          "value": 15
+        }
+      ]
+    },
+    {
+      "entity": "person",
+      "name": "population_region_16_age_15_39_indicator",
+      "predicates": [
+        {
+          "column": "region_code",
+          "operator": "eq",
+          "value": "16"
+        },
+        {
+          "column": "age",
+          "operator": "ge",
+          "value": 15
+        },
+        {
+          "column": "age",
+          "operator": "lt",
+          "value": 40
+        }
+      ]
+    },
+    {
+      "entity": "person",
+      "name": "population_region_16_age_40_64_indicator",
+      "predicates": [
+        {
+          "column": "region_code",
+          "operator": "eq",
+          "value": "16"
+        },
+        {
+          "column": "age",
+          "operator": "ge",
+          "value": 40
+        },
+        {
+          "column": "age",
+          "operator": "lt",
+          "value": 65
+        }
+      ]
+    },
+    {
+      "entity": "person",
+      "name": "population_region_16_age_65_plus_indicator",
+      "predicates": [
+        {
+          "column": "region_code",
+          "operator": "eq",
+          "value": "16"
+        },
+        {
+          "column": "age",
+          "operator": "ge",
+          "value": 65
+        }
+      ]
+    },
+    {
+      "entity": "person",
+      "name": "population_region_17_age_0_14_indicator",
+      "predicates": [
+        {
+          "column": "region_code",
+          "operator": "eq",
+          "value": "17"
+        },
+        {
+          "column": "age",
+          "operator": "ge",
+          "value": 0
+        },
+        {
+          "column": "age",
+          "operator": "lt",
+          "value": 15
+        }
+      ]
+    },
+    {
+      "entity": "person",
+      "name": "population_region_17_age_15_39_indicator",
+      "predicates": [
+        {
+          "column": "region_code",
+          "operator": "eq",
+          "value": "17"
+        },
+        {
+          "column": "age",
+          "operator": "ge",
+          "value": 15
+        },
+        {
+          "column": "age",
+          "operator": "lt",
+          "value": 40
+        }
+      ]
+    },
+    {
+      "entity": "person",
+      "name": "population_region_17_age_40_64_indicator",
+      "predicates": [
+        {
+          "column": "region_code",
+          "operator": "eq",
+          "value": "17"
+        },
+        {
+          "column": "age",
+          "operator": "ge",
+          "value": 40
+        },
+        {
+          "column": "age",
+          "operator": "lt",
+          "value": 65
+        }
+      ]
+    },
+    {
+      "entity": "person",
+      "name": "population_region_17_age_65_plus_indicator",
+      "predicates": [
+        {
+          "column": "region_code",
+          "operator": "eq",
+          "value": "17"
+        },
+        {
+          "column": "age",
+          "operator": "ge",
+          "value": 65
+        }
+      ]
+    },
+    {
+      "entity": "person",
+      "name": "population_region_18_age_0_14_indicator",
+      "predicates": [
+        {
+          "column": "region_code",
+          "operator": "eq",
+          "value": "18"
+        },
+        {
+          "column": "age",
+          "operator": "ge",
+          "value": 0
+        },
+        {
+          "column": "age",
+          "operator": "lt",
+          "value": 15
+        }
+      ]
+    },
+    {
+      "entity": "person",
+      "name": "population_region_18_age_15_39_indicator",
+      "predicates": [
+        {
+          "column": "region_code",
+          "operator": "eq",
+          "value": "18"
+        },
+        {
+          "column": "age",
+          "operator": "ge",
+          "value": 15
+        },
+        {
+          "column": "age",
+          "operator": "lt",
+          "value": 40
+        }
+      ]
+    },
+    {
+      "entity": "person",
+      "name": "population_region_18_age_40_64_indicator",
+      "predicates": [
+        {
+          "column": "region_code",
+          "operator": "eq",
+          "value": "18"
+        },
+        {
+          "column": "age",
+          "operator": "ge",
+          "value": 40
+        },
+        {
+          "column": "age",
+          "operator": "lt",
+          "value": 65
+        }
+      ]
+    },
+    {
+      "entity": "person",
+      "name": "population_region_18_age_65_plus_indicator",
+      "predicates": [
+        {
+          "column": "region_code",
+          "operator": "eq",
+          "value": "18"
+        },
+        {
+          "column": "age",
+          "operator": "ge",
+          "value": 65
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_01_owned_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "01"
+        },
+        {
+          "column": "tenure",
+          "operator": "in",
+          "value": [
+            "owned_outright",
+            "owned_with_mortgage"
+          ]
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_01_not_owned_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "01"
+        },
+        {
+          "column": "tenure",
+          "operator": "in",
+          "value": [
+            "rented_public_authority",
+            "rented_nonprofit_social",
+            "rented_private",
+            "rent_free"
+          ]
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_02_owned_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "02"
+        },
+        {
+          "column": "tenure",
+          "operator": "in",
+          "value": [
+            "owned_outright",
+            "owned_with_mortgage"
+          ]
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_02_not_owned_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "02"
+        },
+        {
+          "column": "tenure",
+          "operator": "in",
+          "value": [
+            "rented_public_authority",
+            "rented_nonprofit_social",
+            "rented_private",
+            "rent_free"
+          ]
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_03_owned_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "03"
+        },
+        {
+          "column": "tenure",
+          "operator": "in",
+          "value": [
+            "owned_outright",
+            "owned_with_mortgage"
+          ]
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_03_not_owned_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "03"
+        },
+        {
+          "column": "tenure",
+          "operator": "in",
+          "value": [
+            "rented_public_authority",
+            "rented_nonprofit_social",
+            "rented_private",
+            "rent_free"
+          ]
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_04_owned_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "04"
+        },
+        {
+          "column": "tenure",
+          "operator": "in",
+          "value": [
+            "owned_outright",
+            "owned_with_mortgage"
+          ]
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_04_not_owned_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "04"
+        },
+        {
+          "column": "tenure",
+          "operator": "in",
+          "value": [
+            "rented_public_authority",
+            "rented_nonprofit_social",
+            "rented_private",
+            "rent_free"
+          ]
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_05_owned_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "05"
+        },
+        {
+          "column": "tenure",
+          "operator": "in",
+          "value": [
+            "owned_outright",
+            "owned_with_mortgage"
+          ]
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_05_not_owned_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "05"
+        },
+        {
+          "column": "tenure",
+          "operator": "in",
+          "value": [
+            "rented_public_authority",
+            "rented_nonprofit_social",
+            "rented_private",
+            "rent_free"
+          ]
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_06_owned_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "06"
+        },
+        {
+          "column": "tenure",
+          "operator": "in",
+          "value": [
+            "owned_outright",
+            "owned_with_mortgage"
+          ]
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_06_not_owned_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "06"
+        },
+        {
+          "column": "tenure",
+          "operator": "in",
+          "value": [
+            "rented_public_authority",
+            "rented_nonprofit_social",
+            "rented_private",
+            "rent_free"
+          ]
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_07_owned_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "07"
+        },
+        {
+          "column": "tenure",
+          "operator": "in",
+          "value": [
+            "owned_outright",
+            "owned_with_mortgage"
+          ]
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_07_not_owned_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "07"
+        },
+        {
+          "column": "tenure",
+          "operator": "in",
+          "value": [
+            "rented_public_authority",
+            "rented_nonprofit_social",
+            "rented_private",
+            "rent_free"
+          ]
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_08_owned_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "08"
+        },
+        {
+          "column": "tenure",
+          "operator": "in",
+          "value": [
+            "owned_outright",
+            "owned_with_mortgage"
+          ]
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_08_not_owned_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "08"
+        },
+        {
+          "column": "tenure",
+          "operator": "in",
+          "value": [
+            "rented_public_authority",
+            "rented_nonprofit_social",
+            "rented_private",
+            "rent_free"
+          ]
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_09_owned_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "09"
+        },
+        {
+          "column": "tenure",
+          "operator": "in",
+          "value": [
+            "owned_outright",
+            "owned_with_mortgage"
+          ]
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_09_not_owned_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "09"
+        },
+        {
+          "column": "tenure",
+          "operator": "in",
+          "value": [
+            "rented_public_authority",
+            "rented_nonprofit_social",
+            "rented_private",
+            "rent_free"
+          ]
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_12_owned_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "12"
+        },
+        {
+          "column": "tenure",
+          "operator": "in",
+          "value": [
+            "owned_outright",
+            "owned_with_mortgage"
+          ]
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_12_not_owned_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "12"
+        },
+        {
+          "column": "tenure",
+          "operator": "in",
+          "value": [
+            "rented_public_authority",
+            "rented_nonprofit_social",
+            "rented_private",
+            "rent_free"
+          ]
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_13_owned_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "13"
+        },
+        {
+          "column": "tenure",
+          "operator": "in",
+          "value": [
+            "owned_outright",
+            "owned_with_mortgage"
+          ]
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_13_not_owned_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "13"
+        },
+        {
+          "column": "tenure",
+          "operator": "in",
+          "value": [
+            "rented_public_authority",
+            "rented_nonprofit_social",
+            "rented_private",
+            "rent_free"
+          ]
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_14_owned_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "14"
+        },
+        {
+          "column": "tenure",
+          "operator": "in",
+          "value": [
+            "owned_outright",
+            "owned_with_mortgage"
+          ]
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_14_not_owned_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "14"
+        },
+        {
+          "column": "tenure",
+          "operator": "in",
+          "value": [
+            "rented_public_authority",
+            "rented_nonprofit_social",
+            "rented_private",
+            "rent_free"
+          ]
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_15_owned_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "15"
+        },
+        {
+          "column": "tenure",
+          "operator": "in",
+          "value": [
+            "owned_outright",
+            "owned_with_mortgage"
+          ]
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_15_not_owned_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "15"
+        },
+        {
+          "column": "tenure",
+          "operator": "in",
+          "value": [
+            "rented_public_authority",
+            "rented_nonprofit_social",
+            "rented_private",
+            "rent_free"
+          ]
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_16_owned_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "16"
+        },
+        {
+          "column": "tenure",
+          "operator": "in",
+          "value": [
+            "owned_outright",
+            "owned_with_mortgage"
+          ]
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_16_not_owned_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "16"
+        },
+        {
+          "column": "tenure",
+          "operator": "in",
+          "value": [
+            "rented_public_authority",
+            "rented_nonprofit_social",
+            "rented_private",
+            "rent_free"
+          ]
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_17_owned_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "17"
+        },
+        {
+          "column": "tenure",
+          "operator": "in",
+          "value": [
+            "owned_outright",
+            "owned_with_mortgage"
+          ]
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_17_not_owned_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "17"
+        },
+        {
+          "column": "tenure",
+          "operator": "in",
+          "value": [
+            "rented_public_authority",
+            "rented_nonprofit_social",
+            "rented_private",
+            "rent_free"
+          ]
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_18_owned_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "18"
+        },
+        {
+          "column": "tenure",
+          "operator": "in",
+          "value": [
+            "owned_outright",
+            "owned_with_mortgage"
+          ]
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_18_not_owned_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "18"
+        },
+        {
+          "column": "tenure",
+          "operator": "in",
+          "value": [
+            "rented_public_authority",
+            "rented_nonprofit_social",
+            "rented_private",
+            "rent_free"
+          ]
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_99_owned_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "99"
+        },
+        {
+          "column": "tenure",
+          "operator": "in",
+          "value": [
+            "owned_outright",
+            "owned_with_mortgage"
+          ]
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_99_not_owned_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "99"
+        },
+        {
+          "column": "tenure",
+          "operator": "in",
+          "value": [
+            "rented_public_authority",
+            "rented_nonprofit_social",
+            "rented_private",
+            "rent_free"
+          ]
+        }
+      ]
+    },
+    {
+      "entity": "person",
+      "name": "age_18_24_indicator",
+      "predicates": [
+        {
+          "column": "age",
+          "operator": "ge",
+          "value": 18
+        },
+        {
+          "column": "age",
+          "operator": "lt",
+          "value": 25
+        }
+      ]
+    },
+    {
+      "entity": "person",
+      "name": "age_25_39_indicator",
+      "predicates": [
+        {
+          "column": "age",
+          "operator": "ge",
+          "value": 25
+        },
+        {
+          "column": "age",
+          "operator": "lt",
+          "value": 40
+        }
+      ]
+    },
+    {
+      "entity": "person",
+      "name": "age_40_54_indicator",
+      "predicates": [
+        {
+          "column": "age",
+          "operator": "ge",
+          "value": 40
+        },
+        {
+          "column": "age",
+          "operator": "lt",
+          "value": 55
+        }
+      ]
+    },
+    {
+      "entity": "person",
+      "name": "age_55_64_indicator",
+      "predicates": [
+        {
+          "column": "age",
+          "operator": "ge",
+          "value": 55
+        },
+        {
+          "column": "age",
+          "operator": "lt",
+          "value": 65
+        }
+      ]
+    }
+  ],
+  "citations": [
+    "packages/microcosm-frame/src/microcosm/frame/concepts.py TENURE_DOMAIN",
+    "d1598",
+    "g8r-hub-rulings:2026-10-22",
+    "design-g8r:Prepared-column requirements"
+  ],
+  "parked_columns": [
+    {
+      "name": "census_families_type_<integer>",
+      "kind": "household_multiplicity_measure",
+      "activation_status": "requires_census_family_nucleus_standard",
+      "reason": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities."
+    },
+    {
+      "name": "receives_<program>",
+      "activation_status": "requires_stratified_receipt_assignment",
+      "reason": "G8-w: age-stratified receipt assignment is not supported by the current total-only receipt kernel; preserve the source snapshot and age filters."
+    },
+    {
+      "name": "receives_nz_super",
+      "activation_status": "requires_receipt_binding",
+      "reason": "NZ Super receipt binding and prepared receipt flag are not implemented."
+    },
+    {
+      "name": "receives_veterans_pension",
+      "activation_status": "requires_unsupported_veterans_pension",
+      "reason": "Veterans Pension is unsupported: no veteran facts or producer; a missing flag must refuse, never default to false."
+    }
+  ],
+  "geography_inputs": "Geography stage supplies person.region_code and broadcasts the household location to household.household_region_code.",
+  "region_99_support": {
+    "calibration": "national-growth proxy",
+    "geography": "99 remains separate from every region and from TA 999",
+    "support": "No ERP series for region 99 and no TA 999 ERP; geography-stage assignment support remains an explicit G8-w prerequisite."
+  }
+}

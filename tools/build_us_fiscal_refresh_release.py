@@ -141,6 +141,9 @@ from microcosm.build.us_runtime import (
     us_educator_expense_signal_gate,
     us_eligibility_inputs_signal_gate,
     us_energy_subsidy_signal_gate,
+    us_esi_premiums_anchor_feed_mismatches,
+    us_esi_premiums_anchor_gate,
+    us_esi_premiums_signal_gate,
     us_farm_business_income_signal_gate,
     us_fiscal_target_exclusion_receipt,
     us_form_4952_election_signal_gate,
@@ -1177,8 +1180,11 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help=(
             "Build from a Chronicle feed whose facts (and, for an artifact "
             "pin, manifest) digest differs from the committed US pin in "
-            "us/chronicle_feed.json. Only for an explicitly reviewed "
-            "diagnostic run; a release build must use the pinned feed."
+            "us/chronicle_feed.json. Also lets through a feed whose BEA "
+            "B4923C facts differ from the ESI premium anchor (microcosm#454); "
+            "the difference is recorded in esi_premiums.json, or in the "
+            "dry-run report. Only for an explicitly reviewed diagnostic run; "
+            "a release build must use the pinned feed."
         ),
     )
     parser.add_argument(
@@ -1319,6 +1325,20 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
             "the export drops or leaves degenerate — without failing the "
             "build. Release builds must leave this unset; the gate is a hard "
             "certification blocker."
+        ),
+    )
+    parser.add_argument(
+        "--allow-esi-premium-gaps",
+        action="store_true",
+        help=(
+            "Diagnostic escape hatch (microcosm#454): record the ESI premium "
+            "gates — employer_sponsored_insurance_premiums absent, zero-mass, "
+            "missing its raw ASEC coverage columns, or off the BEA NIPA 7.8 "
+            "line 17 (B4923C) anchor, or a feed whose B4923C facts differ "
+            "from that anchor — without failing the build (for example on a "
+            "base built before the meps_esi_premiums stage). The failures are "
+            "still written to esi_premiums.json. Release builds must leave "
+            "this unset."
         ),
     )
     parser.add_argument(
@@ -7514,6 +7534,39 @@ def _engine_input_variables() -> tuple[str, ...]:
     return tuple(PolicyEngineUSEngine().variables())
 
 
+def _esi_premiums_signal_evidence(gate: GateResult | None) -> dict[str, object]:
+    """One ESI premium signal verdict for the release evidence file.
+
+    Failures are kept verbatim so a build that waived them
+    (``--allow-esi-premium-gaps``) still records what was red.
+    """
+
+    if gate is None:
+        return {"evaluated": False}
+    return {
+        "evaluated": True,
+        "passed": gate.passed,
+        "failures": list(gate.failures),
+    }
+
+
+def _esi_anchor_feed_evidence(
+    mismatches: Sequence[str], *, enforced: bool
+) -> dict[str, object]:
+    """The anchor-versus-feed verdict for the release evidence file.
+
+    ``mismatches`` is non-empty only when a diagnostic flag waived a feed
+    whose B4923C facts differ from the stage's anchor; they are kept verbatim
+    so the waived difference stays on the record.
+    """
+
+    return {
+        "enforced": enforced,
+        "matches": not mismatches,
+        "mismatches": list(mismatches),
+    }
+
+
 def _input_mass_reference_gate(
     base_frame: Frame,
     *,
@@ -10029,6 +10082,7 @@ def _artifact_entry(path: str, sha: str, *, kind: str, revision: str) -> dict[st
 #: before the terminal gates run, so any present at manifest time are this
 #: run's own.
 US_RELEASE_GATE_EVIDENCE_FILES: dict[str, str] = {
+    "esi_premiums": "esi_premiums.json",
     "input_coverage": "input_coverage.json",
     "input_mass_parity": "input_mass_parity.json",
     "qrf_tail_concentration": "qrf_tail_concentration.json",
@@ -11686,6 +11740,10 @@ class _ReleaseDryRun:
         # run's own crash, never a refusal the release would share.
         self.stopped = False
         self.seconds_to_stop_point: float | None = None
+        # Set by _main after the feed checks; a waived B4923C difference
+        # (microcosm#454) is reported here, since a dry run stops before
+        # esi_premiums.json is written.
+        self.esi_anchor_feed_mismatches: list[str] = []
 
     @classmethod
     def start(
@@ -11718,7 +11776,13 @@ class _ReleaseDryRun:
                 "allow_input_mass_drift": bool(args.allow_input_mass_drift),
                 "allow_ecps_parity_gaps": bool(args.allow_ecps_parity_gaps),
                 "allow_input_coverage_gaps": bool(args.allow_input_coverage_gaps),
+                "allow_esi_premium_gaps": bool(args.allow_esi_premium_gaps),
+                "allow_unpinned_feed": bool(args.allow_unpinned_feed),
             },
+            "esi_anchor_feed": _esi_anchor_feed_evidence(
+                self.esi_anchor_feed_mismatches,
+                enforced=not (args.allow_unpinned_feed or args.allow_esi_premium_gaps),
+            ),
             "margins": self.margins.to_dict(),
             # Taken when _main reached the stop point, before any grading;
             # None when the release refused earlier.
@@ -12485,6 +12549,35 @@ def _check_committed_us_ledger_feed_pin(
         )
 
 
+def _check_us_esi_anchor_against_feed(
+    facts: Sequence[Mapping[str, Any]],
+    *,
+    allow_unpinned_feed: bool,
+    allow_esi_premium_gaps: bool,
+) -> list[str]:
+    """Hold the ESI stage's pinned anchor to the feed's banked B4923C facts.
+
+    microcosm#454 / d1317: the ``meps_esi_premiums`` stage scales to BEA
+    B4923C values it pins itself, and the pinned feed banks the same series.
+    On the committed pin a difference means the stage drifted from the feed,
+    so the build stops. A reviewed diagnostic run on another feed
+    (``--allow-unpinned-feed``) or with the ESI gates waived
+    (``--allow-esi-premium-gaps``) continues; the differences are returned
+    either way and written to ``esi_premiums.json``.
+    """
+
+    mismatches = us_esi_premiums_anchor_feed_mismatches(facts)
+    if mismatches and not (allow_unpinned_feed or allow_esi_premium_gaps):
+        raise SystemExit(
+            "error: the meps_esi_premiums anchor differs from the Chronicle "
+            "feed: "
+            + "; ".join(mismatches)
+            + "; pass --allow-unpinned-feed or --allow-esi-premium-gaps only "
+            "for an explicitly reviewed diagnostic run"
+        )
+    return mismatches
+
+
 def _main(argv: Sequence[str] | None = None) -> int | None:
     global _ACTIVE_EMITTER, _ACTIVE_PROGRESS
     _ACTIVE_EMITTER = None
@@ -12706,6 +12799,13 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         manifest_sha256=ledger_artifact.manifest_sha256,
         allow_unpinned_feed=args.allow_unpinned_feed,
     )
+    esi_anchor_feed_mismatches = _check_us_esi_anchor_against_feed(
+        ledger_artifact.facts,
+        allow_unpinned_feed=args.allow_unpinned_feed,
+        allow_esi_premium_gaps=args.allow_esi_premium_gaps,
+    )
+    if dry_run is not None:
+        dry_run.esi_anchor_feed_mismatches = list(esi_anchor_feed_mismatches)
     target_registry = compile_us_fiscal_target_registry(
         ledger_artifact.facts,
         target_period=PERIOD,
@@ -14340,6 +14440,25 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 for failure in other_health_insurance_gate.failures
             )
         )
+    # microcosm#454: the meps_esi_premiums base stage owns the ESI employer
+    # premium input; refuse a base that lacks or flattens it before the solve.
+    esi_premiums_base_gate = us_esi_premiums_signal_gate(base_frame)
+    if not esi_premiums_base_gate.passed and not args.allow_esi_premium_gaps:
+        if telemetry is not None:
+            telemetry.stage(
+                "esi_premiums_input_gate",
+                status="failed",
+                message="ESI premium signal gate failed on the base.",
+                failures=list(esi_premiums_base_gate.failures),
+                force_upload=True,
+            )
+        raise RuntimeError(
+            "Release gates failed: "
+            + "; ".join(
+                "ESI premium signal failed: " + failure
+                for failure in esi_premiums_base_gate.failures
+            )
+        )
     if telemetry is not None and args.input_mass_reference_h5 is not None:
         telemetry.stage(
             "input_mass_reference_gate",
@@ -15102,6 +15221,25 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             f"Other health insurance signal failed on the export frame: {failure}"
             for failure in other_health_insurance_gate.failures
         )
+    try:
+        esi_premiums_export_gate = us_esi_premiums_signal_gate(export_frame)
+    except Exception as error:
+        if not early_terminal_gate_failures:
+            raise
+        esi_premiums_export_gate = None
+        early_terminal_gate_failures.append(
+            "ESI premium signal evaluation crashed in degraded mode; recorded "
+            f"instead of masking earlier failures: {error}"
+        )
+    if (
+        esi_premiums_export_gate is not None
+        and not esi_premiums_export_gate.passed
+        and not args.allow_esi_premium_gaps
+    ):
+        early_terminal_gate_failures.extend(
+            f"ESI premium signal failed on the export frame: {failure}"
+            for failure in esi_premiums_export_gate.failures
+        )
     if congressional_district_vintage_crosswalk_metadata is not None:
         compilation = {
             **compilation,
@@ -15528,6 +15666,74 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="Release input-column coverage gate failed.",
                 failures=list(input_coverage_gate.failures),
+                force_upload=True,
+            )
+    # microcosm#454: the calibrated ESI premium total over the anchor's
+    # universe (every policyholder) against BEA NIPA 7.8 line 17 within tolerance,
+    # red when the column is absent or zero-mass or the raw ASEC coverage
+    # columns are gone. Runs on the calibrated export for BOTH the dense and
+    # sparse default paths; the verdict ships as the esi_premiums gate
+    # evidence, with the base and export signal verdicts beside it so a waived
+    # assignment failure stays on the record.
+    try:
+        esi_premiums_anchor_gate = us_esi_premiums_anchor_gate(
+            export_frame, time_period=PERIOD
+        )
+    except Exception as exc:
+        if not terminal_gate_failures:
+            raise
+        terminal_gate_failures.append(
+            "ESI premiums failed: evaluation error under earlier gate "
+            f"failures: {type(exc).__name__}: {exc}"
+        )
+        esi_premiums_anchor_gate = None
+    if esi_premiums_anchor_gate is not None:
+        esi_premiums_failed = (
+            not esi_premiums_anchor_gate.passed and not args.allow_esi_premium_gaps
+        )
+        if esi_premiums_failed:
+            terminal_gate_failures.extend(
+                f"ESI premiums failed: {failure}"
+                for failure in esi_premiums_anchor_gate.failures
+            )
+        esi_premiums_path = release_dir / "esi_premiums.json"
+        esi_premiums_path.write_text(
+            json.dumps(
+                {
+                    "schema_version": 3,
+                    "enforced": not args.allow_esi_premium_gaps,
+                    "esi_premiums": {
+                        "passed": esi_premiums_anchor_gate.passed,
+                        "failures": list(esi_premiums_anchor_gate.failures),
+                        "details": dict(esi_premiums_anchor_gate.details),
+                    },
+                    "anchor_feed": _esi_anchor_feed_evidence(
+                        esi_anchor_feed_mismatches,
+                        enforced=not (
+                            args.allow_unpinned_feed or args.allow_esi_premium_gaps
+                        ),
+                    ),
+                    "signal": {
+                        "base_frame": _esi_premiums_signal_evidence(
+                            esi_premiums_base_gate
+                        ),
+                        "export_frame": _esi_premiums_signal_evidence(
+                            esi_premiums_export_gate
+                        ),
+                    },
+                },
+                indent=2,
+                sort_keys=True,
+            )
+            + "\n"
+        )
+        terminal_batch_telemetry.attach_artifact("esi_premiums", esi_premiums_path)
+        if esi_premiums_failed:
+            terminal_batch_telemetry.stage(
+                "export_dataset",
+                status="failed",
+                message="ESI premium anchor gate failed.",
+                failures=list(esi_premiums_anchor_gate.failures),
                 force_upload=True,
             )
     # #327: the export gate compares the calibrated export against a reference.

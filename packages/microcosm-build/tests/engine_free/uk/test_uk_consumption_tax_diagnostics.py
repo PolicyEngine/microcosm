@@ -112,3 +112,20 @@ def test_tool_rows_are_committed_reference_names() -> None:
     assert set(_tool.ROWS) <= committed, sorted(set(_tool.ROWS) - committed)
     for name, variables in _tool.ROWS.items():
         assert variables and all(isinstance(v, str) for v in variables), name
+
+
+def test_excise_rows_are_measured_at_their_own_period() -> None:
+    """The OBR excise rows read the FY2024-25 quantities as stored (#1359)."""
+
+    payload = json.loads(
+        files("microcosm.build.uk").joinpath("uk_population_targets.json").read_text()
+    )
+    periods = {
+        target["target_id"]: target["bindings"]["policyengine"].get(
+            "measurement_period"
+        )
+        for target in payload["targets"]
+    }
+    assert set(_tool.ROW_YEARS) <= set(_tool.ROWS)
+    for name, year in _tool.ROW_YEARS.items():
+        assert periods[name] == year, name

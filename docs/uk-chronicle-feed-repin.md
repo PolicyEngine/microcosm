@@ -255,3 +255,59 @@ surface was not recompiled for this entry. The twelve restamped OBR lines move t
 national register version with no value moved, so the uk-candidate-eval scoring register is
 re-frozen before the next national solve. The high-value home stock still names `735820c`: its
 TS054 tenure, OBR share and HPSSA facts are the same on `abf0921`, so it was not rebuilt.
+
+The `200bf6d` re-pin (microcosm#1359, PolicyEngine/chronicle#381 via #384, on top of `abf0921`)
+brought the UK excise facts: HMRC's Alcohol Bulletin clearances by product, ABV band, duty point
+and relief, the Tobacco Bulletin clearances, HMRC's betting and gaming duty receipts and Machine
+Games Duty liabilities and both bulletins' duty receipts, the Gambling Commission's industry
+statistics for Great Britain (gross gambling yield by sector, activity and betting event, turnover,
+gaming machines and lottery sales), and the OBR March 2026 receipts lines for alcohol, tobacco and
+betting and gaming duties beside its alcohol and tobacco clearances. It also replaced the June 2026
+Consumer Trends edition with September's (chronicle `a8c4a6c4`), whose revisions move every
+Consumer Trends row the feed carries (1,502,291 rows, up 2,990; the schema digest is unchanged).
+
+A new vendored resource, `excise_facts.json`, carries the 98 FY2024-25 rows the LCFS excise step
+reads. The other vendored resources carry the same rows under the new feed identity, except
+`ons_household_expenditure_facts.json`, whose 93 rows take the September values. Compiled values
+move only for the three Consumer Trends rows the contract reads:
+
+- the bound calendar-2024 household road fuel (07.2.2), from GBP 37.025bn to GBP 35.460bn
+  (−4.2%);
+- the measured calendar-2025 electricity (04.5.1), from GBP 26.522bn to GBP 28.840bn;
+- the measured calendar-2025 gas (04.5.2), from GBP 15.339bn to GBP 18.958bn.
+
+The national surface also gains the five OBR excise rows, measured at FY2024-25 and held out of
+the objective; the national receipt lists them as ledger-only.
+
+On the local surface, the reference files and the compile-parity receipt are byte-identical, and
+the membership moves only its feed label.
+
+Both surfaces were regenerated from cuts of the pinned artifact:
+
+- national generator and parity: the constituency, MSOA and county rows dropped (931,024 rows);
+- local generator and parity: the constituency and local-authority rows, plus the
+  statistical-scope rows other than small areas (884,729 rows). The latter carry the Scottish BRMA
+  rents microcosm#1262 binds; a cut without them fails the local generator on those rows.
+
+The regeneration diffs above are the check on both cuts.
+
+The national register version moves with the five new references, so the uk-candidate-eval scoring
+register is re-frozen before the next national solve. The high-value home stock still names
+`735820c`: its inputs are the same on `200bf6d` (the feed-gated fingerprint check passes), so it
+was not rebuilt.
+
+The `272c987` re-pin (microcosm#1359, PolicyEngine/chronicle#391, on top of `200bf6d`) brought the
+Gambling Commission's Gambling Survey for Great Britain 2025 tables: the share of adults who gambled
+in the past four weeks and the past twelve months by sex, age band, country and English region, by
+activity and channel, and the number of activities, with each table's unweighted bases (1,024
+facts; 1,503,315 rows). The merge commit's tree is the pull request head's (`6269a88`), merged onto
+an unmoved base, so the artifact was built from that head's bundle and carries the merge commit's
+digests.
+
+A new vendored resource, `gambling_participation_facts.json`, carries the 426 Great Britain
+participation rows the LCFS `top_up_gambling_participation` step reads. The other vendored resources
+carry the same rows under the new feed identity. No compiled value moves on either surface: the
+national and local reference files are byte-identical, the membership moves only its feed label,
+and both compile-parity receipts are unchanged. Both surfaces were regenerated from the national
+and local cuts, as for `200bf6d`. No reference moves, so the national register version does not
+either. The high-value home stock still names `735820c`: the addition touches none of its inputs.

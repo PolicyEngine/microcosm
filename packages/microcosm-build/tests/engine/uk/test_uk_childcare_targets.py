@@ -20,7 +20,7 @@ def test_childcare_target_formula_contracts_match_the_installed_engine() -> None
 
     # From 2.128.1 a child on the working parent entitlement keeps the
     # universal hours (pe-uk#2177), so the universal-only row must leave the
-    # extended entitlement out itself.
+    # working-parent children out itself.
     assert "has_extended_childcare" not in universal_source
     universal_only = next(
         target
@@ -32,10 +32,18 @@ def test_childcare_target_formula_contracts_match_the_installed_engine() -> None
         if target["target_id"] == "dfe.funded_childcare.universal_only_children"
     )
     assert {
-        "variable": "is_child_receiving_extended_childcare",
+        "variable": "dfe_spring_working_parent",
         "equals": False,
     } in universal_only["bindings"]["policyengine"]["filters"]
     assert "tax_free_childcare_spend_routed_share" in tax_free_source
+
+    # The spring-term measures (dfe_spring_term.py) count a family that does
+    # not claim the universal or targeted hours on their own when the engine
+    # allocates them from the child's gross working-parent hours. Pin that
+    # allocation, so an engine that moved it would fail here.
+    for name in ("universal_childcare_entitlement", "targeted_childcare_entitlement"):
+        source = inspect.getsource(system.variables[name].formula)
+        assert "extended_childcare_entitlement_total_per_child" in source, name
 
     for name in (
         "is_child_receiving_tax_free_childcare",

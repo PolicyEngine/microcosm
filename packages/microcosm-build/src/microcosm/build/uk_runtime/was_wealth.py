@@ -148,6 +148,54 @@ UK_WAS_DERIVED_TOTALS: Mapping[str, tuple[str, ...]] = MappingProxyType(
 UK_WAS_NET_FINANCIAL_LIABILITIES = ("consumer_debt", "student_loan_balance")
 #: Absolute tolerance, in pounds, of the donor identity checks.
 UK_WAS_IDENTITY_TOLERANCE_GBP = 1.0
+#: The share-like holdings outside ISAs, split as policyengine-uk reads them
+#: inside ``corporate_wealth`` (pe-uk#1974, 2.147.0; uk-data#501): directly
+#: held shares are WAS UK shares plus employee shares and options
+#: (DVFShUKVR8_aggr + DVFESHARESR8_aggr), unit and investment trusts WAS's
+#: collective investments (DVFCollVR8_aggr, which asks about both in one
+#: question). The chain draws the directly held fraction of the non-ISA total
+#: last, from the donors holding either, so no earlier draw moves; the split
+#: is written on the final total, so the two and the stocks-and-shares ISA sum
+#: to ``corporate_wealth`` exactly and the engine's ``share_like_capital``
+#: stays ``corporate_wealth``.
+UK_WAS_DIRECT_SHARES_COLUMN = "directly_held_shares"
+UK_WAS_TRUSTS_COLUMN = "unit_and_investment_trusts"
+UK_WAS_SHARE_SPLIT_COLUMNS = (UK_WAS_DIRECT_SHARES_COLUMN, UK_WAS_TRUSTS_COLUMN)
+UK_WAS_DIRECT_SHARE_FRACTION_COLUMN = "directly_held_share_fraction"
+#: The fraction a household takes where the chain drew none but the final
+#: non-ISA total is positive (a clip that lowered the ISA alone): directly
+#: held, the holding most donors with share-like wealth carry. The receipt
+#: counts such rows.
+UK_WAS_UNDRAWN_DIRECT_SHARE_FRACTION = 1.0
+#: The debt secured on each class of other property, by the asset it is
+#: secured on (WAS DVHseDebtR8_sum + DVBLtDebtR8_sum on the other houses and
+#: buy-to-let property; DVBldDebtR8_sum on buildings and land other than
+#: houses), which policyengine-uk deducts after the sale costs in valuing UC
+#: property capital (UC Regs 2013 reg 49(1)(b); pe-uk 2.136.1). Each is drawn
+#: after the chain's other draws, from the donors holding its asset, and is
+#: zero where the asset is zero. The debts are parts of the household's
+#: mortgages on other property (``other_mortgage``): where their sum passes
+#: it, both are scaled down to it, and the receipt counts the rows.
+UK_WAS_PROPERTY_SECURED_DEBT: Mapping[str, str] = MappingProxyType(
+    {
+        "other_residential_property_secured_debt": "other_residential_property_value",
+        "non_residential_property_secured_debt": "non_residential_property_value",
+    }
+)
+UK_WAS_SECURED_DEBT_WITHIN = UK_WAS_OTHER_MORTGAGE_COLUMN
+#: The draws appended after consumer debt, each from the donors (and for the
+#: recipients) holding the column it names, in chain order.
+UK_WAS_HOLDER_STRATA: Mapping[str, str] = MappingProxyType(
+    {
+        UK_WAS_DIRECT_SHARE_FRACTION_COLUMN: "corporate_wealth_excl_isa",
+        **UK_WAS_PROPERTY_SECURED_DEBT,
+    }
+)
+#: The appended outputs: the share split and the secured debts.
+UK_WAS_APPENDED_OUTPUT_COLUMNS = (
+    *UK_WAS_SHARE_SPLIT_COLUMNS,
+    *UK_WAS_PROPERTY_SECURED_DEBT,
+)
 UK_WAS_WEALTH_OUTPUT_COLUMNS = (
     "owned_land",
     "property_wealth",
@@ -171,9 +219,15 @@ UK_WAS_WEALTH_HOUSEHOLD_OUTPUT_COLUMNS = tuple(
     for column in UK_WAS_WEALTH_OUTPUT_COLUMNS
     if column != "student_loan_balance"
 )
+#: Every column the stage emits: the chain's outputs, then the appended split
+#: and debts (all household columns, all nonnegative).
+UK_WAS_WEALTH_STAGE_OUTPUT_COLUMNS = (
+    *UK_WAS_WEALTH_OUTPUT_COLUMNS,
+    *UK_WAS_APPENDED_OUTPUT_COLUMNS,
+)
 UK_WAS_WEALTH_NONNEGATIVE_OUTPUT_COLUMNS = tuple(
     column
-    for column in UK_WAS_WEALTH_OUTPUT_COLUMNS
+    for column in UK_WAS_WEALTH_STAGE_OUTPUT_COLUMNS
     if column != "net_financial_wealth"
 )
 UK_WAS_WEALTH_DECLARED_SEEDS = {"was_wealth": 0}
@@ -289,6 +343,10 @@ _RAW_TO_CLEAN = {
     "DVHseValR8_sum": "other_houses_value",
     "DVBltValR8_sum": "buy_to_let_property_value",
     "DVBlDValR8_sum": "non_residential_property_value",
+    # The debt secured on each (microcosm#1095, the WAS property draw).
+    "DVHseDebtR8_sum": "other_houses_secured_debt",
+    "DVBLtDebtR8_sum": "buy_to_let_secured_debt",
+    "DVBldDebtR8_sum": "non_residential_property_secured_debt",
     "DVTotinc_bhcR8": "household_net_income",
     "DVSaValR8_aggr": "savings",
     "vcarnr8": "num_vehicles",
@@ -378,10 +436,13 @@ class UKWASWealthStageTransform:
         self.last_fit_weight_records = imputation.fit_weight_records
         capped, capped_rows = cap_derived_totals_to_donor_range(imputation.draws, donor)
         clip_result = support_clip_to_donor(capped, donor)
-        household_draws = clip_result.clipped
+        household_draws, appended_rows = write_share_split_and_secured_debt(
+            clip_result.clipped
+        )
         identities = {
             **wealth_identity_violations(household_draws),
             **capped_rows,
+            **appended_rows,
         }
         household_draws["num_vehicles"] = (
             np.rint(household_draws["num_vehicles"]).clip(lower=0).astype("int64")
@@ -394,7 +455,10 @@ class UKWASWealthStageTransform:
         )
         person = frame.table("person").copy()
         household = frame.table("household").copy()
-        for column in UK_WAS_WEALTH_HOUSEHOLD_OUTPUT_COLUMNS:
+        for column in (
+            *UK_WAS_WEALTH_HOUSEHOLD_OUTPUT_COLUMNS,
+            *UK_WAS_APPENDED_OUTPUT_COLUMNS,
+        ):
             household[column] = household_draws[column].to_numpy()
         person["student_loan_balance"] = allocate_student_loan_balance_to_people(
             household_balances=household_draws["student_loan_balance"].clip(lower=0),
@@ -426,7 +490,7 @@ class UKWASWealthStageTransform:
 
     @staticmethod
     def output_columns() -> tuple[str, ...]:
-        return UK_WAS_WEALTH_OUTPUT_COLUMNS
+        return UK_WAS_WEALTH_STAGE_OUTPUT_COLUMNS
 
     def checkpoint_metadata(self) -> dict[str, object]:
         if self.last_result is None:
@@ -489,6 +553,37 @@ def clean_was_household_table(raw: pd.DataFrame) -> pd.DataFrame:
     cleaned["corporate_wealth"] = (
         cleaned["corporate_wealth_excl_isa"] + cleaned["stocks_and_shares_isa"]
     )
+    cleaned[UK_WAS_DIRECT_SHARES_COLUMN] = (
+        cleaned["uk_shares"] + cleaned["emp_shares_options"]
+    )
+    cleaned[UK_WAS_TRUSTS_COLUMN] = cleaned["unit_investment_trusts"]
+    holders = cleaned["corporate_wealth_excl_isa"] > 0.0
+    cleaned[UK_WAS_DIRECT_SHARE_FRACTION_COLUMN] = (
+        cleaned[UK_WAS_DIRECT_SHARES_COLUMN]
+        / cleaned["corporate_wealth_excl_isa"].where(holders, 1.0)
+    ).where(holders, 0.0)
+    cleaned["other_residential_property_secured_debt"] = (
+        cleaned["other_houses_secured_debt"] + cleaned["buy_to_let_secured_debt"]
+    )
+    negative = [
+        source
+        for source, column in _RAW_TO_CLEAN.items()
+        if column
+        in (
+            "uk_shares",
+            "emp_shares_options",
+            "unit_investment_trusts",
+            "other_houses_secured_debt",
+            "buy_to_let_secured_debt",
+            "non_residential_property_secured_debt",
+        )
+        and (cleaned[column] < 0.0).any()
+    ]
+    if negative:
+        raise ValueError(
+            f"WAS donor {negative} carry negative values; a holding or a secured "
+            "debt has no reviewed reading for a sentinel."
+        )
     cleaned["student_loan_balance"] = (
         cleaned["total_loans"] - cleaned["total_loans_exc_slc"]
     )
@@ -521,6 +616,14 @@ def clean_was_household_table(raw: pd.DataFrame) -> pd.DataFrame:
         components=UK_WAS_DERIVED_TOTALS["mortgage_debt"][:-1],
     )
     _assert_donor_net_financial_identity(cleaned)
+    secured = cleaned[list(UK_WAS_PROPERTY_SECURED_DEBT)].sum(axis=1)
+    above = secured - cleaned[UK_WAS_SECURED_DEBT_WITHIN] > UK_WAS_IDENTITY_TOLERANCE_GBP
+    if above.any():
+        raise ValueError(
+            f"WAS donor secured debt {list(UK_WAS_PROPERTY_SECURED_DEBT)} passes "
+            f"{UK_WAS_SECURED_DEBT_WITHIN} on {int(above.sum())} row(s); the debts "
+            "are parts of the mortgages on other property."
+        )
     cleaned["region"] = cleaned["region_code"].map(REGIONS)
     return cleaned[
         [
@@ -535,6 +638,8 @@ def clean_was_household_table(raw: pd.DataFrame) -> pd.DataFrame:
             "other_property_mortgage",
             *UK_WAS_WEALTH_HOUSEHOLD_OUTPUT_COLUMNS,
             "student_loan_balance",
+            UK_WAS_DIRECT_SHARE_FRACTION_COLUMN,
+            *UK_WAS_APPENDED_OUTPUT_COLUMNS,
         ]
     ]
 
@@ -707,9 +812,14 @@ class UKWASWealthImputationResult:
 #: The chain's segments, each with its own model and child seed:
 #: 1 land; 2 main residence (owner stratum); 3 the other property components;
 #: 4 pension and share-like wealth; 5 the financial components, vehicles and
-#: the student loan balance; 6 mortgage debt (mortgaged stratum); 7 consumer
-#: debt. Totals are derived between segments from the components drawn so far.
-UK_WAS_CHAIN_SEGMENTS = 8
+#: the student loan balance; 6 the main-residence mortgage (mortgaged
+#: stratum); 7 the mortgages on other property; 8 consumer debt; then, each
+#: from the holders of its column (``UK_WAS_HOLDER_STRATA``), 9 the directly
+#: held fraction of the non-ISA share-like total, 10 the debt secured on other
+#: residential property and 11 on non-residential property. Totals are
+#: derived between segments from the components drawn so far. The appended
+#: segments come last, so the first eight draw as they did before them.
+UK_WAS_CHAIN_SEGMENTS = 11
 
 
 def was_wealth_segment_seeds(
@@ -811,11 +921,10 @@ def impute_was_wealth(
         targets: Sequence[str],
         *,
         stratum: Sequence[str] | None = None,
+        holders: str | None = None,
     ) -> None:
         model = next(segment_models)
-        if stratum is None:
-            donor_rows, recipient_rows = donor_encoded, recipient_encoded
-        else:
+        if stratum is not None:
             donor_rows = donor_encoded.loc[np.isin(donor_category, stratum)]
             recipient_rows = recipient_encoded.loc[np.isin(recipient_category, stratum)]
             if donor_rows.empty:
@@ -823,6 +932,18 @@ def impute_was_wealth(
                     f"WAS donor has no household in the tenure stratum "
                     f"{list(stratum)} that {list(targets)} is fitted on."
                 )
+        elif holders is not None:
+            donor_rows = donor_encoded.loc[
+                pd.to_numeric(donor_encoded[holders], errors="coerce").to_numpy() > 0.0
+            ]
+            recipient_rows = recipient_encoded.loc[raw[holders].to_numpy() > 0.0]
+            if donor_rows.empty:
+                raise ValueError(
+                    f"WAS donor has no household holding {holders!r} that "
+                    f"{list(targets)} is fitted on."
+                )
+        else:
+            donor_rows, recipient_rows = donor_encoded, recipient_encoded
         state = model.start_chain(
             donor_rows,
             list(base_predictors),
@@ -963,8 +1084,57 @@ def impute_was_wealth(
     recipient_encoded["mortgage_debt"] = raw["mortgage_debt"]
     run_segment((*base, *prior_outputs, "mortgage_debt"), ("consumer_debt",))
     raw["net_financial_wealth"] = derived_net_financial_wealth(raw)
+    if segments == 8:
+        return _partial_result(raw, fit_records, segment_seeds)
+    # The appended draws (microcosm#1095): each from the holders of its column
+    # only, conditioned on everything the chain drew; nothing before them
+    # reads them.
+    for column in (
+        "corporate_wealth_excl_isa",
+        UK_WAS_OTHER_MORTGAGE_COLUMN,
+        "consumer_debt",
+    ):
+        recipient_encoded[column] = raw[column]
+    donor_encoded["corporate_wealth_excl_isa"] = donor_encoded[
+        "corporate_wealth_excl_isa"
+    ].astype(float)
+    run_segment(
+        (*base, *prior_outputs, "corporate_wealth_excl_isa"),
+        (UK_WAS_DIRECT_SHARE_FRACTION_COLUMN,),
+        holders=UK_WAS_HOLDER_STRATA[UK_WAS_DIRECT_SHARE_FRACTION_COLUMN],
+    )
+    if segments == 9:
+        return _partial_result(raw, fit_records, segment_seeds)
+    debt_predictors = (
+        *base,
+        *prior_outputs,
+        "main_residence_mortgage",
+        UK_WAS_OTHER_MORTGAGE_COLUMN,
+        "consumer_debt",
+    )
+    residential, non_residential = UK_WAS_PROPERTY_SECURED_DEBT
+    run_segment(
+        debt_predictors,
+        (residential,),
+        holders=UK_WAS_HOLDER_STRATA[residential],
+    )
+    if segments == 10:
+        return _partial_result(raw, fit_records, segment_seeds)
+    recipient_encoded[residential] = raw[residential]
+    run_segment(
+        (*debt_predictors, residential),
+        (non_residential,),
+        holders=UK_WAS_HOLDER_STRATA[non_residential],
+    )
     return UKWASWealthImputationResult(
-        draws=raw.loc[:, (*UK_WAS_WEALTH_OUTPUT_COLUMNS, *UK_WAS_DRAWN_ONLY_COLUMNS)],
+        draws=raw.loc[
+            :,
+            (
+                *UK_WAS_WEALTH_OUTPUT_COLUMNS,
+                *UK_WAS_DRAWN_ONLY_COLUMNS,
+                *UK_WAS_APPENDED_DRAWN_COLUMNS,
+            ),
+        ],
         fit_weight_records=tuple(fit_records),
         segment_seeds=segment_seeds,
     )
@@ -977,6 +1147,9 @@ UK_WAS_DRAWN_ONLY_COLUMNS = (
     "main_residence_mortgage",
     *UK_WAS_INTERNAL_COMPONENT_COLUMNS,
 )
+#: The appended segments' draws, from which the split and the secured debts
+#: are written on the final totals (:func:`write_share_split_and_secured_debt`).
+UK_WAS_APPENDED_DRAWN_COLUMNS = tuple(UK_WAS_HOLDER_STRATA)
 
 
 def derived_net_financial_wealth(draws: pd.DataFrame) -> pd.Series:
@@ -995,7 +1168,11 @@ def _partial_result(
 ) -> UKWASWealthImputationResult:
     produced = [
         column
-        for column in (*UK_WAS_WEALTH_OUTPUT_COLUMNS, *UK_WAS_DRAWN_ONLY_COLUMNS)
+        for column in (
+            *UK_WAS_WEALTH_OUTPUT_COLUMNS,
+            *UK_WAS_DRAWN_ONLY_COLUMNS,
+            *UK_WAS_APPENDED_DRAWN_COLUMNS,
+        )
         if column in raw
     ]
     return UKWASWealthImputationResult(
@@ -1108,7 +1285,76 @@ def wealth_identity_violations(table: pd.DataFrame) -> dict[str, int]:
     violations["net_financial_wealth_violation_rows"] = int(
         (gap.abs() > tolerance).sum()
     )
+    if set(UK_WAS_SHARE_SPLIT_COLUMNS) <= set(table.columns):
+        # The split and the ISA are corporate_wealth (microcosm#1095).
+        gap = table["corporate_wealth"] - table.loc[
+            :, [*UK_WAS_SHARE_SPLIT_COLUMNS, "stocks_and_shares_isa"]
+        ].sum(axis=1)
+        violations["share_split_violation_rows"] = int((gap.abs() > tolerance).sum())
+    if set(UK_WAS_PROPERTY_SECURED_DEBT) <= set(table.columns):
+        # Each debt sits on a held asset, and together they are within the
+        # mortgages on other property where the table carries them.
+        off = pd.Series(False, index=table.index)
+        for debt, asset in UK_WAS_PROPERTY_SECURED_DEBT.items():
+            off |= (table[debt] > 0.0) & (table[asset] <= 0.0)
+        off |= (table.loc[:, list(UK_WAS_PROPERTY_SECURED_DEBT)] < 0.0).any(axis=1)
+        if UK_WAS_SECURED_DEBT_WITHIN in table.columns:
+            off |= (
+                table.loc[:, list(UK_WAS_PROPERTY_SECURED_DEBT)].sum(axis=1)
+                - table[UK_WAS_SECURED_DEBT_WITHIN]
+                > tolerance
+            )
+        violations["secured_debt_violation_rows"] = int(off.sum())
     return violations
+
+
+def write_share_split_and_secured_debt(
+    draws: pd.DataFrame,
+) -> tuple[pd.DataFrame, dict[str, int]]:
+    """Write the share split and the secured debts on the final draws.
+
+    The split takes the drawn directly held fraction of the final non-ISA
+    share-like total (``corporate_wealth`` less ``stocks_and_shares_isa``,
+    floored at zero; ``UK_WAS_UNDRAWN_DIRECT_SHARE_FRACTION`` where the chain
+    drew none), so the two and the ISA sum to ``corporate_wealth``. Each
+    secured debt is zero where the final value of its asset is zero, and the
+    two are scaled down together where they pass ``other_mortgage``. Run after
+    the donor-range cap and the support clip, which may move the totals and the
+    assets these are written on. Returns the draws with the four outputs and
+    the rows each rule touched.
+    """
+
+    out = draws.copy()
+    non_isa = (
+        pd.to_numeric(out["corporate_wealth"], errors="coerce")
+        - pd.to_numeric(out["stocks_and_shares_isa"], errors="coerce")
+    ).clip(lower=0.0)
+    drawn = pd.to_numeric(out[UK_WAS_DIRECT_SHARE_FRACTION_COLUMN], errors="coerce")
+    held = pd.to_numeric(out["corporate_wealth_excl_isa"], errors="coerce") > 0.0
+    undrawn = (non_isa > 0.0) & ~held
+    fraction = drawn.where(held, UK_WAS_UNDRAWN_DIRECT_SHARE_FRACTION).clip(0.0, 1.0)
+    out[UK_WAS_DIRECT_SHARES_COLUMN] = fraction * non_isa
+    out[UK_WAS_TRUSTS_COLUMN] = non_isa - out[UK_WAS_DIRECT_SHARES_COLUMN]
+    zeroed = 0
+    for debt, asset in UK_WAS_PROPERTY_SECURED_DEBT.items():
+        value = pd.to_numeric(out[debt], errors="coerce").clip(lower=0.0)
+        without = (pd.to_numeric(out[asset], errors="coerce") <= 0.0) & (value > 0.0)
+        zeroed += int(without.sum())
+        out[debt] = value.where(~without, 0.0)
+    debts = list(UK_WAS_PROPERTY_SECURED_DEBT)
+    total = out[debts].sum(axis=1)
+    within = pd.to_numeric(out[UK_WAS_SECURED_DEBT_WITHIN], errors="coerce").clip(
+        lower=0.0
+    )
+    above = total > within
+    scale = (within / total.where(above, 1.0)).where(above, 1.0)
+    for debt in debts:
+        out[debt] = out[debt] * scale
+    return out, {
+        "share_split_undrawn_fraction_rows": int(undrawn.sum()),
+        "secured_debt_zeroed_without_asset_rows": zeroed,
+        f"secured_debt_scaled_to_{UK_WAS_SECURED_DEBT_WITHIN}_rows": int(above.sum()),
+    }
 
 
 def encode_qrf_predictor_pair(
@@ -1449,6 +1695,30 @@ def _assert_chain_declaration(stage: SourceStageSpec) -> None:
         raise ValueError(
             "was_wealth derived_totals drifted: manifest declares "
             f"{declared_totals!r}, runtime uses {runtime_totals!r}."
+        )
+    appended = {
+        "holder_strata": {
+            str(target): str(holder)
+            for target, holder in dict(
+                operation.parameters.get("holder_strata", {})
+            ).items()
+        },
+        "share_split": dict(operation.parameters.get("share_split", {})),
+        "secured_debt_within": operation.parameters.get("secured_debt_within"),
+    }
+    runtime_appended = {
+        "holder_strata": dict(UK_WAS_HOLDER_STRATA),
+        "share_split": {
+            "fraction": UK_WAS_DIRECT_SHARE_FRACTION_COLUMN,
+            "outputs": list(UK_WAS_SHARE_SPLIT_COLUMNS),
+            "undrawn_fraction": UK_WAS_UNDRAWN_DIRECT_SHARE_FRACTION,
+        },
+        "secured_debt_within": UK_WAS_SECURED_DEBT_WITHIN,
+    }
+    if appended != runtime_appended:
+        raise ValueError(
+            "was_wealth appended draws drifted: manifest declares "
+            f"{appended!r}, runtime uses {runtime_appended!r}."
         )
 
 

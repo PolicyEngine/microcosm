@@ -33,6 +33,8 @@ def test_engine_uses_reported_capital_and_sentinel_routes_to_residual_proxy() ->
             "savings": [100_000.0, 100_000.0, 7_000.0],
             "other_residential_property_value": [0.0, 0.0, 0.0],
             "non_residential_property_value": [0.0, 0.0, 0.0],
+            "other_residential_property_secured_debt": [0.0, 0.0, 0.0],
+            "non_residential_property_secured_debt": [0.0, 0.0, 0.0],
             "corporate_wealth": [0.0, 0.0, 0.0],
         }
     )
@@ -89,6 +91,8 @@ def _capital_frame(uc_capital, pension_credit_capital, *, child_heads=False):
             "other_residential_property_value": [90_000.0, 50_000.0],
             "non_residential_property_value": [10_000.0, 0.0],
             "owned_land": [30_000.0, 5_000.0],
+            "other_residential_property_secured_debt": [0.0, 0.0],
+            "non_residential_property_secured_debt": [0.0, 0.0],
         }
     )
     return uk_national_frame(

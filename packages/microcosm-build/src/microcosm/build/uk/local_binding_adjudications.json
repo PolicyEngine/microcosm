@@ -10,9 +10,9 @@
       "expires_on": "2027-01-14"
     },
     "hmrc_spi_frame_model_proxy": {
-      "reason": "Accept the stated basis: the constituency and local-authority HMRC families bind on the modeled income_tax > 0 frame, the same SPI-frame proxy the national hmrc.* surface binds through (uk_population_targets.json bindings), so both grains share one frame and the standing cross-grain rule can reconcile them. The proxy's known biases (zero-liability taxpayers excluded; modeled liabilities the SPI would not observe included) are accepted for the first candidate and re-measured per family in the microcosm#762 receipts. Fence evidence: uk_local_target_census.json#/binding_fences/hmrc_spi_frame_model_proxy.",
+      "reason": "Accept the stated basis: the constituency and local-authority HMRC families bind on the modeled income_tax_annual > 0 frame (each person's income tax over the 12 months before their FRS interview, a proxy for the tax year), the same SPI-frame proxy the national hmrc.* surface binds through (uk_population_targets.json bindings), so both grains share one frame and the standing cross-grain rule can reconcile them. The proxy's known biases (zero-liability taxpayers excluded; modeled liabilities the SPI would not observe included) are accepted for the first candidate and re-measured per family in the microcosm#762 receipts. Fence evidence: uk_local_target_census.json#/binding_fences/hmrc_spi_frame_model_proxy.",
       "approved_by": "juaristi22",
-      "adjudication": "microcosm#762 (A1, rulings 2026-09-02); renewed three months on 2026-10-14 by juaristi22 (microcosm#1278): both grains still bind the HMRC area families on the modeled taxpayer frame.",
+      "adjudication": "microcosm#762 (A1, rulings 2026-09-02); renewed three months on 2026-10-14 by juaristi22 (microcosm#1278): both grains still bind the HMRC area families on the modeled taxpayer frame; re-worded 2026-10-23 by juaristi22 (microcosm#1347 review): the frame is each person's year of income (income_tax_annual > 0) at both grains, since microcosm#1344 moved the national rows and microcosm#1347 the area rows.",
       "approved_on": "2026-10-14",
       "expires_on": "2027-01-14"
     },

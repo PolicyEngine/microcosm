@@ -52,6 +52,7 @@
       "free_school_breakfasts": "float64",
       "free_school_fruit_veg": "float64",
       "free_school_meals": "float64",
+      "frs_bonus_amount": "float64",
       "gender": "string",
       "healthy_start_vouchers": "float64",
       "hours_worked": "float64",
@@ -100,6 +101,7 @@
       "savings_interest_income": "float64",
       "sda_reported": "float64",
       "self_employment_income": "float64",
+      "spousal_maintenance_income": "float64",
       "ssmg_reported": "float64",
       "stands_as_sole_owner_or_partner_of_company": "bool",
       "state_pension_reported": "float64",
@@ -114,6 +116,7 @@
       "uc_is_in_startup_period": "bool",
       "universal_credit_reported": "float64",
       "war_widows_pension_reported": "float64",
+      "widowed_parents_allowance_reported": "float64",
       "winter_fuel_allowance_reported": "float64",
       "working_tax_credit_reported": "float64",
       "would_claim_carers_allowance": "bool"

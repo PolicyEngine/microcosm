@@ -344,8 +344,16 @@ def main(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
     # A declared compatibility range admits model versions no check measured.
-    # The bundle records which one was; say it on the same two paths.
-    measurement = recorded_claim_measurement(Path(args.release_dir))
+    # The bundle records which one was; say it on the same two paths. A
+    # recertification records the measured version, its baseline and the
+    # drift summary the declarer read.
+    from microcosm.data import compatibility_recertification
+
+    measurement = recorded_claim_measurement(
+        Path(args.release_dir)
+    ) or compatibility_recertification.recorded_claim_measurement(
+        Path(args.release_dir)
+    )
     if measurement:
         print(
             "note: this release declares a publisher compatibility range that "

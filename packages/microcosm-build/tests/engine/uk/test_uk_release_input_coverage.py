@@ -452,6 +452,7 @@ class TestUKManifest:
         assert manifest.required_build_stages == frozenset(
             {
                 "frs_hmrc_spine_leaves",
+                "frs_annual_income_spells",
                 "spi_support_channel",
                 "spi_income_band_donors",
                 "hmrc_spi_income_spine",

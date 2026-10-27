@@ -35,6 +35,7 @@ from microcosm.build.uk_runtime.spi_support import (
 )
 from microcosm.build.uk_runtime.uc_capital_coherence import (
     PROPERTY_CAPITAL_OWNER_COLUMN,
+    PROPERTY_CAPITAL_SECURED_DEBT,
     UC_CAPITAL_WITH_PROPERTY_DEFINITION,
     UC_PROPERTY_CAPITAL_SHARE,
     UC_PROPERTY_CAPITAL_SHARE_DEFINITION,
@@ -225,7 +226,15 @@ def redraw_spi_reported_uc(
     )
     _require_columns(
         household,
-        ("household_id", "region", *UC_PROPERTY_CAPITAL_SOURCES),
+        (
+            "household_id",
+            "region",
+            *UC_PROPERTY_CAPITAL_SOURCES,
+            *(
+                PROPERTY_CAPITAL_SECURED_DEBT[source]
+                for source in UC_PROPERTY_CAPITAL_SOURCES
+            ),
+        ),
         label="household",
     )
 

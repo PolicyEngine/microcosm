@@ -78,11 +78,18 @@ def _region_frame(rows: list[tuple[str, str, str]]) -> Frame:
     )
 
 
-def _registry_for(prefix: str) -> tuple[list, TargetRegistry]:
+#: England's single adult discount: one national row in the stock family
+#: (microcosm#953), not a band cell.
+_SINGLE_ADULT_DISCOUNT = "mhclg.council_tax_stock.single_adult_discount"
+
+
+def _registry_for(
+    prefix: str, *, exclude: tuple[str, ...] = ()
+) -> tuple[list, TargetRegistry]:
     refs = [
         r
         for r in load_country_spec("uk").target_references
-        if r.name.startswith(prefix)
+        if r.name.startswith(prefix) and r.name not in exclude
     ]
     registry = TargetRegistry(
         [
@@ -120,7 +127,9 @@ def test_national_mhclg_region_cells_count_only_their_region_for_every_band() ->
         ("NORTHERN_IRELAND", "NORTHERN_IRELAND"),
     )
     rows = [(country, region, band) for country, region in areas for band in "ABCDEFGH"]
-    refs, registry = _registry_for("mhclg.council_tax_stock.")
+    refs, registry = _registry_for(
+        "mhclg.council_tax_stock.", exclude=(_SINGLE_ADULT_DISCOUNT,)
+    )
     assert len(refs) == 81
     assert {r.metadata["geography_level"] for r in refs} == {"region"}
     assert sorted({r.metadata["geography_id"] for r in refs}) == [
@@ -608,3 +617,30 @@ def test_composed_english_region_cells_sum_to_the_publisher_england_row() -> Non
     assert sum(published[f"band_{band}"] for band in "abcdefgh") == pytest.approx(
         published["total"], abs=0.5
     )
+
+
+def test_englands_single_adult_discount_is_one_national_row() -> None:
+    """MHCLG Council Taxbase line 8, all bands, at England's country grain
+    (microcosm#953), against the households policyengine-uk gives the 25%
+    discount."""
+
+    (reference,) = [
+        r
+        for r in load_country_spec("uk").target_references
+        if r.name == _SINGLE_ADULT_DISCOUNT
+    ]
+    assert reference.entity == "household"
+    assert reference.measure == "mhclg/council_tax/single_adult_discount"
+    assert reference.ledger_selector["geography_level"] == "country"
+    assert reference.ledger_selector["geography_id"] == "E92000001"
+    assert reference.ledger_selector["source_measure_id"] == "total"
+    (target,) = [
+        target
+        for target in load_uk_population_contract()["targets"]
+        if target["target_id"] == _SINGLE_ADULT_DISCOUNT
+    ]
+    conditions = target["bindings"]["policyengine"]["household_conditions"]
+    assert {(c["variable"], c["value"]) for c in conditions} == {
+        ("country", "ENGLAND"),
+        ("council_tax_discount_rate", 0.25),
+    }

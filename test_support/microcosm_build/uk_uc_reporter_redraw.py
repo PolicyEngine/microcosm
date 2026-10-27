@@ -17,6 +17,7 @@ from microcosm.build.uk_runtime.spi_support import (
 )
 from microcosm.build.uk_runtime.uc_capital_coherence import (
     PENSION_CREDIT_PROPERTY_CAPITAL_SOURCES,
+    PROPERTY_CAPITAL_SECURED_DEBT,
     cohere_uc_capital,
 )
 from microcosm.build.uk_runtime.uc_reporter_redraw import (
@@ -216,7 +217,10 @@ def _frame(*, child_only: bool = False):
             "household_is_capital_gains_clone": [row[4] for row in benunit_rows],
         }
     )
-    for column in PENSION_CREDIT_PROPERTY_CAPITAL_SOURCES:
+    for column in (
+        *PENSION_CREDIT_PROPERTY_CAPITAL_SOURCES,
+        *PROPERTY_CAPITAL_SECURED_DEBT.values(),
+    ):
         household[column] = 0.0
     return uk_national_frame(
         person=person,

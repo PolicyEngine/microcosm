@@ -257,6 +257,84 @@
     {
      "type": "object",
      "additionalProperties": false,
+     "required": [
+      "kind",
+      "outputs",
+      "window_months",
+      "leaving_date_share",
+      "unknown_leaving_months",
+      "donor_recent_start_months",
+      "minimum_donors",
+      "donor_age_edges",
+      "seed",
+      "salt",
+      "earnings_index",
+      "earnings_index_from",
+      "earnings_index_to",
+      "maximum_uprating_months"
+     ],
+     "properties": {
+      "kind": {
+       "const": "derive_annual_income_spells"
+      },
+      "outputs": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       },
+       "minItems": 1
+      },
+      "window_months": {
+       "type": "integer",
+       "minimum": 1
+      },
+      "leaving_date_share": {
+       "type": "number",
+       "minimum": 0,
+       "maximum": 1
+      },
+      "unknown_leaving_months": {
+       "type": "number",
+       "minimum": 0
+      },
+      "donor_recent_start_months": {
+       "type": "integer",
+       "minimum": 1
+      },
+      "minimum_donors": {
+       "type": "integer",
+       "minimum": 1
+      },
+      "donor_age_edges": {
+       "type": "array",
+       "items": {
+        "type": "integer"
+       }
+      },
+      "seed": {
+       "type": "integer"
+      },
+      "salt": {
+       "type": "string"
+      },
+      "earnings_index": {
+       "type": "string"
+      },
+      "earnings_index_from": {
+       "type": "string"
+      },
+      "earnings_index_to": {
+       "type": "string"
+      },
+      "maximum_uprating_months": {
+       "type": "integer",
+       "minimum": 0
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
      "properties": {
       "basis": {
        "type": "string"
@@ -652,6 +730,9 @@
        "const": "assign_binary_from_rate"
       },
       "method": {
+       "type": "string"
+      },
+      "nested_under": {
        "type": "string"
       },
       "output": {
@@ -1712,6 +1793,115 @@
       "kind",
       "pregnancy_rate",
       "seed_from_build_config"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "anchor": {
+       "type": "object",
+       "additionalProperties": false,
+       "properties": {
+        "row": {
+         "type": "string"
+        },
+        "sha256": {
+         "$ref": "defs.schema.json#/$defs/sha256"
+        },
+        "source": {
+         "type": "string",
+         "x-spec-surface": "operational"
+        },
+        "table": {
+         "type": "string"
+        },
+        "values": {
+         "type": "object",
+         "additionalProperties": {
+          "type": "number"
+         }
+        }
+       },
+       "required": [
+        "row",
+        "sha256",
+        "source",
+        "table",
+        "values"
+       ]
+      },
+      "anchor_universe": {
+       "type": "string",
+       "x-spec-surface": "documentation"
+      },
+      "cells_resource": {
+       "type": "string"
+      },
+      "cells_sha256": {
+       "$ref": "defs.schema.json#/$defs/sha256"
+      },
+      "government_cell_aging": {
+       "type": "string",
+       "x-spec-surface": "documentation"
+      },
+      "kind": {
+       "const": "derive_employer_sponsored_insurance_premiums"
+      },
+      "no_contribution_share": {
+       "type": "string",
+       "x-spec-surface": "documentation"
+      },
+      "other_policyholder_cell": {
+       "type": "string",
+       "x-spec-surface": "documentation"
+      },
+      "payment_column": {
+       "type": "string"
+      },
+      "payment_rule": {
+       "type": "string",
+       "x-spec-surface": "documentation"
+      },
+      "scaling": {
+       "type": "string",
+       "x-spec-surface": "documentation"
+      },
+      "sector_column": {
+       "type": "string"
+      },
+      "size_column": {
+       "type": "string"
+      },
+      "suppressed_cell_fallback": {
+       "type": "string",
+       "x-spec-surface": "documentation"
+      },
+      "tier_column": {
+       "type": "string"
+      },
+      "universe": {
+       "type": "string",
+       "x-spec-surface": "documentation"
+      }
+     },
+     "required": [
+      "anchor",
+      "anchor_universe",
+      "cells_resource",
+      "cells_sha256",
+      "government_cell_aging",
+      "kind",
+      "no_contribution_share",
+      "other_policyholder_cell",
+      "payment_column",
+      "payment_rule",
+      "scaling",
+      "sector_column",
+      "size_column",
+      "suppressed_cell_fallback",
+      "tier_column",
+      "universe"
      ]
     },
     {
@@ -6502,6 +6692,94 @@
       "draw",
       "seed",
       "anchor",
+      "population",
+      "award",
+      "family_type",
+      "award_bands",
+      "targets",
+      "pooling",
+      "minimum_pool_sources",
+      "drawn_units",
+      "undrawn_claims",
+      "kept_legacy_award",
+      "weight_mapping",
+      "residual_rate",
+      "solve_scope",
+      "not_drawn"
+     ],
+     "properties": {
+      "kind": {
+       "const": "assign_award_band_take_up_residual"
+      },
+      "output": {
+       "type": "string"
+      },
+      "draw": {
+       "type": "string"
+      },
+      "seed": {
+       "type": "integer"
+      },
+      "anchor": {
+       "type": "string"
+      },
+      "population": {
+       "type": "string"
+      },
+      "award": {
+       "type": "string"
+      },
+      "family_type": {
+       "type": "string"
+      },
+      "award_bands": {
+       "type": "string"
+      },
+      "targets": {
+       "type": "string"
+      },
+      "pooling": {
+       "type": "string"
+      },
+      "minimum_pool_sources": {
+       "type": "integer",
+       "minimum": 1
+      },
+      "drawn_units": {
+       "type": "string"
+      },
+      "undrawn_claims": {
+       "type": "string"
+      },
+      "kept_legacy_award": {
+       "type": "string"
+      },
+      "weight_mapping": {
+       "type": "string"
+      },
+      "residual_rate": {
+       "type": "string"
+      },
+      "solve_scope": {
+       "type": "string",
+       "enum": [
+        "great_britain"
+       ]
+      },
+      "not_drawn": {
+       "type": "string"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "output",
+      "draw",
+      "seed",
+      "anchor",
       "eligibility",
       "family_key",
       "resource",
@@ -6668,6 +6946,9 @@
      "properties": {
       "kind": {
        "const": "assign_clipped_normal"
+      },
+      "eligibility": {
+       "type": "string"
       },
       "output": {
        "type": "string"
@@ -7194,6 +7475,37 @@
         "maxItems": 2,
         "items": {
          "type": "number"
+        }
+       }
+      },
+      "shares": {
+       "type": "object",
+       "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+         "total",
+         "numerator",
+         "denominator"
+        ],
+        "properties": {
+         "total": {
+          "type": "string"
+         },
+         "numerator": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+           "type": "string"
+          }
+         },
+         "denominator": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+           "type": "string"
+          }
+         }
         }
        }
       }
@@ -8403,6 +8715,43 @@
         "type": "string"
        }
       },
+      "holder_strata": {
+       "type": "object",
+       "minProperties": 1,
+       "additionalProperties": {
+        "type": "string"
+       }
+      },
+      "share_split": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "fraction",
+        "outputs",
+        "undrawn_fraction"
+       ],
+       "properties": {
+        "fraction": {
+         "type": "string"
+        },
+        "outputs": {
+         "type": "array",
+         "minItems": 2,
+         "maxItems": 2,
+         "items": {
+          "type": "string"
+         }
+        },
+        "undrawn_fraction": {
+         "type": "number",
+         "minimum": 0,
+         "maximum": 1
+        }
+       }
+      },
+      "secured_debt_within": {
+       "type": "string"
+      },
       "derived_totals": {
        "type": "object",
        "minProperties": 1,
@@ -9486,6 +9835,87 @@
      "additionalProperties": false,
      "required": [
       "kind",
+      "resource",
+      "facts",
+      "source",
+      "output",
+      "candidates",
+      "move",
+      "move_pay_share_cap",
+      "spi_bonus_draw",
+      "spi_cell_quantiles",
+      "spi_min_donor_sources",
+      "spi_salt",
+      "threshold",
+      "solve",
+      "seed",
+      "salt",
+      "receipt"
+     ],
+     "properties": {
+      "kind": {
+       "const": "convert_bonuses_to_bonus_sacrifice"
+      },
+      "resource": {
+       "type": "string"
+      },
+      "facts": {
+       "type": "string"
+      },
+      "source": {
+       "type": "string"
+      },
+      "output": {
+       "type": "string"
+      },
+      "candidates": {
+       "type": "string"
+      },
+      "move": {
+       "type": "string"
+      },
+      "move_pay_share_cap": {
+       "type": "number"
+      },
+      "spi_bonus_draw": {
+       "type": "string"
+      },
+      "spi_cell_quantiles": {
+       "type": "array",
+       "items": {
+        "type": "number"
+       },
+       "minItems": 1
+      },
+      "spi_min_donor_sources": {
+       "type": "integer",
+       "minimum": 1
+      },
+      "spi_salt": {
+       "type": "string"
+      },
+      "threshold": {
+       "type": "number"
+      },
+      "solve": {
+       "type": "string"
+      },
+      "seed": {
+       "type": "integer"
+      },
+      "salt": {
+       "type": "string"
+      },
+      "receipt": {
+       "type": "string"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
       "year_rule",
       "start_year_formula",
       "reported_repayment_test",
@@ -9836,6 +10266,7 @@
       "output",
       "port_of",
       "legacy_benefits",
+      "reporters",
       "true_without_draw",
       "rate",
       "probability",
@@ -9857,6 +10288,9 @@
        "items": {
         "type": "string"
        }
+      },
+      "reporters": {
+       "type": "string"
       },
       "true_without_draw": {
        "type": "string"
@@ -12087,6 +12521,545 @@
      "additionalProperties": false,
      "required": [
       "kind",
+      "resource",
+      "concept",
+      "period_type",
+      "period_value",
+      "geography_id",
+      "dimensions",
+      "windows",
+      "sexes",
+      "age_bands",
+      "keys",
+      "occasional_stake_share",
+      "strata",
+      "propensity",
+      "n_estimators",
+      "seed",
+      "salt"
+     ],
+     "properties": {
+      "kind": {
+       "const": "top_up_gambling_participation"
+      },
+      "resource": {
+       "type": "string"
+      },
+      "concept": {
+       "type": "string"
+      },
+      "period_type": {
+       "const": "calendar_year"
+      },
+      "period_value": {
+       "type": "integer"
+      },
+      "geography_id": {
+       "type": "string"
+      },
+      "dimensions": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "window",
+        "scope",
+        "sex",
+        "age_band"
+       ],
+       "properties": {
+        "window": {
+         "type": "string"
+        },
+        "scope": {
+         "type": "string"
+        },
+        "sex": {
+         "type": "string"
+        },
+        "age_band": {
+         "type": "string"
+        }
+       }
+      },
+      "population_dimensions": {
+       "type": "object",
+       "additionalProperties": false,
+       "properties": {
+        "regular": {
+         "type": "object",
+         "additionalProperties": {
+          "type": "string"
+         }
+        },
+        "occasional": {
+         "type": "object",
+         "additionalProperties": {
+          "type": "string"
+         }
+        }
+       }
+      },
+      "activity_dimensions": {
+       "type": "object",
+       "additionalProperties": false,
+       "properties": {
+        "regular": {
+         "type": "object",
+         "additionalProperties": {
+          "type": "string"
+         }
+        },
+        "occasional": {
+         "type": "object",
+         "additionalProperties": {
+          "type": "string"
+         }
+        }
+       }
+      },
+      "windows": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "regular",
+        "occasional"
+       ],
+       "properties": {
+        "regular": {
+         "type": "string"
+        },
+        "occasional": {
+         "type": "string"
+        }
+       }
+      },
+      "sexes": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "MALE",
+        "FEMALE",
+        "all"
+       ],
+       "properties": {
+        "MALE": {
+         "type": "string"
+        },
+        "FEMALE": {
+         "type": "string"
+        },
+        "all": {
+         "type": "string"
+        }
+       }
+      },
+      "age_bands": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "array",
+        "prefixItems": [
+         {
+          "type": "integer",
+          "minimum": 18
+         },
+         {
+          "type": "string"
+         }
+        ],
+        "minItems": 2,
+        "maxItems": 2
+       }
+      },
+      "keys": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "national_lottery",
+        "betting_and_gaming"
+       ],
+       "properties": {
+        "national_lottery": {
+         "type": "object",
+         "additionalProperties": false,
+         "required": [
+          "population",
+          "activities",
+          "theta"
+         ],
+         "properties": {
+          "population": {
+           "type": "string"
+          },
+          "activities": {
+           "type": "object",
+           "minProperties": 1,
+           "additionalProperties": {
+            "type": "object",
+            "additionalProperties": {
+             "type": "string"
+            }
+           }
+          },
+          "theta": {
+           "type": "number",
+           "minimum": 0,
+           "maximum": 1
+          }
+         }
+        },
+        "betting_and_gaming": {
+         "type": "object",
+         "additionalProperties": false,
+         "required": [
+          "population",
+          "activities",
+          "theta"
+         ],
+         "properties": {
+          "population": {
+           "type": "string"
+          },
+          "activities": {
+           "type": "object",
+           "minProperties": 1,
+           "additionalProperties": {
+            "type": "object",
+            "additionalProperties": {
+             "type": "string"
+            }
+           }
+          },
+          "theta": {
+           "type": "number",
+           "minimum": 0,
+           "maximum": 1
+          }
+         }
+        }
+       }
+      },
+      "occasional_stake_share": {
+       "type": "number",
+       "exclusiveMinimum": 0,
+       "maximum": 1
+      },
+      "strata": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "adults_cap",
+        "youngest_adult_bounds"
+       ],
+       "properties": {
+        "adults_cap": {
+         "type": "integer",
+         "minimum": 1
+        },
+        "youngest_adult_bounds": {
+         "type": "array",
+         "items": {
+          "type": "integer",
+          "minimum": 19
+         }
+        }
+       }
+      },
+      "propensity": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "max_leaf_nodes",
+        "min_samples_leaf",
+        "l2_regularization",
+        "validation_fraction"
+       ],
+       "properties": {
+        "max_leaf_nodes": {
+         "type": "integer",
+         "minimum": 2
+        },
+        "min_samples_leaf": {
+         "type": "integer",
+         "minimum": 1
+        },
+        "l2_regularization": {
+         "type": "number",
+         "minimum": 0
+        },
+        "validation_fraction": {
+         "type": "number",
+         "exclusiveMinimum": 0,
+         "maximum": 0.5
+        }
+       }
+      },
+      "n_estimators": {
+       "type": "integer",
+       "minimum": 1
+      },
+      "seed": {
+       "type": "integer"
+      },
+      "salt": {
+       "type": "string"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "resource",
+      "period_type",
+      "period_value",
+      "fiscal_start",
+      "geography_id",
+      "weeks_per_year",
+      "alcohol_volume_weights",
+      "outputs"
+     ],
+     "properties": {
+      "kind": {
+       "const": "level_excise_quantities"
+      },
+      "resource": {
+       "type": "string"
+      },
+      "period_type": {
+       "const": "fiscal_year"
+      },
+      "period_value": {
+       "type": "integer"
+      },
+      "fiscal_start": {
+       "type": "string"
+      },
+      "geography_id": {
+       "type": "string"
+      },
+      "weeks_per_year": {
+       "type": "integer"
+      },
+      "alcohol_volume_weights": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "rule"
+       ],
+       "properties": {
+        "rule": {
+         "enum": [
+          "spending",
+          "published_on_trade_share"
+         ]
+        },
+        "concept": {
+         "type": "string"
+        },
+        "geography_id": {
+         "type": "string"
+        },
+        "dimensions": {
+         "type": "object",
+         "additionalProperties": {
+          "type": "string"
+         }
+        }
+       }
+      },
+      "outputs": {
+       "type": "object",
+       "minProperties": 1,
+       "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+         "concept",
+         "dimensions",
+         "unit"
+        ],
+        "properties": {
+         "concept": {
+          "type": "string"
+         },
+         "dimensions": {
+          "type": "object",
+          "additionalProperties": {
+           "type": "string"
+          },
+          "minProperties": 1
+         },
+         "unit": {
+          "type": "string"
+         },
+         "share": {
+          "type": "number"
+         },
+         "strength": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+           "value",
+           "parameter_path"
+          ],
+          "properties": {
+           "value": {
+            "type": "number"
+           },
+           "parameter_path": {
+            "type": "string"
+           }
+          }
+         }
+        }
+       }
+      },
+      "draught_shares": {
+       "type": "object",
+       "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+         "concept",
+         "unit",
+         "numerator",
+         "denominator"
+        ],
+        "properties": {
+         "concept": {
+          "type": "string"
+         },
+         "unit": {
+          "type": "string"
+         },
+         "numerator": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+           "type": "object",
+           "additionalProperties": {
+            "type": "string"
+           },
+           "minProperties": 1
+          }
+         },
+         "denominator": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+           "type": "object",
+           "additionalProperties": {
+            "type": "string"
+           },
+           "minProperties": 1
+          }
+         }
+        }
+       }
+      },
+      "gambling": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "receipts",
+        "machine_games_liabilities",
+        "yield",
+        "rates"
+       ],
+       "properties": {
+        "receipts": {
+         "type": "object",
+         "additionalProperties": false,
+         "required": [
+          "concept"
+         ],
+         "properties": {
+          "concept": {
+           "type": "string"
+          },
+          "geography_id": {
+           "type": "string"
+          },
+          "dimensions": {
+           "type": "object",
+           "additionalProperties": {
+            "type": "string"
+           }
+          }
+         }
+        },
+        "machine_games_liabilities": {
+         "type": "object",
+         "additionalProperties": false,
+         "required": [
+          "concept"
+         ],
+         "properties": {
+          "concept": {
+           "type": "string"
+          },
+          "geography_id": {
+           "type": "string"
+          },
+          "dimensions": {
+           "type": "object",
+           "additionalProperties": {
+            "type": "string"
+           }
+          }
+         }
+        },
+        "yield": {
+         "type": "object",
+         "additionalProperties": false,
+         "required": [
+          "concept"
+         ],
+         "properties": {
+          "concept": {
+           "type": "string"
+          },
+          "geography_id": {
+           "type": "string"
+          },
+          "dimensions": {
+           "type": "object",
+           "additionalProperties": {
+            "type": "string"
+           }
+          }
+         }
+        },
+        "rates": {
+         "type": "object",
+         "additionalProperties": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+           "value",
+           "parameter_path"
+          ],
+          "properties": {
+           "value": {
+            "type": "number"
+           },
+           "parameter_path": {
+            "type": "string"
+           }
+          }
+         }
+        }
+       }
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
       "columns",
       "flag",
       "rule",
@@ -12171,7 +13144,7 @@
       "kind",
       "parents",
       "maximum_total",
-      "uncarried"
+      "published_fuels"
      ],
      "properties": {
       "kind": {
@@ -12181,6 +13154,34 @@
        "enum": [
         "donor_support"
        ]
+      },
+      "level_division_excess": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "rule",
+        "basis",
+        "divisions"
+       ],
+       "properties": {
+        "rule": {
+         "enum": [
+          "excess_over_shared_ratio"
+         ]
+        },
+        "basis": {
+         "enum": [
+          "drawn_spend_over_donor_spend_per_household"
+         ]
+        },
+        "divisions": {
+         "type": "array",
+         "minItems": 1,
+         "items": {
+          "type": "string"
+         }
+        }
+       }
       },
       "parents": {
        "type": "object",
@@ -12210,7 +13211,7 @@
         }
        }
       },
-      "uncarried": {
+      "published_fuels": {
        "type": "object",
        "additionalProperties": false,
        "required": [
@@ -12233,13 +13234,17 @@
           "additionalProperties": false,
           "required": [
            "coicop",
-           "concept"
+           "concept",
+           "column"
           ],
           "properties": {
            "coicop": {
             "type": "string"
            },
            "concept": {
+            "type": "string"
+           },
+           "column": {
             "type": "string"
            }
           }

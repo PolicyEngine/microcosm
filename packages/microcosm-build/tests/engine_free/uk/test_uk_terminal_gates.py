@@ -420,12 +420,16 @@ def test_export_candidate_columns_strip_ids_and_carry_the_weight() -> None:
     assert exported.mass_log == frame.mass_log
     # The boundary drops the reviewed export exclusions, the internal
     # disability carriers, the salary-sacrifice pre-conversion pay carrier,
-    # the landlord carrier and the value the regional home values replaced
-    # (microcosm#1112), and nothing else.
+    # the landlord carrier, the FRS bonus carrier (microcosm#1340) and the
+    # value the regional home values replaced (microcosm#1112), and nothing
+    # else.
     from microcosm.build.uk_runtime.frs_disability import (
         UK_INTERNAL_DISABILITY_REPORTED_COLUMNS,
     )
-    from microcosm.build.uk_runtime.frs_spine import FRS_LANDLORD_CARRIER_COLUMN
+    from microcosm.build.uk_runtime.frs_spine import (
+        FRS_BONUS_CARRIER_COLUMN,
+        FRS_LANDLORD_CARRIER_COLUMN,
+    )
     from microcosm.build.uk_runtime.property_localisation import RANK_BASIS_COLUMN
     from microcosm.build.uk_runtime.salary_sacrifice import (
         SALSAC_PRE_CONVERSION_PAY_COLUMN,
@@ -441,10 +445,32 @@ def test_export_candidate_columns_strip_ids_and_carry_the_weight() -> None:
         | {f"person.{column}" for column in UK_INTERNAL_DISABILITY_REPORTED_COLUMNS}
         | {f"person.{SALSAC_PRE_CONVERSION_PAY_COLUMN}"}
         | {f"person.{FRS_LANDLORD_CARRIER_COLUMN}"}
+        | {f"person.{FRS_BONUS_CARRIER_COLUMN}"}
         | {f"household.{RANK_BASIS_COLUMN}"}
     )
     # A frame without the column passes through untouched.
     assert uk_release_export_frame(exported) is exported
+
+
+def test_no_spine_column_writes_an_input_signed_at_the_engine_default() -> None:
+    """A signed engine default (microcosm#1095) holds only while no stage writes it."""
+
+    import json
+
+    from microcosm.frame.adapters.policyengine_uk_concepts import (
+        UK_ENGINE_DEFAULT_INPUTS,
+    )
+    from test_support.paths import paths_for
+
+    schema = json.loads(
+        (
+            paths_for("microcosm-graph").tests
+            / "fixtures/parity/uk_spine/sources/schema.json"
+        ).read_text()
+    )
+    written = {column for dtypes in schema["dtypes"].values() for column in dtypes}
+    assert "self_employment_income" in written
+    assert not written & set(UK_ENGINE_DEFAULT_INPUTS)
 
 
 def _target_fit_exclusion(

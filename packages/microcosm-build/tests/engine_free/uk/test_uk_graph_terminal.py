@@ -1071,6 +1071,9 @@ def _run_final_gate_kernel(monkeypatch, *, brma_row: bool = False, solved=None):
                 "area_type": "constituency",
                 "area_code": "E14000001",
                 "metric": "households",
+                # A local row names its contract target (Vahid's third review
+                # of #1383, item 33); this one ties to no family.
+                "contract_target_id": "fixture.census_households",
             },
         ),
     ]

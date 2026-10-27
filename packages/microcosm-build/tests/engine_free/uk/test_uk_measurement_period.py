@@ -352,9 +352,12 @@ def test_a_frame_without_a_period_label_keeps_the_frame_route():
 #: reads. They keep their stored reads (microcosm#1324): who a row counts is
 #: fixed at the frame. Each is engine-computed (measured at the calibration
 #: period through the provider) or a stored input that does not change between
-#: the frame's period and the calibration period (ages and sex are static,
-#: sign filters keep their sign under uprating, the student-loan plan and the
-#: private-school flag are stored at the calibration year). A new name here is
+#: the frame's period and the calibration period (ages and sex are static; sign
+#: filters keep their sign under uprating, the student-loan plan and the
+#: private-school flag are stored at the calibration year). The DfE childcare
+#: rows read the four spring-term measures (dfe_spring_term.py), which are
+#: never stored (the resolver refuses them as columns), so they are computed
+#: at the calibration period. A new name here is
 #: a stored read to review: route it, or measure the row at the frame period.
 REVIEWED_PLAIN_COLUMN_POPULATION_VARIABLES = frozenset(
     {
@@ -365,7 +368,13 @@ REVIEWED_PLAIN_COLUMN_POPULATION_VARIABLES = frozenset(
         "benefit_cap_reduction",
         "benunit_tenure_type",
         "council_tax_band",
+        # Engine-computed from the household's adults (pe-uk#1864; microcosm#953).
+        "council_tax_discount_rate",
         "country",
+        "dfe_age_at_31_december",
+        "dfe_spring_early_learning_2",
+        "dfe_spring_universal",
+        "dfe_spring_working_parent",
         "dividend_income",
         "eldest_adult_age",
         "employment_income",
@@ -380,10 +389,7 @@ REVIEWED_PLAIN_COLUMN_POPULATION_VARIABLES = frozenset(
         "housing_benefit",
         "income_tax",
         "is_child",
-        "is_child_receiving_extended_childcare",
-        "is_child_receiving_targeted_childcare",
         "is_child_receiving_tax_free_childcare",
-        "is_child_receiving_universal_childcare",
         "jsa_contrib",
         "main_residence_value",
         "maintenance_loan",
@@ -406,6 +412,7 @@ REVIEWED_PLAIN_COLUMN_POPULATION_VARIABLES = frozenset(
         "tenure_type",
         "total_income_after_loss_relief",
         "uc_LCWRA_element",
+        "uc_benefit_cap_reduction_after_floor",
         "uc_calibration_administrative_family_type",
         "uc_calibration_child_count",
         "uc_calibration_has_child_under_one",
@@ -414,6 +421,10 @@ REVIEWED_PLAIN_COLUMN_POPULATION_VARIABLES = frozenset(
         "uc_deductions",
         "uc_housing_costs_element",
         "universal_credit",
+        # The annual income measures: the frame stores none of them, and the
+        # resolver computes each on its annual simulation at the calibration
+        # period.
+        *measure_simulation.UK_ANNUAL_INCOME_MEASURES,
     }
 )
 

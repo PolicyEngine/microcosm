@@ -522,11 +522,64 @@
         "contract",
         "enabled_overrides"
        ]
+      },
+      "self_employment_components": {
+       "type": "object",
+       "additionalProperties": false,
+       "properties": {
+        "activation": {
+         "type": "object",
+         "additionalProperties": false,
+         "properties": {
+          "all_targets": {
+           "type": "array",
+           "items": {
+            "type": "string"
+           }
+          }
+         },
+         "required": [
+          "all_targets"
+         ]
+        },
+        "contract": {
+         "type": "object",
+         "additionalProperties": false,
+         "properties": {
+          "components": {
+           "type": "array",
+           "items": {
+            "type": "string"
+           }
+          },
+          "measured_total": {
+           "type": "string"
+          },
+          "mutable_rows": {
+           "type": "string"
+          },
+          "operation": {
+           "const": "set_to_zero"
+          }
+         },
+         "required": [
+          "components",
+          "measured_total",
+          "mutable_rows",
+          "operation"
+         ]
+        }
+       },
+       "required": [
+        "activation",
+        "contract"
+       ]
       }
      },
      "required": [
       "adult_care",
-      "schedule_d_capital_gain_distributions"
+      "schedule_d_capital_gain_distributions",
+      "self_employment_components"
      ]
     },
     "predictor_bindings": {

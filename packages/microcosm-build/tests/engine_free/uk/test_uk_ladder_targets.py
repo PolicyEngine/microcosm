@@ -29,6 +29,9 @@ from microcosm.build.uk_runtime import (
     metric_names,
 )
 from microcosm.calibrate import TargetSpec
+from test_support.microcosm_build.uk_local_metric_fixtures import (
+    three_household_resolver,
+)
 from test_support.paths import paths_for
 
 _TEST_PATHS = paths_for("microcosm-build")
@@ -178,60 +181,13 @@ def test_ladder_vs_chronicle_household_dispersion_refuses_bad_ni_mapping() -> No
         ladder_vs_chronicle_household_dispersion(ladder, [spec])
 
 
-def test_households_metric_is_in_the_computed_surface() -> None:
+def test_households_metric_is_in_the_computed_surface(tmp_path, monkeypatch) -> None:
     assert "households" in metric_names("constituency")
     assert "households" in metric_names("la")
 
-    class Result:
-        def __init__(self, values):
-            self.values = np.asarray(values)
-
-    class FakeUKSimulation:
-        person_household = np.asarray([0, 0, 1, 2])
-        person_benunit = np.asarray([0, 0, 1, 2])
-        benunit_household = np.asarray([0, 1, 2])
-        data = {
-            "household_id": [101, 102, 103],
-            "self_employment_income": [0.0, 100.0, 0.0, 50.0],
-            "loss_relief": [0.0, 0.0, 0.0, 0.0],
-            "employment_income": [10.0, 20.0, 0.0, 30.0],
-            "income_tax": [1.0, 0.0, 2.0, 3.0],
-            "tax_band": ["HIGHER", "NONE", "BASIC", "NONE"],
-            "age": [5, 35, 72, 12],
-            "universal_credit": [0.0, 100.0, 50.0],
-            "is_uc_claimant": [False, True, True, False],
-            "is_child_or_qualifying_young_person_for_universal_credit": [
-                True,
-                False,
-                False,
-                True,
-            ],
-            "is_child": [1.0, 0.0, 0.0, 1.0],
-            # microcosm#1240: the high_value_homes metrics read the stored
-            # home value and tenure of every household.
-            "main_residence_value": [0.0, 2_500_000.0, 0.0],
-            "tenure_type": ["RENT_PRIVATELY", "OWNED_OUTRIGHT", "RENT_PRIVATELY"],
-        }
-
-        def calculate(self, variable, **_kwargs):
-            return Result(self.data[variable])
-
-        def map_result(self, values, from_entity, to_entity):
-            values = np.asarray(values, dtype=float)
-            out = np.zeros(3, dtype=float)
-            if to_entity == "benunit":
-                mapping = self.person_benunit
-            else:
-                mapping = (
-                    self.person_household
-                    if from_entity == "person"
-                    else self.benunit_household
-                )
-            for index, household_index in enumerate(mapping):
-                out[household_index] += values[index]
-            return out
-
-    metrics = compute_household_metrics(FakeUKSimulation(), "constituency")
+    metrics = compute_household_metrics(
+        three_household_resolver(tmp_path, monkeypatch), "constituency"
+    )
     assert metrics["households"].tolist() == [1.0, 1.0, 1.0]
 
 

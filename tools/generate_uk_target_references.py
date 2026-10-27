@@ -1053,7 +1053,9 @@ def _add_uk_membership_accounting(
                 "nine English regions of the region tier (microcosm#905), each "
                 "cell composed as the linear combination of the billing-"
                 "authority facts the crosswalk places in that region "
-                "(microcosm#929)."
+                "(microcosm#929). England's single adult discount is one "
+                "national row, MHCLG Council Taxbase line 8 for all bands "
+                "(microcosm#953)."
             ),
         },
         {

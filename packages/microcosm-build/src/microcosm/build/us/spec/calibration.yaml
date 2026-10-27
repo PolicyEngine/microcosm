@@ -267,6 +267,7 @@ tail_contracts:
     - charitable_cash_donations
     - charitable_non_cash_donations
     - cps_race
+    - detailed_industry_recode
     - detailed_occupation_recode
     - domestic_production_ald
     - educator_expense
@@ -297,6 +298,7 @@ tail_contracts:
     - is_union_member_or_covered
     - long_term_capital_gains_before_response
     - long_term_capital_gains_on_collectibles
+    - major_industry_recode
     - meets_ssi_disability_criteria
     - miscellaneous_income
     - net_worth
@@ -361,5 +363,6 @@ tail_contracts:
     - unrecaptured_section_1250_gain
     - unreimbursed_business_employee_expenses
     - w2_wages_from_qualified_business
+    - worked_last_year
     - would_file_taxes_voluntarily
     reviewed_exclusions_default: {}

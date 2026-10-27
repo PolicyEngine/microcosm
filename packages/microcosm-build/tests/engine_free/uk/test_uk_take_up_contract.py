@@ -26,6 +26,8 @@ def test_uk_contract_loads_and_selects_build_year_rates() -> None:
         "marriage_allowance",
         "tax_free_childcare",
         "extended_childcare",
+        "extended_childcare_age_0_usage",
+        "extended_childcare_age_1_usage",
         "universal_childcare",
         "targeted_childcare",
         "uc_childcare_single",
@@ -44,11 +46,15 @@ def test_uk_contract_loads_and_selects_build_year_rates() -> None:
         0.6,
         0.55,
         0.5,
-        # microcosm#1095 U2c: the v4 refit on the policyengine-uk 2.132.6 spine.
-        0.9797,
-        0.6579,
-        0.4353,
-        0.7769,
+        # The tool-version-7 refit: the DfE rows at the spring term, universal
+        # nested under working parent (at its lower bound), one usage share per
+        # DfE age under 2 (age 1 at its upper bound).
+        0.9697,
+        0.8262,
+        0.6962,
+        1.0,
+        0.0,
+        0.6551,
         0.441,
         0.2682,
         0.97,
@@ -85,12 +91,55 @@ def test_landed_fitting_receipt_must_name_the_engine() -> None:
     assert _entries([entry], section="programs")
 
 
+def test_nested_rate_needs_a_conditional_basis_receipt() -> None:
+    from microcosm.build.uk_runtime.take_up_contract import (
+        NESTED_RATE_MIN_TOOL_VERSION,
+        _entries,
+    )
+
+    entry = {
+        "key": "universal_childcare",
+        "output": "would_claim_universal_childcare",
+        "nested_under": "would_claim_extended_childcare",
+        "entity": "benunit",
+        "values": {"2024-04-06": 0.05},
+        "source": {"source": "fit", "status": "fitted_offline"},
+        "fitting_receipt": {
+            "engine_version": "2.134.4",
+            "tool_version": NESTED_RATE_MIN_TOOL_VERSION - 1,
+        },
+    }
+    with pytest.raises(ValueError, match="conditional basis"):
+        _entries([entry], section="programs")
+    for receipt in (None, {"engine_version": "2.134.4"}, {"tool_version": True}):
+        entry["fitting_receipt"] = receipt
+        with pytest.raises(ValueError, match="conditional basis"):
+            _entries([entry], section="programs")
+
+    entry["fitting_receipt"] = {
+        "engine_version": "2.134.4",
+        "tool_version": NESTED_RATE_MIN_TOOL_VERSION,
+    }
+    assert _entries([entry], section="programs")[0].key == "universal_childcare"
+
+    # An entry that is not nested keeps any receipt, as before.
+    del entry["nested_under"]
+    entry["fitting_receipt"] = {"engine_version": "2.134.4", "tool_version": 1}
+    assert _entries([entry], section="programs")
+
+    # The landed nested entry carries a conditional-basis receipt.
+    contract = load_uk_take_up_contract()
+    universal = contract.entry("universal_childcare").raw
+    assert universal["nested_under"] == "would_claim_extended_childcare"
+    assert universal["fitting_receipt"]["tool_version"] >= NESTED_RATE_MIN_TOOL_VERSION
+
+
 def test_year_selection_uses_latest_value_at_or_before_build_year() -> None:
     contract = load_uk_take_up_contract()
 
     assert contract.rate("child_benefit", 2021) == 0.97
     assert contract.rate("child_benefit", 2023) == 0.89
-    assert contract.rate("tax_free_childcare", 2024) == 0.9797
+    assert contract.rate("tax_free_childcare", 2024) == 0.9697
     assert contract.rate("tax_free_childcare", 2023) == 0.586
     assert contract.rate("tv_licence_evasion_rate", 2024) == 0.1252
     assert contract.rate("tax_free_childcare_spend_routed_share", 2017) == 0.359
@@ -227,3 +276,40 @@ def test_extended_hours_usage_reproduces_dfe_additional_hours_ptes() -> None:
     )
     dfe_mean_hours = 15 + 15 * 341_988.09 / 379_000
     assert draws.mean() == pytest.approx(dfe_mean_hours, abs=0.01)
+
+
+def test_a_version_6_receipt_says_what_it_estimates_and_why_it_sits_at_a_bound() -> (
+    None
+):
+    from microcosm.build.uk_runtime.take_up_contract import (
+        ESTIMAND_MIN_TOOL_VERSION,
+        _entries,
+    )
+
+    entry = {
+        "key": "tax_free_childcare",
+        "output": "would_claim_tfc",
+        "entity": "benunit",
+        "values": {"2024-04-06": 0.99},
+        "source": {"source": "fit", "status": "fitted_offline"},
+        "fitting_receipt": {
+            "engine_version": "2.147.2",
+            "tool_version": ESTIMAND_MIN_TOOL_VERSION,
+        },
+    }
+    with pytest.raises(ValueError, match="estimand"):
+        _entries([entry], section="programs")
+    entry["fitting_receipt"]["estimand"] = "A fit to HMRC's two rows."
+    assert _entries([entry], section="programs")
+    entry["fitting_receipt"]["params_at_bound"] = ["tax_free_childcare"]
+    with pytest.raises(ValueError, match="at_bound_reason"):
+        _entries([entry], section="programs")
+    entry["fitting_receipt"]["at_bound_reason"] = "The rows ask for more than all."
+    assert _entries([entry], section="programs")
+    # Another rate at its bound needs no reason here.
+    entry["fitting_receipt"]["params_at_bound"] = ["universal_childcare"]
+    del entry["fitting_receipt"]["at_bound_reason"]
+    assert _entries([entry], section="programs")
+    # Earlier receipts are unaffected.
+    entry["fitting_receipt"] = {"engine_version": "2.134.4", "tool_version": 5}
+    assert _entries([entry], section="programs")

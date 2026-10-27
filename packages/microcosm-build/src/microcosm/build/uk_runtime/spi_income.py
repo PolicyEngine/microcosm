@@ -19,6 +19,12 @@ from microcosm.build.stochastic_assignment import (
     integer_record_keys,
     stable_identity_uniforms,
 )
+from microcosm.build.uk_runtime.frs_annual_income import (
+    ANNUAL_SHARE_COLUMNS,
+    EMPLOYMENT_INCOME_OTHER_SPELLS,
+    FRS_ANNUAL_INCOME_OUTPUT_COLUMNS,
+    SELF_EMPLOYMENT_INCOME_OTHER_SPELLS,
+)
 from microcosm.build.uk_runtime.frs_disability import (
     UKDWPDisabilityCategoryRates,
     UKDWPDisabilityFlagRates,
@@ -1291,6 +1297,7 @@ def impute_uk_spi_income_support(
         person, spi_people=spi_people
     )
     person = _refresh_landlord_carrier(person, spi_people=spi_people)
+    person = _refresh_annual_income_descriptors(person, spi_people=spi_people)
     # The flag is the stage's last new column, where the graph's typed cells
     # place it (the legacy oracle and the graph must agree on column order).
     person[SPI_INCOME_RECIPIENT_COLUMN] = (
@@ -2940,6 +2947,58 @@ def _refresh_uc_start_up_period(
         rows["uc_is_in_startup_period"].astype(bool).to_numpy() & still_self_employed,
         default=False,
     )
+    return person
+
+
+#: The drawn income whose absence keeps a twin's other-spell amount.
+_OTHER_SPELLS_DRAWN_INCOME = {
+    EMPLOYMENT_INCOME_OTHER_SPELLS: "employment_income",
+    SELF_EMPLOYMENT_INCOME_OTHER_SPELLS: "self_employment_income",
+}
+
+
+def _refresh_annual_income_descriptors(
+    person: pd.DataFrame, *, spi_people: pd.Series
+) -> pd.DataFrame:
+    """Hold a drawn row's annual income descriptors to its drawn incomes.
+
+    The tape records income received over the tax year, so a drawn row's pay,
+    profit and private pension already cover the whole year and each share is
+    1. Its contributory benefits are stage-2 draws on the current concept with
+    no spell of their own, so their share is 1 too. A drawn row keeps its
+    twin's other-spell pay only where it drew no pay, and its twin's ceased
+    self-employment only where it drew no profit: the bridge draws a record
+    without pay for a twin who left a job in the year, and the twin's spell is
+    then the only record of that year's pay. An undrawn copy keeps every
+    descriptor of its twin, with its twin's incomes.
+    """
+
+    present = [
+        column for column in FRS_ANNUAL_INCOME_OUTPUT_COLUMNS if column in person
+    ]
+    if not present:
+        return person
+    if len(present) != len(FRS_ANNUAL_INCOME_OUTPUT_COLUMNS):
+        missing = sorted(set(FRS_ANNUAL_INCOME_OUTPUT_COLUMNS) - set(present))
+        raise ValueError(
+            f"SPI rows carry only some annual income descriptors; missing {missing}."
+        )
+    rows = person.loc[spi_people]
+    for column in ANNUAL_SHARE_COLUMNS:
+        _assign_spi_values(person, spi_people, column, np.ones(len(rows)), default=1.0)
+    for column, drawn_column in _OTHER_SPELLS_DRAWN_INCOME.items():
+        drew_income = (
+            pd.to_numeric(rows[drawn_column], errors="coerce").fillna(0.0).to_numpy()
+            != 0.0
+        )
+        twin_spells = rows[column].to_numpy(dtype=np.float64)
+        _assign_spi_values(
+            person,
+            spi_people,
+            column,
+            np.where(drew_income, 0.0, twin_spells),
+            default=0.0,
+        )
     return person
 
 

@@ -84,6 +84,10 @@ _PERSON_REQUIRED = (
     "RETP",
     "INTP",
     "PWGTP",
+    "OCCP",
+    "INDP",
+    "WKWN",
+    "ESR",
 )
 # Preserve source hours and their universe/allocation evidence when supplied.
 # Older/minimal source fixtures remain loadable; absence is not a zero.

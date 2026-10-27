@@ -502,6 +502,92 @@ def test_count_aliases_and_in_predicates_materialize_prepared_columns():
     ]
 
 
+def _single_spec_registry(entity: str = "person") -> TargetRegistry:
+    return TargetRegistry(
+        [
+            TargetSpec(
+                name="row",
+                entity=entity,
+                measure="row_measure",
+                value=1.0,
+                source="test",
+                metadata={"contract_target_id": "row"},
+            )
+        ],
+        country="uk",
+    )
+
+
+def _materialized(binding, entity="person"):
+    adapter = StubAdapter()
+    result = materialize_target_bindings(
+        adapter,
+        _single_spec_registry(entity),
+        {"row": {"bindings": {"policyengine": binding}}},
+        period=2025,
+    )
+    assert result.skipped == ()
+    return adapter.tables[entity]["row_measure"].tolist()
+
+
+def test_a_range_predicate_takes_the_lower_bound_and_leaves_the_upper():
+    # The local age bands: [lower, upper).
+    binding = {
+        "value_variable": "person_count",
+        "filters": [{"variable": "age", "lower": 16, "upper": 40}],
+    }
+    assert _materialized(binding) == [1.0, 1.0, 0.0]
+    open_top = {
+        "value_variable": "person_count",
+        "filters": [{"variable": "age", "lower": 30}],
+    }
+    assert _materialized(open_top) == [0.0, 1.0, 1.0]
+
+
+def test_an_in_list_predicate_matches_any_of_its_values():
+    binding = {
+        "value_variable": "household_count",
+        "filters": [{"variable": "children", "in": [2.0, 4.0]}],
+    }
+    assert _materialized(binding, "household") == [0.0, 1.0, 1.0]
+
+
+def test_a_value_expression_subtracts_as_well_as_adds():
+    binding = {"value_expression": "income - baseline_tax + income"}
+    assert _materialized(binding) == [19.0, 38.0, 57.0]
+    adapter = StubAdapter()
+    result = materialize_target_bindings(
+        adapter,
+        _single_spec_registry(),
+        {"row": {"bindings": {"policyengine": {"value_expression": "income * 2"}}}},
+        period=2025,
+    )
+    assert "unsupported value_expression" in result.skipped[0].reason
+
+
+def test_a_predicate_with_a_period_or_price_basis_it_cannot_honour_refuses():
+    binding = {
+        "value_variable": "person_count",
+        "filters": [
+            {
+                "variable": "income",
+                "operator": ">",
+                "value": 15,
+                "input_period": "dataset",
+            }
+        ],
+    }
+    adapter = StubAdapter()
+    result = materialize_target_bindings(
+        adapter,
+        _single_spec_registry(),
+        {"row": {"bindings": {"policyengine": binding}}},
+        period=2025,
+    )
+    assert [skip.name for skip in result.skipped] == ["row"]
+    assert "does not honour" in result.skipped[0].reason
+
+
 def _banded_registry(*, count_measure: bool = True) -> TargetRegistry:
     """Three adjacent income bands over one contract target."""
 

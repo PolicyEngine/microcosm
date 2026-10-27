@@ -96,11 +96,11 @@ nz.create (CREATE) ── nz.open (FILTER keep-all: transport, geography, receip
 | `precal_references.json` | quantile-map destinations (IRD wage bands, MBIE rents, Stats NZ financial net worth), TA population, MSD M1 and O4 for take-up draws | `nz.facts.precal` | MC4, MC6, MC8–MC10 |
 | `as_area_crosswalk.json` | Work and Income area definitions; the TA → AS area population shares are a placeholder (`rows: []`, `status: requires_harvest`) until harvested | `nz.geo.support` | MC9 |
 | `axiom_rules_bindings.json` | rulespec-nz pin, five module bindings, variables, the `2026-27` tax-year period | every Axiom-bound node | MC1 |
-| `target_references.json` | the calibration set (MC5 list) | `nz.targets.compile` | MC5 |
+| `target_references.json` | the calibration set (MC5 list), generated cell-pinned by `tools/generate_nz_target_references.py` and summarized in `reference_inventory.json`; unresolved definitions stay parked with named reasons | `nz.targets.compile` | MC5 |
 | `as_rate_bridge.json` | reg 17 base rate and reg 18 cutout composition | `nz.as.bridge.*` | MC11 |
 | `scenarios.json` | S0–S5, V1–V3, knobs, gap conventions (×52) | scenario and variant branches | MC3, MC12 |
 | `holdout_references.json` | AS comparators and the WFF tripwire | gap and validation nodes only | MC2, MC5 |
-| `gates.json` | the gate battery, evaluated with the shared transport bindings (`transport/gate_bindings.py`); thresholds await D1; support and release-input coverage remain applicable and block builds until their producers and evidence checks exist | `nz.gates.calibrated` | MC15 |
+| `gates.json` | the gate battery, evaluated with the shared transport bindings (`transport/gate_bindings.py`); fit and admin-aggregate tolerances follow d1376 (each target within 5%, demography within 2%, administrative anchors within 5%); support and release-input coverage remain applicable and block builds until their producers and evidence checks exist | `nz.gates.calibrated` | MC15 |
 | `export_contract.json` | the closed export contract | export nodes | — |
 
 The three reference sets are separate files on purpose. Each planned node is
@@ -110,10 +110,13 @@ transport.
 
 ### Reference sets
 
-- **Calibration (MC5):** region × age × sex population, census household
-  composition, census family type, tenure × region, IRD taxable-income bands
-  (counts and totals), MSD main-benefit recipients, NZ Super and Veterans
-  Pension recipients.
+- **Calibration (MC5):** active are region × age population (all sexes, four
+  age bands) and tenure × region (owned, including family trusts, and not
+  owned). Census 2023 tenure is scaled to June 2025 by each region's ERP ratio,
+  and region 99 by the national ratio. Declared but parked until their
+  definitions or producers exist: Census household size and family type, IRD
+  taxable-income bands (counts and totals), MSD main-benefit recipients, and NZ
+  Super and Veterans Pension recipients (counted separately).
 - **Pre-calibration:** IRD wage and salary bands, MBIE bond rents by TA, Stats
   NZ household financial net worth, TA population, and the same MSD recipient
   facts as the calibration set (the take-up draws calibrate to them).
