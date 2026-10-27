@@ -956,8 +956,9 @@ def test_pinned_feed_targets_give_each_reviewed_value_one_label(
     pinned_feed_national_state_surface, dimension_id, value_id, value_label
 ) -> None:
     """Every compiled target that selects one of these dimension values shows
-    it under the one wording microcosm#1343 chose. The 51aa40f feed labelled
-    each two ways: under_1 "No adjusted gross income and deficit" in the
+    it under the one wording microcosm#1343 chose. The feed before this re-pin,
+    built at Chronicle cf9ece2 (and before that at 51aa40f), labelled each two
+    ways: under_1 "No adjusted gross income and deficit" in the
     week-47 filing-season package, all "All returns" in Historic Table 2 and
     Table 1.1, and 85_plus "Age 85 and over" in the national Census PEP
     package."""
