@@ -627,6 +627,21 @@ def test_remote_read_back_failure_is_explicit(tmp_path, answer):
     assert telemetry.delivery_summary["last_error_code"] == "READ_BACK_FAILED"
 
 
+def test_read_back_fails_when_the_final_state_was_not_handed_over(tmp_path):
+    """The Hub can match what the emitter committed and still be stale."""
+
+    telemetry, emitter = _remote_recorder(tmp_path)
+    telemetry.stage("input_verification", force_upload=True)
+    emitter.accept_run_files = False
+    telemetry.complete()
+
+    with pytest.raises(StagingReadBackError, match="not handed over"):
+        telemetry.verify_remote()
+    assert telemetry.delivery_summary["read_back"] == "failed"
+    assert telemetry.delivery_summary["last_error_code"] == "READ_BACK_FAILED"
+    assert "read_back_run_files" not in emitter.calls
+
+
 def test_remote_read_back_without_an_emitter_fails(tmp_path):
     telemetry, _ = _remote_recorder(tmp_path, emitter_client=None)
     telemetry.complete()
