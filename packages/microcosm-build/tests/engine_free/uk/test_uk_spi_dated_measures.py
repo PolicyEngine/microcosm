@@ -165,14 +165,21 @@ def test_the_vendored_estimates_give_the_pilot_factors():
     then = sum(mid_2023[("FEMALE", age)] for age in range(70, 75))
     now = sum(mid_2025[("FEMALE", age)] for age in range(70, 75))
     assert math.isclose(factors[("FEMALE", 70)], (then + (now - then) / 8) / now)
-    # Fewer people over State Pension age in 2023-24 than in mid-2025.
-    over_spa = [
-        factors[(sex, lower)]
+    # Fewer people of State Pension age in 2023-24 than in mid-2025 in all,
+    # though a band can be larger then: the post-war cohort ageing past 75
+    # leaves 70 to 74 smaller in mid-2025 than in October 2023.
+    pensioners = [
+        (sex, lower, upper)
         for sex in _SEXES
-        for lower, _ in UK_SPI_POPULATION_AGE_BANDS
-        if lower >= 70
+        for lower, upper in UK_SPI_POPULATION_AGE_BANDS
+        if lower >= 65
     ]
-    assert max(over_spa) < 1.0
+    now_total = then_total = 0.0
+    for sex, lower, upper in pensioners:
+        band = sum(mid_2025[(sex, age)] for age in range(lower, upper + 1))
+        now_total += band
+        then_total += band * factors[(sex, lower)]
+    assert then_total < now_total
     with pytest.raises(ValueError, match="No vendored ONS mid-2024"):
         ons_single_year_populations(2024)
     with pytest.raises(ValueError, match="must precede"):

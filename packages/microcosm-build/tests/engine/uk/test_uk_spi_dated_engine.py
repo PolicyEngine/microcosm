@@ -93,7 +93,8 @@ def test_the_count_is_each_persons_population_factor(resolver) -> None:
     count, route = _measure(resolver, "spi_2023_person_count")
     assert route == "spi_dated_population_factor:2023"
     age = np.asarray(resolver.simulation.calculate("age", 2024), dtype=float)
-    sex = resolver.simulation.calculate("gender", 2024).decode_to_str()
+    raw = resolver.simulation.calculate("gender", 2024)
+    sex = raw.decode_to_str() if hasattr(raw, "decode_to_str") else np.asarray(raw)
     np.testing.assert_allclose(
         count, population_factor_for_people(age, sex, population_factors(2023, 2025))
     )
@@ -173,13 +174,19 @@ def test_the_receipt_records_the_round_trip(resolver) -> None:
 
 
 def test_the_held_inputs_do_not_move_the_measures(tmp_path) -> None:
-    """Council tax and rent are held at 2024-25 by declaration: not income."""
+    """The inputs the round trip exempts are held at 2024-25: none is income.
+
+    The engine projects council tax, rent and water charges by region after
+    its index step, so the carried-back file does not return them; the dated
+    measures read none of them, so holding them changes no measure.
+    """
 
     base = _resolver(tmp_path / "base")
     moved = _resolver(
         tmp_path / "moved",
         council_tax=2_400.0,
         rent=12_000.0,
+        water_and_sewerage_charges=500.0,
         tenure_type="RENT_PRIVATELY",
     )
     for name in (
@@ -189,3 +196,9 @@ def test_the_held_inputs_do_not_move_the_measures(tmp_path) -> None:
         "spi_2023_private_pension_income",
     ):
         np.testing.assert_allclose(_measure(moved, name)[0], _measure(base, name)[0])
+    exempt = moved.receipt()["spi_dated_measures"]["years"]["2023"][
+        "round_trip_exempt_inputs"
+    ]
+    # Each was exercised: the engine's forward rule moved it.
+    for name in ("council_tax", "rent", "water_and_sewerage_charges"):
+        assert exempt[name]["largest_miss"] > 0.0, name

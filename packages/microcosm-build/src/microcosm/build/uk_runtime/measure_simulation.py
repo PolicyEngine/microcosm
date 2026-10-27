@@ -398,12 +398,25 @@ def state_pension_annual_share(months_since_state_pension_age: Any) -> np.ndarra
 #: any of them must carry its own measurement period (microcosm#1014 bands
 #: and filters on dated measures, not only gates and values).
 _BINDING_VARIABLE_KEYS = ("gated_variable", "value_variable", "groupby_variable")
-#: Inputs the engine projects forward by a rule of their own that the dated
-#: SPI measures hold at the dataset's year instead of inverting: regional
-#: council tax, rent and water growth, and student loan plans that gain new
-#: entrants. None is income, and the engine test shows the measures do not
-#: move with them. The round trip refuses any other input it cannot return.
-_SPI_HELD_ENGINE_RULED_INPUTS: frozenset[str] = frozenset()
+#: Inputs policyengine-uk projects forward by a rule of its own after its
+#: index step (``apply_single_year_uprating``), which the dated SPI
+#: simulation does not invert, each with that rule. None is income or a
+#: relief, and the engine test shows the dated measures do not move with
+#: them; the round trip refuses any other input it cannot return to the file.
+_SPI_ROUND_TRIP_EXEMPT_INPUTS: Mapping[str, str] = {
+    "council_tax": "held; projected by country and region (uprate_council_tax)",
+    "rent": "held; projected by tenure and region (uprate_rent)",
+    "water_and_sewerage_charges": (
+        "held; projected by country (uprate_water_and_sewerage_charges)"
+    ),
+    "student_loan_plan": (
+        "held; new borrowers drawn in each projected year (uprate_student_loan_plans)"
+    ),
+    "student_loan_repayments": (
+        "carried back by its index; the forward rule zeroes it for each new "
+        "borrower it draws (uprate_student_loan_plans)"
+    ),
+}
 #: The stored inputs policyengine-uk moves to another variable as it loads a
 #: dataset (``Simulation.move_values`` in its constructor): the bases of the
 #: behavioural responses and the reported amounts its formulas replace.
@@ -1755,7 +1768,7 @@ class UKMeasureResolver:
         unexplained = {
             name: gap
             for name, gap in misses.items()
-            if name not in _SPI_HELD_ENGINE_RULED_INPUTS
+            if name not in _SPI_ROUND_TRIP_EXEMPT_INPUTS
         }
         if unexplained:
             raise ValueError(
@@ -1791,8 +1804,9 @@ class UKMeasureResolver:
                 "dropped_year_specific_inputs": sorted(YEAR_SPECIFIC_INPUTS),
                 "round_trip_checked_inputs": len(checked),
                 "round_trip_excluded_inputs": sorted(excluded),
-                "held_engine_ruled_inputs": {
-                    name: misses[name] for name in sorted(misses)
+                "round_trip_exempt_inputs": {
+                    name: {"rule": rule, "largest_miss": misses.get(name, 0.0)}
+                    for name, rule in sorted(_SPI_ROUND_TRIP_EXEMPT_INPUTS.items())
                 },
             }
         )

@@ -753,6 +753,10 @@ def materialize_target_bindings(
                     f"does not match declared measurement period {measurement_period}"
                 )
             filter_aware = not kind or str(kind) in FILTER_AWARE_PROVIDER_KINDS
+            if not kind:
+                # Before the band: a row read at two years is refused, not
+                # skipped for want of its band edges.
+                _refuse_ignored_measurement_period(spec, binding, adapter, period)
             band = None
             if filter_aware and binding.get("groupby_variable"):
                 band = _band_bounds(
@@ -773,7 +777,6 @@ def materialize_target_bindings(
                         0.0,
                     )
             else:
-                _refuse_ignored_measurement_period(spec, binding, adapter, period)
                 values = _prepared_column_values(
                     adapter,
                     spec.entity,

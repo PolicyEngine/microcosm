@@ -521,6 +521,14 @@ REVIEWED_PLAIN_COLUMN_POPULATION_VARIABLES = frozenset(
         "uc_deductions",
         "uc_housing_costs_element",
         "universal_credit",
+        # The dated SPI measures (option 1 of the pensioner review): the frame
+        # stores none of them (the resolver refuses them as columns), and the
+        # resolver computes each at the tax year in its name, which the row
+        # declares as its measurement period.
+        "spi_2023_income_tax",
+        "spi_2023_private_pension_income",
+        "spi_2023_state_pension",
+        "spi_2023_total_income",
         # The annual income measures: the frame stores none of them, and the
         # resolver computes each on its annual simulation at the calibration
         # period.
