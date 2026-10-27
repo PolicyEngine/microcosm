@@ -47,12 +47,13 @@ import inspect
 import json
 import re
 import string
+import time
 from collections.abc import Callable
 from pathlib import Path, PurePosixPath
 
 import pandas as pd
 import pytest
-from hypothesis import assume, given, settings
+from hypothesis import assume, example, given, settings
 from hypothesis import strategies as st
 
 from microcosm.build.us_runtime import asec_pool
@@ -60,6 +61,7 @@ from microcosm.build.us_runtime.asec_census_person_columns import (
     ASEC_CENSUS_PERSON_COLUMN_NAMES,
     ASEC_CENSUS_PERSON_COLUMNS,
 )
+from test_support.microcosm_build import spec_source_citations as citations
 from test_support.microcosm_build.spec_source_citations import (
     COUNTRY_PACKAGE_ROOT,
     MICROCOSM_SHARDS,
@@ -453,11 +455,28 @@ _AUTHORITIES = (
     "u:p@{host}:443",
     "a@b@{host}",
 )
-#: Detours in a URL path that GitHub resolves away.
-_DOT_DETOURS = ("", "./", "%2e/", "docs/../", "x/%2E%2e/", "a/b/../../", "tools/./../")
-#: A URL query, without its ``?``: anything but a fragment, a quote or a space.
+#: Detours in a URL path that GitHub resolves away, quotes and brackets in
+#: them included.
+_DOT_DETOURS = (
+    "",
+    "./",
+    "%2e/",
+    "docs/../",
+    "x/%2E%2e/",
+    "a/b/../../",
+    "tools/./../",
+    "'x'/../",
+    '"/../',
+    "<x>/../",
+    "`x`/../",
+)
+#: A URL query, without its ``?``: anything but a fragment or a space, quotes
+#: and brackets included.
 _URL_QUERY = st.text(
-    alphabet=string.ascii_letters + string.digits + "=&.;:,%+-_~?/", max_size=120
+    alphabet=string.ascii_letters
+    + string.digits
+    + "=&.;:,%+-_~?/'\"`‘’“”<>!$()*[]{}|^",
+    max_size=120,
 )
 
 
@@ -1389,13 +1408,20 @@ def test_a_url_of_this_repository_is_refused_however_github_lets_it_be_written(
     # a scheme or slashes, a host is GitHub's only as spelled.
     spelled = case(host)
     if written_lead:
-        spelled = _spell_host(spelled, wide, escaped_host, upper)
+        spelled = _spell_host(
+            spelled,
+            {index % len(host) for index in wide},
+            {index % len(host) for index in escaped_host},
+            upper,
+        )
     # GitHub 404s a ``%2F`` before the ref; a browser reads ``\`` as ``/``.
     route_and_path = _escape(route, chosen, upper, keep="/") + _escape(
         f"{ref}/{detour}{path}", {index - len(route) for index in chosen}, upper
     )
+    slashes = [index for index, char in enumerate(route_and_path) if char == "/"]
+    backslashed = {slashes[index % len(slashes)] for index in backslashed}
     route_and_path = "".join(
-        "\\" if char == "/" and index in backslashed else char
+        "\\" if index in backslashed else char
         for index, char in enumerate(route_and_path)
     )
     written = (
@@ -1524,6 +1550,234 @@ def test_the_round_five_review_counterexamples_are_refused() -> None:
         f"https://github.com:65536{route}{tool}#L12",
     ):
         assert in_repository_line_citations({"note": written}) == [], written
+
+
+def test_the_round_six_review_counterexample_is_refused() -> None:
+    blob = "https://github.com/PolicyEngine/microcosm/blob/"
+    blob += "29983852e5182266c9a4e565731920ea972fe695/"
+    tool = "tools/ci_test_plan.py"
+    # A browser reads a quote or a bracket inside a URL as part of it (bun
+    # 1.3's ``URL``), and GitHub served each of these, escaped as a browser
+    # sends them (HTTP 200 on 2026-10-27).
+    for written in (
+        f"{blob}{tool}?value='{'x' * 40}'#L12",
+        f'{blob}{tool}?value="x"#L12',
+        f"{blob}{tool}?value=`x`#L12",
+        f"{blob}{tool}?value=‘x’“x”#L12",
+        f"{blob}{tool}?value=<x>#L12",
+        f"{blob}tools/'x'/../ci_test_plan.py#L12",
+        f"{blob}tools/<x>/../ci_test_plan.py#L12",
+        f"'{blob}{tool}#L12'",
+        f"“{blob}{tool}?value='x'#L12”",
+        f"<{blob}{tool}#L12>",
+        f"({blob}{tool}?value=(x)#L12).",
+    ):
+        assert [
+            citation.file
+            for citation in in_repository_line_citations({"note": written})
+        ] == [f"{blob}{tool}"], written
+
+
+def test_a_url_runs_to_whitespace() -> None:
+    # As the URL Standard reads it (bun 1.3's ``URL``), a URL written straight
+    # after another, with only a quote between, is part of the first one's
+    # path: its host is read as written.
+    written = "https://example.org/a'https://GitHub.com/o/r/blob/a1b2c3d/x.py#L12"
+    assert [citation.text for citation in line_citations({"note": written})] == [
+        written
+    ]
+
+
+def test_a_long_string_is_scanned_in_linear_time() -> None:
+    # Each of these once took time quadratic in its length: a run of path
+    # characters was rescanned from each of its characters, and a user was
+    # looked for before a GitHub host from each character of a run that can
+    # be in one. At these lengths the quadratic scans took seconds each.
+    started = time.process_time()
+    for text in (
+        ":" * 60_000,
+        "//" * 30_000,
+        "a" * 60_000,
+        "github.com/" * 6_000,
+        "https://a/" + "%74" * 20_000,
+    ):
+        line_citations(text)
+        unrecognised_line_locators(text)
+    # So did a string holding thousands of citations: each one's clause,
+    # commits and commit-like tokens were found again from the whole string.
+    for text in (
+        "x.py:1 " * 8_000,
+        "x.py:1 at a1b2c3d " * 4_000,
+        "a1b2c3d; " + "x.py:1; " * 8_000,
+        "x.py:1 y.py foo L1 " * 4_000,
+    ):
+        misspelled_commit_pins(text)
+        unpinned_line_citations(text)
+        unrecognised_line_locators(text)
+    assert time.process_time() - started < 2
+
+
+#: Pieces of text around source names and line locators.
+_LOCATOR_PIECES = (
+    "x",
+    "a/b",
+    "tools",
+    ".py",
+    ".json",
+    ".",
+    "/",
+    "-",
+    "_",
+    ":",
+    "12",
+    "L3",
+    " ",
+    "lines ",
+    "l.",
+    "https:",
+    "//",
+    "'",
+    "`",
+    ", ",
+    "of ",
+    "#",
+    "@",
+    ";",
+    "\n",
+    "at ",
+    "(",
+    "—",
+)
+
+
+@settings(max_examples=500, deadline=None)
+@given(text=st.lists(st.sampled_from(_LOCATOR_PIECES), max_size=40).map("".join))
+@example(text="x.py:12/y.py:13")
+@example(text="xhttps://a/b.py:12")
+def test_source_names_are_found_where_finditer_finds_them(text: str) -> None:
+    for pattern in (*citations._LINE_CITATIONS, citations._LOCATOR_NEAR_A_SOURCE):
+        assert [
+            (match.span(), match["file"])
+            for match in citations._finditer(pattern, text)
+        ] == [(match.span(), match["file"]) for match in pattern.finditer(text)]
+
+
+def _clause_from_the_whole_string(citation: LineCitation) -> tuple[int, int]:
+    first, last = 0, len(citation.text)
+    for clause_break in citations._CLAUSE_BREAK.finditer(citation.text):
+        if clause_break.end() <= citation.start:
+            first = clause_break.end()
+        elif clause_break.start() >= citation.end:
+            last = clause_break.start()
+            break
+    return first, last
+
+
+def _binding_from_the_whole_string(citation: LineCitation) -> re.Match[str] | None:
+    commits = list(citations.INLINE_COMMIT.finditer(citation.text))
+    start, end = _clause_from_the_whole_string(citation)
+    in_clause = [match for match in commits if start <= match.start() < end]
+    if in_clause:
+        return min(
+            in_clause,
+            key=lambda match: max(
+                match.start() - citation.end, citation.start - match.end()
+            ),
+        )
+    if citations._MOVING_REF.search(citation.text, start, end):
+        return None
+    before = [match for match in commits if match.start() < start]
+    return before[-1] if before else None
+
+
+def _misspelled_pins_from_the_whole_string(text: str) -> list[tuple[LineCitation, str]]:
+    found: list[tuple[LineCitation, str]] = []
+    for citation in line_citations(text):
+        pinned = {
+            match.start("sha") for match in citations.INLINE_COMMIT.finditer(text)
+        }
+        start, end = _clause_from_the_whole_string(citation)
+        binding = _binding_from_the_whole_string(citation)
+        if binding is not None and binding.end() < start:
+            start = binding.end()
+        found.extend(
+            (citation, token.group(0))
+            for token in citations._COMMIT_LIKE.finditer(citation.text, start, end)
+            if token.start() not in pinned
+        )
+    return found
+
+
+def _unrecognised_from_the_whole_string(text: str) -> list[LineCitation]:
+    found: list[LineCitation] = []
+    for readable in citations._readable_strings(text):
+        matches = citations._citation_matches(readable)
+        files = {match.start("file") for match in matches}
+        spans = [(match.start(), match.end()) for match in matches]
+        for near in citations._LOCATOR_NEAR_A_SOURCE.finditer(readable):
+            if near.start("file") in files or any(
+                start <= near.end() < end for start, end in spans
+            ):
+                continue
+            found.append(LineCitation(near["file"], readable, near.start(), near.end()))
+    return found
+
+
+#: Pieces of text around citations: pins in each spelling, commit-like tokens
+#: in none, moving refs and clause breaks.
+_BINDING_PIECES = (
+    "x.py:12",
+    "tools/x.py L3",
+    "lines 4-5 of y.json",
+    "x.py foo L9",
+    "x.py, lines 1-2",
+    "x.py; lines 6-7",
+    " at a1b2c3d",
+    " commit 1a2b3c4d",
+    "@b2c3d4e",
+    "/blob/c3d4e5f/",
+    "a1b2c3d",
+    " 9f8e7d6c",
+    " on main",
+    "@HEAD",
+    "/blob/main/",
+    "https://github.com/o/r/blob/d4e5f6a/z.py#L7",
+    "https://github.com/o/r/blob/main/z.py#L7",
+    "; ",
+    ";",
+    ". See ",
+    "! Then ",
+    " ",
+    ", ",
+    " and ",
+    "(",
+    "'",
+)
+
+
+@settings(max_examples=500, deadline=None)
+@given(text=st.lists(st.sampled_from(_BINDING_PIECES), max_size=30).map("".join))
+@example(text="at a1b2c3d x.py:12 at b2c3d4e")
+@example(text=";x.py:12 at a1b2c3d")
+@example(text="https://github.com/o/r/blob/d4e5f6a/z.py#L7 at a1b2c3d")
+@example(text="a1b2c3d; x.py:12; 9f8e7d6c y.py:3 on main")
+@example(text="x.py:1 y.py foo L1 x.py, lines 1-2 z.py foo L2")
+def test_bindings_are_found_as_a_scan_of_the_whole_string_finds_them(
+    text: str,
+) -> None:
+    found = line_citations(text)
+    assert [citing_commit(citation) for citation in found] == [
+        None if binding is None else binding["sha"]
+        for binding in map(_binding_from_the_whole_string, found)
+    ]
+    assert misspelled_commit_pins(text) == _misspelled_pins_from_the_whole_string(text)
+    assert [
+        (citation, citation.start, citation.end)
+        for citation in unrecognised_line_locators(text)
+    ] == [
+        (citation, citation.start, citation.end)
+        for citation in _unrecognised_from_the_whole_string(text)
+    ]
 
 
 #: URLs and how they are read: the WHATWG URL Standard's reading (bun 1.3's

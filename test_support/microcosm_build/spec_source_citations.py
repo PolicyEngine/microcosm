@@ -42,7 +42,9 @@ escapes of unreserved characters and ``/`` in its path are decoded, ``.`` and
 ``..`` segments resolved, and the query dropped. So
 ``HTTPS://GitHub.com/o/r/blob/<sha>/docs/../%74ools/x%2Epy?plain=1#L12``
 cites ``https://github.com/o/r/blob/<sha>/tools/x.py`` at line 12. GitHub
-reads ``%23`` and ``%3F`` as part of a file name, so they stay escaped.
+reads ``%23`` and ``%3F`` as part of a file name, so they stay escaped. A URL
+runs to whitespace: a quote or a bracket inside it is part of it, as it is to
+a browser, so ``x.py?q='a'#L12`` still cites line 12 of ``x.py``.
 
 A cited path is in-repository when, after any prefix naming this repository
 is removed (a ``github.com/PolicyEngine/microcosm/blob/<ref>/`` URL, at a ref
@@ -70,9 +72,11 @@ import os
 import re
 import string
 import unicodedata
+from bisect import bisect_left, bisect_right
 from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass, field
-from functools import cache
+from functools import cache, lru_cache
+from itertools import accumulate
 from pathlib import Path, PurePosixPath
 from urllib.parse import unquote_to_bytes
 
@@ -145,18 +149,27 @@ _LOCATOR_NEAR_A_SOURCE = re.compile(
     + _QUOTE
     + r"[^.;\n]{0,24}?(?<![A-Za-z0-9])(?=L\d|(?i:lines?)\s+\d|(?i:ll?)\.\s*\d)"
 )
+#: The patterns that start with a ``_SOURCE``, each tried only where a source
+#: name can start a match (see ``_finditer``): after a character no path holds,
+#: or at ``http(s):``.
+_STARTING_A_RUN = {
+    pattern: re.compile(r"(?:(?<![A-Za-z0-9_./-])|(?=https?:))" + pattern.pattern)
+    for pattern in (_LINE_CITATIONS[0], _LOCATOR_NEAR_A_SOURCE)
+}
 #: A URL: an ``http(s)`` one (``https:`` and anything after it), a
 #: network-path reference (``//host/...``, any two of ``/`` and ``\``), or a
-#: GitHub one written without its scheme (``github.com/...``, after an
-#: optional user and before an optional port). It runs to whitespace, a quote
-#: or an angle bracket, and does not end in punctuation that closes the
-#: sentence around it (``.``, ``,``, ``;``, ``)``, ...).
+#: GitHub one written without its scheme (``github.com/...``, before an
+#: optional port; a user before it is left as prose). It runs to whitespace,
+#: so a quote or an angle bracket inside it is part of it, and it does not end
+#: in a quote, a bracket or punctuation that closes the sentence around it
+#: (``'``, ``>``, ``.``, ``,``, ``;``, ``)``, ...). A GitHub host is matched
+#: where it starts, so a long run of punctuation is scanned once.
 _URL = re.compile(
     r"(?:(?i:https?):"
     r"|(?<![\w./\\@-])[/\\]{2}"
-    r"|(?<![\w./\\@-])(?:[^\s\"'`‘’“”<>/\\?#]*@)?"
+    r"|(?<![\w./\\-])"
     r"(?i:(?:www\.)?github\.com|raw\.githubusercontent\.com)\.?(?::[0-9]*)?(?=[/\\]))"
-    r"[^\s\"'`‘’“”<>]*[^\s\"'`‘’“”<>.,;:!?)\]]"
+    r"\S*[^\s\"'`‘’“”<>.,;:!?)\]]"
 )
 #: The scheme a URL starts with, when it has one.
 _SCHEME = re.compile(r"(?i:https?):")
@@ -399,9 +412,30 @@ def _readable_strings(value: object) -> Iterator[str]:
         yield _URL.sub(_read_url, text)
 
 
+def _finditer(pattern: re.Pattern[str], text: str) -> Iterator[re.Match[str]]:
+    """``pattern.finditer(text)``, reading a long run of path characters once.
+
+    A ``_SOURCE`` match that starts inside a run of the characters a path is
+    made of (``[A-Za-z0-9_./-]``), other than at ``http(s):``, could start
+    where the run does, so ``finditer`` starts each match at the start of a
+    run, at ``http(s):``, or where its previous match ended. Trying only
+    those starts, rather than every character of a run, finds the same
+    matches in time linear in the run.
+    """
+
+    anchored = _STARTING_A_RUN.get(pattern)
+    if anchored is None:
+        yield from pattern.finditer(text)
+        return
+    position = 0
+    while match := pattern.match(text, position) or anchored.search(text, position):
+        yield match
+        position = match.end()
+
+
 def _citation_matches(text: str) -> list[re.Match[str]]:
     return sorted(
-        (match for pattern in _LINE_CITATIONS for match in pattern.finditer(text)),
+        (match for pattern in _LINE_CITATIONS for match in _finditer(pattern, text)),
         key=lambda match: match.start(),
     )
 
@@ -423,10 +457,14 @@ def unrecognised_line_locators(value: object) -> list[LineCitation]:
     for text in _readable_strings(value):
         matches = _citation_matches(text)
         files = {match.start("file") for match in matches}
-        spans = [(match.start(), match.end()) for match in matches]
-        for near in _LOCATOR_NEAR_A_SOURCE.finditer(text):
-            if near.start("file") in files or any(
-                start <= near.end() < end for start, end in spans
+        # A near match ending inside a citation is part of it: the citations
+        # starting at or before its end reach past it.
+        starts = [match.start() for match in matches]
+        reach = list(accumulate((match.end() for match in matches), max))
+        for near in _finditer(_LOCATOR_NEAR_A_SOURCE, text):
+            started = bisect_right(starts, near.end())
+            if near.start("file") in files or (
+                started and reach[started - 1] > near.end()
             ):
                 continue
             found.append(LineCitation(near["file"], text, near.start(), near.end()))
@@ -445,6 +483,44 @@ def named_commits(text: str) -> list[str]:
     return [match["sha"] for match in INLINE_COMMIT.finditer(text)]
 
 
+@dataclass(frozen=True)
+class _Marks:
+    """Where a string's clause breaks, inline commits and commit-like tokens
+    in no pin spelling are, found once for all the citations in it."""
+
+    break_starts: list[int]
+    break_ends: list[int]
+    commits: list[re.Match[str]]
+    commit_starts: list[int]
+    commit_ends: list[int]
+    loose: list[re.Match[str]]
+    loose_starts: list[int]
+
+
+@lru_cache(maxsize=1024)
+def _marks(text: str) -> _Marks:
+    breaks = list(_CLAUSE_BREAK.finditer(text))
+    commits = list(INLINE_COMMIT.finditer(text))
+    pinned = {match.start("sha") for match in commits}
+    loose = [
+        token for token in _COMMIT_LIKE.finditer(text) if token.start() not in pinned
+    ]
+    return _Marks(
+        [match.start() for match in breaks],
+        [match.end() for match in breaks],
+        commits,
+        [match.start() for match in commits],
+        [match.end() for match in commits],
+        loose,
+        [token.start() for token in loose],
+    )
+
+
+@lru_cache(maxsize=1024)
+def _names_a_moving_ref(text: str, start: int, end: int) -> bool:
+    return _MOVING_REF.search(text, start, end) is not None
+
+
 def _clause(citation: LineCitation) -> tuple[int, int]:
     """The bounds of the clauses of a citation's string that it touches.
 
@@ -453,22 +529,30 @@ def _clause(citation: LineCitation) -> tuple[int, int]:
 
     if citation.start < 0:
         raise ValueError("only a citation from line_citations carries its position")
-    first, last = 0, len(citation.text)
-    for clause_break in _CLAUSE_BREAK.finditer(citation.text):
-        if clause_break.end() <= citation.start:
-            first = clause_break.end()
-        elif clause_break.start() >= citation.end:
-            last = clause_break.start()
-            break
+    marks = _marks(citation.text)
+    before = bisect_right(marks.break_ends, citation.start)
+    after = bisect_left(marks.break_starts, citation.end)
+    first = marks.break_ends[before - 1] if before else 0
+    last = (
+        marks.break_starts[after]
+        if after < len(marks.break_starts)
+        else len(citation.text)
+    )
     return first, last
 
 
 def _binding(citation: LineCitation) -> re.Match[str] | None:
     """The inline commit match a line citation binds to, if any."""
 
-    commits = list(INLINE_COMMIT.finditer(citation.text))
+    marks = _marks(citation.text)
     start, end = _clause(citation)
-    in_clause = [match for match in commits if start <= match.start() < end]
+    # Commits do not overlap, so the nearest ones in the clause are among the
+    # last that ends before the citation, those overlapping it and the first
+    # that starts after it.
+    first = bisect_right(marks.commit_ends, citation.start)
+    after = bisect_left(marks.commit_starts, citation.end)
+    nearest = marks.commits[max(first - 1, 0) : after + 1]
+    in_clause = [match for match in nearest if start <= match.start() < end]
     if in_clause:
         return min(
             in_clause,
@@ -476,10 +560,10 @@ def _binding(citation: LineCitation) -> re.Match[str] | None:
                 match.start() - citation.end, citation.start - match.end()
             ),
         )
-    if _MOVING_REF.search(citation.text, start, end):
+    if _names_a_moving_ref(citation.text, start, end):
         return None
-    before = [match for match in commits if match.start() < start]
-    return before[-1] if before else None
+    before = bisect_left(marks.commit_starts, start)
+    return marks.commits[before - 1] if before else None
 
 
 def citing_commit(citation: LineCitation) -> str | None:
@@ -503,17 +587,16 @@ def misspelled_commit_pins(value: object) -> list[tuple[LineCitation, str]]:
 
     found: list[tuple[LineCitation, str]] = []
     for citation in line_citations(value):
-        text = citation.text
-        pinned = {match.start("sha") for match in INLINE_COMMIT.finditer(text)}
+        marks = _marks(citation.text)
         start, end = _clause(citation)
         binding = _binding(citation)
         if binding is not None and binding.end() < start:
             start = binding.end()
-        found.extend(
-            (citation, token.group(0))
-            for token in _COMMIT_LIKE.finditer(text, start, end)
-            if token.start() not in pinned
-        )
+        # A token cannot cross a clause break or end a commit, so the ones in
+        # the span are the string's that start in it.
+        first = bisect_left(marks.loose_starts, start)
+        last = bisect_left(marks.loose_starts, end)
+        found.extend((citation, token.group(0)) for token in marks.loose[first:last])
     return found
 
 
