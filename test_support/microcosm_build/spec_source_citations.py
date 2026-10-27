@@ -32,10 +32,14 @@ binds to ("archived 42ed5d45 cps.py L197"), is refused as a misspelled pin
 (``misspelled_commit_pins``), so a stray sha cannot sit beside a citation
 that some other commit pins.
 
-Each URL is read the way GitHub reads it before anything is scanned
-(``_read_url``): the scheme and host lower-cased, a user or port dropped,
-``%`` escapes of unreserved characters and ``/`` decoded, ``.`` and ``..``
-segments resolved, and the query dropped. So
+Each URL is read the way a browser and then GitHub read it before anything
+is scanned (``_read_url``). Its authority is parsed as the WHATWG URL
+Standard parses it: ``\\`` read as ``/``, any number of slashes after the
+scheme, a user and a port dropped, and the host percent-decoded, mapped to
+ASCII (IDNA) and lower-cased, so ``%67ithub.com``, ``ｇithub.com`` and
+``user@GitHub.com:443`` are all ``github.com``. Then, as GitHub does, ``%``
+escapes of unreserved characters and ``/`` in its path are decoded, ``.`` and
+``..`` segments resolved, and the query dropped. So
 ``HTTPS://GitHub.com/o/r/blob/<sha>/docs/../%74ools/x%2Epy?plain=1#L12``
 cites ``https://github.com/o/r/blob/<sha>/tools/x.py`` at line 12. GitHub
 reads ``%23`` and ``%3F`` as part of a file name, so they stay escaped.
@@ -65,11 +69,12 @@ import json
 import os
 import re
 import string
+import unicodedata
 from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass, field
 from functools import cache
 from pathlib import Path, PurePosixPath
-from urllib.parse import urlsplit
+from urllib.parse import unquote_to_bytes
 
 from microcosm.build.spec_engine import load_yaml12
 from test_support.paths import REPOSITORY_ROOT
@@ -140,17 +145,38 @@ _LOCATOR_NEAR_A_SOURCE = re.compile(
     + _QUOTE
     + r"[^.;\n]{0,24}?(?<![A-Za-z0-9])(?=L\d|(?i:lines?)\s+\d|(?i:ll?)\.\s*\d)"
 )
-#: A URL: an ``http(s)`` one, or a GitHub one written without its scheme
-#: (``github.com/...``, ``//raw.githubusercontent.com/...``). It runs to
-#: whitespace, a quote or an angle bracket, and does not end in punctuation
-#: that closes the sentence around it (``.``, ``,``, ``;``, ``)``, ...).
+#: A URL: an ``http(s)`` one (``https:`` and anything after it), a
+#: network-path reference (``//host/...``, any two of ``/`` and ``\``), or a
+#: GitHub one written without its scheme (``github.com/...``, after an
+#: optional user and before an optional port). It runs to whitespace, a quote
+#: or an angle bracket, and does not end in punctuation that closes the
+#: sentence around it (``.``, ``,``, ``;``, ``)``, ...).
 _URL = re.compile(
-    r"(?:(?i:https?://)"
-    r"|(?<![\w./@-])(?://)?(?i:(?:www\.)?github\.com|raw\.githubusercontent\.com)/)"
+    r"(?:(?i:https?):"
+    r"|(?<![\w./\\@-])[/\\]{2}"
+    r"|(?<![\w./\\@-])(?:[^\s\"'`‘’“”<>/\\?#]*@)?"
+    r"(?i:(?:www\.)?github\.com|raw\.githubusercontent\.com)\.?(?::[0-9]*)?(?=[/\\]))"
     r"[^\s\"'`‘’“”<>]*[^\s\"'`‘’“”<>.,;:!?)\]]"
 )
 #: The scheme a URL starts with, when it has one.
-_SCHEME = re.compile(r"(?i:https?)://")
+_SCHEME = re.compile(r"(?i:https?):")
+#: A URL up to its query or fragment.
+_BEFORE_QUERY = re.compile(r"[^?#]*")
+#: A port after a host: ASCII digits, if any.
+_PORT = re.compile(r"(?::(?P<number>[0-9]*))?")
+#: The characters the WHATWG URL Standard refuses in a host once it is
+#: decoded and mapped to ASCII (its forbidden domain code points).
+_FORBIDDEN_IN_HOST = re.compile(r"[\x00-\x20#%/:<>?@\[\\\]^|\x7f]")
+#: The default-ignorable code points, which UTS46 drops from a host or
+#: refuses in one.
+_IGNORABLE_IN_HOST = re.compile(
+    "[\u00ad\u034f\u061c\u115f\u1160\u17b4\u17b5\u180b-\u180f\u200b-\u200f"
+    "\u202a-\u202e\u2060-\u206f\u3164\ufe00-\ufe0f\ufeff\uffa0\ufff0-\ufff8"
+    "\U0001bca0-\U0001bca3\U0001d173-\U0001d17a\U000e0000-\U000e0fff]"
+)
+#: The code points UTS46 maps into ASCII that this Python's Unicode database
+#: (16.0) does not know: Unicode 17's U+A7F1 MODIFIER LETTER CAPITAL S.
+_MAPPED_AFTER_UNICODE_16 = str.maketrans({"\ua7f1": "s"})
 #: A ``%`` escape in a URL.
 _ESCAPE = re.compile(r"%([0-9A-Fa-f]{2})")
 #: The characters a ``%`` escape in a URL path is read as: the unreserved ones
@@ -283,28 +309,87 @@ def _remove_dot_segments(path: str) -> str:
     return "/".join(segments)
 
 
-def _read_url(url: re.Match[str]) -> str:
-    """A URL as GitHub reads it, without its query.
+def _to_ascii(domain: str) -> str:
+    """A decoded host mapped to ASCII as UTS46 (IDNA) maps it.
 
-    The scheme and host are lower-cased, a user and a port dropped, the
-    path's ``_DECODED`` escapes decoded and its dot segments resolved; the
-    fragment (``#L12``) is kept.
+    Default-ignorable code points are dropped, the rest NFKC case-folded
+    (``ｇ`` and ``ₒ`` are ``g`` and ``o``), ``。`` read as ``.``, and a label
+    left outside ASCII written in Punycode. Where UTS46 refuses a character
+    this reads it anyway, so it never misses a host UTS46 reads.
+    """
+
+    domain = _IGNORABLE_IN_HOST.sub("", domain).translate(_MAPPED_AFTER_UNICODE_16)
+    folded = unicodedata.normalize(
+        "NFKC", unicodedata.normalize("NFKC", domain).casefold()
+    ).replace("\u3002", ".")
+    return ".".join(
+        label if label.isascii() else "xn--" + label.encode("punycode").decode("ascii")
+        for label in folded.split(".")
+    )
+
+
+def _read_host(authority: str) -> str | None:
+    """The host in a URL's authority, as the WHATWG URL Standard reads it.
+
+    The user (up to the last ``@``) and the port are dropped; the host is
+    percent-decoded and mapped to ASCII by ``_to_ascii``. A trailing dot,
+    which DNS ignores, is dropped too: GitHub redirects ``github.com.`` to
+    ``github.com``. ``None`` when the standard refuses the authority: a port
+    that is not a number up to 65535, an empty host, or a host that is not
+    UTF-8 or holds a ``_FORBIDDEN_IN_HOST`` character once read.
+    """
+
+    host = authority.rpartition("@")[2]
+    if host.startswith("["):
+        # An IPv6 address, kept as written: GitHub serves no URL by address.
+        address, bracket, port = host.partition("]")
+        host = address + bracket if bracket else ""
+    else:
+        host, colon, port = host.partition(":")
+        port = colon + port
+    number = _PORT.fullmatch(port)
+    if not host or number is None:
+        return None
+    digits = (number["number"] or "").lstrip("0")
+    if len(digits) > 5 or int(digits or 0) > 65535:
+        return None
+    if host.startswith("["):
+        return host.lower()
+    try:
+        host = _to_ascii(unquote_to_bytes(host).decode("utf-8"))
+    except UnicodeError:
+        return None
+    if _FORBIDDEN_IN_HOST.search(host):
+        return None
+    return host.removesuffix(".")
+
+
+def _read_url(url: re.Match[str]) -> str:
+    """A URL as a browser and then GitHub read it, without its query.
+
+    An ``http(s)`` URL, or a network-path reference read against an
+    ``https`` page, is parsed as the WHATWG URL Standard parses it: ``\\``
+    before the query is ``/``, any number of slashes may come before the
+    authority, and ``_read_host`` reads the host. A GitHub URL written
+    without its scheme is read as if ``https://`` came first. Then, as GitHub
+    does, the path's ``_DECODED`` escapes are decoded and its dot segments
+    resolved; the fragment (``#L12``) is kept. A URL the standard refuses is
+    left as written.
     """
 
     text = url[0]
-    has_scheme = _SCHEME.match(text) is not None
-    try:
-        parts = urlsplit(text if has_scheme or text.startswith("//") else f"//{text}")
-        host = parts.hostname
-    except ValueError:
+    scheme = _SCHEME.match(text)
+    rest = text[scheme.end() :] if scheme else text
+    before = _BEFORE_QUERY.match(rest)[0].replace("\\", "/")
+    slashes = len(before) - len(before.lstrip("/"))
+    authority, slash, path = before[slashes:].partition("/")
+    host = _read_host(authority)
+    if host is None:
         return text
-    if not host:
-        return text
-    authority = "//" if has_scheme or text.startswith("//") else ""
-    path = _remove_dot_segments(_decode(parts.path))
-    fragment = f"#{parts.fragment}" if parts.fragment else ""
-    scheme = f"{parts.scheme}:" if has_scheme else ""
-    return f"{scheme}{authority}{host}{path}{fragment}"
+    lead = f"{scheme[0].lower()}//" if scheme else "//" if slashes else ""
+    path = _remove_dot_segments(_decode(slash + path))
+    fragment = rest.partition("#")[2]
+    return f"{lead}{host}{path}{'#' + fragment if fragment else ''}"
 
 
 def _readable_strings(value: object) -> Iterator[str]:

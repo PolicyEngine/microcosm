@@ -425,9 +425,34 @@ _ROOTED_FILES = (
 )
 #: One segment of a git ref.
 _REF_SEGMENT = st.from_regex(r"[A-Za-z0-9_-]{1,12}", fullmatch=True)
-#: A URL up to its ref: the scheme, the host, and the owner, repository and
-#: route.
-_URL_PARTS = re.compile(r"(?P<scheme>(?:https?://)?)(?P<host>[^/]+)(?P<route>/.*)")
+#: A URL up to its ref: the host, and the owner, repository and route (its
+#: scheme is dropped; ``_URL_LEADS`` writes one).
+_URL_PARTS = re.compile(r"(?:https?://)?(?P<host>[^/]+)(?P<route>/.*)")
+#: Ways to write the start of a URL, each with the start it is read as.
+_URL_LEADS = (
+    ("https://", "https://"),
+    ("http://", "http://"),
+    ("https:", "https://"),
+    ("https:/", "https://"),
+    ("https:///", "https://"),
+    ("https:\\\\", "https://"),
+    ("http:\\/", "http://"),
+    ("//", "//"),
+    ("\\\\", "//"),
+    ("/\\", "//"),
+    ("///", "//"),
+    ("", ""),
+)
+#: Authorities around a host: a user (up to the last ``@``) and a port.
+_AUTHORITIES = (
+    "{host}",
+    "{host}:443",
+    "{host}:",
+    "{host}:0443",
+    "user@{host}",
+    "u:p@{host}:443",
+    "a@b@{host}",
+)
 #: Detours in a URL path that GitHub resolves away.
 _DOT_DETOURS = ("", "./", "%2e/", "docs/../", "x/%2E%2e/", "a/b/../../", "tools/./../")
 #: A URL query, without its ``?``: anything but a fragment, a quote or a space.
@@ -461,6 +486,22 @@ def _escape(text: str, chosen: set[int], upper: bool, keep: str = "") -> str:
         else char
         for index, char in enumerate(text)
     )
+
+
+def _spell_host(host: str, wide: set[int], chosen: set[int], upper: bool) -> str:
+    """``host`` with its characters at ``wide`` written full-width (``ｇ``)
+    and those at ``chosen`` as ``%`` escapes of their UTF-8 bytes."""
+
+    spelled = []
+    for index, char in enumerate(host):
+        if index in wide:
+            char = chr(ord(char) + 0xFEE0)
+        if index in chosen:
+            char = "".join(
+                f"%{byte:02X}" if upper else f"%{byte:02x}" for byte in char.encode()
+            )
+        spelled.append(char)
+    return "".join(spelled)
 
 
 class _CountingPath(type(REPOSITORY_ROOT)):  # type: ignore[misc]
@@ -1306,9 +1347,12 @@ def test_the_round_three_review_counterexample_is_refused() -> None:
     chosen=st.sets(st.integers(0, 160), max_size=12),
     upper=st.booleans(),
     case=st.sampled_from((str.lower, str.upper, str.title)),
-    authority=st.sampled_from(
-        ("{host}", "{host}:443", "user@{host}", "u:p@{host}:443")
-    ),
+    leads=st.sampled_from(_URL_LEADS),
+    authority=st.sampled_from(_AUTHORITIES),
+    wide=st.sets(st.integers(0, 24), max_size=6),
+    escaped_host=st.sets(st.integers(0, 24), max_size=6),
+    dot=st.booleans(),
+    backslashed=st.sets(st.integers(0, 160), max_size=6),
     query=st.one_of(st.just(""), _URL_QUERY.map("?".__add__)),
     fragment=st.sampled_from(("#L{a}", "#L{a}-L{b}")),
     pin=st.sampled_from(_INLINE_PINS),
@@ -1324,7 +1368,12 @@ def test_a_url_of_this_repository_is_refused_however_github_lets_it_be_written(
     chosen: set[int],
     upper: bool,
     case: Callable[[str], str],
+    leads: tuple[str, str],
     authority: str,
+    wide: set[int],
+    escaped_host: set[int],
+    dot: bool,
+    backslashed: set[int],
     query: str,
     fragment: str,
     pin: str,
@@ -1334,21 +1383,29 @@ def test_a_url_of_this_repository_is_refused_however_github_lets_it_be_written(
 ) -> None:
     parts = _URL_PARTS.fullmatch(url)
     assert parts is not None
-    scheme, host, route = parts["scheme"], parts["host"], parts["route"]
-    # A user or a port needs a scheme; GitHub 404s a ``%2F`` before the ref.
+    host, route = parts["host"], parts["route"]
+    written_lead, lead = leads
+    # A browser reads a host's escapes and full-width letters; written without
+    # a scheme or slashes, a host is GitHub's only as spelled.
+    spelled = case(host)
+    if written_lead:
+        spelled = _spell_host(spelled, wide, escaped_host, upper)
+    # GitHub 404s a ``%2F`` before the ref; a browser reads ``\`` as ``/``.
+    route_and_path = _escape(route, chosen, upper, keep="/") + _escape(
+        f"{ref}/{detour}{path}", {index - len(route) for index in chosen}, upper
+    )
+    route_and_path = "".join(
+        "\\" if char == "/" and index in backslashed else char
+        for index, char in enumerate(route_and_path)
+    )
     written = (
-        case(scheme)
-        + (authority.format(host=case(host)) if scheme else case(host))
-        + _escape(route, chosen, upper, keep="/")
-        + _escape(
-            f"{ref}/{detour}{path}",
-            {index - len(route) for index in chosen},
-            upper,
-        )
+        case(written_lead)
+        + authority.format(host=spelled + ("." if dot else ""))
+        + route_and_path
     )
     text = f"{written}{query}{fragment.format(a=a, b=b)} {pin.format(sha=sha)}"
     found = in_repository_line_citations({"note": text})
-    assert [citation.file for citation in found] == [f"{url}{ref}/{path}"]
+    assert [citation.file for citation in found] == [f"{lead}{host}{route}{ref}/{path}"]
     # A citation's text is already read: reading it again changes nothing.
     assert in_repository_line_citations({"note": found[0].text}) == found
 
@@ -1432,6 +1489,95 @@ def test_the_round_four_review_counterexamples_are_refused() -> None:
     assert unrecognised_line_locators({"note": text}) == [
         LineCitation(gitlab, f"{gitlab} some_function, lines 12-19")
     ]
+
+
+def test_the_round_five_review_counterexamples_are_refused() -> None:
+    route = "/PolicyEngine/microcosm/blob/c67030f75e07737f6aeb34841d2190a8009ec351/"
+    tool = "tools/ci_test_plan.py"
+    escaped = "%74ools/ci_test_plan.py"
+    backslashed = (route + tool).replace("/", "\\")
+    for written, lead in (
+        (f"https://%67ithub.com{route}{tool}#L12", "https://"),
+        (f"//github.com:443{route}{tool}#L12", "//"),
+        (f"//user@github.com{route}{escaped}#L12", "//"),
+        (f"https:github.com{route}{tool}#L12", "https://"),
+        (f"HTTPS:\\\\GitHub.com{backslashed}#L12", "https://"),
+        (f"\\\\github.com{route}{tool}#L12", "//"),
+        (f"///github.com{route}{tool}#L12", "//"),
+        (f"https://ｇithub.com{route}{tool}#L12", "https://"),
+        (f"https://raw.githubu\ua7f1ercontent.com{route}{tool}#L12", "https://"),
+        (f"https://github.com.{route}{tool}#L12", "https://"),
+        (f"https://u:p@GITHUB.COM:0443{route}{tool}#L12", "https://"),
+        (f"a@b@github.com:{route}{escaped}#L12", ""),
+    ):
+        host = "raw.githubusercontent.com" if "raw." in written else "github.com"
+        assert [
+            citation.file
+            for citation in in_repository_line_citations({"note": written})
+        ] == [f"{lead}{host}{route}{tool}"], written
+    # The URL Standard refuses each of these authorities, so no browser opens
+    # them: each is read as written, and its path names no file here.
+    for written in (
+        f"https://%2567ithub.com{route}{tool}#L12",
+        f"https://user%40github.com{route}{tool}#L12",
+        f"https://github.com:44x{route}{tool}#L12",
+        f"https://github.com:65536{route}{tool}#L12",
+    ):
+        assert in_repository_line_citations({"note": written}) == [], written
+
+
+#: URLs and how they are read: the WHATWG URL Standard's reading (bun 1.3's
+#: ``URL``, against an ``https`` page for a network-path reference) without
+#: its query, a network-path reference kept as one. Where the standard refuses
+#: a URL it is read as written.
+_WHATWG_READINGS = (
+    ("https://%67ithub.com/o/r/blob/a1b2c3d/x.py#L12", "https://github.com"),
+    ("//github.com:443/o/r/blob/a1b2c3d/x.py#L12", "//github.com"),
+    ("\\\\user@GitHub.com\\o\\r\\blob\\a1b2c3d\\x.py#L12", "//github.com"),
+    ("https:github.com/o/r/blob/a1b2c3d/x.py#L12", "https://github.com"),
+    ("HTTP:///github.com/o/r/blob/a1b2c3d/x.py?plain=1#L12", "http://github.com"),
+    ("https://ｇithub．com/o/r/blob/a1b2c3d/x.py#L12", "https://github.com"),
+    ("https://%EF%BD%87ithub.com/o/r/blob/a1b2c3d/x.py#L12", "https://github.com"),
+    ("https://gi%C2%ADthub.com/o/r/blob/a1b2c3d/x.py#L12", "https://github.com"),
+    ("https://github.c\u2092m/o/r/blob/a1b2c3d/x.py#L12", "https://github.com"),
+    ("https://git\u210cub.com/o/r/blob/a1b2c3d/x.py#L12", "https://github.com"),
+    ("https://a@b@github.com:/o/r/blob/a1b2c3d/x.py#L12", "https://github.com"),
+    ("https://GITHUB.COM:0443/o/r/blob/a1b2c3d/x.py#L12", "https://github.com"),
+    ("https://Ex%61mple.ORG:8443/o/r/blob/a1b2c3d/x.py#L12", "https://example.org"),
+    ("https://[::1]:8080/o/r/blob/a1b2c3d/x.py#L12", "https://[::1]"),
+    ("https://%2567ithub.com/o/r/blob/a1b2c3d/x.py#L12", None),
+    ("https://user%40github.com/o/r/blob/a1b2c3d/x.py#L12", None),
+    ("https://github.com%2F/o/r/blob/a1b2c3d/x.py#L12", None),
+    ("https://gi%FFthub.com/o/r/blob/a1b2c3d/x.py#L12", None),
+    ("https://github.com:44x/o/r/blob/a1b2c3d/x.py#L12", None),
+    ("https://github.com:65536/o/r/blob/a1b2c3d/x.py#L12", None),
+)
+
+
+@pytest.mark.parametrize(("written", "authority"), _WHATWG_READINGS)
+def test_a_url_is_read_as_the_url_standard_reads_it(
+    written: str, authority: str | None
+) -> None:
+    reading = written if authority is None else f"{authority}/o/r/blob/a1b2c3d/x.py#L12"
+    assert [citation.text for citation in line_citations({"note": written})] == [
+        reading
+    ]
+
+
+def test_a_trailing_dot_is_dropped_from_a_host() -> None:
+    # The standard keeps it, but DNS ignores it and GitHub redirects
+    # ``github.com.`` to ``github.com`` (HTTP 301 on 2026-10-27).
+    written = "https://github.com./o/r/blob/a1b2c3d/x.py#L12"
+    assert [citation.text for citation in line_citations({"note": written})] == [
+        "https://github.com/o/r/blob/a1b2c3d/x.py#L12"
+    ]
+
+
+def test_a_break_inside_a_citation_does_not_end_its_clause() -> None:
+    for text in ("x.py; lines 12-19 at a1b2c3d", "x.py; lines 12-19, commit a1b2c3d"):
+        assert [citing_commit(found) for found in line_citations(text)] == [
+            "a1b2c3d"
+        ], text
 
 
 def test_a_long_ref_is_searched_only_as_deep_as_the_deepest_path_here(
