@@ -51,23 +51,36 @@ immutable publication before Hugging Face artifact staging, and preserves
 durable retry jobs and receipt snapshots. See
 [graph publication](docs/orrery-publication.md) for configuration and retry.
 
-Supported US and UK build commands start one local emitter service with separate
-telemetry and graph-publication workers. Microcosm supplies build metadata and
-graph files; the required `microcosm-emitter` package owns authentication,
-durable queues and delivery. Telemetry and graph publication are internal
-libraries in that single package, not separate installations.
-This draft migration requires a published emitter release before merge; see the
-[migration prerequisites](docs/orrery-publication.md#deferred-migration-prerequisites).
-The telemetry worker reports live progress to the hosted collector when the operator's
-existing Hugging Face login is accepted; otherwise it retains the events
+Supported US and UK build commands start the local emitter as the build's
+child process, with its telemetry, graph-publication and Hugging Face
+hand-over modules. Microcosm depends only on `microcosm-emitter-interface`,
+the typed calls a build makes; the emitter itself is installed on its own,
+outside the workspace environment, so an emitter release needs no Microcosm
+change:
+
+```bash
+uv tool install microcosm-emitter   # once per machine
+uv tool upgrade microcosm-emitter   # to take a new release
+```
+
+The build finds the `microcosm-emitter` command through
+`MICROCOSM_EMITTER_COMMAND`, then `PATH`. The emitter inherits the build's
+environment variables and user, so it uses the build's Hugging Face
+credential (`HF_TOKEN`, then `HUGGINGFACE_TOKEN`, then the `hf auth login`
+token). Without the command the build continues with no hosted telemetry and
+no remote staging. Microcosm supplies build metadata, graph files and staging
+run files; the emitter owns authentication, durable queues and delivery.
+The telemetry module reports live progress to the hosted collector when the
+operator's Hugging Face login is accepted; otherwise it retains the events
 locally and the build continues. This live event path is independent of the
 staging run files described below.
 
 US fiscal refresh builds also write pre-release staging run files **by
-default**. Progress JSON is uploaded to `policyengine/populace-us-staging`
-while the build runs (best-effort — a missing token or failed upload never
-fails the build), so every candidate shows up on the staging dashboard before
-it is published. Disable these files with `--no-staging`, or point them
+default**. The build hands its progress JSON to the emitter, which commits it
+to `policyengine/populace-us-staging` while the build runs, one commit per
+upload interval (best-effort: no emitter, a missing token or a failed commit
+never fails the build), so every candidate shows up on the staging dashboard
+before it is published. Disable these files with `--no-staging`, or point them
 elsewhere with `--staging-repo-id` / `POPULACE_STAGING_REPO_ID`. An *empty*
 `POPULACE_STAGING_REPO_ID` is ignored rather than read as off, and staging with
 no destination at all is an argparse error. `--no-staging` does not disable
