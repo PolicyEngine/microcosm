@@ -126,8 +126,8 @@ the new lockfile digest and rerun the tests and wheel checks.
 ## Migrating an existing workstation
 
 Install the emitter once with `uv tool install microcosm-emitter` (0.6.0 or
-later; a build stops an older emitter, says how to upgrade it and continues
-without it). It keeps using the existing spool database,
+later; a build does not start an older emitter, says how to upgrade it and
+continues without it). It keeps using the existing spool database,
 `$XDG_CACHE_HOME/microcosm/telemetry/events.sqlite3`, at the same Alembic
 revision the pinned 0.2.1 release used, so queued telemetry and graph jobs
 keep their IDs and eligibility; do not delete a queue to migrate. The

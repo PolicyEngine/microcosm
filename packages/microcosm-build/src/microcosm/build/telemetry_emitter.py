@@ -14,14 +14,17 @@ settings travel on its standard input, never in environment variables or
 process arguments. No call raises into the build: a missing, slow,
 refusing or outdated emitter leaves the build running without it.
 
-The adapter stops an emitter older than ``MINIMUM_EMITTER_VERSION`` as soon
-as it has started, after reading its version from the emitter's ``hello``
-answer (``EmitterClient.emitter_version``).
+The adapter never starts an emitter older than ``MINIMUM_EMITTER_VERSION``.
+It reads the version from ``microcosm-emitter version`` first, because the
+emitter's telemetry module records the run's start as soon as the emitter
+starts, before its ``hello`` answer can name its release.
 """
 
 from __future__ import annotations
 
+import json
 import re
+import subprocess
 import sys
 from collections.abc import Mapping, Sequence
 from pathlib import Path
@@ -35,6 +38,7 @@ from microcosm_emitter_interface import (
     TelemetrySettings,
     default_spool_path,
 )
+from microcosm_emitter_interface.launcher import resolve_command
 from microcosm_emitter_interface.orrery import (
     PublicationFileRole,
     PublicationInventory,
@@ -76,7 +80,7 @@ STARTUP_TIMEOUT_SECONDS = 15.0
 MINIMUM_EMITTER_VERSION = "0.6.0"
 OUTDATED_EMITTER_WARNING = (
     "The installed microcosm-emitter {reported}; this build needs {required} "
-    "or later, so it stopped that emitter and will continue without it. "
+    "or later, so it did not start that emitter and will continue without it. "
     "Upgrade it with `uv tool install --upgrade 'microcosm-emitter>={required}'`, "
     "or point MICROCOSM_EMITTER_COMMAND at a newer one."
 )
@@ -90,32 +94,59 @@ def _release_number(version: object) -> tuple[int, ...] | None:
     return None if found is None else tuple(int(part) for part in found.groups())
 
 
-def _start_emitter(**options: Any) -> EmitterClient:
-    """Start the installed emitter; stop it again if it is too old.
+def _installed_emitter_version(command: str, timeout: float) -> str | None:
+    """The release ``command version`` reports, or None without a usable answer.
 
-    ``EmitterClient.start`` returns only after the emitter's ``hello`` answer,
-    which names its release. An emitter that did not start is returned as it
-    is; an outdated one is closed, so every call reports it unavailable.
+    ``microcosm-emitter version`` (every release since 0.4.0, the first with
+    the command) prints the same description as the emitter's ``hello``
+    answer, and starts none of its modules.
     """
-    client = EmitterClient.start(**options)
-    if not client.available:
-        return client
-    installed = _release_number(client.emitter_version)
-    if installed is not None and installed >= _MINIMUM_RELEASE:
-        return client
-    reported = (
-        "reports no version"
-        if client.emitter_version is None
-        else f"reports version {client.emitter_version}"
+    try:
+        answer = subprocess.run(
+            [command, "version"],
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            check=False,
+        )
+        description = json.loads(answer.stdout) if answer.returncode == 0 else None
+    except Exception:
+        return None
+    version = (
+        description.get("emitter_version") if isinstance(description, dict) else None
     )
+    return version if isinstance(version, str) else None
+
+
+def _start_emitter(**options: Any) -> EmitterClient:
+    """Start the installed emitter, unless it is older than the minimum.
+
+    The emitter's telemetry module records the run's start as soon as the
+    emitter starts, before ``hello`` can name its release, so the release is
+    read from ``microcosm-emitter version`` first. An emitter stopped after
+    starting would leave the collector a run that started and never
+    finished. An outdated emitter is never started: the client returned is
+    unavailable, so every call reports that. A missing command is left to
+    ``EmitterClient.start``, which reports it.
+    """
+    try:
+        command = resolve_command()
+    except Exception:
+        return EmitterClient.start(**options)
+    timeout = options.get("startup_timeout", STARTUP_TIMEOUT_SECONDS)
+    version = _installed_emitter_version(command, timeout)
+    installed = _release_number(version)
+    if installed is not None and installed >= _MINIMUM_RELEASE:
+        return EmitterClient.start(command=command, **options)
+    reported = "reports no version" if version is None else f"reports version {version}"
     print(
         OUTDATED_EMITTER_WARNING.format(
             reported=reported, required=MINIMUM_EMITTER_VERSION
         ),
         file=sys.stderr,
     )
-    client.close()
-    return client
+    return EmitterClient()
 
 
 class LocalTelemetryEmitter:
