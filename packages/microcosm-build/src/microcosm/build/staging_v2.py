@@ -17,7 +17,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
-from typing import Any, Literal
+from typing import Any, Literal, NoReturn
 
 from jsonschema import Draft202012Validator, FormatChecker
 
@@ -1192,14 +1192,18 @@ class StagingRunBundleWriterV2:
         if self._hand_over is None:
             raise StagingReadBackError("Remote read-back requires remote staging mode.")
         self._maybe_upload(force=True)
+        if self._hand_over.last_accepted is not True:
+            # The emitter compares the Hub with what it committed; without the
+            # current files that can be an older state of the run.
+            self._fail_read_back(
+                "Authenticated staging read-back failed: the run's current "
+                "files were not handed over to the local emitter."
+            )
         result = self._hand_over.read_back(wait_seconds=self.READ_BACK_WAIT_SECONDS)
         self._hand_over.receipt()
         self._record_delivery()
         if result["status"] != "passed" or self._hand_over.files_committed < 1:
-            self._delivery["read_back"] = "failed"
-            self._delivery["last_error_code"] = "READ_BACK_FAILED"
-            self._persist_bundle()
-            raise StagingReadBackError(_read_back_failure(result))
+            self._fail_read_back(_read_back_failure(result))
         self._delivery["read_back"] = "passed"
         self._delivery["last_error_code"] = None
         self._persist_bundle()
@@ -1209,6 +1213,12 @@ class StagingRunBundleWriterV2:
         # verified local state (``_record_delivery``), and the remote copy may
         # then still show the delivery as it was before read-back.
         self._maybe_upload(force=True)
+
+    def _fail_read_back(self, message: str) -> NoReturn:
+        self._delivery["read_back"] = "failed"
+        self._delivery["last_error_code"] = "READ_BACK_FAILED"
+        self._persist_bundle()
+        raise StagingReadBackError(message)
 
     def _require_running(self, action: str) -> None:
         if self.status != "running":
