@@ -209,6 +209,80 @@ def test_a_missing_emitter_command_leaves_the_build_running(
     assert list(tmp_path.iterdir()) == []
 
 
+def _start_build_emitter(monkeypatch, tmp_path, client):
+    _record_starts(monkeypatch, client)
+    monkeypatch.setattr(adapter, "runtime_identity", lambda: {"commit": "synthetic"})
+    return START(
+        adapter.LocalTelemetryEmitter,
+        run_id="run-one",
+        country_code="uk",
+        pipeline="full",
+        spool_path=tmp_path / "events.sqlite3",
+    )
+
+
+@pytest.mark.parametrize(
+    ("installed_version", "reported"),
+    [
+        # 0.5.x accepts protocol 1 but has no Hugging Face module.
+        ("0.5.1", "reports version 0.5.1"),
+        ("0.4.0", "reports version 0.4.0"),
+        (None, "reports no version"),
+        ("not-a-version", "reports version not-a-version"),
+    ],
+)
+def test_an_emitter_older_than_0_6_0_is_stopped_and_the_build_continues(
+    monkeypatch, capsys, tmp_path, installed_version, reported
+):
+    client = FakeEmitterClient()
+    client.emitter_version = installed_version
+    emitter = _start_build_emitter(monkeypatch, tmp_path, client)
+
+    assert client.closed
+    assert not emitter.available
+    warning = capsys.readouterr().err
+    assert f"The installed microcosm-emitter {reported};" in warning
+    assert "this build needs 0.6.0 or later" in warning
+    assert "uv tool install --upgrade 'microcosm-emitter>=0.6.0'" in warning
+    # Nothing more reaches the stopped emitter, and nothing raises.
+    emitter.transition_stage("solve")
+    emitter.complete()
+    assert client.telemetry_messages == []
+
+
+@pytest.mark.parametrize("installed_version", ["0.6.0", "0.7.0", "0.10.0", "1.0.0"])
+def test_an_emitter_from_0_6_0_on_starts(
+    monkeypatch, capsys, tmp_path, installed_version
+):
+    client = FakeEmitterClient()
+    client.emitter_version = installed_version
+    emitter = _start_build_emitter(monkeypatch, tmp_path, client)
+
+    assert emitter.available
+    assert not client.closed
+    assert "microcosm-emitter" not in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("operation", ["inventory", "publish"])
+def test_a_short_lived_graph_emitter_older_than_0_6_0_is_stopped(
+    monkeypatch, capsys, tmp_path, operation
+):
+    client = FakeEmitterClient(modules={"orrery"})
+    client.emitter_version = "0.5.1"
+    _record_starts(monkeypatch, client)
+    inventory = {"version": 1, "publication_id": "independent", "files": []}
+
+    if operation == "inventory":
+        assert adapter.publication_inventory(tmp_path, {}) is None
+    else:
+        receipt = adapter.publish_graph(tmp_path, inventory, wait_seconds=0)
+        assert receipt["status"] == "failed"
+
+    assert client.closed
+    assert client.orrery_requests == []
+    assert "this build needs 0.6.0 or later" in capsys.readouterr().err
+
+
 @pytest.mark.parametrize("failure", ["default_spool_path", "runtime_identity"])
 def test_metadata_or_cache_failure_never_starts_an_emitter(
     monkeypatch, capsys, failure
