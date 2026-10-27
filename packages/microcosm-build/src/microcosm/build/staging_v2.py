@@ -1387,8 +1387,8 @@ class StagingRunBundleWriterV2:
         cannot slow the build. The final state is different: a run whose
         remote copy stays "running" forever is the last-mile gap the v20
         national run met (its final state was delivered by hand), so
-        completion, failure and a gate block hand it over once more. The
-        emitter retries its commits itself.
+        completion, failure and a refusal by the validation checks hand it
+        over once more. The emitter retries its commits itself.
         """
 
         if self._hand_over is None:
