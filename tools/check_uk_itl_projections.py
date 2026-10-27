@@ -25,9 +25,12 @@ from pathlib import Path
 
 from microcosm.build.uk_runtime.hmrc_uprating import UK_HMRC_TAXPAYER_COUNTS_RESOURCE
 from microcosm.build.uk_runtime.itl_differential import (
+    SINGLE_TAX_YEAR,
+    dated_people,
     differential,
     expected_cells,
-    people_from_h5,
+    measure_resolver,
+    resolved_people,
 )
 from microcosm.build.uk_runtime.ledger_fact_vendoring import vendor_row, vendored_rows
 
@@ -84,6 +87,12 @@ def main(argv: list[str] | None = None) -> int:
         metavar="REASON",
         help="For a file without annual income descriptors (the incumbent).",
     )
+    parser.add_argument(
+        "--dated-year",
+        type=int,
+        help="Also check the dated SPI measures of this tax year (2023) against "
+        "Table 2.5's outturn column for it.",
+    )
     parser.add_argument("--strict", action="store_true", help="Exit 1 on any miss.")
     args = parser.parse_args(argv)
 
@@ -91,15 +100,13 @@ def main(argv: list[str] | None = None) -> int:
     cells = expected_cells(
         rows, year=args.year, bound_targets=bound_targets(args.contract)
     )
-    report = differential(
-        cells,
-        people_from_h5(
-            args.h5,
-            year=args.year,
-            scratch=args.out.parent / f"scratch-{args.out.stem}",
-            reason=args.current_income_for_annual_measures,
-        ),
+    resolver = measure_resolver(
+        args.h5,
+        year=args.year,
+        scratch=args.out.parent / f"scratch-{args.out.stem}",
+        reason=args.current_income_for_annual_measures,
     )
+    report = differential(cells, resolved_people(resolver))
     receipt = {
         "h5": str(args.h5),
         "h5_sha256": _sha256(args.h5),
@@ -107,16 +114,32 @@ def main(argv: list[str] | None = None) -> int:
         "itl_rows": rows_source,
         **report,
     }
+    misses = list(report["misses"])
+    if args.dated_year is not None:
+        table_2_5 = [
+            row for row in rows if ".table_2_5." in row["layout"]["record_set_id"]
+        ]
+        dated = differential(
+            expected_cells(table_2_5, year=args.dated_year, weights=SINGLE_TAX_YEAR),
+            dated_people(resolver, args.dated_year),
+        )
+        receipt["dated"] = {"year": args.dated_year, **dated}
+        misses += [f"dated {miss}" for miss in dated["misses"]]
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n")
-    for row in report["cells"]:
-        flag = "" if row["within_tolerance"] else "  MISS"
-        sample = "in" if row["in_sample"] else "out"
-        print(
-            f"{row['table']} {row['measure']:<32} {row['key']:<16} {sample:<3} "
-            f"{row['expected']:>13,.0f} {row['model']:>13,.0f} {row['residual']:+7.2%}{flag}"
-        )
-    return 1 if args.strict and report["misses"] else 0
+    sections = [("", report)]
+    if "dated" in receipt:
+        sections.append((f"{args.dated_year} ", receipt["dated"]))
+    for prefix, section in sections:
+        for row in section["cells"]:
+            flag = "" if row["within_tolerance"] else "  MISS"
+            sample = "in" if row["in_sample"] else "out"
+            print(
+                f"{prefix}{row['table']} {row['measure']:<32} {row['key']:<16} "
+                f"{sample:<3} {row['expected']:>13,.0f} {row['model']:>13,.0f} "
+                f"{row['residual']:+7.2%}{flag}"
+            )
+    return 1 if args.strict and misses else 0
 
 
 if __name__ == "__main__":

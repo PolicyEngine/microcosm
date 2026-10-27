@@ -20,7 +20,8 @@ from microcosm.build.uk_runtime.hmrc_uprating import UK_HMRC_TAXPAYER_COUNTS_RES
 from microcosm.build.uk_runtime.itl_differential import (
     differential,
     expected_cells,
-    people_from_h5,
+    measure_resolver,
+    resolved_people,
 )
 from microcosm.build.uk_runtime.ledger_fact_vendoring import vendored_rows
 
@@ -37,6 +38,6 @@ def test_the_national_file_meets_hmrc_projections(tmp_path) -> None:
         rows = vendored_rows(UK_HMRC_TAXPAYER_COUNTS_RESOURCE)
     report = differential(
         expected_cells(rows, year=2025),
-        people_from_h5(Path(_H5), year=2025, scratch=tmp_path),
+        resolved_people(measure_resolver(Path(_H5), year=2025, scratch=tmp_path)),
     )
     assert not report["misses"], "\n".join(report["misses"])

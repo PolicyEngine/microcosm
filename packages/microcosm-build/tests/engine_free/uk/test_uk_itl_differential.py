@@ -25,6 +25,7 @@ from microcosm.build.uk_runtime.itl_differential import (
     NATIONAL_TOLERANCE,
     REGIONAL_TOLERANCE,
     RESIDENTS,
+    SINGLE_TAX_YEAR,
     UNITED_KINGDOM,
     ITLPeople,
     calendar_window,
@@ -118,7 +119,7 @@ def test_a_duplicate_or_half_window_is_refused() -> None:
     with pytest.raises(ValueError, match="two rows"):
         calendar_window([*rows, rows[0]], year=2024)
     lonely = _row("2.1", "males", UNITED_KINGDOM, 2025, 1.0)
-    with pytest.raises(ValueError, match="window needs"):
+    with pytest.raises(ValueError, match="window at 2025 needs"):
         calendar_window([*rows, lonely], year=2025)
 
 
@@ -324,3 +325,16 @@ def test_the_vendored_table_2_5_rows_give_every_band_at_calendar_2025() -> None:
     # Table 2.5's all-band count: 38.6m in 2024-25 and 39.8m in 2025-26.
     assert total.expected == pytest.approx(0.25 * 38_600_000 + 0.75 * 39_800_000)
     assert sum(1 for key in cells if key[1] == BAND_COUNT) == len(ITL_BANDS)
+
+
+def test_one_tax_year_reads_its_own_column() -> None:
+    """The dated check reads Table 2.5's 2023-24 outturn as published."""
+
+    rows = _rows(ages=False)
+    cells = expected_cells(rows, year=2023, weights=SINGLE_TAX_YEAR)
+    published = {
+        _band_of(row): row["value"] for row in rows if row["period"]["value"] == 2023
+    }
+    for cell in cells:
+        assert cell.expected == published[cell.band]
+        assert len(cell.sources) == 1

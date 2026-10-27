@@ -16,6 +16,11 @@ beside the same counts on a calibrated file:
   areas, and their sum over the areas, the residents within Table 2.1's
   United Kingdom count.
 
+The same Table 2.5 cells at the 2023-24 outturn column (``SINGLE_TAX_YEAR``)
+check a file's dated SPI measures (``dated_people``): the file's own
+2023-24 taxpayers by band, from the engine's simulation of that year on the
+carried-back inputs, against the year HMRC observed rather than projected.
+
 Each cell carries a tolerance fixed before any file is read
 (``NATIONAL_TOLERANCE``, ``REGIONAL_TOLERANCE``) and says whether a bound
 target reads it (``in_sample``): a bound cell checks the solve, an unbound
@@ -66,6 +71,10 @@ BOUND_BY: Mapping[tuple[str, str], str] = {
 }
 
 Band = tuple[int, int | None]
+
+#: Window weights that read one tax year: the 2023-24 outturn column the dated
+#: ``spi_2023_*`` measures sit beside.
+SINGLE_TAX_YEAR: Mapping[int, float] = {0: 1.0}
 
 
 @dataclass(frozen=True)
@@ -143,19 +152,21 @@ def _band(row: Mapping[str, Any]) -> Band | None:
 
 
 def calendar_window(
-    rows: Iterable[Mapping[str, Any]], *, year: int
+    rows: Iterable[Mapping[str, Any]],
+    *,
+    year: int,
+    weights: Mapping[int, float] = CALENDAR_YEAR_WINDOW_WEIGHTS,
 ) -> dict[tuple[str, str, str, Band | None], tuple[float, tuple[str, ...]]]:
     """Every published count at the calendar window of ``year``.
 
     Keyed by ``(table, measure_id, geography id, band)``: the window weights
     times the tax years opening in ``year - 1`` and ``year``. A count with
     two rows for one year, or a row in only one of the window's years, is
-    refused; one with neither year is left out.
+    refused; one with neither year is left out. ``weights`` of ``{0: 1.0}``
+    read the tax year opening in ``year`` alone (``SINGLE_TAX_YEAR``).
     """
 
-    years = {
-        year + offset: weight for offset, weight in CALENDAR_YEAR_WINDOW_WEIGHTS.items()
-    }
+    years = {year + offset: weight for offset, weight in weights.items()}
     by_cell: dict[tuple[str, str, str, Band | None], dict[int, Mapping[str, Any]]] = {}
     for row in rows:
         if (row.get("period") or {}).get("type") != "tax_year":
@@ -178,7 +189,7 @@ def calendar_window(
         if set(found) != set(years):
             raise ValueError(
                 f"{cell} has rows for tax years opening {sorted(found)}; the "
-                f"calendar-{year} window needs {sorted(years)}."
+                f"window at {year} needs {sorted(years)}."
             )
         value = math.fsum(
             years[opening] * float(found[opening]["value"]) for opening in sorted(years)
@@ -196,6 +207,7 @@ def expected_cells(
     *,
     year: int,
     bound_targets: Collection[str] = (),
+    weights: Mapping[int, float] = CALENDAR_YEAR_WINDOW_WEIGHTS,
 ) -> tuple[ITLCell, ...]:
     """The cells HMRC's rows give at ``year``'s window, in report order.
 
@@ -204,7 +216,7 @@ def expected_cells(
     2.2 measure must then carry all twelve region-tier areas.
     """
 
-    window = calendar_window(rows, year=year)
+    window = calendar_window(rows, year=year, weights=weights)
 
     def cell(table, measure, value_sources, *, band=None, area=None, regional=False):
         value, sources = value_sources
@@ -360,39 +372,72 @@ def differential(cells: Iterable[ITLCell], people: ITLPeople) -> dict[str, Any]:
     }
 
 
-def people_from_h5(
+def measure_resolver(
     h5: Path, *, year: int, scratch: Path, reason: str | None = None
-) -> ITLPeople:
-    """The people a calibrated file holds at ``year``, as the bound rows read them.
-
-    Weights are each person's household weight, as ``person_count`` mapped to
-    the household reads them; taxpayers have
-    ``income_tax_before_winter_fuel_payment_charge_annual > 0`` and bands read
-    ``total_income_after_loss_relief_annual``, the measures the Table 2.5 rows
-    bind; State Pension age is policyengine-uk's ``is_SP_age``. ``reason``
-    reads current income for a file without annual income descriptors.
-    """
+) -> Any:
+    """A measure resolver on a calibrated file at ``year``, read once for both
+    checks. ``reason`` reads current income for a file without annual income
+    descriptors (the incumbent)."""
 
     from microcosm.build.uk_runtime.measure_simulation import UKMeasureResolver
-    from microcosm.calibrate.geography_constants import UK_REGION_TIER_ENUM
 
     resolver = UKMeasureResolver(
         simulation_source=h5, scratch_dir=scratch, year=year, frame=None
     )
     if reason:
         resolver.use_current_income_for_annual_measures(reason=reason)
+    return resolver
 
-    def person(variable: str) -> np.ndarray:
-        values, _route = resolver.compute("person", variable)
-        return np.asarray(values)
+
+def _person(resolver: Any, variable: str) -> np.ndarray:
+    values, _route = resolver.compute("person", variable)
+    return np.asarray(values)
+
+
+def resolved_people(resolver: Any) -> ITLPeople:
+    """The people a calibrated file holds, as the bound rows read them.
+
+    Weights are each person's household weight, as ``person_count`` mapped to
+    the household reads them; taxpayers have
+    ``income_tax_before_winter_fuel_payment_charge_annual > 0`` and bands read
+    ``total_income_after_loss_relief_annual``, the measures the Table 2.5 rows
+    bind; State Pension age is policyengine-uk's ``is_SP_age``.
+    """
+
+    from microcosm.calibrate.geography_constants import UK_REGION_TIER_ENUM
 
     by_name = {name: code for code, name in UK_REGION_TIER_ENUM.items()}
-    region = [str(name).rsplit(".", 1)[-1] for name in person("region")]
+    region = [str(name).rsplit(".", 1)[-1] for name in _person(resolver, "region")]
     return ITLPeople(
-        weight=person("household_weight").astype(float),
-        taxpayer=person(TAX).astype(float) > 0,
-        total_income=person(TOTAL_INCOME).astype(float),
-        state_pension_age=person("is_SP_age").astype(bool),
-        age=person("age").astype(float),
+        weight=_person(resolver, "household_weight").astype(float),
+        taxpayer=_person(resolver, TAX).astype(float) > 0,
+        total_income=_person(resolver, TOTAL_INCOME).astype(float),
+        state_pension_age=_person(resolver, "is_SP_age").astype(bool),
+        age=_person(resolver, "age").astype(float),
         area=np.array([by_name.get(name, "") for name in region]),
+    )
+
+
+def dated_people(resolver: Any, dated_year: int) -> ITLPeople:
+    """The people a calibrated file holds, as they were in ``dated_year``.
+
+    Reads the dated SPI measures (``uk_runtime.spi_dated_measures``): each
+    person's household weight times their population factor, a taxpayer at
+    ``spi_<year>_income_tax > 0`` and the band at ``spi_<year>_total_income``,
+    both from the engine's own simulation of that tax year on the carried-back
+    inputs. Ages and areas are not dated, so only Table 2.5 cells read them.
+    """
+
+    def dated(measure: str) -> np.ndarray:
+        return _person(resolver, f"spi_{dated_year}_{measure}").astype(float)
+
+    count = dated("person_count")
+    weight = _person(resolver, "household_weight").astype(float)
+    return ITLPeople(
+        weight=weight * count,
+        taxpayer=dated("income_tax") > 0,
+        total_income=dated("total_income"),
+        state_pension_age=np.zeros(count.size, dtype=bool),
+        age=np.full(count.size, np.nan),
+        area=np.full(count.size, ""),
     )
