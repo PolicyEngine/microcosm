@@ -48,8 +48,14 @@ a browser, so ``x.py?q='a'#L12`` still cites line 12 of ``x.py``. Markdown
 and prose end a URL at a quote, a parenthesis or an angle bracket too, so a
 string is also read that way where it reads differently
 (``_readable_strings``): in ``[https://a/?x](https://github.com/...#L12)``
-the label's query does not hide the link. A citation either reading finds
-is checked.
+the label's query does not hide the link. Markdown and HTML decode a
+backslash before punctuation and a character reference before a link is
+followed, so a string holding one is read both ways again with them decoded:
+``[a](https://github.com/.../x\\.py&#35;L12)`` links to line 12 of
+``x.py``. The URL Standard deletes ASCII tabs and line breaks from a URL
+wherever they are, so a string holding one is read again without them: in
+an HTML attribute, ``.../x.p&#10;y#L12`` links to line 12 of ``x.py``. A
+citation any reading finds is checked.
 
 A cited path is in-repository when, after any prefix naming this repository
 is removed (a ``github.com/PolicyEngine/microcosm/blob/<ref>/`` URL, at a ref
@@ -71,6 +77,7 @@ spelling is also how ledger fact keys such as
 
 from __future__ import annotations
 
+import html
 import importlib
 import json
 import os
@@ -160,6 +167,10 @@ _LINE_CITATIONS = (_FORWARD_LOCATOR, _REVERSE_LOCATOR)
 #: `` in ``) cannot continue the list, so it matches after the whole list or
 #: not at all.
 _REVERSE_HEAD = re.compile(rf"\b(?:{_LABEL}|(?=L\d)){_QUOTES}{_NUMBERS}")
+#: The last number of a list, where it is an ``L`` number a reverse locator
+#: can start at (``L2`` in ``L1-L2``), searched for between a list's first
+#: character and its end.
+_LAST_L_NUMBER = re.compile(r"(?<!\w)L\d++\Z")
 #: A source name followed by a labelled line locator (``L12``, ``line 12``,
 #: ``ll. 12``) within 24 characters, with no ``.``, ``;`` or line break
 #: between: the shape of every forward spelling, recognised or not. A bare
@@ -198,6 +209,18 @@ _URL = re.compile(_URL_START + r"\S*[^\s\"'`‘’“”<>.,;:!?)\]]")
 #: ``<https://a/?x><https://b/...>`` and a URL quoted straight after another
 #: are each read on their own.
 _DELIMITED_URL = re.compile(_URL_START + r"[^\s\"'`‘’“”<>()]*[^\s\"'`‘’“”<>()\].,;:!?]")
+#: What Markdown and HTML decode before a link is followed: a backslash
+#: before ASCII punctuation (``x\.py``, Markdown) and a character reference,
+#: decimal (``&#35;``), hexadecimal (``&#x23;``) or named (``&num;``), with
+#: or without its ``;`` (HTML decodes some without one).
+_MARKUP_ESCAPE = re.compile(
+    r"\\(?P<punctuation>[!-/:-@\[-`{-~])"
+    r"|&#(?:[xX](?P<hexadecimal>[0-9A-Fa-f]++)|(?P<decimal>[0-9]++));?"
+    r"|&[A-Za-z][A-Za-z0-9]{0,31};?"
+)
+#: What the URL Standard deletes from a URL, wherever it is, before reading
+#: it: an ASCII tab or line break.
+_URL_BREAKS = re.compile(r"[\t\n\r]")
 #: The scheme a URL starts with, when it has one.
 _SCHEME = re.compile(r"(?i:https?):")
 #: A URL up to its query or fragment.
@@ -439,6 +462,25 @@ def _read_url(url: re.Match[str]) -> str:
     return f"{lead}{host}{path}{'#' + fragment if fragment else ''}"
 
 
+def _decode_escape(escape: re.Match[str]) -> str:
+    """One ``_MARKUP_ESCAPE``, decoded as Markdown or HTML decodes it.
+
+    A numeric reference is decoded from its value with its leading zeros
+    dropped, so a long run of digits is never converted whole; one past
+    U+10FFFF is U+FFFD, as HTML reads it.
+    """
+
+    if escape["punctuation"] is not None:
+        return escape["punctuation"]
+    hexadecimal, decimal = escape["hexadecimal"], escape["decimal"]
+    if hexadecimal is None and decimal is None:
+        return html.unescape(escape[0])
+    digits = (hexadecimal or decimal).lstrip("0") or "0"
+    if len(digits) > (6 if hexadecimal is not None else 7):
+        return "\ufffd"
+    return html.unescape(f"&#{'x' if hexadecimal is not None else ''}{digits};")
+
+
 def _readable_strings(value: object) -> Iterator[str]:
     """``nested_strings``, with the URLs in them read as ``_read_url`` reads them.
 
@@ -446,15 +488,29 @@ def _readable_strings(value: object) -> Iterator[str]:
     browser reads it. Where it reads differently with each URL also ending at
     a quote, a parenthesis or an angle bracket (``_DELIMITED_URL``), as Markdown
     and prose delimit one, it is read that way too, so a link's destination
-    is not lost in the query of a URL before it.
+    is not lost in the query of a URL before it. Where it holds a
+    ``_MARKUP_ESCAPE``, it is read both ways again with each escape decoded,
+    as Markdown and HTML decode a link's destination before it is followed,
+    so ``[a](https://github.com/.../x\\.py&#35;L12)`` is read as linking to
+    line 12 of ``x.py``. Where it holds a ``_URL_BREAKS``, as written or
+    decoded, it is read again without them, as the URL Standard reads a URL
+    in an HTML attribute (``href=".../x.p&#10;y#L12"``). Each reading that
+    differs from the others is yielded once.
     """
 
     for text in nested_strings(value):
-        whole = _URL.sub(_read_url, text)
-        yield whole
-        delimited = _DELIMITED_URL.sub(_read_url, text)
-        if delimited != whole:
-            yield delimited
+        decoded = _MARKUP_ESCAPE.sub(_decode_escape, text)
+        sources = (
+            text,
+            decoded,
+            _URL_BREAKS.sub("", text),
+            _URL_BREAKS.sub("", decoded),
+        )
+        yield from dict.fromkeys(
+            pattern.sub(_read_url, source)
+            for source in dict.fromkeys(sources)
+            for pattern in (_URL, _DELIMITED_URL)
+        )
 
 
 def _finditer(pattern: re.Pattern[str], text: str) -> Iterator[re.Match[str]]:
@@ -468,10 +524,18 @@ def _finditer(pattern: re.Pattern[str], text: str) -> Iterator[re.Match[str]]:
     matches.
 
     A reverse locator starts with a label or an ``L`` number and a list of
-    line numbers (``_REVERSE_HEAD``). Inside a list it can start only at a
-    number, and from there it reads the rest of the list to the same end, so
-    when it fails after a list it fails from every number in it. Each list is
-    therefore read once, rather than once from each of its numbers.
+    line numbers (``_REVERSE_HEAD``). Inside a list it can start only at an
+    ``L`` number. From one that starts a span (``L12`` in ``1, L12-19``), or
+    ends a range a separator follows (``L19`` in ``L12-L19, 30``), it reads
+    the rest of the list as the list's head did, to the same end, and what
+    ends a reverse locator (`` of ``, `` in ``) cannot continue a list, so
+    when it fails from the head it fails from there too. Only the list's last
+    number can be read another way: when it ends a range and another dash
+    follows (``L1-L2-3 of x.py``), from there it starts a range of its own
+    (``L2-3``). So when a reverse locator fails from a list's head, it is
+    tried next from the list's last number (``_LAST_L_NUMBER``), and
+    otherwise after the list. Each number is read in at most two lists,
+    rather than once from each number of a list.
     """
 
     if pattern is _REVERSE_LOCATOR:
@@ -481,8 +545,9 @@ def _finditer(pattern: re.Pattern[str], text: str) -> Iterator[re.Match[str]]:
             if match is not None:
                 yield match
                 position = match.end()
-            else:
-                position = head.end()
+                continue
+            last = _LAST_L_NUMBER.search(text, head.start() + 1, head.end())
+            position = head.end() if last is None else last.start()
         return
     anchored = _STARTING_A_RUN.get(pattern)
     if anchored is None:
@@ -504,8 +569,9 @@ def _citation_matches(text: str) -> list[re.Match[str]]:
 def line_citations(value: object) -> list[LineCitation]:
     """Each line citation of a source in a payload, in string order.
 
-    A string read two ways (``_readable_strings``) gives the citations of
-    each reading, so one both readings find is listed twice.
+    A string read more than one way (``_readable_strings``) gives the
+    citations of each reading, so one that several readings find is listed
+    once for each.
     """
 
     return [

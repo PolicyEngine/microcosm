@@ -53,6 +53,7 @@ import re
 import string
 import time
 from collections.abc import Callable
+from html.entities import html5
 from pathlib import Path, PurePosixPath
 
 import pandas as pd
@@ -565,6 +566,20 @@ _SHA = _HEX.filter(_is_commit_like)
     depth=st.integers(0, 3),
     as_key=st.booleans(),
 )
+# The reverse spellings come last, so generation draws them least: a worded
+# reverse range is found only if ``to`` reads as a range.
+@example(
+    stem="x",
+    suffix="py",
+    directory="",
+    locator="lines {a} to {b} of {file}",
+    a=12,
+    b=19,
+    prefix="",
+    tail="",
+    depth=0,
+    as_key=False,
+)
 def test_an_unpinned_line_citation_is_refused_at_any_depth(
     stem: str,
     suffix: str,
@@ -601,6 +616,22 @@ def test_an_unpinned_line_citation_is_refused_at_any_depth(
     depth=st.integers(0, 3),
     as_key=st.booleans(),
 )
+@example(
+    stem="x",
+    suffix="py",
+    directory="",
+    here="https://github.com/PolicyEngine/microcosm/blob/main/tools/"
+    "build_us_puf_support_base.py",
+    locator="{q1}{file}{q2}#{q3}L{a}{q4}",
+    q1="",
+    q2="",
+    q3="`",
+    q4="",
+    a=1,
+    b=1,
+    depth=0,
+    as_key=False,
+)
 def test_a_quoted_line_locator_is_refused_as_a_value_or_a_key(
     stem: str,
     suffix: str,
@@ -619,12 +650,18 @@ def test_a_quoted_line_locator_is_refused_as_a_value_or_a_key(
     file = here or f"{directory}{stem}.{suffix}"
     text = locator.format(file=file, q1=q1, q2=q2, q3=q3, q4=q4, a=a, b=b)
     document = _plant(text, depth, as_key)
-    assert line_citations(document) == [LineCitation(file, text)]
+    # A quote after a URL's ``#`` ends the URL in the string's second reading,
+    # which finds the same file's locator again (``x.py'L12``).
+    found = line_citations(document)
+    assert [citation for citation in found if citation.text == text] == [
+        LineCitation(file, text)
+    ]
+    assert {citation.file for citation in found} == {file}
     assert unrecognised_line_locators(document) == []
     if here is None:
         assert LineCitation(file, text) in unpinned_line_citations(document)
     else:
-        assert in_repository_line_citations(document) == [LineCitation(file, text)]
+        assert in_repository_line_citations(document) == found
 
 
 @settings(max_examples=200, deadline=None)
@@ -1579,9 +1616,13 @@ def test_the_round_five_review_counterexamples_are_refused() -> None:
         (f"a@b@github.com:{route}{escaped}#L12", ""),
     ):
         host = "raw.githubusercontent.com" if "raw." in written else "github.com"
+        # To Markdown ``\\`` is an escaped ``\``, so a decoded reading follows
+        # the URL Standard's, which comes first.
+        read = next(citations._readable_strings(written))
         assert [
             citation.file
             for citation in in_repository_line_citations({"note": written})
+            if citation.text == read
         ] == [f"{lead}{host}{route}{tool}"], written
     # The URL Standard refuses each of these authorities, so no browser opens
     # them: each is read as written, and its path names no file here.
@@ -1675,6 +1716,215 @@ def test_a_string_is_read_as_a_browser_and_as_markdown_delimit_its_urls() -> Non
         assert len(line_citations({"note": written})) == 1, written
 
 
+def test_the_round_eight_review_counterexamples_are_refused() -> None:
+    blob = "https://github.com/PolicyEngine/microcosm/blob/"
+    blob += "29983852e5182266c9a4e565731920ea972fe695/"
+    tool = "tools/ci_test_plan.py"
+    cited = blob + tool
+    # A range can end where another starts. Tried only from a list's head, a
+    # reverse locator missed the one starting at the list's last number
+    # (``L2-3`` after ``L1-L2``), or found a later, shorter one.
+    for written in (
+        f"L1-L2-3 of {tool}",
+        f"L1 to L2 through 3 of {tool}",
+        f"lines 1-L2-3 in {tool}",
+        f"L1-L2, L3-L4-5 of {tool}",
+    ):
+        assert [
+            citation.file
+            for citation in in_repository_line_citations({"note": written})
+        ] == [tool], written
+    assert [
+        (citation.start, citation.end)
+        for citation in line_citations({"note": "L1-L2-L3 of x.py"})
+    ] == [(3, 16)]
+    # CommonMark (markdown-it-py 4.2) renders each Markdown link here, and
+    # HTML decodes each attribute, as a link to line 12 of the file.
+    for written in (
+        f"[a]({blob}tools/ci_test_plan\\.py#L12)",
+        f"[a]({blob}tools/ci\\_test\\_plan.py#L12)",
+        f"[a](<{cited}\\#L12>)",
+        f"[a]({cited}&#35;L12)",
+        f"[a]({cited}#&#76;12)",
+        f"[a]({blob}tools/ci_test_plan&#46;py#L12)",
+        f"[a]({cited}&#x23;L12)",
+        f"[a]({cited}&#0000035;L12)",
+        f"[a]({cited}&num;L12)",
+        f"[a]({blob}tools/ci_test_plan&period;py#L12)",
+        f"[a][r]\n\n[r]: {cited}&#35;L12",
+        f"[a]({cited.replace('github.com', 'github&#46;com')}#L12)",
+        f'<a href="{cited}&#35;L12">a</a>',
+        f"<a href='{cited}&#35L12'>a</a>",
+        f'<a href="{cited}&num;L12">a</a>',
+    ):
+        assert {
+            citation.file
+            for citation in in_repository_line_citations({"note": written})
+        } == {cited}, written
+    # The URL Standard deletes each ASCII tab and line break from a URL, so
+    # bun 1.3's ``URL`` reads each of these attributes as the same link.
+    for written in (
+        f'<a href="{blob}tools/ci_test_plan.p\ny#L12">a</a>',
+        f'<a href="{blob}tools/ci_test_plan.p&#10;y#L12">a</a>',
+        f'<a href="{cited}#L1&#13;\n2">a</a>',
+        f'<a href="ht\ttps://git\nhub.com/{cited.removeprefix("https://github.com/")}#L12">a</a>',
+    ):
+        assert {
+            citation.file
+            for citation in in_repository_line_citations({"note": written})
+        } == {cited}, written
+
+
+def test_a_string_is_read_again_with_its_markup_escapes_decoded() -> None:
+    def readings(text: str) -> list[str]:
+        return list(citations._readable_strings(text))
+
+    # Decoded in one pass, as CommonMark decodes: an escaped ``&`` starts no
+    # reference, and a decoded one starts no second.
+    assert readings("x\\&amp;y") == ["x\\&amp;y", "x&amp;y"]
+    assert readings("x&amp;#35;y") == ["x&amp;#35;y", "x&#35;y"]
+    # A backslash before anything but ASCII punctuation stays.
+    assert readings("x\\a\\é\\1") == ["x\\a\\é\\1"]
+    # HTML decodes a numeric reference without its ``;``.
+    assert readings("&#35L1") == ["&#35L1", "#L1"]
+    # A numeric reference is read past its leading zeros, and one past
+    # U+10FFFF is U+FFFD, however many digits it has: converting 5,000
+    # digits whole raises.
+    assert readings("&#" + "0" * 5_000 + "35;L1") == [
+        "&#" + "0" * 5_000 + "35;L1",
+        "#L1",
+    ]
+    for written in ("&#" + "9" * 5_000 + ";", "&#x" + "f" * 5_000 + ";", "&#x110000;"):
+        assert readings(written) == [written, "\ufffd"], written[:12]
+    # The escapes are decoded before a URL is read: ``%`` decoded from
+    # ``&#37;`` starts an escape the URL's path decodes.
+    url = "https://github.com/o/r/blob/a1b2c3d/x&#37;2Epy#L1"
+    assert readings(url)[-1] == "https://github.com/o/r/blob/a1b2c3d/x.py#L1"
+    # A tab or a line break, as written or decoded, is deleted in a reading
+    # of its own.
+    assert readings("a\tb\nc\r\nd") == ["a\tb\nc\r\nd", "abcd"]
+    assert readings("x&#10;y") == ["x&#10;y", "x\ny", "xy"]
+    # A string with nothing to decode is read as before.
+    for written, read in (
+        ("x.py:12", "x.py:12"),
+        ("a & b; c\\d", "a & b; c\\d"),
+        ("https://example.org/?a=1&b=2", "https://example.org/"),
+    ):
+        assert readings(written) == [read], written
+
+
+#: Each ASCII character's named character references (``&num;`` for ``#``),
+#: from the HTML standard's table, which CommonMark reads too.
+_NAMED_REFERENCES = {
+    char: tuple(
+        sorted(
+            name
+            for name, value in html5.items()
+            if value == char and name.endswith(";")
+        )
+    )
+    for char in string.printable
+}
+#: Markdown and HTML around a link destination, and whether a backslash
+#: escape is decoded there (Markdown) or not (HTML).
+_MARKUP = (
+    ("[a]({})", True),
+    ("[a](<{}>)", True),
+    ("[a][r]\n\n[r]: {}", True),
+    ("See [the plan]({} 'title').", True),
+    ('<a href="{}">a</a>', False),
+    ("<a href='{}'>a</a>", False),
+)
+
+
+def _escape_markup(
+    text: str,
+    chosen: dict[int, int],
+    backslash: bool,
+    zeros: int,
+    breaks: dict[int, str] | None = None,
+) -> str:
+    """``text`` with its characters at ``chosen`` written as Markdown or HTML
+    escape them: a backslash before ASCII punctuation (where ``backslash``), a
+    decimal reference with ``zeros`` leading zeros, a hexadecimal one, or a
+    named one, each chosen by its number, falling back to the next. Each of
+    ``breaks`` goes before the character at its index."""
+
+    def spell(char: str, kind: int) -> str:
+        for option in range(kind, kind + 4):
+            option %= 4
+            if option == 0 and backslash and char in string.punctuation:
+                return "\\" + char
+            if option == 1:
+                return f"&#{'0' * zeros}{ord(char)};"
+            if option == 2:
+                return f"&#x{ord(char):X};"
+            if option == 3 and _NAMED_REFERENCES.get(char):
+                names = _NAMED_REFERENCES[char]
+                return "&" + names[zeros % len(names)]
+        raise AssertionError(char)
+
+    return "".join(
+        (breaks or {}).get(index, "")
+        + (spell(char, chosen[index]) if index in chosen else char)
+        for index, char in enumerate(text)
+    )
+
+
+#: An ASCII tab or line break, as written or as an HTML reference.
+_URL_BREAK_SPELLINGS = ("\n", "\t", "\r\n", "&#10;", "&#x9;", "&NewLine;")
+
+
+@settings(max_examples=300, deadline=None)
+@given(
+    url=st.sampled_from(_THIS_REPOSITORY_URLS),
+    sha=_SHA,
+    path=st.sampled_from(_ROOTED_FILES),
+    fragment=st.sampled_from(("#L{a}", "#L{a}-L{b}")),
+    a=st.integers(1, 99_999),
+    b=st.integers(1, 99_999),
+    markup=st.sampled_from(_MARKUP),
+    chosen=st.dictionaries(
+        st.integers(0, 200), st.integers(0, 3), min_size=1, max_size=24
+    ),
+    zeros=st.integers(0, 3),
+    breaks=st.dictionaries(
+        st.integers(0, 200), st.sampled_from(_URL_BREAK_SPELLINGS), max_size=3
+    ),
+)
+def test_a_line_link_of_this_repository_is_refused_however_markup_escapes_it(
+    url: str,
+    sha: str,
+    path: str,
+    fragment: str,
+    a: int,
+    b: int,
+    markup: tuple[str, bool],
+    chosen: dict[int, int],
+    zeros: int,
+    breaks: dict[int, str],
+) -> None:
+    template, backslash = markup
+    link = f"{url}{sha}/{path}{fragment.format(a=a, b=b)}"
+    plain = {
+        citation.file
+        for citation in in_repository_line_citations({"note": template.format(link)})
+    }
+    assert plain
+    chosen = {index % len(link): kind for index, kind in chosen.items()}
+    # A URL in an HTML attribute may break anywhere: the URL Standard deletes
+    # its tabs and line breaks. A Markdown destination cannot hold one.
+    breaks = {index % len(link): spelled for index, spelled in breaks.items()}
+    escaped = template.format(
+        _escape_markup(link, chosen, backslash, zeros, None if backslash else breaks)
+    )
+    event(f"escapes: {min(len(chosen), 3)}")
+    event(f"breaks: {0 if backslash else min(len(breaks), 2)}")
+    assert plain <= {
+        citation.file for citation in in_repository_line_citations({"note": escaped})
+    }
+
+
 def test_a_long_string_is_scanned_in_linear_time() -> None:
     # Each of these once took time quadratic in its length: a run of path
     # characters was rescanned from each of its characters, and a user was
@@ -1705,7 +1955,8 @@ def test_a_long_string_is_scanned_in_linear_time() -> None:
     # Each of these took 4 to 28 seconds: a list of line numbers that failed
     # was retried once for each way to share its whitespace out (exponential
     # in its length), a failed locator once for each way to share a run of
-    # spaces or quotes, a reverse locator was tried from each number of a
+    # spaces or quotes, a failed range once for each way to share the spaces
+    # after its dash, a reverse locator was tried from each number of a
     # failed list, and a long host label was encoded in Punycode (quadratic).
     # The exponential ones come first, so a regression fails before the
     # slower ones run.
@@ -1717,8 +1968,24 @@ def test_a_long_string_is_scanned_in_linear_time() -> None:
         "x.py" + " " * 1_024 + "x",
         "x.py" + "'" * 16_000 + "L1x",
         "line " + " " * 32_768 + "1x in x.py",
+        "lines L1-" + " " * 32_768 + "2x in x.py",
+        "x.py line" + " " * 65_536 + "1x",
+        "lines L1 to" + " " * 32_768 + "2x in x.py",
         "L1 and " * 8_000,
         "https://" + "".join(map(chr, range(0x4000, 0x4000 + 8_000))) + "/a.py#L12",
+    ):
+        line_citations(text)
+        unrecognised_line_locators(text)
+        assert time.process_time() - started < 2, text[:24]
+    # Since round 9: ranges that each end where the next starts, a list read
+    # again from its last number, and runs of what a markup escape starts with.
+    for text in (
+        "L1-" * 16_000,
+        "L1-L2-L3" + ", 4" * 8_000 + " x",
+        "&#" + "0" * 100_000 + "35;",
+        "&#x" * 30_000,
+        "\\" * 100_000,
+        "&a" * 50_000,
     ):
         line_citations(text)
         unrecognised_line_locators(text)
@@ -1763,6 +2030,12 @@ _LOCATOR_PIECES = (
     "L1 and L2 in a/b.py",
     "L1, ",
     " and ",
+    "L1-L2",
+    "-3",
+    "-L4",
+    " to L2",
+    " through 3",
+    "L1-L2-3 of x.py",
 )
 
 
@@ -1773,6 +2046,10 @@ _LOCATOR_PIECES = (
 @example(text="L1 and L2 x L3 of y.py")
 @example(text="lines 1, L2 of x.py")
 @example(text="L1 and L2 and L3 in L4 of x.py")
+@example(text="L1-L2-3 of tools/ci_test_plan.py")
+@example(text="L1 to L2 through 3 of x.py")
+@example(text="L1-L2-L3 of x.py")
+@example(text="L1-L2, L3-L4-5 of x.py")
 def test_source_names_are_found_where_finditer_finds_them(text: str) -> None:
     for name, pattern in (
         ("forward", citations._FORWARD_LOCATOR),
@@ -1868,6 +2145,10 @@ _LIST_PIECES = (
     "x.py (ll. 6–7)",
     "lines 4 of y.py",
     "L1 and L2 in a/b.py",
+    "L1-L2",
+    "-3",
+    "-L4",
+    "L1-L2-3 of x.py",
 )
 
 
@@ -1879,6 +2160,8 @@ _LIST_PIECES = (
 @example(text="lines  '  12 ,  and  13 ' of x.py")
 @example(text="x.py ''L1 and L2")
 @example(text="x.py: lines 1 through  2, AND 3")
+@example(text="L1-L2-3 of x.py")
+@example(text="L1 to L2 through 3 of x.py")
 def test_the_locators_match_as_before_their_whitespace_was_read_possessively(
     text: str,
 ) -> None:
@@ -2053,9 +2336,14 @@ def test_a_url_is_read_as_the_url_standard_reads_it(
     written: str, authority: str | None
 ) -> None:
     reading = written if authority is None else f"{authority}/o/r/blob/a1b2c3d/x.py#L12"
-    assert [citation.text for citation in line_citations({"note": written})] == [
-        reading
-    ]
+    # The URL Standard's reading comes first. To Markdown ``\\`` is an escaped
+    # ``\``, so a decoded reading may follow.
+    assert next(citations._readable_strings(written)) == reading
+    assert [
+        citation.text
+        for citation in line_citations({"note": written})
+        if citation.text == reading
+    ] == [reading]
 
 
 def test_a_trailing_dot_is_dropped_from_a_host() -> None:
