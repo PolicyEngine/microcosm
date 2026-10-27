@@ -773,7 +773,7 @@ def test_a_path_pin_whose_commit_is_no_sha_pins_nothing(
     a=st.integers(1, 99_999),
     b=st.integers(1, 99_999),
     middle=_CLAUSE_PROSE,
-    stray_first=st.booleans(),
+    place=st.sampled_from(("gap", "clause_start", "clause_end")),
 )
 def test_a_commit_in_no_pin_spelling_beside_a_citation_is_refused(
     stem: str,
@@ -786,13 +786,16 @@ def test_a_commit_in_no_pin_spelling_beside_a_citation_is_refused(
     a: int,
     b: int,
     middle: str,
-    stray_first: bool,
+    place: str,
 ) -> None:
     file = f"{stem}.{suffix}"
     citation = locator.format(file=file, a=a, b=b)
     named = pin.format(sha=sha)
-    if stray_first:
-        # Between the commit the citation binds to and the citation.
+    if place == "gap":
+        # Between the commit the citation binds to and the citation's clause.
+        text = f"{named} {word}{stray}; {middle} {citation}"
+    elif place == "clause_start":
+        # In the citation's own clause, before it.
         text = f"{named}; {word}{stray} {middle} {citation}"
     else:
         # In the citation's own clause, after it.
