@@ -507,14 +507,22 @@ def _escape(text: str, chosen: set[int], upper: bool, keep: str = "") -> str:
     )
 
 
-def _spell_host(host: str, wide: set[int], chosen: set[int], upper: bool) -> str:
-    """``host`` with its characters at ``wide`` written full-width (``ｇ``)
-    and those at ``chosen`` as ``%`` escapes of their UTF-8 bytes."""
+#: The full stops a host may be written with: full-width, ideographic and
+#: half-width ideographic. The standard reads each as ``.`` (bun 1.3).
+_FULL_STOPS = ("\uff0e", "\u3002", "\uff61")
+
+
+def _spell_host(
+    host: str, wide: set[int], chosen: set[int], upper: bool, stop: str
+) -> str:
+    """``host`` with its characters at ``wide`` written full-width (``ｇ``),
+    a dot there as ``stop``, and those at ``chosen`` as ``%`` escapes of
+    their UTF-8 bytes."""
 
     spelled = []
     for index, char in enumerate(host):
         if index in wide:
-            char = chr(ord(char) + 0xFEE0)
+            char = stop if char == "." else chr(ord(char) + 0xFEE0)
         if index in chosen:
             char = "".join(
                 f"%{byte:02X}" if upper else f"%{byte:02x}" for byte in char.encode()
@@ -1369,6 +1377,7 @@ def test_the_round_three_review_counterexample_is_refused() -> None:
     leads=st.sampled_from(_URL_LEADS),
     authority=st.sampled_from(_AUTHORITIES),
     wide=st.sets(st.integers(0, 24), max_size=6),
+    stop=st.sampled_from(_FULL_STOPS),
     escaped_host=st.sets(st.integers(0, 24), max_size=6),
     dot=st.booleans(),
     backslashed=st.sets(st.integers(0, 160), max_size=6),
@@ -1390,6 +1399,7 @@ def test_a_url_of_this_repository_is_refused_however_github_lets_it_be_written(
     leads: tuple[str, str],
     authority: str,
     wide: set[int],
+    stop: str,
     escaped_host: set[int],
     dot: bool,
     backslashed: set[int],
@@ -1413,6 +1423,7 @@ def test_a_url_of_this_repository_is_refused_however_github_lets_it_be_written(
             {index % len(host) for index in wide},
             {index % len(host) for index in escaped_host},
             upper,
+            stop,
         )
     # GitHub 404s a ``%2F`` before the ref; a browser reads ``\`` as ``/``.
     route_and_path = _escape(route, chosen, upper, keep="/") + _escape(
@@ -1791,6 +1802,9 @@ _WHATWG_READINGS = (
     ("https:github.com/o/r/blob/a1b2c3d/x.py#L12", "https://github.com"),
     ("HTTP:///github.com/o/r/blob/a1b2c3d/x.py?plain=1#L12", "http://github.com"),
     ("https://ｇithub．com/o/r/blob/a1b2c3d/x.py#L12", "https://github.com"),
+    ("https://github\u3002com/o/r/blob/a1b2c3d/x.py#L12", "https://github.com"),
+    ("https://github\uff61com/o/r/blob/a1b2c3d/x.py#L12", "https://github.com"),
+    ("//github%E3%80%82com/o/r/blob/a1b2c3d/x.py#L12", "//github.com"),
     ("https://%EF%BD%87ithub.com/o/r/blob/a1b2c3d/x.py#L12", "https://github.com"),
     ("https://gi%C2%ADthub.com/o/r/blob/a1b2c3d/x.py#L12", "https://github.com"),
     ("https://github.c\u2092m/o/r/blob/a1b2c3d/x.py#L12", "https://github.com"),
@@ -1821,10 +1835,11 @@ def test_a_url_is_read_as_the_url_standard_reads_it(
 def test_a_trailing_dot_is_dropped_from_a_host() -> None:
     # The standard keeps it, but DNS ignores it and GitHub redirects
     # ``github.com.`` to ``github.com`` (HTTP 301 on 2026-10-27).
-    written = "https://github.com./o/r/blob/a1b2c3d/x.py#L12"
-    assert [citation.text for citation in line_citations({"note": written})] == [
-        "https://github.com/o/r/blob/a1b2c3d/x.py#L12"
-    ]
+    for stop in (".", *_FULL_STOPS):
+        written = f"https://github.com{stop}/o/r/blob/a1b2c3d/x.py#L12"
+        assert [citation.text for citation in line_citations({"note": written})] == [
+            "https://github.com/o/r/blob/a1b2c3d/x.py#L12"
+        ], written
 
 
 def test_a_break_inside_a_citation_does_not_end_its_clause() -> None:
