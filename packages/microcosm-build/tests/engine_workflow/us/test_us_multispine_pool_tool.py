@@ -347,7 +347,7 @@ def test_constants_adapter_equals_live_constants_and_stays_out_of_identities(
             # microcosm#1376's puma_county_vintage draw module,
             # microcosm#1380's self-employment post-transfer contract, and
             # the source-stage citation rewrites that pin us-data at a commit.
-            "spec_sha256": "ca232744664b778d2da7f23802b77db05fae294f363c92527d041b3049548863",
+            "spec_sha256": "b5c87a41b665901bdbd08a9cefd816b9c93b26c1928e841f99435ee895f24278",
         },
     }
 

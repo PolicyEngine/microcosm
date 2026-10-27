@@ -248,7 +248,8 @@ _ESI_ORIGIN = (
     "etl_national_targets carrying the row), removed at 9f320d2c ('Remove "
     "survey-based national calibration targets', PR #831). The input itself "
     "was imputed by the retired eCPS (MEPS-IC priors over ASEC NOW_* "
-    "policyholder fields, archived 42ed5d45 cps.py L197-271/L1575-1581)."
+    "policyholder fields, archived commit 42ed5d45 datasets/cps/cps.py lines "
+    "197-271 and 1575-1581)."
 )
 
 _ESI_NHE_ORIGIN = (
