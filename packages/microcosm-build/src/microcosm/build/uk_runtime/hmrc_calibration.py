@@ -446,12 +446,15 @@ def _uk_single_year_dataset(frame: Frame) -> Any:
         raise ImportError(
             "HMRC target materialization requires policyengine-uk."
         ) from exc
+    from microcosm.frame.adapters.policyengine_uk import UK_ISA_INCOME_CONTRACT
+
     tables = engine_tables(frame)
     return UKSingleYearDataset(
         person=tables["person"],
         benunit=tables["benunit"],
         household=tables["household"],
         fiscal_year=int(uk_time_period(frame)),
+        isa_income_contract=dict(UK_ISA_INCOME_CONTRACT),
     )
 
 

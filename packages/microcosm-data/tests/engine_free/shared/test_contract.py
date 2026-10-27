@@ -217,13 +217,13 @@ def _trusted_terminal_gate_signing_key(monkeypatch) -> None:
 UK_GATE_BATTERY_PRODUCER = "microcosm.build.gate_battery"
 UK_GATE_BATTERY_SIGNING_KEY_ENV = "MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY"
 UK_GATE_BATTERY_POLICY_SHA256 = (
-    "2501837a968eb1711a7f81d9807f163ac508aff22a724b3a910f35767d4caf3d"
+    "5f8a65be07c1df68e6beeab1a795a660940a626f6fe12b8cd282b236a9d41d03"
 )
 UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "bfb0af58fd3ece15102875a18c4cb4e991ae16bf0f1dbffb7dd765dcf0ff9073"
+    "46e58e85a771c10101ea79905a62077fd9d68c408dc3ecf5c706b6af16f0cb4a"
 )
 UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "723bc27b25335ad3220647e78ec3cc4b1359cffa4407a946b1a9c1f2231e4a0f"
+    "fdb46cc0f42398589c0fbdfdccdb288a1edd6c0b941c26ff2e282128a4037a60"
 )
 UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256 = (
     "6a179222c6b6058ad9caacfd347f7bdb8cb98a62237b50d1fc1136df09337251"
@@ -354,6 +354,11 @@ UK_GATE_BATTERY_ENTRIES = {
         None,
     ),
     "uk_stage_uc_legacy_closure_take_up_contract": (
+        "stage_health",
+        "transferred",
+        None,
+    ),
+    "uk_stage_frs_person_draws_apprentices": (
         "stage_health",
         "transferred",
         None,
@@ -1429,6 +1434,7 @@ def _gate_battery_payload(
         "uk_stage_regional_home_values_ranking": "regional_home_values",
         "uk_stage_property_purchases_fit": "property_purchases",
         "uk_stage_uc_legacy_closure_take_up_contract": "uc_legacy_closure_take_up",
+        "uk_stage_frs_person_draws_apprentices": "frs_person_draws",
         "uk_stage_age_tail_targets": "age_tail",
         "uk_stage_frs_relationships_composition": "frs_relationships",
     }

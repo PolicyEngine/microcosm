@@ -40,10 +40,8 @@ from microcosm.build.logbook_adoption import (
     role_pins_digest,
     write_error_receipt,
 )
+from microcosm.build.uk_runtime.derived_facts import uk_derived_fact_rows
 from microcosm.build.uk_runtime.frs_release import load_uk_frs_release
-from microcosm.build.uk_runtime.high_value_homes import (
-    load_uk_high_value_home_stock_facts,
-)
 from microcosm.build.uk_runtime.hmrc_uprating import assert_installed_engine_is_pinned
 from microcosm.build.uk_runtime.ledger_targets import (
     compile_uk_local_target_registry,
@@ -267,9 +265,10 @@ def _run(args: argparse.Namespace, state: AttemptState) -> dict[str, object]:
     # full build, which refuses an unresolved calibration-year reference, this
     # producer keeps the partial registry and leaves the verdict to the gates.
     ledger_unsupported = {}
-    # The high-value homes family binds Microcosm-derived facts beside the feed:
-    # its local cells (microcosm#1240) and its region rows (microcosm#1301).
-    facts = (*artifact.facts, *load_uk_high_value_home_stock_facts().rows)
+    # Microcosm-derived facts compile beside the feed: the high-value homes
+    # local cells (microcosm#1240) and region rows (microcosm#1301), and DESNZ's
+    # energy split onto constituencies (microcosm#1095).
+    facts = (*artifact.facts, *uk_derived_fact_rows())
     for period in _LEDGER_COMPILE_PARITY_PERIODS:
         compilation = compile_uk_target_registry(facts, target_period=period)
         ledger_registries[period] = compilation.registry

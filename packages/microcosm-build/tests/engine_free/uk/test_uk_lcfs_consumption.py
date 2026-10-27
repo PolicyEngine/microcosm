@@ -4014,7 +4014,7 @@ def test_stage_tops_up_the_gambling_keys_when_declared(monkeypatch) -> None:
             "gambling_participation",
             {
                 "maximum_stratum_shortfall": 0.01,
-                "amount_scale_bounds": [0.5, 2.0],
+                "amount_scale_bounds": [0.5, 2.5],
                 "required_support_band": "30+",
             },
         ),

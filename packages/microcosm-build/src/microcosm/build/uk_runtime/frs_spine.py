@@ -952,6 +952,12 @@ def _add_person_income(
     # SPPADJ, "SPP amount": the weekly statutory paternity pay an adult gets
     # for their main job (FRS 2024-25 adult table, beside SSPADJ and SMPADJ).
     # A tab without it refuses, rather than set nobody's (uk-data#575).
+    # Annualised at 52 weeks, as the other statutory payments are, although
+    # SPP lasts at most two weeks: the adults paid at interview stand for
+    # everyone paid during the year, so the yearly total is right on average,
+    # while each recipient's year carries 52 weeks of it. No bound row reads it
+    # directly; it reaches Class 1 NI, the means tests and HBAI income
+    # (María's ruling of 2026-10-25, microcosm#1095; for her signature).
     if "sppadj" not in person.columns:
         raise KeyError(
             "The FRS adult tab has no SPPADJ column, so statutory paternity pay "
@@ -1333,12 +1339,16 @@ def _add_household_columns(
     household: pd.DataFrame,
     frs: Mapping[str, pd.DataFrame],
 ) -> None:
-    pe_household["region"] = _map_codes(household, "gvtregno", REGION_MAP, "UNKNOWN")
-    pe_household["tenure_type"] = _map_codes(
-        household, "ptentyp2", TENURE_MAP, "RENT_PRIVATELY"
+    pe_household["region"] = _map_dictionary_codes(
+        household, "gvtregno", REGION_MAP, blank="UNKNOWN"
     )
-    pe_household["accommodation_type"] = _map_codes(
-        household, "typeacc", ACCOMMODATION_MAP, "HOUSE_DETACHED"
+    pe_household["tenure_type"] = _map_dictionary_codes(
+        household, "ptentyp2", TENURE_MAP, blank="RENT_PRIVATELY"
+    )
+    # Some FRS 2024-25 households leave TYPEACC blank; they keep the
+    # detached-house default, as uk-data#636 maps them.
+    pe_household["accommodation_type"] = _map_dictionary_codes(
+        household, "typeacc", ACCOMMODATION_MAP, blank="HOUSE_DETACHED"
     )
     pe_household["num_bedrooms"] = _number(household, "bedroom6")
     pe_household["council_tax_reported"] = _positive(household, "ctannual")
@@ -1438,7 +1448,7 @@ def frs_council_tax_band(household: pd.DataFrame) -> pd.Series:
     band = _map_codes(
         household, "ctband", COUNCIL_TAX_BAND_MAP, UK_COUNCIL_TAX_PLACEHOLDER_BAND
     )
-    region = _map_codes(household, "gvtregno", REGION_MAP, "UNKNOWN")
+    region = _map_dictionary_codes(household, "gvtregno", REGION_MAP, blank="UNKNOWN")
     return band.mask(region == "NORTHERN_IRELAND", UK_COUNCIL_TAX_PLACEHOLDER_BAND)
 
 
@@ -1450,6 +1460,34 @@ def _map_codes(
 ) -> pd.Series:
     values = _number(frame, column).astype("int64", errors="ignore")
     return values.map(mapping).fillna(default).astype(object)
+
+
+def _map_dictionary_codes(
+    frame: pd.DataFrame,
+    column: str,
+    mapping: Mapping[int, str],
+    *,
+    blank: str,
+) -> pd.Series:
+    """Map an FRS code through its data-dictionary table.
+
+    A blank or non-numeric value takes ``blank``, as in ``_map_codes``. A
+    numeric code outside the table is a vintage defect and refuses the build,
+    naming the FRS variable, where ``_map_codes`` would give it the default
+    (uk-data#636).
+    """
+
+    codes = _raw_number(frame, column)
+    unknown = sorted(set(codes.dropna()) - set(mapping))
+    if unknown:
+        listed = ", ".join(f"{code:g}" for code in unknown)
+        raise ValueError(
+            f"FRS {column.upper()} carries code(s) {listed} outside the data "
+            "dictionary."
+        )
+    return codes.map(
+        lambda code: blank if pd.isna(code) else mapping[int(code)]
+    ).astype(object)
 
 
 def frs_care_hours(person: pd.DataFrame) -> pd.Series:

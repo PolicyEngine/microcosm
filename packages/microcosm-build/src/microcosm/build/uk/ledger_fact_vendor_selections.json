@@ -1084,6 +1084,33 @@
       ]
     },
     {
+      "resource": "ons_mid2025_single_year_age_by_sex.json",
+      "purpose": "ONS mid-2025 UK resident population by single year of age (0 to 89 and 90 and over) and sex (MYE2, the edition of 1 October 2026), usual residents including communal establishments. Report-only (microcosm#1095, uk-data#600's age check): uk_runtime.single_year_ages reports a built file's persons by single year of age against it; no stage draws from it and no target binds it. The SPI stage's mid-2023 ages stay in ons_single_year_age_populations.json.",
+      "consumers": [
+        "uk_runtime.single_year_ages"
+      ],
+      "planned_consumers": [],
+      "selections": [
+        {
+          "label": "mye2_uk_single_year_of_age_by_sex_mid2025",
+          "selector": {
+            "source_name": "ons",
+            "source_concept": "ons.mid_year_population_estimate",
+            "geography_id": "K02000001",
+            "period_type": "calendar_year",
+            "period_value": [
+              "2025"
+            ],
+            "dimensions": [
+              "age",
+              "sex"
+            ]
+          },
+          "expected_row_count": 182
+        }
+      ]
+    },
+    {
       "resource": "ashe_employer_pension_contribution_rates.json",
       "purpose": "ONS ASHE 2024 workplace pension tables: the share of jobs in each employer contribution band (full pay) by pension type and sector, all industries (Table P10), and jobs by pension type and sector (Table P2). Consumed by the FRS HMRC spine-leaves stage, which draws each employer-scheme member's employer contribution rate for their scheme type and sector (microcosm#1069 c9, R6).",
       "consumers": [

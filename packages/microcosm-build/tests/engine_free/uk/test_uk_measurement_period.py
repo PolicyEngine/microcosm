@@ -35,6 +35,7 @@ from microcosm.build.uk_runtime.hmrc_income import (
 from microcosm.build.uk_runtime.ledger_targets import UKFrameTargetAdapter
 from microcosm.build.uk_runtime.measure_simulation import (
     UK_SELF_EMPLOYMENT_INCOME_AFTER_LOSS_RELIEF,
+    UK_TOTAL_INCOME_AFTER_LOSS_RELIEF,
     UKMeasureResolver,
     compute_uk_measure_input,
 )
@@ -341,6 +342,98 @@ def test_the_profit_after_loss_relief_reads_the_frame_only_at_its_period(
     np.testing.assert_allclose(values, expected)
 
 
+@pytest.mark.parametrize("year", [2024, 2025])
+def test_the_named_loss_relief_terms_keep_the_resolvers_floats(year):
+    """The terms give the floats the resolver gave by name (microcosm#1095).
+
+    Before the terms were declared, the profit after the relief read the
+    stored columns at the frame's period and the engine's components at any
+    other, and total income after the relief always read the engine's.
+    """
+
+    frame = PeriodFrameStub(time_period="2024")
+    person = frame.table("person")
+    # Amounts no float32 holds exactly, so a read from the wrong source shows.
+    person["self_employment_income"] = [10_700.37, 2_140.11, 5_350.93]
+    person[LOSS_RELIEF_COLUMN] = [3_000.29, 5_000.0, 0.0]
+    profit = np.array([11_235.389, 2_247.1155, 5_618.4765])
+    relief = np.array([3_000.29, 5_000.0, 0.0])
+    total = np.array([31_235.389, 9_247.1155, 5_618.4765])
+    sim = SimulationStub(
+        {
+            "self_employment_income": ("person", profit),
+            LOSS_RELIEF_COLUMN: ("person", relief),
+            "total_income": ("person", total),
+        }
+    )
+
+    after, after_route = compute_uk_measure_input(
+        frame, sim, "person", UK_SELF_EMPLOYMENT_INCOME_AFTER_LOSS_RELIEF, year
+    )
+    banded, banded_route = compute_uk_measure_input(
+        frame, sim, "person", UK_TOTAL_INCOME_AFTER_LOSS_RELIEF, year
+    )
+
+    def former_after(stored_profit, stored_relief):
+        return np.maximum(
+            np.asarray(stored_profit, dtype=float)
+            - np.asarray(stored_relief, dtype=float),
+            0.0,
+        )
+
+    if year == 2024:
+        expected_after = former_after(
+            person["self_employment_income"].to_numpy(dtype=float),
+            person[LOSS_RELIEF_COLUMN].to_numpy(dtype=float),
+        )
+        assert after_route == "frame_columns:self_employment_income_after_loss_relief"
+    else:
+        expected_after = former_after(profit, relief)
+        assert after_route == (
+            "engine_components:self_employment_income_after_loss_relief"
+        )
+    assert banded_route == "engine_components:total_income_after_loss_relief"
+    assert np.array_equal(after, expected_after)
+    assert np.array_equal(
+        banded,
+        total.astype(float) - profit.astype(float) + former_after(profit, relief),
+    )
+    # The annual simulation's inputs are not the frame's columns, so the
+    # terms read the engine there at every period.
+    _, route = compute_uk_measure_input(
+        frame,
+        sim,
+        "person",
+        UK_SELF_EMPLOYMENT_INCOME_AFTER_LOSS_RELIEF,
+        year,
+        frame_columns=False,
+    )
+    assert route.startswith("engine_components:")
+
+
+def test_the_child_benefit_children_count_each_units_children():
+    # HMRC bands its families in payment by these children (microcosm#1095).
+    frame = PeriodFrameStub(time_period="2024")
+    sim = SimulationStub(
+        {
+            "is_child_or_qualifying_young_person_for_child_benefit": (
+                "person",
+                np.array([True, True, False]),
+            )
+        }
+    )
+    name = measure_simulation.UK_CHILD_BENEFIT_CHILD_COUNT
+
+    values, route = compute_uk_measure_input(frame, sim, "benunit", name, 2025)
+
+    assert values.tolist() == [2.0, 0.0]
+    assert route == (
+        "engine_members:is_child_or_qualifying_young_person_for_child_benefit"
+    )
+    with pytest.raises(KeyError, match="benunit-only"):
+        compute_uk_measure_input(frame, sim, "person", name, 2025)
+
+
 def test_a_frame_without_a_period_label_keeps_the_frame_route():
     frame = PeriodFrameStub()
     frame.metadata = {}
@@ -367,6 +460,10 @@ REVIEWED_PLAIN_COLUMN_POPULATION_VARIABLES = frozenset(
         "attends_private_school",
         "benefit_cap_reduction",
         "benunit_tenure_type",
+        # Engine-computed at the calibration period: the Child Benefit paid and
+        # the children it is paid for (microcosm#1095).
+        "child_benefit",
+        "child_benefit_child_count",
         "council_tax_band",
         # Engine-computed from the household's adults (pe-uk#1864; microcosm#953).
         "council_tax_discount_rate",
@@ -402,7 +499,10 @@ REVIEWED_PLAIN_COLUMN_POPULATION_VARIABLES = frozenset(
         "region",
         "relation_type",
         "savings_credit",
-        "savings_interest_income",
+        # The stored gross interest less its ISA part, read at the frame by the
+        # resolver; a sign filter, so its sign holds under uprating
+        # (microcosm#1095).
+        "savings_interest_income_outside_isas",
         "self_employment_income_after_loss_relief",
         "state_pension",
         "state_pension_type",

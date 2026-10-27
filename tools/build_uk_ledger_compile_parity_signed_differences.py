@@ -11,9 +11,7 @@ from pathlib import Path
 import numpy as np
 
 from microcosm.build.gates import ledger_compile_parity_signed_differences
-from microcosm.build.uk_runtime.high_value_homes import (
-    load_uk_high_value_home_stock_facts,
-)
+from microcosm.build.uk_runtime.derived_facts import uk_derived_fact_rows
 from microcosm.build.uk_runtime.ledger_targets import (
     LOCAL_REGISTRY_PARITY_FIXTURE_RESOURCE,
     align_uk_local_registry_parity_fixture,
@@ -590,6 +588,19 @@ _PRIVATE_RENT_BRMA_LEDGER_ONLY_RATIONALE = (
     "BRMA's private renters."
 )
 
+#: microcosm#1095: DESNZ publishes no constituency cut, so a seat's domestic
+#: energy cell is Microcosm's split of its authorities' totals.
+_DESNZ_SEAT_SPLIT_LEDGER_ONLY_RATIONALE = (
+    "ledger_only by construction: DESNZ publishes no constituency cut, so the "
+    "cell is Microcosm's split of its authorities' published totals by DESNZ's "
+    "LSOA and data zone figures for the same year "
+    "(uk/desnz_constituency_energy_facts.json, microcosm#1095), compiled beside "
+    "the Chronicle feed; the incumbent fits no domestic energy rows, so it "
+    "carries no row to compare."
+)
+#: GSS prefixes of Great Britain's July 2024 constituencies.
+_GB_CONSTITUENCY_PREFIXES = ("E14", "W07", "S14")
+
 _LEDGER_ONLY_RATIONALE = (
     "Coverage the incumbent lacks: our side compiles a published per-area fact "
     "the incumbent's surface NaN-masks or never carries (for example Northern "
@@ -1028,6 +1039,12 @@ def _add_local_signed_rationale_notes(report: dict[str, object]) -> None:
             row["reason"] = _DERIVED_STOCK_LEDGER_ONLY_RATIONALE
         elif kind == "ledger_only" and metric == "rent/private_rent_brma":
             row["reason"] = _PRIVATE_RENT_BRMA_LEDGER_ONLY_RATIONALE
+        elif (
+            kind == "ledger_only"
+            and metric.startswith("energy/")
+            and area.startswith(_GB_CONSTITUENCY_PREFIXES)
+        ):
+            row["reason"] = _DESNZ_SEAT_SPLIT_LEDGER_ONLY_RATIONALE
         elif kind == "ledger_only":
             row["reason"] = _LEDGER_ONLY_RATIONALE
 
@@ -1037,12 +1054,12 @@ def _compile_for_receipt(spec: ParityReceiptSpec, facts: list[dict]):
         # The high-value homes region rows (microcosm#1301) select the
         # derived facts too; the national compile carries every reference.
         return compile_uk_target_registry(
-            (*facts, *load_uk_high_value_home_stock_facts().rows),
+            (*facts, *uk_derived_fact_rows()),
             target_period=spec.target_period,
         )
     if spec.surface == "local":
         return compile_uk_local_target_registry(
-            (*facts, *load_uk_high_value_home_stock_facts().rows),
+            (*facts, *uk_derived_fact_rows()),
             target_period=spec.target_period,
             crosswalk=_load_crosswalk(),
         )

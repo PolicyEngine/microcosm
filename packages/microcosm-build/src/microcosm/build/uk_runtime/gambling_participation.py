@@ -81,9 +81,12 @@ UK_GAMBLING_PROPENSITY_SETTINGS = (
     "l2_regularization",
     "validation_fraction",
 )
-#: The fewest distinct source households a receipt cell may rest on, and the
-#: fewest donor households a key's fits may learn from (CD171 section 5.2.1).
+#: The fewest distinct source households a receipt cell may rest on (CD171
+#: section 5.2.1).
 SMALL_CELL = 10
+#: The fewest donor households on each side of a key the propensity fit
+#: needs: its held-out validation split is stratified by the key.
+_FIT_MINIMUM = 2
 
 
 @dataclass(frozen=True)
@@ -663,11 +666,15 @@ def top_up_gambling_participation(
         drawn = np.asarray(keys[key], dtype=float)
         donor_stakes = np.asarray(donor_keys[key], dtype=float)
         played = donor_stakes > 0
-        if not SMALL_CELL <= int(played.sum()) <= len(played) - SMALL_CELL:
+        # Fewer than ten donor households on a side only flags: the receipt
+        # bands the fits' donor support and withholds what rests on them, and
+        # a small-cell rule never stops a build (María's ruling of 2026-10-26).
+        # The fit itself needs two on each side.
+        if not _FIT_MINIMUM <= int(played.sum()) <= len(played) - _FIT_MINIMUM:
             raise ValueError(
                 f"{TOP_UP_GAMBLING_PARTICIPATION_KIND}: the donor must record {key} "
-                f"stakes on {SMALL_CELL} or more households and leave {SMALL_CELL} "
-                "or more without, to fit and report its share."
+                f"stakes on {_FIT_MINIMUM} or more households and leave "
+                f"{_FIT_MINIMUM} or more without, to fit its share."
             )
         chance = {
             window: household_participation(
@@ -739,11 +746,12 @@ def top_up_gambling_participation(
             if seen.any()
             else np.average(donor_stakes[played], weights=donor_weight[played])
         )
-        scale = (
-            float(anchor / np.average(draws[regular], weights=weight[regular]))
+        added_mean = (
+            float(np.average(draws[regular], weights=weight[regular]))
             if regular.any()
-            else 1.0
+            else None
         )
+        scale = float(anchor / added_mean) if added_mean is not None else 1.0
         topped = drawn.copy()
         topped[regular] = scale * draws[regular]
         topped[occasional] = share * scale * draws[occasional]
@@ -783,6 +791,21 @@ def top_up_gambling_participation(
                     / stakes,
                 },
                 "amount_scale": scale,
+                # The scale's terms, so a moved scale shows which side moved
+                # (Vahid's review of #1400, round 3): the anchor, the added
+                # regular players' drawn mean, and the stake model's drawn
+                # mean for the households the diary saw, which separates a
+                # level gap between the two draws from the walk's selection.
+                "amount_scale_terms": {
+                    "anchor": "seen_households" if seen.any() else "donor_players",
+                    "anchor_mean_stake": float(anchor),
+                    "added_regular_drawn_mean_stake": added_mean,
+                    "seen_drawn_mean_stake": (
+                        float(np.average(draws[seen], weights=weight[seen]))
+                        if seen.any()
+                        else None
+                    ),
+                },
             }
         receipt["keys"][key] = {
             **entry,

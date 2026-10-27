@@ -1,12 +1,12 @@
 {
   "source_fact_feed": "chronicle-uk-272c987-consumer-facts",
   "target_period": 2025,
-  "candidate_count": 1363,
-  "contract_target_count": 381,
-  "active_reference_count": 1341,
+  "candidate_count": 1368,
+  "contract_target_count": 386,
+  "active_reference_count": 1347,
   "status_counts": {
-    "active": 1341,
-    "no_fact_at_or_before_period": 5,
+    "active": 1347,
+    "no_fact_at_or_before_period": 4,
     "signed_excluded": 17
   },
   "geography_pins": {
@@ -72,7 +72,7 @@
     },
     "obr.domestic_rates": {
       "geography_level": "country",
-      "geography_id": "N92000002"
+      "geography_id": "K02000001"
     },
     "obr.esa": {
       "geography_level": "country",
@@ -4491,6 +4491,26 @@
     "mhclg.council_tax_stock.single_adult_discount": {
       "geography_level": "country",
       "geography_id": "E92000001"
+    },
+    "hmrc.child_benefit.families_in_payment.children_1": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "hmrc.child_benefit.families_in_payment.children_2": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "hmrc.child_benefit.families_in_payment.children_3": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "hmrc.child_benefit.families_in_payment.children_4": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "hmrc.child_benefit.families_in_payment.children_5_plus": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
     }
   },
   "genuine_sum_residue": [
@@ -4668,6 +4688,7 @@
     "ons.population.scotland_babies_under_1",
     "ons.population.scotland_children_under_16",
     "ons.population.uk_total",
+    "ons.savings_interest_income",
     "slc.repayments.england_plan_1",
     "slc.repayments.england_plan_2",
     "slc.repayments.england_plan_5",
@@ -5134,7 +5155,7 @@
       "from": "2023",
       "to": "2025",
       "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
-      "factor": "1.08262675352428",
+      "factor": "1.08814741895929",
       "value_before_uprating": "6870000000.0"
     },
     {
@@ -5142,7 +5163,7 @@
       "from": "2023",
       "to": "2025",
       "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
-      "factor": "1.08262675352428",
+      "factor": "1.08814741895929",
       "value_before_uprating": "11100000000.0"
     },
     {
@@ -5150,7 +5171,7 @@
       "from": "2023",
       "to": "2025",
       "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
-      "factor": "1.08262675352428",
+      "factor": "1.08814741895929",
       "value_before_uprating": "175000000.0"
     },
     {
@@ -5158,7 +5179,7 @@
       "from": "2023",
       "to": "2025",
       "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
-      "factor": "1.08262675352428",
+      "factor": "1.08814741895929",
       "value_before_uprating": "855000000.0"
     },
     {
@@ -5166,7 +5187,7 @@
       "from": "2023",
       "to": "2025",
       "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
-      "factor": "1.08262675352428",
+      "factor": "1.08814741895929",
       "value_before_uprating": "3450000000.0"
     },
     {
@@ -5174,7 +5195,7 @@
       "from": "2023",
       "to": "2025",
       "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
-      "factor": "1.08262675352428",
+      "factor": "1.08814741895929",
       "value_before_uprating": "3330000000.0"
     },
     {
@@ -5182,7 +5203,7 @@
       "from": "2023",
       "to": "2025",
       "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
-      "factor": "1.08262675352428",
+      "factor": "1.08814741895929",
       "value_before_uprating": "3700000000.0"
     },
     {
@@ -5190,7 +5211,7 @@
       "from": "2023",
       "to": "2025",
       "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
-      "factor": "1.08262675352428",
+      "factor": "1.08814741895929",
       "value_before_uprating": "4700000000.0"
     },
     {
@@ -5198,7 +5219,7 @@
       "from": "2023",
       "to": "2025",
       "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
-      "factor": "1.08262675352428",
+      "factor": "1.08814741895929",
       "value_before_uprating": "3430000000.0"
     },
     {
@@ -5206,7 +5227,7 @@
       "from": "2023",
       "to": "2025",
       "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
-      "factor": "1.08262675352428",
+      "factor": "1.08814741895929",
       "value_before_uprating": "8400000000.0"
     },
     {
@@ -5214,7 +5235,7 @@
       "from": "2023",
       "to": "2025",
       "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
-      "factor": "1.08262675352428",
+      "factor": "1.08814741895929",
       "value_before_uprating": "12500000000.0"
     },
     {
@@ -5222,7 +5243,7 @@
       "from": "2023",
       "to": "2025",
       "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
-      "factor": "1.08262675352428",
+      "factor": "1.08814741895929",
       "value_before_uprating": "3820000000.0"
     },
     {
@@ -5230,7 +5251,7 @@
       "from": "2023",
       "to": "2025",
       "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
-      "factor": "1.08262675352428",
+      "factor": "1.08814741895929",
       "value_before_uprating": "9440000000.0"
     },
     {
@@ -7854,7 +7875,7 @@
       "from": "2023",
       "to": "2025",
       "index": "policyengine_uk.household_interest_income_to_dataset_year_then_per_capita_gdp",
-      "factor": "1.19201766916889",
+      "factor": "1.19613286133541",
       "value_before_uprating": "1260000000.0"
     },
     {
@@ -7862,7 +7883,7 @@
       "from": "2023",
       "to": "2025",
       "index": "policyengine_uk.household_interest_income_to_dataset_year_then_per_capita_gdp",
-      "factor": "1.19201766916889",
+      "factor": "1.19613286133541",
       "value_before_uprating": "1240000000.0"
     },
     {
@@ -7870,7 +7891,7 @@
       "from": "2023",
       "to": "2025",
       "index": "policyengine_uk.household_interest_income_to_dataset_year_then_per_capita_gdp",
-      "factor": "1.19201766916889",
+      "factor": "1.19613286133541",
       "value_before_uprating": "274000000.0"
     },
     {
@@ -7878,7 +7899,7 @@
       "from": "2023",
       "to": "2025",
       "index": "policyengine_uk.household_interest_income_to_dataset_year_then_per_capita_gdp",
-      "factor": "1.19201766916889",
+      "factor": "1.19613286133541",
       "value_before_uprating": "1370000000.0"
     },
     {
@@ -7886,7 +7907,7 @@
       "from": "2023",
       "to": "2025",
       "index": "policyengine_uk.household_interest_income_to_dataset_year_then_per_capita_gdp",
-      "factor": "1.19201766916889",
+      "factor": "1.19613286133541",
       "value_before_uprating": "650000000.0"
     },
     {
@@ -7894,7 +7915,7 @@
       "from": "2023",
       "to": "2025",
       "index": "policyengine_uk.household_interest_income_to_dataset_year_then_per_capita_gdp",
-      "factor": "1.19201766916889",
+      "factor": "1.19613286133541",
       "value_before_uprating": "3130000000.0"
     },
     {
@@ -7902,7 +7923,7 @@
       "from": "2023",
       "to": "2025",
       "index": "policyengine_uk.household_interest_income_to_dataset_year_then_per_capita_gdp",
-      "factor": "1.19201766916889",
+      "factor": "1.19613286133541",
       "value_before_uprating": "733000000.0"
     },
     {
@@ -7910,7 +7931,7 @@
       "from": "2023",
       "to": "2025",
       "index": "policyengine_uk.household_interest_income_to_dataset_year_then_per_capita_gdp",
-      "factor": "1.19201766916889",
+      "factor": "1.19613286133541",
       "value_before_uprating": "2530000000.0"
     },
     {
@@ -7918,7 +7939,7 @@
       "from": "2023",
       "to": "2025",
       "index": "policyengine_uk.household_interest_income_to_dataset_year_then_per_capita_gdp",
-      "factor": "1.19201766916889",
+      "factor": "1.19613286133541",
       "value_before_uprating": "673000000.0"
     },
     {
@@ -7926,7 +7947,7 @@
       "from": "2023",
       "to": "2025",
       "index": "policyengine_uk.household_interest_income_to_dataset_year_then_per_capita_gdp",
-      "factor": "1.19201766916889",
+      "factor": "1.19613286133541",
       "value_before_uprating": "1870000000.0"
     },
     {
@@ -7934,7 +7955,7 @@
       "from": "2023",
       "to": "2025",
       "index": "policyengine_uk.household_interest_income_to_dataset_year_then_per_capita_gdp",
-      "factor": "1.19201766916889",
+      "factor": "1.19613286133541",
       "value_before_uprating": "2340000000.0"
     },
     {
@@ -7942,7 +7963,7 @@
       "from": "2023",
       "to": "2025",
       "index": "policyengine_uk.household_interest_income_to_dataset_year_then_per_capita_gdp",
-      "factor": "1.19201766916889",
+      "factor": "1.19613286133541",
       "value_before_uprating": "653000000.0"
     },
     {
@@ -7950,7 +7971,7 @@
       "from": "2023",
       "to": "2025",
       "index": "policyengine_uk.household_interest_income_to_dataset_year_then_per_capita_gdp",
-      "factor": "1.19201766916889",
+      "factor": "1.19613286133541",
       "value_before_uprating": "1620000000.0"
     },
     {
@@ -10941,6 +10962,31 @@
       "name": "mhclg.council_tax_stock.single_adult_discount",
       "from": "2025-10",
       "to": "2025"
+    },
+    {
+      "name": "hmrc.child_benefit.families_in_payment.children_1",
+      "from": "2025-08",
+      "to": "2025"
+    },
+    {
+      "name": "hmrc.child_benefit.families_in_payment.children_2",
+      "from": "2025-08",
+      "to": "2025"
+    },
+    {
+      "name": "hmrc.child_benefit.families_in_payment.children_3",
+      "from": "2025-08",
+      "to": "2025"
+    },
+    {
+      "name": "hmrc.child_benefit.families_in_payment.children_4",
+      "from": "2025-08",
+      "to": "2025"
+    },
+    {
+      "name": "hmrc.child_benefit.families_in_payment.children_5_plus",
+      "from": "2025-08",
+      "to": "2025"
     }
   ],
   "targets": {
@@ -11158,14 +11204,17 @@
       ]
     },
     "obr.domestic_rates": {
-      "status": "no_fact_at_or_before_period",
+      "status": "active",
       "candidates": [
         {
           "name": "obr.domestic_rates",
-          "status": "no_fact_at_or_before_period",
-          "matched_fact_count_overall": 0,
-          "matched_fact_count_at_or_before_period": 0,
-          "error": "ledger_reference_compile_status_no_fact_at_or_before_period"
+          "status": "active",
+          "matched_fact_count_overall": 7,
+          "matched_fact_count_at_or_before_period": 2,
+          "resolved_period": 2025,
+          "resolved_value": 494000000.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_a9a654087fd2268fef7f9f9b"
         }
       ]
     },
@@ -11280,10 +11329,10 @@
         {
           "name": "obr.winter_fuel_allowance",
           "status": "active",
-          "matched_fact_count_overall": 7,
-          "matched_fact_count_at_or_before_period": 2,
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 1508660934.2839375,
+          "resolved_value": 1911040880.4619167,
           "resolved_fact_period": "2025",
           "resolved_fact_key": "ledger_aggregate_fact_v2_86dba41b4681fa0d9c11b3a6"
         }
@@ -12223,12 +12272,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 7437645796.711819,
+          "resolved_value": 7475572768.250349,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_6fd01f132dc6b218c02326b1",
           "uprating": {
             "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
-            "factor": "1.08262675352428",
+            "factor": "1.08814741895929",
             "value_before_uprating": "6870000000.0"
           }
         },
@@ -12238,12 +12287,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 12017156964.119532,
+          "resolved_value": 12078436350.448162,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_3c0cd54a0f0609d8ebc58a25",
           "uprating": {
             "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
-            "factor": "1.08262675352428",
+            "factor": "1.08814741895929",
             "value_before_uprating": "11100000000.0"
           }
         },
@@ -12253,12 +12302,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 189459681.86674938,
+          "resolved_value": 190425798.31787643,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_b63a84056f85bed14b8ab8fd",
           "uprating": {
             "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
-            "factor": "1.08262675352428",
+            "factor": "1.08814741895929",
             "value_before_uprating": "175000000.0"
           }
         },
@@ -12268,12 +12317,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 925645874.2632612,
+          "resolved_value": 930366043.2101963,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_3c4f22fc63944665033b18b3",
           "uprating": {
             "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
-            "factor": "1.08262675352428",
+            "factor": "1.08814741895929",
             "value_before_uprating": "855000000.0"
           }
         },
@@ -12283,12 +12332,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 3735062299.6587734,
+          "resolved_value": 3754108595.409564,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_ced1a5840ced099b471d4e84",
           "uprating": {
             "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
-            "factor": "1.08262675352428",
+            "factor": "1.08814741895929",
             "value_before_uprating": "3450000000.0"
           }
         },
@@ -12298,12 +12347,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 3605147089.2358594,
+          "resolved_value": 3623530905.1344485,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_8a115e840b38a6603d618bc0",
           "uprating": {
             "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
-            "factor": "1.08262675352428",
+            "factor": "1.08814741895929",
             "value_before_uprating": "3330000000.0"
           }
         },
@@ -12313,12 +12362,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 4005718988.039844,
+          "resolved_value": 4026145450.1493874,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_0394e55216df7f3dcab84fb5",
           "uprating": {
             "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
-            "factor": "1.08262675352428",
+            "factor": "1.08814741895929",
             "value_before_uprating": "3700000000.0"
           }
         },
@@ -12328,12 +12377,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 5088345741.564126,
+          "resolved_value": 5114292869.108682,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_ea93d59adaf66ef73e9dddbf",
           "uprating": {
             "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
-            "factor": "1.08262675352428",
+            "factor": "1.08814741895929",
             "value_before_uprating": "4700000000.0"
           }
         },
@@ -12343,12 +12392,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 3713409764.588288,
+          "resolved_value": 3732345647.030378,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_8d09d2287cbdb2e4f4004521",
           "uprating": {
             "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
-            "factor": "1.08262675352428",
+            "factor": "1.08814741895929",
             "value_before_uprating": "3430000000.0"
           }
         },
@@ -12358,12 +12407,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 9094064729.60397,
+          "resolved_value": 9140438319.258068,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_0a4329a3eb027a530c6f02ec",
           "uprating": {
             "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
-            "factor": "1.08262675352428",
+            "factor": "1.08814741895929",
             "value_before_uprating": "8400000000.0"
           }
         },
@@ -12373,12 +12422,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 13532834419.053528,
+          "resolved_value": 13601842736.991173,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_c11497ffe45250b909593f1d",
           "uprating": {
             "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
-            "factor": "1.08262675352428",
+            "factor": "1.08814741895929",
             "value_before_uprating": "12500000000.0"
           }
         },
@@ -12388,12 +12437,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 4135634198.462758,
+          "resolved_value": 4156723140.424503,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_dafc8ca1cd03e5d461b11d4e",
           "uprating": {
             "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
-            "factor": "1.08262675352428",
+            "factor": "1.08814741895929",
             "value_before_uprating": "3820000000.0"
           }
         },
@@ -12403,12 +12452,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 10219996553.269224,
+          "resolved_value": 10272111634.975735,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_940e6ce9db10080ed5613faa",
           "uprating": {
             "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
-            "factor": "1.08262675352428",
+            "factor": "1.08814741895929",
             "value_before_uprating": "9440000000.0"
           }
         }
@@ -19961,9 +20010,9 @@
           "matched_fact_count_overall": 10,
           "matched_fact_count_at_or_before_period": 10,
           "resolved_period": 2025,
-          "resolved_value": 21621100549.34064,
+          "resolved_value": 11857043948.140636,
           "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_b16b9b3f2329455f907f9ccc"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_0ac74d318698ba723f200cb4"
         }
       ]
     },
@@ -22421,12 +22470,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 1501942263.1528072,
+          "resolved_value": 1507127405.2826157,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_0ef4a95b830d9e4e41b15e02",
           "uprating": {
             "index": "policyengine_uk.household_interest_income_to_dataset_year_then_per_capita_gdp",
-            "factor": "1.19201766916889",
+            "factor": "1.19613286133541",
             "value_before_uprating": "1260000000.0"
           }
         },
@@ -22436,12 +22485,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 1478101909.7694294,
+          "resolved_value": 1483204748.0559075,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_4f8e330da2fcd6774dd7ea1a",
           "uprating": {
             "index": "policyengine_uk.household_interest_income_to_dataset_year_then_per_capita_gdp",
-            "factor": "1.19201766916889",
+            "factor": "1.19613286133541",
             "value_before_uprating": "1240000000.0"
           }
         },
@@ -22451,12 +22500,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 326612841.3522771,
+          "resolved_value": 327740404.0059021,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_bd65aa884ad89d9837551b0e",
           "uprating": {
             "index": "policyengine_uk.household_interest_income_to_dataset_year_then_per_capita_gdp",
-            "factor": "1.19201766916889",
+            "factor": "1.19613286133541",
             "value_before_uprating": "274000000.0"
           }
         },
@@ -22466,12 +22515,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 1633064206.7613857,
+          "resolved_value": 1638702020.0295105,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_34ecf84ec234f3525db59f91",
           "uprating": {
             "index": "policyengine_uk.household_interest_income_to_dataset_year_then_per_capita_gdp",
-            "factor": "1.19201766916889",
+            "factor": "1.19613286133541",
             "value_before_uprating": "1370000000.0"
           }
         },
@@ -22481,12 +22530,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 774811484.9597815,
+          "resolved_value": 777486359.868016,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_89bdbe74eda3cee8844ad898",
           "uprating": {
             "index": "policyengine_uk.household_interest_income_to_dataset_year_then_per_capita_gdp",
-            "factor": "1.19201766916889",
+            "factor": "1.19613286133541",
             "value_before_uprating": "650000000.0"
           }
         },
@@ -22496,12 +22545,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 3731015304.49864,
+          "resolved_value": 3743895855.9798307,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_752ea2329d313046c61bf1e2",
           "uprating": {
             "index": "policyengine_uk.household_interest_income_to_dataset_year_then_per_capita_gdp",
-            "factor": "1.19201766916889",
+            "factor": "1.19613286133541",
             "value_before_uprating": "3130000000.0"
           }
         },
@@ -22511,12 +22560,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 873748951.5007998,
+          "resolved_value": 876765387.3588549,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_02f3a7f7b7097a3fd455b702",
           "uprating": {
             "index": "policyengine_uk.household_interest_income_to_dataset_year_then_per_capita_gdp",
-            "factor": "1.19201766916889",
+            "factor": "1.19613286133541",
             "value_before_uprating": "733000000.0"
           }
         },
@@ -22526,12 +22575,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 3015804702.9973035,
+          "resolved_value": 3026216139.178585,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_d341b6820714e38a12ac4b1c",
           "uprating": {
             "index": "policyengine_uk.household_interest_income_to_dataset_year_then_per_capita_gdp",
-            "factor": "1.19201766916889",
+            "factor": "1.19613286133541",
             "value_before_uprating": "2530000000.0"
           }
         },
@@ -22541,12 +22590,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 802227891.350666,
+          "resolved_value": 804997415.6787304,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_8fc8bdb298f62c90d7af57b8",
           "uprating": {
             "index": "policyengine_uk.household_interest_income_to_dataset_year_then_per_capita_gdp",
-            "factor": "1.19201766916889",
+            "factor": "1.19613286133541",
             "value_before_uprating": "673000000.0"
           }
         },
@@ -22556,12 +22605,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 2229073041.345833,
+          "resolved_value": 2236768450.697215,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_367d1c49bfab3c640463ded8",
           "uprating": {
             "index": "policyengine_uk.household_interest_income_to_dataset_year_then_per_capita_gdp",
-            "factor": "1.19201766916889",
+            "factor": "1.19613286133541",
             "value_before_uprating": "1870000000.0"
           }
         },
@@ -22571,12 +22620,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 2789321345.8552136,
+          "resolved_value": 2798950895.5248575,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_819d2f77e45b3ba5a7907a4a",
           "uprating": {
             "index": "policyengine_uk.household_interest_income_to_dataset_year_then_per_capita_gdp",
-            "factor": "1.19201766916889",
+            "factor": "1.19613286133541",
             "value_before_uprating": "2340000000.0"
           }
         },
@@ -22586,12 +22635,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 778387537.9672881,
+          "resolved_value": 781074758.4520222,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_5d68b2314b5c54a09f274733",
           "uprating": {
             "index": "policyengine_uk.household_interest_income_to_dataset_year_then_per_capita_gdp",
-            "factor": "1.19201766916889",
+            "factor": "1.19613286133541",
             "value_before_uprating": "653000000.0"
           }
         },
@@ -22601,12 +22650,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 1931068624.0536094,
+          "resolved_value": 1937735235.3633628,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_ab8a5ac6dd4ba75e194133f1",
           "uprating": {
             "index": "policyengine_uk.household_interest_income_to_dataset_year_then_per_capita_gdp",
-            "factor": "1.19201766916889",
+            "factor": "1.19613286133541",
             "value_before_uprating": "1620000000.0"
           }
         }
@@ -30637,6 +30686,81 @@
           "resolved_value": 8496178.0,
           "resolved_fact_period": "2025-10",
           "resolved_fact_key": "ledger_aggregate_fact_v2_8cb05d2d0434301a7e422afe"
+        }
+      ]
+    },
+    "hmrc.child_benefit.families_in_payment.children_1": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "hmrc.child_benefit.families_in_payment.children_1",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 3356385.0,
+          "resolved_fact_period": "2025-08",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_3340eb91529490354ebc47d0"
+        }
+      ]
+    },
+    "hmrc.child_benefit.families_in_payment.children_2": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "hmrc.child_benefit.families_in_payment.children_2",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 2524055.0,
+          "resolved_fact_period": "2025-08",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_af27c369194471047d74dd93"
+        }
+      ]
+    },
+    "hmrc.child_benefit.families_in_payment.children_3": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "hmrc.child_benefit.families_in_payment.children_3",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 725315.0,
+          "resolved_fact_period": "2025-08",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_b669c728cae515e596d06708"
+        }
+      ]
+    },
+    "hmrc.child_benefit.families_in_payment.children_4": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "hmrc.child_benefit.families_in_payment.children_4",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 191920.0,
+          "resolved_fact_period": "2025-08",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_c13b54df1b6003e483dcaad9"
+        }
+      ]
+    },
+    "hmrc.child_benefit.families_in_payment.children_5_plus": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "hmrc.child_benefit.families_in_payment.children_5_plus",
+          "status": "active",
+          "matched_fact_count_overall": 7,
+          "matched_fact_count_at_or_before_period": 7,
+          "resolved_period": 2025,
+          "resolved_value": 70030.0,
+          "resolved_fact_period": "2025-08",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_2d81e096c621bc41f63aed4e"
         }
       ]
     }
