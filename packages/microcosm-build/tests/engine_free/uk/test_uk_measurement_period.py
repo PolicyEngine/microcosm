@@ -485,6 +485,10 @@ REVIEWED_PLAIN_COLUMN_POPULATION_VARIABLES = frozenset(
         "household_num_benunits",
         "housing_benefit",
         "income_tax",
+        # Engine-computed at the calibration period: the frame stores age, not
+        # this flag, and the engine reads State Pension age as reached by 6
+        # October of the period it is asked for (microcosm#1069).
+        "is_SP_age",
         "is_child",
         "is_child_receiving_tax_free_childcare",
         "jsa_contrib",
