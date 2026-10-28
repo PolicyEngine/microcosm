@@ -146,7 +146,7 @@ def main() -> int:
     )
     receipt = {
         "label": args.label,
-        "h5": str(args.h5),
+        "h5": args.h5.name,
         "h5_sha256": _sha256(args.h5),
         **result,
     }

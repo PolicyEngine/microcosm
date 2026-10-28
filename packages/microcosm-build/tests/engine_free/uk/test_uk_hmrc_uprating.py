@@ -624,13 +624,16 @@ def test_state_pension_age_factor_invariants(
     uk, shares, coverage, values, rates
 ) -> None:
     """For every positive Table 2.1 and 2.2 input, against a recompute from the
-    raw inputs that shares no code with the applier (the window weights are
-    written out, not read from ``CALENDAR_YEAR_WINDOW_WEIGHTS``):
+    raw inputs that shares only the list of areas (``UK_REGION_TIER``) with the
+    applier (the window weights are written out, not read from
+    ``CALENDAR_YEAR_WINDOW_WEIGHTS``), among rows the applier must ignore
+    (England's own row, the aged 65 and over measure and 2026-27):
 
     * where each window year's twelve areas are within its United Kingdom
       count, every band moves by (1/4 areas 2024-25 + 3/4 areas 2025-26) over
-      the United Kingdom's 2023-24 count, the resident share is at most one and
-      the factor at most United Kingdom growth;
+      the United Kingdom's 2023-24 count; the receipt gives United Kingdom
+      growth and the resident share, whose product is the factor; the share
+      is at most one and the factor at most United Kingdom growth;
     * the bands keep their shares, so the rows sum to their opening total
       times the factor;
     * each amount row moves by its count row's factor times the rate ratio,
@@ -655,6 +658,32 @@ def test_state_pension_age_factor_invariants(
             _age_row(year=year, geography_id=code, value=value)
             for (_, code), value in zip(UK_REGION_TIER, year_areas, strict=True)
         )
+    # Rows the applier must ignore. Each would move the factor if read.
+    for year, year_areas in areas.items():
+        england = math.fsum(
+            value
+            for (_, code), value in zip(UK_REGION_TIER, year_areas, strict=True)
+            if code.startswith("E12")
+        )
+        rows.append(_age_row(year=year, geography_id="E92000001", value=england))
+        rows.extend(
+            _age_row(
+                year=year,
+                geography_id=code,
+                value=value * 1.07,
+                measure_id="age_65_and_over",
+            )
+            for (_, code), value in zip(UK_REGION_TIER, year_areas, strict=True)
+        )
+    rows.append(
+        _age_row(
+            year=2026, geography_id=UK_HMRC_ITL_UK_GEOGRAPHY_ID, value=uk_2025 * 1.3
+        )
+    )
+    rows.extend(
+        _age_row(year=2026, geography_id=code, value=value * 1.3)
+        for (_, code), value in zip(UK_REGION_TIER, areas[2025], strict=True)
+    )
     bands = sorted(values)
     counts = TargetRegistry(
         tuple(
@@ -699,14 +728,22 @@ def test_state_pension_age_factor_invariants(
     if resident[2024] > uk_2024 * (1 - 1e-12) or resident[2025] > uk_2025 * (1 - 1e-12):
         # Within rounding of the United Kingdom count: either outcome is right.
         return
-    expected = (0.25 * resident[2024] + 0.75 * resident[2025]) / opening
-    uk_growth = (0.25 * uk_2024 + 0.75 * uk_2025) / opening
+    resident_window = 0.25 * resident[2024] + 0.75 * resident[2025]
+    uk_window = 0.25 * uk_2024 + 0.75 * uk_2025
+    expected = resident_window / opening
+    uk_growth = uk_window / opening
     aligned = align_counts()
     for before, spec in zip(counts.specs, aligned.specs, strict=True):
         assert spec.value == pytest.approx(before.value * expected, rel=1e-12)
+        factor = float(spec.metadata["uprating_factor"])
+        growth = float(spec.metadata["uprating_index_united_kingdom_growth"])
         share = float(spec.metadata["uprating_index_resident_share"])
+        assert factor == pytest.approx(expected, rel=1e-12)
+        assert growth == pytest.approx(uk_growth, rel=1e-12)
+        assert share == pytest.approx(resident_window / uk_window, rel=1e-12)
+        assert growth * share == pytest.approx(factor, rel=1e-12)
         assert share <= 1.0
-        assert float(spec.metadata["uprating_factor"]) <= uk_growth * (1 + 1e-12)
+        assert factor <= uk_growth * (1 + 1e-12)
     assert math.fsum(spec.value for spec in aligned.specs) == pytest.approx(
         math.fsum(values.values()) * expected, rel=1e-12
     )

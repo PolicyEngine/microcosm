@@ -9,13 +9,20 @@ Two local UK national builds, run on 2026-10-28 with `--no-staging --no-publish-
 | H5 sha256 | `de754f0b…96cc` | `2834c9e8…d0df` |
 | Targets | 1,273 | 1,297 (+24 `hmrc_itl_age`) |
 
-What both builds share:
+What both builds share, from `build_provenance.json`:
 
-- **Spine:** `spine_build_state` `fb8b4a99…c650`, built from main. Its gate digests are the same on both heads.
+- **Spine:** the same `spine_build_state` (`fb8b4a99…c650`) and `spine_provenance` digests, and the same input H5.
 - **Engine:** policyengine-uk 2.162.8.
-- **Feed:** Chronicle 272c987.
+- **Feed:** Chronicle 272c987, with the same facts digest.
 
-The commits after 8925039d change comments, notes, tests and the vendored file's purpose text only. No compiled target value changes; the pull request records that check.
+The candidate was built at 8925039d. The commits after it change no compiled target value: the national compile-parity receipt, regenerated from the pinned feed at 1526b4fd, is byte-identical to the committed one. They change:
+
+- comments, contract notes and the vendored file's purpose text, which no compiled value reads;
+- the spine fixture's digest for that file;
+- the State Pension age applier, which now refuses a year whose twelve areas exceed the United Kingdom count. The vendored areas are 142,000 to 186,000 below it in every year, so the refusal never fires;
+- the appliers, which lose an amount index that no target declares;
+- the parity receipt's routing, which matches exact prefixes and routes the same rows;
+- tests and these evidence scripts.
 
 ## Files
 
@@ -27,6 +34,8 @@ The commits after 8925039d change comments, notes, tests and the vendored file's
   - the SPI State Pension and private pension band rows;
   - the DWP and DfC recipient rows;
   - the age rows. The baseline doesn't bind these, so its values are the measured ones against the candidate's targets.
+- **`hmrc_implied_recipients.json`**, from `scripts/hmrc_implied_recipients.py`. It holds the taxpaying and non-taxpaying recipients HMRC implies, the inputs they come from, and each build's split against them.
+- **`build_provenance.json`**, from `scripts/build_provenance.py` on each build's `build.json` and `build_record.json`. It holds the build ids, `release_authorized`, the H5, spine and feed digests, and the engine version.
 - **`state_pension_band_totals.json`**, from `scripts/state_pension_band_totals.py` on main's and this branch's compile-parity receipts. Per band it gives:
   - the compiled 2025 value before and after the re-index;
   - each band's share of the total;
@@ -58,10 +67,18 @@ The recipient count is the same in both builds: 12.371m (12,370,841 in the basel
 
 | | Baseline | Candidate | HMRC-implied |
 |---|---|---|---|
-| Taxpaying recipients | 8,839,850 | 8,743,572 | 8.64m–8.81m |
+| Taxpaying recipients | 8,839,850 | 8,743,572 | 8.65m–8.81m |
 | Non-taxpaying recipients | 3,530,991 | 3,628,068 | 3.58m–3.74m |
 
-The HMRC-implied range runs from residents of a nation to all UK taxpayers. The method is in `TARGETS.md` of the lane brief: SPI 2023-24's 97.8% of taxpayers at State Pension age with a State Pension, applied to HMRC's calendar-2025 level.
+The HMRC-implied range is computed in `hmrc_implied_recipients.json`:
+
+- SPI 2023-24 counts 7.98m taxpayers with a State Pension (Table 3.6, all ranges). Over ITL Table 2.1's 8.16m taxpayers of State Pension age in 2023-24, that is a share of 97.79%.
+- Holding that share, it is applied to the calendar-2025 window of two levels:
+  - the twelve region-tier areas, 8,841,750, giving 8,646,711;
+  - the United Kingdom row, 9,005,000, giving 8,806,360.
+- Non-taxpaying recipients are the bound DWP and DfC recipients, 12,383,022, minus each end.
+
+Both of the candidate's counts fall inside the range, and both of the baseline's fall outside it.
 
 ### Sole-income State Pension allowance
 

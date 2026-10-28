@@ -1,0 +1,39 @@
+{
+  "builds": {
+    "baseline": {
+      "build_id": "uk-frs-calibration-attempt-20261028T035853Z-d46150c3",
+      "release_authorized": false,
+      "release_role": "national",
+      "dataset_sha256": "de754f0b2dc6b76d6d8f5706914b4e9de1c312676971b6eb3df077a3332f96cc",
+      "spine_build_state": "fb8b4a99e1451b6839de31f3ad3bb3f53840388ccc5bb2831780c2ed044dc650",
+      "spine_provenance": "32915092872bb98c8e78ec952fb624cbfcbc8b243c052e2682701da4a8e634c3",
+      "chronicle_feed_source_commit": "272c987af175687aca21f82851ef349521802b12",
+      "chronicle_feed_facts_sha256": "084ddf46fa34b1e03b5f0a7287617aeafaf7f614e3619d87a6565409e4adac85",
+      "input_h5_sha256": "2ef42d3f57a18c4e424c297f4128db5c691a59f521e3d03677d54aaff733490b",
+      "policyengine_uk_versions": [
+        "2.162.8"
+      ]
+    },
+    "candidate": {
+      "build_id": "uk-frs-calibration-attempt-20261028T052241Z-132af9e6",
+      "release_authorized": false,
+      "release_role": "national",
+      "dataset_sha256": "2834c9e8af889b054b8741e2f911d8602f301dbf2a4cd98b36a9176383b5d0df",
+      "spine_build_state": "fb8b4a99e1451b6839de31f3ad3bb3f53840388ccc5bb2831780c2ed044dc650",
+      "spine_provenance": "32915092872bb98c8e78ec952fb624cbfcbc8b243c052e2682701da4a8e634c3",
+      "chronicle_feed_source_commit": "272c987af175687aca21f82851ef349521802b12",
+      "chronicle_feed_facts_sha256": "084ddf46fa34b1e03b5f0a7287617aeafaf7f614e3619d87a6565409e4adac85",
+      "input_h5_sha256": "2ef42d3f57a18c4e424c297f4128db5c691a59f521e3d03677d54aaff733490b",
+      "policyengine_uk_versions": [
+        "2.162.8"
+      ]
+    }
+  },
+  "identical_across_builds": [
+    "spine_build_state",
+    "spine_provenance",
+    "chronicle_feed_source_commit",
+    "chronicle_feed_facts_sha256",
+    "input_h5_sha256"
+  ]
+}

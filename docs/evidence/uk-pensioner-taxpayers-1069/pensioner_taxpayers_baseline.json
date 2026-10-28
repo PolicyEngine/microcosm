@@ -1,5 +1,5 @@
 {
-  "h5": "/Users/maxghenis/microcosm-uk-work/runs/pensioner-1069/baseline/microcosm_uk_2024_25.h5",
+  "h5": "microcosm_uk_2024_25.h5",
   "h5_sha256": "de754f0b2dc6b76d6d8f5706914b4e9de1c312676971b6eb3df077a3332f96cc",
   "label": "baseline",
   "people": 181793,

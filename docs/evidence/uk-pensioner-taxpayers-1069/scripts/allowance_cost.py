@@ -152,7 +152,7 @@ def main() -> int:
     gc.collect()
     receipt = {
         "label": args.label,
-        "dataset": str(args.dataset),
+        "dataset": args.dataset.name,
         "dataset_sha256": _sha256(args.dataset),
         "dashboard_commit": args.dashboard_commit,
         "packages": {

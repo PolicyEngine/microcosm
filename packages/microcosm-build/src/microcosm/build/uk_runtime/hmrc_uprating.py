@@ -185,9 +185,10 @@ UK_SPI_STATE_PENSION_RATE_PARAMETER = "gov.dwp.state_pension.new_state_pension.a
 #: The level is the twelve region-tier areas of Table 2.2, the residents the
 #: frame holds and the ``hmrc.itl.state_pension_age_taxpayers`` rows bind. The
 #: 2023-24 SPI rows count every UK taxpayer, including those HMRC allocates to
-#: no region: SPI 2023-24's note 4 to Table 3.11 puts members of the Forces
-#: and Merchant Navy, people serving overseas, people with overseas addresses
-#: and people with no usable postcode "in the UK figures", so its four nations
+#: no region: SPI 2023-24's note 4 to Table 3.11 puts some members of the
+#: Forces and Merchant Navy, a small number of people serving overseas or with
+#: overseas addresses, and a small number whose postcode could not be
+#: identified "in the UK figures", so its four nations
 #: hold 36.401m taxpayers against the United Kingdom's 36.7m. Table 3.6 counts
 #: that United Kingdom universe: its all-ranges employment count is Table
 #: 3.11's United Kingdom 27.3m, against 27.189m over the four nations. ITL's

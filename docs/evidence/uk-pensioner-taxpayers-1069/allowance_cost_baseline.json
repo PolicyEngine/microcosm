@@ -1,6 +1,6 @@
 {
   "dashboard_commit": "fa9c42b1de5d4e4cedf940e2def405c77d0522b7",
-  "dataset": "/Users/maxghenis/microcosm-uk-work/runs/pensioner-1069/baseline/microcosm_uk_2024_25.h5",
+  "dataset": "microcosm_uk_2024_25.h5",
   "dataset_sha256": "de754f0b2dc6b76d6d8f5706914b4e9de1c312676971b6eb3df077a3332f96cc",
   "designs": {
     "sole_income": {
