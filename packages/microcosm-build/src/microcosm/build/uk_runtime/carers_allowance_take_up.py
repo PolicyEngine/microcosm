@@ -522,9 +522,7 @@ def redraw_carers_allowance_take_up(
         # Beside the eligible weight, it would give back the weight the pool
         # leaves out, so it is withheld where that rests on one to nine.
         "over_limit_carers_weighted_persons": (
-            "<10"
-            if 0 < sources(over_limit & ~eligible) < 10
-            else weighted(over_limit)
+            "<10" if 0 < sources(over_limit & ~eligible) < 10 else weighted(over_limit)
         ),
         "over_limit_in_household_support": support_band(
             sources(over_limit & pool.in_household)

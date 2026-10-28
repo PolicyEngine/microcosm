@@ -159,9 +159,7 @@ def _stage():
 
 def test_eligibility_is_the_pool_no_report_and_over_the_limit() -> None:
     rows = list(itertools.product([False, True], [False, True], [False, True]))
-    pool, reported, gainful = (
-        np.asarray(column) for column in zip(*rows, strict=True)
-    )
+    pool, reported, gainful = (np.asarray(column) for column in zip(*rows, strict=True))
     eligible = ca.carers_allowance_eligible(
         pool=pool, reported=reported, gainfully_employed=gainful
     )
@@ -193,7 +191,9 @@ def test_the_pool_holds_carers_of_a_severely_disabled_person() -> None:
     np.testing.assert_array_equal(
         result.in_household, [True, True, True, False, False, False]
     )
-    np.testing.assert_array_equal(result.other, [False, False, False, False, True, True])
+    np.testing.assert_array_equal(
+        result.other, [False, False, False, False, True, True]
+    )
     # A disabled member alone does not bring short hours into the pool, and an
     # other carer's own household plays no part.
     np.testing.assert_array_equal(result.pool, [True, True, False, False, True, False])
