@@ -109,6 +109,16 @@ class ITLCell:
         band = self.band or (-1, None)
         return (self.table, self.measure, band[0], self.key)
 
+    @property
+    def reference(self) -> str | None:
+        """The name, without the period, of the target reference that binds
+        this cell: a Table 2.5 band or a Table 2.2 area. A sum, and a cell of
+        a family ``BOUND_BY`` does not name, has none."""
+
+        return _reference_name(
+            BOUND_BY.get((self.table, self.measure)), self.band, self.area
+        )
+
 
 @dataclass(frozen=True)
 class ITLPeople:
@@ -183,6 +193,22 @@ def itl_band_key(band: Band) -> str:
     return f"band_{lower}_{'plus' if upper is None else upper}"
 
 
+def _reference_name(
+    target: str | None, band: Band | None, area: str | None
+) -> str | None:
+    """A target reference's name, as ``target_references.json`` and a run's
+    diagnostics (``target_name``) give it: ``<target>.band_<lower>_<upper>``
+    for a band, ``<target>@<GSS code>`` for an area."""
+
+    if target is None:
+        return None
+    if band is not None:
+        return f"{target}.{itl_band_key(band)}"
+    if area is not None and area != RESIDENTS:
+        return f"{target}@{area}"
+    return None
+
+
 def _band(row: Mapping[str, Any]) -> Band | None:
     dimensions = row.get("dimensions") or {}
     lower = dimensions.get("total_income_lower_bound")
@@ -193,21 +219,19 @@ def _band(row: Mapping[str, Any]) -> Band | None:
 
 
 def calendar_window(
-    rows: Iterable[Mapping[str, Any]],
-    *,
-    year: int,
-    weights: Mapping[int, float] = CALENDAR_YEAR_WINDOW_WEIGHTS,
+    rows: Iterable[Mapping[str, Any]], *, year: int
 ) -> dict[tuple[str, str, str, Band | None], tuple[float, tuple[str, ...]]]:
     """Every published count at the calendar window of ``year``.
 
     Keyed by ``(table, measure_id, geography id, band)``: the window weights
     times the tax years opening in ``year - 1`` and ``year``. A count with
     two rows for one year, or a row in only one of the window's years, is
-    refused; one with neither year is left out. ``weights`` of ``{0: 1.0}``
-    read the tax year opening in ``year`` alone.
+    refused; one with neither year is left out.
     """
 
-    years = {year + offset: weight for offset, weight in weights.items()}
+    years = {
+        year + offset: weight for offset, weight in CALENDAR_YEAR_WINDOW_WEIGHTS.items()
+    }
     by_cell: dict[tuple[str, str, str, Band | None], dict[int, Mapping[str, Any]]] = {}
     for row in rows:
         if (row.get("period") or {}).get("type") != "tax_year":
@@ -248,7 +272,6 @@ def expected_cells(
     *,
     year: int,
     bound_targets: Collection[str] = (),
-    weights: Mapping[int, float] = CALENDAR_YEAR_WINDOW_WEIGHTS,
 ) -> tuple[ITLCell, ...]:
     """The cells HMRC's rows give at ``year``'s window, in report order.
 
@@ -258,8 +281,9 @@ def expected_cells(
     areas. Rows no cell reads (another measure, another geography) are left
     out before the window, so their gaps do not refuse the report.
     ``bound_targets`` names what the run bound at ``year``: a contract
-    target, which binds every cell of its family, or one target by its name
-    without the period (``hmrc.itl.taxpayers_by_total_income_band.band_12570_15000``,
+    target, which binds every cell of its family, or one target reference by
+    its name without the period (a cell's ``reference``:
+    ``hmrc.itl.taxpayers_by_total_income_band.band_12570_15000``,
     ``hmrc.itl.state_pension_age_taxpayers@E12000001``).
 
     A cell no target names is in sample through its ``parts`` only: the
@@ -272,9 +296,7 @@ def expected_cells(
     lowest band edge, or one in none of the twelve areas).
     """
 
-    window = calendar_window(
-        (row for row in rows if _read_by_cells(row)), year=year, weights=weights
-    )
+    window = calendar_window((row for row in rows if _read_by_cells(row)), year=year)
     unknown = sorted(
         str(key[3])
         for key in window
@@ -284,13 +306,10 @@ def expected_cells(
         raise ValueError(f"Table 2.5 bands {unknown} are not ITL_BANDS at {year}.")
 
     def bound(target, band, area):
-        if target is None:
-            return False
-        if target in bound_targets:
-            return True
-        if band is not None:
-            return f"{target}.{itl_band_key(band)}" in bound_targets
-        return area is not None and f"{target}@{area}" in bound_targets
+        return target is not None and (
+            target in bound_targets
+            or _reference_name(target, band, area) in bound_targets
+        )
 
     def cell(table, measure, value_sources, *, band=None, area=None, regional=False):
         value, sources = value_sources
@@ -427,6 +446,11 @@ def residual(model: float, expected: float) -> float:
 def differential(cells: Iterable[ITLCell], people: ITLPeople) -> dict[str, Any]:
     """Each cell's model count, miss and verdict, and the misses by family.
 
+    A cell is within tolerance when its computed residual's magnitude is at
+    most the tolerance. No ratio's residual lands on 0.05 or 0.10 exactly in
+    binary floating point, so the comparison never turns on ``<`` versus
+    ``<=``; a cell exactly 5% off in real arithmetic reads a hair above.
+
     A cell with ``parts`` stays in sample only when every part does and the
     file's weight outside its parts (``outside_parts``, the weighted people
     it counts that no part does) is zero: otherwise the solve did not fix its
@@ -469,6 +493,7 @@ def differential(cells: Iterable[ITLCell], people: ITLPeople) -> dict[str, Any]:
                 "table": cell.table,
                 "measure": cell.measure,
                 "key": cell.key,
+                "reference": cell.reference,
                 "expected": cell.expected,
                 "model": model,
                 "residual": miss,

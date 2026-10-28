@@ -16,6 +16,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import math
+from fractions import Fraction
 from importlib.resources import files
 
 import numpy as np
@@ -51,8 +52,6 @@ from microcosm.calibrate.geography_constants import UK_REGION_TIER
 from test_support.paths import paths_for
 
 AREAS = tuple(code for _level, code in UK_REGION_TIER)
-#: Window weights that read the tax year opening in the given year alone.
-ONE_TAX_YEAR = {0: 1.0}
 _counts = st.floats(min_value=1.0, max_value=5e7, allow_nan=False)
 
 
@@ -277,7 +276,7 @@ def _flags(report):
 def test_a_sum_is_in_sample_only_when_its_parts_count_everyone_it_counts() -> None:
     """Binding every band fixes the all-band count only if the file holds no
     taxpayer below the lowest edge; binding every area fixes the UK count
-    only if everyone it counts lives in one of the twelve (round 3)."""
+    only if everyone it counts lives in one of the twelve."""
 
     bound = {
         "hmrc.itl.taxpayers_by_total_income_band",
@@ -410,11 +409,11 @@ def test_the_vendored_table_2_5_bands_sum_to_its_all_band_count() -> None:
     years = sorted({row["period"]["value"] for row in rows})
     assert years
     for year in years:
-        cells = expected_cells(rows, year=year, weights=ONE_TAX_YEAR)
-        bands = [cell.expected for cell in cells if cell.measure == BAND_COUNT]
-        (total,) = [cell.expected for cell in cells if cell.measure == ALL_TAXPAYERS]
-        assert len(bands) == len(ITL_BANDS)
-        assert math.fsum(bands) == pytest.approx(total, rel=0.005), year
+        of_year = [row for row in rows if row["period"]["value"] == year]
+        bands = {_band_of(row): row["value"] for row in of_year if _band_of(row)}
+        (total,) = [row["value"] for row in of_year if _band_of(row) is None]
+        assert set(bands) == set(ITL_BANDS)
+        assert math.fsum(bands.values()) == pytest.approx(total, rel=0.005), year
 
 
 @st.composite
@@ -515,8 +514,19 @@ def test_a_sum_in_sample_is_fixed_by_bound_parts(people, every_band) -> None:
     below = rows[("2.1", BELOW_STATE_PENSION_AGE, UNITED_KINGDOM)]
     if below["in_sample"]:
         assert total["in_sample"] and spa["in_sample"]
-    for family in report["families"].values():
-        assert family["in_sample"] is (family["in_sample_cells"] == family["cells"])
+    families: dict[str, list] = {}
+    for row in report["cells"]:
+        families.setdefault(f"{row['table']}:{row['measure']}", []).append(row)
+    assert sorted(families) == sorted(report["families"])
+    for name, members in families.items():
+        summary = report["families"][name]
+        assert summary["cells"] == len(members)
+        assert summary["in_sample_cells"] == sum(row["in_sample"] for row in members)
+        assert summary["in_sample"] is all(row["in_sample"] for row in members)
+        assert summary["misses"] == sum(not row["within_tolerance"] for row in members)
+        assert summary["largest_abs_residual"] == max(
+            abs(row["residual"]) for row in members
+        )
 
 
 @given(model=st.floats(0.0, 1e8), expected=_counts)
@@ -584,19 +594,6 @@ def test_the_vendored_table_2_5_rows_give_every_band_at_calendar_2025() -> None:
     assert sum(1 for key in cells if key[1] == BAND_COUNT) == len(ITL_BANDS)
 
 
-def test_one_tax_year_reads_its_own_column() -> None:
-    """A one-year window reads a tax year's column as published."""
-
-    rows = _rows(ages=False)
-    cells = expected_cells(rows, year=2023, weights=ONE_TAX_YEAR)
-    published = {
-        _band_of(row): row["value"] for row in rows if row["period"]["value"] == 2023
-    }
-    for cell in cells:
-        assert cell.expected == published[cell.band]
-        assert len(cell.sources) == 1
-
-
 # The tool ------------------------------------------------------------------
 
 
@@ -639,7 +636,7 @@ def test_a_run_binds_the_targets_its_diagnostics_weight(tool, tmp_path) -> None:
             "period": 2025,
             "target_loss_weight": 1,
         },
-        # Another year, or none, binds nothing at 2025 (round 3).
+        # Another year, or none, binds nothing at 2025.
         {"name": f"{age_family}@{AREAS[2]}@2024", "target_loss_weight": 1},
         {
             "name": f"{age_family}@{AREAS[3]}@2025",
@@ -745,8 +742,10 @@ def test_strict_exits_one_exactly_on_a_miss(
                         "name": "hmrc.itl.taxpayers_by_total_income_band."
                         f"{itl_band_key(band)}@2025",
                         "target_loss_weight": 1.0,
+                        # The solve's own estimate: 1% above the file's count.
+                        "final_estimate": 1.01 * weight[index],
                     }
-                    for band in ITL_BANDS
+                    for index, band in enumerate(ITL_BANDS)
                 ]
             }
         )
@@ -768,8 +767,18 @@ def test_strict_exits_one_exactly_on_a_miss(
     missed = off_by != 1.0
     assert code == (1 if strict and missed else 0)
     assert bool(receipt["misses"]) is missed
-    assert receipt["in_sample_basis"].startswith(f"{diagnostics} sha256:")
+    assert (
+        receipt["in_sample_basis"]
+        == f"{diagnostics} sha256:{tool._sha256(diagnostics)}"
+    )
     assert all(cell["in_sample"] for cell in receipt["cells"])
+    bands = [cell for cell in receipt["cells"] if cell["measure"] == BAND_COUNT]
+    assert all(
+        cell["model_vs_run_estimate"] == pytest.approx(1 / 1.01 - 1) for cell in bands
+    )
+    (total,) = [cell for cell in receipt["cells"] if cell["measure"] == ALL_TAXPAYERS]
+    assert total["reference"] is None and total["run_estimate"] is None
+    assert receipt["run_estimates"]["cells"] == len(ITL_BANDS)
 
 
 # The names the contract and a run give the bound targets ----------------------
@@ -818,15 +827,25 @@ def test_bound_by_names_the_contract_targets_and_their_references() -> None:
     )
 
 
-def test_the_contract_marks_the_bound_tables_in_sample(tool) -> None:
-    """On the vendored rows at calendar 2025 the contract binds every Table
-    2.5 band and every Table 2.2 area, so each is in sample, and so is each
-    sum of them until a file holds someone outside its parts. Table 2.1's
-    United Kingdom cells are in sample through their areas only: no target
-    binds them."""
+def test_the_references_mark_the_bound_tables_in_sample(tool) -> None:
+    """On the vendored rows at calendar 2025 the tree's references bind every
+    Table 2.5 band and every Table 2.2 area, so each is in sample, and so is
+    each sum of them until a file holds someone outside its parts. Table
+    2.1's United Kingdom cells are in sample through their areas only: no
+    target binds them. The references bind at 2025 alone, so at another year
+    nothing is in sample."""
 
     rows = load_vendored_resource("hmrc_itl_taxpayer_counts.json")["rows"]
-    cells = expected_cells(rows, year=2025, bound_targets=tool.bound_targets(None))
+    for year in (2024, 2026):
+        other = expected_cells(
+            rows, year=year, bound_targets=tool.reference_bound_targets(None, year)
+        )
+        assert not any(cell.in_sample for cell in other), year
+    bound = tool.reference_bound_targets(None, 2025)
+    assert {cell.reference for cell in expected_cells(rows, year=2025)} - {None} <= (
+        bound
+    )
+    cells = expected_cells(rows, year=2025, bound_targets=bound)
     by_table: dict[str, list] = {}
     for cell in cells:
         by_table.setdefault(cell.table, []).append(cell)
@@ -855,12 +874,9 @@ def test_the_bound_cells_expect_what_the_build_compiles() -> None:
     for cell in expected_cells(rows, year=2025):
         target = BOUND_BY.get((cell.table, cell.measure))
         if target is None or cell.parts:
+            assert cell.reference is None
             continue
-        name = (
-            f"{target}.{itl_band_key(cell.band)}"
-            if cell.band is not None
-            else f"{target}@{cell.area}"
-        )
+        name = cell.reference
         assert cell.expected == pytest.approx(compiled[name], rel=1e-12), name
         checked.append(name)
     assert sorted(checked) == sorted(
@@ -984,3 +1000,207 @@ def test_resolved_people_reads_the_area_from_the_household_region() -> None:
     assert people.area.tolist() == ["E12000007", "W92000004", ""]
     assert people.taxpayer.tolist() == [True, False, True]
     assert people.weight.tolist() == [1.0, 2.0, 3.0]
+
+
+# The guards and edges ---------------------------------------------------------
+
+
+def test_without_table_2_2_the_united_kingdom_counts_have_no_parts() -> None:
+    """Rows that carry Table 2.1 but not Table 2.2 (another ``--itl-rows``
+    feed) give the United Kingdom counts no parts, so they are out of sample
+    even with the age families bound, and the count below State Pension age
+    with them."""
+
+    rows = [row for row in _rows() if table_of(row) != "2.2"]
+    cells = expected_cells(rows, year=2025, bound_targets=set(BOUND_BY.values()))
+    by_key = {(cell.table, cell.measure, cell.key): cell for cell in cells}
+    for measure in AGE_MEASURES:
+        national = by_key[("2.1", measure, UNITED_KINGDOM)]
+        assert national.parts == ()
+        assert not national.in_sample
+    assert not by_key[("2.1", BELOW_STATE_PENSION_AGE, UNITED_KINGDOM)].in_sample
+    assert by_key[("2.5", ALL_TAXPAYERS, UNITED_KINGDOM)].in_sample
+    flags = _flags(differential(cells, ITLPeople(**_person())))
+    assert not flags[("2.1", "state_pension_age", UNITED_KINGDOM)]["in_sample"]
+
+
+def test_a_sum_given_without_one_of_its_parts_is_out_of_sample() -> None:
+    """``differential`` handed a sum but not every part (one band left out of
+    the cells) cannot show that the parts fix it."""
+
+    bound = {
+        "hmrc.itl.taxpayers_by_total_income_band",
+        "hmrc.itl.state_pension_age_taxpayers",
+    }
+    cells = expected_cells(_rows(), year=2025, bound_targets=bound)
+    people = ITLPeople(**_person())
+    total = ("2.5", ALL_TAXPAYERS, UNITED_KINGDOM)
+    assert _flags(differential(cells, people))[total]["in_sample"]
+    without = [cell for cell in cells if cell.band != ITL_BANDS[3]]
+    flags = _flags(differential(without, people))
+    assert not flags[total]["in_sample"]
+    assert not flags[("2.1", BELOW_STATE_PENSION_AGE, UNITED_KINGDOM)]["in_sample"]
+
+
+def test_the_cells_read_the_bindings_at_their_edges() -> None:
+    """Each mask is its binding at the edges: a band holds its lower edge and
+    not its upper; 65 is in the count aged 65 and over and 64.9 is not; only
+    taxpayers count; State Pension age is the engine's flag, not an age; the
+    residents are the twelve areas and no other code."""
+
+    people = ITLPeople(
+        weight=np.array([1.0, 2.0, 4.0, 8.0, 16.0, 32.0, 64.0]),
+        taxpayer=np.array([True, True, True, True, False, True, True]),
+        total_income=np.array(
+            [12_570.0, 15_000.0, 12_569.99, 20_000.0, 20_000.0, 20_000.0, 20_000.0]
+        ),
+        state_pension_age=np.array([False, False, False, True, True, False, True]),
+        age=np.array([65.0, 64.9, 70.0, 60.0, 70.0, 66.0, 70.0]),
+        area=np.array(
+            [AREAS[0], AREAS[0], AREAS[0], AREAS[1], AREAS[1], "", "E92000001"]
+        ),
+    )
+    cells = {
+        (cell.table, cell.measure, cell.key): cell
+        for cell in expected_cells(_rows(), year=2025)
+    }
+
+    def count(*key):
+        return model_count(cells[key], people)
+
+    assert count("2.5", BAND_COUNT, "12570-15000") == 1.0
+    assert count("2.5", BAND_COUNT, "15000-20000") == 2.0
+    assert count("2.5", BAND_COUNT, "20000-30000") == 8.0 + 32.0 + 64.0
+    assert count("2.5", ALL_TAXPAYERS, UNITED_KINGDOM) == 111.0
+    assert count("2.1", "age_65_and_over", UNITED_KINGDOM) == 1.0 + 4.0 + 32.0 + 64.0
+    assert count("2.1", "state_pension_age", UNITED_KINGDOM) == 8.0 + 64.0
+    assert count("2.1", BELOW_STATE_PENSION_AGE, UNITED_KINGDOM) == 39.0
+    assert count("2.2", "age_65_and_over", AREAS[0]) == 1.0 + 4.0
+    assert count("2.2", "state_pension_age", AREAS[1]) == 8.0
+    assert count("2.2", "state_pension_age", RESIDENTS) == 8.0
+    assert count("2.2", "age_65_and_over", RESIDENTS) == 1.0 + 4.0
+
+
+@given(model=st.floats(0.0, 1e8), expected=_counts)
+def test_no_residual_lands_on_a_tolerance(model, expected) -> None:
+    """The verdict never turns on ``<`` against ``<=``: every residual is a
+    multiple of 2**-53 (exact below 0.5 in magnitude, and the float spacing
+    is at least that above), and neither tolerance is one."""
+
+    for tolerance in (NATIONAL_TOLERANCE, REGIONAL_TOLERANCE):
+        assert Fraction(tolerance).denominator > 2**53
+    miss = residual(model, expected)
+    assert (Fraction(miss) * 2**53).denominator == 1
+    assert abs(miss) not in (NATIONAL_TOLERANCE, REGIONAL_TOLERANCE)
+
+
+# The tool's inputs ------------------------------------------------------------
+
+
+def _consumer_fact(row):
+    """The Chronicle consumer fact a vendored row copies."""
+
+    kept = (
+        "entity",
+        "geography",
+        "period",
+        "period_coverage",
+        "layout",
+        "dimensions",
+        "source",
+        "value",
+    )
+    return {
+        "aggregate_fact_key": row["aggregate_fact_key"],
+        "semantic_fact_key": row["semantic_fact_key"],
+        "lineage": {"source_record_id": row["source_record_id"]},
+        "observed_measure": {
+            "source_concept": row["concept"],
+            "source_measure_id": row["measure_id"],
+            "unit": row["unit"],
+        },
+        "aggregation": {"method": row["aggregation"]},
+        **{key: row[key] for key in kept},
+    }
+
+
+def test_a_jsonl_of_consumer_facts_reads_as_the_vendored_rows(tool, tmp_path) -> None:
+    """``--itl-rows`` with a JSONL of the consumer facts the vendored rows copy
+    gives those rows exactly; blank and whitespace-only lines are skipped."""
+
+    rows = load_vendored_resource("hmrc_itl_taxpayer_counts.json")["rows"]
+    lines = [json.dumps(_consumer_fact(row)) for row in rows]
+    path = tmp_path / "facts.jsonl"
+    path.write_text("\n".join([*lines[:3], "   ", "", *lines[3:]]) + "\n")
+    read, source = tool.load_rows(path)
+    assert read == rows
+    assert source == f"{path} sha256:{tool._sha256(path)}"
+
+
+def test_rows_without_a_loss_weight_bind_and_are_named(tool, tmp_path) -> None:
+    """A row the diagnostics writer left without a loss weight binds, and the
+    tool names it so the in-sample basis can say so."""
+
+    diagnostics = tmp_path / "calibration_diagnostics.json"
+    diagnostics.write_text(
+        json.dumps(
+            {
+                "targets": [
+                    {"name": "a@2025", "target_loss_weight": 1.0, "final_estimate": 3},
+                    {"name": "b@2025"},
+                    {"name": "c@2025", "target_loss_weight": 0.0},
+                    {"name": "d@2024", "final_estimate": 5},
+                ]
+            }
+        )
+    )
+    assert tool.run_bound_targets(diagnostics, 2025) == {"a", "b"}
+    assert tool.run_unweighted_targets(diagnostics, 2025) == {"b"}
+    assert tool.run_estimates(diagnostics, 2025) == {"a": 3.0}
+
+
+def test_the_basis_reports_rows_bound_without_a_weight(
+    tool, tmp_path, monkeypatch
+) -> None:
+    weight = np.array([(index + 1) * 1_000.0 for index in range(len(ITL_BANDS))])
+    monkeypatch.setattr(tool, "measure_resolver", lambda *a, **k: _band_people(weight))
+    h5 = tmp_path / "national.h5"
+    h5.write_bytes(b"not read")
+    rows = tmp_path / "rows.json"
+    rows.write_text(json.dumps({"rows": _consistent_rows()}))
+    diagnostics = tmp_path / "calibration_diagnostics.json"
+    names = [
+        f"hmrc.itl.taxpayers_by_total_income_band.{itl_band_key(band)}@2025"
+        for band in ITL_BANDS
+    ]
+    diagnostics.write_text(
+        json.dumps(
+            {
+                "targets": [
+                    {"name": names[0]},
+                    *({"name": name, "target_loss_weight": 1.0} for name in names[1:]),
+                ]
+            }
+        )
+    )
+    out = tmp_path / "report.json"
+    argv = ["--h5", str(h5), "--out", str(out), "--itl-rows", str(rows)]
+    assert tool.main([*argv, "--diagnostics", str(diagnostics)]) == 0
+    receipt = json.loads(out.read_text())
+    assert receipt["in_sample_basis"].endswith(
+        "; 1 rows at 2025 carry no target_loss_weight and bind"
+    )
+    assert all(cell["in_sample"] for cell in receipt["cells"])
+    assert receipt["run_estimates"] == {"cells": 0, "largest_abs_difference": None}
+
+    references = tmp_path / "target_references.json"
+    references.write_text(json.dumps({"target_references": []}))
+    with pytest.raises(SystemExit):
+        tool.main(
+            [*argv, "--diagnostics", str(diagnostics), "--references", str(references)]
+        )
+    assert tool.main([*argv, "--references", str(references)]) == 0
+    receipt = json.loads(out.read_text())
+    assert receipt["in_sample_basis"] == f"target references {references} at 2025"
+    assert not any(cell["in_sample"] for cell in receipt["cells"])
+    assert "run_estimates" not in receipt
