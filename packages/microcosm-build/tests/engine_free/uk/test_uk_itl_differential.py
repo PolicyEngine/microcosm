@@ -776,6 +776,11 @@ def test_strict_exits_one_exactly_on_a_miss(
     assert all(
         cell["model_vs_run_estimate"] == pytest.approx(1 / 1.01 - 1) for cell in bands
     )
+    assert all(
+        cell["model_minus_run_estimate"]
+        == pytest.approx(cell["model"] - cell["run_estimate"])
+        for cell in bands
+    )
     (total,) = [cell for cell in receipt["cells"] if cell["measure"] == ALL_TAXPAYERS]
     assert total["reference"] is None and total["run_estimate"] is None
     assert receipt["run_estimates"]["cells"] == len(ITL_BANDS)
@@ -1137,6 +1142,76 @@ def test_a_jsonl_of_consumer_facts_reads_as_the_vendored_rows(tool, tmp_path) ->
     assert source == f"{path} sha256:{tool._sha256(path)}"
 
 
+def test_a_zero_run_estimate_still_shows_its_difference(tool) -> None:
+    """A run that estimates a bound cell at zero gives it no relative
+    difference, but its count difference and the summary keep it."""
+
+    cells = [
+        {"reference": "a", "model": 10.0},
+        {"reference": "b", "model": 0.0},
+        {"reference": "c", "model": 12.0},
+        {"reference": "d", "model": 7.0},
+        {"reference": None, "model": 29.0},
+    ]
+    estimates = {"a": 0.0, "b": 0.0, "c": 10.0}
+    report = tool.with_run_estimates({"cells": cells}, estimates)
+    by_reference = {cell["reference"]: cell for cell in report["cells"]}
+    assert by_reference["a"]["model_minus_run_estimate"] == 10.0
+    assert by_reference["a"]["model_vs_run_estimate"] is None
+    assert by_reference["b"]["model_minus_run_estimate"] == 0.0
+    assert by_reference["c"]["model_vs_run_estimate"] == pytest.approx(0.2)
+    for reference in ("d", None):
+        assert by_reference[reference]["run_estimate"] is None
+        assert by_reference[reference]["model_minus_run_estimate"] is None
+    assert report["run_estimates"] == {
+        "cells": 3,
+        "zero_estimates": 2,
+        "largest_abs_difference": pytest.approx(0.2),
+        "largest_abs_count_difference": 10.0,
+    }
+
+    # The reviewer's case: the only estimate is zero beside a model count of 10.
+    report = tool.with_run_estimates({"cells": cells[:1]}, estimates)
+    assert report["run_estimates"] == {
+        "cells": 1,
+        "zero_estimates": 1,
+        "largest_abs_difference": None,
+        "largest_abs_count_difference": 10.0,
+    }
+
+
+_count = st.floats(min_value=0, max_value=1e9, allow_nan=False)
+
+
+@settings(max_examples=60, deadline=None)
+@given(
+    models=st.lists(_count, max_size=12),
+    estimates=st.dictionaries(st.integers(0, 15).map(str), _count, max_size=12),
+)
+def test_every_estimated_cell_counts_in_the_run_summary(
+    tool, models, estimates
+) -> None:
+    cells = [
+        {"reference": str(index), "model": model} for index, model in enumerate(models)
+    ]
+    report = tool.with_run_estimates({"cells": cells}, estimates)
+    estimated = [cell for cell in report["cells"] if cell["run_estimate"] is not None]
+    assert [cell["reference"] for cell in estimated] == [
+        cell["reference"] for cell in cells if cell["reference"] in estimates
+    ]
+    for cell in estimated:
+        assert cell["model_minus_run_estimate"] == cell["model"] - cell["run_estimate"]
+        assert (cell["model_vs_run_estimate"] is None) is (cell["run_estimate"] == 0)
+    summary = report["run_estimates"]
+    assert summary["cells"] == len(estimated)
+    assert summary["zero_estimates"] == sum(
+        cell["run_estimate"] == 0 for cell in estimated
+    )
+    assert summary["largest_abs_count_difference"] == max(
+        (abs(cell["model_minus_run_estimate"]) for cell in estimated), default=None
+    )
+
+
 def test_rows_without_a_loss_weight_bind_and_are_named(tool, tmp_path) -> None:
     """A row the diagnostics writer left without a loss weight binds, and the
     tool names it so the in-sample basis can say so."""
@@ -1191,7 +1266,12 @@ def test_the_basis_reports_rows_bound_without_a_weight(
         "; 1 rows at 2025 carry no target_loss_weight and bind"
     )
     assert all(cell["in_sample"] for cell in receipt["cells"])
-    assert receipt["run_estimates"] == {"cells": 0, "largest_abs_difference": None}
+    assert receipt["run_estimates"] == {
+        "cells": 0,
+        "zero_estimates": 0,
+        "largest_abs_difference": None,
+        "largest_abs_count_difference": None,
+    }
 
     references = tmp_path / "target_references.json"
     references.write_text(json.dumps({"target_references": []}))

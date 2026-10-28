@@ -20,7 +20,8 @@ areas' sum, the count below State Pension age as a difference) is in sample
 only when every part is and the file holds nobody it counts outside them
 (``outside_parts``). With ``--diagnostics``, each bound cell also carries the
 run's own estimate of its target (``final_estimate``) beside the model count
-read here, so a check that reads a cell differently from the solve shows.
+read here, as a count difference and, when the estimate is above zero, a
+relative one, so a check that reads a cell differently from the solve shows.
 
     uv run --no-sync python tools/check_uk_itl_projections.py \
         --h5 <national.h5> --out <report.json> [--diagnostics <json>] \
@@ -157,11 +158,15 @@ def with_run_estimates(
 ) -> dict[str, Any]:
     """The report with each bound cell's run estimate beside its model count.
 
-    ``run_estimate`` is the run's ``final_estimate`` of the cell's reference
-    and ``model_vs_run_estimate`` the model count's relative difference from
-    it; both are None for a cell no reference binds or the run did not
-    estimate. A difference says the check and the solve read the cell
-    differently, or the file's weights are not the solve's.
+    ``run_estimate`` is the run's ``final_estimate`` of the cell's reference,
+    ``model_minus_run_estimate`` the model count less it, and
+    ``model_vs_run_estimate`` the model count's relative difference from it,
+    which a run estimate at or below zero leaves None. All three are None for
+    a cell no reference binds or the run did not estimate. A difference says
+    the check and the solve read the cell differently, or the file's weights
+    are not the solve's. The summary counts every estimated cell, those with
+    no relative difference among them (``zero_estimates``), so a model count
+    beside a zero estimate still shows in ``largest_abs_count_difference``.
     """
 
     cells = []
@@ -171,6 +176,9 @@ def with_run_estimates(
             {
                 **row,
                 "run_estimate": estimate,
+                "model_minus_run_estimate": (
+                    row["model"] - estimate if estimate is not None else None
+                ),
                 "model_vs_run_estimate": (
                     residual(row["model"], estimate)
                     if estimate is not None and estimate > 0
@@ -178,17 +186,23 @@ def with_run_estimates(
                 ),
             }
         )
-    compared = [
+    estimated = [row for row in cells if row["run_estimate"] is not None]
+    relative = [
         abs(row["model_vs_run_estimate"])
-        for row in cells
+        for row in estimated
         if row["model_vs_run_estimate"] is not None
     ]
     return {
         **report,
         "cells": cells,
         "run_estimates": {
-            "cells": len(compared),
-            "largest_abs_difference": max(compared, default=None),
+            "cells": len(estimated),
+            "zero_estimates": len(estimated) - len(relative),
+            "largest_abs_difference": max(relative, default=None),
+            "largest_abs_count_difference": max(
+                (abs(row["model_minus_run_estimate"]) for row in estimated),
+                default=None,
+            ),
         },
     }
 
