@@ -955,10 +955,10 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
 _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     "spine": {
         "gates_manifest_sha256": (
-            "a66ce7e3a1bca21e45f8a3d5b40fa236d2f0990bfafe6a41a2f1c9d1e942c432"
+            "41686a8899855833ab19ffff47e57e266609b6de5abd66070c71c9137852b9b9"
         ),
         "policy_sha256": (
-            "eaf400f0603a56188289bb0e62915096f22af2740192dc627ab1d635647861e8"
+            "1666b8b7261394113695a3c0e095fb1c3424e1a90afcf862a91f21bfed7540c4"
         ),
     },
     "calibration_seam": {
