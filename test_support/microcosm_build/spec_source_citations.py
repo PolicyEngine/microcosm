@@ -83,10 +83,15 @@ of any depth such as ``refs/heads/main``, or ``microcosm/`` before a
 top-level source directory) and its inner ``..`` segments resolved
 (``tools/x/../y.py`` is ``tools/y.py``), it is a file here or one of the path
 forms ``_repository_path_tails`` lists. A line citation of it is
-refused even when pinned. A bare file name cannot be told apart from another
-repository's, so it must be pinned.
+refused even when pinned. A path here can hold an ``=``, at which ``_SOURCE``
+starts a name (``href=x.py`` names ``x.py``), so the run of path characters
+before a cited file is tried with it too: ``docs/.../period=2025-01.json
+line 3`` cites a file here. Every path here is made of ``_PATH_HERE``
+characters, so a path here that prose cites is read whole. A bare file name
+cannot be told apart from another repository's, so it must be pinned.
 
-A dot segment (``..`` as a whole path segment, either dot perhaps ``%2e``)
+A dot segment (``..`` as a whole path segment, either dot perhaps ``%2e``,
+beside a slash, a backslash or a ``%2f``, which GitHub reads as a slash)
 removes the segment before it, and whitespace, a backslash or markup in that
 segment can make a renderer remove another one than a reading does: in
 ``[a]( <https://github.com/.../tools/a b/../x.py#L12>)`` the destination
@@ -94,10 +99,27 @@ follows a space, and in ``[a](https://github.com/.../tools/a\\b/../x.py#L12)``
 Markdown writes the backslash as ``%5C``, so both link to line 12 of
 ``tools/x.py``. So every line citation in a string that holds a dot segment,
 in any of its readings' sources, is refused, pinned or not
-(``dot_segment_line_citations``). Without one, whitespace or a backslash that
-a reading takes otherwise than a renderer stays in the segment the renderer
-follows (``%20``, ``%5C``), and no file under ``_SOURCE_ROOTS`` has either in
-its path, so that link names no source file here.
+(``dot_segment_line_citations``).
+
+A reading can lose a link of this repository without a dot segment too: a
+ref such as ``feature+foo`` holds a character no path here does, so the
+citation a reading finds starts after it, and where a code span's ``="`` has
+taken an attribute's opening quote, whitespace before the host
+(``href="https://a b@%67ithub.com/..."``) ends the URL. So a string is also
+refused where any of its sources holds this repository's path on GitHub
+(``PolicyEngine/microcosm/``) with a line fragment (``#L12``) at the first
+``#`` after it, whatever file the link names and whether or not a reading
+finds a citation in it (``line_links_of_this_repository``). The source is
+read as GitHub reads a path: its escapes of unreserved characters and of
+``/`` decoded, a backslash read as ``/``, a run of slashes as one, ``.``
+segments removed, and the owner and the name in any case. A renderer takes a
+source to the URL it follows by the decodings ``_sources`` makes, the steps
+this rule reads through, percent-encoding characters that neither the path
+nor a ``#`` holds, and dot segments, which the rule before refuses; and the
+first ``#`` after the path in a URL starts its fragment. So a link that
+names this repository's path on GitHub and a line is refused however a
+reading takes it. A relative link names no repository, and a redirect (a
+short link, a renamed repository) names another path: neither is read.
 
 The recognised spellings are the ones ``_LINE_CITATIONS`` documents. A source
 name followed by a line locator in no recognised spelling, with no ``.``,
@@ -123,7 +145,7 @@ from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass, field
 from functools import cache, lru_cache
 from html.entities import html5
-from itertools import accumulate
+from itertools import accumulate, pairwise
 from pathlib import Path, PurePosixPath
 from urllib.parse import unquote_to_bytes
 
@@ -192,8 +214,14 @@ _FORWARD_LOCATOR = re.compile(
     + _QUOTES
     + _NUMBERS
 )
+#: A run of path characters up to an ``=``, which a reverse locator's file may
+#: follow, as a forward locator's may: ``lines 3 of docs/period=2025-01.json``
+#: cites ``2025-01.json``. From the run's last ``=`` back, each is tried once,
+#: so a run is read in time linear in its length.
+_UP_TO_AN_EQUALS = r"(?:[A-Za-z0-9_./=-]*=)?"
 _REVERSE_LOCATOR = re.compile(
     rf"\b(?:{_LABEL}|(?=L\d)){_QUOTES}{_NUMBERS}{_QUOTES}\s++(?i:of|in)\s++{_QUOTES}"
+    + _UP_TO_AN_EQUALS
     + _SOURCE
 )
 _LINE_CITATIONS = (_FORWARD_LOCATOR, _REVERSE_LOCATOR)
@@ -311,10 +339,13 @@ _ENCLOSED_URL = re.compile(
 _STARTS_A_URL = re.compile(_URL_START)
 #: A dot segment: ``..`` as a whole path segment beside a slash or a
 #: backslash (``x/../y``, ``../y``, ``x\\..``), either ``.`` perhaps written
-#: ``%2e`` (``.%2E``, ``%2e%2e``), as the URL Standard reads one.
+#: ``%2e`` (``.%2E``, ``%2e%2e``), as the URL Standard reads one, or beside a
+#: ``%2f``, which GitHub reads as a slash before it resolves the path
+#: (``x%2f..%2fy``).
 _DOT_SEGMENT = re.compile(
-    r"(?<=[/\\])(?:\.|%2[eE]){2}(?![^/\\?#\s\"'`‘’“”<>()\[\]])"
-    r"|(?<![^\s\"'`‘’“”<>()\[\]=])(?:\.|%2[eE]){2}(?=[/\\])"
+    r"(?:(?<=[/\\])|(?<=%2[fF]))(?:\.|%2[eE]){2}"
+    r"(?:(?![^/\\?#\s\"'`‘’“”<>()\[\]])|(?=%2[fF]))"
+    r"|(?<![^\s\"'`‘’“”<>()\[\]=])(?:\.|%2[eE]){2}(?=[/\\]|%2[fF])"
 )
 #: What the URL Standard strips from both ends of a URL: C0 controls and
 #: spaces.
@@ -389,6 +420,10 @@ _MOVING_REF = re.compile(
 _CLAUSE_BREAK = re.compile(r";|(?<=[.!?])\s+(?=[A-Z(\[`])")
 #: Top-level directories whose files are this repository's sources.
 _SOURCE_ROOTS = ("packages", "tools", "experiments", "test_support", "docs")
+#: The characters every path under ``_SOURCE_ROOTS`` is made of: ``_SOURCE``'s,
+#: and ``=`` (``docs/.../period=2025-01.json``), at which ``_SOURCE`` starts a
+#: name so that ``href=x.py`` names ``x.py``.
+_PATH_HERE = frozenset(string.ascii_letters + string.digits + "_./=-")
 _SKIPPED_DIRECTORIES = {"__pycache__", ".venv", "node_modules", ".git"}
 #: A prefix naming this repository before a path in it: a GitHub URL of a
 #: file here, up to its ref (``url``), or ``microcosm/`` (after any ``./`` or
@@ -402,6 +437,15 @@ _THIS_REPOSITORY = re.compile(
     + "|".join(_SOURCE_ROOTS)
     + r")/)"
 )
+#: This repository's path on GitHub: its owner and name, in any case, as
+#: GitHub routes them, the owner not the end of a longer name.
+_REPOSITORY_ON_GITHUB = re.compile(r"(?<![A-Za-z0-9-])(?i:policyengine/microcosm)/")
+#: A fragment GitHub highlights lines for: ``L12``, ``L12-L19``.
+_LINE_FRAGMENT = re.compile(r"L\d")
+#: A run of slashes, which GitHub reads as one.
+_SLASH_RUN = re.compile(r"/{2,}")
+#: Single-dot segments after a slash, which the URL Standard removes.
+_SINGLE_DOT_SEGMENTS = re.compile(r"(?<=/)(?:\./)+")
 #: A dotted Microcosm symbol named in prose, such as
 #: ``microcosm.graph.executor._structural_columns``.
 DOTTED_MICROCOSM_SYMBOL = re.compile(
@@ -422,14 +466,17 @@ class LineCitation:
     """A line citation: the source as cited, and the string carrying it.
 
     Both read each URL as ``_read_url`` reads it. ``start`` and ``end``
-    locate the citation in ``text`` (-1 when built by hand); they do not take
-    part in equality.
+    locate the citation in ``text`` (-1 when built by hand), and ``path`` is
+    ``file`` with the run of ``_PATH_HERE`` characters before it
+    (``docs/.../period=`` before ``2025-01.json``); they do not take part in
+    equality.
     """
 
     file: str
     text: str
     start: int = field(default=-1, compare=False)
     end: int = field(default=-1, compare=False)
+    path: str = field(default="", compare=False)
 
     @property
     def name(self) -> str:
@@ -803,6 +850,22 @@ def _citation_matches(text: str) -> list[re.Match[str]]:
     )
 
 
+def _path_run(text: str, end: int) -> str:
+    """The run of ``_PATH_HERE`` characters in ``text`` that ends at ``end``.
+
+    A forward locator holds a character outside ``_PATH_HERE`` after its file
+    and a reverse one holds whitespace before its file's run, so the runs
+    before a string's citations overlap only where a reverse locator's file
+    runs on into the next citation's, and they are read in time linear in the
+    string's length.
+    """
+
+    start = end
+    while start and text[start - 1] in _PATH_HERE:
+        start -= 1
+    return text[start:end]
+
+
 def line_citations(value: object) -> list[LineCitation]:
     """Each line citation of a source in a payload, in string order.
 
@@ -812,7 +875,13 @@ def line_citations(value: object) -> list[LineCitation]:
     """
 
     return [
-        LineCitation(match["file"], text, match.start(), match.end())
+        LineCitation(
+            match["file"],
+            text,
+            match.start(),
+            match.end(),
+            _path_run(text, match.start("file")) + match["file"],
+        )
         for text in _readable_strings(value)
         for match in _citation_matches(text)
     ]
@@ -1103,12 +1172,19 @@ def resolves_in_repository(file: str, root: Path = REPOSITORY_ROOT) -> bool:
 def in_repository_line_citations(
     document: object, root: Path = REPOSITORY_ROOT
 ) -> list[LineCitation]:
-    """Line citations of this repository's files, pinned or not."""
+    """Line citations of this repository's files, pinned or not.
+
+    A citation's ``path`` is tried as well as its ``file``: a path here can
+    hold an ``=``, where ``_SOURCE`` starts a name
+    (``docs/.../period=2025-01.json line 3`` cites ``2025-01.json``).
+    """
 
     return [
         citation
         for citation in line_citations(document)
         if resolves_in_repository(citation.file, root)
+        or citation.path != citation.file
+        and resolves_in_repository(citation.path, root)
     ]
 
 
@@ -1129,6 +1205,46 @@ def dot_segment_line_citations(value: object) -> list[LineCitation]:
         for text in nested_strings(value)
         if any(map(_DOT_SEGMENT.search, _sources(text)))
         for citation in line_citations(text)
+    ]
+
+
+def _links_a_line_here(source: str) -> bool:
+    """Whether a source holds this repository's path on GitHub with a line
+    fragment at the first ``#`` after it.
+
+    The source is read as GitHub reads a URL's path, with no URL needed to
+    start before it: its ``_DECODED`` escapes decoded, a backslash read as
+    ``/``, a run of slashes as one and its ``.`` segments removed.
+    """
+
+    path = _SLASH_RUN.sub("/", _decode(source).replace("\\", "/"))
+    pieces = _SINGLE_DOT_SEGMENTS.sub("", path).split("#")
+    return any(
+        _LINE_FRAGMENT.match(fragment) and _REPOSITORY_ON_GITHUB.search(before)
+        for before, fragment in pairwise(pieces)
+    )
+
+
+def line_links_of_this_repository(value: object) -> list[str]:
+    """Strings that link a line of this repository on GitHub, however read.
+
+    A link a renderer follows to a line of a file here names this
+    repository's path (``PolicyEngine/microcosm/``), and its fragment
+    (``L12``) starts at the first ``#`` after it. A reading can lose the
+    link: in ``[a](<https://github.com/PolicyEngine/microcosm/blob/
+    feature+foo/tools/x.py#L12>)`` the citation it finds starts after the
+    ``+`` of the ref, and in ``href="https://a b@%67ithub.com/PolicyEngine/
+    microcosm/..."`` whose opening quote a code span's ``="`` took, the URL
+    ends at the space before the host. So a string any of whose ``_sources``
+    holds the path with a line fragment after it (``_links_a_line_here``) is
+    refused, whatever file it names and whether or not a reading finds a
+    citation in it.
+    """
+
+    return [
+        text
+        for text in nested_strings(value)
+        if any(map(_links_a_line_here, _sources(text)))
     ]
 
 

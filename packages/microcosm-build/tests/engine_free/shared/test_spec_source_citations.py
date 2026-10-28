@@ -14,13 +14,19 @@ hide a broken check:
   GitHub URL, or ``microcosm/`` before a top-level source directory), it is a
   file here or an anchored path form of one: its path from the root, from its
   distribution directory, from ``src/``, from the ``microcosm`` namespace,
-  from its shard, or from a first-level subpackage of its shard. A bare file
-  name cannot be resolved and falls to the next rule;
+  from its shard, or from a first-level subpackage of its shard, the run of
+  path characters before a cited name included (``period=2025-01.json``).
+  A bare file name cannot be resolved and falls to the next rule;
 - no resource cites a line in a string that holds a dot segment (``..`` as
-  a path segment, either dot perhaps ``%2e``), pinned or not
-  (``dot_segment_line_citations``): whitespace, a backslash or markup in the
-  segment it removes can make a renderer remove another one than a reading
-  does, so which file the citation names is unknown;
+  a path segment beside ``/``, ``\\`` or ``%2f``, either dot perhaps
+  ``%2e``), pinned or not (``dot_segment_line_citations``): whitespace, a
+  backslash or markup in the segment it removes can make a renderer remove
+  another one than a reading does, so which file the citation names is
+  unknown;
+- no resource links a line of this repository by its GitHub path, however a
+  reading takes the link (``line_links_of_this_repository``): no string's
+  source holds ``PolicyEngine/microcosm/``, read as GitHub reads a path,
+  with ``#L<n>`` at the first ``#`` after it;
 - no resource cites a line of any other source unless the citation binds to
   an inline commit (the nearest one in its own clause, else the nearest one
   before it in its string; ``citing_commit``), or the resource pins a path
@@ -84,6 +90,7 @@ from test_support.microcosm_build.spec_source_citations import (
     dotted_microcosm_symbols,
     in_repository_line_citations,
     line_citations,
+    line_links_of_this_repository,
     misspelled_commit_pins,
     named_commits,
     names_a_commit,
@@ -135,6 +142,16 @@ def test_no_resource_cites_a_line_in_a_string_with_a_dot_segment(country: str) -
         name: hits
         for name, payload in package_payloads(country).items()
         if (hits := dot_segment_line_citations(payload))
+    }
+    assert offenders == {}
+
+
+@pytest.mark.parametrize("country", PACKAGES)
+def test_no_resource_links_a_line_of_this_repository(country: str) -> None:
+    offenders = {
+        name: hits
+        for name, payload in package_payloads(country).items()
+        if (hits := line_links_of_this_repository(payload))
     }
     assert offenders == {}
 
@@ -1530,13 +1547,51 @@ def test_in_repository_paths_resolve_from_an_anchor_or_a_repository_prefix() -> 
     assert COUNTRY_PACKAGE_ROOT.is_dir()
 
 
-def test_no_source_file_here_has_whitespace_or_a_backslash_in_its_path() -> None:
-    # The dot-segment rule relies on it: without a ``..``, a renderer keeps
-    # whitespace or a backslash in the segment it follows (``%20``, ``%5C``),
-    # so its link names no source file here.
+def test_every_source_path_here_is_read_whole() -> None:
+    # The in-repository rule relies on it: a reading ends a path at any
+    # character outside ``_PATH_HERE`` (whitespace, a backslash, a ``+``), so a
+    # path here holding one could be cited by a name no reading resolves. An
+    # ``=``, which evidence files here hold, is read through by a citation's
+    # ``path``.
     tails = citations._repository_path_tails(REPOSITORY_ROOT)
     assert "tools/ci_test_plan.py" in tails
-    assert sorted(tail for tail in tails if re.search(r"[\s\\]", tail)) == []
+    assert sorted(tail for tail in tails if not set(tail) <= citations._PATH_HERE) == []
+
+
+def test_a_path_here_that_holds_an_equals_sign_is_read_whole(tmp_path: Path) -> None:
+    # ``_SOURCE`` starts a name after an ``=`` (``href=x.py`` names ``x.py``),
+    # so a cited name's run of path characters is tried too, forward and
+    # reverse, in prose and in a URL.
+    cited = "docs/evidence/margins/period=2025-01.json"
+    (tmp_path / cited).parent.mkdir(parents=True)
+    (tmp_path / cited).write_text("{}", encoding="utf-8")
+    (tmp_path / "tools").mkdir()
+    (tmp_path / "tools/x.py").write_text("", encoding="utf-8")
+    for written in (
+        f"{cited} line 3 at a1b2c3d",
+        f"microcosm/{cited}:3 at a1b2c3d",
+        f"lines 3-4 of {cited} at a1b2c3d",
+        f"https://github.com/PolicyEngine/microcosm/blob/a1b2c3d/{cited}#L3",
+    ):
+        found = in_repository_line_citations({"note": written}, tmp_path)
+        assert {citation.file for citation in found} == {"2025-01.json"}, written
+    found = in_repository_line_citations(
+        {"note": "<a href=tools/x.py#L3>x</a>"}, tmp_path
+    )
+    assert [(citation.file, citation.path) for citation in found] == [
+        ("tools/x.py", "href=tools/x.py")
+    ]
+    # Another path's run names nothing here, and a reverse locator reads a
+    # name after an ``=`` as a forward one does, pinned or not.
+    assert (
+        in_repository_line_citations({"note": f"x={cited[5:]} line 3"}, tmp_path) == []
+    )
+    assert [
+        citation.file
+        for citation in unpinned_line_citations(
+            {"note": "lines 3 of vendor/foo=bar.py"}
+        )
+    ] == ["bar.py"]
 
 
 def test_only_anchored_tails_name_a_file_here(tmp_path: Path) -> None:
@@ -2036,7 +2091,8 @@ _DOT_SEGMENT_PLACES = (
     place=st.sampled_from(_DOT_SEGMENT_PLACES),
     dots=st.sampled_from(_DOT_DOTS),
     not_dots=st.sampled_from(_NOT_DOT_DOTS),
-    separator=st.sampled_from(("/", "\\")),
+    # GitHub reads ``%2f`` as ``/`` before it resolves a path.
+    separator=st.sampled_from(("/", "\\", "%2f", "%2F")),
     directory=_FOREIGN_DIRECTORY,
     stem=_STEM,
     suffix=_SUFFIX,
@@ -2045,6 +2101,34 @@ _DOT_SEGMENT_PLACES = (
     a=st.integers(1, 99_999),
     depth=st.integers(0, 2),
     as_key=st.booleans(),
+)
+@example(
+    place="{inside}",
+    dots="..",
+    not_dots=".",
+    separator="%2f",
+    directory="",
+    stem="x",
+    suffix="py",
+    pinned=True,
+    sha="a1b2c3d",
+    a=12,
+    depth=0,
+    as_key=False,
+)
+@example(
+    place="{dots}{separator}docs{separator}notes: {url}",
+    dots="..",
+    not_dots=".",
+    separator="%2F",
+    directory="",
+    stem="x",
+    suffix="py",
+    pinned=False,
+    sha="a1b2c3d",
+    a=12,
+    depth=0,
+    as_key=False,
 )
 @example(
     place="{inside}",
@@ -2598,10 +2682,208 @@ def test_a_dot_segment_refuses_the_line_citations_of_its_string_only() -> None:
         ("x.py:12 at a1b2c3d; see docs/%2e%2E/notes", 1),
         ('x.py:12 at a1b2c3d; <a href="..\\x">x</a>', 1),
         ("x.py:12 and y.py:30 at a1b2c3d; see ../docs", 2),
+        ("x.py:12 at a1b2c3d; see ..%2fdocs", 1),
+        ("x.py:12 at a1b2c3d; see docs%2F.%2e%2fnotes", 1),
     ):
         document = {"note": written, "other": pinned}
         assert dot_segment_line_citations(document) == line_citations(written)
         assert len(dot_segment_line_citations(document)) == count, written
+
+
+def test_the_round_eleven_review_counterexamples_are_refused() -> None:
+    sha = "2822aff1ce521b2db42593ac38c7d81b44ca98a2"
+    blob = "https://github.com/PolicyEngine/microcosm/blob/"
+    path = f"/PolicyEngine/microcosm/blob/{sha}/tools/ci_test_plan.py"
+    code_span = 'Use `prefix="` before the value.\n\n'
+    # markdown-it-py 4.2 and parse5 7.3 render each of these, and bun 1.3's
+    # ``URL`` reads each, as a link to line 12 of ``tools/ci_test_plan.py`` on
+    # github.com; at ``2822aff1`` no rule refused them. A ref can hold
+    # punctuation at which a reading starts a name, so the citation it finds
+    # (``foo/tools/ci_test_plan.py``) names no file here.
+    written = []
+    for ref in (
+        "feature+foo",
+        "feature@foo",
+        "release!1",
+        "v1,2;3=4",
+        "it's",
+        "a$b",
+        "a=b",
+    ):
+        written.append(f"[a](<{blob}{ref}/tools/ci_test_plan.py#L12>) at {sha}")
+        written.append(
+            f'<a href="{blob}{ref}/tools/ci_test_plan.py#L12">a</a> at {sha}'
+        )
+    # Where a code span's ``="`` has taken an attribute's opening quote, a
+    # reading ends the URL at the whitespace in its user, and finds no host
+    # in what follows; so too with a query longer than the backstop's
+    # window, and with the owner escaped and its slash doubled, which GitHub
+    # reads through.
+    for authority in (
+        "a b@%67ithub.com",
+        "a b@ｇithub.com",
+        "a b@github。com",
+        "a b@%67ithub.com:443",
+        "a\tb c@%47ITHUB.com",
+    ):
+        written.append(f'{code_span}<a href="https://{authority}{path}#L12">a</a>')
+    written += (
+        f'{code_span}<a href="https://a b@%67ithub.com{path}?{"a" * 30}=1#L12">a</a>',
+        f'{code_span}<a href="https://a b@%67ithub.com/%50olicyEngine//microcosm/./'
+        f'blob/{sha}/tools/ci_test_plan.py#L12">a</a>',
+    )
+    for text in written:
+        assert line_links_of_this_repository({"note": text}) == [text], text
+    # GitHub reads ``%2f`` as ``/`` and then resolves the path: github.com
+    # serves ``tools/ci_test_plan.py`` for this, though no source held a dot
+    # segment by round 11's definition.
+    text = (
+        f'{code_span}<a href="{blob}{sha}/tools/a b%2f..%2fci_test_plan.py#L12">a</a>'
+    )
+    assert line_links_of_this_repository({"note": text}) == [text]
+    assert dot_segment_line_citations({"note": text}) == line_citations(text) != []
+
+
+def test_a_line_link_of_this_repository_is_refused_by_its_path_alone() -> None:
+    # Whatever file it names: through markup and ``%`` escapes, backslashes,
+    # repeated slashes, ``.`` segments, a tab and the owner's case, as a
+    # browser and then GitHub read a path. A Makefile or a workflow outside
+    # the source directories drifts too.
+    for written in (
+        "https://github.com/PolicyEngine/microcosm/blob/main/Makefile#L3",
+        "https://github.com/PolicyEngine/microcosm/blob/a1b2c3d/.github/workflows/ci.yml#L30",
+        "github.com/PolicyEngine&#47;microcosm/blob/x/a.py&#35;L12",
+        "PolicyEngine\\microcosm\\blob\\x\\a.py#L12",
+        "policyengine//MICROCOSM/blob/x/a.py#L3-L9",
+        "PolicyEngine/./microcosm/blob/x/a.py#L3",
+        "PolicyEngine/micro\tcosm/blob/x/a.py#L3",
+        "%50olicyEngine/%6Dicrocosm/blob/x/a.py#L3",
+        # Prose between the path and a later line fragment is read as part of
+        # the link: refusing the string is intended, as a dot segment's is.
+        "see github.com/PolicyEngine/microcosm/tree/main/docs and cps.py#L197 at a1b2c3d",
+    ):
+        assert line_links_of_this_repository({"note": written}) == [written], written
+    # An issue, a comment, a heading or a bare ``L`` is no line; another
+    # repository's path is not this one's; a ``#`` between the path and a line
+    # fragment starts the link's fragment first; and the path in another
+    # string links nothing in this one.
+    for written in (
+        "PolicyEngine/microcosm#38 and x.py#L12 at a1b2c3d",
+        "https://github.com/PolicyEngine/microcosm/pull/939#issuecomment-1; x.py#L12 at a1b2c3d",
+        "https://github.com/PolicyEngine/microcosm/blob/main/README.md#readme",
+        "https://github.com/PolicyEngine/microcosm/blob/main/a.py#L",
+        "https://github.com/PolicyEngine/microcosm-dynamics/blob/a1b2c3d/x.py#L12",
+        "https://github.com/NotPolicyEngine/microcosm/blob/a1b2c3d/x.py#L12",
+        "github.com/PolicyEngine/microcosm/issues/1 (#2) and x.py#L12 at a1b2c3d",
+        "x.py#L12 at a1b2c3d; see github.com/PolicyEngine/microcosm/",
+    ):
+        assert line_links_of_this_repository({"note": written}) == [], written
+    document = {"a": "github.com/PolicyEngine/microcosm/", "b": "x.py#L12 at a1b2c3d"}
+    assert line_links_of_this_repository(document) == []
+
+
+#: A ref segment holding punctuation at which a reading starts a name, though
+#: a URL's path holds it: ``feature+foo``, ``release!1``, ``v1,2;3=4``.
+_PUNCTUATED_REF_SEGMENT = st.from_regex(
+    r"[A-Za-z0-9_+@!$,;=()-]{1,12}", fullmatch=True
+).filter(lambda segment: "microcosm" not in segment.lower())
+#: A user and a host of a link to github.com: whitespace in a user ends a URL
+#: in a reading, and a browser reads a host's escapes, full-width letters and
+#: ideographic full stop.
+_GITHUB_AUTHORITIES = (
+    "github.com",
+    "user@github.com",
+    "a b@%67ithub.com",
+    "a\tb c@ｇithub.com",
+    "x y@github。com:443",
+)
+#: This repository's owner and name as GitHub routes them, and other
+#: repositories' of the same shape.
+_THIS_REPOSITORY_PATHS = (
+    "PolicyEngine/microcosm",
+    "policyengine/MICROCOSM",
+    "%50olicyEngine/%6Dicrocosm",
+    "PolicyEngine//microcosm",
+    "PolicyEngine/./microcosm",
+)
+_OTHER_REPOSITORY_PATHS = (
+    "PolicyEngine/microcosm-dynamics",
+    "PolicyEngine/microcosms",
+    "NotPolicyEngine/microcosm",
+    "PolicyEngine/micro",
+)
+
+
+@settings(max_examples=300, deadline=None)
+@given(
+    enclosure=st.sampled_from(_URL_ENCLOSURES),
+    authority=st.sampled_from(_GITHUB_AUTHORITIES),
+    repository=st.sampled_from(_THIS_REPOSITORY_PATHS),
+    other=st.sampled_from(_OTHER_REPOSITORY_PATHS),
+    route=st.sampled_from(("blob", "tree", "blame")),
+    ref=st.lists(_PUNCTUATED_REF_SEGMENT, min_size=1, max_size=3).map("/".join),
+    path=st.sampled_from(_ROOTED_FILES),
+    query=st.sampled_from(("", "?plain=1", "?" + "a" * 30, "?a b=c")),
+    fragment=st.sampled_from(("#L{a}", "#L{a}-L{b}")),
+    sha=_SHA,
+    a=st.integers(1, 99_999),
+    b=st.integers(1, 99_999),
+)
+@example(
+    enclosure="[a](<{url}>)",
+    authority="github.com",
+    repository="PolicyEngine/microcosm",
+    other="PolicyEngine/microcosm-dynamics",
+    route="blob",
+    ref="feature+foo",
+    path="tools/build_us_puf_support_base.py",
+    query="",
+    fragment="#L{a}",
+    sha="a1b2c3d",
+    a=12,
+    b=12,
+)
+@example(
+    enclosure='Use `prefix="` here.\n\n<a href="{url}">a</a>',
+    authority="a b@%67ithub.com",
+    repository="%50olicyEngine/%6Dicrocosm",
+    other="NotPolicyEngine/microcosm",
+    route="tree",
+    ref="release!1/x",
+    path="tools/build_us_puf_support_base.py",
+    query="?" + "a" * 30,
+    fragment="#L{a}-L{b}",
+    sha="a1b2c3d",
+    a=3,
+    b=9,
+)
+def test_a_line_link_of_this_repository_is_refused_whatever_its_ref_or_authority_holds(
+    enclosure: str,
+    authority: str,
+    repository: str,
+    other: str,
+    route: str,
+    ref: str,
+    path: str,
+    query: str,
+    fragment: str,
+    sha: str,
+    a: int,
+    b: int,
+) -> None:
+    # markdown-it-py 4.2, parse5 7.3 and bun 1.3 render each of these as a
+    # link to the file's lines on github.com, which routes the path, except a
+    # full-width host in a Markdown destination, which markdown-it writes as
+    # no URL bun reads; each is refused, pinned or not, and another
+    # repository's link of the same shape is not.
+    def written(repository: str) -> str:
+        line = fragment.format(a=a, b=b)
+        url = f"https://{authority}/{repository}/{route}/{ref}/{path}{query}{line}"
+        return f"Pinned at {sha}. " + enclosure.format(url=url)
+
+    here = written(repository)
+    assert line_links_of_this_repository({"note": here}) == [here]
+    assert line_links_of_this_repository({"note": written(other)}) == []
 
 
 def test_a_string_is_read_again_with_its_markup_escapes_decoded() -> None:
@@ -2938,6 +3220,27 @@ def test_a_long_string_is_scanned_in_linear_time() -> None:
         line_citations(text)
         unrecognised_line_locators(text)
         dot_segment_line_citations(text)
+        assert time.process_time() - started < 2, text[:24]
+    # Since round 12, in 2 s of their own: runs of what this repository's path,
+    # a line fragment, a run of slashes or ``.`` segments, a dot segment beside
+    # a ``%2f``, and the run of path characters before a name start with.
+    started = time.process_time()
+    for text in (
+        "policyengine/microcosm" * 2_500 + "#L1",
+        "PolicyEngine/microcosm/#L1" * 2_000,
+        "#L1" * 20_000,
+        "/./" * 20_000 + "#L1",
+        "/" * 60_000 + "#L1",
+        "%2f..%2f" * 8_000,
+        "=..%2f" * 10_000,
+        "a=" * 30_000 + "x.py:1",
+        "=x.py:1" * 8_000,
+        "lines 1 of " + "a=" * 30_000,
+    ):
+        line_citations(text)
+        in_repository_line_citations(text)
+        dot_segment_line_citations(text)
+        line_links_of_this_repository(text)
         assert time.process_time() - started < 2, text[:24]
 
 
