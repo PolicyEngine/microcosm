@@ -34,6 +34,7 @@
     "spine_provenance",
     "chronicle_feed_source_commit",
     "chronicle_feed_facts_sha256",
-    "input_h5_sha256"
+    "input_h5_sha256",
+    "policyengine_uk_version"
   ]
 }
