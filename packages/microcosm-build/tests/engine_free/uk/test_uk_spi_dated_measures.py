@@ -39,6 +39,7 @@ from microcosm.build.uk_runtime.spi_dated_measures import (
     population_factor_for_people,
     population_factors,
     round_trip_mismatches,
+    same_labels,
     uk_spi_dated_measure_kind,
     uk_spi_dated_measure_year,
     uk_spi_dated_measures_named,
@@ -337,6 +338,37 @@ def test_an_amount_reset_with_its_label_is_compared_where_the_label_held():
     ) == {"repaid": math.inf}
 
 
+def test_a_label_in_another_representation_is_the_same_label():
+    """Bytes and a number written as an integer or a float are one label, so
+    an unchanged plan in a new dtype is compared, not taken as reassigned
+    (round 3)."""
+
+    stored = {
+        "person": pd.DataFrame(
+            {"plan": np.array([1, 2, 0]), "repaid": [500.0, 800.0, 0.0]}
+        )
+    }
+    floats = {"person": stored["person"].assign(plan=[1.0, 2.0, 0.0])}
+    where_held = {"repaid": "plan"}
+    assert (
+        round_trip_mismatches(
+            stored, floats, ["repaid", "plan"], compared_where_unchanged=where_held
+        )
+        == {}
+    )
+    moved = {"person": floats["person"].assign(repaid=[500.0, 0.0, 0.0])}
+    assert round_trip_mismatches(
+        stored, moved, ["repaid"], compared_where_unchanged=where_held
+    ) == {"repaid": 800.0}
+
+    labels = pd.Series([b"PLAN_1", "NONE", None, "PLAN_2"], dtype=object)
+    same = pd.Series(["PLAN_1", b"NONE", np.nan, "PLAN_4"], dtype=object)
+    np.testing.assert_array_equal(same_labels(labels, same), [True, True, True, False])
+    np.testing.assert_array_equal(
+        same_labels(pd.Series([1, None]), pd.Series(["1.0", "1"])), [True, False]
+    )
+
+
 def test_an_input_on_two_indices_or_a_later_year_refuses():
     growth = {"a": {2024: 0.1}, "b": {2024: 0.2}}
     with pytest.raises(ValueError, match="uprated by both"):
@@ -496,7 +528,6 @@ def test_a_row_dated_throughout_binds_its_own_year():
         ),
         ({"groupby_variable": "total_income_after_loss_relief_annual"}, "band"),
         ({"value_variable": "spi_2024_state_pension"}, "value"),
-        ({"value_variable": "person_count"}, "count"),
     ],
 )
 def test_a_row_mixing_years_refuses(overrides, missing):
@@ -598,6 +629,12 @@ def test_the_resolver_refuses_a_dated_measure_bound_at_another_year(
             _dated_binding(
                 filters=[{"concept": "is_SP_age", "operator": "==", "value": True}]
             ),
+            "mixes dated SPI measures with variables of another year",
+        ),
+        # A count of the run's people banded by 2023's taxpayers mixes years;
+        # spi_2023_person_count is the count of that year's.
+        (
+            _dated_binding(value_variable="person_count"),
             "mixes dated SPI measures with variables of another year",
         ),
         # A provider's own fields: no plain-column field names the measure.
@@ -763,6 +800,173 @@ def test_a_frame_without_period_metadata_reads_its_own_values_as_they_are(
     np.testing.assert_allclose(adapter.tables["person"]["test_stored"], expected)
 
 
+@pytest.mark.parametrize("metadata", [True, False])
+def test_an_entity_count_holds_no_period_on_either_frame(metadata):
+    """A count is ones whatever the period, so it is read alike with and
+    without frame period metadata; the resolver refuses one banded by a dated
+    measure (above)."""
+
+    frame = PeriodFrameStub()
+    if not metadata:
+        frame.metadata = {}
+    adapter = UKFrameTargetAdapter(frame)
+    adapter.set_column("person", "spi_2023_income_tax", [0.0, 50.0, 10.0])
+    registry, contract = _registry(
+        {
+            "count": {"value_variable": "person_count", "measurement_period": 2023},
+            "dated": _dated_binding(value_variable="person_count"),
+        }
+    )
+
+    materialized = materialize_target_bindings(adapter, registry, contract, period=2025)
+
+    assert not materialized.skipped
+    np.testing.assert_allclose(adapter.tables["person"]["test_count"], [1.0] * 3)
+    np.testing.assert_allclose(adapter.tables["person"]["test_dated"], [0.0, 1.0, 1.0])
+
+
+#: A provider row reading an engine value under a declared 2023: the review's
+#: example (round 3), and the same through a member reduction and ``count_of``.
+_UNDATED_PROVIDERS = {
+    "value": {
+        "kind": "baseline_flag_crosstab",
+        "from_entity": "person",
+        "affected_flag_variable": "is_SP_age",
+        "value_variable": "income_tax",
+    },
+    "flag": {
+        "kind": "baseline_flag_crosstab",
+        "from_entity": "person",
+        "affected_flag_variable": "income_tax",
+        "value_variable": "person_count",
+    },
+    "count_of": {
+        "kind": "baseline_flag_crosstab",
+        "from_entity": "person",
+        "affected_flag_variable": "is_SP_age",
+        "count_of": "income_tax",
+    },
+    "reduction": {
+        "kind": "baseline_flag_crosstab",
+        "affected_flag_variable": "is_SP_age",
+        "value_variable": "person_count",
+        "value_reduction": {"entity": "person", "variable": "income_tax"},
+    },
+    "gated": {
+        "kind": "parameter_gated_threshold",
+        "gate_parameter": "gov.hmrc.cgt.annual_exempt_amount",
+        "gated_variable": "income_tax",
+        "value_variable": "person_count",
+    },
+}
+
+
+@pytest.mark.parametrize("metadata", [True, False])
+@pytest.mark.parametrize("case", sorted(_UNDATED_PROVIDERS))
+def test_a_provider_refuses_an_engine_value_under_another_period(case, metadata):
+    """A provider reads its columns as the frame holds them, whatever period it
+    is passed, so an engine value (injected at the calibration period) under a
+    declared 2023 is refused before the provider runs."""
+
+    frame = PeriodFrameStub()
+    if not metadata:
+        frame.metadata = {}
+    adapter = UKFrameTargetAdapter(frame)
+    adapter.set_column("person", "is_SP_age", [True, False, True])
+    adapter.set_column("household", "is_SP_age", [True, False])
+    adapter.set_column("person", "income_tax", [1.0, 2.0, 3.0])
+    registry, contract = _registry(
+        {
+            "provider": {
+                **_UNDATED_PROVIDERS[case],
+                "measurement_period": 2023,
+                "require_matching_fact_period": True,
+            }
+        }
+    )
+    with pytest.raises(MeasurementPeriodError, match="income_tax"):
+        materialize_target_bindings(adapter, registry, contract, period=2025)
+
+
+@pytest.mark.parametrize("metadata", [True, False])
+def test_a_provider_reads_values_held_at_its_period(metadata):
+    """The CGT providers' shape: a gate on a measure dated to the declared
+    year, counted or summed, banded on a stored column."""
+
+    frame = PeriodFrameStub()
+    if not metadata:
+        frame.metadata = {}
+    adapter = UKFrameTargetAdapter(frame)
+    adapter.set_column("person", "cgt_2024_gains", [0.0, 5_000.0, 50_000.0])
+    gate = {
+        "kind": "parameter_gated_threshold",
+        "gate_parameter": "gov.hmrc.cgt.annual_exempt_amount",
+        "gated_variable": "cgt_2024_gains",
+        "from_entity": "person",
+        "measurement_period": 2024,
+        "require_matching_fact_period": True,
+    }
+    registry, contract = _registry(
+        {
+            "count": {**gate, "value_variable": "person_count"},
+            "amount": {**gate, "value_variable": "cgt_2024_gains"},
+            "stored": {**gate, "value_variable": "employment_income"},
+        },
+        fact_period="2024",
+    )
+
+    materialized = materialize_target_bindings(adapter, registry, contract, period=2025)
+
+    assert not materialized.skipped
+    people = adapter.tables["person"]
+    np.testing.assert_allclose(people["test_count"], [0.0, 1.0, 1.0])
+    np.testing.assert_allclose(people["test_amount"], [0.0, 5_000.0, 50_000.0])
+    np.testing.assert_allclose(people["test_stored"], [0.0, 0.0, 500.0])
+
+
+def test_a_provider_on_a_frame_of_another_period_refuses_its_stored_values():
+    """A stored column holds the frame's period: a provider declaring the
+    calibration period on a 2024 frame would read 2024's values."""
+
+    adapter = UKFrameTargetAdapter(PeriodFrameStub())
+    registry, contract = _registry(
+        {
+            "stored": {
+                "kind": "baseline_flag_crosstab",
+                "from_entity": "person",
+                "affected_flag_variable": "employment_income",
+                "value_variable": "person_count",
+                "measurement_period": 2025,
+            }
+        }
+    )
+    with pytest.raises(MeasurementPeriodError, match="held at 2024"):
+        materialize_target_bindings(adapter, registry, contract, period=2025)
+
+
+@pytest.mark.parametrize(
+    "kind", ["input_substitution_counterfactual", "caller_defined"]
+)
+def test_a_provider_whose_reads_are_unknown_declares_only_the_calibration_period(
+    kind,
+):
+    adapter = UKFrameTargetAdapter(PeriodFrameStub())
+    binding = {"kind": kind, "metric_name": "x/delta", "from_entity": "person"}
+    registry, contract = _registry({"other": {**binding, "measurement_period": 2023}})
+    with pytest.raises(MeasurementPeriodError, match="reads are not known here"):
+        materialize_target_bindings(adapter, registry, contract, period=2025)
+
+    adapter.set_column("person", "counterfactual_delta__x_delta", [1.0, 2.0, 3.0])
+    registry, contract = _registry(
+        {"other": {**binding, "measurement_period": 2025}}, fact_period="2025"
+    )
+    materialized = materialize_target_bindings(adapter, registry, contract, period=2025)
+    if kind == "caller_defined":
+        assert "unsupported binding kind" in materialized.skipped[0].reason
+    else:
+        assert not materialized.skipped
+
+
 def test_the_dated_measures_a_binding_names_are_found_in_any_field():
     binding = {
         "kind": "count_affected",
@@ -778,6 +982,22 @@ def test_the_dated_measures_a_binding_names_are_found_in_any_field():
         "spi_2023_total_income",
     }
     assert uk_spi_dated_measures_named({"value_variable": "state_pension"}) == set()
+
+
+def test_annotations_name_no_dated_measure():
+    """A note or a metric name computes nothing, at any depth (round 3)."""
+
+    binding = {
+        "kind": "baseline_flag_crosstab",
+        "affected_flag_variable": "is_SP_age",
+        "notes": "Compare with spi_2023_income_tax",
+        "metric_name": "diagnostic/spi_2023_income_tax",
+        "source_lines": ["spi_2023_state_pension"],
+        "value_reduction": {"variable": "age", "notes": "spi_2023_total_income"},
+    }
+    assert uk_spi_dated_measures_named(binding) == set()
+    binding["value_reduction"]["variable"] = "spi_2023_total_income"
+    assert uk_spi_dated_measures_named(binding) == {"spi_2023_total_income"}
 
 
 def test_a_persisted_dated_measure_refuses(monkeypatch, tmp_path):

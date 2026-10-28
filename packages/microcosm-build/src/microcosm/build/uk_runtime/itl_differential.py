@@ -89,6 +89,12 @@ class ITLCell:
     sources: tuple[str, ...]
     band: Band | None = None
     area: str | None = None
+    #: The cells whose model counts fix this one's (their ``sort_key``s): a
+    #: sum's parts, or the two counts the one below State Pension age is the
+    #: difference of. Such a cell's ``in_sample`` says every part is bound;
+    #: ``differential`` keeps it only when the file holds nobody the cell
+    #: counts outside its parts.
+    parts: tuple[tuple[Any, ...], ...] = ()
 
     @property
     def key(self) -> str:
@@ -250,16 +256,19 @@ def expected_cells(
     present, and a Table 2.2 measure must then carry all twelve region-tier
     areas. Rows no cell reads (another measure, another geography) are left
     out before the window, so their gaps do not refuse the report.
-    ``bound_targets`` names what the run bound: a contract target, which
-    binds every cell of its family, or one target by its name without the
-    period (``hmrc.itl.taxpayers_by_total_income_band.band_12570_15000``,
-    ``hmrc.itl.state_pension_age_taxpayers@E12000001``). A sum is in sample
-    when every cell it sums is: the residents' count over its areas, and the
-    all-band count over its bands (which leave out only taxpayers below the
-    lowest edge). Table 2.1's UK cell is in sample when every Table 2.2 area
-    of its measure is (its model count is theirs, for everyone who lives in
-    one of the twelve areas); the count below State Pension age is when that
-    cell and the all-band count are.
+    ``bound_targets`` names what the run bound at ``year``: a contract
+    target, which binds every cell of its family, or one target by its name
+    without the period (``hmrc.itl.taxpayers_by_total_income_band.band_12570_15000``,
+    ``hmrc.itl.state_pension_age_taxpayers@E12000001``).
+
+    A cell no target names is in sample through its ``parts`` only: the
+    all-band count through its bands, the residents' count and Table 2.1's
+    UK count through Table 2.2's areas of their measure, and the count below
+    State Pension age through the all-band count and Table 2.1's State
+    Pension age count, whose difference it is. Here such a cell is marked in
+    sample when every part is; ``differential`` keeps the mark only when the
+    file holds nobody the cell counts outside its parts (a taxpayer below the
+    lowest band edge, or one in none of the twelve areas).
     """
 
     window = calendar_window(
@@ -310,10 +319,7 @@ def expected_cells(
         for band in ITL_BANDS
     ]
     all_taxpayers = need(("2.5", _TABLE_2_5_COUNT, UNITED_KINGDOM, None))
-    all_cell = replace(
-        cell("2.5", ALL_TAXPAYERS, all_taxpayers),
-        in_sample=all(band_cell.in_sample for band_cell in cells),
-    )
+    all_cell = _summed(cell("2.5", ALL_TAXPAYERS, all_taxpayers), cells)
     cells.append(all_cell)
     for measure in AGE_MEASURES:
         national = window.get(("2.1", measure, UNITED_KINGDOM, None))
@@ -341,18 +347,12 @@ def expected_cells(
             )
             cells.extend(area_cells)
             cells.append(
-                replace(
-                    cell("2.2", measure, residents, area=RESIDENTS),
-                    in_sample=all(area_cell.in_sample for area_cell in area_cells),
-                )
+                _summed(cell("2.2", measure, residents, area=RESIDENTS), area_cells)
             )
-        # Binding every area binds their sum, which is the UK cell's model
-        # count for everyone who lives in one of the twelve areas.
-        areas_bound = bool(area_cells) and all(c.in_sample for c in area_cells)
         if national is not None:
-            national_cell = replace(
-                cell("2.1", measure, national), in_sample=areas_bound
-            )
+            # The UK count sums the areas' for everyone who lives in one of
+            # the twelve; without Table 2.2 rows it has no parts.
+            national_cell = _summed(cell("2.1", measure, national), area_cells)
             cells.append(national_cell)
             if measure == "state_pension_age":
                 below = (
@@ -360,12 +360,26 @@ def expected_cells(
                     all_taxpayers[1] + national[1],
                 )
                 cells.append(
-                    replace(
+                    _summed(
                         cell("2.1", BELOW_STATE_PENSION_AGE, below),
-                        in_sample=areas_bound and all_cell.in_sample,
+                        (all_cell, national_cell),
                     )
                 )
     return tuple(sorted(cells, key=lambda item: item.sort_key))
+
+
+def _summed(cell: ITLCell, parts: Collection[ITLCell]) -> ITLCell:
+    """A cell whose model count its ``parts`` fix, in sample when they all are.
+
+    Its family's target binds its parts, not the sum: binding a band or an
+    area does not bind the people outside them.
+    """
+
+    return replace(
+        cell,
+        in_sample=bool(parts) and all(part.in_sample for part in parts),
+        parts=tuple(part.sort_key for part in parts),
+    )
 
 
 def cell_mask(cell: ITLCell, people: ITLPeople) -> np.ndarray:
@@ -410,10 +424,43 @@ def residual(model: float, expected: float) -> float:
 
 
 def differential(cells: Iterable[ITLCell], people: ITLPeople) -> dict[str, Any]:
-    """Each cell's model count, miss and verdict, and the misses by family."""
+    """Each cell's model count, miss and verdict, and the misses by family.
+
+    A cell with ``parts`` stays in sample only when every part does and the
+    file's weight outside its parts (``outside_parts``, the weighted people
+    it counts that no part does) is zero: otherwise the solve did not fix its
+    model count. A family is in sample when every cell of it is.
+    """
+
+    cells = sorted(cells, key=lambda item: item.sort_key)
+    by_key = {cell.sort_key: cell for cell in cells}
+    weight = np.asarray(people.weight, dtype=float)
+    in_sample: dict[tuple[Any, ...], bool] = {}
+    outside: dict[tuple[Any, ...], float] = {}
+
+    def resolved(cell: ITLCell) -> bool:
+        if cell.sort_key not in in_sample:
+            if not cell.parts:
+                in_sample[cell.sort_key] = cell.in_sample
+            else:
+                # A part not among the cells covers nobody and is not bound.
+                parts = [by_key[key] for key in cell.parts if key in by_key]
+                covered = np.zeros(len(weight), dtype=bool)
+                for part in parts:
+                    covered |= cell_mask(part, people)
+                outside[cell.sort_key] = math.fsum(
+                    weight[cell_mask(cell, people) & ~covered].tolist()
+                )
+                in_sample[cell.sort_key] = (
+                    cell.in_sample
+                    and len(parts) == len(cell.parts)
+                    and all(resolved(part) for part in parts)
+                    and outside[cell.sort_key] == 0.0
+                )
+        return in_sample[cell.sort_key]
 
     rows = []
-    for cell in sorted(cells, key=lambda item: item.sort_key):
+    for cell in cells:
         model = model_count(cell, people)
         miss = residual(model, cell.expected)
         rows.append(
@@ -426,7 +473,8 @@ def differential(cells: Iterable[ITLCell], people: ITLPeople) -> dict[str, Any]:
                 "residual": miss,
                 "tolerance": cell.tolerance,
                 "within_tolerance": abs(miss) <= cell.tolerance,
-                "in_sample": cell.in_sample,
+                "in_sample": resolved(cell),
+                "outside_parts": outside.get(cell.sort_key),
                 "sources": list(cell.sources),
             }
         )
@@ -438,14 +486,17 @@ def differential(cells: Iterable[ITLCell], people: ITLPeople) -> dict[str, Any]:
                 "cells": 0,
                 "misses": 0,
                 "largest_abs_residual": 0.0,
-                "in_sample": row["in_sample"],
+                "in_sample_cells": 0,
             },
         )
         family["cells"] += 1
+        family["in_sample_cells"] += 1 if row["in_sample"] else 0
         family["misses"] += 0 if row["within_tolerance"] else 1
         family["largest_abs_residual"] = max(
             family["largest_abs_residual"], abs(row["residual"])
         )
+    for family in families.values():
+        family["in_sample"] = family["in_sample_cells"] == family["cells"]
     return {
         "tolerances": {"national": NATIONAL_TOLERANCE, "regional": REGIONAL_TOLERANCE},
         "cells": rows,

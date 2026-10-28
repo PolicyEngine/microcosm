@@ -143,18 +143,30 @@ _DATED_MEASURE_IN_TEXT = re.compile(
 )
 
 
+#: Binding fields that annotate a row or name its output, read by nothing
+#: that computes it: a dated measure named there binds nothing.
+_ANNOTATION_FIELDS = frozenset({"metric_name", "notes", "source_lines"})
+
+
 def uk_spi_dated_measures_named(value: Any) -> set[str]:
     """Every dated SPI measure a binding names, in any field at any depth.
 
     A provider reads fields of its own (``affected_flag_variable``,
     ``count_of``, ``value_reduction``), so a check that lists the plain-column
-    fields would miss a dated measure named there; this scans every string.
+    fields would miss a dated measure named there; this scans every string,
+    keys and values, except the annotation fields (``_ANNOTATION_FIELDS``) of
+    any mapping.
     """
 
     if isinstance(value, str):
         return {match.group(0) for match in _DATED_MEASURE_IN_TEXT.finditer(value)}
     if isinstance(value, Mapping):
-        items: Any = list(value.keys()) + list(value.values())
+        items: Any = [
+            part
+            for key, item in value.items()
+            if key not in _ANNOTATION_FIELDS
+            for part in (key, item)
+        ]
     elif isinstance(value, (list, tuple, set, frozenset)):
         items = value
     else:
@@ -333,6 +345,47 @@ def back_projected_inputs(
     return projected
 
 
+def same_labels(stored: pd.Series, forward: pd.Series) -> np.ndarray:
+    """Row by row, whether two label columns hold the same label.
+
+    A change of representation is not a change of label: bytes are decoded,
+    as a stored file may hold them, and when every label on both sides reads
+    as a number they compare as numbers (``1`` and ``1.0`` are one label).
+    Missing on both sides is the same label; missing on one side is not.
+    """
+
+    def values(series: pd.Series) -> np.ndarray:
+        decoded = []
+        for item in series.tolist():
+            if isinstance(item, bytes):
+                item = item.decode()
+            elif not isinstance(item, str) and pd.isna(item):
+                item = None
+            decoded.append(item)
+        return np.array(decoded, dtype=object)
+
+    left, right = values(stored), values(forward)
+    left_missing = np.array([item is None for item in left], dtype=bool)
+    right_missing = np.array([item is None for item in right], dtype=bool)
+    numbers = [
+        pd.to_numeric(pd.Series(side, dtype=object), errors="coerce").to_numpy(
+            dtype=float
+        )
+        for side in (left, right)
+    ]
+    every_label_a_number = not any(
+        np.isnan(number[~missing]).any()
+        for number, missing in zip(numbers, (left_missing, right_missing), strict=True)
+    )
+    if every_label_a_number:
+        same = numbers[0] == numbers[1]
+    else:
+        same = np.array(
+            [str(a) == str(b) for a, b in zip(left, right, strict=True)], dtype=bool
+        )
+    return np.where(left_missing | right_missing, left_missing & right_missing, same)
+
+
 def round_trip_mismatches(
     stored: Mapping[str, pd.DataFrame],
     carried_forward: Mapping[str, pd.DataFrame],
@@ -349,7 +402,8 @@ def round_trip_mismatches(
     differ from ``stored`` beyond tolerance, with its largest absolute miss;
     a column of labels misses by the share of its rows that differ, and a
     column the forward step lost or reshaped by infinity. A missing value on
-    one side only misses by infinity; missing on both sides matches.
+    one side only misses by infinity; missing on both sides matches. Labels
+    compare as :func:`same_labels` reads them.
 
     ``compared_where_unchanged`` maps a column to a label column of the same
     entity, for a forward rule that resets the amount to zero exactly where
@@ -373,8 +427,7 @@ def round_trip_mismatches(
                 continue
             numeric = pd.api.types.is_numeric_dtype(table[column])
             if not numeric or not pd.api.types.is_numeric_dtype(forward[column]):
-                labels = table[column].astype(str).to_numpy()
-                differ = labels != forward[column].astype(str).to_numpy()
+                differ = ~same_labels(table[column], forward[column])
                 if differ.any():
                     misses[column] = float(differ.mean())
                 continue
@@ -385,10 +438,7 @@ def round_trip_mismatches(
                 if label not in table.columns or label not in forward.columns:
                     misses[column] = float("inf")
                     continue
-                kept = (
-                    table[label].astype(str).to_numpy()
-                    == forward[label].astype(str).to_numpy()
-                )
+                kept = same_labels(table[label], forward[label])
                 reset = actual[~kept]
                 if (~np.isfinite(reset)).any() or (reset != 0.0).any():
                     misses[column] = float("inf")

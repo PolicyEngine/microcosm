@@ -63,21 +63,28 @@ def load_rows(path: Path | None) -> tuple[list[dict], str]:
     return rows, f"{path} sha256:{_sha256(path)}"
 
 
-def run_bound_targets(diagnostics: Path) -> set[str]:
-    """The targets a run bound, each by its name without the period.
+def run_bound_targets(diagnostics: Path, year: int) -> set[str]:
+    """The targets a run bound at ``year``, each by its name without the period.
 
-    A diagnostics row binds when its loss weight is missing or above zero; a
-    family's cells are bound one by one, so an excluded or zero-weight band
-    stays out of sample however many of its siblings are bound.
+    A diagnostics row binds when its loss weight is missing or above zero,
+    and binds its own period: the row's ``target_name`` and ``period``, or,
+    without them, its ``name`` split at the trailing ``@<year>``. A row of
+    another year, or with no period, binds nothing here. A family's cells are
+    bound one by one, so an excluded or zero-weight band stays out of sample
+    however many of its siblings are bound.
     """
 
     rows = json.loads(diagnostics.read_text(encoding="utf-8"))["targets"]
     bound = set()
     for row in rows:
         weight = row.get("target_loss_weight")
-        if weight is None or float(weight) > 0:
+        if weight is not None and not float(weight) > 0:
+            continue
+        name, period = row.get("target_name"), row.get("period")
+        if not name or period is None:
             name, _, period = str(row["name"]).rpartition("@")
-            bound.add(name if name and period.isdigit() else str(row["name"]))
+        if name and str(period).isdigit() and int(period) == year:
+            bound.add(str(name))
     return bound
 
 
@@ -125,7 +132,7 @@ def main(argv: list[str] | None = None) -> int:
 
     rows, rows_source = load_rows(args.itl_rows)
     if args.diagnostics is not None:
-        bound = run_bound_targets(args.diagnostics)
+        bound = run_bound_targets(args.diagnostics, args.year)
         in_sample_basis = f"{args.diagnostics} sha256:{_sha256(args.diagnostics)}"
     else:
         bound = bound_targets(args.contract)

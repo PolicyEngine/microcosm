@@ -1777,8 +1777,11 @@ class UKMeasureResolver:
         # declared CPI index, once a file stores the separated bereavement
         # benefits (both columns, all-zero ones included), so it is held.
         held_by_rule = {}
-        if BEREAVEMENT_SPLIT_INPUTS <= set(stored["person"].columns):
-            if factors.pop("bsp_reported", None) is not None:
+        person_columns = set(stored["person"].columns)
+        if BEREAVEMENT_SPLIT_INPUTS <= person_columns:
+            # The receipt names it only when the file stores it.
+            factor = factors.pop("bsp_reported", None)
+            if factor is not None and "bsp_reported" in person_columns:
                 held_by_rule["bsp_reported"] = (
                     "held; the engine holds it flat once "
                     f"{sorted(BEREAVEMENT_SPLIT_INPUTS)} are stored"

@@ -2,9 +2,11 @@
 
 The invariants: a cell's expected count is the calendar window of its two
 tax years; the cells, and each model count, do not depend on the order of
-the rows or the people; the band cells and the area cells partition what
-their totals count; a cell is within tolerance exactly when its relative
-miss is no larger than the tolerance fixed before any file is read.
+the rows or the people; the band cells, with the taxpayers below the first
+edge, partition all taxpayers, and the area cells partition residents; a sum
+is in sample only when its in-sample parts fix its model count; a cell is
+within tolerance exactly when its relative miss is no larger than the
+tolerance fixed before any file is read.
 """
 
 from __future__ import annotations
@@ -195,11 +197,12 @@ def test_tolerances_and_in_sample_flags() -> None:
         )
         bound_family = (cell.table, cell.measure) in {
             ("2.5", BAND_COUNT),
-            # The bands partition the all-band count, so binding them binds it.
-            ("2.5", ALL_TAXPAYERS),
             ("2.2", "state_pension_age"),
-            # The areas sum to the UK cell, and with the all-band count to
-            # the count below State Pension age.
+            # Every part bound: the all-band count's bands, the UK cell's
+            # areas, and the two counts the one below State Pension age is
+            # the difference of. ``differential`` keeps the mark only when the
+            # file holds nobody outside the parts.
+            ("2.5", ALL_TAXPAYERS),
             ("2.1", "state_pension_age"),
             ("2.1", BELOW_STATE_PENSION_AGE),
         }
@@ -243,6 +246,90 @@ def test_a_family_is_in_sample_cell_by_cell() -> None:
     whole = expected_cells(_rows(), year=2025, bound_targets=every)
     family = expected_cells(_rows(), year=2025, bound_targets={band_family, age_family})
     assert whole == family
+
+
+def _person(**overrides):
+    """One weighted taxpayer of State Pension age in the first area and band."""
+
+    person = {
+        "weight": [1.0],
+        "taxpayer": [True],
+        "total_income": [float(ITL_BANDS[0][0])],
+        "state_pension_age": [True],
+        "age": [70.0],
+        "area": [AREAS[0]],
+    }
+    person.update(overrides)
+    return {name: np.asarray(values) for name, values in person.items()}
+
+
+def _flags(report):
+    return {(row["table"], row["measure"], row["key"]): row for row in report["cells"]}
+
+
+def test_a_sum_is_in_sample_only_when_its_parts_count_everyone_it_counts() -> None:
+    """Binding every band fixes the all-band count only if the file holds no
+    taxpayer below the lowest edge; binding every area fixes the UK count
+    only if everyone it counts lives in one of the twelve (round 3)."""
+
+    bound = {
+        "hmrc.itl.taxpayers_by_total_income_band",
+        "hmrc.itl.state_pension_age_taxpayers",
+    }
+    cells = expected_cells(_rows(), year=2025, bound_targets=bound)
+    everyone_in_a_part = ITLPeople(**_person())
+    flags = _flags(differential(cells, everyone_in_a_part))
+    for key in (
+        ("2.5", ALL_TAXPAYERS, UNITED_KINGDOM),
+        ("2.2", "state_pension_age", RESIDENTS),
+        ("2.1", "state_pension_age", UNITED_KINGDOM),
+        ("2.1", BELOW_STATE_PENSION_AGE, UNITED_KINGDOM),
+    ):
+        assert flags[key]["in_sample"], key
+        assert flags[key]["outside_parts"] == 0.0, key
+
+    def merged(*people):
+        return ITLPeople(
+            **{
+                name: np.concatenate([person[name] for person in people])
+                for name in people[0]
+            }
+        )
+
+    below_the_first_edge = merged(
+        _person(), _person(total_income=[10_000.0], weight=[2.5])
+    )
+    flags = _flags(differential(cells, below_the_first_edge))
+    assert not flags[("2.5", ALL_TAXPAYERS, UNITED_KINGDOM)]["in_sample"]
+    assert flags[("2.5", ALL_TAXPAYERS, UNITED_KINGDOM)]["outside_parts"] == 2.5
+    assert not flags[("2.1", BELOW_STATE_PENSION_AGE, UNITED_KINGDOM)]["in_sample"]
+    assert flags[("2.1", "state_pension_age", UNITED_KINGDOM)]["in_sample"]
+
+    in_no_area = merged(_person(), _person(area=[""], weight=[4.0]))
+    flags = _flags(differential(cells, in_no_area))
+    assert not flags[("2.1", "state_pension_age", UNITED_KINGDOM)]["in_sample"]
+    assert flags[("2.1", "state_pension_age", UNITED_KINGDOM)]["outside_parts"] == 4.0
+    assert not flags[("2.1", BELOW_STATE_PENSION_AGE, UNITED_KINGDOM)]["in_sample"]
+    # The residents' count is exactly its areas', whoever else the file holds.
+    assert flags[("2.2", "state_pension_age", RESIDENTS)]["in_sample"]
+    assert flags[("2.5", ALL_TAXPAYERS, UNITED_KINGDOM)]["in_sample"]
+
+
+def test_a_family_is_in_sample_only_when_every_cell_is() -> None:
+    """The family summary counts its cells in sample; leaving out the lowest
+    band or a higher one gives the same summary."""
+
+    family = "hmrc.itl.taxpayers_by_total_income_band"
+    for left_out in (ITL_BANDS[0], ITL_BANDS[3]):
+        bound = {f"{family}.{itl_band_key(b)}" for b in ITL_BANDS if b != left_out}
+        report = differential(
+            expected_cells(_rows(), year=2025, bound_targets=bound),
+            ITLPeople(**_person(total_income=[20_000.0])),
+        )
+        summary = report["families"][f"2.5:{BAND_COUNT}"]
+        assert summary["cells"] == len(ITL_BANDS)
+        assert summary["in_sample_cells"] == len(ITL_BANDS) - 1
+        assert summary["in_sample"] is False
 
 
 def cells_key_of_band(cells, band):
@@ -391,6 +478,40 @@ def test_the_bands_and_the_areas_partition_their_totals(people) -> None:
     assert math.fsum([spa, below]) == pytest.approx(total, rel=1e-12, abs=1e-9)
 
 
+@settings(max_examples=60, deadline=None)
+@given(people=_people(), every_band=st.booleans())
+def test_a_sum_in_sample_is_fixed_by_bound_parts(people, every_band) -> None:
+    """Whenever a sum is in sample, its model count is its in-sample parts':
+    the sum of the bands, the areas, or the difference of the two counts."""
+
+    bands = ITL_BANDS if every_band else ITL_BANDS[1:]
+    bound = {
+        *(f"hmrc.itl.taxpayers_by_total_income_band.{itl_band_key(b)}" for b in bands),
+        "hmrc.itl.state_pension_age_taxpayers",
+    }
+    report = differential(
+        expected_cells(_rows(), year=2025, bound_targets=bound), people
+    )
+    rows = _flags(report)
+    model = {key: row["model"] for key, row in rows.items()}
+    total = rows[("2.5", ALL_TAXPAYERS, UNITED_KINGDOM)]
+    if total["in_sample"]:
+        assert every_band
+        band_models = [m for (t, ms, _k), m in model.items() if ms == BAND_COUNT]
+        assert math.fsum(band_models) == pytest.approx(
+            total["model"], rel=1e-12, abs=1e-9
+        )
+    spa = rows[("2.1", "state_pension_age", UNITED_KINGDOM)]
+    if spa["in_sample"]:
+        areas = [model[("2.2", "state_pension_age", area)] for area in AREAS]
+        assert math.fsum(areas) == pytest.approx(spa["model"], rel=1e-12, abs=1e-9)
+    below = rows[("2.1", BELOW_STATE_PENSION_AGE, UNITED_KINGDOM)]
+    if below["in_sample"]:
+        assert total["in_sample"] and spa["in_sample"]
+    for family in report["families"].values():
+        assert family["in_sample"] is (family["in_sample_cells"] == family["cells"])
+
+
 @given(model=st.floats(0.0, 1e8), expected=_counts)
 def test_the_verdict_is_the_tolerance(model, expected) -> None:
     people = ITLPeople(
@@ -483,8 +604,8 @@ def tool():
 
 
 def test_a_run_binds_the_targets_its_diagnostics_weight(tool, tmp_path) -> None:
-    """Each weighted row binds by its name without the period; the cells
-    then read the run's own names, one band or area at a time."""
+    """Each weighted row of the year binds by its name without the period;
+    the cells then read the run's own names, one band or area at a time."""
 
     band_family = "hmrc.itl.taxpayers_by_total_income_band"
     age_family = "hmrc.itl.state_pension_age_taxpayers"
@@ -504,16 +625,34 @@ def test_a_run_binds_the_targets_its_diagnostics_weight(tool, tmp_path) -> None:
             "name": "hmrc.spi.state_pension.count_by_total_income_band.band_x@2025",
             "target_loss_weight": 0.5,
         },
+        # Structured identity, as the diagnostics write it.
+        {
+            "name": "anything",
+            "target_name": f"{age_family}@{AREAS[1]}",
+            "period": 2025,
+            "target_loss_weight": 1,
+        },
+        # Another year, or none, binds nothing at 2025 (round 3).
+        {"name": f"{age_family}@{AREAS[2]}@2024", "target_loss_weight": 1},
+        {
+            "name": f"{age_family}@{AREAS[3]}@2025",
+            "target_name": f"{age_family}@{AREAS[3]}",
+            "period": 2024,
+        },
         {"name": "unperioded", "target_loss_weight": 1},
     ]
     diagnostics = tmp_path / "calibration_diagnostics.json"
     diagnostics.write_text(json.dumps({"targets": rows}))
-    bound = tool.run_bound_targets(diagnostics)
+    bound = tool.run_bound_targets(diagnostics, 2025)
     assert bound == {
         *(f"{band_family}.{itl_band_key(band)}" for band in ITL_BANDS[1:]),
         f"{age_family}@{AREAS[0]}",
+        f"{age_family}@{AREAS[1]}",
         "hmrc.spi.state_pension.count_by_total_income_band.band_x",
-        "unperioded",
+    }
+    assert tool.run_bound_targets(diagnostics, 2024) == {
+        f"{age_family}@{AREAS[2]}",
+        f"{age_family}@{AREAS[3]}",
     }
     flags = {
         (cell.table, cell.measure, cell.band, cell.area): cell.in_sample
@@ -525,7 +664,8 @@ def test_a_run_binds_the_targets_its_diagnostics_weight(tool, tmp_path) -> None:
     ]
     assert not flags[("2.5", ALL_TAXPAYERS, None, None)]
     assert flags[("2.2", "state_pension_age", None, AREAS[0])]
-    assert not flags[("2.2", "state_pension_age", None, AREAS[1])]
+    assert flags[("2.2", "state_pension_age", None, AREAS[1])]
+    assert not flags[("2.2", "state_pension_age", None, AREAS[2])]
 
 
 class _Resolver:

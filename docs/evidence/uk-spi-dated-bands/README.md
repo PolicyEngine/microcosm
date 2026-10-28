@@ -6,6 +6,158 @@ Table 3.6 pension band rows at 2023-24 through dated engine measures
 aggregates only. The spine, the calibrated H5 files and the licensed inputs
 stay outside the tree under `~/microcosm-uk-work/runs/`.
 
+## A/B result: the pilot does not win
+
+The pilot fits the rows it binds. On every test outside them it is worse than
+the baseline, and further than the baseline from the re-index that
+PolicyEngine/microcosm#1414 merged for #1069. It should not replace that
+re-index.
+
+### Builds
+
+All three are national builds on the same FRS 2024-25 spine, with weights
+solved at 2025 over 1,273 targets.
+
+- **Baseline:** main at 7d45c0c33, with the projected rows (H5 `de754f0b…`).
+- **Pilot:** this PR's rows at 2023-24 (H5 `285fd3b6…`), built from local
+  commit 71856c6fa. That commit is this branch at 058690bdb plus a fill of
+  the hold's approval fields marked "PILOT BUILD ONLY". It was never pushed.
+- **#1414 candidate:** the re-index, from #1069's run (H5 `2834c9e8…`). Only
+  State Pension recipients and the allowance were measured on it.
+
+The measurements ran the pilot build's tools. The ITL in-sample flags were
+recomputed from the receipts under this PR's later rule: a sum is in sample
+only when its parts are and nobody it counts is outside them. The receipts
+(aggregates only) are under `~/microcosm-uk-work/runs/spi-dated-bands/measures/`,
+summarised by `summarize_ab.py` there. The baseline's recipient and allowance
+receipts equal the #1069 lane's receipts for the same file.
+
+### State Pension recipients by taxpayer status, 2025-26
+
+HMRC's implied ranges are 8.65m–8.81m taxpaying and 3.58m–3.74m not
+taxpaying. They come from #1414's
+`docs/evidence/uk-pensioner-taxpayers-1069/hmrc_implied_recipients.json`:
+SPI Table 3.6's 7.98m State Pension taxpayers over ITL Table 2.1's 8.16m
+taxpayers of State Pension age (2023-24), applied to calendar 2025's twelve
+areas and United Kingdom.
+
+| Build | Taxpaying | Not taxpaying | All recipients |
+|---|---|---|---|
+| Baseline | 8.84m (0.4% above the range) | 3.53m (1.3% below) | 12.37m |
+| Pilot | 9.26m (5.1% above) | 3.13m (12.6% below) | 12.38m |
+| #1414 candidate | 8.74m (inside) | 3.63m (inside) | 12.37m |
+
+Against the baseline, the pilot moves about 0.4m recipients from not taxpaying
+to taxpaying.
+
+### SPI pension band rows on both definitions
+
+The table gives the total relative error by family on two definitions:
+
+- **2023**, the pilot's definition: published 2023-24 values against the dated
+  2023-24 measures.
+- **2025**, the baseline's definition: those values projected to 2025 by the
+  declared indices, against 2025 income.
+
+| Family | Definition | Baseline | Pilot |
+|---|---|---|---|
+| State Pension count | 2023 | -4.15% | +0.12% |
+| State Pension count | 2025 | +5.68% | +10.66% |
+| State Pension amount | 2023 | -2.02% | +1.72% |
+| State Pension amount | 2025 | +6.73% | +11.28% |
+| Private pension count | 2023 | -4.94% | -0.02% |
+| Private pension count | 2025 | +1.41% | +5.31% |
+| Private pension amount | 2023 | -5.03% | +0.02% |
+| Private pension amount | 2025 | -0.86% | +3.44% |
+
+Each build is closer on the definition it binds, so this table cannot rank
+them.
+
+### ITL July 2026 projections, calendar 2025
+
+The tolerance is 5% for national cells and the residents' total, and 10% for
+each area. Neither build binds Tables 2.1 or 2.2. Both bind Table 2.5's
+bands, so those cells are in sample.
+
+| Table: measure | Cells | Baseline misses | Pilot misses | Baseline largest | Pilot largest |
+|---|---|---|---|---|---|
+| 2.1: State Pension age, UK | 1 | 0 | 0 | -0.81% | +3.92% |
+| 2.1: 65 and over, UK | 1 | 0 | 0 | -0.53% | +3.79% |
+| 2.1: below State Pension age, UK | 1 | 0 | 0 | -0.69% | -1.68% |
+| 2.2: State Pension age, 12 areas and residents | 13 | 0 | 1 | +6.44% (North East) | +9.87% (London) |
+| 2.2: 65 and over, 12 areas and residents | 13 | 0 | 2 | -6.42% (East Midlands) | +11.56% (London) |
+| 2.5: all taxpayers | 1 | 0 | 0 | -0.72% | -0.40% |
+| 2.5: taxpayers by band (in sample) | 11 | 0 | 0 | -3.93% | -3.13% |
+
+The pilot misses three cells:
+
+- residents at State Pension age, +5.84% (baseline +1.03%);
+- residents aged 65 and over, +5.68% (baseline +1.28%);
+- London aged 65 and over, +11.56%.
+
+**Dated check.** This compares each file's own 2023-24 taxpayers by band, on
+the dated measures, with Table 2.5's 2023-24 outturn.
+
+- Both builds miss the same 6 of 11 bands: every band from £50,000 up except
+  £200,000–£500,000.
+- The largest miss is at £1m–£2m on both: +26% for the baseline, +28% for the
+  pilot.
+- All taxpayers are within 0.6% on both.
+
+So this check does not separate the builds. It does show that the
+carried-back file misses HMRC's 2023-24 distribution above £50,000. The check
+cannot say whether the weights, the population factor or the engine's indices
+cause this.
+
+### Sole-income State Pension allowance
+
+This runs uk-autumn-budget-dashboard-2026#182 at fa9c42b1 through
+policyengine.py 6.11.1 and policyengine-uk 2.151.0. Each cell is people
+directly affected, then the cost to the Exchequer.
+
+| Design | Year | Baseline | Pilot | #1414 candidate |
+|---|---|---|---|---|
+| Sole income | 2027-28 | 1.235m, £84m | 1.117m, £75m | 1.326m, £93m |
+| Sole income | 2031-32 | 1.731m, £330m | 1.542m, £289m | 1.842m, £361m |
+| Total income | 2027-28 | 0.574m, £28m | 0.491m, £24m | 0.593m, £30m |
+| Total income | 2031-32 | 1.214m, £148m | 1.051m, £123m | 1.252m, £154m |
+
+The pilot gives the lowest count and cost. The candidate, whose taxpaying
+split is inside HMRC's ranges, gives the highest.
+
+### Calibration fit (in sample)
+
+| | Baseline | Pilot |
+|---|---|---|
+| Final loss | 0.00553 | 0.00535 |
+| Targets within 10% | 98.98% | 99.21% |
+| Effective sample size | 7,527 | 7,561 |
+
+The two builds solve different definitions of the four families, so these
+figures are not a ranking either.
+
+### Why the pilot loses (not isolated)
+
+The pilot fits the 2023-24 rows almost exactly. Yet the same weights put
+taxpaying State Pension recipients 5.1% above HMRC's 2025-26 range, and
+taxpayers of State Pension age 3.9% above Table 2.1. HMRC's ITL tables are
+projections from the same SPI year. So the file's path from 2023-24 to
+2025-26 disagrees with HMRC's projection from that year, and no measurement
+here says which link breaks. The candidates are:
+
+- the weights, solved at 2025;
+- the population factor, which is national and by sex and age band;
+- the engine's carry-back indices for pensions and other income;
+- the State Pension's own carry-back (paid at 2023-24 rates);
+- HMRC's projection, which is not outturn.
+
+The dated check misses mainly above £50,000, where pensioners are few, so it
+does not locate the error either.
+
+One build was not run: these rows combined with #1414's bound Table 2.2
+targets. That build would also put Table 2.2 in sample, which removes the
+out-of-sample test.
+
 ## Extending option 1 to every SPI band family
 
 ### What binds SPI band rows today

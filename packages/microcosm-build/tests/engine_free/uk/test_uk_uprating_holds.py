@@ -9,7 +9,9 @@ from importlib import resources as importlib_resources
 
 import pytest
 
+from microcosm.build.ledger_targets import ROLLED_FORWARD_BY_RATIO
 from microcosm.build.uk_runtime.uprating_holds import (
+    _WINDOW_VALUE_OPERATIONS,
     UK_HOLD_EXPIRY_NOTICE_DAYS,
     assert_uk_uprating_holds_declared,
     is_uprating_hold,
@@ -299,31 +301,52 @@ def test_the_committed_declarations_are_well_formed():
 
 
 def test_every_reference_measured_at_an_earlier_year_is_declared():
-    """A national reference whose binding measures an earlier year than its
-    period, with no index, is held whatever fact it binds: the compile refuses
-    it without a declaration, so a missing one fails here, before a build.
+    """A national reference whose executable binding measures an earlier year
+    than the reference's period, with no index (a null one applies none) and
+    no value operation that covers the period, binds a fact of that earlier
+    year as published. The compile reads that fact's period and refuses the
+    row without a declaration, so a missing one fails here, before a build.
 
-    (Holds that only the fact's period reveals are checked at compile time.)
+    The compile decides from each spec's resolved fact period
+    (``is_uprating_hold``); this reads only what the committed files declare,
+    so holds that only a fact's period reveals are checked at compile time.
     """
 
-    references = json.loads(
-        importlib_resources.files("microcosm.build.uk")
-        .joinpath("target_references.json")
-        .read_text()
-    )["target_references"]
+    resources = importlib_resources.files("microcosm.build.uk")
+    references = json.loads(resources.joinpath("target_references.json").read_text())[
+        "target_references"
+    ]
+    contract = {
+        target["target_id"]: target
+        for target in json.loads(
+            resources.joinpath("uk_population_targets.json").read_text()
+        )["targets"]
+    }
     declared = {
         target_id
         for entry in load_uk_uprating_holds()["holds"]
         if entry.get("scope", "national") == "national"
         for target_id in entry["target_ids"]
     }
-    held = {
-        reference["metadata"]["contract_target_id"]
-        for reference in references
-        if "measurement_period" in reference["metadata"]
-        and int(reference["metadata"]["measurement_period"]) < int(reference["period"])
-        and "uprating_index" not in reference
-        and "uprating_index" not in reference["metadata"]
-    }
-    assert held, "the committed references measure no earlier year"
+    held = set()
+    for reference in references:
+        metadata = reference["metadata"]
+        target = contract.get(metadata["contract_target_id"], {})
+        binding = (target.get("bindings") or {}).get("policyengine") or {}
+        measured = binding.get("measurement_period")
+        if measured is None or int(measured) >= int(reference["period"]):
+            continue
+        if (
+            reference.get("uprating_index")
+            or metadata.get("uprating_index")
+            or target.get("uprating_index")
+        ):
+            continue
+        if reference.get("value_operation") in {
+            *_WINDOW_VALUE_OPERATIONS,
+            ROLLED_FORWARD_BY_RATIO,
+        }:
+            continue
+        held.add(metadata["contract_target_id"])
+    assert held, "the committed bindings measure no earlier year"
     assert sorted(held - declared) == []

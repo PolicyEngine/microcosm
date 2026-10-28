@@ -217,9 +217,9 @@ def test_the_held_inputs_do_not_move_the_measures(tmp_path) -> None:
         assert exempt[name]["largest_miss"] > 0.0, name
 
 
-@pytest.mark.parametrize("split", [True, False])
+@pytest.mark.parametrize("split, bsp", [(True, True), (False, True), (True, False)])
 def test_bereavement_support_is_carried_back_as_the_engine_carries_it(
-    tmp_path, split
+    tmp_path, split, bsp
 ) -> None:
     """Split BSP is held flat, as the engine holds it; legacy BSP moves by CPI.
 
@@ -227,10 +227,11 @@ def test_bereavement_support_is_carried_back_as_the_engine_carries_it(
     unless the file stores both separated bereavement benefits, all-zero
     columns included, when it holds the amount flat. The resolver refuses a
     carried-back file the engine does not return as stored, so each case
-    resolving at all is the round trip passing.
+    resolving at all is the round trip passing. The receipt names the hold
+    only for a file that stores the amount.
     """
 
-    bereavement = {"bsp_reported": [0.0, 0.0, 3_500.0, 0.0, 0.0]}
+    bereavement = {"bsp_reported": [0.0, 0.0, 3_500.0, 0.0, 0.0]} if bsp else {}
     if split:
         bereavement["widowed_parents_allowance_reported"] = [0.0] * 5
         bereavement["war_widows_pension_reported"] = [0.0] * 5
@@ -239,4 +240,4 @@ def test_bereavement_support_is_carried_back_as_the_engine_carries_it(
     held = resolver.receipt()["spi_dated_measures"]["years"]["2023"][
         "held_by_engine_rule"
     ]
-    assert ("bsp_reported" in held) is split
+    assert ("bsp_reported" in held) is (split and bsp)
