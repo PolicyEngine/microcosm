@@ -407,6 +407,9 @@ _BINDING_VARIABLE_KEYS = ("gated_variable", "value_variable", "groupby_variable"
 _SPI_ROUND_TRIP_EXEMPT_INPUTS: Mapping[str, str] = {
     "council_tax": "held; projected by country and region (uprate_council_tax)",
     "rent": "held; projected by tenure and region (uprate_rent)",
+    "council_tax_benefit_reported": (
+        "held; projected with its household's council tax (uprate_council_tax)"
+    ),
     "water_and_sewerage_charges": (
         "held; projected by country (uprate_water_and_sewerage_charges)"
     ),
@@ -1721,6 +1724,7 @@ class UKMeasureResolver:
         from policyengine_uk.data import UKSingleYearDataset
         from policyengine_uk.data.capital_gains_projection import CGT_DATASET_INPUTS
         from policyengine_uk.data.economic_assumptions import (
+            BEREAVEMENT_SPLIT_INPUTS,
             RESIDENTIAL_PROPERTY_INDEX,
             RESIDENTIAL_PROPERTY_INPUTS,
             YEAR_SPECIFIC_INPUTS,
@@ -1761,6 +1765,16 @@ class UKMeasureResolver:
             )
         )
         stored = {name: getattr(source, name) for name in source.table_names}
+        # The engine carries Bereavement Support Payment flat, not by its
+        # declared CPI index, once a file stores the separated bereavement
+        # benefits (both columns, all-zero ones included), so it is held.
+        held_by_rule = {}
+        if BEREAVEMENT_SPLIT_INPUTS <= set(stored["person"].columns):
+            if factors.pop("bsp_reported", None) is not None:
+                held_by_rule["bsp_reported"] = (
+                    "held; the engine holds it flat once "
+                    f"{sorted(BEREAVEMENT_SPLIT_INPUTS)} are stored"
+                )
         projected = back_projected_inputs(
             stored, factors, dropped=sorted(YEAR_SPECIFIC_INPUTS)
         )
@@ -1838,6 +1852,7 @@ class UKMeasureResolver:
                     factors[RESIDENTIAL_PROPERTY_INPUTS[0]]
                 ),
                 "dropped_year_specific_inputs": sorted(YEAR_SPECIFIC_INPUTS),
+                "held_by_engine_rule": dict(sorted(held_by_rule.items())),
                 "round_trip_checked_inputs": len(checked),
                 "round_trip_excluded_inputs": sorted(excluded),
                 "round_trip_exempt_inputs": {

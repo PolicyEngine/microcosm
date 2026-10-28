@@ -28,12 +28,13 @@ _PRIVATE_PENSION_GROWTH = (
 _EARNINGS_GROWTH = "gov.economic_assumptions.yoy_growth.obr.average_earnings"
 
 
-def _resolver(tmp_path, **household):
+def _resolver(tmp_path, person_columns=None, **household):
     """Five people living alone, as in the annual income measures' test.
 
     Person 0 is paid all year; person 1 left a job in the year and claims
     contributory ESA since; person 2 started a job half way through; persons
-    3 and 4 are pensioners, 3 retiring in the year.
+    3 and 4 are pensioners, 3 retiring in the year. ``person_columns`` adds
+    stored person inputs.
     """
 
     ids = np.arange(5, dtype=np.int64)
@@ -55,6 +56,7 @@ def _resolver(tmp_path, **household):
         "self_employment_income_other_spells": [0.0] * 5,
         "private_pension_income_annual_share": [1.0, 1.0, 1.0, 0.5, 1.0],
         "contributory_benefits_annual_share": [1.0, 0.5, 1.0, 1.0, 1.0],
+        **(person_columns or {}),
     }
     frame = uk_national_frame(
         person=pd.DataFrame(person),
@@ -189,6 +191,7 @@ def test_the_held_inputs_do_not_move_the_measures(tmp_path) -> None:
     base = _resolver(tmp_path / "base")
     moved = _resolver(
         tmp_path / "moved",
+        person_columns={"council_tax_benefit_reported": [0.0, 900.0, 0.0, 0.0, 0.0]},
         council_tax=2_400.0,
         rent=12_000.0,
         water_and_sewerage_charges=500.0,
@@ -205,5 +208,35 @@ def test_the_held_inputs_do_not_move_the_measures(tmp_path) -> None:
         "round_trip_exempt_inputs"
     ]
     # Each was exercised: the engine's forward rule moved it.
-    for name in ("council_tax", "rent", "water_and_sewerage_charges"):
+    for name in (
+        "council_tax",
+        "council_tax_benefit_reported",
+        "rent",
+        "water_and_sewerage_charges",
+    ):
         assert exempt[name]["largest_miss"] > 0.0, name
+
+
+@pytest.mark.parametrize("split", [True, False])
+def test_bereavement_support_is_carried_back_as_the_engine_carries_it(
+    tmp_path, split
+) -> None:
+    """Split BSP is held flat, as the engine holds it; legacy BSP moves by CPI.
+
+    The engine's forward projection carries ``bsp_reported`` by its CPI index
+    unless the file stores both separated bereavement benefits, all-zero
+    columns included, when it holds the amount flat. The resolver refuses a
+    carried-back file the engine does not return as stored, so each case
+    resolving at all is the round trip passing.
+    """
+
+    bereavement = {"bsp_reported": [0.0, 0.0, 3_500.0, 0.0, 0.0]}
+    if split:
+        bereavement["widowed_parents_allowance_reported"] = [0.0] * 5
+        bereavement["war_widows_pension_reported"] = [0.0] * 5
+    resolver = _resolver(tmp_path, person_columns=bereavement)
+    _measure(resolver, "spi_2023_total_income")
+    held = resolver.receipt()["spi_dated_measures"]["years"]["2023"][
+        "held_by_engine_rule"
+    ]
+    assert ("bsp_reported" in held) is split

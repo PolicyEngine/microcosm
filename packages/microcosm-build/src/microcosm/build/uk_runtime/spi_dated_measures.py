@@ -29,7 +29,9 @@ column the engine uprates by an index (``uprating_indices.yaml``) divided by
 one plus the index's growth for each year in between
 (:func:`back_projection_factors`, :func:`back_projected_inputs`);
 residential stocks by the cumulative house price ratio the engine applies
-instead; and every other column held, since the engine holds it too. The
+instead; and every other column held, since the engine holds it too, as it
+holds Bereavement Support Payment despite its index once the file stores the
+separated bereavement benefits. The
 engine's own ``extend_single_year_dataset`` must return the carried-back file
 to the stored one, every input column of it (:func:`round_trip_mismatches`),
 except the few non-income inputs it moves by regional rules, which are held
