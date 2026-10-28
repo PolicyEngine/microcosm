@@ -4518,6 +4518,10 @@
      "level_period_type": "calendar_year",
      "level_period_value": 2024,
      "level_temperature_adjustment": "actual_temperature",
+     "spend_level_resource": "ons_household_expenditure_facts.json",
+     "spend_level_fuels": [
+      "electricity"
+     ],
      "household_kwh_ceiling": {
       "electricity": 50000,
       "gas": 73200

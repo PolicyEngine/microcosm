@@ -3,7 +3,7 @@
   "country": "uk",
   "kind": "uk_vendored_ledger_facts",
   "resource": "desnz_domestic_energy_facts.json",
-  "purpose": "DESNZ domestic energy volumes: Energy Trends domestic electricity (table 5.5) and gas (table 4.1) consumption at actual temperature, annual and quarterly, United Kingdom, 2022 to the latest quarter (the published level the LCFS kWh rake scales to, summed over the four quarters of calendar 2024; microcosm#1113), and the subnational electricity and gas statistics' domestic consumption and meter counts for Great Britain, England and Wales, the countries and the English regions, 2023 and 2024 (the published gas-connected share by region: gas meters over electricity meters; and the Great Britain totals that level the local-authority energy rows, microcosm#1207).",
+  "purpose": "DESNZ domestic energy volumes: Energy Trends domestic electricity (table 5.5) and gas (table 4.1) consumption at actual temperature, annual and quarterly, United Kingdom, 2022 to the latest quarter (the published level the LCFS kWh rake scales to, summed over the four quarters of calendar 2024; microcosm#1113), and the subnational electricity and gas statistics' domestic consumption and meter counts for Great Britain, England and Wales, the countries and the English regions, 2023 and 2024 (the published gas-connected share by region: gas meters over electricity meters; and the Great Britain totals that level the local-authority energy rows, microcosm#1207); and Northern Ireland's domestic electricity and gas meter counts, 2024 (with Great Britain's, every UK domestic meter whose standing charges come off ONS household spending in the electricity level, microcosm#1418).",
   "consumers": [
     "uk_runtime.energy_pricing"
   ],
@@ -51,9 +51,30 @@
         "geography_vintage": "publication_2025_nspl"
       },
       "row_count": 112
+    },
+    {
+      "label": "subnational_domestic_meters_northern_ireland_2024",
+      "selector": {
+        "source_name": "desnz",
+        "source_concept": [
+          "desnz.subnational.domestic_electricity_meter_count",
+          "desnz.subnational.domestic_gas_meter_count"
+        ],
+        "geography_id": "N92000002",
+        "period_type": [
+          "fiscal_year",
+          "gas_year"
+        ],
+        "period_value": "2024",
+        "dimension_values": {
+          "domestic_scope": "all_domestic",
+          "metric": "meter_count"
+        }
+      },
+      "row_count": 2
     }
   ],
-  "row_count": 155,
+  "row_count": 157,
   "rows": [
     {
       "aggregate_fact_key": "ledger_aggregate_fact_v2_b5ff64c3015a3719d4cdf379",
@@ -4573,6 +4594,54 @@
       "value": 26541700
     },
     {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_8d5cc8b95ee8fb9a53784900",
+      "semantic_fact_key": "ledger_semantic_fact_v2_dbc42d8937af3da88c95ef08",
+      "source_record_id": "desnz.subnational.northern_ireland.electricity.domestic.y2024.n92000002.domestic_meter_count",
+      "concept": "desnz.subnational.domestic_electricity_meter_count",
+      "measure_id": "domestic_meter_count",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "domestic_energy_customer"
+      },
+      "geography": {
+        "id": "N92000002",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "desnz.subnational.northern_ireland.electricity.domestic.y2024",
+        "groupby_dimension": "desnz.subnational.area",
+        "groupby_value_id": "n92000002",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "domestic_scope": "all_domestic",
+        "fuel": "electricity",
+        "metric": "meter_count",
+        "temperature_adjustment": "as_reported"
+      },
+      "source": {
+        "source_name": "desnz",
+        "source_table": "Subnational electricity consumption statistics in Northern Ireland, 2009 to 2024",
+        "source_file": "Northern_Ireland_subnational_electricity_consumption_2009-2024.xlsx",
+        "source_sha256": "2025e7461b1343e69aec1a9e7ee5a8635d6d8a1d7cb1624cb214caaf554aa1b7",
+        "vintage": "publication_2025_12_18",
+        "raw_r2_key": "raw/uk/desnz/desnz-subnational-electricity-consumption-northern-ireland-2024/2025/2025e7461b1343e69aec1a9e7ee5a8635d6d8a1d7cb1624cb214caaf554aa1b7/Northern_Ireland_subnational_electricity_consumption_2009-2024.xlsx"
+      },
+      "value": 848085
+    },
+    {
       "aggregate_fact_key": "ledger_aggregate_fact_v2_8ad1186499084aeb390042a6",
       "semantic_fact_key": "ledger_semantic_fact_v2_4caa9b2d320e62b37e7511c1",
       "source_record_id": "desnz.subnational.electricity.cy2023.s92000003.domestic_meter_count",
@@ -7259,6 +7328,54 @@
         "raw_r2_key": "raw/uk/desnz/desnz-subnational-gas-consumption-2024/2026/192c5f81f953c9ab6b5c2dc4a3ca5ddccf5e98f53d39c0ce368c3c532b209cd3/subnational-gas-2005-2024.xlsx"
       },
       "value": 22525093
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_56ba6b34c8d5019431a83fce",
+      "semantic_fact_key": "ledger_semantic_fact_v2_481074070ac9c80163410d90",
+      "source_record_id": "desnz.subnational.northern_ireland.gas.domestic.y2024.n92000002.domestic_meter_count",
+      "concept": "desnz.subnational.domestic_gas_meter_count",
+      "measure_id": "domestic_meter_count",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "domestic_energy_customer"
+      },
+      "geography": {
+        "id": "N92000002",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "gas_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-05-15",
+        "end_date": "2025-05-15",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "desnz.subnational.northern_ireland.gas.domestic.y2024",
+        "groupby_dimension": "desnz.subnational.area",
+        "groupby_value_id": "n92000002",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "domestic_scope": "all_domestic",
+        "fuel": "gas",
+        "metric": "meter_count",
+        "temperature_adjustment": "weather_corrected"
+      },
+      "source": {
+        "source_name": "desnz",
+        "source_table": "Subnational gas consumption statistics in Northern Ireland, 2015 to 2024",
+        "source_file": "Northern_Ireland_subnational_gas_consumption_2015-2024.xlsx",
+        "source_sha256": "988df5f909b47bcd92c8e28cda9748d037bc67fbf0e3b2127b5b94bb43fe3791",
+        "vintage": "publication_2025_12_18",
+        "raw_r2_key": "raw/uk/desnz/desnz-subnational-gas-consumption-northern-ireland-2024/2025/988df5f909b47bcd92c8e28cda9748d037bc67fbf0e3b2127b5b94bb43fe3791/Northern_Ireland_subnational_gas_consumption_2015-2024.xlsx"
+      },
+      "value": 322974
     },
     {
       "aggregate_fact_key": "ledger_aggregate_fact_v2_54eff3d9f05bb382b4f90d47",

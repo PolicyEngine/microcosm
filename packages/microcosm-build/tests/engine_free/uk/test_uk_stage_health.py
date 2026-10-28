@@ -1705,7 +1705,7 @@ def test_consumption_basis_gate_holds_every_spend_level_to_calendar_2024() -> No
     )
     failing(
         lambda e: e["energy_pricing"]["level"].update(period_type="fiscal_year"),
-        "DESNZ energy level",
+        "energy level",
     )
     failing(lambda e: e["bus_pricing"].update(price_year=None), "bus fares")
     failing(lambda e: e["road_fuel_level"].update(period_value=2025), "road-fuel level")

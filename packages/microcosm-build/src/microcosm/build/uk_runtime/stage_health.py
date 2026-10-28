@@ -268,14 +268,16 @@ def _energy_rake_gate(
     evidence: Mapping[str, object],
     parameters: Mapping[str, object],
 ) -> GateResult:
-    """The energy kWh rake fits the NEED shape at the DESNZ level, at prior weights.
+    """The energy kWh rake fits the NEED shape at the published level, at prior weights.
 
     Fact checks on the lcfs ``energy_rake`` receipt, every published value
     recomputed here from the vendored rows the stage declares (never taken
     from the receipt): each cell's ``shape_target`` must be the vendored NEED
     mean of the declared consumption year; each fuel's level block must be
-    the vendored DESNZ Energy Trends total over the stage's declared level
-    year (calendar 2024; microcosm#1113), its ``factor`` that
+    the stage's declared published level over its level year (calendar 2024;
+    microcosm#1113): the vendored DESNZ Energy Trends total, or for a fuel in
+    ``spend_level_fuels`` the kWh the vendored ONS household spending buys at
+    QEP's United Kingdom average prices (microcosm#1418); its ``factor`` that
     total over the frame's pre-level total, and the levelled frame total the
     published one; each cell's ``target`` must be shape times factor; and,
     where the stage declares the published gas-connected share, every region
@@ -416,7 +418,7 @@ def _energy_rake_gate(
         if not _close(block.get("published_kwh"), published_kwh, 1e-9):
             failures.append(
                 f"{stage}: {fuel} was levelled to {block.get('published_kwh')!r}, not "
-                f"the vendored DESNZ total {published_kwh}."
+                f"the declared published level {published_kwh}."
             )
         if not isinstance(before, int | float) or float(before) <= 0:
             failures.append(f"{stage}: {fuel} level block has no positive frame total.")
@@ -2945,7 +2947,7 @@ def _consumption_basis_gate(
     carry every diary spend column from the April-to-March diary year, placed
     on the calendar-year index at three quarters and one quarter, not by a
     full year's step, which would land a quarter past the calendar year. The
-    energy prices' and the DESNZ level's periods, the bus prices' re-pricing
+    energy prices' and the energy level's periods, the bus prices' re-pricing
     year and the road-fuel level's period must all be the declared calendar
     year. policyengine-uk can then project every column from the H5's year
     with no per-column bases. A step whose receipt is absent fails the check.
@@ -3050,7 +3052,7 @@ def _consumption_basis_gate(
         found["energy_level"] = period_of(level)
         for label, observed in (
             ("energy prices", found["energy_prices"]),
-            ("DESNZ energy level", found["energy_level"]),
+            ("energy level", found["energy_level"]),
         ):
             if observed != expected:
                 failures.append(

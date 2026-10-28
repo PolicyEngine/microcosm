@@ -10734,6 +10734,20 @@
         "actual_temperature"
        ]
       },
+      "spend_level_resource": {
+       "type": "string"
+      },
+      "spend_level_fuels": {
+       "type": "array",
+       "minItems": 1,
+       "uniqueItems": true,
+       "items": {
+        "enum": [
+         "electricity",
+         "gas"
+        ]
+       }
+      },
       "household_kwh_ceiling": {
        "type": "object",
        "additionalProperties": false,

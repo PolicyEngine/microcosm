@@ -568,8 +568,17 @@ def test_the_energy_rake_gate_holds_a_connect_rule_to_its_shortfalls() -> None:
     assert any("connect rule" in f for f in result.failures)
 
 
+def _energy_trends_only() -> dict:
+    """The declared pricing with no fuel levelled to ONS household spending."""
+
+    parameters = dict(_declared())
+    parameters.pop("spend_level_fuels")
+    parameters.pop("spend_level_resource")
+    return parameters
+
+
 def test_published_level_is_the_calendar_year_sum_of_energy_trends_quarters() -> None:
-    level, receipt = published_energy_level(_declared())
+    level, receipt = published_energy_level(_energy_trends_only())
     quarters = period_quarters("calendar_year", 2024)
     assert receipt["quarters"] == list(quarters)
     assert (receipt["period_type"], receipt["period_value"]) == ("calendar_year", 2024)
@@ -607,6 +616,94 @@ def test_published_level_is_the_calendar_year_sum_of_energy_trends_quarters() ->
         ),
     ):
         parameters = dict(_declared())
+        mutation(parameters)
+        with pytest.raises(ValueError, match=match):
+            published_energy_level(parameters)
+
+
+def _one_vendored(resource: str, **criteria) -> dict:
+    rows = vendored_rows(resource, **criteria)
+    assert len(rows) == 1, criteria
+    return rows[0]
+
+
+def test_the_electricity_level_is_the_kwh_ons_household_spending_buys() -> None:
+    """Electricity's level is ONS 04.5.1 less every meter's standing charge, over
+    the unit cost, at QEP's UK average prices (microcosm#1418); gas keeps Energy
+    Trends."""
+
+    declared = _declared()
+    assert declared["spend_level_fuels"] == ["electricity"]
+    level, receipt = published_energy_level(declared)
+    trends, _ = published_energy_level(_energy_trends_only())
+    spend = _one_vendored(
+        "ons_household_expenditure_facts.json",
+        concept="ons.household_expenditure.electricity",
+        geography_id="K02000001",
+        period_type="calendar_year",
+        period_value=2024,
+        dimensions={"coicop": "04.5.1", "consumption_concept": "domestic"},
+    )
+    meters = sum(
+        float(
+            _one_vendored(
+                "desnz_domestic_energy_facts.json",
+                concept="desnz.subnational.domestic_electricity_meter_count",
+                geography_id=geography,
+                period_type=period_type,
+                period_value=2024,
+                dimensions={"domestic_scope": "all_domestic"},
+            )["value"]
+        )
+        for geography, period_type in (
+            ("K03000001", "calendar_year"),
+            ("N92000002", "fiscal_year"),
+        )
+    )
+    unit = _qep_value(
+        "desnz.qep.domestic_electricity_variable_unit_cost",
+        UK,
+        "variable_unit_cost",
+        "electricity",
+    )
+    fixed = _qep_value(
+        "desnz.qep.domestic_electricity_fixed_cost", UK, "fixed_cost", "electricity"
+    )
+    expected = (float(spend["value"]) - meters * fixed) / unit
+    assert level[ELECTRICITY_KWH] == pytest.approx(expected, rel=1e-12)
+    # Calendar 2024: ONS's GBP 28.13bn buys about 84.9 TWh, 7.4% below Energy
+    # Trends' 91.7 TWh; about 30.2 million meters pay the standing charges.
+    assert level[ELECTRICITY_KWH] == pytest.approx(84.94e9, rel=1e-3)
+    assert meters == pytest.approx(30.19e6, rel=1e-3)
+    assert level[GAS_KWH] == trends[GAS_KWH]
+    block = receipt["by_fuel"][ELECTRICITY_KWH]
+    assert block["basis"] == "ons_household_spend"
+    assert block["coicop"] == "04.5.1"
+    assert block["spend_gbp"] == float(spend["value"])
+    assert block["energy_trends_kwh"] == trends[ELECTRICITY_KWH]
+    assert block["total_kwh"] == level[ELECTRICITY_KWH]
+    assert block["domestic_meters"]["meters"] == meters
+    assert receipt["by_fuel"][GAS_KWH]["basis"] == "energy_trends_volume"
+    assert receipt["spend_level_fuels"] == ["electricity"]
+    both = {**declared, "spend_level_fuels": ["electricity", "gas"]}
+    gas_level, gas_receipt = published_energy_level(both)
+    assert gas_receipt["by_fuel"][GAS_KWH]["coicop"] == "04.5.2"
+    assert gas_level[GAS_KWH] == pytest.approx(236.47e9, rel=1e-3)
+    for mutation, match in (
+        (lambda p: p.update(spend_level_fuels=["electricity", "oil"]), "at most once"),
+        (
+            lambda p: p.update(spend_level_fuels=["electricity", "electricity"]),
+            "at most once",
+        ),
+        (lambda p: p.update(spend_level_fuels=[]), "non-empty list"),
+        (
+            lambda p: p.update(spend_level_resource="excise_facts.json"),
+            "spend_level_resource",
+        ),
+        (lambda p: p.update(level_period_type="fiscal_year"), "calendar years"),
+        (lambda p: p.update(period_value=2025), "level's year"),
+    ):
+        parameters = dict(declared)
         mutation(parameters)
         with pytest.raises(ValueError, match=match):
             published_energy_level(parameters)
@@ -964,7 +1061,7 @@ def test_energy_is_checked_at_stage_time_by_the_energy_rake_gate() -> None:
     failing(
         generous,
         {"stage": "lcfs_consumption", "energy_rake": tampered},
-        match="not the vendored DESNZ total",
+        match="not the declared published level",
     )
     tampered = copy.deepcopy(receipt)
     tampered["level"][GAS_KWH]["frame_kwh_after"] *= 1.01

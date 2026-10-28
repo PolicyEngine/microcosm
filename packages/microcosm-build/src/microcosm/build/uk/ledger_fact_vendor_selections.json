@@ -389,8 +389,9 @@
     },
     {
       "resource": "ons_household_expenditure_facts.json",
-      "purpose": "ONS Consumer Trends household final consumption expenditure, current prices, annual (30 June 2026 release). The seven specific series, 2020 to 2025: COICOP 04.5 and its sub-classes 04.5.1 to 04.5.4, 07.2.2 fuels and lubricants for personal transport and 07.3.2 passenger transport by road, all on the domestic concept. For 2023 to 2025: the national (NAT0) and domestic (0) totals and the twelve domestic divisions from the overview sheet, and the three classes a household diary does not record (02.3 narcotics, 04.2 imputed rentals, 12.6.1 FISIM). Consumed by the lcfs_consumption road-fuel level (07.2.2, microcosm#1113) and the division-capture diagnostic.",
+      "purpose": "ONS Consumer Trends household final consumption expenditure, current prices, annual (30 September 2026 release). The seven specific series, 2020 to 2025: COICOP 04.5 and its sub-classes 04.5.1 to 04.5.4, 07.2.2 fuels and lubricants for personal transport and 07.3.2 passenger transport by road, all on the domestic concept. For 2023 to 2025: the national (NAT0) and domestic (0) totals and the twelve domestic divisions from the overview sheet, and the three classes a household diary does not record (02.3 narcotics, 04.2 imputed rentals, 12.6.1 FISIM). Consumed by the lcfs_consumption road-fuel level (07.2.2, microcosm#1113), the energy stage's electricity level (04.5.1, microcosm#1418) and the division-capture diagnostic.",
       "consumers": [
+        "uk_runtime.energy_pricing",
         "uk_runtime.lcfs_consumption"
       ],
       "planned_consumers": [
@@ -600,7 +601,7 @@
     },
     {
       "resource": "desnz_domestic_energy_facts.json",
-      "purpose": "DESNZ domestic energy volumes: Energy Trends domestic electricity (table 5.5) and gas (table 4.1) consumption at actual temperature, annual and quarterly, United Kingdom, 2022 to the latest quarter (the published level the LCFS kWh rake scales to, summed over the four quarters of calendar 2024; microcosm#1113), and the subnational electricity and gas statistics' domestic consumption and meter counts for Great Britain, England and Wales, the countries and the English regions, 2023 and 2024 (the published gas-connected share by region: gas meters over electricity meters; and the Great Britain totals that level the local-authority energy rows, microcosm#1207).",
+      "purpose": "DESNZ domestic energy volumes: Energy Trends domestic electricity (table 5.5) and gas (table 4.1) consumption at actual temperature, annual and quarterly, United Kingdom, 2022 to the latest quarter (the published level the LCFS kWh rake scales to, summed over the four quarters of calendar 2024; microcosm#1113), and the subnational electricity and gas statistics' domestic consumption and meter counts for Great Britain, England and Wales, the countries and the English regions, 2023 and 2024 (the published gas-connected share by region: gas meters over electricity meters; and the Great Britain totals that level the local-authority energy rows, microcosm#1207); and Northern Ireland's domestic electricity and gas meter counts, 2024 (with Great Britain's, every UK domestic meter whose standing charges come off ONS household spending in the electricity level, microcosm#1418).",
       "consumers": [
         "uk_runtime.energy_pricing"
       ],
@@ -634,6 +635,27 @@
             "geography_vintage": "publication_2025_nspl"
           },
           "expected_row_count": 112
+        },
+        {
+          "label": "subnational_domestic_meters_northern_ireland_2024",
+          "selector": {
+            "source_name": "desnz",
+            "source_concept": [
+              "desnz.subnational.domestic_electricity_meter_count",
+              "desnz.subnational.domestic_gas_meter_count"
+            ],
+            "geography_id": "N92000002",
+            "period_type": [
+              "fiscal_year",
+              "gas_year"
+            ],
+            "period_value": "2024",
+            "dimension_values": {
+              "domestic_scope": "all_domestic",
+              "metric": "meter_count"
+            }
+          },
+          "expected_row_count": 2
         }
       ]
     },
@@ -1595,7 +1617,7 @@
     },
     {
       "resource": "desnz_local_energy_facts.json",
-      "purpose": "The DESNZ sub-national domestic electricity and gas meter counts for every Great Britain local authority, 2024 (gas meters over electricity meters give the share of each authority's census households bound as gas-connected), and Northern Ireland's sub-national domestic electricity and gas consumption, 2024 (the N92000002 row, all domestic meters: Great Britain's part of the Energy Trends UK level the authority kWh rows are levelled to is its share of the sub-national total with this row added, microcosm#1278). Consumed by the local energy appliers (uk_runtime.domestic_energy_targets, microcosm#1207).",
+      "purpose": "The DESNZ sub-national domestic electricity and gas meter counts for every Great Britain local authority, 2024 (gas meters over electricity meters give the share of each authority's census households bound as gas-connected), and Northern Ireland's sub-national domestic electricity and gas consumption, 2024 (the N92000002 row, all domestic meters: Great Britain's part of the stage's UK level the authority kWh rows are levelled to, Energy Trends or for electricity the kWh ONS household spending buys (microcosm#1418), is its share of the sub-national total with this row added, microcosm#1278). Consumed by the local energy appliers (uk_runtime.domestic_energy_targets, microcosm#1207).",
       "consumers": [
         "uk_runtime.domestic_energy_targets"
       ],

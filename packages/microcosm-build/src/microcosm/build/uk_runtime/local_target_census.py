@@ -1102,17 +1102,19 @@ _BINDING_FENCES: tuple[dict[str, Any], ...] = (
         "fenced_fact_count": None,
         "enforcement": FENCE_ENFORCEMENT_REVIEW,
         "rule": (
-            "DESNZ's sub-national consumption is not the Energy Trends level "
-            "the lcfs stage rakes every household's kWh to: it reads "
+            "DESNZ's sub-national consumption is not the level the lcfs stage "
+            "rakes every household's kWh to (Energy Trends, or for a fuel the "
+            "stage levels to ONS household spending, the kWh that spending "
+            "buys at QEP prices): it reads "
             "electricity from 31 January to 30 January on non-half-hourly "
             "meters and over the calendar year on half-hourly meters (as "
             "reported), and gas from mid-May to mid-May (weather-corrected), "
-            "and its Great Britain totals sit above Energy Trends' Great "
+            "and its Great Britain totals sit above the stage level's Great "
             "Britain part. The family binds DESNZ's split between "
             "authorities, not its level: one factor per fuel puts the cells on "
             "the stage's level (desnz.energy_trends.gb_domestic_level), and "
             "the cells keep the fact's own year (a matched-period hold). "
-            "Great Britain's part of the Energy Trends UK level is its share "
+            "Great Britain's part of the stage's UK level is its share "
             "of DESNZ's sub-national consumption with Northern Ireland's "
             "all-domestic row added, whose electricity runs on financial years "
             "and gas on Northern Ireland gas years, figures DESNZ calls not "
@@ -1127,7 +1129,8 @@ _BINDING_FENCES: tuple[dict[str, Any], ...] = (
             "stage's level); DESNZ's Northern Ireland sub-national "
             "electricity and gas statistics, with the "
             "Northern Ireland sentence re-worded in by María on 2026-10-17 "
-            "(microcosm#1306 review)."
+            "(microcosm#1306 review); electricity levelled to ONS 04.5.1 by "
+            "María's ruling of 2026-10-28 (microcosm#1418)."
         ),
     },
     {
