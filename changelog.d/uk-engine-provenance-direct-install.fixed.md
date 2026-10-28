@@ -1,0 +1,1 @@
+A UK spine's engine provenance now records how policyengine-uk was installed when it isn't a release from an index: a git install's commit, an archive's hash, or a directory. A build from an engine pull request's head no longer shares its engine identity with that version's release. A release's provenance and identity are unchanged.
