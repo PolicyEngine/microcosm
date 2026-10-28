@@ -2809,6 +2809,15 @@ def test_a_line_link_of_this_repository_is_refused_where_a_dot_segment_forms_its
         f"[a](https://github.com/%50olicyEngine/x/../%6Dicrocosm/blob/{sha}/LICENSE?a/../../../../..#L3)",
         f'{code_span}<a href="https://a b@%67ithub.com/PolicyEngine/x/../microcosm/blob/{sha}/LICENSE#L3">a</a>',
         f'{code_span}<a href="https://a b@%67ithub.com/PolicyEngine/x/../microcosm/blob/{sha}/tools/ci_test_plan.py?{"a" * 30}=1#L12">a</a>',
+        # A Markdown renderer escapes a backslash (``%5C``), so a ``..`` after
+        # ``x\y`` removes the whole segment. In an HTML ``href`` a browser
+        # reads the backslash as ``/``, and the same URL links
+        # ``PolicyEngine/x/microcosm``. At ``4dc0734e`` no rule refused these;
+        # the round-13 review found the first shape too.
+        f"[a](https://github.com/PolicyEngine/x\\y/../microcosm/blob/{sha}/LICENSE#L3)",
+        f"[a]\n\n[a]: https://github.com/PolicyEngine/x\\y/../microcosm/blob/{sha}/LICENSE#L3",
+        f"[a](<https://github.com/PolicyEngine/..\\x/../microcosm/blob/{sha}/{dockerfile}#L3>)",
+        f"<https://github.com/policyengine/.%2e\\PolicyEngine/%2E.//microcosm/blob/{sha}/{sums}#L3>",
     ):
         assert line_citations(written) == [], written
         assert line_links_of_this_repository({"note": written}) == [written], written
