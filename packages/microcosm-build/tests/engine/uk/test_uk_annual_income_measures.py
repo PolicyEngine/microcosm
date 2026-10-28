@@ -131,6 +131,16 @@ def test_the_annual_measures_tax_each_persons_year(tmp_path) -> None:
     assert route.startswith("annual_income_simulation:engine_components:")
     band, _ = resolver.compute("person", "tax_band_annual")
     assert len(band) == 5
+    # The savings income each rate charges, on the same year (microcosm#1418):
+    # nobody here has any.
+    for name in (
+        "basic_rate_savings_income_annual",
+        "higher_rate_savings_income_annual",
+        "add_rate_savings_income_annual",
+    ):
+        savings, route = resolver.compute("person", name)
+        assert route.startswith("annual_income_simulation:")
+        np.testing.assert_allclose(savings, 0.0)
     receipt = resolver.receipt()["annual_income_measures"]
     assert receipt["route"] == "annual_income_simulation"
     factors = receipt["other_spells_engine_factors"]
