@@ -2793,10 +2793,12 @@ def test_a_line_link_of_this_repository_is_refused_where_a_dot_segment_forms_its
     sums = "packages/microcosm-build/tests/fixtures/staging/v1/SHA256SUMS"
     code_span = 'Use `prefix="` before the value.\n\n'
     # markdown-it-py 4.2 and parse5 7.3 render each of these, and bun 1.3's
-    # ``URL`` resolves each, to a link to line 3 of a file here, and github.com
+    # ``URL`` resolves each, to a link to a line of a file here, and github.com
     # serves the file; at ``8a62c938`` no rule refused them. A browser
-    # resolves the dot segment before GitHub reads the path, and no reading
-    # takes these files' names for a source, so no citation is found.
+    # resolves the dot segment before GitHub reads the path, and no citation
+    # is found: no reading takes these files' names for a source, and in the
+    # last, the round-12 review's, every reading's URL ends at the space in
+    # its user.
     for written in (
         f"[a](https://github.com/PolicyEngine/x/../microcosm/blob/{sha}/LICENSE#L3)",
         f'<a href="https://github.com/PolicyEngine/x/%2E%2e/microcosm/blob/{sha}/{dockerfile}#L3">a</a>',
@@ -2806,6 +2808,7 @@ def test_a_line_link_of_this_repository_is_refused_where_a_dot_segment_forms_its
         f'<a href="https://github.com/PolicyEngine/x/&#46;&#46;/microcosm/blob/{sha}/LICENSE#L3">a</a>',
         f"[a](https://github.com/%50olicyEngine/x/../%6Dicrocosm/blob/{sha}/LICENSE?a/../../../../..#L3)",
         f'{code_span}<a href="https://a b@%67ithub.com/PolicyEngine/x/../microcosm/blob/{sha}/LICENSE#L3">a</a>',
+        f'{code_span}<a href="https://a b@%67ithub.com/PolicyEngine/x/../microcosm/blob/{sha}/tools/ci_test_plan.py?{"a" * 30}=1#L12">a</a>',
     ):
         assert line_citations(written) == [], written
         assert line_links_of_this_repository({"note": written}) == [written], written
