@@ -142,36 +142,6 @@
     "local"
    ]
   },
-  "domestic_energy/S12000013/energy/gas_connected_households": {
-   "reason": "Gate-only sign-off of the local cell domestic_energy/S12000013/energy/gas_connected_households on the local line (microcosm#1301). On dense build-1 attempt uk-local-candidate-f100-s42-20261018T161007Z-35fb4c89 (full gate report sha256 46d42e6abf5fa8eaf08e3301a982703f113838c41cb7869340a3a41bafc6407f) it breached the target-fit release bound (max_abs_relative_error 0.25). It stays bound in the solve: this entry suppresses only the release fence on the local line, and a build in which it is back inside the bound fails the entry as stale.",
-   "approved_by": "juaristi22",
-   "adjudication": "Gate-only sign-off of the local release's measured build, drafted from its run (microcosm#1301, microcosm#1310).",
-   "approved_on": "2026-10-19",
-   "expires_on": "2026-11-16",
-   "release_lines": [
-    "local"
-   ]
-  },
-  "domestic_energy/S12000017/energy/gas_connected_households": {
-   "reason": "Gate-only sign-off of the local cell domestic_energy/S12000017/energy/gas_connected_households on the local line (microcosm#1301). On dense build-1 attempt uk-local-candidate-f100-s42-20261018T161007Z-35fb4c89 (full gate report sha256 46d42e6abf5fa8eaf08e3301a982703f113838c41cb7869340a3a41bafc6407f) it breached the target-fit release bound (max_abs_relative_error 0.25). It stays bound in the solve: this entry suppresses only the release fence on the local line, and a build in which it is back inside the bound fails the entry as stale.",
-   "approved_by": "juaristi22",
-   "adjudication": "Gate-only sign-off of the local release's measured build, drafted from its run (microcosm#1301, microcosm#1310).",
-   "approved_on": "2026-10-19",
-   "expires_on": "2026-11-16",
-   "release_lines": [
-    "local"
-   ]
-  },
-  "domestic_energy/S12000023/energy/electricity_kwh": {
-   "reason": "Gate-only sign-off of the local cell domestic_energy/S12000023/energy/electricity_kwh on the local line (microcosm#1301). On dense build-1 attempt uk-local-candidate-f100-s42-20261018T161007Z-35fb4c89 (full gate report sha256 46d42e6abf5fa8eaf08e3301a982703f113838c41cb7869340a3a41bafc6407f) it breached the target-fit release bound (max_abs_relative_error 0.25). It stays bound in the solve: this entry suppresses only the release fence on the local line, and a build in which it is back inside the bound fails the entry as stale.",
-   "approved_by": "juaristi22",
-   "adjudication": "Gate-only sign-off of the local release's measured build, drafted from its run (microcosm#1301, microcosm#1310).",
-   "approved_on": "2026-10-19",
-   "expires_on": "2026-11-16",
-   "release_lines": [
-    "local"
-   ]
-  },
   "age_structure/E14001301/age/20_30": {
    "reason": "Gate-only sign-off of the local cell age_structure/E14001301/age/20_30 on the local line (microcosm#1301). On dense build-1 attempt uk-local-candidate-f100-s42-20261026T091056Z-824870f6 (full gate report sha256 abf245413ca0809f9f261e650c352ef310d11e19960b8e4c5ade3bc57dddf411) it breached the target-fit release bound (max_abs_relative_error 0.25). It stays bound in the solve: this entry suppresses only the release fence on the local line, and a build in which it is back inside the bound fails the entry as stale.",
    "approved_by": "juaristi22",
@@ -202,32 +172,202 @@
     "local"
    ]
   },
-  "domestic_energy/W06000008/energy/gas_connected_households": {
-   "reason": "Gate-only sign-off of the local cell domestic_energy/W06000008/energy/gas_connected_households on the local line (microcosm#1301). On dense build-1 attempt uk-local-candidate-f100-s42-20261026T091056Z-824870f6 (full gate report sha256 abf245413ca0809f9f261e650c352ef310d11e19960b8e4c5ade3bc57dddf411) it breached the target-fit release bound (max_abs_relative_error 0.25). It stays bound in the solve: this entry suppresses only the release fence on the local line, and a build in which it is back inside the bound fails the entry as stale.",
+  "age_structure/E06000018/age/20_30": {
+   "reason": "Gate-only sign-off of the local cell age_structure/E06000018/age/20_30 on the local line (microcosm#1301). On dense build-1 attempt uk-local-candidate-f100-s42-20261027T022836Z-d5f72865 (full gate report sha256 a859f46bd70604adac1b7d6cd419c6a3aae87828a0943d318b3722022e6b2e00) it breached the target-fit release bound (max_abs_relative_error 0.25). It stays bound in the solve: this entry suppresses only the release fence on the local line, and a build in which it is back inside the bound fails the entry as stale.",
    "approved_by": "juaristi22",
-   "adjudication": "Gate-only sign-off of the local release's measured build, drafted from its run (microcosm#1301, microcosm#1396).",
-   "approved_on": "2026-10-26",
-   "expires_on": "2026-11-23",
+   "adjudication": "microcosm#1301 route, drafted from the first dense build of the pair on microcosm#1411 (sign-off 2026-10-27)",
+   "approved_on": "2026-10-27",
+   "expires_on": "2026-11-24",
    "release_lines": [
     "local"
    ]
   },
-  "tenure/E09000020/tenure/owned_outright": {
-   "reason": "Gate-only sign-off of the local cell tenure/E09000020/tenure/owned_outright on the local line (microcosm#1301). On dense build-1 attempt uk-local-candidate-f100-s42-20261026T091056Z-824870f6 (full gate report sha256 abf245413ca0809f9f261e650c352ef310d11e19960b8e4c5ade3bc57dddf411) it breached the target-fit release bound (max_abs_relative_error 0.25). It stays bound in the solve: this entry suppresses only the release fence on the local line, and a build in which it is back inside the bound fails the entry as stale.",
+  "age_structure/E07000178/age/20_30": {
+   "reason": "Gate-only sign-off of the local cell age_structure/E07000178/age/20_30 on the local line (microcosm#1301). On dense build-1 attempt uk-local-candidate-f100-s42-20261027T022836Z-d5f72865 (full gate report sha256 a859f46bd70604adac1b7d6cd419c6a3aae87828a0943d318b3722022e6b2e00) it breached the target-fit release bound (max_abs_relative_error 0.25). It stays bound in the solve: this entry suppresses only the release fence on the local line, and a build in which it is back inside the bound fails the entry as stale.",
    "approved_by": "juaristi22",
-   "adjudication": "Gate-only sign-off of the local release's measured build, drafted from its run (microcosm#1301, microcosm#1396).",
-   "approved_on": "2026-10-26",
-   "expires_on": "2026-11-23",
+   "adjudication": "microcosm#1301 route, drafted from the first dense build of the pair on microcosm#1411 (sign-off 2026-10-27)",
+   "approved_on": "2026-10-27",
+   "expires_on": "2026-11-24",
    "release_lines": [
     "local"
    ]
   },
-  "tenure/S12000029/tenure/private_rent": {
-   "reason": "Gate-only sign-off of the local cell tenure/S12000029/tenure/private_rent on the local line (microcosm#1301). On dense build-1 attempt uk-local-candidate-f100-s42-20261026T091056Z-824870f6 (full gate report sha256 abf245413ca0809f9f261e650c352ef310d11e19960b8e4c5ade3bc57dddf411) it breached the target-fit release bound (max_abs_relative_error 0.25). It stays bound in the solve: this entry suppresses only the release fence on the local line, and a build in which it is back inside the bound fails the entry as stale.",
+  "age_structure/E14001081/age/20_30": {
+   "reason": "Gate-only sign-off of the local cell age_structure/E14001081/age/20_30 on the local line (microcosm#1301). On dense build-1 attempt uk-local-candidate-f100-s42-20261027T022836Z-d5f72865 (full gate report sha256 a859f46bd70604adac1b7d6cd419c6a3aae87828a0943d318b3722022e6b2e00) it breached the target-fit release bound (max_abs_relative_error 0.25). It stays bound in the solve: this entry suppresses only the release fence on the local line, and a build in which it is back inside the bound fails the entry as stale.",
    "approved_by": "juaristi22",
-   "adjudication": "Gate-only sign-off of the local release's measured build, drafted from its run (microcosm#1301, microcosm#1396).",
-   "approved_on": "2026-10-26",
-   "expires_on": "2026-11-23",
+   "adjudication": "microcosm#1301 route, drafted from the first dense build of the pair on microcosm#1411 (sign-off 2026-10-27)",
+   "approved_on": "2026-10-27",
+   "expires_on": "2026-11-24",
+   "release_lines": [
+    "local"
+   ]
+  },
+  "age_structure/E14001231/age/20_30": {
+   "reason": "Gate-only sign-off of the local cell age_structure/E14001231/age/20_30 on the local line (microcosm#1301). On dense build-1 attempt uk-local-candidate-f100-s42-20261027T022836Z-d5f72865 (full gate report sha256 a859f46bd70604adac1b7d6cd419c6a3aae87828a0943d318b3722022e6b2e00) it breached the target-fit release bound (max_abs_relative_error 0.25). It stays bound in the solve: this entry suppresses only the release fence on the local line, and a build in which it is back inside the bound fails the entry as stale.",
+   "approved_by": "juaristi22",
+   "adjudication": "microcosm#1301 route, drafted from the first dense build of the pair on microcosm#1411 (sign-off 2026-10-27)",
+   "approved_on": "2026-10-27",
+   "expires_on": "2026-11-24",
+   "release_lines": [
+    "local"
+   ]
+  },
+  "age_structure/E14001327/age/20_30": {
+   "reason": "Gate-only sign-off of the local cell age_structure/E14001327/age/20_30 on the local line (microcosm#1301). On dense build-1 attempt uk-local-candidate-f100-s42-20261027T022836Z-d5f72865 (full gate report sha256 a859f46bd70604adac1b7d6cd419c6a3aae87828a0943d318b3722022e6b2e00) it breached the target-fit release bound (max_abs_relative_error 0.25). It stays bound in the solve: this entry suppresses only the release fence on the local line, and a build in which it is back inside the bound fails the entry as stale.",
+   "approved_by": "juaristi22",
+   "adjudication": "microcosm#1301 route, drafted from the first dense build of the pair on microcosm#1411 (sign-off 2026-10-27)",
+   "approved_on": "2026-10-27",
+   "expires_on": "2026-11-24",
+   "release_lines": [
+    "local"
+   ]
+  },
+  "age_structure/E14001352/age/20_30": {
+   "reason": "Gate-only sign-off of the local cell age_structure/E14001352/age/20_30 on the local line (microcosm#1301). On dense build-1 attempt uk-local-candidate-f100-s42-20261027T022836Z-d5f72865 (full gate report sha256 a859f46bd70604adac1b7d6cd419c6a3aae87828a0943d318b3722022e6b2e00) it breached the target-fit release bound (max_abs_relative_error 0.25). It stays bound in the solve: this entry suppresses only the release fence on the local line, and a build in which it is back inside the bound fails the entry as stale.",
+   "approved_by": "juaristi22",
+   "adjudication": "microcosm#1301 route, drafted from the first dense build of the pair on microcosm#1411 (sign-off 2026-10-27)",
+   "approved_on": "2026-10-27",
+   "expires_on": "2026-11-24",
+   "release_lines": [
+    "local"
+   ]
+  },
+  "age_structure/E14001410/age/20_30": {
+   "reason": "Gate-only sign-off of the local cell age_structure/E14001410/age/20_30 on the local line (microcosm#1301). On dense build-1 attempt uk-local-candidate-f100-s42-20261027T022836Z-d5f72865 (full gate report sha256 a859f46bd70604adac1b7d6cd419c6a3aae87828a0943d318b3722022e6b2e00) it breached the target-fit release bound (max_abs_relative_error 0.25). It stays bound in the solve: this entry suppresses only the release fence on the local line, and a build in which it is back inside the bound fails the entry as stale.",
+   "approved_by": "juaristi22",
+   "adjudication": "microcosm#1301 route, drafted from the first dense build of the pair on microcosm#1411 (sign-off 2026-10-27)",
+   "approved_on": "2026-10-27",
+   "expires_on": "2026-11-24",
+   "release_lines": [
+    "local"
+   ]
+  },
+  "age_structure/E14001420/age/20_30": {
+   "reason": "Gate-only sign-off of the local cell age_structure/E14001420/age/20_30 on the local line (microcosm#1301). On dense build-1 attempt uk-local-candidate-f100-s42-20261027T022836Z-d5f72865 (full gate report sha256 a859f46bd70604adac1b7d6cd419c6a3aae87828a0943d318b3722022e6b2e00) it breached the target-fit release bound (max_abs_relative_error 0.25). It stays bound in the solve: this entry suppresses only the release fence on the local line, and a build in which it is back inside the bound fails the entry as stale.",
+   "approved_by": "juaristi22",
+   "adjudication": "microcosm#1301 route, drafted from the first dense build of the pair on microcosm#1411 (sign-off 2026-10-27)",
+   "approved_on": "2026-10-27",
+   "expires_on": "2026-11-24",
+   "release_lines": [
+    "local"
+   ]
+  },
+  "age_structure/S12000013/age/20_30": {
+   "reason": "Gate-only sign-off of the local cell age_structure/S12000013/age/20_30 on the local line (microcosm#1301). On dense build-1 attempt uk-local-candidate-f100-s42-20261027T022836Z-d5f72865 (full gate report sha256 a859f46bd70604adac1b7d6cd419c6a3aae87828a0943d318b3722022e6b2e00) it breached the target-fit release bound (max_abs_relative_error 0.25). It stays bound in the solve: this entry suppresses only the release fence on the local line, and a build in which it is back inside the bound fails the entry as stale.",
+   "approved_by": "juaristi22",
+   "adjudication": "microcosm#1301 route, drafted from the first dense build of the pair on microcosm#1411 (sign-off 2026-10-27)",
+   "approved_on": "2026-10-27",
+   "expires_on": "2026-11-24",
+   "release_lines": [
+    "local"
+   ]
+  },
+  "age_structure/S12000013/age/60_70": {
+   "reason": "Gate-only sign-off of the local cell age_structure/S12000013/age/60_70 on the local line (microcosm#1301). On dense build-1 attempt uk-local-candidate-f100-s42-20261027T022836Z-d5f72865 (full gate report sha256 a859f46bd70604adac1b7d6cd419c6a3aae87828a0943d318b3722022e6b2e00) it breached the target-fit release bound (max_abs_relative_error 0.25). It stays bound in the solve: this entry suppresses only the release fence on the local line, and a build in which it is back inside the bound fails the entry as stale.",
+   "approved_by": "juaristi22",
+   "adjudication": "microcosm#1301 route, drafted from the first dense build of the pair on microcosm#1411 (sign-off 2026-10-27)",
+   "approved_on": "2026-10-27",
+   "expires_on": "2026-11-24",
+   "release_lines": [
+    "local"
+   ]
+  },
+  "age_structure/S14000027/age/60_70": {
+   "reason": "Gate-only sign-off of the local cell age_structure/S14000027/age/60_70 on the local line (microcosm#1301). On dense build-1 attempt uk-local-candidate-f100-s42-20261027T022836Z-d5f72865 (full gate report sha256 a859f46bd70604adac1b7d6cd419c6a3aae87828a0943d318b3722022e6b2e00) it breached the target-fit release bound (max_abs_relative_error 0.25). It stays bound in the solve: this entry suppresses only the release fence on the local line, and a build in which it is back inside the bound fails the entry as stale.",
+   "approved_by": "juaristi22",
+   "adjudication": "microcosm#1301 route, drafted from the first dense build of the pair on microcosm#1411 (sign-off 2026-10-27)",
+   "approved_on": "2026-10-27",
+   "expires_on": "2026-11-24",
+   "release_lines": [
+    "local"
+   ]
+  },
+  "council_tax/E09000020/council_tax/band_g": {
+   "reason": "Gate-only sign-off of the local cell council_tax/E09000020/council_tax/band_g on the local line (microcosm#1301). On dense build-1 attempt uk-local-candidate-f100-s42-20261027T022836Z-d5f72865 (full gate report sha256 a859f46bd70604adac1b7d6cd419c6a3aae87828a0943d318b3722022e6b2e00) it breached the target-fit release bound (max_abs_relative_error 0.25). It stays bound in the solve: this entry suppresses only the release fence on the local line, and a build in which it is back inside the bound fails the entry as stale.",
+   "approved_by": "juaristi22",
+   "adjudication": "microcosm#1301 route, drafted from the first dense build of the pair on microcosm#1411 (sign-off 2026-10-27)",
+   "approved_on": "2026-10-27",
+   "expires_on": "2026-11-24",
+   "release_lines": [
+    "local"
+   ]
+  },
+  "council_tax/E09000030/council_tax/band_f": {
+   "reason": "Gate-only sign-off of the local cell council_tax/E09000030/council_tax/band_f on the local line (microcosm#1301). On dense build-1 attempt uk-local-candidate-f100-s42-20261027T022836Z-d5f72865 (full gate report sha256 a859f46bd70604adac1b7d6cd419c6a3aae87828a0943d318b3722022e6b2e00) it breached the target-fit release bound (max_abs_relative_error 0.25). It stays bound in the solve: this entry suppresses only the release fence on the local line, and a build in which it is back inside the bound fails the entry as stale.",
+   "approved_by": "juaristi22",
+   "adjudication": "microcosm#1301 route, drafted from the first dense build of the pair on microcosm#1411 (sign-off 2026-10-27)",
+   "approved_on": "2026-10-27",
+   "expires_on": "2026-11-24",
+   "release_lines": [
+    "local"
+   ]
+  },
+  "council_tax/E09000033/council_tax/band_f": {
+   "reason": "Gate-only sign-off of the local cell council_tax/E09000033/council_tax/band_f on the local line (microcosm#1301). On dense build-1 attempt uk-local-candidate-f100-s42-20261027T022836Z-d5f72865 (full gate report sha256 a859f46bd70604adac1b7d6cd419c6a3aae87828a0943d318b3722022e6b2e00) it breached the target-fit release bound (max_abs_relative_error 0.25). It stays bound in the solve: this entry suppresses only the release fence on the local line, and a build in which it is back inside the bound fails the entry as stale.",
+   "approved_by": "juaristi22",
+   "adjudication": "microcosm#1301 route, drafted from the first dense build of the pair on microcosm#1411 (sign-off 2026-10-27)",
+   "approved_on": "2026-10-27",
+   "expires_on": "2026-11-24",
+   "release_lines": [
+    "local"
+   ]
+  },
+  "council_tax/E09000033/council_tax/band_g": {
+   "reason": "Gate-only sign-off of the local cell council_tax/E09000033/council_tax/band_g on the local line (microcosm#1301). On dense build-1 attempt uk-local-candidate-f100-s42-20261027T022836Z-d5f72865 (full gate report sha256 a859f46bd70604adac1b7d6cd419c6a3aae87828a0943d318b3722022e6b2e00) it breached the target-fit release bound (max_abs_relative_error 0.25). It stays bound in the solve: this entry suppresses only the release fence on the local line, and a build in which it is back inside the bound fails the entry as stale.",
+   "approved_by": "juaristi22",
+   "adjudication": "microcosm#1301 route, drafted from the first dense build of the pair on microcosm#1411 (sign-off 2026-10-27)",
+   "approved_on": "2026-10-27",
+   "expires_on": "2026-11-24",
+   "release_lines": [
+    "local"
+   ]
+  },
+  "council_tax/S12000013/council_tax/band_f": {
+   "reason": "Gate-only sign-off of the local cell council_tax/S12000013/council_tax/band_f on the local line (microcosm#1301). On dense build-1 attempt uk-local-candidate-f100-s42-20261027T022836Z-d5f72865 (full gate report sha256 a859f46bd70604adac1b7d6cd419c6a3aae87828a0943d318b3722022e6b2e00) it breached the target-fit release bound (max_abs_relative_error 0.25). It stays bound in the solve: this entry suppresses only the release fence on the local line, and a build in which it is back inside the bound fails the entry as stale.",
+   "approved_by": "juaristi22",
+   "adjudication": "microcosm#1301 route, drafted from the first dense build of the pair on microcosm#1411 (sign-off 2026-10-27)",
+   "approved_on": "2026-10-27",
+   "expires_on": "2026-11-24",
+   "release_lines": [
+    "local"
+   ]
+  },
+  "council_tax/S12000035/council_tax/band_b": {
+   "reason": "Gate-only sign-off of the local cell council_tax/S12000035/council_tax/band_b on the local line (microcosm#1301). On dense build-1 attempt uk-local-candidate-f100-s42-20261027T022836Z-d5f72865 (full gate report sha256 a859f46bd70604adac1b7d6cd419c6a3aae87828a0943d318b3722022e6b2e00) it breached the target-fit release bound (max_abs_relative_error 0.25). It stays bound in the solve: this entry suppresses only the release fence on the local line, and a build in which it is back inside the bound fails the entry as stale.",
+   "approved_by": "juaristi22",
+   "adjudication": "microcosm#1301 route, drafted from the first dense build of the pair on microcosm#1411 (sign-off 2026-10-27)",
+   "approved_on": "2026-10-27",
+   "expires_on": "2026-11-24",
+   "release_lines": [
+    "local"
+   ]
+  },
+  "council_tax/W06000018/council_tax/band_h": {
+   "reason": "Gate-only sign-off of the local cell council_tax/W06000018/council_tax/band_h on the local line (microcosm#1301). On dense build-1 attempt uk-local-candidate-f100-s42-20261027T022836Z-d5f72865 (full gate report sha256 a859f46bd70604adac1b7d6cd419c6a3aae87828a0943d318b3722022e6b2e00) it breached the target-fit release bound (max_abs_relative_error 0.25). It stays bound in the solve: this entry suppresses only the release fence on the local line, and a build in which it is back inside the bound fails the entry as stale.",
+   "approved_by": "juaristi22",
+   "adjudication": "microcosm#1301 route, drafted from the first dense build of the pair on microcosm#1411 (sign-off 2026-10-27)",
+   "approved_on": "2026-10-27",
+   "expires_on": "2026-11-24",
+   "release_lines": [
+    "local"
+   ]
+  },
+  "tenure/E09000033/tenure/owned_mortgage": {
+   "reason": "Gate-only sign-off of the local cell tenure/E09000033/tenure/owned_mortgage on the local line (microcosm#1301). On dense build-1 attempt uk-local-candidate-f100-s42-20261027T022836Z-d5f72865 (full gate report sha256 a859f46bd70604adac1b7d6cd419c6a3aae87828a0943d318b3722022e6b2e00) it breached the target-fit release bound (max_abs_relative_error 0.25). It stays bound in the solve: this entry suppresses only the release fence on the local line, and a build in which it is back inside the bound fails the entry as stale.",
+   "approved_by": "juaristi22",
+   "adjudication": "microcosm#1301 route, drafted from the first dense build of the pair on microcosm#1411 (sign-off 2026-10-27)",
+   "approved_on": "2026-10-27",
+   "expires_on": "2026-11-24",
+   "release_lines": [
+    "local"
+   ]
+  },
+  "uc_households/E14001098/uc_hh_3plus_children": {
+   "reason": "Gate-only sign-off of the local cell uc_households/E14001098/uc_hh_3plus_children on the local line (microcosm#1301). On dense build-1 attempt uk-local-candidate-f100-s42-20261027T022836Z-d5f72865 (full gate report sha256 a859f46bd70604adac1b7d6cd419c6a3aae87828a0943d318b3722022e6b2e00) it breached the target-fit release bound (max_abs_relative_error 0.25). It stays bound in the solve: this entry suppresses only the release fence on the local line, and a build in which it is back inside the bound fails the entry as stale.",
+   "approved_by": "juaristi22",
+   "adjudication": "microcosm#1301 route, drafted from the first dense build of the pair on microcosm#1411 (sign-off 2026-10-27)",
+   "approved_on": "2026-10-27",
+   "expires_on": "2026-11-24",
    "release_lines": [
     "local"
    ]

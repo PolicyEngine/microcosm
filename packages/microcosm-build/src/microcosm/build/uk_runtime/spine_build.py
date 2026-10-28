@@ -725,12 +725,68 @@ def _rules_engine() -> PolicyEngineUKEngine:
     return PolicyEngineUKEngine()
 
 
-def _rules_engine_provenance() -> dict[str, str]:
+def _rules_engine_provenance() -> dict[str, object]:
     try:
         version = metadata.version("policyengine-uk")
     except metadata.PackageNotFoundError:
         return {"package": "policyengine-uk", "version": "unavailable"}
-    return {"package": "policyengine-uk", "version": version}
+    provenance: dict[str, object] = {"package": "policyengine-uk", "version": version}
+    direct_install = _direct_install("policyengine-uk")
+    if direct_install is not None:
+        # A release installed from an index writes no direct_url.json
+        # (PEP 610), so its provenance, and the engine identity hashed from
+        # it, stay as they were.
+        provenance["direct_install"] = direct_install
+    return provenance
+
+
+def _direct_install(package: str) -> dict[str, object] | None:
+    """What PEP 610's ``direct_url.json`` records of a URL install, or None.
+
+    A git install of an engine pull request carries a release's version
+    string, so only this tells the two apart: it names the commit. An archive
+    is named by every hash its record holds, whatever the algorithm, and one
+    that records no hash is refused, since nothing would tell it from another
+    archive. URLs are left out, so no local path reaches a build or release
+    record.
+    """
+    try:
+        text = metadata.distribution(package).read_text("direct_url.json")
+    except metadata.PackageNotFoundError:
+        return None
+    if not text:
+        return None
+    record = json.loads(text)
+    vcs = record.get("vcs_info")
+    if isinstance(vcs, Mapping):
+        return {
+            "kind": "vcs",
+            "vcs": str(vcs.get("vcs", "")),
+            "commit_id": str(vcs.get("commit_id", "")),
+        }
+    archive = record.get("archive_info")
+    if isinstance(archive, Mapping):
+        listed = archive.get("hashes")
+        hashes = (
+            {str(name): str(value) for name, value in listed.items()}
+            if isinstance(listed, Mapping)
+            else {}
+        )
+        legacy = archive.get("hash")
+        if isinstance(legacy, str) and "=" in legacy:
+            name, value = legacy.split("=", 1)
+            hashes.setdefault(name, value)
+        if not hashes:
+            raise ValueError(
+                f"{package} was installed from an archive whose direct_url.json "
+                "records no hash, so no engine identity can tell it from another "
+                "archive: install a release, or an archive with a recorded hash."
+            )
+        return {"kind": "archive", "hashes": dict(sorted(hashes.items()))}
+    directory = record.get("dir_info")
+    if isinstance(directory, Mapping):
+        return {"kind": "dir", "editable": bool(directory.get("editable", False))}
+    return {"kind": "unrecognised"}
 
 
 def _declared_seeds(stages) -> dict[str, dict[str, int]]:
