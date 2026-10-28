@@ -16,6 +16,11 @@ hide a broken check:
   distribution directory, from ``src/``, from the ``microcosm`` namespace,
   from its shard, or from a first-level subpackage of its shard. A bare file
   name cannot be resolved and falls to the next rule;
+- no resource cites a line in a string that holds a dot segment (``..`` as
+  a path segment, either dot perhaps ``%2e``), pinned or not
+  (``dot_segment_line_citations``): whitespace, a backslash or markup in the
+  segment it removes can make a renderer remove another one than a reading
+  does, so which file the citation names is unknown;
 - no resource cites a line of any other source unless the citation binds to
   an inline commit (the nearest one in its own clause, else the nearest one
   before it in its string; ``citing_commit``), or the resource pins a path
@@ -75,6 +80,7 @@ from test_support.microcosm_build.spec_source_citations import (
     citing_commit,
     commit_pinned_sources,
     country_packages,
+    dot_segment_line_citations,
     dotted_microcosm_symbols,
     in_repository_line_citations,
     line_citations,
@@ -119,6 +125,16 @@ def test_no_resource_cites_a_line_of_this_repository(country: str) -> None:
         name: hits
         for name, payload in package_payloads(country).items()
         if (hits := in_repository_line_citations(payload))
+    }
+    assert offenders == {}
+
+
+@pytest.mark.parametrize("country", PACKAGES)
+def test_no_resource_cites_a_line_in_a_string_with_a_dot_segment(country: str) -> None:
+    offenders = {
+        name: hits
+        for name, payload in package_payloads(country).items()
+        if (hits := dot_segment_line_citations(payload))
     }
     assert offenders == {}
 
@@ -580,6 +596,30 @@ _SHA = _HEX.filter(_is_commit_like)
     depth=0,
     as_key=False,
 )
+@example(
+    stem="x",
+    suffix="py",
+    directory="datasets/cps/",
+    locator="{file}#L{a}",
+    a=12,
+    b=12,
+    prefix="",
+    tail="",
+    depth=2,
+    as_key=True,
+)
+@example(
+    stem="x",
+    suffix="py",
+    directory="",
+    locator="ll. {a}-{b} of {file}",
+    a=12,
+    b=19,
+    prefix="",
+    tail="",
+    depth=0,
+    as_key=False,
+)
 def test_an_unpinned_line_citation_is_refused_at_any_depth(
     stem: str,
     suffix: str,
@@ -714,6 +754,17 @@ def test_a_line_citation_of_a_file_pinned_at_a_commit_passes(
     b=st.integers(1, 99_999),
     commit=_SHA,
 )
+@example(
+    stem="x",
+    suffix="py",
+    cited_directory="archived_data/datasets/cps/",
+    pin_directory="",
+    root="",
+    locator="{file}:{a}",
+    a=12,
+    b=12,
+    commit="a1b2c3d",
+)
 def test_a_path_pin_covers_exactly_the_citations_its_path_ends_in(
     stem: str,
     suffix: str,
@@ -751,6 +802,42 @@ def test_a_path_pin_covers_exactly_the_citations_its_path_ends_in(
     pin_first=st.booleans(),
     depth=st.integers(0, 3),
     as_key=st.booleans(),
+)
+# Only a commit in an earlier clause tests the fallback to the nearest commit
+# before a citation, and a whole run can draw no ``;`` between them.
+@example(
+    stem="x",
+    suffix="py",
+    directory="",
+    locator="{file}:{a}",
+    pin="commit {sha}",
+    sha="a1b2c3d",
+    a=12,
+    b=12,
+    prefix="",
+    middle=";",
+    clause_middle="",
+    tail="",
+    pin_first=True,
+    depth=0,
+    as_key=False,
+)
+@example(
+    stem="x",
+    suffix="py",
+    directory="",
+    locator="{file}:{a}",
+    pin="https://github.com/PolicyEngine/archived-data/raw/{sha}/x",
+    sha="a1b2c3d",
+    a=12,
+    b=12,
+    prefix="",
+    middle="",
+    clause_middle="",
+    tail="",
+    pin_first=False,
+    depth=0,
+    as_key=False,
 )
 def test_a_commit_before_a_citation_or_later_in_its_clause_pins_it(
     stem: str,
@@ -796,6 +883,34 @@ def test_a_commit_before_a_citation_or_later_in_its_clause_pins_it(
     clause_break=st.sampled_from(_CLAUSE_BREAKS),
     tail=_PROSE,
 )
+@example(
+    stem="x",
+    suffix="py",
+    directory="",
+    locator="{file}:{a}",
+    pin="commit {sha}",
+    sha="a1b2c3d",
+    a=12,
+    b=12,
+    prefix="",
+    middle="",
+    clause_break="; ",
+    tail="",
+)
+@example(
+    stem="x",
+    suffix="py",
+    directory="",
+    locator="{file}:{a}",
+    pin="Commit {sha}",
+    sha="a1b2c3d",
+    a=12,
+    b=12,
+    prefix="",
+    middle="",
+    clause_break=". See ",
+    tail="",
+)
 def test_a_commit_only_in_a_later_clause_does_not_pin_a_citation(
     stem: str,
     suffix: str,
@@ -831,6 +946,19 @@ def test_a_commit_only_in_a_later_clause_does_not_pin_a_citation(
     b=st.integers(1, 99_999),
     middle=_CLAUSE_PROSE,
     ref_first=st.booleans(),
+)
+@example(
+    stem="x",
+    suffix="py",
+    directory="",
+    locator="{file}:{a}",
+    pin="commit {sha}",
+    sha="a1b2c3d",
+    moving="on refs/heads/main",
+    a=12,
+    b=12,
+    middle="",
+    ref_first=False,
 )
 def test_an_earlier_commit_does_not_pin_a_citation_whose_clause_names_a_moving_ref(
     stem: str,
@@ -931,6 +1059,15 @@ def test_each_citation_binds_the_commit_in_its_own_clause(
     a=st.integers(1, 99_999),
     b=st.integers(1, 99_999),
 )
+@example(
+    stem="x",
+    suffix="py",
+    locator="{file}:{a}",
+    pin="commit {sha}",
+    sha="a1b2c3d",
+    a=12,
+    b=12,
+)
 def test_a_commit_named_in_another_string_does_not_pin_a_citation(
     stem: str,
     suffix: str,
@@ -964,6 +1101,22 @@ def test_a_commit_named_in_another_string_does_not_pin_a_citation(
         _SHA.map(lambda sha: f"{sha}-dirty"),
     ),
     a=st.integers(1, 99_999),
+)
+@example(
+    stem="x",
+    suffix="py",
+    locator="{file}:{a}",
+    keyword="commit ",
+    not_a_commit="1234567",
+    a=12,
+)
+@example(
+    stem="x",
+    suffix="py",
+    locator="{file}:{a}",
+    keyword="commit ",
+    not_a_commit="e2de2b41…",
+    a=12,
 )
 def test_a_decimal_a_word_a_digest_a_truncation_or_a_branch_names_no_commit(
     stem: str,
@@ -1021,6 +1174,28 @@ def test_a_hex_directory_after_a_pin_word_names_no_commit(
     branch=st.sampled_from(_BRANCH_NAMES),
     pin_other_file=st.booleans(),
 )
+@example(
+    stem="x",
+    other="y",
+    suffix="py",
+    locator="{file}:{a}",
+    a=12,
+    b=12,
+    commit="a1b2c3d",
+    branch="main",
+    pin_other_file=True,
+)
+@example(
+    stem="x",
+    other="y",
+    suffix="py",
+    locator="{file}:{a}",
+    a=12,
+    b=12,
+    commit="a1b2c3d",
+    branch="main",
+    pin_other_file=False,
+)
 def test_a_pin_of_another_file_or_at_a_branch_does_not_cover_a_citation(
     stem: str,
     other: str,
@@ -1060,6 +1235,7 @@ def test_a_pin_of_another_file_or_at_a_branch_does_not_cover_a_citation(
     ),
     a=st.integers(1, 99_999),
 )
+@example(stem="x", suffix="py", locator="{file}:{a}", not_a_commit="1234567", a=12)
 def test_a_path_pin_whose_commit_is_no_sha_pins_nothing(
     stem: str, suffix: str, locator: str, not_a_commit: str, a: int
 ) -> None:
@@ -1084,6 +1260,32 @@ def test_a_path_pin_whose_commit_is_no_sha_pins_nothing(
     b=st.integers(1, 99_999),
     middle=_CLAUSE_PROSE,
     place=st.sampled_from(("gap", "clause_start", "clause_end")),
+)
+@example(
+    stem="x",
+    suffix="py",
+    locator="{file}:{a}",
+    pin="commit {sha}",
+    sha="a1b2c3d",
+    stray="e4f5a6b",
+    word="rev ",
+    a=12,
+    b=12,
+    middle="",
+    place="gap",
+)
+@example(
+    stem="x",
+    suffix="py",
+    locator="{file}:{a}",
+    pin="commit {sha}",
+    sha="a1b2c3d",
+    stray="e4f5a6b",
+    word="rev ",
+    a=12,
+    b=12,
+    middle="",
+    place="clause_end",
 )
 def test_a_commit_in_no_pin_spelling_beside_a_citation_is_refused(
     stem: str,
@@ -1125,6 +1327,17 @@ def test_a_commit_in_no_pin_spelling_beside_a_citation_is_refused(
     b=st.integers(1, 99_999),
     middle=_CLAUSE_PROSE,
     stray_first=st.booleans(),
+)
+@example(
+    stem="x",
+    suffix="py",
+    locator="{file}:{a}",
+    sha="a1b2c3d",
+    stray="e4f5a6b",
+    a=12,
+    b=12,
+    middle="",
+    stray_first=False,
 )
 def test_a_commit_like_token_in_another_clause_is_no_misspelled_pin(
     stem: str,
@@ -1185,6 +1398,19 @@ def test_a_symbol_citation_is_not_a_line_citation(
     depth=st.integers(0, 3),
     as_key=st.booleans(),
 )
+@example(
+    stem="x",
+    suffix="py",
+    directory="",
+    locator="{file} {symbol}, lines {a}-{b}",
+    symbol="helper",
+    a=12,
+    b=19,
+    prefix="",
+    tail="",
+    depth=0,
+    as_key=False,
+)
 def test_a_line_locator_in_an_unrecognised_spelling_is_refused(
     stem: str,
     suffix: str,
@@ -1216,6 +1442,16 @@ def test_a_line_locator_in_an_unrecognised_spelling_is_refused(
     b=st.integers(1, 99_999),
     pinned_inline=st.booleans(),
     pinned_by_path=st.booleans(),
+)
+@example(
+    file=_IN_REPOSITORY_FILES[0],
+    locator="{file}:{a}",
+    pin="commit {sha}",
+    sha="a1b2c3d",
+    a=12,
+    b=12,
+    pinned_inline=True,
+    pinned_by_path=True,
 )
 def test_a_line_citation_of_this_repository_is_refused_even_when_pinned(
     file: str,
@@ -1292,6 +1528,15 @@ def test_in_repository_paths_resolve_from_an_anchor_or_a_repository_prefix() -> 
         assert not resolves_in_repository(file), file
     assert (REPOSITORY_ROOT / _IN_REPOSITORY_FILES[0]).is_file()
     assert COUNTRY_PACKAGE_ROOT.is_dir()
+
+
+def test_no_source_file_here_has_whitespace_or_a_backslash_in_its_path() -> None:
+    # The dot-segment rule relies on it: without a ``..``, a renderer keeps
+    # whitespace or a backslash in the segment it follows (``%20``, ``%5C``),
+    # so its link names no source file here.
+    tails = citations._repository_path_tails(REPOSITORY_ROOT)
+    assert "tools/ci_test_plan.py" in tails
+    assert sorted(tail for tail in tails if re.search(r"[\s\\]", tail)) == []
 
 
 def test_only_anchored_tails_name_a_file_here(tmp_path: Path) -> None:
@@ -1433,6 +1678,207 @@ def test_the_round_three_review_counterexample_is_refused() -> None:
     a=st.integers(1, 99_999),
     b=st.integers(1, 99_999),
 )
+# One spelling each: an escape in the route, an escaped slash after the ref,
+# a ``./`` and a ``..`` detour, an escaped, a backslashed and a full-width
+# host, a user, and a port on a host written without a scheme.
+@example(
+    url="https://github.com/PolicyEngine/microcosm/blob/",
+    ref="a1b2c3d",
+    detour="",
+    path="tools/build_us_puf_support_base.py",
+    chosen={1},
+    upper=False,
+    case=str.lower,
+    leads=("https://", "https://"),
+    authority="{host}",
+    wide=set(),
+    stop=_FULL_STOPS[0],
+    escaped_host=set(),
+    dot=False,
+    backslashed=set(),
+    query="",
+    fragment="#L{a}",
+    pin="commit {sha}",
+    sha="a1b2c3d",
+    a=12,
+    b=12,
+)
+@example(
+    url="https://github.com/PolicyEngine/microcosm/blob/",
+    ref="a1b2c3d",
+    detour="",
+    path="tools/build_us_puf_support_base.py",
+    chosen={36},
+    upper=False,
+    case=str.lower,
+    leads=("https://", "https://"),
+    authority="{host}",
+    wide=set(),
+    stop=_FULL_STOPS[0],
+    escaped_host=set(),
+    dot=False,
+    backslashed=set(),
+    query="",
+    fragment="#L{a}",
+    pin="commit {sha}",
+    sha="a1b2c3d",
+    a=12,
+    b=12,
+)
+@example(
+    url="https://github.com/PolicyEngine/microcosm/blob/",
+    ref="a1b2c3d",
+    detour="./",
+    path="tools/build_us_puf_support_base.py",
+    chosen=set(),
+    upper=False,
+    case=str.lower,
+    leads=("https://", "https://"),
+    authority="{host}",
+    wide=set(),
+    stop=_FULL_STOPS[0],
+    escaped_host=set(),
+    dot=False,
+    backslashed=set(),
+    query="",
+    fragment="#L{a}",
+    pin="commit {sha}",
+    sha="a1b2c3d",
+    a=12,
+    b=12,
+)
+@example(
+    url="https://github.com/PolicyEngine/microcosm/blob/",
+    ref="a1b2c3d",
+    detour="docs/../",
+    path="tools/build_us_puf_support_base.py",
+    chosen=set(),
+    upper=False,
+    case=str.lower,
+    leads=("https://", "https://"),
+    authority="{host}",
+    wide=set(),
+    stop=_FULL_STOPS[0],
+    escaped_host=set(),
+    dot=False,
+    backslashed=set(),
+    query="",
+    fragment="#L{a}",
+    pin="commit {sha}",
+    sha="a1b2c3d",
+    a=12,
+    b=12,
+)
+@example(
+    url="https://github.com/PolicyEngine/microcosm/blob/",
+    ref="a1b2c3d",
+    detour="",
+    path="tools/build_us_puf_support_base.py",
+    chosen=set(),
+    upper=False,
+    case=str.lower,
+    leads=("https://", "https://"),
+    authority="{host}",
+    wide=set(),
+    stop=_FULL_STOPS[0],
+    escaped_host={0},
+    dot=False,
+    backslashed=set(),
+    query="",
+    fragment="#L{a}",
+    pin="commit {sha}",
+    sha="a1b2c3d",
+    a=12,
+    b=12,
+)
+@example(
+    url="https://github.com/PolicyEngine/microcosm/blob/",
+    ref="a1b2c3d",
+    detour="",
+    path="tools/build_us_puf_support_base.py",
+    chosen=set(),
+    upper=False,
+    case=str.lower,
+    leads=("https://", "https://"),
+    authority="{host}",
+    wide=set(),
+    stop=_FULL_STOPS[0],
+    escaped_host=set(),
+    dot=False,
+    backslashed={0},
+    query="",
+    fragment="#L{a}",
+    pin="commit {sha}",
+    sha="a1b2c3d",
+    a=12,
+    b=12,
+)
+@example(
+    url="https://github.com/PolicyEngine/microcosm/blob/",
+    ref="a1b2c3d",
+    detour="",
+    path="tools/build_us_puf_support_base.py",
+    chosen=set(),
+    upper=False,
+    case=str.lower,
+    leads=("https://", "https://"),
+    authority="{host}",
+    wide={0},
+    stop=_FULL_STOPS[0],
+    escaped_host=set(),
+    dot=False,
+    backslashed=set(),
+    query="",
+    fragment="#L{a}",
+    pin="commit {sha}",
+    sha="a1b2c3d",
+    a=12,
+    b=12,
+)
+@example(
+    url="https://github.com/PolicyEngine/microcosm/blob/",
+    ref="a1b2c3d",
+    detour="",
+    path="tools/build_us_puf_support_base.py",
+    chosen=set(),
+    upper=False,
+    case=str.lower,
+    leads=("https://", "https://"),
+    authority="user@{host}",
+    wide=set(),
+    stop=_FULL_STOPS[0],
+    escaped_host=set(),
+    dot=False,
+    backslashed=set(),
+    query="",
+    fragment="#L{a}",
+    pin="commit {sha}",
+    sha="a1b2c3d",
+    a=12,
+    b=12,
+)
+@example(
+    url="https://github.com/PolicyEngine/microcosm/blob/",
+    ref="a1b2c3d",
+    detour="",
+    path="tools/build_us_puf_support_base.py",
+    chosen=set(),
+    upper=False,
+    case=str.lower,
+    leads=("", ""),
+    authority="{host}:443",
+    wide=set(),
+    stop=_FULL_STOPS[0],
+    escaped_host=set(),
+    dot=False,
+    backslashed=set(),
+    query="",
+    fragment="#L{a}",
+    pin="commit {sha}",
+    sha="a1b2c3d",
+    a=12,
+    b=12,
+)
 def test_a_url_of_this_repository_is_refused_however_github_lets_it_be_written(
     url: str,
     ref: str,
@@ -1516,6 +1962,17 @@ def test_a_url_of_this_repository_is_refused_however_github_lets_it_be_written(
     a=st.integers(1, 99_999),
     b=st.integers(1, 99_999),
 )
+@example(
+    directory="",
+    stem="x",
+    suffix="py",
+    query="plain=1",
+    fragment="#L{a}",
+    sha="a1b2c3d",
+    pinned=False,
+    a=12,
+    b=12,
+)
 def test_a_query_does_not_hide_a_line_citation(
     directory: str,
     stem: str,
@@ -1544,6 +2001,199 @@ def test_a_query_does_not_hide_a_line_citation(
         if citation.text == read
     ]
     assert unpinned == ([] if pinned else found)
+
+
+#: A dot segment's two dots: either perhaps ``%2e``, written as a Markdown or
+#: an HTML escape, or split by a tab, which the URL Standard deletes.
+_DOT_DOTS = (
+    "..",
+    ".%2e",
+    "%2E.",
+    "%2e%2E",
+    "&#46;&#46;",
+    ".&period;",
+    "\\.\\.",
+    ".\t.",
+)
+#: What is no dot segment where one would be.
+_NOT_DOT_DOTS = (".", "...", "x", "%2e", ".x", "x..", "&#46;")
+#: Strings with a dot segment ({dots} beside a {separator}) and a line
+#: citation ({url}), in prose, in markup, or in the cited URL's own path
+#: ({inside}).
+_DOT_SEGMENT_PLACES = (
+    "{url} see docs{separator}{dots}",
+    "{url} see {dots}{separator}docs",
+    "{dots}{separator}docs{separator}notes: {url}",
+    "{url} (docs{separator}{dots}{separator}notes)",
+    '<a href="{dots}{separator}x">{url}</a>',
+    "[a](<{dots}{separator}x>) {url}",
+    "{inside}",
+)
+
+
+@settings(max_examples=300, deadline=None)
+@given(
+    place=st.sampled_from(_DOT_SEGMENT_PLACES),
+    dots=st.sampled_from(_DOT_DOTS),
+    not_dots=st.sampled_from(_NOT_DOT_DOTS),
+    separator=st.sampled_from(("/", "\\")),
+    directory=_FOREIGN_DIRECTORY,
+    stem=_STEM,
+    suffix=_SUFFIX,
+    pinned=st.booleans(),
+    sha=_SHA,
+    a=st.integers(1, 99_999),
+    depth=st.integers(0, 2),
+    as_key=st.booleans(),
+)
+@example(
+    place="{inside}",
+    dots="..",
+    not_dots=".",
+    separator="/",
+    directory="",
+    stem="x",
+    suffix="py",
+    pinned=True,
+    sha="a1b2c3d",
+    a=12,
+    depth=0,
+    as_key=False,
+)
+@example(
+    place="{url} see docs{separator}{dots}",
+    dots="%2e%2E",
+    not_dots="...",
+    separator="\\",
+    directory="datasets/cps/",
+    stem="x",
+    suffix="py",
+    pinned=False,
+    sha="a1b2c3d",
+    a=12,
+    depth=1,
+    as_key=True,
+)
+@example(
+    place='<a href="{dots}{separator}x">{url}</a>',
+    dots="&#46;&#46;",
+    not_dots="&#46;",
+    separator="/",
+    directory="",
+    stem="x",
+    suffix="py",
+    pinned=True,
+    sha="a1b2c3d",
+    a=12,
+    depth=0,
+    as_key=False,
+)
+@example(
+    place="{dots}{separator}docs{separator}notes: {url}",
+    dots=".\t.",
+    not_dots="x..",
+    separator="/",
+    directory="",
+    stem="x",
+    suffix="py",
+    pinned=True,
+    sha="a1b2c3d",
+    a=12,
+    depth=0,
+    as_key=False,
+)
+def test_a_dot_segment_refuses_every_line_citation_in_its_string_pinned_or_not(
+    place: str,
+    dots: str,
+    not_dots: str,
+    separator: str,
+    directory: str,
+    stem: str,
+    suffix: str,
+    pinned: bool,
+    sha: str,
+    a: int,
+    depth: int,
+    as_key: bool,
+) -> None:
+    blob = "https://github.com/PolicyEngine/upstream-data/blob/"
+    blob += f"{sha if pinned else 'main'}/{directory}"
+
+    def written(dots: str) -> str:
+        return place.format(
+            url=f"{blob}{stem}.{suffix}#L{a}",
+            # A letter after the separator: ``\_`` would be an escaped ``_``.
+            inside=f"{blob}x{separator}{dots}{separator}docs/{stem}.{suffix}#L{a}",
+            dots=dots,
+            separator=separator,
+        )
+
+    document = _plant(written(dots), depth, as_key)
+    assert dot_segment_line_citations(document) == line_citations(document) != []
+    # Without the dot segment, the same string's citations pass this rule.
+    document = _plant(written(not_dots), depth, as_key)
+    assert line_citations(document)
+    assert dot_segment_line_citations(document) == []
+
+
+#: Markup that holds a URL ({url}) with whitespace in it.
+_URL_ENCLOSURES = (
+    "[a](<{url}>)",
+    "[a]( <{url}>)",
+    "[a](\t<{url}>)",
+    "[a](\n<{url}>)",
+    "[a]\n\n[a]: <{url}>",
+    '<a href="{url}">a</a>',
+    "<a href='{url}'>a</a>",
+    'Use `prefix="` here.\n\n<a href="{url}">a</a>',
+)
+
+
+@settings(max_examples=200, deadline=None)
+@given(
+    enclosure=st.sampled_from(_URL_ENCLOSURES),
+    path=st.sampled_from(_ROOTED_FILES),
+    sha=_SHA,
+    query=st.text(alphabet="ab=&+% \t\u00a0\u3000", max_size=60),
+    fragment=st.sampled_from(("#L{a}", "#L{a}-L{b}")),
+    a=st.integers(1, 99_999),
+    b=st.integers(1, 99_999),
+)
+@example(
+    enclosure='Use `prefix="` here.\n\n<a href="{url}">a</a>',
+    path="tools/build_us_puf_support_base.py",
+    sha="a1b2c3d",
+    query="a" + " " * 30 + "b",
+    fragment="#L{a}",
+    a=12,
+    b=12,
+)
+@example(
+    enclosure="[a]( <{url}>)",
+    path="tools/build_us_puf_support_base.py",
+    sha="a1b2c3d",
+    query="a\tb" * 15,
+    fragment="#L{a}-L{b}",
+    a=3,
+    b=9,
+)
+def test_a_line_link_of_this_repository_is_refused_whatever_whitespace_its_query_holds(
+    enclosure: str,
+    path: str,
+    sha: str,
+    query: str,
+    fragment: str,
+    a: int,
+    b: int,
+) -> None:
+    # Each renders as a link to the file at its lines: GitHub ignores the
+    # query, however long a run of spaces, tabs or Unicode spaces it holds.
+    cited = f"https://github.com/PolicyEngine/microcosm/blob/{sha}/{path}"
+    url = f"{cited}?{query}{fragment.format(a=a, b=b)}"
+    document = {"note": enclosure.format(url=url)}
+    assert cited in {
+        citation.file for citation in in_repository_line_citations(document)
+    }
 
 
 def test_the_round_four_review_counterexamples_are_refused() -> None:
@@ -1677,6 +2327,9 @@ def test_the_round_seven_review_counterexamples_are_refused() -> None:
     for written, file in (
         (f"[https://example.org/?x](<{cited}#L12>)", cited),
         (f"<https://example.org/?x><{cited}#L12>", cited),
+        # With no query, only a reading that ends the first URL at its ``>``
+        # reads the host a browser lower-cases.
+        (f"<https://example.org/x><{cited.replace('github', 'GitHub')}#L12>", cited),
         (f"[https://example.org/?x]({cited}#L12)", cited),
         (f"[https://example.org/?x]({network}#L12)", network),
         (f"[https://example.org/?x]({bare}#L12)", bare),
@@ -1684,10 +2337,11 @@ def test_the_round_seven_review_counterexamples_are_refused() -> None:
         (f'<a href="https://example.org/?x">{cited}#L12</a>', cited),
         (f"'https://example.org/?x','{cited}#L12'", cited),
     ):
-        assert [
+        # Read through the first URL's query, the string cites the file again.
+        assert {
             citation.file
             for citation in in_repository_line_citations({"note": written})
-        ] == [file], written
+        } == {file}, written
 
 
 def test_a_string_is_read_as_a_browser_and_as_markdown_delimit_its_urls() -> None:
@@ -1858,6 +2512,96 @@ def test_the_round_nine_review_counterexamples_are_refused() -> None:
         assert unpinned_line_citations(document) == [], written
         assert misspelled_commit_pins(document) == [], written
         assert unrecognised_line_locators(document) == [], written
+
+
+def test_the_round_ten_review_counterexamples_are_refused() -> None:
+    blob = "https://github.com/PolicyEngine/microcosm/blob/"
+    blob += "29983852e5182266c9a4e565731920ea972fe695/"
+    tools = blob + "tools/"
+    cited = tools + "ci_test_plan.py"
+    network = tools.removeprefix("https:")
+    code_span = 'Use `prefix="` before the value.\n\n'
+    # markdown-it-py 4.2 and parse5 7.3 render each of these, and bun 1.3's
+    # ``URL`` reads each, as a link to line 12 of the file: the ``..``
+    # removes a segment that holds whitespace or a backslash. Before round 11
+    # no rule refused them.
+    for written, in_repository in (
+        # CommonMark allows spaces, tabs and one line break before ``<``.
+        (f"[a]( <{tools}a b/../ci_test_plan.py#L12>)", True),
+        (f"[a](\t<{tools}a b/../ci_test_plan.py#L12>)", True),
+        (f"[a](\n<{tools}a b/../ci_test_plan.py#L12>)", True),
+        (f"[a]( \t\n \t<{tools}a b/../ci_test_plan.py#L12>)", True),
+        (f"[a]\n\n[a]: \n<{tools}a b/../ci_test_plan.py#L12>", True),
+        # The ``="`` in the code span starts an enclosure that ends at the
+        # attribute's opening quote, so no reading holds its value.
+        (f'{code_span}<a href="{tools}a b/../ci_test_plan.py#L12">a</a>', False),
+        (f"{code_span}<a href='{tools}a b/../ci_test_plan.py#L12'>a</a>", True),
+        # Markdown writes a backslash it leaves as ``%5C``, so ``a\b`` is one
+        # segment; a reading takes the backslash as ``/``.
+        (f"[a](<{tools}a\\b/../ci_test_plan.py#L12>)", False),
+        (f"[a]({tools}a\\b/../ci_test_plan.py#L12)", False),
+        # markdown-it decodes the references, then strips the destination.
+        (f"[a](&#32;{network}a&#32;b/../ci_test_plan.py#L12)", False),
+        (f"[a](&#32;{tools}a&#32;b/../ci_test_plan.py#L12)", True),
+    ):
+        document = {"note": written}
+        assert dot_segment_line_citations(document), written
+        assert {
+            citation.file for citation in in_repository_line_citations(document)
+        } == ({cited} if in_repository else set()), written
+    # GitHub ignores a query, so whitespace in one changes no file: each of
+    # these links to line 12 (or 3-9) of the file, and a reading through the
+    # query finds it however far the whitespace runs.
+    query = "?" + "a b=c d&" * 4
+    no_break, tab = "a\u00a0b" * 10, "a\tb" * 10
+    for written in (
+        f"[a]( <{cited}{query}#L12>)",
+        f"[a](\t<{cited}{query}#L12>)",
+        f"[a](\n<{cited}{query}#L12>)",
+        f"[a](<{cited}{query}#L12>)",
+        f'{code_span}<a href="{cited}{query}#L12">a</a>',
+        f"<a href='{cited}{query}#L12'>a</a>",
+        f'<a href="{cited}?{"a b " * 8}#L12">a</a>',
+        f"[a](<{cited}?{'a&#32;b' * 6}#L12>)",
+        f"[a](<{cited}?{no_break}#L12>)",
+        f"[a](<{cited}?{tab}#L12>)",
+        f"[a](<{cited}?{'a b' * 10}#L3-L9>)",
+        # Where no enclosure holds the link, a query read through to a ``#``
+        # swallows a later URL, so one reading ends a query at each
+        # enclosure's end: a ``"``, a ``'`` and an angle bracket.
+        f'Use `prefix="` here. <a title=https://example.org/?x href="{cited}{query}#L12">a</a>',
+        f"Use `prefix='` here. <a title=https://example.org/?x href='{cited}{query}#L12'>a</a>",
+        f'Use `prefix="` here [x](<https://example.org/?x>) [a](<{cited}{query}#L12>) "',
+    ):
+        assert {
+            citation.file
+            for citation in in_repository_line_citations({"note": written})
+        } == {cited}, written
+
+
+def test_a_dot_segment_refuses_the_line_citations_of_its_string_only() -> None:
+    pinned = "https://github.com/PolicyEngine/upstream-data/blob/a1b2c3d/x.py#L12"
+    # A run of dots that is no whole segment, and a lone ``.``, remove nothing.
+    for written in (
+        f"{pinned}; rows 1 .. 9",
+        f"{pinned} via x/./y",
+        f"{pinned} at sha...",
+        f"{pinned}; a.b..c",
+        "x.py:12 at a1b2c3d; see docs/.../notes",
+        "see ../docs and x/../y; no line here",
+    ):
+        assert dot_segment_line_citations({"note": written}) == [], written
+    # A dot segment anywhere in the string refuses each citation in it, and
+    # none in another string.
+    for written, count in (
+        (f"{pinned}; see ../docs", 1),
+        ("x.py:12 at a1b2c3d; see docs/%2e%2E/notes", 1),
+        ('x.py:12 at a1b2c3d; <a href="..\\x">x</a>', 1),
+        ("x.py:12 and y.py:30 at a1b2c3d; see ../docs", 2),
+    ):
+        document = {"note": written, "other": pinned}
+        assert dot_segment_line_citations(document) == line_citations(written)
+        assert len(dot_segment_line_citations(document)) == count, written
 
 
 def test_a_string_is_read_again_with_its_markup_escapes_decoded() -> None:
@@ -2176,6 +2920,24 @@ def test_a_long_string_is_scanned_in_linear_time() -> None:
     ):
         line_citations(text)
         unrecognised_line_locators(text)
+        assert time.process_time() - started < 2, text[:24]
+    # Since round 11, in 2 s of their own: runs of what a dot segment, a URL
+    # read through its query and a destination after whitespace start with.
+    started = time.process_time()
+    for text in (
+        "/.." * 30_000,
+        "=%2e." * 20_000,
+        "\\..\\" * 25_000,
+        "https://a?" + " " * 100_000 + "#",
+        "https:" * 20_000 + " ?#",
+        "https://a?b #" * 10_000,
+        "?#https://a#" + "." * 100_000,
+        "](" + " " * 100_000 + "\n<",
+        "](\t \t<https:" * 15_000,
+    ):
+        line_citations(text)
+        unrecognised_line_locators(text)
+        dot_segment_line_citations(text)
         assert time.process_time() - started < 2, text[:24]
 
 

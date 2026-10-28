@@ -71,7 +71,11 @@ inside it percent-encoded. So a string holding one that starts a URL is read
 again with it read so: ``href="&#32;https://github.com/.../a b/../x.py#L12"``
 links to line 12 of ``x.py``. The URL Standard ends no URL at a Unicode space such as
 U+00A0 (it percent-encodes one), so where a string holds one, its URLs are
-read through it too. A citation any reading finds is checked.
+read through it too. An attribute's value and a destination in angle
+brackets can hold whitespace in a URL's query, which GitHub ignores, so where
+a string holds a ``?`` and a ``#`` its URLs are also read through the
+whitespace in their query: ``href=".../x.py?a b#L12"`` links to line 12 of
+``x.py``. A citation any reading finds is checked.
 
 A cited path is in-repository when, after any prefix naming this repository
 is removed (a ``github.com/PolicyEngine/microcosm/blob/<ref>/`` URL, at a ref
@@ -81,6 +85,19 @@ top-level source directory) and its inner ``..`` segments resolved
 forms ``_repository_path_tails`` lists. A line citation of it is
 refused even when pinned. A bare file name cannot be told apart from another
 repository's, so it must be pinned.
+
+A dot segment (``..`` as a whole path segment, either dot perhaps ``%2e``)
+removes the segment before it, and whitespace, a backslash or markup in that
+segment can make a renderer remove another one than a reading does: in
+``[a]( <https://github.com/.../tools/a b/../x.py#L12>)`` the destination
+follows a space, and in ``[a](https://github.com/.../tools/a\\b/../x.py#L12)``
+Markdown writes the backslash as ``%5C``, so both link to line 12 of
+``tools/x.py``. So every line citation in a string that holds a dot segment,
+in any of its readings' sources, is refused, pinned or not
+(``dot_segment_line_citations``). Without one, whitespace or a backslash that
+a reading takes otherwise than a renderer stays in the segment the renderer
+follows (``%20``, ``%5C``), and no file under ``_SOURCE_ROOTS`` has either in
+its path, so that link names no source file here.
 
 The recognised spellings are the ones ``_LINE_CITATIONS`` documents. A source
 name followed by a line locator in no recognised spelling, with no ``.``,
@@ -236,6 +253,23 @@ _URLS_THROUGH_UNICODE_SPACES = (
     re.compile(_URL_START + r"[^\t\n\f\r ]*[^\s\"'`‘’“”<>.,;:!?)\]]"),
     re.compile(_URL_START + r"[^\t\n\f\r \"'`‘’“”<>()]*[^\s\"'`‘’“”<>()\].,;:!?]"),
 )
+#: A URL whose query holds whitespace, as an HTML attribute or a Markdown
+#: destination in angle brackets holds one: as ``_DELIMITED_URL`` up to its
+#: query, which then runs through whitespace to its fragment or a line break.
+#: GitHub ignores a query, so ``.../x.py?a b#L12`` opens line 12 of ``x.py``
+#: (``_read_url`` drops the query). One reading stops the query at an angle
+#: bracket, one at ``"`` and one at ``'``: what can end each enclosure. A query
+#: is optional, so each start is read once. Tried where a string holds a
+#: ``?`` and a ``#``.
+_URLS_THROUGH_A_QUERY = tuple(
+    re.compile(
+        _URL_START
+        + r"[^\s?#]*+(?:\?[^"
+        + stop
+        + r"#\n\r]*+)?(?:#[^\s\"'`‘’“”<>()]*[^\s\"'`‘’“”<>()\].,;:!?])?"
+    )
+    for stop in ("<>", '"', "'")
+)
 #: Whitespace other than ASCII whitespace: what ``_URLS_THROUGH_UNICODE_SPACES``
 #: reads a URL through.
 _UNICODE_SPACE = re.compile(r"[^\S\t\n\f\r ]")
@@ -266,14 +300,22 @@ _C1_REPLACEMENTS = {
 _HELD_IN_A_URL = re.compile(r"[\s\"'`‘’“”<>()]")
 #: Where a URL can hold any whitespace: an HTML attribute's quoted value
 #: (``href="..."``, ``href='...'``), to its closing quote, and a Markdown
-#: destination in angle brackets (``[a](<...>)``, ``[a]: <...>``), to an
+#: destination in angle brackets (``[a](<...>)``, ``[a]: <...>``, after any
+#: spaces or tabs and at most one line break, as CommonMark allows), to an
 #: unescaped ``>``.
 _ENCLOSED_URL = re.compile(
     r"=[\t\n\f\r ]*+(?:\"(?P<double>[^\"]*+)\"|'(?P<single>[^']*+)')"
-    r"|\](?:\(|:[\t ]*+(?:\r\n?|\n)?[\t ]*+)<(?P<angle>(?:\\[^\n\r]|[^<>\n\r\\])*+)>"
+    r"|\][(:][\t ]*+(?:\r\n?|\n)?[\t ]*+<(?P<angle>(?:\\[^\n\r]|[^<>\n\r\\])*+)>"
 )
 #: A URL start at the start of a string.
 _STARTS_A_URL = re.compile(_URL_START)
+#: A dot segment: ``..`` as a whole path segment beside a slash or a
+#: backslash (``x/../y``, ``../y``, ``x\\..``), either ``.`` perhaps written
+#: ``%2e`` (``.%2E``, ``%2e%2e``), as the URL Standard reads one.
+_DOT_SEGMENT = re.compile(
+    r"(?<=[/\\])(?:\.|%2[eE]){2}(?![^/\\?#\s\"'`‘’“”<>()\[\]])"
+    r"|(?<![^\s\"'`‘’“”<>()\[\]=])(?:\.|%2[eE]){2}(?=[/\\])"
+)
 #: What the URL Standard strips from both ends of a URL: C0 controls and
 #: spaces.
 _C0_OR_SPACE = "".join(map(chr, range(0x21)))
@@ -639,11 +681,8 @@ def _read_enclosed(enclosed: re.Match[str]) -> str:
     return enclosed[0][:start] + _HELD_IN_A_URL.sub(_hold, url) + enclosed[0][end:]
 
 
-def _readable_strings(value: object) -> Iterator[str]:
-    """``nested_strings``, with the URLs in them read as ``_read_url`` reads them.
-
-    Each string is read from several sources, each the string as one kind of
-    reader takes it before following a link:
+def _sources(text: str) -> dict[str, None]:
+    """A string as each kind of reader takes it before following a link.
 
     - as written;
     - with each HTML attribute's quoted value and each Markdown destination
@@ -658,34 +697,56 @@ def _readable_strings(value: object) -> Iterator[str]:
       ``<a href="https://github.com/...\\&#120;.py#L12">``, where HTML decodes
       the reference and leaves the backslash.
 
-    Each source is read again with its ``_URL_BREAKS`` deleted, as the URL
-    Standard reads a URL (``href=".../x.p&#10;y#L12"``). Each is read with each
-    URL running to whitespace (``_URL``), as a browser reads it, and with each
-    URL also ending at a quote, a parenthesis or an angle bracket
-    (``_DELIMITED_URL``), as Markdown and prose delimit one, so a link's
-    destination is not lost in the query of a URL before it. Where a source
-    holds a Unicode space, its URLs are also read through Unicode spaces
-    (``_URLS_THROUGH_UNICODE_SPACES``). Each reading that differs from the
+    Each is also taken with its ``_URL_BREAKS`` deleted, as the URL Standard
+    reads a URL (``href=".../x.p&#10;y#L12"``). Each source that differs from
+    the others is kept once, in that order.
+    """
+
+    sources = [text, _ENCLOSED_URL.sub(_read_enclosed, text)]
+    if "&" in text or "\\" in text:
+        sources += (
+            escapes.sub(decode, text)
+            for escapes in (_MARKDOWN_ESCAPE, _HTML_REFERENCE)
+            for decode in (_decode_in_text, _decode_in_a_url)
+        )
+    return dict.fromkeys(
+        joined
+        for source in dict.fromkeys(sources)
+        for joined in dict.fromkeys((source, _URL_BREAKS.sub("", source)))
+    )
+
+
+def _url_patterns(source: str) -> tuple[re.Pattern[str], ...]:
+    """The URL patterns a source is read with: ``_URLS``, and where it holds
+    a Unicode space or a ``?`` and a ``#``, the ones that read through them."""
+
+    patterns = _URLS
+    if _UNICODE_SPACE.search(source):
+        patterns += _URLS_THROUGH_UNICODE_SPACES
+    if "?" in source and "#" in source:
+        patterns += _URLS_THROUGH_A_QUERY
+    return patterns
+
+
+def _readable_strings(value: object) -> Iterator[str]:
+    """``nested_strings``, with the URLs in them read as ``_read_url`` reads them.
+
+    Each string is read from each of its ``_sources``: with each URL running
+    to whitespace (``_URL``), as a browser reads it, and with each URL also
+    ending at a quote, a parenthesis or an angle bracket (``_DELIMITED_URL``),
+    as Markdown and prose delimit one, so a link's destination is not lost in
+    the query of a URL before it. Where a source holds a Unicode space, its
+    URLs are also read through Unicode spaces (``_URLS_THROUGH_UNICODE_SPACES``),
+    and where it holds a ``?`` and a ``#``, through the whitespace in their
+    query (``_URLS_THROUGH_A_QUERY``). Each reading that differs from the
     others is yielded once.
     """
 
     for text in nested_strings(value):
-        sources = [text, _ENCLOSED_URL.sub(_read_enclosed, text)]
-        if "&" in text or "\\" in text:
-            sources += (
-                escapes.sub(decode, text)
-                for escapes in (_MARKDOWN_ESCAPE, _HTML_REFERENCE)
-                for decode in (_decode_in_text, _decode_in_a_url)
-            )
         yield from dict.fromkeys(
-            pattern.sub(_read_url, joined)
-            for source in dict.fromkeys(sources)
-            for joined in dict.fromkeys((source, _URL_BREAKS.sub("", source)))
-            for pattern in (
-                _URLS + _URLS_THROUGH_UNICODE_SPACES
-                if _UNICODE_SPACE.search(joined)
-                else _URLS
-            )
+            pattern.sub(_read_url, source)
+            for source in _sources(text)
+            for pattern in _url_patterns(source)
         )
 
 
@@ -1048,6 +1109,26 @@ def in_repository_line_citations(
         citation
         for citation in line_citations(document)
         if resolves_in_repository(citation.file, root)
+    ]
+
+
+def dot_segment_line_citations(value: object) -> list[LineCitation]:
+    """Line citations in a string that holds a dot segment, pinned or not.
+
+    A dot segment (``_DOT_SEGMENT``) is removed with the segment before it,
+    and whitespace, a backslash or markup in that segment can make a renderer
+    remove another one than a reading does:
+    ``[a]( <https://github.com/.../tools/a b/../x.py#L12>)`` links to line 12
+    of ``tools/x.py``, though no reading takes ``a b`` as one segment. So
+    where any of a string's ``_sources`` holds one, every line citation in
+    the string is refused: the guard cannot tell which file it names.
+    """
+
+    return [
+        citation
+        for text in nested_strings(value)
+        if any(map(_DOT_SEGMENT.search, _sources(text)))
+        for citation in line_citations(text)
     ]
 
 
