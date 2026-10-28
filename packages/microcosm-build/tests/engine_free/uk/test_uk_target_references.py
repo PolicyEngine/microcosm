@@ -76,8 +76,9 @@ _TEST_PATHS = paths_for("microcosm-build")
 # England's single adult council tax discount (microcosm#953); microcosm#1359
 # adds five OBR excise receipts rows, measured at FY2024-25; the bump after it
 # compiles obr.domestic_rates, pinned to the UK, and HMRC's five Child Benefit
-# family rows (microcosm#1095).
-ACTIVE_REFERENCE_COUNT = 1347
+# family rows (microcosm#1095); microcosm#1069 adds HMRC's Income Tax payers
+# of State Pension age and aged 65 and over in the twelve region-tier areas.
+ACTIVE_REFERENCE_COUNT = 1371
 REGION_TIER_LEVEL = {code: level for level, code in UK_REGION_TIER}
 
 
@@ -1078,6 +1079,22 @@ def test_uk_target_reference_membership_report_is_packaged() -> None:
             ),
         },
         {
+            "family": "hmrc_itl_age",
+            "status": "active_region_tier_calendar_year_window",
+            "active_reference_count": 24,
+            "signed_rationale": (
+                "The two HMRC Income Tax liabilities statistics targets for "
+                "Income Tax payers of State Pension age and aged 65 and over "
+                "(Table 2.2, July 2026) fan out over the twelve-area region "
+                "tier (microcosm#905) and bind at the calendar-2025 window of "
+                "HMRC's 2024-25 and 2025-26 projections. Table 2.2 counts "
+                "residents of a nation or region, as the frame does; Table "
+                "2.1's United Kingdom row, which adds taxpayers abroad or of "
+                "unknown region, opens the SPI State Pension rows' uprating "
+                "instead of binding (microcosm#1069)."
+            ),
+        },
+        {
             "family": "hmrc_spi_region",
             "status": "active_region_tier_fanout_uprated",
             "active_reference_count": 360,
@@ -1819,8 +1836,9 @@ def test_two_level_targets_fan_out_over_the_region_tier() -> None:
     ]
     # microcosm#1123 adds the LFS household estimates for England's regions
     # and ITL Table 2.2's higher and additional rate taxpayers; microcosm#1301
-    # adds the three high-value homes region rows.
-    assert len(two_level) == 58
+    # adds the three high-value homes region rows; microcosm#1069 adds Table
+    # 2.2's taxpayers of State Pension age and aged 65 and over.
+    assert len(two_level) == 60
     ons = [target_id for target_id in two_level if target_id.startswith("ons.")]
     mhclg = [target_id for target_id in two_level if target_id.startswith("mhclg.")]
     hmrc = [target_id for target_id in two_level if target_id.startswith("hmrc.cgt.")]
@@ -1831,10 +1849,10 @@ def test_two_level_targets_fan_out_over_the_region_tier() -> None:
     ]
     assert len(ons) == 10 and len(mhclg) == 9 and len(hmrc) == 2
     assert len(spi_region) == 30
-    itl_rate = [
+    itl_table_2_2 = [
         target_id for target_id in two_level if target_id.startswith("hmrc.itl.")
     ]
-    assert len(itl_rate) == 2
+    assert len(itl_table_2_2) == 4
     high_value_homes = [
         target_id
         for target_id in two_level
@@ -1867,7 +1885,7 @@ def test_two_level_targets_fan_out_over_the_region_tier() -> None:
             target_id in ons
             or target_id in hmrc
             or target_id in spi_region
-            or target_id in itl_rate
+            or target_id in itl_table_2_2
         ) and target_id != "ons.households.english_regions"
         if target_id in high_value_homes:
             # Price Paid covers England and Wales only: area_scope keeps the
@@ -1942,10 +1960,11 @@ def test_two_level_targets_fan_out_over_the_region_tier() -> None:
     # 108 ONS + 81 MHCLG + 24 CGT + 360 SPI Table 3.11 region-tier rows,
     # 18 English-region State Pension cells (microcosm#1069), the 9 LFS
     # English-region household cells and 24 ITL Table 2.2 marginal-rate
-    # cells (microcosm#1123), and 28 high-value homes cells, three thresholds
+    # cells (microcosm#1123), 28 high-value homes cells, three thresholds
     # over England's regions and Wales less the two signed out below the
-    # small-cell floor (microcosm#1301).
-    assert sum(len(by_contract[target_id]) for target_id in two_level) == 652
+    # small-cell floor (microcosm#1301), and 24 ITL Table 2.2 cells of
+    # taxpayers of State Pension age and aged 65 and over (microcosm#1069).
+    assert sum(len(by_contract[target_id]) for target_id in two_level) == 676
     # The twelve ONS cells of a band sum to the UK row of the same
     # publication (the 0-9 band: 7,364,365 at mid-2025, microcosm#1123).
     zero_to_nine = membership["targets"]["ons.population.age_0_9_by_region"]

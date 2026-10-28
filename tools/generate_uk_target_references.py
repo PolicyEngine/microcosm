@@ -1011,6 +1011,22 @@ def _add_uk_membership_accounting(
             ),
         },
         {
+            "family": "hmrc_itl_age",
+            "status": "active_region_tier_calendar_year_window",
+            "active_reference_count": fanout_counts.get("hmrc_itl_age", 0),
+            "signed_rationale": (
+                "The two HMRC Income Tax liabilities statistics targets for "
+                "Income Tax payers of State Pension age and aged 65 and over "
+                "(Table 2.2, July 2026) fan out over the twelve-area region "
+                "tier (microcosm#905) and bind at the calendar-2025 window of "
+                "HMRC's 2024-25 and 2025-26 projections. Table 2.2 counts "
+                "residents of a nation or region, as the frame does; Table "
+                "2.1's United Kingdom row, which adds taxpayers abroad or of "
+                "unknown region, opens the SPI State Pension rows' uprating "
+                "instead of binding (microcosm#1069)."
+            ),
+        },
+        {
             "family": "hmrc_spi_region",
             "status": "active_region_tier_fanout_uprated",
             "active_reference_count": fanout_counts.get("hmrc_spi_region", 0),
