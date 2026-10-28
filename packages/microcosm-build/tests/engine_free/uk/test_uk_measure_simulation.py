@@ -659,11 +659,11 @@ _PACKAGED_EXCLUSION_CENSUS = {
     # obr.vat bound again with the next policyengine-uk bump (ruling D3), and
     # was held again as a diagnostic (María's ruling of 2026-10-24, Vahid's
     # review of #1383, item 10): the engine's coverage factor was derived on
-    # a certified Microcosm release, so binding the row is circular.
+    # a certified Microcosm release, so binding the row is circular. The ONS
+    # electricity and gas rows are bound again since microcosm#1418 moved
+    # the stage's level onto them (María's rulings of 2026-10-28).
     "obr.vat": 1,
     "obr.fuel_duties_cars": 1,
-    "ons.household_electricity_expenditure": 1,
-    "ons.household_gas_expenditure": 1,
     # microcosm#1301 (2026-10-16): employer NICs, gross of the Employment
     # Allowance in the engine and priced on FY2025-26 rules over a window that
     # takes a quarter of FY2024-25, held out as a measured diagnostic.
@@ -720,8 +720,9 @@ def test_packaged_exclusions_load():
     # obr.vat is held again as a diagnostic (Vahid's review of #1383, 10).
     # microcosm#1359 adds the five OBR excise rows, measured at FY2024-25.
     # The next policyengine-uk bump (2.162.3) holds obr.domestic_rates once it
-    # compiles (María's ruling of 2026-10-25).
-    assert len(names) == len(set(names)) == 40
+    # compiles (María's ruling of 2026-10-25). microcosm#1418 binds the ONS
+    # electricity and gas rows again (María's rulings of 2026-10-28).
+    assert len(names) == len(set(names)) == 38
     rehold = [entry for entry in exclusions if "_1_000_000_to_inf" in entry["name"]]
     assert {(e["approved_on"], e["expires_on"], e["tracking"]) for e in rehold} == {
         ("2026-10-23", "2027-01-23", "microcosm#1095")
@@ -848,11 +849,9 @@ def test_packaged_exclusions_load():
     # again on its own entry: the factor #2187 uses was derived on a certified
     # Microcosm release (María's ruling of 2026-10-24).
     consumption_taxes = [e for e in exclusions if e["approved_on"] == "2026-10-08"]
-    assert sorted(e["name"] for e in consumption_taxes) == [
-        "obr.fuel_duties_cars",
-        "ons.household_electricity_expenditure",
-        "ons.household_gas_expenditure",
-    ]
+    # The ONS electricity and gas rows left with microcosm#1418, which moved
+    # the stage's level onto them.
+    assert sorted(e["name"] for e in consumption_taxes) == ["obr.fuel_duties_cars"]
     for entry in consumption_taxes:
         assert entry["expires_on"] == "2027-01-08", entry["name"]
         assert "tools/diagnose_uk_consumption_taxes.py" in entry["reason"], entry[
@@ -863,11 +862,7 @@ def test_packaged_exclusions_load():
             in entry["adjudication"]
         ), entry["name"]
     trackings = {e["name"]: e["tracking"] for e in consumption_taxes}
-    assert trackings == {
-        "obr.fuel_duties_cars": "microcosm#1278",
-        "ons.household_electricity_expenditure": "microcosm#1278",
-        "ons.household_gas_expenditure": "microcosm#1278",
-    }
+    assert trackings == {"obr.fuel_duties_cars": "microcosm#1278"}
     (vat,) = [e for e in exclusions if e["name"] == "obr.vat"]
     assert (vat["approved_on"], vat["expires_on"]) == ("2026-10-24", "2027-01-24")
     assert vat["tracking"] == "microcosm#1278"
