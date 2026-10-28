@@ -4427,7 +4427,8 @@
           "resource": "qep_energy_prices.json",
           "seed": 0,
           "spend_level_fuels": [
-            "electricity"
+            "electricity",
+            "gas"
           ],
           "spend_level_resource": "ons_household_expenditure_facts.json",
           "vat_treatment": "including_vat",

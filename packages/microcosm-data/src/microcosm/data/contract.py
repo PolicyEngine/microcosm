@@ -454,10 +454,10 @@ _UK_GATE_BATTERY_POLICY_SHA256 = (
     "5f8a65be07c1df68e6beeab1a795a660940a626f6fe12b8cd282b236a9d41d03"
 )
 _UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "6759db2dabd14f987d46e4d4afaea6cb14c17d2c5e6b42c3607e02ac63a51b61"
+    "0c811c2c9df276136af9462ace9b7d51f08c32d31c01cc266f186b5aa0320f7f"
 )
 _UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "385e436bfa559af5525966fd8d8c5b0ebb3cad4eb2aea6fe0b367bcd4020cb22"
+    "90e590c76ac72ba1d5b8f0fbec0cab0d210c761d5d18977ce6dbfd0838196902"
 )
 #: Spec entry id -> the legacy gate name whose observable detail checks
 #: apply unchanged (the battery re-keys the report by entry id; the gate
@@ -955,7 +955,7 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
 _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     "spine": {
         "gates_manifest_sha256": (
-            "ba9725678f8f35fe243a71e76d6cf391c62c1a90fb3fbe01838b1d8bdcccf46c"
+            "017cdf97e97a917fca595afac651936363f96341372ac765b17fa0f3542df584"
         ),
         "policy_sha256": (
             "eaf400f0603a56188289bb0e62915096f22af2740192dc627ab1d635647861e8"
