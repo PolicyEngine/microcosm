@@ -1,11 +1,11 @@
 {
- "compiled_count": 1371,
+ "compiled_count": 1374,
  "counts_by_kind": {
   "calibration_drift": 557,
   "fixture_only": 48,
-  "ledger_only": 782
+  "ledger_only": 785
  },
- "difference_count": 1387,
+ "difference_count": 1390,
  "differences": [
   {
    "fixture_value": 1608000.0,
@@ -2162,6 +2162,27 @@
    "name": "hmrc.itl.income_tax_by_total_income_band.band_50000_100000",
    "period": 2025,
    "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 savings-interest rows by band, moved to the dataset's year by the household interest index and from there to the calibration year by GDP per head, the index the engine's dataset projection applies (microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 4087500000.0,
+   "name": "hmrc.itl.savings_tax_at_additional_rate",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks (microcosm#1418): HMRC's Income Tax liabilities Table 2.6 (July 2026) Income Tax on savings at the basic, higher and additional rates, all payers, United Kingdom, as the calendar-2025 window of the 2024-25 and 2025-26 projections: the base the Budget 2026 savings income rates are costed on. The incumbent registry binds no tax by income source or rate."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1720000000.0,
+   "name": "hmrc.itl.savings_tax_at_basic_rate",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks (microcosm#1418): HMRC's Income Tax liabilities Table 2.6 (July 2026) Income Tax on savings at the basic, higher and additional rates, all payers, United Kingdom, as the calendar-2025 window of the 2024-25 and 2025-26 projections: the base the Budget 2026 savings income rates are costed on. The incumbent registry binds no tax by income source or rate."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 2587500000.0,
+   "name": "hmrc.itl.savings_tax_at_higher_rate",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks (microcosm#1418): HMRC's Income Tax liabilities Table 2.6 (July 2026) Income Tax on savings at the basic, higher and additional rates, all payers, United Kingdom, as the calendar-2025 window of the 2024-25 and 2025-26 projections: the base the Budget 2026 savings income rates are costed on. The incumbent registry binds no tax by income source or rate."
   },
   {
    "kind": "ledger_only",

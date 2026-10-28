@@ -2221,6 +2221,9 @@ class _AnnualSimulation:
             "total_income",
             "income_tax",
             "income_tax_before_winter_fuel_payment_charge",
+            "basic_rate_savings_income",
+            "higher_rate_savings_income",
+            "add_rate_savings_income",
         )
         variables = {
             name: SimpleNamespace(
@@ -2278,6 +2281,13 @@ class _AnnualSimulation:
             return np.where(
                 total > 50_270.0, "HIGHER", np.where(total > 12_570.0, "BASIC", "NONE")
             )
+        # No stub person has savings income (microcosm#1418).
+        if variable in (
+            "basic_rate_savings_income",
+            "higher_rate_savings_income",
+            "add_rate_savings_income",
+        ):
+            return np.zeros(3)
         raise KeyError(variable)
 
 

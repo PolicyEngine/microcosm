@@ -1169,7 +1169,8 @@ def _compare(values: np.ndarray, operator: str, expected: object) -> np.ndarray:
 
 
 _EXPRESSION_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
-_EXPRESSION_TOKEN = re.compile(r"\s*([A-Za-z_][A-Za-z0-9_]*|\d+(?:\.\d+)?|[-+(),])")
+_EXPRESSION_TOKEN = re.compile(r"\s*([A-Za-z_][A-Za-z0-9_]*|\d+(?:\.\d+)?|[-+(),*])")
+_EXPRESSION_NUMBER = re.compile(r"\d+(?:\.\d+)?")
 #: The one function the expression grammar admits: ``max(<sum>, 0)``, a sum
 #: floored at zero (the profit after losses brought forward, microcosm#1095).
 _ZERO_FLOOR = "max"
@@ -1183,8 +1184,11 @@ def _refuse_expression(expression: str) -> ValueError:
 def _parsed_expression(expression: str) -> tuple[Any, ...]:
     """A value expression's tree, from a sum of terms joined by ``+`` or ``-``.
 
-    A term is a name or ``max(<sum>, 0)``. Anything else (a product, a
-    constant, a leading sign) refuses.
+    A term is a name, a positive constant times a name (``0.2 *
+    basic_rate_savings_income``: a statutory rate applied to the base it
+    taxes, which a published tax amount binds, microcosm#1418) or
+    ``max(<sum>, 0)``. Anything else (another product, a bare constant, a
+    leading sign) refuses.
     """
 
     text = expression.strip()
@@ -1208,6 +1212,19 @@ def _parsed_expression(expression: str) -> tuple[Any, ...]:
             if not re.fullmatch(r"0(?:\.0+)?", close[1]):
                 raise _refuse_expression(expression)
             return ("max0", inner), at + 3
+        if _EXPRESSION_NUMBER.fullmatch(tokens[at]) and tokens[at + 1 : at + 2] == [
+            "*"
+        ]:
+            coefficient = float(tokens[at])
+            name = tokens[at + 2 : at + 3]
+            if (
+                not coefficient > 0.0
+                or not name
+                or name[0] == _ZERO_FLOOR
+                or not _EXPRESSION_NAME.fullmatch(name[0])
+            ):
+                raise _refuse_expression(expression)
+            return ("scaled", coefficient, ("name", name[0])), at + 3
         if tokens[at] == _ZERO_FLOOR or not _EXPRESSION_NAME.fullmatch(tokens[at]):
             raise _refuse_expression(expression)
         return ("name", tokens[at]), at + 1
@@ -1235,6 +1252,8 @@ def _tree_names(node: tuple[Any, ...]) -> tuple[str, ...]:
         return (node[1],)
     if node[0] == "max0":
         return _tree_names(node[1])
+    if node[0] == "scaled":
+        return _tree_names(node[2])
     return tuple(name for _, term in node[1] for name in _tree_names(term))
 
 
@@ -1245,6 +1264,8 @@ def _evaluate_tree(
         return read(node[1])
     if node[0] == "max0":
         return np.maximum(_evaluate_tree(node[1], read), 0.0)
+    if node[0] == "scaled":
+        return node[1] * _evaluate_tree(node[2], read)
     (sign, first), *rest = node[1]
     values = _evaluate_tree(first, read)
     total = (values if sign > 0 else -values).copy()

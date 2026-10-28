@@ -51,6 +51,7 @@ PROJECTION_FAMILIES = {
     "hmrc_itl",
     "hmrc_itl_marginal_rate",
     "hmrc_itl_age",
+    "hmrc_itl_savings_rate",
     "dwp_benefit_expenditure",
 }
 NATIONAL_SELECTOR_KEYS = {
@@ -253,8 +254,10 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
     # adds five OBR excise receipts rows, measured at FY2024-25 and held out
     # of the objective; microcosm#1069 adds HMRC's Income Tax payers of State
     # Pension age and aged 65 and over by region and nation; microcosm#1418
-    # adds SPI pension income by constituency and local authority.
-    assert len(resource["targets"]) == 449
+    # adds HMRC's Income Tax on savings at the basic, higher and additional
+    # rates, three national rows, and SPI pension income by constituency and
+    # local authority.
+    assert len(resource["targets"]) == 452
 
     providers = resource["hierarchy"]["providers"]
     categories = resource["hierarchy"]["categories"]
@@ -268,10 +271,10 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
     target_ids = [target["target_id"] for target in resource["targets"]]
     registry_scope = resource["registry_parity"]["scope_target_ids"]
     profile_scope = resource["profile_parity"]["scope_target_ids"]
-    assert len(registry_scope) == 388
+    assert len(registry_scope) == 391
     assert len(profile_scope) == 61
-    assert target_ids[:388] == registry_scope
-    assert target_ids[388:] == profile_scope
+    assert target_ids[:391] == registry_scope
+    assert target_ids[391:] == profile_scope
 
     parity = resource["registry_parity"]
     assert parity["pinned_ref"] == "12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3"
@@ -296,9 +299,10 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
     # repayments to the excluded rows (microcosm#1095), and HMRC's five Child
     # Benefit family rows have no uk-data metric either. microcosm#1359's five
     # OBR excise rows have no uk-data metric (uk-data never measured excise
-    # duty), nor microcosm#1069's two Income Tax payer by age rows.
+    # duty), nor microcosm#1069's two Income Tax payer by age rows, nor
+    # microcosm#1418's three Income Tax on savings rows.
     assert len(mapped_target_ids) == 183
-    assert len(unmapped_declarations) == 205
+    assert len(unmapped_declarations) == 208
     suppressed_ancestors = parity["suppressed_ancestors"]
     assert len(suppressed_ancestors) == 5
     assert set(suppressed_ancestors).isdisjoint(parity["mapped"])
@@ -805,7 +809,7 @@ def test_uk_population_targets_have_unique_target_ids() -> None:
     resource = _load()
 
     target_ids = [target["target_id"] for target in resource["targets"]]
-    assert len(target_ids) == 449
+    assert len(target_ids) == 452
     assert len(target_ids) == len(set(target_ids))
 
 
@@ -1308,7 +1312,7 @@ def test_uc_payment_bands_share_administrative_family_but_keep_source_window() -
 
 def test_paid_joint_diagnostics_do_not_add_active_targets() -> None:
     targets = _load()["targets"]
-    assert len(targets) == 449
+    assert len(targets) == 452
     assert not any(
         f.get("variable") == "uc_calibration_child_entitlement"
         for target in targets

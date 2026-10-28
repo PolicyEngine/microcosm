@@ -572,6 +572,10 @@ UK_RELEASE_EXPORT_DROPPED_COLUMNS: Mapping[str, tuple[str, ...]] = {
         # The FRS bonus carrier (frs_spine.FRS_BONUS_CARRIER_COLUMN) the bonus
         # sacrifice conversion reads (microcosm#1340); it is no engine input.
         "frs_bonus_amount",
+        # The in-household care hours carrier
+        # (frs_spine.FRS_IN_HOUSEHOLD_CARE_HOURS_COLUMN) the Carer's Allowance
+        # draw reads (microcosm#1418); it is no engine input.
+        "frs_care_hours_in_household",
     ),
     # The value the spine's regional home values replaced (microcosm#1112):
     # the dense node ranks on it, and it is no engine input.

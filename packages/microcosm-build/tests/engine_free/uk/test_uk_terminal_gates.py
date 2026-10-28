@@ -613,11 +613,13 @@ def test_committed_target_fit_register_retains_only_live_deferrals() -> None:
     # to +23.4 % across the C3 and final arms, inside the bound, and the gate
     # fails the deferral as stale.
     assert set(register) == {
+        "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_15000@2025",
+        "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_20000@2025",
+        "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_30000@2025",
         "hmrc/dividend_income_income_band_20_000_to_30_000@2025",
         "hmrc/dividend_income_income_band_30_000_to_40_000@2025",
         "hmrc/dividend_income_income_band_40_000_to_50_000@2025",
         "hmrc/private_pension_income_income_band_12_570_to_15_000@2025",
-        "hmrc/private_pension_income_income_band_15_000_to_20_000@2025",
         "hmrc/state_pension_count_income_band_500_000_to_1_000_000@2025",
     }
     assert {record.release_lines for record in register.values()} == {("local",)}
@@ -643,29 +645,43 @@ def test_committed_local_target_fit_register_is_empty_and_well_formed() -> None:
         assert "%" not in record.reason, key
     assert uk_default_local_target_fit_reviewed_exclusions() is register
     assert set(register) == {
+        "age_structure/E06000018/age/20_30",
         "age_structure/E07000008/age/20_30",
+        "age_structure/E07000178/age/20_30",
         "age_structure/E14001080/age/20_30",
+        "age_structure/E14001081/age/20_30",
         "age_structure/E14001096/age/20_30",
         "age_structure/E14001131/age/20_30",
         "age_structure/E14001149/age/20_30",
         "age_structure/E14001182/age/20_30",
+        "age_structure/E14001231/age/20_30",
         "age_structure/E14001301/age/20_30",
         "age_structure/E14001319/age/20_30",
+        "age_structure/E14001327/age/20_30",
         "age_structure/E14001338/age/20_30",
+        "age_structure/E14001352/age/20_30",
         "age_structure/E14001353/age/20_30",
+        "age_structure/E14001410/age/20_30",
         "age_structure/E14001412/age/20_30",
+        "age_structure/E14001420/age/20_30",
         "age_structure/E14001467/age/20_30",
+        "age_structure/S12000013/age/20_30",
+        "age_structure/S12000013/age/60_70",
+        "age_structure/S14000027/age/60_70",
         "age_structure/W07000091/age/20_30",
         "council_tax/E06000014/council_tax/band_a",
         "council_tax/E09000020/council_tax/band_b",
+        "council_tax/E09000020/council_tax/band_g",
+        "council_tax/E09000030/council_tax/band_f",
         "council_tax/E09000033/council_tax/band_b",
+        "council_tax/E09000033/council_tax/band_f",
+        "council_tax/E09000033/council_tax/band_g",
         "council_tax/S12000013/council_tax/band_a",
-        "domestic_energy/S12000013/energy/gas_connected_households",
-        "domestic_energy/S12000017/energy/gas_connected_households",
-        "domestic_energy/S12000023/energy/electricity_kwh",
-        "domestic_energy/W06000008/energy/gas_connected_households",
-        "tenure/E09000020/tenure/owned_outright",
-        "tenure/S12000029/tenure/private_rent",
+        "council_tax/S12000013/council_tax/band_f",
+        "council_tax/S12000035/council_tax/band_b",
+        "council_tax/W06000018/council_tax/band_h",
+        "tenure/E09000033/tenure/owned_mortgage",
+        "uc_households/E14001098/uc_hh_3plus_children",
     }
     assert {record.release_lines for record in register.values()} == {("local",)}
 
@@ -876,6 +892,8 @@ def test_committed_degenerate_register_is_the_policy_of_record() -> None:
     register = uk_default_degenerate_reviewed_exclusions()
     assert set(register) == {
         "household.atomic_area_basis",
+        "household.beer_draught_share",
+        "household.cider_draught_share",
         "household.source_year",
         "person.tax_free_childcare_spend_routed_share",
     }
@@ -897,6 +915,16 @@ def test_committed_degenerate_register_is_the_policy_of_record() -> None:
     assert routed_share.approved_on == "2026-09-05"
     assert routed_share.expires_on == "2027-03-05"
     assert routed_share.reason.strip()
+    # The excise step writes HMRC's published draught-relief share to every
+    # household (microcosm#1359), on both lines.
+    for column in ("household.beer_draught_share", "household.cider_draught_share"):
+        draught = register[column]
+        assert draught.adjudication == "microcosm#1359"
+        assert draught.approved_by == "juaristi22"
+        assert draught.approved_on == "2026-10-27"
+        assert draught.expires_on == "2027-04-27"
+        assert not draught.release_lines
+        assert draught.reason.strip()
 
 
 def test_policy_of_record_is_immutable_and_loaded_once() -> None:
