@@ -646,6 +646,10 @@
     "ons.rent.private_rent_brma": {
       "route": "no_higher_control",
       "reason": "ONS PIPR publishes Scotland's rents as means over its 18 Broad Rental Market Areas, which overlap the councils, and no national private-rent total the frame binds. Each row is 12 x the BRMA mean x the BRMA's private renters, derived from the councils' reconciled tenure cells through Census 2022's council shares of each BRMA's renters (uk_private_rent_brma_mean_to_total), so the rows follow the tenure reconciliation and no BRMA cell is a parent or a leg of any other (microcosm#1090, #1262). Placed renters' rents come from their BRMA's rent-officer list of rents, scaled to their region's FRS level on the census renter mix: at design weights a region moves by the gap between that mix and where its renters land, until the tenure rows restore it (microcosm#1262). PIPR shares that evidence base, so the rows stay bound, but their pattern between areas is not independent validation. The rows bind PIPR's level, while the node holds each region at its FRS level, which sits below it; with the tenure rows bound, calibration closes the gap only by moving weight toward higher-rent renters within each area, a level miss declared under María's A3/A4 rulings rather than modelled."
+    },
+    "hmrc.pension_income.count": {
+      "route": "no_higher_control",
+      "reason": "SPI 2023-24 Tables 3.14 and 3.15 count each area's taxpayers with any pension income, State or private. No national row binds that union: the national SPI bands count State Pension and private pension recipients apart, and most taxpayers of State Pension age are both, so the cells bind at HMRC's own area level, grown by ITL Table 2.5's all-ranges taxpayer growth (María's ruling of 2026-10-28, microcosm#1418). The amounts, a sum, reconcile to the bands through their fan-out sum bridge; the tables' region and country rows are the sums of their areas, so a region control adds no information."
     }
   },
   "relations": [
@@ -928,6 +932,16 @@
       "part": "hmrc.higher_rate_taxpayers.count",
       "whole": "hmrc.itl.taxpayers_by_total_income_band",
       "reason": "Higher rate taxpayers in an area (SPI Tables 3.14 and 3.15) are part of all UK income tax payers, whose projected ITL Table 2.5 bands partition the UK total; parts <= whole. The area cells take their level from the Table 2.2 region and nation rows through their per-geography bridge (microcosm#1123)."
+    },
+    {
+      "targets": [
+        "hmrc.itl.taxpayers_by_total_income_band",
+        "hmrc.pension_income.count"
+      ],
+      "relation": "subset",
+      "part": "hmrc.pension_income.count",
+      "whole": "hmrc.itl.taxpayers_by_total_income_band",
+      "reason": "Taxpayers with pension income in an area (SPI Tables 3.14 and 3.15) are part of all UK income tax payers, whose projected ITL Table 2.5 bands partition the UK total; parts <= whole. The area cells bind at HMRC's own area level, since no national row counts the union of State Pension and private pension recipients (microcosm#1418)."
     },
     {
       "targets": [

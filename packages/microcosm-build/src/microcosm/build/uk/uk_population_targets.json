@@ -1330,7 +1330,7 @@
     "source_schema_version": "policyengine_ledger.target_profile.v1",
     "source_profile_id": "uk_local_geography",
     "source_target_count": 25,
-    "contract_target_count": 61,
+    "contract_target_count": 62,
     "corrected_rows": 25,
     "corrected": [
       {
@@ -1793,7 +1793,7 @@
         "reason": "Narrowed to the private-rent local-area record-set spec; non-English/masked absences are signed by the area compiler."
       }
     ],
-    "activation_added_rows": 36,
+    "activation_added_rows": 37,
     "activation_additions": [
       {
         "target_id": "ons.census.households",
@@ -1938,6 +1938,10 @@
       {
         "target_id": "hmrc.pension_income.amount",
         "basis": "microcosm#1418; HMRC SPI 2023-24 pension income by constituency and local authority (Tables 3.15 and 3.14), count times mean, reconciled to the national State Pension and private pension bands"
+      },
+      {
+        "target_id": "hmrc.pension_income.count",
+        "basis": "microcosm#1418; HMRC SPI 2023-24 taxpayers with pension income by constituency and local authority (Tables 3.15 and 3.14), at HMRC's own area level"
       }
     ],
     "scope_target_ids": [
@@ -2001,7 +2005,8 @@
       "desnz.subnational.gas_kwh",
       "desnz.subnational.gas_connected_households",
       "mhclg.council_tax_stock.by_area.single_adult_discount",
-      "hmrc.pension_income.amount"
+      "hmrc.pension_income.amount",
+      "hmrc.pension_income.count"
     ]
   },
   "targets": [
@@ -34299,6 +34304,68 @@
       "category_id": "hmrc.tax_statistics",
       "label": "Amount",
       "uprating_index": "hmrc.itl_2026.total_income_growth_all_bands"
+    },
+    {
+      "target_id": "hmrc.pension_income.count",
+      "family": "hmrc",
+      "geography_levels": [
+        "constituency",
+        "local_authority"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.income.pension.amount",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "concept": "uk.tax.income_tax.amount",
+            "operator": ">",
+            "value": 0
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "hmrc/pension_income/count",
+          "value_variable": "person_count",
+          "from_entity": "person",
+          "map_to": "household",
+          "filters": [
+            {
+              "variable": "total_pension_income_annual",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "income_tax_before_winter_fuel_payment_charge_annual",
+              "operator": ">",
+              "value": 0
+            }
+          ]
+        },
+        "axiom": {
+          "metric_name": "hmrc/pension_income/count",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_measure_id": "pension_income_count",
+        "record_set_spec_id": [
+          "uk.local_geography.spi_income.by_constituency.v1",
+          "uk.local_geography.spi_income.by_local_authority.v1"
+        ]
+      },
+      "category_id": "hmrc.tax_statistics",
+      "label": "Count",
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_all_bands",
+      "selector_note": "SPI 2023-24 area Tables 3.15 (constituency) and 3.14 (local authority): the taxpayers with pension income, private or State Pension, the latest edition (2024-25 due early 2027). Projected to calendar 2025 by HMRC's own all-ranges growth in Income Tax Liabilities Table 2.5 (taxpayer counts, calendar-2025 window over tax year 2023-24), and bound at HMRC's own area level: no national row counts the union of State Pension and private pension recipients, which the national SPI bands count apart and most taxpayers of State Pension age are both (María's ruling of 2026-10-28, microcosm#1418). The frame counts each taxpayer with private or State Pension over the year."
     }
   ],
   "diagnostic_references": {

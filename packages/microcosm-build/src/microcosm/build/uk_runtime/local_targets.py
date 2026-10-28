@@ -70,8 +70,9 @@ ENERGY_METRICS = (
     "energy/gas_connected_households",
 )
 #: HMRC SPI pension income by area (Tables 3.14 and 3.15; microcosm#1418):
-#: each area's taxpayers' private and State Pension income, both grains.
-PENSION_INCOME_METRICS = ("hmrc/pension_income/amount",)
+#: each area's taxpayers' private and State Pension income and the taxpayers
+#: with either, both grains.
+PENSION_INCOME_METRICS = ("hmrc/pension_income/amount", "hmrc/pension_income/count")
 #: England's dwellings with the single adult council tax discount by billing
 #: authority (MHCLG Council Taxbase line 8; microcosm#1095), the cells of the
 #: national single adult row. The return is England's and by billing
