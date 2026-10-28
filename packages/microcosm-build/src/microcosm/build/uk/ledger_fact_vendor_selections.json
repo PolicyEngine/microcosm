@@ -503,7 +503,7 @@
     },
     {
       "resource": "excise_facts.json",
-      "purpose": "HMRC FY2024-25 alcohol clearances by product, ABV band, duty point and relief (Alcohol Bulletin) and tobacco clearances by product (Tobacco Bulletin), HMRC betting and gaming duty cash receipts by duty and Machine Games Duty liabilities by rate band (Betting and Gaming statistics), and the Gambling Commission's FY2024-25 gross gambling yield for Great Britain by sector, activity and betting event: the national quantities and bases the LCFS level_excise_quantities step shares out to households (microcosm#1359, PolicyEngine/chronicle#381).",
+      "purpose": "HMRC FY2024-25 alcohol clearances by product, ABV band, duty point and relief (Alcohol Bulletin) and tobacco clearances by product (Tobacco Bulletin), HMRC betting and gaming duty cash receipts by duty and Machine Games Duty liabilities by rate band (Betting and Gaming statistics), the Gambling Commission's FY2024-25 gross gambling yield for Great Britain by sector, activity and betting event, and its FY2024-25 gaming machine gross gambling yield by machine category (Industry Statistics sheet 4, all venues): the national quantities and bases the LCFS level_excise_quantities step shares out to households (microcosm#1359, PolicyEngine/chronicle#381), and the Category B share of the Machine Games Duty standard-rate base that moves to the higher rate from 1 April 2027 (microcosm#1418).",
       "consumers": [
         "uk_runtime.lcfs_consumption"
       ],
@@ -573,6 +573,22 @@
             ]
           },
           "expected_row_count": 40
+        },
+        {
+          "label": "gambling_commission_machine_yield_by_category_fy2024",
+          "selector": {
+            "source_name": "gambling_commission",
+            "source_concept": "gambling_commission.gaming_machine_gross_gambling_yield",
+            "geography_id": "K03000001",
+            "period_type": "fiscal_year",
+            "period_value": [
+              2024
+            ],
+            "dimension_values": {
+              "gambling_venue": "all"
+            }
+          },
+          "expected_row_count": 4
         }
       ]
     },

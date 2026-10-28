@@ -3,7 +3,7 @@
   "country": "uk",
   "kind": "uk_vendored_ledger_facts",
   "resource": "excise_facts.json",
-  "purpose": "HMRC FY2024-25 alcohol clearances by product, ABV band, duty point and relief (Alcohol Bulletin) and tobacco clearances by product (Tobacco Bulletin), HMRC betting and gaming duty cash receipts by duty and Machine Games Duty liabilities by rate band (Betting and Gaming statistics), and the Gambling Commission's FY2024-25 gross gambling yield for Great Britain by sector, activity and betting event: the national quantities and bases the LCFS level_excise_quantities step shares out to households (microcosm#1359, PolicyEngine/chronicle#381).",
+  "purpose": "HMRC FY2024-25 alcohol clearances by product, ABV band, duty point and relief (Alcohol Bulletin) and tobacco clearances by product (Tobacco Bulletin), HMRC betting and gaming duty cash receipts by duty and Machine Games Duty liabilities by rate band (Betting and Gaming statistics), the Gambling Commission's FY2024-25 gross gambling yield for Great Britain by sector, activity and betting event, and its FY2024-25 gaming machine gross gambling yield by machine category (Industry Statistics sheet 4, all venues): the national quantities and bases the LCFS level_excise_quantities step shares out to households (microcosm#1359, PolicyEngine/chronicle#381), and the Category B share of the Machine Games Duty standard-rate base that moves to the higher rate from 1 April 2027 (microcosm#1418).",
   "consumers": [
     "uk_runtime.lcfs_consumption"
   ],
@@ -87,10 +87,214 @@
         ]
       },
       "row_count": 40
+    },
+    {
+      "label": "gambling_commission_machine_yield_by_category_fy2024",
+      "selector": {
+        "source_name": "gambling_commission",
+        "source_concept": "gambling_commission.gaming_machine_gross_gambling_yield",
+        "geography_id": "K03000001",
+        "period_type": "fiscal_year",
+        "period_value": [
+          2024
+        ],
+        "dimension_values": {
+          "gambling_venue": "all"
+        }
+      },
+      "row_count": 4
     }
   ],
-  "row_count": 98,
+  "row_count": 102,
   "rows": [
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_88826e45ee9237f5a7ad75e3",
+      "semantic_fact_key": "ledger_semantic_fact_v2_ecdbed53859779c33caa751a",
+      "source_record_id": "gambling_commission.industry_statistics_2026_09.sheet_4_categories_from_july_2024.fy2024.great_britain.machine_ggy_all",
+      "concept": "gambling_commission.gaming_machine_gross_gambling_yield",
+      "measure_id": "machine_ggy_all",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "licensed_gambling_operators"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "gambling_commission.industry_statistics_2026_09.sheet_4_categories_from_july_2024.fy2024",
+        "groupby_dimension": "gambling_commission.statistics_scope",
+        "groupby_value_id": "great_britain",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "gambling_venue": "all",
+        "machine_category": "all",
+        "published_unit": "gbp_million"
+      },
+      "source": {
+        "source_name": "gambling_commission",
+        "source_table": "Industry Statistics - Annual report - Financial year April 2025 to March 2026 - Official statistics",
+        "source_file": "Industry_Statistics_-_Annual_report_-_Financial_year_April_2025_to_March_2026_-_Official_Statistics.xlsx",
+        "source_sha256": "a6ea23b5ddff2f3839ebec2a8cc0d9a0817e218f5bf10921e0172ecae768da58",
+        "vintage": "2026_09_17_release",
+        "raw_r2_key": "raw/uk/gambling_commission/gambling-commission-industry-statistics-fy2025-26/2026/a6ea23b5ddff2f3839ebec2a8cc0d9a0817e218f5bf10921e0172ecae768da58/Industry_Statistics_-_Annual_report_-_Financial_year_April_2025_to_March_2026_-_Official_Statistics.xlsx"
+      },
+      "value": 2585667474.76534
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_35ccbf28aa5ceadf5278d8b6",
+      "semantic_fact_key": "ledger_semantic_fact_v2_e5023649c00aeb29be44e19e",
+      "source_record_id": "gambling_commission.industry_statistics_2026_09.sheet_4_categories_from_july_2024.fy2024.great_britain.machine_ggy_b",
+      "concept": "gambling_commission.gaming_machine_gross_gambling_yield",
+      "measure_id": "machine_ggy_b",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "licensed_gambling_operators"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "gambling_commission.industry_statistics_2026_09.sheet_4_categories_from_july_2024.fy2024",
+        "groupby_dimension": "gambling_commission.statistics_scope",
+        "groupby_value_id": "great_britain",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "gambling_venue": "all",
+        "machine_category": "b",
+        "published_unit": "gbp_million"
+      },
+      "source": {
+        "source_name": "gambling_commission",
+        "source_table": "Industry Statistics - Annual report - Financial year April 2025 to March 2026 - Official statistics",
+        "source_file": "Industry_Statistics_-_Annual_report_-_Financial_year_April_2025_to_March_2026_-_Official_Statistics.xlsx",
+        "source_sha256": "a6ea23b5ddff2f3839ebec2a8cc0d9a0817e218f5bf10921e0172ecae768da58",
+        "vintage": "2026_09_17_release",
+        "raw_r2_key": "raw/uk/gambling_commission/gambling-commission-industry-statistics-fy2025-26/2026/a6ea23b5ddff2f3839ebec2a8cc0d9a0817e218f5bf10921e0172ecae768da58/Industry_Statistics_-_Annual_report_-_Financial_year_April_2025_to_March_2026_-_Official_Statistics.xlsx"
+      },
+      "value": 2289849694.48829
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_c81f400547d08930cc211446",
+      "semantic_fact_key": "ledger_semantic_fact_v2_6ba1e0ad3bc8fc24d960f086",
+      "source_record_id": "gambling_commission.industry_statistics_2026_09.sheet_4_categories_from_july_2024.fy2024.great_britain.machine_ggy_c",
+      "concept": "gambling_commission.gaming_machine_gross_gambling_yield",
+      "measure_id": "machine_ggy_c",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "licensed_gambling_operators"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "gambling_commission.industry_statistics_2026_09.sheet_4_categories_from_july_2024.fy2024",
+        "groupby_dimension": "gambling_commission.statistics_scope",
+        "groupby_value_id": "great_britain",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "gambling_venue": "all",
+        "machine_category": "c",
+        "published_unit": "gbp_million"
+      },
+      "source": {
+        "source_name": "gambling_commission",
+        "source_table": "Industry Statistics - Annual report - Financial year April 2025 to March 2026 - Official statistics",
+        "source_file": "Industry_Statistics_-_Annual_report_-_Financial_year_April_2025_to_March_2026_-_Official_Statistics.xlsx",
+        "source_sha256": "a6ea23b5ddff2f3839ebec2a8cc0d9a0817e218f5bf10921e0172ecae768da58",
+        "vintage": "2026_09_17_release",
+        "raw_r2_key": "raw/uk/gambling_commission/gambling-commission-industry-statistics-fy2025-26/2026/a6ea23b5ddff2f3839ebec2a8cc0d9a0817e218f5bf10921e0172ecae768da58/Industry_Statistics_-_Annual_report_-_Financial_year_April_2025_to_March_2026_-_Official_Statistics.xlsx"
+      },
+      "value": 232474892.98159996
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_596eb90f50ce88d785b80ef7",
+      "semantic_fact_key": "ledger_semantic_fact_v2_1b9a4dbecdae7ceccb2c43b8",
+      "source_record_id": "gambling_commission.industry_statistics_2026_09.sheet_4_categories_from_july_2024.fy2024.great_britain.machine_ggy_d",
+      "concept": "gambling_commission.gaming_machine_gross_gambling_yield",
+      "measure_id": "machine_ggy_d",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "licensed_gambling_operators"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "gambling_commission.industry_statistics_2026_09.sheet_4_categories_from_july_2024.fy2024",
+        "groupby_dimension": "gambling_commission.statistics_scope",
+        "groupby_value_id": "great_britain",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "gambling_venue": "all",
+        "machine_category": "d",
+        "published_unit": "gbp_million"
+      },
+      "source": {
+        "source_name": "gambling_commission",
+        "source_table": "Industry Statistics - Annual report - Financial year April 2025 to March 2026 - Official statistics",
+        "source_file": "Industry_Statistics_-_Annual_report_-_Financial_year_April_2025_to_March_2026_-_Official_Statistics.xlsx",
+        "source_sha256": "a6ea23b5ddff2f3839ebec2a8cc0d9a0817e218f5bf10921e0172ecae768da58",
+        "vintage": "2026_09_17_release",
+        "raw_r2_key": "raw/uk/gambling_commission/gambling-commission-industry-statistics-fy2025-26/2026/a6ea23b5ddff2f3839ebec2a8cc0d9a0817e218f5bf10921e0172ecae768da58/Industry_Statistics_-_Annual_report_-_Financial_year_April_2025_to_March_2026_-_Official_Statistics.xlsx"
+      },
+      "value": 63342887.295449995
+    },
     {
       "aggregate_fact_key": "ledger_aggregate_fact_v2_abd296c0ca997d6be961641a",
       "semantic_fact_key": "ledger_semantic_fact_v2_c21bcce6fbc4f0820c82b2fc",
