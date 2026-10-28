@@ -896,6 +896,7 @@ def test_childcare_bus_observation_basis_and_entity_pins_are_closed_world() -> N
         "uk_residents_reporting_residential_property_disposals_disposal_year_2024_all_channels_scaled_to_individuals_by_table8b_share",
         "individuals_claiming_badr_or_investors_relief_disposal_year_2024_by_band_of_qualifying_gain",
         "individuals_observed_disposal_year_2024_net_gains_and_aea_by_taxable_income",
+        "taxpayers_tax_year_2023_24_at_own_year",
     }
     allowed_operations = set(resource["allowed_value_operations"])
     for target in resource["targets"]:
