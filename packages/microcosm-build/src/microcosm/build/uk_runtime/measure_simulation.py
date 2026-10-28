@@ -15,6 +15,7 @@ import pandas as pd
 
 from microcosm.build.target_materialization import (
     evaluate_named_term,
+    expression_names,
     named_term_leaves,
 )
 from microcosm.build.uk_runtime.atomic_area_support import (
@@ -412,10 +413,13 @@ _SPI_ROUND_TRIP_EXEMPT_INPUTS: Mapping[str, str] = {
     "student_loan_plan": (
         "held; new borrowers drawn in each projected year (uprate_student_loan_plans)"
     ),
-    "student_loan_repayments": (
-        "carried back by its index; the forward rule zeroes it for each new "
-        "borrower it draws (uprate_student_loan_plans)"
-    ),
+}
+#: Inputs that forward rule resets exactly where it reassigns another
+#: input: ``uprate_student_loan_plans`` zeroes a person's repayments only
+#: where it draws them a new plan, so the repayments, carried back by their
+#: index, must round-trip on every row whose plan it left as stored.
+_SPI_ROUND_TRIP_COMPARED_WHERE_UNCHANGED: Mapping[str, str] = {
+    "student_loan_repayments": "student_loan_plan",
 }
 #: The stored inputs policyengine-uk moves to another variable as it loads a
 #: dataset (``Simulation.move_values`` in its constructor): the bases of the
@@ -1097,7 +1101,38 @@ class UKMeasureResolver:
         bound_spi_periods: dict[str, dict[str, Any]] = {}
         for target_id, target in self.contract_targets.items():
             binding = target["bindings"]["policyengine"]
-            for name in _binding_variable_names(binding):
+            declared = binding.get("measurement_period")
+            if (
+                declared is not None
+                and int(declared) != self.year
+                and target.get("uprating_index") is not None
+            ):
+                # A row measured at its fact's own year binds the fact as
+                # published; projecting it to the run's year as well would
+                # move it twice.
+                raise ValueError(
+                    f"{target_id} measures at {declared} but also projects its "
+                    f"fact to {self.year} by {target['uprating_index']!r}."
+                )
+            names = _binding_variable_names(binding)
+            if binding.get("value_expression"):
+                names = [*names, *expression_names(str(binding["value_expression"]))]
+            spi_years = {uk_spi_dated_measure_year(name) for name in names}
+            if spi_years - {None} and len(spi_years) > 1:
+                # A row read at two years would count one year's people by
+                # another's incomes, whatever the frame says of its period.
+                raise ValueError(
+                    f"{target_id} mixes dated SPI measures with variables of "
+                    f"another year: {sorted(names)}"
+                )
+            if spi_years - {None} and binding.get("kind"):
+                # Only a plain-column read is checked for its year at
+                # materialization; a provider would read its own variables.
+                raise ValueError(
+                    f"{target_id} binds dated SPI measures through provider "
+                    f"{binding['kind']!r}; they bind as plain columns only."
+                )
+            for name in names:
                 spi_year = uk_spi_dated_measure_year(name)
                 if spi_year is not None:
                     # A dated SPI row binds a published fact of its own year:
@@ -1764,6 +1799,7 @@ class UKMeasureResolver:
             stored,
             {name: getattr(forward, name) for name in forward.table_names},
             checked,
+            compared_where_unchanged=_SPI_ROUND_TRIP_COMPARED_WHERE_UNCHANGED,
         )
         unexplained = {
             name: gap
@@ -1808,6 +1844,9 @@ class UKMeasureResolver:
                     name: {"rule": rule, "largest_miss": misses.get(name, 0.0)}
                     for name, rule in sorted(_SPI_ROUND_TRIP_EXEMPT_INPUTS.items())
                 },
+                "round_trip_compared_where_unchanged": dict(
+                    sorted(_SPI_ROUND_TRIP_COMPARED_WHERE_UNCHANGED.items())
+                ),
             }
         )
         return inputs

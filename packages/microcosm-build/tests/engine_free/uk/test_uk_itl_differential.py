@@ -9,6 +9,7 @@ miss is no larger than the tolerance fixed before any file is read.
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import math
 
@@ -26,6 +27,8 @@ from microcosm.build.uk_runtime.itl_differential import (
     REGIONAL_TOLERANCE,
     RESIDENTS,
     SINGLE_TAX_YEAR,
+    TAX,
+    TOTAL_INCOME,
     UNITED_KINGDOM,
     ITLPeople,
     calendar_window,
@@ -33,9 +36,11 @@ from microcosm.build.uk_runtime.itl_differential import (
     expected_cells,
     model_count,
     residual,
+    table_of,
 )
 from microcosm.build.uk_runtime.ledger_fact_vendoring import load_vendored_resource
 from microcosm.calibrate.geography_constants import UK_REGION_TIER
+from test_support.paths import paths_for
 
 AREAS = tuple(code for _level, code in UK_REGION_TIER)
 _counts = st.floats(min_value=1.0, max_value=5e7, allow_nan=False)
@@ -189,9 +194,68 @@ def test_tolerances_and_in_sample_flags() -> None:
         )
         bound_family = (cell.table, cell.measure) in {
             ("2.5", BAND_COUNT),
+            # The bands partition the all-band count, so binding them binds it.
+            ("2.5", ALL_TAXPAYERS),
             ("2.2", "state_pension_age"),
         }
         assert cell.in_sample is bound_family, cell
+
+
+def test_the_all_band_count_is_in_sample_only_with_its_bands() -> None:
+    unbound = expected_cells(
+        _rows(), year=2025, bound_targets={"hmrc.itl.state_pension_age_taxpayers"}
+    )
+    assert not any(cell.in_sample for cell in unbound if cell.table == "2.5")
+
+
+def test_table_of_names_the_table_or_none() -> None:
+    assert table_of(_row("2.5", "total_taxpayer_count", UNITED_KINGDOM, 2025, 1)) == (
+        "2.5"
+    )
+    assert table_of(_row("2.2", "males", AREAS[0], 2025, 1)) == "2.2"
+    assert table_of({"layout": {"record_set_id": "hmrc.spi.table_3_6"}}) == "3.6"
+    assert table_of({"layout": {"record_set_id": "ons.mid_year_2025"}}) is None
+    assert table_of({}) is None
+
+
+def test_a_band_outside_itl_bands_is_refused() -> None:
+    rows = _rows(ages=False)
+    rows += [
+        _row("2.5", "total_taxpayer_count", UNITED_KINGDOM, year, 1.0, (15_000, 17_500))
+        for year in (2024, 2025)
+    ]
+    with pytest.raises(ValueError, match=r"bands \['\(15000, 17500\)'\]"):
+        expected_cells(rows, year=2025)
+
+
+def test_rows_no_cell_reads_do_not_refuse_the_window() -> None:
+    """A measure the check does not read may carry one tax year only."""
+
+    lonely = [
+        _row("2.1", "males", UNITED_KINGDOM, 2025, 1.0),
+        _row("2.5", "total_income_amount", UNITED_KINGDOM, 2025, 1.0),
+    ]
+    assert expected_cells([*_rows(), *lonely], year=2025) == expected_cells(
+        _rows(), year=2025
+    )
+
+
+def test_the_vendored_table_2_5_bands_sum_to_its_all_band_count() -> None:
+    """The bands partition Table 2.5's taxpayers to within HMRC's rounding."""
+
+    rows = [
+        row
+        for row in load_vendored_resource("hmrc_itl_taxpayer_counts.json")["rows"]
+        if table_of(row) == "2.5" and row["measure_id"] == "total_taxpayer_count"
+    ]
+    years = sorted({row["period"]["value"] for row in rows})
+    assert years
+    for year in years:
+        cells = expected_cells(rows, year=year, weights=SINGLE_TAX_YEAR)
+        bands = [cell.expected for cell in cells if cell.measure == BAND_COUNT]
+        (total,) = [cell.expected for cell in cells if cell.measure == ALL_TAXPAYERS]
+        assert len(bands) == len(ITL_BANDS)
+        assert math.fsum(bands) == pytest.approx(total, rel=0.005), year
 
 
 @st.composite
@@ -338,3 +402,145 @@ def test_one_tax_year_reads_its_own_column() -> None:
     for cell in cells:
         assert cell.expected == published[cell.band]
         assert len(cell.sources) == 1
+
+
+# The tool ------------------------------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def tool():
+    path = paths_for("microcosm-build").repository / "tools/check_uk_itl_projections.py"
+    spec = importlib.util.spec_from_file_location("uk_itl_projections_tool", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_a_run_binds_the_targets_its_diagnostics_weight(tool, tmp_path) -> None:
+    diagnostics = tmp_path / "calibration_diagnostics.json"
+    diagnostics.write_text(
+        json.dumps(
+            {
+                "targets": [
+                    {
+                        "metadata": {"contract_target_id": "kept"},
+                        "target_loss_weight": 1,
+                    },
+                    {
+                        "metadata": {"contract_target_id": "dropped"},
+                        "target_loss_weight": 0,
+                    },
+                    {"metadata": {"contract_target_id": "unweighted"}},
+                    {"metadata": {}, "target_loss_weight": 1},
+                ]
+            }
+        )
+    )
+    assert tool.run_bound_targets(diagnostics) == {"kept", "unweighted"}
+
+
+class _Resolver:
+    """Person columns a calibrated file would give, without the engine."""
+
+    def __init__(self, columns):
+        self.columns = columns
+
+    def compute(self, entity, variable):
+        assert entity == "person"
+        return np.asarray(self.columns[variable]), "stub"
+
+
+def _consistent_rows():
+    """Table 2.5 rows whose bands sum to the all-band count in every year."""
+
+    rows = []
+    for year in (2023, 2024, 2025):
+        for index, band in enumerate(ITL_BANDS):
+            rows.append(
+                _row(
+                    "2.5",
+                    "total_taxpayer_count",
+                    UNITED_KINGDOM,
+                    year,
+                    (index + 1) * 1_000.0,
+                    band,
+                )
+            )
+        total = math.fsum((index + 1) * 1_000.0 for index in range(len(ITL_BANDS)))
+        rows.append(_row("2.5", "total_taxpayer_count", UNITED_KINGDOM, year, total))
+    return rows
+
+
+def _band_people(weight):
+    """One taxpayer at each band's lower edge, in 2025 and in 2023."""
+
+    size = len(ITL_BANDS)
+    edges = np.array([float(band[0]) for band in ITL_BANDS])
+    return _Resolver(
+        {
+            "household_weight": weight,
+            TAX: np.ones(size),
+            TOTAL_INCOME: edges,
+            "is_SP_age": np.zeros(size, dtype=bool),
+            "age": np.full(size, 40.0),
+            "region": np.array(["LONDON"] * size),
+            "spi_2023_person_count": np.ones(size),
+            "spi_2023_income_tax": np.ones(size),
+            "spi_2023_total_income": edges,
+        }
+    )
+
+
+@pytest.mark.parametrize("strict", [True, False])
+@pytest.mark.parametrize("off_by", [1.0, 1.2])
+def test_strict_exits_one_exactly_on_a_miss(
+    tool, tmp_path, monkeypatch, strict, off_by
+) -> None:
+    weight = np.array([(index + 1) * 1_000.0 for index in range(len(ITL_BANDS))])
+    weight[3] *= off_by
+    monkeypatch.setattr(tool, "measure_resolver", lambda *a, **k: _band_people(weight))
+    h5 = tmp_path / "national.h5"
+    h5.write_bytes(b"not read")
+    rows = tmp_path / "rows.json"
+    rows.write_text(json.dumps({"rows": _consistent_rows()}))
+    diagnostics = tmp_path / "calibration_diagnostics.json"
+    diagnostics.write_text(
+        json.dumps(
+            {
+                "targets": [
+                    {
+                        "metadata": {
+                            "contract_target_id": (
+                                "hmrc.itl.taxpayers_by_total_income_band"
+                            )
+                        },
+                        "target_loss_weight": 1.0,
+                    }
+                ]
+            }
+        )
+    )
+    out = tmp_path / "report.json"
+    argv = [
+        "--h5",
+        str(h5),
+        "--out",
+        str(out),
+        "--itl-rows",
+        str(rows),
+        "--diagnostics",
+        str(diagnostics),
+        "--dated-year",
+        "2023",
+    ]
+    code = tool.main([*argv, "--strict"] if strict else argv)
+
+    receipt = json.loads(out.read_text())
+    missed = off_by != 1.0
+    assert code == (1 if strict and missed else 0)
+    assert bool(receipt["misses"]) is missed
+    assert bool(receipt["dated"]["misses"]) is missed
+    assert receipt["in_sample_basis"].startswith(f"{diagnostics} sha256:")
+    assert all(cell["in_sample"] for cell in receipt["cells"])
+    assert not any(cell["in_sample"] for cell in receipt["dated"]["cells"])

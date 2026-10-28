@@ -79,8 +79,10 @@ family adds names, not simulations:
 - **The 2023-24 distribution is pinned in the 2025 weights' terms.** This is
   sound to the extent that the engine's indices carry incomes as the economy
   did. The dated Table 2.5 check (`tools/check_uk_itl_projections.py
-  --dated-year 2023`) tests exactly that: the file's own 2023-24 taxpayers by
-  band, against the year HMRC observed.
+  --dated-year 2023`) puts the file's own 2023-24 taxpayers by band beside
+  the year HMRC observed. It is a joint test of the 2025 weights, the
+  population factor and the engine's indices: a pass does not isolate the
+  indices, and a miss does not say which of the three moved it.
 - **Composition change within an age and sex band is not captured.** This
   includes 2023-25 migration's income profile.
 

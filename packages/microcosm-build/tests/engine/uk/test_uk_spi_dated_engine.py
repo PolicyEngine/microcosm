@@ -171,6 +171,11 @@ def test_the_receipt_records_the_round_trip(resolver) -> None:
     assert year["indexed_inputs"] > 0
     assert "unused_pension_annual_allowance" in year["dropped_year_specific_inputs"]
     assert year["residential_property_ratio"] > 1.0
+    # A repayment is compared wherever the engine kept the person's plan.
+    assert year["round_trip_compared_where_unchanged"] == {
+        "student_loan_repayments": "student_loan_plan"
+    }
+    assert "student_loan_repayments" not in year["round_trip_exempt_inputs"]
 
 
 def test_the_held_inputs_do_not_move_the_measures(tmp_path) -> None:

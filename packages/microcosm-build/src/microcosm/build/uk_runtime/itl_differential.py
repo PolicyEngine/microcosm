@@ -35,7 +35,7 @@ from __future__ import annotations
 import math
 import re
 from collections.abc import Collection, Iterable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -134,12 +134,30 @@ class ITLPeople:
             raise ValueError("ITLPeople weights must be finite and non-negative.")
 
 
-def _table(row: Mapping[str, Any]) -> str:
+def table_of(row: Mapping[str, Any]) -> str | None:
+    """The Income Tax liabilities table a row comes from (``"2.5"``), or None."""
+
     record_set = str((row.get("layout") or {}).get("record_set_id") or "")
     match = _TABLE.search(f"{record_set}.")
-    if match is None:
+    return None if match is None else f"{match.group(1)}.{match.group(2)}"
+
+
+def _table(row: Mapping[str, Any]) -> str:
+    table = table_of(row)
+    if table is None:
+        record_set = (row.get("layout") or {}).get("record_set_id")
         raise ValueError(f"no Income Tax liabilities table in {record_set!r}.")
-    return f"{match.group(1)}.{match.group(2)}"
+    return table
+
+
+def _read_by_cells(row: Mapping[str, Any]) -> bool:
+    """Whether a cell reads the row: Table 2.5's counts, Tables 2.1-2.2's ages."""
+
+    table = table_of(row)
+    measure = str(row.get("measure_id"))
+    if table == "2.5":
+        return measure == _TABLE_2_5_COUNT
+    return table in ("2.1", "2.2") and measure in AGE_MEASURES
 
 
 def _band(row: Mapping[str, Any]) -> Band | None:
@@ -211,12 +229,25 @@ def expected_cells(
 ) -> tuple[ITLCell, ...]:
     """The cells HMRC's rows give at ``year``'s window, in report order.
 
-    Table 2.5 must carry every band of ``ITL_BANDS`` and its all-band count.
-    Tables 2.1 and 2.2 enter only when their rows are present, and a Table
-    2.2 measure must then carry all twelve region-tier areas.
+    Table 2.5 must carry every band of ``ITL_BANDS``, and no other, and its
+    all-band count. Tables 2.1 and 2.2 enter only when their rows are
+    present, and a Table 2.2 measure must then carry all twelve region-tier
+    areas. Rows no cell reads are left out before the window, so another
+    measure's gaps do not refuse the report. ``bound_targets`` names the
+    targets the run bound; the all-band count, which the bands partition, is
+    in sample when every band is.
     """
 
-    window = calendar_window(rows, year=year, weights=weights)
+    window = calendar_window(
+        (row for row in rows if _read_by_cells(row)), year=year, weights=weights
+    )
+    unknown = sorted(
+        str(key[3])
+        for key in window
+        if key[0] == "2.5" and key[3] is not None and key[3] not in ITL_BANDS
+    )
+    if unknown:
+        raise ValueError(f"Table 2.5 bands {unknown} are not ITL_BANDS at {year}.")
 
     def cell(table, measure, value_sources, *, band=None, area=None, regional=False):
         value, sources = value_sources
@@ -247,7 +278,12 @@ def expected_cells(
         for band in ITL_BANDS
     ]
     all_taxpayers = need(("2.5", _TABLE_2_5_COUNT, UNITED_KINGDOM, None))
-    cells.append(cell("2.5", ALL_TAXPAYERS, all_taxpayers))
+    cells.append(
+        replace(
+            cell("2.5", ALL_TAXPAYERS, all_taxpayers),
+            in_sample=all(band_cell.in_sample for band_cell in cells),
+        )
+    )
     for measure in AGE_MEASURES:
         national = window.get(("2.1", measure, UNITED_KINGDOM, None))
         if national is not None:

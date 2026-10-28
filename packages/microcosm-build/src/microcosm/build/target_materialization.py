@@ -1007,16 +1007,35 @@ def _refuse_ignored_measurement_period(
     the calibration period, so the row would be measured there under the
     declared period. Only the value terms are checked: a filter, condition or
     band on an engine-computed variable is still read at the calibration
-    period under a declared frame period.
+    period under a declared frame period. A year a measure is dated to by its
+    name is honoured when every variable of the row is dated to it, with or
+    without frame period metadata.
     """
 
     declared = binding.get("measurement_period")
     frame_period = getattr(adapter, "frame_period", None)
-    if declared is None or frame_period is None or str(declared) == str(period):
+    if declared is None or str(declared) == str(period):
         return
     name = getattr(spec, "name", "?")
     value_period = getattr(adapter, "value_period", None)
     entity = str(binding.get("from_entity") or spec.entity)
+    if frame_period is None:
+        # A frame without period metadata holds nothing at a period of its
+        # own, so any period a variable reports is its name's date: a row
+        # naming a dated measure must be dated whole to its declared year.
+        if callable(value_period):
+            periods = {
+                variable: value_period(entity, variable)
+                for variable in _binding_variable_names(binding)
+            }
+            if any(year is not None for year in periods.values()) and any(
+                year != str(declared) for year in periods.values()
+            ):
+                raise MeasurementPeriodError(
+                    f"target {name!r} declares measurement period {declared!r} "
+                    f"but reads variables of other years: {periods}"
+                )
+        return
     if str(declared) != str(frame_period):
         # A measure dated by its name (spi_2023_state_pension) is computed at
         # that year whatever the run's period. A row may declare that year

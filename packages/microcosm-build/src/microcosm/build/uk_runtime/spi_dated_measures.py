@@ -312,6 +312,7 @@ def round_trip_mismatches(
     *,
     rtol: float = 1e-6,
     atol: float = 0.01,
+    compared_where_unchanged: Mapping[str, str] | None = None,
 ) -> dict[str, float]:
     """Columns the engine's forward step does not carry back to their values.
 
@@ -319,9 +320,16 @@ def round_trip_mismatches(
     inputs to the dataset's year. Returns each listed column whose values
     differ from ``stored`` beyond tolerance, with its largest absolute miss;
     a column of labels misses by the share of its rows that differ, and a
-    column the forward step lost or reshaped by infinity.
+    column the forward step lost or reshaped by infinity. A missing value on
+    one side only misses by infinity; missing on both sides matches.
+
+    ``compared_where_unchanged`` maps a column to a label column of the same
+    entity: the column is compared only on the rows whose label the forward
+    step left as stored, for a forward rule that resets the amount exactly
+    where it reassigns the label.
     """
 
+    conditions = dict(compared_where_unchanged or {})
     misses: dict[str, float] = {}
     for entity, table in stored.items():
         forward = carried_forward[entity]
@@ -343,7 +351,21 @@ def round_trip_mismatches(
                 continue
             expected = table[column].to_numpy(dtype=float)
             actual = forward[column].to_numpy(dtype=float)
-            gap = np.abs(actual - expected)
-            if (gap > atol + rtol * np.abs(expected)).any():
+            label = conditions.get(column)
+            if label is not None:
+                if label not in table.columns or label not in forward.columns:
+                    misses[column] = float("inf")
+                    continue
+                kept = (
+                    table[label].astype(str).to_numpy()
+                    == forward[label].astype(str).to_numpy()
+                )
+                expected, actual = expected[kept], actual[kept]
+            missing = np.isnan(expected)
+            if (missing != np.isnan(actual)).any():
+                misses[column] = float("inf")
+                continue
+            gap = np.abs(actual[~missing] - expected[~missing])
+            if (gap > atol + rtol * np.abs(expected[~missing])).any():
                 misses[column] = float(gap.max())
     return misses

@@ -271,6 +271,61 @@ def test_a_broken_round_trip_is_reported():
     }
 
 
+@settings(max_examples=60, deadline=None)
+@given(
+    values=st.lists(
+        st.one_of(st.floats(-1e7, 1e7, allow_nan=False), st.just(math.nan)),
+        min_size=1,
+        max_size=12,
+    ),
+    data=st.data(),
+)
+def test_a_missing_value_matches_only_a_missing_value(values, data):
+    """Invariant: a value the forward step loses, or invents, is a miss."""
+
+    stored = {"person": pd.DataFrame({"pay": values})}
+    assert (
+        round_trip_mismatches(stored, {"person": stored["person"].copy()}, ["pay"])
+        == {}
+    )
+    row = data.draw(st.integers(0, len(values) - 1))
+    flipped = list(values)
+    flipped[row] = 1.0 if math.isnan(values[row]) else math.nan
+    forward = {"person": pd.DataFrame({"pay": flipped})}
+    assert round_trip_mismatches(stored, forward, ["pay"]) == {"pay": math.inf}
+
+
+def test_an_amount_reset_with_its_label_is_compared_where_the_label_held():
+    """pe-uk zeroes a repayment exactly where it assigns a new loan plan."""
+
+    stored = {
+        "person": pd.DataFrame(
+            {"plan": ["PLAN_1", "PLAN_2", "NONE"], "repaid": [500.0, 800.0, 0.0]}
+        )
+    }
+    reassigned = {
+        "person": pd.DataFrame(
+            {"plan": ["PLAN_2", "PLAN_2", "NONE"], "repaid": [0.0, 800.0, 0.0]}
+        )
+    }
+    where_held = {"repaid": "plan"}
+    assert round_trip_mismatches(stored, reassigned, ["repaid"]) == {"repaid": 500.0}
+    assert (
+        round_trip_mismatches(
+            stored, reassigned, ["repaid"], compared_where_unchanged=where_held
+        )
+        == {}
+    )
+    moved = {"person": reassigned["person"].assign(repaid=[0.0, 801.0, 0.0])}
+    assert round_trip_mismatches(
+        stored, moved, ["repaid"], compared_where_unchanged=where_held
+    ) == {"repaid": 1.0}
+    unlabelled = {"person": reassigned["person"].drop(columns="plan")}
+    assert round_trip_mismatches(
+        stored, unlabelled, ["repaid"], compared_where_unchanged=where_held
+    ) == {"repaid": math.inf}
+
+
 def test_an_input_on_two_indices_or_a_later_year_refuses():
     growth = {"a": {2024: 0.1}, "b": {2024: 0.2}}
     with pytest.raises(ValueError, match="uprated by both"):
@@ -497,6 +552,123 @@ def test_the_resolver_refuses_a_dated_measure_bound_at_another_year(
             year=2025,
             frame=PeriodFrameStub(),
         )
+
+
+@pytest.mark.parametrize(
+    "binding, refusal",
+    [
+        (
+            _dated_binding(
+                filters=[
+                    {
+                        "variable": "income_tax_before_winter_fuel_payment_charge_annual",
+                        "operator": ">",
+                        "value": 0,
+                    }
+                ]
+            ),
+            "mixes dated SPI measures with variables of another year",
+        ),
+        (
+            {
+                **_dated_binding(),
+                "value_variable": None,
+                "value_expression": "spi_2023_state_pension + employment_income",
+            },
+            "mixes dated SPI measures with variables of another year",
+        ),
+        (
+            _dated_binding(kind="parameter_gated_threshold"),
+            "binds dated SPI measures through provider 'parameter_gated_threshold'",
+        ),
+    ],
+)
+def test_the_resolver_refuses_a_dated_row_it_could_not_read_at_one_year(
+    monkeypatch, tmp_path, binding, refusal
+):
+    """A frame without period metadata does not exempt a row from the check."""
+
+    binding = {key: value for key, value in binding.items() if value is not None}
+    with pytest.raises(ValueError, match=f"pilot {refusal}"):
+        _resolver_on(monkeypatch, tmp_path, {"bindings": {"policyengine": binding}})
+
+
+def test_the_resolver_refuses_a_dated_row_that_is_also_projected(monkeypatch, tmp_path):
+    target = {
+        "uprating_index": "ons.population",
+        "bindings": {"policyengine": _dated_binding()},
+    }
+    with pytest.raises(ValueError, match="pilot measures at 2023 but also projects"):
+        _resolver_on(monkeypatch, tmp_path, target)
+
+
+def _resolver_on(monkeypatch, tmp_path, target):
+    """A resolver on a stub engine whose contract is the one target."""
+
+    from microcosm.build.uk_runtime import measure_simulation
+
+    monkeypatch.setitem(
+        sys.modules,
+        "policyengine_uk",
+        SimpleNamespace(
+            __version__="2.162.8", Microsimulation=lambda **kw: _SimulationStub()
+        ),
+    )
+    monkeypatch.setattr(
+        measure_simulation, "validate_uc_claimant_input", lambda *a: None
+    )
+    monkeypatch.setattr(
+        measure_simulation, "_uk_contract_targets", lambda: {"pilot": target}
+    )
+    frame = PeriodFrameStub()
+    frame.metadata = {}
+    return UKMeasureResolver(
+        simulation_source=tmp_path / "input.h5",
+        scratch_dir=tmp_path,
+        year=2025,
+        frame=frame,
+    )
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {
+            "filters": [
+                {
+                    "variable": "income_tax_before_winter_fuel_payment_charge_annual",
+                    "operator": ">",
+                    "value": 0,
+                }
+            ]
+        },
+        {"value_variable": "spi_2024_state_pension"},
+    ],
+)
+def test_a_frame_without_period_metadata_still_refuses_a_mixed_row(overrides):
+    frame = PeriodFrameStub()
+    frame.metadata = {}
+    adapter = UKFrameTargetAdapter(frame)
+    registry, contract = _registry({"mixed": _dated_binding(**overrides)})
+    with pytest.raises(MeasurementPeriodError, match="reads variables of other years"):
+        materialize_target_bindings(adapter, registry, contract, period=2025)
+
+
+def test_a_frame_without_period_metadata_binds_a_row_dated_throughout():
+    frame = PeriodFrameStub()
+    frame.metadata = {}
+    adapter = UKFrameTargetAdapter(frame)
+    assert adapter.frame_period is None
+    adapter.set_column("person", "spi_2023_state_pension", [100.0, 200.0, 300.0])
+    adapter.set_column("person", "spi_2023_income_tax", [0.0, 50.0, 10.0])
+    registry, contract = _registry({"dated": _dated_binding()})
+
+    materialized = materialize_target_bindings(adapter, registry, contract, period=2025)
+
+    assert not materialized.skipped
+    np.testing.assert_allclose(
+        adapter.tables["person"]["test_dated"], [0.0, 200.0, 300.0]
+    )
 
 
 def test_a_persisted_dated_measure_refuses(monkeypatch, tmp_path):
