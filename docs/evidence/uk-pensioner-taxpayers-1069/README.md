@@ -35,7 +35,11 @@ The candidate was built at 8925039d. The commits after it change no compiled tar
   - the DWP and DfC recipient rows;
   - the age rows. The baseline doesn't bind these, so its values are the measured ones against the candidate's targets.
 - **`hmrc_implied_recipients.json`**, from `scripts/hmrc_implied_recipients.py`. It holds the taxpaying and non-taxpaying recipients HMRC implies, the inputs they come from, and each build's split against them.
-- **`build_provenance.json`**, from `scripts/build_provenance.py` on each build's `build.json` and `build_record.json`. It holds the build ids, `release_authorized`, the H5, spine and feed digests, and the engine version.
+- **`build_provenance.json`**, from `scripts/build_provenance.py` on each build's `build.json`, `build_record.json` and `rowwise_candidate_manifest.json`. It holds:
+  - the microcosm commit each build ran from, both clean trees;
+  - the build ids and `release_authorized`;
+  - the H5, spine and feed digests;
+  - the engine version the measure provider ran.
 - **`state_pension_band_totals.json`**, from `scripts/state_pension_band_totals.py` on main's and this branch's compile-parity receipts. Per band it gives:
   - the compiled 2025 value before and after the re-index;
   - each band's share of the total;

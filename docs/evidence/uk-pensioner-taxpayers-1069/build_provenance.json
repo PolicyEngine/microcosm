@@ -1,6 +1,8 @@
 {
   "builds": {
     "baseline": {
+      "git_commit": "7d45c0c337cd4271929b3031e4cc0f76e216f211",
+      "git_dirty": false,
       "build_id": "uk-frs-calibration-attempt-20261028T035853Z-d46150c3",
       "release_authorized": false,
       "release_role": "national",
@@ -10,11 +12,11 @@
       "chronicle_feed_source_commit": "272c987af175687aca21f82851ef349521802b12",
       "chronicle_feed_facts_sha256": "084ddf46fa34b1e03b5f0a7287617aeafaf7f614e3619d87a6565409e4adac85",
       "input_h5_sha256": "2ef42d3f57a18c4e424c297f4128db5c691a59f521e3d03677d54aaff733490b",
-      "policyengine_uk_versions": [
-        "2.162.8"
-      ]
+      "policyengine_uk_version": "2.162.8"
     },
     "candidate": {
+      "git_commit": "8925039d74678b73d688f84c07d69d090fa91e66",
+      "git_dirty": false,
       "build_id": "uk-frs-calibration-attempt-20261028T052241Z-132af9e6",
       "release_authorized": false,
       "release_role": "national",
@@ -24,9 +26,7 @@
       "chronicle_feed_source_commit": "272c987af175687aca21f82851ef349521802b12",
       "chronicle_feed_facts_sha256": "084ddf46fa34b1e03b5f0a7287617aeafaf7f614e3619d87a6565409e4adac85",
       "input_h5_sha256": "2ef42d3f57a18c4e424c297f4128db5c691a59f521e3d03677d54aaff733490b",
-      "policyengine_uk_versions": [
-        "2.162.8"
-      ]
+      "policyengine_uk_version": "2.162.8"
     }
   },
   "identical_across_builds": [

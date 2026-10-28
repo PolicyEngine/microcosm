@@ -658,9 +658,12 @@ def test_state_pension_age_factor_invariants(
             _age_row(year=year, geography_id=code, value=value)
             for (_, code), value in zip(UK_REGION_TIER, year_areas, strict=True)
         )
-    # Rows the applier must ignore. Each would move the factor if read.
+    # Rows the applier must ignore. Each would move the factor if read, in
+    # addition to or in place of the twelve areas: England's row is off its
+    # regions' sum (as HMRC's rounding leaves it), so the four nations do not
+    # stand in for the twelve areas.
     for year, year_areas in areas.items():
-        england = math.fsum(
+        england = 1.01 * math.fsum(
             value
             for (_, code), value in zip(UK_REGION_TIER, year_areas, strict=True)
             if code.startswith("E12")
