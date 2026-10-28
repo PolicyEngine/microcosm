@@ -28,7 +28,8 @@
       "high_value_homes/over_2m",
       "energy/electricity_kwh",
       "energy/gas_kwh",
-      "energy/gas_connected_households"
+      "energy/gas_connected_households",
+      "hmrc/pension_income/amount"
     ],
     "la": [
       "hmrc/self_employment_income/amount",
@@ -69,7 +70,8 @@
       "energy/electricity_kwh",
       "energy/gas_kwh",
       "energy/gas_connected_households",
-      "council_tax/single_adult_discount"
+      "council_tax/single_adult_discount",
+      "hmrc/pension_income/amount"
     ]
   },
   "area_types": [
@@ -572,6 +574,15 @@
       ],
       "family": "hmrc_income_by_area",
       "name": "hmrc/higher_rate_taxpayers/count",
+      "status": "bound_in_code"
+    },
+    {
+      "area_types": [
+        "constituency",
+        "la"
+      ],
+      "family": "hmrc_income_by_area",
+      "name": "hmrc/pension_income/amount",
       "status": "bound_in_code"
     },
     {

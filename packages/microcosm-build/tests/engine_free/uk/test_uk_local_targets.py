@@ -40,7 +40,7 @@ def test_metric_names_match_expected_constituency_surface() -> None:
     )
     assert "age/0_10" in names
     assert "age/70_80" in names
-    assert names[-12:] == (
+    assert names[-13:] == (
         "uc_hh_0_children",
         "uc_hh_1_child",
         "uc_hh_2_children",
@@ -56,6 +56,8 @@ def test_metric_names_match_expected_constituency_surface() -> None:
         "energy/electricity_kwh",
         "energy/gas_kwh",
         "energy/gas_connected_households",
+        # microcosm#1418: SPI pension income by area, appended.
+        "hmrc/pension_income/amount",
     )
 
 
@@ -67,7 +69,7 @@ def test_metric_names_match_expected_la_surface() -> None:
     assert "tenure/private_rent" in names
     assert "rent/private_rent" in names
     assert "uc_hh_0_children" not in names
-    assert names[-18:] == (
+    assert names[-19:] == (
         "households",
         "council_tax/band_a",
         "council_tax/band_b",
@@ -87,10 +89,14 @@ def test_metric_names_match_expected_la_surface() -> None:
         "energy/gas_connected_households",
         # microcosm#1095: England's single adult discount by authority.
         "council_tax/single_adult_discount",
+        # microcosm#1418: SPI pension income by area, both grains.
+        "hmrc/pension_income/amount",
     )
-    # Both grains carry the energy family in the same order (microcosm#1095);
-    # the single adult discount stays local-authority only.
-    assert metric_names("constituency")[-3:] == names[-4:-1]
+    # Both grains carry the energy family in the same order (microcosm#1095)
+    # and end on pension income; the single adult discount stays
+    # local-authority only.
+    assert metric_names("constituency")[-4:-1] == names[-5:-2]
+    assert metric_names("constituency")[-1] == names[-1]
     assert "council_tax/single_adult_discount" not in metric_names("constituency")
 
 
@@ -232,6 +238,7 @@ def test_uc_child_bands_sum_uc_benefit_units_to_household(
             "self_employment_income": [0.0] * people,
             "loss_relief": [0.0] * people,
             "employment_income": [0.0] * people,
+            "total_pension_income": [0.0] * people,
             "income_tax": [0.0] * people,
             "income_tax_before_winter_fuel_payment_charge": [0.0] * people,
             "tax_band": ["NONE"] * people,
@@ -296,6 +303,9 @@ def test_compute_la_household_metrics(tmp_path, monkeypatch) -> None:
     assert metrics["council_tax/band_h"].tolist() == [0.0, 1.0, 0.0]
     # Every household takes the discount; only the first is in England.
     assert metrics["council_tax/single_adult_discount"].tolist() == [1.0, 0.0, 0.0]
+    # The pensioner, the second household, pays income tax and so carries
+    # their pension.
+    assert metrics["hmrc/pension_income/amount"].tolist() == [0.0, 90.0, 0.0]
 
 
 def test_la_single_adult_discount_counts_english_households_at_the_rate(

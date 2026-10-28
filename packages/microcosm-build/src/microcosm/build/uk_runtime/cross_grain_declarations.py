@@ -105,14 +105,24 @@ class UKFanoutSumBridge:
     gap between the bands' band-by-band growth and the cells' all-ranges
     growth: one further than ``max_index_shift`` from one means a re-pinned
     index has moved the area targets.
+
+    A bridge may sum several national fan-outs whose cells together are the
+    area cells' quantity (``higher_target_ids``): the State Pension and the
+    private pension bands are one area's pension income (microcosm#1418).
     """
 
     bridge_id: str
-    higher_target_id: str
+    higher_target_ids: tuple[str, ...]
     lower_target_id: str
     geography_id: str
     max_factor_shift: float
     max_index_shift: float
+
+    @property
+    def higher_target_id(self) -> str:
+        """The control's name: its one fan-out, or its fan-outs joined by ``+``."""
+
+        return "+".join(self.higher_target_ids)
 
     @property
     def control_target_id(self) -> str:
@@ -126,7 +136,7 @@ def uk_fanout_sum_bridges(
     return tuple(
         UKFanoutSumBridge(
             bridge_id=str(entry["bridge_id"]),
-            higher_target_id=str(entry["higher_target_id"]),
+            higher_target_ids=_fanout_higher_target_ids(entry),
             lower_target_id=str(entry["lower_target_id"]),
             geography_id=str(entry["geography_id"]),
             max_factor_shift=_declared_bound(entry, "max_factor_shift"),
@@ -134,6 +144,27 @@ def uk_fanout_sum_bridges(
         )
         for entry in declared.get("fanout_sum_bridges", ())
     )
+
+
+def _fanout_higher_target_ids(entry: Mapping[str, Any]) -> tuple[str, ...]:
+    """A fan-out sum bridge's national fan-outs: one, or several summed."""
+
+    single = entry.get("higher_target_id")
+    several = entry.get("higher_target_ids")
+    if (single is None) == (several is None):
+        raise ValueError(
+            f"UK fan-out sum bridge {entry.get('bridge_id')!r} must declare "
+            "exactly one of higher_target_id and higher_target_ids."
+        )
+    if single is not None:
+        return (str(single),)
+    ids = tuple(str(value) for value in several)
+    if len(ids) < 2 or len(set(ids)) != len(ids):
+        raise ValueError(
+            f"UK fan-out sum bridge {entry.get('bridge_id')!r} must sum two or "
+            "more distinct higher_target_ids."
+        )
+    return ids
 
 
 def _declared_bound(
@@ -253,7 +284,7 @@ def uk_cross_grain_overlap_candidates(
         for side in (entry["higher_target_id"], *entry["lower_target_ids"]):
             bridged.setdefault(str(side), set()).add(str(entry["bridge_id"]))
     for fanout in uk_fanout_sum_bridges(declarations):
-        for side in (fanout.higher_target_id, fanout.lower_target_id):
+        for side in (*fanout.higher_target_ids, fanout.lower_target_id):
             bridged.setdefault(side, set()).add(fanout.bridge_id)
     for entry in declarations.get("sum_bridges", ()):
         for side in (*entry["higher_target_ids"], *entry["lower_target_ids"]):
@@ -324,7 +355,7 @@ def uk_cross_grain_coverage_violations(
         for target_id in (entry["higher_target_id"], *entry["lower_target_ids"]):
             known(str(target_id), f"band bridge {entry['bridge_id']}")
     for fanout in uk_fanout_sum_bridges(declared):
-        for target_id in (fanout.higher_target_id, fanout.lower_target_id):
+        for target_id in (*fanout.higher_target_ids, fanout.lower_target_id):
             known(target_id, f"fan-out sum bridge {fanout.bridge_id}")
         bridge_lower.add(fanout.lower_target_id)
     for entry in declared.get("sum_bridges", ()):

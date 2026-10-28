@@ -44,16 +44,25 @@ def test_each_area_hmrc_row_shares_its_national_bands_measurement():
         "hmrc.employment_income.count",
         "hmrc.self_employment_income.amount",
         "hmrc.self_employment_income.count",
+        "hmrc.pension_income.amount",
     }
     for bridge in uk_fanout_sum_bridges():
-        higher = contract[bridge.higher_target_id]
         lower = contract[bridge.lower_target_id]
-        assert is_uk_fanout_target(higher)
         assert not is_uk_fanout_target(lower)
-        # Taxpayer basis and one counting rule at both grains.
-        assert _measurement_signature(higher, fields) == _measurement_signature(
-            lower, fields
+        # A bridge summing several fan-outs measures their sum, so its concept
+        # is its own (microcosm#1418: State and private pension income).
+        checked = (
+            fields
+            if len(bridge.higher_target_ids) == 1
+            else tuple(field for field in fields if field != "concept")
         )
+        for higher_target_id in bridge.higher_target_ids:
+            higher = contract[higher_target_id]
+            assert is_uk_fanout_target(higher)
+            # Taxpayer basis and one counting rule at both grains.
+            assert _measurement_signature(higher, checked) == _measurement_signature(
+                lower, checked
+            )
 
 
 def test_a_fanout_is_never_an_exact_signature_control():
@@ -94,6 +103,83 @@ def test_the_summed_control_counts_every_band_of_the_full_register():
     assert controls[_EMPLOYMENT]["control"] == 35.0
     assert len(controls[_EMPLOYMENT]["cells"]) == 3
     assert "spi_self_employment_amount_bands_vs_area" not in controls
+
+
+_PENSION = "spi_pension_amount_bands_vs_area"
+_STATE_PENSION = "hmrc.spi.state_pension.amount_by_total_income_band"
+_PRIVATE_PENSION = "hmrc.spi.private_pension_income.amount_by_total_income_band"
+
+
+def _pension_band(target_id: str, lower: int, value: float) -> TargetSpec:
+    return TargetSpec(
+        name=f"{target_id}.band_{lower}@2025",
+        entity="person",
+        measure="hmrc/pension_income_band",
+        value=value,
+        period=2025,
+        family="hmrc",
+        source="test",
+        metadata={
+            "contract_target_id": target_id,
+            "geography_level": "country",
+            "geography_id": "K02000001",
+            "ledger_value_before_alignment": repr(value / 2),
+        },
+    )
+
+
+def test_a_bridge_sums_every_fanout_it_names():
+    """Pension income by area is the State and private pension bands together
+    (microcosm#1418): the control sums both, and refuses with one missing."""
+
+    (bridge,) = [b for b in UK_FANOUT_SUM_BRIDGES if b.bridge_id == _PENSION]
+    assert bridge.higher_target_ids == (_STATE_PENSION, _PRIVATE_PENSION)
+    assert bridge.control_target_id == f"{_STATE_PENSION}+{_PRIVATE_PENSION}#sum"
+    both = TargetRegistry(
+        [
+            _pension_band(_STATE_PENSION, 0, 10.0),
+            _pension_band(_STATE_PENSION, 50_000, 4.0),
+            _pension_band(_PRIVATE_PENSION, 0, 20.0),
+            _pension_band(_PRIVATE_PENSION, 1_000_000, 6.0),
+        ],
+        country="uk",
+    )
+    control = uk_fanout_sum_controls(both)[_PENSION]
+    assert control["control"] == 40.0
+    assert control["control_before_alignment"] == 20.0
+    assert len(control["cells"]) == 4
+    one = TargetRegistry([_pension_band(_STATE_PENSION, 0, 10.0)], country="uk")
+    with pytest.raises(ValueError, match="carries only"):
+        uk_fanout_sum_controls(one)
+
+
+@pytest.mark.parametrize(
+    ("entry", "match"),
+    [
+        (
+            {"higher_target_id": "a", "higher_target_ids": ["a", "b"]},
+            "exactly one of",
+        ),
+        ({}, "exactly one of"),
+        ({"higher_target_ids": ["a"]}, "two or more distinct"),
+        ({"higher_target_ids": ["a", "a"]}, "two or more distinct"),
+    ],
+)
+def test_a_bridge_names_its_fanouts_once(entry, match):
+    declarations = {
+        "fanout_sum_bridges": [
+            {
+                "bridge_id": "test",
+                "lower_target_id": "c",
+                "geography_id": "K02000001",
+                "max_factor_shift": 0.02,
+                "max_index_shift": 0.01,
+                **entry,
+            }
+        ]
+    }
+    with pytest.raises(ValueError, match=match):
+        uk_fanout_sum_bridges(declarations)
 
 
 def test_a_surface_binding_the_area_cells_adds_one_country_control_row():

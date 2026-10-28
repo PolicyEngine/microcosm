@@ -533,6 +533,18 @@
       "max_factor_shift": 0.02,
       "max_index_shift": 0.009,
       "reason": "The SPI Table 3.6 bands, summed over every band of the full compiled register (the measure-excluded £1m-and-over band included), are the UK total the Tables 3.14 and 3.15 area cells divide; the constituency and local-authority cells reconcile to it per grain. Both parts of the factor the cells take are gated, at each grain on its own. Source agreement: the bands' total over the cells' total before either side's uprating index must sit within 2% of one. Index gap: the bands grow band by band and the cells on the all-ranges index, which leaves a gap of 0.3% on this bridge; max_index_shift is that gap plus half a point, so a re-pinned index that widens it is refused."
+    },
+    {
+      "bridge_id": "spi_pension_amount_bands_vs_area",
+      "higher_target_ids": [
+        "hmrc.spi.state_pension.amount_by_total_income_band",
+        "hmrc.spi.private_pension_income.amount_by_total_income_band"
+      ],
+      "lower_target_id": "hmrc.pension_income.amount",
+      "geography_id": "K02000001",
+      "max_factor_shift": 0.04,
+      "max_index_shift": 0.006,
+      "reason": "An area's pension income in SPI Tables 3.14 and 3.15 is its taxpayers' private and State Pension together, so the SPI Table 3.6 State Pension and private pension bands, summed over every band of the full compiled register (the measure-excluded GBP 1m-and-over bands included), are the UK total the area cells divide; the constituency and local-authority cells reconcile to it per grain, and both parts of the factor are gated at each grain on its own (microcosm#1418). Source agreement: on SPI 2023-24 the bands sit 3.0% above the constituency cells and 3.2% above the local-authority cells before either side's uprating index, against within 0.5% for employment: the area cells leave out the taxpayers HMRC places in no area (SPI Table 3.11 note 4), and those are more often pensioners (1.8% of the Income Tax payers of State Pension age in ITL Tables 2.1 and 2.2, against 0.8% of all), so max_factor_shift is 4%. Index gap: the State Pension bands grow by resident State Pension age taxpayers times the new State Pension rate and the private pension bands band by band, together 0.1% from the cells' all-ranges growth; max_index_shift is that gap plus half a point."
     }
   ],
   "sum_bridges": [

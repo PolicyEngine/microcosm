@@ -369,6 +369,7 @@ def _value_operation_by_target_id(contract: Mapping[str, Any]) -> dict[str, str]
         if target_id in {
             "hmrc.self_employment_income.amount",
             "hmrc.employment_income.amount",
+            "hmrc.pension_income.amount",
         }:
             operations[target_id] = "count_x_mean"
         if target_id == "dwp.uc.households_by_area_children_3plus" and declared is None:
@@ -539,6 +540,7 @@ def _area_signed_deferrals(
         "hmrc.employment_income.amount",
         "hmrc.employment_income.count",
         "hmrc.higher_rate_taxpayers.count",
+        "hmrc.pension_income.amount",
     ):
         add(
             target_id=target_id,
