@@ -1,0 +1,76 @@
+{
+  "h5": "/Users/maxghenis/microcosm-uk-work/runs/pensioner-1069/baseline/microcosm_uk_2024_25.h5",
+  "h5_sha256": "de754f0b2dc6b76d6d8f5706914b4e9de1c312676971b6eb3df077a3332f96cc",
+  "label": "baseline",
+  "people": 181793,
+  "people_outside_region_tier": 0,
+  "state_pension_age_taxpayers_without_state_pension": 92551.77690595947,
+  "state_pension_recipients": {
+    "state_pension": {
+      "non_taxpaying": 3530991.3667199854,
+      "recipients": 12370840.97438407,
+      "taxpaying": 8839849.607664086
+    },
+    "state_pension_annual": {
+      "non_taxpaying": 3530991.3667199854,
+      "recipients": 12370840.97438407,
+      "taxpaying": 8839849.607664086
+    }
+  },
+  "taxpayers_by_area": {
+    "E12000001": {
+      "age_65_and_over": 401218.0428894246,
+      "state_pension_age": 386903.87983064353
+    },
+    "E12000002": {
+      "age_65_and_over": 987374.4589643637,
+      "state_pension_age": 931475.6386735747
+    },
+    "E12000003": {
+      "age_65_and_over": 787894.9741018191,
+      "state_pension_age": 757392.7610240057
+    },
+    "E12000004": {
+      "age_65_and_over": 673526.7002845481,
+      "state_pension_age": 655590.926914312
+    },
+    "E12000005": {
+      "age_65_and_over": 841771.6555969594,
+      "state_pension_age": 785798.8720706217
+    },
+    "E12000006": {
+      "age_65_and_over": 1003711.929248767,
+      "state_pension_age": 951472.276286589
+    },
+    "E12000007": {
+      "age_65_and_over": 778891.0917879269,
+      "state_pension_age": 715993.92500934
+    },
+    "E12000008": {
+      "age_65_and_over": 1423271.409789404,
+      "state_pension_age": 1359957.2009023335
+    },
+    "E12000009": {
+      "age_65_and_over": 994900.8132459968,
+      "state_pension_age": 936030.4454093575
+    },
+    "N92000002": {
+      "age_65_and_over": 200975.4453158155,
+      "state_pension_age": 189978.52396183833
+    },
+    "S92000003": {
+      "age_65_and_over": 857908.0170310512,
+      "state_pension_age": 805203.1736875623
+    },
+    "W92000004": {
+      "age_65_and_over": 485875.5135732107,
+      "state_pension_age": 456603.76079986617
+    }
+  },
+  "taxpayers_region_tier_total": {
+    "age_65_and_over": 9437320.051829286,
+    "state_pension_age": 8932401.384570044
+  },
+  "weighted_people": 69465985.67892489,
+  "year": 2025
+}

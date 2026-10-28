@@ -231,6 +231,13 @@ _ITL_AGE_LEDGER_ONLY_RATIONALE = (
     "Kingdom row, which adds taxpayers abroad or of unknown region, is vendored "
     "but not bound. The incumbent registry binds no taxpayer count by age."
 )
+#: The two SPI State Pension band families the State Pension age index moves,
+#: named exactly so no other ``hmrc/state_pension_*`` band row takes their
+#: rationale.
+_SPI_STATE_PENSION_BAND_PREFIXES = (
+    "hmrc/state_pension_count_income_band_",
+    "hmrc/state_pension_income_band_",
+)
 _SPI_STATE_PENSION_UPRATED_DRIFT_RATIONALE = (
     "Declared uprating (microcosm#1069, after María's ruling of 2026-09-22): ours "
     "moves the SPI 2023-24 State Pension band rows to the 2025 calibration year "
@@ -873,8 +880,7 @@ def _add_signed_rationale_notes(
         ):
             row["reason"] = _SPI_PROPERTY_AMOUNT_DRIFT_RATIONALE
         elif (
-            name.startswith("hmrc/state_pension_")
-            and "_income_band_" in name
+            name.startswith(_SPI_STATE_PENSION_BAND_PREFIXES)
             and row.get("kind") == "calibration_drift"
         ):
             row["reason"] = _SPI_STATE_PENSION_UPRATED_DRIFT_RATIONALE

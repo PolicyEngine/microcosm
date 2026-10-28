@@ -17,14 +17,22 @@ import argparse
 import json
 from pathlib import Path
 
+#: Groups of rows by target name (``target_name``, the name without its
+#: ``@geography`` and ``@period`` suffixes). A group whose rows partition one
+#: total is additive and its target and estimate are summed; the recipient
+#: breakdowns overlap their totals and each other, so only their errors are.
 PREFIXES = {
     "spi_state_pension_count": "hmrc/state_pension_count_income_band_",
     "spi_state_pension_amount": "hmrc/state_pension_income_band_",
     "spi_private_pension_count": "hmrc/private_pension_income_count_income_band_",
     "spi_private_pension_amount": "hmrc/private_pension_income_income_band_",
-    "itl_age": "hmrc.itl.",
-    "state_pension_recipients": "dwp.state_pension.recipients",
+    "itl_age_state_pension_age": "hmrc.itl.state_pension_age_taxpayers",
+    "itl_age_65_and_over": "hmrc.itl.taxpayers_aged_65_and_over",
+    "state_pension_recipient_breakdowns": "dwp.state_pension.recipients_",
 }
+#: The two resident recipient totals, Great Britain and Northern Ireland.
+RECIPIENT_TOTALS = ("dwp.state_pension.recipients", "dfc_ni.state_pension.recipients")
+NON_ADDITIVE = {"state_pension_recipient_breakdowns"}
 AGE_TARGETS = {
     "hmrc.itl.state_pension_age_taxpayers": "state_pension_age",
     "hmrc.itl.taxpayers_aged_65_and_over": "age_65_and_over",
@@ -41,27 +49,35 @@ SUMMARY = (
 )
 
 
+def _group(target_name: str) -> str | None:
+    if target_name in RECIPIENT_TOTALS:
+        return "state_pension_recipients"
+    for group, prefix in PREFIXES.items():
+        if target_name.startswith(prefix):
+            return group
+    return None
+
+
 def _rows(diagnostics: dict) -> dict[str, dict]:
+    """The lane's rows, grouped by ``target_name`` and keyed by the row's full
+    ``name`` (with its ``@geography`` and ``@period``), which is what pairs a
+    baseline row with its candidate row."""
+
     out = {}
     for row in diagnostics["targets"]:
-        name = row["target_name"]
-        if name.startswith("hmrc.itl.") and not name.startswith(tuple(AGE_TARGETS)):
+        group = _group(row["target_name"])
+        if group is None:
             continue
-        for group, prefix in PREFIXES.items():
-            if name.startswith(prefix) or (
-                group == "state_pension_recipients"
-                and name.startswith("dfc_ni.state_pension.recipients")
-            ):
-                out[row["name"]] = {
-                    "group": group,
-                    "target": row["target"],
-                    "estimate": row["final_estimate"],
-                    "relative_error": row["relative_error"],
-                    "loss_weight_share": row.get("target_loss_weight_share"),
-                    "uprating_factor": row["metadata"].get("uprating_factor"),
-                    "uprating_index": row["metadata"].get("uprating_index"),
-                }
-                break
+        metadata = row.get("metadata") or {}
+        out[row["name"]] = {
+            "group": group,
+            "target": row["target"],
+            "estimate": row["final_estimate"],
+            "relative_error": row["relative_error"],
+            "loss_weight_share": row.get("target_loss_weight_share"),
+            "uprating_factor": metadata.get("uprating_factor"),
+            "uprating_index": metadata.get("uprating_index"),
+        }
     return out
 
 
@@ -120,8 +136,9 @@ def main() -> int:
             if row is None:
                 continue
             totals = group[label]
-            totals["target"] = totals.get("target", 0.0) + row["target"]
-            totals["estimate"] = totals.get("estimate", 0.0) + row["estimate"]
+            if entry["group"] not in NON_ADDITIVE:
+                totals["target"] = totals.get("target", 0.0) + row["target"]
+                totals["estimate"] = totals.get("estimate", 0.0) + row["estimate"]
             totals["mean_abs_relative_error"] = totals.get(
                 "mean_abs_relative_error", 0.0
             ) + abs(row["relative_error"])

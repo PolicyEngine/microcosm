@@ -217,3 +217,44 @@ def test_the_spi_state_pension_rows_declare_the_state_pension_age_indices() -> N
         ]
         == "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band"
     )
+
+
+def test_the_parity_receipt_routes_only_the_age_and_state_pension_band_rows() -> None:
+    from tools import build_uk_ledger_compile_parity_signed_differences as parity_tool
+
+    names = {
+        "hmrc.itl.state_pension_age_taxpayers@E12000001": "ledger_only",
+        "hmrc.itl.taxpayers_aged_65_and_over@N92000002": "ledger_only",
+        "hmrc/state_pension_count_income_band_12_570_to_15_000": "calibration_drift",
+        "hmrc/state_pension_income_band_100_000_to_150_000": "calibration_drift",
+        # Look-alikes that keep the general rationales.
+        "hmrc/state_pension_credit_count_income_band_12_570_to_15_000": (
+            "calibration_drift"
+        ),
+        "hmrc/private_pension_income_count_income_band_12_570_to_15_000": (
+            "calibration_drift"
+        ),
+        "hmrc.itl.higher_rate_taxpayers": "ledger_only",
+    }
+    report = {"differences": [{"name": n, "kind": k} for n, k in names.items()]}
+    parity_tool._add_signed_rationale_notes(
+        report, fixture_resource="registry_parity_fixture_2025.json"
+    )
+    reasons = {row["name"]: row.get("reason") for row in report["differences"]}
+    age = parity_tool._ITL_AGE_LEDGER_ONLY_RATIONALE
+    state_pension = parity_tool._SPI_STATE_PENSION_UPRATED_DRIFT_RATIONALE
+    assert reasons["hmrc.itl.state_pension_age_taxpayers@E12000001"] == age
+    assert reasons["hmrc.itl.taxpayers_aged_65_and_over@N92000002"] == age
+    assert (
+        reasons["hmrc/state_pension_count_income_band_12_570_to_15_000"]
+        == state_pension
+    )
+    assert reasons["hmrc/state_pension_income_band_100_000_to_150_000"] == (
+        state_pension
+    )
+    for name in (
+        "hmrc/state_pension_credit_count_income_band_12_570_to_15_000",
+        "hmrc/private_pension_income_count_income_band_12_570_to_15_000",
+    ):
+        assert reasons[name] == parity_tool._SPI_UPRATED_DRIFT_RATIONALE
+    assert reasons["hmrc.itl.higher_rate_taxpayers"] not in (age, state_pension)

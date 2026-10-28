@@ -1,6 +1,8 @@
 """Tests split from packages/microcosm-build/tests/test_uk_hmrc_uprating.py."""
 
 # ruff: noqa: F403, F405
+import math
+
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
@@ -16,7 +18,6 @@ def test_every_declared_engine_index_and_the_count_index_have_an_applier() -> No
         "hmrc.itl_2026.total_tax_growth_by_total_income_band",
         "hmrc.itl_2026.taxpayer_count_growth_all_bands",
         "hmrc.itl_2026.total_income_growth_all_bands",
-        UK_SPI_STATE_PENSION_AMOUNT_INDEX_CONCEPT,
         UK_HMRC_STATE_PENSION_AGE_GROWTH_INDEX_CONCEPT,
         UK_SPI_STATE_PENSION_AGE_AMOUNT_INDEX_CONCEPT,
         UK_SPI_SAVINGS_INTEREST_INDEX_CONCEPT,
@@ -269,9 +270,9 @@ def test_state_pension_amount_moves_with_its_count_rows_recipients_and_the_rate(
         return {"2023-01-01": 200.0, "2025-01-01": 230.0}[instant]
 
     (spec,) = align_hmrc_amount_by_recipient_growth_and_rate(
-        _reference(UK_SPI_STATE_PENSION_AMOUNT_INDEX_CONCEPT),
+        _reference(TABLE_2_5_AMOUNT_INDEX),
         registry,
-        index_concept=UK_SPI_STATE_PENSION_AMOUNT_INDEX_CONCEPT,
+        index_concept=TABLE_2_5_AMOUNT_INDEX,
         parameter_path=UK_SPI_STATE_PENSION_RATE_PARAMETER,
         parameter_value=rate,
         rows=_count_rows(),
@@ -287,7 +288,7 @@ def test_state_pension_amount_moves_with_its_count_rows_recipients_and_the_rate(
     count_factor = float(count.metadata["uprating_factor"])
     assert count_factor == pytest.approx(1.175)
     assert spec.value == pytest.approx(6.0e9 * 1.175 * 1.15)
-    assert spec.metadata["uprating_index"] == UK_SPI_STATE_PENSION_AMOUNT_INDEX_CONCEPT
+    assert spec.metadata["uprating_index"] == TABLE_2_5_AMOUNT_INDEX
     assert float(spec.metadata["uprating_count_factor"]) == pytest.approx(1.175)
     assert float(spec.metadata["uprating_rate_factor"]) == pytest.approx(1.15)
     assert (
@@ -300,7 +301,7 @@ def test_state_pension_amount_moves_with_its_count_rows_recipients_and_the_rate(
         align_hmrc_amount_by_recipient_growth_and_rate(
             _reference(EARNINGS_INDEX),
             registry,
-            index_concept=UK_SPI_STATE_PENSION_AMOUNT_INDEX_CONCEPT,
+            index_concept=TABLE_2_5_AMOUNT_INDEX,
             parameter_path=UK_SPI_STATE_PENSION_RATE_PARAMETER,
             parameter_value=rate,
             rows=_count_rows(),
@@ -310,9 +311,9 @@ def test_state_pension_amount_moves_with_its_count_rows_recipients_and_the_rate(
     # Compiled at its own year, the row stays as published with a complete
     # receipt rather than dropping out.
     (own_year,) = align_hmrc_amount_by_recipient_growth_and_rate(
-        _reference(UK_SPI_STATE_PENSION_AMOUNT_INDEX_CONCEPT, period=2023),
+        _reference(TABLE_2_5_AMOUNT_INDEX, period=2023),
         registry,
-        index_concept=UK_SPI_STATE_PENSION_AMOUNT_INDEX_CONCEPT,
+        index_concept=TABLE_2_5_AMOUNT_INDEX,
         parameter_path=UK_SPI_STATE_PENSION_RATE_PARAMETER,
         parameter_value=rate,
         rows=_count_rows(),
@@ -598,55 +599,117 @@ def test_state_pension_amount_moves_with_the_state_pension_age_level_and_the_rat
 
 
 _counts = st.floats(min_value=1.0e3, max_value=1.0e8, allow_nan=False)
+_shares = st.lists(st.floats(min_value=0.01, max_value=1.0), min_size=12, max_size=12)
+#: The twelve areas' total as a fraction of the United Kingdom's: above one is a
+#: publisher table the applier must refuse.
+_coverage = st.floats(min_value=0.5, max_value=1.1)
 
 
-@settings(max_examples=60, deadline=None)
+@settings(max_examples=200, deadline=None)
 @given(
     uk=st.tuples(_counts, _counts, _counts),
-    areas=st.lists(st.tuples(_counts, _counts), min_size=12, max_size=12),
-    scale=st.floats(min_value=1.0e-3, max_value=1.0e3, allow_nan=False),
-    lower_bounds=st.sets(st.sampled_from(sorted(SPI_BAND_TO_ITL_BANDS)), min_size=1),
+    shares=st.tuples(_shares, _shares),
+    coverage=st.tuples(_coverage, _coverage),
+    values=st.dictionaries(
+        st.sampled_from(sorted(SPI_BAND_TO_ITL_BANDS)),
+        st.floats(min_value=1.0, max_value=1.0e7),
+        min_size=1,
+    ),
+    rates=st.tuples(
+        st.floats(min_value=100.0, max_value=400.0),
+        st.floats(min_value=100.0, max_value=400.0),
+    ),
 )
-def test_state_pension_age_factor_invariants(uk, areas, scale, lower_bounds) -> None:
-    """For every positive Table 2.1 and 2.2 input:
+def test_state_pension_age_factor_invariants(
+    uk, shares, coverage, values, rates
+) -> None:
+    """For every positive Table 2.1 and 2.2 input, against a recompute from the
+    raw inputs that shares no code with the applier (the window weights are
+    written out, not read from ``CALENDAR_YEAR_WINDOW_WEIGHTS``):
 
-    * the factor is United Kingdom growth times the resident share (the
-      receipted decomposition multiplies back to it);
-    * it is the same for every band;
-    * it is unchanged when every count is scaled by one positive constant
-      (a units change in the publisher's figures moves nothing).
+    * where each window year's twelve areas are within its United Kingdom
+      count, every band moves by (1/4 areas 2024-25 + 3/4 areas 2025-26) over
+      the United Kingdom's 2023-24 count, the resident share is at most one and
+      the factor at most United Kingdom growth;
+    * the bands keep their shares, so the rows sum to their opening total
+      times the factor;
+    * each amount row moves by its count row's factor times the rate ratio,
+      and the two rows' ratio is the rate ratio;
+    * where a window year's areas exceed its United Kingdom count, both
+      appliers refuse.
     """
 
-    def rows(factor: float):
-        out = [
-            _age_row(
-                year=year,
-                geography_id=UK_HMRC_ITL_UK_GEOGRAPHY_ID,
-                value=value * factor,
-            )
-            for year, value in zip((2023, 2024, 2025), uk, strict=True)
-        ]
-        for (_, code), (in_2024, in_2025) in zip(UK_REGION_TIER, areas, strict=True):
-            out.append(_age_row(year=2024, geography_id=code, value=in_2024 * factor))
-            out.append(_age_row(year=2025, geography_id=code, value=in_2025 * factor))
-        return out
-
-    registry = _band_specs(*sorted(lower_bounds))
-    reference = _reference(UK_HMRC_STATE_PENSION_AGE_GROWTH_INDEX_CONCEPT)
-    aligned = align_hmrc_row_by_resident_state_pension_age_growth(
-        reference, registry, rows=rows(1.0)
-    )
-    scaled = align_hmrc_row_by_resident_state_pension_age_growth(
-        reference, registry, rows=rows(scale)
-    )
-    factors = {float(spec.metadata["uprating_factor"]) for spec in aligned.specs}
-    assert len(factors) == 1
-    (factor,) = factors
-    for spec in aligned.specs:
-        growth = float(spec.metadata["uprating_index_united_kingdom_growth"])
-        share = float(spec.metadata["uprating_index_resident_share"])
-        assert growth * share == pytest.approx(factor, rel=1e-12)
-    for spec in scaled.specs:
-        assert float(spec.metadata["uprating_factor"]) == pytest.approx(
-            factor, rel=1e-12
+    opening, uk_2024, uk_2025 = uk
+    areas = {}
+    for year, uk_year, year_shares, fraction in zip(
+        (2024, 2025), (uk_2024, uk_2025), shares, coverage, strict=True
+    ):
+        total = sum(year_shares)
+        areas[year] = [uk_year * fraction * share / total for share in year_shares]
+    rows = [
+        _age_row(year=year, geography_id=UK_HMRC_ITL_UK_GEOGRAPHY_ID, value=value)
+        for year, value in zip((2023, 2024, 2025), uk, strict=True)
+    ]
+    for year, year_areas in areas.items():
+        rows.extend(
+            _age_row(year=year, geography_id=code, value=value)
+            for (_, code), value in zip(UK_REGION_TIER, year_areas, strict=True)
         )
+    bands = sorted(values)
+    counts = TargetRegistry(
+        tuple(
+            _spec(
+                name=f"hmrc/state_pension_count_income_band_{lower}@2025",
+                value=values[lower],
+                lower_bound=lower,
+            )
+            for lower in bands
+        ),
+        country="uk",
+    )
+
+    def rate(path: str, instant: str) -> float:
+        assert path == UK_SPI_STATE_PENSION_RATE_PARAMETER
+        return {"2023-01-01": rates[0], "2025-01-01": rates[1]}[instant]
+
+    def align_counts():
+        return align_hmrc_row_by_resident_state_pension_age_growth(
+            _reference(UK_HMRC_STATE_PENSION_AGE_GROWTH_INDEX_CONCEPT),
+            counts,
+            rows=rows,
+        )
+
+    def align_amounts():
+        return align_hmrc_amount_by_recipient_growth_and_rate(
+            _reference(UK_SPI_STATE_PENSION_AGE_AMOUNT_INDEX_CONCEPT),
+            counts,
+            index_concept=UK_SPI_STATE_PENSION_AGE_AMOUNT_INDEX_CONCEPT,
+            parameter_path=UK_SPI_STATE_PENSION_RATE_PARAMETER,
+            count_index_concept=UK_HMRC_STATE_PENSION_AGE_GROWTH_INDEX_CONCEPT,
+            parameter_value=rate,
+            rows=rows,
+        )
+
+    resident = {year: math.fsum(year_areas) for year, year_areas in areas.items()}
+    if resident[2024] > uk_2024 * (1 + 1e-12) or resident[2025] > uk_2025 * (1 + 1e-12):
+        for align in (align_counts, align_amounts):
+            with pytest.raises(ValueError, match="more than the United Kingdom"):
+                align()
+        return
+    if resident[2024] > uk_2024 * (1 - 1e-12) or resident[2025] > uk_2025 * (1 - 1e-12):
+        # Within rounding of the United Kingdom count: either outcome is right.
+        return
+    expected = (0.25 * resident[2024] + 0.75 * resident[2025]) / opening
+    uk_growth = (0.25 * uk_2024 + 0.75 * uk_2025) / opening
+    aligned = align_counts()
+    for before, spec in zip(counts.specs, aligned.specs, strict=True):
+        assert spec.value == pytest.approx(before.value * expected, rel=1e-12)
+        share = float(spec.metadata["uprating_index_resident_share"])
+        assert share <= 1.0
+        assert float(spec.metadata["uprating_factor"]) <= uk_growth * (1 + 1e-12)
+    assert math.fsum(spec.value for spec in aligned.specs) == pytest.approx(
+        math.fsum(values.values()) * expected, rel=1e-12
+    )
+    rate_ratio = rates[1] / rates[0]
+    for count, amount in zip(aligned.specs, align_amounts().specs, strict=True):
+        assert amount.value == pytest.approx(count.value * rate_ratio, rel=1e-12)

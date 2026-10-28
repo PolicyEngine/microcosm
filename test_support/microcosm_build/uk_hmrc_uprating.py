@@ -24,7 +24,6 @@ from microcosm.build.uk_runtime.hmrc_uprating import (
     UK_SPI_SAVINGS_INTEREST_INDEX_CONCEPT,
     UK_SPI_SAVINGS_INTEREST_PROJECTION_PARAMETER,
     UK_SPI_STATE_PENSION_AGE_AMOUNT_INDEX_CONCEPT,
-    UK_SPI_STATE_PENSION_AMOUNT_INDEX_CONCEPT,
     UK_SPI_STATE_PENSION_RATE_PARAMETER,
     align_hmrc_amount_by_recipient_growth_and_rate,
     align_hmrc_count_row_by_taxpayer_growth,
@@ -39,6 +38,10 @@ from microcosm.calibrate.geography_constants import UK_REGION_TIER
 
 EARNINGS = "gov.economic_assumptions.indices.obr.average_earnings"
 EARNINGS_INDEX = f"{UK_ENGINE_PARAMETER_INDEX_PREFIX}{EARNINGS}"
+#: An amount index no contract declares, composing Table 2.5's band taxpayer
+#: growth (the amount applier's default count index) with a rate, so the
+#: generic amount applier is tested apart from the State Pension age index.
+TABLE_2_5_AMOUNT_INDEX = "test.taxpayer_count_growth_times_rate_by_total_income_band"
 
 
 def _spec(

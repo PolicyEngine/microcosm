@@ -8,6 +8,11 @@ row by one factor, so the 2023-24 total is the new total over that factor,
 and the old total's growth from 2023-24 follows. Rows the build holds out of
 the objective (the GBP 1m-and-over band, microcosm#1095) are totalled apart.
 
+It also writes the alternative the re-index did not take: the old band values
+raked to the new bound total (each times new bound total over old bound
+total), which keeps Table 2.5's movement between bands at the new level, and
+each new value over its raked one.
+
     python3 state_pension_band_totals.py --before <main receipt> --after <branch receipt> \
         --factor 1.0835478 --output <json>
 """
@@ -55,6 +60,7 @@ def main() -> int:
             "after_all": sum(after.values()),
         }
         ratios = {band: after[band] / before[band] for band in before}
+        rake = totals["after_bound"] / totals["before_bound"]
         entry = {
             "bands": {
                 band: {
@@ -63,10 +69,13 @@ def main() -> int:
                     "after_over_before": ratios[band],
                     "before_share": before[band] / totals["before_all"],
                     "after_share": after[band] / totals["after_all"],
+                    "raked": before[band] * rake,
+                    "after_over_raked": after[band] / (before[band] * rake),
                 }
                 for band in sorted(before)
             },
             "totals": totals,
+            "rake_factor": rake,
         }
         if group == "count":
             opening = {

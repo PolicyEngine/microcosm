@@ -160,11 +160,9 @@ UK_HMRC_ITL_ALL_BAND_GROWTH_BASIS = (
 )
 #: The SPI State Pension amount by band (microcosm#1069): an amount row is the
 #: band's recipients times the amount each is paid, so it moves by the growth
-#: its count row declares (the band's taxpayers, HMRC Table 2.5) times the
-#: rate the engine pays. Moving it by the rate alone held the band's recipients
-#: at the fact year's number while the count row grew them, and the two rows
-#: described different populations.
-UK_SPI_STATE_PENSION_AMOUNT_INDEX_CONCEPT = "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band"
+#: its count row declares times the rate the engine pays. Moving it by the rate
+#: alone held the band's recipients at the fact year's number while the count
+#: row grew them, and the two rows described different populations.
 UK_SPI_STATE_PENSION_RATE_PARAMETER = "gov.dwp.state_pension.new_state_pension.amount"
 #: The SPI State Pension rows by band, moved by their own population
 #: (microcosm#1069). A band's growth in all its taxpayers (Table 2.5) need not
@@ -174,15 +172,34 @@ UK_SPI_STATE_PENSION_RATE_PARAMETER = "gov.dwp.state_pension.new_state_pension.a
 #: no age group by band. So every band moves by one factor, the growth of the
 #: bound State Pension age level, and the rows hold their 2023-24 shares of it.
 #:
+#: That gives up, for these rows, the movement between bands that the Table
+#: 2.5 appliers above keep for the other SPI rows (microcosm#1063): Table 2.5's
+#: band growth is all taxpayers', mostly workers', and nothing published says
+#: how pensioners move between bands. Holding the shares is the near-term
+#: choice on microcosm#1069 (the level is HMRC's, the shape a 2023-24
+#: snapshot) until each band fact is bound at its own year. The alternative,
+#: Table 2.5's band factors raked to the same level, would set the GBP
+#: 15,000-20,000 band 6.6% lower and the GBP 100,000-150,000 band 18.7% higher
+#: (docs/evidence/uk-pensioner-taxpayers-1069).
+#:
 #: The level is the twelve region-tier areas of Table 2.2, the residents the
 #: frame holds and the ``hmrc.itl.state_pension_age_taxpayers`` rows bind. The
-#: 2023-24 SPI rows count every UK taxpayer, as Table 2.1's United Kingdom
-#: column does, including those who live abroad or whose region is unknown
-#: (0.16m at State Pension age in calendar 2025, 1.8%; HMRC's note to Table
-#: 2.2), so the factor divides the resident window by Table 2.1's 2023-24 count
-#: and is United Kingdom growth times the resident share; both are receipted.
-#: The resident share of State Pension recipients is taken to be that of all
-#: taxpayers of State Pension age.
+#: 2023-24 SPI rows count every UK taxpayer, including those HMRC allocates to
+#: no region: SPI 2023-24's note 4 to Table 3.11 puts members of the Forces
+#: and Merchant Navy, people serving overseas, people with overseas addresses
+#: and people with no usable postcode "in the UK figures", so its four nations
+#: hold 36.401m taxpayers against the United Kingdom's 36.7m. Table 3.6 counts
+#: that United Kingdom universe: its all-ranges employment count is Table
+#: 3.11's United Kingdom 27.3m, against 27.189m over the four nations. ITL's
+#: 2023-24 columns restate the SPI (Table 2.1's United Kingdom 36.7m, Table
+#: 2.2's four nations 36.401m), so Table 2.1's United Kingdom count at State
+#: Pension age is the SPI rows' universe and Table 2.2's areas are the
+#: residents (0.16m apart in calendar 2025, 1.8%). The factor therefore
+#: divides the resident window by Table 2.1's 2023-24 count and is United
+#: Kingdom growth times the resident share; both are receipted, and a year
+#: whose areas exceed its United Kingdom count is refused. The resident share
+#: of State Pension recipients is taken to be that of all taxpayers of State
+#: Pension age.
 UK_HMRC_STATE_PENSION_AGE_GROWTH_INDEX_CONCEPT = (
     "hmrc.itl_2026.resident_state_pension_age_taxpayer_growth"
 )
@@ -878,7 +895,9 @@ def align_hmrc_row_by_itl_growth(
     pension index ignores. Under the flat index the GBP 15,000-20,000 band's
     employment amount rose 10.7% from 2023-24 to 2025 while HMRC projects the
     band's total income to fall 2.3%; the SPI tape re-banded under the
-    engine's own indices agrees with HMRC's direction.
+    engine's own indices agrees with HMRC's direction. The SPI State Pension
+    rows are the exception: they move by their own population's level, not by
+    all taxpayers' band growth (``UK_HMRC_STATE_PENSION_AGE_GROWTH_INDEX_CONCEPT``).
     """
 
     if reference.uprating_index != index_concept:
@@ -1197,6 +1216,13 @@ def align_hmrc_row_by_resident_state_pension_age_growth(
                 )
                 resident[year] += area_value
                 record_ids.append(record_id)
+            if resident[year] > united_kingdom[year]:
+                raise ValueError(
+                    f"UK target {spec.name!r}: the twelve region-tier areas hold "
+                    f"{resident[year]!r} Income Tax payers of State Pension age in "
+                    f"{year}, more than the United Kingdom's "
+                    f"{united_kingdom[year]!r}; the areas are part of it."
+                )
         uk_window = sum(
             weight * united_kingdom[target_year + offset]
             for offset, weight in CALENDAR_YEAR_WINDOW_WEIGHTS.items()
@@ -1266,11 +1292,6 @@ def hmrc_uprating_appliers() -> dict[str, Any]:
         appliers[index_concept] = partial(
             align_hmrc_row_by_itl_all_band_growth, index_concept=index_concept
         )
-    appliers[UK_SPI_STATE_PENSION_AMOUNT_INDEX_CONCEPT] = partial(
-        align_hmrc_amount_by_recipient_growth_and_rate,
-        index_concept=UK_SPI_STATE_PENSION_AMOUNT_INDEX_CONCEPT,
-        parameter_path=UK_SPI_STATE_PENSION_RATE_PARAMETER,
-    )
     appliers[UK_HMRC_STATE_PENSION_AGE_GROWTH_INDEX_CONCEPT] = (
         align_hmrc_row_by_resident_state_pension_age_growth
     )
@@ -1311,7 +1332,6 @@ __all__ = [
     "UK_HMRC_STATE_PENSION_AGE_GROWTH_INDEX_CONCEPT",
     "UK_HMRC_STATE_PENSION_AGE_MEASURE_ID",
     "UK_SPI_STATE_PENSION_AGE_AMOUNT_INDEX_CONCEPT",
-    "UK_SPI_STATE_PENSION_AMOUNT_INDEX_CONCEPT",
     "UK_SPI_STATE_PENSION_RATE_PARAMETER",
     "UK_SPI_SAVINGS_INTEREST_HISTORY_PARAMETER",
     "UK_SPI_SAVINGS_INTEREST_INDEX_CONCEPT",
