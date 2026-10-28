@@ -83,18 +83,36 @@ def test_a_git_install_records_its_commit_and_takes_its_own_identity(
                 "url": "file:///home/someone/wheels/x.whl",
                 "archive_info": {"hashes": {"sha256": "ab" * 32}},
             },
-            {"kind": "archive", "sha256": "ab" * 32},
+            {"kind": "archive", "hashes": {"sha256": "ab" * 32}},
         ),
         (
             {
                 "url": "file:///home/someone/wheels/x.whl",
                 "archive_info": {"hash": "sha256=" + "cd" * 32},
             },
-            {"kind": "archive", "sha256": "cd" * 32},
+            {"kind": "archive", "hashes": {"sha256": "cd" * 32}},
+        ),
+        (
+            {
+                "url": "file:///home/someone/wheels/x.whl",
+                "archive_info": {"hashes": {"sha512": "ef" * 64}},
+            },
+            {"kind": "archive", "hashes": {"sha512": "ef" * 64}},
         ),
         (
             {"url": "file:///home/someone/policyengine-uk", "dir_info": {}},
             {"kind": "dir", "editable": False},
+        ),
+        (
+            {
+                "url": "file:///home/someone/policyengine-uk",
+                "dir_info": {"editable": True},
+            },
+            {"kind": "dir", "editable": True},
+        ),
+        (
+            {"url": "file:///home/someone/policyengine-uk"},
+            {"kind": "unrecognised"},
         ),
     ],
 )
@@ -105,6 +123,25 @@ def test_other_url_installs_record_their_kind_and_never_a_url(
     provenance = spine_build._rules_engine_provenance()
     assert provenance["direct_install"] == expected
     assert "someone" not in json.dumps(provenance)
+
+
+def test_archives_with_other_hashes_take_their_own_identities(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    identities = set()
+    for digest in ("ef" * 64, "12" * 64):
+        _install(
+            monkeypatch,
+            {"url": "file:///x.whl", "archive_info": {"hashes": {"sha512": digest}}},
+        )
+        identities.add(_identity(spine_build._rules_engine_provenance()))
+    assert len(identities) == 2
+
+
+def test_an_archive_without_a_hash_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
+    _install(monkeypatch, {"url": "file:///x.whl", "archive_info": {}})
+    with pytest.raises(ValueError, match="records no hash"):
+        spine_build._rules_engine_provenance()
 
 
 def test_a_missing_engine_still_records_unavailable(

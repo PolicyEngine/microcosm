@@ -744,8 +744,11 @@ def _direct_install(package: str) -> dict[str, object] | None:
     """What PEP 610's ``direct_url.json`` records of a URL install, or None.
 
     A git install of an engine pull request carries a release's version
-    string, so only this tells the two apart: it names the commit. URLs are
-    left out, so no local path reaches a build or release record.
+    string, so only this tells the two apart: it names the commit. An archive
+    is named by every hash its record holds, whatever the algorithm, and one
+    that records no hash is refused, since nothing would tell it from another
+    archive. URLs are left out, so no local path reaches a build or release
+    record.
     """
     try:
         text = metadata.distribution(package).read_text("direct_url.json")
@@ -763,12 +766,23 @@ def _direct_install(package: str) -> dict[str, object] | None:
         }
     archive = record.get("archive_info")
     if isinstance(archive, Mapping):
-        hashes = archive.get("hashes")
-        sha256 = hashes.get("sha256") if isinstance(hashes, Mapping) else None
+        listed = archive.get("hashes")
+        hashes = (
+            {str(name): str(value) for name, value in listed.items()}
+            if isinstance(listed, Mapping)
+            else {}
+        )
         legacy = archive.get("hash")
-        if sha256 is None and isinstance(legacy, str) and legacy.startswith("sha256="):
-            sha256 = legacy.removeprefix("sha256=")
-        return {"kind": "archive", "sha256": sha256}
+        if isinstance(legacy, str) and "=" in legacy:
+            name, value = legacy.split("=", 1)
+            hashes.setdefault(name, value)
+        if not hashes:
+            raise ValueError(
+                f"{package} was installed from an archive whose direct_url.json "
+                "records no hash, so no engine identity can tell it from another "
+                "archive: install a release, or an archive with a recorded hash."
+            )
+        return {"kind": "archive", "hashes": dict(sorted(hashes.items()))}
     directory = record.get("dir_info")
     if isinstance(directory, Mapping):
         return {"kind": "dir", "editable": bool(directory.get("editable", False))}
