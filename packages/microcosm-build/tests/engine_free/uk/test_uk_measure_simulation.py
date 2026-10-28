@@ -790,13 +790,14 @@ def test_packaged_exclusions_load():
     # plan-2 borrower rows were renewed one month on 2026-10-02 (microcosm#1063
     # stack) and again on 2026-10-20, to the November PR's renewals (María's
     # ruling on the pre-Budget PR, microcosm#1278), so nothing remains on the
-    # 2026-09-03 clock. The plan-2 rows track microcosm#1278 since
-    # microcosm#868 closed (María's ruling of 2026-10-17).
+    # 2026-09-03 clock. The plan-2 rows tracked microcosm#1278 after
+    # microcosm#868 closed (María's ruling of 2026-10-17), and microcosm#1095
+    # since #1278 closed into it (María's ruling of 2026-10-28).
     a16_issues = {
         "ons.savings_interest_income": "microcosm#866",
         "obr.housing_benefit": "microcosm#867",
-        "slc.borrowers.plan_2_liable": "microcosm#1278",
-        "slc.borrowers.plan_2_above_threshold": "microcosm#1278",
+        "slc.borrowers.plan_2_liable": "microcosm#1095",
+        "slc.borrowers.plan_2_above_threshold": "microcosm#1095",
         "dwp.jsa_claimants": "microcosm#869",
     }
     assert [e for e in exclusions if e["approved_on"] == "2026-09-03"] == []
@@ -821,7 +822,7 @@ def test_packaged_exclusions_load():
     (rail,) = [e for e in exclusions if e["name"] == "orr.rail_government_support"]
     assert rail["approved_by"] == "juaristi22"
     assert (rail["approved_on"], rail["expires_on"]) == ("2026-10-20", "2026-12-11")
-    assert rail["tracking"] == "microcosm#1278"
+    assert rail["tracking"] == "microcosm#1095"
     assert "7270" in rail["reason"] and "7271" in rail["reason"]
     assert "microcosm#890 G" in rail["reason"]
     assert "never fitted" in rail["reason"]
@@ -842,8 +843,9 @@ def test_packaged_exclusions_load():
     # re-solve with the four masked together left the other rows fitting no
     # worse, so they are held out of the objective and measured by the
     # diagnose tool. The PR that added them closes microcosm#1113, so the
-    # three that tracked it tracked its follow-up issue, microcosm#1207, and
-    # since that closed into it, microcosm#1278. obr.vat tracked
+    # three that tracked it tracked its follow-up issue, microcosm#1207, then
+    # microcosm#1278 when that closed into it, and microcosm#1095 since #1278
+    # closed into that (María's ruling of 2026-10-28). obr.vat tracked
     # policyengine-uk#1996 until policyengine-uk#2187 (released in 2.135.7)
     # closed it, bound again with the next policyengine-uk bump, and is held
     # again on its own entry: the factor #2187 uses was derived on a certified
@@ -862,10 +864,10 @@ def test_packaged_exclusions_load():
             in entry["adjudication"]
         ), entry["name"]
     trackings = {e["name"]: e["tracking"] for e in consumption_taxes}
-    assert trackings == {"obr.fuel_duties_cars": "microcosm#1278"}
+    assert trackings == {"obr.fuel_duties_cars": "microcosm#1095"}
     (vat,) = [e for e in exclusions if e["name"] == "obr.vat"]
     assert (vat["approved_on"], vat["expires_on"]) == ("2026-10-24", "2027-01-24")
-    assert vat["tracking"] == "microcosm#1278"
+    assert vat["tracking"] == "microcosm#1095"
     assert "circularity" in vat["reason"]
     assert "policyengine-uk#2319" in vat["reason"]
     assert "tools/diagnose_uk_consumption_taxes.py" in vat["reason"]
