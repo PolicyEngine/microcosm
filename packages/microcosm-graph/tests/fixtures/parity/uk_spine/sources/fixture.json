@@ -4426,6 +4426,10 @@
           "period_value": 2024,
           "resource": "qep_energy_prices.json",
           "seed": 0,
+          "spend_level_fuels": [
+            "electricity"
+          ],
+          "spend_level_resource": "ons_household_expenditure_facts.json",
           "vat_treatment": "including_vat",
           "zero_kwh_cells_at_need_mean": {
             "accommodation": [
