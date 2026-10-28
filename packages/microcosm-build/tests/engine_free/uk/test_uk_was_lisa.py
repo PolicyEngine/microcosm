@@ -12,7 +12,14 @@ import pytest
 
 from microcosm.build.country_spec import load_country_spec
 from microcosm.build.source_manifest import SourceStageSpec
-from microcosm.build.uk_runtime.national_frame import uk_national_frame
+from microcosm.build.uk_runtime.hmrc_isa_statistics import (
+    HMRCISAStatisticsError,
+    load_hmrc_isa_statistics,
+)
+from microcosm.build.uk_runtime.national_frame import (
+    uk_national_frame,
+    uk_time_period,
+)
 from microcosm.build.uk_runtime.stage_health import uk_stage_health_gate
 from microcosm.build.uk_runtime.was_lisa import (
     BALANCE_COLUMN,
@@ -36,6 +43,12 @@ from microcosm.build.uk_runtime.was_lisa import (
     recipient_predictors,
 )
 from microcosm.build.uk_runtime.was_wealth import UK_WAS_ENGINE_PREDICTOR_ENTITIES
+from test_support.microcosm_build.uk_isa_statistics import (
+    ISA_FACTS_ARTIFACT,
+    ISA_FACTS_VERIFY_OPERATION,
+    LISA_ANCHOR_OPERATION,
+    synthetic_isa_statistics_payload,
+)
 from test_support.paths import paths_for
 from tools.graph_uk_spine_fixture import _was_donor, _was_person_donor
 
@@ -139,7 +152,7 @@ class _FakeEngine:
         return SimpleNamespace(entity=UK_WAS_ENGINE_PREDICTOR_ENTITIES[name])
 
     def materialize(self, frame, variables, period):
-        assert period == "2023"
+        assert period == uk_time_period(frame)
         tables = {
             entity: frame.table(entity) for entity in ("person", "benunit", "household")
         }
@@ -211,7 +224,7 @@ def _donor():
     return clean_was_lisa_donor(_was_person_donor(), _was_donor(), columns=_columns())
 
 
-def _recipient_frame(households: int = 64):
+def _recipient_frame(households: int = 64, time_period: str = "2023"):
     """FRS-like recipients in the synthetic donor's ranges (the fixture's scale)."""
 
     persons: list[dict[str, object]] = []
@@ -279,7 +292,7 @@ def _recipient_frame(households: int = 64):
         person=pd.DataFrame(persons),
         benunit=pd.DataFrame(benunits),
         household=pd.DataFrame(homes),
-        time_period="2023",
+        time_period=time_period,
     )
 
 
@@ -589,6 +602,109 @@ def test_stage_writes_the_declared_outputs_with_receipts() -> None:
     assert {record.weight_kind for record in transform.fit_weight_records} == {
         "explicit"
     }
+
+
+def _anchored_stage() -> SourceStageSpec:
+    """The packaged declaration with the #1415 anchor and its facts check."""
+
+    committed = _committed_stage()
+    return SourceStageSpec.from_mapping(
+        {
+            "stage": committed.stage,
+            "survey": committed.survey,
+            "source": committed.source,
+            "grain": committed.grain,
+            "artifacts": [
+                *(dict(artifact) for artifact in committed.artifacts),
+                ISA_FACTS_ARTIFACT,
+            ],
+            "operations": [
+                ISA_FACTS_VERIFY_OPERATION,
+                *(
+                    {"kind": operation.kind, **dict(operation.parameters)}
+                    for operation in committed.operations
+                ),
+                LISA_ANCHOR_OPERATION,
+            ],
+            "outputs": list(committed.outputs),
+            "nonnegative_outputs": list(committed.nonnegative_outputs),
+        }
+    )
+
+
+def _counted_holders(frame) -> float:
+    person = frame.table("person")
+    weights = (
+        pd.Series(
+            np.asarray(frame.weights_for("household").values, dtype=float),
+            index=frame.table("household")["household_id"].to_numpy(),
+        )
+        .reindex(person["person_household_id"].to_numpy())
+        .to_numpy(dtype=float)
+    )
+    ages = person["age"].to_numpy(dtype=float)
+    counted = person[OWNERSHIP_COLUMN].to_numpy(bool) & (ages >= 18) & (ages <= 49)
+    return float(weights[counted].sum())
+
+
+def test_the_declared_anchor_adds_holders_up_to_hmrc_payers() -> None:
+    frame = _recipient_frame(households=400, time_period="2024")
+    drawn = _transform()(frame)
+    before = _counted_holders(drawn)
+    target = 1.5 * before
+    # The synthetic facts carry 1,100 Lifetime ISA accounts in 2024-25.
+    statistics = load_hmrc_isa_statistics(
+        payload=synthetic_isa_statistics_payload(scale=target / 1_100.0),
+        verify_feed_identity=False,
+    )
+    transform = UKWASLISAStageTransform(
+        stage=_anchored_stage(),
+        engine=_FakeEngine(),
+        donor_household=_was_donor(),
+        donor_person=_was_person_donor(),
+        statistics=statistics,
+    )
+
+    result = transform(frame)
+
+    person = result.table("person")
+    anchored = person[OWNERSHIP_COLUMN].to_numpy(bool)
+    assert not (
+        drawn.table("person")[OWNERSHIP_COLUMN].to_numpy(bool) & ~anchored
+    ).any()
+    np.testing.assert_array_equal(anchored, person[BALANCE_COLUMN].to_numpy() > 0)
+    evidence = transform.checkpoint_metadata()["evidence"]
+    achieved = evidence["anchored_holders_after_cap"]
+    assert achieved == pytest.approx(_counted_holders(result))
+    anchor = evidence["ownership_model"]["anchor"]
+    assert anchor["target_holders"] == pytest.approx(target)
+    # The cap clears holders exactly where the anchor predicted it would.
+    assert achieved == pytest.approx(anchor["holders_after"])
+    assert target <= achieved <= target + 5.0
+    assert anchor["logit_shift"] > 0
+    assert anchor["removed_holders"] == 0
+    gate = uk_stage_health_gate(
+        evidence=evidence,
+        stage=UK_WAS_LISA_STAGE_NAME,
+        check="was_lisa_anchor",
+        parameters={"maximum_relative_deviation": 5.0 / target},
+    )
+    assert gate.passed, gate.failures
+
+
+def test_the_anchor_maps_hmrc_facts_to_the_build_year_only() -> None:
+    transform = UKWASLISAStageTransform(
+        stage=_anchored_stage(),
+        engine=_FakeEngine(),
+        donor_household=_was_donor(),
+        donor_person=_was_person_donor(),
+        statistics=load_hmrc_isa_statistics(
+            payload=synthetic_isa_statistics_payload(), verify_feed_identity=False
+        ),
+    )
+
+    with pytest.raises(HMRCISAStatisticsError, match="build period 2024"):
+        transform(_recipient_frame(time_period="2023"))
 
 
 def test_stage_is_deterministic() -> None:

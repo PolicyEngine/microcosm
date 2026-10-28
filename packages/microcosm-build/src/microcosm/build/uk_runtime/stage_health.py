@@ -107,6 +107,10 @@ def uk_stage_health_gate(
         return _legacy_closure_take_up_gate(stage, evidence, parameters)
     if check == "apprentice_draw":
         return _apprentice_draw_gate(stage, evidence, parameters)
+    if check == "isa_subscriptions":
+        return _isa_subscriptions_gate(stage, evidence, parameters)
+    if check == "was_lisa_anchor":
+        return _was_lisa_anchor_gate(stage, evidence, parameters)
     return GateResult(
         name="stage_health",
         passed=False,
@@ -4663,3 +4667,159 @@ def _apprentice_draw_gate(
     if failures:
         return _fail(stage, check, failures, details)
     return _pass(stage, check, details)
+
+
+def _isa_subscriptions_gate(
+    stage: str,
+    evidence: Mapping[str, object],
+    parameters: Mapping[str, object],
+) -> GateResult:
+    """ISA subscriptions keep their invariants (microcosm#1415).
+
+    Fails on any coherence violation the receipt counts (the overall and Lifetime
+    ISA limits, ages, holding what is paid into, both parts of a both-type
+    subscription, negative amounts), on person balances that do not sum to the
+    household draws within ``maximum_household_sum_error_gbp``, and on growth
+    totals, the Lifetime ISA total or the both-type split's stocks-and-shares
+    total off their targets by more than ``maximum_relative_total_deviation``
+    (a reported saturation is named, not failed). Cells short of eligible adults
+    are reported, never failed: the stage invents no holders, and how far the
+    result sits from HMRC's tables after calibration is a measurement, not a
+    gate (María's ruling of 28 October 2026).
+    """
+
+    check = "isa_subscriptions"
+    tolerance = _finite_number(
+        parameters["maximum_relative_total_deviation"],
+        label=f"{stage}.maximum_relative_total_deviation",
+    )
+    sum_tolerance = _finite_number(
+        parameters["maximum_household_sum_error_gbp"],
+        label=f"{stage}.maximum_household_sum_error_gbp",
+    )
+    failures: list[str] = []
+    checks = _mapping(evidence.get("checks"), label=f"{stage}.checks")
+    violations = _mapping(checks.get("violations"), label=f"{stage}.violations")
+    for name, count in violations.items():
+        if count != 0:
+            failures.append(f"{stage}: {count} record(s) break {name}.")
+    split = _mapping(evidence.get("balance_split"), label=f"{stage}.balance_split")
+    error = _finite_number(
+        split.get("max_abs_household_sum_error_gbp"),
+        label=f"{stage}.max_abs_household_sum_error_gbp",
+    )
+    if error > sum_tolerance:
+        failures.append(
+            f"{stage}: person balances miss the household draws by up to {error} GBP."
+        )
+    growth = _mapping(evidence.get("growth"), label=f"{stage}.growth")
+    named: list[str] = []
+    for kind in ("cash", "stocks_and_shares"):
+        target = _finite_number(
+            growth.get(f"{kind}_target_gbp"), label=f"{stage}.{kind}_target_gbp"
+        )
+        achieved = _finite_number(
+            growth.get(f"{kind}_achieved_gbp"), label=f"{stage}.{kind}_achieved_gbp"
+        )
+        if target > 0 and abs(achieved - target) / target > tolerance:
+            failures.append(
+                f"{stage}: 2024-25 {kind} subscriptions miss Table 9.4's growth."
+            )
+    both = _mapping(evidence.get("both_type_split"), label=f"{stage}.both_type_split")
+    if both.get("saturated"):
+        named.append(f"both_type_split:{both['saturated']}")
+    else:
+        target = _finite_number(
+            both.get("stocks_and_shares_target_gbp"), label=f"{stage}.both_target"
+        )
+        achieved = _finite_number(
+            both.get("stocks_and_shares_achieved_gbp"), label=f"{stage}.both_achieved"
+        )
+        if target > 0 and abs(achieved - target) / target > tolerance:
+            failures.append(f"{stage}: the both-type split misses its residual.")
+    lifetime = _mapping(evidence.get("lifetime_isa"), label=f"{stage}.lifetime_isa")
+    if lifetime.get("saturated"):
+        named.append(f"lifetime_isa:{lifetime['saturated']}")
+    else:
+        target = _finite_number(
+            lifetime.get("target_gbp"), label=f"{stage}.lisa_target"
+        )
+        achieved = _finite_number(
+            lifetime.get("achieved_gbp"), label=f"{stage}.lisa_achieved"
+        )
+        if target > 0 and abs(achieved - target) / target > tolerance:
+            failures.append(f"{stage}: Lifetime ISA payments miss Table 9.4's amount.")
+    selection = _mapping(evidence.get("selection"), label=f"{stage}.selection")
+    return GateResult(
+        name="stage_health",
+        passed=not failures,
+        failures=tuple(failures),
+        details={
+            "stage": stage,
+            "check": check,
+            "saturations_named": named,
+            "selection": dict(selection),
+        },
+    )
+
+
+def _was_lisa_anchor_gate(
+    stage: str,
+    evidence: Mapping[str, object],
+    parameters: Mapping[str, object],
+) -> GateResult:
+    """The anchored Lifetime ISA holders reach HMRC's payers (microcosm#1415).
+
+    After the financial-wealth cap the weighted holders at the counted ages lie
+    within ``maximum_relative_deviation`` of the anchor's target, or at or above it
+    when the drawn holders already were (no shift), and a positive shift removes no
+    holder (the same keyed uniforms decide ownership). A target above what the
+    largest shift reaches is named, not failed.
+    """
+
+    check = "was_lisa_anchor"
+    tolerance = _finite_number(
+        parameters["maximum_relative_deviation"],
+        label=f"{stage}.maximum_relative_deviation",
+    )
+    model = _mapping(evidence.get("ownership_model"), label=f"{stage}.ownership_model")
+    anchor = _mapping(model.get("anchor"), label=f"{stage}.anchor")
+    target = _finite_number(
+        anchor.get("target_holders"), label=f"{stage}.target_holders"
+    )
+    achieved = _finite_number(
+        evidence.get("anchored_holders_after_cap"),
+        label=f"{stage}.anchored_holders_after_cap",
+    )
+    shift = _finite_number(anchor.get("logit_shift"), label=f"{stage}.logit_shift")
+    saturated = anchor.get("saturated")
+    failures: list[str] = []
+    if target <= 0:
+        failures.append(f"{stage}: the anchor's target must be positive.")
+    elif shift < 0:
+        failures.append(f"{stage}: the anchor's shift must not be negative.")
+    elif saturated is not None:
+        pass
+    elif shift == 0:
+        if achieved < target * (1.0 - tolerance):
+            failures.append(
+                f"{stage}: unshifted holders after the cap fall below the target."
+            )
+    elif abs(achieved - target) / target > tolerance:
+        failures.append(
+            f"{stage}: anchored holders after the cap miss the target by more than "
+            f"{tolerance:.2%}."
+        )
+    if anchor.get("removed_holders") != 0:
+        failures.append(f"{stage}: the anchor removed holders.")
+    return GateResult(
+        name="stage_health",
+        passed=not failures,
+        failures=tuple(failures),
+        details={
+            "stage": stage,
+            "check": check,
+            "anchor": dict(anchor),
+            "saturations_named": [] if saturated is None else [f"anchor:{saturated}"],
+        },
+    )
