@@ -6,7 +6,7 @@ import functools
 import json
 import math
 import re
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Any, Protocol
@@ -31,6 +31,8 @@ Provider = Callable[[Any, Mapping[str, Any], int | str], np.ndarray]
 # infinity unless the binding declares a source-unit ``band_upper_bound``.
 # Entity-count indicators: a value of one per record of the owning entity.
 _COUNT_VALUE_VARIABLES = frozenset({"household_count", "person_count", "benunit_count"})
+#: ``count_of`` values :func:`baseline_flag_crosstab` reads as ones.
+_CROSSTAB_COUNT_OF = frozenset({"household", "person", "household_count"})
 
 _BAND_LOWER_BOUND_SUFFIX = "_lower_bound"
 _LEDGER_FILTER_PREFIX = "ledger_filter_"
@@ -711,6 +713,9 @@ def materialize_target_bindings(
     computes it at the measurement period. Without it (frame-only routes, no
     provider) the stored column is read as it is. Filters, conditions and
     bands keep their stored reads: who a row counts is fixed at the frame.
+    A provider binding reads its columns as the frame holds them, so a
+    period it declares must be one its value reads hold; a declared period
+    no read honours refuses the run, for provider and plain rows alike.
     """
 
     provider_registry = {**default_provider_registry(), **(providers or {})}
@@ -753,6 +758,9 @@ def materialize_target_bindings(
                     f"does not match declared measurement period {measurement_period}"
                 )
             filter_aware = not kind or str(kind) in FILTER_AWARE_PROVIDER_KINDS
+            # Before the band: a row read at two years is refused, not
+            # skipped for want of its band edges.
+            _refuse_ignored_measurement_period(spec, binding, adapter, period)
             band = None
             if filter_aware and binding.get("groupby_variable"):
                 band = _band_bounds(
@@ -773,7 +781,6 @@ def materialize_target_bindings(
                         0.0,
                     )
             else:
-                _refuse_ignored_measurement_period(spec, binding, adapter, period)
                 values = _prepared_column_values(
                     adapter,
                     spec.entity,
@@ -853,7 +860,7 @@ def baseline_flag_crosstab(
         values = _entity_reduction(adapter, reduction)
     elif value_variable and value_variable not in _COUNT_VALUE_VARIABLES:
         values = _column(adapter, entity, value_variable)
-    elif count_of and count_of not in {"household", "person", "household_count"}:
+    elif count_of and count_of not in _CROSSTAB_COUNT_OF:
         values = _column(adapter, entity, count_of)
     else:
         values = np.ones_like(flag, dtype=float)
@@ -994,7 +1001,7 @@ def _refuse_ignored_measurement_period(
     adapter: Any,
     period: int | str,
 ) -> None:
-    """Refuse a plain-column period the route would not honour.
+    """Refuse a declared measurement period the read route would not honour.
 
     A plain-column value is read at the calibration period (through the
     provider, for a stored column) or, by declaration, at the frame's own
@@ -1004,32 +1011,156 @@ def _refuse_ignored_measurement_period(
     the calibration period, so the row would be measured there under the
     declared period. Only the value terms are checked: a filter, condition or
     band on an engine-computed variable is still read at the calibration
-    period under a declared frame period.
+    period under a declared frame period. An entity count is ones and holds
+    no period, so it is never checked.
+
+    A provider binding (one with a ``kind``) reads its value columns as the
+    frame holds them, whatever the period it is passed, so each value it
+    reads must be held at its declared period, the calibration period
+    included (:func:`_provider_value_reads`). Who it counts (filters, band,
+    geography) is read at the frame, as for a plain row at the frame's own
+    period. A provider whose reads are not known here may declare only the
+    calibration period: a counterfactual delta is read from a column the
+    measure resolver or the frame supplies, and a caller's own kind reads
+    what it reads.
+
+    An adapter that reports neither its frame's period nor any value's
+    period has no period model to check against; its rows are read as they
+    are.
     """
 
     declared = binding.get("measurement_period")
+    value_period = getattr(adapter, "value_period", None)
     frame_period = getattr(adapter, "frame_period", None)
-    if declared is None or frame_period is None or str(declared) == str(period):
+    if declared is None or not (callable(value_period) or frame_period is not None):
         return
+    declared = str(declared)
     name = getattr(spec, "name", "?")
-    if str(declared) != str(frame_period):
+    kind = binding.get("kind")
+    if kind:
+        reads = _provider_value_reads(binding)
+        if reads is None:
+            if declared != str(period):
+                raise MeasurementPeriodError(
+                    f"target {name!r} declares measurement period {declared!r}, "
+                    f"but a {kind!r} provider's reads are not known here, so "
+                    f"only the calibration period {period!r} is honoured"
+                )
+            return
+        _refuse_reads_off_period(name, reads, adapter, declared, period)
+        return
+    if frame_period is None or declared == str(period):
+        return
+    if declared != str(frame_period):
         raise MeasurementPeriodError(
             f"target {name!r} declares measurement period "
             f"{declared!r}; a plain-column read honours only the calibration "
             f"period {period!r} or the frame's period {frame_period!r}"
         )
-    value_period = getattr(adapter, "value_period", None)
     if not callable(value_period):
         return
     entity = str(binding.get("from_entity") or spec.entity)
-    for variable in _value_variables(binding):
-        if value_period(entity, variable) != str(declared):
-            raise MeasurementPeriodError(
-                f"target {name!r} declares the frame's period {declared!r}, "
-                f"but {entity}.{variable} is not held at that period on the "
-                f"frame, so the engine would compute it at the calibration "
-                f"period {period!r}"
-            )
+    _refuse_reads_off_period(
+        name,
+        ((entity, variable) for variable in _value_variables(binding)),
+        adapter,
+        declared,
+        period,
+    )
+
+
+def _refuse_reads_off_period(
+    name: str,
+    reads: Iterable[tuple[str, str]],
+    adapter: Any,
+    declared: str,
+    period: int | str,
+) -> None:
+    """Refuse a row whose value reads are not all held at its declared period."""
+
+    off = {}
+    for entity, variable in reads:
+        if _read_honours(adapter, entity, variable, declared, period):
+            continue
+        year = _value_period(adapter, entity, variable)
+        off[f"{entity}.{variable}"] = (
+            f"held at {year}"
+            if year is not None
+            else "neither stored nor dated by name, so the engine computes it "
+            f"at the calibration period {period}"
+        )
+    if off:
+        raise MeasurementPeriodError(
+            f"target {name!r} declares measurement period {declared!r}, but "
+            f"reads values held at another period: {off}"
+        )
+
+
+def _read_honours(
+    adapter: Any,
+    entity: str,
+    variable: str,
+    declared: str,
+    period: int | str,
+) -> bool:
+    """Whether one read is held at the declared period.
+
+    An entity count holds no period. A variable that reports a period (a
+    stored column on a frame with period metadata, or a measure its name
+    dates) holds that one. On a frame without period metadata a stored
+    column holds no known period and is read as it is. Anything else the
+    engine computes at the calibration period.
+    """
+
+    if _is_entity_count(entity, variable):
+        return True
+    year = _value_period(adapter, entity, variable)
+    if year is not None:
+        return year == declared
+    if getattr(adapter, "frame_period", None) is None and _frame_stores(
+        adapter, entity, variable
+    ):
+        return True
+    return str(period) == declared
+
+
+def _provider_value_reads(
+    binding: Mapping[str, Any],
+) -> tuple[tuple[str, str], ...] | None:
+    """Every ``(entity, variable)`` value column a provider binding reads.
+
+    As :func:`parameter_gated_threshold` and :func:`baseline_flag_crosstab`
+    read them, branch for branch: the gated or flag column, then the one
+    value column the provider takes (a ``value_reduction``'s member
+    variable, the value variable, or ``count_of``), each on the entity the
+    provider reads it on. None for a provider whose reads are not known
+    here. A caller that registers its own function under one of these two
+    kinds must read as the generic provider does.
+    """
+
+    kind = str(binding.get("kind"))
+    if kind == "parameter_gated_threshold":
+        entity = str(binding.get("from_entity") or "person")
+        reads = [(entity, str(binding["gated_variable"]))]
+        if binding.get("value_variable"):
+            reads.append((entity, str(binding["value_variable"])))
+        return tuple(dict.fromkeys(reads))
+    if kind != "baseline_flag_crosstab":
+        return None
+    entity = str(binding.get("from_entity") or "household")
+    reads = [(entity, str(binding["affected_flag_variable"]))]
+    value_variable = str(binding.get("value_variable") or "")
+    count_of = str(binding.get("count_of") or "")
+    reduction = binding.get("value_reduction")
+    if reduction:
+        reads.append(
+            (str(reduction.get("entity") or "person"), str(reduction["variable"]))
+        )
+    elif value_variable and value_variable not in _COUNT_VALUE_VARIABLES:
+        reads.append((entity, value_variable))
+    elif count_of and count_of not in _CROSSTAB_COUNT_OF:
+        reads.append((entity, count_of))
+    return tuple(dict.fromkeys(reads))
 
 
 def _value_variables(binding: Mapping[str, Any]) -> tuple[str, ...]:
@@ -1038,6 +1169,39 @@ def _value_variables(binding: Mapping[str, Any]) -> tuple[str, ...]:
     if "value_expression" in binding:
         return expression_names(str(binding["value_expression"]))
     return (str(binding["value_variable"]),)
+
+
+def _value_period(adapter: Any, entity: str, variable: str) -> str | None:
+    """The period a read holds without the engine, as the adapter reports it.
+
+    None for a value the engine computes, and for every value of an adapter
+    that reports no periods.
+    """
+
+    value_period = getattr(adapter, "value_period", None)
+    year = value_period(entity, variable) if callable(value_period) else None
+    return None if year is None else str(year)
+
+
+def _is_entity_count(entity: str, variable: str) -> bool:
+    """Whether a read is an entity count: ones, held at no period."""
+
+    return variable in _COUNT_VALUE_VARIABLES or variable == f"{entity}_count"
+
+
+def _frame_stores(adapter: Any, entity: str, variable: str) -> bool:
+    """Whether the frame itself stores a column.
+
+    ``stored_columns`` is the frame's own, before the measure resolver injects
+    the columns it computes; ``has_column`` would also see those. An adapter
+    that declares neither is taken to store every column.
+    """
+
+    stored = getattr(adapter, "stored_columns", None)
+    if isinstance(stored, Mapping):
+        return variable in stored.get(entity, ())
+    has_column = getattr(adapter, "has_column", None)
+    return not callable(has_column) or bool(has_column(entity, variable))
 
 
 def _binding_mask(

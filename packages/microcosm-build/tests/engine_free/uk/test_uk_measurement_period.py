@@ -4,7 +4,9 @@ The frame stores its inputs at its own period (2024); the calibration solves
 at 2025. A binding's value variable that the frame stores is computed by the
 measure provider at the measurement period, like every engine-computed
 variable, unless the binding declares the frame's own period. Filters,
-conditions and bands keep their stored reads.
+conditions and bands keep their stored reads. A provider binding reads its
+columns as the frame holds them, so a period it declares must be one each of
+its value reads holds.
 """
 
 from __future__ import annotations
@@ -17,10 +19,14 @@ from types import SimpleNamespace
 import numpy as np
 import pandas as pd
 import pytest
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
 from microcosm.build.target_materialization import (
     ENGINE_PERIOD_COLUMN_PREFIX,
     MeasurementPeriodError,
+    _refuse_ignored_measurement_period,
+    default_provider_registry,
     drop_injected_measure_inputs,
     inject_measure_inputs,
     materialize_target_bindings,
@@ -109,7 +115,8 @@ def _resolver(monkeypatch, tmp_path, frame, sim, year=2025):
     )
 
 
-def _registry(bindings):
+def _registry(bindings, *, fact_period=None):
+    metadata = {} if fact_period is None else {"ledger_fact_period": fact_period}
     return (
         TargetRegistry(
             [
@@ -119,7 +126,7 @@ def _registry(bindings):
                     measure=f"test_{name}",
                     value=1,
                     source="test",
-                    metadata={"contract_target_id": name},
+                    metadata={"contract_target_id": name, **metadata},
                 )
                 for name in bindings
             ],
@@ -281,6 +288,309 @@ def test_a_run_at_the_frame_period_declares_any_value_without_refusal():
     materialized = materialize_target_bindings(adapter, registry, contract, period=2024)
 
     assert [skip.name for skip in materialized.skipped] == ["engine_value"]
+
+
+def test_an_entity_count_holds_no_period_at_the_frames_period():
+    # A count is ones whatever the period, so the frame's period is honoured
+    # for it as for a stored value.
+    registry, contract = _registry(
+        {"count": {"value_variable": "person_count", "measurement_period": 2024}}
+    )
+    adapter = UKFrameTargetAdapter(PeriodFrameStub())
+
+    materialized = materialize_target_bindings(adapter, registry, contract, period=2025)
+
+    assert not materialized.skipped
+    np.testing.assert_allclose(adapter.tables["person"]["test_count"], [1.0] * 3)
+
+
+# Provider rows ---------------------------------------------------------------
+
+#: A provider row reading an engine value under a declared 2023: as the value,
+#: the flag, a member reduction, ``count_of`` and the gated variable.
+_UNDATED_PROVIDERS = {
+    "value": {
+        "kind": "baseline_flag_crosstab",
+        "from_entity": "person",
+        "affected_flag_variable": "is_SP_age",
+        "value_variable": "income_tax",
+    },
+    "flag": {
+        "kind": "baseline_flag_crosstab",
+        "from_entity": "person",
+        "affected_flag_variable": "income_tax",
+        "value_variable": "person_count",
+    },
+    "count_of": {
+        "kind": "baseline_flag_crosstab",
+        "from_entity": "person",
+        "affected_flag_variable": "is_SP_age",
+        "count_of": "income_tax",
+    },
+    "reduction": {
+        "kind": "baseline_flag_crosstab",
+        "affected_flag_variable": "is_SP_age",
+        "value_variable": "person_count",
+        "value_reduction": {"entity": "person", "variable": "income_tax"},
+    },
+    "gated": {
+        "kind": "parameter_gated_threshold",
+        "gate_parameter": "gov.hmrc.cgt.annual_exempt_amount",
+        "gated_variable": "income_tax",
+        "value_variable": "person_count",
+    },
+}
+
+
+def _frame(metadata=True):
+    frame = PeriodFrameStub()
+    if not metadata:
+        frame.metadata = {}
+    return frame
+
+
+@pytest.mark.parametrize("metadata", [True, False])
+@pytest.mark.parametrize("case", sorted(_UNDATED_PROVIDERS))
+def test_a_provider_refuses_an_engine_value_under_another_period(case, metadata):
+    """A provider reads its columns as the frame holds them, whatever period it
+    is passed, so an engine value (injected at the calibration period) under a
+    declared 2023 is refused before the provider runs."""
+
+    adapter = UKFrameTargetAdapter(_frame(metadata))
+    adapter.set_column("person", "is_SP_age", [True, False, True])
+    adapter.set_column("household", "is_SP_age", [True, False])
+    adapter.set_column("person", "income_tax", [1.0, 2.0, 3.0])
+    registry, contract = _registry(
+        {
+            "provider": {
+                **_UNDATED_PROVIDERS[case],
+                "measurement_period": 2023,
+                "require_matching_fact_period": True,
+            }
+        },
+        fact_period="2023",
+    )
+    with pytest.raises(MeasurementPeriodError, match="income_tax"):
+        materialize_target_bindings(adapter, registry, contract, period=2025)
+
+
+@pytest.mark.parametrize("metadata", [True, False])
+def test_a_provider_reads_values_held_at_its_period(metadata):
+    """The CGT providers' shape: a gate on a measure dated to the declared
+    year, counted or summed; and a stored value on the declared frame period."""
+
+    adapter = UKFrameTargetAdapter(_frame(metadata))
+    adapter.set_column("person", "cgt_2024_gains", [0.0, 5_000.0, 50_000.0])
+    gate = {
+        "kind": "parameter_gated_threshold",
+        "gate_parameter": "gov.hmrc.cgt.annual_exempt_amount",
+        "gated_variable": "cgt_2024_gains",
+        "from_entity": "person",
+        "measurement_period": 2024,
+        "require_matching_fact_period": True,
+    }
+    registry, contract = _registry(
+        {
+            "count": {**gate, "value_variable": "person_count"},
+            "amount": {**gate, "value_variable": "cgt_2024_gains"},
+            "stored": {**gate, "value_variable": "employment_income"},
+        },
+        fact_period="2024",
+    )
+
+    materialized = materialize_target_bindings(adapter, registry, contract, period=2025)
+
+    assert not materialized.skipped
+    people = adapter.tables["person"]
+    np.testing.assert_allclose(people["test_count"], [0.0, 1.0, 1.0])
+    np.testing.assert_allclose(people["test_amount"], [0.0, 5_000.0, 50_000.0])
+    np.testing.assert_allclose(people["test_stored"], [0.0, 0.0, 500.0])
+
+
+def test_a_provider_on_a_frame_of_another_period_refuses_its_stored_values():
+    """A stored column holds the frame's period: a provider declaring the
+    calibration period on a 2024 frame would read 2024's values."""
+
+    adapter = UKFrameTargetAdapter(PeriodFrameStub())
+    registry, contract = _registry(
+        {
+            "stored": {
+                "kind": "baseline_flag_crosstab",
+                "from_entity": "person",
+                "affected_flag_variable": "employment_income",
+                "value_variable": "person_count",
+                "measurement_period": 2025,
+            }
+        }
+    )
+    with pytest.raises(MeasurementPeriodError, match="held at 2024"):
+        materialize_target_bindings(adapter, registry, contract, period=2025)
+
+
+@pytest.mark.parametrize(
+    "kind", ["input_substitution_counterfactual", "caller_defined"]
+)
+def test_a_provider_whose_reads_are_unknown_declares_only_the_calibration_period(
+    kind,
+):
+    adapter = UKFrameTargetAdapter(PeriodFrameStub())
+    binding = {"kind": kind, "metric_name": "x/delta", "from_entity": "person"}
+    registry, contract = _registry({"other": {**binding, "measurement_period": 2023}})
+    with pytest.raises(MeasurementPeriodError, match="reads are not known here"):
+        materialize_target_bindings(adapter, registry, contract, period=2025)
+
+    adapter.set_column("person", "counterfactual_delta__x_delta", [1.0, 2.0, 3.0])
+    registry, contract = _registry({"other": {**binding, "measurement_period": 2025}})
+    materialized = materialize_target_bindings(adapter, registry, contract, period=2025)
+    if kind == "caller_defined":
+        assert "unsupported binding kind" in materialized.skipped[0].reason
+    else:
+        assert not materialized.skipped
+
+
+@pytest.mark.parametrize("metadata", [True, False])
+@pytest.mark.parametrize("period", [2024, 2025, 2026])
+def test_every_packaged_provider_row_declares_a_period_its_reads_hold(metadata, period):
+    # The CGT rows read measures dated by their name (cgt_2024_*), which the
+    # resolver refuses to find stored, and counts.
+    contract = json.loads(
+        importlib_resources.files("microcosm.build.uk")
+        .joinpath("uk_population_targets.json")
+        .read_text()
+    )
+    dated = {}
+    for target in contract["targets"]:
+        binding = (target.get("bindings") or {}).get("policyengine") or {}
+        if binding.get("kind") and "measurement_period" in binding:
+            dated[target["target_id"]] = binding
+    assert dated
+    adapter = UKFrameTargetAdapter(_frame(metadata))
+    for name, binding in dated.items():
+        spec = SimpleNamespace(name=name, entity="person")
+        _refuse_ignored_measurement_period(spec, binding, adapter, period)
+
+
+#: The values a generated provider row may read, and the period the fixture
+#: below holds each at (None: any period).
+_PROVIDER_READS = (
+    "employment_income",  # stored: the frame's period, or as it is without one
+    "income_tax",  # engine-computed: injected at the calibration period
+    "cgt_2023_gains",  # dated by name
+    "cgt_2024_gains",
+    "cgt_2025_gains",
+    "person_count",  # a count: ones
+)
+
+
+def _held(variable, *, metadata, calibration):
+    if variable in {"person_count", "household_count"}:
+        return None
+    if variable == "employment_income":
+        return "2024" if metadata else None
+    if variable.startswith("cgt_"):
+        return variable.split("_")[1]
+    return str(calibration)
+
+
+def _provider_adapter(metadata, adapter_class=UKFrameTargetAdapter):
+    adapter = adapter_class(_frame(metadata))
+    for variable in _PROVIDER_READS[1:-1]:
+        adapter.set_column("person", variable, [0.0, 5_000.0, 50_000.0])
+    adapter.set_column("household", "income_tax", [1.0, 0.0])
+    return adapter
+
+
+class _ReadRecorder(UKFrameTargetAdapter):
+    """Records each column a provider reads, through either read path."""
+
+    def __init__(self, frame):
+        super().__init__(frame)
+        self.reads = []
+
+    def column(self, entity, variable):
+        self.reads.append((entity, variable))
+        return super().column(entity, variable)
+
+    def entity_reduction(self, reduction):
+        entity = str(reduction.get("entity") or "person")
+        self.reads.append((entity, str(reduction["variable"])))
+        return super().entity_reduction(reduction)
+
+
+@st.composite
+def _provider_rows(draw):
+    read = st.sampled_from(_PROVIDER_READS)
+    shape = draw(st.sampled_from(("gated", "value", "count_of", "reduction")))
+    if shape == "gated":
+        binding = {
+            "kind": "parameter_gated_threshold",
+            "gate_parameter": "gov.hmrc.cgt.annual_exempt_amount",
+            "from_entity": "person",
+            "gated_variable": draw(read),
+        }
+        value = draw(st.none() | read)
+        if value is not None:
+            binding["value_variable"] = value
+        return binding
+    if shape == "reduction":
+        return {
+            "kind": "baseline_flag_crosstab",
+            "affected_flag_variable": draw(
+                st.sampled_from(("household_count", "income_tax"))
+            ),
+            "value_variable": "person_count",
+            "value_reduction": {"entity": "person", "variable": draw(read)},
+        }
+    binding = {
+        "kind": "baseline_flag_crosstab",
+        "from_entity": "person",
+        "affected_flag_variable": draw(read),
+    }
+    if shape == "value":
+        binding["value_variable"] = draw(read)
+    else:
+        binding["count_of"] = draw(read | st.sampled_from(("person", "household")))
+    return binding
+
+
+@settings(max_examples=300, deadline=None)
+@given(
+    binding=_provider_rows(),
+    declared=st.sampled_from((2023, 2024, 2025)),
+    calibration=st.sampled_from((2024, 2025)),
+    metadata=st.booleans(),
+)
+def test_a_provider_row_refuses_exactly_when_a_read_is_off_its_period(
+    binding, declared, calibration, metadata
+):
+    """Differential: the guard's static reads against the provider's own.
+
+    The provider runs on an adapter that records every column it reads; the
+    row must refuse exactly when one of those is held at a period other than
+    the declared one. A count, or a stored column on a frame without period
+    metadata, holds any period.
+    """
+
+    recorder = _provider_adapter(metadata, _ReadRecorder)
+    try:
+        # The reads do not depend on the period; 2024 has a reviewed AEA.
+        default_provider_registry()[binding["kind"]](recorder, binding, 2024)
+    except KeyError:
+        pass  # a reduction over a count, read after every other column
+    off = {
+        f"{entity}.{variable}"
+        for entity, variable in recorder.reads
+        if _held(variable, metadata=metadata, calibration=calibration)
+        not in (None, str(declared))
+    }
+    registry, contract = _registry({"row": {**binding, "measurement_period": declared}})
+    adapter = _provider_adapter(metadata)
+    if off:
+        with pytest.raises(MeasurementPeriodError) as refused:
+            materialize_target_bindings(adapter, registry, contract, period=calibration)
+        assert all(read in str(refused.value) for read in off)
+    else:
+        materialize_target_bindings(adapter, registry, contract, period=calibration)
 
 
 def test_without_a_provider_the_frame_is_read_as_it_is():
