@@ -150,14 +150,30 @@ def _table(row: Mapping[str, Any]) -> str:
     return table
 
 
+_REGION_TIER_CODES = frozenset(code for _level, code in UK_REGION_TIER)
+
+
 def _read_by_cells(row: Mapping[str, Any]) -> bool:
-    """Whether a cell reads the row: Table 2.5's counts, Tables 2.1-2.2's ages."""
+    """Whether a cell reads the row: Table 2.5's counts and Table 2.1's ages for
+    the UK, Table 2.2's ages for the twelve region-tier areas."""
 
     table = table_of(row)
     measure = str(row.get("measure_id"))
+    geography = str((row.get("geography") or {}).get("id"))
     if table == "2.5":
-        return measure == _TABLE_2_5_COUNT
-    return table in ("2.1", "2.2") and measure in AGE_MEASURES
+        return measure == _TABLE_2_5_COUNT and geography == UNITED_KINGDOM
+    if table == "2.1":
+        return measure in AGE_MEASURES and geography == UNITED_KINGDOM
+    return (
+        table == "2.2" and measure in AGE_MEASURES and geography in _REGION_TIER_CODES
+    )
+
+
+def itl_band_key(band: Band) -> str:
+    """A band as the liabilities targets name it: ``band_12570_15000``, ``band_2000000_plus``."""
+
+    lower, upper = band
+    return f"band_{lower}_{'plus' if upper is None else upper}"
 
 
 def _band(row: Mapping[str, Any]) -> Band | None:
@@ -232,10 +248,18 @@ def expected_cells(
     Table 2.5 must carry every band of ``ITL_BANDS``, and no other, and its
     all-band count. Tables 2.1 and 2.2 enter only when their rows are
     present, and a Table 2.2 measure must then carry all twelve region-tier
-    areas. Rows no cell reads are left out before the window, so another
-    measure's gaps do not refuse the report. ``bound_targets`` names the
-    targets the run bound; the all-band count, which the bands partition, is
-    in sample when every band is.
+    areas. Rows no cell reads (another measure, another geography) are left
+    out before the window, so their gaps do not refuse the report.
+    ``bound_targets`` names what the run bound: a contract target, which
+    binds every cell of its family, or one target by its name without the
+    period (``hmrc.itl.taxpayers_by_total_income_band.band_12570_15000``,
+    ``hmrc.itl.state_pension_age_taxpayers@E12000001``). A sum is in sample
+    when every cell it sums is: the residents' count over its areas, and the
+    all-band count over its bands (which leave out only taxpayers below the
+    lowest edge). Table 2.1's UK cell is in sample when every Table 2.2 area
+    of its measure is (its model count is theirs, for everyone who lives in
+    one of the twelve areas); the count below State Pension age is when that
+    cell and the all-band count are.
     """
 
     window = calendar_window(
@@ -249,15 +273,23 @@ def expected_cells(
     if unknown:
         raise ValueError(f"Table 2.5 bands {unknown} are not ITL_BANDS at {year}.")
 
+    def bound(target, band, area):
+        if target is None:
+            return False
+        if target in bound_targets:
+            return True
+        if band is not None:
+            return f"{target}.{itl_band_key(band)}" in bound_targets
+        return area is not None and f"{target}@{area}" in bound_targets
+
     def cell(table, measure, value_sources, *, band=None, area=None, regional=False):
         value, sources = value_sources
-        target = BOUND_BY.get((table, measure))
         return ITLCell(
             table=table,
             measure=measure,
             expected=value,
             tolerance=REGIONAL_TOLERANCE if regional else NATIONAL_TOLERANCE,
-            in_sample=target is not None and target in bound_targets,
+            in_sample=bound(BOUND_BY.get((table, measure)), band, area),
             sources=sources,
             band=band,
             area=area,
@@ -278,43 +310,61 @@ def expected_cells(
         for band in ITL_BANDS
     ]
     all_taxpayers = need(("2.5", _TABLE_2_5_COUNT, UNITED_KINGDOM, None))
-    cells.append(
-        replace(
-            cell("2.5", ALL_TAXPAYERS, all_taxpayers),
-            in_sample=all(band_cell.in_sample for band_cell in cells),
-        )
+    all_cell = replace(
+        cell("2.5", ALL_TAXPAYERS, all_taxpayers),
+        in_sample=all(band_cell.in_sample for band_cell in cells),
     )
+    cells.append(all_cell)
     for measure in AGE_MEASURES:
         national = window.get(("2.1", measure, UNITED_KINGDOM, None))
-        if national is not None:
-            cells.append(cell("2.1", measure, national))
-        if measure == "state_pension_age" and national is not None:
-            below = (
-                all_taxpayers[0] - national[0],
-                all_taxpayers[1] + national[1],
-            )
-            cells.append(cell("2.1", BELOW_STATE_PENSION_AGE, below))
         areas = [
             window.get(("2.2", measure, code, None)) for _level, code in UK_REGION_TIER
         ]
-        if all(area is None for area in areas):
-            continue
-        missing = [
-            code
-            for (_level, code), area in zip(UK_REGION_TIER, areas, strict=True)
-            if area is None
-        ]
-        if missing:
-            raise ValueError(
-                f"Table 2.2 {measure} has no rows for {missing} at {year}."
+        area_cells = []
+        if any(area is not None for area in areas):
+            missing = [
+                code
+                for (_level, code), area in zip(UK_REGION_TIER, areas, strict=True)
+                if area is None
+            ]
+            if missing:
+                raise ValueError(
+                    f"Table 2.2 {measure} has no rows for {missing} at {year}."
+                )
+            area_cells = [
+                cell("2.2", measure, area, area=code, regional=True)
+                for (_level, code), area in zip(UK_REGION_TIER, areas, strict=True)
+            ]
+            residents = (
+                math.fsum(area[0] for area in areas),
+                tuple(source for area in areas for source in area[1]),
             )
-        for (_level, code), area in zip(UK_REGION_TIER, areas, strict=True):
-            cells.append(cell("2.2", measure, area, area=code, regional=True))
-        residents = (
-            math.fsum(area[0] for area in areas),
-            tuple(source for area in areas for source in area[1]),
-        )
-        cells.append(cell("2.2", measure, residents, area=RESIDENTS))
+            cells.extend(area_cells)
+            cells.append(
+                replace(
+                    cell("2.2", measure, residents, area=RESIDENTS),
+                    in_sample=all(area_cell.in_sample for area_cell in area_cells),
+                )
+            )
+        # Binding every area binds their sum, which is the UK cell's model
+        # count for everyone who lives in one of the twelve areas.
+        areas_bound = bool(area_cells) and all(c.in_sample for c in area_cells)
+        if national is not None:
+            national_cell = replace(
+                cell("2.1", measure, national), in_sample=areas_bound
+            )
+            cells.append(national_cell)
+            if measure == "state_pension_age":
+                below = (
+                    all_taxpayers[0] - national[0],
+                    all_taxpayers[1] + national[1],
+                )
+                cells.append(
+                    replace(
+                        cell("2.1", BELOW_STATE_PENSION_AGE, below),
+                        in_sample=areas_bound and all_cell.in_sample,
+                    )
+                )
     return tuple(sorted(cells, key=lambda item: item.sort_key))
 
 

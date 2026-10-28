@@ -73,6 +73,7 @@ from microcosm.build.uk_runtime.spi_dated_measures import (
     round_trip_mismatches,
     uk_spi_dated_measure_kind,
     uk_spi_dated_measure_year,
+    uk_spi_dated_measures_named,
 )
 from microcosm.build.uk_runtime.uc_relationships import (
     frs_uc_claimant_mask,
@@ -443,7 +444,10 @@ def _binding_variable_names(binding: Mapping[str, Any]) -> list[str]:
     for key in ("filters", "household_conditions"):
         for predicate in binding.get(key, ()) or ():
             if isinstance(predicate, Mapping):
-                names.append(str(predicate.get("variable", "")))
+                # The interpreter reads ``variable``, or ``concept`` without one.
+                names.append(
+                    str(predicate.get("variable") or predicate.get("concept") or "")
+                )
     return [name for name in names if name]
 
 
@@ -1128,12 +1132,16 @@ class UKMeasureResolver:
                     f"{target_id} mixes dated SPI measures with variables of "
                     f"another year: {sorted(names)}"
                 )
-            if spi_years - {None} and binding.get("kind"):
+            provider_spi = (
+                uk_spi_dated_measures_named(binding) if binding.get("kind") else set()
+            )
+            if provider_spi:
                 # Only a plain-column read is checked for its year at
-                # materialization; a provider would read its own variables.
+                # materialization; a provider reads fields of its own.
                 raise ValueError(
-                    f"{target_id} binds dated SPI measures through provider "
-                    f"{binding['kind']!r}; they bind as plain columns only."
+                    f"{target_id} binds dated SPI measures {sorted(provider_spi)} "
+                    f"through provider {binding['kind']!r}; they bind as plain "
+                    "columns only."
                 )
             for name in names:
                 spi_year = uk_spi_dated_measure_year(name)

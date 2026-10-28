@@ -64,15 +64,20 @@ def load_rows(path: Path | None) -> tuple[list[dict], str]:
 
 
 def run_bound_targets(diagnostics: Path) -> set[str]:
-    """The contract targets a run bound: a diagnostics row with loss weight."""
+    """The targets a run bound, each by its name without the period.
+
+    A diagnostics row binds when its loss weight is missing or above zero; a
+    family's cells are bound one by one, so an excluded or zero-weight band
+    stays out of sample however many of its siblings are bound.
+    """
 
     rows = json.loads(diagnostics.read_text(encoding="utf-8"))["targets"]
     bound = set()
     for row in rows:
-        target_id = (row.get("metadata") or {}).get("contract_target_id")
         weight = row.get("target_loss_weight")
-        if target_id is not None and (weight is None or float(weight) > 0):
-            bound.add(str(target_id))
+        if weight is None or float(weight) > 0:
+            name, _, period = str(row["name"]).rpartition("@")
+            bound.add(name if name and period.isdigit() else str(row["name"]))
     return bound
 
 

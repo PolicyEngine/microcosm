@@ -1009,7 +1009,11 @@ def _refuse_ignored_measurement_period(
     band on an engine-computed variable is still read at the calibration
     period under a declared frame period. A year a measure is dated to by its
     name is honoured when every variable of the row is dated to it, with or
-    without frame period metadata.
+    without frame period metadata. Without that metadata, a row whose value
+    terms read a variable the frame does not itself store (an entity count
+    aside) and no name dates is refused too: the engine computes it at the
+    calibration period. A stored column there holds no known period, so a
+    value of stored columns is read as it is.
     """
 
     declared = binding.get("measurement_period")
@@ -1025,8 +1029,8 @@ def _refuse_ignored_measurement_period(
         # naming a dated measure must be dated whole to its declared year.
         if callable(value_period):
             periods = {
-                variable: value_period(entity, variable)
-                for variable in _binding_variable_names(binding)
+                f"{read_entity}.{variable}": value_period(read_entity, variable)
+                for read_entity, variable in _binding_reads(binding, entity)
             }
             if any(year is not None for year in periods.values()) and any(
                 year != str(declared) for year in periods.values()
@@ -1034,6 +1038,20 @@ def _refuse_ignored_measurement_period(
                 raise MeasurementPeriodError(
                     f"target {name!r} declares measurement period {declared!r} "
                     f"but reads variables of other years: {periods}"
+                )
+            # As at the frame's own period, only the value terms: who a row
+            # counts is read at the frame.
+            computed = [
+                f"{entity}.{variable}"
+                for variable in _value_variables(binding)
+                if value_period(entity, variable) is None
+                and not _frame_holds(adapter, entity, variable)
+            ]
+            if computed:
+                raise MeasurementPeriodError(
+                    f"target {name!r} declares measurement period {declared!r}, "
+                    f"but {computed} are neither stored nor dated by name, so "
+                    f"the engine computes them at the calibration period {period!r}"
                 )
         return
     if str(declared) != str(frame_period):
@@ -1043,8 +1061,8 @@ def _refuse_ignored_measurement_period(
         # dated to it: a row read at two years would count one year's people
         # by another's incomes.
         dated = callable(value_period) and all(
-            value_period(entity, variable) == str(declared)
-            for variable in _binding_variable_names(binding)
+            value_period(read_entity, variable) == str(declared)
+            for read_entity, variable in _binding_reads(binding, entity)
         )
         if not dated:
             raise MeasurementPeriodError(
@@ -1074,17 +1092,45 @@ def _value_variables(binding: Mapping[str, Any]) -> tuple[str, ...]:
     return (str(binding["value_variable"]),)
 
 
-def _binding_variable_names(binding: Mapping[str, Any]) -> tuple[str, ...]:
-    """Every variable a plain-column binding reads: values, filters, band."""
+def _frame_holds(adapter: Any, entity: str, variable: str) -> bool:
+    """Whether a read needs no engine: an entity count, or a column the frame
+    itself stores.
 
-    names = list(_value_variables(binding))
+    ``stored_columns`` is the frame's own, before the measure resolver injects
+    the columns it computes; ``has_column`` would also see those. An adapter
+    that declares neither is taken to hold every column.
+    """
+
+    if variable in _COUNT_VALUE_VARIABLES or variable == f"{entity}_count":
+        return True
+    stored = getattr(adapter, "stored_columns", None)
+    if isinstance(stored, Mapping):
+        return variable in stored.get(entity, ())
+    has_column = getattr(adapter, "has_column", None)
+    return not callable(has_column) or bool(has_column(entity, variable))
+
+
+def _binding_reads(
+    binding: Mapping[str, Any], entity: str
+) -> tuple[tuple[str, str], ...]:
+    """Every ``(entity, variable)`` a plain-column binding reads.
+
+    Its values, filters, conditions and band, as :func:`_binding_mask` and
+    :func:`_predicate_mask` read them: a predicate's ``variable``, or its
+    ``concept`` without one, on its own ``entity`` when it names one.
+    """
+
+    reads = [(entity, variable) for variable in _value_variables(binding)]
     for key in ("filters", "household_conditions"):
         for predicate in binding.get(key, ()) or ():
-            if isinstance(predicate, Mapping) and predicate.get("variable"):
-                names.append(str(predicate["variable"]))
+            if not isinstance(predicate, Mapping):
+                continue
+            variable = predicate.get("variable") or predicate.get("concept")
+            if variable:
+                reads.append((str(predicate.get("entity") or entity), str(variable)))
     if binding.get("groupby_variable"):
-        names.append(str(binding["groupby_variable"]))
-    return tuple(dict.fromkeys(names))
+        reads.append((entity, str(binding["groupby_variable"])))
+    return tuple(dict.fromkeys(reads))
 
 
 def _binding_mask(

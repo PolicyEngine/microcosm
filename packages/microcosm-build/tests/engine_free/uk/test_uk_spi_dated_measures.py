@@ -41,6 +41,7 @@ from microcosm.build.uk_runtime.spi_dated_measures import (
     round_trip_mismatches,
     uk_spi_dated_measure_kind,
     uk_spi_dated_measure_year,
+    uk_spi_dated_measures_named,
 )
 from microcosm.calibrate import TargetRegistry, TargetSpec
 
@@ -324,6 +325,16 @@ def test_an_amount_reset_with_its_label_is_compared_where_the_label_held():
     assert round_trip_mismatches(
         stored, unlabelled, ["repaid"], compared_where_unchanged=where_held
     ) == {"repaid": math.inf}
+    # A reassigned row the forward step did not zero is not the reset rule:
+    # the label condition must not hide it.
+    not_reset = {"person": reassigned["person"].assign(repaid=[3.0, 800.0, 0.0])}
+    assert round_trip_mismatches(
+        stored, not_reset, ["repaid"], compared_where_unchanged=where_held
+    ) == {"repaid": math.inf}
+    nan_reset = {"person": reassigned["person"].assign(repaid=[np.nan, 800.0, 0.0])}
+    assert round_trip_mismatches(
+        stored, nan_reset, ["repaid"], compared_where_unchanged=where_held
+    ) == {"repaid": math.inf}
 
 
 def test_an_input_on_two_indices_or_a_later_year_refuses():
@@ -579,7 +590,25 @@ def test_the_resolver_refuses_a_dated_measure_bound_at_another_year(
         ),
         (
             _dated_binding(kind="parameter_gated_threshold"),
-            "binds dated SPI measures through provider 'parameter_gated_threshold'",
+            "binds dated SPI measures \\['spi_2023_income_tax', "
+            "'spi_2023_state_pension'\\] through provider 'parameter_gated_threshold'",
+        ),
+        # The interpreter reads a filter's concept when it names no variable.
+        (
+            _dated_binding(
+                filters=[{"concept": "is_SP_age", "operator": "==", "value": True}]
+            ),
+            "mixes dated SPI measures with variables of another year",
+        ),
+        # A provider's own fields: no plain-column field names the measure.
+        (
+            {
+                "kind": "count_affected",
+                "affected_flag_variable": "spi_2023_state_pension",
+                "measurement_period": 2023,
+            },
+            "binds dated SPI measures \\['spi_2023_state_pension'\\] through "
+            "provider 'count_affected'",
         ),
     ],
 )
@@ -669,6 +698,86 @@ def test_a_frame_without_period_metadata_binds_a_row_dated_throughout():
     np.testing.assert_allclose(
         adapter.tables["person"]["test_dated"], [0.0, 200.0, 300.0]
     )
+
+
+@pytest.mark.parametrize("injected", [False, True])
+@pytest.mark.parametrize(
+    "binding",
+    [
+        {"value_variable": "income_tax"},
+        {"value_expression": "employment_income + income_tax"},
+    ],
+)
+def test_a_frame_without_period_metadata_refuses_an_engine_value_no_name_dates(
+    binding, injected
+):
+    """The engine computes an unstored value at the calibration period, so a
+    row declaring another period cannot read it. A column the resolver
+    injected is still the engine's, not the frame's."""
+
+    frame = PeriodFrameStub()
+    frame.metadata = {}
+    adapter = UKFrameTargetAdapter(frame)
+    if injected:
+        adapter.set_column("person", "income_tax", [1.0, 2.0, 3.0])
+    registry, contract = _registry({"undated": {**binding, "measurement_period": 2023}})
+    with pytest.raises(MeasurementPeriodError, match="neither stored nor dated"):
+        materialize_target_bindings(adapter, registry, contract, period=2025)
+
+
+@pytest.mark.parametrize(
+    "binding, expected",
+    [
+        ({"value_variable": "employment_income"}, [1_000.0, 0.0, 500.0]),
+        (
+            {
+                "value_variable": "person_count",
+                "filters": [
+                    {"variable": "employment_income", "operator": ">", "value": 0}
+                ],
+            },
+            [1.0, 0.0, 1.0],
+        ),
+        # Who a row counts is read at the frame, as at the frame's own period.
+        (
+            {
+                "value_variable": "employment_income",
+                "filters": [{"concept": "is_SP_age", "operator": "==", "value": True}],
+            },
+            [1_000.0, 0.0, 0.0],
+        ),
+    ],
+)
+def test_a_frame_without_period_metadata_reads_its_own_values_as_they_are(
+    binding, expected
+):
+    frame = PeriodFrameStub()
+    frame.metadata = {}
+    adapter = UKFrameTargetAdapter(frame)
+    adapter.set_column("person", "is_SP_age", [True, False, False])
+    registry, contract = _registry({"stored": {**binding, "measurement_period": 2023}})
+
+    materialized = materialize_target_bindings(adapter, registry, contract, period=2025)
+
+    assert not materialized.skipped
+    np.testing.assert_allclose(adapter.tables["person"]["test_stored"], expected)
+
+
+def test_the_dated_measures_a_binding_names_are_found_in_any_field():
+    binding = {
+        "kind": "count_affected",
+        "affected_flag_variable": "spi_2023_state_pension",
+        "value_reduction": {"spi_2023_income_tax": "sum"},
+        "terms": [["x", "spi_2023_total_income * 2"]],
+        "note": "not spi_2023_state_pensions, nor x_spi_2023_income_tax",
+        "count": 3,
+    }
+    assert uk_spi_dated_measures_named(binding) == {
+        "spi_2023_state_pension",
+        "spi_2023_income_tax",
+        "spi_2023_total_income",
+    }
+    assert uk_spi_dated_measures_named({"value_variable": "state_pension"}) == set()
 
 
 def test_a_persisted_dated_measure_refuses(monkeypatch, tmp_path):

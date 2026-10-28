@@ -75,6 +75,7 @@ __all__ = [
     "population_factors",
     "round_trip_mismatches",
     "uk_spi_dated_measure_year",
+    "uk_spi_dated_measures_named",
 ]
 
 #: An SPI measure dated by its tax year, such as ``spi_2023_state_pension``.
@@ -134,6 +135,31 @@ def uk_spi_dated_measure_kind(variable: str) -> str | None:
 
     match = UK_SPI_DATED_MEASURE.fullmatch(variable)
     return match[2] if match else None
+
+
+#: A dated SPI measure's name inside any text: a field, a filter, an expression.
+_DATED_MEASURE_IN_TEXT = re.compile(
+    r"\b" + UK_SPI_DATED_MEASURE.pattern.removeprefix("^").removesuffix("$") + r"\b"
+)
+
+
+def uk_spi_dated_measures_named(value: Any) -> set[str]:
+    """Every dated SPI measure a binding names, in any field at any depth.
+
+    A provider reads fields of its own (``affected_flag_variable``,
+    ``count_of``, ``value_reduction``), so a check that lists the plain-column
+    fields would miss a dated measure named there; this scans every string.
+    """
+
+    if isinstance(value, str):
+        return {match.group(0) for match in _DATED_MEASURE_IN_TEXT.finditer(value)}
+    if isinstance(value, Mapping):
+        items: Any = list(value.keys()) + list(value.values())
+    elif isinstance(value, (list, tuple, set, frozenset)):
+        items = value
+    else:
+        return set()
+    return set().union(*(uk_spi_dated_measures_named(item) for item in items))
 
 
 def _band_lower(age: int) -> int:
@@ -326,9 +352,10 @@ def round_trip_mismatches(
     one side only misses by infinity; missing on both sides matches.
 
     ``compared_where_unchanged`` maps a column to a label column of the same
-    entity: the column is compared only on the rows whose label the forward
-    step left as stored, for a forward rule that resets the amount exactly
-    where it reassigns the label.
+    entity, for a forward rule that resets the amount to zero exactly where
+    it reassigns the label: the column is compared on the rows whose label
+    the forward step left as stored, and must be zero on the others. The
+    stored amount on a reassigned row is overwritten, so it cannot be checked.
     """
 
     conditions = dict(compared_where_unchanged or {})
@@ -362,6 +389,10 @@ def round_trip_mismatches(
                     table[label].astype(str).to_numpy()
                     == forward[label].astype(str).to_numpy()
                 )
+                reset = actual[~kept]
+                if (~np.isfinite(reset)).any() or (reset != 0.0).any():
+                    misses[column] = float("inf")
+                    continue
                 expected, actual = expected[kept], actual[kept]
             missing = np.isnan(expected)
             if (missing != np.isnan(actual)).any():

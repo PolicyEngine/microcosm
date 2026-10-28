@@ -34,6 +34,7 @@ from microcosm.build.uk_runtime.itl_differential import (
     calendar_window,
     differential,
     expected_cells,
+    itl_band_key,
     model_count,
     residual,
     table_of,
@@ -197,6 +198,10 @@ def test_tolerances_and_in_sample_flags() -> None:
             # The bands partition the all-band count, so binding them binds it.
             ("2.5", ALL_TAXPAYERS),
             ("2.2", "state_pension_age"),
+            # The areas sum to the UK cell, and with the all-band count to
+            # the count below State Pension age.
+            ("2.1", "state_pension_age"),
+            ("2.1", BELOW_STATE_PENSION_AGE),
         }
         assert cell.in_sample is bound_family, cell
 
@@ -206,6 +211,66 @@ def test_the_all_band_count_is_in_sample_only_with_its_bands() -> None:
         _rows(), year=2025, bound_targets={"hmrc.itl.state_pension_age_taxpayers"}
     )
     assert not any(cell.in_sample for cell in unbound if cell.table == "2.5")
+
+
+def test_a_family_is_in_sample_cell_by_cell() -> None:
+    """A band or area the run left out is out of sample, and so is each sum
+    that counts it; its bound siblings stay in."""
+
+    band_family = "hmrc.itl.taxpayers_by_total_income_band"
+    age_family = "hmrc.itl.state_pension_age_taxpayers"
+    left_out_band, left_out_area = ITL_BANDS[3], AREAS[5]
+    bound = {
+        *(f"{band_family}.{itl_band_key(b)}" for b in ITL_BANDS if b != left_out_band),
+        *(f"{age_family}@{a}" for a in AREAS if a != left_out_area),
+    }
+    cells = expected_cells(_rows(), year=2025, bound_targets=bound)
+    flags = {(cell.table, cell.measure, cell.key): cell.in_sample for cell in cells}
+    for band in ITL_BANDS:
+        key = ("2.5", BAND_COUNT, cells_key_of_band(cells, band))
+        assert flags[key] is (band != left_out_band)
+    for area in AREAS:
+        assert flags[("2.2", "state_pension_age", area)] is (area != left_out_area)
+    assert not flags[("2.5", ALL_TAXPAYERS, UNITED_KINGDOM)]
+    assert not flags[("2.2", "state_pension_age", RESIDENTS)]
+    assert not flags[("2.1", "state_pension_age", UNITED_KINGDOM)]
+    assert not flags[("2.1", BELOW_STATE_PENSION_AGE, UNITED_KINGDOM)]
+
+    every = {
+        *(f"{band_family}.{itl_band_key(b)}" for b in ITL_BANDS),
+        *(f"{age_family}@{a}" for a in AREAS),
+    }
+    whole = expected_cells(_rows(), year=2025, bound_targets=every)
+    family = expected_cells(_rows(), year=2025, bound_targets={band_family, age_family})
+    assert whole == family
+
+
+def cells_key_of_band(cells, band):
+    (key,) = {cell.key for cell in cells if cell.band == band}
+    return key
+
+
+def test_itl_band_key_names_the_band_as_the_targets_do() -> None:
+    assert itl_band_key((12_570, 15_000)) == "band_12570_15000"
+    assert itl_band_key((2_000_000, None)) == "band_2000000_plus"
+    assert len({itl_band_key(band) for band in ITL_BANDS}) == len(ITL_BANDS)
+
+
+def test_rows_of_another_geography_are_not_read() -> None:
+    """Table 2.5's and 2.1's cells read the UK; Table 2.2's the twelve areas.
+    A row elsewhere, even one that would refuse the window, changes nothing."""
+
+    elsewhere = [
+        # One tax year only, and a band no cell has: either refuses if read.
+        _row("2.5", "total_taxpayer_count", AREAS[0], 2025, 1.0),
+        _row("2.5", "total_taxpayer_count", AREAS[0], 2025, 1.0, (15_000, 17_500)),
+        _row("2.1", "state_pension_age", AREAS[0], 2025, 1.0),
+        _row("2.2", "state_pension_age", UNITED_KINGDOM, 2025, 1.0),
+        _row("2.2", "age_65_and_over", "E06000001", 2025, 1.0),
+    ]
+    assert expected_cells([*_rows(), *elsewhere], year=2025) == expected_cells(
+        _rows(), year=2025
+    )
 
 
 def test_table_of_names_the_table_or_none() -> None:
@@ -418,26 +483,49 @@ def tool():
 
 
 def test_a_run_binds_the_targets_its_diagnostics_weight(tool, tmp_path) -> None:
+    """Each weighted row binds by its name without the period; the cells
+    then read the run's own names, one band or area at a time."""
+
+    band_family = "hmrc.itl.taxpayers_by_total_income_band"
+    age_family = "hmrc.itl.state_pension_age_taxpayers"
+    rows = [
+        {"name": f"{band_family}.{itl_band_key(band)}@2025", "target_loss_weight": 1}
+        for band in ITL_BANDS[1:]
+    ]
+    rows += [
+        # Dropped from the loss: out of sample however many siblings bind.
+        {
+            "name": f"{band_family}.{itl_band_key(ITL_BANDS[0])}@2025",
+            "target_loss_weight": 0,
+        },
+        # No weight recorded: bound.
+        {"name": f"{age_family}@{AREAS[0]}@2025"},
+        {
+            "name": "hmrc.spi.state_pension.count_by_total_income_band.band_x@2025",
+            "target_loss_weight": 0.5,
+        },
+        {"name": "unperioded", "target_loss_weight": 1},
+    ]
     diagnostics = tmp_path / "calibration_diagnostics.json"
-    diagnostics.write_text(
-        json.dumps(
-            {
-                "targets": [
-                    {
-                        "metadata": {"contract_target_id": "kept"},
-                        "target_loss_weight": 1,
-                    },
-                    {
-                        "metadata": {"contract_target_id": "dropped"},
-                        "target_loss_weight": 0,
-                    },
-                    {"metadata": {"contract_target_id": "unweighted"}},
-                    {"metadata": {}, "target_loss_weight": 1},
-                ]
-            }
-        )
-    )
-    assert tool.run_bound_targets(diagnostics) == {"kept", "unweighted"}
+    diagnostics.write_text(json.dumps({"targets": rows}))
+    bound = tool.run_bound_targets(diagnostics)
+    assert bound == {
+        *(f"{band_family}.{itl_band_key(band)}" for band in ITL_BANDS[1:]),
+        f"{age_family}@{AREAS[0]}",
+        "hmrc.spi.state_pension.count_by_total_income_band.band_x",
+        "unperioded",
+    }
+    flags = {
+        (cell.table, cell.measure, cell.band, cell.area): cell.in_sample
+        for cell in expected_cells(_rows(), year=2025, bound_targets=bound)
+    }
+    assert [flags[("2.5", BAND_COUNT, band, None)] for band in ITL_BANDS] == [
+        False,
+        *[True] * (len(ITL_BANDS) - 1),
+    ]
+    assert not flags[("2.5", ALL_TAXPAYERS, None, None)]
+    assert flags[("2.2", "state_pension_age", None, AREAS[0])]
+    assert not flags[("2.2", "state_pension_age", None, AREAS[1])]
 
 
 class _Resolver:
@@ -510,13 +598,11 @@ def test_strict_exits_one_exactly_on_a_miss(
             {
                 "targets": [
                     {
-                        "metadata": {
-                            "contract_target_id": (
-                                "hmrc.itl.taxpayers_by_total_income_band"
-                            )
-                        },
+                        "name": "hmrc.itl.taxpayers_by_total_income_band."
+                        f"{itl_band_key(band)}@2025",
                         "target_loss_weight": 1.0,
                     }
+                    for band in ITL_BANDS
                 ]
             }
         )

@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import json
 import warnings
 from datetime import date, timedelta
+from importlib import resources as importlib_resources
 
 import pytest
 
@@ -285,9 +287,43 @@ def test_the_committed_declarations_are_well_formed():
         assert entry["scope"] in {"national", "local"}
         assert entry["reason"].strip()
         assert entry["tracking"].strip()
-        assert date.fromisoformat(entry["approved_on"]) < date.fromisoformat(
-            entry["expires_on"]
-        )
+        # A proposed entry has no approval date yet; it is not in force, and
+        # test_every_committed_hold_is_signed names it.
+        if uk_hold_is_signed(entry):
+            assert date.fromisoformat(entry["approved_on"]) < date.fromisoformat(
+                entry["expires_on"]
+            )
         for target_id in entry["target_ids"]:
             assert target_id not in seen
             seen.add(target_id)
+
+
+def test_every_reference_measured_at_an_earlier_year_is_declared():
+    """A national reference whose binding measures an earlier year than its
+    period, with no index, is held whatever fact it binds: the compile refuses
+    it without a declaration, so a missing one fails here, before a build.
+
+    (Holds that only the fact's period reveals are checked at compile time.)
+    """
+
+    references = json.loads(
+        importlib_resources.files("microcosm.build.uk")
+        .joinpath("target_references.json")
+        .read_text()
+    )["target_references"]
+    declared = {
+        target_id
+        for entry in load_uk_uprating_holds()["holds"]
+        if entry.get("scope", "national") == "national"
+        for target_id in entry["target_ids"]
+    }
+    held = {
+        reference["metadata"]["contract_target_id"]
+        for reference in references
+        if "measurement_period" in reference["metadata"]
+        and int(reference["metadata"]["measurement_period"]) < int(reference["period"])
+        and "uprating_index" not in reference
+        and "uprating_index" not in reference["metadata"]
+    }
+    assert held, "the committed references measure no earlier year"
+    assert sorted(held - declared) == []

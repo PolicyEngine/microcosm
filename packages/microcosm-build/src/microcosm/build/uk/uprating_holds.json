@@ -475,6 +475,22 @@
       "approved_on": "2026-10-25",
       "status": "approved",
       "expires_on": "2026-12-11"
+    },
+    {
+      "scope": "national",
+      "kind": "matched_period",
+      "target_ids": [
+        "hmrc.spi.state_pension.count_by_total_income_band",
+        "hmrc.spi.state_pension.amount_by_total_income_band",
+        "hmrc.spi.private_pension_income.count_by_total_income_band",
+        "hmrc.spi.private_pension_income.amount_by_total_income_band"
+      ],
+      "reason": "HMRC SPI 2023-24 Table 3.6 State Pension and private pension income, count and amount by total income band, measured at tax year 2023-24 through the dated spi_2023_* measures (measurement_period 2023, require_matching_fact_period): the published values bind as published, each person's 2023-24 income and tax come from the engine run at 2023-24 on the stored inputs carried back as the engine carries them forward (checked by a round trip), and the additive measures carry the ONS population factor of the person's sex and age band. Projecting a nominal band to 2025 by HMRC's all-taxpayer growth in the band moves pensioners, whose incomes grow differently, by workers' growth (microcosm#1413, option 1 of the 27 Oct band-projection review).",
+      "tracking": "microcosm#1413",
+      "approved_by": "",
+      "approved_on": "",
+      "status": "proposed",
+      "expires_on": "2026-12-11"
     }
   ]
 }
