@@ -223,6 +223,16 @@ _ITL_AGE_PREFIXES = (
     "hmrc.itl.state_pension_age_taxpayers@",
     "hmrc.itl.taxpayers_aged_65_and_over@",
 )
+#: microcosm#1418: Income Tax on savings at each rate (ITL Table 2.6), which
+#: the incumbent registry has no row of.
+_ITL_SAVINGS_TAX_PREFIX = "hmrc.itl.savings_tax_at_"
+_ITL_SAVINGS_TAX_LEDGER_ONLY_RATIONALE = (
+    "Coverage the incumbent lacks (microcosm#1418): HMRC's Income Tax liabilities "
+    "Table 2.6 (July 2026) Income Tax on savings at the basic, higher and additional "
+    "rates, all payers, United Kingdom, as the calendar-2025 window of the 2024-25 "
+    "and 2025-26 projections: the base the Budget 2026 savings income rates are "
+    "costed on. The incumbent registry binds no tax by income source or rate."
+)
 _ITL_AGE_LEDGER_ONLY_RATIONALE = (
     "Coverage the incumbent lacks (microcosm#1069): HMRC's Income Tax liabilities "
     "Table 2.2 (July 2026) Income Tax payers of State Pension age and aged 65 and "
@@ -892,6 +902,11 @@ def _add_signed_rationale_notes(
             row["reason"] = _SPI_UPRATED_DRIFT_RATIONALE
         elif name.startswith(_ITL_AGE_PREFIXES) and row.get("kind") == "ledger_only":
             row["reason"] = _ITL_AGE_LEDGER_ONLY_RATIONALE
+        elif (
+            name.startswith(_ITL_SAVINGS_TAX_PREFIX)
+            and row.get("kind") == "ledger_only"
+        ):
+            row["reason"] = _ITL_SAVINGS_TAX_LEDGER_ONLY_RATIONALE
         elif (
             name.startswith(_INCOME_ANCHOR_PREFIXES)
             and row.get("kind") == "ledger_only"

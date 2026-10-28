@@ -568,6 +568,31 @@ def test_a_value_expression_subtracts_as_well_as_adds():
     assert "unsupported value_expression" in result.skipped[0].reason
 
 
+def test_a_value_expression_scales_a_name_by_a_positive_constant():
+    # A rate applied to the base it taxes (microcosm#1418).
+    binding = {"value_expression": "0.45 * income + 2 * baseline_tax"}
+    assert _materialized(binding) == pytest.approx([6.5, 13.0, 19.5])
+    assert expression_names("0.45 * income - age") == ("income", "age")
+    for unsupported in (
+        "income * 2",
+        "0 * income",
+        "0.0 * income",
+        "2 *",
+        "2 * 3",
+        "2 * max(income, 0)",
+        "2 * income * 3",
+        "-2 * income",
+    ):
+        adapter = StubAdapter()
+        result = materialize_target_bindings(
+            adapter,
+            _single_spec_registry(),
+            {"row": {"bindings": {"policyengine": {"value_expression": unsupported}}}},
+            period=2025,
+        )
+        assert "unsupported value_expression" in result.skipped[0].reason, unsupported
+
+
 def test_a_value_expression_floors_a_sum_at_zero():
     # The one function the grammar admits (microcosm#1095).
     binding = {"value_expression": "max(baseline_tax - income + 15, 0)"}

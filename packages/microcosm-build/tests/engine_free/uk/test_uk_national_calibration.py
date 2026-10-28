@@ -66,8 +66,9 @@ from microcosm.frame import EntitySchema, Frame, MassChange, WeightKind, Weights
 # excise receipts rows, measured at FY2024-25; the bump after it compiles
 # obr.domestic_rates, pinned to the UK, and HMRC's five Child Benefit family
 # rows (microcosm#1095); microcosm#1069 adds HMRC's Income Tax payers of State
-# Pension age and aged 65 and over in the twelve region-tier areas.
-ACTIVE_REFERENCE_COUNT = 1371
+# Pension age and aged 65 and over in the twelve region-tier areas;
+# microcosm#1418 adds HMRC's Income Tax on savings at the three rates.
+ACTIVE_REFERENCE_COUNT = 1374
 
 
 def _uc_reference(**overrides) -> LedgerTargetReference:
