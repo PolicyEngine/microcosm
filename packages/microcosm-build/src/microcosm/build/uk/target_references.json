@@ -4175,6 +4175,8 @@
         "source_concept": "hmrc.spi_private_pension_income_amount",
         "groupby_dimension": "hmrc.total_income_band",
         "entity_name": "person",
+        "period_type": "tax_year",
+        "period_value": 2023,
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -4187,9 +4189,11 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "hmrc.spi.private_pension_income.amount_by_total_income_band",
-        "measure_kind": "prepared_column"
+        "measure_kind": "prepared_column",
+        "observation_basis": "taxpayers_tax_year_2023_24_at_own_year",
+        "measurement_period": "2023",
+        "source_period_policy": "exact_observation"
       },
-      "uprating_index": "hmrc.itl_2026.total_income_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -4200,6 +4204,8 @@
         "source_concept": "hmrc.spi_private_pension_income_amount",
         "groupby_dimension": "hmrc.total_income_band",
         "entity_name": "person",
+        "period_type": "tax_year",
+        "period_value": 2023,
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -4212,9 +4218,11 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "hmrc.spi.private_pension_income.amount_by_total_income_band",
-        "measure_kind": "prepared_column"
+        "measure_kind": "prepared_column",
+        "observation_basis": "taxpayers_tax_year_2023_24_at_own_year",
+        "measurement_period": "2023",
+        "source_period_policy": "exact_observation"
       },
-      "uprating_index": "hmrc.itl_2026.total_income_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -4225,6 +4233,8 @@
         "source_concept": "hmrc.spi_private_pension_income_amount",
         "groupby_dimension": "hmrc.total_income_band",
         "entity_name": "person",
+        "period_type": "tax_year",
+        "period_value": 2023,
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -4237,9 +4247,11 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "hmrc.spi.private_pension_income.amount_by_total_income_band",
-        "measure_kind": "prepared_column"
+        "measure_kind": "prepared_column",
+        "observation_basis": "taxpayers_tax_year_2023_24_at_own_year",
+        "measurement_period": "2023",
+        "source_period_policy": "exact_observation"
       },
-      "uprating_index": "hmrc.itl_2026.total_income_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -4250,6 +4262,8 @@
         "source_concept": "hmrc.spi_private_pension_income_amount",
         "groupby_dimension": "hmrc.total_income_band",
         "entity_name": "person",
+        "period_type": "tax_year",
+        "period_value": 2023,
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -4262,9 +4276,11 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "hmrc.spi.private_pension_income.amount_by_total_income_band",
-        "measure_kind": "prepared_column"
+        "measure_kind": "prepared_column",
+        "observation_basis": "taxpayers_tax_year_2023_24_at_own_year",
+        "measurement_period": "2023",
+        "source_period_policy": "exact_observation"
       },
-      "uprating_index": "hmrc.itl_2026.total_income_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -4275,6 +4291,8 @@
         "source_concept": "hmrc.spi_private_pension_income_amount",
         "groupby_dimension": "hmrc.total_income_band",
         "entity_name": "person",
+        "period_type": "tax_year",
+        "period_value": 2023,
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -4287,9 +4305,11 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "hmrc.spi.private_pension_income.amount_by_total_income_band",
-        "measure_kind": "prepared_column"
+        "measure_kind": "prepared_column",
+        "observation_basis": "taxpayers_tax_year_2023_24_at_own_year",
+        "measurement_period": "2023",
+        "source_period_policy": "exact_observation"
       },
-      "uprating_index": "hmrc.itl_2026.total_income_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -4300,6 +4320,8 @@
         "source_concept": "hmrc.spi_private_pension_income_amount",
         "groupby_dimension": "hmrc.total_income_band",
         "entity_name": "person",
+        "period_type": "tax_year",
+        "period_value": 2023,
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -4312,9 +4334,11 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "hmrc.spi.private_pension_income.amount_by_total_income_band",
-        "measure_kind": "prepared_column"
+        "measure_kind": "prepared_column",
+        "observation_basis": "taxpayers_tax_year_2023_24_at_own_year",
+        "measurement_period": "2023",
+        "source_period_policy": "exact_observation"
       },
-      "uprating_index": "hmrc.itl_2026.total_income_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -4325,6 +4349,8 @@
         "source_concept": "hmrc.spi_private_pension_income_amount",
         "groupby_dimension": "hmrc.total_income_band",
         "entity_name": "person",
+        "period_type": "tax_year",
+        "period_value": 2023,
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -4337,9 +4363,11 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "hmrc.spi.private_pension_income.amount_by_total_income_band",
-        "measure_kind": "prepared_column"
+        "measure_kind": "prepared_column",
+        "observation_basis": "taxpayers_tax_year_2023_24_at_own_year",
+        "measurement_period": "2023",
+        "source_period_policy": "exact_observation"
       },
-      "uprating_index": "hmrc.itl_2026.total_income_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -4350,6 +4378,8 @@
         "source_concept": "hmrc.spi_private_pension_income_amount",
         "groupby_dimension": "hmrc.total_income_band",
         "entity_name": "person",
+        "period_type": "tax_year",
+        "period_value": 2023,
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -4362,9 +4392,11 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "hmrc.spi.private_pension_income.amount_by_total_income_band",
-        "measure_kind": "prepared_column"
+        "measure_kind": "prepared_column",
+        "observation_basis": "taxpayers_tax_year_2023_24_at_own_year",
+        "measurement_period": "2023",
+        "source_period_policy": "exact_observation"
       },
-      "uprating_index": "hmrc.itl_2026.total_income_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -4375,6 +4407,8 @@
         "source_concept": "hmrc.spi_private_pension_income_amount",
         "groupby_dimension": "hmrc.total_income_band",
         "entity_name": "person",
+        "period_type": "tax_year",
+        "period_value": 2023,
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -4387,9 +4421,11 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "hmrc.spi.private_pension_income.amount_by_total_income_band",
-        "measure_kind": "prepared_column"
+        "measure_kind": "prepared_column",
+        "observation_basis": "taxpayers_tax_year_2023_24_at_own_year",
+        "measurement_period": "2023",
+        "source_period_policy": "exact_observation"
       },
-      "uprating_index": "hmrc.itl_2026.total_income_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -4400,6 +4436,8 @@
         "source_concept": "hmrc.spi_private_pension_income_amount",
         "groupby_dimension": "hmrc.total_income_band",
         "entity_name": "person",
+        "period_type": "tax_year",
+        "period_value": 2023,
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -4412,9 +4450,11 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "hmrc.spi.private_pension_income.amount_by_total_income_band",
-        "measure_kind": "prepared_column"
+        "measure_kind": "prepared_column",
+        "observation_basis": "taxpayers_tax_year_2023_24_at_own_year",
+        "measurement_period": "2023",
+        "source_period_policy": "exact_observation"
       },
-      "uprating_index": "hmrc.itl_2026.total_income_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -4425,6 +4465,8 @@
         "source_concept": "hmrc.spi_private_pension_income_amount",
         "groupby_dimension": "hmrc.total_income_band",
         "entity_name": "person",
+        "period_type": "tax_year",
+        "period_value": 2023,
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -4437,9 +4479,11 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "hmrc.spi.private_pension_income.amount_by_total_income_band",
-        "measure_kind": "prepared_column"
+        "measure_kind": "prepared_column",
+        "observation_basis": "taxpayers_tax_year_2023_24_at_own_year",
+        "measurement_period": "2023",
+        "source_period_policy": "exact_observation"
       },
-      "uprating_index": "hmrc.itl_2026.total_income_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -4450,6 +4494,8 @@
         "source_concept": "hmrc.spi_private_pension_income_amount",
         "groupby_dimension": "hmrc.total_income_band",
         "entity_name": "person",
+        "period_type": "tax_year",
+        "period_value": 2023,
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -4462,9 +4508,11 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "hmrc.spi.private_pension_income.amount_by_total_income_band",
-        "measure_kind": "prepared_column"
+        "measure_kind": "prepared_column",
+        "observation_basis": "taxpayers_tax_year_2023_24_at_own_year",
+        "measurement_period": "2023",
+        "source_period_policy": "exact_observation"
       },
-      "uprating_index": "hmrc.itl_2026.total_income_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -4475,6 +4523,8 @@
         "source_concept": "hmrc.spi_private_pension_income_amount",
         "groupby_dimension": "hmrc.total_income_band",
         "entity_name": "person",
+        "period_type": "tax_year",
+        "period_value": 2023,
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -4487,9 +4537,11 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "hmrc.spi.private_pension_income.amount_by_total_income_band",
-        "measure_kind": "prepared_column"
+        "measure_kind": "prepared_column",
+        "observation_basis": "taxpayers_tax_year_2023_24_at_own_year",
+        "measurement_period": "2023",
+        "source_period_policy": "exact_observation"
       },
-      "uprating_index": "hmrc.itl_2026.total_income_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -4499,6 +4551,8 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_private_pension_income_count",
         "groupby_dimension": "hmrc.total_income_band",
+        "period_type": "tax_year",
+        "period_value": 2023,
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -4511,9 +4565,11 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "hmrc.spi.private_pension_income.count_by_total_income_band",
-        "measure_kind": "prepared_column"
+        "measure_kind": "prepared_column",
+        "observation_basis": "taxpayers_tax_year_2023_24_at_own_year",
+        "measurement_period": "2023",
+        "source_period_policy": "exact_observation"
       },
-      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -4523,6 +4579,8 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_private_pension_income_count",
         "groupby_dimension": "hmrc.total_income_band",
+        "period_type": "tax_year",
+        "period_value": 2023,
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -4535,9 +4593,11 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "hmrc.spi.private_pension_income.count_by_total_income_band",
-        "measure_kind": "prepared_column"
+        "measure_kind": "prepared_column",
+        "observation_basis": "taxpayers_tax_year_2023_24_at_own_year",
+        "measurement_period": "2023",
+        "source_period_policy": "exact_observation"
       },
-      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -4547,6 +4607,8 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_private_pension_income_count",
         "groupby_dimension": "hmrc.total_income_band",
+        "period_type": "tax_year",
+        "period_value": 2023,
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -4559,9 +4621,11 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "hmrc.spi.private_pension_income.count_by_total_income_band",
-        "measure_kind": "prepared_column"
+        "measure_kind": "prepared_column",
+        "observation_basis": "taxpayers_tax_year_2023_24_at_own_year",
+        "measurement_period": "2023",
+        "source_period_policy": "exact_observation"
       },
-      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -4571,6 +4635,8 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_private_pension_income_count",
         "groupby_dimension": "hmrc.total_income_band",
+        "period_type": "tax_year",
+        "period_value": 2023,
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -4583,9 +4649,11 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "hmrc.spi.private_pension_income.count_by_total_income_band",
-        "measure_kind": "prepared_column"
+        "measure_kind": "prepared_column",
+        "observation_basis": "taxpayers_tax_year_2023_24_at_own_year",
+        "measurement_period": "2023",
+        "source_period_policy": "exact_observation"
       },
-      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -4595,6 +4663,8 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_private_pension_income_count",
         "groupby_dimension": "hmrc.total_income_band",
+        "period_type": "tax_year",
+        "period_value": 2023,
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -4607,9 +4677,11 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "hmrc.spi.private_pension_income.count_by_total_income_band",
-        "measure_kind": "prepared_column"
+        "measure_kind": "prepared_column",
+        "observation_basis": "taxpayers_tax_year_2023_24_at_own_year",
+        "measurement_period": "2023",
+        "source_period_policy": "exact_observation"
       },
-      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -4619,6 +4691,8 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_private_pension_income_count",
         "groupby_dimension": "hmrc.total_income_band",
+        "period_type": "tax_year",
+        "period_value": 2023,
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -4631,9 +4705,11 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "hmrc.spi.private_pension_income.count_by_total_income_band",
-        "measure_kind": "prepared_column"
+        "measure_kind": "prepared_column",
+        "observation_basis": "taxpayers_tax_year_2023_24_at_own_year",
+        "measurement_period": "2023",
+        "source_period_policy": "exact_observation"
       },
-      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -4643,6 +4719,8 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_private_pension_income_count",
         "groupby_dimension": "hmrc.total_income_band",
+        "period_type": "tax_year",
+        "period_value": 2023,
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -4655,9 +4733,11 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "hmrc.spi.private_pension_income.count_by_total_income_band",
-        "measure_kind": "prepared_column"
+        "measure_kind": "prepared_column",
+        "observation_basis": "taxpayers_tax_year_2023_24_at_own_year",
+        "measurement_period": "2023",
+        "source_period_policy": "exact_observation"
       },
-      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -4667,6 +4747,8 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_private_pension_income_count",
         "groupby_dimension": "hmrc.total_income_band",
+        "period_type": "tax_year",
+        "period_value": 2023,
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -4679,9 +4761,11 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "hmrc.spi.private_pension_income.count_by_total_income_band",
-        "measure_kind": "prepared_column"
+        "measure_kind": "prepared_column",
+        "observation_basis": "taxpayers_tax_year_2023_24_at_own_year",
+        "measurement_period": "2023",
+        "source_period_policy": "exact_observation"
       },
-      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -4691,6 +4775,8 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_private_pension_income_count",
         "groupby_dimension": "hmrc.total_income_band",
+        "period_type": "tax_year",
+        "period_value": 2023,
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -4703,9 +4789,11 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "hmrc.spi.private_pension_income.count_by_total_income_band",
-        "measure_kind": "prepared_column"
+        "measure_kind": "prepared_column",
+        "observation_basis": "taxpayers_tax_year_2023_24_at_own_year",
+        "measurement_period": "2023",
+        "source_period_policy": "exact_observation"
       },
-      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -4715,6 +4803,8 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_private_pension_income_count",
         "groupby_dimension": "hmrc.total_income_band",
+        "period_type": "tax_year",
+        "period_value": 2023,
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -4727,9 +4817,11 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "hmrc.spi.private_pension_income.count_by_total_income_band",
-        "measure_kind": "prepared_column"
+        "measure_kind": "prepared_column",
+        "observation_basis": "taxpayers_tax_year_2023_24_at_own_year",
+        "measurement_period": "2023",
+        "source_period_policy": "exact_observation"
       },
-      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -4739,6 +4831,8 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_private_pension_income_count",
         "groupby_dimension": "hmrc.total_income_band",
+        "period_type": "tax_year",
+        "period_value": 2023,
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -4751,9 +4845,11 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "hmrc.spi.private_pension_income.count_by_total_income_band",
-        "measure_kind": "prepared_column"
+        "measure_kind": "prepared_column",
+        "observation_basis": "taxpayers_tax_year_2023_24_at_own_year",
+        "measurement_period": "2023",
+        "source_period_policy": "exact_observation"
       },
-      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -4763,6 +4859,8 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_private_pension_income_count",
         "groupby_dimension": "hmrc.total_income_band",
+        "period_type": "tax_year",
+        "period_value": 2023,
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -4775,9 +4873,11 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "hmrc.spi.private_pension_income.count_by_total_income_band",
-        "measure_kind": "prepared_column"
+        "measure_kind": "prepared_column",
+        "observation_basis": "taxpayers_tax_year_2023_24_at_own_year",
+        "measurement_period": "2023",
+        "source_period_policy": "exact_observation"
       },
-      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -4787,6 +4887,8 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_private_pension_income_count",
         "groupby_dimension": "hmrc.total_income_band",
+        "period_type": "tax_year",
+        "period_value": 2023,
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -4799,9 +4901,11 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "hmrc.spi.private_pension_income.count_by_total_income_band",
-        "measure_kind": "prepared_column"
+        "measure_kind": "prepared_column",
+        "observation_basis": "taxpayers_tax_year_2023_24_at_own_year",
+        "measurement_period": "2023",
+        "source_period_policy": "exact_observation"
       },
-      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -4812,6 +4916,8 @@
         "source_concept": "hmrc.spi_state_pension_amount",
         "groupby_dimension": "hmrc.total_income_band",
         "entity_name": "person",
+        "period_type": "tax_year",
+        "period_value": 2023,
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -4824,9 +4930,11 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "hmrc.spi.state_pension.amount_by_total_income_band",
-        "measure_kind": "prepared_column"
+        "measure_kind": "prepared_column",
+        "observation_basis": "taxpayers_tax_year_2023_24_at_own_year",
+        "measurement_period": "2023",
+        "source_period_policy": "exact_observation"
       },
-      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -4837,6 +4945,8 @@
         "source_concept": "hmrc.spi_state_pension_amount",
         "groupby_dimension": "hmrc.total_income_band",
         "entity_name": "person",
+        "period_type": "tax_year",
+        "period_value": 2023,
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -4849,9 +4959,11 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "hmrc.spi.state_pension.amount_by_total_income_band",
-        "measure_kind": "prepared_column"
+        "measure_kind": "prepared_column",
+        "observation_basis": "taxpayers_tax_year_2023_24_at_own_year",
+        "measurement_period": "2023",
+        "source_period_policy": "exact_observation"
       },
-      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -4862,6 +4974,8 @@
         "source_concept": "hmrc.spi_state_pension_amount",
         "groupby_dimension": "hmrc.total_income_band",
         "entity_name": "person",
+        "period_type": "tax_year",
+        "period_value": 2023,
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -4874,9 +4988,11 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "hmrc.spi.state_pension.amount_by_total_income_band",
-        "measure_kind": "prepared_column"
+        "measure_kind": "prepared_column",
+        "observation_basis": "taxpayers_tax_year_2023_24_at_own_year",
+        "measurement_period": "2023",
+        "source_period_policy": "exact_observation"
       },
-      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -4887,6 +5003,8 @@
         "source_concept": "hmrc.spi_state_pension_amount",
         "groupby_dimension": "hmrc.total_income_band",
         "entity_name": "person",
+        "period_type": "tax_year",
+        "period_value": 2023,
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -4899,9 +5017,11 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "hmrc.spi.state_pension.amount_by_total_income_band",
-        "measure_kind": "prepared_column"
+        "measure_kind": "prepared_column",
+        "observation_basis": "taxpayers_tax_year_2023_24_at_own_year",
+        "measurement_period": "2023",
+        "source_period_policy": "exact_observation"
       },
-      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -4912,6 +5032,8 @@
         "source_concept": "hmrc.spi_state_pension_amount",
         "groupby_dimension": "hmrc.total_income_band",
         "entity_name": "person",
+        "period_type": "tax_year",
+        "period_value": 2023,
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -4924,9 +5046,11 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "hmrc.spi.state_pension.amount_by_total_income_band",
-        "measure_kind": "prepared_column"
+        "measure_kind": "prepared_column",
+        "observation_basis": "taxpayers_tax_year_2023_24_at_own_year",
+        "measurement_period": "2023",
+        "source_period_policy": "exact_observation"
       },
-      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -4937,6 +5061,8 @@
         "source_concept": "hmrc.spi_state_pension_amount",
         "groupby_dimension": "hmrc.total_income_band",
         "entity_name": "person",
+        "period_type": "tax_year",
+        "period_value": 2023,
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -4949,9 +5075,11 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "hmrc.spi.state_pension.amount_by_total_income_band",
-        "measure_kind": "prepared_column"
+        "measure_kind": "prepared_column",
+        "observation_basis": "taxpayers_tax_year_2023_24_at_own_year",
+        "measurement_period": "2023",
+        "source_period_policy": "exact_observation"
       },
-      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -4962,6 +5090,8 @@
         "source_concept": "hmrc.spi_state_pension_amount",
         "groupby_dimension": "hmrc.total_income_band",
         "entity_name": "person",
+        "period_type": "tax_year",
+        "period_value": 2023,
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -4974,9 +5104,11 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "hmrc.spi.state_pension.amount_by_total_income_band",
-        "measure_kind": "prepared_column"
+        "measure_kind": "prepared_column",
+        "observation_basis": "taxpayers_tax_year_2023_24_at_own_year",
+        "measurement_period": "2023",
+        "source_period_policy": "exact_observation"
       },
-      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -4987,6 +5119,8 @@
         "source_concept": "hmrc.spi_state_pension_amount",
         "groupby_dimension": "hmrc.total_income_band",
         "entity_name": "person",
+        "period_type": "tax_year",
+        "period_value": 2023,
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -4999,9 +5133,11 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "hmrc.spi.state_pension.amount_by_total_income_band",
-        "measure_kind": "prepared_column"
+        "measure_kind": "prepared_column",
+        "observation_basis": "taxpayers_tax_year_2023_24_at_own_year",
+        "measurement_period": "2023",
+        "source_period_policy": "exact_observation"
       },
-      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -5012,6 +5148,8 @@
         "source_concept": "hmrc.spi_state_pension_amount",
         "groupby_dimension": "hmrc.total_income_band",
         "entity_name": "person",
+        "period_type": "tax_year",
+        "period_value": 2023,
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -5024,9 +5162,11 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "hmrc.spi.state_pension.amount_by_total_income_band",
-        "measure_kind": "prepared_column"
+        "measure_kind": "prepared_column",
+        "observation_basis": "taxpayers_tax_year_2023_24_at_own_year",
+        "measurement_period": "2023",
+        "source_period_policy": "exact_observation"
       },
-      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -5037,6 +5177,8 @@
         "source_concept": "hmrc.spi_state_pension_amount",
         "groupby_dimension": "hmrc.total_income_band",
         "entity_name": "person",
+        "period_type": "tax_year",
+        "period_value": 2023,
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -5049,9 +5191,11 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "hmrc.spi.state_pension.amount_by_total_income_band",
-        "measure_kind": "prepared_column"
+        "measure_kind": "prepared_column",
+        "observation_basis": "taxpayers_tax_year_2023_24_at_own_year",
+        "measurement_period": "2023",
+        "source_period_policy": "exact_observation"
       },
-      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -5062,6 +5206,8 @@
         "source_concept": "hmrc.spi_state_pension_amount",
         "groupby_dimension": "hmrc.total_income_band",
         "entity_name": "person",
+        "period_type": "tax_year",
+        "period_value": 2023,
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -5074,9 +5220,11 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "hmrc.spi.state_pension.amount_by_total_income_band",
-        "measure_kind": "prepared_column"
+        "measure_kind": "prepared_column",
+        "observation_basis": "taxpayers_tax_year_2023_24_at_own_year",
+        "measurement_period": "2023",
+        "source_period_policy": "exact_observation"
       },
-      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -5087,6 +5235,8 @@
         "source_concept": "hmrc.spi_state_pension_amount",
         "groupby_dimension": "hmrc.total_income_band",
         "entity_name": "person",
+        "period_type": "tax_year",
+        "period_value": 2023,
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -5099,9 +5249,11 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "hmrc.spi.state_pension.amount_by_total_income_band",
-        "measure_kind": "prepared_column"
+        "measure_kind": "prepared_column",
+        "observation_basis": "taxpayers_tax_year_2023_24_at_own_year",
+        "measurement_period": "2023",
+        "source_period_policy": "exact_observation"
       },
-      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -5112,6 +5264,8 @@
         "source_concept": "hmrc.spi_state_pension_amount",
         "groupby_dimension": "hmrc.total_income_band",
         "entity_name": "person",
+        "period_type": "tax_year",
+        "period_value": 2023,
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -5124,9 +5278,11 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "hmrc.spi.state_pension.amount_by_total_income_band",
-        "measure_kind": "prepared_column"
+        "measure_kind": "prepared_column",
+        "observation_basis": "taxpayers_tax_year_2023_24_at_own_year",
+        "measurement_period": "2023",
+        "source_period_policy": "exact_observation"
       },
-      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -5136,6 +5292,8 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_state_pension_count",
         "groupby_dimension": "hmrc.total_income_band",
+        "period_type": "tax_year",
+        "period_value": 2023,
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -5148,9 +5306,11 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "hmrc.spi.state_pension.count_by_total_income_band",
-        "measure_kind": "prepared_column"
+        "measure_kind": "prepared_column",
+        "observation_basis": "taxpayers_tax_year_2023_24_at_own_year",
+        "measurement_period": "2023",
+        "source_period_policy": "exact_observation"
       },
-      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -5160,6 +5320,8 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_state_pension_count",
         "groupby_dimension": "hmrc.total_income_band",
+        "period_type": "tax_year",
+        "period_value": 2023,
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -5172,9 +5334,11 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "hmrc.spi.state_pension.count_by_total_income_band",
-        "measure_kind": "prepared_column"
+        "measure_kind": "prepared_column",
+        "observation_basis": "taxpayers_tax_year_2023_24_at_own_year",
+        "measurement_period": "2023",
+        "source_period_policy": "exact_observation"
       },
-      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -5184,6 +5348,8 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_state_pension_count",
         "groupby_dimension": "hmrc.total_income_band",
+        "period_type": "tax_year",
+        "period_value": 2023,
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -5196,9 +5362,11 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "hmrc.spi.state_pension.count_by_total_income_band",
-        "measure_kind": "prepared_column"
+        "measure_kind": "prepared_column",
+        "observation_basis": "taxpayers_tax_year_2023_24_at_own_year",
+        "measurement_period": "2023",
+        "source_period_policy": "exact_observation"
       },
-      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -5208,6 +5376,8 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_state_pension_count",
         "groupby_dimension": "hmrc.total_income_band",
+        "period_type": "tax_year",
+        "period_value": 2023,
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -5220,9 +5390,11 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "hmrc.spi.state_pension.count_by_total_income_band",
-        "measure_kind": "prepared_column"
+        "measure_kind": "prepared_column",
+        "observation_basis": "taxpayers_tax_year_2023_24_at_own_year",
+        "measurement_period": "2023",
+        "source_period_policy": "exact_observation"
       },
-      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -5232,6 +5404,8 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_state_pension_count",
         "groupby_dimension": "hmrc.total_income_band",
+        "period_type": "tax_year",
+        "period_value": 2023,
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -5244,9 +5418,11 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "hmrc.spi.state_pension.count_by_total_income_band",
-        "measure_kind": "prepared_column"
+        "measure_kind": "prepared_column",
+        "observation_basis": "taxpayers_tax_year_2023_24_at_own_year",
+        "measurement_period": "2023",
+        "source_period_policy": "exact_observation"
       },
-      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -5256,6 +5432,8 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_state_pension_count",
         "groupby_dimension": "hmrc.total_income_band",
+        "period_type": "tax_year",
+        "period_value": 2023,
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -5268,9 +5446,11 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "hmrc.spi.state_pension.count_by_total_income_band",
-        "measure_kind": "prepared_column"
+        "measure_kind": "prepared_column",
+        "observation_basis": "taxpayers_tax_year_2023_24_at_own_year",
+        "measurement_period": "2023",
+        "source_period_policy": "exact_observation"
       },
-      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -5280,6 +5460,8 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_state_pension_count",
         "groupby_dimension": "hmrc.total_income_band",
+        "period_type": "tax_year",
+        "period_value": 2023,
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -5292,9 +5474,11 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "hmrc.spi.state_pension.count_by_total_income_band",
-        "measure_kind": "prepared_column"
+        "measure_kind": "prepared_column",
+        "observation_basis": "taxpayers_tax_year_2023_24_at_own_year",
+        "measurement_period": "2023",
+        "source_period_policy": "exact_observation"
       },
-      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -5304,6 +5488,8 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_state_pension_count",
         "groupby_dimension": "hmrc.total_income_band",
+        "period_type": "tax_year",
+        "period_value": 2023,
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -5316,9 +5502,11 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "hmrc.spi.state_pension.count_by_total_income_band",
-        "measure_kind": "prepared_column"
+        "measure_kind": "prepared_column",
+        "observation_basis": "taxpayers_tax_year_2023_24_at_own_year",
+        "measurement_period": "2023",
+        "source_period_policy": "exact_observation"
       },
-      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -5328,6 +5516,8 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_state_pension_count",
         "groupby_dimension": "hmrc.total_income_band",
+        "period_type": "tax_year",
+        "period_value": 2023,
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -5340,9 +5530,11 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "hmrc.spi.state_pension.count_by_total_income_band",
-        "measure_kind": "prepared_column"
+        "measure_kind": "prepared_column",
+        "observation_basis": "taxpayers_tax_year_2023_24_at_own_year",
+        "measurement_period": "2023",
+        "source_period_policy": "exact_observation"
       },
-      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -5352,6 +5544,8 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_state_pension_count",
         "groupby_dimension": "hmrc.total_income_band",
+        "period_type": "tax_year",
+        "period_value": 2023,
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -5364,9 +5558,11 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "hmrc.spi.state_pension.count_by_total_income_band",
-        "measure_kind": "prepared_column"
+        "measure_kind": "prepared_column",
+        "observation_basis": "taxpayers_tax_year_2023_24_at_own_year",
+        "measurement_period": "2023",
+        "source_period_policy": "exact_observation"
       },
-      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -5376,6 +5572,8 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_state_pension_count",
         "groupby_dimension": "hmrc.total_income_band",
+        "period_type": "tax_year",
+        "period_value": 2023,
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -5388,9 +5586,11 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "hmrc.spi.state_pension.count_by_total_income_band",
-        "measure_kind": "prepared_column"
+        "measure_kind": "prepared_column",
+        "observation_basis": "taxpayers_tax_year_2023_24_at_own_year",
+        "measurement_period": "2023",
+        "source_period_policy": "exact_observation"
       },
-      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -5400,6 +5600,8 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_state_pension_count",
         "groupby_dimension": "hmrc.total_income_band",
+        "period_type": "tax_year",
+        "period_value": 2023,
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -5412,9 +5614,11 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "hmrc.spi.state_pension.count_by_total_income_band",
-        "measure_kind": "prepared_column"
+        "measure_kind": "prepared_column",
+        "observation_basis": "taxpayers_tax_year_2023_24_at_own_year",
+        "measurement_period": "2023",
+        "source_period_policy": "exact_observation"
       },
-      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -5424,6 +5628,8 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_state_pension_count",
         "groupby_dimension": "hmrc.total_income_band",
+        "period_type": "tax_year",
+        "period_value": 2023,
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -5436,9 +5642,11 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "hmrc.spi.state_pension.count_by_total_income_band",
-        "measure_kind": "prepared_column"
+        "measure_kind": "prepared_column",
+        "observation_basis": "taxpayers_tax_year_2023_24_at_own_year",
+        "measurement_period": "2023",
+        "source_period_policy": "exact_observation"
       },
-      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },

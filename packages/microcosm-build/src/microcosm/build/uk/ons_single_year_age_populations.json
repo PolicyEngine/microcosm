@@ -3,9 +3,10 @@
   "country": "uk",
   "kind": "uk_vendored_ledger_facts",
   "resource": "ons_single_year_age_populations.json",
-  "purpose": "ONS mid-2023 UK resident population by single year of age (0 to 89 and 90 and over) and sex (MYE2). Consumed by the SPI income stage, which draws each SPI 2022-23 donor's age within its published AGERANGE band in proportion to these single-year populations instead of uniformly, with State Pension recipients drawn at or above State Pension age (microcosm#1069).",
+  "purpose": "ONS mid-2023 UK resident population by single year of age (0 to 89 and 90 and over) and sex (MYE2). Consumed by the SPI income stage, which draws each SPI 2022-23 donor's age within its published AGERANGE band in proportion to these single-year populations instead of uniformly, with State Pension recipients drawn at or above State Pension age (microcosm#1069). Also the mid-2023 end of the population factor of the dated SPI 2023-24 counts (uk_runtime.spi_dated_measures): each person's sex and age band at 1 October 2023, interpolated between this file and the mid-2025 one, over mid-2025.",
   "consumers": [
-    "uk_runtime.spi_income"
+    "uk_runtime.spi_income",
+    "uk_runtime.spi_dated_measures"
   ],
   "planned_consumers": [],
   "policy": "Rows are copied verbatim from the pinned Chronicle consumer feed named in source_fact_feed; every value is a publisher-stated fact. Consumers declare their own arithmetic on these rows and never edit this file by hand: regenerate it with tools/vendor_uk_ledger_facts.py.",

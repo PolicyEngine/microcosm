@@ -5569,418 +5569,262 @@
     {
       "name": "hmrc/private_pension_income_income_band_100_000_to_150_000",
       "from": "2023",
-      "to": "2025",
-      "index": "hmrc.itl_2026.total_income_growth_by_total_income_band",
-      "factor": "1.23571428571429",
-      "value_before_uprating": "5430000000.0"
+      "to": "2025"
     },
     {
       "name": "hmrc/private_pension_income_income_band_1_000_000_to_inf",
       "from": "2023",
-      "to": "2025",
-      "index": "hmrc.itl_2026.total_income_growth_by_total_income_band",
-      "factor": "1.19599427753934",
-      "value_before_uprating": "370000000.0"
+      "to": "2025"
     },
     {
       "name": "hmrc/private_pension_income_income_band_12_570_to_15_000",
       "from": "2023",
-      "to": "2025",
-      "index": "hmrc.itl_2026.total_income_growth_by_total_income_band",
-      "factor": "1.05",
-      "value_before_uprating": "4350000000.0"
+      "to": "2025"
     },
     {
       "name": "hmrc/private_pension_income_income_band_15_000_to_20_000",
       "from": "2023",
-      "to": "2025",
-      "index": "hmrc.itl_2026.total_income_growth_by_total_income_band",
-      "factor": "0.977178423236514",
-      "value_before_uprating": "13600000000.0"
+      "to": "2025"
     },
     {
       "name": "hmrc/private_pension_income_income_band_150_000_to_200_000",
       "from": "2023",
-      "to": "2025",
-      "index": "hmrc.itl_2026.total_income_growth_by_total_income_band",
-      "factor": "1.15891089108911",
-      "value_before_uprating": "1810000000.0"
+      "to": "2025"
     },
     {
       "name": "hmrc/private_pension_income_income_band_20_000_to_30_000",
       "from": "2023",
-      "to": "2025",
-      "index": "hmrc.itl_2026.total_income_growth_by_total_income_band",
-      "factor": "1.00296442687747",
-      "value_before_uprating": "30200000000.0"
+      "to": "2025"
     },
     {
       "name": "hmrc/private_pension_income_income_band_200_000_to_300_000",
       "from": "2023",
-      "to": "2025",
-      "index": "hmrc.itl_2026.total_income_growth_by_total_income_band",
-      "factor": "1.21220604703247",
-      "value_before_uprating": "1570000000.0"
+      "to": "2025"
     },
     {
       "name": "hmrc/private_pension_income_income_band_30_000_to_40_000",
       "from": "2023",
-      "to": "2025",
-      "index": "hmrc.itl_2026.total_income_growth_by_total_income_band",
-      "factor": "1.11899038461538",
-      "value_before_uprating": "24900000000.0"
+      "to": "2025"
     },
     {
       "name": "hmrc/private_pension_income_income_band_300_000_to_500_000",
       "from": "2023",
-      "to": "2025",
-      "index": "hmrc.itl_2026.total_income_growth_by_total_income_band",
-      "factor": "1.21220604703247",
-      "value_before_uprating": "1120000000.0"
+      "to": "2025"
     },
     {
       "name": "hmrc/private_pension_income_income_band_40_000_to_50_000",
       "from": "2023",
-      "to": "2025",
-      "index": "hmrc.itl_2026.total_income_growth_by_total_income_band",
-      "factor": "1.11899038461538",
-      "value_before_uprating": "16900000000.0"
+      "to": "2025"
     },
     {
       "name": "hmrc/private_pension_income_income_band_50_000_to_70_000",
       "from": "2023",
-      "to": "2025",
-      "index": "hmrc.itl_2026.total_income_growth_by_total_income_band",
-      "factor": "1.21466666666667",
-      "value_before_uprating": "17400000000.0"
+      "to": "2025"
     },
     {
       "name": "hmrc/private_pension_income_income_band_500_000_to_1_000_000",
       "from": "2023",
-      "to": "2025",
-      "index": "hmrc.itl_2026.total_income_growth_by_total_income_band",
-      "factor": "1.22513812154696",
-      "value_before_uprating": "640000000.0"
+      "to": "2025"
     },
     {
       "name": "hmrc/private_pension_income_income_band_70_000_to_100_000",
       "from": "2023",
-      "to": "2025",
-      "index": "hmrc.itl_2026.total_income_growth_by_total_income_band",
-      "factor": "1.21466666666667",
-      "value_before_uprating": "9470000000.0"
+      "to": "2025"
     },
     {
       "name": "hmrc/private_pension_income_count_income_band_100_000_to_150_000",
       "from": "2023",
-      "to": "2025",
-      "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
-      "factor": "1.24430523917995",
-      "value_before_uprating": "109000.0"
+      "to": "2025"
     },
     {
       "name": "hmrc/private_pension_income_count_income_band_1_000_000_to_inf",
       "from": "2023",
-      "to": "2025",
-      "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
-      "factor": "1.16666666666667",
-      "value_before_uprating": "2000.0"
+      "to": "2025"
     },
     {
       "name": "hmrc/private_pension_income_count_income_band_12_570_to_15_000",
       "from": "2023",
-      "to": "2025",
-      "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
-      "factor": "1.04298245614035",
-      "value_before_uprating": "1070000.0"
+      "to": "2025"
     },
     {
       "name": "hmrc/private_pension_income_count_income_band_15_000_to_20_000",
       "from": "2023",
-      "to": "2025",
-      "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
-      "factor": "0.97875226039783",
-      "value_before_uprating": "2140000.0"
+      "to": "2025"
     },
     {
       "name": "hmrc/private_pension_income_count_income_band_150_000_to_200_000",
       "from": "2023",
-      "to": "2025",
-      "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
-      "factor": "1.16581632653061",
-      "value_before_uprating": "29000.0"
+      "to": "2025"
     },
     {
       "name": "hmrc/private_pension_income_count_income_band_20_000_to_30_000",
       "from": "2023",
-      "to": "2025",
-      "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
-      "factor": "1.00245098039216",
-      "value_before_uprating": "2660000.0"
+      "to": "2025"
     },
     {
       "name": "hmrc/private_pension_income_count_income_band_200_000_to_300_000",
       "from": "2023",
-      "to": "2025",
-      "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
-      "factor": "1.19774919614148",
-      "value_before_uprating": "20000.0"
+      "to": "2025"
     },
     {
       "name": "hmrc/private_pension_income_count_income_band_30_000_to_40_000",
       "from": "2023",
-      "to": "2025",
-      "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
-      "factor": "1.12268518518519",
-      "value_before_uprating": "1450000.0"
+      "to": "2025"
     },
     {
       "name": "hmrc/private_pension_income_count_income_band_300_000_to_500_000",
       "from": "2023",
-      "to": "2025",
-      "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
-      "factor": "1.19774919614148",
-      "value_before_uprating": "10000.0"
+      "to": "2025"
     },
     {
       "name": "hmrc/private_pension_income_count_income_band_40_000_to_50_000",
       "from": "2023",
-      "to": "2025",
-      "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
-      "factor": "1.12268518518519",
-      "value_before_uprating": "779000.0"
+      "to": "2025"
     },
     {
       "name": "hmrc/private_pension_income_count_income_band_50_000_to_70_000",
       "from": "2023",
-      "to": "2025",
-      "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
-      "factor": "1.21716287215412",
-      "value_before_uprating": "643000.0"
+      "to": "2025"
     },
     {
       "name": "hmrc/private_pension_income_count_income_band_500_000_to_1_000_000",
       "from": "2023",
-      "to": "2025",
-      "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
-      "factor": "1.21296296296296",
-      "value_before_uprating": "4000.0"
+      "to": "2025"
     },
     {
       "name": "hmrc/private_pension_income_count_income_band_70_000_to_100_000",
       "from": "2023",
-      "to": "2025",
-      "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
-      "factor": "1.21716287215412",
-      "value_before_uprating": "259000.0"
+      "to": "2025"
     },
     {
       "name": "hmrc/state_pension_income_band_100_000_to_150_000",
       "from": "2023",
-      "to": "2025",
-      "index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
-      "factor": "1.40545146588758",
-      "value_before_uprating": "847000000.0"
+      "to": "2025"
     },
     {
       "name": "hmrc/state_pension_income_band_1_000_000_to_inf",
       "from": "2023",
-      "to": "2025",
-      "index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
-      "factor": "1.3177581555065",
-      "value_before_uprating": "20000000.0"
+      "to": "2025"
     },
     {
       "name": "hmrc/state_pension_income_band_12_570_to_15_000",
       "from": "2023",
-      "to": "2025",
-      "index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
-      "factor": "1.17805597511069",
-      "value_before_uprating": "11800000000.0"
+      "to": "2025"
     },
     {
       "name": "hmrc/state_pension_income_band_15_000_to_20_000",
       "from": "2023",
-      "to": "2025",
-      "index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
-      "factor": "1.10550752002256",
-      "value_before_uprating": "22200000000.0"
+      "to": "2025"
     },
     {
       "name": "hmrc/state_pension_income_band_150_000_to_200_000",
       "from": "2023",
-      "to": "2025",
-      "index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
-      "factor": "1.31679769037857",
-      "value_before_uprating": "265000000.0"
+      "to": "2025"
     },
     {
       "name": "hmrc/state_pension_income_band_20_000_to_30_000",
       "from": "2023",
-      "to": "2025",
-      "index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
-      "factor": "1.1322753899205",
-      "value_before_uprating": "24900000000.0"
+      "to": "2025"
     },
     {
       "name": "hmrc/state_pension_income_band_200_000_to_300_000",
       "from": "2023",
-      "to": "2025",
-      "index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
-      "factor": "1.35286608982867",
-      "value_before_uprating": "179000000.0"
+      "to": "2025"
     },
     {
       "name": "hmrc/state_pension_income_band_30_000_to_40_000",
       "from": "2023",
-      "to": "2025",
-      "index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
-      "factor": "1.26808076472352",
-      "value_before_uprating": "12300000000.0"
+      "to": "2025"
     },
     {
       "name": "hmrc/state_pension_income_band_300_000_to_500_000",
       "from": "2023",
-      "to": "2025",
-      "index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
-      "factor": "1.35286608982867",
-      "value_before_uprating": "96000000.0"
+      "to": "2025"
     },
     {
       "name": "hmrc/state_pension_income_band_40_000_to_50_000",
       "from": "2023",
-      "to": "2025",
-      "index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
-      "factor": "1.26808076472352",
-      "value_before_uprating": "6020000000.0"
+      "to": "2025"
     },
     {
       "name": "hmrc/state_pension_income_band_50_000_to_70_000",
       "from": "2023",
-      "to": "2025",
-      "index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
-      "factor": "1.37479397259497",
-      "value_before_uprating": "4660000000.0"
+      "to": "2025"
     },
     {
       "name": "hmrc/state_pension_income_band_500_000_to_1_000_000",
       "from": "2023",
-      "to": "2025",
-      "index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
-      "factor": "1.37005014580437",
-      "value_before_uprating": "43000000.0"
+      "to": "2025"
     },
     {
       "name": "hmrc/state_pension_income_band_70_000_to_100_000",
       "from": "2023",
-      "to": "2025",
-      "index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
-      "factor": "1.37479397259497",
-      "value_before_uprating": "1890000000.0"
+      "to": "2025"
     },
     {
       "name": "hmrc/state_pension_count_income_band_100_000_to_150_000",
       "from": "2023",
-      "to": "2025",
-      "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
-      "factor": "1.24430523917995",
-      "value_before_uprating": "74000.0"
+      "to": "2025"
     },
     {
       "name": "hmrc/state_pension_count_income_band_1_000_000_to_inf",
       "from": "2023",
-      "to": "2025",
-      "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
-      "factor": "1.16666666666667",
-      "value_before_uprating": "2000.0"
+      "to": "2025"
     },
     {
       "name": "hmrc/state_pension_count_income_band_12_570_to_15_000",
       "from": "2023",
-      "to": "2025",
-      "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
-      "factor": "1.04298245614035",
-      "value_before_uprating": "1140000.0"
+      "to": "2025"
     },
     {
       "name": "hmrc/state_pension_count_income_band_15_000_to_20_000",
       "from": "2023",
-      "to": "2025",
-      "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
-      "factor": "0.97875226039783",
-      "value_before_uprating": "2050000.0"
+      "to": "2025"
     },
     {
       "name": "hmrc/state_pension_count_income_band_150_000_to_200_000",
       "from": "2023",
-      "to": "2025",
-      "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
-      "factor": "1.16581632653061",
-      "value_before_uprating": "21000.0"
+      "to": "2025"
     },
     {
       "name": "hmrc/state_pension_count_income_band_20_000_to_30_000",
       "from": "2023",
-      "to": "2025",
-      "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
-      "factor": "1.00245098039216",
-      "value_before_uprating": "2320000.0"
+      "to": "2025"
     },
     {
       "name": "hmrc/state_pension_count_income_band_200_000_to_300_000",
       "from": "2023",
-      "to": "2025",
-      "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
-      "factor": "1.19774919614148",
-      "value_before_uprating": "14000.0"
+      "to": "2025"
     },
     {
       "name": "hmrc/state_pension_count_income_band_30_000_to_40_000",
       "from": "2023",
-      "to": "2025",
-      "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
-      "factor": "1.12268518518519",
-      "value_before_uprating": "1160000.0"
+      "to": "2025"
     },
     {
       "name": "hmrc/state_pension_count_income_band_300_000_to_500_000",
       "from": "2023",
-      "to": "2025",
-      "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
-      "factor": "1.19774919614148",
-      "value_before_uprating": "8000.0"
+      "to": "2025"
     },
     {
       "name": "hmrc/state_pension_count_income_band_40_000_to_50_000",
       "from": "2023",
-      "to": "2025",
-      "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
-      "factor": "1.12268518518519",
-      "value_before_uprating": "568000.0"
+      "to": "2025"
     },
     {
       "name": "hmrc/state_pension_count_income_band_50_000_to_70_000",
       "from": "2023",
-      "to": "2025",
-      "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
-      "factor": "1.21716287215412",
-      "value_before_uprating": "441000.0"
+      "to": "2025"
     },
     {
       "name": "hmrc/state_pension_count_income_band_500_000_to_1_000_000",
       "from": "2023",
-      "to": "2025",
-      "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
-      "factor": "1.21296296296296",
-      "value_before_uprating": "3000.0"
+      "to": "2025"
     },
     {
       "name": "hmrc/state_pension_count_income_band_70_000_to_100_000",
       "from": "2023",
-      "to": "2025",
-      "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
-      "factor": "1.21716287215412",
-      "value_before_uprating": "176000.0"
+      "to": "2025"
     },
     {
       "name": "hmrc.cgt.taxpayers_total",
@@ -13072,14 +12916,9 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 6709928571.428572,
+          "resolved_value": 5430000000.0,
           "resolved_fact_period": "2023",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_cb943439ee9edfb445bc3fa5",
-          "uprating": {
-            "index": "hmrc.itl_2026.total_income_growth_by_total_income_band",
-            "factor": "1.23571428571429",
-            "value_before_uprating": "5430000000.0"
-          }
+          "resolved_fact_key": "ledger_aggregate_fact_v2_cb943439ee9edfb445bc3fa5"
         },
         {
           "name": "hmrc/private_pension_income_income_band_1_000_000_to_inf",
@@ -13087,14 +12926,9 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 442517882.68955654,
+          "resolved_value": 370000000.0,
           "resolved_fact_period": "2023",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_7dcf8568040de10d9b3765da",
-          "uprating": {
-            "index": "hmrc.itl_2026.total_income_growth_by_total_income_band",
-            "factor": "1.19599427753934",
-            "value_before_uprating": "370000000.0"
-          }
+          "resolved_fact_key": "ledger_aggregate_fact_v2_7dcf8568040de10d9b3765da"
         },
         {
           "name": "hmrc/private_pension_income_income_band_12_570_to_15_000",
@@ -13102,14 +12936,9 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 4567500000.0,
+          "resolved_value": 4350000000.0,
           "resolved_fact_period": "2023",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_699889c2fb48479e27e44a4a",
-          "uprating": {
-            "index": "hmrc.itl_2026.total_income_growth_by_total_income_band",
-            "factor": "1.05",
-            "value_before_uprating": "4350000000.0"
-          }
+          "resolved_fact_key": "ledger_aggregate_fact_v2_699889c2fb48479e27e44a4a"
         },
         {
           "name": "hmrc/private_pension_income_income_band_15_000_to_20_000",
@@ -13117,14 +12946,9 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 13289626556.016598,
+          "resolved_value": 13600000000.0,
           "resolved_fact_period": "2023",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_0f977d0b50c1d0f1d1364e88",
-          "uprating": {
-            "index": "hmrc.itl_2026.total_income_growth_by_total_income_band",
-            "factor": "0.977178423236514",
-            "value_before_uprating": "13600000000.0"
-          }
+          "resolved_fact_key": "ledger_aggregate_fact_v2_0f977d0b50c1d0f1d1364e88"
         },
         {
           "name": "hmrc/private_pension_income_income_band_150_000_to_200_000",
@@ -13132,14 +12956,9 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 2097628712.8712869,
+          "resolved_value": 1810000000.0,
           "resolved_fact_period": "2023",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_d29aac0680380c80bd842bae",
-          "uprating": {
-            "index": "hmrc.itl_2026.total_income_growth_by_total_income_band",
-            "factor": "1.15891089108911",
-            "value_before_uprating": "1810000000.0"
-          }
+          "resolved_fact_key": "ledger_aggregate_fact_v2_d29aac0680380c80bd842bae"
         },
         {
           "name": "hmrc/private_pension_income_income_band_20_000_to_30_000",
@@ -13147,14 +12966,9 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 30289525691.699608,
+          "resolved_value": 30200000000.0,
           "resolved_fact_period": "2023",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_bafcebe21a05cb0ca19d5e4f",
-          "uprating": {
-            "index": "hmrc.itl_2026.total_income_growth_by_total_income_band",
-            "factor": "1.00296442687747",
-            "value_before_uprating": "30200000000.0"
-          }
+          "resolved_fact_key": "ledger_aggregate_fact_v2_bafcebe21a05cb0ca19d5e4f"
         },
         {
           "name": "hmrc/private_pension_income_income_band_200_000_to_300_000",
@@ -13162,14 +12976,9 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 1903163493.8409853,
+          "resolved_value": 1570000000.0,
           "resolved_fact_period": "2023",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_de0ed091681463c4ddec5b85",
-          "uprating": {
-            "index": "hmrc.itl_2026.total_income_growth_by_total_income_band",
-            "factor": "1.21220604703247",
-            "value_before_uprating": "1570000000.0"
-          }
+          "resolved_fact_key": "ledger_aggregate_fact_v2_de0ed091681463c4ddec5b85"
         },
         {
           "name": "hmrc/private_pension_income_income_band_30_000_to_40_000",
@@ -13177,14 +12986,9 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 27862860576.923077,
+          "resolved_value": 24900000000.0,
           "resolved_fact_period": "2023",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_2884a006a8d7c144a8570a7d",
-          "uprating": {
-            "index": "hmrc.itl_2026.total_income_growth_by_total_income_band",
-            "factor": "1.11899038461538",
-            "value_before_uprating": "24900000000.0"
-          }
+          "resolved_fact_key": "ledger_aggregate_fact_v2_2884a006a8d7c144a8570a7d"
         },
         {
           "name": "hmrc/private_pension_income_income_band_300_000_to_500_000",
@@ -13192,14 +12996,9 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 1357670772.6763716,
+          "resolved_value": 1120000000.0,
           "resolved_fact_period": "2023",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_73e8de3b1ac198cc75c2b696",
-          "uprating": {
-            "index": "hmrc.itl_2026.total_income_growth_by_total_income_band",
-            "factor": "1.21220604703247",
-            "value_before_uprating": "1120000000.0"
-          }
+          "resolved_fact_key": "ledger_aggregate_fact_v2_73e8de3b1ac198cc75c2b696"
         },
         {
           "name": "hmrc/private_pension_income_income_band_40_000_to_50_000",
@@ -13207,14 +13006,9 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 18910937500.0,
+          "resolved_value": 16900000000.0,
           "resolved_fact_period": "2023",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_6b29cd5a1d665a00bb3e8046",
-          "uprating": {
-            "index": "hmrc.itl_2026.total_income_growth_by_total_income_band",
-            "factor": "1.11899038461538",
-            "value_before_uprating": "16900000000.0"
-          }
+          "resolved_fact_key": "ledger_aggregate_fact_v2_6b29cd5a1d665a00bb3e8046"
         },
         {
           "name": "hmrc/private_pension_income_income_band_50_000_to_70_000",
@@ -13222,14 +13016,9 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 21135200000.0,
+          "resolved_value": 17400000000.0,
           "resolved_fact_period": "2023",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_8f911d955de4f80e87dc69d8",
-          "uprating": {
-            "index": "hmrc.itl_2026.total_income_growth_by_total_income_band",
-            "factor": "1.21466666666667",
-            "value_before_uprating": "17400000000.0"
-          }
+          "resolved_fact_key": "ledger_aggregate_fact_v2_8f911d955de4f80e87dc69d8"
         },
         {
           "name": "hmrc/private_pension_income_income_band_500_000_to_1_000_000",
@@ -13237,14 +13026,9 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 784088397.7900552,
+          "resolved_value": 640000000.0,
           "resolved_fact_period": "2023",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_a13e6165bec82537c5c2883c",
-          "uprating": {
-            "index": "hmrc.itl_2026.total_income_growth_by_total_income_band",
-            "factor": "1.22513812154696",
-            "value_before_uprating": "640000000.0"
-          }
+          "resolved_fact_key": "ledger_aggregate_fact_v2_a13e6165bec82537c5c2883c"
         },
         {
           "name": "hmrc/private_pension_income_income_band_70_000_to_100_000",
@@ -13252,14 +13036,9 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 11502893333.333332,
+          "resolved_value": 9470000000.0,
           "resolved_fact_period": "2023",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_0a1db235b87cad00eeddbfd8",
-          "uprating": {
-            "index": "hmrc.itl_2026.total_income_growth_by_total_income_band",
-            "factor": "1.21466666666667",
-            "value_before_uprating": "9470000000.0"
-          }
+          "resolved_fact_key": "ledger_aggregate_fact_v2_0a1db235b87cad00eeddbfd8"
         }
       ]
     },
@@ -13272,14 +13051,9 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 135629.27107061504,
+          "resolved_value": 109000.0,
           "resolved_fact_period": "2023",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_1fa1ba97628c6c2c315f0e15",
-          "uprating": {
-            "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
-            "factor": "1.24430523917995",
-            "value_before_uprating": "109000.0"
-          }
+          "resolved_fact_key": "ledger_aggregate_fact_v2_1fa1ba97628c6c2c315f0e15"
         },
         {
           "name": "hmrc/private_pension_income_count_income_band_1_000_000_to_inf",
@@ -13287,14 +13061,9 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 2333.3333333333335,
+          "resolved_value": 2000.0,
           "resolved_fact_period": "2023",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_188f8f1a0535263e4db7c9a8",
-          "uprating": {
-            "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
-            "factor": "1.16666666666667",
-            "value_before_uprating": "2000.0"
-          }
+          "resolved_fact_key": "ledger_aggregate_fact_v2_188f8f1a0535263e4db7c9a8"
         },
         {
           "name": "hmrc/private_pension_income_count_income_band_12_570_to_15_000",
@@ -13302,14 +13071,9 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 1115991.2280701755,
+          "resolved_value": 1070000.0,
           "resolved_fact_period": "2023",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_853f104082cf479b98952c1a",
-          "uprating": {
-            "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
-            "factor": "1.04298245614035",
-            "value_before_uprating": "1070000.0"
-          }
+          "resolved_fact_key": "ledger_aggregate_fact_v2_853f104082cf479b98952c1a"
         },
         {
           "name": "hmrc/private_pension_income_count_income_band_15_000_to_20_000",
@@ -13317,14 +13081,9 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 2094529.8372513563,
+          "resolved_value": 2140000.0,
           "resolved_fact_period": "2023",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_c785199ee1d08fabfe927ff0",
-          "uprating": {
-            "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
-            "factor": "0.97875226039783",
-            "value_before_uprating": "2140000.0"
-          }
+          "resolved_fact_key": "ledger_aggregate_fact_v2_c785199ee1d08fabfe927ff0"
         },
         {
           "name": "hmrc/private_pension_income_count_income_band_150_000_to_200_000",
@@ -13332,14 +13091,9 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 33808.67346938776,
+          "resolved_value": 29000.0,
           "resolved_fact_period": "2023",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_a98ec830dee0eceb16b452e7",
-          "uprating": {
-            "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
-            "factor": "1.16581632653061",
-            "value_before_uprating": "29000.0"
-          }
+          "resolved_fact_key": "ledger_aggregate_fact_v2_a98ec830dee0eceb16b452e7"
         },
         {
           "name": "hmrc/private_pension_income_count_income_band_20_000_to_30_000",
@@ -13347,14 +13101,9 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 2666519.6078431373,
+          "resolved_value": 2660000.0,
           "resolved_fact_period": "2023",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_1df6f17a33011c1c026dbc09",
-          "uprating": {
-            "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
-            "factor": "1.00245098039216",
-            "value_before_uprating": "2660000.0"
-          }
+          "resolved_fact_key": "ledger_aggregate_fact_v2_1df6f17a33011c1c026dbc09"
         },
         {
           "name": "hmrc/private_pension_income_count_income_band_200_000_to_300_000",
@@ -13362,14 +13111,9 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 23954.98392282958,
+          "resolved_value": 20000.0,
           "resolved_fact_period": "2023",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_042ab8896eb0214e7bbad477",
-          "uprating": {
-            "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
-            "factor": "1.19774919614148",
-            "value_before_uprating": "20000.0"
-          }
+          "resolved_fact_key": "ledger_aggregate_fact_v2_042ab8896eb0214e7bbad477"
         },
         {
           "name": "hmrc/private_pension_income_count_income_band_30_000_to_40_000",
@@ -13377,14 +13121,9 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 1627893.5185185184,
+          "resolved_value": 1450000.0,
           "resolved_fact_period": "2023",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_0a28fd76533fc93cf8dbfe4a",
-          "uprating": {
-            "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
-            "factor": "1.12268518518519",
-            "value_before_uprating": "1450000.0"
-          }
+          "resolved_fact_key": "ledger_aggregate_fact_v2_0a28fd76533fc93cf8dbfe4a"
         },
         {
           "name": "hmrc/private_pension_income_count_income_band_300_000_to_500_000",
@@ -13392,14 +13131,9 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 11977.49196141479,
+          "resolved_value": 10000.0,
           "resolved_fact_period": "2023",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_7fccfc3ee4246841b3ed391b",
-          "uprating": {
-            "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
-            "factor": "1.19774919614148",
-            "value_before_uprating": "10000.0"
-          }
+          "resolved_fact_key": "ledger_aggregate_fact_v2_7fccfc3ee4246841b3ed391b"
         },
         {
           "name": "hmrc/private_pension_income_count_income_band_40_000_to_50_000",
@@ -13407,14 +13141,9 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 874571.7592592592,
+          "resolved_value": 779000.0,
           "resolved_fact_period": "2023",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_0f808aa135a13e5aa4668d22",
-          "uprating": {
-            "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
-            "factor": "1.12268518518519",
-            "value_before_uprating": "779000.0"
-          }
+          "resolved_fact_key": "ledger_aggregate_fact_v2_0f808aa135a13e5aa4668d22"
         },
         {
           "name": "hmrc/private_pension_income_count_income_band_50_000_to_70_000",
@@ -13422,14 +13151,9 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 782635.7267950964,
+          "resolved_value": 643000.0,
           "resolved_fact_period": "2023",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_097efdacf2adf0f90f90d1de",
-          "uprating": {
-            "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
-            "factor": "1.21716287215412",
-            "value_before_uprating": "643000.0"
-          }
+          "resolved_fact_key": "ledger_aggregate_fact_v2_097efdacf2adf0f90f90d1de"
         },
         {
           "name": "hmrc/private_pension_income_count_income_band_500_000_to_1_000_000",
@@ -13437,14 +13161,9 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 4851.851851851852,
+          "resolved_value": 4000.0,
           "resolved_fact_period": "2023",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_8abdd0aa368c3d693e6d0989",
-          "uprating": {
-            "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
-            "factor": "1.21296296296296",
-            "value_before_uprating": "4000.0"
-          }
+          "resolved_fact_key": "ledger_aggregate_fact_v2_8abdd0aa368c3d693e6d0989"
         },
         {
           "name": "hmrc/private_pension_income_count_income_band_70_000_to_100_000",
@@ -13452,14 +13171,9 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 315245.183887916,
+          "resolved_value": 259000.0,
           "resolved_fact_period": "2023",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_f75fc4c3e2cb06bbdb7543f8",
-          "uprating": {
-            "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
-            "factor": "1.21716287215412",
-            "value_before_uprating": "259000.0"
-          }
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f75fc4c3e2cb06bbdb7543f8"
         }
       ]
     },
@@ -13472,14 +13186,9 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 1190417391.6067786,
+          "resolved_value": 847000000.0,
           "resolved_fact_period": "2023",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_d63e1a96cab57582f482b8c2",
-          "uprating": {
-            "index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
-            "factor": "1.40545146588758",
-            "value_before_uprating": "847000000.0"
-          }
+          "resolved_fact_key": "ledger_aggregate_fact_v2_d63e1a96cab57582f482b8c2"
         },
         {
           "name": "hmrc/state_pension_income_band_1_000_000_to_inf",
@@ -13487,14 +13196,9 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 26355163.11013001,
+          "resolved_value": 20000000.0,
           "resolved_fact_period": "2023",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_9a20bd62d4d5984865242929",
-          "uprating": {
-            "index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
-            "factor": "1.3177581555065",
-            "value_before_uprating": "20000000.0"
-          }
+          "resolved_fact_key": "ledger_aggregate_fact_v2_9a20bd62d4d5984865242929"
         },
         {
           "name": "hmrc/state_pension_income_band_12_570_to_15_000",
@@ -13502,14 +13206,9 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 13901060506.30619,
+          "resolved_value": 11800000000.0,
           "resolved_fact_period": "2023",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_45083c1383ea711226aebd1b",
-          "uprating": {
-            "index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
-            "factor": "1.17805597511069",
-            "value_before_uprating": "11800000000.0"
-          }
+          "resolved_fact_key": "ledger_aggregate_fact_v2_45083c1383ea711226aebd1b"
         },
         {
           "name": "hmrc/state_pension_income_band_15_000_to_20_000",
@@ -13517,14 +13216,9 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 24542266944.500935,
+          "resolved_value": 22200000000.0,
           "resolved_fact_period": "2023",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_310febb949c686fad2b71a94",
-          "uprating": {
-            "index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
-            "factor": "1.10550752002256",
-            "value_before_uprating": "22200000000.0"
-          }
+          "resolved_fact_key": "ledger_aggregate_fact_v2_310febb949c686fad2b71a94"
         },
         {
           "name": "hmrc/state_pension_income_band_150_000_to_200_000",
@@ -13532,14 +13226,9 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 348951387.9503221,
+          "resolved_value": 265000000.0,
           "resolved_fact_period": "2023",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_e79668076aadc063559585e9",
-          "uprating": {
-            "index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
-            "factor": "1.31679769037857",
-            "value_before_uprating": "265000000.0"
-          }
+          "resolved_fact_key": "ledger_aggregate_fact_v2_e79668076aadc063559585e9"
         },
         {
           "name": "hmrc/state_pension_income_band_20_000_to_30_000",
@@ -13547,14 +13236,9 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 28193657209.02049,
+          "resolved_value": 24900000000.0,
           "resolved_fact_period": "2023",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_3d18e138c32f6581d6dafdd7",
-          "uprating": {
-            "index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
-            "factor": "1.1322753899205",
-            "value_before_uprating": "24900000000.0"
-          }
+          "resolved_fact_key": "ledger_aggregate_fact_v2_3d18e138c32f6581d6dafdd7"
         },
         {
           "name": "hmrc/state_pension_income_band_200_000_to_300_000",
@@ -13562,14 +13246,9 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 242163030.07933253,
+          "resolved_value": 179000000.0,
           "resolved_fact_period": "2023",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_e1dda799099ac0f4f439700d",
-          "uprating": {
-            "index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
-            "factor": "1.35286608982867",
-            "value_before_uprating": "179000000.0"
-          }
+          "resolved_fact_key": "ledger_aggregate_fact_v2_e1dda799099ac0f4f439700d"
         },
         {
           "name": "hmrc/state_pension_income_band_30_000_to_40_000",
@@ -13577,14 +13256,9 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 15597393406.099285,
+          "resolved_value": 12300000000.0,
           "resolved_fact_period": "2023",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_151045b793ac454ab29260fc",
-          "uprating": {
-            "index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
-            "factor": "1.26808076472352",
-            "value_before_uprating": "12300000000.0"
-          }
+          "resolved_fact_key": "ledger_aggregate_fact_v2_151045b793ac454ab29260fc"
         },
         {
           "name": "hmrc/state_pension_income_band_300_000_to_500_000",
@@ -13592,14 +13266,9 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 129875144.62355264,
+          "resolved_value": 96000000.0,
           "resolved_fact_period": "2023",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_c95154893499181b7f3a8903",
-          "uprating": {
-            "index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
-            "factor": "1.35286608982867",
-            "value_before_uprating": "96000000.0"
-          }
+          "resolved_fact_key": "ledger_aggregate_fact_v2_c95154893499181b7f3a8903"
         },
         {
           "name": "hmrc/state_pension_income_band_40_000_to_50_000",
@@ -13607,14 +13276,9 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 7633846203.635585,
+          "resolved_value": 6020000000.0,
           "resolved_fact_period": "2023",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_bc4cee7d39f5e1c311464a55",
-          "uprating": {
-            "index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
-            "factor": "1.26808076472352",
-            "value_before_uprating": "6020000000.0"
-          }
+          "resolved_fact_key": "ledger_aggregate_fact_v2_bc4cee7d39f5e1c311464a55"
         },
         {
           "name": "hmrc/state_pension_income_band_50_000_to_70_000",
@@ -13622,14 +13286,9 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 6406539912.292578,
+          "resolved_value": 4660000000.0,
           "resolved_fact_period": "2023",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_7f09c940c0fbc3cc42b9e510",
-          "uprating": {
-            "index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
-            "factor": "1.37479397259497",
-            "value_before_uprating": "4660000000.0"
-          }
+          "resolved_fact_key": "ledger_aggregate_fact_v2_7f09c940c0fbc3cc42b9e510"
         },
         {
           "name": "hmrc/state_pension_income_band_500_000_to_1_000_000",
@@ -13637,14 +13296,9 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 58912156.269587904,
+          "resolved_value": 43000000.0,
           "resolved_fact_period": "2023",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_d265dfcd4ba09d10053a78a4",
-          "uprating": {
-            "index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
-            "factor": "1.37005014580437",
-            "value_before_uprating": "43000000.0"
-          }
+          "resolved_fact_key": "ledger_aggregate_fact_v2_d265dfcd4ba09d10053a78a4"
         },
         {
           "name": "hmrc/state_pension_income_band_70_000_to_100_000",
@@ -13652,14 +13306,9 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 2598360608.2045007,
+          "resolved_value": 1890000000.0,
           "resolved_fact_period": "2023",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_41c1df25454fdf413d5765d7",
-          "uprating": {
-            "index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
-            "factor": "1.37479397259497",
-            "value_before_uprating": "1890000000.0"
-          }
+          "resolved_fact_key": "ledger_aggregate_fact_v2_41c1df25454fdf413d5765d7"
         }
       ]
     },
@@ -13672,14 +13321,9 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 92078.58769931663,
+          "resolved_value": 74000.0,
           "resolved_fact_period": "2023",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_01b8f391c006c09d3ed51865",
-          "uprating": {
-            "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
-            "factor": "1.24430523917995",
-            "value_before_uprating": "74000.0"
-          }
+          "resolved_fact_key": "ledger_aggregate_fact_v2_01b8f391c006c09d3ed51865"
         },
         {
           "name": "hmrc/state_pension_count_income_band_1_000_000_to_inf",
@@ -13687,14 +13331,9 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 2333.3333333333335,
+          "resolved_value": 2000.0,
           "resolved_fact_period": "2023",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_b8c359bb976d919bedb9076a",
-          "uprating": {
-            "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
-            "factor": "1.16666666666667",
-            "value_before_uprating": "2000.0"
-          }
+          "resolved_fact_key": "ledger_aggregate_fact_v2_b8c359bb976d919bedb9076a"
         },
         {
           "name": "hmrc/state_pension_count_income_band_12_570_to_15_000",
@@ -13702,14 +13341,9 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 1189000.0,
+          "resolved_value": 1140000.0,
           "resolved_fact_period": "2023",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_05f2cd00648c7f8225723a9c",
-          "uprating": {
-            "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
-            "factor": "1.04298245614035",
-            "value_before_uprating": "1140000.0"
-          }
+          "resolved_fact_key": "ledger_aggregate_fact_v2_05f2cd00648c7f8225723a9c"
         },
         {
           "name": "hmrc/state_pension_count_income_band_15_000_to_20_000",
@@ -13717,14 +13351,9 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 2006442.1338155516,
+          "resolved_value": 2050000.0,
           "resolved_fact_period": "2023",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_ced75bd10fbfa56ef2eabeae",
-          "uprating": {
-            "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
-            "factor": "0.97875226039783",
-            "value_before_uprating": "2050000.0"
-          }
+          "resolved_fact_key": "ledger_aggregate_fact_v2_ced75bd10fbfa56ef2eabeae"
         },
         {
           "name": "hmrc/state_pension_count_income_band_150_000_to_200_000",
@@ -13732,14 +13361,9 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 24482.14285714286,
+          "resolved_value": 21000.0,
           "resolved_fact_period": "2023",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_73d438db1a168d794e290b0e",
-          "uprating": {
-            "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
-            "factor": "1.16581632653061",
-            "value_before_uprating": "21000.0"
-          }
+          "resolved_fact_key": "ledger_aggregate_fact_v2_73d438db1a168d794e290b0e"
         },
         {
           "name": "hmrc/state_pension_count_income_band_20_000_to_30_000",
@@ -13747,14 +13371,9 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 2325686.274509804,
+          "resolved_value": 2320000.0,
           "resolved_fact_period": "2023",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_69b521bf537da156d2afa48e",
-          "uprating": {
-            "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
-            "factor": "1.00245098039216",
-            "value_before_uprating": "2320000.0"
-          }
+          "resolved_fact_key": "ledger_aggregate_fact_v2_69b521bf537da156d2afa48e"
         },
         {
           "name": "hmrc/state_pension_count_income_band_200_000_to_300_000",
@@ -13762,14 +13381,9 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 16768.488745980707,
+          "resolved_value": 14000.0,
           "resolved_fact_period": "2023",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_3edcf70605856bb8b906ea19",
-          "uprating": {
-            "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
-            "factor": "1.19774919614148",
-            "value_before_uprating": "14000.0"
-          }
+          "resolved_fact_key": "ledger_aggregate_fact_v2_3edcf70605856bb8b906ea19"
         },
         {
           "name": "hmrc/state_pension_count_income_band_30_000_to_40_000",
@@ -13777,14 +13391,9 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 1302314.8148148148,
+          "resolved_value": 1160000.0,
           "resolved_fact_period": "2023",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_1cafb0f484a7d8191b7fb989",
-          "uprating": {
-            "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
-            "factor": "1.12268518518519",
-            "value_before_uprating": "1160000.0"
-          }
+          "resolved_fact_key": "ledger_aggregate_fact_v2_1cafb0f484a7d8191b7fb989"
         },
         {
           "name": "hmrc/state_pension_count_income_band_300_000_to_500_000",
@@ -13792,14 +13401,9 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 9581.993569131831,
+          "resolved_value": 8000.0,
           "resolved_fact_period": "2023",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_7f510c873457703c57c16983",
-          "uprating": {
-            "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
-            "factor": "1.19774919614148",
-            "value_before_uprating": "8000.0"
-          }
+          "resolved_fact_key": "ledger_aggregate_fact_v2_7f510c873457703c57c16983"
         },
         {
           "name": "hmrc/state_pension_count_income_band_40_000_to_50_000",
@@ -13807,14 +13411,9 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 637685.1851851852,
+          "resolved_value": 568000.0,
           "resolved_fact_period": "2023",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_d4ff6839b2d936396ae33f67",
-          "uprating": {
-            "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
-            "factor": "1.12268518518519",
-            "value_before_uprating": "568000.0"
-          }
+          "resolved_fact_key": "ledger_aggregate_fact_v2_d4ff6839b2d936396ae33f67"
         },
         {
           "name": "hmrc/state_pension_count_income_band_50_000_to_70_000",
@@ -13822,14 +13421,9 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 536768.826619965,
+          "resolved_value": 441000.0,
           "resolved_fact_period": "2023",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_2b5023baae0b6814c07afbe9",
-          "uprating": {
-            "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
-            "factor": "1.21716287215412",
-            "value_before_uprating": "441000.0"
-          }
+          "resolved_fact_key": "ledger_aggregate_fact_v2_2b5023baae0b6814c07afbe9"
         },
         {
           "name": "hmrc/state_pension_count_income_band_500_000_to_1_000_000",
@@ -13837,14 +13431,9 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 3638.888888888889,
+          "resolved_value": 3000.0,
           "resolved_fact_period": "2023",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_f9a834c26fa7c215c052f4f5",
-          "uprating": {
-            "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
-            "factor": "1.21296296296296",
-            "value_before_uprating": "3000.0"
-          }
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f9a834c26fa7c215c052f4f5"
         },
         {
           "name": "hmrc/state_pension_count_income_band_70_000_to_100_000",
@@ -13852,14 +13441,9 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 214220.66549912436,
+          "resolved_value": 176000.0,
           "resolved_fact_period": "2023",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_7514fbdbf5f909008b617d06",
-          "uprating": {
-            "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
-            "factor": "1.21716287215412",
-            "value_before_uprating": "176000.0"
-          }
+          "resolved_fact_key": "ledger_aggregate_fact_v2_7514fbdbf5f909008b617d06"
         }
       ]
     },

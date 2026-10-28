@@ -3,9 +3,10 @@
   "country": "uk",
   "kind": "uk_vendored_ledger_facts",
   "resource": "ons_mid2025_single_year_age_by_sex.json",
-  "purpose": "ONS mid-2025 UK resident population by single year of age (0 to 89 and 90 and over) and sex (MYE2, the edition of 1 October 2026), usual residents including communal establishments. Report-only (microcosm#1095, uk-data#600's age check): uk_runtime.single_year_ages reports a built file's persons by single year of age against it; no stage draws from it and no target binds it. The SPI stage's mid-2023 ages stay in ons_single_year_age_populations.json.",
+  "purpose": "ONS mid-2025 UK resident population by single year of age (0 to 89 and 90 and over) and sex (MYE2, the edition of 1 October 2026), usual residents including communal establishments. uk_runtime.single_year_ages reports a built file's persons by single year of age against it (microcosm#1095, uk-data#600's age check), and uk_runtime.spi_dated_measures divides by it in the population factor of the dated SPI 2023-24 counts; no stage draws from it and no target binds its rows. The SPI stage's mid-2023 ages stay in ons_single_year_age_populations.json.",
   "consumers": [
-    "uk_runtime.single_year_ages"
+    "uk_runtime.single_year_ages",
+    "uk_runtime.spi_dated_measures"
   ],
   "planned_consumers": [],
   "policy": "Rows are copied verbatim from the pinned Chronicle consumer feed named in source_fact_feed; every value is a publisher-stated fact. Consumers declare their own arithmetic on these rows and never edit this file by hand: regenerate it with tools/vendor_uk_ledger_facts.py.",
