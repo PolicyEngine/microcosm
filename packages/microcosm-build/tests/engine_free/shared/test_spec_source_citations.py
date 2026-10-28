@@ -2850,8 +2850,10 @@ _GITHUB_AUTHORITIES = (
     "x y@github。com:443",
 )
 #: This repository's owner and name as a browser and then GitHub route them,
-#: through dot segments too, and other repositories' of the same shape, two
-#: of them through a dot segment that leaves another path or none at all.
+#: through dot segments too, one past a segment holding a backslash, which a
+#: Markdown renderer escapes and a browser reads as ``/`` in an ``href``; and
+#: other repositories' of the same shape, three of them through a dot segment
+#: that leaves another path or none at all.
 _THIS_REPOSITORY_PATHS = (
     "PolicyEngine/microcosm",
     "policyengine/MICROCOSM",
@@ -2861,6 +2863,7 @@ _THIS_REPOSITORY_PATHS = (
     "PolicyEngine/x/../microcosm",
     "PolicyEngine//x/%2e%2E/../microcosm",
     "PolicyEngine/a%2fb/../microcosm",
+    "PolicyEngine/x\\y/../microcosm",
 )
 _OTHER_REPOSITORY_PATHS = (
     "PolicyEngine/microcosm-dynamics",
@@ -2869,6 +2872,7 @@ _OTHER_REPOSITORY_PATHS = (
     "PolicyEngine/micro",
     "PolicyEngine/x/../../microcosm",
     "PolicyEngine/x%2f..%2fmicrocosm",
+    "PolicyEngine/x\\..\\..\\microcosm",
 )
 #: Files here whose names no reading takes for a source, so no rule but the
 #: link's own refuses a line link of one.
@@ -2952,6 +2956,20 @@ _FILES_NO_READING_CITES = (
     a=3,
     b=9,
 )
+@example(
+    enclosure="[a]\n\n[a]: <{url}>",
+    authority="github.com",
+    repository="PolicyEngine/x\\y/../microcosm",
+    other="PolicyEngine/x\\..\\..\\microcosm",
+    route="blob",
+    ref="main",
+    path="docs/evidence/us-release-reimputation-1191/scripts/platform/Dockerfile",
+    query="",
+    fragment="#L{a}",
+    sha="a1b2c3d",
+    a=3,
+    b=3,
+)
 def test_a_line_link_of_this_repository_is_refused_whatever_its_ref_or_authority_holds(
     enclosure: str,
     authority: str,
@@ -2969,8 +2987,9 @@ def test_a_line_link_of_this_repository_is_refused_whatever_its_ref_or_authority
     # markdown-it-py 4.2, parse5 7.3 and bun 1.3 render each of these as a
     # link to the file's lines on github.com, which routes the path, except a
     # full-width host in a Markdown destination, which markdown-it writes as
-    # no URL bun reads; each is refused, pinned or not, and another
-    # repository's link of the same shape is not.
+    # no URL bun reads, and ``x\y/..`` in an ``href``, which a browser reads
+    # as ``x/``; each is refused, pinned or not, and another repository's link
+    # of the same shape is not.
     def written(repository: str) -> str:
         line = fragment.format(a=a, b=b)
         url = f"https://{authority}/{repository}/{route}/{ref}/{path}{query}{line}"
