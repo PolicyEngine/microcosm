@@ -430,6 +430,36 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
                 "ACCTAX": 0,
                 "INVTAX": 0,
             },
+            # Other interest (microcosm#1418): an NS&I Direct Saver paid after
+            # tax and a gilt paid after tax, both grossed up at the basic rate.
+            {
+                "SERNUM": 1,
+                "BENUNIT": 1,
+                "PERSON": 1,
+                "ACCOUNT": 2,
+                "ACCINT": 2.0,
+                "ACCTAX": 1,
+                "INVTAX": 0,
+            },
+            {
+                "SERNUM": 1,
+                "BENUNIT": 1,
+                "PERSON": 1,
+                "ACCOUNT": 6,
+                "ACCINT": 4.0,
+                "ACCTAX": 0,
+                "INVTAX": 1,
+            },
+            # A Premium Bond holding is tax-free and books nothing.
+            {
+                "SERNUM": 1,
+                "BENUNIT": 1,
+                "PERSON": 1,
+                "ACCOUNT": 15,
+                "ACCINT": 9.0,
+                "ACCTAX": 0,
+                "INVTAX": 0,
+            },
         ],
         "job": [
             {
@@ -1215,7 +1245,10 @@ def test_direct_person_mapping_values_are_ported(tmp_path: Path) -> None:
     assert adult["private_pension_income"] == pytest.approx(15 * WEEKS_IN_YEAR)
     assert adult["tax_free_savings_income"] == pytest.approx(1 * WEEKS_IN_YEAR)
     assert adult["savings_interest_income"] == pytest.approx(3.5 * WEEKS_IN_YEAR)
+    # The gilt is other interest, no longer a dividend (microcosm#1418).
     assert adult["dividend_income"] == pytest.approx(3 * WEEKS_IN_YEAR)
+    assert adult["other_investment_income"] == pytest.approx(7.5 * WEEKS_IN_YEAR)
+    assert other["other_investment_income"] == 0.0
     # ROYYR1 2 only: CVPAY (1 a week) is rent the adult pays as a lodger
     # (rent_paid_as_lodger, pe-uk#2006), not their own income, and household 1
     # does not sub-let.
@@ -1263,6 +1296,7 @@ _PERSON_INCOME_COLUMNS = (
     "private_pension_income",
     "savings_interest_income",
     "dividend_income",
+    "other_investment_income",
     "property_income",
     "maintenance_income",
     "spousal_maintenance_income",

@@ -410,6 +410,7 @@ stages:
   - tax_free_savings_income
   - savings_interest_income
   - dividend_income
+  - other_investment_income
   - stands_as_sole_owner_or_partner_of_company
   - is_engaged_in_owned_company_trade
   - owned_company_is_main_employment
@@ -510,6 +511,7 @@ stages:
   - tax_free_savings_income
   - savings_interest_income
   - dividend_income
+  - other_investment_income
   - owned_company_income_share
   - maintenance_income
   - spousal_maintenance_income
@@ -2158,7 +2160,6 @@ stages:
     minimum_nondefault_mass_share: 1.0e-06
     fail_below_floor: true
   outputs:
-  - other_investment_income
   - gift_aid
   - charitable_investment_gifts
   - property_finance_costs
@@ -2175,7 +2176,6 @@ stages:
   - hmrc_spi_assessable_income
   - person_is_spi_income_recipient
   nonnegative_outputs:
-  - other_investment_income
   - gift_aid
   - charitable_investment_gifts
   - property_finance_costs
@@ -2194,6 +2194,7 @@ stages:
   - self_employment_income
   - savings_interest_income
   - dividend_income
+  - other_investment_income
   - private_pension_income
   - property_income
   - employee_pension_contributions

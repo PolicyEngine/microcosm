@@ -239,6 +239,7 @@ OUTPUT_COLUMNS = (
     "tax_free_savings_income",
     "savings_interest_income",
     "dividend_income",
+    "other_investment_income",
     *OWNER_MANAGER_COLUMNS,
     "property_income",
     "reports_rent_from_other_property",
@@ -725,6 +726,30 @@ def _add_private_pension(
     ) * WEEKS_IN_YEAR
 
 
+#: FRS ACCOUNTS.ACCOUNT codes (FRS 2024-25 variable listing, SN 9563) by the
+#: input their weekly interest (ACCINT) lands in (microcosm#1418). ISAs (21)
+#: are tax-free, kept apart in tax_free_savings_income inside gross interest.
+FRS_ISA_ACCOUNT = 21
+#: Deposit interest, savings_interest_income: current (1), NS&I investment
+#: (3), savings and investment (5), fixed-rate, guaranteed income and
+#: guaranteed growth bond (25; no interest recorded on FRS 2024-25), basic
+#: (27) and credit union (28) accounts.
+FRS_DEPOSIT_INTEREST_ACCOUNTS = (1, 3, 5, 25, 27, 28)
+#: Other interest, other_investment_income, which policyengine-uk taxes as
+#: savings income beside deposit interest (taxable_savings_interest_income):
+#: NS&I Direct Saver (2), gilts (6, booked as dividends before), National
+#: Savings capital (10), income (16) and deposit (17) bonds, Pensioners
+#: Guaranteed (13), First Option (18) and guaranteed equity (26) bonds. The
+#: tax-free products stay out: National Savings certificates (11, 12), SAYE
+#: (14), Premium Bonds (15), the Yearly Plan (19) and friendly society
+#: investments (31). On FRS 2024-25 only the NS&I Direct Saver and gilts carry
+#: interest in this group: codes 16 and 26 record none, and 10, 13, 17 and 18
+#: do not occur.
+FRS_OTHER_INTEREST_ACCOUNTS = (2, 6, 10, 13, 16, 17, 18, 26)
+#: Dividends: unit and investment trusts (7) and stocks, shares and bonds (8).
+FRS_DIVIDEND_ACCOUNTS = (7, 8)
+
+
 def _add_accounts(
     pe_person: pd.DataFrame, person: pd.DataFrame, accounts: pd.DataFrame
 ) -> None:
@@ -734,31 +759,29 @@ def _add_accounts(
     invtax = _number(accounts, "invtax")
     person_id = accounts.get("person_id", pd.Series(dtype="float64"))
     inverted_basic_rate = 1.25
-    tax_free = (
-        _sum_to_entity(accint * (account == 21), person_id, person["person_id"])
-        * WEEKS_IN_YEAR
-    )
-    taxable = (
-        _sum_to_entity(
-            (accint * np.where(acctax == 1, inverted_basic_rate, 1))
-            * account.isin((1, 3, 5, 27, 28)),
-            person_id,
-            person["person_id"],
+
+    def annual(codes: tuple[int, ...], after_tax: object) -> pd.Series:
+        # Interest reported after tax (ACCTAX or INVTAX 1) is grossed up at
+        # the basic rate.
+        return (
+            _sum_to_entity(
+                (accint * np.where(after_tax, inverted_basic_rate, 1))
+                * account.isin(codes),
+                person_id,
+                person["person_id"],
+            )
+            * WEEKS_IN_YEAR
         )
-        * WEEKS_IN_YEAR
-    )
-    dividends = (
-        _sum_to_entity(
-            (accint * np.where(invtax == 1, inverted_basic_rate, 1))
-            * (((account == 6) & (invtax == 1)) | account.isin((7, 8))),
-            person_id,
-            person["person_id"],
-        )
-        * WEEKS_IN_YEAR
-    )
+
+    tax_free = annual((FRS_ISA_ACCOUNT,), False)
+    taxable = annual(FRS_DEPOSIT_INTEREST_ACCOUNTS, acctax == 1)
+    # A savings product answers ACCTAX and a gilt INVTAX.
+    other = annual(FRS_OTHER_INTEREST_ACCOUNTS, (acctax == 1) | (invtax == 1))
+    dividends = annual(FRS_DIVIDEND_ACCOUNTS, invtax == 1)
     pe_person["tax_free_savings_income"] = np.maximum(0, tax_free)
     pe_person["savings_interest_income"] = np.maximum(0, taxable + tax_free)
     pe_person["dividend_income"] = np.maximum(0, dividends)
+    pe_person["other_investment_income"] = np.maximum(0, other)
 
 
 #: FRS job-table answers that make a person like a sole owner or partner of a

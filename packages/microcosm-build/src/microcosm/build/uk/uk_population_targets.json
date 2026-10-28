@@ -14712,10 +14712,10 @@
       "bindings": {
         "policyengine": {
           "metric_name": "ons/savings_interest_income",
-          "value_expression": "savings_interest_income + tax_free_savings_income",
+          "value_expression": "savings_interest_income + tax_free_savings_income + other_investment_income",
           "from_entity": "person",
           "map_to": "household",
-          "notes": "uk-data holds the last actual flat for later years - a populace-side declaration (uk-data targets/sources/ons_savings.py:39-44 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3). The row measures cash interest in and outside tax-free accounts. From policyengine-uk 2.162.2 savings_interest_income is the interest outside them: the engine takes the frame's tax_free_savings_income out of the frame's gross interest when it loads the frame. The ISA part, tax_free_savings_income, is added back (microcosm#1095)."
+          "notes": "uk-data holds the last actual flat for later years - a populace-side declaration (uk-data targets/sources/ons_savings.py:39-44 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3). The row measures cash interest in and outside tax-free accounts. From policyengine-uk 2.162.2 savings_interest_income is the interest outside them: the engine takes the frame's tax_free_savings_income out of the frame's gross interest when it loads the frame. The ISA part, tax_free_savings_income, is added back (microcosm#1095). D.41 also counts interest on gilts, National Savings bonds and other securities, which the frame holds in other_investment_income: the SPI tape's other investment income on SPI rows and, from microcosm#1418, the FRS NS&I and gilt accounts on FRS rows. The engine taxes it as savings income beside savings_interest_income."
         },
         "axiom": {
           "metric_name": "ons/savings_interest_income",
