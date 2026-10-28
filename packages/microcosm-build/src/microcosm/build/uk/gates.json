@@ -1162,6 +1162,7 @@
           "household.household_is_spi_synthetic",
           "household.household_lifetime_isa_balance",
           "household.household_local_bus_trips",
+          "household.in_rural_fuel_duty_relief_area",
           "household.spi_income_band_donor_lower_bound",
           "household.intermediate_zone_code",
           "household.la_code_oa",

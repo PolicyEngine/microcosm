@@ -104,6 +104,12 @@ class UKFullBuildConfig:
     #: only; a release candidate refuses it). Unset, it follows the BRMA mode:
     #: ``brma_list`` with area BRMAs, ``none`` otherwise.
     private_rent_localisation: str | None = None
+    #: ``area`` sets each placed household's Rural Fuel Duty Relief flag off
+    #: its assigned output area (microcosm#1418); ``none`` leaves the engine's
+    #: default (measurement builds only; a release candidate refuses it).
+    #: Unset, the mode follows the geography assignment: ``area`` on the
+    #: atomic assignment, ``none`` on the legacy one.
+    rfdr_localisation: str | None = None
 
     def __post_init__(self) -> None:
         from .graph_population import GEOGRAPHY_ASSIGNMENTS
@@ -164,6 +170,20 @@ class UKFullBuildConfig:
             and self.brma_localisation != "area"
         ):
             raise ValueError("Private rents from the lists need the area BRMAs.")
+        from .graph_population import RFDR_LOCALISATION_MODES
+
+        if self.rfdr_localisation is None:
+            object.__setattr__(
+                self,
+                "rfdr_localisation",
+                "area" if self.geography_assignment == "atomic" else "none",
+            )
+        if self.rfdr_localisation not in RFDR_LOCALISATION_MODES:
+            raise ValueError(
+                f"RFDR localisation must be one of {RFDR_LOCALISATION_MODES}."
+            )
+        if self.rfdr_localisation != "none" and self.geography_assignment != "atomic":
+            raise ValueError("Area RFDR flags need the atomic geography assignment.")
         if not isinstance(self.source_vintage, str) or not self.source_vintage:
             raise ValueError("The FRS source vintage must be a non-empty string.")
         validate_sample_fraction(self.sample_fraction, label="UK full pool")
@@ -288,6 +308,7 @@ def uk_full_graph(
         property_localisation_mode=config.property_localisation,
         brma_localisation_mode=config.brma_localisation,
         private_rent_localisation_mode=config.private_rent_localisation,
+        rfdr_localisation_mode=config.rfdr_localisation,
         # A sampled rung's rent node may rank a region on Great Britain's FRS
         # renters; a full-scale build refuses (microcosm#1305 review).
         full_scale=config.sample_fraction == 1.0

@@ -256,6 +256,9 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "household.household_lifetime_isa_balance",
     # #930: the NTS bus-travel stage's household journey cell.
     "household.household_local_bus_trips",
+    # microcosm#1418: the dense build's Rural Fuel Duty Relief flag, set off
+    # each placed household's output area; the incumbent does not carry it.
+    "household.in_rural_fuel_duty_relief_area",
     "household.spi_income_band_donor_lower_bound",
     "household.intermediate_zone_code",
     "household.la_code_oa",
