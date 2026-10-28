@@ -110,16 +110,24 @@ refused where any of its sources holds this repository's path on GitHub
 (``PolicyEngine/microcosm/``) with a line fragment (``#L12``) at the first
 ``#`` after it, whatever file the link names and whether or not a reading
 finds a citation in it (``line_links_of_this_repository``). The source is
-read as GitHub reads a path: its escapes of unreserved characters and of
-``/`` decoded, a backslash read as ``/``, a run of slashes as one, ``.``
-segments removed, and the owner and the name in any case. A renderer takes a
-source to the URL it follows by the decodings ``_sources`` makes, the steps
-this rule reads through, percent-encoding characters that neither the path
-nor a ``#`` holds, and dot segments, which the rule before refuses; and the
-first ``#`` after the path in a URL starts its fragment. So a link that
-names this repository's path on GitHub and a line is refused however a
-reading takes it. A relative link names no repository, and a redirect (a
-short link, a renamed repository) names another path: neither is read.
+read as a browser and then GitHub take a URL's path: a backslash read as
+``/`` and the dot segments before each ``?`` or ``#`` resolved, either dot
+perhaps ``%2e`` and an empty segment counted; only then the escapes of
+unreserved characters and of ``/`` decoded and a run of slashes read as one;
+and the owner and the name matched in any case. A dot segment can form the
+path where no reading finds a citation, as in a link to ``LICENSE``, whose
+name no reading takes for a source:
+``https://github.com/PolicyEngine/x/../microcosm/blob/<sha>/LICENSE#L3``. A
+renderer takes a source to the URL it follows by the decodings ``_sources``
+makes, a browser's steps (a backslash as ``/``, dot segments resolved, and
+characters that neither the path nor a ``#`` holds percent-encoded) and
+GitHub's (unreserved escapes decoded, a run of slashes as one, the owner and
+the name in any case; it decodes no ``%2f`` in them, so decoding one here
+can only add a refusal); and the first ``#`` after the path in a URL starts
+its fragment. So a link that names this
+repository's path on GitHub and a line is refused however a reading takes
+it. A relative link names no repository, and a redirect (a short link, a
+renamed repository) names another path: neither is read.
 
 The recognised spellings are the ones ``_LINE_CITATIONS`` documents. A source
 name followed by a line locator in no recognised spelling, with no ``.``,
@@ -444,8 +452,10 @@ _REPOSITORY_ON_GITHUB = re.compile(r"(?<![A-Za-z0-9-])(?i:policyengine/microcosm
 _LINE_FRAGMENT = re.compile(r"L\d")
 #: A run of slashes, which GitHub reads as one.
 _SLASH_RUN = re.compile(r"/{2,}")
-#: Single-dot segments after a slash, which the URL Standard removes.
-_SINGLE_DOT_SEGMENTS = re.compile(r"(?<=/)(?:\./)+")
+#: An escaped dot, which the URL Standard reads as a dot in a dot segment.
+_ESCAPED_DOT = re.compile(r"%2[eE]")
+#: What ends a URL's path: a browser resolves its dot segments before it.
+_PATH_END = re.compile(r"([?#])")
 #: A dotted Microcosm symbol named in prose, such as
 #: ``microcosm.graph.executor._structural_columns``.
 DOTTED_MICROCOSM_SYMBOL = re.compile(
@@ -1208,20 +1218,36 @@ def dot_segment_line_citations(value: object) -> list[LineCitation]:
     ]
 
 
+def _browsed(source: str) -> str:
+    """A source with its dot segments resolved as a browser resolves a URL's.
+
+    A backslash is read as ``/``, either dot may be ``%2e``, and an empty
+    segment counts: ``PolicyEngine//x/../../microcosm`` is
+    ``PolicyEngine/microcosm``. A ``?`` or a ``#`` ends a path, so no dot
+    segment after one removes a segment before it.
+    """
+
+    pieces = _PATH_END.split(_ESCAPED_DOT.sub(".", source.replace("\\", "/")))
+    return "".join(map(_remove_dot_segments, pieces))
+
+
 def _links_a_line_here(source: str) -> bool:
     """Whether a source holds this repository's path on GitHub with a line
     fragment at the first ``#`` after it.
 
-    The source is read as GitHub reads a URL's path, with no URL needed to
-    start before it: its ``_DECODED`` escapes decoded, a backslash read as
-    ``/``, a run of slashes as one and its ``.`` segments removed.
+    The source is read as a browser and then GitHub take a URL, with no URL
+    needed to start before the path: its dot segments resolved first
+    (``_browsed``), which can form the owner and the name
+    (``PolicyEngine/x/../microcosm/``), and only then its ``_DECODED``
+    escapes decoded and its runs of slashes read as one. A browser reads
+    ``%2f`` as no separator, and GitHub decodes none in the owner or the
+    name, so decoding one here can only add a refusal.
     """
 
-    path = _SLASH_RUN.sub("/", _decode(source).replace("\\", "/"))
-    pieces = _SINGLE_DOT_SEGMENTS.sub("", path).split("#")
+    path = _SLASH_RUN.sub("/", _decode(_browsed(source)))
     return any(
         _LINE_FRAGMENT.match(fragment) and _REPOSITORY_ON_GITHUB.search(before)
-        for before, fragment in pairwise(pieces)
+        for before, fragment in pairwise(path.split("#"))
     )
 
 

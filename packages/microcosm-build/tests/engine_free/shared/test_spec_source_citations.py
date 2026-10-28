@@ -25,8 +25,9 @@ hide a broken check:
   unknown;
 - no resource links a line of this repository by its GitHub path, however a
   reading takes the link (``line_links_of_this_repository``): no string's
-  source holds ``PolicyEngine/microcosm/``, read as GitHub reads a path,
-  with ``#L<n>`` at the first ``#`` after it;
+  source holds ``PolicyEngine/microcosm/``, read as a browser and then
+  GitHub read a path (dot segments resolved first, then escapes decoded and
+  slash runs read as one), with ``#L<n>`` at the first ``#`` after it;
 - no resource cites a line of any other source unless the citation binds to
   an inline commit (the nearest one in its own clause, else the nearest one
   before it in its string; ``citing_commit``), or the resource pins a path
@@ -2782,6 +2783,45 @@ def test_a_line_link_of_this_repository_is_refused_by_its_path_alone() -> None:
     assert line_links_of_this_repository(document) == []
 
 
+def test_a_line_link_of_this_repository_is_refused_where_a_dot_segment_forms_its_path() -> (
+    None
+):
+    sha = "8a62c9380858d16d94f58146c23cb8daaf8bb70c"
+    dockerfile = (
+        "docs/evidence/us-release-reimputation-1191/scripts/platform/Dockerfile"
+    )
+    sums = "packages/microcosm-build/tests/fixtures/staging/v1/SHA256SUMS"
+    code_span = 'Use `prefix="` before the value.\n\n'
+    # markdown-it-py 4.2 and parse5 7.3 render each of these, and bun 1.3's
+    # ``URL`` resolves each, to a link to line 3 of a file here, and github.com
+    # serves the file; at ``8a62c938`` no rule refused them. A browser
+    # resolves the dot segment before GitHub reads the path, and no reading
+    # takes these files' names for a source, so no citation is found.
+    for written in (
+        f"[a](https://github.com/PolicyEngine/x/../microcosm/blob/{sha}/LICENSE#L3)",
+        f'<a href="https://github.com/PolicyEngine/x/%2E%2e/microcosm/blob/{sha}/{dockerfile}#L3">a</a>',
+        f"[a](<https://github.com/PolicyEngine//x/../../microcosm/blob/{sha}/{sums}#L3>)",
+        f'<a href="https://github.com/PolicyEngine/a%2fb/../microcosm/blob/{sha}/LICENSE#L3">a</a>',
+        f'<a href="https://github.com/PolicyEngine/x\\..\\microcosm/blob/{sha}/LICENSE#L3">a</a>',
+        f'<a href="https://github.com/PolicyEngine/x/&#46;&#46;/microcosm/blob/{sha}/LICENSE#L3">a</a>',
+        f"[a](https://github.com/%50olicyEngine/x/../%6Dicrocosm/blob/{sha}/LICENSE?a/../../../../..#L3)",
+        f'{code_span}<a href="https://a b@%67ithub.com/PolicyEngine/x/../microcosm/blob/{sha}/LICENSE#L3">a</a>',
+    ):
+        assert line_citations(written) == [], written
+        assert line_links_of_this_repository({"note": written}) == [written], written
+    # These resolve to another path: ``/microcosm/blob/...``; ``%2f`` in the
+    # owner or the name, which a browser does not resolve and GitHub serves
+    # no file for; another repository; and ``...``, which is no dot segment.
+    for written in (
+        f"[a](https://github.com/PolicyEngine/x/../../microcosm/blob/{sha}/LICENSE#L3)",
+        f'<a href="https://github.com/PolicyEngine/x%2f..%2fmicrocosm/blob/{sha}/LICENSE#L3">a</a>',
+        f'<a href="https://github.com/PolicyEngine/x/..%2fmicrocosm/blob/{sha}/LICENSE#L3">a</a>',
+        f"[a](https://github.com/PolicyEngine/microcosm-x/../microcosm-dynamics/blob/{sha}/LICENSE#L3)",
+        f"[a](https://github.com/PolicyEngine/x/.../microcosm/blob/{sha}/LICENSE#L3)",
+    ):
+        assert line_links_of_this_repository({"note": written}) == [], written
+
+
 #: A ref segment holding punctuation at which a reading starts a name, though
 #: a URL's path holds it: ``feature+foo``, ``release!1``, ``v1,2;3=4``.
 _PUNCTUATED_REF_SEGMENT = st.from_regex(
@@ -2797,20 +2837,33 @@ _GITHUB_AUTHORITIES = (
     "a\tb c@ｇithub.com",
     "x y@github。com:443",
 )
-#: This repository's owner and name as GitHub routes them, and other
-#: repositories' of the same shape.
+#: This repository's owner and name as a browser and then GitHub route them,
+#: through dot segments too, and other repositories' of the same shape, two
+#: of them through a dot segment that leaves another path or none at all.
 _THIS_REPOSITORY_PATHS = (
     "PolicyEngine/microcosm",
     "policyengine/MICROCOSM",
     "%50olicyEngine/%6Dicrocosm",
     "PolicyEngine//microcosm",
     "PolicyEngine/./microcosm",
+    "PolicyEngine/x/../microcosm",
+    "PolicyEngine//x/%2e%2E/../microcosm",
+    "PolicyEngine/a%2fb/../microcosm",
 )
 _OTHER_REPOSITORY_PATHS = (
     "PolicyEngine/microcosm-dynamics",
     "PolicyEngine/microcosms",
     "NotPolicyEngine/microcosm",
     "PolicyEngine/micro",
+    "PolicyEngine/x/../../microcosm",
+    "PolicyEngine/x%2f..%2fmicrocosm",
+)
+#: Files here whose names no reading takes for a source, so no rule but the
+#: link's own refuses a line link of one.
+_FILES_NO_READING_CITES = (
+    "LICENSE",
+    "docs/evidence/us-release-reimputation-1191/scripts/platform/Dockerfile",
+    "packages/microcosm-build/tests/fixtures/staging/v1/SHA256SUMS",
 )
 
 
@@ -2822,12 +2875,42 @@ _OTHER_REPOSITORY_PATHS = (
     other=st.sampled_from(_OTHER_REPOSITORY_PATHS),
     route=st.sampled_from(("blob", "tree", "blame")),
     ref=st.lists(_PUNCTUATED_REF_SEGMENT, min_size=1, max_size=3).map("/".join),
-    path=st.sampled_from(_ROOTED_FILES),
-    query=st.sampled_from(("", "?plain=1", "?" + "a" * 30, "?a b=c")),
+    path=st.sampled_from(_ROOTED_FILES + _FILES_NO_READING_CITES),
+    query=st.sampled_from(
+        ("", "?plain=1", "?" + "a" * 30, "?a b=c", "?a/../../../../..")
+    ),
     fragment=st.sampled_from(("#L{a}", "#L{a}-L{b}")),
     sha=_SHA,
     a=st.integers(1, 99_999),
     b=st.integers(1, 99_999),
+)
+@example(
+    enclosure="[a](<{url}>)",
+    authority="github.com",
+    repository="PolicyEngine//x/%2e%2E/../microcosm",
+    other="PolicyEngine/x/../../microcosm",
+    route="blob",
+    ref="main",
+    path="LICENSE",
+    query="?a/../../../../..",
+    fragment="#L{a}",
+    sha="a1b2c3d",
+    a=3,
+    b=3,
+)
+@example(
+    enclosure='<a href="{url}">a</a>',
+    authority="user@github.com",
+    repository="PolicyEngine/a%2fb/../microcosm",
+    other="PolicyEngine/x%2f..%2fmicrocosm",
+    route="blame",
+    ref="a1b2c3d",
+    path="packages/microcosm-build/tests/fixtures/staging/v1/SHA256SUMS",
+    query="",
+    fragment="#L{a}-L{b}",
+    sha="a1b2c3d",
+    a=1,
+    b=4,
 )
 @example(
     enclosure="[a](<{url}>)",
@@ -3223,7 +3306,9 @@ def test_a_long_string_is_scanned_in_linear_time() -> None:
         assert time.process_time() - started < 2, text[:24]
     # Since round 12, in 2 s of their own: runs of what this repository's path,
     # a line fragment, a run of slashes or ``.`` segments, a dot segment beside
-    # a ``%2f``, and the run of path characters before a name start with.
+    # a ``%2f``, and the run of path characters before a name start with; and
+    # dot segments a browser resolves, after a ``?`` too, escaped or beside a
+    # backslash, which pop 10,000 segments back to the owner.
     started = time.process_time()
     for text in (
         "policyengine/microcosm" * 2_500 + "#L1",
@@ -3236,6 +3321,11 @@ def test_a_long_string_is_scanned_in_linear_time() -> None:
         "a=" * 30_000 + "x.py:1",
         "=x.py:1" * 8_000,
         "lines 1 of " + "a=" * 30_000,
+        "PolicyEngine/" + "x/" * 10_000 + "../" * 10_000 + "microcosm/#L1",
+        "/.." * 20_000 + "#L1",
+        "?/.." * 15_000 + "#L1",
+        "%2e%2E/" * 9_000 + "#L1",
+        "\\.." * 20_000 + "#L1",
     ):
         line_citations(text)
         in_repository_line_citations(text)
