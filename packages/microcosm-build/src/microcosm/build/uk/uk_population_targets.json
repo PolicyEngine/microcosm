@@ -1921,7 +1921,7 @@
       },
       {
         "target_id": "desnz.subnational.gas_kwh",
-        "basis": "microcosm#1207, #1095; DESNZ sub-national domestic gas consumption by local authority (Great Britain) and its split onto constituencies by DESNZ's small-area figures (the committed derived-facts resource), levelled onto the lcfs stage's Energy Trends level by one factor per fuel"
+        "basis": "microcosm#1207, #1095; DESNZ sub-national domestic gas consumption by local authority (Great Britain) and its split onto constituencies by DESNZ's small-area figures (the committed derived-facts resource), levelled onto the lcfs stage's level (the kWh ONS household spending buys, microcosm#1418) by one factor per fuel"
       },
       {
         "target_id": "desnz.subnational.gas_connected_households",
@@ -17444,7 +17444,7 @@
         "policyengine": {
           "metric_name": "ons/household_gas_expenditure",
           "value_variable": "gas_consumption",
-          "notes": "ONS Consumer Trends COICOP 04.5.2 gas, current prices, calendar year, bound on the frame's gas spend column (zero for households without a gas connection); replaces the 04.5 total once chronicle #271 published the sub-classes (microcosm#890 F1, chronicle#270). The stage sets the column's level from DESNZ volumes at QEP average prices paid over the published gas-connected share, so the design-weight gap to this row is the published-source residual the receipts record."
+          "notes": "ONS Consumer Trends COICOP 04.5.2 gas, current prices, calendar year, bound on the frame's gas spend column (zero for households without a gas connection); replaces the 04.5 total once chronicle #271 published the sub-classes (microcosm#890 F1, chronicle#270). The stage sets the column's level from this row's calendar-2024 value since microcosm#1418, as the kWh it buys at QEP's United Kingdom average prices once every domestic gas meter's standing charge comes off, so at design weights the column sits below this row by the standing charges of meters that are not frame households' (about 1 percent) and moves from it by the projection to 2025."
         },
         "axiom": {
           "metric_name": "ons/household_gas_expenditure",
@@ -34121,7 +34121,7 @@
       "category_id": "desnz.domestic_energy",
       "label": "Domestic gas consumption (kWh)",
       "uprating_index": "desnz.energy_trends.gb_domestic_level",
-      "selector_note": "DESNZ sub-national domestic gas consumption by local authority, gas year 2024 (mid-May 2024 to mid-May 2025, weather-corrected; Chronicle stamps it gas_year since the abf0921 re-pin and Microcosm pairs gas year 2024 with calendar 2024, energy_pricing.SUBNATIONAL_PERIOD_TYPES, microcosm#1300), levelled onto the lcfs stage's Energy Trends level by one Great Britain factor per fuel (desnz.energy_trends.gb_domestic_level): the cells keep DESNZ's split between areas and bind as a distribution, with Northern Ireland's part of the UK level taken out at its share of DESNZ's sub-national domestic consumption (the Northern Ireland row, all domestic meters, read as published; microcosm#1278). DESNZ publishes no constituency cut: the constituency cells are Microcosm's split of each authority's total over its constituencies by DESNZ's LSOA and data zone figures for the same gas year (uk/desnz_constituency_energy_facts.json, microcosm#1095), so every authority keeps its total and the two grains agree. The frame reads each household's stored gas_consumption at the dataset period and turns it back into kWh at the stage's declared QEP prices. The region rows are the authorities' sums and are not bound (microcosm#1207)."
+      "selector_note": "DESNZ sub-national domestic gas consumption by local authority, gas year 2024 (mid-May 2024 to mid-May 2025, weather-corrected; Chronicle stamps it gas_year since the abf0921 re-pin and Microcosm pairs gas year 2024 with calendar 2024, energy_pricing.SUBNATIONAL_PERIOD_TYPES, microcosm#1300), levelled onto the lcfs stage's level, the kWh ONS household spending on gas buys at QEP prices (microcosm#1418), by one Great Britain factor per fuel (desnz.energy_trends.gb_domestic_level): the cells keep DESNZ's split between areas and bind as a distribution, with Northern Ireland's part of the UK level taken out at its share of DESNZ's sub-national domestic consumption (the Northern Ireland row, all domestic meters, read as published; microcosm#1278). DESNZ publishes no constituency cut: the constituency cells are Microcosm's split of each authority's total over its constituencies by DESNZ's LSOA and data zone figures for the same gas year (uk/desnz_constituency_energy_facts.json, microcosm#1095), so every authority keeps its total and the two grains agree. The frame reads each household's stored gas_consumption at the dataset period and turns it back into kWh at the stage's declared QEP prices. The region rows are the authorities' sums and are not bound (microcosm#1207)."
     },
     {
       "target_id": "desnz.subnational.gas_connected_households",

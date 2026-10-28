@@ -1633,7 +1633,7 @@
     },
     {
       "resource": "desnz_local_energy_facts.json",
-      "purpose": "The DESNZ sub-national domestic electricity and gas meter counts for every Great Britain local authority, 2024 (gas meters over electricity meters give the share of each authority's census households bound as gas-connected), and Northern Ireland's sub-national domestic electricity and gas consumption, 2024 (the N92000002 row, all domestic meters: Great Britain's part of the stage's UK level the authority kWh rows are levelled to, Energy Trends or for electricity the kWh ONS household spending buys (microcosm#1418), is its share of the sub-national total with this row added, microcosm#1278). Consumed by the local energy appliers (uk_runtime.domestic_energy_targets, microcosm#1207).",
+      "purpose": "The DESNZ sub-national domestic electricity and gas meter counts for every Great Britain local authority, 2024 (gas meters over electricity meters give the share of each authority's census households bound as gas-connected), and Northern Ireland's sub-national domestic electricity and gas consumption, 2024 (the N92000002 row, all domestic meters: Great Britain's part of the stage's UK level the authority kWh rows are levelled to, the kWh ONS household spending on each fuel buys (microcosm#1418), is its share of the sub-national total with this row added, microcosm#1278). Consumed by the local energy appliers (uk_runtime.domestic_energy_targets, microcosm#1207).",
       "consumers": [
         "uk_runtime.domestic_energy_targets"
       ],

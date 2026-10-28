@@ -627,28 +627,50 @@ def _one_vendored(resource: str, **criteria) -> dict:
     return rows[0]
 
 
-def test_the_electricity_level_is_the_kwh_ons_household_spending_buys() -> None:
-    """Electricity's level is ONS 04.5.1 less every meter's standing charge, over
-    the unit cost, at QEP's UK average prices (microcosm#1418); gas keeps Energy
-    Trends."""
+@pytest.mark.parametrize(
+    ("column", "fuel", "concept", "coicop", "gb_meter_period", "expected_kwh"),
+    [
+        (
+            ELECTRICITY_KWH,
+            "electricity",
+            "ons.household_expenditure.electricity",
+            "04.5.1",
+            "calendar_year",
+            84.94e9,
+        ),
+        (
+            GAS_KWH,
+            "gas",
+            "ons.household_expenditure.gas",
+            "04.5.2",
+            "gas_year",
+            236.47e9,
+        ),
+    ],
+)
+def test_each_fuels_level_is_the_kwh_ons_household_spending_buys(
+    column, fuel, concept, coicop, gb_meter_period, expected_kwh
+) -> None:
+    """A fuel's level is its ONS class less every meter's standing charge, over
+    the unit cost, at QEP's UK average prices (microcosm#1418)."""
 
     declared = _declared()
-    assert declared["spend_level_fuels"] == ["electricity"]
+    assert declared["spend_level_fuels"] == ["electricity", "gas"]
     level, receipt = published_energy_level(declared)
     trends, _ = published_energy_level(_energy_trends_only())
     spend = _one_vendored(
         "ons_household_expenditure_facts.json",
-        concept="ons.household_expenditure.electricity",
+        concept=concept,
         geography_id="K02000001",
         period_type="calendar_year",
         period_value=2024,
-        dimensions={"coicop": "04.5.1", "consumption_concept": "domestic"},
+        dimensions={"coicop": coicop, "consumption_concept": "domestic"},
     )
     meters = sum(
         float(
             _one_vendored(
                 "desnz_domestic_energy_facts.json",
-                concept="desnz.subnational.domestic_electricity_meter_count",
+                concept=f"desnz.subnational.domestic_{fuel}_meter_count",
                 geography_id=geography,
                 period_type=period_type,
                 period_value=2024,
@@ -656,39 +678,40 @@ def test_the_electricity_level_is_the_kwh_ons_household_spending_buys() -> None:
             )["value"]
         )
         for geography, period_type in (
-            ("K03000001", "calendar_year"),
-            ("N92000002", "fiscal_year"),
+            ("K03000001", gb_meter_period),
+            ("N92000002", "fiscal_year" if fuel == "electricity" else "gas_year"),
         )
     )
     unit = _qep_value(
-        "desnz.qep.domestic_electricity_variable_unit_cost",
+        f"desnz.qep.domestic_{fuel}_variable_unit_cost",
         UK,
         "variable_unit_cost",
-        "electricity",
+        fuel,
     )
-    fixed = _qep_value(
-        "desnz.qep.domestic_electricity_fixed_cost", UK, "fixed_cost", "electricity"
-    )
+    fixed = _qep_value(f"desnz.qep.domestic_{fuel}_fixed_cost", UK, "fixed_cost", fuel)
     expected = (float(spend["value"]) - meters * fixed) / unit
-    assert level[ELECTRICITY_KWH] == pytest.approx(expected, rel=1e-12)
-    # Calendar 2024: ONS's GBP 28.13bn buys about 84.9 TWh, 7.4% below Energy
-    # Trends' 91.7 TWh; about 30.2 million meters pay the standing charges.
-    assert level[ELECTRICITY_KWH] == pytest.approx(84.94e9, rel=1e-3)
-    assert meters == pytest.approx(30.19e6, rel=1e-3)
-    assert level[GAS_KWH] == trends[GAS_KWH]
-    block = receipt["by_fuel"][ELECTRICITY_KWH]
+    assert level[column] == pytest.approx(expected, rel=1e-12)
+    # Calendar 2024: ONS's spending buys about 84.9 TWh of electricity (Energy
+    # Trends 91.7) and 236.5 TWh of gas (Energy Trends 252.3).
+    assert level[column] == pytest.approx(expected_kwh, rel=1e-3)
+    assert level[column] < trends[column]
+    block = receipt["by_fuel"][column]
     assert block["basis"] == "ons_household_spend"
-    assert block["coicop"] == "04.5.1"
+    assert block["coicop"] == coicop
     assert block["spend_gbp"] == float(spend["value"])
-    assert block["energy_trends_kwh"] == trends[ELECTRICITY_KWH]
-    assert block["total_kwh"] == level[ELECTRICITY_KWH]
+    assert block["energy_trends_kwh"] == trends[column]
+    assert block["total_kwh"] == level[column]
     assert block["domestic_meters"]["meters"] == meters
+    assert receipt["spend_level_fuels"] == ["electricity", "gas"]
+
+
+def test_an_undeclared_fuel_keeps_the_energy_trends_level() -> None:
+    declared = {**_declared(), "spend_level_fuels": ["electricity"]}
+    level, receipt = published_energy_level(declared)
+    trends, _ = published_energy_level(_energy_trends_only())
+    assert level[GAS_KWH] == trends[GAS_KWH]
     assert receipt["by_fuel"][GAS_KWH]["basis"] == "energy_trends_volume"
-    assert receipt["spend_level_fuels"] == ["electricity"]
-    both = {**declared, "spend_level_fuels": ["electricity", "gas"]}
-    gas_level, gas_receipt = published_energy_level(both)
-    assert gas_receipt["by_fuel"][GAS_KWH]["coicop"] == "04.5.2"
-    assert gas_level[GAS_KWH] == pytest.approx(236.47e9, rel=1e-3)
+    assert level[ELECTRICITY_KWH] < trends[ELECTRICITY_KWH]
     for mutation, match in (
         (lambda p: p.update(spend_level_fuels=["electricity", "oil"]), "at most once"),
         (
@@ -703,7 +726,7 @@ def test_the_electricity_level_is_the_kwh_ons_household_spending_buys() -> None:
         (lambda p: p.update(level_period_type="fiscal_year"), "calendar years"),
         (lambda p: p.update(period_value=2025), "level's year"),
     ):
-        parameters = dict(declared)
+        parameters = dict(_declared())
         mutation(parameters)
         with pytest.raises(ValueError, match=match):
             published_energy_level(parameters)

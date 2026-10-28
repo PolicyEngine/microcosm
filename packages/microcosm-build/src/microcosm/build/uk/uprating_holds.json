@@ -397,7 +397,7 @@
         "desnz.subnational.electricity_kwh",
         "desnz.subnational.gas_kwh"
       ],
-      "reason": "DESNZ sub-national domestic consumption for 2024 (electricity: non-half-hourly meters read 31 January 2024 to 30 January 2025 and half-hourly meters over calendar 2024, both counted, as reported; gas: mid-May 2024 to mid-May 2025, weather-corrected), levelled onto the lcfs stage's calendar-2024 level (Energy Trends for gas; for electricity the kWh ONS household spending buys, microcosm#1418). The binding measures the frame's stored calendar-2024 spend turned back into kWh at the stage's prices, so both sides are 2024 on purpose; Energy Trends 2025 was weighed as an index and not taken, so the weights do not absorb the change in use per household (microcosm#1207).",
+      "reason": "DESNZ sub-national domestic consumption for 2024 (electricity: non-half-hourly meters read 31 January 2024 to 30 January 2025 and half-hourly meters over calendar 2024, both counted, as reported; gas: mid-May 2024 to mid-May 2025, weather-corrected), levelled onto the lcfs stage's calendar-2024 level (the kWh ONS household spending on each fuel buys, microcosm#1418). The binding measures the frame's stored calendar-2024 spend turned back into kWh at the stage's prices, so both sides are 2024 on purpose; Energy Trends 2025 was weighed as an index and not taken, so the weights do not absorb the change in use per household (microcosm#1207).",
       "tracking": "microcosm#1278",
       "approved_by": "juaristi22",
       "approved_on": "2026-10-15",
