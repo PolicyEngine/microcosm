@@ -1,22 +1,23 @@
 """Measure the consumption-tax and domestic-energy rows on a UK dataset.
 
-The levels of these rows are set by the build or the engine, not by the
-weights (microcosm#1113, microcosm#1123 item 3): ``obr.vat`` by an engine
-coverage factor (policyengine-uk#1996, #2187; held as a diagnostic, and
-measured with VAT on private school fees from policyengine-uk 2.157.1),
-``obr.fuel_duties_cars`` by fuel
-that includes business-paid car fuel, and the ONS electricity and gas rows
-by a published-source residual against the stage's DESNZ volume at QEP
-prices, and OBR's excise receipts by the clearances and bases the stage
-levels the excise inputs to (microcosm#1359), which are measured at their
-own FY2024-25 period. Rows held out of the objective by the
-measure-exclusion register stay measured here, beside the household
-road-fuel row (ONS 07.2.2) bound in place of the cars receipts: the tool
-reports each row's estimate on any H5 the engine loads, against the value
-the run's contract registry declares, beside the household fuel and energy
-composition the rows used to pull (gas-connected share, fuel-car households
-with no fuel, consumption total). Development diagnostic: it never
-recalibrates and writes only an aggregate JSON.
+The build or the engine sets the levels these rows read (microcosm#1113,
+microcosm#1123 item 3): ``obr.vat`` an engine coverage factor
+(policyengine-uk#1996, #2187; held as a diagnostic, and measured with VAT on
+private school fees from policyengine-uk 2.157.1), ``obr.fuel_duties_cars``
+fuel that includes business-paid car fuel, the ONS electricity and gas rows
+the stage's level, the kWh ONS household spending buys (microcosm#1418), and
+OBR's excise receipts the clearances and bases the stage levels the excise
+inputs to at prior weights (microcosm#1359), measured at their own FY2024-25
+period. The tool measures each row whether the measure-exclusion register
+holds it out of the objective or the national binds it, as it binds the
+household road-fuel row (ONS 07.2.2) in place of the cars receipts, the ONS
+electricity and gas rows and, since calibration moved the gambling bases,
+the betting and gaming receipts (microcosm#1418). It reports each row's
+estimate on any H5 the engine loads, against the value the run's contract
+registry declares, beside the household fuel and energy composition the rows
+used to pull (gas-connected share, fuel-car households with no fuel,
+consumption total). Development diagnostic: it never recalibrates and writes
+only an aggregate JSON.
 """
 
 from __future__ import annotations
@@ -31,8 +32,8 @@ import pandas as pd
 
 from microcosm.build.uk_runtime.lcfs_consumption import UK_LCFS_COICOP_DIVISION_COLUMNS
 
-#: The held-out rows and the bound road-fuel row that replaced the cars
-#: receipts, with the engine variables whose weighted sum measures each.
+#: The measured rows, held out or bound, with the engine variables whose
+#: weighted sum measures each.
 ROWS: Mapping[str, tuple[str, ...]] = {
     "obr.vat": ("vat", "private_school_vat"),
     "obr.fuel_duties_cars": ("fuel_duty",),
@@ -122,7 +123,7 @@ def compare(
 
 
 def registry_values(path: Path) -> dict[str, float]:
-    """Declared values of the held-out rows from a run's contract registry."""
+    """Declared values of the measured rows from a run's contract registry."""
 
     payload = json.loads(path.read_text())
     values: dict[str, float] = {}
@@ -133,7 +134,7 @@ def registry_values(path: Path) -> dict[str, float]:
 
 
 def engine_estimates(dataset: str, year: int) -> dict[str, float]:
-    """Weighted engine totals of each held-out row at ``year`` or its own period."""
+    """Weighted engine totals of each measured row at ``year`` or its own period."""
 
     from policyengine_uk import Microsimulation
 

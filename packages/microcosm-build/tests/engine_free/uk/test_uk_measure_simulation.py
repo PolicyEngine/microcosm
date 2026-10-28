@@ -676,11 +676,13 @@ _PACKAGED_EXCLUSION_CENSUS = {
     # microcosm#1359 (2026-10-23): OBR's FY2024-25 excise receipts, whose
     # level the stage sets from published clearances and bases at the
     # engine's rates, measured with tools/diagnose_uk_consumption_taxes.py.
+    # The betting and gaming row is bound since microcosm#1418: the stage
+    # sets its bases at prior weights, and calibration moved them off HMRC's
+    # receipts (María's ruling of 2026-10-28).
     "obr.beer_and_cider_duties": 1,
     "obr.wine_duties": 1,
     "obr.spirits_duties": 1,
     "obr.tobacco_duties": 1,
-    "obr.betting_and_gaming_duties": 1,
 }
 
 # The carer and childcare rows were retired on 2026-09-16 with the repairs
@@ -721,8 +723,9 @@ def test_packaged_exclusions_load():
     # microcosm#1359 adds the five OBR excise rows, measured at FY2024-25.
     # The next policyengine-uk bump (2.162.3) holds obr.domestic_rates once it
     # compiles (María's ruling of 2026-10-25). microcosm#1418 binds the ONS
-    # electricity and gas rows again (María's rulings of 2026-10-28).
-    assert len(names) == len(set(names)) == 38
+    # electricity and gas rows again, and the betting and gaming receipts
+    # (María's rulings of 2026-10-28).
+    assert len(names) == len(set(names)) == 37
     rehold = [entry for entry in exclusions if "_1_000_000_to_inf" in entry["name"]]
     assert {(e["approved_on"], e["expires_on"], e["tracking"]) for e in rehold} == {
         ("2026-10-23", "2027-01-23", "microcosm#1095")
