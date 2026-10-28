@@ -257,7 +257,7 @@ _FAMILIES: tuple[dict[str, Any], ...] = (
             "owner-occupiers' main residences only: second homes, let "
             "property and homes owned by companies or non-residents are "
             "outside it until the coverage decision (microcosm#1240 fix 6, "
-            "tracked on microcosm#1278)."
+            "tracked on microcosm#1095)."
         ),
         "sources": ["hmlr_price_paid_derived_stock"],
         "adjudications": [_HIGH_VALUE_HOME_STOCK_FENCE_ID],
