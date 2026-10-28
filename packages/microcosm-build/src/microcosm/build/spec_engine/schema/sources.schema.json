@@ -3559,7 +3559,7 @@
        "type": "object",
        "additionalProperties": false,
        "properties": {
-        "gross_savings_interest_income": {
+        "savings_interest_income": {
          "type": "string"
         },
         "refresh_disability_categories": {
@@ -3576,7 +3576,7 @@
         }
        },
        "required": [
-        "gross_savings_interest_income",
+        "savings_interest_income",
         "refresh_disability_categories",
         "refresh_disability_flags"
        ]
@@ -8277,7 +8277,7 @@
        "type": "object",
        "additionalProperties": false,
        "properties": {
-        "gross_savings_interest_income": {
+        "savings_interest_income": {
          "type": "string"
         },
         "refresh_disability_categories": {

@@ -1,6 +1,7 @@
 # ruff: noqa: F401
 from __future__ import annotations
 
+from collections.abc import Mapping
 from pathlib import Path
 
 import numpy as np
@@ -23,6 +24,7 @@ from microcosm.build.uk_runtime.hmrc_income import (
 )
 from microcosm.build.uk_runtime.national_frame import (
     uk_household_weight_kind,
+    uk_isa_income_contract,
     uk_national_frame,
     uk_time_period,
 )
@@ -64,7 +66,7 @@ def _feasible_dataset_and_targets() -> tuple[Frame, HMRCIncomeTargetSet]:
                 "person_household_id": row_id,
                 "person_benunit_id": row_id,
                 "state_pension_reported": 0.0,
-                "tax_free_savings_income": 0.0,
+                "individual_savings_account_interest_income": 0.0,
                 SPI_HMRC_OTHER_INCOME_COLUMN: 0.0,
                 SPI_HMRC_STATE_PENSION_INCOME_COLUMN: 0.0,
             }
@@ -141,6 +143,7 @@ def _with(
     person: pd.DataFrame | None = None,
     household: pd.DataFrame | None = None,
     time_period: str | None = None,
+    isa_income_contract: Mapping[str, object] | None = None,
 ) -> Frame:
     """Rebuild the national frame with selected tables replaced."""
 
@@ -156,6 +159,11 @@ def _with(
             else frame.weights_for("household").values
         ),
         mass_log=frame.mass_log,
+        isa_income_contract=(
+            uk_isa_income_contract(frame)
+            if isa_income_contract is None
+            else isa_income_contract
+        ),
     )
 
 

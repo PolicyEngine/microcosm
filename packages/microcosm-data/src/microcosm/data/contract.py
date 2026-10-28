@@ -451,13 +451,13 @@ _UK_GATE_BATTERY_SHIPPABLE_STATUSES = frozenset({"passed", "not_applicable"})
 # fingerprint derives from the manifest digest. Editing the spec moves all
 # three here in the same reviewed change.
 _UK_GATE_BATTERY_POLICY_SHA256 = (
-    "609d39688780f69d4e0ec13ca38f95e07335bb964fa956010a67ad426d8cf796"
+    "6c7299b0eb36e1cf36659e08e6dc732e84fbaef4564b08bcfda478053b90a83e"
 )
 _UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "87625a3c4f1761646498b3176611b73da0ec3d03131482cbde4b84cb7e202bd0"
+    "997590e24580b11eed376b42c64c247d6f69bc5a2919a839718fefba05fbdc8b"
 )
 _UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "afd71e682f5b61c43cdcb8c0b5510271480b9086bb4ac7fc80f7328ea0690cd0"
+    "322662956837422dd9164d095c0e4ca4e6b9483404014732c22ae47d16bfd998"
 )
 #: Spec entry id -> the legacy gate name whose observable detail checks
 #: apply unchanged (the battery re-keys the report by entry id; the gate
@@ -678,7 +678,7 @@ _UK_GATE_BATTERY_EVIDENCE_IDS = frozenset(
 # canonical hash; this pins the wrapped digest so the entry's evidence line
 # still binds the enhanced-FRS incumbent totals.
 _UK_GATE_BATTERY_INPUT_MASS_EVIDENCE_SHA256 = (
-    "82a5fa0c7dec5ac5c169f0b8b2f4acc6b302e80637dc698d3247e75a6d133933"
+    "24bb96f93de3bda45425b797a2f5069df7477bf3a56616080cc04376beab56e5"
 )
 # The degenerate binding's evidence payload digests the resolved exclusion
 # records; for a release that must be the committed register, so its digest
@@ -977,10 +977,10 @@ _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     },
     "release_cut": {
         "gates_manifest_sha256": (
-            "51d9de09162699174e9f9e61f0e6ae4817763b86cdb8061e4da03126e952bfc7"
+            "f872e884f294cb1c33500d16edad69b18ea31fb4ecccdea939fc27cd19342573"
         ),
         "policy_sha256": (
-            "c1cd798f4a52578e4db69957d08a7f6dabf0af849b4da4e25b4eb442a48d671b"
+            "fe04d5e69c718403304b6bdc9a6fccd20db165e7d217ba5cbf7045d3a326f029"
         ),
     },
 }

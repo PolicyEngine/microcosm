@@ -180,6 +180,7 @@ from .local_doctrine import UK_LOCAL_L0_SEARCH_FLOOR, UK_LOCAL_ROW_METADATA_RULE
 from .national_doctrine import uk_doctrine_with_overrides
 from .national_frame import (
     load_uk_national_frame,
+    require_uk_producer_isa_income_contract,
     uk_release_export_frame,
     write_uk_national_frame,
 )
@@ -1222,6 +1223,7 @@ def prepare_full_build(
             args.input_h5, pins["dataset"], pinned=args.input_sha256 is not None
         )
         frame, _ = load_uk_national_frame(args.input_h5)
+        require_uk_producer_isa_income_contract(frame, label="--input-h5")
         sidecar_path = args.input_sidecar or args.input_h5.with_suffix(".build.json")
         gates_path = args.input_spine_gates or args.input_h5.with_suffix(
             ".spine_gates.json"
@@ -2751,6 +2753,7 @@ def prepare_national_build(
     pins = {"dataset": _pin(input_h5, args.input_sha256)}
     inputs = {"dataset": _input_record(input_h5, pins["dataset"], pinned=True)}
     frame, _ = load_uk_national_frame(input_h5)
+    require_uk_producer_isa_income_contract(frame, label="--input-h5")
     sidecar_path = args.input_sidecar or input_h5.with_suffix(".build.json")
     gates_path = args.input_spine_gates or input_h5.with_suffix(".spine_gates.json")
     load_bound_spine_checkpoint(

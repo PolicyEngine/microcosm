@@ -356,6 +356,7 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
             ("person", "self_employment_income"),
             ("person", "private_pension_income"),
             ("person", "savings_interest_income"),
+            ("person", "individual_savings_account_interest_income"),
             ("person", "dividend_income"),
             ("person", "property_income"),
             ("person", "other_investment_income"),
@@ -436,6 +437,7 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
             ("person", "universal_credit_reported"),
             # The capital cells' financial investment income (microcosm#1095).
             ("person", "savings_interest_income"),
+            ("person", "individual_savings_account_interest_income"),
             ("person", "dividend_income"),
             ("person", "other_investment_income"),
             # The recorded capitals' property: the household reference
@@ -501,7 +503,7 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
                     "private_pension_income",
                     "property_income",
                     "state_pension_reported",
-                    "tax_free_savings_income",
+                    "individual_savings_account_interest_income",
                     "age",
                 )
             ),
@@ -559,6 +561,7 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
                     "private_pension_income",
                     "property_income",
                     "savings_interest_income",
+                    "individual_savings_account_interest_income",
                     "dividend_income",
                     "miscellaneous_income",
                 )
@@ -1218,7 +1221,7 @@ _HMRC_SPI_FLOAT_COLUMNS = (
     "employer_pension_contributions",
     "personal_pension_contributions",
     "pension_contributions_via_salary_sacrifice",
-    "tax_free_savings_income",
+    "individual_savings_account_interest_income",
     "universal_credit_reported",
     "pension_credit_reported",
     "child_benefit_reported",

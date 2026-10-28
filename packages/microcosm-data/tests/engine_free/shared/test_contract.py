@@ -115,6 +115,13 @@ UK_INPUT_MASS_REVIEWED_EXCLUSIONS: dict[str, dict[str, str]] = {
         "approved_on": "2026-10-11",
         "expires_on": "2027-04-11",
     },
+    "tax_free_savings_income": {
+        "reason": "The candidate no longer ships person.tax_free_savings_income: policyengine-uk derives it as the sum of individual_savings_account_interest_income, which the candidate stores apart from non-ISA interest under the additive ISA income contract, and a persisted copy overrides that sum and is never uprated (microcosm#1360). The enhanced-FRS reference stores it in the legacy gross layout, so the column is present in the reference and absent from the candidate, which this gate otherwise fails whatever the tolerance. Non-ISA savings_interest_income stays compared; it falls below the reference's gross total by the ISA part.",
+        "approved_by": "juaristi22",
+        "adjudication": "microcosm#1360 folded into microcosm#1418's PR B (ruling 2026-10-28 in session)",
+        "approved_on": "2026-10-28",
+        "expires_on": "2027-04-28",
+    },
 }
 GIT_COMMIT = "5fa48f07436a806ad75ff76fd22cfb8613bddbe0"
 DATASET_SHA = "d" * 64
@@ -213,19 +220,19 @@ def _trusted_terminal_gate_signing_key(monkeypatch) -> None:
 UK_GATE_BATTERY_PRODUCER = "microcosm.build.gate_battery"
 UK_GATE_BATTERY_SIGNING_KEY_ENV = "MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY"
 UK_GATE_BATTERY_POLICY_SHA256 = (
-    "609d39688780f69d4e0ec13ca38f95e07335bb964fa956010a67ad426d8cf796"
+    "6c7299b0eb36e1cf36659e08e6dc732e84fbaef4564b08bcfda478053b90a83e"
 )
 UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "87625a3c4f1761646498b3176611b73da0ec3d03131482cbde4b84cb7e202bd0"
+    "997590e24580b11eed376b42c64c247d6f69bc5a2919a839718fefba05fbdc8b"
 )
 UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "afd71e682f5b61c43cdcb8c0b5510271480b9086bb4ac7fc80f7328ea0690cd0"
+    "322662956837422dd9164d095c0e4ca4e6b9483404014732c22ae47d16bfd998"
 )
 UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256 = (
     "f246388de42654dd68dbbb40c42282001b5b0a8bf48976162bcb1199085cb1d3"
 )
 UK_GATE_BATTERY_INPUT_MASS_EVIDENCE_SHA256 = (
-    "82a5fa0c7dec5ac5c169f0b8b2f4acc6b302e80637dc698d3247e75a6d133933"
+    "24bb96f93de3bda45425b797a2f5069df7477bf3a56616080cc04376beab56e5"
 )
 #: Spec entry id -> (neutral gate name, phase, legacy detail-schema name).
 #: microcosm#1240: the two report-only high-value homes gates.

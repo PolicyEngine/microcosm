@@ -41,8 +41,8 @@ def test_observed_analogues_read_the_twin_and_derive_taxable_interest() -> None:
         {column: [0.0, 5.0] for column in analogue_source_columns()},
         index=[10, 11],
     )
-    person["savings_interest_income"] = [100.0, 20.0]
-    person["tax_free_savings_income"] = [30.0, 50.0]
+    # Interest outside ISAs, floored at zero (microcosm#1360).
+    person["savings_interest_income"] = [70.0, -30.0]
     person["dividend_income"] = [7.0, 0.0]
     observed = observed_analogues(person)
     assert list(observed.columns) == list(analogue_targets())

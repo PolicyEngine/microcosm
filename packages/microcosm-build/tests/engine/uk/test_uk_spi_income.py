@@ -20,7 +20,7 @@ def test_spi_preserves_observed_children_outside_the_donor_age_domain(
         "state_pension_reported",
         "universal_credit_reported",
         "savings_interest_income",
-        "tax_free_savings_income",
+        "individual_savings_account_interest_income",
         "dla_sc_reported",
     ]
     person.loc[child, preserved] = [0, 0, 0, 0, 0, 12, 3, 42]
@@ -89,9 +89,12 @@ def test_spi_rebases_income_before_frs_fill_and_preserves_child_inputs(
         result.person.loc[spi, "employment_income"],
         2 * reference.person.loc[spi, "employment_income"],
     )
-    # Only taxable SPI interest is rebased; the FRS fill's £5 tax-free draw
-    # is already in the build-year basis and must not be doubled.
-    assert result.person.loc[spi, "savings_interest_income"].eq(205).all()
+    # Only taxable SPI interest is rebased; the FRS fill's £5 ISA interest draw
+    # is already in the build-year basis and stays beside it (microcosm#1360).
+    assert result.person.loc[spi, "savings_interest_income"].eq(200).all()
+    assert (
+        result.person.loc[spi, "individual_savings_account_interest_income"].eq(5).all()
+    )
     # FRS rows keep their own reported dividends, children and adults alike:
     # the SPI forest never redraws them (uk-data#498, microcosm#1095).
     base = person[channel].eq("frs")
@@ -325,7 +328,7 @@ def test_stage2_pension_bridge_uses_observed_and_drawn_receipt(
     )
 
 
-def test_spi_qrf_stages_use_typed_weights_and_restore_gross_savings(
+def test_spi_qrf_stages_use_typed_weights_and_keep_isa_interest_apart(
     monkeypatch,
     tmp_path,
 ) -> None:
@@ -382,7 +385,14 @@ def test_spi_qrf_stages_use_typed_weights_and_restore_gross_savings(
     channel = support_channel_column("person")
     spi_people = result.person[channel] == "spi"
     base_people = ~spi_people
-    assert result.person.loc[spi_people, "savings_interest_income"].eq(105.0).all()
+    # Interest outside ISAs is the stage-1 draw; ISA interest is the stage-2
+    # draw beside it (microcosm#1360).
+    assert result.person.loc[spi_people, "savings_interest_income"].eq(100.0).all()
+    assert (
+        result.person.loc[spi_people, "individual_savings_account_interest_income"]
+        .eq(5.0)
+        .all()
+    )
     assert result.person.loc[spi_people, "other_investment_income"].eq(25.0).all()
     assert result.person.loc[spi_people, "gift_aid"].eq(10.0).all()
     assert result.person.loc[spi_people, "charitable_investment_gifts"].eq(2.0).all()
@@ -467,9 +477,9 @@ def test_spi_qrf_stages_use_typed_weights_and_restore_gross_savings(
         + profit_after_relief
         + result.person.loc[spi_people, "private_pension_income"]
     )
+    # Interest outside ISAs is the taxable part (microcosm#1360).
     expected_total_investment = (
         result.person.loc[spi_people, "savings_interest_income"]
-        - result.person.loc[spi_people, "tax_free_savings_income"]
         + result.person.loc[spi_people, "dividend_income"]
         + result.person.loc[spi_people, "property_income"]
         + result.person.loc[spi_people, "other_investment_income"]
@@ -785,7 +795,7 @@ def _zero_taxable_income(person: pd.DataFrame, rows) -> None:
             "private_pension_income",
             "state_pension_reported",
             "savings_interest_income",
-            "tax_free_savings_income",
+            "individual_savings_account_interest_income",
             "dividend_income",
             "property_income",
             "miscellaneous_income",
@@ -953,9 +963,16 @@ def test_stage1_queries_only_drawn_recipients_with_the_bridge(
     stage2 = captured["stage2"]
     assert stage2["rows"] == len(domain_ids)
     for target in stage2["quantiles"]:
+        # ISA interest keeps the salt it had as tax_free_savings_income, so the
+        # additive contract redraws nothing (microcosm#1360).
+        name = (
+            "tax_free_savings_income"
+            if target == "individual_savings_account_interest_income"
+            else target
+        )
         for part, salt in (
-            ("quantiles", f"{FRS_ONLY_FIT_NAME}:{target}"),
-            ("sign", f"{FRS_ONLY_FIT_NAME}:{target}:sign"),
+            ("quantiles", f"{FRS_ONLY_FIT_NAME}:{name}"),
+            ("sign", f"{FRS_ONLY_FIT_NAME}:{name}:sign"),
         ):
             np.testing.assert_array_equal(
                 stage2[part][target],

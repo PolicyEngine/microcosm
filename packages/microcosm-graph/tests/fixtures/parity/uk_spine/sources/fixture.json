@@ -175,6 +175,7 @@
             "private_pension_income",
             "property_income",
             "savings_interest_income",
+            "individual_savings_account_interest_income",
             "dividend_income",
             "miscellaneous_income"
           ],
@@ -255,6 +256,7 @@
             "private_pension_income",
             "property_income",
             "savings_interest_income",
+            "individual_savings_account_interest_income",
             "dividend_income",
             "miscellaneous_income"
           ],
@@ -424,6 +426,7 @@
             "private_pension_income",
             "property_income",
             "savings_interest_income",
+            "individual_savings_account_interest_income",
             "dividend_income",
             "miscellaneous_income"
           ],
@@ -2264,7 +2267,7 @@
         "loss_relief",
         "ni_class_4_losses_brought_forward",
         "private_pension_income",
-        "tax_free_savings_income",
+        "individual_savings_account_interest_income",
         "savings_interest_income",
         "dividend_income",
         "other_investment_income",
@@ -2361,7 +2364,7 @@
         "loss_relief",
         "ni_class_4_losses_brought_forward",
         "private_pension_income",
-        "tax_free_savings_income",
+        "individual_savings_account_interest_income",
         "savings_interest_income",
         "dividend_income",
         "other_investment_income",
@@ -2853,10 +2856,11 @@
             "private_pension_income",
             "property_income",
             "savings_interest_income",
+            "individual_savings_account_interest_income",
             "dividend_income",
             "miscellaneous_income"
           ],
-          "components_semantics": "Persisted leaves of the model's total_income concept (ITA 2007 s.23); state_pension_reported stands in for social_security_income, whose other taxable benefits are not persisted; reliefs such as pension contributions and Gift Aid are not deducted.",
+          "components_semantics": "Persisted leaves of the model's total_income concept (ITA 2007 s.23); state_pension_reported stands in for social_security_income, whose other taxable benefits are not persisted; reliefs such as pension contributions and Gift Aid are not deducted. ISA interest is exempt but stays beside non-ISA interest, as gross interest held it before microcosm#1360, so the proxy is unchanged.",
           "fail_on_missing_component": true,
           "kind": "taxable_income_proxy"
         },
@@ -3238,7 +3242,7 @@
           ],
           "rebase_income_to_build_period": true,
           "recipient_income_rule": {
-            "drawn": "the twin reports pay, a trade (self_employment_income > 0 or a self-employed main job) or a pension (private_pension_income + state_pension_reported > 0), or more than the floor of taxable interest (savings_interest_income less tax_free_savings_income), dividend_income, property_income and miscellaneous_income together; a reserved band carrier is always drawn; a twin whose only record is the State Pension is drawn, against a tape that mostly holds taxpayers, which can lift its pension leaves",
+            "drawn": "the twin reports pay, a trade (self_employment_income > 0 or a self-employed main job) or a pension (private_pension_income + state_pension_reported > 0), or more than the floor of taxable interest (savings_interest_income, the interest outside ISAs), dividend_income, property_income and miscellaneous_income together; a reserved band carrier is always drawn; a twin whose only record is the State Pension is drawn, against a tape that mostly holds taxpayers, which can lift its pension leaves",
             "undrawn": "the twin has no tax record for the tape to condition on; the copy keeps the twin's values at stage 1 and stage 2 (a declared modelling boundary like the under-16 one, microcosm#840)",
             "unearned_income_floor_gbp": 1000
           },
@@ -3271,7 +3275,7 @@
             "fit_weight_kind": "importance",
             "fold_key": "predictor cell (gender, region, whole-year age, main_source, has_pay, has_trade, at_or_over_spa), the fold being floor(uniform x folds) of the cell's stable_identity_uniforms draw at the stage seed and salt spi_stage1:reference_fold; each fold's recipients are located by a forest fitted on the other folds, so the forest that locates a copy never saw its twin, and every row of a cell is located by one forest",
             "folds": 5,
-            "method": "Rosenblatt transport (microcosm#840): each drawn recipient's twin values are located on the reference forest, the sign uniform in the gate's cumulative class probabilities and the quantile on the sign's magnitude forest, each leaf chained on the twin's observed earlier leaves, and the stage-1 forest draws at those uniforms, so the recipient receives the SPI income of someone in the same position among SPI people like it as the twin holds among FRS people like it. taxable_savings_interest is savings_interest_income less tax_free_savings_income, floored at zero. A leaf without an analogue, or whose analogue is degenerate on the FRS rows, draws at identity-keyed uniforms, as do the placements inside a class or a flat stretch of a conditional; no model random stream is consumed. The reference locates a leaf given the twin's observed earlier analogue leaves, while the stage-1 forest draws it given every earlier output, the identity-uniform leaves included, so the located quantile is read off a conditional the identity draws also shape (microcosm#840 follow-up: the chain order). A full build refuses a reference the predictor cells cannot cross-fit (only a sampled rung or a synthetic fixture may locate in-sample, and its receipt says so), a recipient whose fold differs from its twin's, and a reference whose sign classes differ from the stage-1 forest's on any located target.",
+            "method": "Rosenblatt transport (microcosm#840): each drawn recipient's twin values are located on the reference forest, the sign uniform in the gate's cumulative class probabilities and the quantile on the sign's magnitude forest, each leaf chained on the twin's observed earlier leaves, and the stage-1 forest draws at those uniforms, so the recipient receives the SPI income of someone in the same position among SPI people like it as the twin holds among FRS people like it. taxable_savings_interest is savings_interest_income, the interest outside ISAs, floored at zero. A leaf without an analogue, or whose analogue is degenerate on the FRS rows, draws at identity-keyed uniforms, as do the placements inside a class or a flat stretch of a conditional; no model random stream is consumed. The reference locates a leaf given the twin's observed earlier analogue leaves, while the stage-1 forest draws it given every earlier output, the identity-uniform leaves included, so the located quantile is read off a conditional the identity draws also shape (microcosm#840 follow-up: the chain order). A full build refuses a reference the predictor cells cannot cross-fit (only a sampled rung or a synthetic fixture may locate in-sample, and its receipt says so), a recipient whose fold differs from its twin's, and a reference whose sign classes differ from the stage-1 forest's on any located target.",
             "n_estimators": 4,
             "population": "uk_frs_raw_spine_base_support_channel claimants and partners (is_uc_claimant) aged 16 and over with taxable income under recipient_income_rule",
             "predictors": "the stage-1 predictors, encoded identically",
@@ -3427,7 +3431,7 @@
             "employer_pension_contributions",
             "personal_pension_contributions",
             "pension_contributions_via_salary_sacrifice",
-            "tax_free_savings_income",
+            "individual_savings_account_interest_income",
             "universal_credit_reported",
             "pension_credit_reported",
             "child_benefit_reported",
@@ -3463,7 +3467,6 @@
             "owned_company_income_share"
           ],
           "postprocess": {
-            "gross_savings_interest_income": "stage1 INCBBS draw + stage2 tax_free_savings_income",
             "refresh_disability_categories": [
               "aa_category",
               "dla_sc_category",
@@ -3475,7 +3478,8 @@
               "is_disabled_for_benefits",
               "is_enhanced_disabled_for_benefits",
               "is_severely_disabled_for_benefits"
-            ]
+            ],
+            "savings_interest_income": "the stage-1 INCBBS draw, interest outside ISAs; individual_savings_account_interest_income is the stage-2 draw beside it (microcosm#1360)"
           },
           "predictors": [
             "age",
@@ -3813,7 +3817,7 @@
         "employer_pension_contributions",
         "personal_pension_contributions",
         "pension_contributions_via_salary_sacrifice",
-        "tax_free_savings_income",
+        "individual_savings_account_interest_income",
         "universal_credit_reported",
         "pension_credit_reported",
         "child_benefit_reported",
@@ -6635,7 +6639,7 @@
           "donor_rows": "base_frs_with_available_capital",
           "draw": "weighted_empirical",
           "identity": "benunit_id",
-          "investment_income": "savings_interest_income + dividend_income + other_investment_income, summed over benefit-unit members",
+          "investment_income": "savings_interest_income + individual_savings_account_interest_income + dividend_income + other_investment_income, summed over benefit-unit members",
           "investment_income_band_edges": [
             0,
             240,

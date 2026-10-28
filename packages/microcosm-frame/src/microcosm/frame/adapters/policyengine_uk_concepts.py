@@ -364,8 +364,8 @@ UK_ENGINE_DEFAULT_INPUTS: dict[str, str] = {
         ),
         "ISA dividends and the cash interest held in non-cash ISAs "
         "(policyengine-uk 2.162.2). The FRS records ISA interest as one total, "
-        "which the frame supplies in tax_free_savings_income, so the of-which "
-        "detail stays zero. Until 2027-28 that changes nothing; from 2027-28 the "
+        "which the frame supplies in individual_savings_account_interest_income "
+        "(microcosm#1360), so the of-which detail stays zero. Until 2027-28 that changes nothing; from 2027-28 the "
         "detail sets isa_cash_interest_flat_rate_charge, the final charge on cash "
         "interest in non-cash ISAs, so projections from that year show no such "
         "charge. It records no ISA dividends "
@@ -532,15 +532,15 @@ POLICYENGINE_UK_CONCEPT_MAPPING = ConceptMapping(
             AlignmentRelation.NARROW_MATCH,
             (
                 "Engine label from 2.162.2: 'Savings interest outside tax-free "
-                "accounts'. The frame stores it gross, ISA interest included, "
-                "with the ISA part in tax_free_savings_income; it carries no "
-                "ISA income contract, so policyengine-uk reads it as legacy "
-                "gross and subtracts tax_free_savings_income when it loads the "
-                "file. Securities and National Savings interest belong to "
-                "other_investment_income, which stays uncovered. ISA interest "
-                "(individual_savings_account_interest_income) is no longer an "
-                "engine input from 2.162.2: a formula supplies it, and the "
-                "frame's tax_free_savings_income overrides it."
+                "accounts'. The frame stores it so, under the additive ISA "
+                "income contract it declares (microcosm#1360): ISA interest is "
+                "stored apart in individual_savings_account_interest_income, a "
+                "total the engine's formula takes first, and "
+                "tax_free_savings_income adds it. A legacy gross file (the "
+                "enhanced FRS) stores interest gross with the ISA part in "
+                "tax_free_savings_income, which policyengine-uk subtracts when "
+                "it loads the file. Securities and National Savings interest "
+                "belong to other_investment_income, which stays uncovered."
             ),
         ),
         bind(

@@ -88,6 +88,18 @@ ENGINE_DERIVED_EXCLUSIONS: dict[str, dict[str, str]] = {
         "approved_by": "juaristi22",
         "approved_on": "2026-10-11",
     },
+    "tax_free_savings_income": {
+        "reason": ENGINE_DERIVED_EXCLUSION_REASON,
+        "tracking_note": (
+            "microcosm#1360: under the additive ISA income contract the "
+            "producer stores ISA interest in "
+            "individual_savings_account_interest_income, which policyengine-uk "
+            "adds into tax_free_savings_income; savings_interest_income, now "
+            "interest outside ISAs, stays required."
+        ),
+        "approved_by": "juaristi22",
+        "approved_on": "2026-10-28",
+    },
 }
 ENTITY_TABLES = ("person", "benunit", "household")
 READ_BATCH_SIZE = 12
