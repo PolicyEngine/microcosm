@@ -13253,6 +13253,381 @@
        }
       }
      }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "household_key",
+      "household_weight",
+      "person_columns",
+      "household_aggregates",
+      "aggregate_tolerance_gbp",
+      "non_dependent_code"
+     ],
+     "properties": {
+      "kind": {
+       "const": "clean_was_isa_person_donor"
+      },
+      "household_key": {
+       "type": "string"
+      },
+      "household_weight": {
+       "type": "string"
+      },
+      "person_columns": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "person_number",
+        "is_dependent_child",
+        "age_band",
+        "cash_isa_value",
+        "stocks_and_shares_isa_value"
+       ],
+       "properties": {
+        "person_number": {
+         "type": "string"
+        },
+        "is_dependent_child": {
+         "type": "string"
+        },
+        "age_band": {
+         "type": "string"
+        },
+        "cash_isa_value": {
+         "type": "string"
+        },
+        "stocks_and_shares_isa_value": {
+         "type": "string"
+        }
+       }
+      },
+      "household_aggregates": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "cash_isa",
+        "stocks_and_shares_isa"
+       ],
+       "properties": {
+        "cash_isa": {
+         "type": "string"
+        },
+        "stocks_and_shares_isa": {
+         "type": "string"
+        }
+       }
+      },
+      "aggregate_tolerance_gbp": {
+       "type": "number"
+      },
+      "non_dependent_code": {
+       "type": "integer"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "outputs",
+      "seed",
+      "salt",
+      "maximum_donor_adults"
+     ],
+     "properties": {
+      "kind": {
+       "const": "split_household_isa_balances"
+      },
+      "outputs": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "string"
+       }
+      },
+      "seed": {
+       "type": "integer"
+      },
+      "salt": {
+       "type": "string"
+      },
+      "maximum_donor_adults": {
+       "type": "integer"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "seed",
+      "salt",
+      "minimum_age",
+      "selection_order"
+     ],
+     "properties": {
+      "kind": {
+       "const": "allocate_isa_subscribers"
+      },
+      "seed": {
+       "type": "integer"
+      },
+      "salt": {
+       "type": "string"
+      },
+      "minimum_age": {
+       "type": "integer"
+      },
+      "selection_order": {
+       "type": "array",
+       "minItems": 3,
+       "maxItems": 3,
+       "items": {
+        "enum": [
+         "cash_and_stocks_and_shares",
+         "stocks_and_shares_only",
+         "cash_only"
+        ]
+       }
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "outputs",
+      "seed",
+      "salt",
+      "within_band",
+      "balance_rank_weight"
+     ],
+     "properties": {
+      "kind": {
+       "const": "draw_isa_subscription_amounts"
+      },
+      "outputs": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "string"
+       }
+      },
+      "seed": {
+       "type": "integer"
+      },
+      "salt": {
+       "type": "string"
+      },
+      "within_band": {
+       "enum": [
+        "uniform"
+       ]
+      },
+      "balance_rank_weight": {
+       "type": "number"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "anchor",
+      "share_floor"
+     ],
+     "properties": {
+      "kind": {
+       "const": "split_both_type_subscriptions"
+      },
+      "anchor": {
+       "enum": [
+        "table_9_4_stocks_and_shares_residual"
+       ]
+      },
+      "share_floor": {
+       "type": "number"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "people",
+      "amounts",
+      "from_tax_year",
+      "to_tax_year",
+      "overall_limit_gbp"
+     ],
+     "properties": {
+      "kind": {
+       "const": "grow_isa_subscriptions"
+      },
+      "people": {
+       "enum": [
+        "table_9_4_account_growth"
+       ]
+      },
+      "amounts": {
+       "enum": [
+        "table_9_4_amount_growth_capped"
+       ]
+      },
+      "from_tax_year": {
+       "type": "integer"
+      },
+      "to_tax_year": {
+       "type": "integer"
+      },
+      "overall_limit_gbp": {
+       "type": "number"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "outputs",
+      "seed",
+      "salt",
+      "minimum_age",
+      "maximum_age",
+      "annual_limit_gbp"
+     ],
+     "properties": {
+      "kind": {
+       "const": "draw_lifetime_isa_payments"
+      },
+      "outputs": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "string"
+       }
+      },
+      "seed": {
+       "type": "integer"
+      },
+      "salt": {
+       "type": "string"
+      },
+      "minimum_age": {
+       "type": "integer"
+      },
+      "maximum_age": {
+       "type": "integer"
+      },
+      "annual_limit_gbp": {
+       "type": "number"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "output",
+      "target",
+      "tax_year",
+      "ages",
+      "counted_ages"
+     ],
+     "properties": {
+      "kind": {
+       "const": "anchor_lifetime_isa_ownership"
+      },
+      "output": {
+       "type": "string"
+      },
+      "target": {
+       "enum": [
+        "table_9_4_lifetime_isa_accounts_subscribed"
+       ]
+      },
+      "tax_year": {
+       "type": "integer"
+      },
+      "ages": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "minimum",
+        "maximum"
+       ],
+       "properties": {
+        "minimum": {
+         "type": "integer"
+        },
+        "maximum": {
+         "type": "integer"
+        }
+       }
+      },
+      "counted_ages": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "minimum",
+        "maximum"
+       ],
+       "properties": {
+        "minimum": {
+         "type": "integer"
+        },
+        "maximum": {
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "adjudication": {
+       "type": "string"
+      },
+      "calibration_permitted": {
+       "const": false
+      },
+      "classification_rationale": {
+       "type": "string"
+      },
+      "fact_fence_id": {
+       "type": "string"
+      },
+      "fenced_fact_composition": {
+       "type": "string"
+      },
+      "fenced_fact_count": {
+       "type": "number"
+      },
+      "kind": {
+       "const": "classify_isa_facts_with_reviewed_fence"
+      }
+     },
+     "required": [
+      "adjudication",
+      "calibration_permitted",
+      "classification_rationale",
+      "fact_fence_id",
+      "fenced_fact_composition",
+      "fenced_fact_count",
+      "kind"
+     ]
     }
    ],
    "description": "Closed kind-discriminated source artifact and operation records, covering the packaged US, UK, and BE source vocabularies."

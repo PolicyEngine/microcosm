@@ -1460,6 +1460,7 @@ class TestUKGatesManifest:
             "uk_stage_was_wealth_support",
             "uk_stage_was_wealth_coherence",
             "uk_stage_was_lisa_support",
+            "uk_stage_was_lisa_anchor",
             "uk_stage_property_components",
             "uk_stage_nts_bus_travel_support",
             "uk_stage_nts_bus_travel_facts",
@@ -1500,6 +1501,7 @@ class TestUKGatesManifest:
             "uk_stage_property_purchases_fit",
             "uk_stage_uc_legacy_closure_take_up_contract",
             "uk_stage_frs_person_draws_apprentices",
+            "uk_stage_isa_subscriptions",
             "uk_release_input_coverage",
             "uk_degenerate_release_surface",
             "uk_zero_weight_strata",
@@ -1591,6 +1593,7 @@ class TestUKGatesManifest:
             "uk_stage_was_wealth_support",
             "uk_stage_was_wealth_coherence",
             "uk_stage_was_lisa_support",
+            "uk_stage_was_lisa_anchor",
             "uk_stage_property_components",
             "uk_stage_nts_bus_travel_support",
             "uk_stage_nts_bus_travel_facts",
@@ -1631,6 +1634,7 @@ class TestUKGatesManifest:
             "uk_stage_property_purchases_fit",
             "uk_stage_uc_legacy_closure_take_up_contract",
             "uk_stage_frs_person_draws_apprentices",
+            "uk_stage_isa_subscriptions",
             "uk_weights_audit",
             # The #970 projection fence: a seam that cannot project cannot
             # certify the candidate's sub-exempt gainers.

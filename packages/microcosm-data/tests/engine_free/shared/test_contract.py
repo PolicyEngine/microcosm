@@ -213,13 +213,13 @@ def _trusted_terminal_gate_signing_key(monkeypatch) -> None:
 UK_GATE_BATTERY_PRODUCER = "microcosm.build.gate_battery"
 UK_GATE_BATTERY_SIGNING_KEY_ENV = "MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY"
 UK_GATE_BATTERY_POLICY_SHA256 = (
-    "43bde66ba8d7a122722e57331e631389750bba670ea9fb6d1612740443012179"
+    "609d39688780f69d4e0ec13ca38f95e07335bb964fa956010a67ad426d8cf796"
 )
 UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "f20d0a20fe12392586b27ce97a7643e1862d7f6e6da9fe925bf17a4171657bbb"
+    "87625a3c4f1761646498b3176611b73da0ec3d03131482cbde4b84cb7e202bd0"
 )
 UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "e62b50adbc02fd238b800105c2a513cb3514b580afdcdf2783f31189d3ee3e37"
+    "afd71e682f5b61c43cdcb8c0b5510271480b9086bb4ac7fc80f7328ea0690cd0"
 )
 UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256 = (
     "f246388de42654dd68dbbb40c42282001b5b0a8bf48976162bcb1199085cb1d3"
@@ -246,6 +246,7 @@ UK_GATE_BATTERY_ENTRIES = {
     ),
     "uk_stage_was_wealth_support": ("stage_health", "transferred", None),
     "uk_stage_was_lisa_support": ("stage_health", "transferred", None),
+    "uk_stage_was_lisa_anchor": ("stage_health", "transferred", None),
     "uk_stage_property_components": ("stage_health", "transferred", None),
     "uk_stage_was_wealth_coherence": ("stage_health", "transferred", None),
     "uk_stage_uc_deduction_attributes": (
@@ -359,6 +360,7 @@ UK_GATE_BATTERY_ENTRIES = {
         "transferred",
         None,
     ),
+    "uk_stage_isa_subscriptions": ("stage_health", "transferred", None),
     "uk_stage_hmrc_cgt_asset_type_spine_summary": (
         "stage_health",
         "transferred",
@@ -1392,6 +1394,7 @@ def _gate_battery_payload(
     stage_health_stages = {
         "uk_stage_was_wealth_support": "was_wealth",
         "uk_stage_was_lisa_support": "was_lisa",
+        "uk_stage_was_lisa_anchor": "was_lisa",
         "uk_stage_property_components": "property_components",
         "uk_stage_was_wealth_coherence": "was_wealth",
         "uk_stage_uc_deduction_attributes": "uc_deduction_attributes",
@@ -1431,6 +1434,7 @@ def _gate_battery_payload(
         "uk_stage_property_purchases_fit": "property_purchases",
         "uk_stage_uc_legacy_closure_take_up_contract": "uc_legacy_closure_take_up",
         "uk_stage_frs_person_draws_apprentices": "frs_person_draws",
+        "uk_stage_isa_subscriptions": "isa_subscriptions",
         "uk_stage_age_tail_targets": "age_tail",
         "uk_stage_frs_relationships_composition": "frs_relationships",
     }

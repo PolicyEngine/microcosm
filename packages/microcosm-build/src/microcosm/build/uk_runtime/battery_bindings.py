@@ -2173,6 +2173,11 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 # bounds on the scale that anchors the added stakes.
                 "maximum_stratum_shortfall",
                 "amount_scale_bounds",
+                # #1415 isa_subscriptions check: how far a total may sit from
+                # its target, and how far person balances may miss the
+                # household draws they split.
+                "maximum_relative_total_deviation",
+                "maximum_household_sum_error_gbp",
                 # #1113 road_fuel_incidence check: the ceiling on the chain's
                 # zero share among flagged fuel-car households.
                 "maximum_flagged_zero_share",
