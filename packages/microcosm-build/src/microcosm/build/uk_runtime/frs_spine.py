@@ -194,6 +194,17 @@ FRS_CARE_HOURS_BY_BAND = {
     9: 20.0,  # varies, 20-34 hours
     10: 35.0,  # varies, 35 hours or more
 }
+#: FRS adult bands, coded as HOURTOT is, for the care a person gives inside
+#: the household: HOURAB to adults and HOURCB to children of their own benefit
+#: unit, HOURAH to adults and HOURCH to children of another benefit unit in the
+#: household. HOURRE, HOURFR, HOUROT and HOURCL are the bands for relatives,
+#: friends, others and a voluntary organisation's clients outside it.
+FRS_IN_HOUSEHOLD_CARE_HOURS_COLUMNS = ("hourab", "hourah", "hourcb", "hourch")
+#: The weekly hours of a person's largest in-household care band (lower band
+#: edge), which carers_allowance_take_up reads to find carers of a severely
+#: disabled household member (microcosm#1418). It is no engine input and
+#: leaves at the release boundary.
+FRS_IN_HOUSEHOLD_CARE_HOURS_COLUMN = "frs_care_hours_in_household"
 
 # FRS adult RENTPROF (question RentProf): whether the rent from other property
 # in ROYYR1 is a profit (1) or a loss (2). ROYYR1 itself is always positive.
@@ -219,6 +230,7 @@ OUTPUT_COLUMNS = (
     "marital_status",
     "hours_worked",
     "care_hours",
+    FRS_IN_HOUSEHOLD_CARE_HOURS_COLUMN,
     "is_household_head",
     "is_benunit_head",
     "is_parent",
@@ -570,6 +582,7 @@ def _assemble_frame(
     pe_person["marital_status"] = _map_codes(person, "marital", MARITAL_MAP, "SINGLE")
     pe_person["hours_worked"] = _positive(person, "tothours") * WEEKS_IN_YEAR
     pe_person["care_hours"] = frs_care_hours(person)
+    pe_person[FRS_IN_HOUSEHOLD_CARE_HOURS_COLUMN] = frs_in_household_care_hours(person)
     pe_person["is_household_head"] = _number(person, "hrpid") == 1
     pe_person["is_benunit_head"] = _number(person, "uperson") == 1
     dependent_children = _dependent_children(benunit_raw, frs["child"])
@@ -1520,14 +1533,32 @@ def frs_care_hours(person: pd.DataFrame) -> pd.Series:
     an unknown code is a vintage defect and refuses the build.
     """
 
-    codes = _raw_number(person, "hourtot").fillna(0)
+    return _frs_care_band_hours(person, "hourtot", "person.care_hours")
+
+
+def frs_in_household_care_hours(person: pd.DataFrame) -> pd.Series:
+    """Weekly hours of the largest in-household care band (lower band edges).
+
+    The four bands record care to adults and children of the carer's own and
+    of another benefit unit of the household; the largest says whether the
+    care inside the household alone reaches an hours line. Codes map as
+    ``frs_care_hours`` maps HOURTOT.
+    """
+
+    bands = [
+        _frs_care_band_hours(person, column, FRS_IN_HOUSEHOLD_CARE_HOURS_COLUMN)
+        for column in FRS_IN_HOUSEHOLD_CARE_HOURS_COLUMNS
+    ]
+    return pd.concat(bands, axis=1).max(axis=1).astype("float64")
+
+
+def _frs_care_band_hours(person: pd.DataFrame, column: str, label: str) -> pd.Series:
+    codes = _raw_number(person, column).fillna(0)
     if not np.array_equal(codes.to_numpy(), np.floor(codes.to_numpy())):
-        raise ValueError(
-            "FRS hourtot codes must be integral to build person.care_hours."
-        )
+        raise ValueError(f"FRS {column} codes must be integral to build {label}.")
     unknown = sorted(set(codes.astype(int)) - set(FRS_CARE_HOURS_BY_BAND))
     if unknown:
-        raise ValueError(f"FRS hourtot carries unknown band code(s) {unknown}.")
+        raise ValueError(f"FRS {column} carries unknown band code(s) {unknown}.")
     return codes.astype(int).map(FRS_CARE_HOURS_BY_BAND).astype("float64")
 
 

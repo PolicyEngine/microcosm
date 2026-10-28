@@ -1,5 +1,6 @@
 """Carer's Allowance claims by the carers the earnings limit keeps out
-(microcosm#1319)."""
+(microcosm#1319), among the carers of a severely disabled person
+(microcosm#1418)."""
 
 from __future__ import annotations
 
@@ -23,6 +24,9 @@ _POLICY = ca.UKCarersAllowancePolicy(
     min_hours=35.0, earnings_limit=_LIMIT, instant="2024-04-30", source="test"
 )
 _OUTPUT = ca.CARERS_ALLOWANCE_TAKE_UP_OUTPUT
+_INSIDE = ca.CARERS_ALLOWANCE_IN_HOUSEHOLD_HOURS
+#: The stub engine's disability test reads this person column.
+_DISABLED = "stub_severely_disabled"
 
 
 class _Contract:
@@ -36,7 +40,8 @@ class _Contract:
 
 
 class _StubEngine:
-    """The engine's earnings test: weekly pay above the limit."""
+    """The engine's earnings test, weekly pay above the limit, and its
+    disability test, the frame's stub column."""
 
     country = "uk"
 
@@ -45,8 +50,12 @@ class _StubEngine:
 
     def materialize(self, frame, variables, period, *, dataset_period=None):
         self.calls.append((tuple(variables), str(period), dataset_period))
-        pay = frame.table("person")["employment_income"].to_numpy(dtype=float)
-        return {ca.CARERS_ALLOWANCE_EARNINGS_TEST: pay / 52.0 > _LIMIT}
+        person = frame.table("person")
+        pay = person["employment_income"].to_numpy(dtype=float)
+        return {
+            ca.CARERS_ALLOWANCE_EARNINGS_TEST: pay / 52.0 > _LIMIT,
+            ca.CARERS_ALLOWANCE_DISABILITY_TEST: person[_DISABLED].to_numpy(bool),
+        }
 
 
 def _frame(
@@ -60,26 +69,57 @@ def _frame(
     lineage: bool = True,
     flag=None,
     time_period: str = "2024",
+    in_household_hours=None,
+    member_disabled=None,
 ):
-    """One person per benefit unit per household; ``source_ids`` makes support
-    copies (each household's own id by default), ``lineage=False`` drops them."""
+    """A carer and the member they may care for in each household, in a
+    benefit unit each; ``source_ids`` makes support copies (each household's
+    own id by default), ``lineage=False`` drops them.
+
+    The carers come first, in order, then the members. A carer gives their
+    hours inside the household (``in_household_hours``, all of ``care_hours``
+    by default), and the member is severely disabled (``member_disabled``,
+    true by default), so by default every carer cares for a severely disabled
+    member (microcosm#1418)."""
 
     n = len(care_hours)
     ids = np.arange(1, n + 1, dtype="int64")
     reported = np.asarray(reported, dtype=float)
-    person = pd.DataFrame(
+    care_hours = np.asarray(care_hours, dtype=float)
+    carer = pd.DataFrame(
         {
             "person_id": ids * 10 + 1,
             "person_household_id": ids,
             "person_benunit_id": ids,
             "age": np.full(n, 45, dtype="int64"),
-            "care_hours": np.asarray(care_hours, dtype=float),
+            "care_hours": care_hours,
+            _INSIDE: care_hours
+            if in_household_hours is None
+            else np.asarray(in_household_hours, dtype=float),
             "carers_allowance_reported": reported,
             "employment_income": np.asarray(weekly_pay, dtype=float) * 52.0,
             _OUTPUT: reported > 0 if flag is None else np.asarray(flag, dtype=bool),
+            _DISABLED: np.zeros(n, dtype=bool),
         }
     )
-    benunit = pd.DataFrame({"benunit_id": ids})
+    member = pd.DataFrame(
+        {
+            "person_id": ids * 10 + 2,
+            "person_household_id": ids,
+            "person_benunit_id": ids + n,
+            "age": np.full(n, 80, dtype="int64"),
+            "care_hours": np.zeros(n),
+            _INSIDE: np.zeros(n),
+            "carers_allowance_reported": np.zeros(n),
+            "employment_income": np.zeros(n),
+            _OUTPUT: np.zeros(n, dtype=bool),
+            _DISABLED: np.ones(n, dtype=bool)
+            if member_disabled is None
+            else np.asarray(member_disabled, dtype=bool),
+        }
+    )
+    person = pd.concat([carer, member], ignore_index=True)
+    benunit = pd.DataFrame({"benunit_id": np.r_[ids, ids + n]})
     household = pd.DataFrame(
         {
             "household_id": ids,
@@ -117,20 +157,81 @@ def _stage():
     ]
 
 
-def test_eligibility_is_hours_no_report_and_over_the_limit() -> None:
-    rows = list(itertools.product([34.0, 35.0, 50.0], [False, True], [False, True]))
-    hours, reported, gainful = (
+def test_eligibility_is_the_pool_no_report_and_over_the_limit() -> None:
+    rows = list(itertools.product([False, True], [False, True], [False, True]))
+    pool, reported, gainful = (
         np.asarray(column) for column in zip(*rows, strict=True)
     )
     eligible = ca.carers_allowance_eligible(
-        care_hours=hours,
+        pool=pool, reported=reported, gainfully_employed=gainful
+    )
+    np.testing.assert_array_equal(eligible, pool & ~reported & gainful)
+    assert int(eligible.sum()) == 1
+
+
+def test_the_pool_holds_carers_of_a_severely_disabled_person() -> None:
+    # Six carers: in-household carers with and without a disabled member,
+    # short hours, and three whose hours are not all inside the household.
+    care = np.array([35.0, 50.0, 35.0, 20.0, 35.0, 100.0])
+    inside = np.array([35.0, 50.0, 35.0, 20.0, 0.0, 20.0])
+    disabled_member = np.array([True, True, False, True, False, True])
+    reported = np.zeros(6, dtype=bool)
+    weights = np.ones(6)
+    # The in-household carers reporting nothing: two of three have a
+    # disabled member, so the other carers join below two thirds.
+    draws = np.array([0.9, 0.9, 0.9, 0.9, 0.5, 0.7])
+    result = ca.carers_allowance_pool(
+        care_hours=care,
+        in_household_hours=inside,
+        other_member_severely_disabled=disabled_member,
         reported=reported,
-        gainfully_employed=gainful,
+        weights=weights,
+        pool_draws=draws,
         min_hours=35.0,
     )
-    np.testing.assert_array_equal(eligible, (hours >= 35.0) & ~reported & gainful)
-    # 35 and 50 hours, reporting nothing, over the limit.
-    assert int(eligible.sum()) == 2
+    assert result.share == pytest.approx(2 / 3)
+    np.testing.assert_array_equal(
+        result.in_household, [True, True, True, False, False, False]
+    )
+    np.testing.assert_array_equal(result.other, [False, False, False, False, True, True])
+    # A disabled member alone does not bring short hours into the pool, and an
+    # other carer's own household plays no part.
+    np.testing.assert_array_equal(result.pool, [True, True, False, False, True, False])
+
+
+def test_the_share_is_measured_on_in_household_carers_reporting_nothing() -> None:
+    # A reporter with no disabled member leaves the share alone, weights
+    # count, and with no in-household carer no other carer joins.
+    result = ca.carers_allowance_pool(
+        care_hours=np.array([35.0, 35.0, 35.0, 35.0]),
+        in_household_hours=np.array([35.0, 35.0, 35.0, 0.0]),
+        other_member_severely_disabled=np.array([True, False, False, False]),
+        reported=np.array([False, False, True, False]),
+        weights=np.array([3.0, 1.0, 5.0, 1.0]),
+        pool_draws=np.zeros(4),
+        min_hours=35.0,
+    )
+    assert result.share == pytest.approx(0.75)
+    none = ca.carers_allowance_pool(
+        care_hours=np.array([35.0]),
+        in_household_hours=np.array([0.0]),
+        other_member_severely_disabled=np.array([True]),
+        reported=np.array([False]),
+        weights=np.ones(1),
+        pool_draws=np.zeros(1),
+        min_hours=35.0,
+    )
+    assert none.share is None
+    assert not none.pool.any()
+
+
+def test_another_member_is_anyone_in_the_household_but_the_carer() -> None:
+    household = np.array([1, 1, 2, 2, 3])
+    disabled = np.array([True, False, True, True, True])
+    np.testing.assert_array_equal(
+        ca.other_member_severely_disabled(household, disabled),
+        [False, True, True, True, False],
+    )
 
 
 def _groups():
@@ -165,7 +266,7 @@ def _groups():
         weekly_pay=column("pay"),
         regions=column("region"),
     )
-    return frame, labels
+    return frame, np.concatenate([labels, ["member"] * len(labels)])
 
 
 def test_the_draw_opens_the_flag_to_the_eligible_carers_only() -> None:
@@ -177,7 +278,7 @@ def test_the_draw_opens_the_flag_to_the_eligible_carers_only() -> None:
         assert flag[labels == group].all(), group
     # Under or at the limit the survey records them entitled and not claiming;
     # 20 hours do not meet the condition.
-    for group in ("under_limit", "at_limit", "short_hours"):
+    for group in ("under_limit", "at_limit", "short_hours", "member"):
         assert not flag[labels == group].any(), group
     # Scotland is drawn too: there the flag is Carer Support Payment's.
     eligible = np.isin(labels, ["eligible", "eligible_ni", "scotland"])
@@ -202,7 +303,51 @@ def test_the_draw_opens_the_flag_to_the_eligible_carers_only() -> None:
     assert evidence["scotland_drawn_support"] == "30+"
     assert evidence["eligible_support"] == "30+"
     assert evidence["eligible_weighted_persons"] == pytest.approx(600.0)
-    assert evidence["realized_share"] == pytest.approx(flag[eligible].mean())
+    assert evidence["drawn_share_of_over_limit_pool"] == pytest.approx(
+        flag[eligible].mean()
+    )
+    # Every carer here cares for a disabled member inside the household.
+    assert evidence["in_household_disabled_member_share"] == 1.0
+    assert evidence["over_limit_carers_support"] == "30+"
+    assert evidence["over_limit_carers_weighted_persons"] == pytest.approx(600.0)
+    assert evidence["eligible_in_household_support"] == "30+"
+    assert evidence["eligible_other_support"] == 0
+
+
+def test_the_draw_leaves_out_carers_of_no_disabled_member_and_draws_the_others() -> (
+    None
+):
+    # Two hundred carers over the limit give their hours inside the household,
+    # half of them to a severely disabled member; two hundred more give none
+    # inside it and join at that half share on their pool uniform, whoever
+    # they live with.
+    n_in, n_out = 200, 200
+    n = n_in + n_out
+    member_disabled = np.r_[np.arange(n_in) % 2 == 0, np.ones(n_out, dtype=bool)]
+    frame = _frame(
+        care_hours=np.full(n, 35.0),
+        reported=np.zeros(n),
+        weekly_pay=np.full(n, 300.0),
+        in_household_hours=np.r_[np.full(n_in, 35.0), np.zeros(n_out)],
+        member_disabled=member_disabled,
+    )
+    result = _run(frame, rate=1.0)
+    person = result.frame.table("person")
+    pool_draws = stable_identity_uniforms(
+        person["person_id"].to_numpy()[:n], seed=0, salt=ca.CARERS_ALLOWANCE_POOL_SALT
+    )
+    np.testing.assert_array_equal(
+        person[_OUTPUT].to_numpy()[:n],
+        np.r_[member_disabled[:n_in], pool_draws[n_in:] < 0.5],
+    )
+    evidence = result.evidence()
+    assert evidence["in_household_disabled_member_share"] == pytest.approx(0.5)
+    assert evidence["pool_salt"] == ca.CARERS_ALLOWANCE_POOL_SALT
+    assert evidence["over_limit_carers_weighted_persons"] == pytest.approx(400.0)
+    assert evidence["over_limit_in_household_support"] == "30+"
+    assert evidence["over_limit_other_support"] == "30+"
+    assert evidence["eligible_in_household_support"] == "30+"
+    assert evidence["eligible_other_support"] == "30+"
 
 
 def test_the_engine_reads_the_earnings_test_on_the_frame_at_the_survey_year() -> None:
@@ -210,7 +355,7 @@ def test_the_engine_reads_the_earnings_test_on_the_frame_at_the_survey_year() ->
     engine = _StubEngine()
     _run(frame, engine=engine)
     # One consumed-only read on the frame's own values, never projected.
-    assert engine.calls == [((ca.CARERS_ALLOWANCE_EARNINGS_TEST,), "2024", None)]
+    assert engine.calls == [(ca.CARERS_ALLOWANCE_ENGINE_VARIABLES, "2024", None)]
 
 
 def test_the_weighted_share_drawn_is_the_rate() -> None:
@@ -229,12 +374,12 @@ def test_the_weighted_share_drawn_is_the_rate() -> None:
         weights=weights,
     )
     result = _run(frame)
-    flag = result.frame.table("person")[_OUTPUT].to_numpy()
+    flag = result.frame.table("person")[_OUTPUT].to_numpy()[:n]
     eligible = (care >= 35.0) & (reported == 0.0) & (pay > _LIMIT)
     share = weights[eligible & flag].sum() / weights[eligible].sum()
     assert share == pytest.approx(0.6, abs=0.03)
     evidence = result.evidence()
-    assert evidence["realized_share"] == pytest.approx(share)
+    assert evidence["drawn_share_of_over_limit_pool"] == pytest.approx(share)
     assert evidence["eligible_weighted_persons"] == pytest.approx(
         weights[eligible].sum()
     )
@@ -273,7 +418,8 @@ def test_the_receipt_bands_support_copies_on_their_sources() -> None:
     assert evidence["eligible_support"] == "<10"
     assert evidence["eligible_weighted_persons"] == "<10"
     assert evidence["drawn_support"] == "<10"
-    assert evidence["realized_share"] == "<10"
+    assert evidence["drawn_share_of_over_limit_pool"] == "<10"
+    assert evidence["in_household_disabled_member_share"] == "<10"
 
 
 def test_the_share_hides_a_small_side() -> None:
@@ -287,7 +433,7 @@ def test_the_share_hides_a_small_side() -> None:
     )
     uniforms = np.sort(
         stable_identity_uniforms(
-            frame.table("person")["person_id"].to_numpy(), seed=0, salt=_OUTPUT
+            frame.table("person")["person_id"].to_numpy()[:n], seed=0, salt=_OUTPUT
         )
     )
     result = _run(frame, rate=float((uniforms[2] + uniforms[3]) / 2))
@@ -296,14 +442,14 @@ def test_the_share_hides_a_small_side() -> None:
     assert evidence["eligible_support"] == "30+"
     assert evidence["eligible_weighted_persons"] == pytest.approx(40.0)
     assert evidence["drawn_support"] == "<10"
-    assert evidence["realized_share"] == "<10"
+    assert evidence["drawn_share_of_over_limit_pool"] == "<10"
     # All but three drawn: the share would give the three undrawn carers'
     # weight back the same way.
     result = _run(frame, rate=float((uniforms[36] + uniforms[37]) / 2))
     assert int(result.frame.table("person")[_OUTPUT].sum()) == 37
     evidence = result.evidence()
     assert evidence["drawn_support"] == "30+"
-    assert evidence["realized_share"] == "<10"
+    assert evidence["drawn_share_of_over_limit_pool"] == "<10"
 
 
 def test_households_are_read_through_membership_not_position() -> None:
@@ -322,12 +468,14 @@ def test_households_are_read_through_membership_not_position() -> None:
             "person_household_id": np.r_[household_ids, household_ids],
             "person_benunit_id": np.r_[household_ids, household_ids],
             "age": np.full(48, 45, dtype="int64"),
-            # The first member cares 35 hours over the limit; the second does
-            # not care.
+            # The first member cares 35 hours over the limit for the second,
+            # who is severely disabled and does not care.
             "care_hours": np.r_[np.full(24, 35.0), np.zeros(24)],
+            _INSIDE: np.r_[np.full(24, 35.0), np.zeros(24)],
             "carers_allowance_reported": np.zeros(48),
             "employment_income": pay * 52.0,
             _OUTPUT: np.zeros(48, dtype=bool),
+            _DISABLED: np.r_[np.zeros(24, dtype=bool), np.ones(24, dtype=bool)],
         }
     ).iloc[rng.permutation(48)]
     household = pd.DataFrame(
@@ -355,7 +503,7 @@ def test_households_are_read_through_membership_not_position() -> None:
     # Twenty-four households, one eligible carer in each, eight in Scotland.
     assert evidence["eligible_weighted_persons"] == pytest.approx(weights.sum())
     assert evidence["eligible_support"] == "10-29"
-    assert evidence["realized_share"] == 1.0
+    assert evidence["drawn_share_of_over_limit_pool"] == 1.0
     assert evidence["scotland_eligible_support"] == "<10"
     assert evidence["scotland_eligible_weighted_persons"] == "<10"
     assert int(carer[scottish].sum()) == 8
@@ -368,11 +516,11 @@ def test_a_frame_without_eligible_carers_draws_nothing() -> None:
         weekly_pay=np.array([100.0, 100.0, 120.0]),
     )
     result = _run(frame)
-    assert result.frame.table("person")[_OUTPUT].tolist() == [True, False, False]
+    assert result.frame.table("person")[_OUTPUT].tolist()[:3] == [True, False, False]
     evidence = result.evidence()
     assert evidence["eligible_support"] == 0
     assert evidence["eligible_weighted_persons"] == 0.0
-    assert evidence["realized_share"] is None
+    assert evidence["drawn_share_of_over_limit_pool"] is None
 
 
 @pytest.mark.parametrize("period", ["2023", "2025", "2024-25"])
@@ -546,6 +694,7 @@ def test_the_graph_node_reads_the_lineage_and_rewrites_the_flag_on_its_own_bound
         ("household", "household_source_id"),
         ("household", "region"),
         ("person", "care_hours"),
+        ("person", _INSIDE),
         ("person", "carers_allowance_reported"),
     } <= inputs
     assert [

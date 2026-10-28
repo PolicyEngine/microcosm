@@ -1,12 +1,13 @@
 """Engine lockstep for the Carer's Allowance take-up stage (microcosm#1319).
 
 The stage opens the claim flag to carers whose care hours meet the engine's
-condition, who report no allowance, and whom the engine's earnings test holds
-gainfully employed at the survey year; in Scotland the flag is Carer Support
-Payment's. These tests fail if policyengine-uk moves the hours condition or
-the earnings limit, adds a condition the stage does not read, or stops
-applying Carer Support Payment's own earnings limit, on which drawing Scotland
-rests.
+condition, who care for a person the engine holds severely disabled
+(microcosm#1418), who report no allowance, and whom the engine's earnings test
+holds gainfully employed at the survey year; in Scotland the flag is Carer
+Support Payment's. These tests fail if policyengine-uk moves the hours
+condition or the earnings limit, adds a condition the stage does not read, or
+stops applying Carer Support Payment's own earnings limit, on which drawing
+Scotland rests.
 """
 
 from __future__ import annotations
@@ -146,39 +147,58 @@ class _CertainContract:
 
 
 def _frame():
-    """Four 35-hour carers: over the limit in Wales and in Scotland, under it
-    in Wales, and a reporter."""
+    """Five 35-hour carers, each living with an 85-year-old in a benefit unit
+    of their own: over the limit in Wales and in Scotland, under it in Wales,
+    a reporter, and one over the limit in Wales whose household member draws
+    no qualifying benefit. The other four members draw the higher rate of
+    Attendance Allowance."""
 
-    weekly_pay = np.asarray([165.0, 165.0, 120.0, 100.0])
-    reported = np.asarray([0.0, 0.0, 0.0, 81.9 * 52])
-    person = pd.DataFrame(
+    weekly_pay = np.asarray([165.0, 165.0, 120.0, 100.0, 165.0])
+    reported = np.asarray([0.0, 0.0, 0.0, 81.9 * 52, 0.0])
+    carers = pd.DataFrame(
         {
-            "person_id": [11, 21, 31, 41],
-            "person_benunit_id": [1, 2, 3, 4],
-            "person_household_id": [1, 2, 3, 4],
-            "age": [40.0, 40.0, 40.0, 40.0],
+            "person_id": [11, 21, 31, 41, 51],
+            "person_benunit_id": [1, 2, 3, 4, 5],
+            "person_household_id": [1, 2, 3, 4, 5],
+            "age": [40.0] * 5,
             "employment_income": weekly_pay * 52,
-            "care_hours": [35.0, 35.0, 35.0, 35.0],
+            "care_hours": [35.0] * 5,
+            ca.CARERS_ALLOWANCE_IN_HOUSEHOLD_HOURS: [35.0] * 5,
             "carers_allowance_reported": reported,
             "would_claim_carers_allowance": reported > 0,
+            "aa_category": ["NONE"] * 5,
         }
     )
-    benunit = pd.DataFrame({"benunit_id": [1, 2, 3, 4]})
+    members = pd.DataFrame(
+        {
+            "person_id": [12, 22, 32, 42, 52],
+            "person_benunit_id": [6, 7, 8, 9, 10],
+            "person_household_id": [1, 2, 3, 4, 5],
+            "age": [85.0] * 5,
+            "employment_income": [0.0] * 5,
+            "care_hours": [0.0] * 5,
+            ca.CARERS_ALLOWANCE_IN_HOUSEHOLD_HOURS: [0.0] * 5,
+            "carers_allowance_reported": [0.0] * 5,
+            "would_claim_carers_allowance": [False] * 5,
+            "aa_category": ["HIGHER"] * 4 + ["NONE"],
+        }
+    )
+    benunit = pd.DataFrame({"benunit_id": list(range(1, 11))})
     household = pd.DataFrame(
         {
-            "household_id": [1, 2, 3, 4],
-            "region": ["WALES", "SCOTLAND", "WALES", "WALES"],
-            "council_tax": [0.0] * 4,
-            "tenure_type": ["OWNED_OUTRIGHT"] * 4,
-            "rent": [0.0] * 4,
-            "household_source_id": [1, 2, 3, 4],
+            "household_id": [1, 2, 3, 4, 5],
+            "region": ["WALES", "SCOTLAND", "WALES", "WALES", "WALES"],
+            "council_tax": [0.0] * 5,
+            "tenure_type": ["OWNED_OUTRIGHT"] * 5,
+            "rent": [0.0] * 5,
+            "household_source_id": [1, 2, 3, 4, 5],
         }
     )
     return uk_national_frame(
-        person=person,
+        person=pd.concat([carers, members], ignore_index=True),
         benunit=benunit,
         household=household,
-        household_weights=np.ones(4),
+        household_weights=np.ones(5),
         weight_kind=WeightKind.DESIGN,
         time_period="2024",
     )
@@ -190,8 +210,10 @@ def test_the_stage_reaches_the_carers_the_2025_rise_entitles() -> None:
         _frame(), engine=engine, contract=_CertainContract()
     )
     flag = result.frame.table("person")["would_claim_carers_allowance"].tolist()
-    # Scotland is drawn as Wales is (María's ruling of 2026-10-23).
-    assert flag == [True, True, False, True]
+    # Scotland is drawn as Wales is (María's ruling of 2026-10-23); the carer
+    # whose household member draws no qualifying benefit is not, and nor is
+    # any member (microcosm#1418).
+    assert flag == [True, True, False, True, False] + [False] * 5
     assert result.evidence()["weekly_earnings_limit"] == 151.0
     # Projected from the survey year as the released file is, the Welsh carer
     # over the 2024-25 limit and under 2025-26's is entitled and would claim;
