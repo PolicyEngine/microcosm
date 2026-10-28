@@ -714,8 +714,9 @@ def materialize_target_bindings(
     provider) the stored column is read as it is. Filters, conditions and
     bands keep their stored reads: who a row counts is fixed at the frame.
     A provider binding reads its columns as the frame holds them, so a
-    period it declares must be one its value reads hold; a declared period
-    no read honours refuses the run, for provider and plain rows alike.
+    period it declares must be one its value reads hold. A declared period
+    no read honours refuses the run: for a provider row on any frame with a
+    period model, for a plain row on a frame with period metadata.
     """
 
     provider_registry = {**default_provider_registry(), **(providers or {})}
@@ -1011,18 +1012,19 @@ def _refuse_ignored_measurement_period(
     the calibration period, so the row would be measured there under the
     declared period. Only the value terms are checked: a filter, condition or
     band on an engine-computed variable is still read at the calibration
-    period under a declared frame period. An entity count is ones and holds
-    no period, so it is never checked.
+    period under a declared frame period. An entity count read through the
+    adapter's ``column`` is ones and holds no period, so it is never checked.
+    A plain row on a frame without period metadata is not checked.
 
     A provider binding (one with a ``kind``) reads its value columns as the
     frame holds them, whatever the period it is passed, so each value it
     reads must be held at its declared period, the calibration period
-    included (:func:`_provider_value_reads`). Who it counts (filters, band,
-    geography) is read at the frame, as for a plain row at the frame's own
-    period. A provider whose reads are not known here may declare only the
-    calibration period: a counterfactual delta is read from a column the
-    measure resolver or the frame supplies, and a caller's own kind reads
-    what it reads.
+    included (:func:`_provider_value_reads`), with or without frame period
+    metadata. Who it counts (filters, band, geography) is read at the frame,
+    as for a plain row at the frame's own period. A provider whose reads are
+    not known here may declare only the calibration period: a counterfactual
+    delta is read from a column the measure resolver or the frame supplies,
+    and a caller's own kind reads what it reads.
 
     An adapter that reports neither its frame's period nor any value's
     period has no period model to check against; its rows are read as they
@@ -1062,7 +1064,7 @@ def _refuse_ignored_measurement_period(
     entity = str(binding.get("from_entity") or spec.entity)
     _refuse_reads_off_period(
         name,
-        ((entity, variable) for variable in _value_variables(binding)),
+        ((entity, variable, True) for variable in _value_variables(binding)),
         adapter,
         declared,
         period,
@@ -1071,16 +1073,28 @@ def _refuse_ignored_measurement_period(
 
 def _refuse_reads_off_period(
     name: str,
-    reads: Iterable[tuple[str, str]],
+    reads: Iterable[tuple[str, str, bool]],
     adapter: Any,
     declared: str,
     period: int | str,
 ) -> None:
-    """Refuse a row whose value reads are not all held at its declared period."""
+    """Refuse a row whose value reads are not all held at its declared period.
+
+    Each read is ``(entity, variable, through_column)``: whether the value
+    is read through the adapter's ``column``, as against a member table's
+    stored column (a ``value_reduction``).
+    """
 
     off = {}
-    for entity, variable in reads:
-        if _read_honours(adapter, entity, variable, declared, period):
+    for entity, variable, through_column in reads:
+        if _read_honours(
+            adapter,
+            entity,
+            variable,
+            declared,
+            period,
+            through_column=through_column,
+        ):
             continue
         year = _value_period(adapter, entity, variable)
         off[f"{entity}.{variable}"] = (
@@ -1102,17 +1116,22 @@ def _read_honours(
     variable: str,
     declared: str,
     period: int | str,
+    *,
+    through_column: bool,
 ) -> bool:
     """Whether one read is held at the declared period.
 
-    An entity count holds no period. A variable that reports a period (a
-    stored column on a frame with period metadata, or a measure its name
-    dates) holds that one. On a frame without period metadata a stored
-    column holds no known period and is read as it is. Anything else the
-    engine computes at the calibration period.
+    An entity count read through the adapter's ``column`` is ones and holds
+    no period. A member reduction reads the member table as the frame
+    stores it, so a count name there is checked like any other column. A
+    variable that reports a period (a stored column on a frame with period
+    metadata, or a measure its name dates) holds that one. On a frame
+    without period metadata a stored column holds no known period and is
+    read as it is. Anything else the engine computes at the calibration
+    period.
     """
 
-    if _is_entity_count(entity, variable):
+    if through_column and _is_entity_count(entity, variable):
         return True
     year = _value_period(adapter, entity, variable)
     if year is not None:
@@ -1126,40 +1145,42 @@ def _read_honours(
 
 def _provider_value_reads(
     binding: Mapping[str, Any],
-) -> tuple[tuple[str, str], ...] | None:
-    """Every ``(entity, variable)`` value column a provider binding reads.
+) -> tuple[tuple[str, str, bool], ...] | None:
+    """Every value column a provider binding reads.
 
     As :func:`parameter_gated_threshold` and :func:`baseline_flag_crosstab`
     read them, branch for branch: the gated or flag column, then the one
     value column the provider takes (a ``value_reduction``'s member
     variable, the value variable, or ``count_of``), each on the entity the
-    provider reads it on. None for a provider whose reads are not known
-    here. A caller that registers its own function under one of these two
-    kinds must read as the generic provider does.
+    provider reads it on, as ``(entity, variable, through_column)``. Only
+    the member variable is read other than through the adapter's
+    ``column``: the adapter reduces it from the member table. None for a
+    provider whose reads are not known here. A caller that registers its own
+    function under one of these two kinds must read as the generic provider
+    does.
     """
 
     kind = str(binding.get("kind"))
     if kind == "parameter_gated_threshold":
         entity = str(binding.get("from_entity") or "person")
-        reads = [(entity, str(binding["gated_variable"]))]
+        reads = [(entity, str(binding["gated_variable"]), True)]
         if binding.get("value_variable"):
-            reads.append((entity, str(binding["value_variable"])))
+            reads.append((entity, str(binding["value_variable"]), True))
         return tuple(dict.fromkeys(reads))
     if kind != "baseline_flag_crosstab":
         return None
     entity = str(binding.get("from_entity") or "household")
-    reads = [(entity, str(binding["affected_flag_variable"]))]
+    reads = [(entity, str(binding["affected_flag_variable"]), True)]
     value_variable = str(binding.get("value_variable") or "")
     count_of = str(binding.get("count_of") or "")
     reduction = binding.get("value_reduction")
     if reduction:
-        reads.append(
-            (str(reduction.get("entity") or "person"), str(reduction["variable"]))
-        )
+        member = str(reduction.get("entity") or "person")
+        reads.append((member, str(reduction["variable"]), False))
     elif value_variable and value_variable not in _COUNT_VALUE_VARIABLES:
-        reads.append((entity, value_variable))
+        reads.append((entity, value_variable, True))
     elif count_of and count_of not in _CROSSTAB_COUNT_OF:
-        reads.append((entity, count_of))
+        reads.append((entity, count_of, True))
     return tuple(dict.fromkeys(reads))
 
 

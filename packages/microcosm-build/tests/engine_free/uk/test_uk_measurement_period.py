@@ -115,14 +115,14 @@ def _resolver(monkeypatch, tmp_path, frame, sim, year=2025):
     )
 
 
-def _registry(bindings, *, fact_period=None):
+def _registry(bindings, *, fact_period=None, entity="person"):
     metadata = {} if fact_period is None else {"ledger_fact_period": fact_period}
     return (
         TargetRegistry(
             [
                 TargetSpec(
                     name=name,
-                    entity="person",
+                    entity=entity,
                     measure=f"test_{name}",
                     value=1,
                     source="test",
@@ -470,22 +470,65 @@ def test_every_packaged_provider_row_declares_a_period_its_reads_hold(metadata, 
         _refuse_ignored_measurement_period(spec, binding, adapter, period)
 
 
-#: The values a generated provider row may read, and the period the fixture
-#: below holds each at (None: any period).
+@pytest.mark.parametrize("metadata", [True, False])
+def test_a_member_reduction_reads_a_count_as_the_frame_stores_it(metadata):
+    """A count read through the adapter's column is ones, but a member
+    reduction sums the member table as stored: a stored person_count holds
+    the frame's period, or is read as it is on a frame without one."""
+
+    frame = _frame(metadata)
+    frame.table("person")["person_count"] = [7.0, 9.0, 4.0]
+    binding = {
+        "kind": "baseline_flag_crosstab",
+        "affected_flag_variable": "household_count",
+        "value_variable": "person_count",
+        "value_reduction": {"entity": "person", "variable": "person_count"},
+    }
+    years = (2024,) if metadata else (2023, 2024)
+    for declared in years:
+        adapter = UKFrameTargetAdapter(frame)
+        registry, contract = _registry(
+            {"members": {**binding, "measurement_period": declared}},
+            entity="household",
+        )
+        materialized = materialize_target_bindings(
+            adapter, registry, contract, period=2025
+        )
+        assert not materialized.skipped
+        np.testing.assert_allclose(
+            adapter.tables["household"]["test_members"], [16.0, 4.0]
+        )
+    if metadata:
+        registry, contract = _registry(
+            {"members": {**binding, "measurement_period": 2023}}, entity="household"
+        )
+        with pytest.raises(MeasurementPeriodError, match="person.person_count"):
+            materialize_target_bindings(
+                UKFrameTargetAdapter(frame), registry, contract, period=2025
+            )
+
+
+#: The values a generated provider row may read. The fixture below stores the
+#: first three on the frame (the counts with values other than one, as a
+#: member reduction would read them) and injects the rest.
 _PROVIDER_READS = (
-    "employment_income",  # stored: the frame's period, or as it is without one
+    "employment_income",
+    "person_count",
+    "household_count",
     "income_tax",  # engine-computed: injected at the calibration period
     "cgt_2023_gains",  # dated by name
     "cgt_2024_gains",
     "cgt_2025_gains",
-    "person_count",  # a count: ones
 )
+_STORED_READS = frozenset(_PROVIDER_READS[:3])
 
 
-def _held(variable, *, metadata, calibration):
-    if variable in {"person_count", "household_count"}:
-        return None
-    if variable == "employment_income":
+def _held(variable, *, through_column, metadata, calibration):
+    """The period the fixture holds one read at; None for any period."""
+
+    if through_column and variable.endswith("_count"):
+        return None  # the adapter's column reads a count as ones
+    if variable in _STORED_READS:
         return "2024" if metadata else None
     if variable.startswith("cgt_"):
         return variable.split("_")[1]
@@ -493,27 +536,31 @@ def _held(variable, *, metadata, calibration):
 
 
 def _provider_adapter(metadata, adapter_class=UKFrameTargetAdapter):
-    adapter = adapter_class(_frame(metadata))
-    for variable in _PROVIDER_READS[1:-1]:
+    frame = _frame(metadata)
+    frame.table("person")["person_count"] = [7.0, 9.0, 4.0]
+    frame.table("person")["household_count"] = [2.0, 2.0, 1.0]
+    frame.table("household")["household_count"] = [3.0, 5.0]
+    adapter = adapter_class(frame)
+    for variable in _PROVIDER_READS[3:]:
         adapter.set_column("person", variable, [0.0, 5_000.0, 50_000.0])
     adapter.set_column("household", "income_tax", [1.0, 0.0])
     return adapter
 
 
 class _ReadRecorder(UKFrameTargetAdapter):
-    """Records each column a provider reads, through either read path."""
+    """Records each column a provider reads, and through which path."""
 
     def __init__(self, frame):
         super().__init__(frame)
         self.reads = []
 
     def column(self, entity, variable):
-        self.reads.append((entity, variable))
+        self.reads.append((entity, variable, True))
         return super().column(entity, variable)
 
     def entity_reduction(self, reduction):
         entity = str(reduction.get("entity") or "person")
-        self.reads.append((entity, str(reduction["variable"])))
+        self.reads.append((entity, str(reduction["variable"]), False))
         return super().entity_reduction(reduction)
 
 
@@ -567,20 +614,22 @@ def test_a_provider_row_refuses_exactly_when_a_read_is_off_its_period(
 
     The provider runs on an adapter that records every column it reads; the
     row must refuse exactly when one of those is held at a period other than
-    the declared one. A count, or a stored column on a frame without period
-    metadata, holds any period.
+    the declared one. A count read through the adapter's column, or a stored
+    column on a frame without period metadata, holds any period.
     """
 
     recorder = _provider_adapter(metadata, _ReadRecorder)
-    try:
-        # The reads do not depend on the period; 2024 has a reviewed AEA.
-        default_provider_registry()[binding["kind"]](recorder, binding, 2024)
-    except KeyError:
-        pass  # a reduction over a count, read after every other column
+    # The reads do not depend on the period; 2024 has a reviewed AEA.
+    default_provider_registry()[binding["kind"]](recorder, binding, 2024)
     off = {
         f"{entity}.{variable}"
-        for entity, variable in recorder.reads
-        if _held(variable, metadata=metadata, calibration=calibration)
+        for entity, variable, through_column in recorder.reads
+        if _held(
+            variable,
+            through_column=through_column,
+            metadata=metadata,
+            calibration=calibration,
+        )
         not in (None, str(declared))
     }
     registry, contract = _registry({"row": {**binding, "measurement_period": declared}})
