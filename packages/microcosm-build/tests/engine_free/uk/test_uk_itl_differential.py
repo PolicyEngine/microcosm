@@ -838,6 +838,36 @@ def test_the_contract_marks_the_bound_tables_in_sample(tool) -> None:
     assert not any(cell.parts for cell in by_table["2.2"] if cell.area != RESIDENTS)
 
 
+def test_the_bound_cells_expect_what_the_build_compiles() -> None:
+    """Two implementations of the calendar window agree: each bound cell's
+    expected count is the value the build's Ledger compile gives its target
+    at 2025, as the committed parity receipt records it (compiled from the
+    pinned Chronicle feed the vendored rows were copied from)."""
+
+    receipt = _resource("ledger_compile_parity_incumbent_2025_signed_differences.json")
+    compiled = {
+        row["name"]: row["ledger_value"]
+        for row in receipt["differences"]
+        if row.get("period") == 2025 and row.get("ledger_value") is not None
+    }
+    rows = load_vendored_resource("hmrc_itl_taxpayer_counts.json")["rows"]
+    checked = []
+    for cell in expected_cells(rows, year=2025):
+        target = BOUND_BY.get((cell.table, cell.measure))
+        if target is None or cell.parts:
+            continue
+        name = (
+            f"{target}.{itl_band_key(cell.band)}"
+            if cell.band is not None
+            else f"{target}@{cell.area}"
+        )
+        assert cell.expected == pytest.approx(compiled[name], rel=1e-12), name
+        checked.append(name)
+    assert sorted(checked) == sorted(
+        name for names in _bound_references().values() for name in names
+    )
+
+
 def _diagnostics(tmp_path, *, left_out=frozenset()):
     """A run's calibration_diagnostics.json as a UK build writes its target
     rows: each bound reference at 2025, a reference in ``left_out`` with no
