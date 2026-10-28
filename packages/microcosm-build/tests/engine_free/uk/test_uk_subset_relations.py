@@ -222,8 +222,10 @@ def test_every_committed_subset_names_its_part_and_whole():
         if relation["relation"] == "subset"
     ]
     # England's single adult discount within its households (microcosm#953),
-    # and its billing-authority cells within theirs (microcosm#1095).
-    assert len(relations) == 19
+    # its billing-authority cells within theirs (microcosm#1095), and ITL
+    # Table 2.2's taxpayers of State Pension age and aged 65 and over within
+    # all taxpayers (microcosm#1069).
+    assert len(relations) == 21
     for relation in relations:
         assert {relation["part"], relation["whole"]} == set(relation["targets"])
         assert 0.0 <= relation.get("max_excess", 0.0) <= 0.01
