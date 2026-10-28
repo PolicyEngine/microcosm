@@ -126,6 +126,12 @@ def _spm_measurement_gate_passes(monkeypatch):
     )
 
 
+def _writer_code(module) -> dict:
+    """This checkout's code identity, as the calibrate stage records it."""
+
+    return module._repo_code_identity(allow_dirty=True)
+
+
 def _load_tool_module():
     root = _TEST_PATHS.repository
     path = root / "tools" / "build_us_acs_local_release.py"
@@ -340,6 +346,7 @@ def test_the_acs_wic_assumption_is_disclosed_exactly_when_it_was_applied() -> No
                 "from": "would_claim_wic",
                 "to": "takes_up_wic_if_eligible",
                 "people_assumed_true": 12,
+                "people_allowed_without_decision": 20,
                 "flip_condition": "Drop it once microcosm#1156 lands.",
             }
         }
@@ -348,6 +355,10 @@ def test_the_acs_wic_assumption_is_disclosed_exactly_when_it_was_applied() -> No
     assert entry["status"] == "reviewed_interim_assumption"
     assert entry["column"] == "takes_up_wic_if_eligible"
     assert entry["people_assumed_true"] == 12
+    # The text claims only what the rule did: the people without a decision.
+    assert (
+        "every person without one (12, all on the ACS spine, of 20" in entry["reason"]
+    )
     assert entry["treatment"] == "Drop it once microcosm#1156 lands."
     assert entry["calibration_blocker"] is False
     assert limitation(None) is None
@@ -406,6 +417,82 @@ def test_only_acs_spine_people_may_lack_a_wic_decision() -> None:
         module._with_live_stored_inputs(
             _spine_frame(["asec_puf", "acs_2024_1yr"], [None, None])
         )
+
+
+@pytest.mark.parametrize(
+    "spine",
+    [np.nan, None, b"acs_2024_1yr", "ACS_2024_1YR"],
+    ids=["nan", "none", "bytes", "other-label"],
+)
+def test_an_unreadable_spine_tag_refuses_rather_than_fills(spine) -> None:
+    """A person whose tag is not exactly the ACS spine may not lack one."""
+
+    module = _load_tool_module()
+    frame = _spine_frame(["acs_2024_1yr", spine], [None, None])
+
+    with pytest.raises(SystemExit, match="did not allow"):
+        module._with_live_stored_inputs(frame)
+
+
+def test_a_person_table_without_the_spine_tag_is_refused() -> None:
+    from microcosm.frame import Frame
+
+    module = _load_tool_module()
+    frame = _spine_frame(["acs_2024_1yr"], [None])
+    tables = {entity: frame.table(entity) for entity in frame.entities}
+    tables["person"] = tables["person"].drop(columns="person_spine")
+    untagged = Frame(
+        tables,
+        frame.schema,
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+    )
+
+    with pytest.raises(SystemExit, match="person_spine"):
+        module._with_live_stored_inputs(untagged)
+
+
+@pytest.mark.parametrize(
+    ("written_by", "allow_dirty", "match"),
+    [
+        (None, True, "records no code identity"),
+        ({"sha": "abc1234"}, True, "records no code identity"),
+        ({"commit": ""}, True, "records no code identity"),
+        ({"commit": "0" * 40, "dirty": False}, True, "written by code 0000000"),
+        ({"commit": "a" * 40, "dirty": True}, False, "dirty tree"),
+    ],
+    ids=["absent", "short-sha-only", "empty", "other-commit", "dirty-writer"],
+)
+def test_package_names_the_release_only_after_the_code_that_wrote_it(
+    written_by, allow_dirty, match
+) -> None:
+    """The release id names the packaging code, so that code must have
+    written the calibrated bytes (review of microcosm#1309)."""
+
+    module = _load_tool_module()
+    code = {"sha": "aaaaaaaaa", "commit": "a" * 40, "dirty": False, "branch": "main"}
+    export = {} if written_by is None else {"code": written_by}
+
+    with pytest.raises(SystemExit, match=match):
+        module._require_artifact_written_by(export, code, allow_dirty=allow_dirty)
+
+    # The abbreviated sha may differ in length between checkouts; only the
+    # full commit is compared.
+    module._require_artifact_written_by(
+        {"code": {"sha": "aaaaaaa", "commit": "a" * 40, "dirty": False}},
+        code,
+        allow_dirty=False,
+    )
+    module._require_artifact_written_by(
+        {"code": {"commit": "a" * 40, "dirty": True}}, code, allow_dirty=True
+    )
+
+
+def test_the_recorded_code_identity_carries_the_full_commit() -> None:
+    module = _load_tool_module()
+    code = module._repo_code_identity(allow_dirty=True)
+
+    assert len(code["commit"]) == 40
+    assert code["commit"].startswith(code["sha"])
 
 
 def test_parse_args_enforces_stage_requirements(tmp_path: Path) -> None:
@@ -652,7 +739,10 @@ def _package_evidence_args(module, tmp_path: Path, monkeypatch, *, hours_report)
             "artifact_sha256": artifact_sha,
             "per_spine": {},
         },
-        "consumer_export.json": {"staging_sha256": module._sha256(staging)},
+        "consumer_export.json": {
+            "staging_sha256": module._sha256(staging),
+            "code": _writer_code(module),
+        },
         "held_back_columns.json": {"total": 0},
         "reviewed_null_fills.json": {"columns_filled": []},
         "materialize_rss.json": {
@@ -1577,7 +1667,10 @@ def test_finalize_report_round_trips_into_package(tmp_path, monkeypatch) -> None
             "artifact_sha256": artifact_sha,
             "per_spine": {},
         },
-        "consumer_export.json": {"staging_sha256": artifact_sha},
+        "consumer_export.json": {
+            "staging_sha256": artifact_sha,
+            "code": _writer_code(module),
+        },
         "consumer_reviewed_null_fills.json": {"columns_filled": []},
     }
     for name, value in evidence.items():
@@ -1648,6 +1741,7 @@ def test_a_sparse_era_calibration_is_bound_through_finalize_and_package(
         "run_identity_sha256": stamp,
         "out_h5_sha256": artifact_sha,
         "weights_sha256": "w",
+        "code": _writer_code(module),
     }
     qa = {
         "plain_consumption": True,
@@ -1735,7 +1829,10 @@ def _package_args_with_hours(module, tmp_path, monkeypatch, *, gate_state):
             "artifact_sha256": artifact_sha,
             "per_spine": {},
         },
-        "consumer_export.json": {"staging_sha256": artifact_sha},
+        "consumer_export.json": {
+            "staging_sha256": artifact_sha,
+            "code": _writer_code(module),
+        },
         "consumer_reviewed_null_fills.json": {"columns_filled": []},
     }
     for name, value in evidence.items():
@@ -1837,6 +1934,44 @@ def test_package_refuses_historical_staging_with_incomplete_work_experience(
     assert not (args.out / "releases").exists()
     assert not (args.out / "package_result.json").exists()
     assert not (args.out / module.ARTIFACT_FILENAME).exists()
+
+
+def _set_writer(args, **changes) -> None:
+    path = args.checkpoint_dir / "consumer_export.json"
+    export = json.loads(path.read_text())
+    export["code"] = {**export["code"], **changes}
+    path.write_text(json.dumps(export))
+
+
+@requires_pytables
+def test_package_refuses_another_writer_before_any_release_dir(tmp_path, monkeypatch):
+    """The writer binding runs before the release directory exists."""
+
+    module = _load_tool_module()
+    args = _package_args_with_hours(module, tmp_path, monkeypatch, gate_state="passed")
+    _set_writer(args, commit="0" * 40)
+
+    with pytest.raises(SystemExit, match="written by code 0000000"):
+        module.do_package(args)
+    assert not (args.out / "releases").exists()
+
+
+@requires_pytables
+def test_a_dirty_writer_marks_the_release_dirty(tmp_path, monkeypatch):
+    """A clean packaging tree cannot hide a dirty writer (review of #1311)."""
+
+    module = _load_tool_module()
+    # A clean packaging tree, whatever this checkout's state, so only the
+    # writer's flag can make the release dirty.
+    clean = {**module._repo_code_identity(allow_dirty=True), "dirty": False}
+    monkeypatch.setattr(module, "_repo_code_identity", lambda allow_dirty: dict(clean))
+    args = _package_args_with_hours(module, tmp_path, monkeypatch, gate_state="passed")
+    _set_writer(args, dirty=True)
+
+    release_dir = Path(module.do_package(args)["release_dir"])
+
+    build = json.loads((release_dir / "build_manifest.json").read_text())
+    assert build["build_dirty"] is True
 
 
 @requires_pytables
