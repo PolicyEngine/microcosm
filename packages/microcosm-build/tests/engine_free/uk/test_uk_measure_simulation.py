@@ -2224,6 +2224,7 @@ class _AnnualSimulation:
             "basic_rate_savings_income",
             "higher_rate_savings_income",
             "add_rate_savings_income",
+            "total_pension_income",
         )
         variables = {
             name: SimpleNamespace(
@@ -2259,6 +2260,11 @@ class _AnnualSimulation:
             return np.where(pay < 5_000.0, 4_000.0, 0.0)
         if variable in ("carer_support_payment", "scottish_carer_supplement"):
             return np.zeros(3)
+        if variable == "total_pension_income":
+            # The engine's sum of the two pensions (microcosm#1418).
+            return self.calculate("private_pension_income", year) + self.calculate(
+                "state_pension", year
+            )
         total = sum(
             self.calculate(name, year)
             for name in (
@@ -2329,6 +2335,9 @@ def test_annual_measures_read_each_persons_year(monkeypatch, tmp_path):
     np.testing.assert_allclose(pension, [0.0, 2_040.0, 0.0])
     state_pension, _ = resolver.compute("person", "state_pension_annual")
     np.testing.assert_allclose(state_pension, [0.0, 11_000.0 * 8 / 12, 0.0])
+    # Both pensions over the year: the SPI area tables' pension income.
+    both, _ = resolver.compute("person", "total_pension_income_annual")
+    np.testing.assert_allclose(both, [0.0, 2_040.0 + 11_000.0 * 8 / 12, 0.0])
     total, _ = resolver.compute("person", "total_income_after_loss_relief_annual")
     # Person 2 keeps the Carer's Allowance paid at the earnings of the time.
     annual_total = np.array(
