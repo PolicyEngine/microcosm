@@ -83,17 +83,20 @@ How the tables relate, on HMRC's own figures:
    shifted on the logit scale so the class's stocks-and-shares total equals
    Table 9.4's 2023-24 stocks-and-shares amount less the stocks-and-shares-only
    payments (about 27% stocks and shares). A shift the floor stops is named.
-5. **Growth to 2024-25.** Table 9.4 supplies growth ratios only. Each class's
-   people grow by Table 9.4's account growth (cash accounts for cash only,
-   stocks-and-shares accounts for stocks and shares only, both together for
-   both), added from eligible holders not yet subscribing. Amounts grow by Table
-   9.4's amount growth per type, with one capped factor per type so no person
-   passes the £20,000 overall limit.
-6. **Lifetime ISA payments.** Every holder aged 18 to 49 pays in. Amounts lie in
-   (0, £4,000], drawn by a truncated-exponential tilt so the total equals Table
-   9.4's 2024-25 Lifetime ISA amount (£2,818m from 1,136,000 accounts), within
-   each person's room under the overall limit, so the baseline leaves nothing
-   above it. The rank blends the balance and income ranks with a keyed uniform.
+5. **Growth to 2024-25.** Each class's people grow by Table 9.4's account
+   growth (cash accounts for cash only, stocks-and-shares accounts for stocks and
+   shares only, both together for both), added from eligible holders not yet
+   subscribing. Amounts then scale, one factor per type, to Table 9.4's 2024-25
+   amounts (£95.6bn of cash and £37.2bn of stocks and shares). Subscribers
+   already at the £20,000 overall limit stay there, and the rest are capped at
+   it.
+6. **Lifetime ISA payments.** Every holder aged 18 to 47 with room under the
+   overall limit pays in; a holder with none pays nothing. 18 to 47 are the ages
+   that can hold one in 2024-25, since accounts opened at 18 to 39 from April
+   2017. Amounts lie in (0, £4,000], drawn by a truncated-exponential tilt so
+   the total equals Table 9.4's 2024-25 Lifetime ISA amount (£2,818m from
+   1,136,000 accounts), so the baseline leaves nothing above the overall limit.
+   The rank blends the balance and income ranks with a keyed uniform.
 
 ## Decisions (28 October 2026)
 
@@ -106,16 +109,39 @@ How the tables relate, on HMRC's own figures:
 - **People by accounts.** Growth uses Table 9.4's account growth, the upper
   bound on people; the flat-people bound is reported beside it.
 - **Lifetime ISAs here.** Holders are re-anchored to HMRC's payers and payments
-  drawn in this change. The evidence is the next pair build; there is no
-  paired control, as the graph's declared cells show nothing else moved.
+  drawn in this change. The evidence is the next pair build.
+
+## Decisions (29 October 2026, on the review of microcosm#1421)
+
+- **Cash grows to Table 9.4's level, holding the limit.** Growing by Table 9.4's
+  ratio carried Table 9.7's cash excess into 2024-25 and, with the subscribers
+  at £20,000 unable to grow, scaled everyone else by about 2.05. On populations
+  built from HMRC's own tables that gave £127bn of cash against Table 9.4's
+  £95.6bn, 51% of cash subscribers above £12,000 and 40% of all subscribers at
+  the limit. Scaling to Table 9.4's 2024-25 amounts while holding the limit
+  gives a factor of about 0.89, 37% above £12,000 and 29% at the limit (28.8% in
+  2023-24). A plain factor below one would have moved every limit subscriber to
+  about £19,100.
+- **The Lifetime ISA anchor's reach is counted on the pair.** Three later stages
+  read the whole frame (`uc_reporter_redraw`, `uc_take_up` and
+  `pension_credit_take_up`), and a Lifetime ISA counts as Universal Credit and
+  Pension Credit capital, so the added holders can move their draws. The pair
+  build's national counts, at its final weights, the benefit units whose
+  entitlement changes without the added holders' balances, and the units that
+  move in or out of the take-up pools. Where the financial-wealth cap binds, an
+  added holder also scales the household's existing balances down pro rata.
 
 ## What the tables leave open
 
 - **The cash excess.** Table 9.7 at band midpoints implies about £92.5bn of
   cash (£84.5bn cash only and £8.1bn from the both class) against Table 9.4's
   £69.5bn, about £23bn above it. The stage keeps Table 9.7's people and bands,
-  so its 2023-24 cash total sits above Table 9.4's, and the checks report by how
-  much.
+  so its 2023-24 cash total sits above Table 9.4's, and the receipt reports by
+  how much; the 2024-25 total meets Table 9.4.
+- **Amounts by age.** Amounts follow Table 9.7's bands within income band and
+  class, not age, so the share of under-65 cash subscribers above £12,000 sits
+  near the all-ages share (37% in 2024-25 on HMRC's tables), against the impact
+  note's 22% for 2022-23.
 - **The both class's residual share** depends on where the stocks-and-shares-only
   payments sit inside their bands: about 27% stocks and shares at band
   midpoints, 50% at band floors and 7% at band tops.
@@ -135,12 +161,20 @@ How the tables relate, on HMRC's own figures:
   against 25% of payments; the 2025-26 house-purchase withdrawals (99,750) as a
   loose check on holders.
 - The flat-people growth bound.
+- The Lifetime ISA anchor's reach: benefit units whose Universal Credit or
+  Pension Credit entitlement changes without the added holders' balances, at
+  the final weights, and the units that move in or out of the take-up pools.
 
 ## What the fields support
 
-The fields support scoring the ISA subscription limits: the overall £20,000
-limit, a separate cash limit (the £12,000 under-65 setting is a reform in
-policyengine-uk), the Lifetime ISA bonus rate and payment limit, and analyses of
-who subscribes how much. They do not support withdrawals or first-home purchase
-rules, Innovative Finance or Junior ISAs, or behavioural responses to a limit,
-which policyengine-uk models separately.
+The fields support the subscriptions a limit leaves out: the overall £20,000
+limit and a separate cash limit (the £12,000 under-65 setting is a reform in
+policyengine-uk), through `isa_subscriptions_above_limit` and
+`cash_isa_subscriptions_above_limit`. policyengine-uk 2.164.2 reads neither in
+any tax or spending variable, so a limit reform changes those amounts but costs
+nothing until the engine models where the excess goes. The subscriptions are
+flows the engine does not uprate, so a later year reads 2024-25 amounts. The
+Lifetime ISA bonus does reach government spending, so its rate and payment
+limit score. The fields also support analyses of who subscribes how much. They
+do not support withdrawals or first-home purchase rules, Innovative Finance or
+Junior ISAs, or behavioural responses to a limit.

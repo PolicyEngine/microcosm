@@ -4676,16 +4676,17 @@ def _isa_subscriptions_gate(
 ) -> GateResult:
     """ISA subscriptions keep their invariants (microcosm#1415).
 
-    Fails on any coherence violation the receipt counts (the overall and Lifetime
-    ISA limits, ages, holding what is paid into, both parts of a both-type
-    subscription, negative amounts), on person balances that do not sum to the
-    household draws within ``maximum_household_sum_error_gbp``, and on growth
-    totals, the Lifetime ISA total or the both-type split's stocks-and-shares
-    total off their targets by more than ``maximum_relative_total_deviation``
-    (a reported saturation is named, not failed). Cells short of eligible adults
-    are reported, never failed: the stage invents no holders, and how far the
-    result sits from HMRC's tables after calibration is a measurement, not a
-    gate (María's ruling of 28 October 2026).
+    Fails on any coherence violation the receipt counts (non-finite values, the
+    overall and Lifetime ISA limits, ages, holding what is paid into, both parts of
+    a both-type subscription, negative amounts), on person balances that do not sum
+    to the household draws within ``maximum_household_sum_error_gbp``, and on the
+    2024-25 cash and stocks-and-shares totals off Table 9.4's 2024-25 amounts, the
+    Lifetime ISA total off Table 9.4's Lifetime ISA amount or the both-type split's
+    stocks-and-shares total off its residual by more than
+    ``maximum_relative_total_deviation`` (a reported saturation is named, not
+    failed). Cells short of eligible adults are named, never failed: the stage
+    invents no holders, and how far the result sits from HMRC's tables after
+    calibration is a measurement, not a gate (María's ruling of 28 October 2026).
     """
 
     check = "isa_subscriptions"
@@ -4723,7 +4724,8 @@ def _isa_subscriptions_gate(
         )
         if target > 0 and abs(achieved - target) / target > tolerance:
             failures.append(
-                f"{stage}: 2024-25 {kind} subscriptions miss Table 9.4's growth."
+                f"{stage}: 2024-25 {kind} subscriptions miss Table 9.4's 2024-25 "
+                "amount."
             )
     both = _mapping(evidence.get("both_type_split"), label=f"{stage}.both_type_split")
     if both.get("saturated"):
@@ -4750,6 +4752,14 @@ def _isa_subscriptions_gate(
         if target > 0 and abs(achieved - target) / target > tolerance:
             failures.append(f"{stage}: Lifetime ISA payments miss Table 9.4's amount.")
     selection = _mapping(evidence.get("selection"), label=f"{stage}.selection")
+    # Subscribers the eligible holders could not supply: the stage invents none.
+    for isa_type, steps in selection.items():
+        for step, receipt in _mapping(steps, label=f"{stage}.{isa_type}").items():
+            if not isinstance(receipt, Mapping):
+                continue
+            unmet = float(receipt.get("shortfall_weight_unmet") or 0.0)
+            if unmet > 0:
+                named.append(f"selection:{isa_type}:{step}:shortfall_weight_unmet")
     return GateResult(
         name="stage_health",
         passed=not failures,
@@ -4759,6 +4769,10 @@ def _isa_subscriptions_gate(
             "check": check,
             "saturations_named": named,
             "selection": dict(selection),
+            "lifetime_isa_payer_weight": lifetime.get("payer_weight"),
+            "lifetime_isa_hmrc_accounts_subscribed": lifetime.get(
+                "hmrc_accounts_subscribed"
+            ),
         },
     )
 
@@ -4774,7 +4788,9 @@ def _was_lisa_anchor_gate(
     within ``maximum_relative_deviation`` of the anchor's target, or at or above it
     when the drawn holders already were (no shift), and a positive shift removes no
     holder (the same keyed uniforms decide ownership). A target above what the
-    largest shift reaches is named, not failed.
+    largest shift reaches is named, not failed, and so are unshifted holders above
+    the target: the anchor only adds holders, so it cannot correct the base
+    model's overshoot.
     """
 
     check = "was_lisa_anchor"
@@ -4794,6 +4810,7 @@ def _was_lisa_anchor_gate(
     shift = _finite_number(anchor.get("logit_shift"), label=f"{stage}.logit_shift")
     saturated = anchor.get("saturated")
     failures: list[str] = []
+    named: list[str] = [] if saturated is None else [f"anchor:{saturated}"]
     if target <= 0:
         failures.append(f"{stage}: the anchor's target must be positive.")
     elif shift < 0:
@@ -4805,6 +4822,10 @@ def _was_lisa_anchor_gate(
             failures.append(
                 f"{stage}: unshifted holders after the cap fall below the target."
             )
+        elif achieved > target * (1.0 + tolerance):
+            # The anchor only adds holders, so it cannot bring an overshoot of the
+            # base model down: named for the build report, not failed.
+            named.append("anchor:unshifted_holders_above_target")
     elif abs(achieved - target) / target > tolerance:
         failures.append(
             f"{stage}: anchored holders after the cap miss the target by more than "
@@ -4820,6 +4841,6 @@ def _was_lisa_anchor_gate(
             "stage": stage,
             "check": check,
             "anchor": dict(anchor),
-            "saturations_named": [] if saturated is None else [f"anchor:{saturated}"],
+            "saturations_named": named,
         },
     )

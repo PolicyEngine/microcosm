@@ -633,7 +633,7 @@ def _counted_holders(frame) -> float:
         .to_numpy(dtype=float)
     )
     ages = person["age"].to_numpy(dtype=float)
-    counted = person[OWNERSHIP_COLUMN].to_numpy(bool) & (ages >= 18) & (ages <= 49)
+    counted = person[OWNERSHIP_COLUMN].to_numpy(bool) & (ages >= 18) & (ages <= 47)
     return float(weights[counted].sum())
 
 

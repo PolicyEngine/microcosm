@@ -72,6 +72,7 @@ from microcosm.build.uk_runtime.hmrc_isa_statistics import (
     HMRC_ISA_BUILD_TAX_YEAR,
     HMRCISAStatistics,
     check_isa_statistics_declaration,
+    lifetime_isa_paying_ages,
     load_hmrc_isa_statistics,
 )
 from microcosm.build.uk_runtime.national_frame import (
@@ -1068,10 +1069,12 @@ class OwnershipAnchorSpec:
     can pay into one Lifetime ISA a year, so Table 9.4's accounts subscribed to are
     payers. Without a published holder count the anchor makes the weighted holders
     after the financial-wealth cap equal that payer count, the fewest holders
-    consistent with HMRC. ``ages`` are the ages that can hold a LISA in the tax year
-    (opened at 18 to 39 since April 2017), where holders may be added;
-    ``counted_ages`` are the ages that may pay in (18 to 49), whose holders are
-    counted against the payers.
+    consistent with HMRC. ``ages`` are the ages at which holders may be added and
+    ``counted_ages`` those whose holders are counted against the payers. Both are
+    the ages that can hold and pay into a LISA in the tax year
+    (``lifetime_isa_paying_ages``: opened at 18 to 39 since April 2017, so 18 to 47
+    in 2024-25): an older holder the base model draws cannot be one of HMRC's
+    payers (review of microcosm#1421).
     """
 
     target: str
@@ -1110,6 +1113,13 @@ class OwnershipAnchorSpec:
         if not counted_minimum <= minimum <= maximum <= counted_maximum:
             raise WASLISAError(
                 "the anchor adds holders only at ages whose holders it counts."
+            )
+        paying = lifetime_isa_paying_ages(tax_year)
+        if (counted_minimum, counted_maximum) != paying:
+            raise WASLISAError(
+                f"the anchor counts holders aged {paying[0]} to {paying[1]}, the ages "
+                f"that can pay into a Lifetime ISA in {tax_year}, not "
+                f"{counted_minimum} to {counted_maximum}."
             )
         return cls(
             target=target,

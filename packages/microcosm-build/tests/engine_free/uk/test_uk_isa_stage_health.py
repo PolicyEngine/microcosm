@@ -17,6 +17,7 @@ PASSING = {
     "balance_split": {"max_abs_household_sum_error_gbp": 1e-9},
     "checks": {
         "violations": {
+            "non_finite_values": 0,
             "over_overall_limit": 0,
             "lifetime_over_annual_limit": 0,
             "subscriber_under_minimum_age": 0,
@@ -37,7 +38,13 @@ PASSING = {
         "stocks_and_shares_target_gbp": 10.0,
         "stocks_and_shares_achieved_gbp": 10.0,
     },
-    "lifetime_isa": {"saturated": None, "target_gbp": 5.0, "achieved_gbp": 5.0},
+    "lifetime_isa": {
+        "saturated": None,
+        "target_gbp": 5.0,
+        "achieved_gbp": 5.0,
+        "payer_weight": 3.0,
+        "hmrc_accounts_subscribed": 3.0,
+    },
     "selection": {"cash_only": {"base": {"shortfall_weight_unmet": 12.0}}},
 }
 
@@ -48,19 +55,26 @@ def _gate(evidence, check="isa_subscriptions", parameters=PARAMETERS):
     )
 
 
-def test_a_coherent_receipt_passes_and_reports_shortfalls():
+def test_a_coherent_receipt_passes_and_names_shortfalls():
     result = _gate(PASSING)
     assert result.passed, result.failures
     assert (
         result.details["selection"]["cash_only"]["base"]["shortfall_weight_unmet"]
         == 12.0
     )
+    # Subscribers the eligible holders could not supply are named, not failed.
+    assert result.details["saturations_named"] == [
+        "selection:cash_only:base:shortfall_weight_unmet"
+    ]
+    assert result.details["lifetime_isa_payer_weight"] == 3.0
+    assert result.details["lifetime_isa_hmrc_accounts_subscribed"] == 3.0
 
 
 @pytest.mark.parametrize(
     ("path", "value"),
     [
         (("checks", "violations", "over_overall_limit"), 1),
+        (("checks", "violations", "non_finite_values"), 1),
         (("balance_split", "max_abs_household_sum_error_gbp"), 5.0),
         (("growth", "cash_achieved_gbp"), 90.0),
         (("both_type_split", "stocks_and_shares_achieved_gbp"), 9.0),
@@ -85,7 +99,10 @@ def test_saturation_is_named_not_failed():
     }
     result = _gate(evidence)
     assert result.passed
-    assert result.details["saturations_named"] == ["lifetime_isa:target_above_reach"]
+    assert result.details["saturations_named"] == [
+        "lifetime_isa:target_above_reach",
+        "selection:cash_only:base:shortfall_weight_unmet",
+    ]
 
 
 ANCHOR_PARAMETERS = {"maximum_relative_deviation": 0.01}
@@ -135,3 +152,19 @@ def test_an_unreachable_anchor_is_named():
         ANCHOR_PARAMETERS,
     )
     assert result.details["saturations_named"] == ["anchor:target_above_reach"]
+
+
+def test_unshifted_holders_above_the_target_are_named():
+    # The anchor only adds holders, so it cannot bring the base model's
+    # overshoot down: the build report names it.
+    result = _gate(
+        _anchor_evidence(1300.0, logit_shift=0.0), "was_lisa_anchor", ANCHOR_PARAMETERS
+    )
+    assert result.passed
+    assert result.details["saturations_named"] == [
+        "anchor:unshifted_holders_above_target"
+    ]
+    within = _gate(
+        _anchor_evidence(1005.0, logit_shift=0.0), "was_lisa_anchor", ANCHOR_PARAMETERS
+    )
+    assert within.passed and within.details["saturations_named"] == []

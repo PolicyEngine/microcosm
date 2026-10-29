@@ -10,12 +10,18 @@ import pytest
 
 from microcosm.build.source_manifest import SourceOperationSpec
 from microcosm.build.uk_runtime import isa_subscriptions as stage
+from microcosm.build.uk_runtime.cgt_imputation import (
+    UK_CGT_TAXABLE_INCOME_PROXY_COMPONENTS,
+)
 from microcosm.build.uk_runtime.hmrc_isa_statistics import (
     HMRC_ISA_INCOME_BAND_IDS,
     HMRCISAStatisticsError,
     isa_band_bounds,
+    lifetime_isa_paying_ages,
     load_hmrc_isa_statistics,
 )
+from microcosm.build.uk_runtime.national_frame import uk_national_frame
+from microcosm.frame import WeightKind
 from test_support.microcosm_build.uk_isa_statistics import (
     isa_stage_spec,
     synthetic_isa_statistics_payload,
@@ -138,6 +144,9 @@ def test_the_declaration_is_read_and_refuses_drift():
         ("draw_isa_subscription_amounts", "within_band", "tilted"),
         ("split_both_type_subscriptions", "anchor", "table_9_4_cash_residual"),
         ("grow_isa_subscriptions", "people", "table_9_4_amount_growth"),
+        ("grow_isa_subscriptions", "amounts", "table_9_4_amount_growth_capped"),
+        # Nobody aged 48 or 49 can hold a Lifetime ISA in 2024-25.
+        ("draw_lifetime_isa_payments", "maximum_age", 49),
         ("draw_lifetime_isa_payments", "outputs", ["lifetime_isa_bonus"]),
         ("grow_isa_subscriptions", "to_tax_year", 2025),
         ("classify_isa_facts_with_reviewed_fence", "calibration_permitted", True),
@@ -227,7 +236,7 @@ def test_the_imputation_keeps_every_invariant(spec, donor, statistics):
     ages = recipients["age"].to_numpy(float)
     assert not ((combined > 0) & (ages < 18)).any()
     assert not (
-        (lifetime > 0) & ((ages > 49) | ~recipients["holds_lifetime_isa"].to_numpy())
+        (lifetime > 0) & ((ages > 47) | ~recipients["holds_lifetime_isa"].to_numpy())
     ).any()
     split = result["both_type_split"]
     assert split["saturated"] is None
@@ -235,6 +244,12 @@ def test_the_imputation_keeps_every_invariant(spec, donor, statistics):
         split["stocks_and_shares_target_gbp"]
     )
     growth = result["growth"]
+    # 2024-25 meets Table 9.4's own amounts (María's ruling of 29 October 2026).
+    assert growth["cash_target_gbp"] == statistics.amount_subscribed[("cash", 2024)]
+    assert (
+        growth["stocks_and_shares_target_gbp"]
+        == (statistics.amount_subscribed[("stocks_and_shares", 2024)])
+    )
     assert growth["cash_achieved_gbp"] == pytest.approx(
         growth["cash_target_gbp"], rel=1e-9
     )
@@ -272,11 +287,107 @@ def test_band_amounts_sit_inside_their_bands_with_an_exact_top(statistics):
     assert not ((amounts > 18_000) & (amounts < 20_000) & (amounts >= 19_999.999)).any()
 
 
-def test_the_imputation_is_keyed_on_identity(spec, donor, statistics):
-    first = _run(spec, donor, statistics)
-    second = _run(spec, donor, statistics)
-    for left, right in zip(first[5:8], second[5:8], strict=True):
-        assert np.array_equal(left, right)
+class _UKEngine:
+    country = "uk"
+
+
+def _stage_frame(seed: int = 1, order: np.ndarray | None = None):
+    """The synthetic population as the 2024 frame the whole transform reads."""
+
+    household, person, recipients = _population(seed)
+    holds = recipients["holds_lifetime_isa"].to_numpy()
+    person = person.assign(
+        person_benunit_id=person["person_household_id"].to_numpy() * 10,
+        **dict.fromkeys(UK_CGT_TAXABLE_INCOME_PROXY_COMPONENTS, 0.0),
+        has_lifetime_isa=holds,
+        lifetime_isa_balance=np.where(
+            holds, recipients["lifetime_isa_balance"].to_numpy(), 0.0
+        ),
+    )
+    person["employment_income"] = recipients["total_income"].to_numpy()
+    if order is not None:
+        person = person.iloc[order].reset_index(drop=True)
+    weights = (
+        recipients.groupby("household_id")["weight"]
+        .first()
+        .reindex(household["household_id"])
+        .to_numpy()
+    )
+    return uk_national_frame(
+        person=person,
+        benunit=pd.DataFrame({"benunit_id": household["household_id"] * 10}),
+        household=household,
+        household_weights=weights,
+        weight_kind=WeightKind.DESIGN,
+        time_period="2024",
+    )
+
+
+def _transform(statistics):
+    household, person = synthetic_was_isa_tabs()
+    return stage.UKISASubscriptionsStageTransform(
+        stage=isa_stage_spec(),
+        engine=_UKEngine(),
+        donor_household=household,
+        donor_person=person,
+        statistics=statistics,
+    )
+
+
+def test_the_whole_stage_writes_its_columns_within_every_invariant(statistics):
+    from microcosm.build.uk_runtime.stage_health import uk_stage_health_gate
+
+    frame = _stage_frame()
+    transform = _transform(statistics)
+    result = transform(frame)
+    person = result.table("person")
+    for column in stage.UK_ISA_SUBSCRIPTIONS_OUTPUT_COLUMNS:
+        values = person[column].to_numpy(float)
+        assert np.isfinite(values).all() and (values >= 0).all(), column
+    assert (person[stage.CASH_SUBSCRIPTIONS] > 0).any()
+    assert (person[stage.LIFETIME_ISA_PAYMENTS] > 0).any()
+    receipt = transform.last_receipt
+    assert all(count == 0 for count in receipt["checks"]["violations"].values())
+    assert receipt["balance_split"]["max_abs_household_sum_error_gbp"] <= 0.01
+    # Households, weights and every earlier person column pass through.
+    pd.testing.assert_frame_equal(result.table("household"), frame.table("household"))
+    assert np.array_equal(
+        result.weights_for("household").values, frame.weights_for("household").values
+    )
+    pd.testing.assert_frame_equal(
+        person[list(frame.table("person").columns)], frame.table("person")
+    )
+    gate = uk_stage_health_gate(
+        evidence=receipt,
+        stage="isa_subscriptions",
+        check="isa_subscriptions",
+        parameters={
+            "maximum_relative_total_deviation": 1e-6,
+            "maximum_household_sum_error_gbp": 0.01,
+        },
+    )
+    assert gate.passed, gate.failures
+
+
+def test_reordering_the_rows_moves_no_draw(statistics):
+    """Every draw is keyed on identity, so row order moves none.
+
+    Adding or removing rows can move others' amounts (the rakes, band walks and
+    growth factors read the whole population), so only order is invariant.
+    """
+
+    columns = list(stage.UK_ISA_SUBSCRIPTIONS_OUTPUT_COLUMNS)
+    transform = _transform(statistics)
+    first = transform(_stage_frame()).table("person")
+    order = np.random.default_rng(7).permutation(len(first))
+    second = transform(_stage_frame(order=order)).table("person")
+    pd.testing.assert_frame_equal(
+        first.set_index("person_id")[columns].sort_index(),
+        second.set_index("person_id")[columns].sort_index(),
+        check_exact=False,
+        rtol=0,
+        atol=1e-6,
+    )
 
 
 def test_the_both_split_reports_saturation():
@@ -302,21 +413,63 @@ def test_the_both_split_reports_saturation():
     assert float((combined * (1 - share)).sum()) == pytest.approx(30_000.0)
 
 
-def test_amount_growth_respects_the_overall_limit():
-    cash = np.asarray([19_000.0, 5_000.0, 0.0, 10_000.0])
-    stocks = np.asarray([1_000.0, 0.0, 8_000.0, 5_000.0])
-    weights = np.ones(4)
-    scaled_cash, scaled_stocks, receipt = stage.scale_to_amount_growth(
+@pytest.mark.parametrize(
+    ("cash_target", "stocks_target"),
+    [
+        # Below the starting totals: the factor falls under one.
+        (30_000.0, 12_000.0),
+        # Above them: the rest rise, capped at the limit.
+        (52_000.0, 18_000.0),
+    ],
+)
+def test_amounts_scale_to_the_build_year_holding_the_limit(cash_target, stocks_target):
+    cash = np.asarray([19_000.0, 5_000.0, 0.0, 10_000.0, 8_000.0])
+    stocks = np.asarray([1_000.0, 0.0, 8_000.0, 5_000.0, 2_000.0])
+    weights = np.ones(5)
+    scaled_cash, scaled_stocks, receipt = stage.scale_to_build_year_amounts(
         cash,
         stocks,
         weights,
-        cash_target=40_000.0,
-        stocks_target=16_000.0,
+        cash_target=cash_target,
+        stocks_target=stocks_target,
         limit=20_000.0,
     )
+    # The subscriber at the limit stays exactly where they were.
+    assert (scaled_cash[0], scaled_stocks[0]) == (19_000.0, 1_000.0)
     assert ((scaled_cash + scaled_stocks) <= 20_000 + 1e-6).all()
-    assert scaled_cash.sum() == pytest.approx(40_000.0)
-    assert scaled_stocks.sum() == pytest.approx(16_000.0)
+    assert scaled_cash.sum() == pytest.approx(cash_target)
+    assert scaled_stocks.sum() == pytest.approx(stocks_target)
+    rising = bool(cash_target > cash.sum())
+    assert (receipt["cash_factor"] > 1) is rising
+
+
+def test_a_non_finite_amount_is_a_violation(spec):
+    recipients = pd.DataFrame({"weight": np.ones(3), "age": [30.0, 40.0, 50.0]})
+    cash = np.asarray([1_000.0, np.nan, 0.0])
+    zeros = np.zeros(3)
+    checks = stage._checks(
+        recipients,
+        cash,
+        zeros,
+        zeros,
+        np.asarray([stage.CASH_ONLY, stage.CASH_ONLY, ""], dtype=object),
+        np.full(3, 5_000.0),
+        zeros,
+        spec,
+    )
+    # NaN compares false, so only the finiteness count catches it.
+    assert checks["violations"]["non_finite_values"] == 1
+    assert checks["violations"]["over_overall_limit"] == 0
+
+
+def test_lifetime_isa_paying_ages_follow_the_2017_opening():
+    # Opened at 18 to 39 from 6 April 2017; payments stop at 50.
+    assert lifetime_isa_paying_ages(2017) == (18, 40)
+    assert lifetime_isa_paying_ages(2024) == (18, 47)
+    assert lifetime_isa_paying_ages(2026) == (18, 49)
+    assert lifetime_isa_paying_ages(2030) == (18, 49)
+    with pytest.raises(ValueError):
+        lifetime_isa_paying_ages(2016)
 
 
 def test_band_ids_parse_and_the_loader_refuses_gaps():
@@ -366,3 +519,29 @@ def test_the_committed_declaration_carries_the_tested_operations():
     for role in ("was_qrf_donor", "was_person_tab"):
         assert roles[role] == lisa[role]
     assert list(stages)[-1] == "isa_subscriptions"
+
+
+def test_no_calibration_target_reads_an_isa_fact():
+    """The reviewed fence keeps every vendored ISA fact measured only.
+
+    The stage draws subscribers and amounts to these cells, so a target compiled
+    from them would be circular (María's ruling of 28 October 2026). The fence is
+    declared on the stage; this holds the contract and the compiled references to
+    it, so a target that read one would fail here, not only in review.
+    """
+
+    from importlib.resources import files
+
+    prefixes = (
+        "hmrc.isa_statistics_2026",
+        "hmrc.lisa_statistics_2026",
+        "hmrc.cash_isa_limit_reduction_2026",
+    )
+    for resource in (
+        "uk_population_targets.json",
+        "target_references.json",
+        "local_target_references.json",
+    ):
+        text = files("microcosm.build.uk").joinpath(resource).read_text("utf-8")
+        for prefix in prefixes:
+            assert prefix not in text, (resource, prefix)

@@ -9,7 +9,9 @@ person inputs policyengine-uk reads: ``cash_isa_balance``,
 no household column, so every earlier reader of the ``was_wealth`` household
 totals and every means test is unchanged.
 
-The steps, every draw keyed on identity so adding or reordering rows moves none:
+The steps, every draw keyed on identity, so reordering rows moves none. Adding
+rows can move others' amounts: the rakes, the band walks and the growth factors
+read the whole population.
 
 1. **Per-person balances.** Each household's ``cash_isa`` and
    ``stocks_and_shares_isa`` (the ``was_wealth`` draws) are split across its adults
@@ -36,12 +38,13 @@ The steps, every draw keyed on identity so adding or reordering rows moves none:
    are kept and the cash excess over Table 9.4 is reported.
 5. **Growth to 2024-25.** Subscriber counts grow by Table 9.4's account growth by
    type, an upper bound on people because from 6 April 2024 one person may pay into
-   several ISAs of one type; amounts then scale by one factor per type, capped at
-   GBP 20,000, so totals grow by Table 9.4's amount growth.
-6. **Lifetime ISA payments (2024-25).** Holders aged 18 to 49 pay in amounts on
-   (0, GBP 4,000], tilted so the total equals Table 9.4's Lifetime ISA amount and
-   ranked like step 3, then trimmed so that cash, stocks and shares and Lifetime
-   ISA payments stay within GBP 20,000 per person.
+   several ISAs of one type. Amounts then scale by one factor per type to Table
+   9.4's 2024-25 amounts; subscribers already at GBP 20,000 stay there and the rest
+   are capped at it (María's ruling of 29 October 2026).
+6. **Lifetime ISA payments (2024-25).** Holders aged 18 to 47, the ages that can
+   hold one in 2024-25, pay in amounts on (0, GBP 4,000], tilted so the total
+   equals Table 9.4's Lifetime ISA amount and ranked like step 3, within each
+   person's room under GBP 20,000; a holder with no room pays nothing.
 
 Receipts carry weighted aggregates and rounded counts only (microcosm#1164).
 """
@@ -76,6 +79,7 @@ from microcosm.build.uk_runtime.hmrc_isa_statistics import (
     HMRCISAStatistics,
     check_isa_statistics_declaration,
     isa_band_bounds,
+    lifetime_isa_paying_ages,
     load_hmrc_isa_statistics,
 )
 from microcosm.build.uk_runtime.national_frame import (
@@ -339,17 +343,25 @@ class ISASubscriptionsSpec:
             raise ISASubscriptionsError("amounts are spread evenly inside each band.")
         if (
             grow.get("people") != "table_9_4_account_growth"
-            or grow.get("amounts") != "table_9_4_amount_growth_capped"
+            or grow.get("amounts") != "table_9_4_amount_level_limit_held"
         ):
             raise ISASubscriptionsError(
-                "growth is people by Table 9.4's account growth and amounts by its "
-                "amount growth, capped."
+                "growth is people by Table 9.4's account growth and amounts to its "
+                "build-year amounts, holding the overall limit."
             )
         years = (int(grow["from_tax_year"]), int(grow["to_tax_year"]))
         if years != (HMRC_ISA_INDIVIDUAL_TAX_YEAR, HMRC_ISA_BUILD_TAX_YEAR):
             raise ISASubscriptionsError(
                 f"growth runs from the individual tables' {HMRC_ISA_INDIVIDUAL_TAX_YEAR} "
                 f"to Table 9.4's {HMRC_ISA_BUILD_TAX_YEAR}, not {years}."
+            )
+        paying_ages = lifetime_isa_paying_ages(HMRC_ISA_BUILD_TAX_YEAR)
+        declared_ages = (int(lifetime["minimum_age"]), int(lifetime["maximum_age"]))
+        if declared_ages != paying_ages:
+            raise ISASubscriptionsError(
+                f"Lifetime ISA payments in {HMRC_ISA_BUILD_TAX_YEAR}-"
+                f"{(HMRC_ISA_BUILD_TAX_YEAR + 1) % 100:02d} come from holders aged "
+                f"{paying_ages[0]} to {paying_ages[1]}, not {declared_ages}."
             )
         weight = float(amounts["balance_rank_weight"])
         if not 0.0 <= weight <= 1.0:
@@ -897,11 +909,18 @@ def select_subscribers(
         frame[["income_band", "age_band", "sex", "region"]]
     )
     codes = index.get_indexer(cell_of)
+    person_ids = frame["person_id"].to_numpy()
+    # Each cell's rows in ascending position, as np.flatnonzero(codes == cell) would
+    # give them, from one stable sort instead of a scan per cell.
+    by_cell = np.argsort(codes, kind="stable")
+    cell_ids = np.arange(len(index))
+    starts = np.searchsorted(codes[by_cell], cell_ids, side="left")
+    ends = np.searchsorted(codes[by_cell], cell_ids, side="right")
     for cell in range(len(index)):
         if target[cell] <= 0:
             continue
-        rows = np.flatnonzero(codes == cell)
-        ranked = rows[np.lexsort((frame["person_id"].to_numpy()[rows], uniforms[rows]))]
+        rows = by_cell[starts[cell] : ends[cell]]
+        ranked = rows[np.lexsort((person_ids[rows], uniforms[rows]))]
         members: dict[int, list[np.ndarray]] = {}
         assigned, _ = _walk_bands(
             ranked=ranked,
@@ -1121,7 +1140,7 @@ def _capped(
     return cash, stocks
 
 
-def scale_to_amount_growth(
+def scale_to_build_year_amounts(
     cash: np.ndarray,
     stocks: np.ndarray,
     weights: np.ndarray,
@@ -1130,11 +1149,28 @@ def scale_to_amount_growth(
     stocks_target: float,
     limit: float,
 ) -> tuple[np.ndarray, np.ndarray, dict[str, Any]]:
-    """One factor per type, capped at the overall limit, solved to both totals."""
+    """One factor per type, solved to both totals, holding the overall limit.
 
-    def totals(f_cash: float, f_stocks: float) -> tuple[float, float]:
-        c, s = _capped(cash * f_cash, stocks * f_stocks, limit)
-        return float((c * weights).sum()), float((s * weights).sum())
+    Subscribers already paying the overall limit keep their amounts, so a factor
+    below one moves nobody off it (María's ruling of 29 October 2026). Everyone
+    else scales by the type's factor and is capped at the limit, pro rata across
+    the two types.
+    """
+
+    at_limit = (cash + stocks) >= limit - 1e-6
+
+    def scaled(cash_factor: float, stocks_factor: float) -> tuple[np.ndarray, ...]:
+        moved_cash, moved_stocks = _capped(
+            cash * cash_factor, stocks * stocks_factor, limit
+        )
+        return (
+            np.where(at_limit, cash, moved_cash),
+            np.where(at_limit, stocks, moved_stocks),
+        )
+
+    def totals(cash_factor: float, stocks_factor: float) -> tuple[float, float]:
+        new_cash, new_stocks = scaled(cash_factor, stocks_factor)
+        return float((new_cash * weights).sum()), float((new_stocks * weights).sum())
 
     def solve(target: float, other: float, which: int) -> float:
         low, high = 0.0, 50.0
@@ -1147,25 +1183,27 @@ def scale_to_amount_growth(
                 high = mid
         return (low + high) / 2.0
 
-    f_cash, f_stocks = 1.0, 1.0
+    cash_factor, stocks_factor = 1.0, 1.0
     for _ in range(50):
-        new_cash = solve(cash_target, f_stocks, 0)
-        new_stocks = solve(stocks_target, new_cash, 1)
+        new_cash_factor = solve(cash_target, stocks_factor, 0)
+        new_stocks_factor = solve(stocks_target, new_cash_factor, 1)
         converged = (
-            abs(new_cash - f_cash) < 1e-10 and abs(new_stocks - f_stocks) < 1e-10
+            abs(new_cash_factor - cash_factor) < 1e-10
+            and abs(new_stocks_factor - stocks_factor) < 1e-10
         )
-        f_cash, f_stocks = new_cash, new_stocks
+        cash_factor, stocks_factor = new_cash_factor, new_stocks_factor
         if converged:
             break
-    scaled_cash, scaled_stocks = _capped(cash * f_cash, stocks * f_stocks, limit)
-    achieved = totals(f_cash, f_stocks)
+    scaled_cash, scaled_stocks = scaled(cash_factor, stocks_factor)
+    achieved = totals(cash_factor, stocks_factor)
     receipt = {
-        "cash_factor": f_cash,
-        "stocks_and_shares_factor": f_stocks,
+        "cash_factor": cash_factor,
+        "stocks_and_shares_factor": stocks_factor,
         "cash_target_gbp": cash_target,
         "cash_achieved_gbp": achieved[0],
         "stocks_and_shares_target_gbp": stocks_target,
         "stocks_and_shares_achieved_gbp": achieved[1],
+        "held_at_overall_limit_records": rounded_count(int(at_limit.sum())),
         "at_overall_limit_records": rounded_count(
             int(((scaled_cash + scaled_stocks) >= limit - 1e-6).sum())
         ),
@@ -1199,18 +1237,20 @@ def draw_lifetime_isa_payments(
     if rows.size == 0:
         receipt["achieved_gbp"] = 0.0
         return payments, receipt
-    w = weights[rows]
+    payer_weights = weights[rows]
     person_ids = recipients["person_id"].to_numpy()[rows]
     uniforms = stable_identity_uniforms(
         person_ids, seed=spec.lifetime_seed, salt=f"{spec.lifetime_salt}:rank"
     )
     key = (
         spec.balance_rank_weight
-        * _weighted_rank(recipients["lifetime_isa_balance"].to_numpy(float)[rows], w)
+        * _weighted_rank(
+            recipients["lifetime_isa_balance"].to_numpy(float)[rows], payer_weights
+        )
         + (1.0 - spec.balance_rank_weight) * uniforms
     )
     order = np.lexsort((person_ids, key))
-    cumulative = np.cumsum(w[order])
+    cumulative = np.cumsum(payer_weights[order])
     tops = cumulative / cumulative[-1]
     bottoms = np.concatenate(([0.0], tops[:-1]))
     quantiles = np.empty(rows.size)
@@ -1224,12 +1264,12 @@ def draw_lifetime_isa_payments(
         )
 
     low, high = limit * 1e-6, limit * (1 - 1e-6)
-    if float((drawn(high) * w).sum()) <= target_gbp:
+    if float((drawn(high) * payer_weights).sum()) <= target_gbp:
         mean, receipt["saturated"] = high, "target_above_reach"
     else:
         for _ in range(100):
             mid = (low + high) / 2.0
-            if float((drawn(mid) * w).sum()) < target_gbp:
+            if float((drawn(mid) * payer_weights).sum()) < target_gbp:
                 low = mid
             else:
                 high = mid
@@ -1239,7 +1279,7 @@ def draw_lifetime_isa_payments(
     receipt.update(
         {
             "uncapped_mean_gbp": mean,
-            "achieved_gbp": float((payments[rows] * w).sum()),
+            "achieved_gbp": float((payments[rows] * payer_weights).sum()),
             "trimmed_to_overall_limit_records": rounded_count(
                 int(
                     (
@@ -1406,20 +1446,19 @@ def impute_isa_subscriptions(
 
     base_cash = float((cash[base] * weights[base]).sum())
     base_stocks = float((stocks[base] * weights[base]).sum())
-    amount_growth = {
-        "cash": statistics.amount_subscribed[("cash", build_year)]
-        / statistics.amount_subscribed[("cash", base_year)],
-        "stocks_and_shares": statistics.amount_subscribed[
-            ("stocks_and_shares", build_year)
-        ]
-        / statistics.amount_subscribed[("stocks_and_shares", base_year)],
-    }
-    cash, stocks, scale_receipt = scale_to_amount_growth(
+    # Table 9.4's build-year amounts are the 2024-25 targets, not its growth on
+    # the stage's own 2023-24 totals. Table 9.7's cash bands sit about a third
+    # above Table 9.4, and growing that excess by Table 9.4's ratio, with the
+    # limit holding the top, scaled everyone below the limit by about 2.05 on
+    # populations built from HMRC's own tables (María's ruling of 29 October
+    # 2026, review of microcosm#1421). Stocks and shares meet Table 9.4 in
+    # 2023-24 through the both class's residual, so the two rules agree for them.
+    cash, stocks, scale_receipt = scale_to_build_year_amounts(
         cash,
         stocks,
         weights,
-        cash_target=base_cash * amount_growth["cash"],
-        stocks_target=base_stocks * amount_growth["stocks_and_shares"],
+        cash_target=statistics.amount_subscribed[("cash", build_year)],
+        stocks_target=statistics.amount_subscribed[("stocks_and_shares", build_year)],
         limit=spec.overall_limit_gbp,
     )
     headroom = spec.overall_limit_gbp - cash - stocks
@@ -1450,7 +1489,7 @@ def impute_isa_subscriptions(
             "to_tax_year": build_year,
             "people": "table_9_4_account_growth (upper bound on people)",
             "account_growth": growth,
-            "amount_growth": amount_growth,
+            "amounts": "table_9_4_amount_level_limit_held",
             **scale_receipt,
         },
         "lifetime_isa": lifetime_receipt,
@@ -1482,7 +1521,12 @@ def _checks(
     ages = recipients["age"].to_numpy(float)
     under_65_cash = (cash > 0) & (ages < 65)
     cash_only_under_65 = (class_of == CASH_ONLY) & (ages < 65)
+    # NaN compares false, so every comparison below would pass it: count it first.
+    finite = np.ones(len(cash), dtype=bool)
+    for values in (cash, stocks, lifetime, cash_balance, stocks_balance):
+        finite &= np.isfinite(values)
     violations = {
+        "non_finite_values": int((~finite).sum()),
         "over_overall_limit": int(
             (cash + stocks + lifetime > spec.overall_limit_gbp + 1e-6).sum()
         ),
@@ -1510,7 +1554,7 @@ def _checks(
             ),
             "published_2022_23_percent": 22,
         },
-        "subscribers_below_their_balance_records": rounded_count(
+        "subscribers_above_their_balance_records": rounded_count(
             int(
                 (
                     ((cash > cash_balance) & (cash > 0))

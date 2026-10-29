@@ -70,7 +70,7 @@ LISA_ANCHOR_OPERATION: dict[str, Any] = {
     "target": "table_9_4_lifetime_isa_accounts_subscribed",
     "tax_year": 2024,
     "ages": {"minimum": 18, "maximum": 47},
-    "counted_ages": {"minimum": 18, "maximum": 49},
+    "counted_ages": {"minimum": 18, "maximum": 47},
 }
 
 ISA_STAGE_OPERATIONS: tuple[dict[str, Any], ...] = (
@@ -127,7 +127,7 @@ ISA_STAGE_OPERATIONS: tuple[dict[str, Any], ...] = (
     {
         "kind": "grow_isa_subscriptions",
         "people": "table_9_4_account_growth",
-        "amounts": "table_9_4_amount_growth_capped",
+        "amounts": "table_9_4_amount_level_limit_held",
         "from_tax_year": 2023,
         "to_tax_year": 2024,
         "overall_limit_gbp": 20000.0,
@@ -138,7 +138,7 @@ ISA_STAGE_OPERATIONS: tuple[dict[str, Any], ...] = (
         "seed": 0,
         "salt": "isa_subscriptions:lifetime_isa_payments",
         "minimum_age": 18,
-        "maximum_age": 49,
+        "maximum_age": 47,
         "annual_limit_gbp": 4000.0,
     },
     {

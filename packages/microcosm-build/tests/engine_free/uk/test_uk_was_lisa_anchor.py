@@ -55,7 +55,7 @@ def _ownership(n: int = 4000, seed: int = 2):
 
 def _counted(recipient, holds, weights, survives) -> float:
     ages = recipient["age"].to_numpy()
-    counted = (ages >= 18) & (ages <= 49)
+    counted = (ages >= 18) & (ages <= 47)
     return float(weights[holds & survives & counted].sum())
 
 
@@ -93,7 +93,9 @@ def test_the_anchor_reaches_the_target_without_removing_holders():
 def test_holders_outside_the_counted_ages_do_not_count():
     recipient, ownership, weights, survives = _ownership()
     ages = recipient["age"].to_numpy()
-    older = ownership.holds & survives & (ages > 49)
+    # Nobody older than 47 can hold one in 2024-25 (opened at 18 to 39 since
+    # April 2017), so the base model's older holders are not HMRC's payers.
+    older = ownership.holds & survives & (ages > 47)
     assert older.any()
     anchored = _anchor(0.0, recipient, ownership, weights, survives)
     assert anchored.receipt["anchor"]["holders_before"] == pytest.approx(
@@ -128,6 +130,8 @@ def test_an_unreachable_target_is_named():
         {"target": "holders_from_was"},
         {"tax_year": 2023},
         {"counted_ages": {"minimum": 18, "maximum": 45}},
+        # 48 and 49 may pay in by law, but nobody that old holds one in 2024-25.
+        {"counted_ages": {"minimum": 18, "maximum": 49}},
         {"ages": {"minimum": 40, "maximum": 30}},
     ],
 )

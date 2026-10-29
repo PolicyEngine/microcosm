@@ -59,11 +59,12 @@ def _frame(layout: str = "additive", time_period: str = "2025"):
             "person_benunit_id": [1, 2],
             "person_household_id": [1, 2],
             "age": [40.0, 40.0],
-            "employment_income": [30_000.0, 60_000.0],
+            # The second earns little enough for Universal Credit.
+            "employment_income": [30_000.0, 8_000.0],
             **_LAYOUTS[layout],
         }
     )
-    benunit = pd.DataFrame({"benunit_id": [1, 2], "would_claim_uc": [False, False]})
+    benunit = pd.DataFrame({"benunit_id": [1, 2], "would_claim_uc": [True, True]})
     household = pd.DataFrame(
         {
             "household_id": [1, 2],
@@ -90,6 +91,8 @@ _BASE_YEAR_MEASURES = (
     "capital_income",
     "taxable_savings_interest_income",
     "income_tax",
+    "universal_credit",
+    "household_net_income",
 )
 
 

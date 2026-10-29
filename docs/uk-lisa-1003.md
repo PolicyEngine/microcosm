@@ -162,14 +162,22 @@ wealth only.
   ([Individual Savings Account statistics, September 2026](https://www.gov.uk/government/statistics/annual-savings-statistics-2026),
   Table 9.4; receipts, Part F).
 - Since microcosm#1415 the stage anchors ownership to those payers. The
-  ownership logit shifts up on ages 18 to 47, the ages that can hold a LISA in
-  2024-25, until the weighted holders aged 18 to 49 (who may pay in) that
-  survive the financial-wealth cap equal Table 9.4's 2024-25 accounts
-  subscribed to. Every payer holds a LISA and pays into one a year, so that is
-  the fewest holders consistent with HMRC. The same keyed uniforms decide
+  ownership logit shifts up on ages 18 to 47, the ages that can hold and pay
+  into a LISA in 2024-25 (opened at 18 to 39 from April 2017), until the
+  weighted holders at those ages that survive the financial-wealth cap equal
+  Table 9.4's 2024-25 accounts subscribed to. Every payer holds a LISA and pays
+  into one a year, so that is the fewest holders consistent with HMRC. Older
+  holders the model draws are not counted. The same keyed uniforms decide
   ownership, so the anchor only adds holders and keeps every drawn one; a
-  target the largest shift cannot reach is named in the receipt
-  (`target_above_reach`), and `uk_stage_was_lisa_anchor` checks the rest.
+  target the largest shift cannot reach, and unshifted holders above it, are
+  named in the receipt, and `uk_stage_was_lisa_anchor` checks the rest.
+- Where the cap binds, an added holder scales the household's balances down
+  pro rata, an existing holder's included.
+- Three later stages read the whole frame (`uc_reporter_redraw`, `uc_take_up`
+  and `pension_credit_take_up`), and the means tests count a LISA as capital,
+  so the added holders can move their draws. The pair build counts the benefit
+  units whose entitlement changes without them (María's ruling of 29 October
+  2026).
 - Northern Ireland adults are predicted from the Great Britain model.
 - Conditional ownership odds from 2020-22 are applied to the 2024-25 spine. A
   holder in 2024-25 can be up to about 47; the donor, interviewed earlier,
@@ -219,8 +227,9 @@ withdrawals, so it does not identify the payments of a particular year, and
 holding a LISA does not show whether the person paid in that year. This stage
 therefore creates no contribution column and derives no contribution or bonus
 from a balance. Since microcosm#1415 the `isa_subscriptions` stage draws
-`lifetime_isa_payments` for every holder aged 18 to 49 to Table 9.4's 2024-25
-Lifetime ISA amount; a holder's balance only ranks who pays more.
+`lifetime_isa_payments` for every holder aged 18 to 47 with room under the
+overall limit, to Table 9.4's 2024-25 Lifetime ISA amount; a holder's balance
+only ranks who pays more.
 
 References for a future contribution extension, carried from the issue as
 references only (not requests to obtain data or to contact providers or HMRC):

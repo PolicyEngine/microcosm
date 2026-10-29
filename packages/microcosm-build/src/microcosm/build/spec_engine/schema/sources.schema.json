@@ -13479,7 +13479,7 @@
       },
       "amounts": {
        "enum": [
-        "table_9_4_amount_growth_capped"
+        "table_9_4_amount_level_limit_held"
        ]
       },
       "from_tax_year": {

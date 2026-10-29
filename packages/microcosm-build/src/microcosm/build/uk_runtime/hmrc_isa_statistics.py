@@ -60,6 +60,7 @@ __all__ = [
     "HMRCISAStatisticsError",
     "check_isa_statistics_declaration",
     "isa_band_bounds",
+    "lifetime_isa_paying_ages",
     "load_hmrc_isa_statistics",
 ]
 
@@ -78,6 +79,27 @@ HMRC_ISA_ACCOUNT_TAX_YEARS: tuple[int, ...] = (2023, 2024)
 HMRC_ISA_BUILD_TAX_YEAR = HMRC_ISA_ACCOUNT_TAX_YEARS[-1]
 #: The artifact role under which a stage declares the vendored resource.
 HMRC_ISA_STATISTICS_ARTIFACT_ROLE = "isa_statistics_facts"
+
+#: The Lifetime ISA opened on 6 April 2017 to people aged 18 to 39 and takes
+#: payments until the holder turns 50.
+LIFETIME_ISA_FIRST_TAX_YEAR = 2017
+LIFETIME_ISA_OPENING_AGES: tuple[int, int] = (18, 39)
+LIFETIME_ISA_LAST_PAYING_AGE = 49
+
+
+def lifetime_isa_paying_ages(tax_year: int) -> tuple[int, int]:
+    """The ages at which someone can hold and pay into a Lifetime ISA in a tax year.
+
+    An account opened at 39 on 6 April 2017 belongs to someone who turned 40 within
+    the year, so in ``tax_year`` its holder is at most 40 + (``tax_year`` - 2017),
+    47 in 2024-25, until payments stop at 50 (review of microcosm#1421).
+    """
+
+    if tax_year < LIFETIME_ISA_FIRST_TAX_YEAR:
+        raise ValueError(f"no Lifetime ISA existed in tax year {tax_year}.")
+    oldest = LIFETIME_ISA_OPENING_AGES[1] + 1 + tax_year - LIFETIME_ISA_FIRST_TAX_YEAR
+    return LIFETIME_ISA_OPENING_AGES[0], min(oldest, LIFETIME_ISA_LAST_PAYING_AGE)
+
 
 _PREFIX = "hmrc.isa_statistics_2026."
 _NOTE_RECORD_SET = "hmrc.cash_isa_limit_reduction_2026.cash_subscribers_under_65.ty2022"
