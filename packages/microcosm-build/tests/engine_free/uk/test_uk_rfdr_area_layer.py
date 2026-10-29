@@ -198,19 +198,51 @@ def test_a_malformed_great_britain_code_is_refused(bad) -> None:
         )
 
 
-def test_great_britain_households_none_of_which_is_flagged_are_refused() -> None:
+def test_a_system_whose_households_none_is_flagged_is_refused() -> None:
     layer = load_rfdr_area_layer(_layer())
-    with pytest.raises(ValueError, match="none of the 2 Great Britain households"):
+    with pytest.raises(
+        ValueError, match="none of the 1 uk_ew_output_area_2021 households"
+    ):
         area_flags(
             layer=layer,
             area_system=["uk_ew_output_area_2021", "uk_scotland_output_area_2022"],
             area_code=["E00000003", "S00135401"],
+        )
+    # Anthony's re-review of microcosm#1420: each system on its own, so a
+    # Scottish support on other codes refuses beside one flagged English
+    # household instead of losing almost all of the relief.
+    with pytest.raises(
+        ValueError, match="none of the 2 uk_scotland_output_area_2022 households"
+    ):
+        area_flags(
+            layer=layer,
+            area_system=["uk_ew_output_area_2021"]
+            + ["uk_scotland_output_area_2022"] * 2,
+            area_code=["E00000002", "S00135401", "S00135402"],
         )
     # Northern Ireland alone has no area in the scheme, so nothing is flagged.
     flags, counts = area_flags(
         layer=layer, area_system=["uk_ni_data_zone_2021"], area_code=["95AA01S1"]
     )
     assert not flags.any() and counts["flagged"] == 0
+
+
+def test_the_committed_layer_was_built_from_the_registered_nspl_zip() -> None:
+    """Anthony's review of microcosm#1420, 7b: the committed layer comes from
+    the NSPL zip Chronicle registers, not from a reduction of it, and its
+    provenance carries the layer's own digest."""
+
+    import hashlib
+    from importlib.resources import files
+
+    uk = files("microcosm.build.uk")
+    provenance = json.loads(
+        uk.joinpath("rfdr_area_layer.provenance.json").read_text(encoding="utf-8")
+    )
+    registered = provenance["nspl_registration"]["zip_sha256"]
+    assert provenance["postcode_source"] == {"kind": "nspl_zip", "sha256": registered}
+    layer = uk.joinpath("rfdr_area_layer.json").read_bytes()
+    assert provenance["layer_sha256"] == hashlib.sha256(layer).hexdigest()
 
 
 def test_the_committed_layer_flags_the_scheme_s_output_areas() -> None:

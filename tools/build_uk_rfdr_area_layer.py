@@ -22,7 +22,9 @@ the definition and the counts.
 ``--postcode-oa-parquet`` reads the postcode and output-area columns the high
 value home stock's stage A already reduced from the same registered zip
 (``tools/build_uk_high_value_home_stock.py``), when the zip is not at hand;
-the provenance names which input the layer was built from.
+the provenance names which input the layer was built from. The committed layer
+is built from the registered zip, and ``test_uk_rfdr_area_layer.py`` holds it
+to that (Anthony's review of microcosm#1420).
 """
 
 from __future__ import annotations

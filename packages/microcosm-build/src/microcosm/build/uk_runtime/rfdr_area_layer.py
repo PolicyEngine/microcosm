@@ -248,9 +248,9 @@ def area_flags(
     a Northern Ireland household never is. Any other support system refuses,
     since the layer cannot say where it is. A Great Britain code that is not a
     well-formed output-area code of its system refuses too, and so does a
-    frame with Great Britain households none of which is flagged: either
-    would let a change of code format or vintage publish every household
-    unflagged (Anthony's review of microcosm#1420).
+    system (England and Wales, or Scotland) with households none of which is
+    flagged: either would let a change of code format or vintage publish its
+    households unflagged (Anthony's reviews of microcosm#1420).
     """
 
     systems = np.asarray(list(area_system), dtype=object)
@@ -276,13 +276,12 @@ def area_flags(
                 f"well-formed output-area codes (first: {malformed[0]!r})."
             )
         flags[rows] = np.asarray([code in flagged for code in codes[rows]], dtype=bool)
+        if rows.any() and not flags[rows].any():
+            raise ValueError(
+                f"RFDR flags none of the {int(rows.sum())} {system} households: the "
+                "layer's output areas and the assignment's cannot be the same codes."
+            )
         counts[system] = int(rows.sum())
     counts[NI_SYSTEM] = int((systems == NI_SYSTEM).sum())
     counts["flagged"] = int(flags.sum())
-    great_britain = sum(counts[system] for system in SYSTEMS)
-    if great_britain and not counts["flagged"]:
-        raise ValueError(
-            f"RFDR flags none of the {great_britain} Great Britain households: the "
-            "layer's output areas and the assignment's cannot be the same codes."
-        )
     return flags, counts
