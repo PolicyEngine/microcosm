@@ -303,11 +303,14 @@ def _energy_rake_gate(
     ``zero_kwh_cells_at_need_mean`` (microcosm#1240).
 
     The recomputation shares the stage's inputs, so it cannot see a wrong
-    input row (another ONS vintage, meter year or QEP payment method). For a
-    fuel levelled to ONS spending, the level over Energy Trends' volume must
-    therefore sit inside ``ons_level_to_energy_trends_ratio`` (Anthony's
-    review of microcosm#1420): 0.926 for electricity and 0.937 for gas on the
-    September 2026 vintage, so an input error of a tenth either way fails.
+    input row (Anthony's review of microcosm#1420). For a fuel levelled to
+    ONS spending (electricity; gas keeps Energy Trends while ONS 04.5.2 counts
+    bottled gas), the level over Energy Trends' volume must therefore sit
+    inside ``ons_level_to_energy_trends_ratio``: 0.926 on the September 2026
+    vintage, so a wrong ONS class or vintage, or a unit error, that moves it
+    by more than about 8% fails. Every QEP payment method's level falls
+    inside the bounds (0.882 to 0.970), so the stage's declared
+    ``payment_method`` must equal the gate's ``qep_payment_method`` instead.
 
     This is where NEED, DESNZ and the connection share are checked; the
     calibrated frame is held to the bound ONS 04.5.1 and 04.5.2 spend rows
@@ -364,6 +367,14 @@ def _energy_rake_gate(
         raise ValueError(
             f"{stage}: the gate's margins_period_value {margins_period} differs from "
             f"the stage's declared {declared.get('margins_period_value')!r}."
+        )
+    payment_method = parameters.get("qep_payment_method")
+    if not isinstance(payment_method, str) or not payment_method:
+        raise ValueError(f"{stage}: energy_rake declares no qep_payment_method.")
+    if str(declared.get("payment_method")) != payment_method:
+        raise ValueError(
+            f"{stage}: the gate's qep_payment_method {payment_method!r} differs from "
+            f"the stage's declared {declared.get('payment_method')!r}."
         )
     failures: list[str] = []
     if receipt.get("unit") != "kwh":
@@ -429,7 +440,7 @@ def _energy_rake_gate(
             failures.append(
                 f"{stage}: {fuel}'s ONS-spend level is {ratio:.4f} of Energy Trends', "
                 f"outside [{ratio_bounds['minimum']}, {ratio_bounds['maximum']}]: check "
-                "the ONS vintage, the meter year and the QEP payment method."
+                "the ONS class and vintage and the units."
             )
     if not isinstance(factors_block, Mapping) or not isinstance(level_block, Mapping):
         failures.append(f"{stage}: energy_rake receipt carries no level block.")

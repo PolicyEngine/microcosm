@@ -3733,7 +3733,6 @@ stages:
     spend_level_resource: ons_household_expenditure_facts.json
     spend_level_fuels:
     - electricity
-    - gas
     household_kwh_ceiling:
       electricity: 50000
       gas: 73200

@@ -394,6 +394,15 @@
       "expires_on": "2027-01-08"
     },
     {
+      "name": "ons.household_gas_expenditure",
+      "reason": "Held out while ONS Consumer Trends 04.5.2 counts bottled gas (COICOP 04.5.2.2, liquefied hydrocarbons), which the frame holds in liquid_fuel_consumption (LCFS c45222), not in this mains-gas column. ONS's CPI weights put the sub-class at 2.2% (2024) to 3.2% (2026) of the class, so binding the whole class on mains gas would count bottled gas twice (Anthony's re-review of microcosm#1420, finding 2). The lcfs_consumption stage levels gas to DESNZ Energy Trends' domestic volume over calendar 2024 instead, and the local DESNZ gas rows bind at that level. microcosm#1095 tracks netting bottled gas out of the class once Chronicle carries the split, which rebinds this row.",
+      "tracking": "microcosm#1095",
+      "approved_by": "juaristi22",
+      "adjudication": "María's ruling of 2026-10-29 on microcosm#1420: hold the 04.5.2 target out and level gas on DESNZ until Chronicle carries bottled gas's share of the class.",
+      "approved_on": "2026-10-29",
+      "expires_on": "2027-01-29"
+    },
+    {
       "name": "obr.ni_employer",
       "reason": "Engine and period basis for roughly half of the gap; the rest is under investigation. policyengine-uk's ni_employer is the secondary Class 1 charge on each earner's pay above the secondary threshold, gross of the Employment Allowance, which employers offset against their secondary Class 1 liability through payroll, so OBR's receipts are net of it: HMRC's tax relief statistics (January 2026) put its cost at GBP 7.4bn for 2025-26 (a forecast), after the allowance rose to GBP 10,500 per employer and the GBP 100,000 eligibility restriction was removed from 6 April 2025. The row also binds the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26), while the engine's 2025 period applies the FY2025-26 rules (the 15 percent rate and the GBP 5,000 secondary threshold) to the whole window, so its first quarter is overstated. On the K=15 local candidates measured for microcosm#1301 the row read about 20 percent above its target: the allowance accounts for about a quarter of that excess, the window for about a fifth and the under-21 zero rate, which the engine also omits, for under a tenth, so the stated parts explain roughly half of it. The rest sits in the pay level and may be a conflict between the bound pay targets and OBR's NICs base rather than a weighting defect. Bound, the row pulls pay down against those pay targets to close a gap at least half of which the weights did not open. Held out of the objective as a diagnostic and never fitted; rebind when a locked policyengine-uk nets the allowance out of ni_employer and the window takes each fiscal year's own rules.",
       "tracking": "policyengine-uk#2459",

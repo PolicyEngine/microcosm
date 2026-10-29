@@ -2153,8 +2153,10 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 "convergence_window_sweeps",
                 "maximum_residual_change_over_window",
                 # #1418: the bounds on an ONS-spend level over Energy Trends',
-                # which catch a wrong input row the recomputation shares.
+                # which catch a wrong input row the recomputation shares, and
+                # the QEP payment method the stage must price at.
                 "ons_level_to_energy_trends_ratio",
+                "qep_payment_method",
                 # #930 bus_travel_facts check: NTS0313 incidence and NTS0303
                 # trip rates recomputed from the vendored rows.
                 "trip_rates_period_value",

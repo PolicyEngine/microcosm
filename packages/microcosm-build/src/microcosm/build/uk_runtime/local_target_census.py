@@ -1129,8 +1129,8 @@ _BINDING_FENCES: tuple[dict[str, Any], ...] = (
             "stage's level); DESNZ's Northern Ireland sub-national "
             "electricity and gas statistics, with the "
             "Northern Ireland sentence re-worded in by María on 2026-10-17 "
-            "(microcosm#1306 review); electricity and gas levelled to ONS 04.5.1 "
-            "and 04.5.2 by María's rulings of 2026-10-28 (microcosm#1418)."
+            "(microcosm#1306 review); electricity levelled to ONS 04.5.1 by "
+            "María's ruling of 2026-10-28 (microcosm#1418)."
         ),
     },
     {
