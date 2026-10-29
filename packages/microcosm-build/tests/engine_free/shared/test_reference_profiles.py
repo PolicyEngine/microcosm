@@ -9,7 +9,7 @@ from datetime import date
 import pytest
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
-from microcosm_build.reference_factors import factor_context_fixture
+from test_support.microcosm_build.reference_factors import factor_context_fixture
 
 from microcosm.build.reference_profiles import (
     REFERENCE_DOCUMENT_KEYS,

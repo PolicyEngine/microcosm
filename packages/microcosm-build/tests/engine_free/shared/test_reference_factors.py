@@ -8,7 +8,7 @@ from fractions import Fraction
 import pytest
 from hypothesis import example, given, settings
 from hypothesis import strategies as st
-from microcosm_build.reference_factors import factor_context_fixture, factor_fixture
+from test_support.microcosm_build.reference_factors import factor_context_fixture, factor_fixture
 
 from microcosm.build.ledger_artifact import LexicalFloat
 from microcosm.build.reference_factors import (
