@@ -120,6 +120,15 @@ at `<candidate-dir>/.graph-store` unless `--graph-store` says otherwise, and
 `--input-h5` must be a spine whose gate manifest matches the branch's gate
 declarations.
 
+**Every row's figures ship (María's ruling of 2026-10-26).** The build no
+longer withholds the model figures of rows resting on fewer than ten source
+households, nor of the rows that would give them back by difference
+(microcosm#1262, #1383). Every row is judged by the fit gates and carries its
+figures in the diagnostics, the targets table and the gate reports, so a
+release goes only to the licensed private repository. The graph's evidence
+summaries carry them too, which is why a build publishes to the public Orrery
+only on `--publish-orrery`.
+
 ### Sized release (microcosm#1124)
 
 A release candidate may add `--dataset-households 150000` to ship the exact-k
@@ -253,10 +262,11 @@ tool cannot template it checks in three ways, and only these three:
   comment cited as "issue comment <id>", a date far from today (`2045-12-31`)
   and any other number (`K=15`, `150,000 households`, a plan code such as
   `c9`, a bare year), before the build is read.
-- The drafted entries then go through the release contract's disclosure walk,
-  and a finding refuses the draft, though on a release directory the walk only
-  warns. On text, the walk catches only an area's support worded with its
-  measured value, such as `rows 7 < 50`.
+- The drafted entries then go through the contract's disclosure walk, and a
+  finding refuses the draft: the entries go into a public pull request, though
+  a release directory itself ships per-area support figures since María's
+  ruling of 2026-10-26. On text, the walk catches only an area's support
+  worded with its measured value, such as `rows 7 < 50`.
 
 None of these checks catches a figure written in words, so scan the outputs as
 described under "The sign-off PR" below. The degenerate register is never
@@ -399,9 +409,7 @@ Verification fails unless all of these hold:
   local line's input-mass entries included), has not passed.
 
 It warns when build 2 did not reuse build 1's solve, when its per-row errors
-differ, when the disclosure walk a release directory gets finds a per-area
-support figure in the signed local report, and when the assembly deadline is
-two days away or less. The entries
+differ, and when the assembly deadline is two days away or less. The entries
 expire: retire or renew them before `expires_on`, because
 engine-free tests evaluate the committed registers at today's date.
 
@@ -422,15 +430,10 @@ exclusions and their windows, the holdout (recorded as not requested, or, when
 `--rotated-holdout` asked for it, measured with five folds and a finite mean,
 and in agreement with the request), the Logbook row, the artifact digest.
 
-It also runs the release's disclosure walk over the files assembly ships byte
-for byte: the candidate manifest, the original diagnostics, the signed local
-report and, when the run directory holds them, `score_vs_incumbent.json` and
-`incumbent_surface_evaluation.json`. Add `--incumbent-manifest
-<incumbent-dir>/incumbent_local_surface_manifest.json` to walk the extraction
-manifest you will attach too. Each file is read as the contract reads it, so
-one carrying NaN, or nested too deep to walk, is reported as a file the walk
-cannot rule out. A finding prints a `WARN` line naming the file and the paths,
-never a value, and never fails the pre-flight.
+`--incumbent-manifest <incumbent-dir>/incumbent_local_surface_manifest.json`
+checks that the extraction manifest you will attach exists. The pre-flight no
+longer walks the shipped files for per-area support figures: a release ships
+them since María's ruling of 2026-10-26 (microcosm#1301).
 
 ## Optional diagnostics (microcosm#1301)
 
@@ -538,20 +541,11 @@ directory with
 `releases/microcosm-uk-2024-25-dense/`. Re-assembling requires removing the
 previous directory first. The JSON summary prints the publication command.
 
-The validator's disclosure walk warns rather than refuses (microcosm#1301). A
-shipped JSON document carrying an area's rows, ESS or distinct sources, or a
-minimum, maximum or median of one, prints a `warning:` line naming the file and
-the first paths to the figures, never their values, and the summary lists it
-under `warnings`; so does a shipped JSON document the walk cannot read. Weigh
-each warning before publishing. A figure in the signed `uk_local_gates.json`
-cannot be edited out without failing its signature, nor one in
-`source_calibration_diagnostics.json` without failing the candidate manifest's
-hash of it; a figure in a file the assembler writes is fixed at its source and
-the directory re-assembled. The pre-flight's `--candidate-dir` runs the same
-walk over the files the assembler ships byte for byte (step 3), so a finding
-shows right after each build. The walk reads key names and the shortfall
-wording only: a figure under another name, in other prose or outside the
-top-level JSON files is not found, so the manual scan stays.
+A release directory ships per-area support figures (rows, Kish ESS and
+distinct sources, and their minima) in the signed `uk_local_gates.json`, the
+diagnostics and the candidate manifest: María's ruling of 2026-10-26 dropped
+their withholding and the validator's disclosure walk with it (microcosm#1301).
+The release goes only to the licensed private repository.
 
 The manifest's `reviewed_limitations` record what the release does not claim,
 and the contract checks them against the coverage: `engine_measurement`
@@ -605,12 +599,12 @@ uv run python -m microcosm.data.publish_cli releases/microcosm-uk-2024-25-dense 
 revision without a main-branch commit. The artifact is reachable by its tag and
 by the registry key `("uk", 2025, "dense")` only.
 
-The disclosure walk's warnings reach the publisher's JSON output as well as
-stderr: `--preflight-only` adds them to its verdict under `contract_warnings`,
-and publication lists them the same way beside the pointer it prints. Neither
-refuses on them. The immutable tag's message records that the release was
-published past them and how many there were, never what they say, since they
-name paths in the shipped files.
+A contract warning reaches the publisher's JSON output as well as stderr:
+`--preflight-only` adds it to its verdict under `contract_warnings`, and
+publication lists it the same way beside the pointer it prints. Neither
+refuses on one. The immutable tag's message records that the release was
+published past them and how many there were, never what they say. No dense
+release raises any since the disclosure walk was dropped.
 
 ## Promotion is a separate change
 

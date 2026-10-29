@@ -203,6 +203,11 @@
       "schema_id": "legacy_json"
     },
     {
+      "path": "ons_mid2025_single_year_age_by_sex.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
       "path": "hmrc_child_benefit_statistics.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
@@ -498,6 +503,16 @@
       "schema_id": "legacy_json"
     },
     {
+      "path": "excise_facts.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "gambling_participation_facts.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
       "path": "dft_bus_journeys.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
@@ -529,6 +544,11 @@
     },
     {
       "path": "desnz_local_energy_facts.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "desnz_constituency_energy_facts.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
     },

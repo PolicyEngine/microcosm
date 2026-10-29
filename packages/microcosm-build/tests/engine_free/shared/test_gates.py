@@ -56,7 +56,7 @@ def _area_support(rows=2, ess=2.0, sources=2):
     )
 
 
-def test_area_support_reviewed_exclusion_records_the_floors_missed() -> None:
+def test_area_support_reviewed_exclusion_records_measured_shortfalls() -> None:
     record = {"approved_by": "reviewer", "adjudication": "uk-data#123"}
     result = area_support_gate(
         _area_support(),
@@ -70,17 +70,18 @@ def test_area_support_reviewed_exclusion_records_the_floors_missed() -> None:
     assert result.passed
     assert result.details["excluded_area_count"] == 1
     excluded = result.details["reviewed_exclusions"]["constituency/C1"]
-    # The floors the area misses and the signed record; never the area's
-    # rows, ESS or sources, which a release withholds (microcosm#1301).
+    # The area's measured support beside the floors it misses (María's ruling
+    # of 2026-10-26 dropped the withholding of microcosm#1301).
     assert excluded == {
-        "shortfalls": ["rows < 50", "ESS < 50", "distinct sources < 50"],
+        "shortfalls": ["rows 2 < 50", "ESS 2 < 50", "distinct sources 2 < 50"],
+        "rows": 2,
+        "ess": 2.0,
+        "sources": 2,
         "record": record,
     }
 
 
-def test_area_support_details_and_failures_carry_no_area_figures() -> None:
-    from microcosm.data.contract import _uk_dense_disclosure_findings
-
+def test_area_support_details_and_failures_state_the_area_figures() -> None:
     support = pd.concat(
         [
             _area_support(rows=30, ess=25.5, sources=20),
@@ -99,15 +100,17 @@ def test_area_support_details_and_failures_carry_no_area_figures() -> None:
     )
 
     assert result.failures == (
-        "constituency/C2: rows < 50, ESS < 50, distinct sources < 50",
+        "constituency/C2: rows 40 < 50, ESS 35 < 50, distinct sources 45 < 50",
     )
     assert result.details["by_geography_level"] == {
-        "constituency": {"areas_checked": 2, "areas_below_floor": 2}
+        "constituency": {
+            "areas_checked": 2,
+            "areas_below_floor": 2,
+            "minimum_rows": 30,
+            "minimum_effective_sample_size": 25.5,
+            "minimum_distinct_sources": 20,
+        }
     }
-    shipped = {"details": result.details, "failures": list(result.failures)}
-    assert _uk_dense_disclosure_findings("uk_local_gates.json", shipped) == []
-    for figure in ("30", "25.5", "20", "40", "35", "45"):
-        assert all(figure not in failure for failure in result.failures)
 
 
 def test_area_support_stale_and_unknown_exclusions_fail() -> None:
@@ -721,6 +724,9 @@ class TestAreaSupportGate:
         assert result.details["by_geography_level"]["constituency"] == {
             "areas_checked": 1,
             "areas_below_floor": 0,
+            "minimum_rows": 60,
+            "minimum_effective_sample_size": 52.0,
+            "minimum_distinct_sources": 55,
         }
 
     def test_names_every_floor_breach(self) -> None:
@@ -739,7 +745,7 @@ class TestAreaSupportGate:
 
         assert not result.passed
         assert result.failures == (
-            "constituency/C1: rows < 50, ESS < 50, distinct sources < 50",
+            "constituency/C1: rows 49 < 50, ESS 47.5 < 50, distinct sources 48 < 50",
         )
 
     def test_roster_omission_refuses_instead_of_shrinking_the_surface(self) -> None:

@@ -200,3 +200,38 @@ def test_take_up_gate_measures_under_two_usage_over_claiming_children() -> None:
     missing = uk_take_up_signal_gate(frame, contract=_Contract())
     assert missing.passed is False
     assert "max_free_entitlement_hours_used: missing" in " ".join(missing.failures)
+
+
+class _OffRateContract(_Contract):
+    """The fixture's realised shares are 0.5; these rates sit 0.075 above them."""
+
+    def rate(self, key: str, build_year: int | None = None) -> float:
+        if key in (
+            "extended_childcare_age_0_usage",
+            "extended_childcare_age_1_usage",
+            "property_purchase_rate",
+        ):
+            return 0.575
+        return super().rate(key, build_year)
+
+
+def test_take_up_gate_holds_under_two_usage_to_its_own_bound() -> None:
+    usage = "person.max_free_entitlement_hours_used"
+
+    shared = uk_take_up_signal_gate(_frame(), contract=_OffRateContract())
+    assert any(usage in failure for failure in shared.failures)
+    assert shared.details[usage]["maximum_share_deviation"] == 0.05
+
+    own = uk_take_up_signal_gate(
+        _frame(),
+        contract=_OffRateContract(),
+        under_two_usage_maximum_share_deviation=0.1,
+    )
+    # The under-2 share is inside its own bound; every other flag keeps the
+    # shared one, so the household draw 0.075 off its rate still fails.
+    assert not any(usage in failure for failure in own.failures)
+    assert own.details[usage]["maximum_share_deviation"] == 0.1
+    assert (
+        own.details["household.property_purchased"]["maximum_share_deviation"] == 0.05
+    )
+    assert any("household.property_purchased" in failure for failure in own.failures)

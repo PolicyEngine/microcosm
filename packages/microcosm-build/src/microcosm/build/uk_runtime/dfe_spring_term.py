@@ -24,12 +24,16 @@ starts on 1 January of Y + 1:
   engine nets them.
 - **Universal and early learning for 2-year-olds.** These start the term
   after the third or second birthday, so in the spring term they reach every
-  child of that DfE age. policyengine-uk still gates them on the whole age at
-  6 October, which leaves out the children born from 7 October to 31
-  December. The measures keep the engine's family and claim conditions (a
-  claim on their own, or allocation from the gross working-parent hours, as
-  the engine allocates them) and replace only that age gate, so they count
-  the children DfE counts; they do not change what the engine pays.
+  child of that DfE age. Since policyengine-uk 2.156.1 (pe-uk#2588) the
+  engine starts them there too, on a dataset that supplies none of its legacy
+  childcare inputs, as the release does: once eligible a child stays eligible
+  until school, so its eligibility in the year, for a child still before
+  school in the spring term, is its spring-term eligibility. The universal
+  measure reads the engine's eligibility, and both keep the engine's family
+  and claim conditions (a claim on their own, or allocation from the gross
+  working-parent hours, as the engine allocates them). A child of DfE age 2 is
+  the only one counted for 2-year-olds: one who turns three by 31 December
+  takes the universal hours in the spring term instead.
 - **DfE age** is ``Y - birth_year``, the age on 31 December Y. The engine
   holds a person's age fixed across years and moves the date of birth with
   the period, so the DfE age is the same at every model year;
@@ -76,17 +80,15 @@ DFE_SPRING_TERM_MEASURES = (
 #: The engine variables the measures read, each at person grain.
 DFE_SPRING_TERM_ENGINE_INPUTS = (
     "birth_year",
-    "country",
     "early_years_term_share_before_school",
     "extended_childcare_entitlement_total_per_child",
-    "is_of_compulsory_school_age",
     "max_free_entitlement_hours_used",
     "maximum_extended_childcare_hours_usage",
     "targeted_childcare_entitlement_eligible",
+    "universal_childcare_entitlement_eligible",
     "would_claim_targeted_childcare",
     "would_claim_universal_childcare",
 )
-_UNIVERSAL_DFE_AGES = (3, 4)
 _EARLY_LEARNING_DFE_AGE = 2
 #: The universal entitlement's weekly hours: 570 a year over 38 weeks
 #: (SI 2014/2147 regs 4 and 5). A working-parent child aged 3 or 4 is
@@ -196,13 +198,13 @@ def dfe_spring_term_status(
         )
         > 0
     ) & in_nursery
-    in_england = np.asarray(calculate("country")).astype(str) == "ENGLAND"
+    # The engine's eligibility holds England, compulsory school age and the
+    # term after the third birthday; in the spring term it reaches every child
+    # of DfE age 3 or 4 still before school.
     universal = (
-        in_england
-        & ~_flag(calculate("is_of_compulsory_school_age"))
+        _flag(calculate("universal_childcare_entitlement_eligible"))
         & in_nursery
         & uses_hours
-        & np.isin(dfe_age, _UNIVERSAL_DFE_AGES)
         & (_flag(calculate("would_claim_universal_childcare")) | takes_part)
     )
     early_learning_2 = (

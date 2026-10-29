@@ -4,7 +4,7 @@
     "version": 1
   },
   "country": "us",
-  "documentation_sha256": "801a99da54b8a4834a8c5e6c4b013fdae1e7576e0132de7e87cb1ef098f1ad8c",
+  "documentation_sha256": "811b4091f9419c8792e5cc7fcda30d54c5a7c6d35dd944c26c005e32cae06647",
   "field_usage": {
     "authored_normative_field_count": 32454,
     "claim_count": 49,
@@ -1361,12 +1361,12 @@
         ],
         "expected": {
           "producer_count": 38,
-          "sha256": "531b48cd1f9737c3ba04aaa430a1aaa25d035217b59be9da24844948687e78f1"
+          "sha256": "6634f7512bee554e291b635860e0efdb90b38647099be43e8e85ccfea3f9221d"
         },
         "failures": [],
         "observed": {
           "producer_count": 38,
-          "sha256": "531b48cd1f9737c3ba04aaa430a1aaa25d035217b59be9da24844948687e78f1"
+          "sha256": "6634f7512bee554e291b635860e0efdb90b38647099be43e8e85ccfea3f9221d"
         },
         "status": "covered"
       },
@@ -1775,12 +1775,12 @@
           "legacy_adapter.imputation.late_producer_resource_semantics"
         ],
         "expected": {
-          "sha256": "87b1e124969ec11b836740c027d28dc2a9d319d279ed55be1d9fc1523390f634",
+          "sha256": "10c05f0fd057f75536b47e3a0160ffb2b47cdec094b6694ebd62cc6bef50d9e8",
           "stages": 38
         },
         "failures": [],
         "observed": {
-          "sha256": "87b1e124969ec11b836740c027d28dc2a9d319d279ed55be1d9fc1523390f634",
+          "sha256": "10c05f0fd057f75536b47e3a0160ffb2b47cdec094b6694ebd62cc6bef50d9e8",
           "stages": 38
         },
         "status": "covered"
@@ -1887,7 +1887,7 @@
             "alpha",
             "zeta"
           ],
-          "sha256": "030c842261a9f0b2378443633b92f96a876cdbc9cb9e75433967fbf97fdeec1c"
+          "sha256": "c88b0d7fce767e7415c10bfd003b6eb0508244775605a5adf27a430299ffbb4e"
         },
         "failures": [],
         "observed": {
@@ -1911,7 +1911,7 @@
             "alpha",
             "zeta"
           ],
-          "sha256": "030c842261a9f0b2378443633b92f96a876cdbc9cb9e75433967fbf97fdeec1c"
+          "sha256": "c88b0d7fce767e7415c10bfd003b6eb0508244775605a5adf27a430299ffbb4e"
         },
         "status": "covered"
       },
@@ -1975,7 +1975,7 @@
             "take_up_contract",
             "us_qbi_reconciliation_contract"
           ],
-          "sha256": "af44d50258bd8dc0fdc1c06e798b0a9f6f48d48d403c217072a9808d96b152f4"
+          "sha256": "bbd77902cc3254268df0cf138a0cfef7b2b0effb931747fd0ce92b3cbf403b0c"
         },
         "status": "covered"
       },
@@ -2599,7 +2599,7 @@
       "country": "us",
       "schema_id": "country_spec",
       "schema_version": 1,
-      "spec_sha256": "c677d50bd0bbcd76c8c141c2c281a7bd49145369f08da8d5db324f2febbada5f"
+      "spec_sha256": "b5c87a41b665901bdbd08a9cefd816b9c93b26c1928e841f99435ee895f24278"
     }
   },
   "report_schema_version": 3,
@@ -2609,7 +2609,7 @@
     "country": "us",
     "schema_id": "country_spec",
     "schema_version": 1,
-    "spec_sha256": "c677d50bd0bbcd76c8c141c2c281a7bd49145369f08da8d5db324f2febbada5f"
+    "spec_sha256": "b5c87a41b665901bdbd08a9cefd816b9c93b26c1928e841f99435ee895f24278"
   },
   "status": "pass"
 }
