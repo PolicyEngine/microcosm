@@ -12,6 +12,7 @@ import pytest
 from microcosm.build.uk_runtime import measure_simulation
 from microcosm.build.uk_runtime.income_tax_rate_classes import UK_RATE_CLASS_ALLOCATION
 from microcosm.build.uk_runtime.measure_simulation import (
+    UK_SAVINGS_INTEREST_OUTSIDE_ISAS,
     UKMeasureResolver,
     apply_uk_calibration_measure_exclusions,
     compute_uk_measure_input,
@@ -672,6 +673,14 @@ _PACKAGED_EXCLUSION_CENSUS = {
     # versus 7271 basis ruling is open (microcosm#890 G), held out after the
     # national hold-out arm.
     "orr.": 1,
+    # microcosm#1359 (2026-10-23): OBR's FY2024-25 excise receipts, whose
+    # level the stage sets from published clearances and bases at the
+    # engine's rates, measured with tools/diagnose_uk_consumption_taxes.py.
+    "obr.beer_and_cider_duties": 1,
+    "obr.wine_duties": 1,
+    "obr.spirits_duties": 1,
+    "obr.tobacco_duties": 1,
+    "obr.betting_and_gaming_duties": 1,
 }
 
 # The carer and childcare rows were retired on 2026-09-16 with the repairs
@@ -709,7 +718,10 @@ def test_packaged_exclusions_load():
     # are held again on that arm's measured distortion. Arm 2 binds four of
     # the twelve UC payment bands, which it fits unbound (microcosm#1344), and
     # obr.vat is held again as a diagnostic (Vahid's review of #1383, 10).
-    assert len(names) == len(set(names)) == 34
+    # microcosm#1359 adds the five OBR excise rows, measured at FY2024-25.
+    # The next policyengine-uk bump (2.162.3) holds obr.domestic_rates once it
+    # compiles (María's ruling of 2026-10-25).
+    assert len(names) == len(set(names)) == 40
     rehold = [entry for entry in exclusions if "_1_000_000_to_inf" in entry["name"]]
     assert {(e["approved_on"], e["expires_on"], e["tracking"]) for e in rehold} == {
         ("2026-10-23", "2027-01-23", "microcosm#1095")
@@ -1943,6 +1955,76 @@ def test_the_resolver_routes_high_value_home_measures_to_households(
         assert not resolver.knows("person", name)
 
 
+def _savings_frame() -> FrameStub:
+    """Gross interest with its ISA part: a saver, an ISA-only saver, a non-saver."""
+
+    frame = FrameStub()
+    frame._tables["person"] = frame._tables["person"].assign(
+        savings_interest_income=[1_000.0, 300.0, 0.0],
+        tax_free_savings_income=[300.0, 300.0, 0.0],
+    )
+    return frame
+
+
+def test_savings_interest_outside_isas_is_the_stored_gross_less_its_isa_part():
+    """SPI Table 3.7 counts recipients of taxable interest (microcosm#1095)."""
+
+    # No engine: the stored columns are read off the frame, never uprated.
+    values, route = compute_uk_measure_input(
+        _savings_frame(), None, "person", UK_SAVINGS_INTEREST_OUTSIDE_ISAS, 2025
+    )
+    assert values.tolist() == [700.0, 0.0, 0.0]
+    assert route == "frame_columns:savings_interest_income_less_tax_free_savings_income"
+    with pytest.raises(KeyError, match="person-only"):
+        compute_uk_measure_input(
+            _savings_frame(), None, "household", UK_SAVINGS_INTEREST_OUTSIDE_ISAS, 2025
+        )
+
+
+def test_the_spi_interest_count_counts_recipients_of_interest_outside_isas():
+    targets = measure_simulation._uk_contract_targets()
+    filters = targets["hmrc.spi.savings_interest_income.count_by_total_income_band"][
+        "bindings"
+    ]["policyengine"]["filters"]
+    assert {
+        "variable": UK_SAVINGS_INTEREST_OUTSIDE_ISAS,
+        "operator": ">",
+        "value": 0,
+    } in (filters)
+    assert "savings_interest_income" not in {f["variable"] for f in filters}
+
+
+def test_the_resolver_routes_interest_outside_isas_to_persons(
+    monkeypatch, tmp_path: Path
+):
+    monkeypatch.setitem(
+        sys.modules,
+        "policyengine_uk",
+        SimpleNamespace(
+            __version__="9.9.9", Microsimulation=lambda *, dataset: SimulationStub({})
+        ),
+    )
+    resolver = UKMeasureResolver(
+        simulation_source=tmp_path / "input.h5",
+        scratch_dir=tmp_path,
+        year=2025,
+        frame=_savings_frame(),
+    )
+    assert resolver.entity_for(UK_SAVINGS_INTEREST_OUTSIDE_ISAS) == "person"
+    assert resolver.knows("person", UK_SAVINGS_INTEREST_OUTSIDE_ISAS)
+    assert not resolver.knows("household", UK_SAVINGS_INTEREST_OUTSIDE_ISAS)
+
+    frame = _savings_frame()
+    frame._tables["person"][UK_SAVINGS_INTEREST_OUTSIDE_ISAS] = [700.0, 0.0, 0.0]
+    with pytest.raises(ValueError, match="must not be persisted"):
+        UKMeasureResolver(
+            simulation_source=tmp_path / "input.h5",
+            scratch_dir=tmp_path,
+            year=2025,
+            frame=frame,
+        )
+
+
 def _stub_engine_term_calendar(monkeypatch) -> None:
     """policyengine-uk's year of terms, without the engine installed."""
 
@@ -1966,7 +2048,6 @@ def _spring_term_simulation() -> SimulationStub:
     return SimulationStub(
         {
             "birth_year": ("person", np.array([1990, 2022, 2021])),
-            "country": ("household", np.array(["ENGLAND", "ENGLAND"])),
             "early_years_term_share_before_school": (
                 "person",
                 np.array([1.0, 1.0, 1 / 3], dtype=np.float32),
@@ -1975,7 +2056,12 @@ def _spring_term_simulation() -> SimulationStub:
                 "person",
                 np.array([0.0, 6_000.0, 2_000.0]),
             ),
-            "is_of_compulsory_school_age": ("person", np.array([False] * 3)),
+            # The engine's universal eligibility in the year: the child in
+            # reception is eligible in the summer term, before school starts.
+            "universal_childcare_entitlement_eligible": (
+                "person",
+                np.array([False, True, True]),
+            ),
             "max_free_entitlement_hours_used": (
                 "person",
                 np.array([30.0, 30.0, 30.0]),
@@ -2134,6 +2220,10 @@ class _AnnualSimulation:
             "scottish_carer_supplement",
             "total_income",
             "income_tax",
+            "income_tax_before_winter_fuel_payment_charge",
+            "basic_rate_savings_income",
+            "higher_rate_savings_income",
+            "add_rate_savings_income",
         )
         variables = {
             name: SimpleNamespace(
@@ -2184,12 +2274,20 @@ class _AnnualSimulation:
         )
         if variable == "total_income":
             return total
-        if variable == "income_tax":
+        # No stub person passes the Winter Fuel Payment charge's income test.
+        if variable in ("income_tax", "income_tax_before_winter_fuel_payment_charge"):
             return 0.2 * np.maximum(total - 12_570.0, 0.0)
         if variable == "tax_band":
             return np.where(
                 total > 50_270.0, "HIGHER", np.where(total > 12_570.0, "BASIC", "NONE")
             )
+        # No stub person has savings income (microcosm#1418).
+        if variable in (
+            "basic_rate_savings_income",
+            "higher_rate_savings_income",
+            "add_rate_savings_income",
+        ):
+            return np.zeros(3)
         raise KeyError(variable)
 
 
@@ -2258,6 +2356,45 @@ def test_annual_measures_read_each_persons_year(monkeypatch, tmp_path):
     ]
     for name in measure_simulation.UK_ANNUAL_INCOME_MEASURES:
         assert resolver.knows("person", name)
+        assert resolver.entity_for(name) == "person"
+
+
+def test_the_annual_loss_relief_terms_are_the_terms_on_the_annual_simulation(
+    monkeypatch, tmp_path
+):
+    # Each _annual form is its named term evaluated on the engine's leaves on
+    # the annual simulation: the floats the resolver gave by name before the
+    # terms were declared (microcosm#1095).
+    resolver = _annual_resolver(monkeypatch, tmp_path)
+    after, after_route = resolver.compute(
+        "person", "self_employment_income_after_loss_relief_annual"
+    )
+    banded, banded_route = resolver.compute(
+        "person", "total_income_after_loss_relief_annual"
+    )
+
+    annual = resolver._annual_income_simulation()
+    leaf = {
+        name: measure_simulation.compute_uk_measure_input(
+            resolver.frame, annual, "person", name, 2025
+        )[0]
+        for name in ("self_employment_income", "loss_relief", "total_income")
+    }
+    former = np.maximum(leaf["self_employment_income"] - leaf["loss_relief"], 0.0)
+    assert np.array_equal(after, former)
+    assert np.array_equal(
+        banded, leaf["total_income"] - leaf["self_employment_income"] + former
+    )
+    assert after_route == (
+        "annual_income_simulation:engine_components:"
+        "self_employment_income_after_loss_relief"
+    )
+    assert banded_route == (
+        "annual_income_simulation:engine_components:total_income_after_loss_relief"
+    )
+    for name in measure_simulation.UK_NAMED_TERMS:
+        assert resolver.knows("person", name)
+        assert not resolver.knows("household", name)
         assert resolver.entity_for(name) == "person"
 
 

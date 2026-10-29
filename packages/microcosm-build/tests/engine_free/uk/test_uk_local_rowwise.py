@@ -536,9 +536,11 @@ def test_rowwise_doctrine_solve_uses_base_weights_directly() -> None:
     )
     assert receipt["dormant"] == [
         # microcosm#1207: the DESNZ energy family's fences (the Northern Ireland
-        # interim retired in microcosm#1278).
+        # interim retired in microcosm#1278; microcosm#1095 adds the
+        # constituency split's).
         "desnz_meters_for_households",
         "desnz_regional_meter_share_in_stage",
+        "desnz_small_area_split_for_constituencies",
         "desnz_subnational_consumption_basis",
         "full_frs_tei_band_unavailable",
         "high_value_home_stock_derived_estimate",

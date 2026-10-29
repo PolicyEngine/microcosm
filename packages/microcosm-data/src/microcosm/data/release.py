@@ -262,8 +262,7 @@ class PreparedRelease:
     """Validated local paths and upload destinations, prepared without Hub activity.
 
     ``contract_warnings`` are the release contract's warnings, which never
-    refuse a release: the dense UK line's disclosure walk names where a
-    shipped JSON document may carry a per-area support figure (microcosm#1301).
+    refuse a release; each names a file and paths in it, never a value.
     """
 
     release_dir: Path

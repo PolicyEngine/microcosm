@@ -566,6 +566,11 @@ TARGET_ID_GEOGRAPHY_PINS: Mapping[str, str] = {
     # substring rule would read "scotland" in its concept (microcosm#1095).
     # The binding scopes the model column to Great Britain.
     "obr.council_tax": "uk",
+    # Table 4.1's Northern Ireland domestic rates row is stamped K02000001 too;
+    # the substring rule would pin it to Northern Ireland, where no fact sits.
+    # domestic_rates is zero outside Northern Ireland, so the UK total is
+    # Northern Ireland's (microcosm#1095).
+    "obr.domestic_rates": "uk",
     # OBR table 4.9's DWP lines carry the geography DWP counts them over
     # (PolicyEngine/chronicle#357 item 4, from DWP's benefit expenditure and
     # caseload tables, Spring 2026): Great Britain for these eight, England and
@@ -1003,6 +1008,22 @@ def _add_uk_membership_accounting(
                 "2025-26 projections, measured on the engine's tax_band. Each "
                 "region or nation row controls its higher rate area cells "
                 "(microcosm#1123)."
+            ),
+        },
+        {
+            "family": "hmrc_itl_age",
+            "status": "active_region_tier_calendar_year_window",
+            "active_reference_count": fanout_counts.get("hmrc_itl_age", 0),
+            "signed_rationale": (
+                "The two HMRC Income Tax liabilities statistics targets for "
+                "Income Tax payers of State Pension age and aged 65 and over "
+                "(Table 2.2, July 2026) fan out over the twelve-area region "
+                "tier (microcosm#905) and bind at the calendar-2025 window of "
+                "HMRC's 2024-25 and 2025-26 projections. Table 2.2 counts "
+                "residents of a nation or region, as the frame does; Table "
+                "2.1's United Kingdom row, which adds taxpayers abroad or of "
+                "unknown region, opens the SPI State Pension rows' uprating "
+                "instead of binding (microcosm#1069)."
             ),
         },
         {

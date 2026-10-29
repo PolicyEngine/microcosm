@@ -1,0 +1,127 @@
+{
+  "dashboard_commit": "fa9c42b1de5d4e4cedf940e2def405c77d0522b7",
+  "dataset": "microcosm_uk_2024_25.h5",
+  "dataset_sha256": "de754f0b2dc6b76d6d8f5706914b4e9de1c312676971b6eb3df077a3332f96cc",
+  "designs": {
+    "sole_income": {
+      "arguments": {
+        "disregard_savings_interest": true,
+        "other_income_limit": 0,
+        "total_income_at_most_allowance": false
+      },
+      "years": [
+        {
+          "fiscal_year": "2027-28",
+          "gov_balance_change_gbp": -84308564.9052124,
+          "income_tax_cut_gbp": 105896531.85172449,
+          "mean_gain_per_affected_gbp": 85.75540346633201,
+          "people_directly_affected": 1234866.8513149992,
+          "people_directly_affected_any_decile": 1234866.8513149992,
+          "state_pension_age_recipients": 11949179.336049328,
+          "year": 2027
+        },
+        {
+          "fiscal_year": "2028-29",
+          "gov_balance_change_gbp": -149177280.49121094,
+          "income_tax_cut_gbp": 187429928.03891447,
+          "mean_gain_per_affected_gbp": 137.11326419956046,
+          "people_directly_affected": 1366971.5263004825,
+          "people_directly_affected_any_decile": 1366971.5263004825,
+          "state_pension_age_recipients": 11816934.095529778,
+          "year": 2028
+        },
+        {
+          "fiscal_year": "2029-30",
+          "gov_balance_change_gbp": -223461024.79040527,
+          "income_tax_cut_gbp": 281761494.46300024,
+          "mean_gain_per_affected_gbp": 183.62013743480748,
+          "people_directly_affected": 1534480.3592854124,
+          "people_directly_affected_any_decile": 1534480.3592854124,
+          "state_pension_age_recipients": 11868928.602271661,
+          "year": 2029
+        },
+        {
+          "fiscal_year": "2030-31",
+          "gov_balance_change_gbp": -309751323.94195557,
+          "income_tax_cut_gbp": 392592202.6608446,
+          "mean_gain_per_affected_gbp": 227.59094261813502,
+          "people_directly_affected": 1724990.450606631,
+          "people_directly_affected_any_decile": 1724990.450606631,
+          "state_pension_age_recipients": 11922338.773599934,
+          "year": 2030
+        },
+        {
+          "fiscal_year": "2031-32",
+          "gov_balance_change_gbp": -329938508.5115967,
+          "income_tax_cut_gbp": 419103024.89700097,
+          "mean_gain_per_affected_gbp": 242.05804079545257,
+          "people_directly_affected": 1731415.0779940952,
+          "people_directly_affected_any_decile": 1731415.0779940952,
+          "state_pension_age_recipients": 11973604.840473577,
+          "year": 2031
+        }
+      ]
+    },
+    "total_income": {
+      "arguments": {},
+      "years": [
+        {
+          "fiscal_year": "2027-28",
+          "gov_balance_change_gbp": -28446727.00567627,
+          "income_tax_cut_gbp": 37070321.90208233,
+          "mean_gain_per_affected_gbp": 64.55537590183582,
+          "people_directly_affected": 574240.2486888841,
+          "people_directly_affected_any_decile": 574240.2486888841,
+          "state_pension_age_recipients": 11949179.336049328,
+          "year": 2027
+        },
+        {
+          "fiscal_year": "2028-29",
+          "gov_balance_change_gbp": -54295430.810424805,
+          "income_tax_cut_gbp": 70805352.14307295,
+          "mean_gain_per_affected_gbp": 94.05403826244894,
+          "people_directly_affected": 752815.6208509896,
+          "people_directly_affected_any_decile": 752815.6208509896,
+          "state_pension_age_recipients": 11816934.095529778,
+          "year": 2028
+        },
+        {
+          "fiscal_year": "2029-30",
+          "gov_balance_change_gbp": -89796145.95581055,
+          "income_tax_cut_gbp": 118475821.58660357,
+          "mean_gain_per_affected_gbp": 120.96176432973218,
+          "people_directly_affected": 979439.0684062485,
+          "people_directly_affected_any_decile": 979439.0684062485,
+          "state_pension_age_recipients": 11868928.602271661,
+          "year": 2029
+        },
+        {
+          "fiscal_year": "2030-31",
+          "gov_balance_change_gbp": -136203679.65216064,
+          "income_tax_cut_gbp": 181262265.54879102,
+          "mean_gain_per_affected_gbp": 152.46864398067612,
+          "people_directly_affected": 1188848.0098389573,
+          "people_directly_affected_any_decile": 1188848.0098389573,
+          "state_pension_age_recipients": 11922338.773599934,
+          "year": 2030
+        },
+        {
+          "fiscal_year": "2031-32",
+          "gov_balance_change_gbp": -147871097.2770996,
+          "income_tax_cut_gbp": 198508735.46198875,
+          "mean_gain_per_affected_gbp": 163.50718320227196,
+          "people_directly_affected": 1214066.6252989955,
+          "people_directly_affected_any_decile": 1214066.6252989955,
+          "state_pension_age_recipients": 11973604.840473577,
+          "year": 2031
+        }
+      ]
+    }
+  },
+  "label": "baseline",
+  "packages": {
+    "policyengine": "6.11.1",
+    "policyengine-core": "3.33.3",
+    "policyengine-uk": "2.151.0"
+  }
+}
