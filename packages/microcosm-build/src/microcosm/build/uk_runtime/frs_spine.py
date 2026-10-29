@@ -757,7 +757,10 @@ FRS_DEPOSIT_INTEREST_ACCOUNTS = (1, 3, 5, 25, 27, 28)
 #: (14), Premium Bonds (15), the Yearly Plan (19) and friendly society
 #: investments (31). On FRS 2024-25 only the NS&I Direct Saver and gilts carry
 #: interest in this group: codes 16 and 26 record none, and 10, 13, 17 and 18
-#: do not occur.
+#: do not occur. Of the codes no list maps, only a share club (24) records
+#: interest on FRS 2024-25: the club's returns are on shares, so they are out
+#: of scope as interest; profit sharing (22), company share option plans (23),
+#: an endowment policy not linked (29) and informal assets (32) record none.
 FRS_OTHER_INTEREST_ACCOUNTS = (2, 6, 10, 13, 16, 17, 18, 26)
 #: Dividends: unit and investment trusts (7) and stocks, shares and bonds (8).
 FRS_DIVIDEND_ACCOUNTS = (7, 8)
