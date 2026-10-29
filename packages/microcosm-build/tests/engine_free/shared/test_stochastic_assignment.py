@@ -10,6 +10,7 @@ from microcosm.build.stochastic_assignment import (
     integer_record_keys,
     sample_categorical_from_counts,
     stable_identity_uniforms,
+    weight_balanced_uniforms,
 )
 
 
@@ -185,3 +186,48 @@ def test_a_float_id_keys_a_different_draw_so_it_is_refused() -> None:
 def test_a_repeated_id_is_refused() -> None:
     with pytest.raises(ValueError, match="each record once"):
         integer_record_keys(np.array([1, 2, 1]), label="ids")
+
+
+def test_balanced_uniforms_give_each_stratum_its_rate_to_within_one_record() -> None:
+    rng = np.random.default_rng(3)
+    n = 500
+    strata = rng.integers(0, 6, n)
+    draws = rng.random(n)
+    weights = rng.uniform(0.5, 5.0, n)
+    positions = weight_balanced_uniforms(strata, draws, weights)
+    for rate in (0.1, 0.6, 0.9):
+        for stratum in np.unique(strata):
+            members = strata == stratum
+            claimed = float(weights[members][positions[members] < rate].sum())
+            assert (
+                abs(claimed - rate * weights[members].sum()) <= weights[members].max()
+            )
+
+
+def test_balanced_uniforms_follow_the_draws_and_not_the_row_order() -> None:
+    rng = np.random.default_rng(4)
+    n = 200
+    strata, draws = rng.integers(0, 3, n), rng.random(n)
+    weights = rng.uniform(1.0, 3.0, n)
+    positions = weight_balanced_uniforms(strata, draws, weights)
+    order = rng.permutation(n)
+    np.testing.assert_array_equal(
+        weight_balanced_uniforms(strata[order], draws[order], weights[order]),
+        positions[order],
+    )
+    for stratum in np.unique(strata):
+        members = strata == stratum
+        np.testing.assert_array_equal(
+            np.argsort(positions[members]), np.argsort(draws[members])
+        )
+
+
+def test_a_weightless_stratum_keeps_its_draws_and_misalignment_is_refused() -> None:
+    positions = weight_balanced_uniforms(
+        np.array([0, 0, 1]), np.array([0.3, 0.7, 0.25]), np.array([0.0, 0.0, 2.0])
+    )
+    np.testing.assert_allclose(positions, [0.3, 0.7, 0.5])
+    with pytest.raises(ValueError, match="aligned"):
+        weight_balanced_uniforms(np.zeros(2), np.zeros(3), np.zeros(3))
+    with pytest.raises(ValueError, match="finite"):
+        weight_balanced_uniforms(np.zeros(2), np.zeros(2), np.array([1.0, np.nan]))

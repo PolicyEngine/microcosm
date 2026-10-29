@@ -16,6 +16,7 @@ __all__ = [
     "integer_record_keys",
     "sample_categorical_from_counts",
     "stable_identity_uniforms",
+    "weight_balanced_uniforms",
 ]
 
 
@@ -43,6 +44,50 @@ def stable_identity_uniforms(
         ],
         dtype=np.float64,
     )
+
+
+def weight_balanced_uniforms(
+    strata: Sequence[object] | np.ndarray,
+    draws: Sequence[float] | np.ndarray,
+    weights: Sequence[float] | np.ndarray,
+) -> np.ndarray:
+    """Spread records evenly over [0, 1) within each stratum, by weight.
+
+    Records in a stratum are ordered by their draw, and each is placed at the
+    midpoint of its slice of the stratum's cumulative weight, as
+    policyengine-uk's ``stratified_uniform`` does (``utils/stochastic.py``).
+    A rate then takes its share of every stratum's weight to within one
+    record, where independent draws take it only in expectation. The result
+    does not depend on the order of the records, and with identity-keyed
+    draws it is as reproducible as they are. A stratum with no positive
+    weight keeps its draws.
+    """
+
+    strata = np.asarray(strata)
+    draws = np.asarray(draws, dtype=np.float64)
+    weights = np.asarray(weights, dtype=np.float64)
+    if not (strata.shape == draws.shape == weights.shape) or draws.ndim != 1:
+        raise ValueError("strata, draws and weights must be aligned 1-D arrays.")
+    if not np.isfinite(weights).all():
+        raise ValueError("weights must be finite.")
+    weights = np.maximum(weights, 0.0)
+    if draws.size == 0:
+        return draws.copy()
+    order = np.lexsort((draws, strata))
+    _, group = np.unique(strata[order], return_inverse=True)
+    sorted_weights = weights[order]
+    totals = np.bincount(group, weights=sorted_weights)
+    starts = np.concatenate([[0.0], np.cumsum(totals)[:-1]])
+    within = np.cumsum(sorted_weights) - starts[group] - sorted_weights / 2
+    group_totals = totals[group]
+    positions = np.where(
+        group_totals > 0,
+        within / np.where(group_totals > 0, group_totals, 1.0),
+        draws[order],
+    )
+    result = np.empty_like(positions)
+    result[order] = positions
+    return np.clip(result, 0.0, 1.0 - 2.0**-24)
 
 
 def integer_record_keys(
