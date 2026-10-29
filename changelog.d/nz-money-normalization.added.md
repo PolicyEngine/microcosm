@@ -15,8 +15,8 @@ change money ownership. Specs without the resource are unchanged. Factors gain
 the additive `money_normalization_input` purpose. Declare New Zealand's
 generated calendar-2024 donor factors with the existing factors' validity and
 explicit per-profile selection. The donor period is a declared convention
-covering flows and asset stocks, checked for consistency against `_time_period`;
-ageing non-wage money by AWE growth is provisional until non-wage ageing is
-ruled on. The normalization resource is the single source of the USD to NZD
+covering flows and asset stocks, checked for consistency against `_time_period`.
+Ruling d1981 adopts AWE growth as the interim ageing index for non-wage money
+and pre-declares a hold-fixed sensitivity beside it. The normalization resource is the single source of the USD to NZD
 rate. Both monetary rounding stages and receipt sums use exact fractions, reject
 non-finite inputs, and check every integer companion for overflow.

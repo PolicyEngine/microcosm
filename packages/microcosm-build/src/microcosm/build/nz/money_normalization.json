@@ -68,7 +68,7 @@
         "central": "donor_cy2024_to_ty2027_central",
         "high": "donor_cy2024_to_ty2027_high"
       },
-      "disclosure": "Self-employment income (both columns, signed) ages by ordinary-time average weekly earnings (AWE) growth, the AWE convention: Stats NZ QES observations through June 2026, then Treasury PREFU 2026 forecast AWE growth of 2.7% (0.5 points lower and higher in the low and high profiles); interim under Max's ruling d1981 (2026-10-26), which also pre-declares a hold-fixed sensitivity (factor 1); no profile here carries it yet (G8-w3). No separate mixed-income index applies."
+      "disclosure": "Self-employment income (both columns, signed) ages by ordinary-time average weekly earnings (AWE) growth, the AWE convention: Stats NZ QES observations through June 2026, then Treasury PREFU 2026 forecast AWE growth of 2.7% (0.5 points lower and higher in the low and high profiles). Max's ruling d1981 (2026-10-26) adopts this as an interim convention and pre-declares a hold-fixed sensitivity (factor 1), which no profile here carries yet (G8-w3). No separate mixed-income index applies."
     },
     "capital_income": {
       "factors": {
@@ -76,7 +76,7 @@
         "central": "donor_cy2024_to_ty2027_central",
         "high": "donor_cy2024_to_ty2027_high"
       },
-      "disclosure": "Interest, dividends, rental income and realized capital gains age by AWE growth; interim under Max's ruling d1981 (2026-10-26), which also pre-declares a hold-fixed sensitivity (factor 1); no profile here carries it yet (G8-w3). No asset-return or price index applies."
+      "disclosure": "Interest, dividends, rental income and realized capital gains age by AWE growth. Max's ruling d1981 (2026-10-26) adopts this as an interim convention and pre-declares a hold-fixed sensitivity (factor 1), which no profile here carries yet (G8-w3). No asset-return or price index applies."
     },
     "pensions": {
       "factors": {
@@ -84,7 +84,7 @@
         "central": "donor_cy2024_to_ty2027_central",
         "high": "donor_cy2024_to_ty2027_high"
       },
-      "disclosure": "Private pension income ages by AWE growth; interim under Max's ruling d1981 (2026-10-26), which also pre-declares a hold-fixed sensitivity (factor 1); no profile here carries it yet (G8-w3)."
+      "disclosure": "Private pension income ages by AWE growth. Max's ruling d1981 (2026-10-26) adopts this as an interim convention and pre-declares a hold-fixed sensitivity (factor 1), which no profile here carries yet (G8-w3)."
     },
     "owner_housing_costs": {
       "factors": {
@@ -92,7 +92,7 @@
         "central": "donor_cy2024_to_ty2027_central",
         "high": "donor_cy2024_to_ty2027_high"
       },
-      "disclosure": "Mortgage interest, mortgage principal and property tax age by AWE growth; interim under Max's ruling d1981 (2026-10-26), which also pre-declares a hold-fixed sensitivity (factor 1); no profile here carries it yet (G8-w3)."
+      "disclosure": "Mortgage interest, mortgage principal and property tax age by AWE growth. Max's ruling d1981 (2026-10-26) adopts this as an interim convention and pre-declares a hold-fixed sensitivity (factor 1), which no profile here carries yet (G8-w3)."
     }
   },
   "cents_suffix": "_cents",
