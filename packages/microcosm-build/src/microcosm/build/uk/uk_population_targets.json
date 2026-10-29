@@ -2546,7 +2546,7 @@
               "equals": "ENGLAND"
             }
           ],
-          "notes": "OBR Table 4.1 reports net council tax receipts (net of council tax reduction), so the binding is council_tax_less_benefit, not gross council_tax (uk-data targets/compute/council_tax.py:21-43 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3). Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane)."
+          "notes": "OBR Table 4.1 reports net council tax receipts (net of council tax reduction), so the binding is council_tax_less_benefit, not gross council_tax (uk-data targets/compute/council_tax.py:21-43 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3). Chronicle stamps the row K02000001, as OBR's table 4.1 is UK-wide, and the selector pins it there; the binding scopes the model column to England. Held as a measured diagnostic: obr.council_tax binds the three nations' sum (row 15), so this row reports the nation's fit for the CT-C comparison without binding (calibration_measure_exclusions.json, María's ruling of 2026-10-29, microcosm#1095). Measured at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane)."
         },
         "axiom": {
           "metric_name": "obr/council_tax_england",
@@ -2589,7 +2589,7 @@
               "equals": "SCOTLAND"
             }
           ],
-          "notes": "OBR Table 4.1 reports net council tax receipts (net of council tax reduction), so the binding is council_tax_less_benefit, not gross council_tax (uk-data targets/compute/council_tax.py:21-43 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3). Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane)."
+          "notes": "OBR Table 4.1 reports net council tax receipts (net of council tax reduction), so the binding is council_tax_less_benefit, not gross council_tax (uk-data targets/compute/council_tax.py:21-43 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3). Chronicle stamps the row K02000001, as OBR's table 4.1 is UK-wide, and the selector pins it there; the binding scopes the model column to Scotland. Held as a measured diagnostic: obr.council_tax binds the three nations' sum (row 15), so this row reports the nation's fit for the CT-C comparison without binding (calibration_measure_exclusions.json, María's ruling of 2026-10-29, microcosm#1095). Measured at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane)."
         },
         "axiom": {
           "metric_name": "obr/council_tax_scotland",
@@ -2632,7 +2632,7 @@
               "equals": "WALES"
             }
           ],
-          "notes": "OBR Table 4.1 reports net council tax receipts (net of council tax reduction), so the binding is council_tax_less_benefit, not gross council_tax (uk-data targets/compute/council_tax.py:21-43 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3). Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane)."
+          "notes": "OBR Table 4.1 reports net council tax receipts (net of council tax reduction), so the binding is council_tax_less_benefit, not gross council_tax (uk-data targets/compute/council_tax.py:21-43 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3). Chronicle stamps the row K02000001, as OBR's table 4.1 is UK-wide, and the selector pins it there; the binding scopes the model column to Wales. Held as a measured diagnostic: obr.council_tax binds the three nations' sum (row 15), so this row reports the nation's fit for the CT-C comparison without binding (calibration_measure_exclusions.json, María's ruling of 2026-10-29, microcosm#1095). Measured at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane)."
         },
         "axiom": {
           "metric_name": "obr/council_tax_wales",

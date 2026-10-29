@@ -571,6 +571,13 @@ TARGET_ID_GEOGRAPHY_PINS: Mapping[str, str] = {
     # domestic_rates is zero outside Northern Ireland, so the UK total is
     # Northern Ireland's (microcosm#1095).
     "obr.domestic_rates": "uk",
+    # Table 4.1's England, Scotland and Wales council tax rows are stamped
+    # K02000001 too; the substring rule pinned them to their nations, where
+    # no fact sits. Each binding scopes the model column to its nation, and
+    # the three rows are held as measured diagnostics (microcosm#1095 D14e).
+    "obr.council_tax_england": "uk",
+    "obr.council_tax_scotland": "uk",
+    "obr.council_tax_wales": "uk",
     # OBR table 4.9's DWP lines carry the geography DWP counts them over
     # (PolicyEngine/chronicle#357 item 4, from DWP's benefit expenditure and
     # caseload tables, Spring 2026): Great Britain for these eight, England and

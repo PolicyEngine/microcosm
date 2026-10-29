@@ -412,6 +412,33 @@
       "expires_on": "2027-01-25"
     },
     {
+      "name": "obr.council_tax_england",
+      "reason": "Diagnostic by design, not a weight question: OBR's March 2026 expenditure table 4.1 gives England's council tax receipts as one of the three nation rows whose sum, row 15, obr.council_tax binds over Great Britain's households. Binding the nation row as well would only repeat that total's information by nation. Since this PR the row compiles, pinned to the UK as OBR's table is UK-wide (Chronicle stamps it K02000001, and the substring rule had pinned it to England, where no fact sits), and it is measured on every evaluation as evidence for the CT-C comparison of council tax liability with the stored bills.",
+      "tracking": "microcosm#1095",
+      "approved_by": "juaristi22",
+      "adjudication": "María's ruling of 2026-10-29 on the plan for the next #1095 PR (microcosm#1095, item D14e): pin the three OBR council tax nation rows to the UK and hold them as measured diagnostics.",
+      "approved_on": "2026-10-29",
+      "expires_on": "2027-01-29"
+    },
+    {
+      "name": "obr.council_tax_scotland",
+      "reason": "Diagnostic by design, not a weight question: OBR's March 2026 expenditure table 4.1 gives Scotland's council tax receipts as one of the three nation rows whose sum, row 15, obr.council_tax binds over Great Britain's households. Binding the nation row as well would only repeat that total's information by nation. Since this PR the row compiles, pinned to the UK as OBR's table is UK-wide (Chronicle stamps it K02000001, and the substring rule had pinned it to Scotland, where no fact sits), and it is measured on every evaluation as evidence for the CT-C comparison of council tax liability with the stored bills.",
+      "tracking": "microcosm#1095",
+      "approved_by": "juaristi22",
+      "adjudication": "María's ruling of 2026-10-29 on the plan for the next #1095 PR (microcosm#1095, item D14e): pin the three OBR council tax nation rows to the UK and hold them as measured diagnostics.",
+      "approved_on": "2026-10-29",
+      "expires_on": "2027-01-29"
+    },
+    {
+      "name": "obr.council_tax_wales",
+      "reason": "Diagnostic by design, not a weight question: OBR's March 2026 expenditure table 4.1 gives Wales's council tax receipts as one of the three nation rows whose sum, row 15, obr.council_tax binds over Great Britain's households. Binding the nation row as well would only repeat that total's information by nation. Since this PR the row compiles, pinned to the UK as OBR's table is UK-wide (Chronicle stamps it K02000001, and the substring rule had pinned it to Wales, where no fact sits), and it is measured on every evaluation as evidence for the CT-C comparison of council tax liability with the stored bills.",
+      "tracking": "microcosm#1095",
+      "approved_by": "juaristi22",
+      "adjudication": "María's ruling of 2026-10-29 on the plan for the next #1095 PR (microcosm#1095, item D14e): pin the three OBR council tax nation rows to the UK and hold them as measured diagnostics.",
+      "approved_on": "2026-10-29",
+      "expires_on": "2027-01-29"
+    },
+    {
       "name": "obr.fuel_duties_cars",
       "reason": "Scope and conversion residual once the stage sets household road fuel: OBR's cars receipts (GBP 14.4bn for FY2024-25, the April 2024 vehicle-type split) include car fuel paid by businesses, and ONS Consumer Trends 07.2.2 for CY2025 at DESNZ 2025 pump prices converts to about GBP 13.5bn of duty, 7 percent below the OBR cars line. With petrol plus diesel levelled to ONS 07.2.2 by the lcfs_consumption stage, the engine's 2025 fuel_duty reads -9.9 percent against the row on its RAC price divisors (-8.1 percent on DESNZ's; policyengine-uk#2169 A), so binding it would pull weight toward fuel buyers to cover business use the household frame does not hold. Before the level step it read -34.5 percent at design weights and -17.7 percent calibrated on microcosm#1121's head, where the weights raised petrol 21 and diesel 34 percent from design to final. On the 2026-09-30 national problem the calibration with the four consumption-tax rows bound left petrol 18 and diesel 36 percent above a re-solve with the four consumption-tax rows masked together, in which the other 1,086 rows fitted no worse. Household road fuel is bound as ons.household_road_fuel_expenditure. Measured on every evaluation with tools/diagnose_uk_consumption_taxes.py; rebind if Microcosm comes to model business use of cars, which microcosm#1278 tracks.",
       "tracking": "microcosm#1278",
