@@ -1,90 +1,90 @@
 {
   "expense_landlords_by_type": {
-    "legal_management_and_professional_fees": 68.27759643273899,
-    "non_residential_finance_costs": 68.27759643273899,
-    "other_allowable_expenses": 68.27759643273899,
-    "rent_rates_and_insurance": 68.27759643273899,
-    "repairs_and_maintenance": 68.27759643273899,
-    "residential_finance_costs": 68.27759643273899,
-    "services_including_wages": 68.27759643273899
+    "legal_management_and_professional_fees": 68.52359776870956,
+    "non_residential_finance_costs": 68.52359776870956,
+    "other_allowable_expenses": 68.52359776870956,
+    "rent_rates_and_insurance": 68.52359776870956,
+    "repairs_and_maintenance": 68.52359776870956,
+    "residential_finance_costs": 68.52359776870956,
+    "services_including_wages": 68.52359776870956
   },
   "expenses": {
-    "all": 32693.389896514316,
-    "individual": 32366.455997549172,
-    "partnership": 326.9338989651442
+    "all": 35059.20151655868,
+    "individual": 34708.60950139309,
+    "partnership": 350.59201516558824
   },
   "expenses_by_type": {
-    "legal_management_and_professional_fees": 3913.7986178273254,
-    "non_residential_finance_costs": 1251.286577334217,
-    "other_allowable_expenses": 4308.941747511815,
-    "rent_rates_and_insurance": 3584.512676423584,
-    "repairs_and_maintenance": 6030.636812565662,
-    "residential_finance_costs": 12061.273625131324,
-    "services_including_wages": 1542.939839720388
+    "legal_management_and_professional_fees": 4197.0152031333555,
+    "non_residential_finance_costs": 1341.8341875402314,
+    "other_allowable_expenses": 4620.752314988165,
+    "rent_rates_and_insurance": 3843.900943254347,
+    "repairs_and_maintenance": 6467.035445212694,
+    "residential_finance_costs": 12934.070890425388,
+    "services_including_wages": 1654.592532004496
   },
   "landlords": {
-    "all": 136.55519286547798,
-    "individual": 135.1896409368232,
-    "partnership": 1.3655519286547815
+    "all": 137.04719553741913,
+    "individual": 135.67672358204493,
+    "partnership": 1.3704719553741995
   },
   "receipts": {
-    "all": 52309.42383442291,
-    "individual": 51786.32959607868,
-    "partnership": 523.0942383442307
+    "all": 56094.72242649389,
+    "individual": 55533.77520222895,
+    "partnership": 560.9472242649426
   },
   "receipts_bands": [
     {
-      "landlords": 61.63949677955603,
+      "landlords": 61.86158131897391,
       "lower_bound": 0,
       "upper_bound": 10000
     },
     {
-      "landlords": 40.77689786955245,
+      "landlords": 40.923815334090435,
       "lower_bound": 10000,
       "upper_bound": 20000
     },
     {
-      "landlords": 15.646949182502686,
+      "landlords": 15.703324488662608,
       "lower_bound": 20000,
       "upper_bound": 30000
     },
     {
-      "landlords": 7.112249628410311,
+      "landlords": 7.137874767573913,
       "lower_bound": 30000,
       "upper_bound": 40000
     },
     {
-      "landlords": 3.793199801818832,
+      "landlords": 3.806866542706087,
       "lower_bound": 40000,
       "upper_bound": 50000
     },
     {
-      "landlords": 2.3707498761367707,
+      "landlords": 2.379291589191304,
       "lower_bound": 50000,
       "upper_bound": 60000
     },
     {
-      "landlords": 1.4224499256820622,
+      "landlords": 1.4275749535147826,
       "lower_bound": 60000,
       "upper_bound": 70000
     },
     {
-      "landlords": 0.948299950454708,
+      "landlords": 0.9517166356765218,
       "lower_bound": 70000,
       "upper_bound": 80000
     },
     {
-      "landlords": 0.474149975227354,
+      "landlords": 0.4758583178382609,
       "lower_bound": 80000,
       "upper_bound": 90000
     },
     {
-      "landlords": 0.474149975227354,
+      "landlords": 0.4758583178382609,
       "lower_bound": 90000,
       "upper_bound": 100000
     },
     {
-      "landlords": 1.896599900909416,
+      "landlords": 1.9034332713530435,
       "lower_bound": 100000,
       "upper_bound": null
     }

@@ -62,6 +62,10 @@ from microcosm.build.uk_runtime.spi_income import (
     SPI_DONOR_AGE_POPULATION_PERIOD,
     SPI_DONOR_AGE_POPULATION_RESOURCE,
     SPI_DONOR_INCOME_YEAR,
+    SPI_EMPLOYMENT_PAY_FLOOR_ANNUAL_RULE,
+    SPI_EMPLOYMENT_PAY_FLOOR_EMPLOYEE_STATUSES,
+    SPI_EMPLOYMENT_PAY_FLOOR_PARAMETER,
+    SPI_EMPLOYMENT_PAY_FLOOR_WEEKS,
     SPI_INCOME_BAND_CARRIER_KEY_COLUMN,
     SPI_INCOME_BAND_DONOR_LEAF_DRAW_SALT,
     SPI_INCOME_RECIPIENT_COLUMN,
@@ -78,6 +82,7 @@ from microcosm.build.uk_runtime.spi_income import (
     assert_frs_hmrc_auxiliary_crosswalk_available,
     impute_uk_spi_income_support,
     load_spi_donor_age_model,
+    load_spi_employment_pay_floor,
     verify_spi_donor_identity,
 )
 from microcosm.build.uk_runtime.spi_rank_transport import (
@@ -161,6 +166,55 @@ SPI_SPINE_STATE_PENSION_AGE_GUARD: Mapping[str, object] = {
     "base_channel_columns": ["state_pension_reported"],
     "state_pension_age": SPI_SPINE_STATE_PENSION_AGE_SOURCE,
     "receipt": "rows, weighted people and amounts removed per column and step",
+}
+#: Reviewed declaration of the employment pay floor (spi_income's
+#: SPI_EMPLOYMENT_PAY_FLOOR_* notes give the reasons).
+SPI_SPINE_EMPLOYMENT_PAY_FLOOR: Mapping[str, object] = {
+    "column": "hmrc_spi_pay",
+    "hours_column": "hours_worked",
+    "hours_basis": (
+        "annual usual hours: the FRS adult's usual weekly hours in all jobs "
+        "(TOTHOURS) times 52, read back to weekly hours"
+    ),
+    "weeks_in_year": SPI_EMPLOYMENT_PAY_FLOOR_WEEKS,
+    "hourly_rate": (
+        f"the lower of policyengine-uk {SPI_EMPLOYMENT_PAY_FLOOR_PARAMETER} by the "
+        "twin's age, read as the engine reads the build year (30 April), and the "
+        "twin's own hourly pay (its employment income before the draw over its "
+        "annual hours)"
+    ),
+    "employee_statuses": list(SPI_EMPLOYMENT_PAY_FLOOR_EMPLOYEE_STATUSES),
+    "rows": (
+        "drawn recipients other than reserved band carriers, whose twin has no "
+        "trade (has_trade 0), an employee main job and usual hours above zero, "
+        "and whose drawn PAY is positive; FRS rows, undrawn copies and every "
+        "other leaf keep their values"
+    ),
+    "pay_basis": (
+        "tape PAY is taxable pay, net of net-pay pension contributions and "
+        "salary sacrifice; the minimum wage binds gross pay, and the engine "
+        "reads employment_income (PAY + EPB + TAXTERM) as gross pay, so PAY "
+        "alone is compared with the gross minimum and a twin at the minimum "
+        "wage who pays net-pay contributions can be lifted by up to them"
+    ),
+    "reason": (
+        "stage 1 draws annual tape pay without hours and the tape holds "
+        "part-year workers, so a twin reporting usual employee hours could "
+        "draw a year's pay below what those hours earn at the minimum wage "
+        "(uk-data#629)"
+    ),
+    "annual_income": SPI_EMPLOYMENT_PAY_FLOOR_ANNUAL_RULE,
+    "receipt": (
+        "eligible and floored source households (rounded), weighted people, "
+        "the weighted share floored, the weighted mean uplift and the amount "
+        "added; figures on one to nine source households are <10, and the "
+        "floored weight, share and amount are given only where neither the "
+        "floored nor the unfloored side rests on one to nine; the hourly-pay "
+        "check gives the weighted shares of the drawn employees below the "
+        "minimum wage for their age before and after the floor, beside the FRS "
+        "employees' share, each withheld beside a side on one to nine, and the "
+        "eligible rows still below their floor (banded, zero exact)"
+    ),
 }
 
 UK_FRS_HMRC_SPINE_LEAF_OUTPUT_COLUMNS = (
@@ -279,8 +333,8 @@ UK_SPI_INCOME_SPINE_REWRITE_COLUMNS = (
 # applies to every declared parameter: it needs (1) a drift assert and (2) an
 # executed-effect receipt, or an explicit absence statement. Seeded draws use
 # twin-build determinism as their executed-effect receipt.
-#: Age, gender and region, then the four bridge predictors the tape and the
-#: twin derive from their own leaves (microcosm#840).
+#: The SPI age band (uk-data#628), gender and region, then the four bridge
+#: predictors the tape and the twin derive from their own leaves (microcosm#840).
 SPI_SPINE_STAGE1_PREDICTORS = SPI_STAGE1_PREDICTOR_COLUMNS
 SPI_SPINE_STAGE1_CATEGORICAL_PREDICTORS = SPI_STAGE1_CATEGORICAL_PREDICTORS
 #: The stage-1 draw: each drawn recipient's twin is located on the FRS
@@ -406,6 +460,7 @@ class UKSPIIncomeSpineResult:
             ),
             "pension_coherence": self.imputation.pension_coherence,
             "state_pension_age_guard": list(self.imputation.state_pension_age_guard),
+            "employment_pay_floor": self.imputation.employment_pay_floor,
             "targets": {
                 "count": len(self.source_targets.targets),
                 "classification": dict(self.replay_report.summary),
@@ -775,6 +830,14 @@ class UKSPIIncomeSpineStageTransform:
             if age_op is not None or guard_op is not None
             else None
         )
+        floor_op = _optional_operation(
+            self.stage, "floor_spi_employment_pay_at_minimum_wage"
+        )
+        employment_pay_floor = (
+            None
+            if floor_op is None
+            else load_spi_employment_pay_floor(uk_time_period(frame))
+        )
         state_pension_age_guard = (
             None
             if guard_op is None or donor_age_model is None
@@ -814,6 +877,7 @@ class UKSPIIncomeSpineStageTransform:
             state_pension_age=(
                 None if donor_age_model is None else donor_age_model.state_pension_age
             ),
+            employment_pay_floor=employment_pay_floor,
         )
         result_frame = uk_national_frame(
             person=imputation.person,
@@ -1329,6 +1393,10 @@ def _assert_income_stage_parameters(
         (
             "zero_pension_age_reports_below_state_pension_age",
             SPI_SPINE_STATE_PENSION_AGE_GUARD,
+        ),
+        (
+            "floor_spi_employment_pay_at_minimum_wage",
+            SPI_SPINE_EMPLOYMENT_PAY_FLOOR,
         ),
     ):
         operation = _optional_operation(stage, kind)

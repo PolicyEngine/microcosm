@@ -348,7 +348,13 @@ def test_spi_qrf_stages_use_typed_weights_and_restore_gross_savings(
         allow_in_sample_reference=True,
     )
 
-    assert _FakeQRF.fit_weight_kinds == ["design", "importance", "importance"]
+    # The reference forest is fitted once per cross-fit fold in use (the
+    # transport receipt's ``folds``), all under its one fit record.
+    assert _FakeQRF.fit_weight_kinds == [
+        "design",
+        *["importance"] * result.stage1_transport["folds"],
+        "importance",
+    ]
     assert [
         (record.fit_name, record.weight_kind) for record in result.fit_weight_records
     ] == [
@@ -928,9 +934,15 @@ def test_stage1_queries_only_drawn_recipients_with_the_bridge(
     )
     stage1 = captured["stage1"]
     assert stage1["rows"] == result.spi_prediction_rows == 3
-    assert {"has_pay", "has_trade", "at_or_over_spa", "main_source_pay", "age"} <= set(
-        stage1["columns"]
-    )
+    assert {
+        "has_pay",
+        "has_trade",
+        "at_or_over_spa",
+        "main_source_pay",
+        spi_income.SPI_STAGE1_AGE_BAND_COLUMN,
+    } <= set(stage1["columns"])
+    # The forest reads the band, never the age drawn inside it (uk-data#628).
+    assert "age" not in stage1["columns"]
     # The no-analogue leaf's sign uniform is the identity-keyed one for the
     # drawn recipients, in their order.
     age_domain = (result.person[channel] == "spi") & result.person["age"].ge(16)
@@ -1004,3 +1016,126 @@ def test_the_stage_resets_the_esa_group_and_clears_a_loss_beside_a_profit(
     profit = person.loc[drawn, "self_employment_income"].to_numpy() > 0.0
     assert profit.any()
     assert (person.loc[drawn, "trading_loss"].to_numpy()[profit] == 0.0).all()
+
+
+def test_spi_pay_floor_reads_the_engines_minimum_wage_for_the_build_year() -> None:
+    floor = spi_income.load_spi_employment_pay_floor(2024)
+    assert floor.instant == "2024-04-30"
+    assert floor.weeks_in_year == 52.0
+    assert spi_income.SPI_EMPLOYMENT_PAY_FLOOR_PARAMETER in floor.source
+    # 2024-25: the national living wage from 21 (S.I. 2024/432), £8.60 from 18
+    # and £6.40 below.
+    np.testing.assert_allclose(
+        floor.hourly_rate(np.array([16, 17, 18, 20, 21, 30, 70])),
+        [6.40, 6.40, 8.60, 8.60, 11.44, 11.44, 11.44],
+    )
+
+
+def test_spi_pay_floor_lifts_drawn_pay_before_employment_income_and_stage2(
+    monkeypatch, tmp_path
+) -> None:
+    """The floor moves only drawn PAY, before employment_income is derived.
+
+    FRS rows and every other leaf keep their values, the transport receipt is
+    the unfloored draw's, and a floored row's year of pay stays the tape's.
+    """
+
+    support = _dead_support()
+    person = support.person.copy()
+    # The spine annualises usual weekly hours at frs_spine.WEEKS_IN_YEAR (52).
+    hours = 35 * 52
+    person["hours_worked"] = hours
+    # A twin without a trade, so its hours are all employee hours.
+    person["self_employment_income"] = 0.0
+    # A copy carries its twin's age and pay. The floor is the hours at the
+    # lower of the minimum wage and the twin's own hourly pay (uk-data#629):
+    # these twins earn £20 an hour, above every age's rate, but lineage 104's
+    # earns £5, which caps its copy's floor.
+    lineage = person["person_source_id"]
+    person.loc[lineage.eq(101), "age"] = 19
+    person["employment_income"] = hours * 20.0
+    person.loc[lineage.eq(104), "employment_income"] = hours * 5.0
+    for column in spi_income.FRS_ANNUAL_INCOME_OUTPUT_COLUMNS:
+        person[column] = 1.0 if column in spi_income.ANNUAL_SHARE_COLUMNS else 0.0
+    support = replace(support, person=person)
+    donor_path = tmp_path / SPI_DONOR_FILENAME
+    _write_donor(donor_path)
+    monkeypatch.setattr(spi_income, "QRF", _FakeQRF)
+    _bypass_reviewed_donor_identity(monkeypatch)
+    options = dict(
+        seed=9,
+        n_estimators=3,
+        donor_sample_size=None,
+        state_pension_age=66,
+        allow_in_sample_reference=True,
+    )
+    unfloored = impute_uk_spi_income_support(support, donor_path, **options)
+    floor = spi_income.load_spi_employment_pay_floor(2024)
+    floored = impute_uk_spi_income_support(
+        support, donor_path, employment_pay_floor=floor, **options
+    )
+
+    drawn = floored.person[spi_income.SPI_INCOME_RECIPIENT_COLUMN].to_numpy(bool)
+    assert drawn.any()
+    ages = floored.person.loc[drawn, "age"].to_numpy(dtype=float)
+    twin_rate = (
+        support.person.loc[floored.person.index[drawn], "employment_income"].to_numpy(
+            dtype=float
+        )
+        / hours
+    )
+    expected = hours * np.minimum(floor.hourly_rate(ages), twin_rate)
+    assert (twin_rate < floor.hourly_rate(ages)).any()
+    np.testing.assert_allclose(
+        floored.person.loc[drawn, SPI_HMRC_PAY_COLUMN].to_numpy(), expected
+    )
+    assert (
+        unfloored.person.loc[drawn, SPI_HMRC_PAY_COLUMN].to_numpy() < expected
+    ).all()
+    # The annual share puts the year's pay back at the tape's draw.
+    np.testing.assert_allclose(
+        floored.person.loc[drawn, "employment_income"].to_numpy()
+        * floored.person.loc[drawn, spi_income.EMPLOYMENT_INCOME_ANNUAL_SHARE],
+        unfloored.person.loc[drawn, "employment_income"].to_numpy(),
+    )
+    np.testing.assert_allclose(
+        floored.person.loc[drawn, "employment_income"].to_numpy(),
+        floored.person.loc[
+            drawn,
+            [
+                SPI_HMRC_PAY_COLUMN,
+                SPI_HMRC_EMPLOYMENT_BENEFITS_COLUMN,
+                SPI_HMRC_TAXABLE_TERMINATION_PAY_COLUMN,
+            ],
+        ]
+        .sum(axis=1)
+        .to_numpy(),
+    )
+    untouched = [
+        column
+        for column in floored.person.columns
+        if column
+        not in {
+            SPI_HMRC_PAY_COLUMN,
+            "employment_income",
+            # Pension coherence prices a row's employer contribution at its
+            # twin's rate on the row's own pay.
+            "employer_pension_contributions",
+            spi_income.EMPLOYMENT_INCOME_ANNUAL_SHARE,
+            SPI_HMRC_EMPLOYED_INCOME_COLUMN,
+            SPI_HMRC_TOTAL_EARNED_INCOME_COLUMN,
+            HMRC_SPI_ASSESSABLE_INCOME_COLUMN,
+        }
+        and not column.startswith("hmrc_spi_total")
+    ]
+    pd.testing.assert_frame_equal(
+        floored.person.loc[~drawn], unfloored.person.loc[~drawn]
+    )
+    pd.testing.assert_frame_equal(
+        floored.person.loc[drawn, untouched], unfloored.person.loc[drawn, untouched]
+    )
+    assert floored.stage1_transport == unfloored.stage1_transport
+    assert unfloored.employment_pay_floor is None
+    receipt = floored.employment_pay_floor
+    assert receipt["step"] == "spi_employment_pay_floor_before_stage2"
+    assert receipt["floored"]["source_households"] == "<10"

@@ -2202,6 +2202,9 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 "rate_key",
                 "maximum_relative_realization_deviation",
                 "maximum_implied_relief",
+                # uk-data#629 spi_hourly_pay check: the drawn employees' share
+                # below the minimum wage may exceed the FRS rows' by this much.
+                "maximum_share_above_frs",
             }
         ),
         artifact_keys=frozenset({"stage_evidence"}),

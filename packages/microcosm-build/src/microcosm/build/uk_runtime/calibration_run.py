@@ -120,6 +120,7 @@ UK_SPINE_GATE_SCOPE = (
     "uk_stage_frs_annual_income_spells",
     "uk_stage_spi_support_channel_mass",
     "uk_stage_hmrc_spi_income_spine_identity",
+    "uk_stage_hmrc_spi_income_spine_hourly_pay",
     "uk_stage_spi_benefit_coherence",
     "uk_stage_uc_take_up",
     "uk_stage_pension_credit_take_up",

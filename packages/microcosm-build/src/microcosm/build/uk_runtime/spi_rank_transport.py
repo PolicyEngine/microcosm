@@ -32,7 +32,7 @@ a twin's own value took a median 0.23 (pay) to 0.74 (dividends) of its
 conditional's mass, so its located quantile was mostly the random placement
 inside that atom and the draw kept under half of the twin's rank within a
 cell. The rows are therefore split into folds by a stable hash of their
-predictor cell (gender, region, whole-year age and the four bridge
+predictor cell (gender, region, SPI age band and the four bridge
 predictors), each fold's recipients are located by a forest fitted on the
 other folds, and because a copy shares its twin's cell, the forest that
 locates it never saw the twin. Keying the folds on the cell rather than the
@@ -95,11 +95,12 @@ SPI_TRANSPORT_GROUP_MINIMUM_ROWS = 10
 SPI_TRANSPORT_FOLDS = 5
 #: The fold draw's salt; the fold of a cell is ``floor(uniform * folds)``.
 SPI_TRANSPORT_FOLD_SALT = "spi_stage1:reference_fold"
-#: The columns whose values name a predictor cell, age at the whole year.
+#: The columns whose values name a predictor cell: the stage-1 predictors,
+#: age as its SPI band (uk-data#628).
 SPI_TRANSPORT_CELL_COLUMNS = (
     "gender",
     "region",
-    "age",
+    "spi_age_band",
     "main_source",
     "has_pay",
     "has_trade",
@@ -239,7 +240,7 @@ def cell_fold_ids(
     """Assign every row to a fold by a stable hash of its predictor cell.
 
     ``predictors`` holds the raw (unencoded) stage-1 predictors; a cell is the
-    tuple of :data:`SPI_TRANSPORT_CELL_COLUMNS` with age at the whole year.
+    tuple of :data:`SPI_TRANSPORT_CELL_COLUMNS`.
     The fold is ``floor(uniform * used)`` of the cell's identity-keyed
     uniform, so two frames whose rows share a cell share its fold. ``used``
     is ``folds`` capped at the number of distinct cells in ``predictors``, or
@@ -252,9 +253,6 @@ def cell_fold_ids(
     if missing:
         raise ValueError(f"fold cells need predictor column(s) {missing}.")
     cells = predictors[list(SPI_TRANSPORT_CELL_COLUMNS)].copy()
-    cells["age"] = np.floor(
-        pd.to_numeric(cells["age"], errors="coerce").to_numpy(dtype=np.float64)
-    )
     keys = cells.astype(str).agg("|".join, axis=1).to_numpy()
     if used is None:
         used = min(folds, len(set(keys.tolist())))

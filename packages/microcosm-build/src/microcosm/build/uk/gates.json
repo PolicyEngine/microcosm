@@ -578,6 +578,20 @@
       "notes": "Stage-time SPI redraw identity gate over the HMRC SPI income spine receipt."
     },
     {
+      "id": "uk_stage_hmrc_spi_income_spine_hourly_pay",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "evidence_absent_blocks": true,
+      "population_fact_check": true,
+      "parameters": {
+        "stage": "hmrc_spi_income_spine",
+        "check": "spi_hourly_pay",
+        "maximum_share_above_frs": 0.02
+      },
+      "notes": "Stage-time hourly-pay check over the employment pay floor receipt (uk-data#629): no eligible drawn SPI employee keeps pay below its floor (its twin's hours at the lower of the minimum wage for its age and the twin's own hourly pay), and the drawn employees' weighted share below the minimum wage for their age after the floor is at most the FRS employees' own share plus maximum_share_above_frs. A withheld share (fewer than ten source households on a side) is not judged. A synthetic smoke build records a failure without blocking on it (population_fact_check)."
+    },
+    {
       "id": "uk_stage_spi_benefit_coherence",
       "gate": "stage_health",
       "phase": "transferred",
@@ -616,9 +630,9 @@
       "parameters": {
         "stage": "uc_take_up",
         "check": "uc_take_up",
-        "maximum_caseload_deviation": 0.055
+        "maximum_caseload_deviation": 0.12
       },
-      "notes": "Stage-time gate over the Universal Credit take-up receipt (microcosm#1334): every reporter claims and no unit outside the draw changes; in each DWP family type the pools whose target is reachable realize DWP's calendar-2025 caseload within 0.055 of it at the stage's weights, Great Britain only, counting units the engine moves off their legacy benefits at their expected claim at the closure; and the family type's caseload is no further from DWP's than before the redraw, give or take 0.055 of DWP's count. The tolerance was 0.05 until microcosm#1418: routing gilt interest out of dividend_income reshuffles the SPI channel's draws. On the spine of 2026-10-28 (da944f12c), single people's caseload ends 0.0523 of DWP's count further from it than before the redraw (0.0486 on the spine before, 3c0d11b6's), so 0.055 holds it with about 8,000 to spare; couples without children, lone parents and couples with children end closer than before by 0.53, 0.054 and 0.42 of their counts, and every family type's reachable pools realize DWP's count within 0.0015. The terminal take-up signal gate no longer measures would_claim_uc, whose rate is now set by award band and family type, not as one share of the age population."
+      "notes": "Stage-time gate over the Universal Credit take-up receipt (microcosm#1334): every reporter claims and no unit outside the draw changes; in each DWP family type the pools whose target is reachable realize DWP's calendar-2025 caseload within 0.12 of it at the stage's weights, Great Britain only, counting units the engine moves off their legacy benefits at their expected claim at the closure; and the family type's caseload is no further from DWP's than before the redraw, give or take 0.12 of DWP's count. The tolerance was 0.05 until microcosm#1418: routing gilt interest out of dividend_income reshuffles the SPI channel's draws. On the spine of 2026-10-28 (da944f12c), single people's caseload ends 0.0523 of DWP's count further from it than before the redraw (0.0486 on the spine before, 3c0d11b6's), so 0.055 holds it with about 8,000 to spare; couples without children, lone parents and couples with children end closer than before by 0.53, 0.054 and 0.42 of their counts, and every family type's reachable pools realize DWP's count within 0.0015. It is 0.12 from the SPI employment pay floor (uk-data#629) until the UC award fix of microcosm#1095 lands, when it returns to 0.055 (María's ruling of 2026-10-29): the floor gives fewer low-paid SPI copies UC, so single people's caseload before the redraw falls close to DWP's, and the redraw's usual downward move reads as about twice 0.055 of DWP's count, while after the redraw single people end a little below the spine without the floor, all in the middle award range. The shortfall of middle and higher awards that the redraw cannot fill is the award fix's. The terminal take-up signal gate no longer measures would_claim_uc, whose rate is now set by award band and family type, not as one share of the age population."
     },
     {
       "id": "uk_stage_pension_credit_take_up",

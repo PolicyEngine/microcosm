@@ -3228,7 +3228,7 @@
           ],
           "post_sample_fit_weight": "uniform",
           "predictors": [
-            "age",
+            "spi_age_band",
             "gender",
             "region",
             "main_source",
@@ -3269,7 +3269,7 @@
               "spi_profit_before_losses_draw": null
             },
             "fit_weight_kind": "importance",
-            "fold_key": "predictor cell (gender, region, whole-year age, main_source, has_pay, has_trade, at_or_over_spa), the fold being floor(uniform x folds) of the cell's stable_identity_uniforms draw at the stage seed and salt spi_stage1:reference_fold; each fold's recipients are located by a forest fitted on the other folds, so the forest that locates a copy never saw its twin, and every row of a cell is located by one forest",
+            "fold_key": "predictor cell (gender, region, spi_age_band, main_source, has_pay, has_trade, at_or_over_spa), the fold being floor(uniform x folds) of the cell's stable_identity_uniforms draw at the stage seed and salt spi_stage1:reference_fold; each fold's recipients are located by a forest fitted on the other folds, so the forest that locates a copy never saw its twin, and every row of a cell is located by one forest",
             "folds": 5,
             "method": "Rosenblatt transport (microcosm#840): each drawn recipient's twin values are located on the reference forest, the sign uniform in the gate's cumulative class probabilities and the quantile on the sign's magnitude forest, each leaf chained on the twin's observed earlier leaves, and the stage-1 forest draws at those uniforms, so the recipient receives the SPI income of someone in the same position among SPI people like it as the twin holds among FRS people like it. taxable_savings_interest is savings_interest_income less tax_free_savings_income, floored at zero. A leaf without an analogue, or whose analogue is degenerate on the FRS rows, draws at identity-keyed uniforms, as do the placements inside a class or a flat stretch of a conditional; no model random stream is consumed. The reference locates a leaf given the twin's observed earlier analogue leaves, while the stage-1 forest draws it given every earlier output, the identity-uniform leaves included, so the located quantile is read off a conditional the identity draws also shape (microcosm#840 follow-up: the chain order). A full build refuses a reference the predictor cells cannot cross-fit (only a sampled rung or a synthetic fixture may locate in-sample, and its receipt says so), a recipient whose fold differs from its twin's, and a reference whose sign classes differ from the stage-1 forest's on any located target.",
             "n_estimators": 4,
@@ -3413,6 +3413,23 @@
           "seed": 44,
           "weighting": "FACT",
           "with_replacement": true
+        },
+        {
+          "annual_income": "the floored pay is the row's current pay; its employment_income_annual_share becomes its unfloored over its floored employment income, so the annual measures read the tape's year of pay",
+          "column": "hmrc_spi_pay",
+          "employee_statuses": [
+            "FT_EMPLOYED",
+            "PT_EMPLOYED"
+          ],
+          "hourly_rate": "the lower of policyengine-uk gov.hmrc.minimum_wage.non_apprentice by the twin's age, read as the engine reads the build year (30 April), and the twin's own hourly pay (its employment income before the draw over its annual hours)",
+          "hours_basis": "annual usual hours: the FRS adult's usual weekly hours in all jobs (TOTHOURS) times 52, read back to weekly hours",
+          "hours_column": "hours_worked",
+          "kind": "floor_spi_employment_pay_at_minimum_wage",
+          "pay_basis": "tape PAY is taxable pay, net of net-pay pension contributions and salary sacrifice; the minimum wage binds gross pay, and the engine reads employment_income (PAY + EPB + TAXTERM) as gross pay, so PAY alone is compared with the gross minimum and a twin at the minimum wage who pays net-pay contributions can be lifted by up to them",
+          "reason": "stage 1 draws annual tape pay without hours and the tape holds part-year workers, so a twin reporting usual employee hours could draw a year's pay below what those hours earn at the minimum wage (uk-data#629)",
+          "receipt": "eligible and floored source households (rounded), weighted people, the weighted share floored, the weighted mean uplift and the amount added; figures on one to nine source households are <10, and the floored weight, share and amount are given only where neither the floored nor the unfloored side rests on one to nine; the hourly-pay check gives the weighted shares of the drawn employees below the minimum wage for their age before and after the floor, beside the FRS employees' share, each withheld beside a side on one to nine, and the eligible rows still below their floor (banded, zero exact)",
+          "rows": "drawn recipients other than reserved band carriers, whose twin has no trade (has_trade 0), an employee main job and usual hours above zero, and whose drawn PAY is positive; FRS rows, undrawn copies and every other leaf keep their values",
+          "weeks_in_year": 52
         },
         {
           "categorical_predictors": [
@@ -5846,7 +5863,7 @@
           "source_vintage": "2024-25"
         },
         {
-          "additional_residential_targets": "Table 6b HRAD transactions and value, 2024-25, times individuals' shares of Table 8a residential transactions and value; Table 6b bands with the five above GBP 2m combined",
+          "additional_residential_targets": "Table 6b HRAD transactions and value, 2024-25: at or below GBP 250,000, the band less other buyers' HRAD, their Table 8a receipts over Table 6b's gross HRAD receipts per transaction and per pound; above it, times individuals' shares of Table 8a residential transactions and value; Table 6b bands with the five above GBP 2m combined, at the households' counts and values",
           "eligibility": "stock at least minimum_price, the chargeable consideration HMRC's Stamp Tax tables cover, and positive weight; at most one purchase of each kind a year",
           "event_score": "-log1p(-u) / hazard",
           "fit_regions": [
