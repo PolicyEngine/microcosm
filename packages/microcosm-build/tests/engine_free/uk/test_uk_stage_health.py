@@ -2322,11 +2322,12 @@ def test_uc_take_up_gate_holds_each_family_type_to_dwp() -> None:
             "reachable_pools_caseload_after": realized,
         }
 
-    # 0.05 until microcosm#1418.
+    # 0.05 until microcosm#1418, 0.055 until the SPI pay floor (uk-data#629),
+    # 0.12 until microcosm#1095's UC award fix (María's ruling of 2026-10-29).
     parameters = {
         "stage": "uc_take_up",
         "check": "uc_take_up",
-        "maximum_caseload_deviation": 0.055,
+        "maximum_caseload_deviation": 0.12,
     }
 
     def gate(families, **counts):
@@ -2353,12 +2354,17 @@ def test_uc_take_up_gate_holds_each_family_type_to_dwp() -> None:
     assert not gate(good, outside="<10").passed
     # The reachable pools miss DWP's count by more than the tolerance.
     assert not gate(
-        {**good, "SINGLE": family(3_000.0, 3_300.0, 3_020.0, 2_500.0, 2_700.0)}
+        {**good, "SINGLE": family(3_000.0, 3_300.0, 3_020.0, 2_500.0, 2_900.0)}
     ).passed
     # The family type moves further from DWP than before.
     assert not gate(
         {**good, "LONE_PARENT": family(2_100.0, 1_400.0, 1_100.0, 0.0, 0.0)}
     ).passed
+    # The pay floor's pattern: a caseload at DWP's before the redraw may end
+    # up to 0.12 of DWP's count below it after.
+    assert _passed(
+        gate({**good, "SINGLE": family(3_000.0, 3_000.0, 2_700.0, 2_500.0, 2_510.0)})
+    )
     # A caseload resting on fewer than ten sources cannot be checked: it is
     # flagged, never failed (María's ruling of 2026-10-26); one missing fails.
     thin = gate({**good, "SINGLE": family(3_000.0, "<10", 1.0, 0.0, 0.0)})
