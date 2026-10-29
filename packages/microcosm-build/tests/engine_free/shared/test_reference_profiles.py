@@ -9,7 +9,6 @@ from datetime import date
 import pytest
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
-from test_support.microcosm_build.reference_factors import factor_context_fixture, factor_fixture
 
 from microcosm.build.reference_factors import resolve_reference_factor
 from microcosm.build.reference_profiles import (
@@ -19,6 +18,10 @@ from microcosm.build.reference_profiles import (
     validate_reference_resolution,
 )
 from microcosm.graph.canonical import canonical_json
+from test_support.microcosm_build.reference_factors import (
+    factor_context_fixture,
+    factor_fixture,
+)
 from test_support.paths import paths_for
 
 
