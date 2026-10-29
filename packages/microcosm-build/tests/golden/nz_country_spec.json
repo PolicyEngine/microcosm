@@ -1,6 +1,6 @@
 {
   "country": "nz",
-  "fingerprint": "7ef8724b15a81b68509aa32674d34597d6887de53b3a3ac02727809dd5bd6e00",
+  "fingerprint": "33aeaff6d0bfee7db965eb3fb03c734aa80a1d33024e51611c6668a92ecefdeb",
   "gate_ids": [
     "calibration_per_family_fit",
     "demography_per_family_fit",
@@ -44,11 +44,12 @@
     "axiom_input_closure.json": "c3c164f437b05d598af7e604d2cb46365a8323a8043da49b08c5e0cdf32e2ec1",
     "axiom_rules_bindings.json": "72905af77132ff6a3c01ada4b6210be4c369d9c6dc49dc8c1b673e4bac0b5fb1",
     "benefit_unit_rule.json": "a9e8cbfd38a64d2f8db0002fe8c31bb5a18fb34dbe59fa943336487ce95e2ca8",
-    "calibration_bindings.json": "2293672e396407a24caaa5788638e7a1e7fc962575bc2551f500fbc309c3fe32",
+    "calibration_bindings.json": "488b99260792fbb6f92f1c67315fbf96c759cdf47fac48da40a861791d971b5f",
     "chronicle_feed.json": "60a80dd0042838b0412baf9dd0985c961b4253a6876d16bcdbb8a2c6c03de0c7",
-    "country_package.json": "5ccb980ee050f0de3221f01ada8303fc722fb9e0296c2c5cb312bb5aec5e35c9",
+    "country_package.json": "bef5b01004e430d8cb5f005e445727c9fbc776ea40b12ed7165ccd27f6506c84",
     "currency_bridge.json": "c72732cf36fa60938a6950e4543b6adfbc98b823572c2a6acc517cbe34d20bad",
     "export_contract.json": "2c7414fefe395c4f5822643dcd3bb3544ebb2040259aa007b828a99bd01ae210",
+    "family_reconciliation.json": "20e3f9f3ce6266d57828d721c99d15bd3642e6c6314a7076ec38972de02bc69e",
     "gates.json": "fa08b508ce1c93ef7627ca06f3a9e808f8fa6ea6f23ce24fa54c58241bbb9f7f",
     "geography_spine.json": "5f2b1bdd9f8768249912ffd0fbcb2f7d4ed493b51c74306f793ec12441fd383f",
     "holdout_references.json": "52b5a2360502156da1392a68350e4e7f61b5fd420fa74428819b65886a9f8655",
@@ -56,8 +57,8 @@
     "precal_references.json": "420361e424405df2312bd21808d6b6f4c3428b6fe90c44c37ab156ce197aa25d",
     "reference_aging.json": "e7619ec7a02ae5f460a46d160e89c9c9836c8b1d03140aed2348761e590504f0",
     "reference_intervals.json": "fcc88c0efd5f416aa15a7d5afbeee1d103dd78a136e13b1efc3973d203188412",
-    "reference_inventory.json": "d16ac4e95f5427c7bb1382ff6ae90e93d4b48344d810755fcc1dc6514430244a",
-    "reference_profiles.json": "cbdcb3bc9fe9c64f0f9280b40996545a8b20ec3a3d173fbdc1080c683715e6d5",
+    "reference_inventory.json": "f911ba4f3dcc60935dcb4e09a34957d7d3cb3bc2d588baaae32904896ddfd00d",
+    "reference_profiles.json": "d8001318cf0415c00d16cae82c617412a928d2cb9c1800ce48e063c0aba04760",
     "release_contract.json": "6cd5e3a4a2bf30e4025e04e964c393b24040937d13db7e6a07b3966a55f3b114",
     "reporting_classifiers.json": "2700a8dab0bcc186a0ce354a09c7cab127e8b07589b15fb7d63c7f1581041ad8",
     "scenarios.json": "3f1b5e40d283d7a1baf1a6990f2ca08a0ca39151a8cff028a49455f95e82e9c7",
@@ -68,7 +69,7 @@
     "spec/sources.yaml": "afdaa4bef98cf520a1c72b6013d1e453162c761cd4b3c1548620184f6ba41297",
     "spec/spine.yaml": "b3e6a2832ff7671777cae113b7fc45f5e3492bb519526f229118d0851083533e",
     "spec/vintages.yaml": "1ecc1a3f952bd25b834c394314e8c933ddb5b095fd64ba492dddb03e3cdd803e",
-    "target_references.json": "72b2d3b667c782b81b33cc850cd7f8b4014fc4d9fd50e74cb98c29dae1d46a46"
+    "target_references.json": "c40accc2198388cd59fb47921e4781635fe9e4f1abb70799eb16a2fc0cb52fbb"
   },
   "resources": [
     "spec/bundle.yaml",
@@ -87,6 +88,7 @@
     "chronicle_feed.json",
     "currency_bridge.json",
     "export_contract.json",
+    "family_reconciliation.json",
     "gates.json",
     "geography_spine.json",
     "holdout_references.json",

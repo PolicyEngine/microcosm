@@ -16,6 +16,7 @@ from microcosm.build.ledger_targets import (
     LedgerTargetReference,
     compile_ledger_target_references,
     fact_matches_selector,
+    reconcile_signed_partition,
     reference_fact_selectors,
     target_spec_from_ledger_reference,
 )
@@ -727,3 +728,415 @@ def test_generated_invalid_partition_rosters_refuse(counts, residual, change, di
         else:
             facts[-2]["value"] = 301
         _compile(facts, reference, direct)
+
+
+SIGNED_POLICY = {
+    "kind": "signed_proportional_reconciliation",
+    "max_abs": 3,
+    "max_relative": "0.001",
+    "combine": "either",
+    "ruling": "d1932",
+    "disclosure": "Independently rounded published counts; a modelling adjustment.",
+}
+
+
+def _signed_case(counts=(41, 19, 7), residual=3, *, sensitivity=False, growth=False):
+    facts, reference = _case(counts, residual, growth=growth)
+    operands = deepcopy(reference.value_operands)
+    partition = operands[2]
+    partition["discrepancy_policy"] = deepcopy(SIGNED_POLICY)
+    if sensitivity:
+        partition["positive_allocation_member_keys"] = ["fact:atom:3"]
+    return facts, replace(
+        reference,
+        value_operands=operands,
+        metadata={
+            "allocation_ruling": "d1932",
+            "family_discrepancy": "family_discrepancy_positive_to_type3"
+            if sensitivity
+            else "central",
+        },
+    )
+
+
+def _fraction(value):
+    return Fraction(value["numerator"], value["denominator"])
+
+
+def _signed_receipt(*args, **kwargs):
+    facts, reference = _signed_case(*args, **kwargs)
+    return json.loads(_compile(facts, reference).metadata["ledger_allocation_receipt"])
+
+
+def test_signed_region_99_passes_absolute_bound_with_either_combination():
+    facts, reference = _signed_case((72, 60, 15), residual=3)
+    operands = deepcopy(reference.value_operands)
+    selector = deepcopy(reference.ledger_selector)
+    selector["geography_id"] = "99"
+    for fact in facts:
+        fact["geography"]["id"] = "99"
+    operands[1]["geography_id"] = "99"
+    for member in operands[2]["member_selectors"]:
+        member["geography_id"] = "99"
+    reference = replace(reference, ledger_selector=selector, value_operands=operands)
+    receipt = json.loads(
+        _compile(facts, reference).metadata["ledger_allocation_receipt"]
+    )
+    assert receipt["region"] == "99"
+    assert receipt["bounds_passed"] == ["absolute"]
+    assert _fraction(receipt["L"]) == 147
+    assert _fraction(receipt["R"]) == 3
+    assert sum(map(_fraction, receipt["reconciled"].values())) == 150
+
+
+def test_signed_relative_only_bound_admits_more_than_three():
+    receipt = _signed_receipt((5000, 4000, 1000), residual=4)
+    assert receipt["bounds_passed"] == ["relative"]
+    assert sum(map(_fraction, receipt["reconciled"].values())) == 10004
+
+
+@pytest.mark.parametrize("residual", [-4, 4])
+def test_signed_relative_bound_is_inclusive(residual):
+    # |R| / L == max_relative exactly: 4 / 4000 is 0.001, past max_abs=3.
+    receipt = _signed_receipt((2000, 1500, 500), residual=residual)
+    assert receipt["bounds_passed"] == ["relative"]
+    assert sum(map(_fraction, receipt["reconciled"].values())) == 4000 + residual
+    with pytest.raises(ValueError, match=r"R=5, L=4000.*exceeds either bound"):
+        _signed_receipt((2000, 1500, 500), residual=5)
+
+
+def test_signed_relative_bound_compares_exact_rationals():
+    # Fraction("0.1") is exactly 1/10; Fraction(float("0.1")) exceeds it by
+    # about 5.6e-18, so a gap 1e-18 past the bound tells the two apart.
+    policy = {**SIGNED_POLICY, "max_abs": 0, "max_relative": "0.1"}
+    partition = {"a": Fraction(6), "b": Fraction(4)}
+    _, _, bounds = reconcile_signed_partition(
+        partition, Fraction(11), policy, region="01"
+    )
+    assert bounds == ("relative",)
+    with pytest.raises(ValueError, match="exceeds either bound"):
+        reconcile_signed_partition(
+            partition, Fraction(11) + Fraction(1, 10**18), policy, region="01"
+        )
+
+
+@pytest.mark.parametrize("value", [41.5, "41.5", "83/2"])
+def test_signed_count_reader_refuses_non_integer_counts(value):
+    facts, reference = _signed_case()
+    facts[0]["value"] = value
+    with pytest.raises(ValueError, match="exact nonnegative integer count"):
+        _compile(facts, reference)
+
+
+@pytest.mark.parametrize("residual", [-4, 4])
+def test_signed_outside_either_bound_refuses_and_names_region_gap_leaves(residual):
+    with pytest.raises(
+        ValueError,
+        match=rf"region 01: R={residual}, L=100.*max_abs=3.*max_relative=0.001",
+    ):
+        _signed_receipt((30, 40, 30), residual=residual)
+
+
+def test_signed_zero_partition_nonzero_total_refuses():
+    with pytest.raises(ValueError, match="region 01: R=1, L=0.*L=0"):
+        _signed_receipt((0, 0, 0), residual=1)
+
+
+def test_signed_zero_partition_and_total_close_to_zero():
+    receipt = _signed_receipt((0, 0, 0), residual=0)
+    assert all(_fraction(value) == 0 for value in receipt["reconciled"].values())
+
+
+@pytest.mark.parametrize(
+    "key,value",
+    [
+        ("unknown", True),
+        ("kind", "unknown"),
+        ("max_abs", -1),
+        ("max_abs", True),
+        ("max_relative", 0.001),
+        ("max_relative", "1e-3"),
+        ("max_relative", "NaN"),
+        ("max_relative", "Infinity"),
+        ("max_relative", "1/1000"),
+        ("max_relative", "-0.001"),
+        ("max_relative", ""),
+        ("max_relative", True),
+        ("combine", "both"),
+        ("ruling", ""),
+        ("disclosure", ""),
+    ],
+)
+def test_signed_policy_closed_keys_and_exact_decimal_refusals(key, value):
+    _, reference = _signed_case()
+    operands = deepcopy(reference.value_operands)
+    operands[2]["discrepancy_policy"][key] = value
+    with pytest.raises(ValueError):
+        replace(reference, value_operands=operands)
+
+
+@pytest.mark.parametrize("value", ["1", "1.0", "0.999"])
+def test_signed_relative_bound_accepts_values_up_to_one(value):
+    _, reference = _signed_case()
+    operands = deepcopy(reference.value_operands)
+    operands[2]["discrepancy_policy"]["max_relative"] = value
+    replace(reference, value_operands=operands)
+
+
+@pytest.mark.parametrize("value", ["1.000000000000000001", "1.5", "5"])
+def test_signed_relative_bound_refuses_values_above_one(value):
+    _, reference = _signed_case()
+    operands = deepcopy(reference.value_operands)
+    operands[2]["discrepancy_policy"]["max_relative"] = value
+    with pytest.raises(ValueError, match="max_relative must be at most 1"):
+        replace(reference, value_operands=operands)
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        "subset_central",
+        "positive_without_policy",
+        "positive_outside",
+        "multiple_positive",
+        "positive_null",
+    ],
+)
+def test_signed_recipient_contract_refuses_incompatible_declarations(change):
+    _, reference = _signed_case(sensitivity=True)
+    operands = deepcopy(reference.value_operands)
+    if change == "subset_central":
+        operands[2]["allocation_member_keys"] = ["fact:atom:3"]
+    elif change == "positive_without_policy":
+        del operands[2]["discrepancy_policy"]
+    elif change == "positive_outside":
+        operands[2]["positive_allocation_member_keys"] = ["fact:outside"]
+    elif change == "positive_null":
+        operands[2]["positive_allocation_member_keys"] = None
+    else:
+        operands[2]["positive_allocation_member_keys"] = ["fact:atom:2", "fact:atom:3"]
+    with pytest.raises(ValueError):
+        replace(reference, value_operands=operands)
+
+
+def test_signed_negative_discrepancy_scales_down_without_clipping():
+    receipt = _signed_receipt(residual=-3)
+    assert _fraction(receipt["R"]) == -3
+    assert _fraction(receipt["reconciled"]["fact:atom:1"]) == Fraction(41 * 64, 67)
+    assert all(_fraction(increment) < 0 for increment in receipt["increments"].values())
+
+
+@pytest.mark.parametrize("residual", [-3, 0])
+def test_signed_sensitivity_on_nonpositive_discrepancy_matches_central(residual):
+    central = _signed_receipt(residual=residual)
+    sensitivity = _signed_receipt(residual=residual, sensitivity=True)
+    assert sensitivity["reconciled"] == central["reconciled"]
+    assert sensitivity["increments"] == central["increments"]
+    assert sensitivity["fact_keys"]["recipients"] == central["fact_keys"]["recipients"]
+
+
+def test_signed_positive_sensitivity_assigns_all_to_zero_mass_type_three():
+    receipt = _signed_receipt((1, 2, 0), residual=3, sensitivity=True)
+    assert {key: _fraction(value) for key, value in receipt["increments"].items()} == {
+        "fact:atom:1": 0,
+        "fact:atom:2": 0,
+        "fact:atom:3": 3,
+    }
+    assert receipt["fact_keys"]["recipients"] == ["fact:atom:3"]
+    assert sum(map(_fraction, receipt["reconciled"].values())) == 6
+
+
+def test_signed_receipt_is_exact_complete_and_byte_deterministic():
+    facts, reference = _signed_case(growth=True, sensitivity=True)
+    first = _compile(facts, reference).metadata["ledger_allocation_receipt"]
+    operands = deepcopy(reference.value_operands)
+    operands[2]["member_selectors"].reverse()
+    operands[2]["allocation_member_keys"].reverse()
+    second = _compile(
+        list(reversed(facts)), replace(reference, value_operands=operands)
+    ).metadata["ledger_allocation_receipt"]
+    assert first == second
+    receipt = json.loads(first)
+    assert receipt["policy"] == SIGNED_POLICY
+    assert receipt["ruling"] == "d1932"
+    assert receipt["x"] == {
+        f"fact:atom:{i}": {"numerator": value, "denominator": 1}
+        for i, value in enumerate((41, 19, 7), 1)
+    }
+    assert _fraction(receipt["Q"]) == Fraction(109, 100)
+    assert _fraction(receipt["growth_operands"]["numerator"]["value"]) == 109
+    assert _fraction(receipt["growth_operands"]["denominator"]["value"]) == 100
+    assert set(receipt["fact_keys"]) == {
+        "base",
+        "partition",
+        "recipients",
+        "total",
+        "numerator",
+        "denominator",
+    }
+    assert _fraction(receipt["final_target"]) == Fraction(41 * 109, 100)
+
+
+@pytest.mark.parametrize("direct", [False, True])
+def test_legacy_policy_absent_receipt_is_byte_identical(direct):
+    import hashlib
+
+    facts, reference = _case()
+    receipt = _compile(facts, reference, direct).metadata["ledger_allocation_receipt"]
+    assert (
+        hashlib.sha256(receipt.encode()).hexdigest()
+        == "98efc6e6578dcc681d25fd8fcc5811c0f2f595f9f347e5aa71c7fe43caba2307"
+    )
+
+
+@st.composite
+def _admissible_signed_counts(draw):
+    counts = tuple(draw(st.lists(st.integers(0, 100_000), min_size=3, max_size=3)))
+    leaves = sum(counts)
+    if not leaves:
+        return counts, 0
+    bound = max(3, leaves // 1000)
+    return counts, draw(st.integers(-min(leaves, bound), bound))
+
+
+@settings(
+    max_examples=80,
+    deadline=None,
+    database=None,
+    suppress_health_check=[HealthCheck.too_slow],
+)
+@given(case=_admissible_signed_counts())
+def test_signed_exact_closure_nonnegativity_and_preserved_shares(case):
+    from microcosm.build.ledger_targets import reconcile_signed_partition
+
+    counts, residual = case
+    raw = {str(i): Fraction(value) for i, value in enumerate(counts, 1)}
+    adjusted, increments, _ = reconcile_signed_partition(
+        raw, Fraction(sum(counts) + residual), SIGNED_POLICY, region="generated"
+    )
+    assert all(
+        isinstance(value, Fraction) and value >= 0 for value in adjusted.values()
+    )
+    assert sum(adjusted.values(), Fraction()) == sum(counts) + residual
+    assert sum(increments.values(), Fraction()) == residual
+    for left in raw:
+        for right in raw:
+            assert adjusted[left] * raw[right] == adjusted[right] * raw[left]
+
+
+@settings(
+    max_examples=80,
+    deadline=None,
+    database=None,
+    suppress_health_check=[HealthCheck.too_slow],
+)
+@given(case=_admissible_signed_counts())
+def test_signed_sensitivity_property_positive_only_type_three_and_exact_closure(case):
+    from microcosm.build.ledger_targets import reconcile_signed_partition
+
+    counts, residual = case
+    raw = {str(i): Fraction(value) for i, value in enumerate(counts, 1)}
+    total = Fraction(sum(counts) + residual)
+    central, _, _ = reconcile_signed_partition(
+        raw, total, SIGNED_POLICY, region="generated"
+    )
+    adjusted, increments, _ = reconcile_signed_partition(
+        raw, total, SIGNED_POLICY, region="generated", positive_recipient_keys=("3",)
+    )
+    assert sum(adjusted.values(), Fraction()) == total
+    assert all(
+        isinstance(value, Fraction) and value >= 0 for value in adjusted.values()
+    )
+    if residual > 0:
+        assert increments == {"1": 0, "2": 0, "3": residual}
+        assert adjusted["1"] == raw["1"] and adjusted["2"] == raw["2"]
+    else:
+        assert adjusted == central
+
+
+@settings(
+    max_examples=50,
+    deadline=None,
+    database=None,
+    suppress_health_check=[HealthCheck.too_slow],
+)
+@given(
+    case=_admissible_signed_counts(),
+    numerator=st.integers(51, 200),
+    sensitivity=st.booleans(),
+)
+def test_signed_compiled_erp_bridge_scales_exact_closure_once(
+    case, numerator, sensitivity
+):
+    counts, residual = case
+    facts, reference = _signed_case(
+        counts, residual, growth=True, sensitivity=sensitivity
+    )
+    facts[-2]["value"] = numerator
+    receipt = json.loads(
+        _compile(facts, reference).metadata["ledger_allocation_receipt"]
+    )
+    ratio = Fraction(numerator, 100)
+    assert _fraction(receipt["Q"]) == ratio
+    assert (
+        sum(map(_fraction, receipt["final_targets"].values()), Fraction())
+        == Fraction(sum(counts) + residual) * ratio
+    )
+    assert _fraction(receipt["final_target"]) == _fraction(
+        receipt["final_targets"]["fact:atom:1"]
+    )
+
+
+@settings(
+    max_examples=30,
+    deadline=None,
+    database=None,
+    suppress_health_check=[HealthCheck.too_slow],
+)
+@given(
+    cases=st.lists(_admissible_signed_counts(), min_size=2, max_size=4),
+    ordering=st.data(),
+)
+def test_signed_permuting_regions_and_fact_order_preserves_every_value(cases, ordering):
+    facts, references = [], []
+    for index, (counts, residual) in enumerate(cases):
+        members, reference = _signed_case(counts, residual, growth=True)
+        region = str(index)
+        selector = deepcopy(reference.ledger_selector)
+        selector["geography_id"] = region
+        selector["aggregate_fact_key"] += f":{region}"
+        operands = deepcopy(reference.value_operands)
+        for member in members:
+            member["geography"]["id"] = region
+            member["aggregate_fact_key"] += f":{region}"
+        for operand in [operands[1], *operands[2]["member_selectors"], *operands[3:]]:
+            operand["geography_id"] = region
+            operand["aggregate_fact_key"] += f":{region}"
+        operands[2]["allocation_member_keys"] = [
+            key + f":{region}" for key in operands[2]["allocation_member_keys"]
+        ]
+        facts.extend(members)
+        references.append(
+            replace(
+                reference,
+                name=f"region-{region}",
+                ledger_selector=selector,
+                value_operands=operands,
+            )
+        )
+
+    def values(selected_facts, selected_references):
+        result = compile_ledger_target_references(
+            selected_facts, selected_references, country="fixture"
+        )
+        return {
+            spec.name: (spec.value, spec.metadata["ledger_allocation_receipt"])
+            for spec in result.specs
+        }
+
+    expected = values(facts, references)
+    permutation = ordering.draw(st.permutations(tuple(range(len(references)))))
+    assert (
+        values(list(reversed(facts)), [references[index] for index in permutation])
+        == expected
+    )

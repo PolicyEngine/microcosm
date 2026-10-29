@@ -17053,7 +17053,7 @@
         "reference_set": "calibration",
         "method_card_row": "MC5",
         "legacy_contract_target_id": "stats_nz_census_families_by_type",
-        "parking_reason": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+        "parking_reason": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
         "source_snapshot": "2023-03-07 Census",
         "growth_denominator_snapshot": "2023-06-30 ERP",
         "target_level_snapshot": "2025-06-30 ERP",
@@ -17063,7 +17063,11 @@
         "held_households_per_erp_person": "true",
         "held_census_families_per_erp_person": "true",
         "projection_from_june2025_to_model_period": "none",
-        "method_decision": "d1598; g8r-hub-rulings 2026-10-22"
+        "method_decision": "d1598; g8r-hub-rulings 2026-10-22",
+        "required_reference_profile": "family_discrepancy",
+        "allocation_ruling": "d1932",
+        "exempt": "true",
+        "activation_prerequisites": "G8-r3b"
       },
       "hierarchy": {
         "provider": {
@@ -17075,10 +17079,10 @@
           "label": "Household Structure",
           "provider_id": "stats_nz"
         },
-        "target_label": "Northland Region Census family type 1, ERP-density bridge to June 2025"
+        "target_label": "Northland Region Census family type 1, ERP-density bridge to June 2025; d1932 signed reconciliation; parked for G8-r3b"
       },
       "filter": "region_01_indicator",
-      "notes": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+      "notes": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
       "value_operation": "rolled_forward_by_ratio",
       "value_operands": [
         {
@@ -17153,7 +17157,7 @@
         "reference_set": "calibration",
         "method_card_row": "MC5",
         "legacy_contract_target_id": "stats_nz_census_families_by_type",
-        "parking_reason": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+        "parking_reason": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
         "source_snapshot": "2023-03-07 Census",
         "growth_denominator_snapshot": "2023-06-30 ERP",
         "target_level_snapshot": "2025-06-30 ERP",
@@ -17163,7 +17167,11 @@
         "held_households_per_erp_person": "true",
         "held_census_families_per_erp_person": "true",
         "projection_from_june2025_to_model_period": "none",
-        "method_decision": "d1598; g8r-hub-rulings 2026-10-22"
+        "method_decision": "d1598; g8r-hub-rulings 2026-10-22",
+        "required_reference_profile": "family_discrepancy",
+        "allocation_ruling": "d1932",
+        "exempt": "true",
+        "activation_prerequisites": "G8-r3b"
       },
       "hierarchy": {
         "provider": {
@@ -17175,10 +17183,10 @@
           "label": "Household Structure",
           "provider_id": "stats_nz"
         },
-        "target_label": "Northland Region Census family type 2, ERP-density bridge to June 2025"
+        "target_label": "Northland Region Census family type 2, ERP-density bridge to June 2025; d1932 signed reconciliation; parked for G8-r3b"
       },
       "filter": "region_01_indicator",
-      "notes": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+      "notes": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
       "value_operation": "rolled_forward_by_ratio",
       "value_operands": [
         {
@@ -17253,7 +17261,7 @@
         "reference_set": "calibration",
         "method_card_row": "MC5",
         "legacy_contract_target_id": "stats_nz_census_families_by_type",
-        "parking_reason": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+        "parking_reason": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
         "source_snapshot": "2023-03-07 Census",
         "growth_denominator_snapshot": "2023-06-30 ERP",
         "target_level_snapshot": "2025-06-30 ERP",
@@ -17263,7 +17271,11 @@
         "held_households_per_erp_person": "true",
         "held_census_families_per_erp_person": "true",
         "projection_from_june2025_to_model_period": "none",
-        "method_decision": "d1598; g8r-hub-rulings 2026-10-22"
+        "method_decision": "d1598; g8r-hub-rulings 2026-10-22",
+        "required_reference_profile": "family_discrepancy",
+        "allocation_ruling": "d1932",
+        "exempt": "true",
+        "activation_prerequisites": "G8-r3b"
       },
       "hierarchy": {
         "provider": {
@@ -17275,10 +17287,10 @@
           "label": "Household Structure",
           "provider_id": "stats_nz"
         },
-        "target_label": "Northland Region Census family type 3, ERP-density bridge to June 2025"
+        "target_label": "Northland Region Census family type 3, ERP-density bridge to June 2025; d1932 signed reconciliation; parked for G8-r3b"
       },
       "filter": "region_01_indicator",
-      "notes": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+      "notes": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
       "value_operation": "rolled_forward_by_ratio",
       "value_operands": [
         {
@@ -17353,7 +17365,7 @@
         "reference_set": "calibration",
         "method_card_row": "MC5",
         "legacy_contract_target_id": "stats_nz_census_families_by_type",
-        "parking_reason": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+        "parking_reason": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
         "source_snapshot": "2023-03-07 Census",
         "growth_denominator_snapshot": "2023-06-30 ERP",
         "target_level_snapshot": "2025-06-30 ERP",
@@ -17363,7 +17375,11 @@
         "held_households_per_erp_person": "true",
         "held_census_families_per_erp_person": "true",
         "projection_from_june2025_to_model_period": "none",
-        "method_decision": "d1598; g8r-hub-rulings 2026-10-22"
+        "method_decision": "d1598; g8r-hub-rulings 2026-10-22",
+        "required_reference_profile": "family_discrepancy",
+        "allocation_ruling": "d1932",
+        "exempt": "true",
+        "activation_prerequisites": "G8-r3b"
       },
       "hierarchy": {
         "provider": {
@@ -17375,10 +17391,10 @@
           "label": "Household Structure",
           "provider_id": "stats_nz"
         },
-        "target_label": "Auckland Census family type 1, ERP-density bridge to June 2025"
+        "target_label": "Auckland Census family type 1, ERP-density bridge to June 2025; d1932 signed reconciliation; parked for G8-r3b"
       },
       "filter": "region_02_indicator",
-      "notes": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+      "notes": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
       "value_operation": "rolled_forward_by_ratio",
       "value_operands": [
         {
@@ -17453,7 +17469,7 @@
         "reference_set": "calibration",
         "method_card_row": "MC5",
         "legacy_contract_target_id": "stats_nz_census_families_by_type",
-        "parking_reason": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+        "parking_reason": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
         "source_snapshot": "2023-03-07 Census",
         "growth_denominator_snapshot": "2023-06-30 ERP",
         "target_level_snapshot": "2025-06-30 ERP",
@@ -17463,7 +17479,11 @@
         "held_households_per_erp_person": "true",
         "held_census_families_per_erp_person": "true",
         "projection_from_june2025_to_model_period": "none",
-        "method_decision": "d1598; g8r-hub-rulings 2026-10-22"
+        "method_decision": "d1598; g8r-hub-rulings 2026-10-22",
+        "required_reference_profile": "family_discrepancy",
+        "allocation_ruling": "d1932",
+        "exempt": "true",
+        "activation_prerequisites": "G8-r3b"
       },
       "hierarchy": {
         "provider": {
@@ -17475,10 +17495,10 @@
           "label": "Household Structure",
           "provider_id": "stats_nz"
         },
-        "target_label": "Auckland Census family type 2, ERP-density bridge to June 2025"
+        "target_label": "Auckland Census family type 2, ERP-density bridge to June 2025; d1932 signed reconciliation; parked for G8-r3b"
       },
       "filter": "region_02_indicator",
-      "notes": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+      "notes": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
       "value_operation": "rolled_forward_by_ratio",
       "value_operands": [
         {
@@ -17553,7 +17573,7 @@
         "reference_set": "calibration",
         "method_card_row": "MC5",
         "legacy_contract_target_id": "stats_nz_census_families_by_type",
-        "parking_reason": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+        "parking_reason": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
         "source_snapshot": "2023-03-07 Census",
         "growth_denominator_snapshot": "2023-06-30 ERP",
         "target_level_snapshot": "2025-06-30 ERP",
@@ -17563,7 +17583,11 @@
         "held_households_per_erp_person": "true",
         "held_census_families_per_erp_person": "true",
         "projection_from_june2025_to_model_period": "none",
-        "method_decision": "d1598; g8r-hub-rulings 2026-10-22"
+        "method_decision": "d1598; g8r-hub-rulings 2026-10-22",
+        "required_reference_profile": "family_discrepancy",
+        "allocation_ruling": "d1932",
+        "exempt": "true",
+        "activation_prerequisites": "G8-r3b"
       },
       "hierarchy": {
         "provider": {
@@ -17575,10 +17599,10 @@
           "label": "Household Structure",
           "provider_id": "stats_nz"
         },
-        "target_label": "Auckland Census family type 3, ERP-density bridge to June 2025"
+        "target_label": "Auckland Census family type 3, ERP-density bridge to June 2025; d1932 signed reconciliation; parked for G8-r3b"
       },
       "filter": "region_02_indicator",
-      "notes": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+      "notes": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
       "value_operation": "rolled_forward_by_ratio",
       "value_operands": [
         {
@@ -17653,7 +17677,7 @@
         "reference_set": "calibration",
         "method_card_row": "MC5",
         "legacy_contract_target_id": "stats_nz_census_families_by_type",
-        "parking_reason": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+        "parking_reason": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
         "source_snapshot": "2023-03-07 Census",
         "growth_denominator_snapshot": "2023-06-30 ERP",
         "target_level_snapshot": "2025-06-30 ERP",
@@ -17663,7 +17687,11 @@
         "held_households_per_erp_person": "true",
         "held_census_families_per_erp_person": "true",
         "projection_from_june2025_to_model_period": "none",
-        "method_decision": "d1598; g8r-hub-rulings 2026-10-22"
+        "method_decision": "d1598; g8r-hub-rulings 2026-10-22",
+        "required_reference_profile": "family_discrepancy",
+        "allocation_ruling": "d1932",
+        "exempt": "true",
+        "activation_prerequisites": "G8-r3b"
       },
       "hierarchy": {
         "provider": {
@@ -17675,10 +17703,10 @@
           "label": "Household Structure",
           "provider_id": "stats_nz"
         },
-        "target_label": "Waikato Region Census family type 1, ERP-density bridge to June 2025"
+        "target_label": "Waikato Region Census family type 1, ERP-density bridge to June 2025; d1932 signed reconciliation; parked for G8-r3b"
       },
       "filter": "region_03_indicator",
-      "notes": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+      "notes": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
       "value_operation": "rolled_forward_by_ratio",
       "value_operands": [
         {
@@ -17753,7 +17781,7 @@
         "reference_set": "calibration",
         "method_card_row": "MC5",
         "legacy_contract_target_id": "stats_nz_census_families_by_type",
-        "parking_reason": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+        "parking_reason": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
         "source_snapshot": "2023-03-07 Census",
         "growth_denominator_snapshot": "2023-06-30 ERP",
         "target_level_snapshot": "2025-06-30 ERP",
@@ -17763,7 +17791,11 @@
         "held_households_per_erp_person": "true",
         "held_census_families_per_erp_person": "true",
         "projection_from_june2025_to_model_period": "none",
-        "method_decision": "d1598; g8r-hub-rulings 2026-10-22"
+        "method_decision": "d1598; g8r-hub-rulings 2026-10-22",
+        "required_reference_profile": "family_discrepancy",
+        "allocation_ruling": "d1932",
+        "exempt": "true",
+        "activation_prerequisites": "G8-r3b"
       },
       "hierarchy": {
         "provider": {
@@ -17775,10 +17807,10 @@
           "label": "Household Structure",
           "provider_id": "stats_nz"
         },
-        "target_label": "Waikato Region Census family type 2, ERP-density bridge to June 2025"
+        "target_label": "Waikato Region Census family type 2, ERP-density bridge to June 2025; d1932 signed reconciliation; parked for G8-r3b"
       },
       "filter": "region_03_indicator",
-      "notes": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+      "notes": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
       "value_operation": "rolled_forward_by_ratio",
       "value_operands": [
         {
@@ -17853,7 +17885,7 @@
         "reference_set": "calibration",
         "method_card_row": "MC5",
         "legacy_contract_target_id": "stats_nz_census_families_by_type",
-        "parking_reason": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+        "parking_reason": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
         "source_snapshot": "2023-03-07 Census",
         "growth_denominator_snapshot": "2023-06-30 ERP",
         "target_level_snapshot": "2025-06-30 ERP",
@@ -17863,7 +17895,11 @@
         "held_households_per_erp_person": "true",
         "held_census_families_per_erp_person": "true",
         "projection_from_june2025_to_model_period": "none",
-        "method_decision": "d1598; g8r-hub-rulings 2026-10-22"
+        "method_decision": "d1598; g8r-hub-rulings 2026-10-22",
+        "required_reference_profile": "family_discrepancy",
+        "allocation_ruling": "d1932",
+        "exempt": "true",
+        "activation_prerequisites": "G8-r3b"
       },
       "hierarchy": {
         "provider": {
@@ -17875,10 +17911,10 @@
           "label": "Household Structure",
           "provider_id": "stats_nz"
         },
-        "target_label": "Waikato Region Census family type 3, ERP-density bridge to June 2025"
+        "target_label": "Waikato Region Census family type 3, ERP-density bridge to June 2025; d1932 signed reconciliation; parked for G8-r3b"
       },
       "filter": "region_03_indicator",
-      "notes": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+      "notes": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
       "value_operation": "rolled_forward_by_ratio",
       "value_operands": [
         {
@@ -17953,7 +17989,7 @@
         "reference_set": "calibration",
         "method_card_row": "MC5",
         "legacy_contract_target_id": "stats_nz_census_families_by_type",
-        "parking_reason": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+        "parking_reason": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
         "source_snapshot": "2023-03-07 Census",
         "growth_denominator_snapshot": "2023-06-30 ERP",
         "target_level_snapshot": "2025-06-30 ERP",
@@ -17963,7 +17999,11 @@
         "held_households_per_erp_person": "true",
         "held_census_families_per_erp_person": "true",
         "projection_from_june2025_to_model_period": "none",
-        "method_decision": "d1598; g8r-hub-rulings 2026-10-22"
+        "method_decision": "d1598; g8r-hub-rulings 2026-10-22",
+        "required_reference_profile": "family_discrepancy",
+        "allocation_ruling": "d1932",
+        "exempt": "true",
+        "activation_prerequisites": "G8-r3b"
       },
       "hierarchy": {
         "provider": {
@@ -17975,10 +18015,10 @@
           "label": "Household Structure",
           "provider_id": "stats_nz"
         },
-        "target_label": "Bay of Plenty Region Census family type 1, ERP-density bridge to June 2025"
+        "target_label": "Bay of Plenty Region Census family type 1, ERP-density bridge to June 2025; d1932 signed reconciliation; parked for G8-r3b"
       },
       "filter": "region_04_indicator",
-      "notes": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+      "notes": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
       "value_operation": "rolled_forward_by_ratio",
       "value_operands": [
         {
@@ -18053,7 +18093,7 @@
         "reference_set": "calibration",
         "method_card_row": "MC5",
         "legacy_contract_target_id": "stats_nz_census_families_by_type",
-        "parking_reason": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+        "parking_reason": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
         "source_snapshot": "2023-03-07 Census",
         "growth_denominator_snapshot": "2023-06-30 ERP",
         "target_level_snapshot": "2025-06-30 ERP",
@@ -18063,7 +18103,11 @@
         "held_households_per_erp_person": "true",
         "held_census_families_per_erp_person": "true",
         "projection_from_june2025_to_model_period": "none",
-        "method_decision": "d1598; g8r-hub-rulings 2026-10-22"
+        "method_decision": "d1598; g8r-hub-rulings 2026-10-22",
+        "required_reference_profile": "family_discrepancy",
+        "allocation_ruling": "d1932",
+        "exempt": "true",
+        "activation_prerequisites": "G8-r3b"
       },
       "hierarchy": {
         "provider": {
@@ -18075,10 +18119,10 @@
           "label": "Household Structure",
           "provider_id": "stats_nz"
         },
-        "target_label": "Bay of Plenty Region Census family type 2, ERP-density bridge to June 2025"
+        "target_label": "Bay of Plenty Region Census family type 2, ERP-density bridge to June 2025; d1932 signed reconciliation; parked for G8-r3b"
       },
       "filter": "region_04_indicator",
-      "notes": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+      "notes": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
       "value_operation": "rolled_forward_by_ratio",
       "value_operands": [
         {
@@ -18153,7 +18197,7 @@
         "reference_set": "calibration",
         "method_card_row": "MC5",
         "legacy_contract_target_id": "stats_nz_census_families_by_type",
-        "parking_reason": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+        "parking_reason": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
         "source_snapshot": "2023-03-07 Census",
         "growth_denominator_snapshot": "2023-06-30 ERP",
         "target_level_snapshot": "2025-06-30 ERP",
@@ -18163,7 +18207,11 @@
         "held_households_per_erp_person": "true",
         "held_census_families_per_erp_person": "true",
         "projection_from_june2025_to_model_period": "none",
-        "method_decision": "d1598; g8r-hub-rulings 2026-10-22"
+        "method_decision": "d1598; g8r-hub-rulings 2026-10-22",
+        "required_reference_profile": "family_discrepancy",
+        "allocation_ruling": "d1932",
+        "exempt": "true",
+        "activation_prerequisites": "G8-r3b"
       },
       "hierarchy": {
         "provider": {
@@ -18175,10 +18223,10 @@
           "label": "Household Structure",
           "provider_id": "stats_nz"
         },
-        "target_label": "Bay of Plenty Region Census family type 3, ERP-density bridge to June 2025"
+        "target_label": "Bay of Plenty Region Census family type 3, ERP-density bridge to June 2025; d1932 signed reconciliation; parked for G8-r3b"
       },
       "filter": "region_04_indicator",
-      "notes": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+      "notes": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
       "value_operation": "rolled_forward_by_ratio",
       "value_operands": [
         {
@@ -18253,7 +18301,7 @@
         "reference_set": "calibration",
         "method_card_row": "MC5",
         "legacy_contract_target_id": "stats_nz_census_families_by_type",
-        "parking_reason": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+        "parking_reason": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
         "source_snapshot": "2023-03-07 Census",
         "growth_denominator_snapshot": "2023-06-30 ERP",
         "target_level_snapshot": "2025-06-30 ERP",
@@ -18263,7 +18311,11 @@
         "held_households_per_erp_person": "true",
         "held_census_families_per_erp_person": "true",
         "projection_from_june2025_to_model_period": "none",
-        "method_decision": "d1598; g8r-hub-rulings 2026-10-22"
+        "method_decision": "d1598; g8r-hub-rulings 2026-10-22",
+        "required_reference_profile": "family_discrepancy",
+        "allocation_ruling": "d1932",
+        "exempt": "true",
+        "activation_prerequisites": "G8-r3b"
       },
       "hierarchy": {
         "provider": {
@@ -18275,10 +18327,10 @@
           "label": "Household Structure",
           "provider_id": "stats_nz"
         },
-        "target_label": "Gisborne Region Census family type 1, ERP-density bridge to June 2025"
+        "target_label": "Gisborne Region Census family type 1, ERP-density bridge to June 2025; d1932 signed reconciliation; parked for G8-r3b"
       },
       "filter": "region_05_indicator",
-      "notes": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+      "notes": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
       "value_operation": "rolled_forward_by_ratio",
       "value_operands": [
         {
@@ -18353,7 +18405,7 @@
         "reference_set": "calibration",
         "method_card_row": "MC5",
         "legacy_contract_target_id": "stats_nz_census_families_by_type",
-        "parking_reason": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+        "parking_reason": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
         "source_snapshot": "2023-03-07 Census",
         "growth_denominator_snapshot": "2023-06-30 ERP",
         "target_level_snapshot": "2025-06-30 ERP",
@@ -18363,7 +18415,11 @@
         "held_households_per_erp_person": "true",
         "held_census_families_per_erp_person": "true",
         "projection_from_june2025_to_model_period": "none",
-        "method_decision": "d1598; g8r-hub-rulings 2026-10-22"
+        "method_decision": "d1598; g8r-hub-rulings 2026-10-22",
+        "required_reference_profile": "family_discrepancy",
+        "allocation_ruling": "d1932",
+        "exempt": "true",
+        "activation_prerequisites": "G8-r3b"
       },
       "hierarchy": {
         "provider": {
@@ -18375,10 +18431,10 @@
           "label": "Household Structure",
           "provider_id": "stats_nz"
         },
-        "target_label": "Gisborne Region Census family type 2, ERP-density bridge to June 2025"
+        "target_label": "Gisborne Region Census family type 2, ERP-density bridge to June 2025; d1932 signed reconciliation; parked for G8-r3b"
       },
       "filter": "region_05_indicator",
-      "notes": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+      "notes": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
       "value_operation": "rolled_forward_by_ratio",
       "value_operands": [
         {
@@ -18453,7 +18509,7 @@
         "reference_set": "calibration",
         "method_card_row": "MC5",
         "legacy_contract_target_id": "stats_nz_census_families_by_type",
-        "parking_reason": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+        "parking_reason": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
         "source_snapshot": "2023-03-07 Census",
         "growth_denominator_snapshot": "2023-06-30 ERP",
         "target_level_snapshot": "2025-06-30 ERP",
@@ -18463,7 +18519,11 @@
         "held_households_per_erp_person": "true",
         "held_census_families_per_erp_person": "true",
         "projection_from_june2025_to_model_period": "none",
-        "method_decision": "d1598; g8r-hub-rulings 2026-10-22"
+        "method_decision": "d1598; g8r-hub-rulings 2026-10-22",
+        "required_reference_profile": "family_discrepancy",
+        "allocation_ruling": "d1932",
+        "exempt": "true",
+        "activation_prerequisites": "G8-r3b"
       },
       "hierarchy": {
         "provider": {
@@ -18475,10 +18535,10 @@
           "label": "Household Structure",
           "provider_id": "stats_nz"
         },
-        "target_label": "Gisborne Region Census family type 3, ERP-density bridge to June 2025"
+        "target_label": "Gisborne Region Census family type 3, ERP-density bridge to June 2025; d1932 signed reconciliation; parked for G8-r3b"
       },
       "filter": "region_05_indicator",
-      "notes": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+      "notes": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
       "value_operation": "rolled_forward_by_ratio",
       "value_operands": [
         {
@@ -18553,7 +18613,7 @@
         "reference_set": "calibration",
         "method_card_row": "MC5",
         "legacy_contract_target_id": "stats_nz_census_families_by_type",
-        "parking_reason": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+        "parking_reason": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
         "source_snapshot": "2023-03-07 Census",
         "growth_denominator_snapshot": "2023-06-30 ERP",
         "target_level_snapshot": "2025-06-30 ERP",
@@ -18563,7 +18623,11 @@
         "held_households_per_erp_person": "true",
         "held_census_families_per_erp_person": "true",
         "projection_from_june2025_to_model_period": "none",
-        "method_decision": "d1598; g8r-hub-rulings 2026-10-22"
+        "method_decision": "d1598; g8r-hub-rulings 2026-10-22",
+        "required_reference_profile": "family_discrepancy",
+        "allocation_ruling": "d1932",
+        "exempt": "true",
+        "activation_prerequisites": "G8-r3b"
       },
       "hierarchy": {
         "provider": {
@@ -18575,10 +18639,10 @@
           "label": "Household Structure",
           "provider_id": "stats_nz"
         },
-        "target_label": "Hawke's Bay Region Census family type 1, ERP-density bridge to June 2025"
+        "target_label": "Hawke's Bay Region Census family type 1, ERP-density bridge to June 2025; d1932 signed reconciliation; parked for G8-r3b"
       },
       "filter": "region_06_indicator",
-      "notes": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+      "notes": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
       "value_operation": "rolled_forward_by_ratio",
       "value_operands": [
         {
@@ -18653,7 +18717,7 @@
         "reference_set": "calibration",
         "method_card_row": "MC5",
         "legacy_contract_target_id": "stats_nz_census_families_by_type",
-        "parking_reason": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+        "parking_reason": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
         "source_snapshot": "2023-03-07 Census",
         "growth_denominator_snapshot": "2023-06-30 ERP",
         "target_level_snapshot": "2025-06-30 ERP",
@@ -18663,7 +18727,11 @@
         "held_households_per_erp_person": "true",
         "held_census_families_per_erp_person": "true",
         "projection_from_june2025_to_model_period": "none",
-        "method_decision": "d1598; g8r-hub-rulings 2026-10-22"
+        "method_decision": "d1598; g8r-hub-rulings 2026-10-22",
+        "required_reference_profile": "family_discrepancy",
+        "allocation_ruling": "d1932",
+        "exempt": "true",
+        "activation_prerequisites": "G8-r3b"
       },
       "hierarchy": {
         "provider": {
@@ -18675,10 +18743,10 @@
           "label": "Household Structure",
           "provider_id": "stats_nz"
         },
-        "target_label": "Hawke's Bay Region Census family type 2, ERP-density bridge to June 2025"
+        "target_label": "Hawke's Bay Region Census family type 2, ERP-density bridge to June 2025; d1932 signed reconciliation; parked for G8-r3b"
       },
       "filter": "region_06_indicator",
-      "notes": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+      "notes": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
       "value_operation": "rolled_forward_by_ratio",
       "value_operands": [
         {
@@ -18753,7 +18821,7 @@
         "reference_set": "calibration",
         "method_card_row": "MC5",
         "legacy_contract_target_id": "stats_nz_census_families_by_type",
-        "parking_reason": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+        "parking_reason": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
         "source_snapshot": "2023-03-07 Census",
         "growth_denominator_snapshot": "2023-06-30 ERP",
         "target_level_snapshot": "2025-06-30 ERP",
@@ -18763,7 +18831,11 @@
         "held_households_per_erp_person": "true",
         "held_census_families_per_erp_person": "true",
         "projection_from_june2025_to_model_period": "none",
-        "method_decision": "d1598; g8r-hub-rulings 2026-10-22"
+        "method_decision": "d1598; g8r-hub-rulings 2026-10-22",
+        "required_reference_profile": "family_discrepancy",
+        "allocation_ruling": "d1932",
+        "exempt": "true",
+        "activation_prerequisites": "G8-r3b"
       },
       "hierarchy": {
         "provider": {
@@ -18775,10 +18847,10 @@
           "label": "Household Structure",
           "provider_id": "stats_nz"
         },
-        "target_label": "Hawke's Bay Region Census family type 3, ERP-density bridge to June 2025"
+        "target_label": "Hawke's Bay Region Census family type 3, ERP-density bridge to June 2025; d1932 signed reconciliation; parked for G8-r3b"
       },
       "filter": "region_06_indicator",
-      "notes": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+      "notes": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
       "value_operation": "rolled_forward_by_ratio",
       "value_operands": [
         {
@@ -18853,7 +18925,7 @@
         "reference_set": "calibration",
         "method_card_row": "MC5",
         "legacy_contract_target_id": "stats_nz_census_families_by_type",
-        "parking_reason": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+        "parking_reason": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
         "source_snapshot": "2023-03-07 Census",
         "growth_denominator_snapshot": "2023-06-30 ERP",
         "target_level_snapshot": "2025-06-30 ERP",
@@ -18863,7 +18935,11 @@
         "held_households_per_erp_person": "true",
         "held_census_families_per_erp_person": "true",
         "projection_from_june2025_to_model_period": "none",
-        "method_decision": "d1598; g8r-hub-rulings 2026-10-22"
+        "method_decision": "d1598; g8r-hub-rulings 2026-10-22",
+        "required_reference_profile": "family_discrepancy",
+        "allocation_ruling": "d1932",
+        "exempt": "true",
+        "activation_prerequisites": "G8-r3b"
       },
       "hierarchy": {
         "provider": {
@@ -18875,10 +18951,10 @@
           "label": "Household Structure",
           "provider_id": "stats_nz"
         },
-        "target_label": "Taranaki Region Census family type 1, ERP-density bridge to June 2025"
+        "target_label": "Taranaki Region Census family type 1, ERP-density bridge to June 2025; d1932 signed reconciliation; parked for G8-r3b"
       },
       "filter": "region_07_indicator",
-      "notes": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+      "notes": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
       "value_operation": "rolled_forward_by_ratio",
       "value_operands": [
         {
@@ -18953,7 +19029,7 @@
         "reference_set": "calibration",
         "method_card_row": "MC5",
         "legacy_contract_target_id": "stats_nz_census_families_by_type",
-        "parking_reason": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+        "parking_reason": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
         "source_snapshot": "2023-03-07 Census",
         "growth_denominator_snapshot": "2023-06-30 ERP",
         "target_level_snapshot": "2025-06-30 ERP",
@@ -18963,7 +19039,11 @@
         "held_households_per_erp_person": "true",
         "held_census_families_per_erp_person": "true",
         "projection_from_june2025_to_model_period": "none",
-        "method_decision": "d1598; g8r-hub-rulings 2026-10-22"
+        "method_decision": "d1598; g8r-hub-rulings 2026-10-22",
+        "required_reference_profile": "family_discrepancy",
+        "allocation_ruling": "d1932",
+        "exempt": "true",
+        "activation_prerequisites": "G8-r3b"
       },
       "hierarchy": {
         "provider": {
@@ -18975,10 +19055,10 @@
           "label": "Household Structure",
           "provider_id": "stats_nz"
         },
-        "target_label": "Taranaki Region Census family type 2, ERP-density bridge to June 2025"
+        "target_label": "Taranaki Region Census family type 2, ERP-density bridge to June 2025; d1932 signed reconciliation; parked for G8-r3b"
       },
       "filter": "region_07_indicator",
-      "notes": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+      "notes": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
       "value_operation": "rolled_forward_by_ratio",
       "value_operands": [
         {
@@ -19053,7 +19133,7 @@
         "reference_set": "calibration",
         "method_card_row": "MC5",
         "legacy_contract_target_id": "stats_nz_census_families_by_type",
-        "parking_reason": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+        "parking_reason": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
         "source_snapshot": "2023-03-07 Census",
         "growth_denominator_snapshot": "2023-06-30 ERP",
         "target_level_snapshot": "2025-06-30 ERP",
@@ -19063,7 +19143,11 @@
         "held_households_per_erp_person": "true",
         "held_census_families_per_erp_person": "true",
         "projection_from_june2025_to_model_period": "none",
-        "method_decision": "d1598; g8r-hub-rulings 2026-10-22"
+        "method_decision": "d1598; g8r-hub-rulings 2026-10-22",
+        "required_reference_profile": "family_discrepancy",
+        "allocation_ruling": "d1932",
+        "exempt": "true",
+        "activation_prerequisites": "G8-r3b"
       },
       "hierarchy": {
         "provider": {
@@ -19075,10 +19159,10 @@
           "label": "Household Structure",
           "provider_id": "stats_nz"
         },
-        "target_label": "Taranaki Region Census family type 3, ERP-density bridge to June 2025"
+        "target_label": "Taranaki Region Census family type 3, ERP-density bridge to June 2025; d1932 signed reconciliation; parked for G8-r3b"
       },
       "filter": "region_07_indicator",
-      "notes": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+      "notes": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
       "value_operation": "rolled_forward_by_ratio",
       "value_operands": [
         {
@@ -19153,7 +19237,7 @@
         "reference_set": "calibration",
         "method_card_row": "MC5",
         "legacy_contract_target_id": "stats_nz_census_families_by_type",
-        "parking_reason": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+        "parking_reason": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
         "source_snapshot": "2023-03-07 Census",
         "growth_denominator_snapshot": "2023-06-30 ERP",
         "target_level_snapshot": "2025-06-30 ERP",
@@ -19163,7 +19247,11 @@
         "held_households_per_erp_person": "true",
         "held_census_families_per_erp_person": "true",
         "projection_from_june2025_to_model_period": "none",
-        "method_decision": "d1598; g8r-hub-rulings 2026-10-22"
+        "method_decision": "d1598; g8r-hub-rulings 2026-10-22",
+        "required_reference_profile": "family_discrepancy",
+        "allocation_ruling": "d1932",
+        "exempt": "true",
+        "activation_prerequisites": "G8-r3b"
       },
       "hierarchy": {
         "provider": {
@@ -19175,10 +19263,10 @@
           "label": "Household Structure",
           "provider_id": "stats_nz"
         },
-        "target_label": "Manawatū-Whanganui Region Census family type 1, ERP-density bridge to June 2025"
+        "target_label": "Manawatū-Whanganui Region Census family type 1, ERP-density bridge to June 2025; d1932 signed reconciliation; parked for G8-r3b"
       },
       "filter": "region_08_indicator",
-      "notes": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+      "notes": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
       "value_operation": "rolled_forward_by_ratio",
       "value_operands": [
         {
@@ -19253,7 +19341,7 @@
         "reference_set": "calibration",
         "method_card_row": "MC5",
         "legacy_contract_target_id": "stats_nz_census_families_by_type",
-        "parking_reason": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+        "parking_reason": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
         "source_snapshot": "2023-03-07 Census",
         "growth_denominator_snapshot": "2023-06-30 ERP",
         "target_level_snapshot": "2025-06-30 ERP",
@@ -19263,7 +19351,11 @@
         "held_households_per_erp_person": "true",
         "held_census_families_per_erp_person": "true",
         "projection_from_june2025_to_model_period": "none",
-        "method_decision": "d1598; g8r-hub-rulings 2026-10-22"
+        "method_decision": "d1598; g8r-hub-rulings 2026-10-22",
+        "required_reference_profile": "family_discrepancy",
+        "allocation_ruling": "d1932",
+        "exempt": "true",
+        "activation_prerequisites": "G8-r3b"
       },
       "hierarchy": {
         "provider": {
@@ -19275,10 +19367,10 @@
           "label": "Household Structure",
           "provider_id": "stats_nz"
         },
-        "target_label": "Manawatū-Whanganui Region Census family type 2, ERP-density bridge to June 2025"
+        "target_label": "Manawatū-Whanganui Region Census family type 2, ERP-density bridge to June 2025; d1932 signed reconciliation; parked for G8-r3b"
       },
       "filter": "region_08_indicator",
-      "notes": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+      "notes": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
       "value_operation": "rolled_forward_by_ratio",
       "value_operands": [
         {
@@ -19353,7 +19445,7 @@
         "reference_set": "calibration",
         "method_card_row": "MC5",
         "legacy_contract_target_id": "stats_nz_census_families_by_type",
-        "parking_reason": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+        "parking_reason": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
         "source_snapshot": "2023-03-07 Census",
         "growth_denominator_snapshot": "2023-06-30 ERP",
         "target_level_snapshot": "2025-06-30 ERP",
@@ -19363,7 +19455,11 @@
         "held_households_per_erp_person": "true",
         "held_census_families_per_erp_person": "true",
         "projection_from_june2025_to_model_period": "none",
-        "method_decision": "d1598; g8r-hub-rulings 2026-10-22"
+        "method_decision": "d1598; g8r-hub-rulings 2026-10-22",
+        "required_reference_profile": "family_discrepancy",
+        "allocation_ruling": "d1932",
+        "exempt": "true",
+        "activation_prerequisites": "G8-r3b"
       },
       "hierarchy": {
         "provider": {
@@ -19375,10 +19471,10 @@
           "label": "Household Structure",
           "provider_id": "stats_nz"
         },
-        "target_label": "Manawatū-Whanganui Region Census family type 3, ERP-density bridge to June 2025"
+        "target_label": "Manawatū-Whanganui Region Census family type 3, ERP-density bridge to June 2025; d1932 signed reconciliation; parked for G8-r3b"
       },
       "filter": "region_08_indicator",
-      "notes": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+      "notes": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
       "value_operation": "rolled_forward_by_ratio",
       "value_operands": [
         {
@@ -19453,7 +19549,7 @@
         "reference_set": "calibration",
         "method_card_row": "MC5",
         "legacy_contract_target_id": "stats_nz_census_families_by_type",
-        "parking_reason": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+        "parking_reason": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
         "source_snapshot": "2023-03-07 Census",
         "growth_denominator_snapshot": "2023-06-30 ERP",
         "target_level_snapshot": "2025-06-30 ERP",
@@ -19463,7 +19559,11 @@
         "held_households_per_erp_person": "true",
         "held_census_families_per_erp_person": "true",
         "projection_from_june2025_to_model_period": "none",
-        "method_decision": "d1598; g8r-hub-rulings 2026-10-22"
+        "method_decision": "d1598; g8r-hub-rulings 2026-10-22",
+        "required_reference_profile": "family_discrepancy",
+        "allocation_ruling": "d1932",
+        "exempt": "true",
+        "activation_prerequisites": "G8-r3b"
       },
       "hierarchy": {
         "provider": {
@@ -19475,10 +19575,10 @@
           "label": "Household Structure",
           "provider_id": "stats_nz"
         },
-        "target_label": "Wellington Region Census family type 1, ERP-density bridge to June 2025"
+        "target_label": "Wellington Region Census family type 1, ERP-density bridge to June 2025; d1932 signed reconciliation; parked for G8-r3b"
       },
       "filter": "region_09_indicator",
-      "notes": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+      "notes": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
       "value_operation": "rolled_forward_by_ratio",
       "value_operands": [
         {
@@ -19553,7 +19653,7 @@
         "reference_set": "calibration",
         "method_card_row": "MC5",
         "legacy_contract_target_id": "stats_nz_census_families_by_type",
-        "parking_reason": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+        "parking_reason": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
         "source_snapshot": "2023-03-07 Census",
         "growth_denominator_snapshot": "2023-06-30 ERP",
         "target_level_snapshot": "2025-06-30 ERP",
@@ -19563,7 +19663,11 @@
         "held_households_per_erp_person": "true",
         "held_census_families_per_erp_person": "true",
         "projection_from_june2025_to_model_period": "none",
-        "method_decision": "d1598; g8r-hub-rulings 2026-10-22"
+        "method_decision": "d1598; g8r-hub-rulings 2026-10-22",
+        "required_reference_profile": "family_discrepancy",
+        "allocation_ruling": "d1932",
+        "exempt": "true",
+        "activation_prerequisites": "G8-r3b"
       },
       "hierarchy": {
         "provider": {
@@ -19575,10 +19679,10 @@
           "label": "Household Structure",
           "provider_id": "stats_nz"
         },
-        "target_label": "Wellington Region Census family type 2, ERP-density bridge to June 2025"
+        "target_label": "Wellington Region Census family type 2, ERP-density bridge to June 2025; d1932 signed reconciliation; parked for G8-r3b"
       },
       "filter": "region_09_indicator",
-      "notes": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+      "notes": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
       "value_operation": "rolled_forward_by_ratio",
       "value_operands": [
         {
@@ -19653,7 +19757,7 @@
         "reference_set": "calibration",
         "method_card_row": "MC5",
         "legacy_contract_target_id": "stats_nz_census_families_by_type",
-        "parking_reason": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+        "parking_reason": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
         "source_snapshot": "2023-03-07 Census",
         "growth_denominator_snapshot": "2023-06-30 ERP",
         "target_level_snapshot": "2025-06-30 ERP",
@@ -19663,7 +19767,11 @@
         "held_households_per_erp_person": "true",
         "held_census_families_per_erp_person": "true",
         "projection_from_june2025_to_model_period": "none",
-        "method_decision": "d1598; g8r-hub-rulings 2026-10-22"
+        "method_decision": "d1598; g8r-hub-rulings 2026-10-22",
+        "required_reference_profile": "family_discrepancy",
+        "allocation_ruling": "d1932",
+        "exempt": "true",
+        "activation_prerequisites": "G8-r3b"
       },
       "hierarchy": {
         "provider": {
@@ -19675,10 +19783,10 @@
           "label": "Household Structure",
           "provider_id": "stats_nz"
         },
-        "target_label": "Wellington Region Census family type 3, ERP-density bridge to June 2025"
+        "target_label": "Wellington Region Census family type 3, ERP-density bridge to June 2025; d1932 signed reconciliation; parked for G8-r3b"
       },
       "filter": "region_09_indicator",
-      "notes": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+      "notes": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
       "value_operation": "rolled_forward_by_ratio",
       "value_operands": [
         {
@@ -19753,7 +19861,7 @@
         "reference_set": "calibration",
         "method_card_row": "MC5",
         "legacy_contract_target_id": "stats_nz_census_families_by_type",
-        "parking_reason": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+        "parking_reason": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
         "source_snapshot": "2023-03-07 Census",
         "growth_denominator_snapshot": "2023-06-30 ERP",
         "target_level_snapshot": "2025-06-30 ERP",
@@ -19763,7 +19871,11 @@
         "held_households_per_erp_person": "true",
         "held_census_families_per_erp_person": "true",
         "projection_from_june2025_to_model_period": "none",
-        "method_decision": "d1598; g8r-hub-rulings 2026-10-22"
+        "method_decision": "d1598; g8r-hub-rulings 2026-10-22",
+        "required_reference_profile": "family_discrepancy",
+        "allocation_ruling": "d1932",
+        "exempt": "true",
+        "activation_prerequisites": "G8-r3b"
       },
       "hierarchy": {
         "provider": {
@@ -19775,10 +19887,10 @@
           "label": "Household Structure",
           "provider_id": "stats_nz"
         },
-        "target_label": "West Coast Region Census family type 1, ERP-density bridge to June 2025"
+        "target_label": "West Coast Region Census family type 1, ERP-density bridge to June 2025; d1932 signed reconciliation; parked for G8-r3b"
       },
       "filter": "region_12_indicator",
-      "notes": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+      "notes": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
       "value_operation": "rolled_forward_by_ratio",
       "value_operands": [
         {
@@ -19853,7 +19965,7 @@
         "reference_set": "calibration",
         "method_card_row": "MC5",
         "legacy_contract_target_id": "stats_nz_census_families_by_type",
-        "parking_reason": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+        "parking_reason": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
         "source_snapshot": "2023-03-07 Census",
         "growth_denominator_snapshot": "2023-06-30 ERP",
         "target_level_snapshot": "2025-06-30 ERP",
@@ -19863,7 +19975,11 @@
         "held_households_per_erp_person": "true",
         "held_census_families_per_erp_person": "true",
         "projection_from_june2025_to_model_period": "none",
-        "method_decision": "d1598; g8r-hub-rulings 2026-10-22"
+        "method_decision": "d1598; g8r-hub-rulings 2026-10-22",
+        "required_reference_profile": "family_discrepancy",
+        "allocation_ruling": "d1932",
+        "exempt": "true",
+        "activation_prerequisites": "G8-r3b"
       },
       "hierarchy": {
         "provider": {
@@ -19875,10 +19991,10 @@
           "label": "Household Structure",
           "provider_id": "stats_nz"
         },
-        "target_label": "West Coast Region Census family type 2, ERP-density bridge to June 2025"
+        "target_label": "West Coast Region Census family type 2, ERP-density bridge to June 2025; d1932 signed reconciliation; parked for G8-r3b"
       },
       "filter": "region_12_indicator",
-      "notes": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+      "notes": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
       "value_operation": "rolled_forward_by_ratio",
       "value_operands": [
         {
@@ -19953,7 +20069,7 @@
         "reference_set": "calibration",
         "method_card_row": "MC5",
         "legacy_contract_target_id": "stats_nz_census_families_by_type",
-        "parking_reason": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+        "parking_reason": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
         "source_snapshot": "2023-03-07 Census",
         "growth_denominator_snapshot": "2023-06-30 ERP",
         "target_level_snapshot": "2025-06-30 ERP",
@@ -19963,7 +20079,11 @@
         "held_households_per_erp_person": "true",
         "held_census_families_per_erp_person": "true",
         "projection_from_june2025_to_model_period": "none",
-        "method_decision": "d1598; g8r-hub-rulings 2026-10-22"
+        "method_decision": "d1598; g8r-hub-rulings 2026-10-22",
+        "required_reference_profile": "family_discrepancy",
+        "allocation_ruling": "d1932",
+        "exempt": "true",
+        "activation_prerequisites": "G8-r3b"
       },
       "hierarchy": {
         "provider": {
@@ -19975,10 +20095,10 @@
           "label": "Household Structure",
           "provider_id": "stats_nz"
         },
-        "target_label": "West Coast Region Census family type 3, ERP-density bridge to June 2025"
+        "target_label": "West Coast Region Census family type 3, ERP-density bridge to June 2025; d1932 signed reconciliation; parked for G8-r3b"
       },
       "filter": "region_12_indicator",
-      "notes": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+      "notes": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
       "value_operation": "rolled_forward_by_ratio",
       "value_operands": [
         {
@@ -20053,7 +20173,7 @@
         "reference_set": "calibration",
         "method_card_row": "MC5",
         "legacy_contract_target_id": "stats_nz_census_families_by_type",
-        "parking_reason": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+        "parking_reason": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
         "source_snapshot": "2023-03-07 Census",
         "growth_denominator_snapshot": "2023-06-30 ERP",
         "target_level_snapshot": "2025-06-30 ERP",
@@ -20063,7 +20183,11 @@
         "held_households_per_erp_person": "true",
         "held_census_families_per_erp_person": "true",
         "projection_from_june2025_to_model_period": "none",
-        "method_decision": "d1598; g8r-hub-rulings 2026-10-22"
+        "method_decision": "d1598; g8r-hub-rulings 2026-10-22",
+        "required_reference_profile": "family_discrepancy",
+        "allocation_ruling": "d1932",
+        "exempt": "true",
+        "activation_prerequisites": "G8-r3b"
       },
       "hierarchy": {
         "provider": {
@@ -20075,10 +20199,10 @@
           "label": "Household Structure",
           "provider_id": "stats_nz"
         },
-        "target_label": "Canterbury Region Census family type 1, ERP-density bridge to June 2025"
+        "target_label": "Canterbury Region Census family type 1, ERP-density bridge to June 2025; d1932 signed reconciliation; parked for G8-r3b"
       },
       "filter": "region_13_indicator",
-      "notes": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+      "notes": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
       "value_operation": "rolled_forward_by_ratio",
       "value_operands": [
         {
@@ -20153,7 +20277,7 @@
         "reference_set": "calibration",
         "method_card_row": "MC5",
         "legacy_contract_target_id": "stats_nz_census_families_by_type",
-        "parking_reason": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+        "parking_reason": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
         "source_snapshot": "2023-03-07 Census",
         "growth_denominator_snapshot": "2023-06-30 ERP",
         "target_level_snapshot": "2025-06-30 ERP",
@@ -20163,7 +20287,11 @@
         "held_households_per_erp_person": "true",
         "held_census_families_per_erp_person": "true",
         "projection_from_june2025_to_model_period": "none",
-        "method_decision": "d1598; g8r-hub-rulings 2026-10-22"
+        "method_decision": "d1598; g8r-hub-rulings 2026-10-22",
+        "required_reference_profile": "family_discrepancy",
+        "allocation_ruling": "d1932",
+        "exempt": "true",
+        "activation_prerequisites": "G8-r3b"
       },
       "hierarchy": {
         "provider": {
@@ -20175,10 +20303,10 @@
           "label": "Household Structure",
           "provider_id": "stats_nz"
         },
-        "target_label": "Canterbury Region Census family type 2, ERP-density bridge to June 2025"
+        "target_label": "Canterbury Region Census family type 2, ERP-density bridge to June 2025; d1932 signed reconciliation; parked for G8-r3b"
       },
       "filter": "region_13_indicator",
-      "notes": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+      "notes": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
       "value_operation": "rolled_forward_by_ratio",
       "value_operands": [
         {
@@ -20253,7 +20381,7 @@
         "reference_set": "calibration",
         "method_card_row": "MC5",
         "legacy_contract_target_id": "stats_nz_census_families_by_type",
-        "parking_reason": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+        "parking_reason": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
         "source_snapshot": "2023-03-07 Census",
         "growth_denominator_snapshot": "2023-06-30 ERP",
         "target_level_snapshot": "2025-06-30 ERP",
@@ -20263,7 +20391,11 @@
         "held_households_per_erp_person": "true",
         "held_census_families_per_erp_person": "true",
         "projection_from_june2025_to_model_period": "none",
-        "method_decision": "d1598; g8r-hub-rulings 2026-10-22"
+        "method_decision": "d1598; g8r-hub-rulings 2026-10-22",
+        "required_reference_profile": "family_discrepancy",
+        "allocation_ruling": "d1932",
+        "exempt": "true",
+        "activation_prerequisites": "G8-r3b"
       },
       "hierarchy": {
         "provider": {
@@ -20275,10 +20407,10 @@
           "label": "Household Structure",
           "provider_id": "stats_nz"
         },
-        "target_label": "Canterbury Region Census family type 3, ERP-density bridge to June 2025"
+        "target_label": "Canterbury Region Census family type 3, ERP-density bridge to June 2025; d1932 signed reconciliation; parked for G8-r3b"
       },
       "filter": "region_13_indicator",
-      "notes": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+      "notes": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
       "value_operation": "rolled_forward_by_ratio",
       "value_operands": [
         {
@@ -20353,7 +20485,7 @@
         "reference_set": "calibration",
         "method_card_row": "MC5",
         "legacy_contract_target_id": "stats_nz_census_families_by_type",
-        "parking_reason": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+        "parking_reason": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
         "source_snapshot": "2023-03-07 Census",
         "growth_denominator_snapshot": "2023-06-30 ERP",
         "target_level_snapshot": "2025-06-30 ERP",
@@ -20363,7 +20495,11 @@
         "held_households_per_erp_person": "true",
         "held_census_families_per_erp_person": "true",
         "projection_from_june2025_to_model_period": "none",
-        "method_decision": "d1598; g8r-hub-rulings 2026-10-22"
+        "method_decision": "d1598; g8r-hub-rulings 2026-10-22",
+        "required_reference_profile": "family_discrepancy",
+        "allocation_ruling": "d1932",
+        "exempt": "true",
+        "activation_prerequisites": "G8-r3b"
       },
       "hierarchy": {
         "provider": {
@@ -20375,10 +20511,10 @@
           "label": "Household Structure",
           "provider_id": "stats_nz"
         },
-        "target_label": "Otago Region Census family type 1, ERP-density bridge to June 2025"
+        "target_label": "Otago Region Census family type 1, ERP-density bridge to June 2025; d1932 signed reconciliation; parked for G8-r3b"
       },
       "filter": "region_14_indicator",
-      "notes": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+      "notes": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
       "value_operation": "rolled_forward_by_ratio",
       "value_operands": [
         {
@@ -20453,7 +20589,7 @@
         "reference_set": "calibration",
         "method_card_row": "MC5",
         "legacy_contract_target_id": "stats_nz_census_families_by_type",
-        "parking_reason": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+        "parking_reason": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
         "source_snapshot": "2023-03-07 Census",
         "growth_denominator_snapshot": "2023-06-30 ERP",
         "target_level_snapshot": "2025-06-30 ERP",
@@ -20463,7 +20599,11 @@
         "held_households_per_erp_person": "true",
         "held_census_families_per_erp_person": "true",
         "projection_from_june2025_to_model_period": "none",
-        "method_decision": "d1598; g8r-hub-rulings 2026-10-22"
+        "method_decision": "d1598; g8r-hub-rulings 2026-10-22",
+        "required_reference_profile": "family_discrepancy",
+        "allocation_ruling": "d1932",
+        "exempt": "true",
+        "activation_prerequisites": "G8-r3b"
       },
       "hierarchy": {
         "provider": {
@@ -20475,10 +20615,10 @@
           "label": "Household Structure",
           "provider_id": "stats_nz"
         },
-        "target_label": "Otago Region Census family type 2, ERP-density bridge to June 2025"
+        "target_label": "Otago Region Census family type 2, ERP-density bridge to June 2025; d1932 signed reconciliation; parked for G8-r3b"
       },
       "filter": "region_14_indicator",
-      "notes": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+      "notes": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
       "value_operation": "rolled_forward_by_ratio",
       "value_operands": [
         {
@@ -20553,7 +20693,7 @@
         "reference_set": "calibration",
         "method_card_row": "MC5",
         "legacy_contract_target_id": "stats_nz_census_families_by_type",
-        "parking_reason": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+        "parking_reason": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
         "source_snapshot": "2023-03-07 Census",
         "growth_denominator_snapshot": "2023-06-30 ERP",
         "target_level_snapshot": "2025-06-30 ERP",
@@ -20563,7 +20703,11 @@
         "held_households_per_erp_person": "true",
         "held_census_families_per_erp_person": "true",
         "projection_from_june2025_to_model_period": "none",
-        "method_decision": "d1598; g8r-hub-rulings 2026-10-22"
+        "method_decision": "d1598; g8r-hub-rulings 2026-10-22",
+        "required_reference_profile": "family_discrepancy",
+        "allocation_ruling": "d1932",
+        "exempt": "true",
+        "activation_prerequisites": "G8-r3b"
       },
       "hierarchy": {
         "provider": {
@@ -20575,10 +20719,10 @@
           "label": "Household Structure",
           "provider_id": "stats_nz"
         },
-        "target_label": "Otago Region Census family type 3, ERP-density bridge to June 2025"
+        "target_label": "Otago Region Census family type 3, ERP-density bridge to June 2025; d1932 signed reconciliation; parked for G8-r3b"
       },
       "filter": "region_14_indicator",
-      "notes": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+      "notes": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
       "value_operation": "rolled_forward_by_ratio",
       "value_operands": [
         {
@@ -20653,7 +20797,7 @@
         "reference_set": "calibration",
         "method_card_row": "MC5",
         "legacy_contract_target_id": "stats_nz_census_families_by_type",
-        "parking_reason": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+        "parking_reason": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
         "source_snapshot": "2023-03-07 Census",
         "growth_denominator_snapshot": "2023-06-30 ERP",
         "target_level_snapshot": "2025-06-30 ERP",
@@ -20663,7 +20807,11 @@
         "held_households_per_erp_person": "true",
         "held_census_families_per_erp_person": "true",
         "projection_from_june2025_to_model_period": "none",
-        "method_decision": "d1598; g8r-hub-rulings 2026-10-22"
+        "method_decision": "d1598; g8r-hub-rulings 2026-10-22",
+        "required_reference_profile": "family_discrepancy",
+        "allocation_ruling": "d1932",
+        "exempt": "true",
+        "activation_prerequisites": "G8-r3b"
       },
       "hierarchy": {
         "provider": {
@@ -20675,10 +20823,10 @@
           "label": "Household Structure",
           "provider_id": "stats_nz"
         },
-        "target_label": "Southland Region Census family type 1, ERP-density bridge to June 2025"
+        "target_label": "Southland Region Census family type 1, ERP-density bridge to June 2025; d1932 signed reconciliation; parked for G8-r3b"
       },
       "filter": "region_15_indicator",
-      "notes": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+      "notes": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
       "value_operation": "rolled_forward_by_ratio",
       "value_operands": [
         {
@@ -20753,7 +20901,7 @@
         "reference_set": "calibration",
         "method_card_row": "MC5",
         "legacy_contract_target_id": "stats_nz_census_families_by_type",
-        "parking_reason": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+        "parking_reason": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
         "source_snapshot": "2023-03-07 Census",
         "growth_denominator_snapshot": "2023-06-30 ERP",
         "target_level_snapshot": "2025-06-30 ERP",
@@ -20763,7 +20911,11 @@
         "held_households_per_erp_person": "true",
         "held_census_families_per_erp_person": "true",
         "projection_from_june2025_to_model_period": "none",
-        "method_decision": "d1598; g8r-hub-rulings 2026-10-22"
+        "method_decision": "d1598; g8r-hub-rulings 2026-10-22",
+        "required_reference_profile": "family_discrepancy",
+        "allocation_ruling": "d1932",
+        "exempt": "true",
+        "activation_prerequisites": "G8-r3b"
       },
       "hierarchy": {
         "provider": {
@@ -20775,10 +20927,10 @@
           "label": "Household Structure",
           "provider_id": "stats_nz"
         },
-        "target_label": "Southland Region Census family type 2, ERP-density bridge to June 2025"
+        "target_label": "Southland Region Census family type 2, ERP-density bridge to June 2025; d1932 signed reconciliation; parked for G8-r3b"
       },
       "filter": "region_15_indicator",
-      "notes": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+      "notes": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
       "value_operation": "rolled_forward_by_ratio",
       "value_operands": [
         {
@@ -20853,7 +21005,7 @@
         "reference_set": "calibration",
         "method_card_row": "MC5",
         "legacy_contract_target_id": "stats_nz_census_families_by_type",
-        "parking_reason": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+        "parking_reason": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
         "source_snapshot": "2023-03-07 Census",
         "growth_denominator_snapshot": "2023-06-30 ERP",
         "target_level_snapshot": "2025-06-30 ERP",
@@ -20863,7 +21015,11 @@
         "held_households_per_erp_person": "true",
         "held_census_families_per_erp_person": "true",
         "projection_from_june2025_to_model_period": "none",
-        "method_decision": "d1598; g8r-hub-rulings 2026-10-22"
+        "method_decision": "d1598; g8r-hub-rulings 2026-10-22",
+        "required_reference_profile": "family_discrepancy",
+        "allocation_ruling": "d1932",
+        "exempt": "true",
+        "activation_prerequisites": "G8-r3b"
       },
       "hierarchy": {
         "provider": {
@@ -20875,10 +21031,10 @@
           "label": "Household Structure",
           "provider_id": "stats_nz"
         },
-        "target_label": "Southland Region Census family type 3, ERP-density bridge to June 2025"
+        "target_label": "Southland Region Census family type 3, ERP-density bridge to June 2025; d1932 signed reconciliation; parked for G8-r3b"
       },
       "filter": "region_15_indicator",
-      "notes": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+      "notes": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
       "value_operation": "rolled_forward_by_ratio",
       "value_operands": [
         {
@@ -20953,7 +21109,7 @@
         "reference_set": "calibration",
         "method_card_row": "MC5",
         "legacy_contract_target_id": "stats_nz_census_families_by_type",
-        "parking_reason": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+        "parking_reason": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
         "source_snapshot": "2023-03-07 Census",
         "growth_denominator_snapshot": "2023-06-30 ERP",
         "target_level_snapshot": "2025-06-30 ERP",
@@ -20963,7 +21119,11 @@
         "held_households_per_erp_person": "true",
         "held_census_families_per_erp_person": "true",
         "projection_from_june2025_to_model_period": "none",
-        "method_decision": "d1598; g8r-hub-rulings 2026-10-22"
+        "method_decision": "d1598; g8r-hub-rulings 2026-10-22",
+        "required_reference_profile": "family_discrepancy",
+        "allocation_ruling": "d1932",
+        "exempt": "true",
+        "activation_prerequisites": "G8-r3b"
       },
       "hierarchy": {
         "provider": {
@@ -20975,10 +21135,10 @@
           "label": "Household Structure",
           "provider_id": "stats_nz"
         },
-        "target_label": "Tasman Region Census family type 1, ERP-density bridge to June 2025"
+        "target_label": "Tasman Region Census family type 1, ERP-density bridge to June 2025; d1932 signed reconciliation; parked for G8-r3b"
       },
       "filter": "region_16_indicator",
-      "notes": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+      "notes": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
       "value_operation": "rolled_forward_by_ratio",
       "value_operands": [
         {
@@ -21053,7 +21213,7 @@
         "reference_set": "calibration",
         "method_card_row": "MC5",
         "legacy_contract_target_id": "stats_nz_census_families_by_type",
-        "parking_reason": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+        "parking_reason": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
         "source_snapshot": "2023-03-07 Census",
         "growth_denominator_snapshot": "2023-06-30 ERP",
         "target_level_snapshot": "2025-06-30 ERP",
@@ -21063,7 +21223,11 @@
         "held_households_per_erp_person": "true",
         "held_census_families_per_erp_person": "true",
         "projection_from_june2025_to_model_period": "none",
-        "method_decision": "d1598; g8r-hub-rulings 2026-10-22"
+        "method_decision": "d1598; g8r-hub-rulings 2026-10-22",
+        "required_reference_profile": "family_discrepancy",
+        "allocation_ruling": "d1932",
+        "exempt": "true",
+        "activation_prerequisites": "G8-r3b"
       },
       "hierarchy": {
         "provider": {
@@ -21075,10 +21239,10 @@
           "label": "Household Structure",
           "provider_id": "stats_nz"
         },
-        "target_label": "Tasman Region Census family type 2, ERP-density bridge to June 2025"
+        "target_label": "Tasman Region Census family type 2, ERP-density bridge to June 2025; d1932 signed reconciliation; parked for G8-r3b"
       },
       "filter": "region_16_indicator",
-      "notes": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+      "notes": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
       "value_operation": "rolled_forward_by_ratio",
       "value_operands": [
         {
@@ -21153,7 +21317,7 @@
         "reference_set": "calibration",
         "method_card_row": "MC5",
         "legacy_contract_target_id": "stats_nz_census_families_by_type",
-        "parking_reason": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+        "parking_reason": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
         "source_snapshot": "2023-03-07 Census",
         "growth_denominator_snapshot": "2023-06-30 ERP",
         "target_level_snapshot": "2025-06-30 ERP",
@@ -21163,7 +21327,11 @@
         "held_households_per_erp_person": "true",
         "held_census_families_per_erp_person": "true",
         "projection_from_june2025_to_model_period": "none",
-        "method_decision": "d1598; g8r-hub-rulings 2026-10-22"
+        "method_decision": "d1598; g8r-hub-rulings 2026-10-22",
+        "required_reference_profile": "family_discrepancy",
+        "allocation_ruling": "d1932",
+        "exempt": "true",
+        "activation_prerequisites": "G8-r3b"
       },
       "hierarchy": {
         "provider": {
@@ -21175,10 +21343,10 @@
           "label": "Household Structure",
           "provider_id": "stats_nz"
         },
-        "target_label": "Tasman Region Census family type 3, ERP-density bridge to June 2025"
+        "target_label": "Tasman Region Census family type 3, ERP-density bridge to June 2025; d1932 signed reconciliation; parked for G8-r3b"
       },
       "filter": "region_16_indicator",
-      "notes": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+      "notes": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
       "value_operation": "rolled_forward_by_ratio",
       "value_operands": [
         {
@@ -21253,7 +21421,7 @@
         "reference_set": "calibration",
         "method_card_row": "MC5",
         "legacy_contract_target_id": "stats_nz_census_families_by_type",
-        "parking_reason": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+        "parking_reason": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
         "source_snapshot": "2023-03-07 Census",
         "growth_denominator_snapshot": "2023-06-30 ERP",
         "target_level_snapshot": "2025-06-30 ERP",
@@ -21263,7 +21431,11 @@
         "held_households_per_erp_person": "true",
         "held_census_families_per_erp_person": "true",
         "projection_from_june2025_to_model_period": "none",
-        "method_decision": "d1598; g8r-hub-rulings 2026-10-22"
+        "method_decision": "d1598; g8r-hub-rulings 2026-10-22",
+        "required_reference_profile": "family_discrepancy",
+        "allocation_ruling": "d1932",
+        "exempt": "true",
+        "activation_prerequisites": "G8-r3b"
       },
       "hierarchy": {
         "provider": {
@@ -21275,10 +21447,10 @@
           "label": "Household Structure",
           "provider_id": "stats_nz"
         },
-        "target_label": "Nelson Region Census family type 1, ERP-density bridge to June 2025"
+        "target_label": "Nelson Region Census family type 1, ERP-density bridge to June 2025; d1932 signed reconciliation; parked for G8-r3b"
       },
       "filter": "region_17_indicator",
-      "notes": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+      "notes": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
       "value_operation": "rolled_forward_by_ratio",
       "value_operands": [
         {
@@ -21353,7 +21525,7 @@
         "reference_set": "calibration",
         "method_card_row": "MC5",
         "legacy_contract_target_id": "stats_nz_census_families_by_type",
-        "parking_reason": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+        "parking_reason": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
         "source_snapshot": "2023-03-07 Census",
         "growth_denominator_snapshot": "2023-06-30 ERP",
         "target_level_snapshot": "2025-06-30 ERP",
@@ -21363,7 +21535,11 @@
         "held_households_per_erp_person": "true",
         "held_census_families_per_erp_person": "true",
         "projection_from_june2025_to_model_period": "none",
-        "method_decision": "d1598; g8r-hub-rulings 2026-10-22"
+        "method_decision": "d1598; g8r-hub-rulings 2026-10-22",
+        "required_reference_profile": "family_discrepancy",
+        "allocation_ruling": "d1932",
+        "exempt": "true",
+        "activation_prerequisites": "G8-r3b"
       },
       "hierarchy": {
         "provider": {
@@ -21375,10 +21551,10 @@
           "label": "Household Structure",
           "provider_id": "stats_nz"
         },
-        "target_label": "Nelson Region Census family type 2, ERP-density bridge to June 2025"
+        "target_label": "Nelson Region Census family type 2, ERP-density bridge to June 2025; d1932 signed reconciliation; parked for G8-r3b"
       },
       "filter": "region_17_indicator",
-      "notes": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+      "notes": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
       "value_operation": "rolled_forward_by_ratio",
       "value_operands": [
         {
@@ -21453,7 +21629,7 @@
         "reference_set": "calibration",
         "method_card_row": "MC5",
         "legacy_contract_target_id": "stats_nz_census_families_by_type",
-        "parking_reason": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+        "parking_reason": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
         "source_snapshot": "2023-03-07 Census",
         "growth_denominator_snapshot": "2023-06-30 ERP",
         "target_level_snapshot": "2025-06-30 ERP",
@@ -21463,7 +21639,11 @@
         "held_households_per_erp_person": "true",
         "held_census_families_per_erp_person": "true",
         "projection_from_june2025_to_model_period": "none",
-        "method_decision": "d1598; g8r-hub-rulings 2026-10-22"
+        "method_decision": "d1598; g8r-hub-rulings 2026-10-22",
+        "required_reference_profile": "family_discrepancy",
+        "allocation_ruling": "d1932",
+        "exempt": "true",
+        "activation_prerequisites": "G8-r3b"
       },
       "hierarchy": {
         "provider": {
@@ -21475,10 +21655,10 @@
           "label": "Household Structure",
           "provider_id": "stats_nz"
         },
-        "target_label": "Nelson Region Census family type 3, ERP-density bridge to June 2025"
+        "target_label": "Nelson Region Census family type 3, ERP-density bridge to June 2025; d1932 signed reconciliation; parked for G8-r3b"
       },
       "filter": "region_17_indicator",
-      "notes": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+      "notes": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
       "value_operation": "rolled_forward_by_ratio",
       "value_operands": [
         {
@@ -21553,7 +21733,7 @@
         "reference_set": "calibration",
         "method_card_row": "MC5",
         "legacy_contract_target_id": "stats_nz_census_families_by_type",
-        "parking_reason": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+        "parking_reason": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
         "source_snapshot": "2023-03-07 Census",
         "growth_denominator_snapshot": "2023-06-30 ERP",
         "target_level_snapshot": "2025-06-30 ERP",
@@ -21563,7 +21743,11 @@
         "held_households_per_erp_person": "true",
         "held_census_families_per_erp_person": "true",
         "projection_from_june2025_to_model_period": "none",
-        "method_decision": "d1598; g8r-hub-rulings 2026-10-22"
+        "method_decision": "d1598; g8r-hub-rulings 2026-10-22",
+        "required_reference_profile": "family_discrepancy",
+        "allocation_ruling": "d1932",
+        "exempt": "true",
+        "activation_prerequisites": "G8-r3b"
       },
       "hierarchy": {
         "provider": {
@@ -21575,10 +21759,10 @@
           "label": "Household Structure",
           "provider_id": "stats_nz"
         },
-        "target_label": "Marlborough Region Census family type 1, ERP-density bridge to June 2025"
+        "target_label": "Marlborough Region Census family type 1, ERP-density bridge to June 2025; d1932 signed reconciliation; parked for G8-r3b"
       },
       "filter": "region_18_indicator",
-      "notes": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+      "notes": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
       "value_operation": "rolled_forward_by_ratio",
       "value_operands": [
         {
@@ -21653,7 +21837,7 @@
         "reference_set": "calibration",
         "method_card_row": "MC5",
         "legacy_contract_target_id": "stats_nz_census_families_by_type",
-        "parking_reason": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+        "parking_reason": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
         "source_snapshot": "2023-03-07 Census",
         "growth_denominator_snapshot": "2023-06-30 ERP",
         "target_level_snapshot": "2025-06-30 ERP",
@@ -21663,7 +21847,11 @@
         "held_households_per_erp_person": "true",
         "held_census_families_per_erp_person": "true",
         "projection_from_june2025_to_model_period": "none",
-        "method_decision": "d1598; g8r-hub-rulings 2026-10-22"
+        "method_decision": "d1598; g8r-hub-rulings 2026-10-22",
+        "required_reference_profile": "family_discrepancy",
+        "allocation_ruling": "d1932",
+        "exempt": "true",
+        "activation_prerequisites": "G8-r3b"
       },
       "hierarchy": {
         "provider": {
@@ -21675,10 +21863,10 @@
           "label": "Household Structure",
           "provider_id": "stats_nz"
         },
-        "target_label": "Marlborough Region Census family type 2, ERP-density bridge to June 2025"
+        "target_label": "Marlborough Region Census family type 2, ERP-density bridge to June 2025; d1932 signed reconciliation; parked for G8-r3b"
       },
       "filter": "region_18_indicator",
-      "notes": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+      "notes": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
       "value_operation": "rolled_forward_by_ratio",
       "value_operands": [
         {
@@ -21753,7 +21941,7 @@
         "reference_set": "calibration",
         "method_card_row": "MC5",
         "legacy_contract_target_id": "stats_nz_census_families_by_type",
-        "parking_reason": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+        "parking_reason": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
         "source_snapshot": "2023-03-07 Census",
         "growth_denominator_snapshot": "2023-06-30 ERP",
         "target_level_snapshot": "2025-06-30 ERP",
@@ -21763,7 +21951,11 @@
         "held_households_per_erp_person": "true",
         "held_census_families_per_erp_person": "true",
         "projection_from_june2025_to_model_period": "none",
-        "method_decision": "d1598; g8r-hub-rulings 2026-10-22"
+        "method_decision": "d1598; g8r-hub-rulings 2026-10-22",
+        "required_reference_profile": "family_discrepancy",
+        "allocation_ruling": "d1932",
+        "exempt": "true",
+        "activation_prerequisites": "G8-r3b"
       },
       "hierarchy": {
         "provider": {
@@ -21775,10 +21967,10 @@
           "label": "Household Structure",
           "provider_id": "stats_nz"
         },
-        "target_label": "Marlborough Region Census family type 3, ERP-density bridge to June 2025"
+        "target_label": "Marlborough Region Census family type 3, ERP-density bridge to June 2025; d1932 signed reconciliation; parked for G8-r3b"
       },
       "filter": "region_18_indicator",
-      "notes": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+      "notes": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
       "value_operation": "rolled_forward_by_ratio",
       "value_operands": [
         {
@@ -21853,7 +22045,7 @@
         "reference_set": "calibration",
         "method_card_row": "MC5",
         "legacy_contract_target_id": "stats_nz_census_families_by_type",
-        "parking_reason": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+        "parking_reason": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
         "source_snapshot": "2023-03-07 Census",
         "growth_denominator_snapshot": "2023-06-30 ERP",
         "target_level_snapshot": "2025-06-30 ERP",
@@ -21863,7 +22055,12 @@
         "held_households_per_erp_person": "true",
         "held_census_families_per_erp_person": "true",
         "projection_from_june2025_to_model_period": "none",
-        "method_decision": "d1598; g8r-hub-rulings 2026-10-22"
+        "method_decision": "d1598; g8r-hub-rulings 2026-10-22",
+        "required_reference_profile": "family_discrepancy",
+        "allocation_ruling": "d1932",
+        "exempt": "true",
+        "activation_prerequisites": "G8-r3b",
+        "growth_geography_proxy": "national-growth proxy"
       },
       "hierarchy": {
         "provider": {
@@ -21875,10 +22072,10 @@
           "label": "Household Structure",
           "provider_id": "stats_nz"
         },
-        "target_label": "Area Outside Region Census family type 1, ERP-density bridge to June 2025"
+        "target_label": "Area Outside Region Census family type 1, ERP-density bridge to June 2025; d1932 signed reconciliation; parked for G8-r3b (national-growth proxy)"
       },
       "filter": "region_99_indicator",
-      "notes": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+      "notes": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
       "value_operation": "rolled_forward_by_ratio",
       "value_operands": [
         {
@@ -21953,7 +22150,7 @@
         "reference_set": "calibration",
         "method_card_row": "MC5",
         "legacy_contract_target_id": "stats_nz_census_families_by_type",
-        "parking_reason": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+        "parking_reason": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
         "source_snapshot": "2023-03-07 Census",
         "growth_denominator_snapshot": "2023-06-30 ERP",
         "target_level_snapshot": "2025-06-30 ERP",
@@ -21963,7 +22160,12 @@
         "held_households_per_erp_person": "true",
         "held_census_families_per_erp_person": "true",
         "projection_from_june2025_to_model_period": "none",
-        "method_decision": "d1598; g8r-hub-rulings 2026-10-22"
+        "method_decision": "d1598; g8r-hub-rulings 2026-10-22",
+        "required_reference_profile": "family_discrepancy",
+        "allocation_ruling": "d1932",
+        "exempt": "true",
+        "activation_prerequisites": "G8-r3b",
+        "growth_geography_proxy": "national-growth proxy"
       },
       "hierarchy": {
         "provider": {
@@ -21975,10 +22177,10 @@
           "label": "Household Structure",
           "provider_id": "stats_nz"
         },
-        "target_label": "Area Outside Region Census family type 2, ERP-density bridge to June 2025"
+        "target_label": "Area Outside Region Census family type 2, ERP-density bridge to June 2025; d1932 signed reconciliation; parked for G8-r3b (national-growth proxy)"
       },
       "filter": "region_99_indicator",
-      "notes": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+      "notes": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
       "value_operation": "rolled_forward_by_ratio",
       "value_operands": [
         {
@@ -22053,7 +22255,7 @@
         "reference_set": "calibration",
         "method_card_row": "MC5",
         "legacy_contract_target_id": "stats_nz_census_families_by_type",
-        "parking_reason": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+        "parking_reason": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
         "source_snapshot": "2023-03-07 Census",
         "growth_denominator_snapshot": "2023-06-30 ERP",
         "target_level_snapshot": "2025-06-30 ERP",
@@ -22063,7 +22265,12 @@
         "held_households_per_erp_person": "true",
         "held_census_families_per_erp_person": "true",
         "projection_from_june2025_to_model_period": "none",
-        "method_decision": "d1598; g8r-hub-rulings 2026-10-22"
+        "method_decision": "d1598; g8r-hub-rulings 2026-10-22",
+        "required_reference_profile": "family_discrepancy",
+        "allocation_ruling": "d1932",
+        "exempt": "true",
+        "activation_prerequisites": "G8-r3b",
+        "growth_geography_proxy": "national-growth proxy"
       },
       "hierarchy": {
         "provider": {
@@ -22075,10 +22282,10 @@
           "label": "Household Structure",
           "provider_id": "stats_nz"
         },
-        "target_label": "Area Outside Region Census family type 3, ERP-density bridge to June 2025"
+        "target_label": "Area Outside Region Census family type 3, ERP-density bridge to June 2025; d1932 signed reconciliation; parked for G8-r3b (national-growth proxy)"
       },
       "filter": "region_99_indicator",
-      "notes": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+      "notes": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
       "value_operation": "rolled_forward_by_ratio",
       "value_operands": [
         {

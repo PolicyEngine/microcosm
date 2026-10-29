@@ -55,6 +55,47 @@ remain in `reference_inventory.json` alongside computed regional profile
 receipts. Model household size counts validated usual-resident roster members,
 with sizes eight and above sharing the final category.
 
+**d1932 signed family reconciliation, 24 October 2026.** Census family-type
+counts in each region are scaled to that region's published family total. The
+published type counts and family totals are independently rounded to base 3,
+so their sums need not agree; the observed regional gaps are at most 3
+families, and the scaling is a modelling adjustment for that rounding noise,
+not an observed category (Max ruling d1932). The
+declared policy in `build/nz/family_reconciliation.json` admits an absolute
+discrepancy of at most 3 families **or** a discrepancy of at most 0.1% of the
+stated type leaves. Region 99's +3 is 2.0% of its published family total
+(2.04% of its stated leaves), so it passes the absolute bound alone.
+
+The central `family_discrepancy` profile scales all three published type
+counts by the exact regional family-total / type-leaf-sum ratio. The independent
+`family_discrepancy_positive_to_type3` sensitivity gives positive discrepancies
+entirely to one-parent families (type 3) and retains central proportional
+reconciliation for zero and negative discrepancies. Both profiles close exactly
+to the same regional family total. Each then applies one exact June 2025 /
+June 2023 ERP ratio; region 99 uses the disclosed national proxy
+5,324,700 / 5,200,000. Source geography vintage remains `unstated`.
+
+There are five +3 and five −3 discrepancies, totaling +15 and −15, net zero.
+Regional published type sums differ from the independent national type facts
+by +3, −6 and +3 respectively. Published leaves, regional family totals and
+independent national facts remain diagnostic; only the existing 51 regional
+type leaves are prospective fit rows. The exact per-region operands,
+increments, passed bounds, reconciled counts and bridged values are retained
+in `reference_inventory.json`. On the June 2025 ERP basis, central type totals
+are 549,923.187358, 556,879.098527 and 218,615.140900; the sensitivity totals
+are 549,916.657264, 556,873.115175 and 218,627.654345. Both sum to
+1,325,417.426784, subject only to the declared absolute 0.000001 check on
+these printed decimals; the underlying calculations are exact fractions.
+
+All 51 family rows remain parked and exempt until G8-r3b supplies the Census
+family multiplicity classifier. Each row pairs its type-specific household
+measure with a matching regional mask, including region 99. A household may
+contain several nuclei, so these measures retain multiplicities. The prepared
+region masks can evaluate now; `household.census_families_type_1`,
+`household.census_families_type_2` and `household.census_families_type_3`
+cannot evaluate until G8-r3b. Region-99 geography support comes from G8-m2
+(#1393, main 4e31e42e).
+
 **Dollar-level calibration design (numerator/denominator):**
 - **Denominator (full-entitlement modelled $):** our own rules × calibrated population. Treasury DistributionExplorer CSVs (#5) are TAWA-modelled; AS values assigned by TAWA's take-up model; an independent comparison, not full entitlement, for AS; TAWA assumes full take-up for the WFF credits ([TAWA methodology](https://treasury.govt.nz/sites/default/files/2024-08/tawa-model-methodology.pdf), "Modelling take-up").
 - **Numerator (actual $ paid):** MSD Annual Report expenditure schedule (#2) and AN24/01 fiscal totals (#10); IRD WfF expenditure (#4) for in-work credits.

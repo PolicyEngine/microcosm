@@ -1083,6 +1083,7 @@ def test_declared_ageing_scenarios_bind_selected_evidence_and_preserve_locality(
             "census_residual_allocation": (
                 "small_households" if scenario["id"] == "V4" else "mar"
             ),
+            "family_discrepancy": "central",
         }
         assert set(receipt["selected_factors"]) == {factor_id}
         entry = next(
