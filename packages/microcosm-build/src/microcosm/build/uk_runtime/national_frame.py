@@ -533,10 +533,11 @@ def _write_uk_single_year_tables(
 
 #: Columns the release boundary drops from the written candidate (microcosm#1063
 #: c9): the enhanced FRS stores ``incapacity_benefit_reported`` as an all-zero
-#: legacy layer and the export-surface gate's reviewed exclusion requires the
-#: candidate to drop it. The spine keeps the column (the SPI income stage
-#: reads it); only the release H5 and its readback expectation lose it.
-#: ``terminal_gates.UK_REVIEWED_EXPORT_EXCLUSIONS`` names the first; the
+#: legacy layer, so the pinned parity reference leaves it off the export
+#: surface as a zero-share input, and the export-surface gate would refuse it
+#: as an unlisted extra (microcosm#1095 retired its reviewed exclusion, which
+#: never matched). The spine keeps the column (the SPI income stage reads it);
+#: only the release H5 and its readback expectation lose it. The
 #: five internal disability carriers (``frs_disability``'s
 #: ``UK_INTERNAL_DISABILITY_REPORTED_COLUMNS``) are stage-internal inputs
 #: that the export registers keep off the release (review of #1089).

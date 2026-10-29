@@ -137,23 +137,32 @@ class UKZeroWeightStratumDeclaration:
         object.__setattr__(self, "selector", dict(sorted(normalized.items())))
 
 
+# No household may carry zero weight (microcosm#1095, re-declared from #688):
+# the two SPI-synthetic strata keep their selectors at a cap of 0, so a
+# zero-weight row there is named by stratum, and one anywhere else fails as
+# unmatched. The June caps of 100,000 counted 10,000 SPI-synthetic households
+# times ten output-area clones, a grain the national seam no longer builds.
 UK_DEFAULT_ZERO_WEIGHT_STRATA: tuple[UKZeroWeightStratumDeclaration, ...] = (
     UKZeroWeightStratumDeclaration(
-        name="june_spi_synthetic_base",
+        name="spi_synthetic_base",
         selector={_SPI_FLAG: True, _CAPITAL_GAINS_FLAG: False},
-        maximum_zero_weight_rows=100_000,
+        maximum_zero_weight_rows=0,
         reason=(
-            "The certified June FRS-derived artifact ships 100,000 zero-weight "
-            "SPI-synthetic non-capital-gains rows."
+            "No SPI-synthetic non-capital-gains row may carry zero weight: the "
+            "SPI stage gives the stacked donors their prior mass before "
+            "calibration, and the national seam's calibrated control of "
+            "2026-10-28 (4374e0bf) ships none at zero."
         ),
     ),
     UKZeroWeightStratumDeclaration(
-        name="june_spi_synthetic_capital_gains",
+        name="spi_synthetic_capital_gains",
         selector={_SPI_FLAG: True, _CAPITAL_GAINS_FLAG: True},
-        maximum_zero_weight_rows=100_000,
+        maximum_zero_weight_rows=0,
         reason=(
-            "The certified June FRS-derived artifact ships 100,000 zero-weight "
-            "SPI-synthetic capital-gains-clone rows."
+            "No SPI-synthetic capital-gains-clone row may carry zero weight: the "
+            "SPI stage gives the stacked donors their prior mass before "
+            "calibration, and the national seam's calibrated control of "
+            "2026-10-28 (4374e0bf) ships none at zero."
         ),
     ),
 )
@@ -372,8 +381,9 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     # the SPI channel's hmrc_spi_* leaves (#717), the FRS education and
     # housing fields, the two raw FRS codes the spine fences
     # (ossben_identifiable_subset, srp_regular_code5) and
-    # other_investment_income. Only incapacity_benefit_reported is dropped
-    # (UK_REVIEWED_EXPORT_EXCLUSIONS).
+    # other_investment_income. Only incapacity_benefit_reported, an all-zero
+    # layer the pinned reference leaves off its surface, is dropped
+    # (national_frame.UK_RELEASE_EXPORT_DROPPED_COLUMNS).
     "benunit.benunit_source_id",
     "benunit.benunit_support_channel",
     "benunit.benunit_support_clone_index",
@@ -460,10 +470,6 @@ UK_KNOWN_MISSING_REFERENCE_EXPORT_COLUMNS: tuple[str, ...] = (
 )
 
 UK_REVIEWED_EXPORT_EXCLUSIONS: Mapping[str, str] = {
-    "person.incapacity_benefit_reported": (
-        "The enhanced FRS stores this legacy reported-benefit input as an "
-        "all-zero layer; the candidate must drop dead zero layers."
-    ),
     "household.property_wealth": (
         "policyengine-uk derives property_wealth from main_residence_value, "
         "other_residential_property_value and non_residential_property_value; "

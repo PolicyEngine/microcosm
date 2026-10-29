@@ -1,7 +1,7 @@
 {
   "version": 1,
   "country": "uk",
-  "policy": "The certified June UK national battery declared as data (microcosm#611): the two build preflights plus the terminal battery. Every gate carries its thresholds as entry parameters at exact certified or receipted values; microcosm#630 landed the weighted-integrity pair as reviewed parameter edits with receipts in the entry notes, and the weight-ratio fence keeps its exact certified June value (the #630 breach was an SPI allocation defect fixed upstream in microcosm#710). The #680 stochastic layer delivers the take-up signal gate; every gate the UK runs today is declared below.",
+  "policy": "The certified June UK national battery declared as data (microcosm#611): the two build preflights plus the terminal battery. Every gate carries its thresholds as entry parameters at exact certified or receipted values; microcosm#630 landed the weighted-integrity pair as reviewed parameter edits with receipts in the entry notes, and the weight-ratio fence keeps its exact certified June value (the #630 breach was an SPI allocation defect fixed upstream in microcosm#710). The #680 stochastic layer delivers the take-up signal gate; every gate the UK runs today is declared below. The shared macro_realism band is not declared (microcosm#757, María's ruling of 2026-10-29): the solve binds the household income components directly, and the national accounts' household disposable income differs in scope (it counts owner-occupiers' imputed rent and, in its headline series, non-profit institutions serving households), so a band against it would test the scope gap, not the file. The release contract's verifier refuses an excused (not_applicable) entry in this spec vintage, so the reason is recorded here.",
   "phases": [
     "preflight",
     "assembled",
@@ -942,26 +942,26 @@
       "parameters": {
         "declarations": [
           {
-            "name": "june_spi_synthetic_base",
+            "name": "spi_synthetic_base",
             "selector": {
               "household_is_capital_gains_clone": false,
               "household_is_spi_synthetic": true
             },
-            "maximum_zero_weight_rows": 100000,
-            "reason": "The certified June FRS-derived artifact ships 100,000 zero-weight SPI-synthetic non-capital-gains rows."
+            "maximum_zero_weight_rows": 0,
+            "reason": "No SPI-synthetic non-capital-gains row may carry zero weight: the SPI stage gives the stacked donors their prior mass before calibration, and the national seam's calibrated control of 2026-10-28 (4374e0bf) ships none at zero."
           },
           {
-            "name": "june_spi_synthetic_capital_gains",
+            "name": "spi_synthetic_capital_gains",
             "selector": {
               "household_is_capital_gains_clone": true,
               "household_is_spi_synthetic": true
             },
-            "maximum_zero_weight_rows": 100000,
-            "reason": "The certified June FRS-derived artifact ships 100,000 zero-weight SPI-synthetic capital-gains-clone rows."
+            "maximum_zero_weight_rows": 0,
+            "reason": "No SPI-synthetic capital-gains-clone row may carry zero weight: the SPI stage gives the stacked donors their prior mass before calibration, and the national seam's calibrated control of 2026-10-28 (4374e0bf) ships none at zero."
           }
         ]
       },
-      "notes": "Zero household weight is legal only inside the two reviewed June SPI-synthetic strata, each capped at its shipped size."
+      "notes": "No household may carry zero weight (microcosm#1095, re-declared from #688). The two SPI-synthetic strata keep their selectors at a cap of 0, so a zero-weight row there is named by stratum, and one anywhere else fails as unmatched. The June caps of 100,000 each counted 10,000 SPI-synthetic households times ten output-area clones, a grain the national seam no longer builds: its calibrated control of 2026-10-28 (4374e0bf) holds 78,093 households and no zero-weight row in any of the four SPI-synthetic and capital-gains-clone strata."
     },
     {
       "id": "uk_weight_ess",
@@ -1322,11 +1322,10 @@
           "household.non_residential_property_secured_debt"
         ],
         "reviewed_exclusions": {
-          "person.incapacity_benefit_reported": "The enhanced FRS stores this legacy reported-benefit input as an all-zero layer; the candidate must drop dead zero layers.",
           "household.property_wealth": "policyengine-uk derives property_wealth from main_residence_value, other_residential_property_value and non_residential_property_value; a persisted copy overrides that sum and has no uprating index, so the candidate must drop it (microcosm#1106, the uk-data#543 defect)."
         }
       },
-      "notes": "Reviewed candidate-only fields from the June UK prototype (source provenance or genuine additional model inputs, not incumbent-surface losses), with household.uses_energy_prepayment_meter added for microcosm#1110 (the LCFS prepayment-meter flag policyengine-uk reads from 2.123.3 for the Energy Price Guarantee prepayment discount; an older engine ignores it, and the incumbent does not carry it until uk-data#539), the LCFS excise step's 24 household inputs added for microcosm#1359 (alcohol litres and the beer and cider draught shares, tobacco a week and the gambling duty bases; policyengine-uk reads the alcohol and tobacco ones from 2.145.0 and the gambling ones from 2.151.0, an older engine ignores them, and the incumbent carries none) plus the two reviewed reference-side exclusions (the all-zero incapacity benefit layer and the formula-owned property_wealth total, microcosm#1106). The two hard-required columns that may never be waived stay a code-level guard, per the microcosm#327 rule that a parity comparison's registers are declared inputs. During the migration window the runtime merges the exclusion register with the legacy constant and the spec-pin tests hold the two equal; the register becomes solely load-bearing when the constant retires."
+      "notes": "Reviewed candidate-only fields from the June UK prototype (source provenance or genuine additional model inputs, not incumbent-surface losses), with household.uses_energy_prepayment_meter added for microcosm#1110 (the LCFS prepayment-meter flag policyengine-uk reads from 2.123.3 for the Energy Price Guarantee prepayment discount; an older engine ignores it, and the incumbent does not carry it until uk-data#539), the LCFS excise step's 24 household inputs added for microcosm#1359 (alcohol litres and the beer and cider draught shares, tobacco a week and the gambling duty bases; policyengine-uk reads the alcohol and tobacco ones from 2.145.0 and the gambling ones from 2.151.0, an older engine ignores them, and the incumbent carries none) plus the reviewed reference-side exclusion of the formula-owned property_wealth total (microcosm#1106). The all-zero incapacity benefit layer left the exclusions (microcosm#1095, from #796): the pinned reference lists it among its zero-share inputs, not on its export surface, so its exclusion never matched; the release boundary still drops the column, and this gate would refuse it as an unlisted extra. The two hard-required columns that may never be waived stay a code-level guard, per the microcosm#327 rule that a parity comparison's registers are declared inputs. During the migration window the runtime merges the exclusion register with the legacy constant and the spec-pin tests hold the two equal; the register becomes solely load-bearing when the constant retires."
     },
     {
       "id": "uk_take_up_signal",

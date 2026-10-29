@@ -181,10 +181,20 @@ def test_missing_zero_weight_selector_columns_fail_even_with_positive_weights() 
     assert "selector column(s) are missing" in gate.failures[0]
 
 
-def test_default_declarations_name_both_june_100k_zero_strata() -> None:
+def test_default_declarations_cap_both_spi_synthetic_strata_at_zero() -> None:
+    """No household may carry zero weight (microcosm#1095, re-declared from #688).
+
+    The June caps of 100,000 counted the retired ten-clone grain; the national
+    seam ships no zero-weight row, so both strata are capped at 0 and keep
+    their selectors only to name a zero-weight row by stratum.
+    """
+    assert [row.name for row in UK_DEFAULT_ZERO_WEIGHT_STRATA] == [
+        "spi_synthetic_base",
+        "spi_synthetic_capital_gains",
+    ]
     assert [row.maximum_zero_weight_rows for row in UK_DEFAULT_ZERO_WEIGHT_STRATA] == [
-        100_000,
-        100_000,
+        0,
+        0,
     ]
     assert [row.selector for row in UK_DEFAULT_ZERO_WEIGHT_STRATA] == [
         {
@@ -196,6 +206,20 @@ def test_default_declarations_name_both_june_100k_zero_strata() -> None:
             "household_is_spi_synthetic": True,
         },
     ]
+
+
+def test_default_declarations_name_a_zero_weight_spi_row_by_stratum() -> None:
+    dataset = _dataset(weights=[1.0, 0.0, 1.0, 1.0])
+
+    gate = uk_zero_weight_strata_gate(dataset.household)
+
+    assert not gate.passed
+    strata = {row["name"]: row for row in gate.details["declared_strata"]}
+    assert strata["spi_synthetic_base"]["zero_weight_rows"] == 1
+    assert strata["spi_synthetic_capital_gains"]["zero_weight_rows"] == 0
+    assert gate.details["unmatched_zero_weight_rows"] == 0
+    assert "spi_synthetic_base" in gate.failures[0]
+    assert "exceed the declared maximum" in gate.failures[0]
 
 
 def test_ess_collapse_produces_named_finding() -> None:
@@ -449,8 +473,12 @@ def test_export_candidate_columns_strip_ids_and_carry_the_weight() -> None:
         for entity, columns in UK_RELEASE_EXPORT_DROPPED_COLUMNS.items()
         for column in columns
     }
+    # The all-zero incapacity layer left the reviewed exclusions, which never
+    # matched the pinned reference (microcosm#1095); the boundary still drops it.
+    assert "person.incapacity_benefit_reported" not in UK_REVIEWED_EXPORT_EXCLUSIONS
     assert dropped == (
         set(UK_REVIEWED_EXPORT_EXCLUSIONS)
+        | {"person.incapacity_benefit_reported"}
         | {f"person.{column}" for column in UK_INTERNAL_DISABILITY_REPORTED_COLUMNS}
         | {f"person.{SALSAC_PRE_CONVERSION_PAY_COLUMN}"}
         | {f"person.{FRS_LANDLORD_CARRIER_COLUMN}"}
