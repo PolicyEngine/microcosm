@@ -722,6 +722,21 @@ def _area_signed_deferrals(
             continue
         if str(target.get("family")) in support_floor_binding_families:
             continue
+        # A target scoped to other nations has no cell at these English
+        # authorities, so nothing of its own to defer (microcosm#796).
+        prefixes = tuple(
+            ((target.get("area_scope") or {}).get("local_authority") or {}).get(
+                "gss_prefixes"
+            )
+            or ()
+        )
+        in_scope = tuple(
+            area_id
+            for area_id in support_floor_excluded_area_ids
+            if not prefixes or area_id.startswith(prefixes)
+        )
+        if not in_scope:
+            continue
         add(
             target_id=str(target["target_id"]),
             geography_level="local_authority",
@@ -736,7 +751,7 @@ def _area_signed_deferrals(
                 "constituency families and the national rows (A14 amendment "
                 "to A4)."
             ),
-            area_ids=support_floor_excluded_area_ids,
+            area_ids=in_scope,
             allow_empty=True,
             defer_if_compiles=True,
             skip_declared=True,

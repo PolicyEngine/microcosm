@@ -527,14 +527,16 @@ def test_a14_deferral_declarations_cover_only_currently_active_cells() -> None:
     # microcosm#1240: the three high_value_homes local-authority legs take the
     # same support-floor deferral on the Isles of Scilly and the City of London;
     # microcosm#1207's three DESNZ energy rows take it too, and so do
-    # microcosm#1095's single adult discount cells.
-    assert len(support) == 49
-    assert sum(len(row.area_ids) for row in support) == 93
+    # microcosm#1095's single adult discount cells. A target scoped to Wales
+    # or Scotland has no cell at the two English authorities, so the nine
+    # Welsh and eight Scottish families take none (microcosm#796, via #1095).
+    assert len(support) == 32
+    assert sum(len(row.area_ids) for row in support) == 59
     by_area = {
         area_id: sum(area_id in row.area_ids for row in support)
         for area_id in ("E06000053", "E09000001")
     }
-    assert by_area == {"E06000053": 44, "E09000001": 49}
+    assert by_area == {"E06000053": 27, "E09000001": 32}
     assert all(row.defer_if_compiles for row in support)
     assert "mhclg.council_tax_stock.by_area.band_h" not in {
         row.target_id for row in support
