@@ -23,6 +23,7 @@ from types import MappingProxyType, ModuleType
 
 UK_TARGET_COMPILE_MODULE_NAMES: tuple[str, ...] = (
     "microcosm.build.cross_grain",
+    "microcosm.build.ledger_artifact",
     "microcosm.build.ledger_targets",
     "microcosm.build.target_materialization",
     "microcosm.build.target_reference_authoring",
@@ -66,15 +67,10 @@ EXCLUDED_DIRECT_IMPORTS: Mapping[str, str] = MappingProxyType(
             "refuses an undeclared condition and never moves a value"
         ),
         "microcosm.build.chronicle_epoch": (
-            "the feed-pin epoch arithmetic chronicle_feed checks; the pinned "
-            "facts themselves are node inputs hashed by content"
-        ),
-        "microcosm.build.ledger_artifact": (
-            "ledger_targets imports LexicalFloat only so its strict scalar match "
-            "reads an opt-in lexical float as float; only the transport factor "
-            "compiler opts in (test_lexical_float_opt_in_is_limited_to_factor_"
-            "consumers), the UK kernels load plain floats, and the loaded facts "
-            "are node inputs hashed by content"
+            "the feed-pin epoch arithmetic chronicle_feed checks, and the "
+            "consumer schema gate and epoch labels ledger_artifact applies; "
+            "none moves a fact value, and the pinned facts themselves are node "
+            "inputs hashed by content"
         ),
         "microcosm.build.gates": (
             "imported for the GateResult and TargetCoverageRequirement types only"
