@@ -48,6 +48,7 @@ from pathlib import Path
 from unittest.mock import Mock
 
 import numpy as np
+import pandas as pd
 import pytest
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
@@ -73,6 +74,7 @@ from microcosm.build.transport.compose import (
 )
 from microcosm.build.transport.population_kernels import TRANSPORT_CURRENCY
 from microcosm.build.transport.takeup_kernels import GAP_TYPE
+from microcosm.build.transport.target_kernels import CALIBRATION_PREPARE
 from microcosm.build.transport.terminal_kernels import materialize_export
 from microcosm.frame.kernels import SimulateRulesKernel
 from microcosm.graph import (
@@ -83,6 +85,7 @@ from microcosm.graph import (
     Determinism,
     GraphError,
     KernelBase,
+    KernelContext,
     KernelRegistry,
     Node,
     NodeRejectedError,
@@ -99,6 +102,12 @@ from microcosm.graph.keys import node_key, source_content_key
 from test_support.microcosm_build.chronicle_feed import write_pinned_artifact
 from test_support.microcosm_build.reference_factor_transport import (
     factor_transport_fixture,
+)
+from test_support.microcosm_build.reference_intervals import (
+    INCOME_COLUMN,
+    UNIVERSE_COLUMN,
+    interval_bindings,
+    interval_profile_fixture,
 )
 from test_support.microcosm_build.transport_composed import (
     FAMILY_INPUTS,
@@ -1105,6 +1114,167 @@ def test_declared_ageing_scenarios_bind_selected_evidence_and_preserve_locality(
             )
         else:
             assert revised == receipts[scenario["id"]]
+
+
+def _interval_prepare_spec():
+    base, profiles, context, intervals = interval_profile_fixture()
+    table = intervals["tables"][0]
+    spec = {
+        "country": "xx",
+        "resources": {
+            "target_references": base,
+            "reference_profiles": profiles,
+            "factor_context": context,
+            "profile_intervals": intervals,
+            "calibration_bindings": interval_bindings(table),
+        },
+    }
+    row = {
+        "id": "prepare",
+        "kernel": "calibration.prepare@1",
+        "population": "open",
+        "params": {
+            "bindings": {"resource": "calibration_bindings", "encoding": "json"},
+            "references": {"resource": "target_references", "encoding": "json"},
+            "references_sha256": {
+                "resource": "target_references",
+                "encoding": "sha256",
+            },
+        },
+        "outputs": [
+            {"entity": "person", "column": band["indicator"], "dtype": "bool"}
+            for band in table["bands"]
+        ],
+    }
+    return spec, row
+
+
+_INTERVAL_CONFIG = TransportGraphConfig(
+    engine_refs={}, create_outputs=(Owned("person", "age", "int64"),)
+)
+
+
+def _prepare_node(spec, row, knobs, *, interval_knobs="same"):
+    params = {
+        name: compose_module._resource_param(spec, value, profile_selection=knobs)
+        for name, value in row["params"].items()
+    }
+    if interval_knobs != "same":
+        params["intervals"] = compose_module._resource_param(
+            spec,
+            {"resource": "profile_intervals", "encoding": "json"},
+            profile_selection=interval_knobs,
+        )
+    return compose_module._node(
+        spec,
+        row,
+        _INTERVAL_CONFIG,
+        {},
+        resolved_params=params,
+        profile_selection=knobs,
+    )
+
+
+def _run_prepare(node, incomes):
+    tables = {
+        "person": pd.DataFrame(
+            {
+                "person_id": range(len(incomes)),
+                INCOME_COLUMN: incomes,
+                UNIVERSE_COLUMN: ["included"] * len(incomes),
+            }
+        )
+    }
+    return CALIBRATION_PREPARE.run(
+        KernelContext(
+            node=node,
+            tables=tables,
+            weights={},
+            strata=pd.Series([], dtype=object, name="stratum"),
+            params=node.params,
+            rng=np.random.default_rng(0),
+            sources={},
+            artifacts={},
+        )
+    )
+
+
+def test_composition_supplies_each_variant_its_own_effective_interval_companion():
+    spec, row = _interval_prepare_spec()
+    incomes = [104_999, 107_000, 112_000, 114_000, 116_000]
+    first_band = {}
+    for profile, knobs in (
+        ("central", None),
+        ("low", {"index": "low"}),
+        ("high", {"index": "high"}),
+    ):
+        node = _prepare_node(spec, row, knobs)
+        view = compose_module.reference_profile_view(spec, knobs)
+        assert node.params["intervals"] == canonical_json(view[1]).decode("utf-8")
+        assert json.loads(node.params["reference_resolution"]) == view[2]
+        result = _run_prepare(node, incomes)
+        first_band[profile] = result.columns["person", "toy_income_band_b0"].tolist()
+        evidence = json.loads(result.artifacts["preparation"])
+        assert (
+            evidence["effective_intervals_sha256"]
+            == view[2]["effective_intervals_sha256"]
+        )
+    # 100,000 source cents become 105,000, 110,000 and 115,000: each variant
+    # regenerates its indicators from its own cuts rather than reusing S0's.
+    assert first_band == {
+        "low": [True, False, False, False, False],
+        "central": [True, True, False, False, False],
+        "high": [True, True, True, True, False],
+    }
+
+
+def test_composition_refuses_a_supplied_interval_document_from_another_profile():
+    spec, row = _interval_prepare_spec()
+    row = copy.deepcopy(row)
+    row["params"]["intervals"] = {"resource": "profile_intervals", "encoding": "json"}
+    node = _prepare_node(spec, row, {"index": "low"})
+    assert (
+        json.loads(node.params["intervals"])["tables"][0]["scaling"]["factor_id"]
+        == "toy_low"
+    )
+    with pytest.raises(ValueError, match="differs from its effective interval"):
+        _prepare_node(spec, row, {"index": "low"}, interval_knobs=None)
+
+
+def test_declared_scenarios_scale_national_cuts_with_their_own_factor():
+    from fractions import Fraction
+
+    spec = load_transport_spec("nz")
+    source = spec["resources"]["reference_intervals"]
+    by_id = {table["id"]: table for table in source["tables"]}
+    seen = {}
+    for scenario in spec["resources"]["scenarios"]["scenarios"]:
+        _, intervals, receipt = compose_module.reference_profile_view(
+            spec, scenario["knobs"]
+        )
+        profile = {"V1": "low", "V2": "high"}.get(scenario["id"], "central")
+        tables = {table["id"]: table for table in intervals["tables"]}
+        national = tables["ird_taxable_income_national_ty2024"]
+        assert national["scaling"]["factor_id"] == f"ird_ty2024_to_ty2027_{profile}"
+        assert (
+            tables["ird_taxable_income_age_ty2024"]
+            == by_id["ird_taxable_income_age_ty2024"]
+        )
+        factor = national["scaling"]["operational_factor"]
+        rational = Fraction(factor["numerator"], factor["denominator"])
+        for band, original in zip(
+            national["bands"],
+            by_id["ird_taxable_income_national_ty2024"]["bands"],
+            strict=True,
+        ):
+            if original.get("upper_cent") is not None:
+                upper = band["upper_cent"]
+                assert Fraction(upper["numerator"], upper["denominator"]) == (
+                    original["upper_cent"] * rational
+                )
+        seen.setdefault(profile, set()).add(receipt["effective_intervals_sha256"])
+    assert all(len(hashes) == 1 for hashes in seen.values())
+    assert len(set().union(*seen.values())) == 3
 
 
 class _IllegalOwner(KernelBase):

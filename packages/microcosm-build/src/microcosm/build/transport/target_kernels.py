@@ -54,6 +54,7 @@ import microcosm.build.country_spec as country_spec_module
 import microcosm.build.ledger_artifact as ledger_artifact_module
 import microcosm.build.ledger_targets as ledger_targets_module
 import microcosm.build.reference_factors as reference_factors_module
+import microcosm.build.reference_intervals as reference_intervals_module
 import microcosm.build.reference_profiles as reference_profiles_module
 import microcosm.calibrate.artifacts as calibrate_artifacts_module
 import microcosm.calibrate.hierarchy as hierarchy_module
@@ -557,6 +558,8 @@ class CalibrationPrepareKernel(KernelBase):
             graph_inputs,
             artifact_types,
             calibration_columns_module,
+            reference_intervals_module,
+            reference_factors_module,
             reference_profiles_module,
             dependencies=self.capabilities.dependencies,
         )
@@ -585,6 +588,12 @@ class CalibrationPrepareKernel(KernelBase):
         bindings = canonical_document_param(context, self.ref, "bindings")
         document = canonical_document_param(context, self.ref, "references")
         digest = sha256_param(context, self.ref, "references_sha256")
+        # Parsed once: the receipt check and column preparation read one document.
+        intervals = (
+            canonical_document_param(context, self.ref, "intervals")
+            if "intervals" in context.params
+            else None
+        )
         resolution = None
         if "reference_resolution" in context.params:
             candidate = canonical_document_param(
@@ -592,7 +601,7 @@ class CalibrationPrepareKernel(KernelBase):
             )
             if (
                 candidate.get("effective_intervals_sha256") is not None
-                and "intervals" not in context.params
+                and intervals is None
             ):
                 raise ValueError(
                     "Calibration preparation requires its effective interval companion."
@@ -601,11 +610,7 @@ class CalibrationPrepareKernel(KernelBase):
                 document,
                 candidate,
                 references_sha256=digest,
-                interval_document=(
-                    canonical_document_param(context, self.ref, "intervals")
-                    if "intervals" in context.params
-                    else None
-                ),
+                interval_document=intervals,
             )
         elif any(
             row.get("metadata", {}).get("reference_profiles_resolved")
@@ -614,7 +619,13 @@ class CalibrationPrepareKernel(KernelBase):
             raise ValueError(
                 "Profile-resolved preparation requires a reference resolution receipt."
             )
-        tables = prepare_calibration_columns(context.tables, bindings)
+        if intervals is not None and resolution is None:
+            raise ValueError(
+                "An interval companion requires its reference resolution receipt."
+            )
+        tables = prepare_calibration_columns(
+            context.tables, bindings, intervals=intervals
+        )
         inventory = {
             (row["entity"], row["name"])
             for row in (*bindings["columns"], *bindings.get("roster_counts", ()))
@@ -652,6 +663,10 @@ class CalibrationPrepareKernel(KernelBase):
                 for entity, name in sorted(inventory)
             ],
         }
+        interval_inputs = _interval_input_evidence(context, bindings, intervals)
+        if interval_inputs:
+            evidence["effective_intervals"] = intervals
+            evidence["interval_inputs"] = interval_inputs
         payload = canonical_json(evidence)
         return KernelResult(
             columns=columns,
@@ -660,13 +675,77 @@ class CalibrationPrepareKernel(KernelBase):
         )
 
 
+def _interval_tables(bindings: Mapping, intervals: Mapping | None) -> list:
+    """The validated tables named by a binding's interval outputs, in order."""
+    named = []
+    for row in bindings.get("columns", ()):
+        if isinstance(row, Mapping) and "interval" in row:
+            if not isinstance(row["interval"], Mapping):
+                raise ValueError("An interval output names its table and band.")
+            table = row["interval"].get("table")
+            if table not in named:
+                named.append(table)
+    if not named:
+        return []
+    if intervals is None:
+        raise ValueError(
+            "Interval outputs require their effective interval evidence; it is missing."
+        )
+    tables = reference_intervals_module.validate_interval_document(intervals)
+    if set(named) - set(tables):
+        raise ValueError("Interval outputs name an undeclared interval table.")
+    return [tables[name] for name in named]
+
+
+def _interval_input_rows(context: KernelContext, tables: Sequence) -> list[dict]:
+    rows = []
+    for table in tables:
+        data = context.tables.get(table.entity)
+        if data is None or any(
+            column not in data
+            for column in (
+                f"{table.entity}_id",
+                table.income_column,
+                table.universe_column,
+            )
+        ):
+            raise ValueError(
+                f"Interval evidence for {table.id!r} is missing its "
+                f"{table.entity} income, universe or identity column."
+            )
+        fingerprint = reference_intervals_module.interval_input_fingerprint
+        rows.append(
+            {
+                "table": table.id,
+                "entity": table.entity,
+                "income_column": table.income_column,
+                "universe_column": table.universe_column,
+                "rows": len(data),
+                "entity_ids_sha256": sha256_text(
+                    canonical_json(data[f"{table.entity}_id"].tolist())
+                ),
+                "income_values_sha256": fingerprint(data[table.income_column].tolist()),
+                "universe_values_sha256": fingerprint(
+                    data[table.universe_column].tolist()
+                ),
+            }
+        )
+    return rows
+
+
+def _interval_input_evidence(
+    context: KernelContext, bindings: Mapping, intervals: Mapping | None
+) -> list[dict]:
+    return _interval_input_rows(context, _interval_tables(bindings, intervals))
+
+
 def _preparation_binding(
     context: KernelContext, surface: TargetSurface
-) -> dict[str, object]:
+) -> tuple[dict[str, object], list]:
     resolution = surface.reference_resolution
     artifact = context.artifacts.get("preparation")
     if resolution is None and artifact is None:
-        return {}
+        return {}, []
     if artifact is None or artifact.type != CALIBRATION_PREPARATION_TYPE:
         raise ValueError(
             "Resolved targets require a typed calibration preparation artifact."
@@ -720,11 +799,51 @@ def _preparation_binding(
             raise ValueError(
                 "Calibration preparation inventory differs from the problem population."
             )
+    intervals = evidence.get("effective_intervals")
+    if intervals is not None and sha256_text(canonical_json(intervals)) != evidence.get(
+        "effective_intervals_sha256"
+    ):
+        raise ValueError("Calibration preparation interval evidence hash mismatch.")
+    tables = _interval_tables(bindings, intervals)
+    if (intervals is None) != (not tables) or evidence.get(
+        "interval_inputs", []
+    ) != _interval_input_rows(context, tables):
+        raise ValueError(
+            "Calibration preparation interval inputs differ from the problem population."
+        )
     return {
         "reference_resolution": resolution,
         "preparation_sha256": sha256_text(artifact.payload),
         "preparation_artifact_key": artifact.key,
         **expected,
+    }, tables
+
+
+def _interval_diagnostics(
+    frame: Frame, tables: Sequence, entities: Sequence[str], intervals_sha256
+) -> dict[str, object]:
+    """Fixed-weight boundary diagnostics; no reference value or target changes."""
+    if not tables:
+        return {}
+    reports = []
+    for table in tables:
+        if table.entity not in entities:
+            raise ValueError(
+                f"Interval diagnostics for {table.id!r} are missing evidence: the "
+                f"problem frame has no {table.entity!r} entity."
+            )
+        reports.append(
+            reference_intervals_module.frame_boundary_diagnostics(table, frame)
+        )
+    report = {
+        "schema_version": 1,
+        "kind": "interval_boundary_diagnostics_report",
+        "effective_intervals_sha256": intervals_sha256,
+        "tables": reports,
+    }
+    return {
+        "interval_diagnostics": report,
+        "interval_diagnostics_sha256": sha256_text(canonical_json(report)),
     }
 
 
@@ -795,6 +914,7 @@ class TargetsProblemKernel(KernelBase):
             registry_module,
             hierarchy_module,
             calibrate_artifacts_module,
+            reference_intervals_module,
             *_MATRIX_MODULES,
             dependencies=self.capabilities.dependencies,
         )
@@ -811,9 +931,15 @@ class TargetsProblemKernel(KernelBase):
                 "under the alias 'surface'."
             )
         surface = decode_target_surface(value.payload)
-        preparation = _preparation_binding(context, surface)
+        preparation, interval_tables = _preparation_binding(context, surface)
         frame = context_frame(
             context, self.ref, entities=entities, weight_entity=weight_entity
+        )
+        diagnostics = _interval_diagnostics(
+            frame,
+            interval_tables,
+            entities,
+            preparation.get("effective_intervals_sha256"),
         )
         problem = _compiled_problem(frame, surface.registry, weight_entity, self.ref)
         target_metadata = [
@@ -841,6 +967,7 @@ class TargetsProblemKernel(KernelBase):
                 "entities": list(entities),
                 "weight_entity": weight_entity,
                 **preparation,
+                **diagnostics,
             },
         )
         return KernelResult(
@@ -853,6 +980,7 @@ class TargetsProblemKernel(KernelBase):
                 "n_records": int(problem.n_weights),
                 "weight_kind": problem.initial_weights.kind.value,
                 **preparation,
+                **diagnostics,
             },
         )
 

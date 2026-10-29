@@ -12,7 +12,9 @@ import copy
 import json
 import math
 import os
+import re
 from collections import Counter
+from decimal import Decimal
 from pathlib import Path
 
 from microcosm.build.ledger_artifact import load_ledger_consumer_artifact
@@ -84,6 +86,34 @@ IRD_MEASUREMENT_BINDING = "ird_taxable_income_ty2027_v1"
 # Reviewed national detail-row map: nil row 8 through open tail row 244.
 # Published national total row 246 is diagnostic and is deliberately absent.
 IRD_NATIONAL_ROWS = tuple(f"row_{row}" for row in range(8, 245))
+IRD_AGE_ROWS = tuple(f"row_{row}" for row in range(6, 189))
+IRD_NATIONAL_TABLE = "ird_taxable_income_national_ty2024"
+IRD_AGE_TABLE = "ird_taxable_income_age_ty2024"
+# Columns name the d1952 stand-in measure, not IRD's taxable-income definition.
+IRD_PROXY_INCOME_COLUMN = "ird_taxable_income_proxy_cents"
+IRD_PROXY_UNIVERSE_COLUMN = "ird_taxable_income_proxy_universe_status"
+# Rows whose published lower label repeats the previous row's upper endpoint.
+IRD_SHARED_ENDPOINT_ROWS = {
+    IRD_NATIONAL_TABLE: ("row_30", "row_60", "row_90", "row_230"),
+    IRD_AGE_TABLE: ("row_28", "row_58", "row_88"),
+}
+INTERVAL_DISCLOSURE = (
+    "IRD publishes no band closure or cents semantics for these tables. The "
+    "cuts, closure, nil band and integer-cent arithmetic are Microcosm's declared "
+    "convention (G8-r open rulings 2, section 1, 23 October 2026), not IRD's own "
+    "semantics: t = max(0, x) in integer cents with no dollar rounding; t == 0 is "
+    "the nil band, including qualifying loss records; each positive band is "
+    "previous_upper < t <= upper; and the open tail is t > its lower cut. Four "
+    "published label pairs share an endpoint ($20,000, $50,000, $80,000 and "
+    "$300,000: national rows 29/30, 59/60, 89/90 and 229/230; age rows 27/28, "
+    "57/58 and 87/88); the ordered right-closed cuts assign each shared endpoint "
+    "to the lower band. Ageing scales every finite cut exactly by the selected "
+    "factor and keeps fractional cents. The income and universe columns name the "
+    "d1952 stand-in measure rather than IRD's definition; no producer exists yet "
+    "(G8-r2c) and no active row requests them. Boundary diagnostics report "
+    "weighted mass within $1 of every cut and the fixed-weight change under the "
+    "left-closed alternative; publisher reclassification is unavailable."
+)
 RECEIPT_REASON = "G8-w: age-stratified receipt assignment is not supported by the current total-only receipt kernel; preserve the source snapshot and age filters."
 NZS_REASON = "NZ Super receipt binding and prepared receipt flag are not implemented."
 VP_REASON = "Veterans Pension is unsupported: no veteran facts or producer; a missing flag must refuse, never default to false."
@@ -734,10 +764,180 @@ def build_reference_documents(artifact, *, package_dir=SPEC):
         }
     documents["calibration_bindings.json"] = calibration_bindings()
     documents["reference_profiles.json"] = _reference_profiles(inventory, targets)
+    documents["reference_intervals.json"] = _reference_intervals(inventory)
     documents["reference_inventory.json"] = _receipts(
         inventory, erp, documents, feed_pin, ta_facts
     )
     return documents
+
+
+def _national_upper_dollars(row):
+    if row == 9:
+        return 100
+    if row == 10:
+        return 1000
+    if 11 <= row <= 209:
+        return 1000 * (row - 9)
+    if 210 <= row <= 229:
+        return 200000 + 5000 * (row - 209)
+    if 230 <= row <= 243:
+        return 300000 + 50000 * (row - 229)
+    if row == 244:
+        return None
+    raise ValueError(f"No national taxable-income cut for row {row}")
+
+
+def _age_upper_dollars(row):
+    if row == 7:
+        return 100
+    if row == 8:
+        return 1000
+    if 9 <= row <= 187:
+        return 1000 * (row - 7)
+    if row == 188:
+        return None
+    raise ValueError(f"No age-table taxable-income cut for row {row}")
+
+
+def _label_bounds(label):
+    """Read a published band label as (lower, upper) dollars; upper None is open."""
+    if label == "nil":
+        return None
+    match = re.fullmatch(r"\$([\d,]+(?:\.\d+)?)\s*-\s*\$([\d,]+)", label)
+    if match:
+        lower, upper = match.groups()
+        return Decimal(lower.replace(",", "")), Decimal(upper.replace(",", ""))
+    match = re.fullmatch(r"Over \$([\d,]+)", label)
+    if match:
+        return Decimal(match.group(1).replace(",", "")), None
+    raise ValueError(f"Unreadable taxable-income band label {label!r}")
+
+
+def _band_labels(facts, rows):
+    labels = {}
+    for fact in facts:
+        if fact["layout"]["table_record_kind"] != "detail":
+            continue
+        row = fact["layout"]["source_row_id"]
+        label = fact["dimensions"]["taxable_income_band_source_label"]
+        if labels.setdefault(row, label) != label:
+            raise ValueError(f"Taxable-income row {row} has inconsistent labels")
+    if tuple(sorted(labels, key=lambda row: int(row[4:]))) != rows:
+        raise ValueError("Taxable-income detail rows differ from the reviewed roster")
+    return labels
+
+
+def _interval_table(table_id, rows, labels, upper_dollars, locator, companions):
+    """Generate cuts from the row formulas and check them against the labels."""
+    bands, previous, shared = [], Decimal(0), []
+    for row_id in rows:
+        row = int(row_id.removeprefix("row_"))
+        label = labels[row_id]
+        bounds = _label_bounds(label)
+        indicator = (
+            f"taxable_income_band_{row_id}_indicator"
+            if companions
+            else f"taxable_income_age_table_band_{row_id}_indicator"
+        )
+        band = {"id": row_id}
+        if bounds is None:
+            if row_id != rows[0]:
+                raise ValueError("Only the first taxable-income row is nil")
+            band.update(kind="nil")
+        else:
+            upper = upper_dollars(row)
+            lower, published_upper = bounds
+            if published_upper != (None if upper is None else Decimal(upper)):
+                raise ValueError(f"Row {row_id} label {label!r} disagrees with its cut")
+            if lower == previous:
+                shared.append(row_id)
+            elif lower != previous + (Decimal("0.01") if previous == 0 else 1):
+                raise ValueError(f"Row {row_id} label {label!r} leaves a gap")
+            band.update(
+                kind="positive", upper_cent=None if upper is None else upper * 100
+            )
+            if upper is not None:
+                previous = Decimal(upper)
+        band.update(indicator=indicator, source_label=label)
+        if companions:
+            band.update(
+                count_reference=f"ird_taxable_income_people_by_band__{row_id}",
+                amount_reference=f"ird_taxable_income_total_by_band__{row_id}",
+            )
+        bands.append(band)
+    # "Over $X" names its own lower cut, so the open tail is not a shared label.
+    shared = tuple(row for row in shared if row != rows[-1])
+    if shared != IRD_SHARED_ENDPOINT_ROWS[table_id]:
+        raise ValueError(f"{table_id} shared endpoint rows changed: {shared}")
+    return {
+        "id": table_id,
+        "entity": "person",
+        "currency": "NZD",
+        "input_unit": "integer_cent",
+        "income_column": IRD_PROXY_INCOME_COLUMN,
+        "universe_column": IRD_PROXY_UNIVERSE_COLUMN,
+        "source_period": 2024,
+        "target_period": 2027,
+        "positive_band_closure": "right",
+        "nil_band": "present",
+        "negative_income_policy": "floor_zero",
+        "first_lower_cut_cents": 0,
+        "source_locator": locator,
+        "diagnostics": {
+            "boundary_window_cents": 100,
+            "alternative_positive_band_closure": "left",
+        },
+        "bands": bands,
+    }
+
+
+def _reference_intervals(inventory):
+    national = _band_labels(
+        inventory.cells(
+            "ird_taxable_income_distribution.ty2024.income_bands",
+            measure="individuals",
+        ),
+        IRD_NATIONAL_ROWS,
+    )
+    age = _band_labels(
+        inventory.cells("ird_taxable_income_distribution.ty2024.age_by_income_band"),
+        IRD_AGE_ROWS,
+    )
+    tables = [
+        _interval_table(
+            IRD_NATIONAL_TABLE,
+            IRD_NATIONAL_ROWS,
+            national,
+            _national_upper_dollars,
+            "Income tables 2001-24!BE8:BE244",
+            companions=True,
+        ),
+        _interval_table(
+            IRD_AGE_TABLE,
+            IRD_AGE_ROWS,
+            age,
+            _age_upper_dollars,
+            "A6:A188",
+            companions=False,
+        ),
+    ]
+    tables[0]["description"] = (
+        "National TY2024 taxable-income bands, rows 8-244: one nil band, 235 "
+        "finite bands and the open tail over $1,000,000. Every band names its "
+        "parked count and amount references."
+    )
+    tables[1]["description"] = (
+        "Age-by-income TY2024 taxable-income bands, rows 6-188: one nil band, "
+        "181 finite bands and the open tail over $180,000. Declared and "
+        "validated only; no reference companions and no fit rows."
+    )
+    return {
+        "schema_version": 1,
+        "country": "nz",
+        "description": "Generated by tools/generate_nz_target_references.py from the row formulas and checked against the pinned feed's own band labels.",
+        "disclosure": INTERVAL_DISCLOSURE,
+        "tables": tables,
+    }
 
 
 def _allocation_operands(inventory, row, recipients):
@@ -813,6 +1013,7 @@ def _reference_profiles(inventory, rows):
     return {
         "schema_version": 1,
         "factor_context_resource": "reference_aging.json",
+        "interval_resource": "reference_intervals.json",
         "dimensions": {
             "census_residual_allocation": {"default": "mar", "profiles": profiles},
             "aging_index": {
@@ -831,7 +1032,7 @@ def _reference_profiles(inventory, rows):
                                     f"ird_taxable_income_people_by_band__{row_id}"
                                     for row_id in IRD_NATIONAL_ROWS
                                 ],
-                                "interval_table_ids": [],
+                                "interval_table_ids": [IRD_NATIONAL_TABLE],
                                 "required_measurement_binding": IRD_MEASUREMENT_BINDING,
                             }
                         ]

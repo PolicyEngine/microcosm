@@ -31,6 +31,7 @@ from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
 import microcosm.build.reference_factors as reference_factors_module
+import microcosm.build.reference_intervals as reference_intervals_module
 import microcosm.build.reference_profiles as reference_profiles_module
 import microcosm.build.transport.target_kernels as target_kernels_module
 from microcosm.build.ledger_artifact import ChronicleFeedPinMismatchError
@@ -69,6 +70,12 @@ from microcosm.graph.canonical import canonical_json
 from test_support.microcosm_build.chronicle_feed import write_pinned_artifact
 from test_support.microcosm_build.reference_factor_transport import (
     factor_transport_fixture,
+)
+from test_support.microcosm_build.reference_intervals import (
+    INCOME_COLUMN,
+    UNIVERSE_COLUMN,
+    interval_bindings,
+    interval_table_fixture,
 )
 from test_support.microcosm_build.transport_graph import (
     CALIBRATION_TARGETS,
@@ -884,10 +891,15 @@ _STATUSES = (
 )
 
 
+# Base/current seeded draws have identical inputs and measured generation cost.
+# Host contention can exceed Hypothesis' wall-clock generation health check.
 @settings(
     max_examples=40,
     deadline=None,
-    suppress_health_check=(HealthCheck.function_scoped_fixture,),
+    suppress_health_check=(
+        HealthCheck.function_scoped_fixture,
+        HealthCheck.too_slow,
+    ),
 )
 @given(
     chosen=st.lists(
@@ -1104,3 +1116,257 @@ def test_property_comparison_reports_the_fact_and_the_weighted_model(
     assert row["reference"] == row["name"] == HOLDOUT_TARGETS[0][0]
     assert document["weight_kind"] == "calibrated"
     assert result.receipt["n_comparisons"] == 1
+
+
+# ---------------------------------------------------------------------------
+# Interval preparation and pre-fit boundary diagnostics
+# ---------------------------------------------------------------------------
+
+
+def _interval_document():
+    return {
+        "schema_version": 1,
+        "tables": [interval_table_fixture(source_period=2002)],
+    }
+
+
+def _interval_preparation_node(document, receipt, intervals, bindings=None):
+    table = intervals["tables"][0]
+    bindings = interval_bindings(table) if bindings is None else bindings
+    params = {
+        "bindings": canonical_text(bindings),
+        "references": canonical_text(document),
+        "references_sha256": reference_document_sha256(document),
+        "intervals": canonical_text(intervals),
+    }
+    if receipt is not None:
+        params["reference_resolution"] = canonical_text(receipt)
+    return Node(
+        "prepare",
+        "calibration.prepare@1",
+        population="open",
+        params=params,
+        outputs=tuple(
+            Owned("person", band["indicator"], dtype="bool") for band in table["bands"]
+        ),
+        artifact_outputs=(ArtifactOutput("preparation", CALIBRATION_PREPARATION_TYPE),),
+    )
+
+
+def _with_interval_inputs(tables, persons):
+    pattern = [0, -400, 99_999, 100_000, 100_001, 1_000_000, 1_000_001, 7]
+    statuses = ["included", "included", "included", "excluded"]
+    tables["person"][INCOME_COLUMN] = [pattern[i % 8] for i in range(persons)]
+    tables["person"][UNIVERSE_COLUMN] = [statuses[i % 4] for i in range(persons)]
+
+
+def _interval_case(tmp_path):
+    intervals = _interval_document()
+    document, effective, receipt = _profile_document(intervals=intervals)
+    assert effective == intervals
+    facts = write_facts(tmp_path / "facts.jsonl", toy_facts(CALIBRATION_TARGETS))
+    payload, _ = compile_target_surface(
+        facts,
+        document,
+        country=COUNTRY,
+        references_sha256=reference_document_sha256(document),
+        reference_resolution=receipt,
+    )
+    frame = toy_frame()
+    persons = len(frame.table("person"))
+    context = _context(
+        _interval_preparation_node(document, receipt, intervals), frame=frame
+    )
+    _with_interval_inputs(context.tables, persons)
+    prepared = CALIBRATION_PREPARE.run(context)
+    return intervals, document, receipt, payload, frame, prepared
+
+
+def _interval_problem_context(frame, payload, preparation, prepared_columns):
+    context = _context(
+        _problem_node(),
+        frame=frame,
+        artifacts={
+            "surface": _artifact(payload, TARGET_SURFACE_TYPE),
+            "preparation": _artifact(preparation, CALIBRATION_PREPARATION_TYPE),
+        },
+    )
+    _with_interval_inputs(context.tables, len(frame.table("person")))
+    for (entity, name), values in prepared_columns.items():
+        context.tables[entity][name] = values.to_numpy(copy=True)
+    return context
+
+
+def test_interval_preparation_carries_digest_inputs_and_payload(tmp_path):
+    intervals, _, receipt, _, frame, prepared = _interval_case(tmp_path)
+    evidence = json.loads(prepared.artifacts["preparation"])
+    assert evidence["effective_intervals_sha256"] == reference_document_sha256(
+        intervals
+    )
+    assert evidence["effective_intervals"] == intervals
+    (row,) = evidence["interval_inputs"]
+    persons = frame.table("person")
+    assert row["table"] == "toy_income" and row["entity"] == "person"
+    assert row["rows"] == len(persons)
+    assert row["income_values_sha256"] == (
+        reference_intervals_module.interval_input_fingerprint(
+            [
+                [0, -400, 99_999, 100_000, 100_001, 1_000_000, 1_000_001, 7][i % 8]
+                for i in range(len(persons))
+            ]
+        )
+    )
+    nil = prepared.columns["person", "toy_income_band_nil"]
+    b0 = prepared.columns["person", "toy_income_band_b0"]
+    statuses = [
+        ["included", "included", "included", "excluded"][i % 4]
+        for i in range(len(persons))
+    ]
+    incomes = [
+        [0, -400, 99_999, 100_000, 100_001, 1_000_000, 1_000_001, 7][i % 8]
+        for i in range(len(persons))
+    ]
+    assert nil.tolist() == [
+        status == "included" and income <= 0
+        for status, income in zip(statuses, incomes, strict=True)
+    ]
+    assert b0.tolist() == [
+        status == "included" and 0 < income <= 100_000
+        for status, income in zip(statuses, incomes, strict=True)
+    ]
+
+
+def test_problem_binds_boundary_diagnostics_without_changing_targets(tmp_path):
+    _, document, receipt, payload, frame, prepared = _interval_case(tmp_path)
+    result = TARGETS_PROBLEM.run(
+        _interval_problem_context(
+            frame, payload, prepared.artifacts["preparation"], prepared.columns
+        )
+    )
+    decoded = decode_problem(result.artifacts["problem"])
+    report = decoded.bindings["interval_diagnostics"]
+    assert decoded.bindings["interval_diagnostics_sha256"] == reference_document_sha256(
+        report
+    )
+    assert result.receipt["interval_diagnostics"] == report
+    assert report["effective_intervals_sha256"] == receipt["effective_intervals_sha256"]
+    (table,) = report["tables"]
+    assert table["table"] == "toy_income"
+    assert table["weight_kind"] == "design"
+    assert table["publisher_reclassification"] == "unavailable"
+    evidence = json.loads(prepared.artifacts["preparation"])
+    assert (
+        table["digests"]["record_order_sha256"]
+        == (evidence["interval_inputs"][0]["entity_ids_sha256"])
+    )
+    # The same surface prepared without interval outputs has identical targets.
+    plain = CALIBRATION_PREPARE.run(
+        _context(
+            _preparation_node(document, receipt, _interval_document()), frame=frame
+        )
+    )
+    context = _context(
+        _problem_node(),
+        frame=frame,
+        artifacts={
+            "surface": _artifact(payload, TARGET_SURFACE_TYPE),
+            "preparation": _artifact(
+                plain.artifacts["preparation"], CALIBRATION_PREPARATION_TYPE
+            ),
+        },
+    )
+    context.tables["household"]["prepared_marker"] = 1
+    baseline = TARGETS_PROBLEM.run(context)
+    without = decode_problem(baseline.artifacts["problem"])
+    assert "interval_diagnostics" not in without.bindings
+    np.testing.assert_array_equal(
+        decoded.problem.target_vector, without.problem.target_vector
+    )
+    np.testing.assert_array_equal(
+        decoded.problem.target_vector,
+        [spec.value for spec in decode_target_surface(payload).registry.specs],
+    )
+
+
+@pytest.mark.parametrize(
+    "defect",
+    [
+        "income",
+        "universe",
+        "payload",
+        "dropped_inputs",
+        "dropped_payload",
+        "missing_income_column",
+    ],
+)
+def test_problem_refuses_stale_interval_preparation(tmp_path, defect):
+    _, _, _, payload, frame, prepared = _interval_case(tmp_path)
+    evidence = json.loads(prepared.artifacts["preparation"])
+    if defect == "payload":
+        evidence["effective_intervals"]["tables"][0]["bands"][1]["upper_cent"] = 99_000
+    elif defect == "dropped_inputs":
+        evidence.pop("interval_inputs")
+    elif defect == "dropped_payload":
+        evidence.pop("effective_intervals")
+    context = _interval_problem_context(
+        frame, payload, canonical_json(evidence), prepared.columns
+    )
+    if defect == "income":
+        context.tables["person"].loc[0, INCOME_COLUMN] = 100_001
+    elif defect == "universe":
+        context.tables["person"].loc[0, UNIVERSE_COLUMN] = "excluded"
+    elif defect == "missing_income_column":
+        context.tables["person"].pop(INCOME_COLUMN)
+    with pytest.raises(ValueError, match="preparation|missing"):
+        TARGETS_PROBLEM.run(context)
+
+
+def test_missing_diagnostic_entity_refuses_as_missing_evidence():
+    table = reference_intervals_module.interval_table(
+        interval_table_fixture(entity="tax_unit", source_period=2002)
+    )
+    with pytest.raises(ValueError, match="missing evidence"):
+        target_kernels_module._interval_diagnostics(
+            toy_frame(), [table], ENTITIES, "0" * 64
+        )
+
+
+@pytest.mark.parametrize(
+    "defect", ["wrong_document", "no_receipt", "no_document", "unresolved"]
+)
+def test_preparation_refuses_wrong_unbound_or_unresolved_intervals(tmp_path, defect):
+    intervals = _interval_document()
+    document, _, receipt = _profile_document(intervals=intervals)
+    supplied = deepcopy(intervals)
+    if defect == "wrong_document":
+        supplied["tables"][0]["bands"][1]["upper_cent"] = 99_000
+    node = _interval_preparation_node(
+        document, None if defect == "no_receipt" else receipt, supplied
+    )
+    if defect == "no_document":
+        document, _, receipt = _profile_document()
+        node = _interval_preparation_node(document, receipt, intervals)
+        node = replace(
+            node, params={k: v for k, v in node.params.items() if k != "intervals"}
+        )
+    frame = toy_frame()
+    context = _context(node, frame=frame)
+    _with_interval_inputs(context.tables, len(frame.table("person")))
+    if defect == "unresolved":
+        context.tables["person"].loc[1, UNIVERSE_COLUMN] = "unresolved"
+    with pytest.raises(ValueError):
+        CALIBRATION_PREPARE.run(context)
+
+
+@pytest.mark.parametrize(
+    "kernel", [CALIBRATION_PREPARE, TARGETS_PROBLEM], ids=lambda k: k.ref
+)
+def test_interval_module_source_changes_preparation_and_problem_identity(
+    tmp_path, monkeypatch, kernel
+):
+    before = kernel.implementation_hash()
+    source = Path(reference_intervals_module.__file__)
+    changed = tmp_path / source.name
+    changed.write_bytes(source.read_bytes() + b"\n# interval helper mutation\n")
+    monkeypatch.setattr(reference_intervals_module, "__file__", str(changed))
+    assert kernel.implementation_hash() != before

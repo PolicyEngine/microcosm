@@ -18,6 +18,10 @@ from microcosm.calibrate import Target, TargetSet
 from microcosm.calibrate.matrix import build_constraint_matrix
 from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
 from microcosm.frame.concepts import TENURE_DOMAIN
+from test_support.microcosm_build.reference_intervals import (
+    interval_bindings,
+    interval_table_fixture,
+)
 from test_support.paths import paths_for
 
 
@@ -187,6 +191,7 @@ def test_all_active_calibration_bindings_enter_the_small_frame_matrix():
         json.loads((root / "target_references.json").read_text()),
         profiles,
         {},
+        json.loads((root / profiles["interval_resource"]).read_text()),
         factor_context=json.loads(
             (root / profiles["factor_context_resource"]).read_text()
         ),
@@ -340,3 +345,192 @@ def test_malformed_preparation_contracts_refuse(defect):
         bindings["columns"][0]["constant"] = float("nan")
     with pytest.raises(ValueError):
         prepare_calibration_columns(_tables(), bindings)
+
+
+# ---------------------------------------------------------------------------
+# Interval outputs: their own binding kind beside the predicate outputs
+# ---------------------------------------------------------------------------
+
+
+def _interval_contract(entity="person"):
+    table = interval_table_fixture(entity=entity, source_period=2002)
+    bindings = interval_bindings(table)
+    bindings["columns"].append({"entity": entity, "name": "counted", "constant": 1})
+    return {"schema_version": 1, "tables": [table]}, bindings
+
+
+def _interval_tables(amounts, statuses, entity="person"):
+    return {
+        entity: pd.DataFrame(
+            {
+                f"{entity}_id": range(len(amounts)),
+                "toy_income_cents": amounts,
+                "toy_income_universe": statuses,
+            }
+        )
+    }
+
+
+def test_interval_outputs_follow_the_universe_and_recompute_stale_values():
+    intervals, bindings = _interval_contract()
+    tables = _interval_tables(
+        [-50, 0, 0, 100_000, 100_001, 5_000_000],
+        ["included", "included", "excluded", "included", "included", "excluded"],
+    )
+    tables["person"]["toy_income_band_nil"] = [True] * 6
+    prepared = prepare_calibration_columns(tables, bindings, intervals=intervals)
+    person = prepared["person"]
+    # A nonfiler with no income is excluded: never an all-person nil indicator.
+    assert person["toy_income_band_nil"].tolist() == [
+        True,
+        True,
+        False,
+        False,
+        False,
+        False,
+    ]
+    assert person["toy_income_band_b0"].tolist() == [
+        False,
+        False,
+        False,
+        True,
+        False,
+        False,
+    ]
+    assert person["toy_income_band_b1"].tolist() == [False] * 4 + [True, False]
+    assert person["toy_income_band_b2"].tolist() == [False] * 6
+    assert person["toy_income_band_b0"].dtype == bool
+    assert person["counted"].tolist() == [1] * 6
+    assert tables["person"]["toy_income_band_nil"].tolist() == [True] * 6
+    tables["person"].loc[3, "toy_income_cents"] = 100_001
+    fresh = prepare_calibration_columns(tables, bindings, intervals=intervals)
+    assert fresh["person"].loc[3, "toy_income_band_b1"]
+    assert not fresh["person"].loc[3, "toy_income_band_b0"]
+
+
+@pytest.mark.parametrize(
+    ("amount", "status"),
+    [
+        (10, "unresolved"),
+        (10, "unknown"),
+        (True, "included"),
+        (10.0, "included"),
+        ("10", "included"),
+        (pd.NA, "included"),
+    ],
+)
+def test_unresolved_universe_or_invalid_amount_refuses_before_any_output(
+    amount, status
+):
+    intervals, bindings = _interval_contract()
+    tables = _interval_tables(pd.array([5, amount], dtype=object), ["included", status])
+    before = copy.deepcopy(tables)
+    with pytest.raises(ValueError, match="refused before emitting indicators"):
+        prepare_calibration_columns(tables, bindings, intervals=intervals)
+    pd.testing.assert_frame_equal(tables["person"], before["person"])
+
+
+def test_household_entity_interval_outputs_are_entity_generic():
+    intervals, bindings = _interval_contract(entity="household")
+    prepared = prepare_calibration_columns(
+        _interval_tables([0, 100_000], ["excluded", "included"], entity="household"),
+        bindings,
+        intervals=intervals,
+    )
+    assert prepared["household"]["toy_income_band_b0"].tolist() == [False, True]
+    assert prepared["household"]["toy_income_band_nil"].tolist() == [False, False]
+
+
+@pytest.mark.parametrize(
+    "defect",
+    [
+        "no_document",
+        "unknown_table",
+        "unknown_band",
+        "wrong_entity",
+        "not_the_band_indicator",
+        "mixed_with_predicates",
+        "mixed_with_constant",
+        "extra_interval_field",
+        "unaged_source_cuts",
+        "missing_universe_column",
+        "missing_income_column",
+        "invalid_document",
+    ],
+)
+def test_malformed_interval_outputs_refuse(defect):
+    intervals, bindings = _interval_contract()
+    entry = bindings["columns"][1]
+    tables = _interval_tables([1, 2], ["included", "included"])
+    if defect == "no_document":
+        intervals = None
+    elif defect == "unknown_table":
+        entry["interval"]["table"] = "other"
+    elif defect == "unknown_band":
+        entry["interval"]["band"] = "b9"
+    elif defect == "wrong_entity":
+        bindings["required_inputs"]["household"] = ["household_id"]
+        bindings["input_domains"]["household"] = {"household_id": {"kind": "identity"}}
+        tables["household"] = pd.DataFrame({"household_id": [0]})
+        entry["entity"] = "household"
+    elif defect == "not_the_band_indicator":
+        entry["name"] = "renamed_indicator"
+    elif defect == "mixed_with_predicates":
+        entry["predicates"] = [{"column": "person_id", "operator": "ge", "value": 0}]
+    elif defect == "mixed_with_constant":
+        entry["constant"] = 1
+    elif defect == "extra_interval_field":
+        entry["interval"]["closure"] = "left"
+    elif defect == "unaged_source_cuts":
+        intervals["tables"][0]["source_period"] = 2001
+    elif defect == "missing_universe_column":
+        tables["person"] = tables["person"].drop(columns="toy_income_universe")
+    elif defect == "missing_income_column":
+        tables["person"] = tables["person"].drop(columns="toy_income_cents")
+    else:
+        intervals["tables"][0].pop("positive_band_closure")
+    with pytest.raises(ValueError):
+        prepare_calibration_columns(tables, bindings, intervals=intervals)
+
+
+def test_interval_outputs_enter_a_constraint_row_through_their_filter():
+    intervals, bindings = _interval_contract()
+    tables = _interval_tables([0, 50_000, 150_000], ["included"] * 3)
+    tables["household"] = pd.DataFrame({"household_id": [0, 1, 2]})
+    tables["person"]["person_household_id"] = [0, 1, 2]
+    prepared = prepare_calibration_columns(tables, bindings, intervals=intervals)
+    frame = _frame(prepared)
+    target = Target(
+        name="first band",
+        entity="person",
+        measure="toy_income_cents",
+        filter="toy_income_band_b0",
+    )
+    assert target.constraint_row(frame).tolist() == [0, 50_000, 0]
+
+
+def test_signed_integer_domain_admits_losses_and_refuses_booleans_and_floats():
+    bindings = {
+        "schema_version": 1,
+        "required_inputs": {"person": ["person_id", "net_cents"]},
+        "input_domains": {
+            "person": {
+                "person_id": {"kind": "identity"},
+                "net_cents": {"kind": "signed_integer"},
+            }
+        },
+        "columns": [
+            {
+                "entity": "person",
+                "name": "loss_indicator",
+                "predicates": [{"column": "net_cents", "operator": "lt", "value": 0}],
+            }
+        ],
+    }
+    tables = {"person": pd.DataFrame({"person_id": [0, 1], "net_cents": [-5, 7]})}
+    prepared = prepare_calibration_columns(tables, bindings)
+    assert prepared["person"]["loss_indicator"].tolist() == [True, False]
+    for values in ([True, False], [-5.0, 7.0], pd.array([-5, None], dtype="Int64")):
+        tables["person"]["net_cents"] = values
+        with pytest.raises(ValueError):
+            prepare_calibration_columns(tables, bindings)

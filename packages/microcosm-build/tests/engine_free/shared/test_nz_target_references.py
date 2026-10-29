@@ -111,6 +111,7 @@ def _effective_rows(profile="mar"):
         _document("target_references.json"),
         _document("reference_profiles.json"),
         {"census_residual_allocation": profile, "aging_index": "central"},
+        _document("reference_intervals.json"),
         factor_context=_document("reference_aging.json"),
     )
     return document["target_references"]
@@ -267,9 +268,13 @@ def test_full_nz_resource_resolves_directly_to_the_strict_compiler_document(prof
         raw,
         _document("reference_profiles.json"),
         {"census_residual_allocation": profile, "aging_index": "central"},
+        _document("reference_intervals.json"),
         factor_context=_document("reference_aging.json"),
     )
-    assert intervals is None
+    assert receipt["base_intervals_sha256"] == reference_document_sha256(
+        _document("reference_intervals.json")
+    )
+    assert ["scaling" in table for table in intervals["tables"]] == [True, False]
     assert set(effective) == set(raw) & REFERENCE_DOCUMENT_KEYS
     references = parse_reference_document(effective, country="nz")
     assert len(references) == 773
@@ -359,15 +364,21 @@ def test_ageing_profiles_have_237_explicit_companions_and_keep_b4_parked(profile
     ]
     assert transformation["count_reference_names"] == expected_counts
     assert transformation["reference_names"] == expected_money
-    assert transformation["interval_table_ids"] == []
+    assert transformation["interval_table_ids"] == [
+        "ird_taxable_income_national_ty2024"
+    ]
     assert transformation["factor_id"] == f"ird_ty2024_to_ty2027_{profile}"
     assert not any("246" in name for name in expected_counts + expected_money)
     base = _document("target_references.json")
-    effective, _, receipt = resolve_reference_profiles(
+    effective, intervals, receipt = resolve_reference_profiles(
         base,
         profiles,
         {"census_residual_allocation": "mar", "aging_index": profile},
+        _document("reference_intervals.json"),
         factor_context=_document("reference_aging.json"),
+    )
+    assert intervals["tables"][0]["scaling"]["factor_id"] == (
+        f"ird_ty2024_to_ty2027_{profile}"
     )
     before = {row["name"]: row for row in base["target_references"]}
     after = {row["name"]: row for row in effective["target_references"]}
