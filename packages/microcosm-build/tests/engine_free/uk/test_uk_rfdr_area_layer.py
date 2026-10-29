@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 import json
 
 import numpy as np
@@ -18,6 +19,9 @@ from microcosm.build.uk_runtime.rfdr_area_layer import (
     load_rfdr_area_layer,
     postcode_in_scheme,
 )
+from test_support.paths import paths_for
+
+_TEST_PATHS = paths_for("microcosm-build")
 
 _DEFINITION = RFDRPostcodeDefinition.from_mapping(
     {"districts": ["EX35", "HS1"], "sectors": ["PA34 4"]}
@@ -181,6 +185,34 @@ def test_flags_are_booleans_aligned_with_the_households() -> None:
     assert flags.dtype == bool and flags.tolist() == [True, False, True]
 
 
+@pytest.mark.parametrize("bad", [None, float("nan"), "", "e00000002", "E0000002"])
+def test_a_malformed_great_britain_code_is_refused(bad) -> None:
+    # A code that is missing, cased or shaped differently would silently miss
+    # the layer (Anthony's review of microcosm#1420).
+    layer = load_rfdr_area_layer(_layer())
+    with pytest.raises(ValueError, match="well-formed"):
+        area_flags(
+            layer=layer,
+            area_system=["uk_ew_output_area_2021"] * 2,
+            area_code=["E00000002", bad],
+        )
+
+
+def test_great_britain_households_none_of_which_is_flagged_are_refused() -> None:
+    layer = load_rfdr_area_layer(_layer())
+    with pytest.raises(ValueError, match="none of the 2 Great Britain households"):
+        area_flags(
+            layer=layer,
+            area_system=["uk_ew_output_area_2021", "uk_scotland_output_area_2022"],
+            area_code=["E00000003", "S00135401"],
+        )
+    # Northern Ireland alone has no area in the scheme, so nothing is flagged.
+    flags, counts = area_flags(
+        layer=layer, area_system=["uk_ni_data_zone_2021"], area_code=["95AA01S1"]
+    )
+    assert not flags.any() and counts["flagged"] == 0
+
+
 def test_the_committed_layer_flags_the_scheme_s_output_areas() -> None:
     """The committed layer loads, and every part of the scheme is on it."""
 
@@ -199,3 +231,37 @@ def test_the_committed_layer_flags_the_scheme_s_output_areas() -> None:
         definition["districts"]
     )
     assert "IV45 8YD" in definition["excluded_units"]
+
+
+def _load_tool():
+    path = _TEST_PATHS.repository / "tools/build_uk_rfdr_area_layer.py"
+    spec = importlib.util.spec_from_file_location("build_uk_rfdr_area_layer", path)
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_the_tool_refuses_a_lookup_without_the_output_area_column(tmp_path) -> None:
+    # Anthony's review of microcosm#1420: a lookup that has the postcode but
+    # not the 2021 output area refuses by name, not by a later KeyError.
+    manifest = tmp_path / "manifest.yaml"
+    manifest.write_text("files:\n  nspl.zip:\n    sha256: " + "0" * 64 + "\n")
+    lookup = tmp_path / "lookup.parquet"
+    pd.DataFrame({"postcode": ["HS1 2AA"], "lsoa21cd": ["S01000001"]}).to_parquet(
+        lookup
+    )
+    with pytest.raises(SystemExit, match="lacks postcode or oa21cd"):
+        _load_tool().main(
+            [
+                "--postcode-oa-parquet",
+                str(lookup),
+                "--nspl-manifest",
+                str(manifest),
+                "--out",
+                str(tmp_path / "layer.json"),
+                "--provenance-json",
+                str(tmp_path / "provenance.json"),
+            ]
+        )
+    assert not (tmp_path / "layer.json").exists()

@@ -507,7 +507,7 @@ def main(argv: list[str] | None = None) -> int:
             "sha256": _sha256(args.postcode_oa_parquet),
             "reduced_by": "tools/build_uk_high_value_home_stock.py (stage A)",
         }
-    if set(postcodes.columns) < {"postcode", "oa21cd"}:
+    if not {"postcode", "oa21cd"} <= set(postcodes.columns):
         raise SystemExit("error: the postcode lookup lacks postcode or oa21cd.")
     flagged, receipt = layer_module.flag_output_areas(postcodes, definition)
     built_on = args.built_on or date.today().isoformat()
