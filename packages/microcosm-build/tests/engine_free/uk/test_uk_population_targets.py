@@ -71,6 +71,9 @@ NATIONAL_SELECTOR_KEYS = {
     # microcosm#1301: the high-value homes region rows select the derived
     # stock's record set, as its local cells do.
     "record_set_spec_id",
+    # microcosm#1095 R8: a selector may declare its fact's geography, which
+    # wins over the inferred pin; the devolved SLC repayment rows do.
+    "geography_id",
 }
 LOCAL_SELECTOR_KEYS = {
     "source_name",
@@ -255,8 +258,9 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
     # of the objective; microcosm#1069 adds HMRC's Income Tax payers of State
     # Pension age and aged 65 and over by region and nation; microcosm#1418
     # adds HMRC's Income Tax on savings at the basic, higher and additional
-    # rates, three national rows.
-    assert len(resource["targets"]) == 451
+    # rates, three national rows; microcosm#1095 R4 splits SLC's devolved
+    # repayments into one row per nation, three rows for one.
+    assert len(resource["targets"]) == 453
 
     providers = resource["hierarchy"]["providers"]
     categories = resource["hierarchy"]["categories"]
@@ -270,10 +274,10 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
     target_ids = [target["target_id"] for target in resource["targets"]]
     registry_scope = resource["registry_parity"]["scope_target_ids"]
     profile_scope = resource["profile_parity"]["scope_target_ids"]
-    assert len(registry_scope) == 391
+    assert len(registry_scope) == 393
     assert len(profile_scope) == 60
-    assert target_ids[:391] == registry_scope
-    assert target_ids[391:] == profile_scope
+    assert target_ids[:393] == registry_scope
+    assert target_ids[393:] == profile_scope
 
     parity = resource["registry_parity"]
     assert parity["pinned_ref"] == "12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3"
@@ -299,8 +303,10 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
     # Benefit family rows have no uk-data metric either. microcosm#1359's five
     # OBR excise rows have no uk-data metric (uk-data never measured excise
     # duty), nor microcosm#1069's two Income Tax payer by age rows, nor
-    # microcosm#1418's three Income Tax on savings rows.
-    assert len(mapped_target_ids) == 183
+    # microcosm#1418's three Income Tax on savings rows. microcosm#1095 R4
+    # maps the incumbent's three devolved SLC repayment metrics one to one,
+    # to three nation rows in place of one devolved row.
+    assert len(mapped_target_ids) == 185
     assert len(unmapped_declarations) == 208
     suppressed_ancestors = parity["suppressed_ancestors"]
     assert len(suppressed_ancestors) == 5
@@ -808,7 +814,7 @@ def test_uk_population_targets_have_unique_target_ids() -> None:
     resource = _load()
 
     target_ids = [target["target_id"] for target in resource["targets"]]
-    assert len(target_ids) == 451
+    assert len(target_ids) == 453
     assert len(target_ids) == len(set(target_ids))
 
 
@@ -1311,7 +1317,7 @@ def test_uc_payment_bands_share_administrative_family_but_keep_source_window() -
 
 def test_paid_joint_diagnostics_do_not_add_active_targets() -> None:
     targets = _load()["targets"]
-    assert len(targets) == 451
+    assert len(targets) == 453
     assert not any(
         f.get("variable") == "uc_calibration_child_entitlement"
         for target in targets
