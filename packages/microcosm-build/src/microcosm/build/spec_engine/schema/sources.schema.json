@@ -13466,7 +13466,8 @@
       "amounts",
       "from_tax_year",
       "to_tax_year",
-      "overall_limit_gbp"
+      "overall_limit_gbp",
+      "taper_from_gbp"
      ],
      "properties": {
       "kind": {
@@ -13479,7 +13480,7 @@
       },
       "amounts": {
        "enum": [
-        "table_9_4_amount_level_limit_held"
+        "table_9_4_amount_level_tapered_to_limit"
        ]
       },
       "from_tax_year": {
@@ -13489,6 +13490,9 @@
        "type": "integer"
       },
       "overall_limit_gbp": {
+       "type": "number"
+      },
+      "taper_from_gbp": {
        "type": "number"
       }
      }

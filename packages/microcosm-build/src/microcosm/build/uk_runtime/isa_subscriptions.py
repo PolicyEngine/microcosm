@@ -39,8 +39,9 @@ read the whole population.
 5. **Growth to 2024-25.** Subscriber counts grow by Table 9.4's account growth by
    type, an upper bound on people because from 6 April 2024 one person may pay into
    several ISAs of one type. Amounts then scale by one factor per type to Table
-   9.4's 2024-25 amounts; subscribers already at GBP 20,000 stay there and the rest
-   are capped at it (María's ruling of 29 October 2026).
+   9.4's 2024-25 amounts; subscribers already at GBP 20,000 stay there, amounts
+   between GBP 18,000 and the limit move on a line up to it so no range below it
+   empties, and the rest are capped at it (María's rulings of 29 October 2026).
 6. **Lifetime ISA payments (2024-25).** Holders aged 18 to 47, the ages that can
    hold one in 2024-25, pay in amounts on (0, GBP 4,000], tilted so the total
    equals Table 9.4's Lifetime ISA amount and ranked like step 3, within each
@@ -175,6 +176,11 @@ LIFETIME_ISA_BALANCE = "lifetime_isa_balance"
 BOTH = "cash_and_stocks_and_shares"
 STOCKS_AND_SHARES_ONLY = "stocks_and_shares_only"
 CASH_ONLY = "cash_only"
+#: Where 2024-25 amounts start to taper to the overall limit: the floor of Table
+#: 9.7's last subscription band below it (GBP 18,000, María's ruling of 29
+#: October 2026).
+TAPER_FROM_GBP = float(isa_band_bounds(HMRC_ISA_SUBSCRIPTION_BAND_IDS[-2])[0] - 1)
+
 #: Selection order: the scarcest holding pattern first, so a person who holds
 #: both types is offered the 'both' class before a single-type one.
 CLASS_ORDER: tuple[str, ...] = (BOTH, STOCKS_AND_SHARES_ONLY, CASH_ONLY)
@@ -301,6 +307,7 @@ class ISASubscriptionsSpec:
     base_tax_year: int
     build_tax_year: int
     overall_limit_gbp: float
+    taper_from_gbp: float
     lifetime_seed: int
     lifetime_salt: str
     lifetime_minimum_age: int
@@ -343,11 +350,17 @@ class ISASubscriptionsSpec:
             raise ISASubscriptionsError("amounts are spread evenly inside each band.")
         if (
             grow.get("people") != "table_9_4_account_growth"
-            or grow.get("amounts") != "table_9_4_amount_level_limit_held"
+            or grow.get("amounts") != "table_9_4_amount_level_tapered_to_limit"
         ):
             raise ISASubscriptionsError(
                 "growth is people by Table 9.4's account growth and amounts to its "
-                "build-year amounts, holding the overall limit."
+                "build-year amounts, holding and tapering to the overall limit."
+            )
+        taper_from = float(grow["taper_from_gbp"])
+        if taper_from != TAPER_FROM_GBP:
+            raise ISASubscriptionsError(
+                f"the taper starts at Table 9.7's last band floor below the limit, "
+                f"GBP {TAPER_FROM_GBP:,.0f}, not GBP {taper_from:,.0f}."
             )
         years = (int(grow["from_tax_year"]), int(grow["to_tax_year"]))
         if years != (HMRC_ISA_INDIVIDUAL_TAX_YEAR, HMRC_ISA_BUILD_TAX_YEAR):
@@ -384,6 +397,7 @@ class ISASubscriptionsSpec:
             base_tax_year=int(grow["from_tax_year"]),
             build_tax_year=int(grow["to_tax_year"]),
             overall_limit_gbp=float(grow["overall_limit_gbp"]),
+            taper_from_gbp=taper_from,
             lifetime_seed=int(lifetime["seed"]),
             lifetime_salt=str(lifetime["salt"]),
             lifetime_minimum_age=int(lifetime["minimum_age"]),
@@ -1013,8 +1027,8 @@ def draw_band_amounts(
     amounts = np.zeros(len(rows), dtype=float)
     if len(rows) == 0:
         return amounts
-    w = weights[rows]
-    total = float(w.sum())
+    row_weights = weights[rows]
+    total = float(row_weights.sum())
     shares = np.asarray(band_shares, dtype=float)
     if total <= 0 or shares.sum() <= 0:
         return amounts
@@ -1023,7 +1037,7 @@ def draw_band_amounts(
         person_ids[rows], seed=seed, salt=f"{salt}:rank"
     )
     rank_key = (
-        balance_rank_weight * _weighted_rank(balance[rows], w)
+        balance_rank_weight * _weighted_rank(balance[rows], row_weights)
         + (1.0 - balance_rank_weight) * uniforms
     )
     ranked = np.lexsort((person_ids[rows], -rank_key))
@@ -1033,7 +1047,7 @@ def draw_band_amounts(
     ]
     assigned, _ = _walk_bands(
         ranked=ranked,
-        weights=w[ranked],
+        weights=row_weights[ranked],
         boundaries=boundaries,
         rng=_keyed_offset(seed, f"{salt}:walk", key),
         members=members,
@@ -1048,7 +1062,7 @@ def draw_band_amounts(
             amounts[positions] = upper
             continue
         ordered = positions[np.argsort(rank_key[positions], kind="stable")]
-        cumulative = np.cumsum(w[ordered])
+        cumulative = np.cumsum(row_weights[ordered])
         tops = cumulative / cumulative[-1]
         bottoms = np.concatenate(([0.0], tops[:-1]))
         jitter = stable_identity_uniforms(
@@ -1148,21 +1162,44 @@ def scale_to_build_year_amounts(
     cash_target: float,
     stocks_target: float,
     limit: float,
+    taper_from: float,
 ) -> tuple[np.ndarray, np.ndarray, dict[str, Any]]:
-    """One factor per type, solved to both totals, holding the overall limit.
+    """One factor per type, solved to both totals, holding and tapering to the limit.
 
     Subscribers already paying the overall limit keep their amounts, so a factor
     below one moves nobody off it (María's ruling of 29 October 2026). Everyone
-    else scales by the type's factor and is capped at the limit, pro rata across
-    the two types.
+    else scales by the type's factor, except that a person whose combined amount
+    lies between ``taper_from`` and the limit moves on a line from their scaled
+    ``taper_from`` to the limit (María's ruling of 29 October 2026). One factor
+    up to the limit would empty the range just below it whenever it fell under
+    one (review of microcosm#1421). The scaled amounts are capped at the limit,
+    pro rata across the two types.
     """
 
-    at_limit = (cash + stocks) >= limit - 1e-6
+    if not 0 < taper_from < limit:
+        raise ISASubscriptionsError("the taper starts inside (0, limit).")
+    combined = cash + stocks
+    at_limit = combined >= limit - 1e-6
+    tapered = (combined > taper_from) & ~at_limit
 
     def scaled(cash_factor: float, stocks_factor: float) -> tuple[np.ndarray, ...]:
-        moved_cash, moved_stocks = _capped(
-            cash * cash_factor, stocks * stocks_factor, limit
-        )
+        moved_cash, moved_stocks = cash * cash_factor, stocks * stocks_factor
+        if tapered.any():
+            moved = moved_cash + moved_stocks
+            factor = moved[tapered] / combined[tapered]
+            start = factor * taper_from
+            target = start + (combined[tapered] - taper_from) * (limit - start) / (
+                limit - taper_from
+            )
+            ratio = np.ones(len(cash))
+            ratio[tapered] = np.divide(
+                target,
+                moved[tapered],
+                out=np.ones(int(tapered.sum())),
+                where=moved[tapered] > 0,
+            )
+            moved_cash, moved_stocks = moved_cash * ratio, moved_stocks * ratio
+        moved_cash, moved_stocks = _capped(moved_cash, moved_stocks, limit)
         return (
             np.where(at_limit, cash, moved_cash),
             np.where(at_limit, stocks, moved_stocks),
@@ -1204,6 +1241,8 @@ def scale_to_build_year_amounts(
         "stocks_and_shares_target_gbp": stocks_target,
         "stocks_and_shares_achieved_gbp": achieved[1],
         "held_at_overall_limit_records": rounded_count(int(at_limit.sum())),
+        "taper_from_gbp": taper_from,
+        "tapered_records": rounded_count(int(tapered.sum())),
         "at_overall_limit_records": rounded_count(
             int(((scaled_cash + scaled_stocks) >= limit - 1e-6).sum())
         ),
@@ -1230,12 +1269,14 @@ def draw_lifetime_isa_payments(
     rows = np.flatnonzero(payers)
     weights = recipients["weight"].to_numpy(float)
     receipt: dict[str, Any] = {
-        "payer_weight": float(weights[rows].sum()),
-        "payer_records": rounded_count(int(rows.size)),
+        # Holders at the paying ages; those without room under the overall
+        # limit pay nothing, so the paying weight below is the payer count.
+        "eligible_holder_weight": float(weights[rows].sum()),
+        "eligible_holder_records": rounded_count(int(rows.size)),
         "target_gbp": target_gbp,
     }
     if rows.size == 0:
-        receipt["achieved_gbp"] = 0.0
+        receipt.update({"achieved_gbp": 0.0, "paying_weight": 0.0, "paying_records": 0})
         return payments, receipt
     payer_weights = weights[rows]
     person_ids = recipients["person_id"].to_numpy()[rows]
@@ -1276,10 +1317,13 @@ def draw_lifetime_isa_payments(
         mean = (low + high) / 2.0
         receipt["saturated"] = None
     payments[rows] = drawn(mean)
+    paying = payments[rows] > 0
     receipt.update(
         {
             "uncapped_mean_gbp": mean,
             "achieved_gbp": float((payments[rows] * payer_weights).sum()),
+            "paying_weight": float(payer_weights[paying].sum()),
+            "paying_records": rounded_count(int(paying.sum())),
             "trimmed_to_overall_limit_records": rounded_count(
                 int(
                     (
@@ -1460,6 +1504,7 @@ def impute_isa_subscriptions(
         cash_target=statistics.amount_subscribed[("cash", build_year)],
         stocks_target=statistics.amount_subscribed[("stocks_and_shares", build_year)],
         limit=spec.overall_limit_gbp,
+        taper_from=spec.taper_from_gbp,
     )
     headroom = spec.overall_limit_gbp - cash - stocks
     lifetime, lifetime_receipt = draw_lifetime_isa_payments(
@@ -1489,7 +1534,7 @@ def impute_isa_subscriptions(
             "to_tax_year": build_year,
             "people": "table_9_4_account_growth (upper bound on people)",
             "account_growth": growth,
-            "amounts": "table_9_4_amount_level_limit_held",
+            "amounts": "table_9_4_amount_level_tapered_to_limit",
             **scale_receipt,
         },
         "lifetime_isa": lifetime_receipt,

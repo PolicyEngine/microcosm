@@ -127,10 +127,11 @@ ISA_STAGE_OPERATIONS: tuple[dict[str, Any], ...] = (
     {
         "kind": "grow_isa_subscriptions",
         "people": "table_9_4_account_growth",
-        "amounts": "table_9_4_amount_level_limit_held",
+        "amounts": "table_9_4_amount_level_tapered_to_limit",
         "from_tax_year": 2023,
         "to_tax_year": 2024,
         "overall_limit_gbp": 20000.0,
+        "taper_from_gbp": 18000.0,
     },
     {
         "kind": "draw_lifetime_isa_payments",

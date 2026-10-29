@@ -931,6 +931,19 @@
       "notes": "Stage-time gate over the is_apprentice receipt (microcosm#1373). The draw's target is the contract's apprentice_stock_19_to_24 for the build year (DfE's England apprentices in learning at the start of the academic year, participation less starts, per head aged 19 to 24) times the weighted population aged 21 to 24 at the stage's weights, and eligible employees aged 21 to 24 are flagged in the order of their identity-keyed uniform until their weight is nearest it, so the stage misses it by at most half one person's weight. The gate checks that the receipt carries the contract's rate under the declared key, that its target is that rate times its population, that its support is printed in bands, and, unless the eligible employees weigh no more than the target (cap-bound, every one of them flagged), that the flagged weight lies within maximum_relative_realization_deviation (5 percent) of the target. That tolerance is a declared rule set above the half-weight bound, not a fact. A figure resting on fewer than ten source households, which the receipt withholds under the UKDS disclosure rule and prints \"<10\", is named unchecked, never failed: a small-cell rule never stops a build (María's ruling of 2026-10-26). The receipt also records the relief the flags imply at the installed engine's own Class 1 schedule for the build year (on a 2024 frame, 13.8 percent between GBP 9,100 and GBP 50,270), with each flagged employee's pay standing in for NIC earnings, and the gate holds it at or below maximum_implied_relief: GBP 370m, HMRC's NIC - NS1 for 2024-25 (tax relief statistics, January 2026, Table 2), which covers every apprentice under 25, under-21s included, since the apprentice relief takes precedence (Vahid's review of microcosm#1373, S1). It is a ceiling, not a target. The stage refuses an installed engine without the s.9B threshold or without policyengine-uk#2683's split of the apprentice minimum wage from the flag. The entry is a population_fact_check, so the synthetic smoke build over the H2 fixture records its outcome without blocking; every licensed build blocks on it."
     },
     {
+      "id": "uk_stage_isa_subscriptions_invariants",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "evidence_absent_blocks": true,
+      "parameters": {
+        "stage": "isa_subscriptions",
+        "check": "isa_subscriptions_invariants",
+        "maximum_household_sum_error_gbp": 0.01
+      },
+      "notes": "Stage-time rules of the isa_subscriptions receipt that hold for any population (microcosm#1415, review of microcosm#1421). It fails on any record the receipt counts against them (a non-finite value; cash, stocks and shares and Lifetime ISA payments over GBP 20,000; a Lifetime ISA payment over GBP 4,000; a subscriber under 18; a payment into a type the person does not hold; a both-type subscriber missing a part; a negative amount) and on person balances that miss the household was_wealth draws by more than maximum_household_sum_error_gbp. It is no population fact check, so the synthetic smoke build blocks on it as every licensed build does; the comparisons with HMRC's tables are uk_stage_isa_subscriptions."
+    },
+    {
       "id": "uk_stage_isa_subscriptions",
       "gate": "stage_health",
       "phase": "transferred",
@@ -940,10 +953,9 @@
       "parameters": {
         "stage": "isa_subscriptions",
         "check": "isa_subscriptions",
-        "maximum_relative_total_deviation": 1e-06,
-        "maximum_household_sum_error_gbp": 0.01
+        "maximum_relative_total_deviation": 1e-06
       },
-      "notes": "Stage-time check on the isa_subscriptions receipt (microcosm#1415). It fails on any record the receipt counts against an invariant (cash, stocks and shares and Lifetime ISA payments over GBP 20,000; a Lifetime ISA payment over GBP 4,000; a subscriber under 18; a payment into a type the person does not hold; a both-type subscriber missing a part; a negative amount), on person balances that miss the household was_wealth draws by more than maximum_household_sum_error_gbp, and on the 2024-25 cash and stocks-and-shares totals off Table 9.4's 2024-25 amounts (María's ruling of 29 October 2026), the both-type split's stocks-and-shares residual or the Lifetime ISA total off its Table 9.4 amount by more than maximum_relative_total_deviation; a non-finite value counts as a violation, and a reported saturation is named, not failed. Cells short of eligible holders are named, never failed: the stage invents no holders, and the distance from HMRC's tables after calibration is measured, not gated (María's ruling of 28 October 2026). A population fact check: the synthetic smoke records it without blocking."
+      "notes": "Stage-time check of the isa_subscriptions receipt against HMRC's tables (microcosm#1415). It fails on the 2024-25 cash and stocks-and-shares totals off Table 9.4's 2024-25 amounts (María's ruling of 29 October 2026), the both-type split's stocks-and-shares residual or the Lifetime ISA total off its Table 9.4 amount by more than maximum_relative_total_deviation; a reported saturation is named, not failed. Cells short of eligible holders are named, never failed: the stage invents no holders, and the distance from HMRC's tables after calibration is measured, not gated (María's ruling of 28 October 2026). A population fact check: the synthetic smoke records it without blocking, since a synthetic population cannot reach HMRC's national totals; the rules any population must keep are uk_stage_isa_subscriptions_invariants."
     },
     {
       "id": "uk_release_input_coverage",

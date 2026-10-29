@@ -1503,6 +1503,7 @@ class TestUKGatesManifest:
             "uk_stage_property_purchases_fit",
             "uk_stage_uc_legacy_closure_take_up_contract",
             "uk_stage_frs_person_draws_apprentices",
+            "uk_stage_isa_subscriptions_invariants",
             "uk_stage_isa_subscriptions",
             "uk_release_input_coverage",
             "uk_degenerate_release_surface",
@@ -1636,6 +1637,7 @@ class TestUKGatesManifest:
             "uk_stage_property_purchases_fit",
             "uk_stage_uc_legacy_closure_take_up_contract",
             "uk_stage_frs_person_draws_apprentices",
+            "uk_stage_isa_subscriptions_invariants",
             "uk_stage_isa_subscriptions",
             "uk_weights_audit",
             # The #970 projection fence: a seam that cannot project cannot

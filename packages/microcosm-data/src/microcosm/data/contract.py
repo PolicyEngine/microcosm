@@ -451,13 +451,13 @@ _UK_GATE_BATTERY_SHIPPABLE_STATUSES = frozenset({"passed", "not_applicable"})
 # fingerprint derives from the manifest digest. Editing the spec moves all
 # three here in the same reviewed change.
 _UK_GATE_BATTERY_POLICY_SHA256 = (
-    "26662f9a868d5fb1b54974960754127dce06c7b5a45473db26b594179e139805"
+    "6f147aa07ade5e10930b5faf124e1f7050da4db07282805e6196f44e91c2bd80"
 )
 _UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "d7369db941de245f513d8717239309ddc25e1253298bf9479d9fa7b75002c677"
+    "694910b0853654ab4a2057e1e5bb91144b8b466c1723420eeb57f67f1c53482d"
 )
 _UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "6cf1a4f692f642d21601b8c1c7be7f3ce6728e566c92903d5d1cda123d5f15b8"
+    "ec2c3674449d4073507c495ca529216cb756b890d8192afb94e865ee65ac2c64"
 )
 #: Spec entry id -> the legacy gate name whose observable detail checks
 #: apply unchanged (the battery re-keys the report by entry id; the gate
@@ -559,6 +559,7 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
     "uk_stage_property_purchases_fit": ("stage_health", "transferred"),
     "uk_stage_uc_legacy_closure_take_up_contract": ("stage_health", "transferred"),
     "uk_stage_frs_person_draws_apprentices": ("stage_health", "transferred"),
+    "uk_stage_isa_subscriptions_invariants": ("stage_health", "transferred"),
     "uk_stage_isa_subscriptions": ("stage_health", "transferred"),
     "uk_stage_age_tail_targets": ("stage_health", "assembled"),
     "uk_stage_frs_relationships_composition": ("stage_health", "assembled"),
@@ -667,6 +668,7 @@ _UK_GATE_BATTERY_EVIDENCE_IDS = frozenset(
         "uk_stage_property_purchases_fit",
         "uk_stage_uc_legacy_closure_take_up_contract",
         "uk_stage_frs_person_draws_apprentices",
+        "uk_stage_isa_subscriptions_invariants",
         "uk_stage_isa_subscriptions",
         "uk_stage_age_tail_targets",
         "uk_stage_frs_relationships_composition",
@@ -895,6 +897,7 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
             "uk_stage_hmrc_cgt_gains_spine_summary",
             "uk_stage_hmrc_spi_income_spine_identity",
             "uk_stage_isa_subscriptions",
+            "uk_stage_isa_subscriptions_invariants",
             "uk_stage_lcfs_consumption_basis",
             "uk_stage_lcfs_consumption_bus_pricing",
             "uk_stage_lcfs_consumption_energy_rake",
@@ -961,10 +964,10 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
 _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     "spine": {
         "gates_manifest_sha256": (
-            "04f5f497a532d816ea3eda015a69dc41d9583c5de9891519240347e67bc61411"
+            "e987ed46237b42c25714958093313cd535635ca566a22a5a81dc7ed11d621d43"
         ),
         "policy_sha256": (
-            "b85eb6d9a4c5de71f56a80a9b934f85419bf350780149f2984b400eb3f3d81c7"
+            "c91124202e9e74e128ff4f6db9bb233c84837cfc8128ca116abe4354ab02dec1"
         ),
     },
     "calibration_seam": {

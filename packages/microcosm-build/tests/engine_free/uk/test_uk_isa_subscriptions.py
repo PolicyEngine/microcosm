@@ -95,7 +95,9 @@ def _population(seed: int = 1, households: int = 800):
             .reindex(person["person_household_id"])
             .map(stage._REGION_ROW)
             .to_numpy(),
-            "holds_lifetime_isa": (rng.random(len(person)) < 0.06)
+            # Enough holders that the payments reach the synthetic Table 9.4
+            # amount without saturating.
+            "holds_lifetime_isa": (rng.random(len(person)) < 0.10)
             & (ages < 45)
             & (ages >= 18),
             "lifetime_isa_balance": rng.uniform(100, 20_000, len(person)),
@@ -334,6 +336,15 @@ def _transform(statistics):
     )
 
 
+def _declared_gate_parameters(gate_id: str) -> dict:
+    from microcosm.build.country_spec import load_country_spec
+
+    entry = next(
+        gate for gate in load_country_spec("uk").gates.gates if gate.id == gate_id
+    )
+    return dict(entry.parameters)
+
+
 def test_the_whole_stage_writes_its_columns_within_every_invariant(statistics):
     from microcosm.build.uk_runtime.stage_health import uk_stage_health_gate
 
@@ -349,6 +360,15 @@ def test_the_whole_stage_writes_its_columns_within_every_invariant(statistics):
     receipt = transform.last_receipt
     assert all(count == 0 for count in receipt["checks"]["violations"].values())
     assert receipt["balance_split"]["max_abs_household_sum_error_gbp"] <= 0.01
+    # Every class is selected, and the Lifetime ISA total is reached, not named.
+    for isa_type in stage.CLASS_ORDER:
+        assert receipt["selection"][isa_type]["base"]["selected_weight"] > 0, isa_type
+    assert receipt["lifetime_isa"]["saturated"] is None
+    assert (
+        0
+        < receipt["lifetime_isa"]["paying_weight"]
+        <= (receipt["lifetime_isa"]["eligible_holder_weight"])
+    )
     # Households, weights and every earlier person column pass through.
     pd.testing.assert_frame_equal(result.table("household"), frame.table("household"))
     assert np.array_equal(
@@ -357,16 +377,19 @@ def test_the_whole_stage_writes_its_columns_within_every_invariant(statistics):
     pd.testing.assert_frame_equal(
         person[list(frame.table("person").columns)], frame.table("person")
     )
-    gate = uk_stage_health_gate(
-        evidence=receipt,
-        stage="isa_subscriptions",
-        check="isa_subscriptions",
-        parameters={
-            "maximum_relative_total_deviation": 1e-6,
-            "maximum_household_sum_error_gbp": 0.01,
-        },
-    )
-    assert gate.passed, gate.failures
+    # Both declared entries pass at their declared tolerances.
+    for gate_id in (
+        "uk_stage_isa_subscriptions_invariants",
+        "uk_stage_isa_subscriptions",
+    ):
+        parameters = _declared_gate_parameters(gate_id)
+        gate = uk_stage_health_gate(
+            evidence=receipt,
+            stage=parameters["stage"],
+            check=parameters["check"],
+            parameters=parameters,
+        )
+        assert gate.passed, (gate_id, gate.failures)
 
 
 def test_reordering_the_rows_moves_no_draw(statistics):
@@ -419,13 +442,13 @@ def test_the_both_split_reports_saturation():
         # Below the starting totals: the factor falls under one.
         (30_000.0, 12_000.0),
         # Above them: the rest rise, capped at the limit.
-        (52_000.0, 18_000.0),
+        (75_000.0, 18_000.0),
     ],
 )
 def test_amounts_scale_to_the_build_year_holding_the_limit(cash_target, stocks_target):
-    cash = np.asarray([19_000.0, 5_000.0, 0.0, 10_000.0, 8_000.0])
-    stocks = np.asarray([1_000.0, 0.0, 8_000.0, 5_000.0, 2_000.0])
-    weights = np.ones(5)
+    cash = np.asarray([19_000.0, 5_000.0, 0.0, 10_000.0, 8_000.0, 19_000.0])
+    stocks = np.asarray([1_000.0, 0.0, 8_000.0, 5_000.0, 2_000.0, 0.0])
+    weights = np.ones(6)
     scaled_cash, scaled_stocks, receipt = stage.scale_to_build_year_amounts(
         cash,
         stocks,
@@ -433,14 +456,23 @@ def test_amounts_scale_to_the_build_year_holding_the_limit(cash_target, stocks_t
         cash_target=cash_target,
         stocks_target=stocks_target,
         limit=20_000.0,
+        taper_from=18_000.0,
     )
     # The subscriber at the limit stays exactly where they were.
     assert (scaled_cash[0], scaled_stocks[0]) == (19_000.0, 1_000.0)
     assert ((scaled_cash + scaled_stocks) <= 20_000 + 1e-6).all()
     assert scaled_cash.sum() == pytest.approx(cash_target)
     assert scaled_stocks.sum() == pytest.approx(stocks_target)
+    factor = receipt["cash_factor"]
     rising = bool(cash_target > cash.sum())
-    assert (receipt["cash_factor"] > 1) is rising
+    assert (factor > 1) is rising
+    # Above GBP 18,000 the amount moves on the line from the scaled GBP 18,000
+    # to the limit, so a factor below one leaves no empty range under it.
+    start = factor * 18_000.0
+    expected = start + (19_000.0 - 18_000.0) * (20_000.0 - start) / 2_000.0
+    assert scaled_cash[5] == pytest.approx(min(expected, 20_000.0))
+    if not rising:
+        assert factor * 19_999.0 < scaled_cash[5] < 20_000.0
 
 
 def test_a_non_finite_amount_is_a_violation(spec):
@@ -525,14 +557,24 @@ def test_no_calibration_target_reads_an_isa_fact():
     """The reviewed fence keeps every vendored ISA fact measured only.
 
     The stage draws subscribers and amounts to these cells, so a target compiled
-    from them would be circular (María's ruling of 28 October 2026). The fence is
-    declared on the stage; this holds the contract and the compiled references to
-    it, so a target that read one would fail here, not only in review.
+    from them would be circular (María's ruling of 28 October 2026). Targets
+    select facts by concept, so the contract and both compiled reference surfaces
+    must name none of the vendored ISA concepts, nor any concept under their
+    prefixes, nor the ISA record sets (review of microcosm#1421).
     """
 
+    import json
     from importlib.resources import files
 
-    prefixes = (
+    package = files("microcosm.build.uk")
+    vendored = json.loads(
+        package.joinpath("hmrc_isa_statistics_facts.json").read_text("utf-8")
+    )
+    concepts = {row["concept"] for row in vendored["rows"]}
+    assert {"hmrc.isa_amount_subscribed", "hmrc.isa_subscribers"} <= concepts
+    prefixes = ("hmrc.isa_", "hmrc.lisa_", "hmrc.cash_isa_")
+    assert all(concept.startswith(prefixes) for concept in concepts)
+    record_sets = (
         "hmrc.isa_statistics_2026",
         "hmrc.lisa_statistics_2026",
         "hmrc.cash_isa_limit_reduction_2026",
@@ -542,6 +584,7 @@ def test_no_calibration_target_reads_an_isa_fact():
         "target_references.json",
         "local_target_references.json",
     ):
-        text = files("microcosm.build.uk").joinpath(resource).read_text("utf-8")
-        for prefix in prefixes:
-            assert prefix not in text, (resource, prefix)
+        text = package.joinpath(resource).read_text("utf-8")
+        for name in (*prefixes, *record_sets):
+            # As the start of a JSON string: a concept or record-set id.
+            assert f'"{name}' not in text, (resource, name)

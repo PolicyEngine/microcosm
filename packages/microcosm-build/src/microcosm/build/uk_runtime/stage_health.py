@@ -109,6 +109,8 @@ def uk_stage_health_gate(
         return _apprentice_draw_gate(stage, evidence, parameters)
     if check == "isa_subscriptions":
         return _isa_subscriptions_gate(stage, evidence, parameters)
+    if check == "isa_subscriptions_invariants":
+        return _isa_subscriptions_invariants_gate(stage, evidence, parameters)
     if check == "was_lisa_anchor":
         return _was_lisa_anchor_gate(stage, evidence, parameters)
     return GateResult(
@@ -4669,31 +4671,22 @@ def _apprentice_draw_gate(
     return _pass(stage, check, details)
 
 
-def _isa_subscriptions_gate(
+def _isa_subscriptions_invariants_gate(
     stage: str,
     evidence: Mapping[str, object],
     parameters: Mapping[str, object],
 ) -> GateResult:
-    """ISA subscriptions keep their invariants (microcosm#1415).
+    """ISA subscriptions keep the rules any population must (microcosm#1415).
 
-    Fails on any coherence violation the receipt counts (non-finite values, the
+    Fails on any record the receipt counts against them (non-finite values, the
     overall and Lifetime ISA limits, ages, holding what is paid into, both parts of
-    a both-type subscription, negative amounts), on person balances that do not sum
-    to the household draws within ``maximum_household_sum_error_gbp``, and on the
-    2024-25 cash and stocks-and-shares totals off Table 9.4's 2024-25 amounts, the
-    Lifetime ISA total off Table 9.4's Lifetime ISA amount or the both-type split's
-    stocks-and-shares total off its residual by more than
-    ``maximum_relative_total_deviation`` (a reported saturation is named, not
-    failed). Cells short of eligible adults are named, never failed: the stage
-    invents no holders, and how far the result sits from HMRC's tables after
-    calibration is a measurement, not a gate (María's ruling of 28 October 2026).
+    a both-type subscription, negative amounts) and on person balances that do not
+    sum to the household draws within ``maximum_household_sum_error_gbp``. None of
+    these depends on the population, so the entry is no population fact check and
+    the synthetic smoke build blocks on it (review of microcosm#1421).
     """
 
-    check = "isa_subscriptions"
-    tolerance = _finite_number(
-        parameters["maximum_relative_total_deviation"],
-        label=f"{stage}.maximum_relative_total_deviation",
-    )
+    check = "isa_subscriptions_invariants"
     sum_tolerance = _finite_number(
         parameters["maximum_household_sum_error_gbp"],
         label=f"{stage}.maximum_household_sum_error_gbp",
@@ -4713,6 +4706,39 @@ def _isa_subscriptions_gate(
         failures.append(
             f"{stage}: person balances miss the household draws by up to {error} GBP."
         )
+    return GateResult(
+        name="stage_health",
+        passed=not failures,
+        failures=tuple(failures),
+        details={"stage": stage, "check": check, "violations": dict(violations)},
+    )
+
+
+def _isa_subscriptions_gate(
+    stage: str,
+    evidence: Mapping[str, object],
+    parameters: Mapping[str, object],
+) -> GateResult:
+    """ISA subscriptions meet HMRC's Table 9.4 totals (microcosm#1415).
+
+    Fails on the 2024-25 cash and stocks-and-shares totals off Table 9.4's 2024-25
+    amounts, the Lifetime ISA total off Table 9.4's Lifetime ISA amount or the
+    both-type split's stocks-and-shares total off its residual by more than
+    ``maximum_relative_total_deviation`` (a reported saturation is named, not
+    failed). Cells short of eligible adults are named, never failed: the stage
+    invents no holders, and how far the result sits from HMRC's tables after
+    calibration is a measurement, not a gate (María's ruling of 28 October 2026).
+    These are population facts, so a synthetic smoke build records them without
+    blocking; the rules any population must keep are
+    ``_isa_subscriptions_invariants_gate``.
+    """
+
+    check = "isa_subscriptions"
+    tolerance = _finite_number(
+        parameters["maximum_relative_total_deviation"],
+        label=f"{stage}.maximum_relative_total_deviation",
+    )
+    failures: list[str] = []
     growth = _mapping(evidence.get("growth"), label=f"{stage}.growth")
     named: list[str] = []
     for kind in ("cash", "stocks_and_shares"):
@@ -4769,7 +4795,9 @@ def _isa_subscriptions_gate(
             "check": check,
             "saturations_named": named,
             "selection": dict(selection),
-            "lifetime_isa_payer_weight": lifetime.get("payer_weight"),
+            # People who pay in (a positive payment), not every eligible holder:
+            # was_lisa already anchors the holders to HMRC's accounts.
+            "lifetime_isa_paying_weight": lifetime.get("paying_weight"),
             "lifetime_isa_hmrc_accounts_subscribed": lifetime.get(
                 "hmrc_accounts_subscribed"
             ),

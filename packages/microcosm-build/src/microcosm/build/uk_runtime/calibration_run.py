@@ -140,6 +140,7 @@ UK_SPINE_GATE_SCOPE = (
     "uk_stage_property_purchases_fit",
     "uk_stage_uc_legacy_closure_take_up_contract",
     "uk_stage_frs_person_draws_apprentices",
+    "uk_stage_isa_subscriptions_invariants",
     "uk_stage_isa_subscriptions",
     # Weight-independent like the BRMA enum below, and its column exists from
     # frs_relationships onward (#791).

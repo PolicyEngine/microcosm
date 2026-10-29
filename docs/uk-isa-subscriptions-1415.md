@@ -88,8 +88,10 @@ How the tables relate, on HMRC's own figures:
    shares only, both together for both), added from eligible holders not yet
    subscribing. Amounts then scale, one factor per type, to Table 9.4's 2024-25
    amounts (£95.6bn of cash and £37.2bn of stocks and shares). Subscribers
-   already at the £20,000 overall limit stay there, and the rest are capped at
-   it.
+   already at the £20,000 overall limit stay there. A person whose combined
+   amount lies between £18,000 (Table 9.7's last band floor below the limit) and
+   the limit moves on a line from their scaled £18,000 up to it, so the range just
+   below the limit stays filled; the rest are capped at it.
 6. **Lifetime ISA payments.** Every holder aged 18 to 47 with room under the
    overall limit pays in; a holder with none pays nothing. 18 to 47 are the ages
    that can hold one in 2024-25, since accounts opened at 18 to 39 from April
@@ -113,15 +115,18 @@ How the tables relate, on HMRC's own figures:
 
 ## Decisions (29 October 2026, on the review of microcosm#1421)
 
-- **Cash grows to Table 9.4's level, holding the limit.** Growing by Table 9.4's
-  ratio carried Table 9.7's cash excess into 2024-25 and, with the subscribers
-  at £20,000 unable to grow, scaled everyone else by about 2.05. On populations
-  built from HMRC's own tables that gave £127bn of cash against Table 9.4's
-  £95.6bn, 51% of cash subscribers above £12,000 and 40% of all subscribers at
-  the limit. Scaling to Table 9.4's 2024-25 amounts while holding the limit
-  gives a factor of about 0.89, 37% above £12,000 and 29% at the limit (28.8% in
-  2023-24). A plain factor below one would have moved every limit subscriber to
-  about £19,100.
+- **Cash grows to Table 9.4's level, holding and tapering to the limit.**
+  Growing by Table 9.4's ratio carried Table 9.7's cash excess into 2024-25 and,
+  with the subscribers at £20,000 unable to grow, scaled everyone else by about
+  2.05. On populations built from HMRC's own tables that gave £127bn of cash
+  against Table 9.4's £95.6bn, 51% of cash subscribers above £12,000 and 40% of
+  all subscribers at the limit. Scaling to Table 9.4's 2024-25 amounts holds the
+  subscribers at the limit, since a plain factor below one would have moved every
+  one of them to about £19,100. One factor of about 0.89 below the limit still
+  left nobody between about £17,750 and £20,000, so amounts above £18,000 now
+  taper up to the limit. That gives a cash factor of about 0.878, 36.9% of cash
+  subscribers above £12,000, 28.8% at the limit (28.8% in 2023-24) and amounts
+  up to about £19,950 below it.
 - **The Lifetime ISA anchor's reach is counted on the pair.** Three later stages
   read the whole frame (`uc_reporter_redraw`, `uc_take_up` and
   `pension_credit_take_up`), and a Lifetime ISA counts as Universal Credit and
@@ -138,10 +143,14 @@ How the tables relate, on HMRC's own figures:
   £69.5bn, about £23bn above it. The stage keeps Table 9.7's people and bands,
   so its 2023-24 cash total sits above Table 9.4's, and the receipt reports by
   how much; the 2024-25 total meets Table 9.4.
-- **Amounts by age.** Amounts follow Table 9.7's bands within income band and
-  class, not age, so the share of under-65 cash subscribers above £12,000 sits
-  near the all-ages share (37% in 2024-25 on HMRC's tables), against the impact
-  note's 22% for 2022-23.
+- **The impact note's year.** On HMRC's tables 36.9% of 2024-25 cash
+  subscribers pay in more than £12,000, against the impact note's 22% of under-65
+  cash subscribers in 2022-23. Age explains little of that: Table 9.8 puts about a
+  quarter of cash-only subscribers at 66 or over, who would need about 80% above
+  £12,000 to bring the under-65s to 22%. Most of it is the year: Table 9.4's
+  cash subscriptions were £41.6bn in 2022-23, £69.5bn in 2023-24 and £95.6bn in
+  2024-25, so the 22% does not validate 2024-25 either way. Amounts follow Table
+  9.7's bands within income band and class, not age.
 - **The both class's residual share** depends on where the stocks-and-shares-only
   payments sit inside their bands: about 27% stocks and shares at band
   midpoints, 50% at band floors and 7% at band tops.
@@ -150,6 +159,16 @@ How the tables relate, on HMRC's own figures:
 - **Balances.** WAS balances are April 2020 to March 2022 pounds from a Great
   Britain donor, not uprated; Northern Ireland adults take the Great Britain
   patterns.
+
+## Gates
+
+`uk_stage_isa_subscriptions_invariants` holds the rules any population keeps:
+the limits, ages, holding what is paid into, finite and non-negative amounts and
+person balances that sum to the household totals. It is no population fact
+check, so the synthetic smoke build blocks on it as every licensed build does.
+`uk_stage_isa_subscriptions` holds the 2024-25 totals, the both class's residual
+and the Lifetime ISA amount to Table 9.4. A synthetic population cannot reach
+HMRC's national totals, so it is a population fact check.
 
 ## Checks (reported on the pair build's national file)
 

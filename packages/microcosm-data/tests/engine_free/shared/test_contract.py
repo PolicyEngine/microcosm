@@ -220,13 +220,13 @@ def _trusted_terminal_gate_signing_key(monkeypatch) -> None:
 UK_GATE_BATTERY_PRODUCER = "microcosm.build.gate_battery"
 UK_GATE_BATTERY_SIGNING_KEY_ENV = "MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY"
 UK_GATE_BATTERY_POLICY_SHA256 = (
-    "26662f9a868d5fb1b54974960754127dce06c7b5a45473db26b594179e139805"
+    "6f147aa07ade5e10930b5faf124e1f7050da4db07282805e6196f44e91c2bd80"
 )
 UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "d7369db941de245f513d8717239309ddc25e1253298bf9479d9fa7b75002c677"
+    "694910b0853654ab4a2057e1e5bb91144b8b466c1723420eeb57f67f1c53482d"
 )
 UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "6cf1a4f692f642d21601b8c1c7be7f3ce6728e566c92903d5d1cda123d5f15b8"
+    "ec2c3674449d4073507c495ca529216cb756b890d8192afb94e865ee65ac2c64"
 )
 UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256 = (
     "f246388de42654dd68dbbb40c42282001b5b0a8bf48976162bcb1199085cb1d3"
@@ -367,6 +367,7 @@ UK_GATE_BATTERY_ENTRIES = {
         "transferred",
         None,
     ),
+    "uk_stage_isa_subscriptions_invariants": ("stage_health", "transferred", None),
     "uk_stage_isa_subscriptions": ("stage_health", "transferred", None),
     "uk_stage_hmrc_cgt_asset_type_spine_summary": (
         "stage_health",
@@ -1441,6 +1442,7 @@ def _gate_battery_payload(
         "uk_stage_property_purchases_fit": "property_purchases",
         "uk_stage_uc_legacy_closure_take_up_contract": "uc_legacy_closure_take_up",
         "uk_stage_frs_person_draws_apprentices": "frs_person_draws",
+        "uk_stage_isa_subscriptions_invariants": "isa_subscriptions",
         "uk_stage_isa_subscriptions": "isa_subscriptions",
         "uk_stage_age_tail_targets": "age_tail",
         "uk_stage_frs_relationships_composition": "frs_relationships",

@@ -42,7 +42,7 @@ PASSING = {
         "saturated": None,
         "target_gbp": 5.0,
         "achieved_gbp": 5.0,
-        "payer_weight": 3.0,
+        "paying_weight": 3.0,
         "hmrc_accounts_subscribed": 3.0,
     },
     "selection": {"cash_only": {"base": {"shortfall_weight_unmet": 12.0}}},
@@ -56,6 +56,7 @@ def _gate(evidence, check="isa_subscriptions", parameters=PARAMETERS):
 
 
 def test_a_coherent_receipt_passes_and_names_shortfalls():
+    assert _gate(PASSING, "isa_subscriptions_invariants").passed
     result = _gate(PASSING)
     assert result.passed, result.failures
     assert (
@@ -66,28 +67,34 @@ def test_a_coherent_receipt_passes_and_names_shortfalls():
     assert result.details["saturations_named"] == [
         "selection:cash_only:base:shortfall_weight_unmet"
     ]
-    assert result.details["lifetime_isa_payer_weight"] == 3.0
+    assert result.details["lifetime_isa_paying_weight"] == 3.0
     assert result.details["lifetime_isa_hmrc_accounts_subscribed"] == 3.0
 
 
 @pytest.mark.parametrize(
-    ("path", "value"),
+    ("path", "value", "check"),
     [
-        (("checks", "violations", "over_overall_limit"), 1),
-        (("checks", "violations", "non_finite_values"), 1),
-        (("balance_split", "max_abs_household_sum_error_gbp"), 5.0),
-        (("growth", "cash_achieved_gbp"), 90.0),
-        (("both_type_split", "stocks_and_shares_achieved_gbp"), 9.0),
-        (("lifetime_isa", "achieved_gbp"), 4.0),
+        # Rules any population keeps: their own entry, which the synthetic
+        # smoke build blocks on (review of microcosm#1421).
+        (("checks", "violations", "over_overall_limit"), 1, "invariants"),
+        (("checks", "violations", "non_finite_values"), 1, "invariants"),
+        (("balance_split", "max_abs_household_sum_error_gbp"), 5.0, "invariants"),
+        # HMRC's totals: the population fact check.
+        (("growth", "cash_achieved_gbp"), 90.0, "totals"),
+        (("both_type_split", "stocks_and_shares_achieved_gbp"), 9.0, "totals"),
+        (("lifetime_isa", "achieved_gbp"), 4.0, "totals"),
     ],
 )
-def test_broken_invariants_fail(path, value):
+def test_each_entry_fails_on_its_own_rules(path, value, check):
     evidence = copy.deepcopy(PASSING)
     target = evidence
     for key in path[:-1]:
         target = target[key]
     target[path[-1]] = value
-    assert not _gate(evidence).passed
+    invariants = _gate(evidence, "isa_subscriptions_invariants")
+    totals = _gate(evidence)
+    assert invariants.passed is (check != "invariants")
+    assert totals.passed is (check != "totals")
 
 
 def test_saturation_is_named_not_failed():
