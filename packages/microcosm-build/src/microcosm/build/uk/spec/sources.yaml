@@ -1228,7 +1228,7 @@ stages:
         raw_sources:
         - BENEFITS.BENEFIT=17:BENAMT
         formula: sum(BENAMT where BENEFIT == 17) * 52
-        observed_support: structural zero in the audited 2023-24 FRS; retained so future vintages flow
+        observed_support: structural zero in the FRS 2023-24 and 2024-25; retained so future vintages flow
     retained_named_subsets:
       ossben_identifiable_subset:
         spi_concept: OSSBEN

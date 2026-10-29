@@ -6,11 +6,12 @@
   "resources": [
     {
       "resource": "dft_bus_value_anchors.json",
-      "purpose": "DfT BUS05i passenger fare receipts and total estimated net support for England, London and England outside London (year-ending-March labels 2023 to 2025); BUS0415 local bus fares index quarter-end months for the same three areas; NTS0705a local bus trips per person by household income quintile, both series, 2023 and 2024. Consumed by the LCFS and ETB bus-fare and bus-support rakes and by the BUS0415 period-alignment pass.",
+      "purpose": "DfT BUS05i passenger fare receipts and total estimated net support for England, London and England outside London (year-ending-March labels 2023 to 2025); BUS0415 local bus fares index quarter-end months for the same three areas; NTS0705a local bus trips per person by household income quintile, both series, 2023 and 2024. Consumed by the bus fare pricing (the receipts set the yield per fare-paying boarding) and the bus support pricing (the net support per boarding), which replaced the LCFS and ETB rakes (microcosm#930; Mar\u00eda's ruling of 2026-09-23), by the bus targets and by the BUS0415 period-alignment pass.",
       "consumers": [
         "uk_runtime.ledger_targets",
         "uk_runtime.lcfs_consumption",
-        "uk_runtime.etb_services"
+        "uk_runtime.etb_services",
+        "uk_runtime.bus_support_pricing"
       ],
       "planned_consumers": [],
       "selections": [
@@ -286,7 +287,7 @@
     },
     {
       "resource": "devolved_bus_finance.json",
-      "purpose": "Scotland bus and coach statistics (2024 and 2025 editions: journeys, passenger revenue, operator revenue, government support components, fare index); Welsh local authority roads and transport revenue outturn public transport lines for the Wales total; Northern Ireland Transport Holding Company transactions with DfI; DfI Translink bus journeys and passenger receipts by service. Consumed by the devolved cells of the bus-fare and bus-support rakes and the country-leg bus targets; DfI Northern Ireland Translink full-fare concession passenger journeys by fiscal year (the concessionary split for the Northern Ireland bus price).",
+      "purpose": "Scotland bus and coach statistics (2024 and 2025 editions: journeys, passenger revenue, operator revenue, government support components, fare index); Welsh local authority roads and transport revenue outturn public transport lines for the Wales total; Northern Ireland Transport Holding Company transactions with DfI; DfI Translink bus journeys and passenger receipts by service. Consumed by the devolved cells of the bus fare and bus support pricing and the country-leg bus targets; DfI Northern Ireland Translink full-fare concession passenger journeys by fiscal year (the concessionary split for the Northern Ireland bus price).",
       "consumers": [
         "uk_runtime.lcfs_consumption",
         "uk_runtime.etb_services",
@@ -806,7 +807,7 @@
     },
     {
       "resource": "dft_bus_journeys.json",
-      "purpose": "DfT BUS01 local bus passenger journeys by area (England, London, England outside London, the metropolitan split and the nine English regions; year-ending-March labels 2023 to 2025), the BUS01c elderly and disabled and total concessionary journeys by the same areas, the BUS05i operating revenue and support components beyond fare receipts and net support (concessionary travel reimbursement, Bus Service Operators Grant, gross and net public transport support, total operating revenue, additional funding to operators, fare cap) for England, London and England outside London, and the ONS mid-year population of the four UK countries and the nine English regions (England is the regions' sum). Consumed by the bus fare pricing (receipts over fare-paying boardings, boardings per resident trip) and the support-per-journey diagnostic (microcosm#930).",
+      "purpose": "DfT BUS01 local bus passenger journeys by area (England, London, England outside London, the metropolitan split and the nine English regions; year-ending-March labels 2023 to 2025), the BUS01c elderly and disabled and total concessionary journeys by the same areas, the BUS05i operating revenue and support components beyond fare receipts and net support (concessionary travel reimbursement, Bus Service Operators Grant, gross and net public transport support, total operating revenue, additional funding to operators, fare cap) for England, London and England outside London, and the ONS mid-year population of the four UK countries and the nine English regions (England is the regions' sum). Consumed by the bus fare pricing (receipts over fare-paying boardings, boardings per resident trip; microcosm#930) and the bus support pricing (the concessionary reimbursement per concessionary boarding and the rest of the net support per boarding; Mar\u00eda's ruling of 2026-09-23).",
       "consumers": [
         "uk_runtime.bus_fare_pricing",
         "uk_runtime.etb_services",
