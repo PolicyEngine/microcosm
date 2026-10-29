@@ -3,7 +3,7 @@
   "country": "uk",
   "scope": "uk_calibration",
   "source_repo": "PolicyEngine/chronicle",
-  "source_commit": "e56af9a501e71c9b954c84678a81566feb5b33f9",
+  "source_commit": "0b721a4ccd7a99bd509f064c119a3ed61fe92a9e",
   "build": "build-bundle --suite uk -> build-consumer-artifact",
   "artifact_schema_version": "policyengine_ledger.consumer_artifact.v2",
   "consumer_fact_schema_versions": [

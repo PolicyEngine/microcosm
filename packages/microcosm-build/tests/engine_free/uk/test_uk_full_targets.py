@@ -232,7 +232,7 @@ def test_current_national_and_local_pins_share_one_reviewed_identity():
     assert (
         national.source_commit
         == local["source_commit"]
-        == "e56af9a501e71c9b954c84678a81566feb5b33f9"
+        == "0b721a4ccd7a99bd509f064c119a3ed61fe92a9e"
     )
     assert national.fact_row_count == local["fact_row_count"] == 1506587
 
