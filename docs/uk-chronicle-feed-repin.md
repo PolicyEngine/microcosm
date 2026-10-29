@@ -322,3 +322,21 @@ national and local reference files are byte-identical, the membership moves only
 and both compile-parity receipts are unchanged. Both surfaces were regenerated from the national
 and local cuts, as for `200bf6d`. No reference moves, so the national register version does not
 either. The high-value home stock still names `735820c`: the addition touches none of its inputs.
+
+The `e56af9a` re-pin (microcosm#1415, PolicyEngine/chronicle#392, on top of `272c987`) brought
+HMRC's 2026 annual savings statistics: the ISA tables (accounts, amounts and market values by type
+to 2024-25, and 2023-24 subscribers and holders by income, size of subscription, age, sex and
+region), Lifetime ISA Table 1a and the cash ISA limit reduction impact note (3,272 facts; 1,506,587
+rows; the schema digest is unchanged). The pull request's base is `272c987`, so the artifact was
+built from its head's bundle.
+
+A new vendored resource, `hmrc_isa_statistics_facts.json`, carries the 1,074 rows the ISA
+subscriptions stage and the Lifetime ISA anchor read; none is a calibration target. The other
+vendored resources carry the same rows under the new feed identity, and the DESNZ constituency
+resource the same values under keys re-derived from it. No compiled value moves on either surface:
+the national and local reference files are byte-identical, each membership moves only its feed
+label, and both compile-parity receipts are unchanged. Both surfaces were regenerated from cuts of
+the pinned artifact by the `272c987` rules (935,320 national and 884,748 local rows). No reference
+moves, so the national register version does not either. The high-value home stock still names
+`735820c`: the addition touches none of its inputs (the feed-gated fingerprint check passes).
+
