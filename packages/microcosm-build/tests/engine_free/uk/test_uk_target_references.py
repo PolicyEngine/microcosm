@@ -1044,6 +1044,16 @@ def test_prefix_geography_pins_carry_scotgov_and_england_scoped_slc_families() -
     ]
 
 
+#: microcosm#1095 D3, María's ruling of 2026-10-29.
+SCOTLAND_THREE_PLUS_RATIONALE = (
+    "Kept out: Chronicle's Scotland household-composition cut counts "
+    "couple households only, so binding it would fix part of the group and "
+    "leave lone parents free, and the current selector reaches person-level "
+    "ONS mid-year population age rows, not households with three or more "
+    "children (María's ruling of 2026-10-29, microcosm#1095 D3)."
+)
+
+
 def test_uk_target_reference_membership_report_is_packaged() -> None:
     membership = _load_uk_resource("target_reference_membership.json")
 
@@ -1281,12 +1291,7 @@ def test_uk_target_reference_membership_report_is_packaged() -> None:
             "family": "ons_population",
             "target_id": "ons.population.scotland_households_3plus_children",
             "status": "signed_excluded",
-            "signed_rationale": (
-                "Signed out pending a Scotland household-composition fact: "
-                "the current selector reaches person-level ONS mid-year "
-                "population age rows, not households with three or more "
-                "children. microcosm#736 tracks the missing declaration."
-            ),
+            "signed_rationale": SCOTLAND_THREE_PLUS_RATIONALE,
         },
     ]
     assert membership["multi_fact_rationales"] == []
