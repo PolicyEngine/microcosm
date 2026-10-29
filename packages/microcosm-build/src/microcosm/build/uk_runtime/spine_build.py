@@ -975,7 +975,9 @@ def _graph_stage_records(
         )
         output_receipt = manifest.nodes[output_node]
         shares: dict[str, float] = {}
-        for column in stage.outputs:
+        # A declared rewrite is an owned cell of its node, as an output is, so
+        # its share reads the node's artifact too (microcosm#721).
+        for column in (*stage.outputs, *stage.rewrites):
             matches = [
                 (coordinate, key)
                 for coordinate, key in output_receipt.artifacts.items()
@@ -987,7 +989,8 @@ def _graph_stage_records(
             if len(matches) != 1:
                 raise RuntimeError(
                     f"graph stage {stage.stage!r} exposes {len(matches)} artifacts "
-                    f"for declared output {column!r}."
+                    f"for declared {'rewrite' if column in stage.rewrites else 'output'} "
+                    f"{column!r}."
                 )
             shares[column] = _series_nonzero_share(store.load_column(matches[0][1]))
         execution_node = "create_uk_frs" if stage.stage == "frs_spine" else stage.stage
@@ -995,6 +998,7 @@ def _graph_stage_records(
             StageRecord(
                 stage=stage.stage,
                 produced=stage.outputs,
+                rewrote=stage.rewrites,
                 donor_survey=stage.survey,
                 nonzero_share=shares,
                 seconds=manifest.nodes[execution_node].wall_time,
