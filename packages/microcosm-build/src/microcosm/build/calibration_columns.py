@@ -1,15 +1,15 @@
 """Prepare simple calibration columns from an explicit, engine-free contract.
 
 Geography and canonical concepts must already be present. This helper creates
-only constants and conjunctions of declared predicates; receipt assignment and
-statistical-unit construction belong to their own producers.
+constants, validated roster counts and conjunctions of declared predicates;
+receipt assignment and statistical-unit construction belong to their own producers.
 """
 
 from __future__ import annotations
 
 import math
 from collections.abc import Mapping
-from numbers import Real
+from numbers import Integral, Real
 from typing import Any
 
 import numpy as np
@@ -49,6 +49,8 @@ def prepare_calibration_columns(
             _validate_input(tables[entity][name], domain, f"{entity}.{name}")
 
     out = {entity: table.copy(deep=True) for entity, table in tables.items()}
+    derived = _prepare_roster_counts(out, bindings.get("roster_counts", ()), required)
+    prepared: dict[str, dict[str, object]] = {}
     seen: set[tuple[str, str]] = set()
     for entry in columns:
         if not isinstance(entry, Mapping):
@@ -57,7 +59,12 @@ def prepare_calibration_columns(
         if entity not in required or not isinstance(name, str) or not name:
             raise ValueError("Calibration column needs a declared entity and name.")
         key = (entity, name)
-        if key in seen or name in required[entity] or name.endswith("_id"):
+        if (
+            key in seen
+            or name in required[entity]
+            or name in derived.get(entity, ())
+            or name.endswith("_id")
+        ):
             raise ValueError(
                 f"Calibration output {entity}.{name} is repeated or structural."
             )
@@ -66,7 +73,7 @@ def prepare_calibration_columns(
             value = entry["constant"]
             if "predicates" in entry or not _finite_number(value):
                 raise ValueError(f"Calibration constant {entity}.{name} is invalid.")
-            out[entity][name] = value
+            prepared.setdefault(entity, {})[name] = value
             continue
         predicates = entry.get("predicates")
         if not isinstance(predicates, (list, tuple)) or not predicates:
@@ -76,7 +83,10 @@ def prepare_calibration_columns(
             if not isinstance(predicate, Mapping):
                 raise ValueError("Calibration predicates must be objects.")
             column = predicate.get("column")
-            if column not in required[entity] or "value" not in predicate:
+            if (
+                column not in {*required[entity], *derived.get(entity, ())}
+                or "value" not in predicate
+            ):
                 raise ValueError(
                     f"Calibration predicate needs a validated {entity} input."
                 )
@@ -93,7 +103,15 @@ def prepare_calibration_columns(
             else:
                 raise ValueError(f"Unsupported calibration predicate {operator!r}.")
             mask &= part.to_numpy(dtype=bool)
-        out[entity][name] = mask
+        prepared.setdefault(entity, {})[name] = mask
+    for entity, values in prepared.items():
+        original_order = list(out[entity].columns)
+        computed = pd.DataFrame(values, index=out[entity].index)
+        out[entity] = pd.concat(
+            [out[entity].drop(columns=list(values), errors="ignore"), computed], axis=1
+        )
+        order = original_order + [name for name in values if name not in original_order]
+        out[entity] = out[entity].loc[:, order]
     return out
 
 
@@ -103,10 +121,82 @@ def _finite_number(value: object) -> bool:
     )
 
 
+def _identity(value: object) -> tuple[type, object]:
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, (str, Integral))
+        or isinstance(value, str)
+        and not value
+    ):
+        raise ValueError(
+            "Calibration membership identities must be strings or integers."
+        )
+    return (str, value) if isinstance(value, str) else (int, int(value))
+
+
+def _prepare_roster_counts(
+    tables: dict[str, pd.DataFrame], entries: object, required: Mapping[str, Any]
+) -> dict[str, set[str]]:
+    if not isinstance(entries, (list, tuple)):
+        raise ValueError("Calibration roster_counts must be a list.")
+    derived: dict[str, set[str]] = {}
+    for entry in entries:
+        if not isinstance(entry, Mapping):
+            raise ValueError("Calibration roster count must be an object.")
+        entity, members, name = (
+            entry.get("entity"),
+            entry.get("member_entity"),
+            entry.get("name"),
+        )
+        group_id, member_id, membership = (
+            entry.get("entity_id"),
+            entry.get("member_id"),
+            entry.get("membership"),
+        )
+        if (
+            entity not in required
+            or members not in required
+            or not isinstance(name, str)
+            or not name
+            or name.endswith("_id")
+            or name in required[entity]
+            or name in derived.get(entity, ())
+            or group_id not in required[entity]
+            or member_id not in required[members]
+            or membership not in required[members]
+            or not isinstance(entry.get("representation"), str)
+            or not entry["representation"]
+        ):
+            raise ValueError(
+                "Calibration roster count needs declared identities and representation."
+            )
+        groups = [_identity(value) for value in tables[entity][group_id].tolist()]
+        identities = [_identity(value) for value in tables[members][member_id].tolist()]
+        if len(set(groups)) != len(groups) or len(set(identities)) != len(identities):
+            raise ValueError(
+                "Calibration roster contains duplicate membership identities."
+            )
+        counts = dict.fromkeys(groups, 0)
+        for value in tables[members][membership].tolist():
+            key = _identity(value)
+            if key not in counts:
+                raise ValueError("Calibration roster contains orphan membership.")
+            counts[key] += 1
+        if any(count == 0 for count in counts.values()):
+            raise ValueError("Calibration roster contains empty households or groups.")
+        tables[entity][name] = [counts[key] for key in groups]
+        derived.setdefault(entity, set()).add(name)
+    return derived
+
+
 def _validate_input(values: pd.Series, domain: Mapping[str, Any], name: str) -> None:
     if values.isna().any():
         raise ValueError(f"Calibration input {name} contains missing values.")
-    if domain.get("kind") == "nonnegative_integer":
+    if domain.get("kind") == "identity":
+        for value in values.tolist():
+            _identity(value)
+        valid = True
+    elif domain.get("kind") == "nonnegative_integer":
         valid = all(
             _finite_number(value) and value >= 0 and value == int(value)
             for value in values.tolist()

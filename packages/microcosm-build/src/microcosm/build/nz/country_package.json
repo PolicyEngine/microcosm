@@ -108,6 +108,11 @@
       "schema_id": "legacy_json"
     },
     {
+      "path": "reference_profiles.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
       "path": "release_contract.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"

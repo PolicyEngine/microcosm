@@ -609,6 +609,7 @@ class TakeupGapKernel(KernelBase):
         {
             "facts_sha256",
             "chronicle_feed_pin",
+            "reference_resolution",
             "annualisation_sha256",
             "source_household_column",
             "cell_support",
@@ -689,6 +690,11 @@ class TakeupGapKernel(KernelBase):
             feed_pin=(
                 canonical_document_param(context, self.ref, "chronicle_feed_pin")
                 if "chronicle_feed_pin" in context.params
+                else None
+            ),
+            reference_resolution=(
+                canonical_document_param(context, self.ref, "reference_resolution")
+                if "reference_resolution" in context.params
                 else None
             ),
         )

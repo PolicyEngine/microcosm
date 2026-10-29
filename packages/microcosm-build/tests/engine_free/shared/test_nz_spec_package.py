@@ -1193,7 +1193,7 @@ class TestReferenceSets:
         assert document["country"] == "nz"
         assert document["reference_set"] == reference_set
         expected_operations = (
-            ["identity", "rolled_forward_by_ratio"]
+            ["identity", "rolled_forward_by_ratio", "allocated_residual_by_ratio"]
             if reference_set == "calibration"
             else ["identity"]
         )
@@ -1236,7 +1236,7 @@ class TestReferenceSets:
                 compile_ledger_target_references([], [reference], country="nz")
         assert (
             sum(row.metadata["activation_status"] == "active" for row in references)
-            == {"calibration": 98, "precal": 67, "holdout": 0}[reference_set]
+            == {"calibration": 64, "precal": 67, "holdout": 0}[reference_set]
         )
 
     def test_pre_calibration_rows_are_not_weight_calibration_targets(self) -> None:
@@ -2199,6 +2199,7 @@ class TestScenarios:
             "V1",
             "V2",
             "V3",
+            "V4",
         ]
         branch_points = {
             tier: row["branch_point"] for tier, row in document["tiers"].items()

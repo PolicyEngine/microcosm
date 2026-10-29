@@ -36,6 +36,25 @@ Ranked by calibration value for a dollar-level take-up estimate. **$** = enables
 | 14 | **NZ Superannuation demographics** | MSD Fact Sheets (NZS/VP) + Annual Report (941,511 recipients; $23.19B) | $ / # | Largest transfer by dollars; near-universal but needs the age×region recipient frame. [FETCH-OK] |
 | 15 | **Minimum wage series + average weekly earnings** | MBIE minimum wage ($23.95 from Apr 2026) + Stats NZ QES/LEED | $ | Anchors the bottom of the earnings distribution and the national/TA earnings margin. [FETCH-OK min wage; SNIPPET QES/LEED] |
 
+**d1886 modelling convention, 23 October 2026.** Microcosm allocates Census
+counts with unstated household size across stated size categories in proportion
+to their stated counts, assuming missing at random. Each region's allocated
+amount is its independently published household total minus its stated size
+leaves. The national calculation is 61,725 households; regional calculations sum
+to 61,713 because the independently published cells do not reconcile exactly.
+These regional differences and allocated leaves are Microcosm calculations,
+rather than Stats NZ published residual cells or allocated estimates.
+
+Tenure uses the same proportional convention for owned, including family
+trusts, and not owned. Its national difference is 426; regional differences sum
+to 429. V4 allocates the size residual only to one- and two-person households in
+their stated proportions. Fractional targets are retained. Allocation precedes
+one application of the B2 ERP bridge. Region 99 remains separate and uses the
+disclosed national-growth proxy. Raw discrepancies and national diagnostics
+remain in `reference_inventory.json` alongside computed regional profile
+receipts. Model household size counts validated usual-resident roster members,
+with sizes eight and above sharing the final category.
+
 **Dollar-level calibration design (numerator/denominator):**
 - **Denominator (full-entitlement modelled $):** our own rules × calibrated population. Treasury DistributionExplorer CSVs (#5) are TAWA-modelled; AS values assigned by TAWA's take-up model; an independent comparison, not full entitlement, for AS; TAWA assumes full take-up for the WFF credits ([TAWA methodology](https://treasury.govt.nz/sites/default/files/2024-08/tawa-model-methodology.pdf), "Modelling take-up").
 - **Numerator (actual $ paid):** MSD Annual Report expenditure schedule (#2) and AN24/01 fiscal totals (#10); IRD WfF expenditure (#4) for in-work credits.

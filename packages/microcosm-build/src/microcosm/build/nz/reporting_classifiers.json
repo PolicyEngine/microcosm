@@ -177,7 +177,8 @@
       "S5",
       "V1",
       "V2",
-      "V3"
+      "V3",
+      "V4"
     ],
     "join_column": "family_id",
     "variant_rule": "carry_baseline_cell_by_unit_id",
