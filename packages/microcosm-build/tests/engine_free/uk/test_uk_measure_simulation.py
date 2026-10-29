@@ -600,9 +600,11 @@ _PACKAGED_EXCLUSION_CENSUS = {
     # (María's rule of 2026-10-21), re-signed on 2026-10-23. Of the five SLC
     # rows, the postgraduate repayments row retired from the targets (the
     # stage assigns no postgraduate plan) and Plan 5's liable stock binds; the
-    # Plan 5 repayments and the two Plan 2 stocks stay.
+    # Plan 5 repayments and the two Plan 2 stocks stay. microcosm#1095 splits
+    # the devolved repayments by nation and holds Scotland's and Northern
+    # Ireland's (ruling R4: Wales only binds).
     "_1_000_000_to_inf": 10,
-    "slc.": 3,
+    "slc.": 5,
     # microcosm#1095 (2026-10-07): two bands whose few supporting awards
     # policyengine-uk 2.122.2 moves out join the uk-data#452 class.
     # microcosm#1095 U3 (2026-10-16): the sparse-band support floor drops
@@ -720,8 +722,11 @@ def test_packaged_exclusions_load():
     # obr.vat is held again as a diagnostic (Vahid's review of #1383, 10).
     # microcosm#1359 adds the five OBR excise rows, measured at FY2024-25.
     # The next policyengine-uk bump (2.162.3) holds obr.domestic_rates once it
-    # compiles (María's ruling of 2026-10-25).
-    assert len(names) == len(set(names)) == 40
+    # compiles (María's ruling of 2026-10-25). microcosm#1095 holds the three
+    # OBR council tax nation rows, pinned to the UK as measured diagnostics
+    # (ruling D14e), and SLC's Scottish and Northern Irish repayment rows
+    # (ruling R4: Wales only binds).
+    assert len(names) == len(set(names)) == 45
     rehold = [entry for entry in exclusions if "_1_000_000_to_inf" in entry["name"]]
     assert {(e["approved_on"], e["expires_on"], e["tracking"]) for e in rehold} == {
         ("2026-10-23", "2027-01-23", "microcosm#1095")
