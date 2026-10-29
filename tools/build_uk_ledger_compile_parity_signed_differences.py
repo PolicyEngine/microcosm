@@ -11,9 +11,7 @@ from pathlib import Path
 import numpy as np
 
 from microcosm.build.gates import ledger_compile_parity_signed_differences
-from microcosm.build.uk_runtime.high_value_homes import (
-    load_uk_high_value_home_stock_facts,
-)
+from microcosm.build.uk_runtime.derived_facts import uk_derived_fact_rows
 from microcosm.build.uk_runtime.ledger_targets import (
     LOCAL_REGISTRY_PARITY_FIXTURE_RESOURCE,
     align_uk_local_registry_parity_fixture,
@@ -62,8 +60,7 @@ _SPI_UPRATED_DRIFT_RATIONALE = (
     "Declared uprating (PolicyEngine/chronicle#280 lane, María's ruling of 2026-09-22): ours "
     "moves the SPI 2023-24 band value to the 2025 calibration year by the index "
     "the reference declares (amounts by the pinned engine's per-variable OBR and "
-    "ONS indices between 1 January 2023 and 1 January 2025, the state pension by "
-    "the new State Pension rate the engine pays, counts by HMRC's projected "
+    "ONS indices between 1 January 2023 and 1 January 2025, counts by HMRC's projected "
     "taxpayer growth in the containing Table 2.5 band as the calendar-2025 "
     "window); the frozen incumbent fixture holds the 2023-24 values it projects "
     "one year forward with its own income-projection ratios."
@@ -220,6 +217,47 @@ _STATE_PENSION_LEDGER_ONLY_RATIONALE = (
     "has no State Pension caseload or resident-level row."
 )
 _INCOME_ANCHOR_PREFIXES = ("hmrc.itl.", "hmrc.spi.savings_interest_income.")
+#: microcosm#1069: Income Tax payers by age (ITL Table 2.2), a family the
+#: incumbent registry has no row of.
+_ITL_AGE_PREFIXES = (
+    "hmrc.itl.state_pension_age_taxpayers@",
+    "hmrc.itl.taxpayers_aged_65_and_over@",
+)
+#: microcosm#1418: Income Tax on savings at each rate (ITL Table 2.6), which
+#: the incumbent registry has no row of.
+_ITL_SAVINGS_TAX_PREFIX = "hmrc.itl.savings_tax_at_"
+_ITL_SAVINGS_TAX_LEDGER_ONLY_RATIONALE = (
+    "Coverage the incumbent lacks (microcosm#1418): HMRC's Income Tax liabilities "
+    "Table 2.6 (July 2026) Income Tax on savings at the basic, higher and additional "
+    "rates, all payers, United Kingdom, as the calendar-2025 window of the 2024-25 "
+    "and 2025-26 projections: the base the Budget 2026 savings income rates are "
+    "costed on. The incumbent registry binds no tax by income source or rate."
+)
+_ITL_AGE_LEDGER_ONLY_RATIONALE = (
+    "Coverage the incumbent lacks (microcosm#1069): HMRC's Income Tax liabilities "
+    "Table 2.2 (July 2026) Income Tax payers of State Pension age and aged 65 and "
+    "over, one row per region-tier area as the calendar-2025 window of the 2024-25 "
+    "and 2025-26 projections. Table 2.2 counts residents; Table 2.1's United "
+    "Kingdom row, which adds taxpayers abroad or of unknown region, is vendored "
+    "but not bound. The incumbent registry binds no taxpayer count by age."
+)
+#: The two SPI State Pension band families the State Pension age index moves,
+#: named exactly so no other ``hmrc/state_pension_*`` band row takes their
+#: rationale.
+_SPI_STATE_PENSION_BAND_PREFIXES = (
+    "hmrc/state_pension_count_income_band_",
+    "hmrc/state_pension_income_band_",
+)
+_SPI_STATE_PENSION_UPRATED_DRIFT_RATIONALE = (
+    "Declared uprating (microcosm#1069, after María's ruling of 2026-09-22): ours "
+    "moves the SPI 2023-24 State Pension band rows to the 2025 calibration year "
+    "by one factor for every band, the calendar-2025 window of HMRC's resident "
+    "Income Tax payers of State Pension age (Income Tax liabilities Table 2.2, "
+    "the twelve region-tier areas) over Table 2.1's 2023-24 United Kingdom count, "
+    "and the amount rows also by the new State Pension rate the engine pays; the "
+    "frozen incumbent fixture holds the 2023-24 values it projects one year "
+    "forward with its own income-projection ratios."
+)
 
 _CGT_OBSERVED_RATIONALES = {
     "hmrc.cgt.gains_total": (
@@ -590,6 +628,19 @@ _PRIVATE_RENT_BRMA_LEDGER_ONLY_RATIONALE = (
     "BRMA's private renters."
 )
 
+#: microcosm#1095: DESNZ publishes no constituency cut, so a seat's domestic
+#: energy cell is Microcosm's split of its authorities' totals.
+_DESNZ_SEAT_SPLIT_LEDGER_ONLY_RATIONALE = (
+    "ledger_only by construction: DESNZ publishes no constituency cut, so the "
+    "cell is Microcosm's split of its authorities' published totals by DESNZ's "
+    "LSOA and data zone figures for the same year "
+    "(uk/desnz_constituency_energy_facts.json, microcosm#1095), compiled beside "
+    "the Chronicle feed; the incumbent fits no domestic energy rows, so it "
+    "carries no row to compare."
+)
+#: GSS prefixes of Great Britain's July 2024 constituencies.
+_GB_CONSTITUENCY_PREFIXES = ("E14", "W07", "S14")
+
 _LEDGER_ONLY_RATIONALE = (
     "Coverage the incumbent lacks: our side compiles a published per-area fact "
     "the incumbent's surface NaN-masks or never carries (for example Northern "
@@ -839,11 +890,23 @@ def _add_signed_rationale_notes(
         ):
             row["reason"] = _SPI_PROPERTY_AMOUNT_DRIFT_RATIONALE
         elif (
+            name.startswith(_SPI_STATE_PENSION_BAND_PREFIXES)
+            and row.get("kind") == "calibration_drift"
+        ):
+            row["reason"] = _SPI_STATE_PENSION_UPRATED_DRIFT_RATIONALE
+        elif (
             name.startswith("hmrc/")
             and "_income_band_" in name
             and row.get("kind") == "calibration_drift"
         ):
             row["reason"] = _SPI_UPRATED_DRIFT_RATIONALE
+        elif name.startswith(_ITL_AGE_PREFIXES) and row.get("kind") == "ledger_only":
+            row["reason"] = _ITL_AGE_LEDGER_ONLY_RATIONALE
+        elif (
+            name.startswith(_ITL_SAVINGS_TAX_PREFIX)
+            and row.get("kind") == "ledger_only"
+        ):
+            row["reason"] = _ITL_SAVINGS_TAX_LEDGER_ONLY_RATIONALE
         elif (
             name.startswith(_INCOME_ANCHOR_PREFIXES)
             and row.get("kind") == "ledger_only"
@@ -1028,6 +1091,12 @@ def _add_local_signed_rationale_notes(report: dict[str, object]) -> None:
             row["reason"] = _DERIVED_STOCK_LEDGER_ONLY_RATIONALE
         elif kind == "ledger_only" and metric == "rent/private_rent_brma":
             row["reason"] = _PRIVATE_RENT_BRMA_LEDGER_ONLY_RATIONALE
+        elif (
+            kind == "ledger_only"
+            and metric.startswith("energy/")
+            and area.startswith(_GB_CONSTITUENCY_PREFIXES)
+        ):
+            row["reason"] = _DESNZ_SEAT_SPLIT_LEDGER_ONLY_RATIONALE
         elif kind == "ledger_only":
             row["reason"] = _LEDGER_ONLY_RATIONALE
 
@@ -1037,12 +1106,12 @@ def _compile_for_receipt(spec: ParityReceiptSpec, facts: list[dict]):
         # The high-value homes region rows (microcosm#1301) select the
         # derived facts too; the national compile carries every reference.
         return compile_uk_target_registry(
-            (*facts, *load_uk_high_value_home_stock_facts().rows),
+            (*facts, *uk_derived_fact_rows()),
             target_period=spec.target_period,
         )
     if spec.surface == "local":
         return compile_uk_local_target_registry(
-            (*facts, *load_uk_high_value_home_stock_facts().rows),
+            (*facts, *uk_derived_fact_rows()),
             target_period=spec.target_period,
             crosswalk=_load_crosswalk(),
         )

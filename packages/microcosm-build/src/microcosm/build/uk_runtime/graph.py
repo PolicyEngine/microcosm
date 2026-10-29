@@ -253,7 +253,13 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
         )
     )
     | frozenset({("benunit", "is_married")}),
-    "frs_person_draws": frozenset({("person", "age")}),
+    # is_apprentice draws employees aged 21 to 24 at a rate set by the
+    # frame's weights (microcosm#1372), and its receipt reads their pay for
+    # the relief the flags imply (microcosm#1373).
+    "frs_person_draws": frozenset(
+        ("person", column)
+        for column in ("age", "employment_status", "employment_income")
+    ),
     "frs_household_draws": frozenset(),
     "frs_brma": None,
     "was_wealth": None,
@@ -806,6 +812,7 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
         _Cell("person", "would_claim_scp", "bool"),
         _Cell("person", "attends_private_school_random_draw", "float64"),
         _Cell("person", "tax_free_childcare_spend_routed_share", "float64"),
+        _Cell("person", "is_apprentice", "bool"),
     ),
     "frs_household_draws": _cells(
         "household",
@@ -927,6 +934,36 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
         ),
         _Cell("household", "has_fuel_consumption", "bool"),
         _Cell("household", "uses_energy_prepayment_meter", "bool"),
+        # The excise step's policyengine-uk inputs (microcosm#1359).
+        *_cells(
+            "household",
+            (
+                "beer_litres",
+                "cider_litres",
+                "wine_litres",
+                "spirits_litres",
+                "other_fermented_litres",
+                "beer_draught_share",
+                "cider_draught_share",
+                "cigarettes_per_week",
+                "hand_rolling_tobacco_grams_per_week",
+                "cigars_grams_per_week",
+                "other_tobacco_grams_per_week",
+                "remote_gaming_net_losses",
+                "pool_betting_net_receipts",
+                "bingo_net_receipts",
+                "national_lottery_ticket_spending",
+                "land_based_casino_net_losses",
+                "machine_games_lower_rate_net_takings",
+                "machine_games_standard_rate_net_takings",
+                "machine_games_higher_rate_net_takings",
+                "land_based_fixed_odds_betting_net_losses",
+                "remote_uk_horseracing_betting_net_losses",
+                "remote_other_betting_net_losses",
+                "betting_exchange_commission",
+                "horse_and_dog_pool_betting_net_losses",
+            ),
+        ),
     ),
     "etb_vat": (_Cell("household", "full_rate_vat_expenditure_rate", "float64"),),
     "etb_services": (

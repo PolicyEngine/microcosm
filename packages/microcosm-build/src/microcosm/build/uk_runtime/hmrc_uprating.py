@@ -24,7 +24,9 @@ and one of the two appliers below transports its value:
   (Income Tax liabilities statistics, Table 2.5), as the calendar-year window
   of the two overlapping tax years over the fact's year, read from the
   vendored ``hmrc_itl_taxpayer_counts.json`` resource so the factor is
-  refused when the resource lags the feed pin.
+  refused when the resource lags the feed pin. The State Pension rows move
+  by HMRC's projection of their own population instead, Income Tax payers of
+  State Pension age (Tables 2.1 and 2.2), read from the same resource.
 
 María's ruling of 2026-09-22: the calibration binds at calendar 2025; facts
 published by fiscal or tax year use the months to the end of that year.
@@ -53,6 +55,7 @@ from microcosm.build.ledger_targets import (
 )
 from microcosm.build.uk_runtime.frs_release import resolve_uk_year_rule
 from microcosm.build.uk_runtime.ledger_fact_vendoring import vendored_rows
+from microcosm.calibrate.geography_constants import UK_REGION_TIER
 
 UK_ENGINE_PARAMETER_INDEX_PREFIX = "policyengine_uk_parameter:"
 UK_ENGINE_INDEX_BASIS = (
@@ -157,12 +160,64 @@ UK_HMRC_ITL_ALL_BAND_GROWTH_BASIS = (
 )
 #: The SPI State Pension amount by band (microcosm#1069): an amount row is the
 #: band's recipients times the amount each is paid, so it moves by the growth
-#: its count row declares (the band's taxpayers, HMRC Table 2.5) times the
-#: rate the engine pays. Moving it by the rate alone held the band's recipients
-#: at the fact year's number while the count row grew them, and the two rows
-#: described different populations.
-UK_SPI_STATE_PENSION_AMOUNT_INDEX_CONCEPT = "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band"
+#: its count row declares times the rate the engine pays. Moving it by the rate
+#: alone held the band's recipients at the fact year's number while the count
+#: row grew them, and the two rows described different populations.
 UK_SPI_STATE_PENSION_RATE_PARAMETER = "gov.dwp.state_pension.new_state_pension.amount"
+#: The SPI State Pension rows by band, moved by their own population
+#: (microcosm#1069). A band's growth in all its taxpayers (Table 2.5) need not
+#: be its State Pension recipients' growth: summed over the bands it moved the
+#: count rows 4.8% from 2023-24 to calendar 2025, while HMRC projects Income
+#: Tax payers of State Pension age 10.4% higher (Table 2.1), and HMRC projects
+#: no age group by band. So every band moves by one factor, the growth of the
+#: bound State Pension age level, and the rows hold their 2023-24 shares of it.
+#:
+#: That gives up, for these rows, the movement between bands that the Table
+#: 2.5 appliers above keep for the other SPI rows (microcosm#1063): Table 2.5's
+#: band growth is all taxpayers', mostly workers', and nothing published says
+#: how pensioners move between bands. Holding the shares is the near-term
+#: choice on microcosm#1069 (the level is HMRC's, the shape a 2023-24
+#: snapshot) until each band fact is bound at its own year. The alternative,
+#: Table 2.5's band factors raked to the same level, would set the GBP
+#: 15,000-20,000 band 6.6% lower and the GBP 100,000-150,000 band 18.7% higher
+#: (docs/evidence/uk-pensioner-taxpayers-1069).
+#:
+#: The level is the twelve region-tier areas of Table 2.2, the residents the
+#: frame holds and the ``hmrc.itl.state_pension_age_taxpayers`` rows bind. The
+#: 2023-24 SPI rows count every UK taxpayer, including those HMRC allocates to
+#: no region: SPI 2023-24's note 4 to Table 3.11 puts some members of the
+#: Forces and Merchant Navy, a small number of people serving overseas or with
+#: overseas addresses, and a small number whose postcode could not be
+#: identified "in the UK figures", so its four nations
+#: hold 36.401m taxpayers against the United Kingdom's 36.7m. Table 3.6 counts
+#: that United Kingdom universe: its all-ranges employment count is Table
+#: 3.11's United Kingdom 27.3m, against 27.189m over the four nations. ITL's
+#: 2023-24 columns restate the SPI (Table 2.1's United Kingdom 36.7m, Table
+#: 2.2's four nations 36.401m), so Table 2.1's United Kingdom count at State
+#: Pension age is the SPI rows' universe and Table 2.2's areas are the
+#: residents (0.16m apart in calendar 2025, 1.8%). The factor therefore
+#: divides the resident window by Table 2.1's 2023-24 count and is United
+#: Kingdom growth times the resident share; both are receipted, and a year
+#: whose areas exceed its United Kingdom count is refused. The resident share
+#: of State Pension recipients is taken to be that of all taxpayers of State
+#: Pension age.
+UK_HMRC_STATE_PENSION_AGE_GROWTH_INDEX_CONCEPT = (
+    "hmrc.itl_2026.resident_state_pension_age_taxpayer_growth"
+)
+UK_SPI_STATE_PENSION_AGE_AMOUNT_INDEX_CONCEPT = (
+    "hmrc.itl_2026.resident_state_pension_age_taxpayer_growth"
+    "_times_new_state_pension_rate"
+)
+UK_HMRC_STATE_PENSION_AGE_MEASURE_ID = "state_pension_age"
+UK_HMRC_ITL_UK_GEOGRAPHY_ID = "K02000001"
+UK_HMRC_STATE_PENSION_AGE_GROWTH_BASIS = (
+    "HMRC Income Tax liabilities statistics, Income Tax payers of State Pension "
+    "age: the calendar-year window of the two tax years overlapping the "
+    "calibration year, summed over the twelve region-tier areas of Table 2.2 "
+    "(residents), over Table 2.1's United Kingdom count in the SPI fact's year "
+    "(every UK taxpayer, as the SPI rows count); the same factor for every band, "
+    "United Kingdom growth times the resident share"
+)
 #: The SPI savings interest amount by band (microcosm#1095, uk-data#541).
 #: policyengine-uk's dataset projection grows ``savings_interest_income`` by
 #: GDP per head, but the variable's own index, ONS household interest income,
@@ -188,8 +243,8 @@ UK_HISTORY_THEN_PROJECTION_BASIS = (
     "calibration year, the index the engine's dataset projection applies"
 )
 UK_RECIPIENT_AMOUNT_GROWTH_BASIS = (
-    "recipients times the amount per recipient: the band's recipients grow like its "
-    "taxpayers (the count row's index, {count_basis}) and the amount per recipient by "
+    "recipients times the amount per recipient: the band's recipients grow by the "
+    "count row's index ({count_basis}) and the amount per recipient by "
     "the pinned engine's {parameter} between 1 January of the fact's opening year and "
     "1 January of the calibration year"
 )
@@ -437,8 +492,8 @@ def assert_installed_engine_is_pinned() -> str:
     jobs and the H2 parity run them on the lock.
 
     Three things must hold. The distribution's version is the pinned one,
-    exactly, so a post-release or a local build of it (``2.151.0.post1``,
-    ``2.151.0+local``) is refused. ``policyengine_uk`` imports from that
+    exactly, so a post-release or a local build of it (``2.162.14.post1``,
+    ``2.162.14+local``) is refused. ``policyengine_uk`` imports from that
     distribution's own files, so a copy earlier on ``sys.path`` or an editable
     install is refused. And its ``__init__.py`` matches the distribution's
     RECORD, so a stale record beside other files is refused where the files
@@ -841,7 +896,9 @@ def align_hmrc_row_by_itl_growth(
     pension index ignores. Under the flat index the GBP 15,000-20,000 band's
     employment amount rose 10.7% from 2023-24 to 2025 while HMRC projects the
     band's total income to fall 2.3%; the SPI tape re-banded under the
-    engine's own indices agrees with HMRC's direction.
+    engine's own indices agrees with HMRC's direction. The SPI State Pension
+    rows are the exception: they move by their own population's level, not by
+    all taxpayers' band growth (``UK_HMRC_STATE_PENSION_AGE_GROWTH_INDEX_CONCEPT``).
     """
 
     if reference.uprating_index != index_concept:
@@ -913,22 +970,23 @@ def align_hmrc_amount_by_recipient_growth_and_rate(
     *,
     index_concept: str,
     parameter_path: str,
+    count_index_concept: str = UK_HMRC_TAXPAYER_GROWTH_INDEX_CONCEPT,
     parameter_value: ParameterValue = engine_parameter_value,
     rows: list[Mapping[str, Any]] | None = None,
 ) -> TargetRegistry:
     """Move an SPI amount band row by its recipients' growth and their rate.
 
-    factor = (the band's taxpayer growth, exactly as the count row computes it)
-    x (the engine parameter ratio, exactly as the engine-index applier computes
-    it); both component receipts are written on the spec.
+    factor = (the recipients' growth, exactly as the count row declaring
+    ``count_index_concept`` computes it) x (the engine parameter ratio, exactly
+    as the engine-index applier computes it); both component receipts are
+    written on the spec.
     """
 
     if reference.uprating_index != index_concept:
         return registry
-    counted = align_hmrc_row_by_itl_growth(
-        replace(reference, uprating_index=UK_HMRC_TAXPAYER_GROWTH_INDEX_CONCEPT),
+    counted = _RECIPIENT_COUNT_APPLIERS[count_index_concept](
+        replace(reference, uprating_index=count_index_concept),
         registry,
-        index_concept=UK_HMRC_TAXPAYER_GROWTH_INDEX_CONCEPT,
         rows=rows,
     )
     rated = align_hmrc_row_by_engine_index(
@@ -1069,6 +1127,155 @@ def align_hmrc_row_by_itl_all_band_growth(
     return TargetRegistry(aligned, country="uk")
 
 
+def _itl_age_value(
+    rows: list[Mapping[str, Any]],
+    *,
+    measure_id: str,
+    geography_id: str,
+    year: int,
+    spec_name: str,
+) -> tuple[float, str]:
+    matches = [
+        row
+        for row in rows
+        if str(row.get("measure_id")) == measure_id
+        and int((row.get("period") or {}).get("value", -1)) == year
+        and str((row.get("geography") or {}).get("id")) == geography_id
+    ]
+    if len(matches) != 1:
+        raise ValueError(
+            f"UK target {spec_name!r}: Income Tax liabilities {measure_id} for "
+            f"{geography_id} in {year} matched {len(matches)} vendored rows; "
+            "expected one."
+        )
+    (row,) = matches
+    value = float(row["value"])
+    if not value > 0:
+        raise ValueError(
+            f"UK target {spec_name!r}: Income Tax liabilities {measure_id} for "
+            f"{geography_id} in {year} is {value!r}."
+        )
+    return value, str(row.get("source_record_id") or "")
+
+
+def align_hmrc_row_by_resident_state_pension_age_growth(
+    reference: LedgerTargetReference,
+    registry: TargetRegistry,
+    *,
+    index_concept: str = UK_HMRC_STATE_PENSION_AGE_GROWTH_INDEX_CONCEPT,
+    rows: list[Mapping[str, Any]] | None = None,
+) -> TargetRegistry:
+    """Move an SPI State Pension band row by the State Pension age level.
+
+    factor = window(resident taxpayers of State Pension age in target-1,
+    target) / United Kingdom taxpayers of State Pension age in the fact's
+    opening year, the window over the twelve region-tier areas of Table 2.2
+    and the opening count from Table 2.1. It is the same for every band, so
+    the rows keep their 2023-24 shares of the level the
+    ``hmrc.itl.state_pension_age_taxpayers`` rows bind (microcosm#1069).
+    """
+
+    if reference.uprating_index != index_concept:
+        return registry
+    target_year = _target_year(reference)
+    rows = (
+        list(_vendored_itl_rows(UK_HMRC_TAXPAYER_COUNT_CONCEPT))
+        if rows is None
+        else rows
+    )
+    value = partial(
+        _itl_age_value, rows, measure_id=UK_HMRC_STATE_PENSION_AGE_MEASURE_ID
+    )
+    areas = tuple(code for _, code in UK_REGION_TIER)
+    aligned = []
+    for spec in registry.specs:
+        opening_year = _opening_year(spec, reference)
+        _refuse_fact_after_target(spec, opening_year, target_year)
+        if opening_year == target_year:
+            aligned.append(_identity_aligned(spec, reference, opening_year))
+            continue
+        opening, opening_id = value(
+            geography_id=UK_HMRC_ITL_UK_GEOGRAPHY_ID,
+            year=opening_year,
+            spec_name=spec.name,
+        )
+        record_ids = [opening_id]
+        united_kingdom: dict[int, float] = {}
+        resident: dict[int, float] = {}
+        for offset in CALENDAR_YEAR_WINDOW_WEIGHTS:
+            year = target_year + offset
+            united_kingdom[year], record_id = value(
+                geography_id=UK_HMRC_ITL_UK_GEOGRAPHY_ID,
+                year=year,
+                spec_name=spec.name,
+            )
+            record_ids.append(record_id)
+            resident[year] = 0.0
+            for area in areas:
+                area_value, record_id = value(
+                    geography_id=area, year=year, spec_name=spec.name
+                )
+                resident[year] += area_value
+                record_ids.append(record_id)
+            if resident[year] > united_kingdom[year]:
+                raise ValueError(
+                    f"UK target {spec.name!r}: the twelve region-tier areas hold "
+                    f"{resident[year]!r} Income Tax payers of State Pension age in "
+                    f"{year}, more than the United Kingdom's "
+                    f"{united_kingdom[year]!r}; the areas are part of it."
+                )
+        uk_window = sum(
+            weight * united_kingdom[target_year + offset]
+            for offset, weight in CALENDAR_YEAR_WINDOW_WEIGHTS.items()
+        )
+        resident_window = sum(
+            weight * resident[target_year + offset]
+            for offset, weight in CALENDAR_YEAR_WINDOW_WEIGHTS.items()
+        )
+        factor = resident_window / opening
+        metadata = {
+            **spec.metadata,
+            "uprating_index": index_concept,
+            "uprating_index_basis": UK_HMRC_STATE_PENSION_AGE_GROWTH_BASIS,
+            "uprating_index_resource": UK_HMRC_TAXPAYER_COUNTS_RESOURCE,
+            "uprating_index_measure_id": UK_HMRC_STATE_PENSION_AGE_MEASURE_ID,
+            "uprating_index_resident_geographies": ";".join(areas),
+            "uprating_index_united_kingdom_values_by_year": ";".join(
+                f"{year}={amount:.15g}"
+                for year, amount in sorted(
+                    {opening_year: opening, **united_kingdom}.items()
+                )
+            ),
+            "uprating_index_resident_values_by_year": ";".join(
+                f"{year}={amount:.15g}" for year, amount in sorted(resident.items())
+            ),
+            "uprating_index_window_weights": ";".join(
+                f"{target_year + offset}={weight:.15g}"
+                for offset, weight in sorted(CALENDAR_YEAR_WINDOW_WEIGHTS.items())
+            ),
+            "uprating_index_united_kingdom_growth": f"{uk_window / opening:.15g}",
+            "uprating_index_resident_share": f"{resident_window / uk_window:.15g}",
+            "uprating_index_source_record_ids": ",".join(record_ids),
+            "uprating_factor": f"{factor:.15g}",
+            "ledger_value_before_alignment": f"{spec.value:.15g}",
+            "uprating_adjudication": UK_INCOME_UPRATING_ADJUDICATION,
+        }
+        aligned.append(replace(spec, value=spec.value * factor, metadata=metadata))
+    return TargetRegistry(aligned, country="uk")
+
+
+#: The count appliers an amount row's recipients can grow by.
+_RECIPIENT_COUNT_APPLIERS: Mapping[str, Callable[..., TargetRegistry]] = {
+    UK_HMRC_TAXPAYER_GROWTH_INDEX_CONCEPT: partial(
+        align_hmrc_row_by_itl_growth,
+        index_concept=UK_HMRC_TAXPAYER_GROWTH_INDEX_CONCEPT,
+    ),
+    UK_HMRC_STATE_PENSION_AGE_GROWTH_INDEX_CONCEPT: (
+        align_hmrc_row_by_resident_state_pension_age_growth
+    ),
+}
+
+
 def hmrc_uprating_appliers() -> dict[str, Any]:
     """The appliers this module contributes to ``UK_UPRATING_APPLIERS``."""
 
@@ -1086,10 +1293,14 @@ def hmrc_uprating_appliers() -> dict[str, Any]:
         appliers[index_concept] = partial(
             align_hmrc_row_by_itl_all_band_growth, index_concept=index_concept
         )
-    appliers[UK_SPI_STATE_PENSION_AMOUNT_INDEX_CONCEPT] = partial(
+    appliers[UK_HMRC_STATE_PENSION_AGE_GROWTH_INDEX_CONCEPT] = (
+        align_hmrc_row_by_resident_state_pension_age_growth
+    )
+    appliers[UK_SPI_STATE_PENSION_AGE_AMOUNT_INDEX_CONCEPT] = partial(
         align_hmrc_amount_by_recipient_growth_and_rate,
-        index_concept=UK_SPI_STATE_PENSION_AMOUNT_INDEX_CONCEPT,
+        index_concept=UK_SPI_STATE_PENSION_AGE_AMOUNT_INDEX_CONCEPT,
         parameter_path=UK_SPI_STATE_PENSION_RATE_PARAMETER,
+        count_index_concept=UK_HMRC_STATE_PENSION_AGE_GROWTH_INDEX_CONCEPT,
     )
     appliers[UK_SPI_SAVINGS_INTEREST_INDEX_CONCEPT] = partial(
         align_hmrc_row_by_history_then_projection,
@@ -1118,7 +1329,10 @@ def align_hmrc_count_row_by_taxpayer_growth(
 
 __all__ = [
     "SPI_BAND_TO_ITL_BANDS",
-    "UK_SPI_STATE_PENSION_AMOUNT_INDEX_CONCEPT",
+    "UK_HMRC_ITL_UK_GEOGRAPHY_ID",
+    "UK_HMRC_STATE_PENSION_AGE_GROWTH_INDEX_CONCEPT",
+    "UK_HMRC_STATE_PENSION_AGE_MEASURE_ID",
+    "UK_SPI_STATE_PENSION_AGE_AMOUNT_INDEX_CONCEPT",
     "UK_SPI_STATE_PENSION_RATE_PARAMETER",
     "UK_SPI_SAVINGS_INTEREST_HISTORY_PARAMETER",
     "UK_SPI_SAVINGS_INTEREST_INDEX_CONCEPT",
@@ -1136,6 +1350,7 @@ __all__ = [
     "align_hmrc_count_row_by_taxpayer_growth",
     "align_hmrc_row_by_engine_index",
     "align_hmrc_row_by_itl_growth",
+    "align_hmrc_row_by_resident_state_pension_age_growth",
     "itl_bands_spanned",
     "engine_parameter_pins",
     "engine_parameter_value",
