@@ -14686,7 +14686,7 @@
           "value_variable": "scottish_child_payment",
           "from_entity": "person",
           "map_to": "household",
-          "notes": "uk-data's 3%-per-year extrapolation beyond the budget horizon is a populace-side declaration; the facts are the published budget lines."
+          "notes": "uk-data's 3%-per-year extrapolation beyond the budget horizon is a populace-side declaration; the facts are the published budget lines. Measured at the calendar-2025 window of the publisher's fiscal years (three twelfths of 2024-25, nine twelfths of 2025-26; calendar_year_window): María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year, which she extended to this row on 2026-10-29 (microcosm#1095 R7)."
         },
         "axiom": {
           "metric_name": "sss/scottish_child_payment",
@@ -14704,7 +14704,8 @@
         "entity_name": "person"
       },
       "category_id": "scotgov.social_security",
-      "label": "Scottish child payment spending"
+      "label": "Scottish child payment spending",
+      "value_operation": "calendar_year_window"
     },
     {
       "target_id": "ons.savings_interest_income",
@@ -15066,7 +15067,8 @@
           ],
           "source_lines": [
             "total_higher_education"
-          ]
+          ],
+          "notes": "Measured at the calendar-2025 window of the publisher's fiscal years (three twelfths of 2024-25, nine twelfths of 2025-26; calendar_year_window): María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year, which she extended to this row on 2026-10-29 (microcosm#1095 R7)."
         },
         "axiom": {
           "metric_name": "slc/student_loan_repayment/england",
@@ -15083,7 +15085,8 @@
         "entity_name": "person"
       },
       "category_id": "slc.repayments",
-      "label": "England total higher education"
+      "label": "England total higher education",
+      "value_operation": "calendar_year_window"
     },
     {
       "target_id": "slc.repayments.england_plan_1",
@@ -15124,7 +15127,8 @@
           ],
           "source_lines": [
             "plan_1"
-          ]
+          ],
+          "notes": "Measured at the calendar-2025 window of the publisher's fiscal years (three twelfths of 2024-25, nine twelfths of 2025-26; calendar_year_window): María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year, which she extended to this row on 2026-10-29 (microcosm#1095 R7)."
         },
         "axiom": {
           "metric_name": "slc/student_loan_repayment/england/plan_1",
@@ -15141,7 +15145,8 @@
         "entity_name": "person"
       },
       "category_id": "slc.repayments",
-      "label": "England plan 1"
+      "label": "England plan 1",
+      "value_operation": "calendar_year_window"
     },
     {
       "target_id": "slc.repayments.england_plan_2",
@@ -15184,7 +15189,7 @@
             "plan_2_full_time",
             "plan_2_part_time"
           ],
-          "notes": "Publisher splits full-time/part-time (and masters/doctoral) products the model does not distinguish; the listed source lines sum to this target (uk-data targets/compute/other.py:116-137 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3)."
+          "notes": "Publisher splits full-time/part-time (and masters/doctoral) products the model does not distinguish; the listed source lines sum to this target (uk-data targets/compute/other.py:116-137 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3). Measured at the calendar-2025 window of the publisher's fiscal years (three twelfths of 2024-25, nine twelfths of 2025-26; calendar_year_window): María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year, which she extended to this row on 2026-10-29 (microcosm#1095 R7)."
         },
         "axiom": {
           "metric_name": "slc/student_loan_repayment/england/plan_2",
@@ -15202,7 +15207,8 @@
         "entity_name": "person"
       },
       "category_id": "slc.repayments",
-      "label": "England plan 2"
+      "label": "England plan 2",
+      "value_operation": "calendar_year_window"
     },
     {
       "target_id": "slc.repayments.england_plan_5",
@@ -15245,7 +15251,7 @@
             "plan_5_full_time",
             "plan_5_part_time"
           ],
-          "notes": "Publisher splits full-time/part-time (and masters/doctoral) products the model does not distinguish; the listed source lines sum to this target (uk-data targets/compute/other.py:116-137 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3)."
+          "notes": "Publisher splits full-time/part-time (and masters/doctoral) products the model does not distinguish; the listed source lines sum to this target (uk-data targets/compute/other.py:116-137 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3). Measured at the calendar-2025 window of the publisher's fiscal years (three twelfths of 2024-25, nine twelfths of 2025-26; calendar_year_window): María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year, which she extended to this row on 2026-10-29 (microcosm#1095 R7)."
         },
         "axiom": {
           "metric_name": "slc/student_loan_repayment/england/plan_5",
@@ -15263,7 +15269,8 @@
         "entity_name": "person"
       },
       "category_id": "slc.repayments",
-      "label": "England plan 5"
+      "label": "England plan 5",
+      "value_operation": "calendar_year_window"
     },
     {
       "target_id": "slc.borrowers.plan_2_above_threshold",
@@ -15925,7 +15932,8 @@
           "metric_name": "hmrc/tfc/government_top_up",
           "value_variable": "tax_free_childcare",
           "from_entity": "person",
-          "map_to": "household"
+          "map_to": "household",
+          "notes": "Measured at the calendar-2025 window of the publisher's fiscal years (three twelfths of 2024-25, nine twelfths of 2025-26; calendar_year_window): María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year, which she extended to this row on 2026-10-29 (microcosm#1095 R7)."
         },
         "axiom": {
           "metric_name": "hmrc/tfc/government_top_up",
@@ -15940,7 +15948,8 @@
         "period_type": "fiscal_year"
       },
       "category_id": "hmrc.tax_free_childcare",
-      "label": "Government top up"
+      "label": "Government top up",
+      "value_operation": "calendar_year_window"
     },
     {
       "target_id": "hmrc.tfc.children_with_used_accounts",
@@ -17981,7 +17990,7 @@
               "value": "NORTHERN_IRELAND"
             }
           ],
-          "notes": "DfI Public Transport Statistics, Translink bus passenger receipts, Ulsterbus plus Metro and Glider, fiscal year; the Northern Ireland leg of the local bus fare partition (#890)."
+          "notes": "DfI Public Transport Statistics, Translink bus passenger receipts, Ulsterbus plus Metro and Glider, fiscal year; the Northern Ireland leg of the local bus fare partition (#890). Measured at the calendar-2025 window of the publisher's fiscal years (three twelfths of 2024-25, nine twelfths of 2025-26; calendar_year_window): María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year, which she extended to this row on 2026-10-29 (microcosm#1095 R7)."
         },
         "axiom": {
           "metric_name": "dfi_ni/bus_passenger_receipts",
@@ -18002,7 +18011,8 @@
         }
       },
       "category_id": "dfi_ni.local_bus_finances",
-      "label": "Translink passenger receipts"
+      "label": "Translink passenger receipts",
+      "value_operation": "calendar_year_window"
     },
     {
       "target_id": "nithc.public_transport_support",
