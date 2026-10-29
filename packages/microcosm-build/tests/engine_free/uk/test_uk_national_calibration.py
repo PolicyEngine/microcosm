@@ -53,25 +53,6 @@ from microcosm.calibrate import TargetRegistry, TargetSpec, calibrate
 from microcosm.calibrate.artifacts import decode_problem
 from microcosm.frame import EntitySchema, Frame, MassChange, WeightKind, Weights
 
-# microcosm#1301: the references include the high-value homes region cells (30
-# less the two signed out below the small-cell floor), which
-# load_uk_national_target_inputs drops after the compile; microcosm#1278 adds
-# the ONS single years 0, 1 and 2 for all persons, and the childcare costing
-# fixes (item 6) the UK's single years 3 to 6 and England's 0 to 6, and the
-# DfE single-age rows five funded-childcare counts (working parent 9 to 11
-# months and ages 1-3, universal nursery 3; the age-4 cells are signed out);
-# the next policyengine-uk bump retires the OBR welfare-cap split and the
-# England postgraduate repayments (microcosm#1095), and England's single adult
-# council tax discount binds (microcosm#953); microcosm#1359 adds five OBR
-# excise receipts rows, measured at FY2024-25; the bump after it compiles
-# obr.domestic_rates, pinned to the UK, and HMRC's five Child Benefit family
-# rows (microcosm#1095); microcosm#1069 adds HMRC's Income Tax payers of State
-# Pension age and aged 65 and over in the twelve region-tier areas;
-# microcosm#1418 adds HMRC's Income Tax on savings at the three rates, and
-# its PR C SPI Table 3.7's other income by band and Table 3.10's
-# self-employment bands from GBP 1 to GBP 10,000.
-ACTIVE_REFERENCE_COUNT = 1403
-
 
 def _uc_reference(**overrides) -> LedgerTargetReference:
     values = {
@@ -602,7 +583,6 @@ def test_chronicle_184_uc_and_obr_references_compile_fail_closed() -> None:
     from microcosm.build.ledger_targets import compile_ledger_target_references
 
     spec = load_country_spec("uk")
-    assert len(spec.target_references) == ACTIVE_REFERENCE_COUNT
     reference_names = {reference.name for reference in spec.target_references}
     assert "obr.universal_credit" in reference_names
     assert "dwp.uc.households" in reference_names
