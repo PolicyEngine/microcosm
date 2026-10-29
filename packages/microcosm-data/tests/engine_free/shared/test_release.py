@@ -1605,8 +1605,7 @@ def test_preflight_prepares_the_bound_gate_evidence_for_upload(
 def test_publication_repeats_the_contract_warnings_and_proceeds(
     release_dir: Path, artifact_root: Path, monkeypatch
 ) -> None:
-    """A contract warning, such as the dense line's disclosure walk finding a
-    per-area support figure (microcosm#1301), is repeated, not refused."""
+    """A contract warning is repeated, not refused."""
     monkeypatch.setattr(
         release_module,
         "validate_release_dir",
@@ -1622,8 +1621,9 @@ def test_publication_repeats_the_contract_warnings_and_proceeds(
     assert prepared.contract_warnings == ("synthetic.json carries a synthetic finding",)
 
 
-#: Contract warnings as the dense line's disclosure walk words them: a file
-#: and the paths in it, never a value (microcosm#1301).
+#: Synthetic contract warnings, worded as the dense line's disclosure walk
+#: worded them until María's ruling of 2026-10-26 dropped it: a file and the
+#: paths in it, never a value (microcosm#1301).
 _CONTRACT_WARNINGS = [
     "synthetic.json carries 1 per-area support figure(s) (rows, ESS or distinct "
     "sources), which a dense release should withhold (microcosm#1301); first "

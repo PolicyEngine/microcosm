@@ -165,7 +165,7 @@
         "desnz.subnational.gas_connected_households"
       ],
       "kind": "share_of_parent",
-      "reason": "Each authority's gas-connected households are its census households times its DESNZ gas meters over its electricity meters, a share of the parent; they take the census household uprating and then the authority's household reconciliation factor, keeping DESNZ's share. The households off the gas network are not bound (microcosm#1207)."
+      "reason": "Each authority's and constituency's gas-connected households are its census households times its DESNZ gas meters over its electricity meters (a constituency's meters split from its authorities' by DESNZ's small-area figures, microcosm#1095), a share of the parent; they take the census household uprating and then the area's household reconciliation factor, keeping DESNZ's share. The households off the gas network are not bound (microcosm#1207)."
     }
   ],
   "band_bridges": [
@@ -625,11 +625,11 @@
     },
     "desnz.subnational.electricity_kwh": {
       "route": "no_higher_control",
-      "reason": "DESNZ's region and country rows are the sums of their authorities, so a region control adds no information, and a gas bridge would put the three authorities DESNZ publishes no gas for (the Isles of Scilly, Orkney and Shetland) in controlled legs. The electricity cells are levelled onto the lcfs stage's Energy Trends level by their uprating index instead (desnz.energy_trends.gb_domestic_level; microcosm#1207, local-authority grain only)."
+      "reason": "DESNZ's region and country rows are the sums of their authorities, so a region control adds no information, and a gas bridge would put the three authorities DESNZ publishes no gas for (the Isles of Scilly, Orkney and Shetland) in controlled legs. The electricity cells are levelled onto the lcfs stage's Energy Trends level by their uprating index instead (desnz.energy_trends.gb_domestic_level; microcosm#1207). The constituency cells split each authority's total by DESNZ's small-area figures (microcosm#1095), so under the standing single-winner rule they parent their region's authority cells at a factor of one."
     },
     "desnz.subnational.gas_kwh": {
       "route": "no_higher_control",
-      "reason": "DESNZ's region and country rows are the sums of their authorities, so a region control adds no information, and a gas bridge would put the three authorities DESNZ publishes no gas for (the Isles of Scilly, Orkney and Shetland) in controlled legs. The gas cells are levelled onto the lcfs stage's Energy Trends level by their uprating index instead (desnz.energy_trends.gb_domestic_level; microcosm#1207, local-authority grain only)."
+      "reason": "DESNZ's region and country rows are the sums of their authorities, so a region control adds no information, and a gas bridge would put the three authorities DESNZ publishes no gas for (the Isles of Scilly, Orkney and Shetland) in controlled legs. The gas cells are levelled onto the lcfs stage's Energy Trends level by their uprating index instead (desnz.energy_trends.gb_domestic_level; microcosm#1207). The constituency cells split each authority's total by DESNZ's small-area figures (microcosm#1095), so under the standing single-winner rule they parent their region's authority cells at a factor of one."
     },
     "ons.rent.private_rent_brma": {
       "route": "no_higher_control",
@@ -939,6 +939,26 @@
     },
     {
       "targets": [
+        "hmrc.itl.state_pension_age_taxpayers",
+        "hmrc.itl.taxpayers_by_total_income_band"
+      ],
+      "relation": "subset",
+      "part": "hmrc.itl.state_pension_age_taxpayers",
+      "whole": "hmrc.itl.taxpayers_by_total_income_band",
+      "reason": "Income tax payers of State Pension age by English region and nation (ITL Table 2.2) are part of all UK income tax payers, whose projected ITL Table 2.5 bands partition the UK total; parts <= whole (microcosm#1069)."
+    },
+    {
+      "targets": [
+        "hmrc.itl.taxpayers_aged_65_and_over",
+        "hmrc.itl.taxpayers_by_total_income_band"
+      ],
+      "relation": "subset",
+      "part": "hmrc.itl.taxpayers_aged_65_and_over",
+      "whole": "hmrc.itl.taxpayers_by_total_income_band",
+      "reason": "Income tax payers aged 65 and over by English region and nation (ITL Table 2.2) are part of all UK income tax payers, whose projected ITL Table 2.5 bands partition the UK total; parts <= whole (microcosm#1069)."
+    },
+    {
+      "targets": [
         "mhclg.council_tax_stock.single_adult_discount",
         "ons.households.english_regions"
       ],
@@ -946,6 +966,16 @@
       "part": "mhclg.council_tax_stock.single_adult_discount",
       "whole": "ons.households.english_regions",
       "reason": "England's households with the single adult council tax discount (MHCLG Council Taxbase line 8, all bands) are part of England's households, which the nine English regions' rows cover; parts <= whole (microcosm#953)."
+    },
+    {
+      "targets": [
+        "mhclg.council_tax_stock.by_area.single_adult_discount",
+        "ons.households.english_regions"
+      ],
+      "relation": "subset",
+      "part": "mhclg.council_tax_stock.by_area.single_adult_discount",
+      "whole": "ons.households.english_regions",
+      "reason": "Each English billing authority's households with the single adult council tax discount (MHCLG Council Taxbase line 8, all bands) are part of its region's households, which the nine English regions' rows cover; parts <= whole (microcosm#1095). The cells reconcile onto the national single adult row, whose measurement they share."
     }
   ],
   "signature_incomplete": [

@@ -672,13 +672,12 @@ def test_assembler_stages_a_contract_valid_dense_release(
     assert preflight.main(["--release-dir", str(release_dir)]) == 0
 
 
-def test_assembler_warns_on_a_shipped_support_figure_and_still_assembles(
+def test_assembler_ships_a_per_area_support_figure_without_a_warning(
     tmp_path: Path, monkeypatch, capsys
 ) -> None:
-    """A per-area support figure in a file the assembler ships byte for byte
-    is a warning, not a refusal: the directory is assembled, and the warning
-    is printed and listed in the summary by file and path, never by value
-    (review of microcosm#1307)."""
+    """María's ruling of 2026-10-26: a release ships per-area support figures
+    (microcosm#1301), so one in a file the assembler ships byte for byte
+    draws no warning."""
     monkeypatch.setenv("MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY", KEY)
     assembler = _load("assemble_uk_dense_release_dir")
     candidate, spine, _ = _candidate_dir(tmp_path)
@@ -697,16 +696,9 @@ def test_assembler_warns_on_a_shipped_support_figure_and_still_assembles(
 
     assert assembler.main(_assemble_args(candidate, spine, None, out)) == 0
     captured = capsys.readouterr()
-    (warning,) = json.loads(captured.out)["warnings"]
-    assert warning.startswith(
-        "rowwise_candidate_manifest.json carries 2 per-area support figure(s)"
-    )
-    assert "fit.weakest_areas[0].nonzero_households" in warning
-    assert f"warning: {warning}" in captured.err
-    for figure in ("37", "23.75"):
-        assert figure not in warning
-    release_dir = out / UK_DENSE_RELEASE_ID
-    assert dc.validate_release_dir(release_dir) == [warning]
+    assert json.loads(captured.out)["warnings"] == []
+    assert "warning:" not in captured.err
+    assert dc.validate_release_dir(out / UK_DENSE_RELEASE_ID) == []
 
 
 def test_assembler_override_assembles_a_pre_lane_run_with_a_recorded_opt_out(
@@ -1351,33 +1343,40 @@ def test_assembler_stages_a_graph_built_dense_candidate(
         assert coverage["holdout"] == {"run": False, "claim": "none"}
         assert coverage["incumbent"] == {"compared": False}
         assert {"no_out_of_sample_claim", "no_incumbent_comparison"} <= set(limitations)
-    # Disclosure (microcosm#1301): every area is below the floors, yet no
-    # shipped document carries an area's rows, ESS or sources, so the
-    # contract has nothing to warn about. The signed report names the floors
-    # each excused area misses; the manifest counts areas; the release
-    # manifest names the areas by code.
+    # Every area is below the floors, and the release ships each area's
+    # support figures (María's ruling of 2026-10-26 dropped their withholding,
+    # microcosm#1301): the signed report states each excused area's rows, ESS
+    # and sources, and the manifest the minima; the contract warns on none.
     assert dc.validate_release_dir(release_dir) == []
     assert summary["warnings"] == []
-    for path in sorted(release_dir.glob("*.json")):
-        payload = json.loads(path.read_text())
-        assert dc._uk_dense_disclosure_findings(path.name, payload) == [], path.name
     signed = json.loads((release_dir / "uk_local_gates.json").read_text())
     shipped_exclusions = signed["gates"]["uk_local_area_support"]["details"][
         "reviewed_exclusions"
     ]
     assert set(shipped_exclusions) == set(excused)
     assert all(
-        set(entry) == {"shortfalls", "record"} for entry in shipped_exclusions.values()
+        set(entry) == {"shortfalls", "rows", "ess", "sources", "record"}
+        for entry in shipped_exclusions.values()
     )
     shipped_manifest = json.loads(
         (release_dir / "rowwise_candidate_manifest.json").read_text()
     )
+    level_support = {
+        "areas_checked": 2,
+        "areas_below_floor": 2,
+        "min_assigned_households": 1,
+        "min_nonzero_households": 1,
+        "min_effective_sample_size": 1.0,
+        "min_nonzero_source_households": 1,
+    }
     assert shipped_manifest["support"] == {
         "areas_checked": 4,
         "areas_below_floor": 4,
+        "min_assigned_households": 1,
+        "min_nonzero_households": 1,
+        "min_effective_sample_size": 1.0,
         "by_geography_level": {
-            level: {"areas_checked": 2, "areas_below_floor": 2}
-            for level in ("constituency", "local_authority")
+            level: level_support for level in ("constituency", "local_authority")
         },
     }
     release_manifest = json.loads((release_dir / "release_manifest.json").read_text())

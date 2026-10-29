@@ -225,6 +225,30 @@ def _write_energy_price_basis(path: Path, household: pd.DataFrame) -> None:
         )
 
 
+def _write_isa_income_contract(path: Path) -> None:
+    """Declare how the H5's savings interest holds ISA interest.
+
+    policyengine-uk 2.162.2 reads the contract from this root attribute and
+    takes the ISA part off gross interest when it loads a ``legacy_gross``
+    dataset, the frame's representation. Written as the engine writes its own
+    declaration, keys sorted (microcosm#1095).
+    """
+
+    from microcosm.frame.adapters.policyengine_uk import (
+        UK_ISA_INCOME_CONTRACT,
+        UK_ISA_INCOME_CONTRACT_ATTR,
+    )
+
+    try:
+        import h5py
+    except ImportError as exc:  # pragma: no cover - UK H5 runtime dependency
+        raise RuntimeError("h5py is required to write UK national metadata.") from exc
+    with h5py.File(path, mode="r+") as file:
+        file.attrs[UK_ISA_INCOME_CONTRACT_ATTR] = json.dumps(
+            dict(UK_ISA_INCOME_CONTRACT), sort_keys=True
+        )
+
+
 def _mass_log_from_stored(value: object) -> tuple[MassChangeRecord, ...]:
     if isinstance(value, bytes):
         value = value.decode("utf-8")
@@ -500,6 +524,7 @@ def _write_uk_single_year_tables(
             temporary_path, weight_kind=weight_kind, mass_log=mass_log
         )
         _write_energy_price_basis(temporary_path, household)
+        _write_isa_income_contract(temporary_path)
         temporary_path.replace(path)
     finally:
         temporary_path.unlink(missing_ok=True)
@@ -547,6 +572,10 @@ UK_RELEASE_EXPORT_DROPPED_COLUMNS: Mapping[str, tuple[str, ...]] = {
         # The FRS bonus carrier (frs_spine.FRS_BONUS_CARRIER_COLUMN) the bonus
         # sacrifice conversion reads (microcosm#1340); it is no engine input.
         "frs_bonus_amount",
+        # The in-household care hours carrier
+        # (frs_spine.FRS_IN_HOUSEHOLD_CARE_HOURS_COLUMN) the Carer's Allowance
+        # draw reads (microcosm#1418); it is no engine input.
+        "frs_care_hours_in_household",
     ),
     # The value the spine's regional home values replaced (microcosm#1112):
     # the dense node ranks on it, and it is no engine input.
