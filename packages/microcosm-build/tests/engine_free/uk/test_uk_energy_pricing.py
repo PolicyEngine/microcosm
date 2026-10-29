@@ -702,6 +702,9 @@ def test_each_fuels_level_is_the_kwh_ons_household_spending_buys(
     assert block["energy_trends_kwh"] == trends[column]
     assert block["total_kwh"] == level[column]
     assert block["domestic_meters"]["meters"] == meters
+    # Northern Ireland's electricity meters stay in the subtraction, and the
+    # block says why (Anthony's review of microcosm#1420).
+    assert ("northern_ireland_meters" in block) == (fuel == "electricity")
     assert receipt["spend_level_fuels"] == ["electricity", "gas"]
 
 
@@ -1049,6 +1052,27 @@ def test_energy_is_checked_at_stage_time_by_the_energy_rake_gate() -> None:
     assert passed.details["cells_fact_checked"] > 0
     assert set(passed.details["level_factor"]) == {ELECTRICITY_KWH, GAS_KWH}
     assert set(passed.details["connected_share"]) == {"LONDON", "WALES", "SCOTLAND"}
+    # Anthony's review of microcosm#1420: the recomputation shares the
+    # stage's inputs, so each ONS-spend level is also held to a declared
+    # share of the Energy Trends volume, which a wrong input row leaves.
+    ratios = passed.details["ons_level_to_energy_trends_ratio"]
+    assert set(ratios) == {ELECTRICITY_KWH, GAS_KWH}
+    assert 0.92 < ratios[ELECTRICITY_KWH] < 0.93 and 0.93 < ratios[GAS_KWH] < 0.94
+    failing(
+        {
+            **generous,
+            "ons_level_to_energy_trends_ratio": {"minimum": 0.95, "maximum": 1.0},
+        },
+        match="ONS-spend level is 0.9258 of Energy Trends'",
+    )
+    with pytest.raises(ValueError, match="no ons_level_to_energy_trends_ratio"):
+        run(
+            {
+                key: value
+                for key, value in generous.items()
+                if key != "ons_level_to_energy_trends_ratio"
+            }
+        )
     failing(
         {**parameters, "maximum_relative_deviation": 0.0}, match="residual tolerance"
     )

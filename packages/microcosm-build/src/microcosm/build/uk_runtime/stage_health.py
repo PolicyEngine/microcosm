@@ -302,6 +302,13 @@ def _energy_rake_gate(
     every household in it drew no kWh must be one the stage declares in
     ``zero_kwh_cells_at_need_mean`` (microcosm#1240).
 
+    The recomputation shares the stage's inputs, so it cannot see a wrong
+    input row (another ONS vintage, meter year or QEP payment method). For a
+    fuel levelled to ONS spending, the level over Energy Trends' volume must
+    therefore sit inside ``ons_level_to_energy_trends_ratio`` (Anthony's
+    review of microcosm#1420): 0.926 for electricity and 0.937 for gas on the
+    September 2026 vintage, so an input error of a tenth either way fails.
+
     This is where NEED, DESNZ and the connection share are checked; the
     calibrated frame is held to the bound ONS 04.5.1 and 04.5.2 spend rows
     instead (María's ruling, 2026-09-15), and no gate re-checks these facts
@@ -313,6 +320,7 @@ def _energy_rake_gate(
         ELECTRICITY_KWH,
         GAS_CONNECTED_PUBLISHED_METER_SHARE,
         GAS_KWH,
+        LEVEL_BASIS_ONS_HOUSEHOLD_SPEND,
         PRICE_DOMESTIC_ENERGY_KIND,
         declared_household_kwh_ceilings,
         declared_zero_kwh_cells_at_need_mean,
@@ -381,7 +389,7 @@ def _energy_rake_gate(
     if undeclared:
         failures.append(f"{stage}: receipt rakes undeclared margins {undeclared}.")
     published = need_margins_from_facts(period_value=margins_period).targets
-    level, _ = published_energy_level(declared)
+    level, level_receipt = published_energy_level(declared)
     factors_block = receipt.get("level_factor")
     level_block = receipt.get("level")
     factors: dict[str, float] = {}
@@ -397,7 +405,32 @@ def _energy_rake_gate(
         "worst": {},
         "cells_fact_checked": 0,
         "connected_share": {},
+        "ons_level_to_energy_trends_ratio": {},
     }
+    ratio_bounds = parameters.get("ons_level_to_energy_trends_ratio")
+    for fuel, fuel_level in sorted(level_receipt["by_fuel"].items()):
+        if fuel_level.get("basis") != LEVEL_BASIS_ONS_HOUSEHOLD_SPEND:
+            continue
+        if not isinstance(ratio_bounds, Mapping) or set(ratio_bounds) != {
+            "minimum",
+            "maximum",
+        }:
+            raise ValueError(
+                f"{stage}: energy_rake declares no ons_level_to_energy_trends_ratio "
+                "minimum and maximum for its ONS-spend levels."
+            )
+        ratio = float(fuel_level["total_kwh"]) / float(fuel_level["energy_trends_kwh"])
+        details["ons_level_to_energy_trends_ratio"][fuel] = ratio
+        if (
+            not float(ratio_bounds["minimum"])
+            <= ratio
+            <= float(ratio_bounds["maximum"])
+        ):
+            failures.append(
+                f"{stage}: {fuel}'s ONS-spend level is {ratio:.4f} of Energy Trends', "
+                f"outside [{ratio_bounds['minimum']}, {ratio_bounds['maximum']}]: check "
+                "the ONS vintage, the meter year and the QEP payment method."
+            )
     if not isinstance(factors_block, Mapping) or not isinstance(level_block, Mapping):
         failures.append(f"{stage}: energy_rake receipt carries no level block.")
         factors_block, level_block = {}, {}

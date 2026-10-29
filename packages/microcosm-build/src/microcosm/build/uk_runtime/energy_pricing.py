@@ -1016,6 +1016,15 @@ def household_spend_level(
     meters make the kWh cover every domestic meter, as Energy Trends' domestic
     consumption does; the frame's households pay fewer standing charges than
     there are meters, so its prior-weighted spend sits that much below ONS.
+
+    Northern Ireland's electricity meters stay in the subtraction although
+    QEP gives them no fixed cost (Anthony's review of microcosm#1420). Its
+    tariffs carry the standing charge in the unit rate: 31.16p a kWh in 2024,
+    against the United Kingdom's 25.83p and £205 a year. At Great Britain's
+    mean of about 3,300 kWh a meter (DESNZ sub-national, 2024), that premium
+    recovers about £177 a meter, so Northern Ireland's spending holds about
+    the same fixed charge as the rest of the UK's. Leaving its meters out
+    would count about £150m of that charge as 0.6 TWh of electricity.
     """
 
     period_type = str(parameters.get("level_period_type") or "")
@@ -1080,6 +1089,11 @@ def household_spend_level(
             "standing_charges_gbp": standing,
             "variable_spend_gbp": variable,
         }
+        if fuel == ELECTRICITY_FUEL:
+            blocks[column]["northern_ireland_meters"] = (
+                "in the subtraction: Northern Ireland's tariffs carry the standing "
+                "charge in the unit rate"
+            )
     return level, blocks
 
 
