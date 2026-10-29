@@ -28,7 +28,7 @@ from microcosm.build.uk_runtime.weight_year import (
     uk_weight_projection_factor,
 )
 from microcosm.data.contract import validate_release_dir
-from microcosm.data.registry import REGISTRY
+from microcosm.data.registry import DEFAULT_VARIANT, REGISTRY
 from microcosm.frame import WeightKind
 from test_support.paths import paths_for
 
@@ -87,7 +87,7 @@ def test_national_dataset_filename_mirrors_registry() -> None:
 
     assert driver._DATASET_KEY == "microcosm_uk_2024_25"
     assert driver._DATASET_FILENAME == f"{driver._DATASET_KEY}.h5"
-    assert REGISTRY[("uk", 2025, "national")].filename == driver._DATASET_FILENAME
+    assert REGISTRY[("uk", 2025, DEFAULT_VARIANT)].filename == driver._DATASET_FILENAME
 
 
 def _frame(weights: list[float], *, weight_kind: WeightKind):
