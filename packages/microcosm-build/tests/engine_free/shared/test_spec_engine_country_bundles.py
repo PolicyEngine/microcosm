@@ -230,6 +230,7 @@ def test_nz_generation_zero_views_come_from_the_country_spec_seam() -> None:
         "chronicle_feed.json",
         "currency_bridge.json",
         "export_contract.json",
+        "family_reconciliation.json",
         "gates.json",
         "geography_spine.json",
         "holdout_references.json",
