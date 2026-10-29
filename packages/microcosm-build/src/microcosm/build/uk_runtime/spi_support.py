@@ -137,8 +137,10 @@ SPI_INCOME_QRF_OUTPUT_COLUMNS = (
 )
 
 # The enhanced-FRS FRS-only stage uses these six income predictors. OTHERINV
-# is a first-stage SPI draw and HMRC accounting component, but the FRS base
-# does not supply `other_investment_income` for second-stage training.
+# is a first-stage SPI draw and HMRC accounting component. The FRS base
+# carries `other_investment_income` only from its NS&I and gilt accounts
+# (microcosm#1418), not OTHERINV's concept, so it stays out of second-stage
+# training.
 FRS_ONLY_SPI_FILL_INCOME_PREDICTOR_COLUMNS = (
     "employment_income",
     "self_employment_income",
@@ -182,6 +184,8 @@ FRS_ONLY_SPI_FILL_PERSON_COLUMNS = (
     "iidb_reported",
     "afcs_reported",
     "bsp_reported",
+    "war_widows_pension_reported",
+    "widowed_parents_allowance_reported",
     "incapacity_benefit_reported",
     "maternity_allowance_reported",
     "winter_fuel_allowance_reported",

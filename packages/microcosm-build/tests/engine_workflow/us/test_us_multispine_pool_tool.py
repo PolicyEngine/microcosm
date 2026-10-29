@@ -342,9 +342,13 @@ def test_constants_adapter_equals_live_constants_and_stays_out_of_identities(
             # bytes (its seed protocol); microcosm#1124's opt-in
             # retain_best_objective and microcosm#1301's budget_search_bracket
             # move it. It covers microcosm.fit.qrf's attested bytes too, so
-            # fit_draw_next's caller-owned uniforms (microcosm#1332) move it.
+            # fit_draw_next's caller-owned uniforms (microcosm#1332) move it,
+            # and so do microcosm#454's meps_esi_premiums stage and
+            # microcosm#1376's puma_county_vintage draw module,
+            # microcosm#1380's self-employment post-transfer contract, and
+            # the source-stage citation rewrites that pin us-data at a commit.
             # microcosm#1251's passive partnership/S-corp leaf in puf_support moves it.
-            "spec_sha256": "e50b72d5ea721211b34c996f0ae19dcd879a5e5c16d99a8c10cbe4d928771e3e",
+            "spec_sha256": "b23dbfdb383c573d36ced7f61244d9c43e7a5600a706ef8ada9103d72136afdf",
         },
     }
 

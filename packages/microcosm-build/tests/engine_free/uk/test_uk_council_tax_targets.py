@@ -55,6 +55,14 @@ def _membership() -> dict:
     )
 
 
+def _national_membership() -> dict:
+    return json.loads(
+        importlib_resources.files("microcosm.build.uk")
+        .joinpath("target_reference_membership.json")
+        .read_text()
+    )
+
+
 def _region_frame(rows: list[tuple[str, str, str]]) -> Frame:
     ids = np.arange(len(rows), dtype="int64")
     return Frame(
@@ -78,11 +86,18 @@ def _region_frame(rows: list[tuple[str, str, str]]) -> Frame:
     )
 
 
-def _registry_for(prefix: str) -> tuple[list, TargetRegistry]:
+#: England's single adult discount: one national row in the stock family
+#: (microcosm#953), not a band cell.
+_SINGLE_ADULT_DISCOUNT = "mhclg.council_tax_stock.single_adult_discount"
+
+
+def _registry_for(
+    prefix: str, *, exclude: tuple[str, ...] = ()
+) -> tuple[list, TargetRegistry]:
     refs = [
         r
         for r in load_country_spec("uk").target_references
-        if r.name.startswith(prefix)
+        if r.name.startswith(prefix) and r.name not in exclude
     ]
     registry = TargetRegistry(
         [
@@ -120,7 +135,9 @@ def test_national_mhclg_region_cells_count_only_their_region_for_every_band() ->
         ("NORTHERN_IRELAND", "NORTHERN_IRELAND"),
     )
     rows = [(country, region, band) for country, region in areas for band in "ABCDEFGH"]
-    refs, registry = _registry_for("mhclg.council_tax_stock.")
+    refs, registry = _registry_for(
+        "mhclg.council_tax_stock.", exclude=(_SINGLE_ADULT_DISCOUNT,)
+    )
     assert len(refs) == 81
     assert {r.metadata["geography_level"] for r in refs} == {"region"}
     assert sorted({r.metadata["geography_id"] for r in refs}) == [
@@ -375,10 +392,13 @@ def test_council_tax_activation_binds_2511_references_less_the_small_cells() -> 
     membership = _membership()
     active = 0
     for target_id, payload in membership["targets"].items():
-        if ".council_tax_stock.by_area." not in target_id:
+        if ".council_tax_stock.by_area." not in target_id or target_id.endswith(
+            ".single_adult_discount"
+        ):
             continue
         candidates = payload["geography_levels"]["local_authority"]["candidates"]
         active += sum(row["status"] == "active" for row in candidates)
+    # The band cells (the single adult discount cells are counted below):
     # 2,058 English A-G cells (microcosm#762) + 198 Welsh A-I + 255 Scottish
     # A-H (microcosm#929; Shetland band H is a support deferral); the 296
     # English band-H cells stay deferred, and the 16 cells below the
@@ -409,6 +429,44 @@ def test_barnsley_and_sheffield_bind_their_2025_rows_through_the_code_aliases() 
     assert aliases["E08000019"]["alias_codes"] == ["E08000039"]
 
 
+def test_single_adult_discount_cells_take_the_2025_return_and_sum_to_england() -> None:
+    """England's single adult discount cells (MHCLG line 8; microcosm#1095).
+
+    Every billing authority but the two the support floor defers binds, Barnsley
+    and Sheffield through their 2025 codes, and the 296 cells of the return sum
+    to the England row they share a measurement with.
+    """
+
+    membership = _membership()
+    target_id = "mhclg.council_tax_stock.by_area.single_adult_discount"
+    level = membership["targets"][target_id]["geography_levels"]["local_authority"]
+    by_area = {row["geography_id"]: row for row in level["candidates"]}
+    assert len(by_area) == 296
+    assert {
+        area_id for area_id, row in by_area.items() if row["status"] != "active"
+    } == {"E06000053", "E09000001"}
+    assert {
+        by_area[area_id]["signed_reason_id"] for area_id in ("E06000053", "E09000001")
+    } == {"local_authority_support_floor_excluded"}
+    for area_id in ("E08000016", "E08000019"):
+        assert by_area[area_id]["status"] == "active"
+        assert by_area[area_id]["resolved_fact_period"] == "2025-10"
+    assert {
+        row["resolved_fact_period"]
+        for row in by_area.values()
+        if row["status"] == "active"
+    } == {"2025-10"}
+    national = _national_membership()["targets"][
+        "mhclg.council_tax_stock.single_adult_discount"
+    ]["candidates"][0]
+    assert national["resolved_fact_period"] == "2025-10"
+    total = sum(
+        row["resolved_value"] if row["status"] == "active" else row["deferred_value"]
+        for row in by_area.values()
+    )
+    assert total == national["resolved_value"]
+
+
 def test_support_floor_deferrals_cover_the_two_authorities_remaining_cells() -> None:
     rows = [
         row
@@ -420,13 +478,14 @@ def test_support_floor_deferrals_cover_the_two_authorities_remaining_cells() -> 
     # longer a separate suppression. microcosm#1123 adds the higher rate
     # taxpayer cells (Scilly's is signed under the SPI coverage gap).
     # microcosm#1240 adds the three high_value_homes local-authority legs, and
-    # microcosm#1207 the three DESNZ energy rows.
-    assert len(rows) == 48
-    assert sum(len(row["area_ids"]) for row in rows) == 91
+    # microcosm#1207 the three DESNZ energy rows. microcosm#1095 adds the
+    # single adult discount cells, one row for both authorities.
+    assert len(rows) == 49
+    assert sum(len(row["area_ids"]) for row in rows) == 93
     assert {
         area_id: sum(area_id in row["area_ids"] for row in rows)
         for area_id in ("E06000053", "E09000001")
-    } == {"E06000053": 43, "E09000001": 48}
+    } == {"E06000053": 44, "E09000001": 49}
     assert all(row["defer_if_compiles"] is True for row in rows)
     # The English band-H family is wholly deferred on spine support, so it
     # carries no support-floor row; the Welsh and Scottish band-H targets do
@@ -467,14 +526,15 @@ def test_a14_deferral_declarations_cover_only_currently_active_cells() -> None:
     ]
     # microcosm#1240: the three high_value_homes local-authority legs take the
     # same support-floor deferral on the Isles of Scilly and the City of London;
-    # microcosm#1207's three DESNZ energy rows take it too.
-    assert len(support) == 48
-    assert sum(len(row.area_ids) for row in support) == 91
+    # microcosm#1207's three DESNZ energy rows take it too, and so do
+    # microcosm#1095's single adult discount cells.
+    assert len(support) == 49
+    assert sum(len(row.area_ids) for row in support) == 93
     by_area = {
         area_id: sum(area_id in row.area_ids for row in support)
         for area_id in ("E06000053", "E09000001")
     }
-    assert by_area == {"E06000053": 43, "E09000001": 48}
+    assert by_area == {"E06000053": 44, "E09000001": 49}
     assert all(row.defer_if_compiles for row in support)
     assert "mhclg.council_tax_stock.by_area.band_h" not in {
         row.target_id for row in support
@@ -608,3 +668,30 @@ def test_composed_english_region_cells_sum_to_the_publisher_england_row() -> Non
     assert sum(published[f"band_{band}"] for band in "abcdefgh") == pytest.approx(
         published["total"], abs=0.5
     )
+
+
+def test_englands_single_adult_discount_is_one_national_row() -> None:
+    """MHCLG Council Taxbase line 8, all bands, at England's country grain
+    (microcosm#953), against the households policyengine-uk gives the 25%
+    discount."""
+
+    (reference,) = [
+        r
+        for r in load_country_spec("uk").target_references
+        if r.name == _SINGLE_ADULT_DISCOUNT
+    ]
+    assert reference.entity == "household"
+    assert reference.measure == "mhclg/council_tax/single_adult_discount"
+    assert reference.ledger_selector["geography_level"] == "country"
+    assert reference.ledger_selector["geography_id"] == "E92000001"
+    assert reference.ledger_selector["source_measure_id"] == "total"
+    (target,) = [
+        target
+        for target in load_uk_population_contract()["targets"]
+        if target["target_id"] == _SINGLE_ADULT_DISCOUNT
+    ]
+    conditions = target["bindings"]["policyengine"]["household_conditions"]
+    assert {(c["variable"], c["value"]) for c in conditions} == {
+        ("country", "ENGLAND"),
+        ("council_tax_discount_rate", 0.25),
+    }

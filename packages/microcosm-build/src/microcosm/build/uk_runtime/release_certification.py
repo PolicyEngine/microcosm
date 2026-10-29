@@ -246,6 +246,15 @@ def uk_release_parity_evidence(
                 "grain; the reference side is keyed name@period, so a "
                 "bare-name row would silently fall out of the comparison."
             )
+        metadata = row.get("metadata")
+        if isinstance(metadata, Mapping) and metadata.get("model_figures_withheld"):
+            # A build from before María's ruling of 2026-10-26, which dropped
+            # the withholding, left this row's figures blank; the fit gate
+            # judges every row, so the run cannot be certified here.
+            raise UKReleaseCertificationError(
+                f"diagnostics target {name!r} withholds its model figures; "
+                "rebuild the run to certify it."
+            )
         target_relative_errors[name] = float(row["relative_error"])
     return SimpleNamespace(
         candidate_columns=uk_export_candidate_columns(frame),

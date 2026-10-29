@@ -31,6 +31,8 @@ UK_TARGET_COMPILE_MODULE_NAMES: tuple[str, ...] = (
     "microcosm.build.uk_runtime.chronicle_feed",
     "microcosm.build.uk_runtime.council_tax_constants",
     "microcosm.build.uk_runtime.cross_grain_declarations",
+    "microcosm.build.uk_runtime.derived_facts",
+    "microcosm.build.uk_runtime.desnz_constituency_energy",
     "microcosm.build.uk_runtime.domestic_energy_targets",
     "microcosm.build.uk_runtime.energy_pricing",
     "microcosm.build.uk_runtime.frs_release",

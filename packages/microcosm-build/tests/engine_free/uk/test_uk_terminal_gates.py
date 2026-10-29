@@ -42,7 +42,15 @@ VALIDATE_REFERENCE = (
 )
 
 
-def _entry(reason: str, *, expires_on: str = "2027-02-10") -> dict[str, str]:
+#: A synthetic approval window. The gates compare it with the real date when a
+#: test passes no ``now``, so a real-looking window (it was 2026-08-10 to
+#: 2027-02-10) would fail those tests once it lapsed, as the UK build
+#: fixture's did on 2026-10-04 (microcosm#1103). Expiry itself is tested with
+#: explicit dates.
+SYNTHETIC_EXPIRY = "2099-12-31"
+
+
+def _entry(reason: str, *, expires_on: str = SYNTHETIC_EXPIRY) -> dict[str, str]:
     """A valid schema-2 approval receipt around the fixture's reason."""
 
     return {
@@ -121,7 +129,7 @@ def test_reviewed_degenerate_exclusion_is_recorded_and_stale_entries_fail() -> N
     assert recorded["reason"] == reason
     assert recorded["approved_by"] == "test-reviewer"
     assert recorded["adjudication"] == "microcosm#610"
-    assert recorded["expires_on"] == "2027-02-10"
+    assert recorded["expires_on"] == SYNTHETIC_EXPIRY
     assert not stale.passed
     assert stale.details["stale_exclusions"] == ["person.employment_income"]
 
@@ -420,12 +428,17 @@ def test_export_candidate_columns_strip_ids_and_carry_the_weight() -> None:
     assert exported.mass_log == frame.mass_log
     # The boundary drops the reviewed export exclusions, the internal
     # disability carriers, the salary-sacrifice pre-conversion pay carrier,
-    # the landlord carrier and the value the regional home values replaced
-    # (microcosm#1112), and nothing else.
+    # the landlord carrier, the FRS bonus carrier (microcosm#1340), the
+    # in-household care hours carrier (microcosm#1418) and the value the
+    # regional home values replaced (microcosm#1112), and nothing else.
     from microcosm.build.uk_runtime.frs_disability import (
         UK_INTERNAL_DISABILITY_REPORTED_COLUMNS,
     )
-    from microcosm.build.uk_runtime.frs_spine import FRS_LANDLORD_CARRIER_COLUMN
+    from microcosm.build.uk_runtime.frs_spine import (
+        FRS_BONUS_CARRIER_COLUMN,
+        FRS_IN_HOUSEHOLD_CARE_HOURS_COLUMN,
+        FRS_LANDLORD_CARRIER_COLUMN,
+    )
     from microcosm.build.uk_runtime.property_localisation import RANK_BASIS_COLUMN
     from microcosm.build.uk_runtime.salary_sacrifice import (
         SALSAC_PRE_CONVERSION_PAY_COLUMN,
@@ -441,10 +454,33 @@ def test_export_candidate_columns_strip_ids_and_carry_the_weight() -> None:
         | {f"person.{column}" for column in UK_INTERNAL_DISABILITY_REPORTED_COLUMNS}
         | {f"person.{SALSAC_PRE_CONVERSION_PAY_COLUMN}"}
         | {f"person.{FRS_LANDLORD_CARRIER_COLUMN}"}
+        | {f"person.{FRS_BONUS_CARRIER_COLUMN}"}
+        | {f"person.{FRS_IN_HOUSEHOLD_CARE_HOURS_COLUMN}"}
         | {f"household.{RANK_BASIS_COLUMN}"}
     )
     # A frame without the column passes through untouched.
     assert uk_release_export_frame(exported) is exported
+
+
+def test_no_spine_column_writes_an_input_signed_at_the_engine_default() -> None:
+    """A signed engine default (microcosm#1095) holds only while no stage writes it."""
+
+    import json
+
+    from microcosm.frame.adapters.policyengine_uk_concepts import (
+        UK_ENGINE_DEFAULT_INPUTS,
+    )
+    from test_support.paths import paths_for
+
+    schema = json.loads(
+        (
+            paths_for("microcosm-graph").tests
+            / "fixtures/parity/uk_spine/sources/schema.json"
+        ).read_text()
+    )
+    written = {column for dtypes in schema["dtypes"].values() for column in dtypes}
+    assert "self_employment_income" in written
+    assert not written & set(UK_ENGINE_DEFAULT_INPUTS)
 
 
 def _target_fit_exclusion(
@@ -579,21 +615,14 @@ def test_committed_target_fit_register_retains_only_live_deferrals() -> None:
     # to +23.4 % across the C3 and final arms, inside the bound, and the gate
     # fails the deferral as stale.
     assert set(register) == {
-        "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_0_to_1_200@2025",
-        "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_1_200_to_2_400@2025",
-        "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_2_400_to_3_600@2025",
-        "dwp/uc_payment_dist/SINGLE_annual_payment_2_400_to_3_600@2025",
-        "hmrc.itl.taxpayers_by_total_income_band.band_2000000_plus@2025",
-        "hmrc.spi.savings_interest_income.count_by_total_income_band.band_150000@2025",
-        "hmrc.spi_region.taxpayers_by_region_200000_plus@E12000004@2025",
-        "hmrc/dividend_income_income_band_15_000_to_20_000@2025",
+        "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_15000@2025",
+        "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_20000@2025",
+        "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_30000@2025",
         "hmrc/dividend_income_income_band_20_000_to_30_000@2025",
         "hmrc/dividend_income_income_band_30_000_to_40_000@2025",
         "hmrc/dividend_income_income_band_40_000_to_50_000@2025",
         "hmrc/private_pension_income_income_band_12_570_to_15_000@2025",
-        "hmrc/private_pension_income_income_band_15_000_to_20_000@2025",
-        "hmrc/property_income_income_band_12_570_to_15_000@2025",
-        "hmrc/property_income_income_band_15_000_to_20_000@2025",
+        "hmrc/state_pension_count_income_band_500_000_to_1_000_000@2025",
     }
     assert {record.release_lines for record in register.values()} == {("local",)}
 
@@ -618,37 +647,43 @@ def test_committed_local_target_fit_register_is_empty_and_well_formed() -> None:
         assert "%" not in record.reason, key
     assert uk_default_local_target_fit_reviewed_exclusions() is register
     assert set(register) == {
+        "age_structure/E06000018/age/20_30",
         "age_structure/E07000008/age/20_30",
+        "age_structure/E07000178/age/20_30",
         "age_structure/E14001080/age/20_30",
         "age_structure/E14001081/age/20_30",
-        "age_structure/E14001086/age/20_30",
         "age_structure/E14001096/age/20_30",
-        "age_structure/E14001120/age/20_30",
         "age_structure/E14001131/age/20_30",
         "age_structure/E14001149/age/20_30",
         "age_structure/E14001182/age/20_30",
+        "age_structure/E14001231/age/20_30",
+        "age_structure/E14001301/age/20_30",
         "age_structure/E14001319/age/20_30",
+        "age_structure/E14001327/age/20_30",
         "age_structure/E14001338/age/20_30",
         "age_structure/E14001352/age/20_30",
         "age_structure/E14001353/age/20_30",
+        "age_structure/E14001410/age/20_30",
         "age_structure/E14001412/age/20_30",
+        "age_structure/E14001420/age/20_30",
         "age_structure/E14001467/age/20_30",
-        "age_structure/S14000085/age/20_30",
+        "age_structure/S12000013/age/20_30",
+        "age_structure/S12000013/age/60_70",
+        "age_structure/S14000027/age/60_70",
         "age_structure/W07000091/age/20_30",
         "council_tax/E06000014/council_tax/band_a",
+        "council_tax/E09000020/council_tax/band_b",
+        "council_tax/E09000020/council_tax/band_g",
+        "council_tax/E09000030/council_tax/band_f",
+        "council_tax/E09000033/council_tax/band_b",
+        "council_tax/E09000033/council_tax/band_f",
         "council_tax/E09000033/council_tax/band_g",
         "council_tax/S12000013/council_tax/band_a",
-        "domestic_energy/S12000013/energy/gas_connected_households",
-        "domestic_energy/S12000017/energy/gas_connected_households",
-        "domestic_energy/S12000023/energy/electricity_kwh",
-        "domestic_energy/S12000027/energy/electricity_kwh",
-        "hmrc_income_by_area/E14001538/hmrc/self_employment_income/count",
-        "private_rent/E06000043/rent/private_rent",
-        "private_rent/E08000003/rent/private_rent",
-        "private_rent/E09000033/rent/private_rent",
-        "tenure/E09000012/tenure/private_rent",
-        "tenure/E09000019/tenure/private_rent",
-        "tenure/E09000019/tenure/social_rent",
+        "council_tax/S12000013/council_tax/band_f",
+        "council_tax/S12000035/council_tax/band_b",
+        "council_tax/W06000018/council_tax/band_h",
+        "tenure/E09000033/tenure/owned_mortgage",
+        "uc_households/E14001098/uc_hh_3plus_children",
     }
     assert {record.release_lines for record in register.values()} == {("local",)}
 
@@ -859,6 +894,8 @@ def test_committed_degenerate_register_is_the_policy_of_record() -> None:
     register = uk_default_degenerate_reviewed_exclusions()
     assert set(register) == {
         "household.atomic_area_basis",
+        "household.beer_draught_share",
+        "household.cider_draught_share",
         "household.source_year",
         "person.tax_free_childcare_spend_routed_share",
     }
@@ -880,6 +917,16 @@ def test_committed_degenerate_register_is_the_policy_of_record() -> None:
     assert routed_share.approved_on == "2026-09-05"
     assert routed_share.expires_on == "2027-03-05"
     assert routed_share.reason.strip()
+    # The excise step writes HMRC's published draught-relief share to every
+    # household (microcosm#1359), on both lines.
+    for column in ("household.beer_draught_share", "household.cider_draught_share"):
+        draught = register[column]
+        assert draught.adjudication == "microcosm#1359"
+        assert draught.approved_by == "juaristi22"
+        assert draught.approved_on == "2026-10-27"
+        assert draught.expires_on == "2027-04-27"
+        assert not draught.release_lines
+        assert draught.reason.strip()
 
 
 def test_policy_of_record_is_immutable_and_loaded_once() -> None:
@@ -892,7 +939,7 @@ def test_policy_of_record_is_immutable_and_loaded_once() -> None:
 
 
 def test_expired_degenerate_exclusion_fails_with_renewal_context() -> None:
-    entry = _entry("Fixture broadcast, admitted.")
+    entry = _entry("Fixture broadcast, admitted.", expires_on="2027-02-10")
     honored = uk_degenerate_release_surface_gate(
         _dataset(signal=7.0),
         reviewed_exclusions={"person.employment_income": entry},
@@ -922,8 +969,12 @@ def test_out_of_force_exclusions_fail_at_every_column_state() -> None:
     dormant = uk_degenerate_release_surface_gate(
         _dataset(signal=7.0),
         reviewed_exclusions={
-            "person.employment_income": _entry("Fixture broadcast, admitted."),
-            "person.ghost_column": _entry("Column since dropped."),
+            "person.employment_income": _entry(
+                "Fixture broadcast, admitted.", expires_on="2027-02-10"
+            ),
+            "person.ghost_column": _entry(
+                "Column since dropped.", expires_on="2027-02-10"
+            ),
         },
         now=after_expiry,
     )
@@ -940,7 +991,9 @@ def test_out_of_force_exclusions_fail_at_every_column_state() -> None:
     regained = uk_degenerate_release_surface_gate(
         _dataset(),
         reviewed_exclusions={
-            "person.employment_income": _entry("Fixture broadcast, admitted.")
+            "person.employment_income": _entry(
+                "Fixture broadcast, admitted.", expires_on="2027-02-10"
+            )
         },
         now=after_expiry,
     )

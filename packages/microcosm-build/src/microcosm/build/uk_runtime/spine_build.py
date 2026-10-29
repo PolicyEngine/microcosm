@@ -90,9 +90,15 @@ from microcosm.build.uk_runtime.cgt_support import UKCGTSupportSplitStageTransfo
 from microcosm.build.uk_runtime.child_benefit_take_up import (
     UKChildBenefitTakeUpStageTransform,
 )
+from microcosm.build.uk_runtime.childcare_copy_take_up import (
+    UKChildcareCopyTakeUpStageTransform,
+)
 from microcosm.build.uk_runtime.content_identity import uk_frame_content_identity
 from microcosm.build.uk_runtime.etb_services import UKETBServicesStageTransform
 from microcosm.build.uk_runtime.etb_vat import UKETBVATStageTransform
+from microcosm.build.uk_runtime.frs_annual_income import (
+    UKFRSAnnualIncomeStageTransform,
+)
 from microcosm.build.uk_runtime.frs_brma import UKFRSBRMAStageTransform
 from microcosm.build.uk_runtime.frs_council_tax import UKFRSCouncilTaxStageTransform
 from microcosm.build.uk_runtime.frs_disability import UKFRSDisabilityStageTransform
@@ -179,6 +185,10 @@ from microcosm.build.uk_runtime.spi_band_donors import (
 from microcosm.build.uk_runtime.spi_benefit_coherence import (
     UKSPIBenefitCoherenceStageTransform,
 )
+from microcosm.build.uk_runtime.spi_dependency import (
+    UK_SPI_PUBLIC_USE_TAPE_KEY,
+    uk_spi_public_use_tape_marker,
+)
 from microcosm.build.uk_runtime.spi_housing_shell import (
     UKSPIHousingShellStageTransform,
 )
@@ -199,6 +209,7 @@ from microcosm.build.uk_runtime.uc_deduction_attributes import (
 from microcosm.build.uk_runtime.uc_reporter_redraw import (
     UKUCReporterRedrawStageTransform,
 )
+from microcosm.build.uk_runtime.uc_take_up import UKUCTakeUpStageTransform
 from microcosm.build.uk_runtime.was_lisa import UKWASLISAStageTransform
 from microcosm.build.uk_runtime.was_wealth import UKWASWealthStageTransform
 from microcosm.frame import Frame
@@ -714,12 +725,68 @@ def _rules_engine() -> PolicyEngineUKEngine:
     return PolicyEngineUKEngine()
 
 
-def _rules_engine_provenance() -> dict[str, str]:
+def _rules_engine_provenance() -> dict[str, object]:
     try:
         version = metadata.version("policyengine-uk")
     except metadata.PackageNotFoundError:
         return {"package": "policyengine-uk", "version": "unavailable"}
-    return {"package": "policyengine-uk", "version": version}
+    provenance: dict[str, object] = {"package": "policyengine-uk", "version": version}
+    direct_install = _direct_install("policyengine-uk")
+    if direct_install is not None:
+        # A release installed from an index writes no direct_url.json
+        # (PEP 610), so its provenance, and the engine identity hashed from
+        # it, stay as they were.
+        provenance["direct_install"] = direct_install
+    return provenance
+
+
+def _direct_install(package: str) -> dict[str, object] | None:
+    """What PEP 610's ``direct_url.json`` records of a URL install, or None.
+
+    A git install of an engine pull request carries a release's version
+    string, so only this tells the two apart: it names the commit. An archive
+    is named by every hash its record holds, whatever the algorithm, and one
+    that records no hash is refused, since nothing would tell it from another
+    archive. URLs are left out, so no local path reaches a build or release
+    record.
+    """
+    try:
+        text = metadata.distribution(package).read_text("direct_url.json")
+    except metadata.PackageNotFoundError:
+        return None
+    if not text:
+        return None
+    record = json.loads(text)
+    vcs = record.get("vcs_info")
+    if isinstance(vcs, Mapping):
+        return {
+            "kind": "vcs",
+            "vcs": str(vcs.get("vcs", "")),
+            "commit_id": str(vcs.get("commit_id", "")),
+        }
+    archive = record.get("archive_info")
+    if isinstance(archive, Mapping):
+        listed = archive.get("hashes")
+        hashes = (
+            {str(name): str(value) for name, value in listed.items()}
+            if isinstance(listed, Mapping)
+            else {}
+        )
+        legacy = archive.get("hash")
+        if isinstance(legacy, str) and "=" in legacy:
+            name, value = legacy.split("=", 1)
+            hashes.setdefault(name, value)
+        if not hashes:
+            raise ValueError(
+                f"{package} was installed from an archive whose direct_url.json "
+                "records no hash, so no engine identity can tell it from another "
+                "archive: install a release, or an archive with a recorded hash."
+            )
+        return {"kind": "archive", "hashes": dict(sorted(hashes.items()))}
+    directory = record.get("dir_info")
+    if isinstance(directory, Mapping):
+        return {"kind": "dir", "editable": bool(directory.get("editable", False))}
+    return {"kind": "unrecognised"}
 
 
 def _declared_seeds(stages) -> dict[str, dict[str, int]]:
@@ -771,7 +838,10 @@ def _declared_seeds(stages) -> dict[str, dict[str, int]]:
                     stage_seeds["within_band_draws"] = seed
                 elif operation.kind == "assign_badr_qualifying_gains":
                     stage_seeds[operation.kind] = seed
-                elif operation.kind == "convert_donors_to_target_stock":
+                elif operation.kind in (
+                    "convert_donors_to_target_stock",
+                    "convert_bonuses_to_bonus_sacrifice",
+                ):
                     stage_seeds[str(operation.parameters["salt"])] = seed
                 elif operation.kind == "top_up_to_stock":
                     stage_seeds[str(operation.parameters["salt"])] = seed
@@ -840,6 +910,9 @@ def _build_sidecar(
         "spine_gate_report": spine_gate_report,
         "stochastic_contract_sha256": stochastic_contract_sha256,
         "rules_engine": _rules_engine_provenance(),
+        # Which stages read the SPI Public Use Tape, whose Special Conditions
+        # reach every output built on them (microcosm#1095).
+        UK_SPI_PUBLIC_USE_TAPE_KEY: uk_spi_public_use_tape_marker(stages),
     }
 
 
@@ -1685,6 +1758,13 @@ def prepare_uk_spine_execution(
             sampled_rung=_is_sampled(args),
         )
     )
+    if "frs_annual_income_spells" in stage_names:
+        implementations["frs_annual_income_spells"] = _GraphSourceTransform(
+            lambda sources: UKFRSAnnualIncomeStageTransform(
+                sources["frs"],
+                stage=stages_by_name["frs_annual_income_spells"],
+            )
+        )
     implementations["spi_support_channel"] = UKSPISupportChannelStageTransform(
         stage=stages_by_name["spi_support_channel"],
         sample_fraction=args.sample_fraction,
@@ -1714,6 +1794,11 @@ def prepare_uk_spine_execution(
     if "uc_capital_coherence" in stage_names:
         implementations["uc_capital_coherence"] = UKUCCapitalCoherenceStageTransform(
             stage=stages_by_name["uc_capital_coherence"]
+        )
+    if "uc_take_up" in stage_names:
+        implementations["uc_take_up"] = UKUCTakeUpStageTransform(
+            stage=stages_by_name["uc_take_up"],
+            engine=engine,
         )
     if "uc_legacy_closure_take_up" in stage_names:
         implementations["uc_legacy_closure_take_up"] = (
@@ -1793,6 +1878,11 @@ def prepare_uk_spine_execution(
                 engine=engine,
                 calibration_year=frs_release.calibration_year,
             )
+        )
+    if "childcare_copy_take_up" in stage_names:
+        implementations["childcare_copy_take_up"] = UKChildcareCopyTakeUpStageTransform(
+            contract=stochastic_contract,
+            stage=stages_by_name["childcare_copy_take_up"],
         )
     if "age_tail" in stage_names:
         implementations["age_tail"] = UKAgeTailStageTransform(

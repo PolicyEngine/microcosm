@@ -143,7 +143,7 @@
         "check": "wealth_coherence",
         "maximum_owner_share_without_main_residence_excess": 0.005
       },
-      "notes": "Stage-time coherence gate over the WAS wealth receipt (microcosm#1063). Zero rows may carry a main-residence mortgage off the mortgaged tenure or main_residence_value off an owner tenure: both columns are fitted and drawn inside their tenure stratum, so a non-zero count is a defect of the stage, not of a draw; mortgage_debt itself is the main-residence mortgage plus the mortgages on other property, held on any tenure. Every derived total must equal its components on every row (property_wealth, corporate_wealth, gross_financial_wealth, mortgage_debt, and net_financial_wealth as gross less consumer debt and the student loan balance); the stage derives them, so only a support clip of a total can open a gap, and the support gate allows none. The weighted share of owner households without a main-residence value may exceed the donor's own share by at most the reviewed excess (the donor's share is zero on the pinned round-8 tab, where every owner reports a value). The receipt's donor comparisons (positive shares by tenure, the mortgaged share owing more than the main-residence value, the mortgage mass held off the mortgaged tenure on each side) and the rows the donor-range cap adjusted are recorded in the details and carry no threshold."
+      "notes": "Stage-time coherence gate over the WAS wealth receipt (microcosm#1063). Zero rows may carry a main-residence mortgage off the mortgaged tenure or main_residence_value off an owner tenure: both columns are fitted and drawn inside their tenure stratum, so a non-zero count is a defect of the stage, not of a draw; mortgage_debt itself is the main-residence mortgage plus the mortgages on other property, held on any tenure. Every derived total must equal its components on every row (property_wealth, corporate_wealth, gross_financial_wealth, mortgage_debt, and net_financial_wealth as gross less consumer debt and the student loan balance); the stage derives them, so only a support clip of a total can open a gap, and the support gate allows none. The share split and the stocks-and-shares ISA must sum to corporate_wealth, and every debt secured on other property must sit on a held asset of its class, be non-negative, and with the other within the mortgages on other property (share_split_violation_rows, secured_debt_violation_rows; the WAS property draw of microcosm#1095), all written by the stage on the final totals. The weighted share of owner households without a main-residence value may exceed the donor's own share by at most the reviewed excess (the donor's share is zero on the pinned round-8 tab, where every owner reports a value). The receipt's donor comparisons (positive shares by tenure, the mortgaged share owing more than the main-residence value, the mortgage mass held off the mortgaged tenure on each side) and the rows the donor-range cap adjusted are recorded in the details and carry no threshold."
     },
     {
       "id": "uk_stage_was_lisa_support",
@@ -390,7 +390,43 @@
         "check": "recomposed_totals",
         "maximum_relative_deviation": 1e-09
       },
-      "notes": "Stage-time check on the lcfs recomposed_totals receipt (microcosm#1113): housing_water_and_electricity_consumption and transport_consumption each keep their own chain draw less the chain's draws of the parts the stage re-levels (the drawn electricity and gas, or the drawn petrol, diesel and bus fares; floored at zero where the parts outgrow the total) and add the levelled parts back, so no household's total is below its electricity and gas, or its petrol, diesel and priced bus fares, and no remainder is negative. The declared parts must be the receipt's, the weighted remainder must equal the drawn total less the drawn parts plus the floored mass, and the weighted total the remainder plus the levelled parts, to the declared tolerance. The step floors the remainder and adds the parts, so on a receipt the declared step wrote these are identities: the check guards the declaration and the receipt, not the size of the totals. The committed support bounds do that, on the emitted frame, through the terminal uk_support gate. The ONS 04.5.3 and 04.5.4 liquid and solid fuel spend no frame column carries is recomputed from the vendored rows and must equal the receipt's; the housing remainder holds the diary's other fuels, which the stage's energy derivation leaves out of electricity and gas (microcosm#1164). A population fact check: the synthetic smoke records it without blocking."
+      "notes": "Stage-time check on the lcfs recomposed_totals receipt (microcosm#1113): housing_water_and_electricity_consumption and transport_consumption each keep their own chain draw less the chain's draws of the parts the stage re-levels (the drawn electricity and gas, or the drawn petrol, diesel and bus fares; floored at zero where the parts outgrow the total) and add the levelled parts back, so no household's total is below its electricity and gas, or its petrol, diesel and priced bus fares, and no remainder is negative. The declared parts must be the receipt's, the weighted remainder must equal the drawn total less the drawn parts plus the floored mass, and the weighted total the remainder plus the levelled parts, to the declared tolerance. The step floors the remainder and adds the parts, so on a receipt the declared step wrote these are identities: the check guards the declaration and the receipt, not the size of the totals. The committed support bounds do that, on the emitted frame, through the terminal uk_support gate. The ONS 04.5.3 and 04.5.4 liquid and solid fuel spend no frame column carries is recomputed from the vendored rows and must equal the receipt's; the housing remainder holds the diary's other fuels, which the stage's energy derivation leaves out of electricity and gas (microcosm#1164). A population fact check: the synthetic smoke records it without blocking. Since microcosm#1278 (María's ruling of 2026-10-23) the stage levels the divisions' relative over-draw before the hold, so a recomposed total's remainder is its draw less the drawn parts plus the floored mass, times its recorded levelling factor, which must lie in [0, 1]; the published heating-fuel spend (published_fuels, ONS 04.5.3 and 04.5.4) replaced the uncarried block when the stage began drawing those fuels."
+    },
+    {
+      "id": "uk_stage_lcfs_consumption_excise_quantities",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "evidence_absent_blocks": true,
+      "population_fact_check": true,
+      "parameters": {
+        "stage": "lcfs_consumption",
+        "check": "excise_quantities",
+        "maximum_relative_deviation": 1e-09,
+        "maximum_parent_residual_share": 0.01,
+        "required_support_band": "30+"
+      },
+      "notes": "Stage-time fact check on the lcfs excise_quantities and excise_shares receipts (microcosm#1359): every policyengine-uk excise input the stage declares is recomputed from the vendored rows through the stage's own declaration, never taken from the receipt: each alcohol product's FY2024-25 HMRC clearances over the engine's strength, each tobacco product's clearances, each gambling duty base (HMRC's receipts for the duty or Machine Games Duty's liabilities for the band over the engine's rate, and General Betting Duty's base split by the Gambling Commission's gross gambling yield) and the beer and cider draught shares. The receipt's levels must equal them, the prior-weighted frame total of each input must equal its level and the factor must reproduce it from the household spending it is shared by, and an input is positive exactly where that spending is; the basis must be the declared fiscal year over the engine's 52 weeks, and each draught share written must be the published ratio. The three shares the spending comes from (tobacco of P602's off-trade lines, on-trade alcohol of P611, gambling stakes of P609) must have stayed in [0, 1] on the frame and rest on 30 or more donors each, and at most one percent of the donors, by weight, may carry a published total beside a share's diary lines (a share withheld for resting on under ten donors is under it). The levels are recomputed from the same vendored rows the stage read, so the check catches a step that did not apply the declared levels; it cannot catch an error in the rows themselves or a later stage moving the columns. A population fact check: the synthetic smoke records it without blocking."
+    },
+    {
+      "id": "uk_stage_lcfs_consumption_gambling_participation",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "evidence_absent_blocks": true,
+      "population_fact_check": true,
+      "parameters": {
+        "stage": "lcfs_consumption",
+        "check": "gambling_participation",
+        "maximum_relative_deviation": 1e-09,
+        "maximum_stratum_shortfall": 0.01,
+        "amount_scale_bounds": [
+          0.5,
+          2.5
+        ],
+        "required_support_band": "30+"
+      },
+      "notes": "Stage-time fact check on the lcfs gambling_participation receipt (microcosm#1359): each key's adult participation rates (the National Lottery's products, and the betting and gaming the other gambling duties charge; past four weeks and past twelve months, by sex and age band) are recomputed from the vendored GSGB 2025 rows through the stage's own declaration, never taken from the receipt, and must equal the receipt's, and the receipt's settings (theta per key, the occasional players' stake share, the strata, the propensity classifier, the seed and the salt) must be the declared ones. Per key, each household stratum the receipt gives must sit within maximum_stratum_shortfall of its four-week target and from there of its twelve-month target, or add no household where the diary already passed a target; the national shares must reach the targets less that shortfall; no added household may lack a stake; the three classes' shares of the key's stakes must sum to one; the scale that brings the added regular players' mean stake to the seen households' must lie in amount_scale_bounds, so a broken stake draw that the anchoring would otherwise hide fails (Vahid's review, round 4; the upper bound rose from 2.0 to 2.5 on María's ruling of 2026-10-26, since full spine builds scale the National Lottery's added regular players by about 2.03); the propensity must rest on 30 or more donors; and the excise levelling must have shared the gambling bases by the topped-up keys, each key positive on its twelve-month share. The receipt withholds a stratum with a cell under ten source households, which the gate counts rather than checks; a key withheld nationally fails. The rates are recomputed from the same vendored rows the stage read, so the check catches a step that did not apply the declared rates or settings; it cannot catch an error in the rows themselves, and the stratum targets, which need the frame's adults, are the step's own (it refuses a stratum it cannot fill). A population fact check: the synthetic smoke records it without blocking."
     },
     {
       "id": "uk_stage_lcfs_consumption_basis",
@@ -487,6 +523,28 @@
       "notes": "Stage-time source-signal gate over the retained FRS/HMRC leaves receipt. hmrc_spi_incapacity_benefit_income is the E7 reviewed-absent adjudication (microcosm#683, 2026-08-18): the FRS 2024-25 source carries no incapacity-benefit signal, the stage's own fence raises at build time if a future vintage does, and the reviewed list here makes the battery agree with that adjudication instead of re-litigating it every build."
     },
     {
+      "id": "uk_stage_frs_annual_income_spells",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "evidence_absent_blocks": true,
+      "population_fact_check": true,
+      "parameters": {
+        "stage": "frs_annual_income_spells",
+        "check": "frs_annual_income_spells",
+        "pay_concept_ratio_bounds": [
+          0.95,
+          1.1
+        ],
+        "annual_over_current_earners_bounds": [
+          1.0,
+          1.15
+        ],
+        "minimum_observed_pay_share": 0.7
+      },
+      "notes": "Stage-time gate over the annual income descriptors' receipt: every share lies in [0, 1], no other-spell amount is negative and every full-year earner keeps the whole year, exactly; the usual-to-DV pay ratio the stage measures lies in [0.95, 1.10]; annual employee earners are between one and 1.15 times current ones (the survey's spells add part-year earners and cannot remove a current one); and, where ten or more households carry it, at least 0.7 of the pay outside the current job is observed rather than drawn from a donor."
+    },
+    {
       "id": "uk_stage_spi_support_channel_mass",
       "gate": "stage_health",
       "phase": "transferred",
@@ -541,10 +599,26 @@
         "restored_columns": [
           "iidb_reported",
           "afcs_reported",
-          "bsp_reported"
+          "bsp_reported",
+          "war_widows_pension_reported",
+          "widowed_parents_allowance_reported"
         ]
       },
       "notes": "Stage-time structural gate over the SPI benefit coherence receipt (microcosm#1095, uk-data#514): no SPI-channel row keeps a zeroed legacy report, every restored report equals the FRS twin's, receives_benefits_in_own_right agrees with each person's own reports, FRS rows are unchanged, every SPI benefit unit with a Universal Credit reporter claims, and no SPI unit outside the Universal Credit age population claims without reporting."
+    },
+    {
+      "id": "uk_stage_uc_take_up",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "evidence_absent_blocks": true,
+      "population_fact_check": true,
+      "parameters": {
+        "stage": "uc_take_up",
+        "check": "uc_take_up",
+        "maximum_caseload_deviation": 0.055
+      },
+      "notes": "Stage-time gate over the Universal Credit take-up receipt (microcosm#1334): every reporter claims and no unit outside the draw changes; in each DWP family type the pools whose target is reachable realize DWP's calendar-2025 caseload within 0.055 of it at the stage's weights, Great Britain only, counting units the engine moves off their legacy benefits at their expected claim at the closure; and the family type's caseload is no further from DWP's than before the redraw, give or take 0.055 of DWP's count. The tolerance was 0.05 until microcosm#1418: routing gilt interest out of dividend_income reshuffles the SPI channel's draws. On the spine of 2026-10-28 (da944f12c), single people's caseload ends 0.0523 of DWP's count further from it than before the redraw (0.0486 on the spine before, 3c0d11b6's), so 0.055 holds it with about 8,000 to spare; couples without children, lone parents and couples with children end closer than before by 0.53, 0.054 and 0.42 of their counts, and every family type's reachable pools realize DWP's count within 0.0015. The terminal take-up signal gate no longer measures would_claim_uc, whose rate is now set by award band and family type, not as one share of the age population."
     },
     {
       "id": "uk_stage_pension_credit_take_up",
@@ -763,6 +837,86 @@
       "notes": "Stage-time invariants over the #791 relationship receipt: exactly one HEAD per household agreeing with hrpid and hrpnum, contiguous person numbers, no person with two partners, no unmapped relhrp code, family index and enum domains consistent, and the ten-cell household-type partition covering every household exactly once. The grid reciprocity tolerance is the reviewed 2024-25 tape count; a re-issued tape with a different count refuses for review."
     },
     {
+      "id": "uk_stage_regional_home_values_ranking",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "evidence_absent_blocks": true,
+      "population_fact_check": true,
+      "parameters": {
+        "stage": "regional_home_values",
+        "check": "regional_home_values",
+        "regions": [
+          "E12000001",
+          "E12000002",
+          "E12000003",
+          "E12000004",
+          "E12000005",
+          "E12000006",
+          "E12000007",
+          "E12000008",
+          "E12000009",
+          "W92000004"
+        ],
+        "maximum_sources_at_cap": 0,
+        "knots_basis_year": 2024,
+        "rank_basis": "weighted_midpoint_within_frs_region"
+      },
+      "notes": "Stage-time gate over the regional home-values receipt (microcosm#1308, gated with the next policyengine-uk bump on María's ruling of 2026-10-17): every English region and Wales has rows re-ranked on the regional knots, no more rows are rewritten than the stage carries, no source sits at the value cap, the knots are the 2024 basis and the ranking is the weighted midpoint within each FRS region, and the weighted value stays positive before and after the stage. A synthetic smoke build records a failure without blocking on it (population_fact_check): the fixture holds a few regions, not the population the regional knots describe."
+    },
+    {
+      "id": "uk_stage_property_purchases_fit",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "evidence_absent_blocks": true,
+      "population_fact_check": true,
+      "parameters": {
+        "stage": "property_purchases",
+        "check": "property_purchases",
+        "kinds": [
+          "additional_residential",
+          "non_residential"
+        ],
+        "maximum_transactions_relative_deviation": 0.05,
+        "maximum_value_shortfall_share": 0.2
+      },
+      "notes": "Stage-time gate over the property purchases receipt (microcosm#1308, gated with the next policyengine-uk bump on María's ruling of 2026-10-17): the additional-dwelling and non-residential kinds are each drawn once; each draws HMRC's Stamp Tax transactions within 5 percent (the events are drawn, so the count is near, not exact); each fits HMRC's value less its recorded shortfall, which may not pass one fifth, the floor the stage itself refuses below; and the individuals' shares of HMRC's all-buyers totals are proper shares. A synthetic smoke build records a failure without blocking on it (population_fact_check): the fixture sizes its own targets to its few households and carries none of HMRC's published shares."
+    },
+    {
+      "id": "uk_stage_uc_legacy_closure_take_up_contract",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "evidence_absent_blocks": true,
+      "parameters": {
+        "stage": "uc_legacy_closure_take_up",
+        "check": "legacy_closure_take_up",
+        "p_basis": "spine_design_weights_great_britain",
+        "rate_sources": [
+          "combination",
+          "all_households"
+        ]
+      },
+      "notes": "Stage-time gate over the Move to UC take-up receipt (microcosm#1308, gated with the next policyengine-uk bump on María's ruling of 2026-10-17). The receipt withholds what a thin combination realizes, so the gate holds the contract it can read: the share is measured at the spine's design weights over Great Britain, every combination's rate is a probability taken from its combination or from all households, its support is a printed band, its unreachable flag is a boolean, a withheld \"<10\" or absent, and the share claiming at closure is a share or withheld."
+    },
+    {
+      "id": "uk_stage_frs_person_draws_apprentices",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "evidence_absent_blocks": true,
+      "population_fact_check": true,
+      "parameters": {
+        "stage": "frs_person_draws",
+        "check": "apprentice_draw",
+        "rate_key": "apprentice_stock_19_to_24",
+        "maximum_relative_realization_deviation": 0.05,
+        "maximum_implied_relief": 370000000.0
+      },
+      "notes": "Stage-time gate over the is_apprentice receipt (microcosm#1373). The draw's target is the contract's apprentice_stock_19_to_24 for the build year (DfE's England apprentices in learning at the start of the academic year, participation less starts, per head aged 19 to 24) times the weighted population aged 21 to 24 at the stage's weights, and eligible employees aged 21 to 24 are flagged in the order of their identity-keyed uniform until their weight is nearest it, so the stage misses it by at most half one person's weight. The gate checks that the receipt carries the contract's rate under the declared key, that its target is that rate times its population, that its support is printed in bands, and, unless the eligible employees weigh no more than the target (cap-bound, every one of them flagged), that the flagged weight lies within maximum_relative_realization_deviation (5 percent) of the target. That tolerance is a declared rule set above the half-weight bound, not a fact. A figure resting on fewer than ten source households, which the receipt withholds under the UKDS disclosure rule and prints \"<10\", is named unchecked, never failed: a small-cell rule never stops a build (María's ruling of 2026-10-26). The receipt also records the relief the flags imply at the installed engine's own Class 1 schedule for the build year (on a 2024 frame, 13.8 percent between GBP 9,100 and GBP 50,270), with each flagged employee's pay standing in for NIC earnings, and the gate holds it at or below maximum_implied_relief: GBP 370m, HMRC's NIC - NS1 for 2024-25 (tax relief statistics, January 2026, Table 2), which covers every apprentice under 25, under-21s included, since the apprentice relief takes precedence (Vahid's review of microcosm#1373, S1). It is a ceiling, not a target. The stage refuses an installed engine without the s.9B threshold or without policyengine-uk#2683's split of the apprentice minimum wage from the flag. The entry is a population_fact_check, so the synthetic smoke build over the H2 fixture records its outcome without blocking; every licensed build blocks on it."
+    },
+    {
       "id": "uk_release_input_coverage",
       "gate": "release_input_coverage",
       "phase": "terminal",
@@ -870,6 +1024,10 @@
             ],
             "owners": "household_reference_person_unit",
             "valuation": 0.9,
+            "secured_debt": {
+              "other_residential_property_value": "other_residential_property_secured_debt",
+              "non_residential_property_value": "non_residential_property_secured_debt"
+            },
             "units_reporting_universal_credit": "no_share"
           },
           "pension_credit_reported_capital": {
@@ -879,12 +1037,16 @@
               "non_residential_property_value"
             ],
             "owners": "household_reference_person_unit",
-            "valuation": 0.9
+            "valuation": 0.9,
+            "secured_debt": {
+              "other_residential_property_value": "other_residential_property_secured_debt",
+              "non_residential_property_value": "non_residential_property_secured_debt"
+            }
           }
         },
         "sum_tolerance": 0.01
       },
-      "notes": "Benunit-aggregated reported Universal Credit must imply would_claim_uc. Both recorded capitals, uc_reported_capital and pension_credit_reported_capital, are bounded below by the named -1 unavailable sentinel and may use it only where the FRS carrier frs_benunit_capital is unavailable. Otherwise each equals the carrier plus the household property the unit holds, re-derived here with the stage's own rule (microcosm#1095): the household reference person's benefit unit holds the household's property at 90% of its value, market value less 10% for the costs of sale, and no other unit holds any. UC counts other residential and non-residential property, and a unit that reports Universal Credit keeps its receipt and carries none; Pension Credit counts those and owned land. The sum may differ by GBP 0.01 plus one float32 step of the expected value, so a float32 round-trip of the export does not fail it."
+      "notes": "Benunit-aggregated reported Universal Credit must imply would_claim_uc. Both recorded capitals, uc_reported_capital and pension_credit_reported_capital, are bounded below by the named -1 unavailable sentinel and may use it only where the FRS carrier frs_benunit_capital is unavailable. Otherwise each equals the carrier plus the household property the unit holds, re-derived here with the stage's own rule (microcosm#1095): the household reference person's benefit unit holds the household's property at 90% of its value, market value less 10% for the costs of sale, less the debt secured on it class by class and floored at zero per class (UC Regs 2013 reg 49(1)(b); SPC Regs 2002 reg 19(b); the WAS property draw of microcosm#1095, owned land carrying none), and no other unit holds any. UC counts other residential and non-residential property, and a unit that reports Universal Credit keeps its receipt and carries none; Pension Credit counts those and owned land. The sum may differ by GBP 0.01 plus one float32 step of the expected value, so a float32 round-trip of the export does not fail it. No unit may sit on the -1 sentinel beside a unit that records a property share for either scheme: since policyengine-uk 2.136.1 the sentinel unit would take its own share of property the recording unit already holds, so the engine would count it twice (Vahid's review of microcosm#1333)."
     },
     {
       "id": "uk_support",
@@ -970,6 +1132,30 @@
           "household.geography_household_key",
           "household.has_fuel_consumption",
           "household.uses_energy_prepayment_meter",
+          "household.beer_litres",
+          "household.cider_litres",
+          "household.wine_litres",
+          "household.spirits_litres",
+          "household.other_fermented_litres",
+          "household.beer_draught_share",
+          "household.cider_draught_share",
+          "household.cigarettes_per_week",
+          "household.hand_rolling_tobacco_grams_per_week",
+          "household.cigars_grams_per_week",
+          "household.other_tobacco_grams_per_week",
+          "household.remote_gaming_net_losses",
+          "household.pool_betting_net_receipts",
+          "household.bingo_net_receipts",
+          "household.national_lottery_ticket_spending",
+          "household.land_based_casino_net_losses",
+          "household.machine_games_lower_rate_net_takings",
+          "household.machine_games_standard_rate_net_takings",
+          "household.machine_games_higher_rate_net_takings",
+          "household.land_based_fixed_odds_betting_net_losses",
+          "household.remote_uk_horseracing_betting_net_losses",
+          "household.remote_other_betting_net_losses",
+          "household.betting_exchange_commission",
+          "household.horse_and_dog_pool_betting_net_losses",
           "household.household_is_capital_gains_clone",
           "household.household_is_cgt_support_copy",
           "household.household_is_spi_income_band_donor",
@@ -1012,6 +1198,12 @@
           "person.dla_m_category",
           "person.dla_sc_category",
           "person.employment_sector",
+          "person.contributory_benefits_annual_share",
+          "person.employment_income_annual_share",
+          "person.employment_income_other_spells",
+          "person.private_pension_income_annual_share",
+          "person.self_employment_income_annual_share",
+          "person.self_employment_income_other_spells",
           "person.esa_health_condition_proxy",
           "person.esa_includes_support_component",
           "person.esa_support_group_proxy",
@@ -1059,6 +1251,7 @@
           "person.student_loan_balance",
           "person.student_loan_plan",
           "person.tax_free_childcare_spend_routed_share",
+          "person.is_apprentice",
           "person.trading_loss",
           "person.uc_is_in_startup_period",
           "person.uc_is_in_gainful_self_employment",
@@ -1066,6 +1259,7 @@
           "person.would_claim_carers_allowance",
           "person.would_claim_marriage_allowance",
           "person.would_claim_scp",
+          "person.max_free_entitlement_hours_used",
           "person.person_is_spi_income_band_carrier",
           "person.person_is_spi_income_recipient",
           "benunit.benunit_source_id",
@@ -1115,14 +1309,24 @@
           "household.itl1_code",
           "household.itl2_code",
           "household.itl3_code",
-          "household.ward_code"
+          "household.ward_code",
+          "person.war_widows_pension_reported",
+          "person.widowed_parents_allowance_reported",
+          "person.spousal_maintenance_income",
+          "person.pension_contributions_via_bonus_sacrifice",
+          "household.liquid_fuel_consumption",
+          "household.solid_fuel_consumption",
+          "household.directly_held_shares",
+          "household.unit_and_investment_trusts",
+          "household.other_residential_property_secured_debt",
+          "household.non_residential_property_secured_debt"
         ],
         "reviewed_exclusions": {
           "person.incapacity_benefit_reported": "The enhanced FRS stores this legacy reported-benefit input as an all-zero layer; the candidate must drop dead zero layers.",
           "household.property_wealth": "policyengine-uk derives property_wealth from main_residence_value, other_residential_property_value and non_residential_property_value; a persisted copy overrides that sum and has no uprating index, so the candidate must drop it (microcosm#1106, the uk-data#543 defect)."
         }
       },
-      "notes": "Reviewed candidate-only fields from the June UK prototype (source provenance or genuine additional model inputs, not incumbent-surface losses), with household.uses_energy_prepayment_meter added for microcosm#1110 (the LCFS prepayment-meter flag policyengine-uk reads from 2.123.3 for the Energy Price Guarantee prepayment discount; an older engine ignores it, and the incumbent does not carry it until uk-data#539) plus the two reviewed reference-side exclusions (the all-zero incapacity benefit layer and the formula-owned property_wealth total, microcosm#1106). The two hard-required columns that may never be waived stay a code-level guard, per the microcosm#327 rule that a parity comparison's registers are declared inputs. During the migration window the runtime merges the exclusion register with the legacy constant and the spec-pin tests hold the two equal; the register becomes solely load-bearing when the constant retires."
+      "notes": "Reviewed candidate-only fields from the June UK prototype (source provenance or genuine additional model inputs, not incumbent-surface losses), with household.uses_energy_prepayment_meter added for microcosm#1110 (the LCFS prepayment-meter flag policyengine-uk reads from 2.123.3 for the Energy Price Guarantee prepayment discount; an older engine ignores it, and the incumbent does not carry it until uk-data#539), the LCFS excise step's 24 household inputs added for microcosm#1359 (alcohol litres and the beer and cider draught shares, tobacco a week and the gambling duty bases; policyengine-uk reads the alcohol and tobacco ones from 2.145.0 and the gambling ones from 2.151.0, an older engine ignores them, and the incumbent carries none) plus the two reviewed reference-side exclusions (the all-zero incapacity benefit layer and the formula-owned property_wealth total, microcosm#1106). The two hard-required columns that may never be waived stay a code-level guard, per the microcosm#327 rule that a parity comparison's registers are declared inputs. During the migration window the runtime merges the exclusion register with the legacy constant and the spec-pin tests hold the two equal; the register becomes solely load-bearing when the constant retires."
     },
     {
       "id": "uk_take_up_signal",
@@ -1130,9 +1334,10 @@
       "phase": "terminal",
       "criticality": "release_blocking",
       "parameters": {
-        "maximum_share_deviation": 0.05
+        "maximum_share_deviation": 0.05,
+        "under_two_usage_maximum_share_deviation": 0.1
       },
-      "notes": "Every contract-driven stochastic flag must be non-constant and have a weighted share within +/-0.05 of its contract target. would_claim_pc is measured by uk_stage_pension_credit_take_up instead (microcosm#1069 R9), and would_claim_child_benefit and child_benefit_opts_out by uk_stage_child_benefit_take_up (microcosm#1063). would_claim_uc is drawn for FRS benefit units by frs_take_up and redrawn for SPI-channel units by spi_benefit_coherence on the same rule (microcosm#1095), so the gate measures both channels at the contract rate."
+      "notes": "Every contract-driven stochastic flag must be non-constant and have a weighted share within +/-0.05 of its contract target. would_claim_pc is measured by uk_stage_pension_credit_take_up instead (microcosm#1069 R9), would_claim_child_benefit and child_benefit_opts_out by uk_stage_child_benefit_take_up (microcosm#1063), and would_claim_uc by uk_stage_uc_take_up (microcosm#1334): frs_take_up and spi_benefit_coherence draw it at the contract rate, and uc_take_up redraws every entitled unit by award band and family type. would_claim_universal_childcare is nested under would_claim_extended_childcare, so its target is the nested marginal r_e + (1 - r_e) * r_u of the contract's conditional universal rate, and the gate fails on any benefit unit that claims the extended hours without the universal ones. max_free_entitlement_hours_used carries the under-2 usage draw: its share of persons with hours is measured over the children of DfE age 0 or 1 in units that claim the extended hours, against the weighted mean of their ages' contract rates (extended_childcare_age_0_usage, extended_childcare_age_1_usage), within +/-0.10: the DfE working-parent row at 9 to 11 months binds a thin cell of that draw's children, so the calibrated weights move the share from its rates where the spine's own weights hold it to them (ruling of 2026-10-25); tools/report_uk_childcare_realised_take_up.py records the share a file realises."
     },
     {
       "id": "uk_brma_enum_domain",
@@ -1330,13 +1535,13 @@
         "gains_growth_parameter": "gov.economic_assumptions.yoy_growth.obr.per_capita.gdp",
         "exempt_amount_parameter": "gov.hmrc.cgt.annual_exempt_amount",
         "expected_yoy_growth_by_year": {
-          "2023": 0.0532,
-          "2024": 0.0372,
-          "2025": 0.0438,
-          "2026": 0.0292,
-          "2027": 0.0323,
-          "2028": 0.031,
-          "2029": 0.0296,
+          "2023": 0.0524,
+          "2024": 0.0389,
+          "2025": 0.0474,
+          "2026": 0.0294,
+          "2027": 0.0326,
+          "2028": 0.0317,
+          "2029": 0.0306,
           "2030": 0.0315
         },
         "expected_exempt_amount_by_year": {
@@ -1353,7 +1558,7 @@
         "bound_resource": "hmrc_cgt_conditioning_facts.json",
         "bound_size_band_lower_bound": 3000
       },
-      "notes": "Projection fence over the calibrated frame's sub-exempt gainers (microcosm#970). The engine freezes the annual exempt amount at its nominal value and uprates capital_gains by OBR per-capita GDP growth, so a gainer at or just below the exempt amount in the build period becomes a CGT taxpayer in a later projected year without any change in behaviour. For every year to the horizon the gate counts the cumulative stock of build-period sub-exempt gainers (gains in (0, exempt amount]) whose gains, uprated by the cumulative growth factor to that year, exceed that year's exempt amount; the stock is non-decreasing in the year, so the horizon year carries the largest count. The bound is the vendored HMRC Table 2.1a count of 2024-25 taxpayers with gains from 3,000 to 5,999 (73,000): people already above the exempt amount, not entrants, so the bound is a plausibility ceiling (the population of the thinnest liable band), not a published entrant count. The horizon 2030 is the last year of the OBR per-capita growth path in the engine's parameter tree; later years repeat the 2030 rate, so a longer horizon would only compound a constant. The growth path and the exempt amount by year the seam reads from the installed engine are pinned here and drift-checked (the exempt amount was 6,000 in 2023-24 and 3,000 from 2024-25, so a 2023-period frame's base year reads 6,000), so an engine bump cannot move the verdict silently and re-pinning is a reviewed change; without an installed engine the seam builds the projection from these pins and the receipt says so. The margin is thin by construction: on the first rebuilt candidate the stock ran from 12.7k in 2025 to 67.6k in 2030, about 13k a year, and 61k of the 67.6k were band donors the redraw had demoted below the exempt amount, a separate decision; the anchored clones contributed 6.4k. The v20 candidate would have failed with 10.8 million in the first projected year. The bound comes from the same vendored facts the amounts stage is pinned to, never from a literal."
+      "notes": "Projection fence over the calibrated frame's sub-exempt gainers (microcosm#970). The engine freezes the annual exempt amount at its nominal value and uprates capital_gains by OBR per-capita GDP growth, so a gainer at or just below the exempt amount in the build period becomes a CGT taxpayer in a later projected year without any change in behaviour. For every year to the horizon the gate counts the cumulative stock of build-period sub-exempt gainers (gains in (0, exempt amount]) whose gains, uprated by the cumulative growth factor to that year, exceed that year's exempt amount; the stock is non-decreasing in the year, so the horizon year carries the largest count. The bound is the vendored HMRC Table 2.1a count of 2024-25 taxpayers with gains from 3,000 to 5,999 (73,000): people already above the exempt amount, not entrants, so the bound is a plausibility ceiling (the population of the thinnest liable band), not a published entrant count. The horizon 2030 is the last year of the OBR per-capita growth path in the engine's parameter tree; later years repeat the 2030 rate, so a longer horizon would only compound a constant. The growth path and the exempt amount by year the seam reads from the installed engine are pinned here and drift-checked (the exempt amount was 6,000 in 2023-24 and 3,000 from 2024-25, so a 2023-period frame's base year reads 6,000), so an engine bump cannot move the verdict silently and re-pinning is a reviewed change (re-pinned at the policyengine-uk 2.161.0 lock: from 2.155.0 the engine takes population growth from the OBR's March 2026 determinants, microcosm#1095); without an installed engine the seam builds the projection from these pins and the receipt says so. The margin is thin by construction: on the first rebuilt candidate the stock ran from 12.7k in 2025 to 67.6k in 2030, about 13k a year, and 61k of the 67.6k were band donors the redraw had demoted below the exempt amount, a separate decision; the anchored clones contributed 6.4k. The v20 candidate would have failed with 10.8 million in the first projected year. The bound comes from the same vendored facts the amounts stage is pinned to, never from a literal."
     },
     {
       "id": "uk_input_mass_parity",

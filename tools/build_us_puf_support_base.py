@@ -107,6 +107,7 @@ from microcosm.build.us_runtime import (
     us_educator_expense_signal_gate,
     us_eligibility_inputs_signal_gate,
     us_energy_subsidy_signal_gate,
+    us_esi_premiums_signal_gate,
     us_farm_business_income_signal_gate,
     us_form_4952_election_signal_gate,
     us_geography_ladder_assignment_summary,
@@ -138,6 +139,7 @@ from microcosm.build.us_runtime import (
     with_us_education_inputs,
     with_us_eligibility_inputs,
     with_us_energy_subsidy_input,
+    with_us_esi_premium_inputs,
     with_us_housing_inputs,
     with_us_immigration_inputs,
     with_us_medicare_take_up_input,
@@ -226,6 +228,7 @@ STAGE_BOUNDARIES: tuple[tuple[str, tuple[str, ...]], ...] = (
             "with_us_energy_subsidy_input",
             "with_us_retirement_contribution_inputs",
             "with_us_retirement_distribution_inputs",
+            "with_us_esi_premium_inputs",
             "with_us_immigration_inputs",
         ),
     ),
@@ -1219,6 +1222,17 @@ def _run_all(
         seed=args.seed,
         time_period=args.target_year,
     )
+    base = with_us_esi_premium_inputs(
+        base,
+        seed=args.seed,
+        time_period=args.target_year,
+    )
+    esi_premiums_gate = us_esi_premiums_signal_gate(base)
+    if not esi_premiums_gate.passed:
+        raise SystemExit(
+            "ESI premium signal gate failed before support cloning:\n  "
+            + "\n  ".join(esi_premiums_gate.failures)
+        )
     base = with_us_immigration_inputs(
         base,
         seed=args.seed,
@@ -1517,6 +1531,14 @@ def _run_all(
             "Education-input signal gate failed:\n  "
             + "\n  ".join(education_inputs_gate.failures)
         )
+    # The ESI premium inputs ride the support clone unchanged; re-prove clone
+    # agreement and the cell multiples on the cloned frame.
+    esi_premiums_post_clone_gate = us_esi_premiums_signal_gate(imputed)
+    if not esi_premiums_post_clone_gate.passed:
+        raise SystemExit(
+            "ESI premium signal gate failed after support cloning:\n  "
+            + "\n  ".join(esi_premiums_post_clone_gate.failures)
+        )
     _observe_frame_boundary(boundary_observer, "education_inputs_post_clone", imputed)
     congressional_district_assignment = {"applied": False}
     if args.assign_congressional_districts:
@@ -1726,6 +1748,16 @@ def _run_all(
             "passed": pregnancy_gate.passed,
             "failures": list(pregnancy_gate.failures),
             "details": dict(pregnancy_gate.details),
+        },
+        "esi_premiums_signal": {
+            "passed": esi_premiums_gate.passed,
+            "failures": list(esi_premiums_gate.failures),
+            "details": dict(esi_premiums_gate.details),
+        },
+        "esi_premiums_post_clone_signal": {
+            "passed": esi_premiums_post_clone_gate.passed,
+            "failures": list(esi_premiums_post_clone_gate.failures),
+            "details": dict(esi_premiums_post_clone_gate.details),
         },
         "wic_claim_signal": {
             "passed": wic_claim_gate.passed,
@@ -2330,6 +2362,15 @@ def _pre_clone_enrichment_stage(
         seed=args.seed,
         time_period=args.target_year,
     )
+    base = with_us_esi_premium_inputs(
+        base,
+        seed=args.seed,
+        time_period=args.target_year,
+    )
+    signals["esi_premiums_signal"] = _checked_gate_payload(
+        us_esi_premiums_signal_gate(base),
+        "ESI premium signal gate failed before support cloning",
+    )
     base = with_us_immigration_inputs(
         base,
         seed=args.seed,
@@ -2876,6 +2917,10 @@ def _post_qrf_frame_stage(
             us_education_inputs_signal_gate(frame),
             "Education-input signal gate failed",
         )
+        signals["esi_premiums_post_clone_signal"] = _checked_gate_payload(
+            us_esi_premiums_signal_gate(frame),
+            "ESI premium signal gate failed after support cloning",
+        )
     elif stage == "congressional_district_assignment":
         assignment: dict[str, object] = {"applied": False}
         if args.assign_congressional_districts:
@@ -3023,6 +3068,8 @@ def _export_staged_result(
         "weeks_unemployed_signal",
         "eligibility_inputs_signal",
         "pregnancy_signal",
+        "esi_premiums_signal",
+        "esi_premiums_post_clone_signal",
         "wic_claim_signal",
         "educator_expense_signal",
         "form_4952_election_signal",

@@ -29,11 +29,17 @@ from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
 from microcosm.build.ledger_artifact import ChronicleFeedPinMismatchError
+from microcosm.build.reference_profiles import (
+    reference_document_sha256,
+    resolve_reference_profiles,
+)
 from microcosm.build.transport.artifact_types import (
+    CALIBRATION_PREPARATION_TYPE,
     COMPARISON_TYPE,
     TARGET_SURFACE_TYPE,
 )
 from microcosm.build.transport.target_kernels import (
+    CALIBRATION_PREPARE,
     TAKEUP_COMPARE,
     TARGETS_COMPILE,
     TARGETS_PROBLEM,
@@ -41,6 +47,7 @@ from microcosm.build.transport.target_kernels import (
     decode_target_surface,
     parse_reference_document,
 )
+from microcosm.calibrate import TargetRegistry
 from microcosm.calibrate.artifacts import PROBLEM_TYPE, decode_problem
 from microcosm.frame import WeightKind
 from microcosm.graph import (
@@ -50,6 +57,7 @@ from microcosm.graph import (
     KernelContext,
     Node,
     NumericScope,
+    Owned,
     Slice,
 )
 from microcosm.graph.canonical import canonical_json
@@ -136,7 +144,12 @@ def _problem_node() -> Node:
 
 
 def test_kernels_declare_honest_country_neutral_contracts() -> None:
-    for kernel in (TARGETS_COMPILE, TARGETS_PROBLEM, TAKEUP_COMPARE):
+    for kernel in (
+        CALIBRATION_PREPARE,
+        TARGETS_COMPILE,
+        TARGETS_PROBLEM,
+        TAKEUP_COMPARE,
+    ):
         assert isinstance(kernel, Kernel)
         assert "nz" not in kernel.ref
         assert kernel.capabilities.consumes_se is False
@@ -145,11 +158,12 @@ def test_kernels_declare_honest_country_neutral_contracts() -> None:
         len(
             {
                 TARGETS_COMPILE.implementation_hash(),
+                CALIBRATION_PREPARE.implementation_hash(),
                 TARGETS_PROBLEM.implementation_hash(),
                 TAKEUP_COMPARE.implementation_hash(),
             }
         )
-        == 3
+        == 4
     )
 
 
@@ -183,6 +197,244 @@ def test_compile_values_are_the_fact_values(tmp_path) -> None:
     facts = {fact["label"]: fact["value"] for fact in toy_facts(CALIBRATION_TARGETS)}
     for spec in surface.registry.specs:
         assert spec.value == facts[f"Toy fact {spec.name}"]
+
+
+def _profile_document(choice="central", intervals=None):
+    declarations = {
+        "schema_version": 1,
+        "dimensions": {
+            "allocation": {
+                "default": "central",
+                "profiles": {
+                    name: {"transformations": []} for name in ("central", "sensitivity")
+                },
+            }
+        },
+    }
+    return resolve_reference_profiles(
+        references_for(CALIBRATION_TARGETS),
+        declarations,
+        {"allocation": choice},
+        intervals,
+    )
+
+
+def _preparation_node(document, receipt, intervals=None, *, dtype="int64"):
+    bindings = {
+        "schema_version": 1,
+        "required_inputs": {"household": ["household_id"]},
+        "input_domains": {"household": {"household_id": {"kind": "identity"}}},
+        "columns": [{"entity": "household", "name": "prepared_marker", "constant": 1}],
+    }
+    return Node(
+        "prepare",
+        "calibration.prepare@1",
+        population="open",
+        params={
+            "bindings": canonical_text(bindings),
+            "references": canonical_text(document),
+            "references_sha256": reference_document_sha256(document),
+            "reference_resolution": canonical_text(receipt),
+            **(
+                {"intervals": canonical_text(intervals)}
+                if intervals is not None
+                else {}
+            ),
+        },
+        outputs=(Owned("household", "prepared_marker", dtype=dtype),),
+        artifact_outputs=(ArtifactOutput("preparation", CALIBRATION_PREPARATION_TYPE),),
+    )
+
+
+@pytest.mark.parametrize(
+    "defect",
+    [
+        "selection",
+        "interval",
+        "reference",
+        "missing",
+        "inventory",
+        "empty_inventory",
+        "values",
+        "identities",
+    ],
+)
+def test_problem_refuses_stale_interval_or_preparation_profile(tmp_path, defect):
+    intervals = {"bands": [1, 2]}
+    document, _, receipt = _profile_document(intervals=intervals)
+    facts = write_facts(tmp_path / "facts.jsonl", toy_facts(CALIBRATION_TARGETS))
+    payload, _ = compile_target_surface(
+        facts,
+        document,
+        country=COUNTRY,
+        references_sha256=reference_document_sha256(document),
+        reference_resolution=receipt,
+    )
+    frame = toy_frame()
+    prepared = CALIBRATION_PREPARE.run(
+        _context(_preparation_node(document, receipt, intervals), frame=frame)
+    )
+    evidence = json.loads(prepared.artifacts["preparation"])
+    if defect in {"selection", "interval", "reference"}:
+        key = {
+            "selection": "reference_selection_sha256",
+            "interval": "effective_intervals_sha256",
+            "reference": "references_sha256",
+        }[defect]
+        evidence[key] = "f" * 64
+    elif defect == "empty_inventory":
+        evidence["columns"] = []
+    artifacts = {"surface": _artifact(payload, TARGET_SURFACE_TYPE)}
+    if defect != "missing":
+        artifacts["preparation"] = _artifact(
+            canonical_json(evidence), CALIBRATION_PREPARATION_TYPE
+        )
+    context = _context(_problem_node(), frame=frame, artifacts=artifacts)
+    if defect != "inventory":
+        context.tables["household"]["prepared_marker"] = 1
+    if defect == "values":
+        context.tables["household"]["prepared_marker"] = 2
+    elif defect == "identities":
+        context.tables["household"]["household_id"] = list(
+            reversed(context.tables["household"]["household_id"].tolist())
+        )
+    with pytest.raises(ValueError, match="preparation"):
+        TARGETS_PROBLEM.run(context)
+
+
+@pytest.mark.parametrize("dtype", ["int64", "float64"])
+def test_preparation_and_resolution_evidence_bind_the_problem(tmp_path, dtype):
+    document, _, receipt = _profile_document()
+    facts = write_facts(tmp_path / "facts.jsonl", toy_facts(CALIBRATION_TARGETS))
+    payload, _ = compile_target_surface(
+        facts,
+        document,
+        country=COUNTRY,
+        references_sha256=reference_document_sha256(document),
+        reference_resolution=receipt,
+    )
+    frame = toy_frame()
+    prepared = CALIBRATION_PREPARE.run(
+        _context(_preparation_node(document, receipt, dtype=dtype), frame=frame)
+    )
+    emitted = prepared.columns["household", "prepared_marker"]
+    assert emitted.dtype == np.dtype(dtype)
+    evidence = json.loads(prepared.artifacts["preparation"])
+    assert evidence["columns"][0]["values_sha256"] == reference_document_sha256(
+        emitted.tolist()
+    )
+    context = _context(
+        _problem_node(),
+        frame=frame,
+        artifacts={
+            "surface": _artifact(payload, TARGET_SURFACE_TYPE),
+            "preparation": _artifact(
+                prepared.artifacts["preparation"], CALIBRATION_PREPARATION_TYPE
+            ),
+        },
+    )
+    context.tables["household"]["prepared_marker"] = emitted.to_numpy(copy=True)
+    result = TARGETS_PROBLEM.run(context)
+    decoded = decode_problem(result.artifacts["problem"])
+    assert decoded.bindings["reference_resolution"] == receipt
+    assert (
+        decoded.bindings["reference_selection_sha256"]
+        == receipt["reference_selection_sha256"]
+    )
+    assert result.receipt["preparation_sha256"] == reference_document_sha256(
+        json.loads(prepared.artifacts["preparation"])
+    )
+
+
+def test_profile_compilation_checks_actual_reference_document_hash(tmp_path):
+    document, _, receipt = _profile_document()
+    facts = write_facts(tmp_path / "facts.jsonl", toy_facts(CALIBRATION_TARGETS))
+    with pytest.raises(ValueError, match="hash mismatch"):
+        compile_target_surface(
+            facts,
+            document,
+            country=COUNTRY,
+            references_sha256=SHA,
+            reference_resolution=receipt,
+        )
+
+    document["target_references"][0]["notes"] = "stale effective document"
+    with pytest.raises(ValueError, match="hash mismatch"):
+        compile_target_surface(
+            facts,
+            document,
+            country=COUNTRY,
+            references_sha256=reference_document_sha256(document),
+            reference_resolution=receipt,
+        )
+
+
+def test_decode_resolved_surface_requires_the_resolution_receipt(tmp_path):
+    payload = _surface(tmp_path)
+    surface = decode_target_surface(payload)
+    specs = list(surface.registry.specs)
+    specs[0] = replace(
+        specs[0], metadata={**specs[0].metadata, "reference_profiles_resolved": "1"}
+    )
+    registry = TargetRegistry(specs, country=COUNTRY)
+    document = json.loads(payload)
+    document["registry"].update(
+        version=registry.version, specs=[spec.to_dict() for spec in registry.specs]
+    )
+    with pytest.raises(ValueError, match="requires its reference resolution receipt"):
+        decode_target_surface(canonical_json(document))
+
+
+@pytest.mark.parametrize("defect", ["receipt", "references", "selection", "interval"])
+def test_decode_surface_refuses_stale_resolution_evidence(tmp_path, defect):
+    document, _, receipt = _profile_document(intervals={"bands": []})
+    facts = write_facts(tmp_path / "facts.jsonl", toy_facts(CALIBRATION_TARGETS))
+    payload, registry = compile_target_surface(
+        facts,
+        document,
+        country=COUNTRY,
+        references_sha256=reference_document_sha256(document),
+        reference_resolution=receipt,
+    )
+    raw = json.loads(payload)
+    if defect == "receipt":
+        raw["reference_resolution"]["selection"]["allocation"] = "sensitivity"
+    elif defect == "references":
+        raw["references_sha256"] = "f" * 64
+    else:
+        specs = list(registry.specs)
+        metadata = {
+            **specs[0].metadata,
+            "reference_profiles_resolved": "1",
+            "reference_selection_sha256": receipt["reference_selection_sha256"],
+            "effective_intervals_sha256": receipt["effective_intervals_sha256"],
+        }
+        metadata[
+            {
+                "selection": "reference_selection_sha256",
+                "interval": "effective_intervals_sha256",
+            }[defect]
+        ] = "f" * 64
+        specs[0] = replace(specs[0], metadata=metadata)
+        altered = TargetRegistry(specs, country=COUNTRY)
+        raw["registry"].update(
+            version=altered.version, specs=[spec.to_dict() for spec in altered.specs]
+        )
+    with pytest.raises(
+        ValueError, match="receipt hash|reference hash|profile identity"
+    ):
+        decode_target_surface(canonical_json(raw))
+
+
+@pytest.mark.parametrize("defect", ["missing", "stale"])
+def test_preparation_requires_its_effective_interval_companion(defect):
+    intervals = {"bands": [1, 2]}
+    document, _, receipt = _profile_document(intervals=intervals)
+    node = _preparation_node(
+        document, receipt, None if defect == "missing" else {"bands": [2, 3]}
+    )
+    with pytest.raises(ValueError, match="interval"):
+        CALIBRATION_PREPARE.run(_context(node, frame=toy_frame()))
 
 
 def test_target_compiler_passes_full_feed_pin_to_loader(tmp_path) -> None:

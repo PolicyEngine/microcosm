@@ -1,11 +1,13 @@
 """Engine lockstep for the Carer's Allowance take-up stage (microcosm#1319).
 
-The stage opens the claim flag to carers outside Scotland whose care hours
-meet the engine's condition, who report no allowance, and whom the engine's
-earnings test holds gainfully employed at the survey year. These tests fail if
-policyengine-uk moves the hours condition or the earnings limit, adds a
-condition the stage does not read, or starts applying an earnings test to
-Carer Support Payment, whose absence keeps Scotland closed.
+The stage opens the claim flag to carers whose care hours meet the engine's
+condition, who care for a person the engine holds severely disabled
+(microcosm#1418), who report no allowance, and whom the engine's earnings test
+holds gainfully employed at the survey year; in Scotland the flag is Carer
+Support Payment's. These tests fail if policyengine-uk moves the hours
+condition or the earnings limit, adds a condition the stage does not read, or
+stops applying Carer Support Payment's own earnings limit, on which drawing
+Scotland rests.
 """
 
 from __future__ import annotations
@@ -112,23 +114,27 @@ def test_the_earnings_limit_is_the_only_bar_left_for_a_non_reporting_carer() -> 
     assert (entitled_2025[weekly_pay > 196.0] == 0).all()
 
 
-def test_scotland_stays_closed_because_carer_support_payment_has_no_earnings_test() -> (
-    None
-):
-    simulation = _simulation(_carers([400.0]), 2025, region="SCOTLAND")
+def test_a_drawn_scottish_carer_is_paid_only_under_the_support_payments_limit() -> None:
+    simulation = _simulation(_carers([100.0, 400.0]), 2025, region="SCOTLAND")
     # The stage reads Scotland off the household region; the engine's country
     # follows it. A top-level calculate returns the enum decoded.
     country = simulation.calculate("country", 2025, decode_enums=True)
-    assert [str(value) for value in country] == ["SCOTLAND"]
-    assert np.asarray(simulation.calculate(_TEST, 2025)).all()
-    # Gainfully employed, yet paid Carer Support Payment once the flag is
-    # true: a draw in Scotland would pay it.
-    assert (
-        np.asarray(simulation.calculate("carer_support_payment_pre_overlap", 2025))[0]
-        > 0
+    assert [str(value) for value in country] == ["SCOTLAND", "SCOTLAND"]
+    # Scotland is drawn (María's ruling of 2026-10-23): with the flag true,
+    # Carer Support Payment pays a carer under its own earnings limit and not
+    # one over it (policyengine-uk 2.146.1, PolicyEngine/policyengine-uk#2473),
+    # and the allowance pays neither.
+    support = np.asarray(
+        simulation.calculate("carer_support_payment_pre_overlap", 2025)
     )
+    assert support[0] > 0
+    assert support[1] == 0
+    assert np.asarray(simulation.calculate(_TEST, 2025))[1]
     assert (
-        np.asarray(simulation.calculate("carers_allowance_pre_overlap", 2025))[0] == 0
+        np.asarray(simulation.calculate("carers_allowance_pre_overlap", 2025))[1] == 0
+    )
+    assert "In Scotland the flag is Carer Support Payment's" in (
+        ca.CARERS_ALLOWANCE_ELIGIBILITY
     )
 
 
@@ -141,39 +147,58 @@ class _CertainContract:
 
 
 def _frame():
-    """Four 35-hour carers: over the limit in Wales and in Scotland, under it
-    in Wales, and a reporter."""
+    """Five 35-hour carers, each living with an 85-year-old in a benefit unit
+    of their own: over the limit in Wales and in Scotland, under it in Wales,
+    a reporter, and one over the limit in Wales whose household member draws
+    no qualifying benefit. The other four members draw the higher rate of
+    Attendance Allowance."""
 
-    weekly_pay = np.asarray([165.0, 165.0, 120.0, 100.0])
-    reported = np.asarray([0.0, 0.0, 0.0, 81.9 * 52])
-    person = pd.DataFrame(
+    weekly_pay = np.asarray([165.0, 165.0, 120.0, 100.0, 165.0])
+    reported = np.asarray([0.0, 0.0, 0.0, 81.9 * 52, 0.0])
+    carers = pd.DataFrame(
         {
-            "person_id": [11, 21, 31, 41],
-            "person_benunit_id": [1, 2, 3, 4],
-            "person_household_id": [1, 2, 3, 4],
-            "age": [40.0, 40.0, 40.0, 40.0],
+            "person_id": [11, 21, 31, 41, 51],
+            "person_benunit_id": [1, 2, 3, 4, 5],
+            "person_household_id": [1, 2, 3, 4, 5],
+            "age": [40.0] * 5,
             "employment_income": weekly_pay * 52,
-            "care_hours": [35.0, 35.0, 35.0, 35.0],
+            "care_hours": [35.0] * 5,
+            ca.CARERS_ALLOWANCE_IN_HOUSEHOLD_HOURS: [35.0] * 5,
             "carers_allowance_reported": reported,
             "would_claim_carers_allowance": reported > 0,
+            "aa_category": ["NONE"] * 5,
         }
     )
-    benunit = pd.DataFrame({"benunit_id": [1, 2, 3, 4]})
+    members = pd.DataFrame(
+        {
+            "person_id": [12, 22, 32, 42, 52],
+            "person_benunit_id": [6, 7, 8, 9, 10],
+            "person_household_id": [1, 2, 3, 4, 5],
+            "age": [85.0] * 5,
+            "employment_income": [0.0] * 5,
+            "care_hours": [0.0] * 5,
+            ca.CARERS_ALLOWANCE_IN_HOUSEHOLD_HOURS: [0.0] * 5,
+            "carers_allowance_reported": [0.0] * 5,
+            "would_claim_carers_allowance": [False] * 5,
+            "aa_category": ["HIGHER"] * 4 + ["NONE"],
+        }
+    )
+    benunit = pd.DataFrame({"benunit_id": list(range(1, 11))})
     household = pd.DataFrame(
         {
-            "household_id": [1, 2, 3, 4],
-            "region": ["WALES", "SCOTLAND", "WALES", "WALES"],
-            "council_tax": [0.0] * 4,
-            "tenure_type": ["OWNED_OUTRIGHT"] * 4,
-            "rent": [0.0] * 4,
-            "household_source_id": [1, 2, 3, 4],
+            "household_id": [1, 2, 3, 4, 5],
+            "region": ["WALES", "SCOTLAND", "WALES", "WALES", "WALES"],
+            "council_tax": [0.0] * 5,
+            "tenure_type": ["OWNED_OUTRIGHT"] * 5,
+            "rent": [0.0] * 5,
+            "household_source_id": [1, 2, 3, 4, 5],
         }
     )
     return uk_national_frame(
-        person=person,
+        person=pd.concat([carers, members], ignore_index=True),
         benunit=benunit,
         household=household,
-        household_weights=np.ones(4),
+        household_weights=np.ones(5),
         weight_kind=WeightKind.DESIGN,
         time_period="2024",
     )
@@ -185,7 +210,10 @@ def test_the_stage_reaches_the_carers_the_2025_rise_entitles() -> None:
         _frame(), engine=engine, contract=_CertainContract()
     )
     flag = result.frame.table("person")["would_claim_carers_allowance"].tolist()
-    assert flag == [True, False, False, True]
+    # Scotland is drawn as Wales is (María's ruling of 2026-10-23); the carer
+    # whose household member draws no qualifying benefit is not, and nor is
+    # any member (microcosm#1418).
+    assert flag == [True, True, False, True, False] + [False] * 5
     assert result.evidence()["weekly_earnings_limit"] == 151.0
     # Projected from the survey year as the released file is, the Welsh carer
     # over the 2024-25 limit and under 2025-26's is entitled and would claim;
@@ -198,6 +226,12 @@ def test_the_stage_reaches_the_carers_the_2025_rise_entitles() -> None:
     )["carers_allowance_pre_overlap"]
     assert before[0] == 0
     assert after[0] > 0
-    # Scotland and the carer under the limit who reports nothing stay unpaid.
+    # The Scottish carer is paid Carer Support Payment under its own 2025-26
+    # limit, not the allowance; the carer under the limit who reports nothing
+    # stays unpaid.
+    support = engine.materialize(
+        result.frame, ["carer_support_payment_pre_overlap"], 2025, dataset_period=2024
+    )["carer_support_payment_pre_overlap"]
+    assert support[1] > 0
     assert after[1] == 0
     assert after[2] == 0

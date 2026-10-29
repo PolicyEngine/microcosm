@@ -350,12 +350,12 @@ EXPECTED_HASHES = {
     "acs_person_predictors": "878c788a6f037d7aca12b3586ea034eff04f3034ffa11935a736493042551f25",
     "authority": "3b6f534db79be588396d6543a8368c6251d41ae25139153ade01bdb36ac7b1a2",
     "early_families": "4aa9f736fd76e83955477ad1667e58f48f264783f05bdc7f0102cd32d61323bd",
-    "full_checkpoint": "abdffaa7d6ccf23c37b9d4e4530f0f95c2b4dd821787c813cc0c06f0ddc7932c",
+    "full_checkpoint": "42a6073c6d6661321ec943536bc8fe2c9c0dd7e1507a7f238949844eed6df5c8",
     "gap_fill_schedule": "1c31f9868f7884347cc19cf1ff65da43f950b9114941a715bab168246db414a7",
     "graph_nodes": "5e5c89a0d5e00f759566b5bb025efd46f179e11faf7de4ff663ed2488c5a669b",
     "geography_assignment": "44e7f5f6cd7ceeef85d532c3d46306d03de4f4ee811376e6d29920742746b65c",
     "late_families": "734080f8857f8637913a0e3ae81c59bf28b63dccc8d4bbf42009d0a80e9f1e48",
-    "late_resource_semantics": "abf95b217f6b8baa0fdf0bf8c46be67e3bff364f1adf6e98a178746f7f1c9d29",
+    "late_resource_semantics": "4f2918584365b53b95c9a72203307ed2e2737e74108552f227437759a5875871",
     "late_schedule": "6eb7556639fac5ef67bb1602c769aa01fc2070ecef42be097c6b866a05b030d0",
     "ownership": "5f64f0aac49e2313177564f71876bffc8c81b3ded4df701e70930e60e9c98356",
     "primary_tuples": "6655e37f15befe053f8de2583c216f97098e4c2bde526f315299c2858c97f055",
@@ -368,14 +368,18 @@ EXPECTED_HASHES = {
     # by default, so no US solve, RNG rule or QRF target changes. microcosm#1301
     # moves both again: calibrate gains budget_search_bracket, whose default
     # keeps the US bracket, and the budget search, which the US solve does
-    # not run, changes its probes, so again no US solve changes. microcosm#1251
-    # (#1239) moves both again: puf_support gains the passive partnership/S-corp
-    # leaf, so the PUF QRF targets change.
-    "seed_map": "fe22955668418f89de91f70d6d773d8fbb8bb69d7be9d8e782cfad72966bb24a",
-    "seed_protocol": "cd73b5450d55184bea799c48f0486d20345980dc2c5fc60da402de28d04f3c27",
-    "source_manifest": "22763ed5676fa29876951653368cbbc866cbd2425a2394a9f191ee09e448e413",
+    # not run, changes its probes, so again no US solve changes. #454: the
+    # meps_esi_premiums stage joins the attested sources and the source
+    # manifest. #1376: the puma_county_vintage draw module joins the seed
+    # protocol's attested kernel modules. #1380: the ACS transfer's
+    # self-employment component step changes acs_transfer's attested bytes.
+    # microcosm#1251 (#1239) moves the seed map and protocol again: puf_support
+    # gains the passive partnership/S-corp leaf, so the PUF QRF targets change.
+    "seed_map": "7eb4e585cb968366a218a318b2638979421602076aadeb7c0f4d375a458a7921",
+    "seed_protocol": "281c2a54be11e3391d1129db04869277cf206d2461212ac9558c9ccf94b747b3",
+    "source_manifest": "608c3621b1e4a108e57c8f83d16a184acdb3d05e16a81b895f7f72dbf5d0685c",
     "take_up": "9522ce40f7dea569312dd7a7beb474e5a5afadd2f1e10cb5876534c3ef623d35",
-    "tail": "4641e9a919a5c7719dd6e076e1eda06c17ec021d346a2b7f205fd299870a4688",
+    "tail": "071d418bb49976f4682c320d2ad07097c177de3a645d2524f235e1ff33ac83f9",
 }
 
 INVENTORY_REPORT_SCHEMA_VERSION = 1
@@ -455,7 +459,7 @@ EXPECTED_INVENTORY_COUNTS: Mapping[str, int] = {
     "stacked_checkpoint_full_components": 13,
     "stacked_checkpoint_pool_code_components": 19,
     "stacked_checkpoint_static_components": 10,
-    "tail_control_fields": 935,
+    "tail_control_fields": 938,
     "take_up_pipeline_steps": 28,
     "take_up_programs": 17,
     "typed_artifacts": 84,
@@ -1211,7 +1215,7 @@ def build_inventory_coverage(
             "stages": len(_array(sources["stages"], "source stages")),
             "sha256": sha256_json(source_manifest),
         },
-        expected={"stages": 37, "sha256": EXPECTED_HASHES["source_manifest"]},
+        expected={"stages": 38, "sha256": EXPECTED_HASHES["source_manifest"]},
     )
     pipeline = _mapping(spine["pipeline_contract"], "spine pipeline contract")
     operator_order = tuple(
@@ -1423,7 +1427,7 @@ def build_inventory_coverage(
     add(
         "capital_gains_tail_contract_exact",
         clauses={
-            "tail terminal field count differs": tail_count == 935,
+            "tail terminal field count differs": tail_count == 938,
             "resolved calibration tails differ": _json_equal(
                 legacy.get("calibration_tail_contracts"),
                 expected_legacy["calibration_tail_contracts"],
@@ -1451,7 +1455,7 @@ def build_inventory_coverage(
             "legacy_adapter.stacked_checkpoint_static_components",
         ),
         observed={"terminal_fields": tail_count, "sha256": sha256_json(tail_bundle)},
-        expected={"terminal_fields": 935, "sha256": EXPECTED_HASHES["tail"]},
+        expected={"terminal_fields": 938, "sha256": EXPECTED_HASHES["tail"]},
     )
 
     add(

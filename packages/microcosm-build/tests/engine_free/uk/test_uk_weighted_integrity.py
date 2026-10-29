@@ -44,8 +44,15 @@ from microcosm.build.uk_runtime.weighted_integrity import (
     uk_qrf_tail_concentration_columns,
 )
 
+#: A synthetic approval window. The gates compare it with the real date when a
+#: test passes no ``now``, so a real-looking window (it was 2026-08-10 to
+#: 2027-02-10) would fail those tests once it lapsed, as the UK build
+#: fixture's did on 2026-10-04 (microcosm#1103). Expiry itself is tested with
+#: explicit dates.
+SYNTHETIC_EXPIRY = "2099-12-31"
 
-def _entry(reason: str, *, expires_on: str = "2027-02-10") -> dict[str, str]:
+
+def _entry(reason: str, *, expires_on: str = SYNTHETIC_EXPIRY) -> dict[str, str]:
     """A valid schema-2 approval receipt around the fixture's reason."""
 
     return {
@@ -475,6 +482,8 @@ def test_qrf_columns_check_every_declared_output_regardless_of_density() -> None
         "iidb_reported",
         "afcs_reported",
         "bsp_reported",
+        "war_widows_pension_reported",
+        "widowed_parents_allowance_reported",
         "jsa_contrib_reported",
         "jsa_income_reported",
         "esa_income_reported",
@@ -952,7 +961,9 @@ def test_expired_exclusion_stops_suppressing_and_names_its_receipt() -> None:
     reference = _reference({"employment_income": 10.0})
     policy = _policy(
         minimum_reference_total=1.0,
-        reviewed_exclusions={"employment_income": _entry(reason)},
+        reviewed_exclusions={
+            "employment_income": _entry(reason, expires_on="2027-02-10")
+        },
     )
     candidate = {"employment_income": 0.0}
 

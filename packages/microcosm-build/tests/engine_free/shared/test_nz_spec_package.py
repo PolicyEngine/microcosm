@@ -7,7 +7,7 @@ least one per refusal branch, so a vacuous pass on today's data cannot hide a
 broken check:
 
 - the three reference sets (calibration, pre-calibration, hold-out) are
-  separate resources, every row is an unactivated placeholder, and no
+  separate resources, active rows are cell-pinned, parked rows refuse, and no
   calibration or pre-calibration reference shares a hold-out reference's
   name, Ledger identifier or family, or has a selector that one Ledger fact
   could satisfy together with a hold-out selector (``holdout_leaks``);
@@ -1192,7 +1192,12 @@ class TestReferenceSets:
         document = _load(REFERENCE_FILES[reference_set])
         assert document["country"] == "nz"
         assert document["reference_set"] == reference_set
-        assert document["allowed_value_operations"] == ["identity"]
+        expected_operations = (
+            ["identity", "rolled_forward_by_ratio", "allocated_residual_by_ratio"]
+            if reference_set == "calibration"
+            else ["identity"]
+        )
+        assert document["allowed_value_operations"] == expected_operations
         rows = document["target_references"]
         assert rows
         assert FORBIDDEN_VALUE_KEYS.isdisjoint(_nested_keys(rows))
@@ -1204,19 +1209,35 @@ class TestReferenceSets:
         # The declared operations hold row by row, so every fact a reference
         # reads comes through its own selector or identifiers.
         for reference in _references(reference_set):
-            assert reference.value_operation == "identity"
-            assert reference.value_operands == ()
+            assert reference.value_operation in expected_operations
+            if reference.value_operation == "identity":
+                assert reference.value_operands == ()
+            else:
+                assert {operand["role"] for operand in reference.value_operands} == {
+                    "base",
+                    "numerator",
+                    "denominator",
+                }
 
     @pytest.mark.parametrize("reference_set", sorted(REFERENCE_FILES))
-    def test_every_reference_is_a_placeholder_the_compiler_refuses(
+    def test_every_parked_reference_names_its_blocker_and_refuses_compilation(
         self, reference_set: str
     ) -> None:
         references = _references(reference_set)
-        for reference in references:
-            status = reference.metadata["activation_status"]
-            assert status.startswith("requires_")
+        parked = [
+            row for row in references if row.metadata["activation_status"] != "active"
+        ]
+        assert parked
+        for reference in parked:
+            assert reference.metadata["activation_status"].startswith("requires_")
+            if reference_set != "holdout":
+                assert reference.metadata["parking_reason"].strip()
             with pytest.raises(ValueError, match="non-executable placeholder"):
                 compile_ledger_target_references([], [reference], country="nz")
+        assert (
+            sum(row.metadata["activation_status"] == "active" for row in references)
+            == {"calibration": 64, "precal": 67, "holdout": 0}[reference_set]
+        )
 
     def test_pre_calibration_rows_are_not_weight_calibration_targets(self) -> None:
         roles = {
@@ -1232,16 +1253,20 @@ class TestReferenceSets:
 
     def test_calibration_set_is_the_method_card_mc5_list(self) -> None:
         references = _references("calibration")
-        assert [reference.name for reference in references] == [
-            "stats_nz_population_by_age_sex_region",
-            "stats_nz_census_households_by_composition",
-            "stats_nz_census_families_by_type",
+        assert {
+            reference.metadata["contract_target_id"] for reference in references
+        } == {
+            "stats_nz_population_by_age_region",
+            "stats_nz_census_households_by_size_region",
+            "stats_nz_census_families_by_type_region",
             "stats_nz_census_households_by_tenure_region",
             "ird_taxable_income_people_by_band",
             "ird_taxable_income_total_by_band",
             "msd_main_benefit_recipients_by_program_age",
-            "msd_nz_super_veterans_pension_recipients",
-        ]
+            "msd_nz_super_recipients",
+            "msd_veterans_pension_recipients",
+        }
+        assert len(references) == 773
         assert {reference.metadata["target_role"] for reference in references} == {
             "calibration"
         }
@@ -1263,6 +1288,51 @@ class TestReferenceSets:
             assert reference.metadata["target_role"] == "validation"
             assert reference.metadata["criticality"] == "diagnostic"
             assert reference.family in HELD_OUT_FAMILIES
+
+    @pytest.mark.parametrize(
+        "reference_name",
+        [
+            "ird_wff_recipient_families",
+            "ird_iwtc_recipient_families",
+            "ird_wff_recipient_families_by_family_income_band",
+        ],
+    )
+    def test_selected_parked_wff_reference_is_named_by_preflight(
+        self, reference_name: str
+    ) -> None:
+        from microcosm.build.transport.compose import validate_transport_activation
+
+        reference = next(
+            row for row in _rows("holdout") if row["name"] == reference_name
+        )
+        assert reference["metadata"]["activation_status"].startswith("requires_")
+        spec = {
+            "country": "nz",
+            "resources": {
+                "target_references": {"target_references": []},
+                "precal_references": {"target_references": []},
+                "holdout_references": {"target_references": [reference]},
+                "transport_graph": {
+                    "nodes": [
+                        {
+                            "params": {
+                                "reference_document": {
+                                    "resource": "holdout_references",
+                                    "encoding": "json",
+                                }
+                            }
+                        }
+                    ]
+                },
+            },
+        }
+        # Other unimplemented producers may also be named. This selected
+        # parked reference must remain an independent preflight blocker.
+        with pytest.raises(
+            ValueError,
+            match=f"placeholder reference holdout_references\\.{reference_name}",
+        ):
+            validate_transport_activation(spec)
 
     def test_no_held_out_fact_reaches_calibration_or_pre_calibration(self) -> None:
         held = _references("holdout")
@@ -1311,9 +1381,11 @@ class TestReferenceSets:
     def test_a_reference_in_two_upstream_sets_names_one_fact(self) -> None:
         calibration = {row["name"]: row for row in _rows("calibration")}
         shared = [row for row in _rows("precal") if row["name"] in calibration]
-        assert {row["name"] for row in shared} == {
+        assert len(shared) == 14
+        assert {row["metadata"]["contract_target_id"] for row in shared} == {
             "msd_main_benefit_recipients_by_program_age",
-            "msd_nz_super_veterans_pension_recipients",
+            "msd_nz_super_recipients",
+            "msd_veterans_pension_recipients",
         }
         fact_fields = (
             "ledger_selector",
@@ -1328,6 +1400,17 @@ class TestReferenceSets:
             assert {field: row.get(field) for field in fact_fields} == {
                 field: twin.get(field) for field in fact_fields
             }
+            if (
+                row["metadata"]["contract_target_id"]
+                == "msd_main_benefit_recipients_by_program_age"
+            ):
+                assert row["filter"]
+                assert (
+                    row["metadata"]["activation_status"]
+                    == "requires_stratified_receipt_assignment"
+                )
+            assert row["ledger_selector"]["period_value"] == "2026-06"
+            assert row["period"] == "2026-06"
 
     def test_gate_profile_requires_exactly_the_calibration_families(self) -> None:
         spec = load_country_spec("nz")
@@ -2116,6 +2199,7 @@ class TestScenarios:
             "V1",
             "V2",
             "V3",
+            "V4",
         ]
         branch_points = {
             tier: row["branch_point"] for tier, row in document["tiers"].items()
@@ -3655,31 +3739,52 @@ class TestSourceCitations:
 
 
 class TestDeclaredResources:
-    def test_reference_tolerances_remain_deferred(self) -> None:
+    def test_d1376_fit_and_admin_policy_is_explicit_and_active(self) -> None:
         spec = load_country_spec("nz")
-        by_function = {gate.gate: gate for gate in spec.gates.gates}
-        for function in (
-            "per_family_fit",
-            "aggregate_admin",
+        gates = {gate.id: gate for gate in spec.gates.gates}
+        families = (
+            "demography",
+            "household_structure",
+            "housing_tenure",
+            "income",
+            "main_benefits",
+            "superannuation",
+        )
+        for gate_id, within, selected in (
+            ("calibration_per_family_fit", 0.05, families),
+            ("demography_per_family_fit", 0.02, ("demography",)),
         ):
-            assert by_function[function].not_applicable.startswith("awaiting D1")
-
-        def numeric_leaves(value: object) -> Iterator[object]:
-            if isinstance(value, Mapping):
-                for child in value.values():
-                    yield from numeric_leaves(child)
-            elif isinstance(value, (list, tuple)):
-                for child in value:
-                    yield from numeric_leaves(child)
-            elif isinstance(value, (int, float)) and not isinstance(value, bool):
-                yield value
-
-        assert not [
-            leaf
-            for gate in spec.gates.gates
-            if gate.gate in {"per_family_fit", "aggregate_admin"}
-            for leaf in numeric_leaves(gate.parameters)
-        ]
+            gate = gates[gate_id]
+            assert dict(gate.parameters) == {
+                "within": within,
+                "min_family_share": 1,
+                "hard_within": within,
+                "min_hard_family_share": 1,
+                "min_family_size": 1,
+                "families": selected,
+            }
+        admin = gates["national_and_region_admin_aggregates"]
+        assert dict(admin.parameters) == {
+            "default_rtol": 0.05,
+            "families": families,
+            "geography_levels": ("country", "region"),
+        }
+        for gate_id in (
+            "calibration_per_family_fit",
+            "demography_per_family_fit",
+            "national_and_region_admin_aggregates",
+        ):
+            gate = gates[gate_id]
+            assert gate.not_applicable is None
+            assert gate.criticality == "release_blocking"
+            assert gate.evidence_absent_blocks
+            assert "d1376, 2026-10-12; g8-method-addendum B7:" in gate.notes
+        assert gates["macro_realism_nz"].not_applicable
+        # A reference tolerance is absolute, so it cannot abbreviate d1376's
+        # percentage policy. The gate owns the numerical thresholds.
+        assert all(
+            reference.tolerance is None for reference in _references("calibration")
+        )
 
     def test_mc15_ruled_thresholds_and_tracked_targets_are_declared(self) -> None:
         spec = load_country_spec("nz")

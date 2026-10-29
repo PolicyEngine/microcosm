@@ -702,26 +702,21 @@ def test_the_candidate_manifest_restates_the_diagnostics_totals() -> None:
     assert len(failures) == 3, failures
 
 
-def test_a_brma_row_without_its_carrier_verdict_is_warned_not_refused() -> None:
-    """María's ruling of 2026-10-19 on the fourth review of #1305: warn only."""
+def test_a_brma_row_needs_no_carrier_verdict() -> None:
+    """María's ruling of 2026-10-26 dropped the withholding and its BRMA
+    carrier verdict; an earlier release's verdicts still read, unchecked."""
 
-    assert dc._uk_brma_floor_verdict_warnings(_withheld_diagnostics()) == []
     unflagged = _withheld_diagnostics()
     del unflagged["targets"][1]["metadata"]["carrier_floor_met"]
-    (warning,) = dc._uk_brma_floor_verdict_warnings(unflagged)
-    # A count, never a row.
-    assert warning.startswith("calibration_diagnostics.json has 1 BRMA row(s) without")
-    disagreeing = _withheld_diagnostics()
-    disagreeing["targets"][1]["metadata"]["carrier_floor_met"] = True
-    (warning,) = dc._uk_brma_floor_verdict_warnings(disagreeing)
-    assert "disagrees with their withheld flag" in warning
     failures: list[str] = []
     dc._check_local_area_calibration_diagnostics(unflagged, failures)
     assert failures == []
+    assert not hasattr(dc, "_uk_brma_floor_verdict_warnings")
 
 
 def test_the_dense_validator_runs_the_withheld_checks(tmp_path, monkeypatch) -> None:
-    """The candidate cross-check and the verdict warnings run on a release."""
+    """The candidate cross-check still runs on a release, for the releases
+    built while rows were withheld."""
 
     seen: list[str] = []
 
@@ -729,15 +724,9 @@ def test_the_dense_validator_runs_the_withheld_checks(tmp_path, monkeypatch) -> 
         seen.append("restated")
         assert "solve" in candidate and "targets" in diagnostics
 
-    def verdicts(diagnostics) -> list[str]:
-        seen.append("verdicts")
-        return ["a synthetic verdict warning"]
-
     monkeypatch.setattr(dc, "_check_uk_candidate_restated_losses", restated)
-    monkeypatch.setattr(dc, "_uk_brma_floor_verdict_warnings", verdicts)
-    warnings = validate_release_dir(write_dense_bundle(tmp_path))
-    assert sorted(seen) == ["restated", "verdicts"]
-    assert "a synthetic verdict warning" in warnings
+    validate_release_dir(write_dense_bundle(tmp_path))
+    assert seen == ["restated"]
 
 
 def test_the_withheld_block_must_count_the_withheld_rows() -> None:
@@ -1738,15 +1727,9 @@ def test_refreshing_unsigned_coverage_cannot_renew_original_approvals(
 #: with support figures never reads as a real area's figures.
 _AREA = "E06999999"
 _OTHER_AREA = "E06999998"
-#: The synthetic support figures the warning tests inject; no warning may
+#: The synthetic support figures the walk tests inject; no finding may
 #: repeat one.
 _FIGURES = ("37", "23.75", "29", "41")
-
-
-def _warning_lines(release_dir: Path) -> str:
-    """The contract's warnings for a release it otherwise passes: the
-    disclosure walk warns, never refuses (microcosm#1301)."""
-    return "\n".join(validate_release_dir(release_dir))
 
 
 #: The area-support details a signed report may ship: the floors an excused
@@ -1789,18 +1772,13 @@ def _with_figures(details: dict) -> dict:
     return figures
 
 
-@pytest.mark.parametrize(
-    "inject,expected",
-    [
-        ("summary_shortfall_text", "string(s) stating an area's measured support"),
-        ("signed_report_figures", "per-area support figure(s)"),
-    ],
-)
-def test_dense_release_warns_on_per_area_support_figures(
-    tmp_path: Path, inject: str, expected: str
+@pytest.mark.parametrize("inject", ["summary_shortfall_text", "signed_report_figures"])
+def test_a_dense_release_ships_per_area_support_figures(
+    tmp_path: Path, inject: str
 ) -> None:
-    """A shipped document carrying an area's rows, ESS or sources is a
-    warning, not a refusal (microcosm#1301)."""
+    """María's ruling of 2026-10-26 dropped the withholding of per-area
+    support figures (microcosm#1301): a shipped document carrying an area's
+    rows, ESS or sources draws no warning."""
 
     if inject == "signed_report_figures":
         release_dir = write_dense_bundle(
@@ -1809,11 +1787,9 @@ def test_dense_release_warns_on_per_area_support_figures(
                 area_support_details=_with_figures(_FLOOR_ONLY_DETAILS)
             ),
         )
-        name = "uk_local_gates.json"
     else:
         release_dir = write_dense_bundle(tmp_path)
-        name = "gate_summary.json"
-        path = release_dir / name
+        path = release_dir / "gate_summary.json"
         summary = json.loads(path.read_text())
         summary["diagnostic_gates"]["uk_local_area_support"] = {
             "failures": [f"local_authority/{_AREA}: rows 37 < 50"]
@@ -1821,12 +1797,7 @@ def test_dense_release_warns_on_per_area_support_figures(
         path.write_text(json.dumps(summary))
         _refresh_packaging_checksums(release_dir)
 
-    warnings = _warning_lines(release_dir)
-    assert expected in warnings
-    assert name in warnings
-    # The warning names where the figure is, never its value.
-    for figure in _FIGURES:
-        assert figure not in warnings
+    assert validate_release_dir(release_dir) == []
 
 
 _FIGURE = "per-area support figure(s)"
@@ -1938,45 +1909,20 @@ _SUPPORT_FIGURE_SHAPES = {
 
 
 @pytest.mark.parametrize("shape", sorted(_SUPPORT_FIGURE_SHAPES))
-def test_dense_release_warns_on_support_figures_in_every_shape(
-    tmp_path: Path, shape: str
-) -> None:
+def test_the_walk_finds_support_figures_in_every_shape(shape: str) -> None:
     """Records keyed by any area identifier, code-keyed maps, columnar tables,
-    lists and the extremes of a figure are warned about alike (microcosm#1301)."""
+    lists and the extremes of a figure are found alike (microcosm#1301). The
+    sign-off drafter walks the entries it drafts for a public PR with it."""
 
     key, value, expected = _SUPPORT_FIGURE_SHAPES[shape]
-    release_dir = write_dense_bundle(tmp_path)
-    _rewrite_manifest(release_dir, lambda manifest: manifest.__setitem__(key, value))
-    warnings = _warning_lines(release_dir)
-    assert "release_manifest.json carries" in warnings and expected in warnings
-    # The warning names where the figures are, never their values.
-    assert f"first at ['{key}" in warnings
+    findings = "\n".join(
+        dc._uk_dense_disclosure_findings("release_manifest.json", {key: value})
+    )
+    assert "release_manifest.json carries" in findings and expected in findings
+    # A finding names where the figures are, never their values.
+    assert f"first at ['{key}" in findings
     for figure in _FIGURES:
-        assert figure not in warnings
-
-
-@pytest.mark.parametrize(
-    "content",
-    [
-        b'{"support": {"rows": ',
-        b'{"rows": NaN}',
-        b'{"rows": "\xc3\x28"}',
-        b"[" * 100_000 + b"]" * 100_000,
-    ],
-    ids=["truncated", "non-standard-constant", "undecodable", "nested-too-deep"],
-)
-def test_dense_release_warns_on_a_json_document_it_cannot_walk(
-    tmp_path: Path, content: bytes
-) -> None:
-    """A document the walk cannot read could hide a figure, so it is warned
-    about too."""
-
-    release_dir = write_dense_bundle(tmp_path)
-    (release_dir / "support_notes.json").write_bytes(content)
-    assert (
-        "support_notes.json cannot be read and walked as JSON, so the disclosure "
-        "walk cannot rule out"
-    ) in _warning_lines(release_dir)
+        assert figure not in findings
 
 
 def test_disclosure_walker_allows_floors_counts_weights_and_estimates() -> None:

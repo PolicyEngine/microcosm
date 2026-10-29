@@ -107,6 +107,7 @@ def score_uk_national_candidate(
         calibration_year,
         measure_resolver_factory,
         band_edge_registry=band_edge_registry,
+        incumbent=True,
     )
     candidate = score_targets(
         candidate_frame,
@@ -279,6 +280,15 @@ def _verify_artifact(role: str, path: str | Path, expected: str) -> dict[str, ob
     }
 
 
+#: Rule 1 scores each file's best estimate of the year's income against the
+#: same annual targets; an incumbent built before the annual income
+#: descriptors existed has none, so its annual measures are its current ones.
+UK_INCUMBENT_ANNUAL_INCOME_FALLBACK = (
+    "incumbent without annual income descriptors: its annual measures are its "
+    "current values (a share of 1 and no other spells)"
+)
+
+
 def _scored_frame(
     h5_path: str | Path,
     registry: TargetRegistry,
@@ -286,6 +296,7 @@ def _scored_frame(
     factory: Callable[[Path, Any], Any] | None,
     *,
     band_edge_registry: TargetRegistry | None = None,
+    incumbent: bool = False,
 ) -> tuple[Any, Any]:
     frame, _provenance = load_uk_national_frame(h5_path)
     # policyengine-uk projects a file's household weights from the file's own
@@ -293,6 +304,9 @@ def _scored_frame(
     # users get there (microcosm#796 A19). The engine reads the file itself.
     frame = uk_engine_year_frame(frame, simulation_year=calibration_year)
     resolver = None if factory is None else factory(Path(h5_path), frame)
+    fallback = getattr(resolver, "use_current_income_for_annual_measures", None)
+    if incumbent and fallback is not None:
+        fallback(reason=UK_INCUMBENT_ANNUAL_INCOME_FALLBACK)
     return prepare_uk_target_frame(
         frame,
         registry,
@@ -556,6 +570,7 @@ def prune_incumbent_unresolvable(
                 calibration_year,
                 measure_resolver_factory,
                 band_edge_registry=edges,
+                incumbent=True,
             )
         except MeasureResolutionError as error:
             failing = _failing_measure(error)

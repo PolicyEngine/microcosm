@@ -23,7 +23,6 @@ from microcosm.build.uk_runtime.calibration_run import (
     uk_cgt_projection_artifact,
 )
 from microcosm.build.uk_runtime.cgt_projection import UK_CGT_PROJECTION_ARTIFACT_KEY
-from microcosm.build.uk_runtime.diagnostics import uk_withheld_brma_rows
 from microcosm.build.uk_runtime.graph_evidence import uk_spine_gate_artifacts
 from microcosm.build.uk_runtime.national_frame import uk_release_export_frame
 from microcosm.build.uk_runtime.parity_reference import load_efrs_parity_reference
@@ -236,21 +235,6 @@ def build_full_gate_context(
             local_rows.append(row)
         else:
             national_errors[target.row_name] = float(solved_rows[index].relative_error)
-    # A BRMA row's model figures leave the build only when ten distinct source
-    # households carry them (María's ruling of 2026-10-17, microcosm#1262).
-    # The fit gates decide on the published rows and count the withheld ones
-    # (María's ruling of 2026-10-19); the flag tells the bindings and the
-    # writers which rows those are.
-    withheld = uk_withheld_brma_rows(
-        problem,
-        solution.weights,
-        frame,
-        diagnostics,
-        {str(row["name"]): str(row["geography_level"]) for row in diagnostics},
-    )
-    for row in diagnostics:
-        if row["name"] in withheld:
-            row["model_figures_withheld"] = True
     reference_registry = supporting_evidence.get("reference_registry")
     if not isinstance(reference_registry, TargetRegistry):
         raise ValueError(
@@ -311,7 +295,6 @@ def build_full_gate_context(
             ),
             "local_target_diagnostics": local_rows,
             "target_diagnostics": diagnostics,
-            "model_figures_withheld": tuple(sorted(withheld)),
             "aggregate_admin": admin_totals,
             "aggregate_admin_measurement": admin_receipt,
             "full_gate_scope": uk_full_gate_scope_receipt(selection_receipt),

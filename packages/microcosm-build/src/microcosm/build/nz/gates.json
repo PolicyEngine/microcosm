@@ -1,7 +1,7 @@
 {
   "version": 2,
   "country": "nz",
-  "policy": "New Zealand is greenfield and has no incumbent population, so parity, export_surface, and target_surface are absent. Public NZ facts and Treasury oracles govern the build. MC15 weight quality follows the 2026-10-10 D1 ruling d1281: original-source household ESS at least 4000 and max/positive-median at most 5 block release; scenario-complete cell diagnostics are mandatory and failing cells are suppressed. Global ESS 16000 and the tighter cell support screen are tracked, never blocking. Fit and aggregate tolerances still await their Chronicle inventories and reviewed evidence; macro_realism waits on packaged evidence and reviewed bands. Donor support and release input coverage remain applicable and fail closed while their producers and checks are pending. Thresholds are never borrowed from another country or set from a candidate.",
+  "policy": "New Zealand is greenfield and has no incumbent population, so parity, export_surface, and target_surface are absent. Public NZ facts and Treasury oracles govern the build. MC15 weight quality follows the 2026-10-10 D1 ruling d1281: original-source household ESS at least 4000 and max/positive-median at most 5 block release; scenario-complete cell diagnostics are mandatory and failing cells are suppressed. Global ESS 16000 and the tighter cell support screen are tracked, never blocking. The 2026-10-12 d1376 ruling requires every selected calibration target within 5%, every demography target within 2%, and national/regional administrative anchors within 5%; incomplete target families remain release blockers; macro_realism waits on packaged evidence and reviewed bands. Donor support and release input coverage remain applicable and fail closed while their producers and checks are pending. Thresholds are never borrowed from another country or set from a candidate.",
   "phases": [
     "terminal"
   ],
@@ -11,16 +11,64 @@
       "gate": "per_family_fit",
       "phase": "terminal",
       "criticality": "release_blocking",
-      "not_applicable": "awaiting D1: the ex-ante NZ per-family tolerances (method card MC15) are not yet ruled, and Chronicle has not yet supplied the complete cell-expanded NZ target inventory or covariance. Belgium and shared runner defaults may not silently govern New Zealand.",
-      "notes": "Activate with explicit NZ policy after the target harvest. Every hard family must report separately so an easy demographic family cannot hide a weak income or programme family."
+      "notes": "d1376, 2026-10-12; g8-method-addendum B7: every selected calibration target must be within 5%.",
+      "parameters": {
+        "within": 0.05,
+        "min_family_share": 1,
+        "hard_within": 0.05,
+        "min_hard_family_share": 1,
+        "min_family_size": 1,
+        "families": [
+          "demography",
+          "household_structure",
+          "housing_tenure",
+          "income",
+          "main_benefits",
+          "superannuation"
+        ]
+      },
+      "evidence_absent_blocks": true
+    },
+    {
+      "id": "demography_per_family_fit",
+      "gate": "per_family_fit",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "within": 0.02,
+        "min_family_share": 1,
+        "hard_within": 0.02,
+        "min_hard_family_share": 1,
+        "min_family_size": 1,
+        "families": [
+          "demography"
+        ]
+      },
+      "evidence_absent_blocks": true,
+      "notes": "d1376, 2026-10-12; g8-method-addendum B7: every demography target must be within 2%."
     },
     {
       "id": "national_and_region_admin_aggregates",
       "gate": "aggregate_admin",
       "phase": "terminal",
       "criticality": "release_blocking",
-      "not_applicable": "awaiting D1: reviewed fact-specific tolerances are not yet ruled, and the complete Chronicle NZ fact rows, projection basis to tax year 2026-27, and uncertainty are not yet bound.",
-      "notes": "Activate at country and region levels only after every hard reference resolves. Consume table leaves or totals, never both as independent targets."
+      "notes": "d1376, 2026-10-12; g8-method-addendum B7: national and regional administrative anchors within 5%; use declared leaves or totals.",
+      "parameters": {
+        "default_rtol": 0.05,
+        "families": [
+          "demography",
+          "household_structure",
+          "housing_tenure",
+          "income",
+          "main_benefits",
+          "superannuation"
+        ],
+        "geography_levels": [
+          "country",
+          "region"
+        ]
+      },
+      "evidence_absent_blocks": true
     },
     {
       "id": "calibration_reference_inventory",
@@ -29,7 +77,7 @@
       "criticality": "release_blocking",
       "parameters": {},
       "evidence_absent_blocks": true,
-      "notes": "Every table-level authoring contract must be replaced by generated cell-pinned Chronicle references with direct, prepared, or engine-derived bindings; every activated reference must enter the matrix."
+      "notes": "The generated G8-r1 cell-pinned Chronicle inventory declares active demography and tenure references with prepared-column bindings. Every activated reference must enter the matrix; parked statistical definitions, income contracts and receipt producers remain explicit release blockers."
     },
     {
       "id": "target_profile_coverage",
@@ -178,7 +226,8 @@
           "S5",
           "V1",
           "V2",
-          "V3"
+          "V3",
+          "V4"
         ],
         "required_cells": [
           "income_decile_by_family_type/1/single",
@@ -265,7 +314,8 @@
           "S5",
           "V1",
           "V2",
-          "V3"
+          "V3",
+          "V4"
         ],
         "required_cells": [
           "income_decile_by_family_type/1/single",
