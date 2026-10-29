@@ -62,7 +62,7 @@ def test_before_the_fix_the_stored_reads_are_named():
         {
             "person.income_tax": "native",
             "person.self_employment_income_after_loss_relief": (
-                "frame_columns:self_employment_income_less_loss_relief"
+                "frame_columns:self_employment_income_after_loss_relief"
             ),
         }
     )
@@ -85,7 +85,7 @@ def test_after_the_fix_no_stored_read_is_off_period():
             "person.income_tax": "native",
             "person.dividend_income": "native",
             "person.self_employment_income_after_loss_relief": (
-                "engine_components:self_employment_income_less_loss_relief"
+                "engine_components:self_employment_income_after_loss_relief"
             ),
         }
     )

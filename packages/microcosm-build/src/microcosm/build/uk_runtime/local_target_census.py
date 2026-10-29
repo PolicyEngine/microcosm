@@ -44,9 +44,7 @@ from pathlib import Path
 from typing import Any
 
 from microcosm.build.uk_runtime.chronicle_feed import load_uk_chronicle_feed
-from microcosm.build.uk_runtime.high_value_homes import (
-    load_uk_high_value_home_stock_facts,
-)
+from microcosm.build.uk_runtime.derived_facts import uk_derived_fact_resource_pins
 from microcosm.build.uk_runtime.hmrc_income import HMRC_SPI_TARGET_RECORD_COUNT
 from microcosm.build.uk_runtime.hmrc_replay import FULL_FRS_TI_BAND_FENCE_ID
 from microcosm.build.uk_runtime.local_targets import AREA_TYPES, metric_names
@@ -107,16 +105,19 @@ def _ledger_fact_feed_pin() -> dict[str, str | int]:
 _LEDGER_FACT_FEED_PIN: dict[str, str | int] = _ledger_fact_feed_pin()
 
 
-def _derived_resource_pin() -> dict[str, str | int]:
-    """Identity of the committed high-value home stock resource (microcosm#1240)."""
+#: The committed derived-facts resource each derived source's targets come
+#: from: the high-value home stock (microcosm#1240) and DESNZ's energy split
+#: onto constituencies (microcosm#1095).
+_DERIVED_RESOURCE_BY_SOURCE = {
+    "hmlr_price_paid_derived_stock": "high_value_home_stock_facts.json",
+    "desnz_small_area_constituency_split": "desnz_constituency_energy_facts.json",
+}
 
-    derived = load_uk_high_value_home_stock_facts()
-    return {
-        "resource": "high_value_home_stock_facts.json",
-        "rows": len(derived.rows),
-        "rows_sha256": derived.rows_sha256,
-        "inputs_sha256": derived.inputs_sha256,
-    }
+
+def _derived_resource_pin(source_id: str) -> dict[str, str | int]:
+    """Identity of the committed derived resource a source's targets come from."""
+
+    return uk_derived_fact_resource_pins()[_DERIVED_RESOURCE_BY_SOURCE[source_id]]
 
 
 _SPI_FRAME_PROXY_FENCE_ID = "hmrc_spi_frame_model_proxy"
@@ -130,6 +131,7 @@ _HIGH_VALUE_HOME_STOCK_FENCE_ID = "high_value_home_stock_derived_estimate"
 _DESNZ_BASIS_FENCE_ID = "desnz_subnational_consumption_basis"
 _DESNZ_METERS_FENCE_ID = "desnz_meters_for_households"
 _DESNZ_STAGE_SHARE_FENCE_ID = "desnz_regional_meter_share_in_stage"
+_DESNZ_SEAT_SPLIT_FENCE_ID = "desnz_small_area_split_for_constituencies"
 #: The DESNZ and census pages were fetched and checked on this date
 #: (microcosm#1207).
 _ENERGY_SOURCES_VERIFIED_ON = "2026-10-14"
@@ -272,12 +274,15 @@ _FAMILIES: tuple[dict[str, Any], ...] = (
             "electricity meters, a member of the census household partition. "
             "The frame reads each household's stored spend at the dataset "
             "period and turns it back into kWh at the stage's declared prices. "
-            "DESNZ publishes no constituency cut, so the family is "
-            "local-authority only."
+            "DESNZ publishes no constituency cut, so the constituency cells "
+            "bind Microcosm's split of each authority's totals by DESNZ's LSOA "
+            "and data zone figures, which keeps every authority's total "
+            "(microcosm#1095)."
         ),
         "sources": [
             "desnz_subnational_electricity_la",
             "desnz_subnational_gas_la",
+            "desnz_small_area_constituency_split",
             "desnz_subnational_electricity_ni",
             "desnz_subnational_gas_ni",
             "ons_census2021_ts041_households",
@@ -287,6 +292,7 @@ _FAMILIES: tuple[dict[str, Any], ...] = (
             _DESNZ_BASIS_FENCE_ID,
             _DESNZ_METERS_FENCE_ID,
             _DESNZ_STAGE_SHARE_FENCE_ID,
+            _DESNZ_SEAT_SPLIT_FENCE_ID,
         ],
     },
     {
@@ -301,7 +307,10 @@ _FAMILIES: tuple[dict[str, Any], ...] = (
             "the cross-grain operator rescales those regions' bound cells by "
             "the whole-region sum over the bound sum: about a thousand "
             "dwellings on the South West's band A, the same shape the VOA "
-            "basis had."
+            "basis had. England's authorities also bind line 8, the dwellings "
+            "with the single adult household 25% discount (microcosm#1095): "
+            "the cells share the national single adult row's measurement, so "
+            "the England row is their control."
         ),
         "sources": [
             "mhclg_council_taxbase_la",
@@ -659,7 +668,10 @@ _SOURCES: tuple[dict[str, Any], ...] = (
             "Barnsley and Sheffield bind through the crosswalk's declared "
             "aliases of their April 2025 codes. The family is scoped to the "
             "296 English authorities: Wales and Scotland bind their own "
-            "returns below and Northern Ireland levies domestic rates."
+            "returns below and Northern Ireland levies domestic rates. The "
+            "spec line_08_single_adult_discount_dwellings.v1 (all bands) "
+            "supplies the same authorities' single adult discount cells "
+            "(microcosm#1095), under the same support floor."
         ),
     },
     {
@@ -777,6 +789,45 @@ _SOURCES: tuple[dict[str, Any], ...] = (
         ),
     },
     {
+        "source_id": "desnz_small_area_constituency_split",
+        "publisher": (
+            "Department for Energy Security and Net Zero (LSOA and data zone "
+            "statistics), ONS and NRS (output area lookups); Microcosm derivation"
+        ),
+        "product": (
+            "Domestic electricity and gas consumption (kWh) and meter counts by "
+            "July 2024 constituency, Great Britain, 2024: each authority's "
+            "sub-national total split over its constituencies by DESNZ's 2021 "
+            "LSOA and 2022 data zone figures for the same year, through the "
+            "committed atomic supports (microcosm#1095)."
+        ),
+        "url": (
+            "https://assets.publishing.service.gov.uk/media/"
+            "69427b7bd8156a816c419351/LSOA_domestic_elec_2010-2024.xlsx"
+        ),
+        "geographies": ["constituency"],
+        "latest_vintage": "2024",
+        "status": SOURCE_STATUS_PINNED_IN_DERIVED_RESOURCE,
+        "ledger_fact_pin": _LEDGER_FACT_FEED_PIN,
+        "derived_resource_pin": None,  # filled by build_uk_local_target_census
+        "verified_on": "2026-10-25",
+        "notes": (
+            "The pinned feed record sets desnz.lsoa.electricity.cy2024 and "
+            "desnz.lsoa.gas.gy2024 (LSOA_domestic_elec_2010-2024.xlsx and "
+            "LSOA_domestic_gas_2010-2024.xlsx, December 2025) carry DESNZ's "
+            "domestic consumption and meter counts for every England and Wales "
+            "LSOA and Scottish data zone it publishes, on the same periods and "
+            "temperature bases as the authority rows. "
+            "tools/build_uk_desnz_constituency_energy_facts.py shares each "
+            "authority's total among its constituency pieces in proportion to "
+            "them, an LSOA in two seats by its output areas' census households, "
+            "so every authority keeps its total and DESNZ's unallocated meters "
+            "follow the split. The seat cells take the authority cells' factor "
+            "per fuel and read their meter share off the split. Northern "
+            "Ireland publishes no small areas and is outside the family."
+        ),
+    },
+    {
         "source_id": "desnz_subnational_electricity_ni",
         "publisher": "Department for Energy Security and Net Zero",
         "product": (
@@ -861,8 +912,9 @@ _BINDING_FENCES: tuple[dict[str, Any], ...] = (
         "enforcement": FENCE_ENFORCEMENT_REVIEW,
         "rule": (
             "The declared HMRC area metrics gate frame membership on modeled "
-            "income_tax_annual > 0 (each person's income tax over the 12 "
-            "months before their FRS interview, a proxy for the tax year) — a "
+            "income_tax_before_winter_fuel_payment_charge_annual > 0 (each "
+            "person's income tax over the 12 months before their FRS interview, "
+            "a proxy for the tax year, before the Winter Fuel Payment charge) — a "
             "model-output proxy for 'taxpayer in the SPI frame', not a "
             "source-faithful frame. Binding any HMRC area family requires an "
             "explicit adjudication accepting or replacing that proxy before "
@@ -873,7 +925,8 @@ _BINDING_FENCES: tuple[dict[str, Any], ...] = (
             "hmrc.employment_income.amount, hmrc.employment_income.count, "
             "hmrc.self_employment_income.amount, "
             "hmrc.self_employment_income.count and "
-            "hmrc.higher_rate_taxpayers.count (their income_tax_annual filter); "
+            "hmrc.higher_rate_taxpayers.count (their "
+            "income_tax_before_winter_fuel_payment_charge_annual filter); "
             "microcosm#495 scoping."
         ),
     },
@@ -1071,8 +1124,8 @@ _BINDING_FENCES: tuple[dict[str, Any], ...] = (
             "DESNZ sub-national electricity and gas consumption statistics "
             "methodology notes; DESNZ Energy Trends tables 4.1 and 5.5; "
             "microcosm#1207 plan rulings of 2026-10-14 (reconcile onto the "
-            "stage's level; local-authority grain only); DESNZ's Northern "
-            "Ireland sub-national electricity and gas statistics, with the "
+            "stage's level); DESNZ's Northern Ireland sub-national "
+            "electricity and gas statistics, with the "
             "Northern Ireland sentence re-worded in by María on 2026-10-17 "
             "(microcosm#1306 review)."
         ),
@@ -1082,13 +1135,13 @@ _BINDING_FENCES: tuple[dict[str, Any], ...] = (
         "fenced_fact_count": None,
         "enforcement": FENCE_ENFORCEMENT_REVIEW,
         "rule": (
-            "The gas-connected cells read an authority's domestic gas meters "
+            "The gas-connected cells read an area's domestic gas meters "
             "over its domestic electricity meters as the share of its "
             "households connected to gas. Meters are not households: a "
             "dwelling can carry more than one meter, a meter can serve an "
             "empty dwelling or a second home, and DESNZ classes a gas meter as "
             "domestic by a consumption threshold. The share is applied to the "
-            "authority's census households, whose level the household "
+            "area's census households, whose level the household "
             "controls set through the census partition. Binding needs an "
             "adjudication accepting the ratio as the household share."
         ),
@@ -1115,6 +1168,42 @@ _BINDING_FENCES: tuple[dict[str, Any], ...] = (
             "published_energy_level); microcosm#1207 plan of 2026-10-14."
         ),
     },
+    {
+        "fence_id": _DESNZ_SEAT_SPLIT_FENCE_ID,
+        "fenced_fact_count": None,
+        "enforcement": FENCE_ENFORCEMENT_REVIEW,
+        "rule": (
+            "DESNZ publishes no constituency cut. The constituency cells are "
+            "Microcosm's split of each authority's published total over its "
+            "constituencies, in proportion to DESNZ's own LSOA (England and "
+            "Wales, 2021) and data zone (Scotland, 2022) figures for the same "
+            "year and basis. An LSOA or data zone whose output areas fall in "
+            "two seats is split by their census households, and DESNZ's "
+            "unallocated meters (about 0.1% of Great Britain) follow the "
+            "split. Every authority keeps its published total, so the two "
+            "grains' kWh cells agree within each region and the single-winner "
+            "rule rescales the authority cells by one. Two steps are modelled, "
+            "both small: each output area goes to one seat through ONS's "
+            "best-fit lookup of 2021 output areas to July 2024 constituencies "
+            "(NRS's lookup of 2022 output areas in Scotland), and use per "
+            "household is assumed uniform within a small area that straddles "
+            "two seats (2.4% of households). The gas-connected cells do not "
+            "agree by construction: each area's are its census households "
+            "times its own meter share. After the census reconciliation the "
+            "two grains' sums differ by under 0.2% in every region (0.06% over "
+            "Great Britain, on the 272c987 feed). Binding needs an "
+            "adjudication that a seat's split is the target, not a published "
+            "fact."
+        ),
+        "authority": (
+            "DESNZ sub-national electricity and gas consumption statistics, "
+            "and DESNZ LSOA and data zone domestic consumption statistics "
+            "(December 2025 release, 2024 data); the committed atomic supports "
+            "(uk/uk_atomic_area_supports.provenance.json); microcosm#1095 plan "
+            "approved by María on 2026-10-25 (split by DESNZ's small areas, "
+            "not by households)."
+        ),
+    },
 )
 
 _STATUS_DEFINITIONS: dict[str, str] = {
@@ -1133,11 +1222,11 @@ _STATUS_DEFINITIONS: dict[str, str] = {
         "Ledger consumer fact feed recorded on the source row."
     ),
     SOURCE_STATUS_PINNED_IN_DERIVED_RESOURCE: (
-        "The official product is registered raw-only in Chronicle (its bytes "
-        "are pinned by sha256 but parsed into no fact) and Microcosm's committed "
-        "derived-facts resource, built by the recorded tool from those pins, "
-        "carries the target values; derived_resource_pin records the resource "
-        "and its row digest."
+        "The official product is pinned in Chronicle, registered raw-only (its "
+        "bytes pinned by sha256 but parsed into no fact) or parsed into the "
+        "sha-pinned feed, and Microcosm's committed derived-facts resource, "
+        "built by the recorded tool from those pins, carries the target values; "
+        "derived_resource_pin records the resource and its row digest."
     ),
     SOURCE_STATUS_SIGNED_DEFERRED: (
         "The official product is present or documented, but this target "
@@ -1275,7 +1364,7 @@ def build_uk_local_target_census() -> dict[str, Any]:
         # The derived resource is read when the census is built, never at
         # import, so loading the UK runtime does not depend on the file.
         if row.get("status") == SOURCE_STATUS_PINNED_IN_DERIVED_RESOURCE:
-            row["derived_resource_pin"] = _derived_resource_pin()
+            row["derived_resource_pin"] = _derived_resource_pin(row["source_id"])
     _require_unique_ids(sources, key="source_id", label="source")
     fences = [dict(row) for row in _BINDING_FENCES]
     _require_unique_ids(fences, key="fence_id", label="binding fence")

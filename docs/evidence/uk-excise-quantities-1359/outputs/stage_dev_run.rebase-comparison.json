@@ -1,0 +1,144 @@
+{
+ "differing_columns": {
+  "betting_exchange_commission": {
+   "base_weighted_total": 123949909.1922428,
+   "head_weighted_total": 123949909.1922428
+  },
+  "bingo_net_receipts": {
+   "base_weighted_total": 252330000.0,
+   "head_weighted_total": 252330000.0
+  },
+  "communication_consumption": {
+   "base_weighted_total": 24803521172.601994,
+   "head_weighted_total": 24981028185.623734
+  },
+  "education_consumption": {
+   "base_weighted_total": 15876557691.370522,
+   "head_weighted_total": 16125442673.923807
+  },
+  "health_consumption": {
+   "base_weighted_total": 21567398958.325157,
+   "head_weighted_total": 21905495025.357376
+  },
+  "horse_and_dog_pool_betting_net_losses": {
+   "base_weighted_total": 55219132.22492455,
+   "head_weighted_total": 55219132.22492455
+  },
+  "household_furnishings_consumption": {
+   "base_weighted_total": 73744645926.80603,
+   "head_weighted_total": 74900685873.98344
+  },
+  "land_based_casino_net_losses": {
+   "base_weighted_total": 702361489.1692535,
+   "head_weighted_total": 702361489.1692535
+  },
+  "land_based_fixed_odds_betting_net_losses": {
+   "base_weighted_total": 1527826124.9133615,
+   "head_weighted_total": 1527826124.9133615
+  },
+  "machine_games_higher_rate_net_takings": {
+   "base_weighted_total": 2384000.0,
+   "head_weighted_total": 2384000.0
+  },
+  "machine_games_lower_rate_net_takings": {
+   "base_weighted_total": 138420000.0,
+   "head_weighted_total": 138419999.99999997
+  },
+  "machine_games_standard_rate_net_takings": {
+   "base_weighted_total": 3023740000.0,
+   "head_weighted_total": 3023740000.0
+  },
+  "miscellaneous_consumption": {
+   "base_weighted_total": 90368733861.36032,
+   "head_weighted_total": 91785377266.5408
+  },
+  "national_lottery_ticket_spending": {
+   "base_weighted_total": 7765725000.000001,
+   "head_weighted_total": 7765724999.999998
+  },
+  "pool_betting_net_receipts": {
+   "base_weighted_total": 54166666.66666668,
+   "head_weighted_total": 54166666.666666664
+  },
+  "recreation_consumption": {
+   "base_weighted_total": 148697014445.80408,
+   "head_weighted_total": 151028026908.67474
+  },
+  "remote_gaming_net_losses": {
+   "base_weighted_total": 5535900000.0,
+   "head_weighted_total": 5535900000.0
+  },
+  "remote_other_betting_net_losses": {
+   "base_weighted_total": 2163978657.2782593,
+   "head_weighted_total": 2163978657.2782593
+  },
+  "remote_uk_horseracing_betting_net_losses": {
+   "base_weighted_total": 888079509.7245454,
+   "head_weighted_total": 888079509.7245454
+  },
+  "transport_consumption": {
+   "base_weighted_total": 175429846522.27753,
+   "head_weighted_total": 178976282972.66656
+  }
+ },
+ "fit_weight_records": [
+  30,
+  30
+ ],
+ "gates": {
+  "base": {
+   "uk_stage_lcfs_consumption_basis": true,
+   "uk_stage_lcfs_consumption_bus_pricing": true,
+   "uk_stage_lcfs_consumption_energy_rake": true,
+   "uk_stage_lcfs_consumption_excise_quantities": true,
+   "uk_stage_lcfs_consumption_recomposed_totals": true,
+   "uk_stage_lcfs_consumption_road_fuel_incidence": true,
+   "uk_stage_lcfs_consumption_road_fuel_level": true,
+   "uk_stage_lcfs_consumption_support": true
+  },
+  "head": {
+   "uk_stage_lcfs_consumption_basis": true,
+   "uk_stage_lcfs_consumption_bus_pricing": true,
+   "uk_stage_lcfs_consumption_energy_rake": true,
+   "uk_stage_lcfs_consumption_excise_quantities": true,
+   "uk_stage_lcfs_consumption_recomposed_totals": true,
+   "uk_stage_lcfs_consumption_road_fuel_incidence": true,
+   "uk_stage_lcfs_consumption_road_fuel_level": true,
+   "uk_stage_lcfs_consumption_support": true
+  }
+ },
+ "head_only_columns": [],
+ "households": [
+  78440,
+  78440
+ ],
+ "identical_columns": [
+  "food_and_non_alcoholic_beverages_consumption",
+  "alcohol_and_tobacco_consumption",
+  "clothing_and_footwear_consumption",
+  "housing_water_and_electricity_consumption",
+  "restaurants_and_hotels_consumption",
+  "petrol_spending",
+  "diesel_spending",
+  "bus_fare_spending",
+  "domestic_energy_consumption",
+  "electricity_consumption",
+  "gas_consumption",
+  "liquid_fuel_consumption",
+  "solid_fuel_consumption",
+  "has_fuel_consumption",
+  "uses_energy_prepayment_meter",
+  "beer_litres",
+  "cider_litres",
+  "wine_litres",
+  "spirits_litres",
+  "other_fermented_litres",
+  "beer_draught_share",
+  "cider_draught_share",
+  "cigarettes_per_week",
+  "hand_rolling_tobacco_grams_per_week",
+  "cigars_grams_per_week",
+  "other_tobacco_grams_per_week"
+ ],
+ "shared_columns": 46
+}

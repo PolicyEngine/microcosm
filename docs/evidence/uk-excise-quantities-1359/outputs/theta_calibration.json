@@ -1,0 +1,44 @@
+{
+ "declared_theta": {
+  "betting_and_gaming": 0.08,
+  "national_lottery": 0.9
+ },
+ "fitted": {
+  "betting_and_gaming": {
+   "diary_over_gsgb_four_week_rate": {
+    "1": 0.175,
+    "2": 0.175,
+    "3+": 0.154
+   },
+   "theta": 0.081,
+   "three_plus_over_one": {
+    "diary": 1.658,
+    "fitted": 1.892
+   },
+   "two_over_one": {
+    "diary": 1.404,
+    "fitted": 1.404,
+    "theta_0": 1.332,
+    "theta_1": 2.14
+   }
+  },
+  "national_lottery": {
+   "diary_over_gsgb_four_week_rate": {
+    "1": 0.215,
+    "2": 0.215,
+    "3+": 0.199
+   },
+   "theta": 0.897,
+   "three_plus_over_one": {
+    "diary": 1.827,
+    "fitted": 1.974
+   },
+   "two_over_one": {
+    "diary": 1.583,
+    "fitted": 1.583,
+    "theta_0": 1.093,
+    "theta_1": 1.628
+   }
+  }
+ }
+}

@@ -501,6 +501,104 @@
       ]
     },
     {
+      "resource": "excise_facts.json",
+      "purpose": "HMRC FY2024-25 alcohol clearances by product, ABV band, duty point and relief (Alcohol Bulletin) and tobacco clearances by product (Tobacco Bulletin), HMRC betting and gaming duty cash receipts by duty and Machine Games Duty liabilities by rate band (Betting and Gaming statistics), and the Gambling Commission's FY2024-25 gross gambling yield for Great Britain by sector, activity and betting event: the national quantities and bases the LCFS level_excise_quantities step shares out to households (microcosm#1359, PolicyEngine/chronicle#381).",
+      "consumers": [
+        "uk_runtime.lcfs_consumption"
+      ],
+      "planned_consumers": [],
+      "selections": [
+        {
+          "label": "hmrc_alcohol_clearances_fy2024",
+          "selector": {
+            "source_name": "hmrc",
+            "source_concept": "hmrc.alcohol_clearances",
+            "geography_id": "K02000001",
+            "period_type": "fiscal_year",
+            "period_value": [
+              2024
+            ]
+          },
+          "expected_row_count": 40
+        },
+        {
+          "label": "hmrc_tobacco_clearances_fy2024",
+          "selector": {
+            "source_name": "hmrc",
+            "source_concept": "hmrc.tobacco_clearances",
+            "geography_id": "K02000001",
+            "period_type": "fiscal_year",
+            "period_value": [
+              2024
+            ]
+          },
+          "expected_row_count": 5
+        },
+        {
+          "label": "hmrc_betting_and_gaming_duty_receipts_fy2024",
+          "selector": {
+            "source_name": "hmrc",
+            "source_concept": "hmrc.betting_and_gaming_duty_receipts",
+            "geography_id": "K02000001",
+            "period_type": "fiscal_year",
+            "period_value": [
+              2024
+            ]
+          },
+          "expected_row_count": 9
+        },
+        {
+          "label": "hmrc_machine_games_duty_liabilities_fy2024",
+          "selector": {
+            "source_name": "hmrc",
+            "source_concept": "hmrc.machine_games_duty_liabilities",
+            "geography_id": "K02000001",
+            "period_type": "fiscal_year",
+            "period_value": [
+              2024
+            ]
+          },
+          "expected_row_count": 4
+        },
+        {
+          "label": "gambling_commission_gross_gambling_yield_fy2024",
+          "selector": {
+            "source_name": "gambling_commission",
+            "source_concept": "gambling_commission.gross_gambling_yield",
+            "geography_id": "K03000001",
+            "period_type": "fiscal_year",
+            "period_value": [
+              2024
+            ]
+          },
+          "expected_row_count": 40
+        }
+      ]
+    },
+    {
+      "resource": "gambling_participation_facts.json",
+      "purpose": "The Gambling Commission's Gambling Survey for Great Britain 2025: the share of adults who gambled in the past four weeks and the past twelve months, any gambling and excluding lottery-draw-only players, by sex crossed with age band (tables B.1 and B.3), and past-four-week participation by activity and channel, by sex and by age band (table B.9), Great Britain, calendar 2025: the adult rates the LCFS top_up_gambling_participation step brings the National Lottery and the betting and gaming keys to (microcosm#1359, PolicyEngine/chronicle#391).",
+      "consumers": [
+        "uk_runtime.gambling_participation"
+      ],
+      "planned_consumers": [],
+      "selections": [
+        {
+          "label": "gambling_commission_gsgb_participation_2025",
+          "selector": {
+            "source_name": "gambling_commission",
+            "source_concept": "gambling_commission.gsgb.participation",
+            "geography_id": "K03000001",
+            "period_type": "calendar_year",
+            "period_value": [
+              2025
+            ]
+          },
+          "expected_row_count": 426
+        }
+      ]
+    },
+    {
       "resource": "desnz_domestic_energy_facts.json",
       "purpose": "DESNZ domestic energy volumes: Energy Trends domestic electricity (table 5.5) and gas (table 4.1) consumption at actual temperature, annual and quarterly, United Kingdom, 2022 to the latest quarter (the published level the LCFS kWh rake scales to, summed over the four quarters of calendar 2024; microcosm#1113), and the subnational electricity and gas statistics' domestic consumption and meter counts for Great Britain, England and Wales, the countries and the English regions, 2023 and 2024 (the published gas-connected share by region: gas meters over electricity meters; and the Great Britain totals that level the local-authority energy rows, microcosm#1207).",
       "consumers": [
@@ -914,7 +1012,7 @@
     },
     {
       "resource": "hmrc_itl_taxpayer_counts.json",
-      "purpose": "HMRC Income Tax liabilities statistics (15 July 2026) Table 2.5 by range of total income: Income Tax payers, total income and Income Tax liabilities for the 2023-24 outturn and HMRC's 2024-25, 2025-26 and 2026-27 projections, the eleven published bands and the all-ranges total. Consumed by the Table 2.5 growth appliers (hmrc.itl_2026.{taxpayer_count,total_income,total_tax}_growth_by_total_income_band), which move a 2023-24 SPI band row by the calendar-2025 window of the two overlapping projections over 2023-24 in the Table 2.5 band(s) the SPI band spans.",
+      "purpose": "HMRC Income Tax liabilities statistics (15 July 2026) for the 2023-24 outturn and HMRC's 2024-25, 2025-26 and 2026-27 projections. Table 2.5 by range of total income: Income Tax payers, total income and Income Tax liabilities, the eleven published bands and the all-ranges total, consumed by the Table 2.5 growth appliers (hmrc.itl_2026.{taxpayer_count,total_income,total_tax}_growth_by_total_income_band), which move a 2023-24 SPI band row by the calendar-2025 window of the two overlapping projections over 2023-24 in the Table 2.5 band(s) the SPI band spans. Tables 2.1 (United Kingdom) and 2.2 (England, its nine regions, Wales, Scotland and Northern Ireland): Income Tax payers of State Pension age, consumed by the State Pension age applier (hmrc.itl_2026.resident_state_pension_age_taxpayer_growth), which moves the SPI State Pension band rows by the calendar-2025 window of the twelve region-tier areas' State Pension age taxpayers over Table 2.1's 2023-24 United Kingdom count; and Income Tax payers aged 65 and over, which no applier reads and the tests hold against the areas and the State Pension age rows (microcosm#1069).",
       "consumers": [
         "uk_runtime.hmrc_uprating"
       ],
@@ -955,6 +1053,34 @@
             "period_type": "tax_year"
           },
           "expected_row_count": 48
+        },
+        {
+          "label": "itl_2026_tables_2_1_2_2_state_pension_age_taxpayer_count",
+          "selector": {
+            "source_name": "hmrc",
+            "source_concept": "hmrc.spi_taxpayer_count",
+            "source_measure_id": "state_pension_age",
+            "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+            "dimension_values": {
+              "age_band": "state_pension_age"
+            },
+            "period_type": "tax_year"
+          },
+          "expected_row_count": 56
+        },
+        {
+          "label": "itl_2026_tables_2_1_2_2_age_65_and_over_taxpayer_count",
+          "selector": {
+            "source_name": "hmrc",
+            "source_concept": "hmrc.spi_taxpayer_count",
+            "source_measure_id": "age_65_and_over",
+            "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+            "dimension_values": {
+              "age_band": "65_and_over"
+            },
+            "period_type": "tax_year"
+          },
+          "expected_row_count": 56
         }
       ]
     },
@@ -975,6 +1101,33 @@
             "period_type": "calendar_year",
             "period_value": [
               "2023"
+            ],
+            "dimensions": [
+              "age",
+              "sex"
+            ]
+          },
+          "expected_row_count": 182
+        }
+      ]
+    },
+    {
+      "resource": "ons_mid2025_single_year_age_by_sex.json",
+      "purpose": "ONS mid-2025 UK resident population by single year of age (0 to 89 and 90 and over) and sex (MYE2, the edition of 1 October 2026), usual residents including communal establishments. Report-only (microcosm#1095, uk-data#600's age check): uk_runtime.single_year_ages reports a built file's persons by single year of age against it; no stage draws from it and no target binds it. The SPI stage's mid-2023 ages stay in ons_single_year_age_populations.json.",
+      "consumers": [
+        "uk_runtime.single_year_ages"
+      ],
+      "planned_consumers": [],
+      "selections": [
+        {
+          "label": "mye2_uk_single_year_of_age_by_sex_mid2025",
+          "selector": {
+            "source_name": "ons",
+            "source_concept": "ons.mid_year_population_estimate",
+            "geography_id": "K02000001",
+            "period_type": "calendar_year",
+            "period_value": [
+              "2025"
             ],
             "dimensions": [
               "age",

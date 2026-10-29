@@ -368,7 +368,7 @@ stages:
     person_table: adult union child
     household_sort: set_index('household_id').sort_index() before positional household reads
   - kind: map_columns
-    scope: 'raw-to-column E2 mappings and FRS claimant-role derivation (is_benunit_head OR is_parent OR no dependent children within the benefit unit) to is_uc_claimant; benunit.TOTCAPB4 -> frs_benunit_capital with blank, nonnumeric, or negative raw values -> named -1 unavailable sentinel (mapped-row count reported in stage evidence); Scottish water_and_sewerage_charges is the charge paid, (CWATAMT1 + CSEWAMT1) less the CTDISC/CT25D50D status discount, or where CTREB is 1 less the larger of that discount and the Water Charges Reduction Scheme''s 35% (the full-reduction case), and CWATAMTD where CWATAMT1 is not positive (uk-data#499, microcosm#1095); access_fund is ACCSSAMT annualised, except that a calendar-month award (ACCSSPD 5) that annualises to more than twice the largest annual-coded (ACCSSPD 52) award on the tab is read as the annual award, ACCSSAMT x 52/12 (microcosm#1095), and a tab with calendar-month awards but no annual-coded award refuses, since the threshold comes from that award; the stage evidence records the awards by period code, the threshold and the repaired count; is_blind is SPCREG1 = 1, registered blind or severely sight impaired with the local authority, read on the adult and child tabs alike, while partial-sight registration (SPCREG2) is not read (uk-data#523); esa_includes_support_component is false where a person''s ESA rows (BENEFIT 16) record VAR3 (ESAGROUP) 1 or 3, the work-related activity group or the assessment phase, and none records 2, the support group, and true everywhere else, policyengine-uk''s own default for an award of one''s own, and a benefits tab without VAR3 refuses (microcosm#1095); uc_is_in_startup_period holds for a self-employed person (EMPSTATI 3 or 4, a held self-employed JOB row with ETYPE 2-7 and no SEEND, or nonzero SEINCAM2) whose benefit unit''s UC claim (BENEFIT 95, UCSTART month/day/year) or whose first self-employed job (SEJBLONG, main job first) began less than 12 calendar months before INTDATE, except that a self-employed-job answer under a year from someone self-employed all year (SAMESIT 2 or every SDEMP month 3 or 4) who does not describe a business (JOBBUS 2) is a new engagement and does not date the trade (UC Regs 2013 reg 63, uk-data#527); is_claimant_or_partner is adult-table membership and is_hbai_dependent_child child-table membership (uk-data#524, uk-data#486), the claimant derivation already refusing a benefit unit without one or two adult records; CVPAY, the rent a boarder or lodger pays the householder, is not the payer''s property income but rent_paid_as_boarder where CONVBL is 1 and rent_paid_as_lodger otherwise, and liable_for_share_of_household_rent holds for a later benefit unit of a shared household (HHSTAT 2) with a rent share (SRENTAMT), Housing Benefit (HBOTHAMT) or a linked UC housing element (UCHOUSEL on BENEFIT 95) (pe-uk#2006, uk-data#512); uc_is_in_gainful_self_employment holds for a self-employed main job (EMPSTATI 3 or 4) whatever its profit, and for a side trade whose SEINCAM2 profit is above 0 and above INEARNS pay (UC Regs 2013 reg 64, ADM H4034, uk-data#525); reports_rent_from_other_property is an internal carrier, a positive ROYYR1 whether the letting made a profit or a loss (RENTPROF 2), which property_income counts as zero; the CGT stages read it as the landlord signal and the release drops it'
+    scope: 'raw-to-column E2 mappings and FRS claimant-role derivation (is_benunit_head OR is_parent OR no dependent children within the benefit unit) to is_uc_claimant; benunit.TOTCAPB4 -> frs_benunit_capital with blank, nonnumeric, or negative raw values -> named -1 unavailable sentinel (mapped-row count reported in stage evidence); Scottish water_and_sewerage_charges is the charge paid, (CWATAMT1 + CSEWAMT1) less the CTDISC/CT25D50D status discount, or where CTREB is 1 less the larger of that discount and the Water Charges Reduction Scheme''s 35% (the full-reduction case), and CWATAMTD where CWATAMT1 is not positive (uk-data#499, microcosm#1095); access_fund is ACCSSAMT annualised, except that a calendar-month award (ACCSSPD 5) that annualises to more than twice the largest annual-coded (ACCSSPD 52) award on the tab is read as the annual award, ACCSSAMT x 52/12 (microcosm#1095), and a tab with calendar-month awards but no annual-coded award refuses, since the threshold comes from that award; the stage evidence records the awards by period code, the threshold and the repaired count; is_blind is SPCREG1 = 1, registered blind or severely sight impaired with the local authority, read on the adult and child tabs alike, while partial-sight registration (SPCREG2) is not read (uk-data#523); esa_includes_support_component is false where a person''s ESA rows (BENEFIT 16) record VAR3 (ESAGROUP) 1 or 3, the work-related activity group or the assessment phase, and none records 2, the support group, and true everywhere else, policyengine-uk''s own default for an award of one''s own, and a benefits tab without VAR3 refuses (microcosm#1095); uc_is_in_startup_period holds for a self-employed person (EMPSTATI 3 or 4, a held self-employed JOB row with ETYPE 2-7 and no SEEND, or nonzero SEINCAM2) whose benefit unit''s UC claim (BENEFIT 95, UCSTART month/day/year) or whose first self-employed job (SEJBLONG, main job first) began less than 12 calendar months before INTDATE, except that a self-employed-job answer under a year from someone self-employed all year (SAMESIT 2 or every SDEMP month 3 or 4) who does not describe a business (JOBBUS 2) is a new engagement and does not date the trade (UC Regs 2013 reg 63, uk-data#527); is_claimant_or_partner is adult-table membership and is_hbai_dependent_child child-table membership (uk-data#524, uk-data#486); a benefit unit without one or two adult records is refused, as is any person whose is_uc_claimant differs from is_claimant_or_partner; CVPAY, the rent a boarder or lodger pays the householder, is not the payer''s property income but rent_paid_as_boarder where CONVBL is 1 and rent_paid_as_lodger otherwise, and liable_for_share_of_household_rent holds for a later benefit unit of a shared household (HHSTAT 2) with a rent share (SRENTAMT), Housing Benefit (HBOTHAMT) or a linked UC housing element (UCHOUSEL on BENEFIT 95) (pe-uk#2006, uk-data#512); uc_is_in_gainful_self_employment holds for a self-employed main job (EMPSTATI 3 or 4) whatever its profit, and for a side trade whose SEINCAM2 profit is above 0 and above INEARNS pay (UC Regs 2013 reg 64, ADM H4034, uk-data#525); reports_rent_from_other_property is an internal carrier, a positive ROYYR1 whether the letting made a profit or a loss (RENTPROF 2), which property_income counts as zero; the CGT stages read it as the landlord signal and the release drops it'
   - kind: map_coded_amounts
     scope: region, tenure, accommodation, council tax band, benefit-code amount mappings (Scotland's Adult and Child Disability Payment codes 117/118 and 121/122 into the PIP and DLA columns they replace; benefit recovery codes 69 and 70 unmapped; code 6 into bsp_reported where a weekly amount is within 1% of a Bereavement Support Payment rate's weekly equivalent, into widowed_parents_allowance_reported where it is at or below Widowed Parent's Allowance's 2024-25 rate of GBP 148.40 a week, and into bsp_reported otherwise); adult HOURTOT care-hours band code to weekly care_hours at the band's lower edge (codes 5, 6, 7 and 10 reach the 35-hour Carer's Allowance line); would_claim_carers_allowance from positive reported Carer's Allowance, the anchor carers_allowance_take_up opens to carers over the earnings limit (microcosm#1319)
   - kind: annualize_periodic_amounts
@@ -390,6 +390,7 @@ stages:
   - marital_status
   - hours_worked
   - care_hours
+  - frs_care_hours_in_household
   - is_household_head
   - is_benunit_head
   - is_parent
@@ -410,6 +411,7 @@ stages:
   - tax_free_savings_income
   - savings_interest_income
   - dividend_income
+  - other_investment_income
   - stands_as_sole_owner_or_partner_of_company
   - is_engaged_in_owned_company_trade
   - owned_company_is_main_employment
@@ -510,6 +512,7 @@ stages:
   - tax_free_savings_income
   - savings_interest_income
   - dividend_income
+  - other_investment_income
   - owned_company_income_share
   - maintenance_income
   - spousal_maintenance_income
@@ -529,7 +532,8 @@ stages:
   - housing_service_charges
   - external_child_payments
   - care_hours
-  notes: Root E2 spine assembly. It carries direct raw mappings only; education-grant aggregate and council-tax reported fields remain raw carriers for E3. Benefit take-up, BRMA/LHA assignment, stochastic flags, and imputations are intentionally absent from this stage, except two identity-keyed draws. One is the UC start-up claim recency (uk-data#527). The other is each person's months_since_last_birthday, which policyengine-uk reads to place a date of birth (the two-child limit, the State Pension scheme, the Pension Credit qualifying age). Each single year of age and sex is spread evenly over the year at the FRS weights, in an order set by a draw on the person's stable id, as the engine spreads it when the column is unset, and the column is stored so every later engine read, the calibration's and the release's included, takes the same months whatever weights or identifiers the file carries (microcosm#1095). The UC start-up period needs the raw claim, interview and job dates only this stage reads, so a UC record without a linked claim date takes its claim recency from a benefit-unit-keyed draw at the linked share. The 2024-25 househol.tab is not sernum-ordered; the declared household sort guards stable identity. care_hours carries the FRS banded care-hours code as weekly hours (lower band edge) and would_claim_carers_allowance follows reported receipt, so the engine keeps Carer's Allowance on reported claimants while the hours qualify carers for the Universal Credit carer element (#882); after the SPI income chain, carers_allowance_take_up opens the flag to carers the earnings limit alone keeps from the allowance (microcosm#1319). SEINCAM2, the self-employment income the respondent gives, splits by its sign (uk-data#528), so profits go to self_employment_income and losses to trading_loss as a positive amount, the two inputs policyengine-uk reads from 2.131.0 (pe-uk#2085). The engine uprates trading_loss into each projected year as it does self_employment_income, so a loss persists like a profit; the engine documents that a one-off loss would be set to zero in later years, which a one-year survey cannot tell apart. Six of policyengine-uk's eleven owned-company inputs (pe-uk#1965) come from the FRS job tab (microcosm#1095). A director (DIRECTOR 1 or NATURE 1) who owns at least half of the company (DIRPERC 1 to 3, the ruling of 2026-10-16) stands as its sole owner or partner and works in it. The company is their main employment when the job is their first (JOBTYPE 1); it carries on a property business when the main job's SIC division is 68 and a trade otherwise, and its income share is the dividends the job records (DIVIDEND, after tax), the part of the company's profit the survey sees. A company held in another job carries on neither, since ADULT.SIC codes the main job only, which leaves the engine's company-owner rules off for it. The stocks and the intermediaries inputs keep the engine's defaults.
+  - frs_care_hours_in_household
+  notes: Root E2 spine assembly. It carries direct raw mappings only; education-grant aggregate and council-tax reported fields remain raw carriers for E3. Benefit take-up, BRMA/LHA assignment, stochastic flags, and imputations are intentionally absent from this stage, except two identity-keyed draws. One is the UC start-up claim recency (uk-data#527). The other is each person's months_since_last_birthday, which policyengine-uk reads to place a date of birth (the two-child limit, the State Pension scheme, the Pension Credit qualifying age). Each single year of age and sex is spread evenly over the year at the FRS weights, in an order set by a draw on the person's stable id, as the engine spreads it when the column is unset, and the column is stored so every later engine read, the calibration's and the release's included, takes the same months whatever weights or identifiers the file carries (microcosm#1095). The UC start-up period needs the raw claim, interview and job dates only this stage reads, so a UC record without a linked claim date takes its claim recency from a benefit-unit-keyed draw at the linked share. The 2024-25 househol.tab is not sernum-ordered; the declared household sort guards stable identity. care_hours carries the FRS banded care-hours code as weekly hours (lower band edge), and frs_care_hours_in_household the largest of the four in-household care bands (HOURAB, HOURAH, HOURCB, HOURCH) the same way, a stage-internal carrier the Carer's Allowance draw reads and the release drops (microcosm#1418); would_claim_carers_allowance follows reported receipt, so the engine keeps Carer's Allowance on reported claimants while the hours qualify carers for the Universal Credit carer element (#882); after the SPI income chain, carers_allowance_take_up opens the flag to carers the earnings limit alone keeps from the allowance (microcosm#1319). SEINCAM2, the self-employment income the respondent gives, splits by its sign (uk-data#528), so profits go to self_employment_income and losses to trading_loss as a positive amount, the two inputs policyengine-uk reads from 2.131.0 (pe-uk#2085). The engine uprates trading_loss into each projected year as it does self_employment_income, so a loss persists like a profit; the engine documents that a one-off loss would be set to zero in later years, which a one-year survey cannot tell apart. Six of policyengine-uk's eleven owned-company inputs (pe-uk#1965) come from the FRS job tab (microcosm#1095). A director (DIRECTOR 1 or NATURE 1) who owns at least half of the company (DIRPERC 1 to 3, the ruling of 2026-10-16) stands as its sole owner or partner and works in it. The company is their main employment when the job is their first (JOBTYPE 1); it carries on a property business when the main job's SIC division is 68 and a trade otherwise, and its income share is the dividends the job records (DIVIDEND, after tax), the part of the company's profit the survey sees. A company held in another job carries on neither, since ADULT.SIC codes the main job only, which leaves the engine's company-owner rules off for it. The stocks and the intermediaries inputs keep the engine's defaults.
 - stage: age_tail
   survey: Family Resources Survey 2024-25 and ONS mid-year population estimates
   source: Office for National Statistics mid-year population estimates for the 80+ age bands by sex, via the chronicle ledger facts the calibration register binds (target family ons_population).
@@ -1029,7 +1033,7 @@ stages:
   nonnegative_outputs:
   - maximum_extended_childcare_hours_usage
   - max_free_entitlement_hours_used
-  notes: Identity-keyed seed 0 streams replace the incumbent sequential take-up seed 100; salts are output variable names. Reported positive receipt anchors are transient and consumed only. The Universal Credit draw's population is the benefit units with a UC claimant or partner (is_uc_claimant) aged 18 or over and under Pension Credit qualifying age (66 for everyone who can reach it in this release), the age and role conditions of policyengine-uk 2.151.0's is_uc_eligible; the engine lockstep test pins it and names the three engine cases not mirrored (16- and 17-year-old claimants under the UC Regs 2013 reg 8 exceptions, mixed-age couples on the Pension Credit route, and from 2.128.0 pension-age families moved onto Universal Credit when their legacy benefit closes, SI 2014/1230 reg 60A). So the contract rate is a share of those units, an anchor outside them stays true, and any other unit is never drawn; a unit with no claimant or partner of that age keeps its reported Housing Benefit, which a claim it cannot make no longer zeroes (#882, microcosm#867, microcosm#1095). The universal childcare flag is nested under the working-parent one. A unit that claims the extended hours claims the universal hours, and any other unit claims them at the contract's universal_childcare rate, the rate conditional on not claiming the extended hours; the extended draw is unchanged. childcare_copy_take_up later re-draws the childcare flags and hours of the support and CGT copies on their own benefit units. A child of DfE age 0 or 1 (its age on 31 December of the fit's model year, the age DfE counts by) in a unit that claims the working-parent hours uses them at its age's contract rate, extended_childcare_age_0_usage or extended_childcare_age_1_usage (DfE registers far fewer of the youngest eligible children than of those aged 2 to 4, and fewer at 9 to 11 months than at age 1); a child that does not gets max_free_entitlement_hours_used 0, so the engine funds it no hours, and every other person keeps the engine's default of 30.
+  notes: Identity-keyed seed 0 streams replace the incumbent sequential take-up seed 100; salts are output variable names. Reported positive receipt anchors are transient and consumed only. The Universal Credit draw's population is the benefit units with a UC claimant or partner (is_uc_claimant) aged 18 or over and under Pension Credit qualifying age (66 for everyone who can reach it in this release), the age and role conditions of policyengine-uk 2.162.14's is_uc_eligible; the engine lockstep test pins it and names the three engine cases not mirrored (16- and 17-year-old claimants under the UC Regs 2013 reg 8 exceptions, mixed-age couples on the Pension Credit route, and from 2.128.0 pension-age families moved onto Universal Credit when their legacy benefit closes, SI 2014/1230 reg 60A). So the contract rate is a share of those units, an anchor outside them stays true, and any other unit is never drawn; a unit with no claimant or partner of that age keeps its reported Housing Benefit, which a claim it cannot make no longer zeroes (#882, microcosm#867, microcosm#1095). The universal childcare flag is nested under the working-parent one. A unit that claims the extended hours claims the universal hours, and any other unit claims them at the contract's universal_childcare rate, the rate conditional on not claiming the extended hours; the extended draw is unchanged. childcare_copy_take_up later re-draws the childcare flags and hours of the support and CGT copies on their own benefit units. A child of DfE age 0 or 1 (its age on 31 December of the fit's model year, the age DfE counts by) in a unit that claims the working-parent hours uses them at its age's contract rate, extended_childcare_age_0_usage or extended_childcare_age_1_usage (DfE registers far fewer of the youngest eligible children than of those aged 2 to 4, and fewer at 9 to 11 months than at age 1); a child that does not gets max_free_entitlement_hours_used 0, so the engine funds it no hours, and every other person keeps the engine's default of 30.
 - stage: frs_person_draws
   survey: Family Resources Survey 2024-25
   source: Sourced UK take-up contract rates and identity-keyed deterministic draws.
@@ -1062,15 +1066,24 @@ stages:
     contract_key: tax_free_childcare_spend_routed_share
     period_source: build_year
     dtype: float64
+  - kind: assign_binary_from_rate
+    output: is_apprentice
+    draw: is_apprentice
+    rate_key: apprentice_stock_19_to_24
+    assignment_unit: person
+    eligibility: 'employees (employment_status FT_EMPLOYED or PT_EMPLOYED, from frs_employment) aged 21 to 24: SSCBA 1992 s.9A already zero-rates every earner under 21 and s.9B ends the apprentice zero rate at 25, so no other age changes employer NICs, and leaving them False keeps is_in_non_advanced_education, minimum_wage, Care to Learn and the 16 to 19 Bursary Fund unchanged; the flagged keep their age-related minimum_wage too, because policyengine-uk 2.162.8 (policyengine-uk#2683) gives the apprentice rate only under 19 or with is_in_first_year_of_apprenticeship, which the build leaves at its default (False), and the stage refuses an engine without that split or the s.9B threshold'
+    rate_derivation: 'the contract''s apprentice_stock_19_to_24 is DfE''s England apprentices in learning at the start of the academic year (participation less starts) per head aged 19 to 24, a point-in-time count taken as uniform across those ages and UK-wide; the target is r times the weighted population aged 21 to 24 at the frame''s household weights, and eligible employees are flagged in the order of their identity-keyed uniform until their weight is nearest it (uc_take_up''s rule), or all of them when they weigh no more than it; the receipt records the target, the flagged weight, the support bands and the relief the flags imply at the installed engine''s Class 1 schedule, and uk_stage_frs_person_draws_apprentices gates them, the relief at or below HMRC''s NIC - NS1'
+    seed: 0
   outputs:
   - would_claim_marriage_allowance
   - would_claim_scp
   - attends_private_school_random_draw
   - tax_free_childcare_spend_routed_share
+  - is_apprentice
   nonnegative_outputs:
   - attends_private_school_random_draw
   - tax_free_childcare_spend_routed_share
-  notes: Identity-keyed seed 0 streams replace the incumbent sequential take-up seed 100; higher_earner_tie_break is intentionally not produced.
+  notes: 'Identity-keyed seed 0 streams replace the incumbent sequential take-up seed 100; higher_earner_tie_break is intentionally not produced. is_apprentice has no FRS source (no apprenticeship variable in the 2022-23 to 2024-25 adult tables; TRAIN2, NI3TRAIN and TRAINEE code government employment schemes) and is drawn to DfE''s point-in-time rate for employees aged 21 to 24 only.'
 - stage: frs_household_draws
   survey: Family Resources Survey 2024-25
   source: Sourced UK stochastic contract rates and identity-keyed deterministic draws.
@@ -2149,7 +2162,6 @@ stages:
     minimum_nondefault_mass_share: 1.0e-06
     fail_below_floor: true
   outputs:
-  - other_investment_income
   - gift_aid
   - charitable_investment_gifts
   - property_finance_costs
@@ -2166,7 +2178,6 @@ stages:
   - hmrc_spi_assessable_income
   - person_is_spi_income_recipient
   nonnegative_outputs:
-  - other_investment_income
   - gift_aid
   - charitable_investment_gifts
   - property_finance_costs
@@ -2185,6 +2196,7 @@ stages:
   - self_employment_income
   - savings_interest_income
   - dividend_income
+  - other_investment_income
   - private_pension_income
   - property_income
   - employee_pension_contributions
@@ -3158,6 +3170,7 @@ stages:
     - council_tax
     - domestic_rates
     - income_tax
+    - isa_cash_interest_flat_rate_charge
     - national_insurance
     - student_loan_repayments
     - employee_pension_contributions
@@ -3251,7 +3264,7 @@ stages:
       less_than_once_a_year_or_never: 0
   - kind: assign_bus_pass_eligibility
     output: bus_pass_eligible
-    basis: statutory concessionary travel by area (ENCTS at State Pension age outside London; London 60+ Oyster and under-18 Zip; Scotland National Entitlement Card 60+ and under-22; Wales 60+; Northern Ireland 60+ SmartPass, free on all Translink services within Northern Ireland from age 60, the 65+ pass adding all-Ireland travel only) and under-5s free everywhere; disabled passes and child half-fares are absorbed by the yield
+    basis: statutory concessionary travel by area (ENCTS at State Pension age outside London; London 60+ Oyster and under-18 Zip; Scotland National Entitlement Card 60+ and under-22; Wales 60+; Northern Ireland 60+ SmartPass, free on all Translink services within Northern Ireland from age 60, the 65+ pass adding all-Ireland travel only) and under-5s free everywhere. Outside London the fare and support pricing take off BUS01c's older and disabled concessionary journeys (elderly_disabled_concessionary), so youth-scheme and other local concessionary journeys stay priced and their discounts enter the average yield; disabled-pass journeys leave that denominator, but their holders are not yet flagged, so they ride as fare-payers (microcosm#1385). Under-5s are flagged free though BUS01c counts no concessionary journey for them, a separate mismatch
     rules:
       england_outside_london:
         regions:
@@ -3383,6 +3396,14 @@ stages:
     resource: desnz_road_fuel_by_vehicle.json
     kind: public_aggregate_reference
     format: json
+  - role: excise_facts
+    resource: excise_facts.json
+    kind: public_aggregate_reference
+    format: json
+  - role: gambling_participation
+    resource: gambling_participation_facts.json
+    kind: public_aggregate_reference
+    format: json
   operations:
   - kind: derive
     lowercase_columns: true
@@ -3399,6 +3420,74 @@ stages:
     - LCFS accommodation 4 and 5 -> FLAT
     unmapped_codes: refuse
     floor: 0.0
+    shares:
+      tobacco_share_of_alcohol_and_tobacco:
+        total: alcohol_and_tobacco_consumption
+        numerator:
+        - c22111
+        - c22121
+        - c22131
+        denominator:
+        - c21111
+        - c21211
+        - c21212
+        - c21213
+        - c21214
+        - c21221
+        - c21311
+        - c22111
+        - c22121
+        - c22131
+      on_trade_alcohol_share_of_restaurants_and_hotels:
+        total: restaurants_and_hotels_consumption
+        numerator:
+        - cb111c
+        - cb111d
+        - cb111e
+        - cb111f
+        - cb111g
+        - cb111h
+        - cb111i
+        - cb111j
+        denominator:
+        - p611
+      gambling_stakes_share_of_recreation:
+        total: recreation_consumption
+        numerator:
+        - c94311
+        - c94312
+        - c94313
+        - c94314
+        - c94315
+        - c94316
+        - c94319
+        denominator:
+        - p609
+      national_lottery_share_of_gambling_stakes:
+        total: gambling_stakes
+        numerator:
+        - c94316
+        - c94319
+        denominator:
+        - c94311
+        - c94312
+        - c94313
+        - c94314
+        - c94315
+        - c94316
+        - c94319
+      betting_and_gaming_share_of_other_gambling_stakes:
+        total: other_gambling_stakes
+        numerator:
+        - c94311
+        - c94312
+        - c94314
+        denominator:
+        - c94311
+        - c94312
+        - c94313
+        - c94314
+        - c94315
   - kind: uprate_donor_columns
     from_period: 2024
     to_period: 2024
@@ -3529,6 +3618,7 @@ stages:
     - council_tax
     - domestic_rates
     - income_tax
+    - isa_cash_interest_flat_rate_charge
     - national_insurance
     - student_loan_repayments
     - employee_pension_contributions
@@ -3569,6 +3659,11 @@ stages:
     - gas_consumption
     - liquid_fuel_consumption
     - solid_fuel_consumption
+    - tobacco_share_of_alcohol_and_tobacco
+    - on_trade_alcohol_share_of_restaurants_and_hotels
+    - gambling_stakes_share_of_recreation
+    - national_lottery_share_of_gambling_stakes
+    - betting_and_gaming_share_of_other_gambling_stakes
     categorical_predictors:
     - region
     - tenure_type
@@ -3712,7 +3807,7 @@ stages:
         concept: dft.local_bus_passenger_journeys
         geography_id: dft:england_outside_london
         dimension_values:
-          journey_category: total_concessionary
+          journey_category: elderly_disabled_concessionary
       price_index:
         resource: dft_bus_value_anchors.json
         concept: dft.local_bus_fares_index
@@ -3872,6 +3967,248 @@ stages:
       - coicop: 04.5.4
         concept: ons.household_expenditure.solid_fuels
         column: solid_fuel_consumption
+  - kind: top_up_gambling_participation
+    resource: gambling_participation_facts.json
+    concept: gambling_commission.gsgb.participation
+    period_type: calendar_year
+    period_value: 2025
+    geography_id: K03000001
+    dimensions:
+      window: participation_window
+      scope: participation_scope
+      sex: sex
+      age_band: age_band
+    population_dimensions:
+      regular:
+        source_sheet: Table B.3
+      occasional:
+        source_sheet: Table B.1
+    activity_dimensions:
+      regular:
+        source_sheet: Table B.9
+    windows:
+      regular: past_4_weeks
+      occasional: past_12_months
+    sexes:
+      MALE: male
+      FEMALE: female
+      all: all
+    age_bands:
+    - - 18
+      - age_18_to_24
+    - - 25
+      - age_25_to_34
+    - - 35
+      - age_35_to_44
+    - - 45
+      - age_45_to_54
+    - - 55
+      - age_55_to_64
+    - - 65
+      - age_65_to_74
+    - - 75
+      - age_75_plus
+    keys:
+      national_lottery:
+        population: any_gambling
+        activities:
+          national_lottery_draws:
+            gambling_channel: all
+          national_lottery_scratchcards:
+            gambling_channel: all
+          national_lottery_online_instant_win_games:
+            gambling_channel: online
+        theta: 0.9
+      betting_and_gaming:
+        population: excluding_lottery_draw_only
+        activities:
+          betting:
+            gambling_channel: all
+          bingo:
+            gambling_channel: all
+          casino_games:
+            gambling_channel: all
+          fruit_and_slots_games:
+            gambling_channel: all
+          football_pools:
+            gambling_channel: all
+          other_online_instant_win_games:
+            gambling_channel: online
+          another_form_of_gambling:
+            gambling_channel: all
+        theta: 0.08
+    occasional_stake_share: 0.1
+    strata:
+      adults_cap: 3
+      youngest_adult_bounds:
+      - 35
+      - 55
+    propensity:
+      max_leaf_nodes: 15
+      min_samples_leaf: 40
+      l2_regularization: 1.0
+      validation_fraction: 0.1
+    n_estimators: 100
+    seed: 0
+    salt: lcfs_gambling_participation
+  - kind: level_excise_quantities
+    resource: excise_facts.json
+    period_type: fiscal_year
+    period_value: 2024
+    fiscal_start: '2024-04-01'
+    geography_id: K02000001
+    weeks_per_year: 52
+    alcohol_volume_weights:
+      rule: spending
+    outputs:
+      beer_litres:
+        concept: hmrc.alcohol_clearances
+        dimensions:
+          alcohol_product: beer
+          abv_band: all
+          duty_point: all
+          duty_relief: all
+        unit: litre_of_pure_alcohol
+        strength:
+          value: 0.04
+          parameter_path: household.consumption.alcohol.beer_abv
+      cider_litres:
+        concept: hmrc.alcohol_clearances
+        dimensions:
+          alcohol_product: cider
+          abv_band: all
+          duty_point: all
+          duty_relief: all
+        unit: litre_of_pure_alcohol
+        strength:
+          value: 0.045
+          parameter_path: household.consumption.alcohol.cider_abv
+      wine_litres:
+        concept: hmrc.alcohol_clearances
+        dimensions:
+          alcohol_product: wine
+          abv_band: all
+          duty_point: all
+          duty_relief: all
+        unit: litre_of_pure_alcohol
+        strength:
+          value: 0.12
+          parameter_path: household.consumption.alcohol.wine_abv
+      spirits_litres:
+        concept: hmrc.alcohol_clearances
+        dimensions:
+          alcohol_product: spirits
+          abv_band: all
+          duty_point: all
+          duty_relief: all
+        unit: litre_of_pure_alcohol
+        strength:
+          value: 0.4
+          parameter_path: household.consumption.alcohol.spirits_abv
+      other_fermented_litres:
+        concept: hmrc.alcohol_clearances
+        dimensions:
+          alcohol_product: other_fermented_products
+          abv_band: all
+          duty_point: all
+          duty_relief: all
+        unit: litre_of_pure_alcohol
+        strength:
+          value: 0.05
+          parameter_path: household.consumption.alcohol.other_fermented_abv
+      cigarettes_per_week:
+        concept: hmrc.tobacco_clearances
+        dimensions:
+          tobacco_product: cigarettes
+        unit: stick
+      hand_rolling_tobacco_grams_per_week:
+        concept: hmrc.tobacco_clearances
+        dimensions:
+          tobacco_product: hand_rolling_tobacco
+        unit: kilogram
+      cigars_grams_per_week:
+        concept: hmrc.tobacco_clearances
+        dimensions:
+          tobacco_product: cigars
+        unit: kilogram
+      other_tobacco_grams_per_week:
+        concept: hmrc.tobacco_clearances
+        dimensions:
+          tobacco_product: other
+        unit: kilogram
+    draught_shares:
+      beer_draught_share:
+        concept: hmrc.alcohol_clearances
+        unit: litre_of_pure_alcohol
+        numerator:
+        - alcohol_product: beer
+          abv_band: all
+          duty_point: all
+          duty_relief: draught_relief_only
+        - alcohol_product: beer
+          abv_band: all
+          duty_point: all
+          duty_relief: draught_and_small_producer_relief
+        denominator:
+        - alcohol_product: beer
+          abv_band: all
+          duty_point: all
+          duty_relief: all
+      cider_draught_share:
+        concept: hmrc.alcohol_clearances
+        unit: litre_of_pure_alcohol
+        numerator:
+        - alcohol_product: cider
+          abv_band: all
+          duty_point: all
+          duty_relief: draught_relief_only
+        - alcohol_product: cider
+          abv_band: all
+          duty_point: all
+          duty_relief: draught_and_small_producer_relief
+        denominator:
+        - alcohol_product: cider
+          abv_band: all
+          duty_point: all
+          duty_relief: all
+    gambling:
+      receipts:
+        concept: hmrc.betting_and_gaming_duty_receipts
+        dimensions:
+          accounting_basis: cash
+      machine_games_liabilities:
+        concept: hmrc.machine_games_duty_liabilities
+      yield:
+        concept: gambling_commission.gross_gambling_yield
+        geography_id: K03000001
+      rates:
+        general_betting:
+          value: 0.15
+          parameter_path: gov.hmrc.gambling_duty.general_betting.rates.fixed_odds
+        pool_betting:
+          value: 0.15
+          parameter_path: gov.hmrc.gambling_duty.pool_betting.rate
+        remote_gaming:
+          value: 0.21
+          parameter_path: gov.hmrc.gambling_duty.remote_gaming.rate
+        machine_games_lower:
+          value: 0.05
+          parameter_path: gov.hmrc.gambling_duty.machine_games.rates.lower
+        machine_games_standard:
+          value: 0.2
+          parameter_path: gov.hmrc.gambling_duty.machine_games.rates.standard
+        machine_games_higher:
+          value: 0.25
+          parameter_path: gov.hmrc.gambling_duty.machine_games.rates.higher
+        bingo:
+          value: 0.1
+          parameter_path: gov.hmrc.gambling_duty.bingo.rate
+        lottery:
+          value: 0.12
+          parameter_path: gov.hmrc.gambling_duty.lottery.rate
+        casino:
+          value: 0.235487
+          parameter_path: household.consumption.gambling.casino_effective_rate
   - kind: record_mass_conservation_receipt
     entity: household
     reason: 'LCFS consumption imputation on the source spine: household weights pass through unchanged and total household mass is conserved.'
@@ -3900,6 +4237,30 @@ stages:
   - solid_fuel_consumption
   - has_fuel_consumption
   - uses_energy_prepayment_meter
+  - beer_litres
+  - cider_litres
+  - wine_litres
+  - spirits_litres
+  - other_fermented_litres
+  - beer_draught_share
+  - cider_draught_share
+  - cigarettes_per_week
+  - hand_rolling_tobacco_grams_per_week
+  - cigars_grams_per_week
+  - other_tobacco_grams_per_week
+  - remote_gaming_net_losses
+  - pool_betting_net_receipts
+  - bingo_net_receipts
+  - national_lottery_ticket_spending
+  - land_based_casino_net_losses
+  - machine_games_lower_rate_net_takings
+  - machine_games_standard_rate_net_takings
+  - machine_games_higher_rate_net_takings
+  - land_based_fixed_odds_betting_net_losses
+  - remote_uk_horseracing_betting_net_losses
+  - remote_other_betting_net_losses
+  - betting_exchange_commission
+  - horse_and_dog_pool_betting_net_losses
   nonnegative_outputs:
   - food_and_non_alcoholic_beverages_consumption
   - alcohol_and_tobacco_consumption
@@ -3923,7 +4284,31 @@ stages:
   - solid_fuel_consumption
   - has_fuel_consumption
   - uses_energy_prepayment_meter
-  notes: 'Ports the incumbent LCFS consumption QRF, including NEED energy raking, with adjudicated weighted fits and an identity-keyed seed-0 fuel flag. The vehicle count is a numeric QRF predictor on both sides (LCFS a124 on the donor, the was_wealth draw of WAS vcarnr8 on the recipient, both clipped to 0-5), which retires the incumbent''s WAS-to-LCFS has-fuel bridge (microcosm#890 A). The recipient fuel flag draws each of a household''s vehicles as zero-emission at the battery-electric and fuel-cell share of the vendored DfT VEH1103 licensed-car stock (2024, Great Britain; plug-in hybrids count as fuel buyers), replacing the hand-copied NTS share (microcosm#890 E2): a household with vehicles buys fuel unless every one of them is zero-emission, so it is flagged at one minus that share raised to its vehicle count, and a one-vehicle household keeps the draw it had when the whole household was drawn at once (microcosm#1278; before, a household with several vehicles was all one or the other). The frame holds no fuel type, so the draw, keyed on the household identity, is what makes a vehicle-owning household a fuel buyer: it is random with respect to income and every other characteristic. With the redraw of microcosm#1113 every flagged household buys fuel, so this flag alone sets fuel incidence; who holds the zero-emission cars by income is a known residual. The household input uses_energy_prepayment_meter, which policyengine-uk reads for the July 2023 to March 2024 Energy Price Guarantee prepayment discount (PolicyEngine/policyengine-uk#2098, from 2.123.3), is drawn by the declared impute_prepayment_meter step (microcosm#1110): the donor prepays when it last put money on an electricity, gas or combined key or meter (b1751, b1701, b233, which the LCF asks only of prepayment-meter households) or its diary records a slot-meter payment (c45114, c45214), so electricity-only prepayment counts and a household with no meter payment, including one that did not answer, does not; a weighted regime-gated QRF on the chain''s predictors fits that flag and each recipient draws it at uniforms keyed on its household id, which moves no other draw. The release exports it: policyengine-uk reads it from 2.123.3 and an older engine, Microcosm''s locked one among them, ignores a column it does not know; the incumbent does not carry it until uk-data#539, so it is a reviewed extra column of the export surface. The frame flags about 3.0 million Great Britain households (10.5 %) at prior weights, against the around three million prepayment households the government counted when the discount began in July 2023 (a different reference period, households in both). Energy support clipping is exempt because NEED raking governs those columns. Bus fares are clipped to donor support before the pricing step (María''s rulings 2026-09-15 and 2026-09-17), which bounds the region no area prices (Wales keeps the chain''s raw draw) while the priced regions move beyond donor support afterwards; for that reason the column carries no committed support bound for the terminal gate. Domestic energy is raked in kWh to the NEED 2024 shape at the DESNZ level and priced at the average prices paid (microcosm#890 F, chronicle#270), where both NEED rakes take their mean-kWh margins from the vendored NEED 2024 tables (England and Wales by income band, tenure, property type and region; Scotland by income band, tenure and property type with the all-dwellings mean as its region margin; Northern Ireland untouched), the declared price_domestic_energy step converts spend to kWh and back at each household''s QEP price region through the committed crosswalk using the calendar-2024 average variable unit cost and fixed cost across payment methods, standard metering, including VAT (Northern Ireland gas at the UK average because QEP publishes no Northern Ireland gas row), a gas fixed cost only for connected households, the gas connection imposed on the recipient frame at the published share of each region (DESNZ subnational gas meters over electricity meters, 2024) by disconnecting gas-positive households in an identity-keyed uniform order, skipping a household whose weight would overshoot the published share (Northern Ireland has no subnational row and keeps the positive-gas rule), and, where the draw leaves a region below its share, by the declared connect_rule (microcosm#1164): two weighted fits on the chain''s predictors give each zero-gas household the probability that a donor like it pays for gas (a gradient-boosted classifier of the donor''s gas payers) and the gas such a donor pays (a regime-gated QRF of the payers'' gas spend, at quantiles keyed on the household id), and the region''s zero-gas households are connected in an identity-keyed order drawn in proportion to that probability, by the same weight-fitting walk, until the share is met. The labelled energy split leaves about 80 % of donors paying for gas against the about 85 % of homes DESNZ counts gas meters for (the derivation it replaced gave gas to 98 %), so without the connect leg nine of the eleven Great Britain regions fell short of their share, and after the four-margin NEED rake one factor per fuel scales the kWh so the prior-weighted frame total equals the DESNZ Energy Trends domestic consumption at actual temperature summed over the four quarters of calendar 2024; NEED gas means are per gas-metered household, so the gas kWh margins are raked over connected households only while electricity is raked over every household, and the energy_rake gate recomputes every NEED mean, the DESNZ level and the connection shares from the vendored rows. After the level, no household is left above the domestic meter definitions behind the DESNZ total (NEED Annex B: gas meters under 73,200 kWh a year, electricity meters under 50,000 kWh on profile classes 1 and 2; María''s ruling of 2026-10-12 on microcosm#1207''s extreme energy values): the declared household_kwh_ceiling caps a household there, the households below it in the capped households'' own NEED cells are re-raked to those cells'' levelled means, and a proportional step restores the DESNZ total (microcosm#1164); the receipt counts the households capped and the share of the total they gave up, and the energy_rake gate checks both. Mobile homes have no NEED property-type row, so the rake takes them to the all-dwellings mean, the incumbent''s translation; where every mobile home of a NEED geography draws a spend at or below the standing charge, that cell has no kWh for the rake to scale, and the declared zero_kwh_cells_at_need_mean starts it at its NEED mean before the first sweep (microcosm#1240). The receipt lists the cells it started, and the energy_rake gate fails on a started cell the stage does not declare and on any other cell with a zero mean. Both rakes band households on gross income, NEED''s concept: the donor on LCFS p344p, cash income before tax, National Insurance, council tax and pension contributions, and the recipient on the same concept, its HBAI net income with the deductions policyengine-uk takes to reach it added back (council tax and domestic rates, income tax, National Insurance, student loan repayments, employee and personal pension contributions, maintenance and child payments, LVT), which the stage materializes for that band alone (microcosm#1164). Before it the recipient fell back to its HBAI net income, which put households in too low a band; the engine''s household_gross_income would put them in too high a one, since it adds capital gains and the in-kind NHS, education and transport spending to cash income. The disconnection walk''s seed-0 uniform order makes every group of households (dwelling type, income band, support channel) lose the same expected share of its drawn connected mass, so only the level of the drawn connection moves; the smallest-drawn-gas-first order it replaces piled the disconnections onto low-draw flats once the SPI support households drew gas from their own incomes, and NEED''s Scottish property-type means then implied a level 2.6 % above the Scottish all-dwellings mean, a margin conflict the rake could not close. Bus fares are priced from journeys (microcosm#930), where the nts_bus_travel stage imputes each person''s annual bus-in-London and other-local-bus trips and their concessionary eligibility, and the declared price_bus_journeys step sets bus_fare_spending as the sum over the household''s non-eligible persons of trips times boardings per resident trip (the published BUS01 journeys over the published NTS0705a trips per resident times the ONS population) times the yield per fare-paying boarding (BUS05ai receipts over journeys less concessionary journeys), per area; bus-in-London trips take the London area''s price for every resident, other-local-bus trips the price of the residence area (England outside London; Scotland and Northern Ireland from their own receipts and journeys with England''s trip rate as the declared proxy); Wales is unpriced and keeps the raw draw. The chain still draws bus_fare_spending so later targets condition on the same raw draw; the emitted column is the priced value. The receipt records every factor, the frame-implied boardings beside the published ones and the frame''s eligible trip share beside the publisher''s concessionary boarding share, so the prior-weight fit of the bound receipts targets is read as a composition check, never a level the stage set; the #890 incidence draw and fare rake are retired. The 2024-25 diary (UKDS SN 9603, 2nd edition, whose household tab carries the annual weight as cal_weight_annual, the name weighta had; microcosm#1164) is moved to the base year by the declared uprate_donor_columns step (microcosm#890). Consumption columns and bus fares take the engine''s CPI index from the April-to-March diary year, placed on the calendar-year index at three quarters of 2024 and one of 2025, back a quarter to calendar 2024 (microcosm#1113; the diary sits a quarter past it, so the factor is below one; the fare factor survives only where no fare cell levels the column, i.e. Wales). Income predictors take a factor of one: the diary year is the FRS 2024-25 year they are matched against. Petrol and diesel take the DESNZ pump-price times HMRC litres per head outturn from the vendored road_fuel_anchors.json, which sets only their donor distribution because the level step follows; the energy columns are exempt because the NEED 2024 shape at the DESNZ level and the QEP average prices paid set their level. The household adult and child counts (LCFS G018 and G019, the survey''s age-18 split) predict on both sides; the recipient counts its members by age, not through the engine''s is_adult and is_child flags, which policyengine-uk#1896 deprecates (uk-data#486, microcosm#1095). Road fuel incidence and level are set by two declared steps (microcosm#1113). The two-week diary leaves about a third of car-owning donors with no fuel purchase, which the chain reproduces among the households the fuel flag marks as fuel buyers, so the redraw_zero_road_fuel step redraws a flagged household that drew zero from the donor''s distribution among households with positive road fuel, on the chain''s predictors: a weighted regime-gated QRF draws the total, positive by construction, then the petrol share of it, at quantiles keyed on the household id; positive draws are kept. Then the level_road_fuel step, after the fuel flag has zeroed the households without a fuel car, scales petrol and diesel so their prior-weighted total equals ONS Consumer Trends household spending on COICOP 07.2.2 for calendar 2024 (the year of the DESNZ pump prices the donor uprating uses) less the donor''s own other-fuels share of 07.2.2 (c72213), keeping the drawn mix. The diary''s 07.2.2 has three lines (c72211 petrol, c72212 diesel and c72213, the other motor fuels and lubricants) and none for vehicle electricity. The LCFS diary records about a quarter less road fuel than ONS, and binding the OBR cars receipts had closed that gap by moving weight onto fuel-buying households; petrol and diesel therefore carry no committed support bound, like the other levelled columns. The totals that contain levelled columns are written back around them by the declared recompose_from_remainder step (microcosm#1113): each keeps its own chain draw less the chain''s draws of the parts the stage re-levels, kept before any step touches them and floored at zero where the parts outgrow the total, and adds the levelled parts back, so housing_water_and_electricity_consumption is its draw less the drawn electricity and gas plus the levelled electricity and gas, and transport_consumption its draw less the drawn petrol, diesel and bus fares plus the levelled petrol and diesel and the priced bus fares. The chain draws each part after, and conditional on, its total, so the remainder is the chain''s own split; a remainder drawn as a chain target of its own over-drew the vehicle-purchase tail of transport, 10 to 13 percent above the donor in-sample. The chain''s domestic-energy target is the electricity and gas the stage derives from the diary''s fuel, light and power (p537) by its labelled parts, from the LCF User Guide''s derived-variable labels and P537 definition (microcosm#1164): each fuel''s last account payment less its rebate (b489 electricity, b490 gas, read as the tab carries them; the stage refuses a donor where b489 equals b175 less b178, or b490 equals b170 less b173, to the penny for under 95 percent of that fuel''s account payers, which pins the labels and the rebate''s sign), its prepayment key or meter payment (b1751, b1701), its component of a combined utilities bill (b227 electricity, b226 gas) and of a combined key or meter payment (b2332, b2331), and the diary''s second-dwelling account and slot-meter lines (c45112 and c45114, c45212 and c45214); what a combined payment leaves unsplit (the combined bill b231 less its rebate b174, and the combined key or meter payment b233, each less its parts) goes by the household''s own electricity share where it pays for both fuels, and otherwise by the donor''s mean share of the households that do, since a combined payment means the household pays for both; a donor with no such household fails. The diary''s other fuels (central-heating oil b017 and c45312, bottled gas b018 and c45222, coal and coke c45411, wood and peat c45412, hot water, steam and ice c45511) are neither, and the donor_energy_split receipt records the split against p537: what reading refunds as zero adds, what the unclipped parts differ from p537 by, the weighted share of donors whose unclipped parts differ from their p537, and the account identity shares. The derivation it replaces read b226 as electricity by direct debit and b489 and b490 as prepayment payments, where the labels make them the gas component of a combined bill and the electricity and gas account payments less rebates. The liquid fuels (central-heating oil and paraffin with bottled gas, LPG with liquid) and the solid fuels (coal, coke, wood and peat) are drawn as liquid_fuel_consumption and solid_fuel_consumption, the inputs policyengine-uk 2.149.0 reads (pe-uk#2572; María''s ruling of 2026-10-22), last in the chain so that every earlier draw is the chain''s own, uprated to calendar-2024 prices as every diary spend column is; the housing total nets their draws and adds them back unchanged, so it always holds them, and hot water, steam and ice stays in its remainder. The receipt records the published ONS 04.5.3 and 04.5.4 spend beside each fuel''s donor total at diary prices and the frame''s draw (published_fuels). Before the hold, each COICOP division''s drawn spend per household (a recomposed total''s remainder, any other division''s whole draw) is set against the donor''s mean of the same spend (for housing and transport, the donor''s total less the same parts, since the levelled parts keep their published levels and are no over-draw); a division above the divisions'' shared ratio, measured once before any levelling, comes down to it (María''s rulings of 2026-10-23 and 2026-10-24, microcosm#1278; Vahid''s review of microcosm#1383, item 9); the receipt records each division''s ratio and factor and the shared ratio (division_levelling) and each recomposed total''s levelling_factor. Each total is then held to the donor''s realised maximum of that total (maximum_total: donor_support, the support every drawn column is clipped to; microcosm#1164), never below its parts, the excess coming out of its remainder: a remainder near the top of the diary''s range plus levelled parts larger than the drawn ones would otherwise leave it. The two totals keep their committed support bounds, which the terminal support gate applies to the emitted frame; the recomposed_totals gate checks the declaration and the receipt, whose rows held at the maximum and weighted mass taken enter its identities. Every household spend column is at calendar-2024 prices as households paid them, the H5''s year that policyengine-uk projects from and the calibration uprates to the calendar-2025 window (microcosm#1113): the diary columns by the CPI uprating to 2024, road fuel at ONS 07.2.2 for 2024, energy at DESNZ volume and QEP prices for 2024, and bus fares at each area''s fiscal-year yield re-priced to 2024 by its fares index (the DfT local bus fares index by quarter for London and England outside London, Scotland''s calendar-year index; Northern Ireland, which publishes no fares index, from its own yields of the two fiscal years 2024 overlaps, weighted three months and nine (microcosm#1207), in place of England''s index, which carries the January 2025 rise in the English fare cap Northern Ireland did not have); the consumption_basis gate holds every level-setting step to that year. policyengine-uk applies the fiscal 2024-25 rules to model year 2024 (it samples each parameter at 30 April), so every levelled column sits about a quarter before the midpoint of the policy year it is taxed in; the calibration binds calendar-year facts as published and fiscal-year facts at the calendar window (María''s rule of 2026-09-22). The stage receipt also reports, for each of the twelve COICOP divisions, the prior-weighted frame total against ONS Consumer Trends for the same calendar year less the classes a household diary does not record (02.3 narcotics, 04.2 owner-occupiers'' imputed rent and 12.6.1 FISIM), on ONS''s domestic concept, and the twelve together against the national concept as well; it is report-only (microcosm#1113). The report-only litres audit compares each fuel''s frame litres with HMRC''s clearances of that fuel scaled by the cars share of its road use, from the vendored DESNZ sub-national road transport fuel consumption by vehicle type and fuel (PolicyEngine/chronicle#322); the OBR cars share of fuel duty receipts, uniform across fuels, stays beside the total. The liquid fuels hold bottled gas (b018, c45222), which COICOP puts under 04.5.2 (gas) and ONS''s 04.5.3 leaves out, so the receipt also gives the donor''s liquid fuels without it; neither heating-fuel column is levelled to ONS: the donor''s diary totals are about twice ONS''s, and the frame''s draws reach neither those nor ONS''s, so a costing on either needs levelling to ONS first (Vahid''s review of microcosm#1383, item 8).'
+  - beer_litres
+  - cider_litres
+  - wine_litres
+  - spirits_litres
+  - other_fermented_litres
+  - beer_draught_share
+  - cider_draught_share
+  - cigarettes_per_week
+  - hand_rolling_tobacco_grams_per_week
+  - cigars_grams_per_week
+  - other_tobacco_grams_per_week
+  - remote_gaming_net_losses
+  - pool_betting_net_receipts
+  - bingo_net_receipts
+  - national_lottery_ticket_spending
+  - land_based_casino_net_losses
+  - machine_games_lower_rate_net_takings
+  - machine_games_standard_rate_net_takings
+  - machine_games_higher_rate_net_takings
+  - land_based_fixed_odds_betting_net_losses
+  - remote_uk_horseracing_betting_net_losses
+  - remote_other_betting_net_losses
+  - betting_exchange_commission
+  - horse_and_dog_pool_betting_net_losses
+  notes: 'Ports the incumbent LCFS consumption QRF, including NEED energy raking, with adjudicated weighted fits and an identity-keyed seed-0 fuel flag. The vehicle count is a numeric QRF predictor on both sides (LCFS a124 on the donor, the was_wealth draw of WAS vcarnr8 on the recipient, both clipped to 0-5), which retires the incumbent''s WAS-to-LCFS has-fuel bridge (microcosm#890 A). The recipient fuel flag draws each of a household''s vehicles as zero-emission at the battery-electric and fuel-cell share of the vendored DfT VEH1103 licensed-car stock (2024, Great Britain; plug-in hybrids count as fuel buyers), replacing the hand-copied NTS share (microcosm#890 E2): a household with vehicles buys fuel unless every one of them is zero-emission, so it is flagged at one minus that share raised to its vehicle count, and a one-vehicle household keeps the draw it had when the whole household was drawn at once (microcosm#1278; before, a household with several vehicles was all one or the other). The frame holds no fuel type, so the draw, keyed on the household identity, is what makes a vehicle-owning household a fuel buyer: it is random with respect to income and every other characteristic. With the redraw of microcosm#1113 every flagged household buys fuel, so this flag alone sets fuel incidence; who holds the zero-emission cars by income is a known residual. The household input uses_energy_prepayment_meter, which policyengine-uk reads for the July 2023 to March 2024 Energy Price Guarantee prepayment discount (PolicyEngine/policyengine-uk#2098, from 2.123.3), is drawn by the declared impute_prepayment_meter step (microcosm#1110): the donor prepays when it last put money on an electricity, gas or combined key or meter (b1751, b1701, b233, which the LCF asks only of prepayment-meter households) or its diary records a slot-meter payment (c45114, c45214), so electricity-only prepayment counts and a household with no meter payment, including one that did not answer, does not; a weighted regime-gated QRF on the chain''s predictors fits that flag and each recipient draws it at uniforms keyed on its household id, which moves no other draw. The release exports it: policyengine-uk reads it from 2.123.3 and an older engine, Microcosm''s locked one among them, ignores a column it does not know; the incumbent does not carry it until uk-data#539, so it is a reviewed extra column of the export surface. The frame flags about 3.0 million Great Britain households (10.5 %) at prior weights, against the around three million prepayment households the government counted when the discount began in July 2023 (a different reference period, households in both). Energy support clipping is exempt because NEED raking governs those columns. Bus fares are clipped to donor support before the pricing step (María''s rulings 2026-09-15 and 2026-09-17), which bounds the region no area prices (Wales keeps the chain''s raw draw) while the priced regions move beyond donor support afterwards; for that reason the column carries no committed support bound for the terminal gate. Domestic energy is raked in kWh to the NEED 2024 shape at the DESNZ level and priced at the average prices paid (microcosm#890 F, chronicle#270), where both NEED rakes take their mean-kWh margins from the vendored NEED 2024 tables (England and Wales by income band, tenure, property type and region; Scotland by income band, tenure and property type with the all-dwellings mean as its region margin; Northern Ireland untouched), the declared price_domestic_energy step converts spend to kWh and back at each household''s QEP price region through the committed crosswalk using the calendar-2024 average variable unit cost and fixed cost across payment methods, standard metering, including VAT (Northern Ireland gas at the UK average because QEP publishes no Northern Ireland gas row), a gas fixed cost only for connected households, the gas connection imposed on the recipient frame at the published share of each region (DESNZ subnational gas meters over electricity meters, 2024) by disconnecting gas-positive households in an identity-keyed uniform order, skipping a household whose weight would overshoot the published share (Northern Ireland has no subnational row and keeps the positive-gas rule), and, where the draw leaves a region below its share, by the declared connect_rule (microcosm#1164): two weighted fits on the chain''s predictors give each zero-gas household the probability that a donor like it pays for gas (a gradient-boosted classifier of the donor''s gas payers) and the gas such a donor pays (a regime-gated QRF of the payers'' gas spend, at quantiles keyed on the household id), and the region''s zero-gas households are connected in an identity-keyed order drawn in proportion to that probability, by the same weight-fitting walk, until the share is met. The labelled energy split leaves about 80 % of donors paying for gas against the about 85 % of homes DESNZ counts gas meters for (the derivation it replaced gave gas to 98 %), so without the connect leg nine of the eleven Great Britain regions fell short of their share, and after the four-margin NEED rake one factor per fuel scales the kWh so the prior-weighted frame total equals the DESNZ Energy Trends domestic consumption at actual temperature summed over the four quarters of calendar 2024; NEED gas means are per gas-metered household, so the gas kWh margins are raked over connected households only while electricity is raked over every household, and the energy_rake gate recomputes every NEED mean, the DESNZ level and the connection shares from the vendored rows. After the level, no household is left above the domestic meter definitions behind the DESNZ total (NEED Annex B: gas meters under 73,200 kWh a year, electricity meters under 50,000 kWh on profile classes 1 and 2; María''s ruling of 2026-10-12 on microcosm#1207''s extreme energy values): the declared household_kwh_ceiling caps a household there, the households below it in the capped households'' own NEED cells are re-raked to those cells'' levelled means, and a proportional step restores the DESNZ total (microcosm#1164); the receipt counts the households capped and the share of the total they gave up, and the energy_rake gate checks both. Mobile homes have no NEED property-type row, so the rake takes them to the all-dwellings mean, the incumbent''s translation; where every mobile home of a NEED geography draws a spend at or below the standing charge, that cell has no kWh for the rake to scale, and the declared zero_kwh_cells_at_need_mean starts it at its NEED mean before the first sweep (microcosm#1240). The receipt lists the cells it started, and the energy_rake gate fails on a started cell the stage does not declare and on any other cell with a zero mean. Both rakes band households on gross income, NEED''s concept: the donor on LCFS p344p, cash income before tax, National Insurance, council tax and pension contributions, and the recipient on the same concept, its HBAI net income with the deductions policyengine-uk takes to reach it added back (council tax and domestic rates, income tax, National Insurance, student loan repayments, employee and personal pension contributions, maintenance and child payments, LVT), which the stage materializes for that band alone (microcosm#1164). Before it the recipient fell back to its HBAI net income, which put households in too low a band; the engine''s household_gross_income would put them in too high a one, since it adds capital gains and the in-kind NHS, education and transport spending to cash income. The disconnection walk''s seed-0 uniform order makes every group of households (dwelling type, income band, support channel) lose the same expected share of its drawn connected mass, so only the level of the drawn connection moves; the smallest-drawn-gas-first order it replaces piled the disconnections onto low-draw flats once the SPI support households drew gas from their own incomes, and NEED''s Scottish property-type means then implied a level 2.6 % above the Scottish all-dwellings mean, a margin conflict the rake could not close. Bus fares are priced from journeys (microcosm#930), where the nts_bus_travel stage imputes each person''s annual bus-in-London and other-local-bus trips and their concessionary eligibility, and the declared price_bus_journeys step sets bus_fare_spending as the sum over the household''s non-eligible persons of trips times boardings per resident trip (the published BUS01 journeys over the published NTS0705a trips per resident times the ONS population) times the yield per fare-paying boarding (BUS05ai receipts over journeys less concessionary journeys; in England outside London only the older and disabled ones of BUS01c, as policyengine-uk prices it from 2.158.3), per area; bus-in-London trips take the London area''s price for every resident, other-local-bus trips the price of the residence area (England outside London; Scotland and Northern Ireland from their own receipts and journeys with England''s trip rate as the declared proxy); Wales is unpriced and keeps the raw draw. The chain still draws bus_fare_spending so later targets condition on the same raw draw; the emitted column is the priced value. The receipt records every factor, the frame-implied boardings beside the published ones and the frame''s eligible trip share beside the publisher''s concessionary boarding share, so the prior-weight fit of the bound receipts targets is read as a composition check, never a level the stage set; the #890 incidence draw and fare rake are retired. The 2024-25 diary (UKDS SN 9603, 2nd edition, whose household tab carries the annual weight as cal_weight_annual, the name weighta had; microcosm#1164) is moved to the base year by the declared uprate_donor_columns step (microcosm#890). Consumption columns and bus fares take the engine''s CPI index from the April-to-March diary year, placed on the calendar-year index at three quarters of 2024 and one of 2025, back a quarter to calendar 2024 (microcosm#1113; the diary sits a quarter past it, so the factor is below one; the fare factor survives only where no fare cell levels the column, i.e. Wales). Income predictors take a factor of one: the diary year is the FRS 2024-25 year they are matched against. Petrol and diesel take the DESNZ pump-price times HMRC litres per head outturn from the vendored road_fuel_anchors.json, which sets only their donor distribution because the level step follows; the energy columns are exempt because the NEED 2024 shape at the DESNZ level and the QEP average prices paid set their level. The household adult and child counts (LCFS G018 and G019, the survey''s age-18 split) predict on both sides; the recipient counts its members by age, not through the engine''s is_adult and is_child flags, which policyengine-uk#1896 deprecates (uk-data#486, microcosm#1095). Road fuel incidence and level are set by two declared steps (microcosm#1113). The two-week diary leaves about a third of car-owning donors with no fuel purchase, which the chain reproduces among the households the fuel flag marks as fuel buyers, so the redraw_zero_road_fuel step redraws a flagged household that drew zero from the donor''s distribution among households with positive road fuel, on the chain''s predictors: a weighted regime-gated QRF draws the total, positive by construction, then the petrol share of it, at quantiles keyed on the household id; positive draws are kept. Then the level_road_fuel step, after the fuel flag has zeroed the households without a fuel car, scales petrol and diesel so their prior-weighted total equals ONS Consumer Trends household spending on COICOP 07.2.2 for calendar 2024 (the year of the DESNZ pump prices the donor uprating uses) less the donor''s own other-fuels share of 07.2.2 (c72213), keeping the drawn mix. The diary''s 07.2.2 has three lines (c72211 petrol, c72212 diesel and c72213, the other motor fuels and lubricants) and none for vehicle electricity. The LCFS diary records about a quarter less road fuel than ONS, and binding the OBR cars receipts had closed that gap by moving weight onto fuel-buying households; petrol and diesel therefore carry no committed support bound, like the other levelled columns. The totals that contain levelled columns are written back around them by the declared recompose_from_remainder step (microcosm#1113): each keeps its own chain draw less the chain''s draws of the parts the stage re-levels, kept before any step touches them and floored at zero where the parts outgrow the total, and adds the levelled parts back, so housing_water_and_electricity_consumption is its draw less the drawn electricity and gas plus the levelled electricity and gas, and transport_consumption its draw less the drawn petrol, diesel and bus fares plus the levelled petrol and diesel and the priced bus fares. The chain draws each part after, and conditional on, its total, so the remainder is the chain''s own split; a remainder drawn as a chain target of its own over-drew the vehicle-purchase tail of transport, 10 to 13 percent above the donor in-sample. The chain''s domestic-energy target is the electricity and gas the stage derives from the diary''s fuel, light and power (p537) by its labelled parts, from the LCF User Guide''s derived-variable labels and P537 definition (microcosm#1164): each fuel''s last account payment less its rebate (b489 electricity, b490 gas, read as the tab carries them; the stage refuses a donor where b489 equals b175 less b178, or b490 equals b170 less b173, to the penny for under 95 percent of that fuel''s account payers, which pins the labels and the rebate''s sign), its prepayment key or meter payment (b1751, b1701), its component of a combined utilities bill (b227 electricity, b226 gas) and of a combined key or meter payment (b2332, b2331), and the diary''s second-dwelling account and slot-meter lines (c45112 and c45114, c45212 and c45214); what a combined payment leaves unsplit (the combined bill b231 less its rebate b174, and the combined key or meter payment b233, each less its parts) goes by the household''s own electricity share where it pays for both fuels, and otherwise by the donor''s mean share of the households that do, since a combined payment means the household pays for both; a donor with no such household fails. The diary''s other fuels (central-heating oil b017 and c45312, bottled gas b018 and c45222, coal and coke c45411, wood and peat c45412, hot water, steam and ice c45511) are neither, and the donor_energy_split receipt records the split against p537: what reading refunds as zero adds, what the unclipped parts differ from p537 by, the weighted share of donors whose unclipped parts differ from their p537, and the account identity shares. The derivation it replaces read b226 as electricity by direct debit and b489 and b490 as prepayment payments, where the labels make them the gas component of a combined bill and the electricity and gas account payments less rebates. The liquid fuels (central-heating oil and paraffin with bottled gas, LPG with liquid) and the solid fuels (coal, coke, wood and peat) are drawn as liquid_fuel_consumption and solid_fuel_consumption, the inputs policyengine-uk 2.149.0 reads (pe-uk#2572; María''s ruling of 2026-10-22), after the eighteen spend targets so that every earlier draw is the chain''s own, uprated to calendar-2024 prices as every diary spend column is; the housing total nets their draws and adds them back unchanged, so it always holds them, and hot water, steam and ice stays in its remainder. The receipt records the published ONS 04.5.3 and 04.5.4 spend beside each fuel''s donor total at diary prices and the frame''s draw (published_fuels). Before the hold, each COICOP division''s drawn spend per household (a recomposed total''s remainder, any other division''s whole draw) is set against the donor''s mean of the same spend (for housing and transport, the donor''s total less the same parts, since the levelled parts keep their published levels and are no over-draw); a division above the divisions'' shared ratio, measured once before any levelling, comes down to it (María''s rulings of 2026-10-23 and 2026-10-24, microcosm#1278; Vahid''s review of microcosm#1383, item 9); the receipt records each division''s ratio and factor and the shared ratio (division_levelling) and each recomposed total''s levelling_factor. Each total is then held to the donor''s realised maximum of that total (maximum_total: donor_support, the support every drawn column is clipped to; microcosm#1164), never below its parts, the excess coming out of its remainder: a remainder near the top of the diary''s range plus levelled parts larger than the drawn ones would otherwise leave it. The two totals keep their committed support bounds, which the terminal support gate applies to the emitted frame; the recomposed_totals gate checks the declaration and the receipt, whose rows held at the maximum and weighted mass taken enter its identities. Every household spend column is at calendar-2024 prices as households paid them, the H5''s year that policyengine-uk projects from and the calibration uprates to the calendar-2025 window (microcosm#1113): the diary columns by the CPI uprating to 2024, road fuel at ONS 07.2.2 for 2024, energy at DESNZ volume and QEP prices for 2024, and bus fares at each area''s fiscal-year yield re-priced to 2024 by its fares index (the DfT local bus fares index by quarter for London and England outside London, Scotland''s calendar-year index; Northern Ireland, which publishes no fares index, from its own yields of the two fiscal years 2024 overlaps, weighted three months and nine (microcosm#1207), in place of England''s index, which carries the January 2025 rise in the English fare cap Northern Ireland did not have); the consumption_basis gate holds every level-setting step to that year. policyengine-uk applies the fiscal 2024-25 rules to model year 2024 (it samples each parameter at 30 April), so every levelled column sits about a quarter before the midpoint of the policy year it is taxed in; the calibration binds calendar-year facts as published and fiscal-year facts at the calendar window (María''s rule of 2026-09-22). The stage receipt also reports, for each of the twelve COICOP divisions, the prior-weighted frame total against ONS Consumer Trends for the same calendar year less the classes a household diary does not record (02.3 narcotics, 04.2 owner-occupiers'' imputed rent and 12.6.1 FISIM), on ONS''s domestic concept, and the twelve together against the national concept as well; it is report-only (microcosm#1113). The report-only litres audit compares each fuel''s frame litres with HMRC''s clearances of that fuel scaled by the cars share of its road use, from the vendored DESNZ sub-national road transport fuel consumption by vehicle type and fuel (PolicyEngine/chronicle#322); the OBR cars share of fuel duty receipts, uniform across fuels, stays beside the total. The liquid fuels hold bottled gas (b018, c45222), which COICOP puts under 04.5.2 (gas) and ONS''s 04.5.3 leaves out, so the receipt also gives the donor''s liquid fuels without it; neither heating-fuel column is levelled to ONS: the donor''s diary totals are about twice ONS''s, and the frame''s draws reach neither those nor ONS''s, so a costing on either needs levelling to ONS first (Vahid''s review of microcosm#1383, item 8). After its spend targets and the two fuels the chain draws five shares the derive step computes on the donor from the diary lines (microcosm#1359): tobacco''s share of the off-trade alcohol and tobacco that make up P602 (c22111, c22121 and c22131 over those three and the seven lines of alcohol brought home, c21111 to c21311; P602 also sums narcotics, c23111, which the end-user tab does not carry), on-trade alcohol''s share of restaurants and hotels (the eight lines of drinks away from home, cb111c to cb111j, over P611, clipped at one because the tab stores P611 to one decimal place), gambling stakes'' share of recreation (the seven games-of-chance stake lines P609 sums, c94311 to c94316 and c94319: pools, bingo, lotteries, bookmaker and tote betting with gaming machines, and the National Lottery; the winnings lines beside them sit in no total), the National Lottery''s share of those stakes (scratchcards and draws, c94316 and c94319, over the seven) and the betting and gaming share of the rest (football pools, bingo, and bookmaker and tote betting with gaming machines, c94311, c94312 and c94314, over the other five; society lotteries, c94313, and the Irish Lottery, c94315, pay no UK gambling duty). A household''s tobacco, off-trade alcohol, on-trade alcohol and gambling stakes are its shares of the totals it carries, and its National Lottery and betting and gaming stakes its shares of its stakes, so the parts sum to the totals and no total, the VAT base included, moves; appended after the twenty targets, the shares move none of their draws. The shares and the spending they give are scratch, on no table; the report-only excise_shares receipt records each share on the frame beside the donor. The declared level_excise_quantities step turns that spending into policyengine-uk''s excise inputs (microcosm#1359), so alcohol, tobacco and gambling duty stop scoring zero. Each national quantity is a published FY2024-25 figure from the vendored excise_facts.json, and the step gives each household its part in proportion to the spending that buys it, at prior weights (one factor per input, the level_road_fuel scaling), so the frame''s weighted total of each input is the published one; a household that buys one product of a kind buys all of that kind in the national mix. Alcohol: each product''s litres are HMRC''s clearances of beer, cider, wine, spirits and other fermented products (the Alcohol Bulletin, in litres of pure alcohol) over the engine''s own strength for the product, which policyengine-uk multiplies back, shared by off- and on-trade alcohol spending together; beer and cider take their draught shares from the clearances under draught relief, alone or with small producer relief, over all of their clearances, and the other products, whose draught clearances HMRC does not publish, keep the engine''s zero, as does sparkling cider, which the bulletin counts within cider. A pound buys the same volume in a pub as in a shop under this rule, which leans the volume, and so the duty, towards on-trade drinkers: against a published on-trade volume share of about 27 percent, a pound spent in a pub is given about 1.6 times the volume it buys and a pound spent in a shop about 0.78 times, and about 11 percent of the volume sits with other households on the 2024-25 diary. No on-trade volume share can be archived (MESAS is a NielsenIQ and Circana dashboard with no fixed file), so the spending rule stands, its lean documented (María''s ruling of 2026-10-23). Tobacco: cigarettes a week and grams a week of hand-rolling tobacco, cigars and other tobacco are HMRC''s clearances (the Tobacco Bulletin) over the engine''s 52 weeks, shared by tobacco spending; heated tobacco sits within other tobacco in the bulletin, so it is charged at the other-tobacco rate and its own input keeps the engine''s zero. Gambling: each input is its duty''s dutiable base, HMRC''s cash receipts for the duty (the Betting and Gaming bulletin) or Machine Games Duty''s declared liabilities for the band, over the engine''s FY2024-25 rate (Gaming Duty over the engine''s effective-rate proxy for it), so the engine charges back the published receipts. General Betting Duty''s base, its receipts over the fixed-odds rate, is split over the land-based fixed-odds, remote horse-racing, remote other, exchange and horse-and-dog pool inputs by the Gambling Commission''s gross gambling yield for Great Britain, remote fixed-odds betting by the horse-racing share of all remote betting yield, since the Commission publishes no betting activity by event; its horse racing is not only UK racing, so the remote UK horse-racing input is overstated and, from April 2027, when the engine charges other remote betting at 25 percent, too much of the base stays at 15 percent and the rise is understated; and its pool betting can hold pools on other events, such as football pools, which pay Pool Betting Duty. Spread betting, which the Commission does not regulate, has no published base and keeps the engine''s zero. Lottery Duty''s base is shared by the National Lottery stakes and every other gambling base by the betting and gaming stakes, since the diary cannot tell remote from land-based play or one betting product from another; the society and Irish lotteries carry none. Both keys are first brought to published participation by the declared top_up_gambling_participation step (microcosm#1359; María''s ruling of 2026-10-25). The diary records a stake for about a fifth of the households the Gambling Commission''s Gambling Survey for Great Britain 2025 implies (PolicyEngine/chronicle#391), and under any steady rate of play a two-week diary sees at least half of the four-week players, so the gap is play the diary misses, not its window. Each adult''s chance of playing in four weeks and in twelve months is GSGB''s published rate for its sex and age band (tables B.1 and B.3), as the union of a key''s activities (table B.9: the National Lottery''s draws, scratchcards and online instant-win games; betting, bingo, casino games, fruit and slots, football pools, other online instant-win games and other gambling), taken as independent within the population that plays any of them (all gamblers, or those who play more than lottery draws). A household plays when any adult does, combined at theta: 1 - (1 - p_max) x prod(1 - p_other)^theta, where 0 is one player per household and 1 adults who play independently. Theta is fitted on the donor so that GSGB''s rates, applied to the donors'' own adults, give the diary''s ratio of the two-adult to the one-adult household rate, in which under-recording cancels if it is the same for both: 0.9 for the National Lottery, whose couples mostly buy their own tickets, and 0.08 for betting and gaming, mostly one adult''s. Within nine strata (one, two, or three or more adults, by the youngest adult''s age band: 18 to 34, 35 to 54, 55 and over), households without a stake are added by the gas connection walk''s weight-fitting rule, in an identity-keyed order drawn in proportion to a regularised donor propensity (on the chain''s predictors and spend draws, with recreation net of its gambling stakes, so that a recorded stake does not predict itself) times the household''s published chance, first to the stratum''s four-week share (regular players) and then on to its twelve-month share (occasional players); households the diary saw keep their stakes and count as regular. An added household''s stake is a draw from the donor''s positive stakes at a quantile keyed on its id, scaled so the added regular players'' mean is the mean of the households the diary saw, and an occasional player''s is a tenth of that. Both are assumptions: a two-week diary is more likely to catch frequent players, so the households it saw are probably the heavier players and equal means spread the base more evenly than play probably is; the tenth stands until GSGB publishes how often people play. The keys only re-share the bases: the stored spending stays the drawn one, so an added household''s stakes are not in its recorded recreation spending. The gambling_participation gate recomputes the rates from the vendored rows, checks every stratum''s shares, and holds each key''s stake scale within 0.5 to 2, so a broken stake draw that the scaling would hide fails it. Known biases: the quantities are levelled to the published figures while spending and the diary''s incidence stay at survey level (María''s ruling of 2026-10-23), so a household''s alcohol or tobacco duty is one multiple of its own spending, the same for every household that carries it: at prior weights alcohol duty is about 0.41 times alcohol spending and tobacco duty about 2.2 times tobacco spending, since the diary records a fraction of what is bought; VAT on the same goods stays on the survey base. Tobacco duty also sits on fewer households than smoke: 8.2 percent of households carry it, against 11.9 percent of UK adults who smoked cigarettes in 2023 (ONS), while the share of households with a smoker is above the adult rate; the duty per carrying household is higher by the same factor. Part of the gap is the frame''s: the chain''s share draws come out zero more often than the donors'' (10.3 percent of donors carry tobacco), mostly within households that carry the parent total. The gambling duties sit on the households the top-up brings to participation: 62.7 percent of households carry Lottery Duty and 29.8 percent the other gambling duties, against 10.7 and 2.0 percent on the diary''s draws alone, and 47 percent of adults in Great Britain who gambled in the past four weeks of 2025 (27 percent once lottery-draw-only players are left out). The top-up''s own biases: GSGB is taken as the level, though the Gambling Commission''s guidance on its statistics reports that an invitation that mentions gambling raised participation estimates, and that its experiment could not conclude which estimates are the more accurate; under-recording is taken as even across households, so the donor propensity carries the diary''s gradient by income, tenure, region and spending; the activity unions take activities as independent within their population, which GSGB''s table B.13 rules out among players (45 percent of four-week gamblers took part in one activity, against 26 percent under independence), but a model in which each adult''s activities share an intensity, which comes within 2.5 points of that share in every age band, moves neither key''s union by more than 9 percent in any age band, nor the share of households carrying either key by more than 0.1 points; theta is one per key, fits households of three or more adults less well, and takes the share carrying betting and gaming from 28.5 percent at 0 to 41.2 percent at 1; the stake assumptions above; and GSGB covers adults in Great Britain in calendar 2025, so Northern Ireland''s adults take its rates, against the FY2024-25 bases. On the real spine at prior weights, the share of households carrying the National Lottery rises from 51.5 percent in the bottom equivalised-income decile to 67.3 percent in the top, and betting and gaming from 26.8 to 34.8 percent, whose top decile holds 25.3 percent of the base; on the diary''s draws alone betting and gaming is almost flat (1.9 to 2.1 percent, 18.9 percent of the base in the top decile). Ordered by the published chance alone, betting and gaming would run from 29.2 to 29.8 percent and the Lottery from 57.0 to 67.9 percent with GSGB''s age mix, but neither key''s regional pattern would follow GSGB''s. With the propensity, the Lottery''s does (a correlation of 0.67 across Great Britain''s eleven regions, London lowest, as in GSGB), and betting and gaming''s barely (0.11). Other tobacco (c22131) includes e-cigarette refills, so the tobacco inputs also follow vaping spending and a household that only vapes carries tobacco duty; Vaping Products Duty, from 1 October 2026, needs a key of its own. The draught shares are national constants, so a household that buys alcohol only in shops takes the same draught relief as one that drinks in pubs. The quantities are FY2024-25''s, the excise year policyengine-uk charges in model year 2024 (its excise year runs from 6 April), and the engine holds them flat after it (PolicyEngine/policyengine-uk#2596). The step moves no spending column; the excise_quantities gate recomputes every level from the vendored rows.'
 - stage: etb_vat
   survey: Effects of Taxes and Benefits 1977-2024
   source: UK Data Service SN 8856 Effects of Taxes and Benefits household tab and cited VAT anchor resource.
@@ -3972,6 +4357,7 @@ stages:
     - council_tax
     - domestic_rates
     - income_tax
+    - isa_cash_interest_flat_rate_charge
     - national_insurance
     - student_loan_repayments
     - employee_pension_contributions
@@ -4172,7 +4558,7 @@ stages:
         concept: dft.local_bus_passenger_journeys
         geography_id: dft:england_outside_london
         dimension_values:
-          journey_category: total_concessionary
+          journey_category: elderly_disabled_concessionary
       trips_concept: dft.other_local_bus_trips_per_person
       trips_basis: published_series_rate
       population_geography_ids:
@@ -4261,7 +4647,7 @@ stages:
         concept: dft.local_bus_passenger_journeys
         geography_id: dft:england_outside_london
         dimension_values:
-          journey_category: total_concessionary
+          journey_category: elderly_disabled_concessionary
     - label: scotland
       regions:
       - SCOTLAND
@@ -4326,7 +4712,7 @@ stages:
   - nhs_a_and_e_spending
   - nhs_admitted_patient_spending
   - nhs_outpatient_spending
-  notes: 'Ports ETB public-services QRF at household grain, uprates the FYE-2024 donor to the FRS 2024-25 base year by the declared uprate_donor_columns step (education by the engine''s CPI index, rail support by ORR table 7270''s own FY2024-25 over FY2023-24 outturn, bus support by DfT BUS05bi England net support, a factor the pricing overrides outside Wales and Northern Ireland and which therefore only positions the donor before the QRF), prices bus support from the frame''s journeys (microcosm#930; the #890 rake to the published net support retired on María''s ruling of 2026-09-23): per household, the published concessionary travel reimbursement per concessionary boarding times its eligible persons'' boardings plus the rest of the published net support per boarding times every boarding, boardings being the nts_bus_travel trips times the fare pricing''s boardings per resident trip, for London and England outside London (DfT BUS05bi and BUS01) and Scotland (Scottish Transport Statistics components and journeys); Wales (no published boardings) and Northern Ireland (the NITHC accounts carry bus and rail jointly) keep the chain''s raw draw, clipped to donor support; the published totals stay bound as calibration targets and now measure the priced quantity, computes rail_usage from the 2024 fare index, and allocates NHS visits/spending to persons using the signed half-open age bands with the donor table''s native 85-89, 90-94 and 95+ top bands (the former 85+ fold-in was retired once age_tail moved ahead of this stage and recipients could populate those bands). The year-max donor filter resolves to 2023 on the pinned tab (the file labels financial year ending 2024 as year 2023), so the services training year coincides with the VAT training year and the fare-index year - the incumbent''s apparent three-way year mismatch is vacuous on this vintage. The recipient is_adult and is_child counts are the household''s FRS claimants and partners and its other members (is_uc_claimant), as the donor''s adults and childs count adults and dependent children, not the engine''s age-18 split (uk-data#486, microcosm#1095).'
+  notes: 'Ports ETB public-services QRF at household grain, uprates the FYE-2024 donor to the FRS 2024-25 base year by the declared uprate_donor_columns step (education by the engine''s CPI index, rail support by ORR table 7270''s own FY2024-25 over FY2023-24 outturn, bus support by DfT BUS05bi England net support, a factor the pricing overrides outside Wales and Northern Ireland and which therefore only positions the donor before the QRF), prices bus support from the frame''s journeys (microcosm#930; the #890 rake to the published net support retired on María''s ruling of 2026-09-23): per household, the published concessionary travel reimbursement per concessionary boarding times its eligible persons'' boardings plus the rest of the published net support per boarding times every boarding, boardings being the nts_bus_travel trips times the fare pricing''s boardings per resident trip, for London and England outside London (DfT BUS05bi and BUS01; outside London the concessionary boardings are BUS01c''s older and disabled journeys, the travel the reimbursement pays for, microcosm#1385) and Scotland (Scottish Transport Statistics components and journeys); Wales (no published boardings) and Northern Ireland (the NITHC accounts carry bus and rail jointly) keep the chain''s raw draw, clipped to donor support; the published totals stay bound as calibration targets and now measure the priced quantity, computes rail_usage from the 2024 fare index, and allocates NHS visits/spending to persons using the signed half-open age bands with the donor table''s native 85-89, 90-94 and 95+ top bands (the former 85+ fold-in was retired once age_tail moved ahead of this stage and recipients could populate those bands). The year-max donor filter resolves to 2023 on the pinned tab (the file labels financial year ending 2024 as year 2023), so the services training year coincides with the VAT training year and the fare-index year - the incumbent''s apparent three-way year mismatch is vacuous on this vintage. The recipient is_adult and is_child counts are the household''s FRS claimants and partners and its other members (is_uc_claimant), as the donor''s adults and childs count adults and dependent children, not the engine''s age-18 split (uk-data#486, microcosm#1095).'
 - stage: uc_reporter_redraw
   survey: Family Resources Survey 2024-25
   source: Family Resources Survey 2024-25 reported Universal Credit amounts, conditioned on benefit-unit composition and post-SPI incomes with PolicyEngine-UK eligibility inputs.
@@ -4507,7 +4893,7 @@ stages:
   rewrites:
   - frs_benunit_capital
   - would_claim_uc
-  notes: Runs after the last universal_credit_reported writer and before CGT cloning. Redraws every SPI benefit unit's capital, since the channel's incomes are SPI draws and the copied FRS answer no longer belongs to the unit (uk-data#495, microcosm#1095), from weighted base-FRS units with available capital in cells of UC reporter status by financial investment income band (interest, dividends and other investment income; property income is excluded because TOTCAPB4 counts accounts and assets) by is_uc_couple (two retained FRS claimant/partner roles, independently of legal is_married) by dependent-children band. A cell with fewer than 20 donors widens in the declared coarsening order, and reporter status is never coarsened. It then applies the monotone reported-UC OR refresh. The recorded capitals add property (uk-data#495, microcosm#1095), since policyengine-uk 2.151.0 replaces every capital source with a recorded figure of 0 or more and takes it as countable, and TOTCAPB4 has no property. WAS records the property for the household, and each means test counts the claimant's and partner's own capital (UC Regs 2013 reg 18; SPCA 2002 s.5). The household reference person's benefit unit therefore holds all of the household's property, and no other unit records any (María's ruling of 2026-10-12), since that person is the one in whose name the home is owned or rented, the best single reading of the owner. The engine shares household property over every claimant or partner instead, which puts a parent's property on an adult child's claim; a recorded figure consumes its own unit's share, so the engine's shares reach only a unit on the unavailable sentinel, and since policyengine-uk 2.136.1 such a unit takes its share whatever a recording unit beside it holds (the receipt counts any unit left there). The property counts at 90% of its value, market value less 10% for the costs of sale, less the debt secured on it, class by class and floored at zero per class (UC Regs 2013 reg 49(1); SPC Regs 2002 reg 19), as policyengine-uk values Universal Credit property capital. The was_wealth stage draws the debt on other residential and on non-residential property (microcosm#1095), and owned land carries none, as the engine has no input for it (pe-uk#1969). Universal Credit counts other residential and non-residential property, and Pension Credit counts those and owned land. A unit that reports Universal Credit keeps its receipt and records the carrier alone for Universal Credit, since DWP assessed its capital to pay it and the property is imputed without that receipt. frs_benunit_capital stays the financial carrier, and its unavailable sentinel -1 passes through to both. Both recorded figures project to later years by GDP per head, as financial capital does, while policyengine-uk 2.139.1 projects other residential property by house prices, so the other residential property in a recorded figure grows faster than the engine's own projection of it; by the OBR indices the engine carries, it grows 1.5% faster by 2025 and 2.0% by 2026 from a 2024 base.
+  notes: Runs after the last universal_credit_reported writer and before CGT cloning. Redraws every SPI benefit unit's capital, since the channel's incomes are SPI draws and the copied FRS answer no longer belongs to the unit (uk-data#495, microcosm#1095), from weighted base-FRS units with available capital in cells of UC reporter status by financial investment income band (interest, dividends and other investment income; property income is excluded because TOTCAPB4 counts accounts and assets) by is_uc_couple (two retained FRS claimant/partner roles, independently of legal is_married) by dependent-children band. A cell with fewer than 20 donors widens in the declared coarsening order, and reporter status is never coarsened. It then applies the monotone reported-UC OR refresh. The recorded capitals add property (uk-data#495, microcosm#1095), since policyengine-uk 2.162.14 replaces every capital source with a recorded figure of 0 or more and takes it as countable, and TOTCAPB4 has no property. WAS records the property for the household, and each means test counts the claimant's and partner's own capital (UC Regs 2013 reg 18; SPCA 2002 s.5). The household reference person's benefit unit therefore holds all of the household's property, and no other unit records any (María's ruling of 2026-10-12), since that person is the one in whose name the home is owned or rented, the best single reading of the owner. The engine shares household property over every claimant or partner instead, which puts a parent's property on an adult child's claim; a recorded figure consumes its own unit's share, so the engine's shares reach only a unit on the unavailable sentinel, and since policyengine-uk 2.136.1 such a unit takes its share whatever a recording unit beside it holds (the receipt counts any unit left there). The property counts at 90% of its value, market value less 10% for the costs of sale, less the debt secured on it, class by class and floored at zero per class (UC Regs 2013 reg 49(1); SPC Regs 2002 reg 19), as policyengine-uk values Universal Credit property capital. The was_wealth stage draws the debt on other residential and on non-residential property (microcosm#1095), and owned land carries none, as the engine has no input for it (pe-uk#1969). Universal Credit counts other residential and non-residential property, and Pension Credit counts those and owned land. A unit that reports Universal Credit keeps its receipt and records the carrier alone for Universal Credit, since DWP assessed its capital to pay it and the property is imputed without that receipt. frs_benunit_capital stays the financial carrier, and its unavailable sentinel -1 passes through to both. Both recorded figures project to later years by GDP per head, as financial capital does, while policyengine-uk 2.139.1 projects other residential property by house prices, so the other residential property in a recorded figure grows faster than the engine's own projection of it; by the OBR indices the engine carries, it grows 1.5% faster by 2025 and 2.0% by 2026 from a 2024 base.
 - stage: uc_take_up
   survey: Family Resources Survey 2024-25
   source: 'DWP Stat-Xplore, Households on Universal Credit by family type and monthly award amount band, April to December 2025, applied to PolicyEngine-UK pre-take-up Universal Credit awards after the SPI income chain and UC capital coherence.'
@@ -4735,13 +5121,14 @@ stages:
   - kind: materialize_rules_engine_predictors
     predictors:
     - is_gainfully_employed_for_carers_allowance
+    - is_severely_disabled_for_carers_allowance
     consumed_only: true
     year_rule: survey_year
   - kind: assign_binary_from_rate
     output: would_claim_carers_allowance
     draw: would_claim_carers_allowance
     assignment_unit: person
-    eligibility: 'persons whose care_hours reach policyengine-uk''s gov.dwp.carers_allowance.min_hours, who report no Carer''s Allowance, and whom is_gainfully_employed_for_carers_allowance holds gainfully employed at the survey year: the carers the earnings limit alone keeps from the allowance. In Scotland the flag is Carer Support Payment''s, which policyengine-uk pays under its own earnings limit from 2.146.1'
+    eligibility: 'persons whose care_hours reach policyengine-uk''s gov.dwp.carers_allowance.min_hours, who care for a severely disabled person, who report no Carer''s Allowance, and whom is_gainfully_employed_for_carers_allowance holds gainfully employed at the survey year: the carers the earnings limit alone keeps from the allowance (a carer whose frs_care_hours_in_household reach min_hours cares for a severely disabled person when another member of the household is is_severely_disabled_for_carers_allowance at the survey year; a carer whose largest in-household band does not reach the hours does on a second identity-keyed uniform (salt carers_allowance_outside_household_pool) below the household-weighted share of the in-household carers reporting no allowance who have such a member). In Scotland the flag is Carer Support Payment''s, which policyengine-uk pays under its own earnings limit from 2.146.1'
     reported_true_anchor: carers_allowance_reported > 0
     rate_key: carers_allowance_newly_entitled
     rate_derivation: 'the take-up contract''s carers_allowance_newly_entitled rate, drawn flat over the eligible persons; would_claim = reported OR (eligible AND u < rate), so a reporter stays true and every other person false'
@@ -4749,7 +5136,7 @@ stages:
   outputs: []
   rewrites:
   - would_claim_carers_allowance
-  notes: 'Runs after the SPI income chain, UC capital coherence and the Pension Credit and Child Benefit redraws, before CGT cloning, so every clone carries its source''s draw (microcosm#1319). frs_spine sets would_claim_carers_allowance from reported receipt and the SPI income chain re-derives it from the refilled receipt on the rows it redraws, so that care_hours qualifies a carer for the Universal Credit carer element without paying the allowance to every carer (#882). A carer above the earnings limit cannot report the allowance, so no reform that widens it reached a carer who would claim once entitled: the April 2025 rise of the limit from £151 to £196 a week brought an estimated 61,000 more people into eligibility (Independent Review of Carer''s Allowance Overpayments, July 2025, chapter 7). One temporary engine materialization at the survey year, on the frame''s own values, gives each person''s is_gainfully_employed_for_carers_allowance (consumed only); the engine reads a year''s parameters at 30 April, so the limit is 2024-25''s £151. A person whose care_hours reach the engine''s gov.dwp.carers_allowance.min_hours (35), who reports no allowance and whom that test holds gainfully employed claims at the take-up contract''s carers_allowance_newly_entitled rate (0.6, María''s ruling of 2026-10-20, sensitivity 0.45 to 0.75) on the person''s identity-keyed uniform (seed 0, salt would_claim_carers_allowance): would_claim = reported OR (eligible AND u < rate). A reporter stays true; a carer under the limit who reports no allowance stays false, as the survey records them entitled and not claiming. Scotland is drawn too (María''s ruling of 2026-10-23): there the flag is Carer Support Payment''s, which policyengine-uk pays only under its own earnings limit from 2.146.1 (PolicyEngine/policyengine-uk#2473), and the receipt reports Scotland apart. The earnings test is read before salary_sacrifice moves some contributors'' pension amounts out of their pay, so a drawn carer whom that conversion takes under the survey year''s limit keeps the flag although the file then shows them entitled and not reporting. The stage rebuilds the flag from reported receipt and refuses a frame whose flag no longer follows it. Its receipt bands support on distinct source households (household_source_id), and gives a weighted total only where ten or more carry it and the realised share only where neither side rests on one to nine; the stage has no health gate.'
+  notes: 'Runs after the SPI income chain, UC capital coherence and the Pension Credit and Child Benefit redraws, before CGT cloning, so every clone carries its source''s draw (microcosm#1319). frs_spine sets would_claim_carers_allowance from reported receipt and the SPI income chain re-derives it from the refilled receipt on the rows it redraws, so that care_hours qualifies a carer for the Universal Credit carer element without paying the allowance to every carer (#882). A carer above the earnings limit cannot report the allowance, so no reform that widens it reached a carer who would claim once entitled: the April 2025 rise of the limit from £151 to £196 a week brought an estimated 61,000 more people into eligibility (Independent Review of Carer''s Allowance Overpayments, July 2025, chapter 7). One temporary engine materialization at the survey year, on the frame''s own values, gives each person''s is_gainfully_employed_for_carers_allowance and is_severely_disabled_for_carers_allowance (consumed only); the engine reads a year''s parameters at 30 April, so the limit is 2024-25''s £151. The allowance is paid only for caring for a severely disabled person (SSCBA 1992 s. 70(2)), which the care hours do not record (microcosm#1418): a carer whose largest in-household band alone reaches the hours (frs_care_hours_in_household) qualifies when another member of the household is severely disabled, and a carer whose largest in-household band does not reach them (care outside the household, or hours spread over bands; the allowance needs the hours for one person) joins on a second identity-keyed uniform (salt carers_allowance_outside_household_pool) below the household-weighted share of the in-household carers reporting no allowance who have such a member (María''s decision (a) of 2026-10-28). A person in that pool whose care_hours reach the engine''s gov.dwp.carers_allowance.min_hours (35), who reports no allowance and whom the earnings test holds gainfully employed claims at the take-up contract''s carers_allowance_newly_entitled rate (0.6, María''s ruling of 2026-10-20, sensitivity 0.45 to 0.75) on the person''s identity-keyed uniform (seed 0, salt would_claim_carers_allowance): would_claim = reported OR (eligible AND u < rate). A reporter stays true; a carer under the limit who reports no allowance stays false, as the survey records them entitled and not claiming. Scotland is drawn too (María''s ruling of 2026-10-23): there the flag is Carer Support Payment''s, which policyengine-uk pays only under its own earnings limit from 2.146.1 (PolicyEngine/policyengine-uk#2473), and the receipt reports Scotland apart. The earnings test is read before salary_sacrifice moves some contributors'' pension amounts out of their pay, so a drawn carer whom that conversion takes under the survey year''s limit keeps the flag although the file then shows them entitled and not reporting. The stage rebuilds the flag from reported receipt and refuses a frame whose flag no longer follows it. Its receipt bands support on distinct source households (household_source_id), and gives a weighted total only where ten or more carry it and a share only where neither of its sides rests on one to nine; the stage has no health gate.'
 - stage: uc_deduction_attributes
   survey: DWP Universal Credit deductions statistics, March 2025 to February 2026
   source: Department for Work and Pensions supplementary Tables 2, 5 and 6, sha-pinned by Chronicle package dwp-uc-deductions-march-2025-february-2026.
@@ -5171,7 +5558,7 @@ stages:
   artifacts:
   - role: policy_parameters
     kind: versioned_parameter_tree
-    dependency: policyengine-uk>=2.151.0 via microcosm-build[uk]
+    dependency: policyengine-uk>=2.162.14 via microcosm-build[uk]
     parameters:
     - gov.hmrc.cgt.annual_exempt_amount
     instant_rule: raw dated parameter files evaluated at 1 June of the build period's tax year
@@ -5236,7 +5623,7 @@ stages:
   artifacts:
   - role: policy_parameters
     kind: versioned_parameter_tree
-    dependency: policyengine-uk>=2.151.0 via microcosm-build[uk]
+    dependency: policyengine-uk>=2.162.14 via microcosm-build[uk]
     parameters:
     - gov.hmrc.cgt.annual_exempt_amount
     - gov.hmrc.cgt.badr.lifetime_limit
