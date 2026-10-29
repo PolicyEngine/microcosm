@@ -480,12 +480,14 @@ def test_support_floor_deferrals_cover_the_two_authorities_remaining_cells() -> 
     # microcosm#1240 adds the three high_value_homes local-authority legs, and
     # microcosm#1207 the three DESNZ energy rows. microcosm#1095 adds the
     # single adult discount cells, one row for both authorities.
-    assert len(rows) == 49
-    assert sum(len(row["area_ids"]) for row in rows) == 93
+    # microcosm#1418 adds the City of London's two SPI pension income cells
+    # (the Isles of Scilly's are signed under the SPI coverage gap).
+    assert len(rows) == 51
+    assert sum(len(row["area_ids"]) for row in rows) == 95
     assert {
         area_id: sum(area_id in row["area_ids"] for row in rows)
         for area_id in ("E06000053", "E09000001")
-    } == {"E06000053": 44, "E09000001": 49}
+    } == {"E06000053": 44, "E09000001": 51}
     assert all(row["defer_if_compiles"] is True for row in rows)
     # The English band-H family is wholly deferred on spine support, so it
     # carries no support-floor row; the Welsh and Scottish band-H targets do
