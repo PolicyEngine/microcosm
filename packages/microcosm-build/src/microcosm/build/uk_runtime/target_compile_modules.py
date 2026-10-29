@@ -69,6 +69,13 @@ EXCLUDED_DIRECT_IMPORTS: Mapping[str, str] = MappingProxyType(
             "the feed-pin epoch arithmetic chronicle_feed checks; the pinned "
             "facts themselves are node inputs hashed by content"
         ),
+        "microcosm.build.ledger_artifact": (
+            "ledger_targets imports LexicalFloat only so its strict scalar match "
+            "reads an opt-in lexical float as float; only the transport factor "
+            "compiler opts in (test_lexical_float_opt_in_is_limited_to_factor_"
+            "consumers), the UK kernels load plain floats, and the loaded facts "
+            "are node inputs hashed by content"
+        ),
         "microcosm.build.gates": (
             "imported for the GateResult and TargetCoverageRequirement types only"
         ),
