@@ -721,7 +721,8 @@ def test_receipt_predicate_masks_match_preparation_for_validated_raw_inputs(rows
 
 
 def test_prepare_matches_pinned_legacy_output_digest():
-    # Captured from the pre-refactor implementation at 4f333f2c2ee70b6b758586f402d966df7297a2f0.
+    # Captured from the pre-refactor implementation at 4f333f2c2ee70b6b758586f402d966df7297a2f0,
+    # run on these NZ bindings, which #1398 extended after the capture.
     tables = prepare_calibration_columns(_tables(), _bindings())
     document = {
         entity: {
@@ -734,5 +735,5 @@ def test_prepare_matches_pinned_legacy_output_digest():
     }
     payload = json.dumps(document, sort_keys=True, separators=(",", ":")).encode()
     assert hashlib.sha256(payload).hexdigest() == (
-        "dca0e085cb3074f75bffc1d964284760a250924ab64464ca26b4b207b17e45ad"
+        "1b22f4e11e6e6c901866010d709acadaaad638e0774e80751e0ff23257a2bde7"
     )

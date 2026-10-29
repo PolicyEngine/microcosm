@@ -921,22 +921,22 @@ def test_legacy_receipt_remains_version_one_without_factor_fields():
 @pytest.mark.parametrize(
     ("selection", "digest"),
     [
-        ({}, "09fb37b862d2daaa24f62ad2a1660f794885f201f25157bcf7db885fbd521d38"),
+        ({}, "b0f8648dbd50ee3bfa6d9f53613bc97ac5c5403466e6acfc758fa133aa3ac94f"),
         (
             {"aging_index": "low"},
-            "50e9554eef9624e5e0d6ae3f3e8e28c1c01925150010db0e58df7f8a2def8254",
+            "8989fa75e44520ea8e64b9ebcf4a5c894869b95d8f85507a450b3d4486973f8a",
         ),
         (
             {"aging_index": "high"},
-            "ebb6f0955d8865f6e8b445db74bd0f8143853852d25bd88374495d1d923c126e",
+            "e246f61518e09b0e2c1b652f94a7eb44b05d84ce4ac4c2e77c4c606807718165",
         ),
     ],
 )
 def test_nz_factor_receipts_are_byte_identical_after_additive_factors(
     selection, digest
 ):
-    # Canonical v2 receipts, with the interval document, produced at #1394's
-    # 75c27688, before the donor factors and the money_normalization_input
+    # Canonical v2 receipts, with the interval document, produced at #1398's
+    # 0a8568b4, before the donor factors and the money_normalization_input
     # purpose were added to the factor document.
     spec = paths_for("microcosm-build").package / "src/microcosm/build/nz"
     _, _, receipt = resolve_reference_profiles(
