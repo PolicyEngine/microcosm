@@ -8,7 +8,6 @@ from fractions import Fraction
 import pytest
 from hypothesis import example, given, settings
 from hypothesis import strategies as st
-from test_support.microcosm_build.reference_factors import factor_context_fixture, factor_fixture
 
 from microcosm.build.ledger_artifact import LexicalFloat
 from microcosm.build.reference_factors import (
@@ -20,6 +19,10 @@ from microcosm.build.reference_factors import (
     validate_factor_context,
 )
 from microcosm.graph.canonical import canonical_json
+from test_support.microcosm_build.reference_factors import (
+    factor_context_fixture,
+    factor_fixture,
+)
 
 
 def _fraction(row):
