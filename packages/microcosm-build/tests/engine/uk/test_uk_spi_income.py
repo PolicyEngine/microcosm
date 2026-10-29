@@ -783,7 +783,9 @@ def test_spi_rebasing_index_is_the_projections_except_where_named() -> None:
     assert savings["index"] == (
         "gov.economic_assumptions.indices.ons.household_interest_income"
     )
-    assert savings["factor"] == pytest.approx(2.2692, abs=1e-4)
+    # 2.2692 until policyengine-uk 2.164.1's October 2026 outlook revised the
+    # ONS interest history (microcosm#1415).
+    assert savings["factor"] == pytest.approx(2.2686, abs=1e-4)
 
 
 def _zero_taxable_income(person: pd.DataFrame, rows) -> None:

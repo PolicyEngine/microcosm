@@ -35,7 +35,7 @@ __all__ = [
 # ---------------------------------------------------------------------------
 #
 # Which PolicyEngine-UK inputs each engine-neutral concept feeds
-# (microcosm.frame.concepts), reviewed against policyengine-uk 2.162.14. Every
+# (microcosm.frame.concepts), reviewed against policyengine-uk 2.164.2. Every
 # target is a pure input (in ``PolicyEngineUKEngine.variables``). The UK
 # loader also accepts some formula-owned variables as overrides
 # (``employment_income``, ``state_pension_reported``, ``is_household_head``);
@@ -434,7 +434,7 @@ def _uk_take_up(program: str, entity: str) -> InputBinding:
 
 POLICYENGINE_UK_CONCEPT_MAPPING = ConceptMapping(
     engine="policyengine-uk",
-    engine_version="2.162.14",
+    engine_version="2.164.2",
     entity_correspondence={"person": "person", "household": "household"},
     input_declaration=InputDeclaration.ENGINE_TYPED,
     bindings=(
@@ -795,7 +795,13 @@ POLICYENGINE_UK_CONCEPT_MAPPING = ConceptMapping(
             "describe a company the person owns, for Universal Credit's "
             "regulation 77 (owned_company_capital, owned_company_holding_value "
             "and owned_company_trade_assets); every one defaults to no such "
-            "company, and the build sets none. savings and share_like_capital are two "
+            "company, and the build sets none. Since policyengine-uk 2.164.0 "
+            "cash_isa_balance and stocks_and_shares_isa_balance hold the "
+            "person's ISAs, and the household cash_isa and "
+            "stocks_and_shares_isa sum them; the isa_subscriptions stage "
+            "splits the WAS household totals into them (microcosm#1415), a "
+            "split of one wrapper's balance, not of liquid financial assets. "
+            "savings and share_like_capital are two "
             "of Universal Credit's capital sources "
             "(gov.dwp.universal_credit.means_test.capital.sources); since "
             "policyengine-uk 2.147.0 share_like_capital is corporate_wealth unless "

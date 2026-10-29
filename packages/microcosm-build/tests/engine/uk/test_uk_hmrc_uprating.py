@@ -10,14 +10,17 @@ def test_pinned_engine_factors_are_the_ones_the_assessment_measured() -> None:
             path, "2023-01-01"
         )
 
+    # 1.1067 until policyengine-uk 2.164.1 moved to the OBR's October 2026
+    # outlook, which revises 2025 earnings down (microcosm#1415).
     assert factor(
         "gov.economic_assumptions.indices.obr.average_earnings"
-    ) == pytest.approx(1.1067, abs=2e-3)
+    ) == pytest.approx(1.0943, abs=2e-3)
     # 1.0344 until policyengine-uk 2.155.0 took population from the OBR's
-    # March 2026 long-term determinants (PolicyEngine/policyengine-uk#2611).
+    # March 2026 long-term determinants (PolicyEngine/policyengine-uk#2611),
+    # and 1.0384 until 2.164.1's October 2026 outlook.
     assert factor(
         "gov.economic_assumptions.indices.obr.per_capita.mixed_income"
-    ) == pytest.approx(1.0384, abs=2e-3)
+    ) == pytest.approx(1.0327, abs=2e-3)
     assert factor("gov.dwp.state_pension.new_state_pension.amount") == pytest.approx(
         230.25 / 203.85, abs=1e-6
     )
@@ -96,8 +99,9 @@ def test_savings_interest_targets_take_the_donors_path() -> None:
     donor_path = ratio(history, 2022, 2024) * ratio(projection, 2024, 2025)
 
     # 1.1920 until policyengine-uk 2.155.0 took population from the OBR's
-    # March 2026 long-term determinants (PolicyEngine/policyengine-uk#2611).
-    assert target_factor == pytest.approx(1.1961, abs=1e-4)
+    # March 2026 long-term determinants (PolicyEngine/policyengine-uk#2611),
+    # and 1.1961 until 2.164.1's October 2026 outlook (microcosm#1415).
+    assert target_factor == pytest.approx(1.1932, abs=1e-4)
     # The donors start a year earlier and so carry one more year of history.
     assert donor_path / target_factor == pytest.approx(
         ratio(history, 2022, 2023), rel=1e-12

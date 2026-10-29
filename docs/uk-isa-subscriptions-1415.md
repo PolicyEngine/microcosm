@@ -15,10 +15,18 @@ runs last, on final incomes, and nothing in the spine reads its outputs.
 The `was_lisa` stage also anchors Lifetime ISA holders to HMRC's payers (below,
 and [the LISA notes](uk-lisa-1003.md)).
 
-policyengine-uk reads `lifetime_isa_payments` (the 25% bonus is
-`lifetime_isa_bonus`). It reads the subscription and per-person balance columns
-from policyengine-uk#2712 (2.164.1, the first published release with it); an
-older engine skips them.
+The pinned policyengine-uk 2.164.2 reads all five:
+
+- `lifetime_isa_payments`, whose 25% bonus is `lifetime_isa_bonus`;
+- the subscriptions, against the limits of policyengine-uk#2712
+  (`isa_subscriptions_above_limit` and `cash_isa_subscriptions_above_limit` are
+  what a limit leaves out);
+- the person balances, which its household `cash_isa` and
+  `stocks_and_shares_isa` sum.
+
+The release does not store those household totals. A stored total would
+override the sum, so the means tests, which count the household `cash_isa`,
+read the sum of the person balances.
 
 ## Sources
 

@@ -166,10 +166,11 @@ def test_a_2024_frame_read_at_2025_projects_each_component(tmp_path) -> None:
     """The build's frame is FRS 2024-25, read at 2025.
 
     Under legacy_gross the engine grows gross interest (by per-capita GDP,
-    1.0474 to 2025) and takes off the stored ISA part unchanged: 1,000 x 1.0474
-    - 300 and 300 x 0.0474 outside ISAs. The additive contract grows non-ISA and
-    ISA interest each by its own index, so the ISA-only saver has no interest
-    outside ISAs and both savers' ISA interest grows (microcosm#1360).
+    1.0462 to 2025 on policyengine-uk 2.164.2) and takes off the stored ISA part
+    unchanged: 1,000 x 1.0462 - 300 and 300 x 0.0462 outside ISAs. The additive
+    contract grows non-ISA and ISA interest each by its own index, so the
+    ISA-only saver has no interest outside ISAs and both savers' ISA interest
+    grows (microcosm#1360).
     """
 
     from policyengine_uk import Microsimulation
@@ -185,9 +186,9 @@ def test_a_2024_frame_read_at_2025_projects_each_component(tmp_path) -> None:
             for name in ("savings_interest_income", "tax_free_savings_income")
         }
     legacy, additive = readings["legacy_gross"], readings["additive"]
-    assert legacy["savings_interest_income"] == pytest.approx([747.4, 14.22], abs=0.01)
+    assert legacy["savings_interest_income"] == pytest.approx([746.2, 13.86], abs=0.01)
     assert legacy["tax_free_savings_income"] == pytest.approx([300.0, 300.0])
-    assert additive["savings_interest_income"] == pytest.approx([733.18, 0.0], abs=0.01)
+    assert additive["savings_interest_income"] == pytest.approx([732.34, 0.0], abs=0.01)
     assert additive["tax_free_savings_income"] == pytest.approx(
-        [314.22, 314.22], abs=0.01
+        [313.86, 313.86], abs=0.01
     )

@@ -653,9 +653,20 @@ UK_RELEASE_EXPORT_DROPPED_COLUMNS: Mapping[str, tuple[str, ...]] = {
         # never be uprated, so the boundary drops one should it appear.
         "tax_free_savings_income",
     ),
-    # The value the spine's regional home values replaced (microcosm#1112):
-    # the dense node ranks on it, and it is no engine input.
-    "household": ("property_wealth", "main_residence_value_rank_basis"),
+    "household": (
+        "property_wealth",
+        # The value the spine's regional home values replaced (microcosm#1112):
+        # the dense node ranks on it, and it is no engine input.
+        "main_residence_value_rank_basis",
+        # Since policyengine-uk 2.164.0 these add the person cash_isa_balance
+        # and stocks_and_shares_isa_balance, which the isa_subscriptions stage
+        # splits them into (microcosm#1415). A stored total would override the
+        # sum, so a reform or situation that edits a person's balance would
+        # leave it unchanged. The spine keeps both (the WAS stage writes them
+        # and the split reads them); the engine sums the person balances.
+        "cash_isa",
+        "stocks_and_shares_isa",
+    ),
 }
 
 

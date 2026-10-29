@@ -2529,91 +2529,91 @@
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 1507127405.2826157,
+   "ledger_value": 1503419095.1769469,
    "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_100000",
    "period": 2025,
    "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 savings-interest rows by band, moved to the dataset's year by the household interest index and from there to the calibration year by GDP per head, the index the engine's dataset projection applies (microcosm#1095); the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 1483204748.0559075,
+   "ledger_value": 1479555300.015408,
    "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_1000000",
    "period": 2025,
    "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 savings-interest rows by band, moved to the dataset's year by the household interest index and from there to the calibration year by GDP per head, the index the engine's dataset projection applies (microcosm#1095); the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 327740404.0059021,
+   "ledger_value": 326933993.7130821,
    "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_12570",
    "period": 2025,
    "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 savings-interest rows by band, moved to the dataset's year by the household interest index and from there to the calibration year by GDP per head, the index the engine's dataset projection applies (microcosm#1095); the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 1638702020.0295105,
+   "ledger_value": 1634669968.5654104,
    "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_15000",
    "period": 2025,
    "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 savings-interest rows by band, moved to the dataset's year by the household interest index and from there to the calibration year by GDP per head, the index the engine's dataset projection applies (microcosm#1095); the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 777486359.868016,
+   "ledger_value": 775573342.7500123,
    "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_150000",
    "period": 2025,
    "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 savings-interest rows by band, moved to the dataset's year by the household interest index and from there to the calibration year by GDP per head, the index the engine's dataset projection applies (microcosm#1095); the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 3743895855.9798307,
+   "ledger_value": 3734683942.7808285,
    "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_20000",
    "period": 2025,
    "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 savings-interest rows by band, moved to the dataset's year by the household interest index and from there to the calibration year by GDP per head, the index the engine's dataset projection applies (microcosm#1095); the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 876765387.3588549,
+   "ledger_value": 874608092.6703985,
    "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_200000",
    "period": 2025,
    "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 savings-interest rows by band, moved to the dataset's year by the household interest index and from there to the calibration year by GDP per head, the index the engine's dataset projection applies (microcosm#1095); the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 3026216139.178585,
+   "ledger_value": 3018770087.9346633,
    "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_30000",
    "period": 2025,
    "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 savings-interest rows by band, moved to the dataset's year by the household interest index and from there to the calibration year by GDP per head, the index the engine's dataset projection applies (microcosm#1095); the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 804997415.6787304,
+   "ledger_value": 803016707.185782,
    "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_300000",
    "period": 2025,
    "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 savings-interest rows by band, moved to the dataset's year by the household interest index and from there to the calibration year by GDP per head, the index the engine's dataset projection applies (microcosm#1095); the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 2236768450.697215,
+   "ledger_value": 2231264847.6038814,
    "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_40000",
    "period": 2025,
    "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 savings-interest rows by band, moved to the dataset's year by the household interest index and from there to the calibration year by GDP per head, the index the engine's dataset projection applies (microcosm#1095); the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 2798950895.5248575,
+   "ledger_value": 2792064033.900044,
    "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_50000",
    "period": 2025,
    "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 savings-interest rows by band, moved to the dataset's year by the household interest index and from there to the calibration year by GDP per head, the index the engine's dataset projection applies (microcosm#1095); the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 781074758.4520222,
+   "ledger_value": 779152912.0242431,
    "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_500000",
    "period": 2025,
    "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 savings-interest rows by band, moved to the dataset's year by the household interest index and from there to the calibration year by GDP per head, the index the engine's dataset projection applies (microcosm#1095); the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 1937735235.3633628,
+   "ledger_value": 1932967408.084646,
    "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_70000",
    "period": 2025,
    "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 savings-interest rows by band, moved to the dataset's year by the household interest index and from there to the calibration year by GDP per head, the index the engine's dataset projection applies (microcosm#1095); the incumbent registry binds neither (chronicle#282)."
@@ -7041,7 +7041,7 @@
   {
    "fixture_value": 6870000000.0,
    "kind": "calibration_drift",
-   "ledger_value": 7475572768.250349,
+   "ledger_value": 7475600207.41509,
    "name": "hmrc/dividend_income_income_band_100_000_to_150_000",
    "period": 2025,
    "reason": "Declared uprating (PolicyEngine/chronicle#280 lane, María's ruling of 2026-09-22): ours moves the SPI 2023-24 band value to the 2025 calibration year by the index the reference declares (amounts by the pinned engine's per-variable OBR and ONS indices between 1 January 2023 and 1 January 2025, counts by HMRC's projected taxpayer growth in the containing Table 2.5 band as the calendar-2025 window); the frozen incumbent fixture holds the 2023-24 values it projects one year forward with its own income-projection ratios."
@@ -7049,7 +7049,7 @@
   {
    "fixture_value": 175000000.0,
    "kind": "calibration_drift",
-   "ledger_value": 190425798.31787643,
+   "ledger_value": 190426497.27767697,
    "name": "hmrc/dividend_income_income_band_12_570_to_15_000",
    "period": 2025,
    "reason": "Declared uprating (PolicyEngine/chronicle#280 lane, María's ruling of 2026-09-22): ours moves the SPI 2023-24 band value to the 2025 calibration year by the index the reference declares (amounts by the pinned engine's per-variable OBR and ONS indices between 1 January 2023 and 1 January 2025, counts by HMRC's projected taxpayer growth in the containing Table 2.5 band as the calendar-2025 window); the frozen incumbent fixture holds the 2023-24 values it projects one year forward with its own income-projection ratios."
@@ -7057,7 +7057,7 @@
   {
    "fixture_value": 3450000000.0,
    "kind": "calibration_drift",
-   "ledger_value": 3754108595.409564,
+   "ledger_value": 3754122374.9027743,
    "name": "hmrc/dividend_income_income_band_150_000_to_200_000",
    "period": 2025,
    "reason": "Declared uprating (PolicyEngine/chronicle#280 lane, María's ruling of 2026-09-22): ours moves the SPI 2023-24 band value to the 2025 calibration year by the index the reference declares (amounts by the pinned engine's per-variable OBR and ONS indices between 1 January 2023 and 1 January 2025, counts by HMRC's projected taxpayer growth in the containing Table 2.5 band as the calendar-2025 window); the frozen incumbent fixture holds the 2023-24 values it projects one year forward with its own income-projection ratios."
@@ -7065,7 +7065,7 @@
   {
    "fixture_value": 855000000.0,
    "kind": "calibration_drift",
-   "ledger_value": 930366043.2101963,
+   "ledger_value": 930369458.1280789,
    "name": "hmrc/dividend_income_income_band_15_000_to_20_000",
    "period": 2025,
    "reason": "Declared uprating (PolicyEngine/chronicle#280 lane, María's ruling of 2026-09-22): ours moves the SPI 2023-24 band value to the 2025 calibration year by the index the reference declares (amounts by the pinned engine's per-variable OBR and ONS indices between 1 January 2023 and 1 January 2025, counts by HMRC's projected taxpayer growth in the containing Table 2.5 band as the calendar-2025 window); the frozen incumbent fixture holds the 2023-24 values it projects one year forward with its own income-projection ratios."
@@ -7073,7 +7073,7 @@
   {
    "fixture_value": 11100000000.0,
    "kind": "calibration_drift",
-   "ledger_value": 12078436350.448162,
+   "ledger_value": 12078480684.469795,
    "name": "hmrc/dividend_income_income_band_1_000_000_to_inf",
    "period": 2025,
    "reason": "Declared uprating (PolicyEngine/chronicle#280 lane, María's ruling of 2026-09-22): ours moves the SPI 2023-24 band value to the 2025 calibration year by the index the reference declares (amounts by the pinned engine's per-variable OBR and ONS indices between 1 January 2023 and 1 January 2025, counts by HMRC's projected taxpayer growth in the containing Table 2.5 band as the calendar-2025 window); the frozen incumbent fixture holds the 2023-24 values it projects one year forward with its own income-projection ratios."
@@ -7081,7 +7081,7 @@
   {
    "fixture_value": 3700000000.0,
    "kind": "calibration_drift",
-   "ledger_value": 4026145450.1493874,
+   "ledger_value": 4026160228.1565986,
    "name": "hmrc/dividend_income_income_band_200_000_to_300_000",
    "period": 2025,
    "reason": "Declared uprating (PolicyEngine/chronicle#280 lane, María's ruling of 2026-09-22): ours moves the SPI 2023-24 band value to the 2025 calibration year by the index the reference declares (amounts by the pinned engine's per-variable OBR and ONS indices between 1 January 2023 and 1 January 2025, counts by HMRC's projected taxpayer growth in the containing Table 2.5 band as the calendar-2025 window); the frozen incumbent fixture holds the 2023-24 values it projects one year forward with its own income-projection ratios."
@@ -7089,7 +7089,7 @@
   {
    "fixture_value": 3330000000.0,
    "kind": "calibration_drift",
-   "ledger_value": 3623530905.1344485,
+   "ledger_value": 3623544205.340939,
    "name": "hmrc/dividend_income_income_band_20_000_to_30_000",
    "period": 2025,
    "reason": "Declared uprating (PolicyEngine/chronicle#280 lane, María's ruling of 2026-09-22): ours moves the SPI 2023-24 band value to the 2025 calibration year by the index the reference declares (amounts by the pinned engine's per-variable OBR and ONS indices between 1 January 2023 and 1 January 2025, counts by HMRC's projected taxpayer growth in the containing Table 2.5 band as the calendar-2025 window); the frozen incumbent fixture holds the 2023-24 values it projects one year forward with its own income-projection ratios."
@@ -7097,7 +7097,7 @@
   {
    "fixture_value": 3430000000.0,
    "kind": "calibration_drift",
-   "ledger_value": 3732345647.030378,
+   "ledger_value": 3732359346.6424685,
    "name": "hmrc/dividend_income_income_band_300_000_to_500_000",
    "period": 2025,
    "reason": "Declared uprating (PolicyEngine/chronicle#280 lane, María's ruling of 2026-09-22): ours moves the SPI 2023-24 band value to the 2025 calibration year by the index the reference declares (amounts by the pinned engine's per-variable OBR and ONS indices between 1 January 2023 and 1 January 2025, counts by HMRC's projected taxpayer growth in the containing Table 2.5 band as the calendar-2025 window); the frozen incumbent fixture holds the 2023-24 values it projects one year forward with its own income-projection ratios."
@@ -7105,7 +7105,7 @@
   {
    "fixture_value": 4700000000.0,
    "kind": "calibration_drift",
-   "ledger_value": 5114292869.108682,
+   "ledger_value": 5114311641.171896,
    "name": "hmrc/dividend_income_income_band_30_000_to_40_000",
    "period": 2025,
    "reason": "Declared uprating (PolicyEngine/chronicle#280 lane, María's ruling of 2026-09-22): ours moves the SPI 2023-24 band value to the 2025 calibration year by the index the reference declares (amounts by the pinned engine's per-variable OBR and ONS indices between 1 January 2023 and 1 January 2025, counts by HMRC's projected taxpayer growth in the containing Table 2.5 band as the calendar-2025 window); the frozen incumbent fixture holds the 2023-24 values it projects one year forward with its own income-projection ratios."
@@ -7113,7 +7113,7 @@
   {
    "fixture_value": 8400000000.0,
    "kind": "calibration_drift",
-   "ledger_value": 9140438319.258068,
+   "ledger_value": 9140471869.328495,
    "name": "hmrc/dividend_income_income_band_40_000_to_50_000",
    "period": 2025,
    "reason": "Declared uprating (PolicyEngine/chronicle#280 lane, María's ruling of 2026-09-22): ours moves the SPI 2023-24 band value to the 2025 calibration year by the index the reference declares (amounts by the pinned engine's per-variable OBR and ONS indices between 1 January 2023 and 1 January 2025, counts by HMRC's projected taxpayer growth in the containing Table 2.5 band as the calendar-2025 window); the frozen incumbent fixture holds the 2023-24 values it projects one year forward with its own income-projection ratios."
@@ -7121,7 +7121,7 @@
   {
    "fixture_value": 3820000000.0,
    "kind": "calibration_drift",
-   "ledger_value": 4156723140.424503,
+   "ledger_value": 4156738397.7184343,
    "name": "hmrc/dividend_income_income_band_500_000_to_1_000_000",
    "period": 2025,
    "reason": "Declared uprating (PolicyEngine/chronicle#280 lane, María's ruling of 2026-09-22): ours moves the SPI 2023-24 band value to the 2025 calibration year by the index the reference declares (amounts by the pinned engine's per-variable OBR and ONS indices between 1 January 2023 and 1 January 2025, counts by HMRC's projected taxpayer growth in the containing Table 2.5 band as the calendar-2025 window); the frozen incumbent fixture holds the 2023-24 values it projects one year forward with its own income-projection ratios."
@@ -7129,7 +7129,7 @@
   {
    "fixture_value": 12500000000.0,
    "kind": "calibration_drift",
-   "ledger_value": 13601842736.991173,
+   "ledger_value": 13601892662.691212,
    "name": "hmrc/dividend_income_income_band_50_000_to_70_000",
    "period": 2025,
    "reason": "Declared uprating (PolicyEngine/chronicle#280 lane, María's ruling of 2026-09-22): ours moves the SPI 2023-24 band value to the 2025 calibration year by the index the reference declares (amounts by the pinned engine's per-variable OBR and ONS indices between 1 January 2023 and 1 January 2025, counts by HMRC's projected taxpayer growth in the containing Table 2.5 band as the calendar-2025 window); the frozen incumbent fixture holds the 2023-24 values it projects one year forward with its own income-projection ratios."
@@ -7137,7 +7137,7 @@
   {
    "fixture_value": 9440000000.0,
    "kind": "calibration_drift",
-   "ledger_value": 10272111634.975735,
+   "ledger_value": 10272149338.864403,
    "name": "hmrc/dividend_income_income_band_70_000_to_100_000",
    "period": 2025,
    "reason": "Declared uprating (PolicyEngine/chronicle#280 lane, María's ruling of 2026-09-22): ours moves the SPI 2023-24 band value to the 2025 calibration year by the index the reference declares (amounts by the pinned engine's per-variable OBR and ONS indices between 1 January 2023 and 1 January 2025, counts by HMRC's projected taxpayer growth in the containing Table 2.5 band as the calendar-2025 window); the frozen incumbent fixture holds the 2023-24 values it projects one year forward with its own income-projection ratios."
