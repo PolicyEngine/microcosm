@@ -3174,13 +3174,14 @@
       "ledger_selector": {
         "source_name": "obr",
         "source_concept": "obr.winter_fuel_payment",
+        "source_table": "EFO March 2026 detailed forecast tables: expenditure",
         "entity_name": "person",
         "period_type": "fiscal_year",
         "period_value": 2025
       },
       "category_id": "obr.efo_expenditure",
       "label": "Winter fuel allowance",
-      "selector_note": "OBR EFO March 2026, table 4.9, winter fuel payments: period_value 2025 is the OBR April-start label for FY2025-26, the winter whose payments fall in calendar 2025 (no window)."
+      "selector_note": "OBR EFO March 2026, table 4.9, winter fuel payments: period_value 2025 is the OBR April-start label for FY2025-26, the winter whose payments fall in calendar 2025 (no window). Pinned to the March edition's table (source_table): PolicyEngine/chronicle#394 adds the October 2026 EFO, whose table 5.9 gives FY2025-26 as outturn, 0.02% above March's projection, and the two would otherwise be refused as matching two facts (microcosm#1418). The OBR targets that window FY2024-25 and FY2025-26 into calendar 2025 stay on March without a pin, since only March's edition carries FY2024-25; moving them to October is a separate ruling."
     },
     {
       "target_id": "isc.private_school_students",

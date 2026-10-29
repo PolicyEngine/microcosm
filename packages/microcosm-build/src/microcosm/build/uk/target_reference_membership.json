@@ -1,13 +1,13 @@
 {
-  "source_fact_feed": "chronicle-uk-272c987-consumer-facts",
+  "source_fact_feed": "chronicle-uk-53815b2-consumer-facts",
   "target_period": 2025,
-  "candidate_count": 1395,
-  "contract_target_count": 391,
-  "active_reference_count": 1374,
+  "candidate_count": 1437,
+  "contract_target_count": 394,
+  "active_reference_count": 1403,
   "status_counts": {
-    "active": 1374,
+    "active": 1403,
     "no_fact_at_or_before_period": 4,
-    "signed_excluded": 17
+    "signed_excluded": 30
   },
   "geography_pins": {
     "obr.income_tax": {
@@ -151,6 +151,14 @@
       "geography_id": "K02000001"
     },
     "hmrc.spi.self_employment_income.count_by_total_income_band": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "hmrc.spi.self_employment_income.count_by_self_employment_income_band": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "hmrc.spi.self_employment_income.amount_by_self_employment_income_band": {
       "geography_level": "country",
       "geography_id": "K02000001"
     },
@@ -2649,6 +2657,10 @@
       "geography_id": "K02000001"
     },
     "hmrc.spi.savings_interest_income.count_by_total_income_band": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "hmrc.spi.other_investment_income.amount_by_total_income_band": {
       "geography_level": "country",
       "geography_id": "K02000001"
     },
@@ -5265,6 +5277,134 @@
       "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "factor": "1.21716287215412",
       "value_before_uprating": "143000.0"
+    },
+    {
+      "name": "hmrc.spi.self_employment_income.count_by_self_employment_income_band.band_1_500",
+      "from": "2023",
+      "to": "2025",
+      "index": "hmrc.itl_2026.taxpayer_count_growth_all_bands",
+      "factor": "1.07629427792916",
+      "value_before_uprating": "111000.0"
+    },
+    {
+      "name": "hmrc.spi.self_employment_income.count_by_self_employment_income_band.band_1000_2000",
+      "from": "2023",
+      "to": "2025",
+      "index": "hmrc.itl_2026.taxpayer_count_growth_all_bands",
+      "factor": "1.07629427792916",
+      "value_before_uprating": "229000.0"
+    },
+    {
+      "name": "hmrc.spi.self_employment_income.count_by_self_employment_income_band.band_2000_3000",
+      "from": "2023",
+      "to": "2025",
+      "index": "hmrc.itl_2026.taxpayer_count_growth_all_bands",
+      "factor": "1.07629427792916",
+      "value_before_uprating": "201000.0"
+    },
+    {
+      "name": "hmrc.spi.self_employment_income.count_by_self_employment_income_band.band_3000_4000",
+      "from": "2023",
+      "to": "2025",
+      "index": "hmrc.itl_2026.taxpayer_count_growth_all_bands",
+      "factor": "1.07629427792916",
+      "value_before_uprating": "186000.0"
+    },
+    {
+      "name": "hmrc.spi.self_employment_income.count_by_self_employment_income_band.band_4000_5000",
+      "from": "2023",
+      "to": "2025",
+      "index": "hmrc.itl_2026.taxpayer_count_growth_all_bands",
+      "factor": "1.07629427792916",
+      "value_before_uprating": "174000.0"
+    },
+    {
+      "name": "hmrc.spi.self_employment_income.count_by_self_employment_income_band.band_500_1000",
+      "from": "2023",
+      "to": "2025",
+      "index": "hmrc.itl_2026.taxpayer_count_growth_all_bands",
+      "factor": "1.07629427792916",
+      "value_before_uprating": "110000.0"
+    },
+    {
+      "name": "hmrc.spi.self_employment_income.count_by_self_employment_income_band.band_5000_7500",
+      "from": "2023",
+      "to": "2025",
+      "index": "hmrc.itl_2026.taxpayer_count_growth_all_bands",
+      "factor": "1.07629427792916",
+      "value_before_uprating": "405000.0"
+    },
+    {
+      "name": "hmrc.spi.self_employment_income.count_by_self_employment_income_band.band_7500_10000",
+      "from": "2023",
+      "to": "2025",
+      "index": "hmrc.itl_2026.taxpayer_count_growth_all_bands",
+      "factor": "1.07629427792916",
+      "value_before_uprating": "397000.0"
+    },
+    {
+      "name": "hmrc.spi.self_employment_income.amount_by_self_employment_income_band.band_1_500",
+      "from": "2023",
+      "to": "2025",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
+      "factor": "1.03840098569375",
+      "value_before_uprating": "26000000.0"
+    },
+    {
+      "name": "hmrc.spi.self_employment_income.amount_by_self_employment_income_band.band_1000_2000",
+      "from": "2023",
+      "to": "2025",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
+      "factor": "1.03840098569375",
+      "value_before_uprating": "339000000.0"
+    },
+    {
+      "name": "hmrc.spi.self_employment_income.amount_by_self_employment_income_band.band_2000_3000",
+      "from": "2023",
+      "to": "2025",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
+      "factor": "1.03840098569375",
+      "value_before_uprating": "500000000.0"
+    },
+    {
+      "name": "hmrc.spi.self_employment_income.amount_by_self_employment_income_band.band_3000_4000",
+      "from": "2023",
+      "to": "2025",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
+      "factor": "1.03840098569375",
+      "value_before_uprating": "647000000.0"
+    },
+    {
+      "name": "hmrc.spi.self_employment_income.amount_by_self_employment_income_band.band_4000_5000",
+      "from": "2023",
+      "to": "2025",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
+      "factor": "1.03840098569375",
+      "value_before_uprating": "780000000.0"
+    },
+    {
+      "name": "hmrc.spi.self_employment_income.amount_by_self_employment_income_band.band_500_1000",
+      "from": "2023",
+      "to": "2025",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
+      "factor": "1.03840098569375",
+      "value_before_uprating": "82000000.0"
+    },
+    {
+      "name": "hmrc.spi.self_employment_income.amount_by_self_employment_income_band.band_5000_7500",
+      "from": "2023",
+      "to": "2025",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
+      "factor": "1.03840098569375",
+      "value_before_uprating": "2540000000.0"
+    },
+    {
+      "name": "hmrc.spi.self_employment_income.amount_by_self_employment_income_band.band_7500_10000",
+      "from": "2023",
+      "to": "2025",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
+      "factor": "1.03840098569375",
+      "value_before_uprating": "3470000000.0"
     },
     {
       "name": "hmrc/dividend_income_income_band_100_000_to_150_000",
@@ -7990,104 +8130,104 @@
       "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_100000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk.household_interest_income_to_dataset_year_then_per_capita_gdp",
-      "factor": "1.19613286133541",
+      "index": "obr.efo_2026_10.savings_income_growth",
+      "factor": "1.35618703816992",
       "value_before_uprating": "1260000000.0"
     },
     {
       "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_1000000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk.household_interest_income_to_dataset_year_then_per_capita_gdp",
-      "factor": "1.19613286133541",
+      "index": "obr.efo_2026_10.savings_income_growth",
+      "factor": "1.35618703816992",
       "value_before_uprating": "1240000000.0"
     },
     {
       "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_12570",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk.household_interest_income_to_dataset_year_then_per_capita_gdp",
-      "factor": "1.19613286133541",
+      "index": "obr.efo_2026_10.savings_income_growth",
+      "factor": "1.35618703816992",
       "value_before_uprating": "274000000.0"
     },
     {
       "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_15000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk.household_interest_income_to_dataset_year_then_per_capita_gdp",
-      "factor": "1.19613286133541",
+      "index": "obr.efo_2026_10.savings_income_growth",
+      "factor": "1.35618703816992",
       "value_before_uprating": "1370000000.0"
     },
     {
       "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_150000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk.household_interest_income_to_dataset_year_then_per_capita_gdp",
-      "factor": "1.19613286133541",
+      "index": "obr.efo_2026_10.savings_income_growth",
+      "factor": "1.35618703816992",
       "value_before_uprating": "650000000.0"
     },
     {
       "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_20000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk.household_interest_income_to_dataset_year_then_per_capita_gdp",
-      "factor": "1.19613286133541",
+      "index": "obr.efo_2026_10.savings_income_growth",
+      "factor": "1.35618703816992",
       "value_before_uprating": "3130000000.0"
     },
     {
       "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_200000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk.household_interest_income_to_dataset_year_then_per_capita_gdp",
-      "factor": "1.19613286133541",
+      "index": "obr.efo_2026_10.savings_income_growth",
+      "factor": "1.35618703816992",
       "value_before_uprating": "733000000.0"
     },
     {
       "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_30000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk.household_interest_income_to_dataset_year_then_per_capita_gdp",
-      "factor": "1.19613286133541",
+      "index": "obr.efo_2026_10.savings_income_growth",
+      "factor": "1.35618703816992",
       "value_before_uprating": "2530000000.0"
     },
     {
       "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_300000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk.household_interest_income_to_dataset_year_then_per_capita_gdp",
-      "factor": "1.19613286133541",
+      "index": "obr.efo_2026_10.savings_income_growth",
+      "factor": "1.35618703816992",
       "value_before_uprating": "673000000.0"
     },
     {
       "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_40000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk.household_interest_income_to_dataset_year_then_per_capita_gdp",
-      "factor": "1.19613286133541",
+      "index": "obr.efo_2026_10.savings_income_growth",
+      "factor": "1.35618703816992",
       "value_before_uprating": "1870000000.0"
     },
     {
       "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_50000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk.household_interest_income_to_dataset_year_then_per_capita_gdp",
-      "factor": "1.19613286133541",
+      "index": "obr.efo_2026_10.savings_income_growth",
+      "factor": "1.35618703816992",
       "value_before_uprating": "2340000000.0"
     },
     {
       "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_500000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk.household_interest_income_to_dataset_year_then_per_capita_gdp",
-      "factor": "1.19613286133541",
+      "index": "obr.efo_2026_10.savings_income_growth",
+      "factor": "1.35618703816992",
       "value_before_uprating": "653000000.0"
     },
     {
       "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_70000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk.household_interest_income_to_dataset_year_then_per_capita_gdp",
-      "factor": "1.19613286133541",
+      "index": "obr.efo_2026_10.savings_income_growth",
+      "factor": "1.35618703816992",
       "value_before_uprating": "1620000000.0"
     },
     {
@@ -8193,6 +8333,110 @@
       "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "factor": "1.21716287215412",
       "value_before_uprating": "1070000.0"
+    },
+    {
+      "name": "hmrc.spi.other_investment_income.amount_by_total_income_band.band_100000",
+      "from": "2023",
+      "to": "2025",
+      "index": "obr.efo_2026_10.savings_income_growth",
+      "factor": "1.35618703816992",
+      "value_before_uprating": "455000000.0"
+    },
+    {
+      "name": "hmrc.spi.other_investment_income.amount_by_total_income_band.band_1000000",
+      "from": "2023",
+      "to": "2025",
+      "index": "obr.efo_2026_10.savings_income_growth",
+      "factor": "1.35618703816992",
+      "value_before_uprating": "1790000000.0"
+    },
+    {
+      "name": "hmrc.spi.other_investment_income.amount_by_total_income_band.band_12570",
+      "from": "2023",
+      "to": "2025",
+      "index": "obr.efo_2026_10.savings_income_growth",
+      "factor": "1.35618703816992",
+      "value_before_uprating": "6000000.0"
+    },
+    {
+      "name": "hmrc.spi.other_investment_income.amount_by_total_income_band.band_15000",
+      "from": "2023",
+      "to": "2025",
+      "index": "obr.efo_2026_10.savings_income_growth",
+      "factor": "1.35618703816992",
+      "value_before_uprating": "33000000.0"
+    },
+    {
+      "name": "hmrc.spi.other_investment_income.amount_by_total_income_band.band_150000",
+      "from": "2023",
+      "to": "2025",
+      "index": "obr.efo_2026_10.savings_income_growth",
+      "factor": "1.35618703816992",
+      "value_before_uprating": "322000000.0"
+    },
+    {
+      "name": "hmrc.spi.other_investment_income.amount_by_total_income_band.band_20000",
+      "from": "2023",
+      "to": "2025",
+      "index": "obr.efo_2026_10.savings_income_growth",
+      "factor": "1.35618703816992",
+      "value_before_uprating": "157000000.0"
+    },
+    {
+      "name": "hmrc.spi.other_investment_income.amount_by_total_income_band.band_200000",
+      "from": "2023",
+      "to": "2025",
+      "index": "obr.efo_2026_10.savings_income_growth",
+      "factor": "1.35618703816992",
+      "value_before_uprating": "499000000.0"
+    },
+    {
+      "name": "hmrc.spi.other_investment_income.amount_by_total_income_band.band_30000",
+      "from": "2023",
+      "to": "2025",
+      "index": "obr.efo_2026_10.savings_income_growth",
+      "factor": "1.35618703816992",
+      "value_before_uprating": "190000000.0"
+    },
+    {
+      "name": "hmrc.spi.other_investment_income.amount_by_total_income_band.band_300000",
+      "from": "2023",
+      "to": "2025",
+      "index": "obr.efo_2026_10.savings_income_growth",
+      "factor": "1.35618703816992",
+      "value_before_uprating": "642000000.0"
+    },
+    {
+      "name": "hmrc.spi.other_investment_income.amount_by_total_income_band.band_40000",
+      "from": "2023",
+      "to": "2025",
+      "index": "obr.efo_2026_10.savings_income_growth",
+      "factor": "1.35618703816992",
+      "value_before_uprating": "216000000.0"
+    },
+    {
+      "name": "hmrc.spi.other_investment_income.amount_by_total_income_band.band_50000",
+      "from": "2023",
+      "to": "2025",
+      "index": "obr.efo_2026_10.savings_income_growth",
+      "factor": "1.35618703816992",
+      "value_before_uprating": "377000000.0"
+    },
+    {
+      "name": "hmrc.spi.other_investment_income.amount_by_total_income_band.band_500000",
+      "from": "2023",
+      "to": "2025",
+      "index": "obr.efo_2026_10.savings_income_growth",
+      "factor": "1.35618703816992",
+      "value_before_uprating": "744000000.0"
+    },
+    {
+      "name": "hmrc.spi.other_investment_income.amount_by_total_income_band.band_70000",
+      "from": "2023",
+      "to": "2025",
+      "index": "obr.efo_2026_10.savings_income_growth",
+      "factor": "1.35618703816992",
+      "value_before_uprating": "415000000.0"
     },
     {
       "name": "hmrc.spi_region.taxpayers_by_region_12570_15000@E12000001",
@@ -11112,8 +11356,8 @@
         {
           "name": "obr.income_tax",
           "status": "active",
-          "matched_fact_count_overall": 7,
-          "matched_fact_count_at_or_before_period": 2,
+          "matched_fact_count_overall": 14,
+          "matched_fact_count_at_or_before_period": 3,
           "resolved_period": 2025,
           "resolved_value": 325054437305.83215,
           "resolved_fact_period": "2025",
@@ -11127,8 +11371,8 @@
         {
           "name": "obr.ni_employee",
           "status": "active",
-          "matched_fact_count_overall": 7,
-          "matched_fact_count_at_or_before_period": 2,
+          "matched_fact_count_overall": 14,
+          "matched_fact_count_at_or_before_period": 3,
           "resolved_period": 2025,
           "resolved_value": 49002029830.141045,
           "resolved_fact_period": "2025",
@@ -11142,8 +11386,8 @@
         {
           "name": "obr.ni_employer",
           "status": "active",
-          "matched_fact_count_overall": 7,
-          "matched_fact_count_at_or_before_period": 2,
+          "matched_fact_count_overall": 14,
+          "matched_fact_count_at_or_before_period": 3,
           "resolved_period": 2025,
           "resolved_value": 137854706939.8949,
           "resolved_fact_period": "2025",
@@ -11157,8 +11401,8 @@
         {
           "name": "obr.ni_self_employed",
           "status": "active",
-          "matched_fact_count_overall": 7,
-          "matched_fact_count_at_or_before_period": 2,
+          "matched_fact_count_overall": 14,
+          "matched_fact_count_at_or_before_period": 3,
           "resolved_period": 2025,
           "resolved_value": 2876506585.4950743,
           "resolved_fact_period": "2025",
@@ -11172,8 +11416,8 @@
         {
           "name": "obr.vat",
           "status": "active",
-          "matched_fact_count_overall": 7,
-          "matched_fact_count_at_or_before_period": 2,
+          "matched_fact_count_overall": 14,
+          "matched_fact_count_at_or_before_period": 3,
           "resolved_period": 2025,
           "resolved_value": 177875204014.06345,
           "resolved_fact_period": "2025",
@@ -11187,8 +11431,8 @@
         {
           "name": "obr.fuel_duties",
           "status": "signed_excluded",
-          "matched_fact_count_overall": 7,
-          "matched_fact_count_at_or_before_period": 2,
+          "matched_fact_count_overall": 14,
+          "matched_fact_count_at_or_before_period": 3,
           "signed_rationale": "The OBR fuel duties fact is all-road-users receipts (freight, vans, business mileage) against a household frame. obr.fuel_duties_cars, the cars receipts from the OBR vehicle-type release, was bound in its place (ruling 2026-09-10) until microcosm#1113 moved it to the measure-exclusion register (Mar\u00eda's ruling of 2026-10-08, D2); household road-fuel spend is bound on ons.household_road_fuel_expenditure, and no fuel-duty row is fitted. The all-road-users row is retained in the contract for registry parity and signed out here rather than carried as a calibration measure exclusion."
         }
       ]
@@ -11214,8 +11458,8 @@
         {
           "name": "obr.sdlt",
           "status": "active",
-          "matched_fact_count_overall": 7,
-          "matched_fact_count_at_or_before_period": 2,
+          "matched_fact_count_overall": 14,
+          "matched_fact_count_at_or_before_period": 3,
           "resolved_period": 2025,
           "resolved_value": 10161716337.860817,
           "resolved_fact_period": "2025",
@@ -11229,8 +11473,8 @@
         {
           "name": "obr.attendance_allowance",
           "status": "active",
-          "matched_fact_count_overall": 7,
-          "matched_fact_count_at_or_before_period": 2,
+          "matched_fact_count_overall": 14,
+          "matched_fact_count_at_or_before_period": 3,
           "resolved_period": 2025,
           "resolved_value": 8309942303.358463,
           "resolved_fact_period": "2025",
@@ -11244,8 +11488,8 @@
         {
           "name": "obr.carers_allowance",
           "status": "active",
-          "matched_fact_count_overall": 7,
-          "matched_fact_count_at_or_before_period": 2,
+          "matched_fact_count_overall": 14,
+          "matched_fact_count_at_or_before_period": 3,
           "resolved_period": 2025,
           "resolved_value": 4487029829.347929,
           "resolved_fact_period": "2025",
@@ -11259,8 +11503,8 @@
         {
           "name": "obr.child_benefit",
           "status": "active",
-          "matched_fact_count_overall": 7,
-          "matched_fact_count_at_or_before_period": 2,
+          "matched_fact_count_overall": 14,
+          "matched_fact_count_at_or_before_period": 3,
           "resolved_period": 2025,
           "resolved_value": 13368730968.878168,
           "resolved_fact_period": "2025",
@@ -11274,8 +11518,8 @@
         {
           "name": "obr.council_tax",
           "status": "active",
-          "matched_fact_count_overall": 7,
-          "matched_fact_count_at_or_before_period": 2,
+          "matched_fact_count_overall": 14,
+          "matched_fact_count_at_or_before_period": 3,
           "resolved_period": 2025,
           "resolved_value": 48774253146.51462,
           "resolved_fact_period": "2025",
@@ -11325,8 +11569,8 @@
         {
           "name": "obr.domestic_rates",
           "status": "active",
-          "matched_fact_count_overall": 7,
-          "matched_fact_count_at_or_before_period": 2,
+          "matched_fact_count_overall": 14,
+          "matched_fact_count_at_or_before_period": 3,
           "resolved_period": 2025,
           "resolved_value": 494000000.0,
           "resolved_fact_period": "2025",
@@ -11340,8 +11584,8 @@
         {
           "name": "obr.esa",
           "status": "active",
-          "matched_fact_count_overall": 7,
-          "matched_fact_count_at_or_before_period": 2,
+          "matched_fact_count_overall": 14,
+          "matched_fact_count_at_or_before_period": 3,
           "resolved_period": 2025,
           "resolved_value": 8507979735.87899,
           "resolved_fact_period": "2025",
@@ -11355,8 +11599,8 @@
         {
           "name": "obr.housing_benefit",
           "status": "active",
-          "matched_fact_count_overall": 7,
-          "matched_fact_count_at_or_before_period": 2,
+          "matched_fact_count_overall": 14,
+          "matched_fact_count_at_or_before_period": 3,
           "resolved_period": 2025,
           "resolved_value": 12725786027.543839,
           "resolved_fact_period": "2025",
@@ -11370,8 +11614,8 @@
         {
           "name": "obr.jobseekers_allowance",
           "status": "active",
-          "matched_fact_count_overall": 7,
-          "matched_fact_count_at_or_before_period": 2,
+          "matched_fact_count_overall": 14,
+          "matched_fact_count_at_or_before_period": 3,
           "resolved_period": 2025,
           "resolved_value": 288407204.431046,
           "resolved_fact_period": "2025",
@@ -11385,8 +11629,8 @@
         {
           "name": "obr.pension_credit",
           "status": "active",
-          "matched_fact_count_overall": 7,
-          "matched_fact_count_at_or_before_period": 2,
+          "matched_fact_count_overall": 14,
+          "matched_fact_count_at_or_before_period": 3,
           "resolved_period": 2025,
           "resolved_value": 6112217133.109846,
           "resolved_fact_period": "2025",
@@ -11400,8 +11644,8 @@
         {
           "name": "obr.pip",
           "status": "active",
-          "matched_fact_count_overall": 7,
-          "matched_fact_count_at_or_before_period": 2,
+          "matched_fact_count_overall": 14,
+          "matched_fact_count_at_or_before_period": 3,
           "resolved_period": 2025,
           "resolved_value": 36103194307.639694,
           "resolved_fact_period": "2025",
@@ -11415,8 +11659,8 @@
         {
           "name": "obr.statutory_maternity_pay",
           "status": "active",
-          "matched_fact_count_overall": 7,
-          "matched_fact_count_at_or_before_period": 2,
+          "matched_fact_count_overall": 14,
+          "matched_fact_count_at_or_before_period": 3,
           "resolved_period": 2025,
           "resolved_value": 3179100661.1404104,
           "resolved_fact_period": "2025",
@@ -11430,8 +11674,8 @@
         {
           "name": "obr.tv_licence_fee",
           "status": "active",
-          "matched_fact_count_overall": 7,
-          "matched_fact_count_at_or_before_period": 2,
+          "matched_fact_count_overall": 14,
+          "matched_fact_count_at_or_before_period": 3,
           "resolved_period": 2025,
           "resolved_value": 3858750000.0,
           "resolved_fact_period": "2025",
@@ -12375,6 +12619,399 @@
             "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
             "factor": "1.21716287215412",
             "value_before_uprating": "143000.0"
+          }
+        }
+      ]
+    },
+    "hmrc.spi.self_employment_income.count_by_self_employment_income_band": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "hmrc.spi.self_employment_income.count_by_self_employment_income_band.band_0_1",
+          "status": "signed_excluded",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "signed_row": {
+            "dimension": "self_employment_income_lower_bound",
+            "value": 0
+          },
+          "signed_rationale": "SPI 2023-24 Table 3.10's zero band counts people with a self-employment source and no profit after loss relief. The binding bands people on their self-employment income alone, so a band from 0 to 1 would count everyone without self-employment income. It also lies outside the GBP 1 to GBP 10,000 range Mar\u00eda's ruling of 2026-10-29 binds. Signed out of the band fan-out; the eight bands from GBP 1 stay bound."
+        },
+        {
+          "name": "hmrc.spi.self_employment_income.count_by_self_employment_income_band.band_1_500",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 119468.66485013624,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_2051cd0d453d910cf3f1fc92",
+          "uprating": {
+            "index": "hmrc.itl_2026.taxpayer_count_growth_all_bands",
+            "factor": "1.07629427792916",
+            "value_before_uprating": "111000.0"
+          }
+        },
+        {
+          "name": "hmrc.spi.self_employment_income.count_by_self_employment_income_band.band_1000_2000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 246471.38964577657,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f9750ad546479a54f4a18141",
+          "uprating": {
+            "index": "hmrc.itl_2026.taxpayer_count_growth_all_bands",
+            "factor": "1.07629427792916",
+            "value_before_uprating": "229000.0"
+          }
+        },
+        {
+          "name": "hmrc.spi.self_employment_income.count_by_self_employment_income_band.band_10000_15000",
+          "status": "signed_excluded",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "signed_row": {
+            "dimension": "self_employment_income_lower_bound",
+            "value": 10000
+          },
+          "signed_rationale": "SPI 2023-24 Table 3.10's self-employment bands from GBP 10,000 stay with Table 3.6's self-employment rows by total income, so the two tables do not pull against each other: Mar\u00eda's ruling of 2026-10-29 binds Table 3.10 from GBP 1 to GBP 10,000, the small-profit end of the Budget's trading allowance measures (Table 6.1 line 15). Signed out of the band fan-out; the eight bands from GBP 1 stay bound."
+        },
+        {
+          "name": "hmrc.spi.self_employment_income.count_by_self_employment_income_band.band_100000_plus",
+          "status": "signed_excluded",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "signed_row": {
+            "dimension": "self_employment_income_lower_bound",
+            "value": 100000
+          },
+          "signed_rationale": "SPI 2023-24 Table 3.10's self-employment bands from GBP 10,000 stay with Table 3.6's self-employment rows by total income, so the two tables do not pull against each other: Mar\u00eda's ruling of 2026-10-29 binds Table 3.10 from GBP 1 to GBP 10,000, the small-profit end of the Budget's trading allowance measures (Table 6.1 line 15). Signed out of the band fan-out; the eight bands from GBP 1 stay bound."
+        },
+        {
+          "name": "hmrc.spi.self_employment_income.count_by_self_employment_income_band.band_15000_20000",
+          "status": "signed_excluded",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "signed_row": {
+            "dimension": "self_employment_income_lower_bound",
+            "value": 15000
+          },
+          "signed_rationale": "SPI 2023-24 Table 3.10's self-employment bands from GBP 10,000 stay with Table 3.6's self-employment rows by total income, so the two tables do not pull against each other: Mar\u00eda's ruling of 2026-10-29 binds Table 3.10 from GBP 1 to GBP 10,000, the small-profit end of the Budget's trading allowance measures (Table 6.1 line 15). Signed out of the band fan-out; the eight bands from GBP 1 stay bound."
+        },
+        {
+          "name": "hmrc.spi.self_employment_income.count_by_self_employment_income_band.band_2000_3000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 216335.14986376022,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_d7031577759f88d8f459ecdc",
+          "uprating": {
+            "index": "hmrc.itl_2026.taxpayer_count_growth_all_bands",
+            "factor": "1.07629427792916",
+            "value_before_uprating": "201000.0"
+          }
+        },
+        {
+          "name": "hmrc.spi.self_employment_income.count_by_self_employment_income_band.band_20000_30000",
+          "status": "signed_excluded",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "signed_row": {
+            "dimension": "self_employment_income_lower_bound",
+            "value": 20000
+          },
+          "signed_rationale": "SPI 2023-24 Table 3.10's self-employment bands from GBP 10,000 stay with Table 3.6's self-employment rows by total income, so the two tables do not pull against each other: Mar\u00eda's ruling of 2026-10-29 binds Table 3.10 from GBP 1 to GBP 10,000, the small-profit end of the Budget's trading allowance measures (Table 6.1 line 15). Signed out of the band fan-out; the eight bands from GBP 1 stay bound."
+        },
+        {
+          "name": "hmrc.spi.self_employment_income.count_by_self_employment_income_band.band_3000_4000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 200190.73569482288,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_59c20477e49d03377dbae070",
+          "uprating": {
+            "index": "hmrc.itl_2026.taxpayer_count_growth_all_bands",
+            "factor": "1.07629427792916",
+            "value_before_uprating": "186000.0"
+          }
+        },
+        {
+          "name": "hmrc.spi.self_employment_income.count_by_self_employment_income_band.band_30000_50000",
+          "status": "signed_excluded",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "signed_row": {
+            "dimension": "self_employment_income_lower_bound",
+            "value": 30000
+          },
+          "signed_rationale": "SPI 2023-24 Table 3.10's self-employment bands from GBP 10,000 stay with Table 3.6's self-employment rows by total income, so the two tables do not pull against each other: Mar\u00eda's ruling of 2026-10-29 binds Table 3.10 from GBP 1 to GBP 10,000, the small-profit end of the Budget's trading allowance measures (Table 6.1 line 15). Signed out of the band fan-out; the eight bands from GBP 1 stay bound."
+        },
+        {
+          "name": "hmrc.spi.self_employment_income.count_by_self_employment_income_band.band_4000_5000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 187275.20435967302,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_bb2b6916a5458dc6e3c041c7",
+          "uprating": {
+            "index": "hmrc.itl_2026.taxpayer_count_growth_all_bands",
+            "factor": "1.07629427792916",
+            "value_before_uprating": "174000.0"
+          }
+        },
+        {
+          "name": "hmrc.spi.self_employment_income.count_by_self_employment_income_band.band_500_1000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 118392.37057220709,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_5bf7a84098c34ecafbf08cda",
+          "uprating": {
+            "index": "hmrc.itl_2026.taxpayer_count_growth_all_bands",
+            "factor": "1.07629427792916",
+            "value_before_uprating": "110000.0"
+          }
+        },
+        {
+          "name": "hmrc.spi.self_employment_income.count_by_self_employment_income_band.band_5000_7500",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 435899.1825613079,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_1e84aebbbc8f3ae77dc23d87",
+          "uprating": {
+            "index": "hmrc.itl_2026.taxpayer_count_growth_all_bands",
+            "factor": "1.07629427792916",
+            "value_before_uprating": "405000.0"
+          }
+        },
+        {
+          "name": "hmrc.spi.self_employment_income.count_by_self_employment_income_band.band_50000_100000",
+          "status": "signed_excluded",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "signed_row": {
+            "dimension": "self_employment_income_lower_bound",
+            "value": 50000
+          },
+          "signed_rationale": "SPI 2023-24 Table 3.10's self-employment bands from GBP 10,000 stay with Table 3.6's self-employment rows by total income, so the two tables do not pull against each other: Mar\u00eda's ruling of 2026-10-29 binds Table 3.10 from GBP 1 to GBP 10,000, the small-profit end of the Budget's trading allowance measures (Table 6.1 line 15). Signed out of the band fan-out; the eight bands from GBP 1 stay bound."
+        },
+        {
+          "name": "hmrc.spi.self_employment_income.count_by_self_employment_income_band.band_7500_10000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 427288.8283378747,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_bea0581cfa0af5a969ec96c2",
+          "uprating": {
+            "index": "hmrc.itl_2026.taxpayer_count_growth_all_bands",
+            "factor": "1.07629427792916",
+            "value_before_uprating": "397000.0"
+          }
+        }
+      ]
+    },
+    "hmrc.spi.self_employment_income.amount_by_self_employment_income_band": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "hmrc.spi.self_employment_income.amount_by_self_employment_income_band.band_1_500",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 26998425.628037516,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_5aff5e57f05ddba9ad025b36",
+          "uprating": {
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
+            "factor": "1.03840098569375",
+            "value_before_uprating": "26000000.0"
+          }
+        },
+        {
+          "name": "hmrc.spi.self_employment_income.amount_by_self_employment_income_band.band_1000_2000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 352017934.1501815,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_fc3c7927013f5264698979d8",
+          "uprating": {
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
+            "factor": "1.03840098569375",
+            "value_before_uprating": "339000000.0"
+          }
+        },
+        {
+          "name": "hmrc.spi.self_employment_income.amount_by_self_employment_income_band.band_10000_15000",
+          "status": "signed_excluded",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "signed_row": {
+            "dimension": "self_employment_income_lower_bound",
+            "value": 10000
+          },
+          "signed_rationale": "SPI 2023-24 Table 3.10's self-employment bands from GBP 10,000 stay with Table 3.6's self-employment rows by total income, so the two tables do not pull against each other: Mar\u00eda's ruling of 2026-10-29 binds Table 3.10 from GBP 1 to GBP 10,000, the small-profit end of the Budget's trading allowance measures (Table 6.1 line 15). Signed out of the band fan-out; the eight bands from GBP 1 stay bound."
+        },
+        {
+          "name": "hmrc.spi.self_employment_income.amount_by_self_employment_income_band.band_100000_plus",
+          "status": "signed_excluded",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "signed_row": {
+            "dimension": "self_employment_income_lower_bound",
+            "value": 100000
+          },
+          "signed_rationale": "SPI 2023-24 Table 3.10's self-employment bands from GBP 10,000 stay with Table 3.6's self-employment rows by total income, so the two tables do not pull against each other: Mar\u00eda's ruling of 2026-10-29 binds Table 3.10 from GBP 1 to GBP 10,000, the small-profit end of the Budget's trading allowance measures (Table 6.1 line 15). Signed out of the band fan-out; the eight bands from GBP 1 stay bound."
+        },
+        {
+          "name": "hmrc.spi.self_employment_income.amount_by_self_employment_income_band.band_15000_20000",
+          "status": "signed_excluded",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "signed_row": {
+            "dimension": "self_employment_income_lower_bound",
+            "value": 15000
+          },
+          "signed_rationale": "SPI 2023-24 Table 3.10's self-employment bands from GBP 10,000 stay with Table 3.6's self-employment rows by total income, so the two tables do not pull against each other: Mar\u00eda's ruling of 2026-10-29 binds Table 3.10 from GBP 1 to GBP 10,000, the small-profit end of the Budget's trading allowance measures (Table 6.1 line 15). Signed out of the band fan-out; the eight bands from GBP 1 stay bound."
+        },
+        {
+          "name": "hmrc.spi.self_employment_income.amount_by_self_employment_income_band.band_2000_3000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 519200492.8468753,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_6b85f6be706ccfed238bf1f9",
+          "uprating": {
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
+            "factor": "1.03840098569375",
+            "value_before_uprating": "500000000.0"
+          }
+        },
+        {
+          "name": "hmrc.spi.self_employment_income.amount_by_self_employment_income_band.band_20000_30000",
+          "status": "signed_excluded",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "signed_row": {
+            "dimension": "self_employment_income_lower_bound",
+            "value": 20000
+          },
+          "signed_rationale": "SPI 2023-24 Table 3.10's self-employment bands from GBP 10,000 stay with Table 3.6's self-employment rows by total income, so the two tables do not pull against each other: Mar\u00eda's ruling of 2026-10-29 binds Table 3.10 from GBP 1 to GBP 10,000, the small-profit end of the Budget's trading allowance measures (Table 6.1 line 15). Signed out of the band fan-out; the eight bands from GBP 1 stay bound."
+        },
+        {
+          "name": "hmrc.spi.self_employment_income.amount_by_self_employment_income_band.band_3000_4000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 671845437.7438567,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_5852a008bcd3cea2bc99b092",
+          "uprating": {
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
+            "factor": "1.03840098569375",
+            "value_before_uprating": "647000000.0"
+          }
+        },
+        {
+          "name": "hmrc.spi.self_employment_income.amount_by_self_employment_income_band.band_30000_50000",
+          "status": "signed_excluded",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "signed_row": {
+            "dimension": "self_employment_income_lower_bound",
+            "value": 30000
+          },
+          "signed_rationale": "SPI 2023-24 Table 3.10's self-employment bands from GBP 10,000 stay with Table 3.6's self-employment rows by total income, so the two tables do not pull against each other: Mar\u00eda's ruling of 2026-10-29 binds Table 3.10 from GBP 1 to GBP 10,000, the small-profit end of the Budget's trading allowance measures (Table 6.1 line 15). Signed out of the band fan-out; the eight bands from GBP 1 stay bound."
+        },
+        {
+          "name": "hmrc.spi.self_employment_income.amount_by_self_employment_income_band.band_4000_5000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 809952768.8411255,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_2d34b4d9693e393903c5f638",
+          "uprating": {
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
+            "factor": "1.03840098569375",
+            "value_before_uprating": "780000000.0"
+          }
+        },
+        {
+          "name": "hmrc.spi.self_employment_income.amount_by_self_employment_income_band.band_500_1000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 85148880.82688755,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_e493ddc5770b5a2e89c83fcf",
+          "uprating": {
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
+            "factor": "1.03840098569375",
+            "value_before_uprating": "82000000.0"
+          }
+        },
+        {
+          "name": "hmrc.spi.self_employment_income.amount_by_self_employment_income_band.band_5000_7500",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 2637538503.6621265,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_ae77cfe6ff63112b006c6a30",
+          "uprating": {
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
+            "factor": "1.03840098569375",
+            "value_before_uprating": "2540000000.0"
+          }
+        },
+        {
+          "name": "hmrc.spi.self_employment_income.amount_by_self_employment_income_band.band_50000_100000",
+          "status": "signed_excluded",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "signed_row": {
+            "dimension": "self_employment_income_lower_bound",
+            "value": 50000
+          },
+          "signed_rationale": "SPI 2023-24 Table 3.10's self-employment bands from GBP 10,000 stay with Table 3.6's self-employment rows by total income, so the two tables do not pull against each other: Mar\u00eda's ruling of 2026-10-29 binds Table 3.10 from GBP 1 to GBP 10,000, the small-profit end of the Budget's trading allowance measures (Table 6.1 line 15). Signed out of the band fan-out; the eight bands from GBP 1 stay bound."
+        },
+        {
+          "name": "hmrc.spi.self_employment_income.amount_by_self_employment_income_band.band_7500_10000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 3603251420.3573146,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_91323471e9baa2fc4904040a",
+          "uprating": {
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
+            "factor": "1.03840098569375",
+            "value_before_uprating": "3470000000.0"
           }
         }
       ]
@@ -20457,8 +21094,8 @@
         {
           "name": "obr.universal_credit",
           "status": "active",
-          "matched_fact_count_overall": 14,
-          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_overall": 28,
+          "matched_fact_count_at_or_before_period": 6,
           "resolved_period": 2025,
           "resolved_value": 76054754387.77309,
           "resolved_fact_period": "2025",
@@ -22929,12 +23566,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 1507127405.2826157,
+          "resolved_value": 1708795668.094097,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_0ef4a95b830d9e4e41b15e02",
           "uprating": {
-            "index": "policyengine_uk.household_interest_income_to_dataset_year_then_per_capita_gdp",
-            "factor": "1.19613286133541",
+            "index": "obr.efo_2026_10.savings_income_growth",
+            "factor": "1.35618703816992",
             "value_before_uprating": "1260000000.0"
           }
         },
@@ -22944,12 +23581,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 1483204748.0559075,
+          "resolved_value": 1681671927.3306985,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_4f8e330da2fcd6774dd7ea1a",
           "uprating": {
-            "index": "policyengine_uk.household_interest_income_to_dataset_year_then_per_capita_gdp",
-            "factor": "1.19613286133541",
+            "index": "obr.efo_2026_10.savings_income_growth",
+            "factor": "1.35618703816992",
             "value_before_uprating": "1240000000.0"
           }
         },
@@ -22959,12 +23596,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 327740404.0059021,
+          "resolved_value": 371595248.45855755,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_bd65aa884ad89d9837551b0e",
           "uprating": {
-            "index": "policyengine_uk.household_interest_income_to_dataset_year_then_per_capita_gdp",
-            "factor": "1.19613286133541",
+            "index": "obr.efo_2026_10.savings_income_growth",
+            "factor": "1.35618703816992",
             "value_before_uprating": "274000000.0"
           }
         },
@@ -22974,12 +23611,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 1638702020.0295105,
+          "resolved_value": 1857976242.2927878,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_34ecf84ec234f3525db59f91",
           "uprating": {
-            "index": "policyengine_uk.household_interest_income_to_dataset_year_then_per_capita_gdp",
-            "factor": "1.19613286133541",
+            "index": "obr.efo_2026_10.savings_income_growth",
+            "factor": "1.35618703816992",
             "value_before_uprating": "1370000000.0"
           }
         },
@@ -22989,12 +23626,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 777486359.868016,
+          "resolved_value": 881521574.8104467,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_89bdbe74eda3cee8844ad898",
           "uprating": {
-            "index": "policyengine_uk.household_interest_income_to_dataset_year_then_per_capita_gdp",
-            "factor": "1.19613286133541",
+            "index": "obr.efo_2026_10.savings_income_growth",
+            "factor": "1.35618703816992",
             "value_before_uprating": "650000000.0"
           }
         },
@@ -23004,12 +23641,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 3743895855.9798307,
+          "resolved_value": 4244865429.4718437,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_752ea2329d313046c61bf1e2",
           "uprating": {
-            "index": "policyengine_uk.household_interest_income_to_dataset_year_then_per_capita_gdp",
-            "factor": "1.19613286133541",
+            "index": "obr.efo_2026_10.savings_income_growth",
+            "factor": "1.35618703816992",
             "value_before_uprating": "3130000000.0"
           }
         },
@@ -23019,12 +23656,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 876765387.3588549,
+          "resolved_value": 994085098.97855,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_02f3a7f7b7097a3fd455b702",
           "uprating": {
-            "index": "policyengine_uk.household_interest_income_to_dataset_year_then_per_capita_gdp",
-            "factor": "1.19613286133541",
+            "index": "obr.efo_2026_10.savings_income_growth",
+            "factor": "1.35618703816992",
             "value_before_uprating": "733000000.0"
           }
         },
@@ -23034,12 +23671,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 3026216139.178585,
+          "resolved_value": 3431153206.569893,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_d341b6820714e38a12ac4b1c",
           "uprating": {
-            "index": "policyengine_uk.household_interest_income_to_dataset_year_then_per_capita_gdp",
-            "factor": "1.19613286133541",
+            "index": "obr.efo_2026_10.savings_income_growth",
+            "factor": "1.35618703816992",
             "value_before_uprating": "2530000000.0"
           }
         },
@@ -23049,12 +23686,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 804997415.6787304,
+          "resolved_value": 912713876.688355,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_8fc8bdb298f62c90d7af57b8",
           "uprating": {
-            "index": "policyengine_uk.household_interest_income_to_dataset_year_then_per_capita_gdp",
-            "factor": "1.19613286133541",
+            "index": "obr.efo_2026_10.savings_income_growth",
+            "factor": "1.35618703816992",
             "value_before_uprating": "673000000.0"
           }
         },
@@ -23064,12 +23701,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 2236768450.697215,
+          "resolved_value": 2536069761.377747,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_367d1c49bfab3c640463ded8",
           "uprating": {
-            "index": "policyengine_uk.household_interest_income_to_dataset_year_then_per_capita_gdp",
-            "factor": "1.19613286133541",
+            "index": "obr.efo_2026_10.savings_income_growth",
+            "factor": "1.35618703816992",
             "value_before_uprating": "1870000000.0"
           }
         },
@@ -23079,12 +23716,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 2798950895.5248575,
+          "resolved_value": 3173477669.3176084,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_819d2f77e45b3ba5a7907a4a",
           "uprating": {
-            "index": "policyengine_uk.household_interest_income_to_dataset_year_then_per_capita_gdp",
-            "factor": "1.19613286133541",
+            "index": "obr.efo_2026_10.savings_income_growth",
+            "factor": "1.35618703816992",
             "value_before_uprating": "2340000000.0"
           }
         },
@@ -23094,12 +23731,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 781074758.4520222,
+          "resolved_value": 885590135.9249566,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_5d68b2314b5c54a09f274733",
           "uprating": {
-            "index": "policyengine_uk.household_interest_income_to_dataset_year_then_per_capita_gdp",
-            "factor": "1.19613286133541",
+            "index": "obr.efo_2026_10.savings_income_growth",
+            "factor": "1.35618703816992",
             "value_before_uprating": "653000000.0"
           }
         },
@@ -23109,12 +23746,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 1937735235.3633628,
+          "resolved_value": 2197023001.8352675,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_ab8a5ac6dd4ba75e194133f1",
           "uprating": {
-            "index": "policyengine_uk.household_interest_income_to_dataset_year_then_per_capita_gdp",
-            "factor": "1.19613286133541",
+            "index": "obr.efo_2026_10.savings_income_growth",
+            "factor": "1.35618703816992",
             "value_before_uprating": "1620000000.0"
           }
         }
@@ -23316,6 +23953,206 @@
             "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
             "factor": "1.21716287215412",
             "value_before_uprating": "1070000.0"
+          }
+        }
+      ]
+    },
+    "hmrc.spi.other_investment_income.amount_by_total_income_band": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "hmrc.spi.other_investment_income.amount_by_total_income_band.band_100000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 617065102.3673128,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_e5510c38e40c6826732890f1",
+          "uprating": {
+            "index": "obr.efo_2026_10.savings_income_growth",
+            "factor": "1.35618703816992",
+            "value_before_uprating": "455000000.0"
+          }
+        },
+        {
+          "name": "hmrc.spi.other_investment_income.amount_by_total_income_band.band_1000000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 2427574798.3241534,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_4587a245d3c10ba59c5bfa6e",
+          "uprating": {
+            "index": "obr.efo_2026_10.savings_income_growth",
+            "factor": "1.35618703816992",
+            "value_before_uprating": "1790000000.0"
+          }
+        },
+        {
+          "name": "hmrc.spi.other_investment_income.amount_by_total_income_band.band_12570",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 8137122.229019509,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_2717645cfa430002f67162c4",
+          "uprating": {
+            "index": "obr.efo_2026_10.savings_income_growth",
+            "factor": "1.35618703816992",
+            "value_before_uprating": "6000000.0"
+          }
+        },
+        {
+          "name": "hmrc.spi.other_investment_income.amount_by_total_income_band.band_15000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 44754172.2596073,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_c83a328cd251998df1d53dd8",
+          "uprating": {
+            "index": "obr.efo_2026_10.savings_income_growth",
+            "factor": "1.35618703816992",
+            "value_before_uprating": "33000000.0"
+          }
+        },
+        {
+          "name": "hmrc.spi.other_investment_income.amount_by_total_income_band.band_150000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 436692226.29071367,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_75e68302293f837179617425",
+          "uprating": {
+            "index": "obr.efo_2026_10.savings_income_growth",
+            "factor": "1.35618703816992",
+            "value_before_uprating": "322000000.0"
+          }
+        },
+        {
+          "name": "hmrc.spi.other_investment_income.amount_by_total_income_band.band_20000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 212921364.99267715,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_8573ad2cda65bae28ddde217",
+          "uprating": {
+            "index": "obr.efo_2026_10.savings_income_growth",
+            "factor": "1.35618703816992",
+            "value_before_uprating": "157000000.0"
+          }
+        },
+        {
+          "name": "hmrc.spi.other_investment_income.amount_by_total_income_band.band_200000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 676737332.0467892,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_e8bdf778e214cd826bd17df2",
+          "uprating": {
+            "index": "obr.efo_2026_10.savings_income_growth",
+            "factor": "1.35618703816992",
+            "value_before_uprating": "499000000.0"
+          }
+        },
+        {
+          "name": "hmrc.spi.other_investment_income.amount_by_total_income_band.band_30000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 257675537.25228444,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_93e6a9a54395ba63cfbc019f",
+          "uprating": {
+            "index": "obr.efo_2026_10.savings_income_growth",
+            "factor": "1.35618703816992",
+            "value_before_uprating": "190000000.0"
+          }
+        },
+        {
+          "name": "hmrc.spi.other_investment_income.amount_by_total_income_band.band_300000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 870672078.5050875,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_678dce88d0d33cf807237111",
+          "uprating": {
+            "index": "obr.efo_2026_10.savings_income_growth",
+            "factor": "1.35618703816992",
+            "value_before_uprating": "642000000.0"
+          }
+        },
+        {
+          "name": "hmrc.spi.other_investment_income.amount_by_total_income_band.band_40000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 292936400.24470234,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_9c1b58625019a01860f2e32d",
+          "uprating": {
+            "index": "obr.efo_2026_10.savings_income_growth",
+            "factor": "1.35618703816992",
+            "value_before_uprating": "216000000.0"
+          }
+        },
+        {
+          "name": "hmrc.spi.other_investment_income.amount_by_total_income_band.band_50000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 511282513.3900591,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_e718979f8b1e09d15cffce7e",
+          "uprating": {
+            "index": "obr.efo_2026_10.savings_income_growth",
+            "factor": "1.35618703816992",
+            "value_before_uprating": "377000000.0"
+          }
+        },
+        {
+          "name": "hmrc.spi.other_investment_income.amount_by_total_income_band.band_500000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 1009003156.3984191,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_e7005d9bc7c85c2f94930ad0",
+          "uprating": {
+            "index": "obr.efo_2026_10.savings_income_growth",
+            "factor": "1.35618703816992",
+            "value_before_uprating": "744000000.0"
+          }
+        },
+        {
+          "name": "hmrc.spi.other_investment_income.amount_by_total_income_band.band_70000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 562817620.8405161,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_b28e1ec629932e2237eee742",
+          "uprating": {
+            "index": "obr.efo_2026_10.savings_income_growth",
+            "factor": "1.35618703816992",
+            "value_before_uprating": "415000000.0"
           }
         }
       ]
@@ -31228,8 +32065,8 @@
     {
       "family": "hmrc_spi",
       "status": "active_strict_band_pins",
-      "active_reference_count": 182,
-      "signed_rationale": "SPI income-band targets fan out by strict total-income-band dimension pins. The 13 property-income amount rows bind the SPI Table 3.7 net concept unscaled: landlords' profit after allowable expenses and before residential finance costs, which is what policyengine-uk's property_income means. The incumbent's x1.9 scaling (uk-data#311, uk-data#230) set the Property Rental Income Statistics' receipts before expenses against this net amount, so it is retired; the receipts are constructed on property_rental_income by the property_components stage and PRIS stays a diagnostic (microcosm#1106, Mar\u00eda's rulings of 2026-10-05 and 2026-10-08)."
+      "active_reference_count": 211,
+      "signed_rationale": "SPI income-band targets fan out by strict total-income-band dimension pins, and SPI Table 3.10's by self-employment band, its bands outside GBP 1 to GBP 10,000 signed out row by row (microcosm#1418). The 13 property-income amount rows bind the SPI Table 3.7 net concept unscaled: landlords' profit after allowable expenses and before residential finance costs, which is what policyengine-uk's property_income means. The incumbent's x1.9 scaling (uk-data#311, uk-data#230) set the Property Rental Income Statistics' receipts before expenses against this net amount, so it is retired; the receipts are constructed on property_rental_income by the property_components stage and PRIS stays a diagnostic (microcosm#1106, Mar\u00eda's rulings of 2026-10-05 and 2026-10-08)."
     },
     {
       "family": "hmrc_itl",

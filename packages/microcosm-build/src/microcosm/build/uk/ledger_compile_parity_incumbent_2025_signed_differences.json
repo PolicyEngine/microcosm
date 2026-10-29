@@ -1,11 +1,11 @@
 {
- "compiled_count": 1374,
+ "compiled_count": 1403,
  "counts_by_kind": {
   "calibration_drift": 557,
   "fixture_only": 48,
-  "ledger_only": 785
+  "ledger_only": 814
  },
- "difference_count": 1390,
+ "difference_count": 1419,
  "differences": [
   {
    "fixture_value": 1608000.0,
@@ -2529,91 +2529,182 @@
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 1507127405.2826157,
+   "ledger_value": 617065102.3673128,
+   "name": "hmrc.spi.other_investment_income.amount_by_total_income_band.band_100000",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 2427574798.3241534,
+   "name": "hmrc.spi.other_investment_income.amount_by_total_income_band.band_1000000",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 8137122.229019509,
+   "name": "hmrc.spi.other_investment_income.amount_by_total_income_band.band_12570",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 44754172.2596073,
+   "name": "hmrc.spi.other_investment_income.amount_by_total_income_band.band_15000",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 436692226.29071367,
+   "name": "hmrc.spi.other_investment_income.amount_by_total_income_band.band_150000",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 212921364.99267715,
+   "name": "hmrc.spi.other_investment_income.amount_by_total_income_band.band_20000",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 676737332.0467892,
+   "name": "hmrc.spi.other_investment_income.amount_by_total_income_band.band_200000",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 257675537.25228444,
+   "name": "hmrc.spi.other_investment_income.amount_by_total_income_band.band_30000",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 870672078.5050875,
+   "name": "hmrc.spi.other_investment_income.amount_by_total_income_band.band_300000",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 292936400.24470234,
+   "name": "hmrc.spi.other_investment_income.amount_by_total_income_band.band_40000",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 511282513.3900591,
+   "name": "hmrc.spi.other_investment_income.amount_by_total_income_band.band_50000",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1009003156.3984191,
+   "name": "hmrc.spi.other_investment_income.amount_by_total_income_band.band_500000",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 562817620.8405161,
+   "name": "hmrc.spi.other_investment_income.amount_by_total_income_band.band_70000",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1708795668.094097,
    "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_100000",
    "period": 2025,
    "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 savings-interest rows by band, moved to the dataset's year by the household interest index and from there to the calibration year by GDP per head, the index the engine's dataset projection applies (microcosm#1095); the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 1483204748.0559075,
+   "ledger_value": 1681671927.3306985,
    "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_1000000",
    "period": 2025,
    "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 savings-interest rows by band, moved to the dataset's year by the household interest index and from there to the calibration year by GDP per head, the index the engine's dataset projection applies (microcosm#1095); the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 327740404.0059021,
+   "ledger_value": 371595248.45855755,
    "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_12570",
    "period": 2025,
    "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 savings-interest rows by band, moved to the dataset's year by the household interest index and from there to the calibration year by GDP per head, the index the engine's dataset projection applies (microcosm#1095); the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 1638702020.0295105,
+   "ledger_value": 1857976242.2927878,
    "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_15000",
    "period": 2025,
    "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 savings-interest rows by band, moved to the dataset's year by the household interest index and from there to the calibration year by GDP per head, the index the engine's dataset projection applies (microcosm#1095); the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 777486359.868016,
+   "ledger_value": 881521574.8104467,
    "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_150000",
    "period": 2025,
    "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 savings-interest rows by band, moved to the dataset's year by the household interest index and from there to the calibration year by GDP per head, the index the engine's dataset projection applies (microcosm#1095); the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 3743895855.9798307,
+   "ledger_value": 4244865429.4718437,
    "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_20000",
    "period": 2025,
    "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 savings-interest rows by band, moved to the dataset's year by the household interest index and from there to the calibration year by GDP per head, the index the engine's dataset projection applies (microcosm#1095); the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 876765387.3588549,
+   "ledger_value": 994085098.97855,
    "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_200000",
    "period": 2025,
    "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 savings-interest rows by band, moved to the dataset's year by the household interest index and from there to the calibration year by GDP per head, the index the engine's dataset projection applies (microcosm#1095); the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 3026216139.178585,
+   "ledger_value": 3431153206.569893,
    "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_30000",
    "period": 2025,
    "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 savings-interest rows by band, moved to the dataset's year by the household interest index and from there to the calibration year by GDP per head, the index the engine's dataset projection applies (microcosm#1095); the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 804997415.6787304,
+   "ledger_value": 912713876.688355,
    "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_300000",
    "period": 2025,
    "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 savings-interest rows by band, moved to the dataset's year by the household interest index and from there to the calibration year by GDP per head, the index the engine's dataset projection applies (microcosm#1095); the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 2236768450.697215,
+   "ledger_value": 2536069761.377747,
    "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_40000",
    "period": 2025,
    "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 savings-interest rows by band, moved to the dataset's year by the household interest index and from there to the calibration year by GDP per head, the index the engine's dataset projection applies (microcosm#1095); the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 2798950895.5248575,
+   "ledger_value": 3173477669.3176084,
    "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_50000",
    "period": 2025,
    "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 savings-interest rows by band, moved to the dataset's year by the household interest index and from there to the calibration year by GDP per head, the index the engine's dataset projection applies (microcosm#1095); the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 781074758.4520222,
+   "ledger_value": 885590135.9249566,
    "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_500000",
    "period": 2025,
    "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 savings-interest rows by band, moved to the dataset's year by the household interest index and from there to the calibration year by GDP per head, the index the engine's dataset projection applies (microcosm#1095); the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 1937735235.3633628,
+   "ledger_value": 2197023001.8352675,
    "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_70000",
    "period": 2025,
    "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 savings-interest rows by band, moved to the dataset's year by the household interest index and from there to the calibration year by GDP per head, the index the engine's dataset projection applies (microcosm#1095); the incumbent registry binds neither (chronicle#282)."
@@ -2708,6 +2799,118 @@
    "name": "hmrc.spi.savings_interest_income.count_by_total_income_band.band_70000",
    "period": 2025,
    "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 savings-interest rows by band, moved to the dataset's year by the household interest index and from there to the calibration year by GDP per head, the index the engine's dataset projection applies (microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 352017934.1501815,
+   "name": "hmrc.spi.self_employment_income.amount_by_self_employment_income_band.band_1000_2000",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 26998425.628037516,
+   "name": "hmrc.spi.self_employment_income.amount_by_self_employment_income_band.band_1_500",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 519200492.8468753,
+   "name": "hmrc.spi.self_employment_income.amount_by_self_employment_income_band.band_2000_3000",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 671845437.7438567,
+   "name": "hmrc.spi.self_employment_income.amount_by_self_employment_income_band.band_3000_4000",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 809952768.8411255,
+   "name": "hmrc.spi.self_employment_income.amount_by_self_employment_income_band.band_4000_5000",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 2637538503.6621265,
+   "name": "hmrc.spi.self_employment_income.amount_by_self_employment_income_band.band_5000_7500",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 85148880.82688755,
+   "name": "hmrc.spi.self_employment_income.amount_by_self_employment_income_band.band_500_1000",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 3603251420.3573146,
+   "name": "hmrc.spi.self_employment_income.amount_by_self_employment_income_band.band_7500_10000",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 246471.38964577657,
+   "name": "hmrc.spi.self_employment_income.count_by_self_employment_income_band.band_1000_2000",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 119468.66485013624,
+   "name": "hmrc.spi.self_employment_income.count_by_self_employment_income_band.band_1_500",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 216335.14986376022,
+   "name": "hmrc.spi.self_employment_income.count_by_self_employment_income_band.band_2000_3000",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 200190.73569482288,
+   "name": "hmrc.spi.self_employment_income.count_by_self_employment_income_band.band_3000_4000",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 187275.20435967302,
+   "name": "hmrc.spi.self_employment_income.count_by_self_employment_income_band.band_4000_5000",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 435899.1825613079,
+   "name": "hmrc.spi.self_employment_income.count_by_self_employment_income_band.band_5000_7500",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 118392.37057220709,
+   "name": "hmrc.spi.self_employment_income.count_by_self_employment_income_band.band_500_1000",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 427288.8283378747,
+   "name": "hmrc.spi.self_employment_income.count_by_self_employment_income_band.band_7500_10000",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
   },
   {
    "kind": "ledger_only",

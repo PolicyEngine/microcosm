@@ -79,7 +79,7 @@ _TEST_PATHS = paths_for("microcosm-build")
 # family rows (microcosm#1095); microcosm#1069 adds HMRC's Income Tax payers
 # of State Pension age and aged 65 and over in the twelve region-tier areas;
 # microcosm#1418 adds HMRC's Income Tax on savings at the three rates.
-ACTIVE_REFERENCE_COUNT = 1374
+ACTIVE_REFERENCE_COUNT = 1403
 REGION_TIER_LEVEL = {code: level for level, code in UK_REGION_TIER}
 
 
@@ -1017,7 +1017,7 @@ def test_uk_target_reference_membership_report_is_packaged() -> None:
     assert membership["status_counts"] == {
         "active": ACTIVE_REFERENCE_COUNT,
         "no_fact_at_or_before_period": 4,
-        "signed_excluded": 17,
+        "signed_excluded": 30,
     }
     assert membership["genuine_sum_residue"]
     assert membership["uprating_holds"]
@@ -1033,10 +1033,12 @@ def test_uk_target_reference_membership_report_is_packaged() -> None:
         {
             "family": "hmrc_spi",
             "status": "active_strict_band_pins",
-            "active_reference_count": 182,
+            "active_reference_count": 211,
             "signed_rationale": (
                 "SPI income-band targets fan out by strict total-income-band "
-                "dimension pins. The 13 property-income amount rows bind the "
+                "dimension pins, and SPI Table 3.10's by self-employment band, "
+                "its bands outside GBP 1 to GBP 10,000 signed out row by row "
+                "(microcosm#1418). The 13 property-income amount rows bind the "
                 "SPI Table 3.7 net concept unscaled: landlords' profit after "
                 "allowable expenses and before residential finance costs, "
                 "which is what policyengine-uk's property_income means. The "

@@ -322,3 +322,26 @@ national and local reference files are byte-identical, the membership moves only
 and both compile-parity receipts are unchanged. Both surfaces were regenerated from the national
 and local cuts, as for `200bf6d`. No reference moves, so the national register version does not
 either. The high-value home stock still names `735820c`: the addition touches none of its inputs.
+
+The `53815b2` re-pin (microcosm#1418 PR C, the merge of PolicyEngine/chronicle#394, on top of the
+`0b721a4` merge of PolicyEngine/chronicle#392) brought SPI 2023-24 Table 3.10 and the OBR's October
+2026 EFO beside March's, with #392's HMRC ISA statistics (1,511,063 rows; the schema digest is
+unchanged). The merge commit's tree is the pull request head's (`2ba21f3`), merged onto an unmoved
+base, so the artifact was built from that head's bundle and carries the merge commit's identity.
+
+A new vendored resource, `obr_savings_income_growth_facts.json`, carries the eight October 2026 EFO
+Table 4.5 savings income growth rates the SPI Table 3.7 interest and other-income rows now grow by.
+The other vendored resources, and the constituency energy resource rebuilt beside them, carry the
+same rows under the new feed identity. On the national surface only the intended values move: the
+13 interest rows (up 13.4%), 13 other-income rows and 16 Table 3.10 rows, whose zero band and bands
+from £10,000 are signed out row by row. October's edition starts the OBR lines at FY2025-26, so the
+targets that window FY2024-25 and FY2025-26 into calendar 2025 still resolve to March's facts;
+`obr.winter_fuel_allowance`, which reads FY2025-26 alone, matched both editions and is pinned to
+March's expenditure table (`source_table`). On the local surface the statuses and the reference
+file are unchanged, and the membership moves its feed label and the DESNZ gas cells, which return
+to the Energy Trends level in the same PR.
+
+The national register version moves with the new references, so the uk-candidate-eval scoring
+register is re-frozen before the next national solve. The high-value home stock still names
+`735820c`: its inputs are the same on `53815b2` (the feed-gated fingerprint check passes), so it
+was not rebuilt.
