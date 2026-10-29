@@ -892,7 +892,8 @@
       "hmrc.itl.taxpayers_aged_65_and_over": "Post-freeze fact family (HMRC Income Tax liabilities statistics Table 2.2, July 2026, in Chronicle: Income Tax payers by age for each English region and nation, the calendar-2025 window of the 2024-25 and 2025-26 projections), no uk-data metric (microcosm#1069).",
       "hmrc.itl.savings_tax_at_basic_rate": "Post-freeze fact family (HMRC Income Tax liabilities statistics Table 2.6, July 2026, in Chronicle: Income Tax on savings income at each rate, all payers, the calendar-2025 window of the 2024-25 and 2025-26 projections), no uk-data metric (microcosm#1418).",
       "hmrc.itl.savings_tax_at_higher_rate": "Post-freeze fact family (HMRC Income Tax liabilities statistics Table 2.6, July 2026, in Chronicle: Income Tax on savings income at each rate, all payers, the calendar-2025 window of the 2024-25 and 2025-26 projections), no uk-data metric (microcosm#1418).",
-      "hmrc.itl.savings_tax_at_additional_rate": "Post-freeze fact family (HMRC Income Tax liabilities statistics Table 2.6, July 2026, in Chronicle: Income Tax on savings income at each rate, all payers, the calendar-2025 window of the 2024-25 and 2025-26 projections), no uk-data metric (microcosm#1418)."
+      "hmrc.itl.savings_tax_at_additional_rate": "Post-freeze fact family (HMRC Income Tax liabilities statistics Table 2.6, July 2026, in Chronicle: Income Tax on savings income at each rate, all payers, the calendar-2025 window of the 2024-25 and 2025-26 projections), no uk-data metric (microcosm#1418).",
+      "hmrc.spi.other_investment_income.amount_by_total_income_band": "New declaration backed by SPI 2023-24 Table 3.7 other income in Chronicle (spi_income_bands_2023_24); no uk-data metric holds other investment income by band (microcosm#1418)."
     },
     "suppressed_ancestors": {
       "hmrc/salary_sacrifice_it_relief_basic_rate": {
@@ -1235,6 +1236,7 @@
       "hmrc.itl.savings_tax_at_additional_rate",
       "hmrc.spi.savings_interest_income.amount_by_total_income_band",
       "hmrc.spi.savings_interest_income.count_by_total_income_band",
+      "hmrc.spi.other_investment_income.amount_by_total_income_band",
       "hmrc.spi_region.taxpayers_by_region_12570_15000",
       "hmrc.spi_region.taxpayers_by_region_15000_20000",
       "hmrc.spi_region.taxpayers_by_region_20000_30000",
@@ -21896,6 +21898,59 @@
       "label": "Count by total income band",
       "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by HMRC's own projected growth in Income Tax payers for the Table 2.5 band containing this band (Income Tax liabilities statistics, July 2026): the calendar-2025 window of the 2024-25 and 2025-26 projections (3/12 and 9/12) over the 2023-24 outturn, from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): calendar 2025, months to the end of the year for fiscal- and tax-year facts. Taxpayers only (income_tax_annual > 0, the tax on each person's income over the 12 months before their interview, a proxy for the tax year), as SPI Table 3.6 and the area Tables 3.14 and 3.15 are: the tables cover individuals liable to UK income tax (microcosm#1123, taxpayer basis everywhere)."
+    },
+    {
+      "target_id": "hmrc.spi.other_investment_income.amount_by_total_income_band",
+      "family": "hmrc_spi",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.income.other_investment.amount",
+        "groupby_dimension": "hmrc.total_income_band",
+        "filters": [
+          {
+            "concept": "uk.tax.income_tax.amount",
+            "operator": ">",
+            "value": 0
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "hmrc/other_investment_income_income_band",
+          "value_variable": "other_investment_income",
+          "from_entity": "person",
+          "map_to": "household",
+          "groupby_variable": "total_income_after_loss_relief_annual",
+          "band_filter_dimension": "total_income",
+          "notes": "Other investment income of taxpayers by total-income band: SPI Table 3.7's 'Other income' [Note 6], the part of total investment income outside property, bank and building society interest and dividends (SPI's OTHERINV, which the SPI donors carry into other_investment_income). From microcosm#1418 the frame also holds the FRS NS&I and gilt accounts there, and the engine taxes the column as savings income beside savings_interest_income. Banded by person-level total income; band edges come from the fact dimension. No row held the column before, so the ITL Table 2.6 savings tax rows were met mostly through it: on PR A's national (microcosm#1419) it carried about GBP 9.5bn in 2024, where Table 3.7 publishes GBP 5.85bn for 2023-24 (María's ruling of 2026-10-29, microcosm#1418).",
+          "filters": [
+            {
+              "variable": "income_tax_before_winter_fuel_payment_charge_annual",
+              "operator": ">",
+              "value": 0
+            }
+          ]
+        },
+        "axiom": {
+          "metric_name": "hmrc/other_investment_income_income_band",
+          "status": "pending",
+          "value_rule": "uk.income.other_investment.amount"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_other_income_amount",
+        "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person"
+      },
+      "category_id": "hmrc.survey_of_personal_incomes",
+      "label": "Amount by total income band",
+      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
+      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by gov.economic_assumptions.indices.obr.per_capita.gdp on the pinned engine, the index policyengine-uk grows other_investment_income with both before and after the dataset's year (policyengine_uk/data/uprating_indices.yaml), as the dividend amount rows are; the SPI donors take the same path. The calibration binds at calendar 2025 under María's ruling of 2026-09-22 (PolicyEngine/chronicle#280 lane). Taxpayers only (income tax above zero), as Table 3.7 counts them. Bound by María's ruling of 2026-10-29 (microcosm#1418), amounts only: Table 3.7's count of taxpayers with other income stays unbound."
     },
     {
       "target_id": "hmrc.spi_region.taxpayers_by_region_12570_15000",
