@@ -409,6 +409,9 @@
       "hmrc.itl.additional_rate_taxpayers": "hmrc.income_tax_liabilities_statistics",
       "hmrc.itl.higher_rate_taxpayers": "hmrc.income_tax_liabilities_statistics",
       "hmrc.itl.income_tax_by_total_income_band": "hmrc.income_tax_liabilities_statistics",
+      "hmrc.itl.savings_tax_at_additional_rate": "hmrc.income_tax_liabilities_statistics",
+      "hmrc.itl.savings_tax_at_basic_rate": "hmrc.income_tax_liabilities_statistics",
+      "hmrc.itl.savings_tax_at_higher_rate": "hmrc.income_tax_liabilities_statistics",
       "hmrc.itl.state_pension_age_taxpayers": "hmrc.income_tax_liabilities_statistics",
       "hmrc.itl.taxpayers_aged_65_and_over": "hmrc.income_tax_liabilities_statistics",
       "hmrc.itl.taxpayers_by_total_income_band": "hmrc.income_tax_liabilities_statistics",
@@ -788,6 +791,9 @@
       "hmrc.itl.additional_rate_taxpayers": "Additional rate Income Tax payers by region and nation",
       "hmrc.itl.higher_rate_taxpayers": "Higher rate Income Tax payers by region and nation",
       "hmrc.itl.income_tax_by_total_income_band": "Income Tax liabilities by total income band",
+      "hmrc.itl.savings_tax_at_additional_rate": "Income Tax on savings at the additional rate",
+      "hmrc.itl.savings_tax_at_basic_rate": "Income Tax on savings at the basic rate",
+      "hmrc.itl.savings_tax_at_higher_rate": "Income Tax on savings at the higher rate",
       "hmrc.itl.state_pension_age_taxpayers": "Income Tax payers of State Pension age by region and nation",
       "hmrc.itl.taxpayers_aged_65_and_over": "Income Tax payers aged 65 and over by region and nation",
       "hmrc.itl.taxpayers_by_total_income_band": "Income Tax payers by total income band",
@@ -31869,6 +31875,81 @@
         "geography_id": "N92000002",
         "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"NORTHERN_IRELAND\",\"variable\":\"region\"}",
         "cross_grain_grain": "region"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
+    },
+    {
+      "name": "hmrc.itl.savings_tax_at_basic_rate",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.income_tax_liability_component_amount",
+        "source_measure_id": "all_payers_tax_amount",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "dimension_values": {
+          "income_tax_component": "savings_at_basic_rate"
+        },
+        "entity_name": "person",
+        "geography_level": "country",
+        "geography_id": "K02000001"
+      },
+      "entity": "person",
+      "measure": "hmrc/itl_savings_tax/basic_rate",
+      "family": "hmrc_itl_savings_rate",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.itl.savings_tax_at_basic_rate",
+        "measure_kind": "prepared_column"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
+    },
+    {
+      "name": "hmrc.itl.savings_tax_at_higher_rate",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.income_tax_liability_component_amount",
+        "source_measure_id": "all_payers_tax_amount",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "dimension_values": {
+          "income_tax_component": "savings_at_higher_rate"
+        },
+        "entity_name": "person",
+        "geography_level": "country",
+        "geography_id": "K02000001"
+      },
+      "entity": "person",
+      "measure": "hmrc/itl_savings_tax/higher_rate",
+      "family": "hmrc_itl_savings_rate",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.itl.savings_tax_at_higher_rate",
+        "measure_kind": "prepared_column"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
+    },
+    {
+      "name": "hmrc.itl.savings_tax_at_additional_rate",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.income_tax_liability_component_amount",
+        "source_measure_id": "all_payers_tax_amount",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "dimension_values": {
+          "income_tax_component": "savings_at_additional_rate"
+        },
+        "entity_name": "person",
+        "geography_level": "country",
+        "geography_id": "K02000001"
+      },
+      "entity": "person",
+      "measure": "hmrc/itl_savings_tax/additional_rate",
+      "family": "hmrc_itl_savings_rate",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.itl.savings_tax_at_additional_rate",
+        "measure_kind": "prepared_column"
       },
       "assertion_policy": "allow_source_projection",
       "value_operation": "calendar_year_window"

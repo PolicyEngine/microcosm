@@ -23,6 +23,7 @@ from microcosm.build.uk_runtime.nts_bus_travel import (
     LONDON_GROUP,
     MAX_BAND,
     NON_USER_BAND,
+    NON_USER_BAND_RULE,
     OTHER_LOCAL_BUS,
     REST_OF_ENGLAND_GROUP,
     SERIES_TRIP_COLUMNS,
@@ -685,6 +686,29 @@ def test_band_means_and_trip_assignment_split_the_series_by_residence_group() ->
     assert means[BUS_IN_LONDON][LONDON_GROUP][MAX_BAND] > 0.0
     assert means[OTHER_LOCAL_BUS][LONDON_GROUP][MAX_BAND] == 0.0
     assert receipt["source"] == "donor_diary_band_means"
+    # microcosm#1386, option 1: no group's non-user band carries trips, and
+    # the other bands keep each group's diary trips per person on the donor.
+    person = donor.person
+    weights = person["weight"].to_numpy(dtype=float)
+    groups_of = person["residence_group"].to_numpy().astype(str)
+    for series, column in SERIES_TRIP_COLUMNS.items():
+        for group in (LONDON_GROUP, REST_OF_ENGLAND_GROUP):
+            assert means[series][group][NON_USER_BAND] == 0.0
+            in_group = groups_of == group
+            diary = np.average(
+                person[column].to_numpy(dtype=float)[in_group],
+                weights=weights[in_group],
+            )
+            assigned = np.average(
+                [
+                    means[series][group][int(b)]
+                    for b in person["local_bus_use_band"].to_numpy()[in_group]
+                ],
+                weights=weights[in_group],
+            )
+            assert assigned == pytest.approx(diary)
+    assert receipt["non_user_band"]["rule"] == NON_USER_BAND_RULE
+    assert set(receipt["non_user_band"]["other_band_factors"]) == set(means)
     band = np.array([0, MAX_BAND, 3, MAX_BAND])
     groups = np.array(
         [LONDON_GROUP, LONDON_GROUP, REST_OF_ENGLAND_GROUP, REST_OF_ENGLAND_GROUP]

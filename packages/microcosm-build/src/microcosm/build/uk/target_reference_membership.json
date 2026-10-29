@@ -1,11 +1,11 @@
 {
   "source_fact_feed": "chronicle-uk-272c987-consumer-facts",
   "target_period": 2025,
-  "candidate_count": 1392,
-  "contract_target_count": 388,
-  "active_reference_count": 1371,
+  "candidate_count": 1395,
+  "contract_target_count": 391,
+  "active_reference_count": 1374,
   "status_counts": {
-    "active": 1371,
+    "active": 1374,
     "no_fact_at_or_before_period": 4,
     "signed_excluded": 17
   },
@@ -2631,6 +2631,18 @@
           "geography_id": "N92000002"
         }
       ]
+    },
+    "hmrc.itl.savings_tax_at_basic_rate": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "hmrc.itl.savings_tax_at_higher_rate": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "hmrc.itl.savings_tax_at_additional_rate": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
     },
     "hmrc.spi.savings_interest_income.amount_by_total_income_band": {
       "geography_level": "country",
@@ -22860,6 +22872,51 @@
           "resolved_value": 210750.0,
           "resolved_fact_period": "2025",
           "resolved_fact_key": "ledger_aggregate_fact_v2_6382a3f1626a90610989d472"
+        }
+      ]
+    },
+    "hmrc.itl.savings_tax_at_basic_rate": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "hmrc.itl.savings_tax_at_basic_rate",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 3,
+          "resolved_period": 2025,
+          "resolved_value": 1720000000.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_76d65d104935eb1a9e6c4d82"
+        }
+      ]
+    },
+    "hmrc.itl.savings_tax_at_higher_rate": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "hmrc.itl.savings_tax_at_higher_rate",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 3,
+          "resolved_period": 2025,
+          "resolved_value": 2587500000.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_29c9717012d95e7dd50c5d9c"
+        }
+      ]
+    },
+    "hmrc.itl.savings_tax_at_additional_rate": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "hmrc.itl.savings_tax_at_additional_rate",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 3,
+          "resolved_period": 2025,
+          "resolved_value": 4087500000.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f936b73617f0b0a75a5289dd"
         }
       ]
     },

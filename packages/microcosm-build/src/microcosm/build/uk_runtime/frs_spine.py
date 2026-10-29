@@ -194,6 +194,17 @@ FRS_CARE_HOURS_BY_BAND = {
     9: 20.0,  # varies, 20-34 hours
     10: 35.0,  # varies, 35 hours or more
 }
+#: FRS adult bands, coded as HOURTOT is, for the care a person gives inside
+#: the household: HOURAB to adults and HOURCB to children of their own benefit
+#: unit, HOURAH to adults and HOURCH to children of another benefit unit in the
+#: household. HOURRE, HOURFR, HOUROT and HOURCL are the bands for relatives,
+#: friends, others and a voluntary organisation's clients outside it.
+FRS_IN_HOUSEHOLD_CARE_HOURS_COLUMNS = ("hourab", "hourah", "hourcb", "hourch")
+#: The weekly hours of a person's largest in-household care band (lower band
+#: edge), which carers_allowance_take_up reads to find carers of a severely
+#: disabled household member (microcosm#1418). It is no engine input and
+#: leaves at the release boundary.
+FRS_IN_HOUSEHOLD_CARE_HOURS_COLUMN = "frs_care_hours_in_household"
 
 # FRS adult RENTPROF (question RentProf): whether the rent from other property
 # in ROYYR1 is a profit (1) or a loss (2). ROYYR1 itself is always positive.
@@ -219,6 +230,7 @@ OUTPUT_COLUMNS = (
     "marital_status",
     "hours_worked",
     "care_hours",
+    FRS_IN_HOUSEHOLD_CARE_HOURS_COLUMN,
     "is_household_head",
     "is_benunit_head",
     "is_parent",
@@ -239,6 +251,7 @@ OUTPUT_COLUMNS = (
     "tax_free_savings_income",
     "savings_interest_income",
     "dividend_income",
+    "other_investment_income",
     *OWNER_MANAGER_COLUMNS,
     "property_income",
     "reports_rent_from_other_property",
@@ -569,6 +582,7 @@ def _assemble_frame(
     pe_person["marital_status"] = _map_codes(person, "marital", MARITAL_MAP, "SINGLE")
     pe_person["hours_worked"] = _positive(person, "tothours") * WEEKS_IN_YEAR
     pe_person["care_hours"] = frs_care_hours(person)
+    pe_person[FRS_IN_HOUSEHOLD_CARE_HOURS_COLUMN] = frs_in_household_care_hours(person)
     pe_person["is_household_head"] = _number(person, "hrpid") == 1
     pe_person["is_benunit_head"] = _number(person, "uperson") == 1
     dependent_children = _dependent_children(benunit_raw, frs["child"])
@@ -725,6 +739,33 @@ def _add_private_pension(
     ) * WEEKS_IN_YEAR
 
 
+#: FRS ACCOUNTS.ACCOUNT codes (FRS 2024-25 variable listing, SN 9563) by the
+#: input their weekly interest (ACCINT) lands in (microcosm#1418). ISAs (21)
+#: are tax-free, kept apart in tax_free_savings_income inside gross interest.
+FRS_ISA_ACCOUNT = 21
+#: Deposit interest, savings_interest_income: current (1), NS&I investment
+#: (3), savings and investment (5), fixed-rate, guaranteed income and
+#: guaranteed growth bond (25; no interest recorded on FRS 2024-25), basic
+#: (27) and credit union (28) accounts.
+FRS_DEPOSIT_INTEREST_ACCOUNTS = (1, 3, 5, 25, 27, 28)
+#: Other interest, other_investment_income, which policyengine-uk taxes as
+#: savings income beside deposit interest (taxable_savings_interest_income):
+#: NS&I Direct Saver (2), gilts (6, booked as dividends before), National
+#: Savings capital (10), income (16) and deposit (17) bonds, Pensioners
+#: Guaranteed (13), First Option (18) and guaranteed equity (26) bonds. The
+#: tax-free products stay out: National Savings certificates (11, 12), SAYE
+#: (14), Premium Bonds (15), the Yearly Plan (19) and friendly society
+#: investments (31). On FRS 2024-25 only the NS&I Direct Saver and gilts carry
+#: interest in this group: codes 16 and 26 record none, and 10, 13, 17 and 18
+#: do not occur. Of the codes no list maps, only a share club (24) records
+#: interest on FRS 2024-25: the club's returns are on shares, so they are out
+#: of scope as interest; profit sharing (22), company share option plans (23),
+#: an endowment policy not linked (29) and informal assets (32) record none.
+FRS_OTHER_INTEREST_ACCOUNTS = (2, 6, 10, 13, 16, 17, 18, 26)
+#: Dividends: unit and investment trusts (7) and stocks, shares and bonds (8).
+FRS_DIVIDEND_ACCOUNTS = (7, 8)
+
+
 def _add_accounts(
     pe_person: pd.DataFrame, person: pd.DataFrame, accounts: pd.DataFrame
 ) -> None:
@@ -734,31 +775,29 @@ def _add_accounts(
     invtax = _number(accounts, "invtax")
     person_id = accounts.get("person_id", pd.Series(dtype="float64"))
     inverted_basic_rate = 1.25
-    tax_free = (
-        _sum_to_entity(accint * (account == 21), person_id, person["person_id"])
-        * WEEKS_IN_YEAR
-    )
-    taxable = (
-        _sum_to_entity(
-            (accint * np.where(acctax == 1, inverted_basic_rate, 1))
-            * account.isin((1, 3, 5, 27, 28)),
-            person_id,
-            person["person_id"],
+
+    def annual(codes: tuple[int, ...], after_tax: object) -> pd.Series:
+        # Interest reported after tax (ACCTAX or INVTAX 1) is grossed up at
+        # the basic rate.
+        return (
+            _sum_to_entity(
+                (accint * np.where(after_tax, inverted_basic_rate, 1))
+                * account.isin(codes),
+                person_id,
+                person["person_id"],
+            )
+            * WEEKS_IN_YEAR
         )
-        * WEEKS_IN_YEAR
-    )
-    dividends = (
-        _sum_to_entity(
-            (accint * np.where(invtax == 1, inverted_basic_rate, 1))
-            * (((account == 6) & (invtax == 1)) | account.isin((7, 8))),
-            person_id,
-            person["person_id"],
-        )
-        * WEEKS_IN_YEAR
-    )
+
+    tax_free = annual((FRS_ISA_ACCOUNT,), False)
+    taxable = annual(FRS_DEPOSIT_INTEREST_ACCOUNTS, acctax == 1)
+    # A savings product answers ACCTAX and a gilt INVTAX.
+    other = annual(FRS_OTHER_INTEREST_ACCOUNTS, (acctax == 1) | (invtax == 1))
+    dividends = annual(FRS_DIVIDEND_ACCOUNTS, invtax == 1)
     pe_person["tax_free_savings_income"] = np.maximum(0, tax_free)
     pe_person["savings_interest_income"] = np.maximum(0, taxable + tax_free)
     pe_person["dividend_income"] = np.maximum(0, dividends)
+    pe_person["other_investment_income"] = np.maximum(0, other)
 
 
 #: FRS job-table answers that make a person like a sole owner or partner of a
@@ -1497,14 +1536,32 @@ def frs_care_hours(person: pd.DataFrame) -> pd.Series:
     an unknown code is a vintage defect and refuses the build.
     """
 
-    codes = _raw_number(person, "hourtot").fillna(0)
+    return _frs_care_band_hours(person, "hourtot", "person.care_hours")
+
+
+def frs_in_household_care_hours(person: pd.DataFrame) -> pd.Series:
+    """Weekly hours of the largest in-household care band (lower band edges).
+
+    The four bands record care to adults and children of the carer's own and
+    of another benefit unit of the household; the largest says whether the
+    care inside the household alone reaches an hours line. Codes map as
+    ``frs_care_hours`` maps HOURTOT.
+    """
+
+    bands = [
+        _frs_care_band_hours(person, column, FRS_IN_HOUSEHOLD_CARE_HOURS_COLUMN)
+        for column in FRS_IN_HOUSEHOLD_CARE_HOURS_COLUMNS
+    ]
+    return pd.concat(bands, axis=1).max(axis=1).astype("float64")
+
+
+def _frs_care_band_hours(person: pd.DataFrame, column: str, label: str) -> pd.Series:
+    codes = _raw_number(person, column).fillna(0)
     if not np.array_equal(codes.to_numpy(), np.floor(codes.to_numpy())):
-        raise ValueError(
-            "FRS hourtot codes must be integral to build person.care_hours."
-        )
+        raise ValueError(f"FRS {column} codes must be integral to build {label}.")
     unknown = sorted(set(codes.astype(int)) - set(FRS_CARE_HOURS_BY_BAND))
     if unknown:
-        raise ValueError(f"FRS hourtot carries unknown band code(s) {unknown}.")
+        raise ValueError(f"FRS {column} carries unknown band code(s) {unknown}.")
     return codes.astype(int).map(FRS_CARE_HOURS_BY_BAND).astype("float64")
 
 

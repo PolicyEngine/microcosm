@@ -331,6 +331,11 @@ UK_ANNUAL_INCOME_MEASURES: Mapping[str, str] = {
         "income_tax_before_winter_fuel_payment_charge"
     ),
     "tax_band_annual": "tax_band",
+    # The savings income each rate charges, which HMRC's Table 2.6 taxes
+    # (microcosm#1418).
+    "basic_rate_savings_income_annual": "basic_rate_savings_income",
+    "higher_rate_savings_income_annual": "higher_rate_savings_income",
+    "add_rate_savings_income_annual": "add_rate_savings_income",
 }
 #: The inputs the annual simulation replaces at the measurement year: the
 #: engine's current amount times its annual share, plus its other spells,
