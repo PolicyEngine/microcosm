@@ -58,7 +58,7 @@ from microcosm.data.contract import (
     validate_release_dir,
 )
 from microcosm.diagnostics import (
-    CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION,
+    HIERARCHY_CALIBRATION_DIAGNOSTICS_SCHEMA_VERSIONS,
     parse_calibration_diagnostics,
 )
 
@@ -140,7 +140,10 @@ def _write_release_diagnostics(
 ) -> None:
     """Copy current diagnostics exactly; adapt only legacy candidate evidence."""
 
-    if diagnostics.get("schema_version") == CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION:
+    # Schema 8 and schema 9 (labels in catalogs) are both current documents.
+    if diagnostics.get("schema_version") in (
+        HIERARCHY_CALIBRATION_DIAGNOSTICS_SCHEMA_VERSIONS
+    ):
         try:
             parse_calibration_diagnostics(diagnostics)
         except ValidationError as error:

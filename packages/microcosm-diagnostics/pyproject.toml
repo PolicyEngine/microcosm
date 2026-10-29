@@ -13,7 +13,7 @@ Homepage = "https://microcosm.institute"
 Repository = "https://github.com/PolicyEngine/microcosm"
 
 [dependency-groups]
-# jsonschema checks documents against the generated schema-8 JSON Schema in
+# jsonschema checks documents against the generated JSON Schemas in
 # tests only; the package itself needs nothing beyond pydantic.
 dev = ["pytest>=8", "jsonschema>=4.23,<5"]
 

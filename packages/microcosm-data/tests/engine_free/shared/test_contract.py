@@ -38,6 +38,10 @@ from microcosm.data.contract import (
     stored_input_evidence_manifest_block,
 )
 from microcosm.data.stored_inputs import register_sha256
+from microcosm.diagnostics import (
+    CalibrationDiagnosticsV8,
+    catalog_calibration_diagnostics,
+)
 from test_support.paths import paths_for
 
 _TEST_PATHS = paths_for("microcosm-data")
@@ -2610,7 +2614,7 @@ def test_legacy_diagnostics_exemption_is_scoped_to_the_exact_june_id(
         payload=diagnostics,
     )
 
-    with pytest.raises(ReleaseContractError, match="publishes version 8"):
+    with pytest.raises(ReleaseContractError, match="publishes version 9"):
         validate_release_dir(directory)
 
 
@@ -3924,6 +3928,95 @@ def test_schema_8_calibration_hierarchy_is_accepted(release_dir: Path) -> None:
         artifact_key="calibration_diagnostics",
         payload=diagnostics,
     )
+
+    validate_release_dir(release_dir)
+
+
+def _schema_9_calibration_diagnostics() -> dict:
+    """What the writer publishes for the schema-8 fixture: labels in catalogs."""
+
+    model = CalibrationDiagnosticsV8.model_validate(_schema_8_calibration_diagnostics())
+    return json.loads(
+        catalog_calibration_diagnostics(model).model_dump_json(exclude_defaults=True)
+    )
+
+
+def test_schema_9_calibration_catalogs_are_accepted(release_dir: Path) -> None:
+    _write_json_and_refresh_manifest_hash(
+        release_dir,
+        filename="calibration_diagnostics.json",
+        artifact_key="calibration_diagnostics",
+        payload=_schema_9_calibration_diagnostics(),
+    )
+
+    validate_release_dir(release_dir)
+
+
+def test_schema_9_always_uses_shared_validation(release_dir: Path) -> None:
+    diagnostics = _schema_9_calibration_diagnostics()
+    diagnostics["targets"][0]["hierarchy"]["geography_id"] = "0400000US06"
+    _write_json_and_refresh_manifest_hash(
+        release_dir,
+        filename="calibration_diagnostics.json",
+        artifact_key="calibration_diagnostics",
+        payload=diagnostics,
+    )
+
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(release_dir)
+    failures = "\n".join(excinfo.value.failures)
+    assert "does not satisfy the shared schema" in failures
+    assert "geography 0400000US06 is not in hierarchy_catalogs" in failures
+
+
+@pytest.mark.parametrize("schema_version", [8, 9])
+def test_available_diagnostics_declare_either_hierarchy_schema(
+    release_dir: Path, schema_version: int
+) -> None:
+    # A release published before schema 9 declares 8; the writer now
+    # publishes 9.
+    if schema_version == 9:
+        _write_json_and_refresh_manifest_hash(
+            release_dir,
+            filename="calibration_diagnostics.json",
+            artifact_key="calibration_diagnostics",
+            payload=_schema_9_calibration_diagnostics(),
+        )
+    manifest_path = release_dir / "release_manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["calibration_diagnostics"] = {
+        "status": "available",
+        "schema_version": schema_version,
+        "sha256": manifest["artifacts"]["calibration_diagnostics"]["sha256"],
+    }
+    manifest_path.write_text(json.dumps(manifest, indent=1))
+
+    validate_release_dir(release_dir)
+
+    manifest["calibration_diagnostics"]["schema_version"] = 7
+    manifest_path.write_text(json.dumps(manifest, indent=1))
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(release_dir)
+    assert (
+        "release_manifest.json available calibration diagnostics must declare "
+        "schema_version 8 or 9."
+    ) in excinfo.value.failures
+
+
+def test_failed_diagnostics_may_expect_the_published_schema_9(
+    release_dir: Path,
+) -> None:
+    (release_dir / "calibration_diagnostics.json").unlink()
+    manifest_path = release_dir / "release_manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["artifacts"].pop("calibration_diagnostics")
+    manifest["calibration_diagnostics"] = {
+        "status": "failed",
+        "expected_schema_version": 9,
+        "error_code": "label_conflict",
+        "message": "Geography 0100000US has two labels.",
+    }
+    manifest_path.write_text(json.dumps(manifest, indent=1))
 
     validate_release_dir(release_dir)
 

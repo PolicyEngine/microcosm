@@ -58,7 +58,8 @@ from microcosm.build.transport.terminal_kernels import (
 )
 from microcosm.calibrate.artifacts import PROBLEM_TYPE, RESULT_TYPE, SOLUTION_TYPE
 from microcosm.diagnostics import (
-    CalibrationDiagnosticsV8,
+    CalibrationDiagnosticsV9,
+    expand_calibration_diagnostics,
     parse_calibration_diagnostics,
     write_calibration_diagnostics,
 )
@@ -144,12 +145,15 @@ def test_full_build_passes_its_gates_readback_and_package(toy_run) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_diagnostics_validate_against_schema_8(toy_run, tmp_path) -> None:
+def test_diagnostics_validate_against_schema_9(toy_run, tmp_path) -> None:
     payload = toy_run.artifact(DIAGNOSTICS, "diagnostics")
-    model = parse_calibration_diagnostics(json.loads(payload))
+    published = parse_calibration_diagnostics(json.loads(payload))
 
-    assert isinstance(model, CalibrationDiagnosticsV8)
-    assert model.schema_version == DIAGNOSTICS_TYPE.schema_version == 8
+    assert isinstance(published, CalibrationDiagnosticsV9)
+    assert published.schema_version == DIAGNOSTICS_TYPE.schema_version == 9
+    # The rows' labels sit in the published catalogs; expanded, each row
+    # carries its schema-8 hierarchy again.
+    model = expand_calibration_diagnostics(published)
     assert model.target_registry.country == COUNTRY
     assert model.n_records == 6
     assert [row.target_name for row in model.targets] == [
@@ -178,7 +182,7 @@ def test_diagnostics_validate_against_schema_8(toy_run, tmp_path) -> None:
     outcome = write_calibration_diagnostics(model, tmp_path / "diagnostics.json")
     assert outcome.status == "available"
     assert (
-        canonical_json(model.model_dump(mode="python", exclude_defaults=True))
+        canonical_json(published.model_dump(mode="python", exclude_defaults=True))
         == payload
     )
 
@@ -187,6 +191,33 @@ def test_transport_diagnostics_match_the_published_json_schema(toy_run) -> None:
     payload = toy_run.artifact(DIAGNOSTICS, "diagnostics")
 
     assert published_json_schema_errors(load_strict_json(payload)) == []
+
+
+def test_the_diagnostics_kernel_keys_on_its_catalog_and_label_choice_code(
+    monkeypatch,
+) -> None:
+    # The node's output is the schema 9 document that
+    # catalog_calibration_diagnostics builds with the registry country's label
+    # choices, so an edit to the catalogs or to a chosen label must re-key the
+    # node; otherwise a store run with resume="auto" serves the old labels.
+    import microcosm.calibrate.geography_constants as geography_constants_module
+    import microcosm.calibrate.hierarchy_labels as hierarchy_labels_module
+    import microcosm.diagnostics.catalogs as catalogs_module
+    from microcosm.build.transport import terminal_kernels
+
+    hashed_modules: list[object] = []
+
+    def record_hashed_modules(*objects, **_dependencies) -> str:
+        hashed_modules.extend(objects)
+        return "recorded"
+
+    monkeypatch.setattr(terminal_kernels, "source_hash", record_hashed_modules)
+    DIAGNOSTICS_CALIBRATION.implementation_hash()
+
+    assert catalogs_module in hashed_modules
+    assert hierarchy_labels_module in hashed_modules
+    # The UK choices take an area's label from UK_GEOGRAPHY_ID_TO_LABEL.
+    assert geography_constants_module in hashed_modules
 
 
 def _diagnostics_artifacts(run, **overrides) -> dict[str, ArtifactValue]:

@@ -16,7 +16,7 @@ described here.
 | `targets.problem@1` | `transport/target_kernels.py` | compute | population slices; params `entities`, `weight_entity`; artifact `surface` | `problem` (`microcosm.calibrate.ordered-problem` v1) |
 | `calibrate.ordered_adam@1` | `calibrate/ordered_kernels.py` | REWEIGHT | one slice on the weight entity; artifact `problem`; params `epochs`, `learning_rate`, `mass`, optional `max_weight_ratio` with `weight_anchor="design"` | weights; `solution`, `result` |
 | `takeup.compare@1` | `transport/target_kernels.py` | compute | one declared source (hold-out facts); population slices; params as `targets.compile@1` plus `entities`, `weight_entity` | `comparison` (`microcosm.targets.comparison` v1) |
-| `diagnostics.calibration@1` | `transport/terminal_kernels.py` | compute | one slice on the weight entity; artifacts `problem`, `solution`, `result`, `surface`; params `weight_entity`, optional `build` | `diagnostics` (`microcosm.diagnostics.calibration` v8) |
+| `diagnostics.calibration@1` | `transport/terminal_kernels.py` | compute | one slice on the weight entity; artifacts `problem`, `solution`, `result`, `surface`; params `weight_entity`, optional `build` | `diagnostics` (`microcosm.diagnostics.calibration` v9) |
 | `gates.battery@1` | `transport/gate_kernels.py` | GATE | params `country`, `gates`, `gates_sha256`, `phase`, `release_candidate`, optional `synthetic_smoke`, `upstream`, and `entities` with `weight_entity`; any artifacts as evidence | `gate_report` (`microcosm.gates.phase-report` v1) |
 | `export.prepare@1` | `transport/terminal_kernels.py` | compute | population slices; the gate reports; params `entities`, `weight_entity`, `time_period`, optional `bindings` | `export_descriptor` |
 | `export.readback@1` | `transport/terminal_kernels.py` | GATE | one declared source (the written H5); artifact `export_descriptor` | `export_readback` |
@@ -106,9 +106,15 @@ that rejects; if it lowers them, the solver's clamp is the tighter bound.
 
 `diagnostics.calibration@1` rebuilds the completed calibration from the
 `problem`, `solution` and `result` artifacts without solving, and emits the
-schema-8 model. Each row describes its target as compiled (its own entity,
-measure and filter), with its hierarchy from the surface's registry. The
-kernel refuses a population whose installed weights are not the solution's,
+schema-9 document (the schema-8 model with its hierarchy labels in
+`hierarchy_catalogs`; a second label for one identifier without a chosen label
+fails the node). Its implementation hash covers the catalogs module
+(`microcosm.diagnostics.catalogs`), the label choices
+(`microcosm.calibrate.hierarchy_labels`) and the geography constants the UK
+choices read, so an edit to a chosen label gives the node a new key and a
+resumed store recomputes it. Each row describes its target as compiled (its
+own entity, measure and filter), with its hierarchy from the surface's
+registry. The kernel refuses a population whose installed weights are not the solution's,
 a result from another solve, and a surface other than the one the problem
 binds (`targets.problem@1` always binds it). So a diagnostics node belongs
 downstream of the one calibration it describes: a build with several

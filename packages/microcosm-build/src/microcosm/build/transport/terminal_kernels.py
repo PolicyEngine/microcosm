@@ -7,8 +7,10 @@ re-keys:
 - ``diagnostics.calibration@1`` rebuilds a completed calibration from the
   ordered ``problem``/``solution``/``result`` artifacts (no solve), checks
   that the population it reads carries exactly that solution's weights, and
-  emits the ``microcosm-diagnostics`` schema-8 model as canonical JSON. The
-  target hierarchy comes from the target surface's registry.
+  emits the ``microcosm-diagnostics`` schema 9 document as canonical JSON:
+  the schema 8 model with its hierarchy labels in ``hierarchy_catalogs``,
+  using the registry country's label choices. The target hierarchy comes
+  from the target surface's registry.
 - ``export.prepare@1`` describes the exact entity tables an export must
   write (columns, dtypes, row count and a content hash per table, plus the
   period) and refuses when any declared gate report does not permit the
@@ -44,10 +46,13 @@ import microcosm.build.artifact_files as artifact_files_module
 import microcosm.calibrate._target_loss_attribution as loss_attribution_module
 import microcosm.calibrate.artifacts as calibrate_artifacts_module
 import microcosm.calibrate.diagnostics as calibrate_diagnostics_module
+import microcosm.calibrate.geography_constants as geography_constants_module
+import microcosm.calibrate.hierarchy_labels as hierarchy_labels_module
 import microcosm.calibrate.matrix as matrix_module
 import microcosm.calibrate.registry as registry_module
 import microcosm.calibrate.solve as solve_module
 import microcosm.calibrate.target as target_module
+import microcosm.diagnostics.catalogs as diagnostics_catalogs_module
 import microcosm.diagnostics.schema as diagnostics_schema_module
 import microcosm.frame.adapters.axiom as axiom_adapter_module
 import microcosm.frame.bundle as frame_bundle_module
@@ -65,7 +70,11 @@ from microcosm.calibrate.artifacts import (
     decode_problem,
     decode_solution,
 )
-from microcosm.diagnostics import CalibrationDiagnosticsV8
+from microcosm.calibrate.hierarchy_labels import hierarchy_label_choices
+from microcosm.diagnostics import (
+    CalibrationDiagnosticsV8,
+    catalog_calibration_diagnostics,
+)
 from microcosm.frame import EntitySchema, Frame, engine_tables
 from microcosm.frame.adapters.axiom import AxiomEntityTableDataset
 from microcosm.graph import (
@@ -185,7 +194,7 @@ def _installed_weights(context: KernelContext, entity: str, ref: str) -> pd.Seri
 
 
 class DiagnosticsCalibrationKernel(KernelBase):
-    """``diagnostics.calibration@1``: one calibration's schema-8 diagnostics."""
+    """``diagnostics.calibration@1``: one calibration's schema 9 diagnostics."""
 
     ref = "diagnostics.calibration@1"
     capabilities = Capabilities(
@@ -198,6 +207,9 @@ class DiagnosticsCalibrationKernel(KernelBase):
     _optional = frozenset({"build"})
 
     def implementation_hash(self) -> str:
+        # The published document is built by the catalogs module with the
+        # registry country's label choices (which read the UK geography
+        # labels), so an edit to a chosen label re-keys this node.
         return source_hash(
             type(self),
             graph_inputs,
@@ -206,6 +218,9 @@ class DiagnosticsCalibrationKernel(KernelBase):
             calibrate_artifacts_module,
             calibrate_diagnostics_module,
             diagnostics_schema_module,
+            diagnostics_catalogs_module,
+            hierarchy_labels_module,
+            geography_constants_module,
             loss_attribution_module,
             solve_module,
             matrix_module,
@@ -278,7 +293,13 @@ class DiagnosticsCalibrationKernel(KernelBase):
                 "surface_sha256": surface.sha256,
             },
         )
-        model = CalibrationDiagnosticsV8.model_validate(payload)
+        # Published as schema 9: the hierarchy labels go into catalogs, and a
+        # row set that labels one identifier two ways without a chosen label
+        # is refused (HierarchyLabelConflictError).
+        model = catalog_calibration_diagnostics(
+            CalibrationDiagnosticsV8.model_validate(payload),
+            label_choices=hierarchy_label_choices(surface.registry.country),
+        )
         diagnostics = canonical_json(
             model.model_dump(mode="python", exclude_defaults=True)
         )

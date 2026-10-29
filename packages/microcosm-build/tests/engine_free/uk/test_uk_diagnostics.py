@@ -13,6 +13,7 @@ from microcosm.build.uk_runtime.diagnostics import (
     UK_DIAGNOSTICS_SCHEMA_VERSION,
     UK_TARGET_GEOGRAPHY_LEVELS,
     uk_calibration_diagnostics_payload,
+    uk_hierarchy_label_choices,
     uk_support_limited_misses,
     uk_weakest_areas_by_fit,
     uk_weakest_families,
@@ -21,7 +22,7 @@ from microcosm.build.uk_runtime.diagnostics import (
     write_uk_calibration_diagnostics,
 )
 from microcosm.calibrate import (
-    CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION,
+    CALIBRATION_DIAGNOSTICS_ASSEMBLY_SCHEMA_VERSION,
     CalibrationHierarchy,
     HierarchyCategory,
     HierarchyGeography,
@@ -31,10 +32,13 @@ from microcosm.calibrate import (
     diagnostics_payload,
     score_targets,
 )
+from microcosm.calibrate.geography_constants import UK_GEOGRAPHY_ID_TO_LABEL
 from microcosm.diagnostics import (
     CalibrationDiagnosticsV8,
     DiagnosticsWriteFailure,
     DiagnosticsWriteSuccess,
+    HierarchyLabelChoices,
+    catalog_calibration_diagnostics,
 )
 from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
 from test_support.microcosm_diagnostics.json_schema import (
@@ -569,7 +573,7 @@ def test_payload_preserves_common_schema_and_adds_versioned_uk_evidence() -> Non
         build={"release_id": "fixture"},
     )
 
-    assert payload["schema_version"] == CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION
+    assert payload["schema_version"] == CALIBRATION_DIAGNOSTICS_ASSEMBLY_SCHEMA_VERSION
     assert "ess_fraction" not in payload
     assert all("geography_level" not in row for row in payload["targets"])
     assert payload["target_registry"] == {
@@ -1062,13 +1066,19 @@ def test_writer_round_trips_strict_json(tmp_path: Path) -> None:
 
     assert isinstance(outcome, DiagnosticsWriteSuccess)
     assert outcome.path == path
-    assert json.loads(path.read_text(encoding="utf-8")) == (
+    assert outcome.schema_version == 9
+    assembled = CalibrationDiagnosticsV8.model_validate(
         uk_calibration_diagnostics_payload(
             result,
             frame,
             target_geography_levels=geography,
             target_registry=registry,
         )
+    )
+    assert json.loads(path.read_text(encoding="utf-8")) == json.loads(
+        catalog_calibration_diagnostics(
+            assembled, label_choices=uk_hierarchy_label_choices()
+        ).model_dump_json(exclude_defaults=True)
     )
     invalid = write_uk_calibration_diagnostics(
         result,
@@ -1181,13 +1191,16 @@ def test_writer_delegates_a_typed_payload_to_the_canonical_writer(
     def canonical_writer(
         diagnostics: CalibrationDiagnosticsV8,
         destination: Path | str,
+        *,
+        label_choices: HierarchyLabelChoices | None = None,
     ) -> DiagnosticsWriteSuccess:
         captured["diagnostics"] = diagnostics
         captured["destination"] = Path(destination)
+        captured["label_choices"] = label_choices
         return DiagnosticsWriteSuccess(
             status="available",
             path=Path(destination),
-            schema_version=8,
+            schema_version=9,
             sha256="a" * 64,
         )
 
@@ -1207,6 +1220,26 @@ def test_writer_delegates_a_typed_payload_to_the_canonical_writer(
     assert isinstance(outcome, DiagnosticsWriteSuccess)
     assert isinstance(captured["diagnostics"], CalibrationDiagnosticsV8)
     assert captured["destination"] == path
+    assert captured["label_choices"] == uk_hierarchy_label_choices()
+
+
+def test_uk_label_choices_name_every_area_microcosm_has_a_catalog_for() -> None:
+    # UK publishers name one area several ways ("Hartlepool UA" from HMRC,
+    # "Hartlepool" from ONS). Diagnostics schema 9 holds one label per area,
+    # taken from Microcosm's own catalogs: UK_GEOGRAPHY_ID_TO_LABEL for the
+    # UK, its nations and English regions, and the ONS April 2023 names in
+    # local_authority_names.json for local authorities.
+    choices = uk_hierarchy_label_choices()
+
+    assert choices.geography_dimensions == frozenset({"geography"})
+    assert dict(choices.dimension_values) == {}
+    for code, label in UK_GEOGRAPHY_ID_TO_LABEL.items():
+        assert choices.geographies[code] == label
+    assert choices.geographies["E06000001"] == "Hartlepool"
+    assert choices.geographies["E06000023"] == "Bristol, City of"
+    assert choices.geographies["E08000013"] == "St. Helens"
+    assert choices.geographies["W06000001"] == "Isle of Anglesey"
+    assert len(choices.geographies) == len(UK_GEOGRAPHY_ID_TO_LABEL) + 361
 
 
 def test_geography_level_vocabulary_includes_future_release_levels() -> None:
