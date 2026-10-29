@@ -1707,6 +1707,25 @@
           "expected_row_count": 8
         }
       ]
+    },
+    {
+      "resource": "obr_savings_income_growth_facts.json",
+      "purpose": "OBR Economic and fiscal outlook, October 2026, receipts Table 4.5 (\"Self-employed income streams: growth rates\"): the savings income row's growth on a year earlier, pre-measures, from 2024-25 to 2031-32. The SPI Table 3.7 interest and other income rows by band grow by it from 2023-24 to the calibration year's window, the path the Budget's savings costing grows its base by (María's ruling of 2026-10-29, microcosm#1418).",
+      "consumers": [
+        "uk_runtime.hmrc_uprating"
+      ],
+      "planned_consumers": [],
+      "selections": [
+        {
+          "label": "obr_october_2026_savings_income_growth",
+          "selector": {
+            "source_name": "obr",
+            "source_concept": "obr.self_employed_income_growth.savings_income",
+            "period_type": "fiscal_year"
+          },
+          "expected_row_count": 8
+        }
+      ]
     }
   ]
 }

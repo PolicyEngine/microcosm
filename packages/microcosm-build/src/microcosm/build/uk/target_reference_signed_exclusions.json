@@ -186,6 +186,162 @@
         "dimension": "geography_id",
         "value": "W92000004"
       }
+    },
+    {
+      "target_id": "hmrc.spi.self_employment_income.count_by_self_employment_income_band",
+      "reason_id": "zero_band_counts_everyone_without_the_income",
+      "rationale": "SPI 2023-24 Table 3.10's zero band counts people with a self-employment source and no profit after loss relief. The binding bands people on their self-employment income alone, so a band from 0 to 1 would count everyone without self-employment income. It also lies outside the GBP 1 to GBP 10,000 range María's ruling of 2026-10-29 binds. Signed out of the band fan-out; the eight bands from GBP 1 stay bound.",
+      "tracking": "microcosm#1418",
+      "approved_by": "juaristi22",
+      "approved_on": "2026-10-29",
+      "row": {
+        "dimension": "self_employment_income_lower_bound",
+        "value": 0
+      }
+    },
+    {
+      "target_id": "hmrc.spi.self_employment_income.count_by_self_employment_income_band",
+      "reason_id": "bound_by_table_3_6_from_10000",
+      "rationale": "SPI 2023-24 Table 3.10's self-employment bands from GBP 10,000 stay with Table 3.6's self-employment rows by total income, so the two tables do not pull against each other: María's ruling of 2026-10-29 binds Table 3.10 from GBP 1 to GBP 10,000, the small-profit end of the Budget's trading allowance measures (Table 6.1 line 15). Signed out of the band fan-out; the eight bands from GBP 1 stay bound.",
+      "tracking": "microcosm#1418",
+      "approved_by": "juaristi22",
+      "approved_on": "2026-10-29",
+      "row": {
+        "dimension": "self_employment_income_lower_bound",
+        "value": 10000
+      }
+    },
+    {
+      "target_id": "hmrc.spi.self_employment_income.count_by_self_employment_income_band",
+      "reason_id": "bound_by_table_3_6_from_10000",
+      "rationale": "SPI 2023-24 Table 3.10's self-employment bands from GBP 10,000 stay with Table 3.6's self-employment rows by total income, so the two tables do not pull against each other: María's ruling of 2026-10-29 binds Table 3.10 from GBP 1 to GBP 10,000, the small-profit end of the Budget's trading allowance measures (Table 6.1 line 15). Signed out of the band fan-out; the eight bands from GBP 1 stay bound.",
+      "tracking": "microcosm#1418",
+      "approved_by": "juaristi22",
+      "approved_on": "2026-10-29",
+      "row": {
+        "dimension": "self_employment_income_lower_bound",
+        "value": 15000
+      }
+    },
+    {
+      "target_id": "hmrc.spi.self_employment_income.count_by_self_employment_income_band",
+      "reason_id": "bound_by_table_3_6_from_10000",
+      "rationale": "SPI 2023-24 Table 3.10's self-employment bands from GBP 10,000 stay with Table 3.6's self-employment rows by total income, so the two tables do not pull against each other: María's ruling of 2026-10-29 binds Table 3.10 from GBP 1 to GBP 10,000, the small-profit end of the Budget's trading allowance measures (Table 6.1 line 15). Signed out of the band fan-out; the eight bands from GBP 1 stay bound.",
+      "tracking": "microcosm#1418",
+      "approved_by": "juaristi22",
+      "approved_on": "2026-10-29",
+      "row": {
+        "dimension": "self_employment_income_lower_bound",
+        "value": 20000
+      }
+    },
+    {
+      "target_id": "hmrc.spi.self_employment_income.count_by_self_employment_income_band",
+      "reason_id": "bound_by_table_3_6_from_10000",
+      "rationale": "SPI 2023-24 Table 3.10's self-employment bands from GBP 10,000 stay with Table 3.6's self-employment rows by total income, so the two tables do not pull against each other: María's ruling of 2026-10-29 binds Table 3.10 from GBP 1 to GBP 10,000, the small-profit end of the Budget's trading allowance measures (Table 6.1 line 15). Signed out of the band fan-out; the eight bands from GBP 1 stay bound.",
+      "tracking": "microcosm#1418",
+      "approved_by": "juaristi22",
+      "approved_on": "2026-10-29",
+      "row": {
+        "dimension": "self_employment_income_lower_bound",
+        "value": 30000
+      }
+    },
+    {
+      "target_id": "hmrc.spi.self_employment_income.count_by_self_employment_income_band",
+      "reason_id": "bound_by_table_3_6_from_10000",
+      "rationale": "SPI 2023-24 Table 3.10's self-employment bands from GBP 10,000 stay with Table 3.6's self-employment rows by total income, so the two tables do not pull against each other: María's ruling of 2026-10-29 binds Table 3.10 from GBP 1 to GBP 10,000, the small-profit end of the Budget's trading allowance measures (Table 6.1 line 15). Signed out of the band fan-out; the eight bands from GBP 1 stay bound.",
+      "tracking": "microcosm#1418",
+      "approved_by": "juaristi22",
+      "approved_on": "2026-10-29",
+      "row": {
+        "dimension": "self_employment_income_lower_bound",
+        "value": 50000
+      }
+    },
+    {
+      "target_id": "hmrc.spi.self_employment_income.count_by_self_employment_income_band",
+      "reason_id": "bound_by_table_3_6_from_10000",
+      "rationale": "SPI 2023-24 Table 3.10's self-employment bands from GBP 10,000 stay with Table 3.6's self-employment rows by total income, so the two tables do not pull against each other: María's ruling of 2026-10-29 binds Table 3.10 from GBP 1 to GBP 10,000, the small-profit end of the Budget's trading allowance measures (Table 6.1 line 15). Signed out of the band fan-out; the eight bands from GBP 1 stay bound.",
+      "tracking": "microcosm#1418",
+      "approved_by": "juaristi22",
+      "approved_on": "2026-10-29",
+      "row": {
+        "dimension": "self_employment_income_lower_bound",
+        "value": 100000
+      }
+    },
+    {
+      "target_id": "hmrc.spi.self_employment_income.amount_by_self_employment_income_band",
+      "reason_id": "bound_by_table_3_6_from_10000",
+      "rationale": "SPI 2023-24 Table 3.10's self-employment bands from GBP 10,000 stay with Table 3.6's self-employment rows by total income, so the two tables do not pull against each other: María's ruling of 2026-10-29 binds Table 3.10 from GBP 1 to GBP 10,000, the small-profit end of the Budget's trading allowance measures (Table 6.1 line 15). Signed out of the band fan-out; the eight bands from GBP 1 stay bound.",
+      "tracking": "microcosm#1418",
+      "approved_by": "juaristi22",
+      "approved_on": "2026-10-29",
+      "row": {
+        "dimension": "self_employment_income_lower_bound",
+        "value": 10000
+      }
+    },
+    {
+      "target_id": "hmrc.spi.self_employment_income.amount_by_self_employment_income_band",
+      "reason_id": "bound_by_table_3_6_from_10000",
+      "rationale": "SPI 2023-24 Table 3.10's self-employment bands from GBP 10,000 stay with Table 3.6's self-employment rows by total income, so the two tables do not pull against each other: María's ruling of 2026-10-29 binds Table 3.10 from GBP 1 to GBP 10,000, the small-profit end of the Budget's trading allowance measures (Table 6.1 line 15). Signed out of the band fan-out; the eight bands from GBP 1 stay bound.",
+      "tracking": "microcosm#1418",
+      "approved_by": "juaristi22",
+      "approved_on": "2026-10-29",
+      "row": {
+        "dimension": "self_employment_income_lower_bound",
+        "value": 15000
+      }
+    },
+    {
+      "target_id": "hmrc.spi.self_employment_income.amount_by_self_employment_income_band",
+      "reason_id": "bound_by_table_3_6_from_10000",
+      "rationale": "SPI 2023-24 Table 3.10's self-employment bands from GBP 10,000 stay with Table 3.6's self-employment rows by total income, so the two tables do not pull against each other: María's ruling of 2026-10-29 binds Table 3.10 from GBP 1 to GBP 10,000, the small-profit end of the Budget's trading allowance measures (Table 6.1 line 15). Signed out of the band fan-out; the eight bands from GBP 1 stay bound.",
+      "tracking": "microcosm#1418",
+      "approved_by": "juaristi22",
+      "approved_on": "2026-10-29",
+      "row": {
+        "dimension": "self_employment_income_lower_bound",
+        "value": 20000
+      }
+    },
+    {
+      "target_id": "hmrc.spi.self_employment_income.amount_by_self_employment_income_band",
+      "reason_id": "bound_by_table_3_6_from_10000",
+      "rationale": "SPI 2023-24 Table 3.10's self-employment bands from GBP 10,000 stay with Table 3.6's self-employment rows by total income, so the two tables do not pull against each other: María's ruling of 2026-10-29 binds Table 3.10 from GBP 1 to GBP 10,000, the small-profit end of the Budget's trading allowance measures (Table 6.1 line 15). Signed out of the band fan-out; the eight bands from GBP 1 stay bound.",
+      "tracking": "microcosm#1418",
+      "approved_by": "juaristi22",
+      "approved_on": "2026-10-29",
+      "row": {
+        "dimension": "self_employment_income_lower_bound",
+        "value": 30000
+      }
+    },
+    {
+      "target_id": "hmrc.spi.self_employment_income.amount_by_self_employment_income_band",
+      "reason_id": "bound_by_table_3_6_from_10000",
+      "rationale": "SPI 2023-24 Table 3.10's self-employment bands from GBP 10,000 stay with Table 3.6's self-employment rows by total income, so the two tables do not pull against each other: María's ruling of 2026-10-29 binds Table 3.10 from GBP 1 to GBP 10,000, the small-profit end of the Budget's trading allowance measures (Table 6.1 line 15). Signed out of the band fan-out; the eight bands from GBP 1 stay bound.",
+      "tracking": "microcosm#1418",
+      "approved_by": "juaristi22",
+      "approved_on": "2026-10-29",
+      "row": {
+        "dimension": "self_employment_income_lower_bound",
+        "value": 50000
+      }
+    },
+    {
+      "target_id": "hmrc.spi.self_employment_income.amount_by_self_employment_income_band",
+      "reason_id": "bound_by_table_3_6_from_10000",
+      "rationale": "SPI 2023-24 Table 3.10's self-employment bands from GBP 10,000 stay with Table 3.6's self-employment rows by total income, so the two tables do not pull against each other: María's ruling of 2026-10-29 binds Table 3.10 from GBP 1 to GBP 10,000, the small-profit end of the Budget's trading allowance measures (Table 6.1 line 15). Signed out of the band fan-out; the eight bands from GBP 1 stay bound.",
+      "tracking": "microcosm#1418",
+      "approved_by": "juaristi22",
+      "approved_on": "2026-10-29",
+      "row": {
+        "dimension": "self_employment_income_lower_bound",
+        "value": 100000
+      }
     }
   ]
 }

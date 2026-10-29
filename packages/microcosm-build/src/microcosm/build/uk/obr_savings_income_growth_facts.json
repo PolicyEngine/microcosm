@@ -1,0 +1,383 @@
+{
+  "schema_version": 1,
+  "country": "uk",
+  "kind": "uk_vendored_ledger_facts",
+  "resource": "obr_savings_income_growth_facts.json",
+  "purpose": "OBR Economic and fiscal outlook, October 2026, receipts Table 4.5 (\"Self-employed income streams: growth rates\"): the savings income row's growth on a year earlier, pre-measures, from 2024-25 to 2031-32. The SPI Table 3.7 interest and other income rows by band grow by it from 2023-24 to the calibration year's window, the path the Budget's savings costing grows its base by (Mar\u00eda's ruling of 2026-10-29, microcosm#1418).",
+  "consumers": [
+    "uk_runtime.hmrc_uprating"
+  ],
+  "planned_consumers": [],
+  "policy": "Rows are copied verbatim from the pinned Chronicle consumer feed named in source_fact_feed; every value is a publisher-stated fact. Consumers declare their own arithmetic on these rows and never edit this file by hand: regenerate it with tools/vendor_uk_ledger_facts.py.",
+  "generator": {
+    "tool": "tools/vendor_uk_ledger_facts.py",
+    "version": 1
+  },
+  "source_fact_feed": {
+    "source_repo": "PolicyEngine/chronicle",
+    "source_commit": "53815b24844cb63c103209f197f9d3d9e2e424a9",
+    "build": "build-bundle --suite uk -> build-consumer-artifact",
+    "artifact_schema_version": "policyengine_ledger.consumer_artifact.v2",
+    "fact_row_count": 1511063,
+    "facts_sha256": "4b0e5c1ad057946407807428a1c79c70d9b14e2f8539ea8fb93524573c026227",
+    "manifest_sha256": "708231c77432d2838bf1ee7d8f3080e49ca0e59edccdd45c36b3405db2cb45fb"
+  },
+  "selections": [
+    {
+      "label": "obr_october_2026_savings_income_growth",
+      "selector": {
+        "source_name": "obr",
+        "source_concept": "obr.self_employed_income_growth.savings_income",
+        "period_type": "fiscal_year"
+      },
+      "row_count": 8
+    }
+  ],
+  "row_count": 8,
+  "rows": [
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_5b5275fb6a97489ec56f5029",
+      "semantic_fact_key": "ledger_semantic_fact_v2_b6daf655f7c9db5d9f0655fe",
+      "source_record_id": "obr.efo_2026_10.receipts.self_employed_income_growth.savings_income.fy2024.self_employed_income_growth_savings_income.growth_rate",
+      "concept": "obr.self_employed_income_growth.savings_income",
+      "measure_id": "growth_rate",
+      "unit": "percent",
+      "aggregation": "rate",
+      "entity": {
+        "name": "person",
+        "role": "self_assessment_taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "obr.efo_2026_10.receipts.self_employed_income_growth.savings_income.fy2024",
+        "groupby_dimension": "obr.efo_line",
+        "groupby_value_id": "self_employed_income_growth_savings_income",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "obr",
+        "source_table": "EFO October 2026 detailed forecast tables: receipts",
+        "source_file": "efo_receipts.xlsx",
+        "source_sha256": "d115705716d77b11c190385d41cb1924f30080c9331a8a386c04d4e65a368e95",
+        "vintage": "efo_october_2026",
+        "raw_r2_key": "raw/uk/obr/obr-efo-receipts-october-2026/2026/d115705716d77b11c190385d41cb1924f30080c9331a8a386c04d4e65a368e95/efo_receipts.xlsx"
+      },
+      "value": 34.96108270919673
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_1af71ff79b716558bfa58d43",
+      "semantic_fact_key": "ledger_semantic_fact_v2_c585d33ffb6ca171038b59ab",
+      "source_record_id": "obr.efo_2026_10.receipts.self_employed_income_growth.savings_income.fy2025.self_employed_income_growth_savings_income.growth_rate",
+      "concept": "obr.self_employed_income_growth.savings_income",
+      "measure_id": "growth_rate",
+      "unit": "percent",
+      "aggregation": "rate",
+      "entity": {
+        "name": "person",
+        "role": "self_assessment_taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": "2025-04-01",
+        "end_date": "2026-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "obr.efo_2026_10.receipts.self_employed_income_growth.savings_income.fy2025",
+        "groupby_dimension": "obr.efo_line",
+        "groupby_value_id": "self_employed_income_growth_savings_income",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "obr",
+        "source_table": "EFO October 2026 detailed forecast tables: receipts",
+        "source_file": "efo_receipts.xlsx",
+        "source_sha256": "d115705716d77b11c190385d41cb1924f30080c9331a8a386c04d4e65a368e95",
+        "vintage": "efo_october_2026",
+        "raw_r2_key": "raw/uk/obr/obr-efo-receipts-october-2026/2026/d115705716d77b11c190385d41cb1924f30080c9331a8a386c04d4e65a368e95/efo_receipts.xlsx"
+      },
+      "value": 0.6496896187592638
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_04e99ef40f91fc196422b705",
+      "semantic_fact_key": "ledger_semantic_fact_v2_8fe792ed10c2e01f68409812",
+      "source_record_id": "obr.efo_2026_10.receipts.self_employed_income_growth.savings_income.fy2026.self_employed_income_growth_savings_income.growth_rate",
+      "concept": "obr.self_employed_income_growth.savings_income",
+      "measure_id": "growth_rate",
+      "unit": "percent",
+      "aggregation": "rate",
+      "entity": {
+        "name": "person",
+        "role": "self_assessment_taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2026
+      },
+      "period_coverage": {
+        "start_date": "2026-04-01",
+        "end_date": "2027-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "obr.efo_2026_10.receipts.self_employed_income_growth.savings_income.fy2026",
+        "groupby_dimension": "obr.efo_line",
+        "groupby_value_id": "self_employed_income_growth_savings_income",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "obr",
+        "source_table": "EFO October 2026 detailed forecast tables: receipts",
+        "source_file": "efo_receipts.xlsx",
+        "source_sha256": "d115705716d77b11c190385d41cb1924f30080c9331a8a386c04d4e65a368e95",
+        "vintage": "efo_october_2026",
+        "raw_r2_key": "raw/uk/obr/obr-efo-receipts-october-2026/2026/d115705716d77b11c190385d41cb1924f30080c9331a8a386c04d4e65a368e95/efo_receipts.xlsx"
+      },
+      "value": 0.6683540761534434
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_dd95db450ef706e120bd6cc3",
+      "semantic_fact_key": "ledger_semantic_fact_v2_041fbf4bab32a8e2e210ea02",
+      "source_record_id": "obr.efo_2026_10.receipts.self_employed_income_growth.savings_income.fy2027.self_employed_income_growth_savings_income.growth_rate",
+      "concept": "obr.self_employed_income_growth.savings_income",
+      "measure_id": "growth_rate",
+      "unit": "percent",
+      "aggregation": "rate",
+      "entity": {
+        "name": "person",
+        "role": "self_assessment_taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2027
+      },
+      "period_coverage": {
+        "start_date": "2027-04-01",
+        "end_date": "2028-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "obr.efo_2026_10.receipts.self_employed_income_growth.savings_income.fy2027",
+        "groupby_dimension": "obr.efo_line",
+        "groupby_value_id": "self_employed_income_growth_savings_income",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "obr",
+        "source_table": "EFO October 2026 detailed forecast tables: receipts",
+        "source_file": "efo_receipts.xlsx",
+        "source_sha256": "d115705716d77b11c190385d41cb1924f30080c9331a8a386c04d4e65a368e95",
+        "vintage": "efo_october_2026",
+        "raw_r2_key": "raw/uk/obr/obr-efo-receipts-october-2026/2026/d115705716d77b11c190385d41cb1924f30080c9331a8a386c04d4e65a368e95/efo_receipts.xlsx"
+      },
+      "value": 6.138376573221471
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_92a6ae622a1890b2b3ab53a3",
+      "semantic_fact_key": "ledger_semantic_fact_v2_e4ad383020d0fd768a7b55fd",
+      "source_record_id": "obr.efo_2026_10.receipts.self_employed_income_growth.savings_income.fy2028.self_employed_income_growth_savings_income.growth_rate",
+      "concept": "obr.self_employed_income_growth.savings_income",
+      "measure_id": "growth_rate",
+      "unit": "percent",
+      "aggregation": "rate",
+      "entity": {
+        "name": "person",
+        "role": "self_assessment_taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2028
+      },
+      "period_coverage": {
+        "start_date": "2028-04-01",
+        "end_date": "2029-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "obr.efo_2026_10.receipts.self_employed_income_growth.savings_income.fy2028",
+        "groupby_dimension": "obr.efo_line",
+        "groupby_value_id": "self_employed_income_growth_savings_income",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "obr",
+        "source_table": "EFO October 2026 detailed forecast tables: receipts",
+        "source_file": "efo_receipts.xlsx",
+        "source_sha256": "d115705716d77b11c190385d41cb1924f30080c9331a8a386c04d4e65a368e95",
+        "vintage": "efo_october_2026",
+        "raw_r2_key": "raw/uk/obr/obr-efo-receipts-october-2026/2026/d115705716d77b11c190385d41cb1924f30080c9331a8a386c04d4e65a368e95/efo_receipts.xlsx"
+      },
+      "value": 5.1434341752103485
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_89bf660eb8c70d78d149950c",
+      "semantic_fact_key": "ledger_semantic_fact_v2_592b83898a90355f66f75d49",
+      "source_record_id": "obr.efo_2026_10.receipts.self_employed_income_growth.savings_income.fy2029.self_employed_income_growth_savings_income.growth_rate",
+      "concept": "obr.self_employed_income_growth.savings_income",
+      "measure_id": "growth_rate",
+      "unit": "percent",
+      "aggregation": "rate",
+      "entity": {
+        "name": "person",
+        "role": "self_assessment_taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2029
+      },
+      "period_coverage": {
+        "start_date": "2029-04-01",
+        "end_date": "2030-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "obr.efo_2026_10.receipts.self_employed_income_growth.savings_income.fy2029",
+        "groupby_dimension": "obr.efo_line",
+        "groupby_value_id": "self_employed_income_growth_savings_income",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "obr",
+        "source_table": "EFO October 2026 detailed forecast tables: receipts",
+        "source_file": "efo_receipts.xlsx",
+        "source_sha256": "d115705716d77b11c190385d41cb1924f30080c9331a8a386c04d4e65a368e95",
+        "vintage": "efo_october_2026",
+        "raw_r2_key": "raw/uk/obr/obr-efo-receipts-october-2026/2026/d115705716d77b11c190385d41cb1924f30080c9331a8a386c04d4e65a368e95/efo_receipts.xlsx"
+      },
+      "value": 4.936559409911245
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_7d858dcddbcc37da055f2f2c",
+      "semantic_fact_key": "ledger_semantic_fact_v2_6bd679bc11531eb39e0fe053",
+      "source_record_id": "obr.efo_2026_10.receipts.self_employed_income_growth.savings_income.fy2030.self_employed_income_growth_savings_income.growth_rate",
+      "concept": "obr.self_employed_income_growth.savings_income",
+      "measure_id": "growth_rate",
+      "unit": "percent",
+      "aggregation": "rate",
+      "entity": {
+        "name": "person",
+        "role": "self_assessment_taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2030
+      },
+      "period_coverage": {
+        "start_date": "2030-04-01",
+        "end_date": "2031-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "obr.efo_2026_10.receipts.self_employed_income_growth.savings_income.fy2030",
+        "groupby_dimension": "obr.efo_line",
+        "groupby_value_id": "self_employed_income_growth_savings_income",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "obr",
+        "source_table": "EFO October 2026 detailed forecast tables: receipts",
+        "source_file": "efo_receipts.xlsx",
+        "source_sha256": "d115705716d77b11c190385d41cb1924f30080c9331a8a386c04d4e65a368e95",
+        "vintage": "efo_october_2026",
+        "raw_r2_key": "raw/uk/obr/obr-efo-receipts-october-2026/2026/d115705716d77b11c190385d41cb1924f30080c9331a8a386c04d4e65a368e95/efo_receipts.xlsx"
+      },
+      "value": 5.559480586702126
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_da53ab3928d9b743149b365a",
+      "semantic_fact_key": "ledger_semantic_fact_v2_49672a3cf9f5a4c32f2a2e7b",
+      "source_record_id": "obr.efo_2026_10.receipts.self_employed_income_growth.savings_income.fy2031.self_employed_income_growth_savings_income.growth_rate",
+      "concept": "obr.self_employed_income_growth.savings_income",
+      "measure_id": "growth_rate",
+      "unit": "percent",
+      "aggregation": "rate",
+      "entity": {
+        "name": "person",
+        "role": "self_assessment_taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2031
+      },
+      "period_coverage": {
+        "start_date": "2031-04-01",
+        "end_date": "2032-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "obr.efo_2026_10.receipts.self_employed_income_growth.savings_income.fy2031",
+        "groupby_dimension": "obr.efo_line",
+        "groupby_value_id": "self_employed_income_growth_savings_income",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "obr",
+        "source_table": "EFO October 2026 detailed forecast tables: receipts",
+        "source_file": "efo_receipts.xlsx",
+        "source_sha256": "d115705716d77b11c190385d41cb1924f30080c9331a8a386c04d4e65a368e95",
+        "vintage": "efo_october_2026",
+        "raw_r2_key": "raw/uk/obr/obr-efo-receipts-october-2026/2026/d115705716d77b11c190385d41cb1924f30080c9331a8a386c04d4e65a368e95/efo_receipts.xlsx"
+      },
+      "value": 5.893489202164259
+    }
+  ]
+}

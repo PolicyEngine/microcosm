@@ -148,6 +148,11 @@
       "schema_id": "legacy_json"
     },
     {
+      "path": "obr_savings_income_growth_facts.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
       "path": "slc_liable_stocks.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"

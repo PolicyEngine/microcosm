@@ -1070,6 +1070,13 @@
         "slc.borrowers.plan_5_liable"
       ],
       "reason": "National-only (England) borrower stocks defined by the plan and threshold filters in the binding."
+    },
+    {
+      "targets": [
+        "hmrc.spi.self_employment_income.amount_by_self_employment_income_band",
+        "hmrc.spi.self_employment_income.count_by_self_employment_income_band"
+      ],
+      "reason": "Banded by groupby on the person's own self-employment income after loss relief, SPI Table 3.10's range; the band is the fan-out dimension, not a measurement filter, and Table 3.10 counts taxpayers and non-taxpayers alike. Bound from GBP 1 to GBP 10,000 only, the bands above stay with Table 3.6's self-employment rows by total income, so the two tables do not pull against each other (microcosm#1418)."
     }
   ]
 }
