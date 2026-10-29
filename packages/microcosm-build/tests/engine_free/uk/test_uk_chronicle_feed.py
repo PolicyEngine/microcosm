@@ -15,19 +15,19 @@ def test_national_feed_records_the_complete_merged_source_artifact():
     pin = load_uk_chronicle_feed()
     resource = files("microcosm.build.uk").joinpath("chronicle_feed.json")
     raw = resource.read_bytes()
-    assert pin.source_commit == "942a1fa0adc50d645734481c88f403ac2175e896"
+    assert pin.source_commit == "272c987af175687aca21f82851ef349521802b12"
     assert pin.source_repo == "PolicyEngine/chronicle"
-    assert pin.fact_row_count == 927239
+    assert pin.fact_row_count == 1503315
     assert pin.facts_sha256 == (
-        "a45ae8570206af49d1dc570fe0f9b2ae83ed3b432ac5e430f088f488f0d256da"
+        "084ddf46fa34b1e03b5f0a7287617aeafaf7f614e3619d87a6565409e4adac85"
     )
     assert pin.manifest_sha256 == (
-        "f7af3ec965dc7951f2fbd25b4e06fa6c4b945ed289e4b99d27d3a77c45d3988c"
+        "229afc18d8201bbd59a41777453f487ad750be2802425240ac26ee54849bfafd"
     )
     assert pin.artifact_schema_version == "policyengine_ledger.consumer_artifact.v2"
     assert pin.consumer_fact_schema_versions == ("chronicle.consumer_fact.v4",)
     assert pin.consumer_fact_schema_sha256 == (
-        "cc9efb90e9c73913bc76a89e9df435a9ca6ff49942e63dc8d2bf183c65a70224"
+        "d953306d6f01fbc64db4372d0262d3012ee590269f8a25b276b18dca0626c6a0"
     )
     assert pin.resource_sha256 == hashlib.sha256(raw).hexdigest()
     assert pin.resource_size_bytes == len(raw)

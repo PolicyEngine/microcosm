@@ -11,7 +11,6 @@ import hashlib
 from collections.abc import Mapping
 from dataclasses import replace
 from datetime import date
-from importlib import metadata
 from typing import TYPE_CHECKING
 
 from microcosm.build.country_spec import CountrySpec, load_country_spec
@@ -127,8 +126,9 @@ def build_uk_country_graph(
     spec: CountrySpec | None = None,
     engine_identity: str | None = None,
     review_date: date | None = None,
+    gate_review_date: date | None = None,
     release_candidate: bool = False,
-    skip_holdout: bool = False,
+    skip_holdout: bool = True,
     atomic_geography_definition: Mapping | None = None,
 ) -> UKFullGraph:
     """Compile the canonical full graph; default target scope is all geographies.
@@ -136,6 +136,8 @@ def build_uk_country_graph(
     ``atomic_geography_definition`` is the UK assignment declaration over the
     admitted support bytes (``uk_atomic_assignment_definition``), required
     while the config's ``geography_assignment`` is ``atomic`` (the default).
+    ``gate_review_date`` is the calibrated gates' clock, by default the solve
+    clock ``review_date`` (microcosm#1301).
     """
     from microcosm.graph import compile_graph
     from microcosm.graph.canonical import canonical_json
@@ -155,13 +157,12 @@ def build_uk_country_graph(
             source_year=release.survey_year,
         )
     if engine_identity is None:
+        # The same provenance the spine and full builds hash, so a URL
+        # install's commit keys this graph too.
+        from microcosm.build.uk_runtime.spine_build import _rules_engine_provenance
+
         engine_identity = hashlib.sha256(
-            canonical_json(
-                {
-                    "package": "policyengine-uk",
-                    "version": metadata.version("policyengine-uk"),
-                }
-            )
+            canonical_json(_rules_engine_provenance())
         ).hexdigest()
     review_date = date.today() if review_date is None else review_date
     spine = add_uk_spine_gate_nodes(
@@ -183,6 +184,7 @@ def build_uk_country_graph(
         spine_stage_names=tuple(stage.stage for stage in spec.sources.stages),
         engine_identity=engine_identity,
         review_date=review_date,
+        gate_review_date=gate_review_date,
         sample_fraction=config.effective_sample_fraction,
         release_candidate=release_candidate,
         skip_holdout=skip_holdout,

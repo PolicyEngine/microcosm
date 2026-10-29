@@ -16,8 +16,10 @@ from microcosm.build.uk_runtime.hmrc_income import (
     HMRC_SPI_INCOME_COMPONENTS,
     HMRC_SPI_PUBLICATION_URL,
     HMRC_SPI_TARGET_RECORD_COUNT,
+    LOSS_RELIEF_COLUMN,
     HMRCIncomeBandTargetRecord,
     HMRCIncomeTargetSet,
+    self_employment_income_after_loss_relief,
 )
 from microcosm.build.uk_runtime.national_frame import (
     uk_household_weight_kind,
@@ -153,6 +155,15 @@ def materialize_uk_hmrc_calibration_frame(
         )
         if not np.isfinite(values).all():
             raise ValueError(f"HMRC component {component!r} must be finite.")
+        if component == "self_employment_income" and LOSS_RELIEF_COLUMN in person:
+            # Table 3.6 counts the profit after losses brought forward, which
+            # policyengine-uk keeps apart in loss_relief (microcosm#1095).
+            values = self_employment_income_after_loss_relief(
+                values,
+                pd.to_numeric(person[LOSS_RELIEF_COLUMN], errors="coerce")
+                .fillna(0.0)
+                .to_numpy(dtype=float),
+            )
         if component == "savings_interest_income":
             if "tax_free_savings_income" not in person:
                 raise ValueError(
@@ -435,12 +446,15 @@ def _uk_single_year_dataset(frame: Frame) -> Any:
         raise ImportError(
             "HMRC target materialization requires policyengine-uk."
         ) from exc
+    from microcosm.frame.adapters.policyengine_uk import UK_ISA_INCOME_CONTRACT
+
     tables = engine_tables(frame)
     return UKSingleYearDataset(
         person=tables["person"],
         benunit=tables["benunit"],
         household=tables["household"],
         fiscal_year=int(uk_time_period(frame)),
+        isa_income_contract=dict(UK_ISA_INCOME_CONTRACT),
     )
 
 
@@ -451,6 +465,11 @@ def _default_simulation_factory(dataset: Any) -> Any:
         raise ImportError(
             "HMRC target materialization requires policyengine-uk."
         ) from exc
+    from microcosm.build.uk_runtime.hmrc_uprating import (
+        assert_installed_engine_is_pinned,
+    )
+
+    assert_installed_engine_is_pinned()
     return Microsimulation(dataset=dataset)
 
 

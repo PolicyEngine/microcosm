@@ -9,6 +9,7 @@ area-indexed tables and consumed by :mod:`microcosm.build.uk_runtime.local_geogr
 
 from __future__ import annotations
 
+import functools
 import json
 from collections.abc import Mapping, Sequence
 from importlib import resources as importlib_resources
@@ -17,20 +18,26 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from microcosm.build.uk_runtime.tenure_constants import (
-    UK_TENURE_OWNED_OUTRIGHT,
-    UK_TENURE_OWNED_WITH_MORTGAGE,
-    UK_TENURE_PRIVATE_RENT,
-    UK_TENURE_SOCIAL_RENT,
-    UK_TENURE_TYPE_TO_CATEGORY,
-)
-from microcosm.build.uk_runtime.uc_relationships import uc_family_child_member
+from microcosm.build.target_materialization import prepared_binding_values
+from microcosm.build.uk_runtime.council_tax_constants import UK_COUNCIL_TAX_BANDS
+from microcosm.build.uk_runtime.high_value_homes import uk_high_value_home_metric_names
 
-AREA_TYPES = ("constituency", "la")
+#: ``brma`` is Scotland's 18 Broad Rental Market Areas, the grain ONS's Price
+#: Index of Private Rents publishes Scottish rents at (microcosm#1090, #1262).
+#: It is a partial grain: households outside Scotland carry no BRMA area.
+AREA_TYPES = ("constituency", "la", "brma")
 AREA_TYPE_TO_LEDGER_GEOGRAPHY_LEVEL = {
     "constituency": "constituency",
     "la": "local_authority",
+    "brma": "statistical_scope",
 }
+#: Area types every household belongs to; a partial grain covers some only.
+FULL_AREA_TYPES = ("constituency", "la")
+PARTIAL_AREA_TYPES = ("brma",)
+#: The BRMA grain's metrics: Scotland's PIPR rents, 12 x the BRMA mean x its
+#: private renters, against the same household rent the local-authority rows
+#: read.
+BRMA_METRICS = ("rent/private_rent_brma",)
 INCOME_VARIABLES = ("self_employment_income", "employment_income")
 #: SPI higher rate taxpayers by area (microcosm#1123): the engine's tax_band
 #: on adjusted net income less allowances, as HMRC classes a taxpayer by the
@@ -53,18 +60,20 @@ LA_EXTRA_METRICS = (
     "tenure/social_rent",
     "rent/private_rent",
 )
-#: Bands A-H are the England and Scotland systems; band I exists in Wales only
-#: (the 2005 revaluation) and is carried by the spine (FRS ``ctband`` 9) and
-#: the engine enum, so it binds the Welsh cells that publish it. Appended
-#: last, so the positional metric indices of A-H are unchanged.
-COUNCIL_TAX_BANDS = tuple("ABCDEFGHI")
-#: Local tenure metric -> the shared tenure category it counts, in matrix order.
-_TENURE_METRIC_CATEGORIES = {
-    "tenure/owned_outright": UK_TENURE_OWNED_OUTRIGHT,
-    "tenure/owned_mortgage": UK_TENURE_OWNED_WITH_MORTGAGE,
-    "tenure/private_rent": UK_TENURE_PRIVATE_RENT,
-    "tenure/social_rent": UK_TENURE_SOCIAL_RENT,
-}
+#: DESNZ sub-national domestic energy (microcosm#1207): electricity and gas
+#: kWh, and the gas-connected households. Local authorities bind DESNZ's own
+#: rows; DESNZ publishes no constituency cut, so constituencies bind its
+#: authority totals split by its small-area figures (microcosm#1095).
+ENERGY_METRICS = (
+    "energy/electricity_kwh",
+    "energy/gas_kwh",
+    "energy/gas_connected_households",
+)
+#: England's dwellings with the single adult council tax discount by billing
+#: authority (MHCLG Council Taxbase line 8; microcosm#1095), the cells of the
+#: national single adult row. The return is England's and by billing
+#: authority, so the family is local-authority only.
+LA_COUNCIL_TAX_DISCOUNT_METRICS = ("council_tax/single_adult_discount",)
 COUNTRY_TO_REGION = {
     "England": "SOUTH_EAST",
     "Scotland": "SCOTLAND",
@@ -72,6 +81,7 @@ COUNTRY_TO_REGION = {
     "Northern Ireland": "NORTHERN_IRELAND",
 }
 UK_POPULATION_TARGETS_RESOURCE = "uk_population_targets.json"
+UK_LOCAL_AREA_CROSSWALK_RESOURCE = "local_area_crosswalk.json"
 
 
 def load_uk_population_contract() -> dict[str, Any]:
@@ -83,6 +93,38 @@ def load_uk_population_contract() -> dict[str, Any]:
         .read_text()
     )
     return json.loads(payload)
+
+
+def _brma_name_by_area() -> dict[str, str]:
+    crosswalk = json.loads(
+        importlib_resources.files("microcosm.build.uk")
+        .joinpath(UK_LOCAL_AREA_CROSSWALK_RESOURCE)
+        .read_text()
+    )
+    level = crosswalk["levels"][AREA_TYPE_TO_LEDGER_GEOGRAPHY_LEVEL["brma"]]
+    return {str(code): str(name) for code, name in level["brma_name_by_area"].items()}
+
+
+def uk_brma_area_roster() -> tuple[str, ...]:
+    """The BRMA grain's area codes, Scotland's 18 PIPR BRMAs (``S33...``)."""
+
+    return tuple(sorted(_brma_name_by_area()))
+
+
+def uk_brma_area_codes(brma: Sequence[object]) -> np.ndarray:
+    """Each household's BRMA area code on the BRMA grain, blank outside it.
+
+    The crosswalk names the BRMA of each of the grain's codes
+    (``brma_name_by_area``, from the area-to-BRMA layer), and a placed
+    household reads its BRMA off its assigned area (microcosm#1262), so a
+    Scottish household's code is its BRMA's; any other household belongs to
+    no area of the grain.
+    """
+
+    code_by_name = {name: code for code, name in _brma_name_by_area().items()}
+    return np.asarray(
+        [code_by_name.get(str(value), "") for value in brma], dtype=object
+    )
 
 
 def load_uk_local_geography_contract() -> dict[str, Any]:
@@ -101,6 +143,8 @@ def metric_names(
     _validate_area_type(area_type)
     if target_profile is not None:
         return metric_names_from_target_profile(target_profile, area_type)
+    if area_type == "brma":
+        return BRMA_METRICS
     names: list[str] = []
     for income_variable in INCOME_VARIABLES:
         names.append(f"hmrc/{income_variable}/amount")
@@ -118,8 +162,21 @@ def metric_names(
     # displacing it.
     names.append("households")
     if area_type == "la":
-        names.extend(f"council_tax/band_{band.lower()}" for band in COUNCIL_TAX_BANDS)
+        names.extend(
+            f"council_tax/band_{band.lower()}" for band in UK_COUNCIL_TAX_BANDS
+        )
     names.append(HIGHER_RATE_TAXPAYERS_METRIC)
+    # microcosm#1240: owner-occupied homes above value thresholds, both grains,
+    # appended after every earlier family under the same append-only rule.
+    names.extend(uk_high_value_home_metric_names())
+    # microcosm#1207: DESNZ sub-national domestic energy, appended after every
+    # earlier family under the same rule; the constituency grain joined with
+    # the split of the authorities' totals (microcosm#1095).
+    names.extend(ENERGY_METRICS)
+    # microcosm#1095: England's single adult council tax discount by billing
+    # authority, local authorities only, appended under the same rule.
+    if area_type == "la":
+        names.extend(LA_COUNCIL_TAX_DISCOUNT_METRICS)
     return tuple(names)
 
 
@@ -227,153 +284,204 @@ def area_groups_from_codes(
 
 
 def metric_tables_by_area_group(
-    sim_by_group: Mapping[str, Any],
+    resolver_by_group: Mapping[str, Any],
     area_type: str,
     *,
     period: int | str | None = None,
     household_ids: Sequence[Any] | None = None,
     target_profile: Mapping[str, Any] | Any | None = None,
 ) -> dict[str, pd.DataFrame]:
-    """Compute metric tables for each country/devolution group simulation."""
+    """Compute metric tables for each country/devolution group's resolver."""
 
     return {
         group: compute_household_metrics(
-            sim,
+            resolver,
             area_type,
             period=period,
             household_ids=household_ids,
             target_profile=target_profile,
         )
-        for group, sim in sim_by_group.items()
+        for group, resolver in resolver_by_group.items()
     }
 
 
+#: The binding keys the local line honours. A local declaration that carries
+#: any other (a measurement period, a band, a reduction) refuses rather than
+#: being read without it.
+_LOCAL_BINDING_KEYS = frozenset(
+    {
+        "metric_name",
+        "notes",
+        "value_variable",
+        "value_expression",
+        "from_entity",
+        "map_to",
+        "filters",
+    }
+)
+#: The filter keys the local line honours: one test on a column of the
+#: binding's own entity. A filter that names another entity, a concept or a
+#: reduction refuses, since the local line reads it as none of those.
+_LOCAL_FILTER_KEYS = frozenset(
+    {"variable", "operator", "value", "equals", "in", "lower", "upper"}
+)
+
+
+def local_metric_bindings(area_type: str) -> dict[str, Mapping[str, Any]]:
+    """Each local metric's ``policyengine`` binding for ``area_type``.
+
+    From the packaged contract's local declarations. A metric that several
+    nation-scoped families declare (the council-tax bands of MHCLG,
+    StatsWales and CTAXBASE) must bind the same way in each, and every binding
+    sums onto the household with the keys the local line honours.
+    """
+
+    _validate_area_type(area_type)
+    return dict(_local_metric_bindings(area_type))
+
+
+# Cached on the packaged contract: a test that patches
+# ``load_uk_population_contract`` calls ``_local_metric_bindings.cache_clear()``
+# before and after, or it reads the bindings of the contract before it.
+@functools.cache
+def _local_metric_bindings(area_type: str) -> tuple[tuple[str, Mapping[str, Any]], ...]:
+    level = AREA_TYPE_TO_LEDGER_GEOGRAPHY_LEVEL[area_type]
+    bindings: dict[str, Mapping[str, Any]] = {}
+    for target in load_uk_population_contract()["targets"]:
+        if level not in target.get("geography_levels", ()):
+            continue
+        binding = target["bindings"]["policyengine"]
+        name = str(binding["metric_name"])
+        unhonoured = sorted(set(binding) - _LOCAL_BINDING_KEYS)
+        if unhonoured or binding.get("map_to", "household") != "household":
+            raise ValueError(
+                f"local metric {name!r} declares {unhonoured or binding['map_to']!r}, "
+                "which the local line does not honour: its rows are households."
+            )
+        for predicate in binding.get("filters", ()):
+            unhonoured = sorted(set(predicate) - _LOCAL_FILTER_KEYS)
+            if unhonoured:
+                raise ValueError(
+                    f"local metric {name!r} has a filter that declares "
+                    f"{unhonoured!r}, which the local line does not honour: "
+                    "each filter tests a column of the binding's own entity."
+                )
+        if name in bindings and _binding_terms(bindings[name]) != _binding_terms(
+            binding
+        ):
+            raise ValueError(
+                f"local metric {name!r} is declared with two different bindings."
+            )
+        bindings.setdefault(name, binding)
+    return tuple(bindings.items())
+
+
+def _binding_terms(binding: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        key: value
+        for key, value in binding.items()
+        if key not in ("metric_name", "notes")
+    }
+
+
+class _ResolverColumns:
+    """A frame's columns, each read once through the measure resolver."""
+
+    def __init__(self, resolver: Any) -> None:
+        self._resolver = resolver
+        self._rows = {
+            entity: len(resolver.frame.table(entity))
+            for entity in ("person", "benunit", "household")
+        }
+        self._cache: dict[tuple[str, str], np.ndarray] = {}
+
+    def column(self, entity: str, variable: str) -> np.ndarray:
+        # A count is the all-ones indicator over its own entity, as the
+        # national adapter reads it.
+        if variable == f"{entity}_count":
+            return np.ones(self._rows[entity], dtype=float)
+        key = (entity, variable)
+        if key not in self._cache:
+            if not self._resolver.knows(entity, variable):
+                raise KeyError(f"{entity}.{variable}")
+            values, _route = self._resolver.compute(entity, variable)
+            self._cache[key] = np.asarray(values)
+        return self._cache[key]
+
+
 def compute_household_metrics(
-    sim: Any,
+    resolver: Any,
     area_type: str,
     *,
     period: int | str | None = None,
     household_ids: Sequence[Any] | None = None,
     target_profile: Mapping[str, Any] | Any | None = None,
+    input_period: int | str | None = None,
 ) -> pd.DataFrame:
-    """Compute local calibration metrics on household rows.
+    """Compute local calibration metrics on household rows from their declarations.
 
-    ``sim`` must provide ``calculate(variable, period=...)`` and
-    ``map_result(values, from_entity, to_entity)`` methods compatible with
-    PolicyEngine-UK's microsimulation API. UC child-band membership is
-    evaluated for each benefit unit and summed onto its household row, so a
-    multi-benefit-unit household can contribute to more than one band.
+    Each metric is its declaration's ``policyengine`` binding in
+    ``uk_population_targets.json``, read by the national rows' binding
+    interpreter (:func:`prepared_binding_values`) on columns the measure
+    resolver computes. The local and national lines therefore share one
+    interpreter and one resolver, and a rebind moves every line that reads the
+    declaration. A binding at the person or benefit-unit grain sums onto its
+    household through the simulation's own ``map_result``.
+
+    ``resolver`` is a :class:`UKMeasureResolver` over the frame the rows
+    belong to, at the calibration ``period``. The measures that read stored
+    inputs at the dataset's period (the high-value homes and the domestic
+    energy rows) take that period from the resolver's frame, so
+    ``input_period``, when given, must name it.
     """
 
     _validate_area_type(area_type)
-    matrix = pd.DataFrame()
-
-    for income_variable in INCOME_VARIABLES:
-        income_values = _values(_calculate(sim, income_variable, period))
-        in_spi_frame = _values(_calculate(sim, "income_tax", period)) > 0
-        matrix[f"hmrc/{income_variable}/amount"] = _map_result(
-            sim,
-            income_values * in_spi_frame,
-            "person",
-            "household",
+    if period is not None:
+        resolver.validate_period(period)
+    frame_period = (getattr(resolver.frame, "metadata", None) or {}).get("time_period")
+    if (
+        input_period is not None
+        and frame_period is not None
+        and str(input_period) != str(frame_period)
+    ):
+        raise ValueError(
+            f"input_period {input_period!r} is not the frame's period "
+            f"{frame_period!r}, which the stored-input measures read."
         )
-        matrix[f"hmrc/{income_variable}/count"] = _map_result(
-            sim,
-            (income_values != 0) * in_spi_frame,
-            "person",
-            "household",
+    names = metric_names(area_type, target_profile=target_profile)
+    bindings = local_metric_bindings(area_type)
+    undeclared = [name for name in names if name not in bindings]
+    if undeclared:
+        raise ValueError(f"local metrics without a declaration: {undeclared}.")
+    columns = _ResolverColumns(resolver)
+    matrix = {}
+    for name in names:
+        binding = bindings[name]
+        entity = str(binding.get("from_entity") or "household")
+        values = prepared_binding_values(columns, entity, binding)
+        matrix[name] = (
+            np.asarray(values, dtype=float)
+            if entity == "household"
+            else _map_result(resolver.simulation, values, entity, "household")
         )
-
-    in_spi_frame = _values(_calculate(sim, "income_tax", period)) > 0
-    higher_rate = _values(_calculate(sim, "tax_band", period)) == "HIGHER"
-    matrix[HIGHER_RATE_TAXPAYERS_METRIC] = _map_result(
-        sim,
-        higher_rate & in_spi_frame,
-        "person",
-        "household",
+    return _indexed_metrics(
+        pd.DataFrame(matrix), resolver.frame, area_type, household_ids, target_profile
     )
 
-    age = _values(_calculate(sim, "age", period))
-    for lower, upper in AGE_BANDS:
-        in_band = (age >= lower) & (age < upper)
-        matrix[f"age/{lower}_{upper}"] = _map_result(
-            sim,
-            in_band,
-            "person",
-            "household",
-        )
 
-    matrix["households"] = np.ones(len(matrix), dtype=float)
-
-    on_uc = (_values(_calculate(sim, "universal_credit", period)) > 0).astype(float)
-    on_uc_hh = _map_result(sim, on_uc, "benunit", "household")
-    matrix["uc_households"] = on_uc_hh
-
-    if area_type == "constituency":
-        # The national UC-by-children rebind's composition (microcosm#1095):
-        # the engine's age-18 num_children moved 2.77% of UC-reporting units
-        # into another band, mostly by dropping 18- and 19-year-old
-        # qualifying young people.
-        claimant = _values(_calculate(sim, "is_uc_claimant", period)).astype(bool)
-        qualifying = _values(
-            _calculate(
-                sim, "is_child_or_qualifying_young_person_for_universal_credit", period
-            )
-        ).astype(bool)
-        children = uc_family_child_member(claimant, qualifying, age)
-        num_children = _map_result(sim, children.astype(float), "person", "benunit")
-        on_uc_bool = on_uc > 0
-        child_bands = (
-            ("uc_hh_0_children", num_children == 0),
-            ("uc_hh_1_child", num_children == 1),
-            ("uc_hh_2_children", num_children == 2),
-            ("uc_hh_3plus_children", num_children >= 3),
-        )
-        for metric, in_band in child_bands:
-            matrix[metric] = _map_result(
-                sim,
-                on_uc_bool & in_band,
-                "benunit",
-                "household",
-            )
-
-    if area_type == "la":
-        hbai_net_income = _values(
-            _calculate(sim, "equiv_hbai_household_net_income", period)
-        )
-        hbai_net_income_ahc = _values(
-            _calculate(sim, "equiv_hbai_household_net_income_ahc", period)
-        )
-        housing_costs = hbai_net_income - hbai_net_income_ahc
-
-        matrix["ons/equiv_net_income_bhc"] = hbai_net_income
-        matrix["ons/equiv_net_income_ahc"] = hbai_net_income_ahc
-        matrix["ons/equiv_housing_costs"] = housing_costs
-
-        tenure_type = _values(_calculate(sim, "tenure_type", period))
-        tenure_category = (
-            pd.Series(tenure_type).map(UK_TENURE_TYPE_TO_CATEGORY).to_numpy()
-        )
-        for metric, category in _TENURE_METRIC_CATEGORIES.items():
-            matrix[metric] = (tenure_category == category).astype(float)
-
-        is_private_renter = (tenure_type == "RENT_PRIVATELY").astype(float)
-        benunit_rent = _values(_calculate(sim, "benunit_rent", period))
-        household_rent = _map_result(sim, benunit_rent, "benunit", "household")
-        matrix["rent/private_rent"] = household_rent * is_private_renter
-
-        council_tax_band = _values(_calculate(sim, "council_tax_band", period))
-        for band in COUNCIL_TAX_BANDS:
-            matrix[f"council_tax/band_{band.lower()}"] = (
-                council_tax_band == band
-            ).astype(float)
+def _indexed_metrics(
+    matrix: pd.DataFrame,
+    frame: Any,
+    area_type: str,
+    household_ids: Sequence[Any] | None,
+    target_profile: Mapping[str, Any] | Any | None,
+) -> pd.DataFrame:
+    """Select the area type's metrics in order and index them by household."""
 
     expected = metric_names(area_type, target_profile=target_profile)
     matrix = matrix.loc[:, expected]
     if household_ids is None:
-        household_ids = _values(
-            _calculate(sim, "household_id", period, map_to="household")
-        )
+        household_ids = frame.table("household")["household_id"].to_numpy()
     if len(household_ids) != len(matrix):
         raise ValueError(
             "household_ids must align with household metric rows, got "
@@ -460,27 +568,6 @@ def _normalize_area_code(code: Any) -> str:
     if not code:
         raise ValueError("UK local-area code must not be blank.")
     return code
-
-
-def _calculate(
-    sim: Any,
-    variable: str,
-    period: int | str | None,
-    *,
-    map_to: str | None = None,
-) -> Any:
-    kwargs: dict[str, Any] = {}
-    if period is not None:
-        kwargs["period"] = period
-    if map_to is not None:
-        kwargs["map_to"] = map_to
-    return sim.calculate(variable, **kwargs)
-
-
-def _values(result: Any) -> np.ndarray:
-    if hasattr(result, "values"):
-        return np.asarray(result.values)
-    return np.asarray(result)
 
 
 def _map_result(

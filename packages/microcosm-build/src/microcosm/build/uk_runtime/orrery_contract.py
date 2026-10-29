@@ -11,7 +11,8 @@ from microcosm.build.country_spec import CountrySpec, load_country_spec
 from microcosm.calibrate.artifacts import RESULT_TYPE, decode_problem
 from microcosm.calibrate.graph_evidence import (
     CALIBRATION_SUMMARY_PROVIDERS,
-    result_summary,
+    result_summary_data,
+    summary_result,
 )
 from microcosm.graph import (
     compile_graph,
@@ -26,13 +27,40 @@ from microcosm.graph.presentation import PRESENTATION_PROTOCOL
 from .graph import _manifest_stages, uk_spine_operation_inventory
 from .graph_calibration import SIZE_DRAW_TYPE, SIZE_RECEIPT_TYPE, SIZE_SEARCH_TYPE
 from .graph_evidence import SPINE_GATE_REPORT_TYPE
-from .graph_national import NATIONAL_GATE_REPORT_TYPE, NATIONAL_TARGET_TYPE
+from .graph_national import (
+    NATIONAL_GATE_REPORT_TYPE,
+    NATIONAL_TARGET_TYPE,
+)
 from .graph_targets import TARGET_SELECTION_TYPE, registry_from_payload
 from .graph_terminal import FULL_GATE_REPORT_TYPE
 
+#: A target row's fields that the result's weights produce. The summaries are
+#: the projection a build may publish to the Orrery, and since María's ruling
+#: of 2026-10-26 the build no longer marks the rows resting on fewer than ten
+#: source households, so the summaries carry no row's figures (Vahid's review
+#: of #1396, M1). The build's private diagnostics keep every row's.
+_SUMMARY_MODEL_FIELDS = (
+    "initial",
+    "achieved",
+    "residual",
+    "relative_error",
+    "within_tolerance",
+)
+#: Size receipt fields left out of the summary: one target row's figure.
+_SIZE_ROW_FIELDS = ("max_target_scaled_change",)
+_RECORD_SCOPE = (
+    "Targets and the weight distribution; no entity IDs, record values or "
+    "target row's model figures."
+)
+
 
 def _uk_result_summary(context: ArtifactSummaryContext) -> dict:
-    data = result_summary(context)
+    result, ordered = summary_result(context)
+    data = result_summary_data(result, ordered)
+    for row in data["tables"]["targets"]:
+        for field in _SUMMARY_MODEL_FIELDS:
+            del row[field]
+    data["overview"]["record_scope"] = _RECORD_SCOPE
     ancestors, pending = set(), [context.node_id]
     while pending:
         current = pending.pop()
@@ -87,7 +115,8 @@ def _uk_result_summary(context: ArtifactSummaryContext) -> dict:
 
 
 def _size_summary(context: ArtifactSummaryContext) -> dict:
-    """Project the maintained size artifact, excluding IDs, masks and draws."""
+    """Project the maintained size artifact, excluding IDs, masks, draws and
+    any one target row's figure; the losses are totals over every row."""
     value = json.loads(context.payload)
     problem = decode_problem(context.input_payload("problem"))
     if value.get("problem_sha256") != problem.sha256:
@@ -125,7 +154,6 @@ def _size_summary(context: ArtifactSummaryContext) -> dict:
         "baseline_mass_share_certainties",
         "dense_loss",
         "compact_loss",
-        "max_target_scaled_change",
         "certification",
         "pi_hi",
     )
@@ -183,7 +211,9 @@ def _gate_rows(report: object) -> tuple[list[dict], dict]:
             isinstance(line, str) for line in failures
         ):
             raise ValueError("Gate failures must be text lines.")
-        row["failures"] = failures
+        # A line can state a row's model figures or an area's support, which
+        # the build no longer withholds; the gate report keeps the lines.
+        row["failure_count"] = len(failures)
         row["evidence_sha256"] = outcome.get("evidence_sha256")
         counts[row["status"]] += 1
         rows.append(row)
@@ -201,7 +231,8 @@ def _gate_report_summary(context: ArtifactSummaryContext) -> dict:
 
     The spine artifact is a bare phase report; the full and national artifacts
     wrap one in a document with enforcement or blocking verdicts. Gate detail
-    payloads and target or area tables are not projected.
+    payloads, target or area tables and failure lines are not projected; each
+    gate states how many failure lines it has.
     """
     document = json.loads(context.payload)
     if not isinstance(document, dict):
@@ -261,6 +292,37 @@ UK_SUMMARY_PROVIDERS = {
         NATIONAL_GATE_REPORT_TYPE.schema_version,
     ): _gate_report_summary,
 }
+
+
+def public_summary_findings(summaries: list[dict]) -> list[str]:
+    """Recorded summaries that carry a target row's figures or failure lines.
+
+    The providers above project neither. The publication runs this on the
+    summaries it is about to export, so a provider that regresses stops the
+    export rather than reaching the Orrery.
+    """
+
+    findings = []
+    for summary in summaries:
+        data = summary.get("data")
+        if not isinstance(data, dict):
+            continue
+        where = f"{summary.get('node')}/{summary.get('artifact')}"
+        tables = data.get("tables") or {}
+        fields = {
+            field
+            for row in tables.get("targets", [])
+            for field in _SUMMARY_MODEL_FIELDS
+            if field in row
+        }
+        fields.update(
+            field for field in _SIZE_ROW_FIELDS if field in data.get("overview", {})
+        )
+        if fields:
+            findings.append(f"{where} carries {', '.join(sorted(fields))}")
+        if any("failures" in row for row in tables.get("gates", [])):
+            findings.append(f"{where} carries gate failure lines")
+    return findings
 
 
 def checkpoint_references(sidecar_path: Path | None) -> tuple[list[dict], str | None]:
@@ -332,6 +394,10 @@ _FULL_BUILD_GROUPS = {
         "uk.full.geography.assign",
         "uk.full.geography.derive",
         "uk.full.geography.local_authority",
+        "uk.full.geography.brma",
+        "uk.full.private_rent",
+        "uk.full.property.value",
+        "uk.full.property.band",
         "uk.full.geography.gate",
     ),
     "targets": (

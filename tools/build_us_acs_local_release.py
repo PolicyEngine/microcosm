@@ -49,7 +49,12 @@ package; each is separately resumable):
                 sub-PUMA coverage), and flip the summary simulation-ready.
   package     : refuse a calibrated H5 that stores a model input the
                 installed policyengine-us does not define (microcosm#1026;
-                ``microcosm.data.stored_inputs``), then
+                ``microcosm.data.stored_inputs``), or on which that engine's
+                SPM measurement would refuse a unit with no classified adult
+                (microcosm#1263;
+                ``microcosm.build.us_runtime.spm_measurement_gate``), or that
+                lacks complete occupation, industry and worked-last-year
+                inputs on any person (microcosm#719), then
                 assemble releases/<id>/ with the non-default local-area
                 manifest shape (dataset_role ``non_default_local_area``,
                 namespace ``buildo_acs_local``, donor identity chain, the
@@ -79,10 +84,21 @@ import numpy as np
 import pandas as pd
 
 from microcosm.build.us_runtime import target_loss_weights as loss_weighting
+from microcosm.build.us_runtime.acs_inputs import acs_self_employment_identity_gate
 from microcosm.build.us_runtime.acs_local_hours import acs_local_hours_signal_gate
+from microcosm.build.us_runtime.acs_pums import ACS_2024_1YR_SPINE
+from microcosm.build.us_runtime.base_pool import spine_column
+from microcosm.build.us_runtime.esi_premiums import refuse_unassigned_us_esi_premiums
+from microcosm.build.us_runtime.org_wages import (
+    US_ORG_OCCUPATION_AND_WORK_EXPERIENCE_OUTPUT_COLUMNS,
+    require_us_occupation_and_work_experience_inputs,
+)
 from microcosm.data.contract import (
+    US_LOCAL_AREA_SPM_MEASUREMENT_STAGE,
     US_LOCAL_AREA_STORED_INPUTS_STAGE,
+    US_SPM_MEASUREMENT_EVIDENCE_KEY,
     US_STORED_INPUTS_EVIDENCE_KEY,
+    us_engine_scopes_spm_universe,
 )
 
 _TOOLS_DIR = Path(__file__).resolve().parent
@@ -93,6 +109,7 @@ if str(_TOOLS_DIR) not in sys.path:
     sys.path.insert(0, str(_TOOLS_DIR))
 
 import us_acs_local_cd_surface as cd_surface  # noqa: E402 - needs tools/ on sys.path
+import us_acs_local_county_surface as county_surface  # noqa: E402
 
 PERIOD = 2024
 RELEASE_NAMESPACE = "buildo_acs_local"
@@ -138,7 +155,14 @@ SOI_MODE_STATE = "state"
 SOI_MODE_TOTALS = "totals"
 SOI_MODE_FULL = "full"
 SOI_MODE_STATE_CD = "state_cd"
-SOI_MODES = (SOI_MODE_STATE, SOI_MODE_TOTALS, SOI_MODE_FULL, SOI_MODE_STATE_CD)
+SOI_MODE_STATE_COUNTY = county_surface.SOI_MODE
+SOI_MODES = (
+    SOI_MODE_STATE,
+    SOI_MODE_TOTALS,
+    SOI_MODE_FULL,
+    SOI_MODE_STATE_CD,
+    SOI_MODE_STATE_COUNTY,
+)
 DEFAULT_SOI_MODE = SOI_MODE_STATE
 #: Ledger record-set specs from a congressional-district file start with this;
 #: ``state`` mode excludes them, which is what Build O's switch did.
@@ -303,6 +327,8 @@ def soi_surface_predicate(soi_mode: str):
     _require_soi_mode(soi_mode)
     if soi_mode == SOI_MODE_STATE_CD:
         soi_mode = SOI_MODE_FULL
+    elif soi_mode == SOI_MODE_STATE_COUNTY:
+        soi_mode = SOI_MODE_STATE
 
     def selected(spec) -> bool:
         metadata = spec.metadata
@@ -433,6 +459,26 @@ class UnregisteredNullError(ValueError):
     """NaN in an engine-input column NOT in reviewed_engine_input_nulls."""
 
 
+class DeclaredSourceInputNullError(UnregisteredNullError):
+    """A declared dataset source input is null or registered for a default fill.
+
+    ``policyengine_us.spm.DATASET_SOURCE_INPUTS`` "does not permit
+    synthesizing a default value when data are absent", so no register entry
+    can authorize a fill for one.
+    """
+
+
+#: The remedy a staging artifact without the ACS SPM role is told to take.
+_DECLARED_SOURCE_INPUT_REMEDY = (
+    "Rebuild the ACS multispine staging (tools/build_us_acs_multispine_base.py): "
+    "it derives is_spm_independent_minor_role for ACS persons from RELSHIPP on "
+    "the household SPM partition "
+    "(microcosm.build.us_runtime.acs_inputs.with_acs_spm_independence_role) "
+    "and refuses to register it as a reviewed null. Staging built before that "
+    "carries the role only on donor rows."
+)
+
+
 def project_input_only(base_frame, period: int = PERIOD):
     """Hold back every non-input variable so FED SET == ENGINE INPUT SET.
 
@@ -500,19 +546,33 @@ def fill_reviewed_nulls(
     summary_path: Path,
     manifest_path: Path | None = None,
     period: int = PERIOD,
+    *,
+    engine=None,
+    system=None,
 ):
     """Apply the nullable-artifact contract for the engine pass (H5 untouched).
 
     Every registered (entity, column) has its NaN filled with the pe-us
     variable's own default; NaN in any engine-input column NOT in the
     register is a hard error with a per-spine diagnostic — an artifact
-    defect, surfaced not filled.
+    defect, surfaced not filled. A declared dataset source input is never
+    filled: a register that names one, or a null one, raises
+    :class:`DeclaredSourceInputNullError`. Nor is the ESI employer premium
+    input, registered or not: a null there refuses the build. ``engine`` and
+    ``system`` default to the PolicyEngine-US adapter and tax-benefit system.
     """
 
-    from policyengine_us import CountryTaxBenefitSystem
+    # microcosm#454: the ESI employer premium exists only where the
+    # meps_esi_premiums stage ran (the ASEC donor rows). Refuse before any
+    # fill: a registered null here would become a silent zero on the ACS spine.
+    refuse_unassigned_us_esi_premiums(
+        frame, consumer="ACS local release (fill_reviewed_nulls)"
+    )
 
     from microcosm.build.us_runtime.base_pool import spine_column
-    from microcosm.frame.adapters.policyengine_us import PolicyEngineUSEngine
+    from microcosm.build.us_runtime.spm_independence_role import (
+        us_declared_dataset_source_inputs,
+    )
 
     summary = json.loads(Path(summary_path).read_text())
     register = {
@@ -524,9 +584,25 @@ def fill_reviewed_nulls(
             f"{summary_path} carries no reviewed_engine_input_nulls register; "
             "cannot apply the nullable-artifact engine-pass contract."
         )
-    adapter = PolicyEngineUSEngine()
-    input_names = set(adapter.variables())
-    system = CountryTaxBenefitSystem()
+    if engine is None:
+        from microcosm.frame.adapters.policyengine_us import PolicyEngineUSEngine
+
+        engine = PolicyEngineUSEngine()
+    if system is None:
+        from policyengine_us import CountryTaxBenefitSystem
+
+        system = CountryTaxBenefitSystem()
+    declared = us_declared_dataset_source_inputs(engine)
+    registered_declared = sorted(
+        f"{entity}.{column}" for entity, column in register if column in declared
+    )
+    if registered_declared:
+        raise DeclaredSourceInputNullError(
+            f"{summary_path} registers declared dataset source input(s) "
+            f"{registered_declared} for a default fill; policyengine_us.spm "
+            "forbids synthesizing them. " + _DECLARED_SOURCE_INPUT_REMEDY
+        )
+    input_names = set(engine.variables())
 
     fills, drift_warnings, violations = [], [], []
     for entity in frame.entities:
@@ -544,7 +620,7 @@ def fill_reviewed_nulls(
                     for spine in sorted(map(str, table[tag].dropna().unique()))
                     if int((missing & table[tag].eq(spine)).sum())
                 }
-            if (entity, column) not in register:
+            if column in declared or (entity, column) not in register:
                 violations.append(
                     {
                         "entity": entity,
@@ -552,6 +628,7 @@ def fill_reviewed_nulls(
                         "missing_rows": n_missing,
                         "rows": len(table),
                         "missing_rows_by_spine": by_spine,
+                        "declared_dataset_source_input": column in declared,
                     }
                 )
                 continue
@@ -613,11 +690,17 @@ def fill_reviewed_nulls(
             f"by spine {v['missing_rows_by_spine']})"
             for v in violations
         )
-        raise UnregisteredNullError(
+        message = (
             f"{len(violations)} engine-input column(s) carry NaN but are NOT "
             "in the reviewed_engine_input_nulls register — artifact defect, "
             f"refusing to fill: {detail}"
         )
+        if any(v["declared_dataset_source_input"] for v in violations):
+            raise DeclaredSourceInputNullError(
+                f"{message}. A declared dataset source input may not be "
+                "defaulted. " + _DECLARED_SOURCE_INPUT_REMEDY
+            )
+        raise UnregisteredNullError(message)
     return fills, drift_warnings
 
 
@@ -991,7 +1074,7 @@ def ladder_population(ladder_path: Path, geographies: list[str]):
     ladder = load_us_puma_ladder(ladder_path)
     puma_states = (ladder.puma // 100_000).astype(int)
     populations: dict[str, dict[int, float]] = {}
-    if "state" in geographies:
+    if "state" in geographies or "county" in geographies:
         populations["state"] = {
             int(state): float(ladder.puma_population[puma_states == state].sum())
             for state in np.unique(puma_states)
@@ -1003,7 +1086,7 @@ def ladder_population(ladder_path: Path, geographies: list[str]):
             )
             for cd in np.unique(ladder.cd_overlap_cd)
         }
-    return populations
+    return county_surface.with_county_populations(ladder, populations, geographies)
 
 
 def household_sizes(frame) -> np.ndarray:
@@ -1014,7 +1097,9 @@ def household_sizes(frame) -> np.ndarray:
     return households["household_id"].map(size).fillna(0).to_numpy(np.float32)
 
 
-def population_targets(frame, ladder_populations, geographies: list[str]):
+def population_targets(
+    frame, ladder_populations, geographies: list[str], *, county_column="county_fips"
+):
     """Household-grain population marginals as sparse target rows.
 
     Population in a geography = sum over persons-in-geo of household weight;
@@ -1031,17 +1116,26 @@ def population_targets(frame, ladder_populations, geographies: list[str]):
         household_sizes(frame),
         ladder_populations,
         geographies,
+        county_column=county_column,
     )
 
 
 def population_target_specs(names, values):
-    """Declare ladder population targets with the shared diagnostics hierarchy."""
+    """Declare ladder population targets with the shared diagnostics hierarchy.
+
+    Each geography carries the label the release's other targets give the
+    same id: a state its Census name, the name the ledger targets take from
+    their facts ("Maine"), and a district the Census Bureau's name, which
+    the IRS SOI district rows carry too. A registry refuses one US geography
+    with two labels (microcosm#1335).
+    """
 
     from microcosm.build.us_runtime.congressional_district_vintage import (
         CURRENT_CONGRESSIONAL_DISTRICT_PREFIX,
+        congressional_district_label,
     )
     from microcosm.calibrate import TargetSpec
-    from microcosm.calibrate.geography_constants import US_STATE_FIPS_TO_POSTAL
+    from microcosm.calibrate.geography_constants import US_STATE_FIPS_TO_NAME
     from microcosm.calibrate.hierarchy import (
         CalibrationHierarchy,
         HierarchyCategory,
@@ -1057,23 +1151,24 @@ def population_target_specs(names, values):
     )
     specs = []
     for name, value in zip(names, values, strict=True):
+        if name.startswith("pop_county_"):
+            specs.append(county_surface.population_spec(name, value, period=PERIOD))
+            continue
         if name.startswith("pop_state_"):
             fips = name.removeprefix("pop_state_")
-            label = US_STATE_FIPS_TO_POSTAL.get(fips, f"State {fips}")
+            label = US_STATE_FIPS_TO_NAME.get(fips)
+            if label is None:
+                raise ValueError(
+                    f"Population target {name!r} names no US state FIPS code."
+                )
             geography = HierarchyGeography(f"0400000US{fips}", label, "state")
         elif name.startswith("pop_cd_"):
             geoid = name.removeprefix("pop_cd_")
-            state_fips, district = geoid[:2], geoid[2:]
-            state = US_STATE_FIPS_TO_POSTAL.get(state_fips, state_fips)
-            district_label = (
-                "at-large" if district == "00" else f"district {int(district)}"
-            )
-            label = f"{state} congressional {district_label}"
             # The ladder's districts are the 119th Congress plan.
+            geography_id = f"{CURRENT_CONGRESSIONAL_DISTRICT_PREFIX}{geoid}"
+            label = congressional_district_label(geography_id)
             geography = HierarchyGeography(
-                f"{CURRENT_CONGRESSIONAL_DISTRICT_PREFIX}{geoid}",
-                label,
-                "congressional_district",
+                geography_id, label, "congressional_district"
             )
         else:  # pragma: no cover - names originate in population_measure_arrays
             raise ValueError(f"Unknown population target name {name!r}.")
@@ -1099,6 +1194,44 @@ def population_target_specs(names, values):
     return tuple(specs)
 
 
+def ladder_population_target_specs(ladder_populations, geographies):
+    """Every population target the ladder declares, before a household is read.
+
+    :func:`population_targets` later drops a ladder cell no staged household
+    supports, so its targets are a subset of these with the same labels.
+    """
+
+    cells = [
+        (cd_surface.population_target_name(geography, code), float(population))
+        for geography in geographies
+        for code, population in sorted(ladder_populations[geography].items())
+    ]
+    return population_target_specs(
+        [name for name, _population in cells],
+        [population for _name, population in cells],
+    )
+
+
+def require_one_label_per_geography(admin_registry, ladder_populations, geographies):
+    """Refuse admin and population targets that label one geography two ways.
+
+    The two first share a registry in the lean checkpoint, after the engine
+    pass over every staged household; assembling them here moves the
+    registry's geography-label refusal (microcosm#1335) to the start of the
+    materialize stage.
+    """
+
+    from microcosm.calibrate import TargetRegistry
+
+    return TargetRegistry(
+        (
+            *admin_registry.specs,
+            *ladder_population_target_specs(ladder_populations, geographies),
+        ),
+        country="us",
+    )
+
+
 #: Household columns the lean checkpoint keeps: identity, geography, and the
 #: origin tags the distinct-household ESS and spine shares need.
 LEAN_HOUSEHOLD_COLUMNS = (
@@ -1117,13 +1250,16 @@ TARGET_MATRIX_FILENAME = "target_matrix.npz"
 TARGET_ROLES_FILENAME = "target_roles.json"
 
 
-def extract_struct_tables(frame):
+def extract_struct_tables(frame, *, county_column="county_fips"):
     """Small structural/geography copies so the big frame can be freed early."""
 
     households = frame.table("household")
     struct_columns = [
         column for column in LEAN_HOUSEHOLD_COLUMNS if column in households.columns
     ]
+    struct_columns += county_surface.struct_columns(
+        households, struct_columns, county_column=county_column
+    )
     person_columns = [
         column for column in PERSON_STRUCT if column in frame.table("person").columns
     ]
@@ -1325,7 +1461,7 @@ def do_materialize(args) -> None:
         )
     started = time.time()
     if args.feed_sha256:
-        actual = _sha256(args.feed)
+        actual = _sha256(county_surface.feed_path(args.feed))
         if actual != args.feed_sha256:
             raise SystemExit(
                 f"Ledger feed sha256 mismatch: {args.feed} is {actual}, "
@@ -1337,6 +1473,9 @@ def do_materialize(args) -> None:
         f"admin specs: {len(registry)} ({families}, soi_mode={args.soi_mode}); "
         f"RI substitution records={len(surface.ri_substitutions)}"
     )
+    populations = ladder_population(args.ladder, sorted(set(geographies) | {"cd"}))
+    county_surface.prepare_run(args, geographies, populations, surface=surface)
+    require_one_label_per_geography(registry, populations, geographies)
     summary_path = _staging_summary_path(args)
     if not summary_path.exists():
         raise SystemExit(
@@ -1349,6 +1488,7 @@ def do_materialize(args) -> None:
     ladder_sha = _sha256(args.ladder)
     frame = _load_staging_frame(args.staging_h5)
     _require_local_hours(frame, _load_json(summary_path))
+    _require_acs_self_employment_identity(frame)
     frame, sampling = cd_surface.sample_staging_frame(
         frame, fraction=args.sample_fraction, seed=args.sample_seed
     )
@@ -1365,6 +1505,7 @@ def do_materialize(args) -> None:
         (args.checkpoint_dir / name).unlink(missing_ok=True)
     if getattr(args, "gate_report", None) is not None:
         Path(args.gate_report).unlink(missing_ok=True)
+    county_surface.check_support(frame, populations, args)
     materialized = materialize_chunked(
         frame,
         registry.specs,
@@ -1389,14 +1530,19 @@ def do_materialize(args) -> None:
             f"{len(registry)} specs were declared; admin targets must never "
             "disappear silently between compile and materialization."
         )
-    admin_roles = [cd_surface.target_record(spec) for spec in compiled_specs]
+    compiled_specs, admin_matrix = county_surface.attach_surface(
+        surface, materialized, frame, populations, args
+    )
+    admin_roles = [county_surface.target_record(spec) for spec in compiled_specs]
 
-    populations = ladder_population(args.ladder, sorted(set(geographies) | {"cd"}))
     if args.soi_mode == SOI_MODE_STATE_CD:
         _attach_pro_rata_populations(admin_roles, populations["cd"])
         _require_pro_rata_populations(admin_roles)
     pop_roles, pop_matrix, pop_dropped = population_targets(
-        frame, populations, geographies
+        frame,
+        populations,
+        geographies,
+        county_column=getattr(args, "county_column", "county_fips"),
     )
     if pop_dropped:
         message = (
@@ -1417,13 +1563,16 @@ def do_materialize(args) -> None:
     log(f"population measures: {len(pop_specs)} ({geographies})")
     roles = admin_roles + pop_roles
     holdout = cd_surface.assign_target_roles(roles, fraction=holdout_fraction)
+    county_holdout = county_surface.assign_roles(roles, args)
     log(
         f"CD holdout: {holdout['held_units']}/{holdout['eligible_units']} units, "
         f"{holdout['held_targets']} district targets held out of calibration"
     )
     matrix = sparse.vstack([admin_matrix, pop_matrix], format="csr")
     del admin_matrix, pop_matrix
-    struct = extract_struct_tables(frame)
+    struct = extract_struct_tables(
+        frame, county_column=getattr(args, "county_column", "county_fips")
+    )
     n_households = frame.n("household")
     del frame
     gc.collect()
@@ -1447,6 +1596,8 @@ def do_materialize(args) -> None:
         json.dumps(
             {
                 "staging_h5": str(Path(args.staging_h5).resolve()),
+                "feed": str(Path(args.feed).resolve()),
+                "feed_sha256": _sha256(county_surface.feed_path(args.feed)),
                 "staging_sha256": staging_sha,
                 "ladder_sha256": ladder_sha,
                 "households": n_households,
@@ -1466,6 +1617,7 @@ def do_materialize(args) -> None:
                 "population_cells_dropped": pop_dropped,
                 "soi_mode": args.soi_mode,
                 "cd_holdout": holdout_identity,
+                **county_surface.run_metadata(args, county_holdout),
                 "sampling": sampling,
             },
             indent=2,
@@ -1485,6 +1637,7 @@ def do_materialize(args) -> None:
                 "carrier_check": materialized.carrier_check,
                 "soi_surface": surface.soi_receipt,
                 "cd_holdout": holdout,
+                **county_surface.run_metadata(args, county_holdout),
                 "sampling": sampling,
                 "materialize_peak_rss_gb": round(rss(), 3),
             },
@@ -1522,6 +1675,7 @@ CALIBRATION_OUTPUT_FILENAMES = (
     "weights_latest.npz",
     "calibration_summary.json",
     "calibration_diagnostics.json",
+    "county_reliability.json",
     "consumer_export.json",
     "consumer_reviewed_null_fills.json",
     "spine_qa.json",
@@ -1532,6 +1686,44 @@ CALIBRATION_OUTPUT_FILENAMES = (
 SOLVER_METHOD = "adam"
 SOLVER_LEARNING_RATE = 0.02
 SOLVER_MASS = "conserve"
+
+# Starting values from microcosm#1377's county pilot. The calibrator accepts
+# only one scalar loss cap, so these apply to the joint run, not county rows
+# individually. Ordinary ACS-local builds retain their historical settings.
+COUNTY_TARGET_LOSS_CAP = 10.0
+COUNTY_MAX_WEIGHT_RATIO = 5.0
+
+
+def _apply_county_solver_profile(args, *, identity=None) -> None:
+    """Resolve the opt-in profile against the checkpoint for later stages."""
+    for key in ("target_loss_cap", "max_weight_ratio"):
+        requested = f"_requested_{key}"
+        if not hasattr(args, requested):
+            setattr(args, requested, getattr(args, key))
+        setattr(args, key, getattr(args, requested))
+    # A checkpoint decides alone: an identity from before the county rung
+    # records no geographies and loaded no county rows, whatever the CLI says.
+    if identity:
+        geographies = identity.get("geographies", "")
+        soi_mode = identity.get("soi_mode", DEFAULT_SOI_MODE)
+    else:
+        geographies = getattr(args, "geographies", "")
+        soi_mode = getattr(args, "soi_mode", DEFAULT_SOI_MODE)
+    county_requested = "county" in {item.strip() for item in geographies.split(",")}
+    county_requested |= soi_mode == SOI_MODE_STATE_COUNTY
+    args.county_solver_profile = None
+    if county_requested:
+        args.target_loss_cap = getattr(
+            args, "county_target_loss_cap", COUNTY_TARGET_LOSS_CAP
+        )
+        args.max_weight_ratio = getattr(
+            args, "county_max_weight_ratio", COUNTY_MAX_WEIGHT_RATIO
+        )
+        args.county_solver_profile = {
+            "scope": "run",
+            "target_loss_cap": args.target_loss_cap,
+            "max_weight_ratio": args.max_weight_ratio,
+        }
 
 
 def _solver_settings(args, target_loss: dict) -> dict:
@@ -1554,6 +1746,11 @@ def _solver_settings(args, target_loss: dict) -> dict:
         "seed": args.seed,
         "epoch_batch": args.epoch_batch,
         "target_loss": target_loss,
+        **(
+            {"county_solver_profile": args.county_solver_profile}
+            if getattr(args, "county_solver_profile", None) is not None
+            else {}
+        ),
     }
 
 
@@ -1569,14 +1766,12 @@ def release_target_loss_weights(args, train_specs) -> tuple[np.ndarray, dict]:
 
     multipliers = dict(args.target_family_loss_multipliers)
     try:
-        weights = loss_weighting.us_acs_local_target_loss_weights(
-            train_specs, multipliers
-        )
+        weights = county_surface.target_loss_weights(train_specs, multipliers)
     except ValueError as error:
         raise SystemExit(f"Target loss weights: {error}") from error
     stamp = {
         "weighting": loss_weighting.US_FISCAL_TARGET_LOSS_WEIGHTING,
-        "row_mapping": loss_weighting.US_ACS_LOCAL_TARGET_LOSS_ROW_MAPPING.mapping_id,
+        "row_mapping": county_surface.loss_row_mapping(train_specs).mapping_id,
         "family_multipliers": {
             family: float(multiplier)
             for family, multiplier in sorted(multipliers.items())
@@ -1732,10 +1927,13 @@ def load_checkpoint_surface(checkpoint_dir: Path, identity: dict | None = None):
     roles and the matrix must still be the bytes materialize wrote. A
     checkpoint from before the sparse matrix (dense measure columns in the
     lean H5) is refused: re-run ``--stage materialize``.
+    A checkpoint whose registry gives one geography two labels (written
+    before microcosm#1335) is refused the same way.
     Returns ``(frame, design_weights, registry, roles, matrix)``.
     """
 
     from microcosm.calibrate import TargetRegistry
+    from microcosm.calibrate.registry import GeographyLabelConflictError
 
     matrix_path = checkpoint_dir / TARGET_MATRIX_FILENAME
     roles_path = checkpoint_dir / TARGET_ROLES_FILENAME
@@ -1749,7 +1947,17 @@ def load_checkpoint_surface(checkpoint_dir: Path, identity: dict | None = None):
         )
     if identity is not None:
         _verify_checkpoint_digests(checkpoint_dir, identity)
-    registry = TargetRegistry.from_json(registry_path)
+    try:
+        registry = TargetRegistry.from_json(registry_path)
+    except GeographyLabelConflictError as error:
+        # A materialize stage from before microcosm#1335 labelled a state's
+        # population target with its postal code ("ME") and the ledger
+        # targets with the state's name ("Maine").
+        raise SystemExit(
+            f"{registry_path} gives one geography more than one label, as "
+            "checkpoints written before microcosm#1335 do. Re-run --stage "
+            f"materialize with the current tool. {error}"
+        ) from error
     roles = json.loads(roles_path.read_text())
     matrix = cd_surface.load_target_matrix(matrix_path)
     frame, design_weights = load_lean_frame(checkpoint_dir / "target_frame_lean.h5")
@@ -1889,6 +2097,9 @@ def calibration_evidence(
             final_weights=weights,
             cap=target_loss_cap,
         ),
+        **county_surface.calibration_evidence(
+            frame, roles, matrix, design_weights, weights, target_loss_cap
+        ),
     }
 
 
@@ -1896,6 +2107,7 @@ def do_calibrate(args) -> None:
     from microcosm.calibrate import write_calibration_diagnostics
 
     identity = _verify_run_identity(args)
+    _apply_county_solver_profile(args, identity=identity)
     frame, design_weights, registry, roles, matrix = load_checkpoint_surface(
         args.checkpoint_dir, identity
     )
@@ -1913,7 +2125,7 @@ def do_calibrate(args) -> None:
     loss_distribution = loss_weighting.target_loss_weight_distribution(
         train_specs,
         loss_weights,
-        row_mapping=loss_weighting.US_ACS_LOCAL_TARGET_LOSS_ROW_MAPPING,
+        row_mapping=county_surface.loss_row_mapping(train_specs),
     )
     log(
         f"calibrate: households={n_households}, targets={len(target_set)} "
@@ -1975,6 +2187,9 @@ def do_calibrate(args) -> None:
             _write_calibrated_artifact(
                 args, np.asarray(warm, dtype=np.float64), identity, settings
             )
+            county_surface.write_reports(
+                args.checkpoint_dir, previous, identity=identity
+            )
             return
         raise SystemExit(
             f"weights_latest.npz reports {done} epochs (>= --epochs "
@@ -2034,7 +2249,7 @@ def do_calibrate(args) -> None:
         "households": n_households,
         "n_targets": result.problem.n_targets,
         "families": args.families,
-        "geographies": args.geographies,
+        "geographies": identity.get("geographies", args.geographies),
         "soi_mode": identity.get("soi_mode"),
         "matrix_format": result.options["matrix_format"],
         "matrix_shape": [int(x) for x in result.problem.matrix.shape],
@@ -2074,6 +2289,7 @@ def do_calibrate(args) -> None:
         "total_wall_seconds": round(time.time() - started, 1),
         "peak_rss_gb": round(rss(), 3),
     }
+    county_surface.write_reports(args.checkpoint_dir, summary, identity=identity)
     _write_calibrated_artifact(
         args, np.asarray(result.weights, dtype=np.float64), identity, settings
     )
@@ -2086,7 +2302,7 @@ def do_calibrate(args) -> None:
         build={
             "dataset_role": "non_default_local_area",
             "families": args.families,
-            "geographies": args.geographies,
+            "geographies": identity.get("geographies", args.geographies),
             "soi_mode": identity.get("soi_mode"),
             "epochs": args.epochs,
             "epoch_batch": args.epoch_batch,
@@ -2163,6 +2379,49 @@ def _resample_like_materialize(frame, identity: dict):
     return sampled
 
 
+def _with_live_stored_inputs(frame):
+    """Move the donor's retired stored inputs to the installed engine's live ones.
+
+    :func:`microcosm.build.us_runtime.retired_stored_inputs.with_live_stored_inputs`
+    owns the rule; the engine is the installed policyengine-us, the one the
+    package stage checks the artifact against and records as built-with. Only
+    ACS-spine people may lack a WIC take-up decision: the staging builder
+    generates none for them (microcosm#1154), and every donor row carries its
+    own.
+    """
+
+    from microcosm.build.us_runtime.acs_pums import ACS_2024_1YR_SPINE
+    from microcosm.build.us_runtime.base_pool import spine_column
+    from microcosm.build.us_runtime.retired_stored_inputs import (
+        with_live_stored_inputs,
+    )
+    from microcosm.data import stored_inputs
+
+    person = frame.table("person")
+    tag = spine_column("person")
+    if tag not in person.columns:
+        raise SystemExit(
+            f"Refusing to write the consumer artifact: the person table has no "
+            f"{tag!r}, so it cannot show which people may lack a WIC decision."
+        )
+    acs_spine = person[tag].eq(ACS_2024_1YR_SPINE).fillna(False).to_numpy(dtype=bool)
+
+    try:
+        engine = stored_inputs.installed_us_engine()
+    except ImportError as error:
+        raise SystemExit(
+            "Refusing to write the consumer artifact: the installed "
+            "policyengine-us cannot be imported, so its retired stored inputs "
+            f"cannot be moved to the live ones: {error}"
+        ) from error
+    try:
+        return with_live_stored_inputs(
+            frame, engine_variables=engine.variables, may_lack_decision=acs_spine
+        )
+    except ValueError as error:
+        raise SystemExit(f"Refusing to write the consumer artifact: {error}") from error
+
+
 def _write_calibrated_artifact(
     args, weights: np.ndarray, identity: dict, settings: dict
 ) -> None:
@@ -2186,6 +2445,7 @@ def _write_calibrated_artifact(
 
     frame = _load_staging_frame(args.staging_h5)
     _require_local_hours(frame, _load_json(_staging_summary_path(args)))
+    _require_acs_self_employment_identity(frame)
     frame = _resample_like_materialize(frame, identity)
     staging_ids = frame.table("household")["household_id"].to_numpy()
     with pd.HDFStore(args.checkpoint_dir / "target_frame_lean.h5", mode="r") as store:
@@ -2211,6 +2471,11 @@ def _write_calibrated_artifact(
         manifest_path=args.checkpoint_dir / "consumer_reviewed_null_fills.json",
         period=PERIOD,
     )
+    # microcosm#1263: the donor stores two retired engine inputs that the
+    # stored-inputs contract refuses at package time; store them as its
+    # register prescribes.
+    live_inputs = _with_live_stored_inputs(projected)
+    projected = live_inputs.frame
     calibrated = Frame(
         {entity: projected.table(entity) for entity in projected.entities},
         projected.schema,
@@ -2237,6 +2502,7 @@ def _write_calibrated_artifact(
                 "held_back_total": sum(len(v) for v in dropped.values()),
                 "filled_columns": len(fills),
                 "total_values_filled": sum(f["filled_rows"] for f in fills),
+                "live_stored_inputs": live_inputs.provenance,
                 "note": (
                     "The engine-pass contract (input-schema projection + "
                     "reviewed-null default fill) is applied to the published "
@@ -2461,10 +2727,93 @@ def _ess_concentration_limitation(diagnostics: dict) -> dict:
     }
 
 
+#: Donor releases verified free of the microcosm#1178 Social Security erasure.
+#: Before microcosm#1186 (merged 980282520), the PUF-support finalizer replaced
+#: CPS-reported Social Security with the PUF prediction, so a zero prediction
+#: erased a CPS reporter's benefit; on the national default
+#: populace-us-2024-spm-20260915 that erased 4,495 PUF-support records. The
+#: fix runs where a national base is built. The ACS staging takes its donor
+#: as a finished H5 and never re-runs it, so a release inherits whatever its
+#: donor carries. The register is empty: every published US national release
+#: predates #1186. Add a donor's release id only after checking its
+#: PUF-support CPS reporters keep their reported benefit; until then the
+#: release discloses the inherited erasure.
+DONORS_WITHOUT_SOCIAL_SECURITY_ERASURE: frozenset[str] = frozenset()
+
+
+def _social_security_erasure_limitation(donor_release: dict) -> dict | None:
+    """The inherited microcosm#1178 erasure, unless the donor is verified free."""
+
+    release_id = donor_release.get("release_id")
+    if release_id in DONORS_WITHOUT_SOCIAL_SECURITY_ERASURE:
+        return None
+    return {
+        "id": "social_security_cps_reporters_erased_inherited",
+        "status": "reviewed_inherited_defect",
+        "issue": "microcosm#1178",
+        "fixed_by": "microcosm#1186 (980282520), in the national base build",
+        "donor_release": release_id,
+        "affected_spines": ["asec_puf", "acs_2024_1yr"],
+        "reason": (
+            "The donor was built before microcosm#1186, so its PUF-support "
+            "records carry the microcosm#1178 erasure of CPS-reported Social "
+            "Security: on the national default populace-us-2024-spm-20260915 "
+            "(the parent of the reported-receipt donor, which keeps every "
+            "existing field's bytes and adds three receipt columns), 4,495 "
+            "PUF-support records lost "
+            "their reported benefit, while no ASEC-arm record did. Donor rows "
+            "enter this artifact as they are, and the ACS transfer learns the "
+            "Social Security components from those donor rows, so ACS rows "
+            "can inherit the distortion; its size on this artifact is not "
+            "measured."
+        ),
+        "treatment": (
+            "Refresh this artifact against the first national release built "
+            "after microcosm#1186 (its refresh_recipe re-runs the chain with "
+            "that release as the donor), then add the donor's release id to "
+            "DONORS_WITHOUT_SOCIAL_SECURITY_ERASURE once its PUF-support CPS "
+            "reporters are checked."
+        ),
+        "calibration_blocker": False,
+    }
+
+
+def _acs_wic_takeup_limitation(consumer_export: dict | None) -> dict | None:
+    """The interim WIC take-up assumption for ACS people, when it was applied."""
+
+    wic = ((consumer_export or {}).get("live_stored_inputs") or {}).get("wic") or {}
+    assumed = wic.get("people_assumed_true")
+    if not assumed:
+        return None
+    return {
+        "id": "acs_wic_takeup_assumed_interim",
+        "status": "reviewed_interim_assumption",
+        "issue": "microcosm#1154",
+        "affected_spines": ["acs_2024_1yr"],
+        "column": wic.get("to"),
+        "people_assumed_true": assumed,
+        "reason": (
+            "The staging builder generates no WIC take-up decision for ACS "
+            "people, and the donor stores its decisions under the retired "
+            f"input name {wic.get('from')!r}, which the installed "
+            "policyengine-us ignores. The consumer artifact stores them as "
+            f"{wic.get('to')!r}: every donor decision is kept, and every ACS "
+            "person is set to take WIC up when eligible. That is the engine's "
+            "default and the assumption policyengine.py applies to the same "
+            "cells today; it is a modelling assumption, not observed "
+            "participation."
+        ),
+        "treatment": wic.get("flip_condition"),
+        "calibration_blocker": False,
+    }
+
+
 def finalize_reviewed_limitations(
     staging_summary: dict,
     diagnostics: dict,
     spine_qa: dict,
+    *,
+    consumer_export: dict | None = None,
 ) -> list[dict]:
     """The reviewed-limitations register for the buildo-acs-local lineage.
 
@@ -2573,6 +2922,12 @@ def finalize_reviewed_limitations(
             "calibration_blocker": False,
         },
     ]
+    social_security = _social_security_erasure_limitation(donor_release)
+    if social_security is not None:
+        limitations.append(social_security)
+    acs_wic = _acs_wic_takeup_limitation(consumer_export)
+    if acs_wic is not None:
+        limitations.append(acs_wic)
     deduped: dict[str, dict] = {}
     for limitation in limitations:
         deduped[limitation["id"]] = limitation
@@ -2677,6 +3032,41 @@ def _require_local_hours(frame, staging_summary: dict) -> None:
     gate = _local_hours_gate(frame, staging_summary)
     if not gate.passed:
         raise SystemExit("Local hours coverage failed: " + "; ".join(gate.failures))
+
+
+def _require_acs_self_employment_identity(frame):
+    """Refuse a frame whose ACS self-employment leaves add to SEMP (#1380).
+
+    Staging built before the ACS transfer zeroed donor self-employment
+    components carries them on top of SEMP, and so does any checkpoint
+    calibrated from it. Materialize and calibrate check the staging frame;
+    package checks the calibrated H5 it ships, so a historical checkpoint
+    cannot reach a release through qa and finalize alone. Returns the
+    passing gate.
+    """
+
+    person = frame.table("person")
+    tag = spine_column("person")
+    if tag not in person.columns:
+        raise SystemExit(
+            f"The frame has no {tag}; cannot select the ACS rows the "
+            "self-employment identity covers."
+        )
+    gate = acs_self_employment_identity_gate(
+        person,
+        rows=(
+            person[tag]
+            .astype("string")
+            .eq(ACS_2024_1YR_SPINE)
+            .fillna(False)
+            .to_numpy(dtype=bool)
+        ),
+    )
+    if not gate.passed:
+        raise SystemExit(
+            "ACS self-employment identity failed: " + "; ".join(gate.failures)
+        )
+    return gate
 
 
 def do_finalize(args) -> None:
@@ -2915,7 +3305,9 @@ def do_finalize(args) -> None:
         "artifact_sha256": spine_qa.get("artifact_sha256"),
     }
 
-    limitations = finalize_reviewed_limitations(staging_summary, diagnostics, spine_qa)
+    limitations = finalize_reviewed_limitations(
+        staging_summary, diagnostics, spine_qa, consumer_export=consumer_export
+    )
     limitations += state_cd_reviewed_limitations(materialize_rss)
     hard_failures = [
         name
@@ -3075,6 +3467,65 @@ def _require_stored_inputs(calibrated_h5: Path) -> dict[str, object]:
     return {"passed": True, "failures": [], "engine": engine.label, **summary}
 
 
+def _require_spm_measurement(frame) -> dict[str, object]:
+    """Refuse an artifact on which an SPM measurement would crash.
+
+    microcosm#1263: spm-calculator refuses a whole simulation's SPM measurement
+    when one unit it measures has no classified adult, and every US state
+    region on the 2026-09-23 release did. The gate
+    (:func:`microcosm.build.us_runtime.spm_measurement_gate.check_release_spm_measurement`)
+    grades the calibrated frame against the installed policyengine-us, the
+    engine the release records as built-with: it measures every unit unless it
+    scopes SPM by measurement universe. The gate also requires the stored SPM
+    independence role to be complete. Whether the engine scopes is read from
+    its variables and must agree with the publisher's reviewed register
+    (``microcosm.data.contract.US_SPM_UNIVERSE_SCOPING_MODEL_VERSIONS``).
+
+    Returns the gate entry the release's gate summary records.
+    """
+
+    from microcosm.build.us_runtime import spm_measurement_gate
+    from microcosm.data import stored_inputs
+
+    try:
+        engine = stored_inputs.installed_us_engine()
+    except ImportError as error:
+        raise SystemExit(
+            "Refusing to package: the installed policyengine-us cannot be "
+            "imported, so the SPM measurement cannot be graded against the "
+            f"engine the release records as built-with: {error}"
+        ) from error
+    scopes = spm_measurement_gate.engine_scopes_spm_universe(engine.variables)
+    reviewed = us_engine_scopes_spm_universe(engine.label)
+    if scopes != reviewed:
+        # The publisher reads JSON only and trusts the reviewed register, so
+        # the engine's behaviour and the register must agree before a verdict
+        # graded on either is recorded.
+        raise SystemExit(
+            f"Refusing to package: {engine.label} "
+            f"{'defines' if scopes else 'does not define'} "
+            "spm_unit_spm_universe_status, but the reviewed register "
+            "microcosm.data.contract.US_SPM_UNIVERSE_SCOPING_MODEL_VERSIONS "
+            f"says it {'scopes' if reviewed else 'does not scope'} SPM "
+            "measurement by universe. Read that engine's scoped threshold "
+            "formulas and update the register before packaging against it."
+        )
+    result = spm_measurement_gate.check_release_spm_measurement(
+        frame, engine_scopes_universe=scopes
+    )
+    if not result.passed:
+        raise SystemExit(
+            "Refusing to package: the SPM measurement gate failed: "
+            + "; ".join(result.failures)
+        )
+    return {
+        "passed": True,
+        "failures": [],
+        "engine": engine.label,
+        "details": dict(result.details),
+    }
+
+
 def do_package(args) -> dict:
     diagnostics = _load_json(args.checkpoint_dir / "calibration_summary.json")
     diagnostics_status = diagnostics.get("calibration_diagnostics")
@@ -3160,7 +3611,6 @@ def do_package(args) -> dict:
     timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     release_id = f"{RELEASE_ID_PREFIX}-{code['sha']}-{timestamp}"
     release_dir = args.out / "releases" / release_id
-    release_dir.mkdir(parents=True, exist_ok=True)
 
     gates = gate_report.get("gates")
     hours_gate = gates.get("hours_worked_signal") if isinstance(gates, dict) else None
@@ -3187,9 +3637,27 @@ def do_package(args) -> dict:
             "an old simulation_ready summary is insufficient. Re-run --stage "
             "finalize."
         )
-    hours_frame = _load_staging_frame(calibrated_h5)
-    package_hours_gate = _local_hours_gate(hours_frame, staging_summary)
-    del hours_frame
+    artifact_frame = _load_staging_frame(calibrated_h5)
+    # Historical staging can predate the donor/native work-experience gates.
+    # Grade the actual final rows, even when its old summary is green.
+    try:
+        require_us_occupation_and_work_experience_inputs(
+            artifact_frame.table("person"), label="ACS local-area release"
+        )
+    except ValueError as error:
+        raise SystemExit(
+            f"Refusing to package: {error} Rebuild staging with a complete "
+            "ASEC donor and the native ACS occupation/work-experience mapping."
+        ) from error
+    work_experience_rows = artifact_frame.n("person")
+    # microcosm#1263: the bytes must also be measurable by the engine the
+    # release records as built-with.
+    spm_measurement_gate = _require_spm_measurement(artifact_frame)
+    package_hours_gate = _local_hours_gate(artifact_frame, staging_summary)
+    # microcosm#1380: a checkpoint calibrated from pre-fix staging stacks
+    # donor self-employment on SEMP; grade the bytes being packaged.
+    self_employment_gate = _require_acs_self_employment_identity(artifact_frame)
+    del artifact_frame
     gc.collect()
     if not package_hours_gate.passed:
         raise SystemExit(
@@ -3199,10 +3667,25 @@ def do_package(args) -> dict:
         **gate_report,
         "gates": {
             **gate_report.get("gates", {}),
+            "work_experience_inputs": {
+                "passed": True,
+                "failures": [],
+                "columns": list(US_ORG_OCCUPATION_AND_WORK_EXPERIENCE_OUTPUT_COLUMNS),
+                "person_rows": work_experience_rows,
+                "artifact_sha256": h5_sha,
+                "checked_at_stage": "package",
+            },
             "acs_local_hours_signal": {
                 "passed": True,
                 "failures": [],
                 "detail": dict(package_hours_gate.details),
+                "artifact_sha256": h5_sha,
+                "checked_at_stage": "package",
+            },
+            self_employment_gate.name: {
+                "passed": True,
+                "failures": [],
+                "detail": dict(self_employment_gate.details),
                 "artifact_sha256": h5_sha,
                 "checked_at_stage": "package",
             },
@@ -3213,6 +3696,13 @@ def do_package(args) -> dict:
                 **stored_inputs_gate,
                 "artifact_sha256": h5_sha,
                 "checked_at_stage": US_LOCAL_AREA_STORED_INPUTS_STAGE,
+            },
+            # microcosm#1263: the publisher requires this gate of every US
+            # local-area release too, bound to the same bytes.
+            US_SPM_MEASUREMENT_EVIDENCE_KEY: {
+                **spm_measurement_gate,
+                "artifact_sha256": h5_sha,
+                "checked_at_stage": US_LOCAL_AREA_SPM_MEASUREMENT_STAGE,
             },
         },
     }
@@ -3255,6 +3745,17 @@ def do_package(args) -> dict:
             f"--artifact-root <run> --repo-id {HF_REPO_ID}"
         ),
     }
+    refresh_recipe["release"] = county_surface.refresh_recipe(
+        refresh_recipe["release"], materialize_rss
+    )
+    county_profile = (diagnostics.get("solver_settings") or {}).get(
+        "county_solver_profile"
+    )
+    if county_profile is not None:
+        refresh_recipe["release"] += (
+            f" --county-target-loss-cap {float(county_profile['target_loss_cap'])!r}"
+            f" --county-max-weight-ratio {float(county_profile['max_weight_ratio'])!r}"
+        )
 
     build_manifest = {
         "build_id": release_id,
@@ -3325,6 +3826,12 @@ def do_package(args) -> dict:
         "refresh_recipe": refresh_recipe,
     }
 
+    if county_profile is not None:
+        build_manifest["calibration"].update(
+            target_loss_cap=diagnostics["target_loss_cap"],
+            county_solver_profile=county_profile,
+        )
+
     source_coverage = {
         "schema_version": 1,
         "note": "ACS local-area artifact coverage summary.",
@@ -3344,6 +3851,7 @@ def do_package(args) -> dict:
         "run_identity.json": identity,
     }
     contract_files["spine_qa.json"] = spine_qa
+    county_surface.package_reports(contract_files, args.checkpoint_dir, identity)
     contract_files["consumer_export.json"] = consumer_export
     consumer_fills = _load_json(
         args.checkpoint_dir / "consumer_reviewed_null_fills.json"
@@ -3355,6 +3863,9 @@ def do_package(args) -> dict:
             "fills must ship with their evidence."
         )
     contract_files["consumer_reviewed_null_fills.json"] = consumer_fills
+    # Created only after every gate above has passed, so a refused artifact
+    # leaves no release directory behind.
+    release_dir.mkdir(parents=True, exist_ok=True)
     for name, payload in contract_files.items():
         (release_dir / name).write_text(json.dumps(payload, indent=1))
     if diagnostics_status["status"] == "available":
@@ -3512,7 +4023,8 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=_REPO_ROOT / "build" / "us" / "us_puma_ladder_2020.npz",
     )
     parser.add_argument("--families", default="snap,medicaid,soi")
-    parser.add_argument("--geographies", default="state,cd")
+    parser.add_argument("--geographies", default="state,cd", help="state, cd, county")
+    county_surface.add_arguments(parser)
     parser.add_argument(
         "--soi-mode",
         choices=SOI_MODES,
@@ -3525,7 +4037,8 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "total); 'full' keeps every state-bearing spec, both vintages "
             "of each state concept included. 'state_cd' adds the district "
             "file's district rows to 'state' with one vintage per state "
-            "concept, and holds a hash-assigned block of them out "
+            "concept, and holds a hash-assigned block of them out. "
+            "'state_county' adds county shares of the state SOI targets "
             "(docs/us-acs-local-soi-target-surface.md). Later stages use the "
             "mode the checkpoint recorded."
         ),
@@ -3559,6 +4072,24 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--epoch-batch", type=int, default=400)
     parser.add_argument("--max-weight-ratio", type=float, default=5.0)
     parser.add_argument("--target-loss-cap", type=float, default=1.0)
+    parser.add_argument(
+        "--county-target-loss-cap",
+        type=float,
+        default=COUNTY_TARGET_LOSS_CAP,
+        help=(
+            "Run-level loss cap when county rows are requested (default 10); "
+            "overrides --target-loss-cap only for county builds."
+        ),
+    )
+    parser.add_argument(
+        "--county-max-weight-ratio",
+        type=float,
+        default=COUNTY_MAX_WEIGHT_RATIO,
+        help=(
+            "Per-record weight cap for a county solve (default 5; pilot also "
+            "tested 20); overrides --max-weight-ratio only for county builds."
+        ),
+    )
     parser.add_argument(
         "--target-family-loss-multiplier",
         action="append",
@@ -3683,6 +4214,12 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             f"[0, {cd_surface.MAX_CD_HOLDOUT_FRACTION}]."
         )
     args.stages = stages
+    county_surface.validate_arguments(args, parser)
+    for flag in ("county_target_loss_cap", "county_max_weight_ratio"):
+        value = getattr(args, flag)
+        if not np.isfinite(value) or value <= 0:
+            parser.error(f"--{flag.replace('_', '-')} must be positive and finite.")
+    _apply_county_solver_profile(args)
 
     return args
 

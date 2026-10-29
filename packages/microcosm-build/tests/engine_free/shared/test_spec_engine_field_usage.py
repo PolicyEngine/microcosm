@@ -95,22 +95,22 @@ def _mutated_bundle(
 
 
 def test_exact_complete_ledger_has_one_primary_mode_per_pointer(field_ledger) -> None:
-    assert len(field_ledger.fields) == EXPECTED_CONFIGURATION_FIELD_COUNT == 42_194
+    assert len(field_ledger.fields) == EXPECTED_CONFIGURATION_FIELD_COUNT == 42_245
     assert field_ledger.source_counts == {
-        "authored": 32_414,
-        "resolved_bindings": 9_780,
+        "authored": 32_464,
+        "resolved_bindings": 9_781,
     }
     assert field_ledger.mode_counts == {
-        "legacy_behavior": 14_010,
-        "compiler_semantic": 27_727,
+        "legacy_behavior": 14_060,
+        "compiler_semantic": 27_728,
         "front_end_validation": 354,
         "identity_only": 103,
     }
     assert field_ledger.generation0_effect_counts == {
-        "legacy_behavior": 38_508,
-        "no_generation0_effect": 3_686,
+        "legacy_behavior": 38_558,
+        "no_generation0_effect": 3_687,
     }
-    assert len({field.pointer for field in field_ledger.fields}) == 42_194
+    assert len({field.pointer for field in field_ledger.fields}) == 42_245
 
 
 def test_eligibility_concepts_are_validation_not_generation0_behavior(

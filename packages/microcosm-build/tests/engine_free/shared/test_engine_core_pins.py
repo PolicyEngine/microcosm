@@ -4,7 +4,9 @@ Nothing imports both engines and CI installs one country extra per job, so
 every extra that installs policyengine-us is declared in conflict with every
 extra that installs policyengine-uk, and uv locks the two sides in separate
 forks. The US side stays on the core the certified US default was built with
-until its next certified build. The resolution checks read the committed
+until its next certified build. The UK side resolves the locked policyengine-uk
+and the core that release brings, and a lock change that moves either has to
+move the pin below with it. The resolution checks read the committed
 ``uv.lock`` through ``uv export --frozen``, uv's own reading of what an install
 path gets, without the network or the environment.
 """
@@ -26,6 +28,12 @@ US_ENGINE = {
     "policyengine-core": "3.32.5",
     "policyengine-us": "2.2.1",
     "spm-calculator": "1.0.0",
+}
+#: What every UK install path resolves: the locked policyengine-uk and the
+#: policyengine-core its own floor brings.
+UK_ENGINE = {
+    "policyengine-core": "3.33.3",
+    "policyengine-uk": "2.162.14",
 }
 ENGINE_PACKAGES = ("microcosm-build", "microcosm-data", "microcosm-frame")
 
@@ -63,12 +71,19 @@ def _uv_export(*args: str) -> subprocess.CompletedProcess[str]:
 
 
 def _resolved(requirements: str) -> dict[str, str]:
+    """Each exported package's version, or its URL for a direct reference."""
+
     versions = {}
     for line in requirements.splitlines():
         pin = line.split(";")[0].strip()
-        if "==" in pin and not pin.startswith(("#", "-")):
+        if pin.startswith(("#", "-")):
+            continue
+        if "==" in pin:
             name, version = pin.split("==", 1)
             versions[name.strip()] = version.strip()
+        elif " @ " in pin:
+            name, url = pin.split(" @ ", 1)
+            versions[name.strip()] = url.strip()
     return versions
 
 
@@ -115,6 +130,26 @@ def test_every_us_install_path_resolves_the_certified_us_engine(
     resolved = _resolved(result.stdout)
     assert {name: resolved.get(name) for name in US_ENGINE} == US_ENGINE
     assert "policyengine-uk" not in resolved
+
+
+def _uk_install_paths() -> list[tuple[str, ...]]:
+    extra_names = sorted({extra for _, extra in UK_EXTRAS})
+    return [
+        *(("--all-packages", "--extra", extra) for extra in extra_names),
+        *(("--package", package, "--extra", extra) for package, extra in UK_EXTRAS),
+    ]
+
+
+@pytest.mark.parametrize("args", _uk_install_paths(), ids=" ".join)
+def test_every_uk_install_path_resolves_the_locked_uk_engine(
+    args: tuple[str, ...],
+) -> None:
+    result = _uv_export(*args)
+
+    assert result.returncode == 0, result.stderr
+    resolved = _resolved(result.stdout)
+    assert {name: resolved.get(name) for name in UK_ENGINE} == UK_ENGINE
+    assert "policyengine-us" not in resolved
 
 
 def test_every_us_and_uk_pair_is_declared_and_locked_as_a_conflict() -> None:

@@ -921,6 +921,7 @@ class TestUKCountryPackage:
         assert legacy_rows == (
             "degenerate_reviewed_exclusions.json",
             "target_fit_reviewed_exclusions.json",
+            "local_target_fit_reviewed_exclusions.json",
             "efrs_parity_known_gaps.json",
             "efrs_parity_reference.json",
             "frs_release.json",
@@ -931,10 +932,16 @@ class TestUKCountryPackage:
             "hmrc_cgt_conditioning_facts.json",
             "hmrc_cgt_asset_type_facts.json",
             "hmrc_property_rental_income_facts.json",
+            "hmrc_stamp_tax_facts.json",
+            "dwp_move_to_uc_facts.json",
+            "dwp_uc_award_band_facts.json",
+            "obr_hvcts_costing_facts.json",
             "hmrc_itl_taxpayer_counts.json",
             "hmrc_uprating_engine_pins.json",
             "advani_summers_capital_gains_distribution.json",
             "salary_sacrifice_anchor.json",
+            "bonus_sacrifice_anchor.json",
+            "obr_salary_sacrifice_costing_facts.json",
             "slc_liable_stocks.json",
             "hmrc_income_release_gate_report.json",
             "hmrc_income_replay_report.json",
@@ -946,11 +953,22 @@ class TestUKCountryPackage:
             "ons_age_tail_band_populations.json",
             "ashe_employer_pension_contribution_rates.json",
             "ons_single_year_age_populations.json",
+            # microcosm#1095: report-only, uk_runtime.single_year_ages.
+            "ons_mid2025_single_year_age_by_sex.json",
             "hmrc_child_benefit_statistics.json",
             "lcfs_consumption_support_bounds.json",
             "etb_vat_support_bounds.json",
             "etb_services_support_bounds.json",
             "regional_land_values.json",
+            "high_value_home_stock_facts.json",
+            "high_value_home_value_knots.json",
+            "high_value_home_stock.provenance.json",
+            "voa_council_tax_band_mix_lsoa.json",
+            "brma_area_layer.json",
+            "brma_area_layer.provenance.json",
+            "brma_rent_quantiles.json",
+            "scotland_brma_la_overlap.json",
+            "price_paid_property_support_bounds.json",
             "source_stages.json",
             "take_up_contract.json",
             "target_reference_signed_exclusions.json",
@@ -960,10 +978,7 @@ class TestUKCountryPackage:
             "spine_candidate_acceptance.json",
             "ledger_compile_parity_incumbent_2025_signed_differences.json",
             "ledger_compile_parity_local_incumbent_2025_signed_differences.json",
-            "ledger_compile_parity_production_2023_signed_differences.json",
             "national_staging_build_record.json",
-            "parity_fixture_production_2023.json",
-            "qrf_tail_reviewed_exclusions.json",
             "release_input_coverage_manifest.json",
             "registry_parity_fixture_2025.json",
             "local_registry_parity_fixture_2025.json",
@@ -999,12 +1014,16 @@ class TestUKCountryPackage:
             "orr_rail_facts.json",
             "ons_household_expenditure_facts.json",
             "desnz_road_fuel_by_vehicle.json",
+            "excise_facts.json",
+            "gambling_participation_facts.json",
             "dft_bus_journeys.json",
             "nts_trip_rates.json",
             "nts_car_availability.json",
             "cross_grain_declarations.json",
             "uprating_holds.json",
             "ons_spree_tenure_dwellings.json",
+            "desnz_local_energy_facts.json",
+            "desnz_constituency_energy_facts.json",
             "local_small_cell_rule.json",
             "hmrc_spi_table_3_11_uk_rows.json",
         )
@@ -1022,8 +1041,15 @@ class TestUKCountryPackage:
         # newest); the frs_hmrc_retained_leaves / hmrc_spi_income pair is
         # retired (#901).
         # microcosm#1063 also adds cgt_residential_split after the anchor, and
-        # microcosm#1106 property_components after the regional uprating.
-        assert len(spec.sources.stages) == 40
+        # microcosm#1106 property_components after the regional uprating;
+        # microcosm#1240 high_value_home_support between them, microcosm#1112
+        # regional_home_values after it, and microcosm#1095 property_purchases
+        # after property_components and uc_legacy_closure_take_up after
+        # uc_capital_coherence; microcosm#1319 carers_allowance_take_up after
+        # child_benefit_take_up; childcare_copy_take_up last, after every copy
+        # stage; microcosm#1334 uc_take_up after uc_capital_coherence and
+        # frs_annual_income_spells after frs_hmrc_spine_leaves.
+        assert len(spec.sources.stages) == 49
         assert not {"frs_hmrc_retained_leaves", "hmrc_spi_income"}.intersection(
             stage.stage for stage in spec.sources.stages
         )
@@ -1054,6 +1080,7 @@ class TestExistingPackagesGeneralize:
             "spec/vintages.yaml",
             "degenerate_reviewed_exclusions.json",
             "target_fit_reviewed_exclusions.json",
+            "local_target_fit_reviewed_exclusions.json",
             "efrs_parity_known_gaps.json",
             "efrs_parity_reference.json",
             "frs_release.json",
@@ -1064,10 +1091,16 @@ class TestExistingPackagesGeneralize:
             "hmrc_cgt_conditioning_facts.json",
             "hmrc_cgt_asset_type_facts.json",
             "hmrc_property_rental_income_facts.json",
+            "hmrc_stamp_tax_facts.json",
+            "dwp_move_to_uc_facts.json",
+            "dwp_uc_award_band_facts.json",
+            "obr_hvcts_costing_facts.json",
             "hmrc_itl_taxpayer_counts.json",
             "hmrc_uprating_engine_pins.json",
             "advani_summers_capital_gains_distribution.json",
             "salary_sacrifice_anchor.json",
+            "bonus_sacrifice_anchor.json",
+            "obr_salary_sacrifice_costing_facts.json",
             "slc_liable_stocks.json",
             "hmrc_income_release_gate_report.json",
             "hmrc_income_replay_report.json",
@@ -1079,11 +1112,22 @@ class TestExistingPackagesGeneralize:
             "ons_age_tail_band_populations.json",
             "ashe_employer_pension_contribution_rates.json",
             "ons_single_year_age_populations.json",
+            # microcosm#1095: report-only, uk_runtime.single_year_ages.
+            "ons_mid2025_single_year_age_by_sex.json",
             "hmrc_child_benefit_statistics.json",
             "lcfs_consumption_support_bounds.json",
             "etb_vat_support_bounds.json",
             "etb_services_support_bounds.json",
             "regional_land_values.json",
+            "high_value_home_stock_facts.json",
+            "high_value_home_value_knots.json",
+            "high_value_home_stock.provenance.json",
+            "voa_council_tax_band_mix_lsoa.json",
+            "brma_area_layer.json",
+            "brma_area_layer.provenance.json",
+            "brma_rent_quantiles.json",
+            "scotland_brma_la_overlap.json",
+            "price_paid_property_support_bounds.json",
             "source_stages.json",
             "take_up_contract.json",
             "target_reference_signed_exclusions.json",
@@ -1093,10 +1137,7 @@ class TestExistingPackagesGeneralize:
             "spine_candidate_acceptance.json",
             "ledger_compile_parity_incumbent_2025_signed_differences.json",
             "ledger_compile_parity_local_incumbent_2025_signed_differences.json",
-            "ledger_compile_parity_production_2023_signed_differences.json",
             "national_staging_build_record.json",
-            "parity_fixture_production_2023.json",
-            "qrf_tail_reviewed_exclusions.json",
             "release_input_coverage_manifest.json",
             "registry_parity_fixture_2025.json",
             "local_registry_parity_fixture_2025.json",
@@ -1132,12 +1173,16 @@ class TestExistingPackagesGeneralize:
             "orr_rail_facts.json",
             "ons_household_expenditure_facts.json",
             "desnz_road_fuel_by_vehicle.json",
+            "excise_facts.json",
+            "gambling_participation_facts.json",
             "dft_bus_journeys.json",
             "nts_trip_rates.json",
             "nts_car_availability.json",
             "cross_grain_declarations.json",
             "uprating_holds.json",
             "ons_spree_tenure_dwellings.json",
+            "desnz_local_energy_facts.json",
+            "desnz_constituency_energy_facts.json",
             "local_small_cell_rule.json",
             "hmrc_spi_table_3_11_uk_rows.json",
         )
@@ -1147,8 +1192,8 @@ class TestExistingPackagesGeneralize:
 
         references = {reference.name: reference for reference in spec.target_references}
         assert (
-            len(references) == 1279
-        )  # microcosm#1106: + 13 SPI property amounts; microcosm#1113: + 1 ONS 07.2.2 household road fuel; PolicyEngine/chronicle#280 lane: 705 + 33 HMRC liabilities rows (Table 2.5, three
+            len(references) == 1374
+        )  # microcosm#1418: + 3, HMRC's Income Tax on savings at each rate; microcosm#1069: + 24, HMRC's Income Tax payers of State Pension age and aged 65 and over in the twelve region-tier areas; microcosm#1095 (the bump after #1383): + 1, obr.domestic_rates compiles, pinned to the UK; + 5, HMRC's Child Benefit families in payment by number of children; microcosm#1359: + 5 OBR excise receipts rows, measured at FY2024-25; microcosm#953: + 1, England's single adult council tax discount; microcosm#1095 (the next policyengine-uk bump): - 3, the OBR welfare-cap split and the England postgraduate repayments retire; childcare costing fixes: + 5, DfE funded childcare by single age (working parent 9-11 months and 1-3, universal nursery 3; the age-4 cells are signed out); item 6: + 11, the UK's ONS single years 3 to 6 and England's 0 to 6; microcosm#1278: + 3, the ONS single years 0, 1 and 2 for all persons; microcosm#1095: + 4, the two national 15_19 sex bands split into ages 15, 16-17 and 18-19; microcosm#1106: + 13 SPI property amounts; microcosm#1113: + 1 ONS 07.2.2 household road fuel; PolicyEngine/chronicle#280 lane: 705 + 33 HMRC liabilities rows (Table 2.5, three
         # measures by eleven bands) + 26 SPI savings-interest rows (two measures by
         # thirteen bands) + 360 SPI Table 3.11 region-tier rows (three measures by
         # ten regional bands over twelve areas); microcosm#905: 424 - 18 country
@@ -1173,7 +1218,14 @@ class TestExistingPackagesGeneralize:
         # microcosm#1123: the 12 nation household control cells and the 24
         # ITL Table 2.2 marginal-rate cells;
         # microcosm#1106: the 13 SPI Table 3.7 net property-income amounts by
-        # total-income band, bound unscaled once the x1.9 exclusion retired
+        # total-income band, bound unscaled once the x1.9 exclusion retired;
+        # microcosm#1207: the 9 DfT BUS01a bus journey rows (London and the
+        # eight English regions outside London); microcosm#1095: less DWP's
+        # five-or-more-children UC count, a diagnostic beside the two-child
+        # limit rows; microcosm#1301: the 30 high-value homes region cells
+        # (three thresholds over England's regions and Wales), which the
+        # national line drops after the compile, less the North East and
+        # Wales rows over £2m, signed out below the small-cell floor
         assert references["obr.esa"].value_operation == "calendar_year_window"
         assert references["dwp.uc.households"].value_operation == (
             "monthly_window_sum_average"
@@ -1402,7 +1454,6 @@ class TestUKGatesManifest:
         assert [gate.id for gate in manifest.gates] == [
             "uk_release_input_coverage_manifest_current",
             "uk_release_family_build_stages",
-            "uk_ledger_compile_parity_production_2023",
             "uk_ledger_compile_parity_incumbent_2025",
             "uk_ledger_compile_parity_local_incumbent_2025",
             "uk_target_surface_local_default_2025",
@@ -1419,17 +1470,22 @@ class TestUKGatesManifest:
             "uk_stage_lcfs_consumption_road_fuel_incidence",
             "uk_stage_lcfs_consumption_road_fuel_level",
             "uk_stage_lcfs_consumption_recomposed_totals",
+            "uk_stage_lcfs_consumption_excise_quantities",
+            "uk_stage_lcfs_consumption_gambling_participation",
             "uk_stage_lcfs_consumption_basis",
             "uk_stage_etb_vat_support",
             "uk_stage_etb_services_support",
             "uk_stage_etb_services_support_pricing",
             "uk_stage_frs_hmrc_spine_leaves_signal",
+            "uk_stage_frs_annual_income_spells",
             "uk_stage_spi_support_channel_mass",
             "uk_stage_hmrc_spi_income_spine_identity",
             "uk_stage_spi_benefit_coherence",
+            "uk_stage_uc_take_up",
             "uk_stage_pension_credit_take_up",
             "uk_stage_child_benefit_take_up",
             "uk_stage_cgt_incidence_clone_mass",
+            "uk_stage_high_value_home_support_mass",
             "uk_stage_cgt_support_split_mass",
             "uk_stage_spi_income_band_donors_support",
             "uk_stage_hmrc_cgt_gains_spine_summary",
@@ -1440,6 +1496,10 @@ class TestUKGatesManifest:
             "uk_stage_student_loans_realization",
             "uk_stage_age_tail_targets",
             "uk_stage_frs_relationships_composition",
+            "uk_stage_regional_home_values_ranking",
+            "uk_stage_property_purchases_fit",
+            "uk_stage_uc_legacy_closure_take_up_contract",
+            "uk_stage_frs_person_draws_apprentices",
             "uk_release_input_coverage",
             "uk_degenerate_release_surface",
             "uk_zero_weight_strata",
@@ -1455,24 +1515,33 @@ class TestUKGatesManifest:
             "uk_brma_enum_domain",
             "uk_ons_household_type_enum_domain",
             "uk_capital_gains_asset_type_enum_domain",
+            "uk_council_tax_band_domain",
             "uk_uc_deduction_combination_enum_domain",
             "uk_student_loan_plan_enum_domain",
+            "uk_council_tax_band_domain_terminal",
             "uk_calibration_reference_coverage",
             "uk_target_surface",
             "uk_target_fit",
             "uk_cgt_projection_entrants",
             "uk_input_mass_parity",
-            "uk_qrf_tail_concentration",
             "uk_local_geography_ladder_post_calibration",
+            "uk_local_brma_enum_domain",
             "uk_local_area_support",
             "uk_local_target_fit",
             "uk_local_per_family_fit",
             "uk_local_weight_ratio",
             "uk_local_weight_ess",
+            # microcosm#1240: the two report-only high-value homes gates.
+            "uk_high_value_homes_benchmarks",
+            "uk_high_value_homes_support",
         ]
         # PR #870 review: the four local fit/weight gates are release-blocking
-        # like the rest of the battery; nothing in the manifest is diagnostic.
-        diagnostic: set[str] = set()
+        # like the rest of the battery; the only diagnostic entries are the
+        # microcosm#1240 high-value homes benchmarks and support reports.
+        diagnostic: set[str] = {
+            "uk_high_value_homes_benchmarks",
+            "uk_high_value_homes_support",
+        }
         assert {
             gate.id for gate in manifest.gates if gate.criticality == "diagnostic"
         } == diagnostic
@@ -1487,9 +1556,10 @@ class TestUKGatesManifest:
     ) -> None:
         params = {gate.id: gate.parameters for gate in manifest.gates}
 
-        assert (
-            params["uk_ledger_compile_parity_production_2023"]["target_period"] == 2023
-        )
+        # The comparison with the 2023 production surface is retired (María's
+        # ruling of 2026-10-13): no build reads a 2023 target, and all but 11
+        # of its 149 rows were signed differences.
+        assert "uk_ledger_compile_parity_production_2023" not in params
         assert (
             params["uk_ledger_compile_parity_incumbent_2025"]["target_period"] == 2025
         )
@@ -1531,17 +1601,22 @@ class TestUKGatesManifest:
             "uk_stage_lcfs_consumption_road_fuel_incidence",
             "uk_stage_lcfs_consumption_road_fuel_level",
             "uk_stage_lcfs_consumption_recomposed_totals",
+            "uk_stage_lcfs_consumption_excise_quantities",
+            "uk_stage_lcfs_consumption_gambling_participation",
             "uk_stage_lcfs_consumption_basis",
             "uk_stage_etb_vat_support",
             "uk_stage_etb_services_support",
             "uk_stage_etb_services_support_pricing",
             "uk_stage_frs_hmrc_spine_leaves_signal",
+            "uk_stage_frs_annual_income_spells",
             "uk_stage_spi_support_channel_mass",
             "uk_stage_hmrc_spi_income_spine_identity",
             "uk_stage_spi_benefit_coherence",
+            "uk_stage_uc_take_up",
             "uk_stage_pension_credit_take_up",
             "uk_stage_child_benefit_take_up",
             "uk_stage_cgt_incidence_clone_mass",
+            "uk_stage_high_value_home_support_mass",
             "uk_stage_cgt_support_split_mass",
             "uk_stage_spi_income_band_donors_support",
             "uk_stage_hmrc_cgt_gains_spine_summary",
@@ -1552,18 +1627,34 @@ class TestUKGatesManifest:
             "uk_stage_student_loans_realization",
             "uk_stage_age_tail_targets",
             "uk_stage_frs_relationships_composition",
+            "uk_stage_regional_home_values_ranking",
+            "uk_stage_property_purchases_fit",
+            "uk_stage_uc_legacy_closure_take_up_contract",
+            "uk_stage_frs_person_draws_apprentices",
             "uk_weights_audit",
             # The #970 projection fence: a seam that cannot project cannot
             # certify the candidate's sub-exempt gainers.
             "uk_cgt_projection_entrants",
+            "uk_local_brma_enum_domain",
         ]
         assert all(g.not_applicable is None for g in manifest.gates)
 
+    def test_brma_domain_is_checked_on_the_spine_and_local_candidate(
+        self, manifest
+    ) -> None:
+        entries = {gate.id: gate for gate in manifest.gates}
+        assembled = entries["uk_brma_enum_domain"]
+        local = entries["uk_local_brma_enum_domain"]
+        assert assembled.phase == "assembled"
+        assert local.phase == "terminal"
+        assert assembled.gate == local.gate == "enum_domain"
+        assert assembled.parameters == local.parameters == {"columns": ("brma",)}
+        assert local.evidence_absent_blocks is True
+
     def test_gate_names_are_country_neutral(self, manifest) -> None:
         by_id = {gate.id: gate.gate for gate in manifest.gates}
-        # The two legacy names the bindings re-mint to the shared vocabulary.
+        # The legacy name the bindings re-mint to the shared vocabulary.
         assert by_id["uk_release_input_coverage"] == "release_input_coverage"
-        assert by_id["uk_qrf_tail_concentration"] == "tail_concentration"
         assert not any(name.startswith("uk_") for name in by_id.values())
 
     def test_thresholds_match_the_schema4_manifest(self, manifest) -> None:
@@ -1575,11 +1666,6 @@ class TestUKGatesManifest:
         )
         assert params["uk_input_mass_parity"]["relative_tolerance"] == 4.521811483823806
         assert params["uk_input_mass_parity"]["minimum_reference_total"] == 0.0
-        assert params["uk_qrf_tail_concentration"]["top_k"] == 100
-        assert (
-            params["uk_qrf_tail_concentration"]["max_top_share"] == 0.9994670564654868
-        )
-        assert params["uk_qrf_tail_concentration"]["min_nonzero_records"] == 104
         assert (
             params["uk_target_fit"]["max_abs_relative_error"]
             == terminal_gates.UK_MAX_TARGET_ABS_RELATIVE_ERROR
@@ -1592,6 +1678,7 @@ class TestUKGatesManifest:
             "uc_deduction_support_bounds.json",
             "nts_bus_travel_support_bounds.json",
             "was_lisa_support_bounds.json",
+            "price_paid_property_support_bounds.json",
         )
         aggregate = params["uk_aggregate_admin"]
         assert aggregate["default_rtol"] == 0.15
@@ -1606,7 +1693,8 @@ class TestUKGatesManifest:
             "accommodation",
             "region",
         ]
-        assert energy_rake["maximum_relative_deviation"] == 0.025
+        # María's ruling of 2026-10-12 (microcosm#1164).
+        assert energy_rake["maximum_relative_deviation"] == 0.035
         assert energy_rake["convergence_window_sweeps"] == 10
         assert energy_rake["maximum_residual_change_over_window"] == 0.001
 
@@ -1653,11 +1741,6 @@ class TestUKGatesManifest:
         assert (
             input_mass["reviewed_exclusions_resource"]
             == weighted_integrity.UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE
-        )
-        qrf = params["uk_qrf_tail_concentration"]
-        assert (
-            qrf["reviewed_exclusions_resource"]
-            == weighted_integrity.UK_QRF_TAIL_EXCLUSION_REGISTER_RESOURCE
         )
         degenerate = params["uk_degenerate_release_surface"]
         assert (

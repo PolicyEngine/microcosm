@@ -21,6 +21,10 @@ from microcosm.frame.adapters.policyengine_uk import (
     UK_SCHEMA,
     PolicyEngineUKEngine,
 )
+from microcosm.frame.adapters.policyengine_uk_concepts import (
+    UK_ENGINE_DEFAULT_INPUTS,
+    UK_ENGINE_DEFAULT_TAKE_UP_INPUTS,
+)
 from microcosm.frame.concept_mapping import (
     Recode,
     TakeUpThreshold,
@@ -83,7 +87,20 @@ def test_take_up_bindings_are_the_engines_would_claim_inputs(engine) -> None:
         if isinstance(binding.transform, TakeUpThreshold)
         and binding.engine_input.startswith("would_claim_")
     }
-    assert bound == would_claim
+    # Every other take-up input is left at the engine default, with a reason.
+    left = set(UK_ENGINE_DEFAULT_TAKE_UP_INPUTS)
+    assert bound.isdisjoint(left)
+    assert bound | left == would_claim
+
+
+def test_signed_default_inputs_are_engine_inputs_the_mapping_leaves(engine) -> None:
+    # Each is left at the engine's default as a signed approximation, so it
+    # must be an input the engine reads and the mapping never binds.
+    inputs = set(engine.variables())
+    bound = {binding.engine_input for binding in MAPPING.bindings}
+    assert set(UK_ENGINE_DEFAULT_INPUTS) <= inputs
+    assert bound.isdisjoint(UK_ENGINE_DEFAULT_INPUTS)
+    assert all(reason.strip() for reason in UK_ENGINE_DEFAULT_INPUTS.values())
 
 
 def test_structural_inputs_are_engine_inputs(engine) -> None:
@@ -104,6 +121,7 @@ def test_the_mapping_notes_formula_ownership_claims_hold(engine) -> None:
         "is_household_head",
         "weekly_hours",
         "tax_free_savings_income",
+        "uc_reported_capital",
     }
     inputs = set(engine.variables())
     for name in claimed:
@@ -115,9 +133,11 @@ def test_the_liquid_asset_reason_holds(engine) -> None:
     # Financial wealth is a household input. The person-level GBP stocks are a
     # debt, a car's list price and the Lifetime ISA balance, which the engine
     # documents as already inside the household's financial wealth.
-    # uc_reported_capital is a benefit-unit input, unset at -1, that the
-    # uc_assessable_capital formula reads in place of both a household proxy
-    # apportioned by claimant and partner count and the person-level sources.
+    # uc_reported_capital defaults to -1 since policyengine-uk 2.136.1: set to
+    # zero or more it is a unit's complete capital. benunit_reported_capital,
+    # a benefit-unit input unset at -1, replaces the household financial proxy
+    # apportioned by claimant and partner count and the person-level sources;
+    # property is valued apart, in uc_property_capital.
     inputs = set(engine.variables())
     person_stocks = {
         name
@@ -130,18 +150,30 @@ def test_the_liquid_asset_reason_holds(engine) -> None:
         "car_list_price",
         "lifetime_isa_balance",
         "student_loan_balance",
+        # Universal Credit's regulation 77 company inputs (2.130.0): no
+        # company by default, and the build sets none.
+        "owned_company_capital",
+        "owned_company_holding_value",
+        "owned_company_trade_assets",
     }
     for name in ("savings", "gross_financial_wealth", "net_financial_wealth"):
         assert name in inputs, name
         assert engine.variable_metadata(name).entity == "household", name
-    assert "uc_reported_capital" in inputs
+    assert "benunit_reported_capital" in inputs
+    assert engine.variable_metadata("benunit_reported_capital").entity == "benunit"
+    assert engine._variable("benunit_reported_capital").default_value == -1
+    assert "uc_reported_capital" not in inputs
     assert engine.variable_metadata("uc_reported_capital").entity == "benunit"
     assert engine._variable("uc_reported_capital").default_value == -1
+    reported = inspect.getsource(engine._variable("uc_reported_capital").get_formula())
+    assert "return -1" in reported
     assert "uc_assessable_capital" not in inputs
     source = inspect.getsource(engine._variable("uc_assessable_capital").get_formula())
     assert "uc_reported_capital" in source
-    assert 'add(benunit, period, ["is_uc_claimant"])' in source
-    assert "p.capital.person_sources" in source
+    assert 'benunit("benunit_reported_capital", period)' in source
+    assert 'benunit.members("is_uc_claimant", period)' in source
+    assert "p.person_sources" in source
+    assert 'benunit("uc_property_capital", period)' in source
     assert "loan" in engine._variable("student_loan_balance").label.lower()
     duty = engine._variable("car_vehicle_excise_duty").get_formula()
     assert 'person("car_list_price", period)' in inspect.getsource(duty)
@@ -150,23 +182,36 @@ def test_the_liquid_asset_reason_holds(engine) -> None:
 
 
 def test_the_liquid_asset_reason_names_the_household_wealth_inputs(engine) -> None:
-    # Shares and funds sit on the household too, in corporate_wealth, which
-    # Universal Credit counts as capital alongside savings. Its one
+    # Shares and funds sit on the household too, in corporate_wealth. Since
+    # policyengine-uk 2.147.0 Universal Credit counts them, alongside savings,
+    # as share_like_capital: corporate_wealth unless its two household
+    # components, which the WAS stage writes to sum to it with the ISA, add up
+    # to more (microcosm#1095). Its one
     # person-level source is the Lifetime ISA at its surrender value.
     reason = MAPPING.unmapped["fact:person.liquid_financial_assets"]
+    inputs = set(engine.variables())
     assert engine.variable_metadata("corporate_wealth").entity == "household"
     assert engine._variable("corporate_wealth").quantity_type == "stock"
     assert engine._variable("corporate_wealth").unit == "currency-GBP"
     universal_credit = engine._tax_benefit_system().parameters.gov.dwp.universal_credit
     sources = universal_credit.means_test.capital.sources("2026-01-01")
-    assert {"savings", "corporate_wealth"} <= set(sources)
+    assert {"savings", "share_like_capital"} <= set(sources)
+    assert "share_like_capital" not in inputs
+    share_like = inspect.getsource(engine._variable("share_like_capital").get_formula())
+    for name in ("corporate_wealth", "directly_held_shares", "unit_and_investment_trusts"):
+        assert name in share_like, name
+    for name in ("directly_held_shares", "unit_and_investment_trusts"):
+        assert name in inputs, name
+        assert engine.variable_metadata(name).entity == "household", name
+        assert name in reason, name
     person_sources = universal_credit.means_test.capital.person_sources("2026-01-01")
     assert list(person_sources) == ["lifetime_isa_countable_capital"]
     source = inspect.getsource(engine._variable("uc_assessable_capital").get_formula())
-    assert "p.capital.sources" in source
+    assert "for source in p.sources" in source
     for name in (
         "savings",
         "corporate_wealth",
+        "share_like_capital",
         "gross_financial_wealth",
         "net_financial_wealth",
         "lifetime_isa_countable_capital",

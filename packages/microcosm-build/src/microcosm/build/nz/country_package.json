@@ -43,6 +43,11 @@
       "schema_id": "legacy_json"
     },
     {
+      "path": "atomic_geography_support.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
       "path": "axiom_input_closure.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
@@ -54,6 +59,11 @@
     },
     {
       "path": "benefit_unit_rule.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "calibration_bindings.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
     },
@@ -93,7 +103,22 @@
       "schema_id": "legacy_json"
     },
     {
+      "path": "reference_inventory.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "reference_profiles.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
       "path": "release_contract.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "reporting_classifiers.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
     },

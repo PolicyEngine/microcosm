@@ -51,6 +51,12 @@
       },
       "dfc_ni": {
         "label": "Department for Communities (Northern Ireland)"
+      },
+      "microcosm": {
+        "label": "Microcosm derived statistics"
+      },
+      "desnz": {
+        "label": "Department for Energy Security and Net Zero"
       }
     },
     "categories": {
@@ -162,6 +168,10 @@
         "provider_id": "hmrc",
         "label": "Tax-Free Childcare"
       },
+      "hmrc.child_benefit": {
+        "provider_id": "hmrc",
+        "label": "Child Benefit"
+      },
       "dfe.funded_childcare": {
         "provider_id": "dfe",
         "label": "Funded childcare"
@@ -233,6 +243,18 @@
       "dwp.attendance_allowance": {
         "provider_id": "dwp",
         "label": "Attendance Allowance"
+      },
+      "microcosm.high_value_homes": {
+        "provider_id": "microcosm",
+        "label": "High-value homes (HM Land Registry Price Paid, UK HPI, NSPL)"
+      },
+      "desnz.domestic_energy": {
+        "provider_id": "desnz",
+        "label": "Domestic energy consumption"
+      },
+      "dft.local_bus_journeys": {
+        "provider_id": "dft",
+        "label": "Local bus passenger journeys"
       }
     },
     "target_categories": {
@@ -240,11 +262,25 @@
       "dfc_ni.state_pension.amount": "dfc_ni.state_pension",
       "dfc_ni.state_pension.recipients": "dfc_ni.state_pension",
       "dfe.funded_childcare.early_learning_2_year_olds": "dfe.funded_childcare",
+      "dfe.funded_childcare.universal_nursery_children_age_3": "dfe.funded_childcare",
       "dfe.funded_childcare.universal_only_children": "dfe.funded_childcare",
       "dfe.funded_childcare.working_parent_children_2_to_4": "dfe.funded_childcare",
+      "dfe.funded_childcare.working_parent_children_9_to_11_months": "dfe.funded_childcare",
+      "dfe.funded_childcare.working_parent_children_age_1": "dfe.funded_childcare",
+      "dfe.funded_childcare.working_parent_children_age_2": "dfe.funded_childcare",
+      "dfe.funded_childcare.working_parent_children_age_3": "dfe.funded_childcare",
       "dfi_ni.bus.passenger_receipts": "dfi_ni.local_bus_finances",
       "dft.bus_fare_receipts.england": "dft.local_bus_finances",
       "dft.bus_fare_receipts.london": "dft.local_bus_finances",
+      "dft.bus_journeys.east_midlands": "dft.local_bus_journeys",
+      "dft.bus_journeys.east_of_england": "dft.local_bus_journeys",
+      "dft.bus_journeys.london": "dft.local_bus_journeys",
+      "dft.bus_journeys.north_east": "dft.local_bus_journeys",
+      "dft.bus_journeys.north_west": "dft.local_bus_journeys",
+      "dft.bus_journeys.south_east": "dft.local_bus_journeys",
+      "dft.bus_journeys.south_west": "dft.local_bus_journeys",
+      "dft.bus_journeys.west_midlands": "dft.local_bus_journeys",
+      "dft.bus_journeys.yorkshire_and_the_humber": "dft.local_bus_journeys",
       "dft.bus_net_support.england": "dft.local_bus_finances",
       "dft.bus_net_support.london": "dft.local_bus_finances",
       "dwp.attendance_allowance.recipients_england": "dwp.attendance_allowance",
@@ -319,7 +355,6 @@
       "dwp.uc.households_children_2": "dwp.universal_credit",
       "dwp.uc.households_children_3": "dwp.universal_credit",
       "dwp.uc.households_children_4": "dwp.universal_credit",
-      "dwp.uc.households_children_5_or_more": "dwp.universal_credit",
       "dwp.uc.households_couple_no_children": "dwp.universal_credit",
       "dwp.uc.households_couple_with_children": "dwp.universal_credit",
       "dwp.uc.households_housing_element": "dwp.universal_credit",
@@ -366,9 +401,19 @@
       "hmrc.cgt.taxpayers_by_region": "hmrc.capital_gains_tax",
       "hmrc.cgt.taxpayers_by_taxable_income_band": "hmrc.capital_gains_tax",
       "hmrc.cgt.taxpayers_total": "hmrc.capital_gains_tax",
+      "hmrc.child_benefit.families_in_payment.children_1": "hmrc.child_benefit",
+      "hmrc.child_benefit.families_in_payment.children_2": "hmrc.child_benefit",
+      "hmrc.child_benefit.families_in_payment.children_3": "hmrc.child_benefit",
+      "hmrc.child_benefit.families_in_payment.children_4": "hmrc.child_benefit",
+      "hmrc.child_benefit.families_in_payment.children_5_plus": "hmrc.child_benefit",
       "hmrc.itl.additional_rate_taxpayers": "hmrc.income_tax_liabilities_statistics",
       "hmrc.itl.higher_rate_taxpayers": "hmrc.income_tax_liabilities_statistics",
       "hmrc.itl.income_tax_by_total_income_band": "hmrc.income_tax_liabilities_statistics",
+      "hmrc.itl.savings_tax_at_additional_rate": "hmrc.income_tax_liabilities_statistics",
+      "hmrc.itl.savings_tax_at_basic_rate": "hmrc.income_tax_liabilities_statistics",
+      "hmrc.itl.savings_tax_at_higher_rate": "hmrc.income_tax_liabilities_statistics",
+      "hmrc.itl.state_pension_age_taxpayers": "hmrc.income_tax_liabilities_statistics",
+      "hmrc.itl.taxpayers_aged_65_and_over": "hmrc.income_tax_liabilities_statistics",
       "hmrc.itl.taxpayers_by_total_income_band": "hmrc.income_tax_liabilities_statistics",
       "hmrc.itl.total_income_by_total_income_band": "hmrc.income_tax_liabilities_statistics",
       "hmrc.salary_sacrifice.it_relief_additional_rate": "hmrc.salary_sacrifice_income_tax_relief",
@@ -433,14 +478,21 @@
       "mhclg.council_tax_stock.band_f": "mhclg.council_tax_stock",
       "mhclg.council_tax_stock.band_g": "mhclg.council_tax_stock",
       "mhclg.council_tax_stock.band_h": "mhclg.council_tax_stock",
+      "mhclg.council_tax_stock.single_adult_discount": "mhclg.council_tax_stock",
       "mhclg.council_tax_stock.total": "mhclg.council_tax_stock",
+      "microcosm.high_value_homes.over_1_5m_by_region": "microcosm.high_value_homes",
+      "microcosm.high_value_homes.over_1m_by_region": "microcosm.high_value_homes",
+      "microcosm.high_value_homes.over_2m_by_region": "microcosm.high_value_homes",
       "nisra.households.northern_ireland": "ons.household_composition",
       "nithc.public_transport_support": "nithc.public_transport_finances",
       "nrs.households.scotland": "ons.household_composition",
       "obr.attendance_allowance": "obr.efo_expenditure",
+      "obr.beer_and_cider_duties": "obr.efo_receipts",
+      "obr.betting_and_gaming_duties": "obr.efo_receipts",
       "obr.carers_allowance": "obr.efo_expenditure",
       "obr.child_benefit": "obr.efo_expenditure",
       "obr.council_tax": "obr.efo_expenditure",
+      "obr.domestic_rates": "obr.efo_expenditure",
       "obr.esa": "obr.efo_expenditure",
       "obr.fuel_duties_cars": "obr.efo_receipts",
       "obr.housing_benefit": "obr.efo_expenditure",
@@ -452,12 +504,13 @@
       "obr.pension_credit": "obr.efo_expenditure",
       "obr.pip": "obr.efo_expenditure",
       "obr.sdlt": "obr.efo_receipts",
+      "obr.spirits_duties": "obr.efo_receipts",
       "obr.statutory_maternity_pay": "obr.efo_expenditure",
+      "obr.tobacco_duties": "obr.efo_receipts",
       "obr.tv_licence_fee": "obr.efo_expenditure",
       "obr.universal_credit": "obr.efo_expenditure",
-      "obr.universal_credit_in_cap": "obr.efo_expenditure",
-      "obr.universal_credit_outside_cap": "obr.efo_expenditure",
       "obr.vat": "obr.efo_receipts",
+      "obr.wine_duties": "obr.efo_receipts",
       "obr.winter_fuel_allowance": "obr.efo_expenditure",
       "ons.household_composition.couple_3_plus_children_households": "ons.household_composition",
       "ons.household_composition.couple_no_children_households": "ons.household_composition",
@@ -476,18 +529,34 @@
       "ons.land.corporate_land_value": "ons.land",
       "ons.land.household_land_value": "ons.land",
       "ons.land.land_value": "ons.land",
+      "ons.population.age_0": "ons.population",
       "ons.population.age_0_9_by_region": "ons.population",
+      "ons.population.age_1": "ons.population",
       "ons.population.age_10_19_by_region": "ons.population",
+      "ons.population.age_2": "ons.population",
       "ons.population.age_20_29_by_region": "ons.population",
+      "ons.population.age_3": "ons.population",
       "ons.population.age_30_39_by_region": "ons.population",
+      "ons.population.age_4": "ons.population",
       "ons.population.age_40_49_by_region": "ons.population",
+      "ons.population.age_5": "ons.population",
       "ons.population.age_50_59_by_region": "ons.population",
+      "ons.population.age_6": "ons.population",
       "ons.population.age_60_69_by_region": "ons.population",
       "ons.population.age_70_79_by_region": "ons.population",
       "ons.population.age_80_89_by_region": "ons.population",
+      "ons.population.england_age_0": "ons.population",
+      "ons.population.england_age_1": "ons.population",
+      "ons.population.england_age_2": "ons.population",
+      "ons.population.england_age_3": "ons.population",
+      "ons.population.england_age_4": "ons.population",
+      "ons.population.england_age_5": "ons.population",
+      "ons.population.england_age_6": "ons.population",
       "ons.population.female_0_4": "ons.population",
       "ons.population.female_10_14": "ons.population",
-      "ons.population.female_15_19": "ons.population",
+      "ons.population.female_15": "ons.population",
+      "ons.population.female_16_17": "ons.population",
+      "ons.population.female_18_19": "ons.population",
       "ons.population.female_20_24": "ons.population",
       "ons.population.female_25_29": "ons.population",
       "ons.population.female_30_34": "ons.population",
@@ -506,7 +575,9 @@
       "ons.population.female_90_plus": "ons.population",
       "ons.population.male_0_4": "ons.population",
       "ons.population.male_10_14": "ons.population",
-      "ons.population.male_15_19": "ons.population",
+      "ons.population.male_15": "ons.population",
+      "ons.population.male_16_17": "ons.population",
+      "ons.population.male_18_19": "ons.population",
       "ons.population.male_20_24": "ons.population",
       "ons.population.male_25_29": "ons.population",
       "ons.population.male_30_34": "ons.population",
@@ -548,7 +619,6 @@
       "slc.repayments.england_plan_1": "slc.repayments",
       "slc.repayments.england_plan_2": "slc.repayments",
       "slc.repayments.england_plan_5": "slc.repayments",
-      "slc.repayments.england_postgraduate": "slc.repayments",
       "slc.repayments.england_total_higher_education": "slc.repayments",
       "slc.support.adult_dependants_grant_recipients": "slc.student_support",
       "slc.support.adult_dependants_grant_spend": "slc.student_support",
@@ -574,11 +644,25 @@
       "dfc_ni.state_pension.amount": "State Pension paid, Northern Ireland",
       "dfc_ni.state_pension.recipients": "State Pension recipients, Northern Ireland",
       "dfe.funded_childcare.early_learning_2_year_olds": "Early learning 2 year olds",
+      "dfe.funded_childcare.universal_nursery_children_age_3": "Universal nursery children age 3",
       "dfe.funded_childcare.universal_only_children": "Universal only children",
       "dfe.funded_childcare.working_parent_children_2_to_4": "Working parent children 2 to 4",
+      "dfe.funded_childcare.working_parent_children_9_to_11_months": "Working parent children 9 to 11 months",
+      "dfe.funded_childcare.working_parent_children_age_1": "Working parent children age 1",
+      "dfe.funded_childcare.working_parent_children_age_2": "Working parent children age 2",
+      "dfe.funded_childcare.working_parent_children_age_3": "Working parent children age 3",
       "dfi_ni.bus.passenger_receipts": "Translink passenger receipts",
       "dft.bus_fare_receipts.england": "England",
       "dft.bus_fare_receipts.london": "London",
+      "dft.bus_journeys.east_midlands": "East Midlands",
+      "dft.bus_journeys.east_of_england": "East of England",
+      "dft.bus_journeys.london": "London",
+      "dft.bus_journeys.north_east": "North East",
+      "dft.bus_journeys.north_west": "North West",
+      "dft.bus_journeys.south_east": "South East",
+      "dft.bus_journeys.south_west": "South West",
+      "dft.bus_journeys.west_midlands": "West Midlands",
+      "dft.bus_journeys.yorkshire_and_the_humber": "Yorkshire and The Humber",
       "dft.bus_net_support.england": "England",
       "dft.bus_net_support.london": "London",
       "dwp.attendance_allowance.recipients_england": "Attendance Allowance recipients, England",
@@ -653,7 +737,6 @@
       "dwp.uc.households_children_2": "Households children 2",
       "dwp.uc.households_children_3": "Households children 3",
       "dwp.uc.households_children_4": "Households children 4",
-      "dwp.uc.households_children_5_or_more": "Households children 5 or more",
       "dwp.uc.households_couple_no_children": "Households couple no children",
       "dwp.uc.households_couple_with_children": "Households couple with children",
       "dwp.uc.households_housing_element": "Households with housing entitlement",
@@ -700,9 +783,19 @@
       "hmrc.cgt.taxpayers_by_region": "Capital Gains Tax taxpayers by region",
       "hmrc.cgt.taxpayers_by_taxable_income_band": "Capital Gains Tax taxpayers by taxable income",
       "hmrc.cgt.taxpayers_total": "Capital Gains Tax taxpayers",
+      "hmrc.child_benefit.families_in_payment.children_1": "Families in payment, one child",
+      "hmrc.child_benefit.families_in_payment.children_2": "Families in payment, two children",
+      "hmrc.child_benefit.families_in_payment.children_3": "Families in payment, three children",
+      "hmrc.child_benefit.families_in_payment.children_4": "Families in payment, four children",
+      "hmrc.child_benefit.families_in_payment.children_5_plus": "Families in payment, five or more children",
       "hmrc.itl.additional_rate_taxpayers": "Additional rate Income Tax payers by region and nation",
       "hmrc.itl.higher_rate_taxpayers": "Higher rate Income Tax payers by region and nation",
       "hmrc.itl.income_tax_by_total_income_band": "Income Tax liabilities by total income band",
+      "hmrc.itl.savings_tax_at_additional_rate": "Income Tax on savings at the additional rate",
+      "hmrc.itl.savings_tax_at_basic_rate": "Income Tax on savings at the basic rate",
+      "hmrc.itl.savings_tax_at_higher_rate": "Income Tax on savings at the higher rate",
+      "hmrc.itl.state_pension_age_taxpayers": "Income Tax payers of State Pension age by region and nation",
+      "hmrc.itl.taxpayers_aged_65_and_over": "Income Tax payers aged 65 and over by region and nation",
       "hmrc.itl.taxpayers_by_total_income_band": "Income Tax payers by total income band",
       "hmrc.itl.total_income_by_total_income_band": "Total income by total income band",
       "hmrc.salary_sacrifice.it_relief_additional_rate": "It relief additional rate",
@@ -767,14 +860,21 @@
       "mhclg.council_tax_stock.band_f": "Band f",
       "mhclg.council_tax_stock.band_g": "Band g",
       "mhclg.council_tax_stock.band_h": "Band h",
+      "mhclg.council_tax_stock.single_adult_discount": "Single adult discount",
       "mhclg.council_tax_stock.total": "Total",
+      "microcosm.high_value_homes.over_1_5m_by_region": "Owner-occupied homes valued over \u00a31.5 million by region",
+      "microcosm.high_value_homes.over_1m_by_region": "Owner-occupied homes valued over \u00a31 million by region",
+      "microcosm.high_value_homes.over_2m_by_region": "Owner-occupied homes valued over \u00a32 million by region",
       "nisra.households.northern_ireland": "Households, Northern Ireland (Census 2021, rolled to 2025)",
       "nithc.public_transport_support": "Bus and rail support",
       "nrs.households.scotland": "Households, Scotland (NRS)",
       "obr.attendance_allowance": "Attendance allowance",
+      "obr.beer_and_cider_duties": "Beer and cider duties (accrued)",
+      "obr.betting_and_gaming_duties": "Betting and gaming duties",
       "obr.carers_allowance": "Carers allowance",
       "obr.child_benefit": "Child benefit",
       "obr.council_tax": "Council tax",
+      "obr.domestic_rates": "Domestic rates",
       "obr.esa": "Employment and Support Allowance",
       "obr.fuel_duties_cars": "Fuel duties from cars",
       "obr.housing_benefit": "Housing benefit",
@@ -786,12 +886,13 @@
       "obr.pension_credit": "Pension credit",
       "obr.pip": "Personal Independence Payment",
       "obr.sdlt": "Stamp Duty Land Tax",
+      "obr.spirits_duties": "Spirits duties (accrued)",
       "obr.statutory_maternity_pay": "Statutory maternity pay",
+      "obr.tobacco_duties": "Tobacco duties",
       "obr.tv_licence_fee": "TV licence fee",
       "obr.universal_credit": "Universal Credit expenditure",
-      "obr.universal_credit_in_cap": "Universal Credit inside the benefit cap",
-      "obr.universal_credit_outside_cap": "Universal Credit outside the benefit cap",
       "obr.vat": "VAT",
+      "obr.wine_duties": "Wine duties (accrued)",
       "obr.winter_fuel_allowance": "Winter fuel allowance",
       "ons.household_composition.couple_3_plus_children_households": "Couple 3 plus children households",
       "ons.household_composition.couple_no_children_households": "Couple no children households",
@@ -810,18 +911,34 @@
       "ons.land.corporate_land_value": "Corporate land value",
       "ons.land.household_land_value": "Household land value",
       "ons.land.land_value": "Land value",
+      "ons.population.age_0": "Age 0",
       "ons.population.age_0_9_by_region": "Age 0 9 by region",
+      "ons.population.age_1": "Age 1",
       "ons.population.age_10_19_by_region": "Age 10 19 by region",
+      "ons.population.age_2": "Age 2",
       "ons.population.age_20_29_by_region": "Age 20 29 by region",
+      "ons.population.age_3": "Age 3",
       "ons.population.age_30_39_by_region": "Age 30 39 by region",
+      "ons.population.age_4": "Age 4",
       "ons.population.age_40_49_by_region": "Age 40 49 by region",
+      "ons.population.age_5": "Age 5",
       "ons.population.age_50_59_by_region": "Age 50 59 by region",
+      "ons.population.age_6": "Age 6",
       "ons.population.age_60_69_by_region": "Age 60 69 by region",
       "ons.population.age_70_79_by_region": "Age 70 79 by region",
       "ons.population.age_80_89_by_region": "Age 80 89 by region",
+      "ons.population.england_age_0": "England age 0",
+      "ons.population.england_age_1": "England age 1",
+      "ons.population.england_age_2": "England age 2",
+      "ons.population.england_age_3": "England age 3",
+      "ons.population.england_age_4": "England age 4",
+      "ons.population.england_age_5": "England age 5",
+      "ons.population.england_age_6": "England age 6",
       "ons.population.female_0_4": "Female 0 4",
       "ons.population.female_10_14": "Female 10 14",
-      "ons.population.female_15_19": "Female 15 19",
+      "ons.population.female_15": "Female 15",
+      "ons.population.female_16_17": "Female 16 17",
+      "ons.population.female_18_19": "Female 18 19",
       "ons.population.female_20_24": "Female 20 24",
       "ons.population.female_25_29": "Female 25 29",
       "ons.population.female_30_34": "Female 30 34",
@@ -840,7 +957,9 @@
       "ons.population.female_90_plus": "Female 90 plus",
       "ons.population.male_0_4": "Male 0 4",
       "ons.population.male_10_14": "Male 10 14",
-      "ons.population.male_15_19": "Male 15 19",
+      "ons.population.male_15": "Male 15",
+      "ons.population.male_16_17": "Male 16 17",
+      "ons.population.male_18_19": "Male 18 19",
       "ons.population.male_20_24": "Male 20 24",
       "ons.population.male_25_29": "Male 25 29",
       "ons.population.male_30_34": "Male 30 34",
@@ -862,7 +981,7 @@
       "ons.population.uk_total": "UK population",
       "ons.public_sector_employment": "Public sector employment",
       "ons.savings_interest_income": "Savings interest income",
-      "orr.rail_government_support": "Total government support (Great Britain)",
+      "orr.rail_government_support": "Net operational government support, all sources (Great Britain)",
       "scotgov.bus.government_support": "Government support",
       "scotgov.bus.passenger_revenue": "Passenger revenue",
       "scotgov.council_tax_stock.band_a": "Band a",
@@ -882,7 +1001,6 @@
       "slc.repayments.england_plan_1": "England plan 1",
       "slc.repayments.england_plan_2": "England plan 2",
       "slc.repayments.england_plan_5": "England plan 5",
-      "slc.repayments.england_postgraduate": "England postgraduate",
       "slc.repayments.england_total_higher_education": "England total higher education",
       "slc.support.adult_dependants_grant_recipients": "Adult dependants grant recipients",
       "slc.support.adult_dependants_grant_spend": "Adult dependants grant spend",
@@ -912,6 +1030,7 @@
     "latest_plateau",
     "count_x_mean",
     "calendar_year_window",
+    "calendar_year_window_scaled_by_ratio",
     "linear_combination",
     "monthly_window_average",
     "monthly_window_count_x_mean",
@@ -1065,7 +1184,36 @@
         "measure_kind": "prepared_column"
       },
       "assertion_policy": "allow_source_projection",
-      "value_operation": "calendar_year_window"
+      "value_operation": "calendar_year_window_scaled_by_ratio",
+      "value_operands": [
+        {
+          "role": "base"
+        },
+        {
+          "role": "numerator",
+          "source_name": "hmrc",
+          "source_record_id": [
+            "hmrc.stamp_taxes_2024_25.table_8a.individuals.fy2024.all_price_bands.receipts",
+            "hmrc.stamp_taxes_2024_25.table_8b.individuals.fy2024.all_price_bands.receipts"
+          ],
+          "period_type": "fiscal_year",
+          "period_value": 2024,
+          "expected_member_count": 2,
+          "label": "individuals' SDLT receipts, Tables 8a and 8b, 2024-25"
+        },
+        {
+          "role": "denominator",
+          "source_name": "hmrc",
+          "source_record_id": [
+            "hmrc.stamp_taxes_2024_25.table_8a.all_buyers.fy2024.all_price_bands.receipts",
+            "hmrc.stamp_taxes_2024_25.table_8b.all_buyers.fy2024.all_price_bands.receipts"
+          ],
+          "period_type": "fiscal_year",
+          "period_value": 2024,
+          "expected_member_count": 2,
+          "label": "all buyers' SDLT receipts, Tables 8a and 8b, 2024-25"
+        }
+      ]
     },
     {
       "name": "obr.attendance_allowance",
@@ -1074,7 +1222,7 @@
         "source_concept": "obr.attendance_allowance",
         "entity_name": "person",
         "geography_level": "country",
-        "geography_id": "K02000001"
+        "geography_id": "K04000001"
       },
       "entity": "person",
       "measure": "obr/attendance_allowance",
@@ -1094,7 +1242,7 @@
         "source_concept": "obr.carers_allowance",
         "entity_name": "person",
         "geography_level": "country",
-        "geography_id": "K02000001"
+        "geography_id": "K04000001"
       },
       "entity": "person",
       "measure": "obr/carers_allowance",
@@ -1147,13 +1295,33 @@
       "value_operation": "calendar_year_window"
     },
     {
+      "name": "obr.domestic_rates",
+      "ledger_selector": {
+        "source_name": "obr",
+        "source_concept": "obr.domestic_rates",
+        "entity_name": "person",
+        "geography_level": "country",
+        "geography_id": "K02000001"
+      },
+      "entity": "household",
+      "measure": "obr/domestic_rates",
+      "family": "obr",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "obr.domestic_rates",
+        "measure_kind": "prepared_column"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
+    },
+    {
       "name": "obr.esa",
       "ledger_selector": {
         "source_name": "obr",
         "source_concept": "obr.incapacity_benefits",
         "entity_name": "person",
         "geography_level": "country",
-        "geography_id": "K02000001"
+        "geography_id": "K03000001"
       },
       "entity": "household",
       "measure": "obr/esa",
@@ -1173,7 +1341,7 @@
         "source_concept": "obr.housing_benefit",
         "entity_name": "person",
         "geography_level": "country",
-        "geography_id": "K02000001"
+        "geography_id": "K03000001"
       },
       "entity": "benunit",
       "measure": "obr/housing_benefit",
@@ -1193,7 +1361,7 @@
         "source_concept": "obr.jobseekers_allowance",
         "entity_name": "person",
         "geography_level": "country",
-        "geography_id": "K02000001"
+        "geography_id": "K03000001"
       },
       "entity": "benunit",
       "measure": "obr/jobseekers_allowance",
@@ -1213,7 +1381,7 @@
         "source_concept": "obr.pension_credit",
         "entity_name": "person",
         "geography_level": "country",
-        "geography_id": "K02000001"
+        "geography_id": "K03000001"
       },
       "entity": "benunit",
       "measure": "obr/pension_credit",
@@ -1233,7 +1401,7 @@
         "source_concept": "obr.dla_and_pip",
         "entity_name": "person",
         "geography_level": "country",
-        "geography_id": "K02000001"
+        "geography_id": "K04000001"
       },
       "entity": "person",
       "measure": "obr/pip",
@@ -1253,7 +1421,7 @@
         "source_concept": "obr.statutory_maternity_pay",
         "entity_name": "person",
         "geography_level": "country",
-        "geography_id": "K02000001"
+        "geography_id": "K03000001"
       },
       "entity": "person",
       "measure": "obr/statutory_maternity_pay",
@@ -1287,53 +1455,15 @@
       "value_operation": "calendar_year_window"
     },
     {
-      "name": "obr.universal_credit_in_cap",
-      "ledger_selector": {
-        "source_name": "obr",
-        "source_concept": "obr.universal_credit_in_cap",
-        "entity_name": "person",
-        "geography_level": "country",
-        "geography_id": "K02000001"
-      },
-      "entity": "benunit",
-      "measure": "obr/universal_credit_in_cap",
-      "family": "obr",
-      "period": 2025,
-      "metadata": {
-        "contract_target_id": "obr.universal_credit_in_cap",
-        "measure_kind": "prepared_column"
-      },
-      "assertion_policy": "allow_source_projection",
-      "value_operation": "calendar_year_window"
-    },
-    {
-      "name": "obr.universal_credit_outside_cap",
-      "ledger_selector": {
-        "source_name": "obr",
-        "source_concept": "obr.universal_credit_outside_cap",
-        "entity_name": "person",
-        "geography_level": "country",
-        "geography_id": "K02000001"
-      },
-      "entity": "benunit",
-      "measure": "obr/universal_credit_outside_cap",
-      "family": "obr",
-      "period": 2025,
-      "metadata": {
-        "contract_target_id": "obr.universal_credit_outside_cap",
-        "measure_kind": "prepared_column"
-      },
-      "assertion_policy": "allow_source_projection",
-      "value_operation": "calendar_year_window"
-    },
-    {
       "name": "obr.winter_fuel_allowance",
       "ledger_selector": {
         "source_name": "obr",
         "source_concept": "obr.winter_fuel_payment",
         "entity_name": "person",
+        "period_type": "fiscal_year",
+        "period_value": 2025,
         "geography_level": "country",
-        "geography_id": "K02000001"
+        "geography_id": "K04000001"
       },
       "entity": "household",
       "measure": "obr/winter_fuel_allowance",
@@ -1343,8 +1473,7 @@
         "contract_target_id": "obr.winter_fuel_allowance",
         "measure_kind": "prepared_column"
       },
-      "assertion_policy": "allow_source_projection",
-      "value_operation": "calendar_year_window"
+      "assertion_policy": "allow_source_projection"
     },
     {
       "name": "isc.private_school_students",
@@ -4707,7 +4836,7 @@
         "contract_target_id": "hmrc.spi.state_pension.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
-      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
+      "uprating_index": "hmrc.itl_2026.resident_state_pension_age_taxpayer_growth_times_new_state_pension_rate",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -4732,7 +4861,7 @@
         "contract_target_id": "hmrc.spi.state_pension.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
-      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
+      "uprating_index": "hmrc.itl_2026.resident_state_pension_age_taxpayer_growth_times_new_state_pension_rate",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -4757,7 +4886,7 @@
         "contract_target_id": "hmrc.spi.state_pension.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
-      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
+      "uprating_index": "hmrc.itl_2026.resident_state_pension_age_taxpayer_growth_times_new_state_pension_rate",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -4782,7 +4911,7 @@
         "contract_target_id": "hmrc.spi.state_pension.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
-      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
+      "uprating_index": "hmrc.itl_2026.resident_state_pension_age_taxpayer_growth_times_new_state_pension_rate",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -4807,7 +4936,7 @@
         "contract_target_id": "hmrc.spi.state_pension.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
-      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
+      "uprating_index": "hmrc.itl_2026.resident_state_pension_age_taxpayer_growth_times_new_state_pension_rate",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -4832,7 +4961,7 @@
         "contract_target_id": "hmrc.spi.state_pension.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
-      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
+      "uprating_index": "hmrc.itl_2026.resident_state_pension_age_taxpayer_growth_times_new_state_pension_rate",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -4857,7 +4986,7 @@
         "contract_target_id": "hmrc.spi.state_pension.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
-      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
+      "uprating_index": "hmrc.itl_2026.resident_state_pension_age_taxpayer_growth_times_new_state_pension_rate",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -4882,7 +5011,7 @@
         "contract_target_id": "hmrc.spi.state_pension.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
-      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
+      "uprating_index": "hmrc.itl_2026.resident_state_pension_age_taxpayer_growth_times_new_state_pension_rate",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -4907,7 +5036,7 @@
         "contract_target_id": "hmrc.spi.state_pension.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
-      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
+      "uprating_index": "hmrc.itl_2026.resident_state_pension_age_taxpayer_growth_times_new_state_pension_rate",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -4932,7 +5061,7 @@
         "contract_target_id": "hmrc.spi.state_pension.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
-      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
+      "uprating_index": "hmrc.itl_2026.resident_state_pension_age_taxpayer_growth_times_new_state_pension_rate",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -4957,7 +5086,7 @@
         "contract_target_id": "hmrc.spi.state_pension.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
-      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
+      "uprating_index": "hmrc.itl_2026.resident_state_pension_age_taxpayer_growth_times_new_state_pension_rate",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -4982,7 +5111,7 @@
         "contract_target_id": "hmrc.spi.state_pension.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
-      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
+      "uprating_index": "hmrc.itl_2026.resident_state_pension_age_taxpayer_growth_times_new_state_pension_rate",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -5007,7 +5136,7 @@
         "contract_target_id": "hmrc.spi.state_pension.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
-      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
+      "uprating_index": "hmrc.itl_2026.resident_state_pension_age_taxpayer_growth_times_new_state_pension_rate",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -5031,7 +5160,7 @@
         "contract_target_id": "hmrc.spi.state_pension.count_by_total_income_band",
         "measure_kind": "prepared_column"
       },
-      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+      "uprating_index": "hmrc.itl_2026.resident_state_pension_age_taxpayer_growth",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -5055,7 +5184,7 @@
         "contract_target_id": "hmrc.spi.state_pension.count_by_total_income_band",
         "measure_kind": "prepared_column"
       },
-      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+      "uprating_index": "hmrc.itl_2026.resident_state_pension_age_taxpayer_growth",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -5079,7 +5208,7 @@
         "contract_target_id": "hmrc.spi.state_pension.count_by_total_income_band",
         "measure_kind": "prepared_column"
       },
-      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+      "uprating_index": "hmrc.itl_2026.resident_state_pension_age_taxpayer_growth",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -5103,7 +5232,7 @@
         "contract_target_id": "hmrc.spi.state_pension.count_by_total_income_band",
         "measure_kind": "prepared_column"
       },
-      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+      "uprating_index": "hmrc.itl_2026.resident_state_pension_age_taxpayer_growth",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -5127,7 +5256,7 @@
         "contract_target_id": "hmrc.spi.state_pension.count_by_total_income_band",
         "measure_kind": "prepared_column"
       },
-      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+      "uprating_index": "hmrc.itl_2026.resident_state_pension_age_taxpayer_growth",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -5151,7 +5280,7 @@
         "contract_target_id": "hmrc.spi.state_pension.count_by_total_income_band",
         "measure_kind": "prepared_column"
       },
-      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+      "uprating_index": "hmrc.itl_2026.resident_state_pension_age_taxpayer_growth",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -5175,7 +5304,7 @@
         "contract_target_id": "hmrc.spi.state_pension.count_by_total_income_band",
         "measure_kind": "prepared_column"
       },
-      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+      "uprating_index": "hmrc.itl_2026.resident_state_pension_age_taxpayer_growth",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -5199,7 +5328,7 @@
         "contract_target_id": "hmrc.spi.state_pension.count_by_total_income_band",
         "measure_kind": "prepared_column"
       },
-      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+      "uprating_index": "hmrc.itl_2026.resident_state_pension_age_taxpayer_growth",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -5223,7 +5352,7 @@
         "contract_target_id": "hmrc.spi.state_pension.count_by_total_income_band",
         "measure_kind": "prepared_column"
       },
-      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+      "uprating_index": "hmrc.itl_2026.resident_state_pension_age_taxpayer_growth",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -5247,7 +5376,7 @@
         "contract_target_id": "hmrc.spi.state_pension.count_by_total_income_band",
         "measure_kind": "prepared_column"
       },
-      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+      "uprating_index": "hmrc.itl_2026.resident_state_pension_age_taxpayer_growth",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -5271,7 +5400,7 @@
         "contract_target_id": "hmrc.spi.state_pension.count_by_total_income_band",
         "measure_kind": "prepared_column"
       },
-      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+      "uprating_index": "hmrc.itl_2026.resident_state_pension_age_taxpayer_growth",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -5295,7 +5424,7 @@
         "contract_target_id": "hmrc.spi.state_pension.count_by_total_income_band",
         "measure_kind": "prepared_column"
       },
-      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+      "uprating_index": "hmrc.itl_2026.resident_state_pension_age_taxpayer_growth",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -5319,7 +5448,7 @@
         "contract_target_id": "hmrc.spi.state_pension.count_by_total_income_band",
         "measure_kind": "prepared_column"
       },
-      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+      "uprating_index": "hmrc.itl_2026.resident_state_pension_age_taxpayer_growth",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -5385,7 +5514,7 @@
         "geography_level": "country",
         "geography_id": "K03000001"
       },
-      "entity": "household",
+      "entity": "benunit",
       "measure": "dwp/benefit_capped_households",
       "family": "dwp_benefit_cap",
       "period": 2025,
@@ -5769,53 +5898,6 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "dwp.uc.households_children_4",
-        "measure_kind": "prepared_column",
-        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-02\",\"2025-03\",\"2025-04\",\"2025-05\",\"2025-06\",\"2025-07\",\"2025-08\",\"2025-09\",\"2025-10\",\"2025-11\",\"2025-12\"]"
-      },
-      "period_match_policy": "source_window",
-      "value_operation": "monthly_window_average"
-    },
-    {
-      "name": "dwp.uc.households_children_5_or_more",
-      "ledger_selector": {
-        "source_name": "dwp",
-        "source_concept": "dwp.uc_households",
-        "groupby_dimension": "dwp.uc_number_of_children",
-        "dimensions": [
-          "number_of_children",
-          "payment_indicator",
-          "child_entitlement"
-        ],
-        "dimension_values": {
-          "number_of_children": "5 or more",
-          "payment_indicator": "Yes",
-          "child_entitlement": "all"
-        },
-        "source_measure_id": "total_benefit_units",
-        "period_type": "month",
-        "period_value": [
-          "2025-01",
-          "2025-02",
-          "2025-03",
-          "2025-04",
-          "2025-05",
-          "2025-06",
-          "2025-07",
-          "2025-08",
-          "2025-09",
-          "2025-10",
-          "2025-11",
-          "2025-12"
-        ],
-        "geography_level": "country",
-        "geography_id": "K03000001"
-      },
-      "entity": "benunit",
-      "measure": "dwp/uc/claimants_with_5+_children",
-      "family": "dwp_universal_credit",
-      "period": 2025,
-      "metadata": {
-        "contract_target_id": "dwp.uc.households_children_5_or_more",
         "measure_kind": "prepared_column",
         "uk_uc_expected_source_months": "[\"2025-01\",\"2025-02\",\"2025-03\",\"2025-04\",\"2025-05\",\"2025-06\",\"2025-07\",\"2025-08\",\"2025-09\",\"2025-10\",\"2025-11\",\"2025-12\"]"
       },
@@ -13784,6 +13866,384 @@
       "expected_member_count": 10
     },
     {
+      "name": "ons.population.age_0",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.mid_year_population_estimate",
+        "dimension_values": {
+          "age": [
+            0
+          ]
+        },
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimensions": [
+          "age"
+        ]
+      },
+      "entity": "person",
+      "measure": "ons/age_0",
+      "family": "ons_population",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.population.age_0",
+        "measure_kind": "prepared_column"
+      },
+      "value_operation": "sum",
+      "expected_member_count": 1
+    },
+    {
+      "name": "ons.population.age_1",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.mid_year_population_estimate",
+        "dimension_values": {
+          "age": [
+            1
+          ]
+        },
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimensions": [
+          "age"
+        ]
+      },
+      "entity": "person",
+      "measure": "ons/age_1",
+      "family": "ons_population",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.population.age_1",
+        "measure_kind": "prepared_column"
+      },
+      "value_operation": "sum",
+      "expected_member_count": 1
+    },
+    {
+      "name": "ons.population.age_2",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.mid_year_population_estimate",
+        "dimension_values": {
+          "age": [
+            2
+          ]
+        },
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimensions": [
+          "age"
+        ]
+      },
+      "entity": "person",
+      "measure": "ons/age_2",
+      "family": "ons_population",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.population.age_2",
+        "measure_kind": "prepared_column"
+      },
+      "value_operation": "sum",
+      "expected_member_count": 1
+    },
+    {
+      "name": "ons.population.age_3",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.mid_year_population_estimate",
+        "dimension_values": {
+          "age": [
+            3
+          ]
+        },
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimensions": [
+          "age"
+        ]
+      },
+      "entity": "person",
+      "measure": "ons/age_3",
+      "family": "ons_population",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.population.age_3",
+        "measure_kind": "prepared_column"
+      },
+      "value_operation": "sum",
+      "expected_member_count": 1
+    },
+    {
+      "name": "ons.population.age_4",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.mid_year_population_estimate",
+        "dimension_values": {
+          "age": [
+            4
+          ]
+        },
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimensions": [
+          "age"
+        ]
+      },
+      "entity": "person",
+      "measure": "ons/age_4",
+      "family": "ons_population",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.population.age_4",
+        "measure_kind": "prepared_column"
+      },
+      "value_operation": "sum",
+      "expected_member_count": 1
+    },
+    {
+      "name": "ons.population.age_5",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.mid_year_population_estimate",
+        "dimension_values": {
+          "age": [
+            5
+          ]
+        },
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimensions": [
+          "age"
+        ]
+      },
+      "entity": "person",
+      "measure": "ons/age_5",
+      "family": "ons_population",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.population.age_5",
+        "measure_kind": "prepared_column"
+      },
+      "value_operation": "sum",
+      "expected_member_count": 1
+    },
+    {
+      "name": "ons.population.age_6",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.mid_year_population_estimate",
+        "dimension_values": {
+          "age": [
+            6
+          ]
+        },
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimensions": [
+          "age"
+        ]
+      },
+      "entity": "person",
+      "measure": "ons/age_6",
+      "family": "ons_population",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.population.age_6",
+        "measure_kind": "prepared_column"
+      },
+      "value_operation": "sum",
+      "expected_member_count": 1
+    },
+    {
+      "name": "ons.population.england_age_0",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.mid_year_population_estimate",
+        "dimension_values": {
+          "age": [
+            0
+          ]
+        },
+        "geography_level": "country",
+        "geography_id": "E92000001",
+        "dimensions": [
+          "age"
+        ]
+      },
+      "entity": "person",
+      "measure": "ons/england_age_0",
+      "family": "ons_population",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.population.england_age_0",
+        "measure_kind": "prepared_column"
+      },
+      "value_operation": "sum",
+      "expected_member_count": 1
+    },
+    {
+      "name": "ons.population.england_age_1",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.mid_year_population_estimate",
+        "dimension_values": {
+          "age": [
+            1
+          ]
+        },
+        "geography_level": "country",
+        "geography_id": "E92000001",
+        "dimensions": [
+          "age"
+        ]
+      },
+      "entity": "person",
+      "measure": "ons/england_age_1",
+      "family": "ons_population",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.population.england_age_1",
+        "measure_kind": "prepared_column"
+      },
+      "value_operation": "sum",
+      "expected_member_count": 1
+    },
+    {
+      "name": "ons.population.england_age_2",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.mid_year_population_estimate",
+        "dimension_values": {
+          "age": [
+            2
+          ]
+        },
+        "geography_level": "country",
+        "geography_id": "E92000001",
+        "dimensions": [
+          "age"
+        ]
+      },
+      "entity": "person",
+      "measure": "ons/england_age_2",
+      "family": "ons_population",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.population.england_age_2",
+        "measure_kind": "prepared_column"
+      },
+      "value_operation": "sum",
+      "expected_member_count": 1
+    },
+    {
+      "name": "ons.population.england_age_3",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.mid_year_population_estimate",
+        "dimension_values": {
+          "age": [
+            3
+          ]
+        },
+        "geography_level": "country",
+        "geography_id": "E92000001",
+        "dimensions": [
+          "age"
+        ]
+      },
+      "entity": "person",
+      "measure": "ons/england_age_3",
+      "family": "ons_population",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.population.england_age_3",
+        "measure_kind": "prepared_column"
+      },
+      "value_operation": "sum",
+      "expected_member_count": 1
+    },
+    {
+      "name": "ons.population.england_age_4",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.mid_year_population_estimate",
+        "dimension_values": {
+          "age": [
+            4
+          ]
+        },
+        "geography_level": "country",
+        "geography_id": "E92000001",
+        "dimensions": [
+          "age"
+        ]
+      },
+      "entity": "person",
+      "measure": "ons/england_age_4",
+      "family": "ons_population",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.population.england_age_4",
+        "measure_kind": "prepared_column"
+      },
+      "value_operation": "sum",
+      "expected_member_count": 1
+    },
+    {
+      "name": "ons.population.england_age_5",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.mid_year_population_estimate",
+        "dimension_values": {
+          "age": [
+            5
+          ]
+        },
+        "geography_level": "country",
+        "geography_id": "E92000001",
+        "dimensions": [
+          "age"
+        ]
+      },
+      "entity": "person",
+      "measure": "ons/england_age_5",
+      "family": "ons_population",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.population.england_age_5",
+        "measure_kind": "prepared_column"
+      },
+      "value_operation": "sum",
+      "expected_member_count": 1
+    },
+    {
+      "name": "ons.population.england_age_6",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.mid_year_population_estimate",
+        "dimension_values": {
+          "age": [
+            6
+          ]
+        },
+        "geography_level": "country",
+        "geography_id": "E92000001",
+        "dimensions": [
+          "age"
+        ]
+      },
+      "entity": "person",
+      "measure": "ons/england_age_6",
+      "family": "ons_population",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.population.england_age_6",
+        "measure_kind": "prepared_column"
+      },
+      "value_operation": "sum",
+      "expected_member_count": 1
+    },
+    {
       "name": "ons.population.female_0_4",
       "ledger_selector": {
         "source_name": "ons",
@@ -13850,16 +14310,72 @@
       "expected_member_count": 5
     },
     {
-      "name": "ons.population.female_15_19",
+      "name": "ons.population.female_15",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
         "dimension_values": {
           "sex": "female",
           "age": [
-            15,
+            15
+          ]
+        },
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimensions": [
+          "age",
+          "sex"
+        ]
+      },
+      "entity": "person",
+      "measure": "ons/female_15",
+      "family": "ons_population",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.population.female_15",
+        "measure_kind": "prepared_column"
+      },
+      "value_operation": "sum",
+      "expected_member_count": 1
+    },
+    {
+      "name": "ons.population.female_16_17",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.mid_year_population_estimate",
+        "dimension_values": {
+          "sex": "female",
+          "age": [
             16,
-            17,
+            17
+          ]
+        },
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimensions": [
+          "age",
+          "sex"
+        ]
+      },
+      "entity": "person",
+      "measure": "ons/female_16_17",
+      "family": "ons_population",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.population.female_16_17",
+        "measure_kind": "prepared_column"
+      },
+      "value_operation": "sum",
+      "expected_member_count": 2
+    },
+    {
+      "name": "ons.population.female_18_19",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.mid_year_population_estimate",
+        "dimension_values": {
+          "sex": "female",
+          "age": [
             18,
             19
           ]
@@ -13872,15 +14388,15 @@
         ]
       },
       "entity": "person",
-      "measure": "ons/female_15_19",
+      "measure": "ons/female_18_19",
       "family": "ons_population",
       "period": 2025,
       "metadata": {
-        "contract_target_id": "ons.population.female_15_19",
+        "contract_target_id": "ons.population.female_18_19",
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
-      "expected_member_count": 5
+      "expected_member_count": 2
     },
     {
       "name": "ons.population.female_20_24",
@@ -14473,16 +14989,72 @@
       "expected_member_count": 5
     },
     {
-      "name": "ons.population.male_15_19",
+      "name": "ons.population.male_15",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
         "dimension_values": {
           "sex": "male",
           "age": [
-            15,
+            15
+          ]
+        },
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimensions": [
+          "age",
+          "sex"
+        ]
+      },
+      "entity": "person",
+      "measure": "ons/male_15",
+      "family": "ons_population",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.population.male_15",
+        "measure_kind": "prepared_column"
+      },
+      "value_operation": "sum",
+      "expected_member_count": 1
+    },
+    {
+      "name": "ons.population.male_16_17",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.mid_year_population_estimate",
+        "dimension_values": {
+          "sex": "male",
+          "age": [
             16,
-            17,
+            17
+          ]
+        },
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimensions": [
+          "age",
+          "sex"
+        ]
+      },
+      "entity": "person",
+      "measure": "ons/male_16_17",
+      "family": "ons_population",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.population.male_16_17",
+        "measure_kind": "prepared_column"
+      },
+      "value_operation": "sum",
+      "expected_member_count": 2
+    },
+    {
+      "name": "ons.population.male_18_19",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.mid_year_population_estimate",
+        "dimension_values": {
+          "sex": "male",
+          "age": [
             18,
             19
           ]
@@ -14495,15 +15067,15 @@
         ]
       },
       "entity": "person",
-      "measure": "ons/male_15_19",
+      "measure": "ons/male_18_19",
       "family": "ons_population",
       "period": 2025,
       "metadata": {
-        "contract_target_id": "ons.population.male_15_19",
+        "contract_target_id": "ons.population.male_18_19",
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
-      "expected_member_count": 5
+      "expected_member_count": 2
     },
     {
       "name": "ons.population.male_20_24",
@@ -22993,7 +23565,8 @@
       "metadata": {
         "contract_target_id": "ons.savings_interest_income",
         "measure_kind": "prepared_column"
-      }
+      },
+      "value_operation": "sum"
     },
     {
       "name": "ons.public_sector_employment",
@@ -23152,29 +23725,6 @@
       "value_operation": "sum"
     },
     {
-      "name": "slc.repayments.england_postgraduate",
-      "ledger_selector": {
-        "source_name": "slc",
-        "groupby_dimension": "slc.repayment_plan",
-        "source_measure_id": [
-          "plan_3_postgraduate_masters",
-          "plan_3_postgraduate_doctoral"
-        ],
-        "entity_name": "person",
-        "geography_level": "country",
-        "geography_id": "E92000001"
-      },
-      "entity": "person",
-      "measure": "slc/student_loan_repayment/england/postgraduate",
-      "family": "slc_repayments",
-      "period": 2025,
-      "metadata": {
-        "contract_target_id": "slc.repayments.england_postgraduate",
-        "measure_kind": "prepared_column"
-      },
-      "value_operation": "sum"
-    },
-    {
       "name": "slc.repayments.england_plan_5",
       "ledger_selector": {
         "source_name": "slc",
@@ -23207,6 +23757,8 @@
           "repayment_plan": "plan_2",
           "borrower_status": "above_repayment_threshold"
         },
+        "period_type": "academic_year",
+        "period_value": 2024,
         "geography_level": "country",
         "geography_id": "E92000001"
       },
@@ -23218,7 +23770,9 @@
         "contract_target_id": "slc.borrowers.plan_2_above_threshold",
         "measure_kind": "prepared_column"
       },
-      "assertion_policy": "allow_source_projection"
+      "assertion_policy": "allow_source_projection",
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
     },
     {
       "name": "slc.borrowers.plan_2_liable",
@@ -23230,6 +23784,8 @@
           "repayment_plan": "plan_2",
           "borrower_status": "liable_to_repay"
         },
+        "period_type": "academic_year",
+        "period_value": 2024,
         "geography_level": "country",
         "geography_id": "E92000001"
       },
@@ -23241,7 +23797,9 @@
         "contract_target_id": "slc.borrowers.plan_2_liable",
         "measure_kind": "prepared_column"
       },
-      "assertion_policy": "allow_source_projection"
+      "assertion_policy": "allow_source_projection",
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
     },
     {
       "name": "slc.borrowers.plan_5_above_threshold",
@@ -23253,6 +23811,8 @@
           "repayment_plan": "plan_5",
           "borrower_status": "above_repayment_threshold"
         },
+        "period_type": "academic_year",
+        "period_value": 2024,
         "geography_level": "country",
         "geography_id": "E92000001"
       },
@@ -23264,7 +23824,9 @@
         "contract_target_id": "slc.borrowers.plan_5_above_threshold",
         "measure_kind": "prepared_column"
       },
-      "assertion_policy": "allow_source_projection"
+      "assertion_policy": "allow_source_projection",
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
     },
     {
       "name": "slc.borrowers.plan_5_liable",
@@ -23276,6 +23838,8 @@
           "repayment_plan": "plan_5",
           "borrower_status": "liable_to_repay"
         },
+        "period_type": "academic_year",
+        "period_value": 2024,
         "geography_level": "country",
         "geography_id": "E92000001"
       },
@@ -23287,7 +23851,9 @@
         "contract_target_id": "slc.borrowers.plan_5_liable",
         "measure_kind": "prepared_column"
       },
-      "assertion_policy": "allow_source_projection"
+      "assertion_policy": "allow_source_projection",
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
     },
     {
       "name": "slc.support.maintenance_loan_recipients",
@@ -23691,6 +24257,146 @@
       "uprating_to_period": 2025
     },
     {
+      "name": "dfe.funded_childcare.working_parent_children_9_to_11_months",
+      "ledger_selector": {
+        "source_name": "dfe",
+        "source_concept": "dfe.number_of_registered_children",
+        "source_measure_id": "registered_children_count",
+        "entity_name": "person",
+        "dimension_values": {
+          "entitlement_type": "Working parents",
+          "age": "9 to 11 months",
+          "registration_basis": "registered_children",
+          "provision": "all"
+        },
+        "geography_level": "country",
+        "geography_id": "E92000001"
+      },
+      "entity": "person",
+      "measure": "dfe/funded_childcare/working_parent_children_9_to_11_months",
+      "family": "dfe_funded_childcare",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dfe.funded_childcare.working_parent_children_9_to_11_months",
+        "measure_kind": "prepared_column",
+        "observation_basis": "january_stock"
+      },
+      "uprating_from_period": "2025-01",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "dfe.funded_childcare.working_parent_children_age_1",
+      "ledger_selector": {
+        "source_name": "dfe",
+        "source_concept": "dfe.number_of_registered_children",
+        "source_measure_id": "registered_children_count",
+        "entity_name": "person",
+        "dimension_values": {
+          "entitlement_type": "Working parents",
+          "age": "1 year",
+          "registration_basis": "registered_children",
+          "provision": "all"
+        },
+        "geography_level": "country",
+        "geography_id": "E92000001"
+      },
+      "entity": "person",
+      "measure": "dfe/funded_childcare/working_parent_children_age_1",
+      "family": "dfe_funded_childcare",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dfe.funded_childcare.working_parent_children_age_1",
+        "measure_kind": "prepared_column",
+        "observation_basis": "january_stock"
+      },
+      "uprating_from_period": "2025-01",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "dfe.funded_childcare.working_parent_children_age_2",
+      "ledger_selector": {
+        "source_name": "dfe",
+        "source_concept": "dfe.number_of_registered_children",
+        "source_measure_id": "registered_children_count",
+        "entity_name": "person",
+        "dimension_values": {
+          "entitlement_type": "Working parents",
+          "age": "2 years",
+          "registration_basis": "registered_children",
+          "provision": "all"
+        },
+        "geography_level": "country",
+        "geography_id": "E92000001"
+      },
+      "entity": "person",
+      "measure": "dfe/funded_childcare/working_parent_children_age_2",
+      "family": "dfe_funded_childcare",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dfe.funded_childcare.working_parent_children_age_2",
+        "measure_kind": "prepared_column",
+        "observation_basis": "january_stock"
+      },
+      "uprating_from_period": "2025-01",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "dfe.funded_childcare.working_parent_children_age_3",
+      "ledger_selector": {
+        "source_name": "dfe",
+        "source_concept": "dfe.number_of_registered_children",
+        "source_measure_id": "registered_children_count",
+        "entity_name": "person",
+        "dimension_values": {
+          "entitlement_type": "Working parents",
+          "age": "3 years",
+          "registration_basis": "registered_children",
+          "provision": "all"
+        },
+        "geography_level": "country",
+        "geography_id": "E92000001"
+      },
+      "entity": "person",
+      "measure": "dfe/funded_childcare/working_parent_children_age_3",
+      "family": "dfe_funded_childcare",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dfe.funded_childcare.working_parent_children_age_3",
+        "measure_kind": "prepared_column",
+        "observation_basis": "january_stock"
+      },
+      "uprating_from_period": "2025-01",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "dfe.funded_childcare.universal_nursery_children_age_3",
+      "ledger_selector": {
+        "source_name": "dfe",
+        "source_concept": "dfe.number_of_registered_children_nursery",
+        "source_measure_id": "registered_children_nursery_count",
+        "entity_name": "person",
+        "dimension_values": {
+          "entitlement_type": "Universal",
+          "age": "3 years",
+          "registration_basis": "registered_children",
+          "provision": "nursery"
+        },
+        "geography_level": "country",
+        "geography_id": "E92000001"
+      },
+      "entity": "person",
+      "measure": "dfe/funded_childcare/universal_nursery_children_age_3",
+      "family": "dfe_funded_childcare",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dfe.funded_childcare.universal_nursery_children_age_3",
+        "measure_kind": "prepared_column",
+        "observation_basis": "january_stock"
+      },
+      "uprating_from_period": "2025-01",
+      "uprating_to_period": 2025
+    },
+    {
       "name": "dft.bus_fare_receipts.england",
       "ledger_selector": {
         "source_name": "dft",
@@ -23732,7 +24438,8 @@
       "metadata": {
         "contract_target_id": "dft.bus_net_support.england",
         "measure_kind": "prepared_column",
-        "observation_basis": "fiscal_year_flow"
+        "observation_basis": "fiscal_year_flow",
+        "measurement_period": "2024"
       },
       "uprating_from_period": "2024",
       "uprating_to_period": 2025
@@ -23779,8 +24486,243 @@
       "metadata": {
         "contract_target_id": "dft.bus_net_support.london",
         "measure_kind": "prepared_column",
+        "observation_basis": "fiscal_year_flow",
+        "measurement_period": "2024"
+      },
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "dft.bus_journeys.london",
+      "ledger_selector": {
+        "source_name": "dft",
+        "source_concept": "dft.local_bus_passenger_journeys",
+        "source_measure_id": "passenger_journeys",
+        "layout_groupby_value_id": "london",
+        "entity_name": "person",
+        "period_type": "fiscal_year",
+        "dimensions": [],
+        "geography_level": "region",
+        "geography_id": "E12000007"
+      },
+      "entity": "household",
+      "measure": "dft/bus_journeys/london",
+      "family": "dft_bus_journeys",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dft.bus_journeys.london",
+        "measure_kind": "prepared_column",
         "observation_basis": "fiscal_year_flow"
       },
+      "uprating_index": "dft.bus01.stage_pricing_year",
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "dft.bus_journeys.north_east",
+      "ledger_selector": {
+        "source_name": "dft",
+        "source_concept": "dft.local_bus_passenger_journeys",
+        "source_measure_id": "passenger_journeys",
+        "layout_groupby_value_id": "north_east",
+        "entity_name": "person",
+        "period_type": "fiscal_year",
+        "dimensions": [],
+        "geography_level": "region",
+        "geography_id": "E12000001"
+      },
+      "entity": "household",
+      "measure": "dft/bus_journeys/north_east",
+      "family": "dft_bus_journeys",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dft.bus_journeys.north_east",
+        "measure_kind": "prepared_column",
+        "observation_basis": "fiscal_year_flow"
+      },
+      "uprating_index": "dft.bus01.stage_pricing_year",
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "dft.bus_journeys.north_west",
+      "ledger_selector": {
+        "source_name": "dft",
+        "source_concept": "dft.local_bus_passenger_journeys",
+        "source_measure_id": "passenger_journeys",
+        "layout_groupby_value_id": "north_west",
+        "entity_name": "person",
+        "period_type": "fiscal_year",
+        "dimensions": [],
+        "geography_level": "region",
+        "geography_id": "E12000002"
+      },
+      "entity": "household",
+      "measure": "dft/bus_journeys/north_west",
+      "family": "dft_bus_journeys",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dft.bus_journeys.north_west",
+        "measure_kind": "prepared_column",
+        "observation_basis": "fiscal_year_flow"
+      },
+      "uprating_index": "dft.bus01.stage_pricing_year",
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "dft.bus_journeys.yorkshire_and_the_humber",
+      "ledger_selector": {
+        "source_name": "dft",
+        "source_concept": "dft.local_bus_passenger_journeys",
+        "source_measure_id": "passenger_journeys",
+        "layout_groupby_value_id": "yorkshire_and_the_humber",
+        "entity_name": "person",
+        "period_type": "fiscal_year",
+        "dimensions": [],
+        "geography_level": "region",
+        "geography_id": "E12000003"
+      },
+      "entity": "household",
+      "measure": "dft/bus_journeys/yorkshire_and_the_humber",
+      "family": "dft_bus_journeys",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dft.bus_journeys.yorkshire_and_the_humber",
+        "measure_kind": "prepared_column",
+        "observation_basis": "fiscal_year_flow"
+      },
+      "uprating_index": "dft.bus01.stage_pricing_year",
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "dft.bus_journeys.east_midlands",
+      "ledger_selector": {
+        "source_name": "dft",
+        "source_concept": "dft.local_bus_passenger_journeys",
+        "source_measure_id": "passenger_journeys",
+        "layout_groupby_value_id": "east_midlands",
+        "entity_name": "person",
+        "period_type": "fiscal_year",
+        "dimensions": [],
+        "geography_level": "region",
+        "geography_id": "E12000004"
+      },
+      "entity": "household",
+      "measure": "dft/bus_journeys/east_midlands",
+      "family": "dft_bus_journeys",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dft.bus_journeys.east_midlands",
+        "measure_kind": "prepared_column",
+        "observation_basis": "fiscal_year_flow"
+      },
+      "uprating_index": "dft.bus01.stage_pricing_year",
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "dft.bus_journeys.west_midlands",
+      "ledger_selector": {
+        "source_name": "dft",
+        "source_concept": "dft.local_bus_passenger_journeys",
+        "source_measure_id": "passenger_journeys",
+        "layout_groupby_value_id": "west_midlands",
+        "entity_name": "person",
+        "period_type": "fiscal_year",
+        "dimensions": [],
+        "geography_level": "region",
+        "geography_id": "E12000005"
+      },
+      "entity": "household",
+      "measure": "dft/bus_journeys/west_midlands",
+      "family": "dft_bus_journeys",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dft.bus_journeys.west_midlands",
+        "measure_kind": "prepared_column",
+        "observation_basis": "fiscal_year_flow"
+      },
+      "uprating_index": "dft.bus01.stage_pricing_year",
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "dft.bus_journeys.east_of_england",
+      "ledger_selector": {
+        "source_name": "dft",
+        "source_concept": "dft.local_bus_passenger_journeys",
+        "source_measure_id": "passenger_journeys",
+        "layout_groupby_value_id": "east_of_england",
+        "entity_name": "person",
+        "period_type": "fiscal_year",
+        "dimensions": [],
+        "geography_level": "region",
+        "geography_id": "E12000006"
+      },
+      "entity": "household",
+      "measure": "dft/bus_journeys/east_of_england",
+      "family": "dft_bus_journeys",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dft.bus_journeys.east_of_england",
+        "measure_kind": "prepared_column",
+        "observation_basis": "fiscal_year_flow"
+      },
+      "uprating_index": "dft.bus01.stage_pricing_year",
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "dft.bus_journeys.south_east",
+      "ledger_selector": {
+        "source_name": "dft",
+        "source_concept": "dft.local_bus_passenger_journeys",
+        "source_measure_id": "passenger_journeys",
+        "layout_groupby_value_id": "south_east",
+        "entity_name": "person",
+        "period_type": "fiscal_year",
+        "dimensions": [],
+        "geography_level": "region",
+        "geography_id": "E12000008"
+      },
+      "entity": "household",
+      "measure": "dft/bus_journeys/south_east",
+      "family": "dft_bus_journeys",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dft.bus_journeys.south_east",
+        "measure_kind": "prepared_column",
+        "observation_basis": "fiscal_year_flow"
+      },
+      "uprating_index": "dft.bus01.stage_pricing_year",
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "dft.bus_journeys.south_west",
+      "ledger_selector": {
+        "source_name": "dft",
+        "source_concept": "dft.local_bus_passenger_journeys",
+        "source_measure_id": "passenger_journeys",
+        "layout_groupby_value_id": "south_west",
+        "entity_name": "person",
+        "period_type": "fiscal_year",
+        "dimensions": [],
+        "geography_level": "region",
+        "geography_id": "E12000009"
+      },
+      "entity": "household",
+      "measure": "dft/bus_journeys/south_west",
+      "family": "dft_bus_journeys",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dft.bus_journeys.south_west",
+        "measure_kind": "prepared_column",
+        "observation_basis": "fiscal_year_flow"
+      },
+      "uprating_index": "dft.bus01.stage_pricing_year",
       "uprating_from_period": "2024",
       "uprating_to_period": 2025
     },
@@ -23815,7 +24757,15 @@
       "name": "orr.rail_government_support",
       "ledger_selector": {
         "source_name": "orr",
-        "source_concept": "orr.rail.total_government_support",
+        "source_concept": "orr.rail.government_support_by_source",
+        "source_measure_id": "support",
+        "groupby_dimension": "orr.funding_source",
+        "dimensions": [
+          "funding_source"
+        ],
+        "dimension_values": {
+          "funding_source": "all_sources"
+        },
         "entity_name": "government",
         "period_type": "fiscal_year",
         "geography_level": "country",
@@ -23828,7 +24778,8 @@
       "metadata": {
         "contract_target_id": "orr.rail_government_support",
         "measure_kind": "prepared_column",
-        "observation_basis": "fiscal_year_flow"
+        "observation_basis": "fiscal_year_flow",
+        "measurement_period": "2024"
       },
       "uprating_from_period": "2024",
       "uprating_to_period": 2025
@@ -23892,6 +24843,7 @@
         "source_concept": "ons.household_expenditure.personal_transport_fuels_lubricants",
         "entity_name": "household",
         "period_type": "calendar_year",
+        "period_value": 2024,
         "dimension_values": {
           "coicop": "07.2.2",
           "frequency": "annual",
@@ -23908,9 +24860,155 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "ons.household_road_fuel_expenditure",
-        "measure_kind": "prepared_column"
+        "measure_kind": "prepared_column",
+        "measurement_period": "2024",
+        "source_period_policy": "exact_observation"
       },
-      "value_operation": "sum"
+      "value_operation": "sum",
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "obr.beer_and_cider_duties",
+      "ledger_selector": {
+        "source_name": "obr",
+        "source_concept": "obr.beer_and_cider_duties",
+        "entity_name": "person",
+        "period_type": "fiscal_year",
+        "period_value": 2024,
+        "dimension_values": {
+          "accounting_basis": "accrual"
+        },
+        "geography_level": "country",
+        "geography_id": "K02000001"
+      },
+      "entity": "household",
+      "measure": "obr/beer_and_cider_duties",
+      "family": "obr",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "obr.beer_and_cider_duties",
+        "measure_kind": "prepared_column",
+        "measurement_period": "2024",
+        "source_period_policy": "exact_observation"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "sum",
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "obr.wine_duties",
+      "ledger_selector": {
+        "source_name": "obr",
+        "source_concept": "obr.wine_duties",
+        "entity_name": "person",
+        "period_type": "fiscal_year",
+        "period_value": 2024,
+        "dimension_values": {
+          "accounting_basis": "accrual"
+        },
+        "geography_level": "country",
+        "geography_id": "K02000001"
+      },
+      "entity": "household",
+      "measure": "obr/wine_duties",
+      "family": "obr",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "obr.wine_duties",
+        "measure_kind": "prepared_column",
+        "measurement_period": "2024",
+        "source_period_policy": "exact_observation"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "sum",
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "obr.spirits_duties",
+      "ledger_selector": {
+        "source_name": "obr",
+        "source_concept": "obr.spirits_duties",
+        "entity_name": "person",
+        "period_type": "fiscal_year",
+        "period_value": 2024,
+        "dimension_values": {
+          "accounting_basis": "accrual"
+        },
+        "geography_level": "country",
+        "geography_id": "K02000001"
+      },
+      "entity": "household",
+      "measure": "obr/spirits_duties",
+      "family": "obr",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "obr.spirits_duties",
+        "measure_kind": "prepared_column",
+        "measurement_period": "2024",
+        "source_period_policy": "exact_observation"
+      },
+      "assertion_policy": "allow_source_projection",
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "obr.tobacco_duties",
+      "ledger_selector": {
+        "source_name": "obr",
+        "source_concept": "obr.tobacco_duties",
+        "entity_name": "person",
+        "period_type": "fiscal_year",
+        "period_value": 2024,
+        "dimension_values": {
+          "accounting_basis": "cash"
+        },
+        "geography_level": "country",
+        "geography_id": "K02000001"
+      },
+      "entity": "household",
+      "measure": "obr/tobacco_duties",
+      "family": "obr",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "obr.tobacco_duties",
+        "measure_kind": "prepared_column",
+        "measurement_period": "2024",
+        "source_period_policy": "exact_observation"
+      },
+      "assertion_policy": "allow_source_projection",
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "obr.betting_and_gaming_duties",
+      "ledger_selector": {
+        "source_name": "obr",
+        "source_concept": "obr.betting_and_gaming_duties",
+        "entity_name": "person",
+        "period_type": "fiscal_year",
+        "period_value": 2024,
+        "dimension_values": {
+          "accounting_basis": "cash"
+        },
+        "geography_level": "country",
+        "geography_id": "K02000001"
+      },
+      "entity": "household",
+      "measure": "obr/betting_and_gaming_duties",
+      "family": "obr",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "obr.betting_and_gaming_duties",
+        "measure_kind": "prepared_column",
+        "measurement_period": "2024",
+        "source_period_policy": "exact_observation"
+      },
+      "assertion_policy": "allow_source_projection",
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
     },
     {
       "name": "scotgov.bus.passenger_revenue",
@@ -23930,7 +25028,8 @@
       "metadata": {
         "contract_target_id": "scotgov.bus.passenger_revenue",
         "measure_kind": "prepared_column",
-        "observation_basis": "fiscal_year_flow"
+        "observation_basis": "fiscal_year_flow",
+        "measurement_period": "2024"
       },
       "uprating_from_period": "2024",
       "uprating_to_period": 2025
@@ -23955,7 +25054,8 @@
       "metadata": {
         "contract_target_id": "scotgov.bus.government_support",
         "measure_kind": "prepared_column",
-        "observation_basis": "fiscal_year_flow"
+        "observation_basis": "fiscal_year_flow",
+        "measurement_period": "2024"
       },
       "uprating_from_period": "2024",
       "uprating_to_period": 2025
@@ -23984,7 +25084,8 @@
       "metadata": {
         "contract_target_id": "welshgov.bus.public_support",
         "measure_kind": "prepared_column",
-        "observation_basis": "fiscal_year_flow"
+        "observation_basis": "fiscal_year_flow",
+        "measurement_period": "2024"
       },
       "value_operation": "sum",
       "expected_member_count": 2,
@@ -24043,7 +25144,8 @@
       "metadata": {
         "contract_target_id": "nithc.public_transport_support",
         "measure_kind": "prepared_column",
-        "observation_basis": "fiscal_year_flow"
+        "observation_basis": "fiscal_year_flow",
+        "measurement_period": "2024"
       },
       "value_operation": "sum",
       "expected_member_count": 2,
@@ -24362,7 +25464,7 @@
         ],
         "entity_name": "person",
         "geography_level": "country",
-        "geography_id": "K02000001"
+        "geography_id": "K03000001"
       },
       "entity": "benunit",
       "measure": "obr/universal_credit",
@@ -30077,6 +31179,777 @@
         "geography_id": "N92000002",
         "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"NORTHERN_IRELAND\",\"variable\":\"region\"}",
         "cross_grain_grain": "region"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
+    },
+    {
+      "name": "hmrc.itl.state_pension_age_taxpayers@E12000001",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_taxpayer_count",
+        "source_measure_id": "state_pension_age",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "dimension_values": {
+          "age_band": "state_pension_age"
+        },
+        "entity_name": "person",
+        "geography_level": "region",
+        "geography_id": "E12000001"
+      },
+      "entity": "person",
+      "measure": "hmrc.itl.state_pension_age_taxpayers@E12000001",
+      "family": "hmrc_itl_age",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.itl.state_pension_age_taxpayers",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000001",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"NORTH_EAST\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
+    },
+    {
+      "name": "hmrc.itl.state_pension_age_taxpayers@E12000002",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_taxpayer_count",
+        "source_measure_id": "state_pension_age",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "dimension_values": {
+          "age_band": "state_pension_age"
+        },
+        "entity_name": "person",
+        "geography_level": "region",
+        "geography_id": "E12000002"
+      },
+      "entity": "person",
+      "measure": "hmrc.itl.state_pension_age_taxpayers@E12000002",
+      "family": "hmrc_itl_age",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.itl.state_pension_age_taxpayers",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000002",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"NORTH_WEST\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
+    },
+    {
+      "name": "hmrc.itl.state_pension_age_taxpayers@E12000003",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_taxpayer_count",
+        "source_measure_id": "state_pension_age",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "dimension_values": {
+          "age_band": "state_pension_age"
+        },
+        "entity_name": "person",
+        "geography_level": "region",
+        "geography_id": "E12000003"
+      },
+      "entity": "person",
+      "measure": "hmrc.itl.state_pension_age_taxpayers@E12000003",
+      "family": "hmrc_itl_age",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.itl.state_pension_age_taxpayers",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000003",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"YORKSHIRE\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
+    },
+    {
+      "name": "hmrc.itl.state_pension_age_taxpayers@E12000004",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_taxpayer_count",
+        "source_measure_id": "state_pension_age",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "dimension_values": {
+          "age_band": "state_pension_age"
+        },
+        "entity_name": "person",
+        "geography_level": "region",
+        "geography_id": "E12000004"
+      },
+      "entity": "person",
+      "measure": "hmrc.itl.state_pension_age_taxpayers@E12000004",
+      "family": "hmrc_itl_age",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.itl.state_pension_age_taxpayers",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000004",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"EAST_MIDLANDS\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
+    },
+    {
+      "name": "hmrc.itl.state_pension_age_taxpayers@E12000005",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_taxpayer_count",
+        "source_measure_id": "state_pension_age",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "dimension_values": {
+          "age_band": "state_pension_age"
+        },
+        "entity_name": "person",
+        "geography_level": "region",
+        "geography_id": "E12000005"
+      },
+      "entity": "person",
+      "measure": "hmrc.itl.state_pension_age_taxpayers@E12000005",
+      "family": "hmrc_itl_age",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.itl.state_pension_age_taxpayers",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000005",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"WEST_MIDLANDS\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
+    },
+    {
+      "name": "hmrc.itl.state_pension_age_taxpayers@E12000006",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_taxpayer_count",
+        "source_measure_id": "state_pension_age",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "dimension_values": {
+          "age_band": "state_pension_age"
+        },
+        "entity_name": "person",
+        "geography_level": "region",
+        "geography_id": "E12000006"
+      },
+      "entity": "person",
+      "measure": "hmrc.itl.state_pension_age_taxpayers@E12000006",
+      "family": "hmrc_itl_age",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.itl.state_pension_age_taxpayers",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000006",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"EAST_OF_ENGLAND\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
+    },
+    {
+      "name": "hmrc.itl.state_pension_age_taxpayers@E12000007",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_taxpayer_count",
+        "source_measure_id": "state_pension_age",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "dimension_values": {
+          "age_band": "state_pension_age"
+        },
+        "entity_name": "person",
+        "geography_level": "region",
+        "geography_id": "E12000007"
+      },
+      "entity": "person",
+      "measure": "hmrc.itl.state_pension_age_taxpayers@E12000007",
+      "family": "hmrc_itl_age",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.itl.state_pension_age_taxpayers",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000007",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"LONDON\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
+    },
+    {
+      "name": "hmrc.itl.state_pension_age_taxpayers@E12000008",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_taxpayer_count",
+        "source_measure_id": "state_pension_age",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "dimension_values": {
+          "age_band": "state_pension_age"
+        },
+        "entity_name": "person",
+        "geography_level": "region",
+        "geography_id": "E12000008"
+      },
+      "entity": "person",
+      "measure": "hmrc.itl.state_pension_age_taxpayers@E12000008",
+      "family": "hmrc_itl_age",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.itl.state_pension_age_taxpayers",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000008",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"SOUTH_EAST\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
+    },
+    {
+      "name": "hmrc.itl.state_pension_age_taxpayers@E12000009",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_taxpayer_count",
+        "source_measure_id": "state_pension_age",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "dimension_values": {
+          "age_band": "state_pension_age"
+        },
+        "entity_name": "person",
+        "geography_level": "region",
+        "geography_id": "E12000009"
+      },
+      "entity": "person",
+      "measure": "hmrc.itl.state_pension_age_taxpayers@E12000009",
+      "family": "hmrc_itl_age",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.itl.state_pension_age_taxpayers",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000009",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"SOUTH_WEST\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
+    },
+    {
+      "name": "hmrc.itl.state_pension_age_taxpayers@W92000004",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_taxpayer_count",
+        "source_measure_id": "state_pension_age",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "dimension_values": {
+          "age_band": "state_pension_age"
+        },
+        "entity_name": "person",
+        "geography_level": "country",
+        "geography_id": "W92000004"
+      },
+      "entity": "person",
+      "measure": "hmrc.itl.state_pension_age_taxpayers@W92000004",
+      "family": "hmrc_itl_age",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.itl.state_pension_age_taxpayers",
+        "measure_kind": "prepared_column",
+        "geography_level": "country",
+        "geography_id": "W92000004",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"WALES\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
+    },
+    {
+      "name": "hmrc.itl.state_pension_age_taxpayers@S92000003",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_taxpayer_count",
+        "source_measure_id": "state_pension_age",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "dimension_values": {
+          "age_band": "state_pension_age"
+        },
+        "entity_name": "person",
+        "geography_level": "country",
+        "geography_id": "S92000003"
+      },
+      "entity": "person",
+      "measure": "hmrc.itl.state_pension_age_taxpayers@S92000003",
+      "family": "hmrc_itl_age",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.itl.state_pension_age_taxpayers",
+        "measure_kind": "prepared_column",
+        "geography_level": "country",
+        "geography_id": "S92000003",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"SCOTLAND\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
+    },
+    {
+      "name": "hmrc.itl.state_pension_age_taxpayers@N92000002",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_taxpayer_count",
+        "source_measure_id": "state_pension_age",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "dimension_values": {
+          "age_band": "state_pension_age"
+        },
+        "entity_name": "person",
+        "geography_level": "country",
+        "geography_id": "N92000002"
+      },
+      "entity": "person",
+      "measure": "hmrc.itl.state_pension_age_taxpayers@N92000002",
+      "family": "hmrc_itl_age",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.itl.state_pension_age_taxpayers",
+        "measure_kind": "prepared_column",
+        "geography_level": "country",
+        "geography_id": "N92000002",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"NORTHERN_IRELAND\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
+    },
+    {
+      "name": "hmrc.itl.taxpayers_aged_65_and_over@E12000001",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_taxpayer_count",
+        "source_measure_id": "age_65_and_over",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "dimension_values": {
+          "age_band": "65_and_over"
+        },
+        "entity_name": "person",
+        "geography_level": "region",
+        "geography_id": "E12000001"
+      },
+      "entity": "person",
+      "measure": "hmrc.itl.taxpayers_aged_65_and_over@E12000001",
+      "family": "hmrc_itl_age",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.itl.taxpayers_aged_65_and_over",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000001",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"NORTH_EAST\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
+    },
+    {
+      "name": "hmrc.itl.taxpayers_aged_65_and_over@E12000002",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_taxpayer_count",
+        "source_measure_id": "age_65_and_over",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "dimension_values": {
+          "age_band": "65_and_over"
+        },
+        "entity_name": "person",
+        "geography_level": "region",
+        "geography_id": "E12000002"
+      },
+      "entity": "person",
+      "measure": "hmrc.itl.taxpayers_aged_65_and_over@E12000002",
+      "family": "hmrc_itl_age",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.itl.taxpayers_aged_65_and_over",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000002",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"NORTH_WEST\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
+    },
+    {
+      "name": "hmrc.itl.taxpayers_aged_65_and_over@E12000003",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_taxpayer_count",
+        "source_measure_id": "age_65_and_over",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "dimension_values": {
+          "age_band": "65_and_over"
+        },
+        "entity_name": "person",
+        "geography_level": "region",
+        "geography_id": "E12000003"
+      },
+      "entity": "person",
+      "measure": "hmrc.itl.taxpayers_aged_65_and_over@E12000003",
+      "family": "hmrc_itl_age",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.itl.taxpayers_aged_65_and_over",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000003",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"YORKSHIRE\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
+    },
+    {
+      "name": "hmrc.itl.taxpayers_aged_65_and_over@E12000004",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_taxpayer_count",
+        "source_measure_id": "age_65_and_over",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "dimension_values": {
+          "age_band": "65_and_over"
+        },
+        "entity_name": "person",
+        "geography_level": "region",
+        "geography_id": "E12000004"
+      },
+      "entity": "person",
+      "measure": "hmrc.itl.taxpayers_aged_65_and_over@E12000004",
+      "family": "hmrc_itl_age",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.itl.taxpayers_aged_65_and_over",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000004",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"EAST_MIDLANDS\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
+    },
+    {
+      "name": "hmrc.itl.taxpayers_aged_65_and_over@E12000005",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_taxpayer_count",
+        "source_measure_id": "age_65_and_over",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "dimension_values": {
+          "age_band": "65_and_over"
+        },
+        "entity_name": "person",
+        "geography_level": "region",
+        "geography_id": "E12000005"
+      },
+      "entity": "person",
+      "measure": "hmrc.itl.taxpayers_aged_65_and_over@E12000005",
+      "family": "hmrc_itl_age",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.itl.taxpayers_aged_65_and_over",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000005",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"WEST_MIDLANDS\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
+    },
+    {
+      "name": "hmrc.itl.taxpayers_aged_65_and_over@E12000006",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_taxpayer_count",
+        "source_measure_id": "age_65_and_over",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "dimension_values": {
+          "age_band": "65_and_over"
+        },
+        "entity_name": "person",
+        "geography_level": "region",
+        "geography_id": "E12000006"
+      },
+      "entity": "person",
+      "measure": "hmrc.itl.taxpayers_aged_65_and_over@E12000006",
+      "family": "hmrc_itl_age",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.itl.taxpayers_aged_65_and_over",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000006",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"EAST_OF_ENGLAND\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
+    },
+    {
+      "name": "hmrc.itl.taxpayers_aged_65_and_over@E12000007",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_taxpayer_count",
+        "source_measure_id": "age_65_and_over",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "dimension_values": {
+          "age_band": "65_and_over"
+        },
+        "entity_name": "person",
+        "geography_level": "region",
+        "geography_id": "E12000007"
+      },
+      "entity": "person",
+      "measure": "hmrc.itl.taxpayers_aged_65_and_over@E12000007",
+      "family": "hmrc_itl_age",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.itl.taxpayers_aged_65_and_over",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000007",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"LONDON\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
+    },
+    {
+      "name": "hmrc.itl.taxpayers_aged_65_and_over@E12000008",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_taxpayer_count",
+        "source_measure_id": "age_65_and_over",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "dimension_values": {
+          "age_band": "65_and_over"
+        },
+        "entity_name": "person",
+        "geography_level": "region",
+        "geography_id": "E12000008"
+      },
+      "entity": "person",
+      "measure": "hmrc.itl.taxpayers_aged_65_and_over@E12000008",
+      "family": "hmrc_itl_age",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.itl.taxpayers_aged_65_and_over",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000008",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"SOUTH_EAST\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
+    },
+    {
+      "name": "hmrc.itl.taxpayers_aged_65_and_over@E12000009",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_taxpayer_count",
+        "source_measure_id": "age_65_and_over",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "dimension_values": {
+          "age_band": "65_and_over"
+        },
+        "entity_name": "person",
+        "geography_level": "region",
+        "geography_id": "E12000009"
+      },
+      "entity": "person",
+      "measure": "hmrc.itl.taxpayers_aged_65_and_over@E12000009",
+      "family": "hmrc_itl_age",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.itl.taxpayers_aged_65_and_over",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000009",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"SOUTH_WEST\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
+    },
+    {
+      "name": "hmrc.itl.taxpayers_aged_65_and_over@W92000004",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_taxpayer_count",
+        "source_measure_id": "age_65_and_over",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "dimension_values": {
+          "age_band": "65_and_over"
+        },
+        "entity_name": "person",
+        "geography_level": "country",
+        "geography_id": "W92000004"
+      },
+      "entity": "person",
+      "measure": "hmrc.itl.taxpayers_aged_65_and_over@W92000004",
+      "family": "hmrc_itl_age",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.itl.taxpayers_aged_65_and_over",
+        "measure_kind": "prepared_column",
+        "geography_level": "country",
+        "geography_id": "W92000004",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"WALES\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
+    },
+    {
+      "name": "hmrc.itl.taxpayers_aged_65_and_over@S92000003",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_taxpayer_count",
+        "source_measure_id": "age_65_and_over",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "dimension_values": {
+          "age_band": "65_and_over"
+        },
+        "entity_name": "person",
+        "geography_level": "country",
+        "geography_id": "S92000003"
+      },
+      "entity": "person",
+      "measure": "hmrc.itl.taxpayers_aged_65_and_over@S92000003",
+      "family": "hmrc_itl_age",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.itl.taxpayers_aged_65_and_over",
+        "measure_kind": "prepared_column",
+        "geography_level": "country",
+        "geography_id": "S92000003",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"SCOTLAND\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
+    },
+    {
+      "name": "hmrc.itl.taxpayers_aged_65_and_over@N92000002",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_taxpayer_count",
+        "source_measure_id": "age_65_and_over",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "dimension_values": {
+          "age_band": "65_and_over"
+        },
+        "entity_name": "person",
+        "geography_level": "country",
+        "geography_id": "N92000002"
+      },
+      "entity": "person",
+      "measure": "hmrc.itl.taxpayers_aged_65_and_over@N92000002",
+      "family": "hmrc_itl_age",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.itl.taxpayers_aged_65_and_over",
+        "measure_kind": "prepared_column",
+        "geography_level": "country",
+        "geography_id": "N92000002",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"NORTHERN_IRELAND\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
+    },
+    {
+      "name": "hmrc.itl.savings_tax_at_basic_rate",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.income_tax_liability_component_amount",
+        "source_measure_id": "all_payers_tax_amount",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "dimension_values": {
+          "income_tax_component": "savings_at_basic_rate"
+        },
+        "entity_name": "person",
+        "geography_level": "country",
+        "geography_id": "K02000001"
+      },
+      "entity": "person",
+      "measure": "hmrc/itl_savings_tax/basic_rate",
+      "family": "hmrc_itl_savings_rate",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.itl.savings_tax_at_basic_rate",
+        "measure_kind": "prepared_column"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
+    },
+    {
+      "name": "hmrc.itl.savings_tax_at_higher_rate",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.income_tax_liability_component_amount",
+        "source_measure_id": "all_payers_tax_amount",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "dimension_values": {
+          "income_tax_component": "savings_at_higher_rate"
+        },
+        "entity_name": "person",
+        "geography_level": "country",
+        "geography_id": "K02000001"
+      },
+      "entity": "person",
+      "measure": "hmrc/itl_savings_tax/higher_rate",
+      "family": "hmrc_itl_savings_rate",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.itl.savings_tax_at_higher_rate",
+        "measure_kind": "prepared_column"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
+    },
+    {
+      "name": "hmrc.itl.savings_tax_at_additional_rate",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.income_tax_liability_component_amount",
+        "source_measure_id": "all_payers_tax_amount",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "dimension_values": {
+          "income_tax_component": "savings_at_additional_rate"
+        },
+        "entity_name": "person",
+        "geography_level": "country",
+        "geography_id": "K02000001"
+      },
+      "entity": "person",
+      "measure": "hmrc/itl_savings_tax/additional_rate",
+      "family": "hmrc_itl_savings_rate",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.itl.savings_tax_at_additional_rate",
+        "measure_kind": "prepared_column"
       },
       "assertion_policy": "allow_source_projection",
       "value_operation": "calendar_year_window"
@@ -46025,6 +47898,762 @@
       },
       "assertion_policy": "allow_source_projection",
       "value_operation": "calendar_year_window"
+    },
+    {
+      "name": "microcosm.high_value_homes.over_1m_by_region@E12000001",
+      "ledger_selector": {
+        "source_name": "microcosm",
+        "source_measure_id": "owner_occupied_homes",
+        "record_set_spec_id": "uk.local_geography.high_value_homes.owner_occupied_homes.over_gbp_1m.v1",
+        "geography_level": "region",
+        "geography_id": "E12000001"
+      },
+      "entity": "household",
+      "measure": "microcosm.high_value_homes.over_1m_by_region@E12000001",
+      "family": "high_value_homes",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "microcosm.high_value_homes.over_1m_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000001",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"household\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"NORTH_EAST\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "microcosm.high_value_homes.over_1m_by_region@E12000002",
+      "ledger_selector": {
+        "source_name": "microcosm",
+        "source_measure_id": "owner_occupied_homes",
+        "record_set_spec_id": "uk.local_geography.high_value_homes.owner_occupied_homes.over_gbp_1m.v1",
+        "geography_level": "region",
+        "geography_id": "E12000002"
+      },
+      "entity": "household",
+      "measure": "microcosm.high_value_homes.over_1m_by_region@E12000002",
+      "family": "high_value_homes",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "microcosm.high_value_homes.over_1m_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000002",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"household\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"NORTH_WEST\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "microcosm.high_value_homes.over_1m_by_region@E12000003",
+      "ledger_selector": {
+        "source_name": "microcosm",
+        "source_measure_id": "owner_occupied_homes",
+        "record_set_spec_id": "uk.local_geography.high_value_homes.owner_occupied_homes.over_gbp_1m.v1",
+        "geography_level": "region",
+        "geography_id": "E12000003"
+      },
+      "entity": "household",
+      "measure": "microcosm.high_value_homes.over_1m_by_region@E12000003",
+      "family": "high_value_homes",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "microcosm.high_value_homes.over_1m_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000003",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"household\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"YORKSHIRE\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "microcosm.high_value_homes.over_1m_by_region@E12000004",
+      "ledger_selector": {
+        "source_name": "microcosm",
+        "source_measure_id": "owner_occupied_homes",
+        "record_set_spec_id": "uk.local_geography.high_value_homes.owner_occupied_homes.over_gbp_1m.v1",
+        "geography_level": "region",
+        "geography_id": "E12000004"
+      },
+      "entity": "household",
+      "measure": "microcosm.high_value_homes.over_1m_by_region@E12000004",
+      "family": "high_value_homes",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "microcosm.high_value_homes.over_1m_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000004",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"household\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"EAST_MIDLANDS\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "microcosm.high_value_homes.over_1m_by_region@E12000005",
+      "ledger_selector": {
+        "source_name": "microcosm",
+        "source_measure_id": "owner_occupied_homes",
+        "record_set_spec_id": "uk.local_geography.high_value_homes.owner_occupied_homes.over_gbp_1m.v1",
+        "geography_level": "region",
+        "geography_id": "E12000005"
+      },
+      "entity": "household",
+      "measure": "microcosm.high_value_homes.over_1m_by_region@E12000005",
+      "family": "high_value_homes",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "microcosm.high_value_homes.over_1m_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000005",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"household\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"WEST_MIDLANDS\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "microcosm.high_value_homes.over_1m_by_region@E12000006",
+      "ledger_selector": {
+        "source_name": "microcosm",
+        "source_measure_id": "owner_occupied_homes",
+        "record_set_spec_id": "uk.local_geography.high_value_homes.owner_occupied_homes.over_gbp_1m.v1",
+        "geography_level": "region",
+        "geography_id": "E12000006"
+      },
+      "entity": "household",
+      "measure": "microcosm.high_value_homes.over_1m_by_region@E12000006",
+      "family": "high_value_homes",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "microcosm.high_value_homes.over_1m_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000006",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"household\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"EAST_OF_ENGLAND\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "microcosm.high_value_homes.over_1m_by_region@E12000007",
+      "ledger_selector": {
+        "source_name": "microcosm",
+        "source_measure_id": "owner_occupied_homes",
+        "record_set_spec_id": "uk.local_geography.high_value_homes.owner_occupied_homes.over_gbp_1m.v1",
+        "geography_level": "region",
+        "geography_id": "E12000007"
+      },
+      "entity": "household",
+      "measure": "microcosm.high_value_homes.over_1m_by_region@E12000007",
+      "family": "high_value_homes",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "microcosm.high_value_homes.over_1m_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000007",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"household\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"LONDON\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "microcosm.high_value_homes.over_1m_by_region@E12000008",
+      "ledger_selector": {
+        "source_name": "microcosm",
+        "source_measure_id": "owner_occupied_homes",
+        "record_set_spec_id": "uk.local_geography.high_value_homes.owner_occupied_homes.over_gbp_1m.v1",
+        "geography_level": "region",
+        "geography_id": "E12000008"
+      },
+      "entity": "household",
+      "measure": "microcosm.high_value_homes.over_1m_by_region@E12000008",
+      "family": "high_value_homes",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "microcosm.high_value_homes.over_1m_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000008",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"household\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"SOUTH_EAST\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "microcosm.high_value_homes.over_1m_by_region@E12000009",
+      "ledger_selector": {
+        "source_name": "microcosm",
+        "source_measure_id": "owner_occupied_homes",
+        "record_set_spec_id": "uk.local_geography.high_value_homes.owner_occupied_homes.over_gbp_1m.v1",
+        "geography_level": "region",
+        "geography_id": "E12000009"
+      },
+      "entity": "household",
+      "measure": "microcosm.high_value_homes.over_1m_by_region@E12000009",
+      "family": "high_value_homes",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "microcosm.high_value_homes.over_1m_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000009",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"household\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"SOUTH_WEST\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "microcosm.high_value_homes.over_1m_by_region@W92000004",
+      "ledger_selector": {
+        "source_name": "microcosm",
+        "source_measure_id": "owner_occupied_homes",
+        "record_set_spec_id": "uk.local_geography.high_value_homes.owner_occupied_homes.over_gbp_1m.v1",
+        "geography_level": "country",
+        "geography_id": "W92000004"
+      },
+      "entity": "household",
+      "measure": "microcosm.high_value_homes.over_1m_by_region@W92000004",
+      "family": "high_value_homes",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "microcosm.high_value_homes.over_1m_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "country",
+        "geography_id": "W92000004",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"household\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"WALES\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "microcosm.high_value_homes.over_1_5m_by_region@E12000001",
+      "ledger_selector": {
+        "source_name": "microcosm",
+        "source_measure_id": "owner_occupied_homes",
+        "record_set_spec_id": "uk.local_geography.high_value_homes.owner_occupied_homes.over_gbp_1_5m.v1",
+        "geography_level": "region",
+        "geography_id": "E12000001"
+      },
+      "entity": "household",
+      "measure": "microcosm.high_value_homes.over_1_5m_by_region@E12000001",
+      "family": "high_value_homes",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "microcosm.high_value_homes.over_1_5m_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000001",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"household\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"NORTH_EAST\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "microcosm.high_value_homes.over_1_5m_by_region@E12000002",
+      "ledger_selector": {
+        "source_name": "microcosm",
+        "source_measure_id": "owner_occupied_homes",
+        "record_set_spec_id": "uk.local_geography.high_value_homes.owner_occupied_homes.over_gbp_1_5m.v1",
+        "geography_level": "region",
+        "geography_id": "E12000002"
+      },
+      "entity": "household",
+      "measure": "microcosm.high_value_homes.over_1_5m_by_region@E12000002",
+      "family": "high_value_homes",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "microcosm.high_value_homes.over_1_5m_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000002",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"household\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"NORTH_WEST\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "microcosm.high_value_homes.over_1_5m_by_region@E12000003",
+      "ledger_selector": {
+        "source_name": "microcosm",
+        "source_measure_id": "owner_occupied_homes",
+        "record_set_spec_id": "uk.local_geography.high_value_homes.owner_occupied_homes.over_gbp_1_5m.v1",
+        "geography_level": "region",
+        "geography_id": "E12000003"
+      },
+      "entity": "household",
+      "measure": "microcosm.high_value_homes.over_1_5m_by_region@E12000003",
+      "family": "high_value_homes",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "microcosm.high_value_homes.over_1_5m_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000003",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"household\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"YORKSHIRE\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "microcosm.high_value_homes.over_1_5m_by_region@E12000004",
+      "ledger_selector": {
+        "source_name": "microcosm",
+        "source_measure_id": "owner_occupied_homes",
+        "record_set_spec_id": "uk.local_geography.high_value_homes.owner_occupied_homes.over_gbp_1_5m.v1",
+        "geography_level": "region",
+        "geography_id": "E12000004"
+      },
+      "entity": "household",
+      "measure": "microcosm.high_value_homes.over_1_5m_by_region@E12000004",
+      "family": "high_value_homes",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "microcosm.high_value_homes.over_1_5m_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000004",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"household\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"EAST_MIDLANDS\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "microcosm.high_value_homes.over_1_5m_by_region@E12000005",
+      "ledger_selector": {
+        "source_name": "microcosm",
+        "source_measure_id": "owner_occupied_homes",
+        "record_set_spec_id": "uk.local_geography.high_value_homes.owner_occupied_homes.over_gbp_1_5m.v1",
+        "geography_level": "region",
+        "geography_id": "E12000005"
+      },
+      "entity": "household",
+      "measure": "microcosm.high_value_homes.over_1_5m_by_region@E12000005",
+      "family": "high_value_homes",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "microcosm.high_value_homes.over_1_5m_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000005",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"household\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"WEST_MIDLANDS\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "microcosm.high_value_homes.over_1_5m_by_region@E12000006",
+      "ledger_selector": {
+        "source_name": "microcosm",
+        "source_measure_id": "owner_occupied_homes",
+        "record_set_spec_id": "uk.local_geography.high_value_homes.owner_occupied_homes.over_gbp_1_5m.v1",
+        "geography_level": "region",
+        "geography_id": "E12000006"
+      },
+      "entity": "household",
+      "measure": "microcosm.high_value_homes.over_1_5m_by_region@E12000006",
+      "family": "high_value_homes",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "microcosm.high_value_homes.over_1_5m_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000006",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"household\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"EAST_OF_ENGLAND\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "microcosm.high_value_homes.over_1_5m_by_region@E12000007",
+      "ledger_selector": {
+        "source_name": "microcosm",
+        "source_measure_id": "owner_occupied_homes",
+        "record_set_spec_id": "uk.local_geography.high_value_homes.owner_occupied_homes.over_gbp_1_5m.v1",
+        "geography_level": "region",
+        "geography_id": "E12000007"
+      },
+      "entity": "household",
+      "measure": "microcosm.high_value_homes.over_1_5m_by_region@E12000007",
+      "family": "high_value_homes",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "microcosm.high_value_homes.over_1_5m_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000007",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"household\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"LONDON\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "microcosm.high_value_homes.over_1_5m_by_region@E12000008",
+      "ledger_selector": {
+        "source_name": "microcosm",
+        "source_measure_id": "owner_occupied_homes",
+        "record_set_spec_id": "uk.local_geography.high_value_homes.owner_occupied_homes.over_gbp_1_5m.v1",
+        "geography_level": "region",
+        "geography_id": "E12000008"
+      },
+      "entity": "household",
+      "measure": "microcosm.high_value_homes.over_1_5m_by_region@E12000008",
+      "family": "high_value_homes",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "microcosm.high_value_homes.over_1_5m_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000008",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"household\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"SOUTH_EAST\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "microcosm.high_value_homes.over_1_5m_by_region@E12000009",
+      "ledger_selector": {
+        "source_name": "microcosm",
+        "source_measure_id": "owner_occupied_homes",
+        "record_set_spec_id": "uk.local_geography.high_value_homes.owner_occupied_homes.over_gbp_1_5m.v1",
+        "geography_level": "region",
+        "geography_id": "E12000009"
+      },
+      "entity": "household",
+      "measure": "microcosm.high_value_homes.over_1_5m_by_region@E12000009",
+      "family": "high_value_homes",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "microcosm.high_value_homes.over_1_5m_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000009",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"household\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"SOUTH_WEST\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "microcosm.high_value_homes.over_1_5m_by_region@W92000004",
+      "ledger_selector": {
+        "source_name": "microcosm",
+        "source_measure_id": "owner_occupied_homes",
+        "record_set_spec_id": "uk.local_geography.high_value_homes.owner_occupied_homes.over_gbp_1_5m.v1",
+        "geography_level": "country",
+        "geography_id": "W92000004"
+      },
+      "entity": "household",
+      "measure": "microcosm.high_value_homes.over_1_5m_by_region@W92000004",
+      "family": "high_value_homes",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "microcosm.high_value_homes.over_1_5m_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "country",
+        "geography_id": "W92000004",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"household\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"WALES\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "microcosm.high_value_homes.over_2m_by_region@E12000002",
+      "ledger_selector": {
+        "source_name": "microcosm",
+        "source_measure_id": "owner_occupied_homes",
+        "record_set_spec_id": "uk.local_geography.high_value_homes.owner_occupied_homes.over_gbp_2m.v1",
+        "geography_level": "region",
+        "geography_id": "E12000002"
+      },
+      "entity": "household",
+      "measure": "microcosm.high_value_homes.over_2m_by_region@E12000002",
+      "family": "high_value_homes",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "microcosm.high_value_homes.over_2m_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000002",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"household\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"NORTH_WEST\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "microcosm.high_value_homes.over_2m_by_region@E12000003",
+      "ledger_selector": {
+        "source_name": "microcosm",
+        "source_measure_id": "owner_occupied_homes",
+        "record_set_spec_id": "uk.local_geography.high_value_homes.owner_occupied_homes.over_gbp_2m.v1",
+        "geography_level": "region",
+        "geography_id": "E12000003"
+      },
+      "entity": "household",
+      "measure": "microcosm.high_value_homes.over_2m_by_region@E12000003",
+      "family": "high_value_homes",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "microcosm.high_value_homes.over_2m_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000003",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"household\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"YORKSHIRE\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "microcosm.high_value_homes.over_2m_by_region@E12000004",
+      "ledger_selector": {
+        "source_name": "microcosm",
+        "source_measure_id": "owner_occupied_homes",
+        "record_set_spec_id": "uk.local_geography.high_value_homes.owner_occupied_homes.over_gbp_2m.v1",
+        "geography_level": "region",
+        "geography_id": "E12000004"
+      },
+      "entity": "household",
+      "measure": "microcosm.high_value_homes.over_2m_by_region@E12000004",
+      "family": "high_value_homes",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "microcosm.high_value_homes.over_2m_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000004",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"household\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"EAST_MIDLANDS\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "microcosm.high_value_homes.over_2m_by_region@E12000005",
+      "ledger_selector": {
+        "source_name": "microcosm",
+        "source_measure_id": "owner_occupied_homes",
+        "record_set_spec_id": "uk.local_geography.high_value_homes.owner_occupied_homes.over_gbp_2m.v1",
+        "geography_level": "region",
+        "geography_id": "E12000005"
+      },
+      "entity": "household",
+      "measure": "microcosm.high_value_homes.over_2m_by_region@E12000005",
+      "family": "high_value_homes",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "microcosm.high_value_homes.over_2m_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000005",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"household\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"WEST_MIDLANDS\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "microcosm.high_value_homes.over_2m_by_region@E12000006",
+      "ledger_selector": {
+        "source_name": "microcosm",
+        "source_measure_id": "owner_occupied_homes",
+        "record_set_spec_id": "uk.local_geography.high_value_homes.owner_occupied_homes.over_gbp_2m.v1",
+        "geography_level": "region",
+        "geography_id": "E12000006"
+      },
+      "entity": "household",
+      "measure": "microcosm.high_value_homes.over_2m_by_region@E12000006",
+      "family": "high_value_homes",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "microcosm.high_value_homes.over_2m_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000006",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"household\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"EAST_OF_ENGLAND\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "microcosm.high_value_homes.over_2m_by_region@E12000007",
+      "ledger_selector": {
+        "source_name": "microcosm",
+        "source_measure_id": "owner_occupied_homes",
+        "record_set_spec_id": "uk.local_geography.high_value_homes.owner_occupied_homes.over_gbp_2m.v1",
+        "geography_level": "region",
+        "geography_id": "E12000007"
+      },
+      "entity": "household",
+      "measure": "microcosm.high_value_homes.over_2m_by_region@E12000007",
+      "family": "high_value_homes",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "microcosm.high_value_homes.over_2m_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000007",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"household\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"LONDON\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "microcosm.high_value_homes.over_2m_by_region@E12000008",
+      "ledger_selector": {
+        "source_name": "microcosm",
+        "source_measure_id": "owner_occupied_homes",
+        "record_set_spec_id": "uk.local_geography.high_value_homes.owner_occupied_homes.over_gbp_2m.v1",
+        "geography_level": "region",
+        "geography_id": "E12000008"
+      },
+      "entity": "household",
+      "measure": "microcosm.high_value_homes.over_2m_by_region@E12000008",
+      "family": "high_value_homes",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "microcosm.high_value_homes.over_2m_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000008",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"household\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"SOUTH_EAST\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "microcosm.high_value_homes.over_2m_by_region@E12000009",
+      "ledger_selector": {
+        "source_name": "microcosm",
+        "source_measure_id": "owner_occupied_homes",
+        "record_set_spec_id": "uk.local_geography.high_value_homes.owner_occupied_homes.over_gbp_2m.v1",
+        "geography_level": "region",
+        "geography_id": "E12000009"
+      },
+      "entity": "household",
+      "measure": "microcosm.high_value_homes.over_2m_by_region@E12000009",
+      "family": "high_value_homes",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "microcosm.high_value_homes.over_2m_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000009",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"household\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"SOUTH_WEST\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "mhclg.council_tax_stock.single_adult_discount",
+      "ledger_selector": {
+        "source_name": "mhclg",
+        "source_concept": "mhclg.council_taxbase.single_adult_discount_dwellings",
+        "source_measure_id": "total",
+        "layout_groupby_value_id": "e92000001",
+        "geography_level": "country",
+        "geography_id": "E92000001"
+      },
+      "entity": "household",
+      "measure": "mhclg/council_tax/single_adult_discount",
+      "family": "council_tax_stock",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "mhclg.council_tax_stock.single_adult_discount",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_from_period": "2025-10",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.child_benefit.families_in_payment.children_1",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.child_benefit_families_in_payment",
+        "record_set_spec_id": "hmrc.child_benefit.aug2025.families_in_payment_by_number_of_children.month2025_08.v1",
+        "source_measure_id": "families_in_payment_children_one",
+        "geography_level": "country",
+        "geography_id": "K02000001"
+      },
+      "entity": "benunit",
+      "measure": "hmrc/child_benefit/families_in_payment/children_1",
+      "family": "hmrc_child_benefit",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.child_benefit.families_in_payment.children_1",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_from_period": "2025-08",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.child_benefit.families_in_payment.children_2",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.child_benefit_families_in_payment",
+        "record_set_spec_id": "hmrc.child_benefit.aug2025.families_in_payment_by_number_of_children.month2025_08.v1",
+        "source_measure_id": "families_in_payment_children_two",
+        "geography_level": "country",
+        "geography_id": "K02000001"
+      },
+      "entity": "benunit",
+      "measure": "hmrc/child_benefit/families_in_payment/children_2",
+      "family": "hmrc_child_benefit",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.child_benefit.families_in_payment.children_2",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_from_period": "2025-08",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.child_benefit.families_in_payment.children_3",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.child_benefit_families_in_payment",
+        "record_set_spec_id": "hmrc.child_benefit.aug2025.families_in_payment_by_number_of_children.month2025_08.v1",
+        "source_measure_id": "families_in_payment_children_three",
+        "geography_level": "country",
+        "geography_id": "K02000001"
+      },
+      "entity": "benunit",
+      "measure": "hmrc/child_benefit/families_in_payment/children_3",
+      "family": "hmrc_child_benefit",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.child_benefit.families_in_payment.children_3",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_from_period": "2025-08",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.child_benefit.families_in_payment.children_4",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.child_benefit_families_in_payment",
+        "record_set_spec_id": "hmrc.child_benefit.aug2025.families_in_payment_by_number_of_children.month2025_08.v1",
+        "source_measure_id": "families_in_payment_children_four",
+        "geography_level": "country",
+        "geography_id": "K02000001"
+      },
+      "entity": "benunit",
+      "measure": "hmrc/child_benefit/families_in_payment/children_4",
+      "family": "hmrc_child_benefit",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.child_benefit.families_in_payment.children_4",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_from_period": "2025-08",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.child_benefit.families_in_payment.children_5_plus",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.child_benefit_families_in_payment",
+        "record_set_spec_id": "hmrc.child_benefit.aug2025.families_in_payment_by_number_of_children.month2025_08.v1",
+        "geography_level": "country",
+        "geography_id": "K02000001"
+      },
+      "entity": "benunit",
+      "measure": "hmrc/child_benefit/families_in_payment/children_5_plus",
+      "family": "hmrc_child_benefit",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.child_benefit.families_in_payment.children_5_plus",
+        "measure_kind": "prepared_column"
+      },
+      "value_operation": "linear_combination",
+      "value_operands": [
+        {
+          "weight": 1,
+          "source_concept": "hmrc.child_benefit_families_in_payment",
+          "source_measure_id": "families_in_payment_children_five_to_nine",
+          "label": "five_to_nine"
+        },
+        {
+          "weight": 1,
+          "source_concept": "hmrc.child_benefit_families_in_payment",
+          "source_measure_id": "families_in_payment_children_ten_or_more",
+          "label": "ten_or_more"
+        }
+      ],
+      "uprating_from_period": "2025-08",
+      "uprating_to_period": 2025
     }
   ]
 }

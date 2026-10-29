@@ -65,6 +65,9 @@ _KERNELS = SKELETON_KERNELS | frozenset(
         "takeup.cell_diagnostics@1",
         "takeup.compare@1",
         "transport.scenario_override@1",
+        "reporting.income_decile@1",
+        "reporting.carry_income_decile@1",
+        "reporting.receipt_group@1",
     }
 )
 _FIELDS = frozenset(
@@ -157,8 +160,16 @@ def _parameter(spec, config, value, scenario):
         raise ValueError(
             "Scenario objects require json encoding; encodings are value, json, sha256."
         )
-    if value.get("encoding") == "json" and "resource" in value:
-        selected = json.loads(_resource_param(spec, value, allow_json_sequences=True))
+    if "resource" in value:
+        selected = _resource_param(
+            spec,
+            value,
+            allow_json_sequences=True,
+            profile_selection=None if scenario is None else scenario.get("knobs", {}),
+        )
+        if value.get("encoding") != "json":
+            return selected
+        selected = json.loads(selected)
         return canonical_json(_bind_data(spec, config, selected)).decode("utf-8")
     if not ({"resource", "prepared"} & set(value)):
         return canonical_json(_bind_data(spec, config, value)).decode("utf-8")
@@ -449,6 +460,9 @@ class _EntitlementFactory:
                     types,
                     allowed_kernels=_KERNELS,
                     resolved_params=params,
+                    profile_selection=None
+                    if scenario is None
+                    else scenario.get("knobs", {}),
                 )
             )
         bands = _mapping(document["bands"], "entitlement bands")

@@ -41,6 +41,7 @@ def _write_run_dir(
     *,
     size_run: bool,
     red_rows: tuple[str, ...] = (),
+    signed_rows: tuple[str, ...] = (),
 ) -> Path:
     """Write every documented run artifact as a small deterministic fixture."""
 
@@ -256,6 +257,10 @@ def _write_run_dir(
                 "failing_targets": {row: 0.4 for row in red_rows},
                 "max_abs_relative_error": 0.4,
                 "targets_checked": 8,
+                "reviewed_exclusions": {
+                    row: {"relative_error": 0.4, "reason": "fixture"}
+                    for row in signed_rows
+                },
             }
         gates[gate_id] = {
             "criticality": "diagnostic" if reference else "release_blocking",
@@ -518,6 +523,30 @@ def test_paired_targets_counts_red_mapping_and_changed_target(tmp_path: Path) ->
     )
     assert result["reference_red_rows"]["still_red"] == 1
     assert any(row["name"] == "national/b@2025" for row in result["new_red_rows"])
+
+
+def test_paired_targets_keep_a_signed_cell_on_the_red_ledger(tmp_path: Path) -> None:
+    # A reviewed exclusion lifts the fence, not the breach (microcosm#1301):
+    # the reference's signed cell is still a red row the run must answer for.
+    run = load_run(
+        _write_run_dir(tmp_path, "candidate", size_run=True), label="candidate"
+    )
+    reference = load_run(
+        _write_run_dir(
+            tmp_path,
+            "reference",
+            size_run=False,
+            signed_rows=("council_tax/E1/council_tax/band_c",),
+        ),
+        label="reference",
+    )
+
+    result = paired_targets(run, reference)
+
+    assert result["reference_red_rows"]["n"] == 1
+    assert result["reference_red_rows"]["rows"][0]["name"] == (
+        "local/council-tax/E1@2025"
+    )
 
 
 def test_weight_tables_size_and_dense_spine_paths(tmp_path: Path) -> None:

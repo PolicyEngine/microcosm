@@ -51,8 +51,14 @@ immutable publication before Hugging Face artifact staging, and preserves
 durable retry jobs and receipt snapshots. See
 [graph publication](docs/orrery-publication.md) for configuration and retry.
 
-Supported US and UK build commands always start the local telemetry emitter
-service. It reports live progress to the hosted collector when the operator's
+Supported US and UK build commands start one local emitter service with separate
+telemetry and graph-publication workers. Microcosm supplies build metadata and
+graph files; the required `microcosm-emitter` package owns authentication,
+durable queues and delivery. Telemetry and graph publication are internal
+libraries in that single package, not separate installations.
+This draft migration requires a published emitter release before merge; see the
+[migration prerequisites](docs/orrery-publication.md#deferred-migration-prerequisites).
+The telemetry worker reports live progress to the hosted collector when the operator's
 existing Hugging Face login is accepted; otherwise it retains the events
 locally and the build continues. This live event path is independent of the
 staging run files described below.
@@ -342,6 +348,14 @@ type publishes the [reported-receipt child of the national default](docs/us-repo
 as a tag-only donor for the ACS local chain. It is never the `latest.json`
 default.
 
+A [compatibility recertification](docs/us-compatibility-recertification.md)
+republishes a published US calibration release byte for byte under a new id,
+with a measured `compatible_model_packages` claim for a newer policyengine-us:
+a loader replay under the tested country, Core and calculator wheels, the engine's reviewed column
+changes, and the drift of the critical rows and headline totals between the
+built-with and tested engines. It never recalibrates. Publication refuses a
+child whose parent tag on the Hub does not serve the carried manifest bytes.
+
 The non-default ACS local-area chain (`tools/build_us_acs_local_release.py`)
 calibrates to the SOI `state` surface by default, the 4,459-target contract of
 Build O and Build P; `--soi-mode totals` and `--soi-mode full` are explicit
@@ -368,6 +382,13 @@ are validated at construction, including their cross-field reconciliations.
 UK release workflows stop when diagnostics are unavailable because their later
 release checks require that evidence; historical schema-6 and schema-7 UK
 artifacts remain readable through isolated compatibility validation.
+
+A Draft 2020-12 JSON Schema for schema 8, generated from those models, is
+committed at
+`packages/microcosm-diagnostics/src/microcosm/diagnostics/schemas/calibration_diagnostics.v8.schema.json`
+for consumers that check the file without importing them, such as the
+collector. Its description lists the model rules a JSON Schema cannot express;
+see the [package README](packages/microcosm-diagnostics/README.md).
 
 Standard publication uploads the locally built `releases/<id>/` artifacts to
 the Hugging Face dataset, tags the release, and updates `latest.json`. It runs
@@ -441,6 +462,19 @@ again means rebuilding or re-packaging it, which runs the check. An
 evidence-tier run that ships a stored-input refusal needs a per-run
 `--evidence-failure-owners` entry naming its owner; the standing owner register
 covers none.
+
+The ACS local-area package stage also grades the calibrated H5's SPM
+measurement composition (microcosm#1263;
+`microcosm.build.us_runtime.spm_measurement_gate`). spm-calculator refuses a
+whole simulation's SPM measurement when one unit it measures has no classified
+adult (`age >= 18 or (age >= 15 and is_spm_independent_minor_role)`), and an
+engine that does not scope SPM by measurement universe, such as
+policyengine-us 2.2.1, measures every unit. The stage refuses an artifact on
+which any unit the built-with engine measures has no classified adult, or
+whose stored role is missing, null or not Boolean. It records the counts,
+split by source SPM universe, as the `spm_measurement_composition` gate,
+bound to the microdata sha256. The publisher requires that gate of every US
+local-area release. See [the ACS SPM role page](docs/us-acs-spm-role.md#the-release-gate).
 
 Each check grades one engine version, the built-with one. A source-enrichment
 bundle certified with a publisher compatibility range admits versions no check

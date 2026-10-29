@@ -142,6 +142,12 @@ class AreaSignedDeferral:
     #: ISO date after which the deferral no longer stands; the runtime refuses
     #: an expired one at its review date (microcosm#1123 small-cell rule).
     expires_on: str | None = None
+    #: The cell's value for reconciliation only, where the thing measured does
+    #: not exist in the area (no mains gas network: zero; María's ruling of
+    #: 2026-10-25). It is never bound; it replaces a compiled value and stands
+    #: in for an absent one, so the cell's leg counts it as it is
+    #: (microcosm#1095).
+    declared_value: float | None = None
 
     def __post_init__(self) -> None:
         if not self.target_id:
@@ -154,6 +160,12 @@ class AreaSignedDeferral:
             raise ValueError("AreaSignedDeferral.rationale must be non-empty.")
         if not self.area_ids:
             raise ValueError("AreaSignedDeferral.area_ids must be non-empty.")
+        if self.declared_value is not None and not (
+            math.isfinite(self.declared_value) and self.declared_value >= 0
+        ):
+            raise ValueError(
+                "AreaSignedDeferral.declared_value must be finite and non-negative."
+            )
         object.__setattr__(
             self,
             "area_ids",
@@ -627,6 +639,8 @@ def author_area_target_references(
                         ) from error
                     entry["signed_reason_id"] = signed_deferral.reason_id
                     entry["signed_rationale"] = signed_deferral.rationale
+                    if signed_deferral.declared_value is not None:
+                        entry["declared_value"] = float(signed_deferral.declared_value)
                 else:
                     if (
                         signed_deferral is not None
@@ -649,6 +663,10 @@ def author_area_target_references(
                                 "deferred_value": float(registry.specs[0].value),
                             }
                         )
+                        if signed_deferral.declared_value is not None:
+                            entry["declared_value"] = float(
+                                signed_deferral.declared_value
+                            )
                         candidates.append(entry)
                         continue
                     spec = registry.specs[0]
@@ -740,6 +758,11 @@ def author_area_target_references(
                 "area_ids": list(deferral.area_ids),
                 **({"defer_if_compiles": True} if deferral.defer_if_compiles else {}),
                 **({"expires_on": deferral.expires_on} if deferral.expires_on else {}),
+                **(
+                    {"declared_value": deferral.declared_value}
+                    if deferral.declared_value is not None
+                    else {}
+                ),
             }
             for deferral in config.area_signed_deferrals
         ],
@@ -829,6 +852,7 @@ def target_references_resource(
                         "scaled_by_ratio",
                         "rolled_forward_by_ratio",
                         "calendar_year_window",
+                        "calendar_year_window_scaled_by_ratio",
                     }
                 }
             ),
@@ -1254,6 +1278,11 @@ def _source_prefilter(
     source_name = target["ledger_selector"].get("source_name")
     if isinstance(source_name, str) and source_name:
         return facts_by_source.get(source_name, ())
+    # A list matches by membership (a family whose published and derived facts
+    # sit under two sources, microcosm#1095): its sources' facts, in feed order.
+    if isinstance(source_name, list) and source_name:
+        names = {str(item) for item in source_name}
+        return tuple(fact for fact in facts if _source_name(fact) in names)
     return facts
 
 
@@ -1489,14 +1518,20 @@ def _signed_row_exclusion(
     row: Mapping[str, Any],
     row_exclusions: Mapping[tuple[str, str], str],
 ) -> tuple[tuple[str, str], str] | None:
-    """The row-level sign-out this fan-out row matches, if any."""
+    """The row-level sign-out this fan-out row matches, if any.
+
+    A row is matched by one of its selector's dimension values or, for a
+    geography fan-out cell, by its ``geography_id`` (microcosm#1301).
+    """
 
     if not row_exclusions:
         return None
-    dimension_values = row.get("ledger_selector", {}).get("dimension_values")
-    if not isinstance(dimension_values, Mapping):
-        return None
-    for dimension, value in dimension_values.items():
+    selector = row.get("ledger_selector", {})
+    dimension_values = selector.get("dimension_values")
+    keyed = dict(dimension_values) if isinstance(dimension_values, Mapping) else {}
+    if selector.get("geography_id") is not None:
+        keyed.setdefault("geography_id", selector["geography_id"])
+    for dimension, value in keyed.items():
         key = (str(dimension), json.dumps(value, sort_keys=True))
         rationale = row_exclusions.get(key)
         if rationale is not None:

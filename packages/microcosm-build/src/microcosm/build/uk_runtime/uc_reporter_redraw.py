@@ -17,6 +17,10 @@ import numpy as np
 import pandas as pd
 
 from microcosm.build.source_manifest import SourceStageSpec
+from microcosm.build.stochastic_assignment import (
+    integer_record_keys,
+    stable_identity_uniforms,
+)
 from microcosm.build.uk_runtime.national_frame import (
     uk_household_weight_kind,
     uk_national_frame,
@@ -31,6 +35,7 @@ from microcosm.build.uk_runtime.spi_support import (
 )
 from microcosm.build.uk_runtime.uc_capital_coherence import (
     PROPERTY_CAPITAL_OWNER_COLUMN,
+    PROPERTY_CAPITAL_SECURED_DEBT,
     UC_CAPITAL_WITH_PROPERTY_DEFINITION,
     UC_PROPERTY_CAPITAL_SHARE,
     UC_PROPERTY_CAPITAL_SHARE_DEFINITION,
@@ -221,7 +226,15 @@ def redraw_spi_reported_uc(
     )
     _require_columns(
         household,
-        ("household_id", "region", *UC_PROPERTY_CAPITAL_SOURCES),
+        (
+            "household_id",
+            "region",
+            *UC_PROPERTY_CAPITAL_SOURCES,
+            *(
+                PROPERTY_CAPITAL_SECURED_DEBT[source]
+                for source in UC_PROPERTY_CAPITAL_SOURCES
+            ),
+        ),
         label="household",
     )
 
@@ -314,7 +327,25 @@ def redraw_spi_reported_uc(
         weights=weights[training],
     )
     draws = np.zeros(len(benunit), dtype=np.float64)
-    predicted = fitted.predict(encoded_target)
+    # Uniforms keyed on each benefit unit's own id, never a positional
+    # stream: a unit's redraw moves only when its own predictors do.
+    keys = integer_record_keys(
+        benunit["benunit_id"].to_numpy()[target], label="UC reporter benunit_id"
+    )
+    salt = f"uc_reporter_redraw:{UC_REPORTER_TARGET}"
+    predicted = fitted.predict_from_uniforms(
+        encoded_target,
+        quantiles={
+            UC_REPORTER_TARGET: stable_identity_uniforms(
+                keys, seed=UC_REPORTER_REDRAW_SEED, salt=salt
+            )
+        },
+        sign_uniforms={
+            UC_REPORTER_TARGET: stable_identity_uniforms(
+                keys, seed=UC_REPORTER_REDRAW_SEED, salt=f"{salt}:sign"
+            )
+        },
+    )
     if list(predicted.columns) != [UC_REPORTER_TARGET]:
         raise ValueError(
             "UC reporter redraw model must return exactly the declared target."

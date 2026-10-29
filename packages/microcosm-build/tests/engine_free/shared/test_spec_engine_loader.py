@@ -10,9 +10,15 @@ def test_semantic_hash_has_golden_vector_and_surface_separation(tmp_path) -> Non
         kernel_registry=KernelRegistry.from_ids(SELECTION_KERNEL_IDS),
     )
     # Pin the domain separator, normalization rules, schema-set receipt, and
-    # exact normative projection as one reviewable golden vector.
+    # exact normative projection as one reviewable golden vector. The seed
+    # protocol inside it attests microcosm.calibrate.solve's bytes, so
+    # microcosm#1124's opt-in retain_best_objective and microcosm#1301's
+    # budget_search_bracket move it, and the fit kernels' bytes, so the QRF
+    # chain step's caller-owned uniforms move it too. microcosm#1380's
+    # self-employment feature in the imputation schema moves the schema-set
+    # receipt, and its post-transfer step moves acs_transfer's attested bytes.
     assert first.spec_sha256 == (
-        "a87331c733b013ff6fa8a53e0474e8e98a6f27e53322fa35afff6291635a3897"
+        "73a8532b13b108d9d83e7bc9243e0668fc7b29adf2616efe7335b4fb9aae8b8e"
     )
 
     second_root = _rich_minimal(tmp_path / "xy", note="second", store="local:b")

@@ -895,10 +895,13 @@ def test_pinned_feed_national_state_surface_restores_the_fences(
 ) -> None:
     """The release surface on the pinned feed: 33,250 compiled targets after
     Medicaid substitution, 6,102 national_state targets at registry
-    e1f9906bf0e0, 32 CHIP rows none of them for an M-CHIP state, no
-    other-income row and no tips return count. microcosm#1206 moved the
-    version from f96be9f41781 by binding the Part B premium target to
-    gross_medicare_part_b_premium_if_enrolled; the counts are unchanged.
+    3fad14f85468, 32 CHIP rows none of them for an M-CHIP state, no
+    other-income row and no tips return count. microcosm#1227 moved the
+    version from e1f9906bf0e0 by doubling the eight Table 2.5 EITC child
+    total rows, whose uprating source sum had counted each split twice;
+    microcosm#1206 moved it from f96be9f41781 by binding the Part B premium
+    target to gross_medicare_part_b_premium_if_enrolled. Neither changed
+    the counts.
     The 408 state AGI-band rows of
     microcosm#940 (51 states x 4 bands x 2 measures) took it from 32,842 /
     5,694 at d315c75804ef on the c5e5bf8 feed; before microcosm#956 it was
@@ -908,7 +911,7 @@ def test_pinned_feed_national_state_surface_restores_the_fences(
     registry, surface, _ = pinned_feed_national_state_surface
     assert len(registry.specs) == 33_250
     assert len(surface.specs) == 6_102
-    assert surface.version == "e1f9906bf0e0"
+    assert surface.version == "3fad14f85468"
     chip = [
         spec
         for spec in surface.specs
@@ -933,6 +936,60 @@ def test_pinned_feed_national_state_surface_restores_the_fences(
         "irs_soi.ty2023.form_w2_social_security_tips.box_7_social_security_tips.amount"
         in {spec.name for spec in surface.specs}
     )
+
+
+_EITC_CHILD_SPLITS = (
+    "no_qualifying_children",
+    "one_qualifying_child",
+    "two_qualifying_children",
+    "three_or_more_qualifying_children",
+)
+
+
+@pytest.mark.parametrize(
+    ("measure", "active_measure", "factor"),
+    [
+        ("eitc_total", "total_earned_income_credit_amount", "1.04182361614341"),
+        ("eitc_returns", "total_earned_income_credit_returns", "0.975335982876551"),
+    ],
+)
+def test_pinned_feed_eitc_child_total_rows_count_each_split_once(
+    pinned_feed_national_state_surface, measure, active_measure, factor
+) -> None:
+    """The four TY2023 Table 2.5 child splits' all-AGI total rows take one
+    factor, the TY2024 filing-season AGI bins over the source total rows
+    ($69,041,650,000 / $66,269,999,000; 23,837,149 / 24,439,936), so they sum
+    to those bins as the splits' 112 AGI bins do. The source sum used to count
+    each split's bins and total row both, which halved the factor (0.5209 and
+    0.4877) and shipped the total rows at about half their bins."""
+    registry, surface, _ = pinned_feed_national_state_surface
+    by_name = {spec.name: spec for spec in registry.specs}
+    on_surface = {spec.name for spec in surface.specs}
+    active = sum(
+        spec.value
+        for spec in registry.specs
+        if spec.name.startswith("irs_soi.ty2024.filing_season_week47.eitc_by_agi.")
+        and spec.metadata["source_measure_id"] == active_measure
+    )
+    record_set = "irs_soi.ty2023.table_2_5.eitc_by_agi_children."
+    totals = [
+        by_name[f"{record_set}{split}.total.{measure}"] for split in _EITC_CHILD_SPLITS
+    ]
+    bins = [
+        spec
+        for spec in registry.specs
+        if spec.name.startswith(record_set)
+        and spec.metadata["source_measure_id"] == measure
+        and spec not in totals
+    ]
+
+    assert len(bins) == 4 * 28
+    assert {spec.name for spec in [*totals, *bins]} <= on_surface
+    assert {spec.metadata["uprating_factor"] for spec in totals} == {factor}
+    assert {spec.metadata["uprating_agi_lower_bound"] for spec in totals} == {"-inf"}
+    assert {spec.metadata["uprating_agi_upper_bound"] for spec in totals} == {"inf"}
+    assert sum(spec.value for spec in totals) == pytest.approx(active, rel=1e-12)
+    assert sum(spec.value for spec in bins) == pytest.approx(active, rel=1e-12)
 
 
 def test_reviewed_zero_support_facts_are_not_active_targets() -> None:

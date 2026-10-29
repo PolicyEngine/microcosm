@@ -48,6 +48,8 @@ __all__ = [
     "UK_TARGET_GEOGRAPHY_LEVELS",
     "uk_calibration_diagnostics_payload",
     "uk_consumption_drift",
+    "uk_consumption_drift_flags",
+    "uk_consumption_drift_warnings",
     "uk_fit_by_family",
     "uk_support_limited_misses",
     "uk_target_geography_levels",
@@ -65,6 +67,12 @@ _UK_DEFAULT_ZERO_WEIGHT_STRATUM_COLUMNS: tuple[str, ...] = (
 
 _TARGET_PASS_RELATIVE_ERROR = 0.10
 _AREA_FIT_LIMIT = 15
+#: The fewest distinct source households a published cell may rest on (UKDS
+#: CD137 clause 8). The build no longer withholds model figures (María's
+#: ruling of 2026-10-26), but the report tools that publish their own tables,
+#: such as the single years of age and the council tax liability comparison,
+#: still suppress the cells below it.
+UK_DIAGNOSTIC_MIN_SOURCE_HOUSEHOLDS = 10
 
 _COUNTRY_BY_AREA_PREFIX = {
     "E": "England",
@@ -154,7 +162,13 @@ def uk_weakest_areas_by_fit(
     *,
     limit: int = _AREA_FIT_LIMIT,
 ) -> dict[str, object]:
-    """Return bottom-by-fit local areas plus country-level fit rollups."""
+    """Return bottom-by-fit local areas plus country-level fit rollups.
+
+    ``area_support`` must cover every scored area. A row carries the area's
+    rows, Kish ESS and distinct sources, and its ``support_below_floor`` flag
+    when the table has one: María's ruling of 2026-10-26 dropped the
+    withholding of these per-area figures (microcosm#1301).
+    """
 
     if isinstance(limit, bool) or not isinstance(limit, int) or limit <= 0:
         raise ValueError("UK weakest-area limit must be a positive integer.")
@@ -174,6 +188,7 @@ def uk_weakest_areas_by_fit(
     }
     if len(support_rows) != len(area_support):
         raise ValueError("UK area support contains duplicate geography/area rows.")
+    flagged = "support_below_floor" in area_support.columns
 
     grouped: dict[tuple[str, str], list[tuple[str, float, float]]] = {}
     for row in target_rows:
@@ -216,6 +231,7 @@ def uk_weakest_areas_by_fit(
                 "nonzero_households": int(support.nonzero_households),
                 "nonzero_source_households": int(support.nonzero_source_households),
                 "effective_sample_size": float(support.effective_sample_size),
+                **_support_flag(support.support_below_floor if flagged else None),
             }
         )
     area_rows.sort(
@@ -272,6 +288,14 @@ def uk_weakest_areas_by_fit(
     }
 
 
+def _support_flag(value: object) -> dict[str, bool]:
+    """``{"support_below_floor": flag}`` when the area's flag is known, else empty."""
+
+    if value is None or pd.isna(value):
+        return {}
+    return {"support_below_floor": bool(value)}
+
+
 def _country_for_area(area_code: str) -> str:
     try:
         return _COUNTRY_BY_AREA_PREFIX[area_code[0]]
@@ -296,7 +320,14 @@ def uk_support_limited_misses(
     *,
     max_abs_relative_error: float,
 ) -> dict[str, dict[str, object]]:
-    """Relate failing local cells to each area's measured support."""
+    """Relate failing local cells to each area's measured support.
+
+    The per-grain rollups (failing cells, their share in the bottom ESS
+    decile, the rank correlation of fit with ESS) are over many areas. The
+    worst areas are listed by code and fit with their rows, ESS and distinct
+    sources, and ``support_below_floor`` when the support table carries it
+    (María's ruling of 2026-10-26 dropped the withholding of microcosm#1301).
+    """
 
     if not math.isfinite(max_abs_relative_error) or max_abs_relative_error < 0:
         raise ValueError("max_abs_relative_error must be finite and non-negative.")
@@ -401,6 +432,7 @@ def uk_support_limited_misses(
                     "rows": int(row["assigned_households"]),
                     "ess": float(row["effective_sample_size"]),
                     "sources": int(row["nonzero_source_households"]),
+                    **_support_flag(row.get("support_below_floor")),
                 }
                 for _, row in worst.iterrows()
             ],
@@ -629,6 +661,18 @@ _UK_DRIFT_TOTAL_COLUMNS: tuple[str, ...] = (
     "petrol_spending",
     "diesel_spending",
 )
+#: The heating fuels the stage draws without levelling (pe-uk#2572), read
+#: where the frame carries them: a spine built before them has a drift block
+#: without them.
+_UK_DRIFT_OPTIONAL_TOTAL_COLUMNS: tuple[str, ...] = (
+    "liquid_fuel_consumption",
+    "solid_fuel_consumption",
+)
+#: Warn-only drift flags (microcosm#1278, R1): a total moving more than 2
+#: percent between the design and the final weights, or a share more than half
+#: a percentage point. Nothing is gated on them.
+UK_DRIFT_TOTAL_FLAG = 0.02
+UK_DRIFT_SHARE_FLAG = 0.005
 
 
 def _drift_value(design: float, final: float) -> dict[str, float | None]:
@@ -650,10 +694,26 @@ def uk_consumption_drift(
     Report only (microcosm#1113): the stage sets the energy and road-fuel
     levels, the gas connection and the fuel incidence, so calibration should
     barely move them. Returns None for a frame without the consumption columns.
+    Where the frame carries the ETB VAT stage's full-rate expenditure rate,
+    the totals also hold the full-rate VAT base, consumption times that rate
+    (microcosm#1207: no bound row holds the VAT base, so this is where its
+    drift shows). Where it carries the household's region, they also hold
+    the electricity and gas kWh the stage raked, read back from the spend at
+    the stage's declared prices (microcosm#1207). Where it carries the excise
+    step's inputs, they also hold each alcohol and tobacco quantity and
+    gambling base as stored (the tobacco inputs a week), which the stage
+    levels at design weights (microcosm#1359).
     """
 
+    from microcosm.build.uk_runtime.domestic_energy_targets import (
+        household_energy_kwh,
+        household_energy_prices,
+    )
+    from microcosm.build.uk_runtime.etb_vat import UK_ETB_VAT_OUTPUT_COLUMNS
     from microcosm.build.uk_runtime.lcfs_consumption import (
         UK_LCFS_COICOP_DIVISION_COLUMNS,
+        UK_LCFS_EXCISE_DRAUGHT_OUTPUTS,
+        UK_LCFS_EXCISE_OUTPUT_COLUMNS,
     )
 
     needed = {
@@ -673,10 +733,33 @@ def uk_consumption_drift(
 
     totals = {
         name: _drift_value(design @ column(name), final @ column(name))
-        for name in _UK_DRIFT_TOTAL_COLUMNS
+        for name in (
+            *_UK_DRIFT_TOTAL_COLUMNS,
+            *(
+                name
+                for name in _UK_DRIFT_OPTIONAL_TOTAL_COLUMNS
+                if name in household.columns
+            ),
+        )
     }
     consumption = sum(column(name) for name in UK_LCFS_COICOP_DIVISION_COLUMNS)
     totals["consumption"] = _drift_value(design @ consumption, final @ consumption)
+    (vat_rate_column,) = UK_ETB_VAT_OUTPUT_COLUMNS
+    if vat_rate_column in household.columns:
+        vat_base = consumption * column(vat_rate_column)
+        totals["full_rate_vat_base"] = _drift_value(design @ vat_base, final @ vat_base)
+    if "region" in household.columns:
+        kwh = household_energy_kwh(
+            column("electricity_consumption"),
+            column("gas_consumption"),
+            region=household["region"].astype(str).to_numpy(),
+            prices=household_energy_prices(),
+        )
+        for name, values in kwh.items():
+            totals[name] = _drift_value(design @ values, final @ values)
+    for name in UK_LCFS_EXCISE_OUTPUT_COLUMNS:
+        if name in household.columns and name not in UK_LCFS_EXCISE_DRAUGHT_OUTPUTS:
+            totals[name] = _drift_value(design @ column(name), final @ column(name))
     road_fuel = column("petrol_spending") + column("diesel_spending")
     flagged = household["has_fuel_consumption"].to_numpy(dtype=bool)
 
@@ -694,6 +777,78 @@ def uk_consumption_drift(
         )
     }
     return {"report_only": True, "totals": totals, "shares": shares}
+
+
+def uk_consumption_drift_flags(drift: Mapping[str, object]) -> dict[str, object]:
+    """The warn-only flags over a consumption drift block (microcosm#1278, R1).
+
+    A total that moves more than ``UK_DRIFT_TOTAL_FLAG`` of its design value,
+    or a share that moves more than ``UK_DRIFT_SHARE_FLAG``, between the design
+    and the final weights. Report only: the calibration diagnostics carry them
+    as warnings (:func:`uk_consumption_drift_warnings`), nothing is gated on
+    them, and the diagnostics payload's schema stays as it is.
+    """
+
+    totals = drift.get("totals") or {}
+    shares = drift.get("shares") or {}
+    return {
+        "total_relative_change_above": UK_DRIFT_TOTAL_FLAG,
+        "share_change_above": UK_DRIFT_SHARE_FLAG,
+        "totals": sorted(
+            name
+            for name, value in totals.items()
+            if value.get("relative_change") is not None
+            and abs(float(value["relative_change"])) > UK_DRIFT_TOTAL_FLAG
+        ),
+        "shares": sorted(
+            name
+            for name, value in shares.items()
+            if abs(float(value["change"])) > UK_DRIFT_SHARE_FLAG
+        ),
+    }
+
+
+#: The ``diagnostic_warnings`` code of a consumption drift flag.
+UK_CONSUMPTION_DRIFT_WARNING_CODE = "uk_consumption_drift"
+
+
+def uk_consumption_drift_warnings(drift: Mapping[str, object]) -> list[dict[str, str]]:
+    """The drift flags as the payload's warn-only ``diagnostic_warnings``.
+
+    One warning per flagged total or share (:func:`uk_consumption_drift_flags`),
+    naming it and the threshold it passed, never its figures (Vahid's review
+    of #1383, item 11). Nothing is gated on them.
+    """
+
+    flags = uk_consumption_drift_flags(drift)
+    total = float(flags["total_relative_change_above"])
+    share = float(flags["share_change_above"])
+    return [
+        *(
+            {
+                "code": UK_CONSUMPTION_DRIFT_WARNING_CODE,
+                "severity": "warning",
+                "message": (
+                    f"Consumption drift (warn-only, microcosm#1278 R1): the total "
+                    f"{name} moves by more than {total:.0%} of its design value "
+                    "between the design and the final weights."
+                ),
+            }
+            for name in flags["totals"]
+        ),
+        *(
+            {
+                "code": UK_CONSUMPTION_DRIFT_WARNING_CODE,
+                "severity": "warning",
+                "message": (
+                    f"Consumption drift (warn-only, microcosm#1278 R1): the share "
+                    f"{name} moves by more than {share * 100:g} points between "
+                    "the design and the final weights."
+                ),
+            }
+            for name in flags["shares"]
+        ),
+    ]
 
 
 def uk_zero_weight_strata(
@@ -777,15 +932,20 @@ def uk_zero_weight_strata(
     return rows
 
 
+#: Adapter and Ledger spellings of a diagnostics level: the rowwise area
+#: type ``la``, and ``statistical_scope``, the Ledger level of PIPR's Scottish
+#: BRMA rows, the only targets the contract binds at it (microcosm#1262).
+_GEOGRAPHY_LEVEL_ALIASES = {"la": "local_authority", "statistical_scope": "brma"}
+
+
 def _normalize_geography_level(value: object) -> str:
     raw = getattr(value, "value", value)
     level = str(raw).strip().lower()
-    if level == "la":
-        level = "local_authority"
+    level = _GEOGRAPHY_LEVEL_ALIASES.get(level, level)
     if level not in UK_TARGET_GEOGRAPHY_LEVELS:
         raise ValueError(
             f"Unknown UK target geography level {raw!r}; expected one of "
-            f"{UK_TARGET_GEOGRAPHY_LEVELS} (or adapter alias 'la')."
+            f"{UK_TARGET_GEOGRAPHY_LEVELS} (or alias 'la' or 'statistical_scope')."
         )
     return level
 
@@ -975,6 +1135,10 @@ def uk_calibration_diagnostics_payload(
     ``target_geography_levels`` is deliberately explicit and exact.  Target
     names are never parsed to guess their geography, and a missing, stale, or
     unknown mapping aborts instead of silently shrinking a scoreboard level.
+
+    Every row carries its model figures, however few source households carry
+    it: the diagnostics ship only to the licensed private repository (María's
+    ruling of 2026-10-26, which dropped the withholding of microcosm#1262).
     """
 
     registry = _require_uk_target_registry(target_registry)
@@ -1033,6 +1197,10 @@ def uk_calibration_diagnostics_payload(
     drift = uk_consumption_drift(household, result.initial_weights, result_weights)
     if drift is not None:
         uk_diagnostics["consumption_drift"] = drift
+        payload["diagnostic_warnings"] = [
+            *(payload.get("diagnostic_warnings") or []),
+            *uk_consumption_drift_warnings(drift),
+        ]
     payload["uk_diagnostics"] = uk_diagnostics
     return CalibrationDiagnosticsV8.model_validate(payload).model_dump(
         mode="python",

@@ -48,13 +48,15 @@ from microcosm.build.uk_runtime.national_doctrine import (
     uk_national_target_loss_weights,
 )
 from microcosm.build.uk_runtime.national_frame import write_uk_national_frame
+from microcosm.build.uk_runtime.support_floor import (
+    load_uk_support_floor_declaration,
+)
 from microcosm.build.uk_runtime.terminal_gates import (
     uk_default_degenerate_reviewed_exclusions,
     uk_default_target_fit_reviewed_exclusions,
 )
 from microcosm.build.uk_runtime.weighted_integrity import (
     uk_default_input_mass_reviewed_exclusions,
-    uk_default_qrf_tail_reviewed_exclusions,
 )
 from microcosm.calibrate import calibrate
 from microcosm.calibrate.artifacts import decode_problem
@@ -194,8 +196,9 @@ def _review_date() -> str:
             uk_default_target_fit_reviewed_exclusions(),
             uk_default_degenerate_reviewed_exclusions(),
             uk_default_input_mass_reviewed_exclusions(),
-            uk_default_qrf_tail_reviewed_exclusions(),
             load_uk_calibration_measure_exclusions(),
+            # The sparse-band support floor's signature (microcosm#1095 U3).
+            [load_uk_support_floor_declaration() or {}],
         )
         for record in records(register)
     ]
@@ -505,6 +508,30 @@ def test_national_gates_evaluate_the_seam_scope_and_record_the_evidence(
         "excluded_count": 0,
         "calibrated_count": 1,
     }
+
+
+def test_national_gates_judge_a_thin_row_with_its_figures(tmp_path, monkeypatch):
+    """María's ruling of 2026-10-26 on the seam: the fixture's one row rests
+    on two source households, and it keeps its figures and is judged; the
+    manifest's losses are the solve's own."""
+
+    national, manifest, store, frame, registry = _run(tmp_path, monkeypatch)
+    row_name = registry.specs[0].to_target().row_name
+    evidence = json.loads(
+        _payload(manifest, store, NATIONAL_GATES_NODE, "calibration_evidence")
+    )
+    (row,) = evidence["diagnostics"]
+    assert row["name"] == row_name and "model_figures_withheld" not in row
+    assert np.isfinite(row["estimate"]) and np.isfinite(row["relative_error"])
+    calibration = evidence["calibration"]
+    assert "totals_basis" not in calibration
+    assert "model_figures_withheld" not in calibration
+    report = json.loads(_payload(manifest, store, NATIONAL_GATES_NODE, "gate_report"))
+    outcomes = {outcome["id"]: outcome for outcome in report["report"]["outcomes"]}
+    fit = outcomes["uk_target_fit"]
+    assert fit["status"] == "passed"
+    assert fit["details"]["targets_checked"] == 1
+    assert "withheld_targets" not in fit["details"]
 
 
 def test_national_problem_refuses_an_empty_register(tmp_path, monkeypatch):
