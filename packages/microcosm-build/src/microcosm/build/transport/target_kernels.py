@@ -49,6 +49,7 @@ from pathlib import Path
 import numpy as np
 
 import microcosm.build.calibration_columns as calibration_columns_module
+import microcosm.build.calibration_predicates as calibration_predicates_module
 import microcosm.build.chronicle_epoch as chronicle_epoch_module
 import microcosm.build.country_spec as country_spec_module
 import microcosm.build.ledger_artifact as ledger_artifact_module
@@ -97,6 +98,7 @@ from microcosm.graph import (
 from microcosm.graph.canonical import canonical_json
 
 from . import artifact_types, graph_inputs
+from . import reference_selection as reference_selection_module
 from .artifact_types import (
     CALIBRATION_PREPARATION_TYPE,
     COMPARISON_TYPE,
@@ -113,6 +115,7 @@ from .graph_inputs import (
     single_source,
     string_param,
 )
+from .reference_selection import exemption_rows, validate_exemptions
 
 __all__ = [
     "TARGET_COMPILATION_KERNELS",
@@ -205,6 +208,7 @@ class TargetSurface:
     facts: Mapping[str, object]
     sha256: str
     reference_resolution: Mapping[str, object] | None = None
+    reference_selection: Mapping[str, object] | None = None
 
 
 def _trace_row(spec: TargetSpec, reference: LedgerTargetReference) -> dict[str, object]:
@@ -225,6 +229,7 @@ def encode_target_surface(
     references_sha256: str,
     facts: Mapping[str, object],
     reference_resolution: Mapping[str, object] | None = None,
+    reference_selection: Mapping[str, object] | None = None,
 ) -> bytes:
     """Encode a compiled registry with its one-to-one reference trace."""
 
@@ -255,6 +260,8 @@ def encode_target_surface(
     }
     if reference_resolution is not None:
         document["reference_resolution"] = dict(reference_resolution)
+    if reference_selection is not None:
+        document["reference_selection"] = dict(reference_selection)
     payload = canonical_json(document)
     decode_target_surface(payload)
     return payload
@@ -302,7 +309,15 @@ def _surface_resolution(document: Mapping, registry: TargetRegistry) -> Mapping 
             "effective_intervals_sha256"
         ) != resolution.get("effective_intervals_sha256"):
             raise ValueError("Surface reference profile identity mismatch.")
-    if sorted(spec.name for spec in resolved) != resolution.get("transformed_names"):
+    transformed_names = resolution.get("transformed_names")
+    if "reference_selection" in document:
+        exempt_names = {
+            row["name"] for row in exemption_rows(document["reference_selection"])
+        }
+        transformed_names = [
+            name for name in transformed_names if name not in exempt_names
+        ]
+    if sorted(spec.name for spec in resolved) != transformed_names:
         raise ValueError("Surface resolution transformed names mismatch.")
     return resolution
 
@@ -318,7 +333,7 @@ def decode_target_surface(payload: bytes) -> TargetSurface:
     if (
         document.get("schema_version") != 1
         or document.get("kind") != _SURFACE_KIND
-        or set(document) - {"reference_resolution"}
+        or set(document) - {"reference_resolution", "reference_selection"}
         != {
             "schema_version",
             "kind",
@@ -346,6 +361,13 @@ def decode_target_surface(payload: bytes) -> TargetSurface:
     references = [row.get("reference") for row in trace]
     if len(set(references)) != len(references):
         raise ValueError("Target surface traces two targets to one reference.")
+    selection = document.get("reference_selection")
+    if selection is not None:
+        exemptions = exemption_rows(selection)
+        if any(row["activation_status"] in _EXECUTABLE_STATUSES for row in exemptions):
+            raise ValueError("A target surface cannot exempt an active reference.")
+        if set(references) & {row["name"] for row in exemptions}:
+            raise ValueError("An exempt reference entered the compiled target surface.")
     for spec, row in zip(registry.specs, trace, strict=True):
         if (
             row.get("target") != spec.name
@@ -365,6 +387,7 @@ def decode_target_surface(payload: bytes) -> TargetSurface:
         facts=document["facts"],
         sha256=sha256_text(payload),
         reference_resolution=_surface_resolution(document, registry),
+        reference_selection=selection,
     )
 
 
@@ -377,6 +400,7 @@ def compile_target_surface(
     expected_facts_sha256: str | None = None,
     feed_pin: Mapping[str, object] | None = None,
     reference_resolution: Mapping[str, object] | None = None,
+    reference_selection: Mapping[str, object] | None = None,
 ) -> tuple[bytes, TargetRegistry]:
     """Compile a reference document against one consumer artifact.
 
@@ -399,6 +423,10 @@ def compile_target_surface(
         reference_resolution = validate_reference_resolution(
             document, reference_resolution, references_sha256=references_sha256
         )
+    if reference_selection is not None:
+        exemptions = validate_exemptions(document, reference_selection)
+        exempt_names = {row["name"] for row in exemptions}
+        references = tuple(ref for ref in references if ref.name not in exempt_names)
     artifact = load_ledger_consumer_artifact(
         facts_path,
         expected_facts_sha256=expected_facts_sha256,
@@ -444,6 +472,7 @@ def compile_target_surface(
             "n_facts": len(artifact.facts),
         },
         reference_resolution=reference_resolution,
+        reference_selection=reference_selection,
     )
     return payload, registry
 
@@ -455,6 +484,20 @@ def _registry_from_context(
 
     country = string_param(context, ref, "country")
     document = canonical_document_param(context, ref, "references")
+    selection = (
+        canonical_document_param(context, ref, "reference_selection")
+        if "reference_selection" in context.params
+        else None
+    )
+    if selection is not None and ref == "takeup.compare@1":
+        validate_exemptions(
+            document,
+            selection,
+            selected={
+                row["name"]: (context.node.id,)
+                for row in document.get("target_references", ())
+            },
+        )
     references_sha256 = sha256_param(context, ref, "references_sha256")
     expected = (
         sha256_param(context, ref, "facts_sha256")
@@ -478,6 +521,7 @@ def _registry_from_context(
             if "reference_resolution" in context.params
             else None
         ),
+        reference_selection=selection,
     )
     return registry, payload
 
@@ -527,6 +571,7 @@ _COMPILE_MODULES = (
     registry_module,
     target_module,
     hierarchy_module,
+    reference_selection_module,
 )
 _MATRIX_MODULES = (
     matrix_module,
@@ -558,6 +603,7 @@ class CalibrationPrepareKernel(KernelBase):
             graph_inputs,
             artifact_types,
             calibration_columns_module,
+            calibration_predicates_module,
             reference_intervals_module,
             reference_factors_module,
             reference_profiles_module,
@@ -858,7 +904,12 @@ class TargetsCompileKernel(KernelBase):
     )
     _required = frozenset({"country", "references", "references_sha256"})
     _optional = frozenset(
-        {"facts_sha256", "chronicle_feed_pin", "reference_resolution"}
+        {
+            "facts_sha256",
+            "chronicle_feed_pin",
+            "reference_resolution",
+            "reference_selection",
+        }
     )
 
     def implementation_hash(self) -> str:
@@ -915,6 +966,8 @@ class TargetsProblemKernel(KernelBase):
             hierarchy_module,
             calibrate_artifacts_module,
             reference_intervals_module,
+            reference_profiles_module,
+            reference_selection_module,
             *_MATRIX_MODULES,
             dependencies=self.capabilities.dependencies,
         )
@@ -999,7 +1052,12 @@ class TakeupCompareKernel(KernelBase):
         {"country", "references", "references_sha256", "entities", "weight_entity"}
     )
     _optional = frozenset(
-        {"facts_sha256", "chronicle_feed_pin", "reference_resolution"}
+        {
+            "facts_sha256",
+            "chronicle_feed_pin",
+            "reference_resolution",
+            "reference_selection",
+        }
     )
 
     def implementation_hash(self) -> str:
