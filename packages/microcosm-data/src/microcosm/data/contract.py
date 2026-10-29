@@ -451,13 +451,13 @@ _UK_GATE_BATTERY_SHIPPABLE_STATUSES = frozenset({"passed", "not_applicable"})
 # fingerprint derives from the manifest digest. Editing the spec moves all
 # three here in the same reviewed change.
 _UK_GATE_BATTERY_POLICY_SHA256 = (
-    "44fe7b1ac4660db546e8b26c8430d22b6833463de5657d4de8ea9f6deecc31c1"
+    "b02785c2052f52bd620d0fc731470bf77528e91360faf53bce489cc697dd2472"
 )
 _UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "0284b3a472b8beabc2c8c1912993dd6c7662373171dbd2ab79ee4658d1fdc258"
+    "8bca7f6593404f4aea80d2b3599385af61dd805b2eecf217ad977c907174732e"
 )
 _UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "f73eede7066bf1a01c06a3bd3aca93709a3bf424053715e2ec33c358a88a7293"
+    "f172457fb8b071da8c2ca5cd846fc5e17032780ed0ca0c8cfdea343bfe88867a"
 )
 #: Spec entry id -> the legacy gate name whose observable detail checks
 #: apply unchanged (the battery re-keys the report by entry id; the gate
@@ -558,6 +558,9 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
     "uk_stage_property_purchases_fit": ("stage_health", "transferred"),
     "uk_stage_uc_legacy_closure_take_up_contract": ("stage_health", "transferred"),
     "uk_stage_frs_person_draws_apprentices": ("stage_health", "transferred"),
+    "uk_stage_frs_take_up_signal": ("stage_health", "assembled"),
+    "uk_stage_frs_person_draws_take_up_signal": ("stage_health", "assembled"),
+    "uk_stage_frs_household_draws_take_up_signal": ("stage_health", "assembled"),
     "uk_stage_age_tail_targets": ("stage_health", "assembled"),
     "uk_stage_frs_relationships_composition": ("stage_health", "assembled"),
     "uk_ledger_compile_parity_local_incumbent_2025": (
@@ -664,6 +667,9 @@ _UK_GATE_BATTERY_EVIDENCE_IDS = frozenset(
         "uk_stage_property_purchases_fit",
         "uk_stage_uc_legacy_closure_take_up_contract",
         "uk_stage_frs_person_draws_apprentices",
+        "uk_stage_frs_take_up_signal",
+        "uk_stage_frs_person_draws_take_up_signal",
+        "uk_stage_frs_household_draws_take_up_signal",
         "uk_stage_age_tail_targets",
         "uk_stage_frs_relationships_composition",
         "uk_cgt_projection_entrants",
@@ -885,6 +891,9 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
             "uk_stage_frs_hmrc_spine_leaves_signal",
             "uk_stage_frs_annual_income_spells",
             "uk_stage_frs_person_draws_apprentices",
+            "uk_stage_frs_take_up_signal",
+            "uk_stage_frs_person_draws_take_up_signal",
+            "uk_stage_frs_household_draws_take_up_signal",
             "uk_stage_frs_relationships_composition",
             "uk_stage_high_value_home_support_mass",
             "uk_stage_hmrc_cgt_asset_type_spine_summary",
@@ -955,10 +964,10 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
 _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     "spine": {
         "gates_manifest_sha256": (
-            "8e3f82d12cd55031b4c29b55676287f1778453befc46abefff392ef12beb6065"
+            "67116c007acc76d7aa95f0ab808bea32f749c7fbf167164c97c65e3b05dabe40"
         ),
         "policy_sha256": (
-            "09046812edfa6538e9489f0a462992d74352af9b5d1d6fc9b26a2c5d112633c9"
+            "c5e2159ed6f5db35b9efee701e7989b277d3120fd53e0ec084b5bd3a3c6a6340"
         ),
     },
     "calibration_seam": {
@@ -971,7 +980,7 @@ _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     },
     "release_cut": {
         "gates_manifest_sha256": (
-            "32ed07b6092409c3ec91240926be4d8a7262f4b26076d6ba62021d8c0f2ee520"
+            "7dba221ce8ab8237643275a6f6336870f8938cbbd9ca2734c097d2532cb04d92"
         ),
         "policy_sha256": (
             "44d6e0fc2a8fb78cb358969b4a471cb15274371e31b6234ddd29e6979b43cc00"

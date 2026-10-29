@@ -51,6 +51,8 @@ def uk_stage_health_gate(
         return _uc_take_up_gate(stage, evidence, parameters)
     if check == "child_benefit_take_up":
         return _child_benefit_take_up_gate(stage, evidence, parameters)
+    if check == "take_up_signal":
+        return _take_up_signal_gate(stage, evidence, parameters)
     if check == "spi_benefit_coherence":
         return _spi_benefit_coherence_gate(stage, evidence, parameters)
     if check == "source_signal":
@@ -1078,6 +1080,106 @@ def _child_benefit_take_up_gate(
                 f"{stage}: {share:.4f} of claiming families opted out against "
                 f"the published {target_share:.4f} (tolerance {opt_out_tolerance}, "
                 f"charged families exhausted: {exhausted})."
+            )
+    return (
+        _fail(stage, check, failures, details)
+        if failures
+        else _pass(stage, check, details)
+    )
+
+
+def _take_up_signal_gate(
+    stage: str,
+    evidence: Mapping[str, object],
+    parameters: Mapping[str, object],
+) -> GateResult:
+    """The stage's drawn take-up flags near their contract targets.
+
+    María's ruling of 2026-10-29 (microcosm#1095): the flags the terminal
+    ``uk_take_up_signal`` gate measures at the calibrated weights are checked
+    where they are drawn too, at the stage's weights before calibration, so a
+    draw defect fails at its stage apart from calibration's drift. The receipt
+    must carry exactly the declared ``outputs``; each must vary, sit within the
+    declared share deviation of its target (the under-2 usage row within its
+    own bound) and, for the nested universal hours, have no benefit unit that
+    claims the extended hours without them. A share the receipt withholds
+    under the disclosure floor cannot be measured, so it fails.
+    """
+
+    check = "take_up_signal"
+    bound = _finite_number(
+        parameters["maximum_share_deviation"],
+        label=f"{stage}.maximum_share_deviation",
+    )
+    under_two = parameters.get("under_two_usage_maximum_share_deviation")
+    under_two_bound = (
+        bound
+        if under_two is None
+        else _finite_number(
+            under_two, label=f"{stage}.under_two_usage_maximum_share_deviation"
+        )
+    )
+    declared = parameters.get("outputs")
+    if not isinstance(declared, list | tuple) or not declared:
+        raise ValueError(f"{stage}.outputs must list the stage's take-up flags.")
+    expected = [str(output) for output in declared]
+    failures: list[str] = []
+    details: dict[str, object] = {}
+    receipt = _mapping(evidence.get("take_up_signal"), label=f"{stage}.take_up_signal")
+    rows = receipt.get("flags")
+    if not isinstance(rows, list):
+        failures.append(f"{stage}: the receipt carries no take-up flags.")
+        rows = []
+    by_output: dict[str, Mapping[str, object]] = {}
+    for row in rows:
+        row = _mapping(row, label=f"{stage}.take_up_signal.flags[]")
+        by_output[str(row.get("output"))] = row
+    missing = sorted(set(expected) - set(by_output))
+    undeclared = sorted(set(by_output) - set(expected))
+    if missing:
+        failures.append(f"{stage}: the receipt omits the declared flags {missing}.")
+    if undeclared:
+        failures.append(f"{stage}: the receipt carries undeclared flags {undeclared}.")
+    for output in expected:
+        row = by_output.get(output)
+        if row is None:
+            continue
+        if "unmeasured" in row:
+            failures.append(f"{stage}: {output}: {row['unmeasured']}")
+            continue
+        share = row.get("weighted_share")
+        target = row.get("target")
+        if not isinstance(share, int | float) or not isinstance(target, int | float):
+            failures.append(
+                f"{stage}: {output}'s share or target is withheld ({share!r}, "
+                f"{target!r}): its population is too thin to measure at the stage."
+            )
+            continue
+        share = _finite_number(share, label=f"{stage}.{output}.weighted_share")
+        target = _finite_number(target, label=f"{stage}.{output}.target")
+        limit = under_two_bound if row.get("under_two_usage") is True else bound
+        deviation = abs(share - target)
+        details[output] = {
+            "weighted_share": share,
+            "target": target,
+            "absolute_deviation": deviation,
+            "maximum_share_deviation": limit,
+        }
+        if int(row.get("distinct_values", 0)) < 2:
+            failures.append(
+                f"{stage}: {output} is constant; a stochastic take-up draw must "
+                "not collapse to a universal default."
+            )
+        nested = row.get("extended_without_universal_units")
+        if nested is not None and nested != 0:
+            failures.append(
+                f"{stage}: {output}: {nested} benefit unit(s) claim the extended "
+                "hours without the universal hours."
+            )
+        if deviation > limit:
+            failures.append(
+                f"{stage}: {output}'s weighted share {share:.4f} differs from its "
+                f"contract target {target:.4f} by more than {limit}."
             )
     return (
         _fail(stage, check, failures, details)

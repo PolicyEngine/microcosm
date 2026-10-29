@@ -139,6 +139,11 @@ UK_SPINE_GATE_SCOPE = (
     "uk_stage_property_purchases_fit",
     "uk_stage_uc_legacy_closure_take_up_contract",
     "uk_stage_frs_person_draws_apprentices",
+    # The take-up flags at their drawing stages, before calibration (María's
+    # ruling of 2026-10-29, microcosm#1095).
+    "uk_stage_frs_take_up_signal",
+    "uk_stage_frs_person_draws_take_up_signal",
+    "uk_stage_frs_household_draws_take_up_signal",
     # Weight-independent like the BRMA enum below, and its column exists from
     # frs_relationships onward (#791).
     "uk_ons_household_type_enum_domain",

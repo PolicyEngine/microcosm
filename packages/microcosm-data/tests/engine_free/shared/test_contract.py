@@ -213,13 +213,13 @@ def _trusted_terminal_gate_signing_key(monkeypatch) -> None:
 UK_GATE_BATTERY_PRODUCER = "microcosm.build.gate_battery"
 UK_GATE_BATTERY_SIGNING_KEY_ENV = "MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY"
 UK_GATE_BATTERY_POLICY_SHA256 = (
-    "44fe7b1ac4660db546e8b26c8430d22b6833463de5657d4de8ea9f6deecc31c1"
+    "b02785c2052f52bd620d0fc731470bf77528e91360faf53bce489cc697dd2472"
 )
 UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "0284b3a472b8beabc2c8c1912993dd6c7662373171dbd2ab79ee4658d1fdc258"
+    "8bca7f6593404f4aea80d2b3599385af61dd805b2eecf217ad977c907174732e"
 )
 UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "f73eede7066bf1a01c06a3bd3aca93709a3bf424053715e2ec33c358a88a7293"
+    "f172457fb8b071da8c2ca5cd846fc5e17032780ed0ca0c8cfdea343bfe88867a"
 )
 UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256 = (
     "f246388de42654dd68dbbb40c42282001b5b0a8bf48976162bcb1199085cb1d3"
@@ -357,6 +357,21 @@ UK_GATE_BATTERY_ENTRIES = {
     "uk_stage_frs_person_draws_apprentices": (
         "stage_health",
         "transferred",
+        None,
+    ),
+    "uk_stage_frs_take_up_signal": (
+        "stage_health",
+        "assembled",
+        None,
+    ),
+    "uk_stage_frs_person_draws_take_up_signal": (
+        "stage_health",
+        "assembled",
+        None,
+    ),
+    "uk_stage_frs_household_draws_take_up_signal": (
+        "stage_health",
+        "assembled",
         None,
     ),
     "uk_stage_hmrc_cgt_asset_type_spine_summary": (
@@ -1431,6 +1446,9 @@ def _gate_battery_payload(
         "uk_stage_property_purchases_fit": "property_purchases",
         "uk_stage_uc_legacy_closure_take_up_contract": "uc_legacy_closure_take_up",
         "uk_stage_frs_person_draws_apprentices": "frs_person_draws",
+        "uk_stage_frs_take_up_signal": "frs_take_up",
+        "uk_stage_frs_person_draws_take_up_signal": "frs_person_draws",
+        "uk_stage_frs_household_draws_take_up_signal": "frs_household_draws",
         "uk_stage_age_tail_targets": "age_tail",
         "uk_stage_frs_relationships_composition": "frs_relationships",
     }

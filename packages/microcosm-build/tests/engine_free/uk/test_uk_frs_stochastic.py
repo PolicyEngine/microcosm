@@ -113,6 +113,18 @@ def test_person_and_household_stage_families_are_deterministic() -> None:
         household_a[list(FRS_HOUSEHOLD_DRAW_OUTPUT_COLUMNS)],
         household_b[list(FRS_HOUSEHOLD_DRAW_OUTPUT_COLUMNS)],
     )
+    # Each stage's receipt carries the take-up flags it draws, for its
+    # stage-time signal gate (microcosm#1095).
+    person_evidence = person_stage.checkpoint_metadata()["evidence"]
+    assert "apprentice_receipt" in person_evidence
+    assert [row["output"] for row in person_evidence["take_up_signal"]["flags"]] == [
+        "person.would_claim_marriage_allowance",
+        "person.would_claim_scp",
+    ]
+    household_evidence = household_stage.checkpoint_metadata()["evidence"]
+    assert [row["output"] for row in household_evidence["take_up_signal"]["flags"]] == [
+        f"household.{column}" for column in FRS_HOUSEHOLD_DRAW_OUTPUT_COLUMNS
+    ]
 
 
 def test_brma_cell_membership_and_household_collapse() -> None:

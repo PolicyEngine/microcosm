@@ -45,6 +45,10 @@ from microcosm.build.stochastic_assignment import (
     stable_identity_uniforms,
 )
 from microcosm.build.uk_runtime.frs_employment import FRS_EMPSTATI_EMPLOYMENT_STATUS
+from microcosm.build.uk_runtime.frs_take_up import (
+    take_up_signal_outputs,
+    uk_take_up_signal_receipt,
+)
 from microcosm.build.uk_runtime.national_frame import (
     uk_household_weight_kind,
     uk_national_frame,
@@ -101,12 +105,24 @@ class UKFRSPersonDrawsStageTransform:
     contract: UKTakeUpContract
     stage: SourceStageSpec
     last_receipt: Mapping[str, object] | None = field(default=None, init=False)
+    last_signal_receipt: Mapping[str, object] | None = field(default=None, init=False)
 
     def __call__(self, frame: Frame) -> Frame:
         result, receipt = add_frs_person_draws_with_receipt(
             frame, contract=self.contract
         )
         object.__setattr__(self, "last_receipt", receipt)
+        # The Marriage Allowance and Scottish Child Payment flags at the stage's
+        # weights, for the stage-time take-up signal gate (microcosm#1095).
+        object.__setattr__(
+            self,
+            "last_signal_receipt",
+            uk_take_up_signal_receipt(
+                result,
+                outputs=take_up_signal_outputs(FRS_PERSON_DRAW_OUTPUT_COLUMNS),
+                contract=self.contract,
+            ),
+        )
         return result
 
     @staticmethod
@@ -114,12 +130,13 @@ class UKFRSPersonDrawsStageTransform:
         return FRS_PERSON_DRAW_OUTPUT_COLUMNS
 
     def checkpoint_metadata(self) -> dict[str, object]:
-        if self.last_receipt is None:
+        if self.last_receipt is None or self.last_signal_receipt is None:
             raise RuntimeError("checkpoint metadata requires a completed stage run.")
         return {
             "evidence": {
                 "stage": "frs_person_draws",
                 "apprentice_receipt": dict(self.last_receipt),
+                "take_up_signal": dict(self.last_signal_receipt),
             }
         }
 

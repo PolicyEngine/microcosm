@@ -2102,6 +2102,11 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 "minimum_age_child_rows",
                 "maximum_opt_out_share_deviation",
                 "minimum_eligible_family_units",
+                # microcosm#1095 take_up_signal stage-health check (María's
+                # ruling of 2026-10-29: the flags at their drawing stages).
+                "maximum_share_deviation",
+                "under_two_usage_maximum_share_deviation",
+                "outputs",
                 "absolute_tolerance",
                 "household_weight_kind",
                 "minimum_spi_households",
