@@ -2074,6 +2074,76 @@ def _finite_or_none(value: float) -> float | None:
     return value if math.isfinite(value) else None
 
 
+def _scf_wealth_gate_record(
+    gate: GateResult, household_ids: Iterable[object]
+) -> dict[str, object]:
+    """The SCF-wealth gate's verdict and summary, as release evidence.
+
+    The summary carries the SIPP/SCF blend audit (``financial_asset_blend``:
+    seed, period, per-source household counts, bank-asset medians and
+    low-tail shares). The stage keeps that audit in ``DataFrame.attrs``,
+    which the H5 writer drops, so without this record no release artifact
+    says whether the SIPP half ran (microcosm#1216).
+
+    Every count and share describes the frame at the blend stage, before
+    calibration and before any subset export. ``financial_asset_source_is_scf``
+    draws one uniform per household in sorted order of the blend-stage
+    household ids, so a household's draw depends on that whole id set. The
+    record pins the set (count and SHA-256 of the sorted unique household ids
+    as little-endian int64; every household has one head, so this is the set
+    the draw sorts): when a published H5's household ids hash to the same
+    value, the seed and period reproduce each household's source. A subset release (L0, exact-k) exports part of
+    the set and cannot be audited that way from the file alone.
+
+    Unlike the sibling gate records, this one is scrubbed: its details carry
+    floats that are NaN on a degenerate frame, and both artifacts serialize
+    strict JSON, so NumPy scalars become Python values and non-finite floats
+    become null.
+    """
+
+    def finite(value: object) -> object:
+        if isinstance(value, Mapping):
+            return {str(key): finite(nested) for key, nested in value.items()}
+        if isinstance(value, (list, tuple)):
+            return [finite(nested) for nested in value]
+        if isinstance(value, (bool, np.bool_)):
+            return bool(value)
+        if isinstance(value, (int, np.integer)):
+            return int(value)
+        if isinstance(value, (float, np.floating)):
+            return _finite_or_none(value)
+        return value
+
+    ids = np.unique(
+        pd.to_numeric(pd.Series(list(household_ids)), errors="raise").to_numpy()
+    )
+    # Integral ids (every release so far) hash as int64; anything else keeps
+    # its float64 value, so distinct ids never collapse into one digest.
+    integral = bool(
+        np.issubdtype(ids.dtype, np.integer)
+        or (
+            np.isfinite(ids).all()
+            and (ids == np.round(ids)).all()
+            and (np.abs(ids) < 2**63).all()
+        )
+    )
+    id_bytes = (ids.astype("<i8") if integral else ids.astype("<f8")).tobytes()
+    return {
+        "passed": bool(gate.passed),
+        "failures": list(gate.failures),
+        "scope": "blend_stage_frame",
+        "blend_household_ids": {
+            "count": int(ids.size),
+            "sha256": hashlib.sha256(id_bytes).hexdigest(),
+            "encoding": (
+                "sorted unique household_id, little-endian "
+                + ("int64" if integral else "float64")
+            ),
+        },
+        "details": finite(dict(gate.details)),
+    }
+
+
 def _sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as stream:
@@ -9773,6 +9843,7 @@ def _write_release_calibration_diagnostics(
     degenerate_input_gate: GateResult | None = None,
     ecps_parity_gate: GateResult | None = None,
     validation_input_coverage_gate: GateResult | None = None,
+    scf_wealth_signal: Mapping[str, object] | None = None,
     target_loss_family_multipliers: Mapping[str, float] | None = None,
     target_loss_basis: Mapping[str, object] | None = None,
     exact_k_ladder: Mapping[str, object] | None = None,
@@ -9937,6 +10008,9 @@ def _write_release_calibration_diagnostics(
                 }
                 if validation_input_coverage_gate is not None
                 else None
+            ),
+            "scf_wealth_signal": (
+                dict(scf_wealth_signal) if scf_wealth_signal is not None else None
             ),
             "support_value_repairs": support_value_repairs,
             "warm_start_calibration": (
@@ -10508,6 +10582,7 @@ def _build_manifests(
     scored_dataset_sha256: str | None = None,
     post_export_scoring: Mapping[str, object] | None = None,
     diagnostics_outcome: DiagnosticsWriteOutcome | None = None,
+    scf_wealth_signal: Mapping[str, object] | None = None,
 ) -> None:
     dataset_path = artifact_root / dataset_filename
     calibration_path = artifact_root / calibration_filename
@@ -10698,6 +10773,13 @@ def _build_manifests(
                 else {}
             ),
             "target_compilation": dropped,
+            # The SIPP/SCF blend audit (microcosm#1216): written with the
+            # manifest a release cannot ship without, beside the diagnostics.
+            **(
+                {"scf_wealth_signal": dict(scf_wealth_signal)}
+                if scf_wealth_signal is not None
+                else {}
+            ),
             "target_profile_coverage": {
                 "passed": target_profile_gate.passed,
                 "failures": list(target_profile_gate.failures),
@@ -13979,6 +14061,9 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 for failure in scf_wealth_gate.failures
             )
         )
+    scf_wealth_signal = _scf_wealth_gate_record(
+        scf_wealth_gate, base_frame.table("household")["household_id"]
+    )
     sipp_vehicle_donor_path = sipp_full_donor_path
     if telemetry is not None:
         telemetry.stage(
@@ -15465,6 +15550,7 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         degenerate_input_gate=degenerate_input_gate,
         ecps_parity_gate=ecps_parity_gate,
         validation_input_coverage_gate=validation_input_coverage_gate,
+        scf_wealth_signal=scf_wealth_signal,
         target_loss_family_multipliers=args.target_family_loss_multipliers,
         target_loss_basis=target_loss_basis,
         exact_k_ladder=exact_k_ladder_provenance,
@@ -16320,6 +16406,7 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         scored_dataset_sha256=scored_dataset_sha256,
         post_export_scoring=post_export_scoring,
         diagnostics_outcome=diagnostics_outcome,
+        scf_wealth_signal=scf_wealth_signal,
     )
     if telemetry is not None:
         telemetry.attach_artifact("build_manifest", release_dir / "build_manifest.json")
