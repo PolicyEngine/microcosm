@@ -237,8 +237,8 @@ def _scope_exclusions() -> dict[str, str]:
         elif gate_id in local:
             reason = (
                 "local-candidate gate; owned by the rowwise candidate's "
-                "scoped battery and excluded from national certification "
-                "until microcosm#146."
+                "scoped battery and certified on the local line, not the "
+                "national one (microcosm#146 shipped the local variant)."
             )
         elif gate_id in UK_LOCAL_DIAGNOSTIC_GATE_SCOPE:
             reason = (
