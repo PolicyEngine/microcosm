@@ -338,3 +338,31 @@ def test_band_ids_parse_and_the_loader_refuses_gaps():
             row["value"] += 1_000.0
     with pytest.raises(HMRCISAStatisticsError):
         load_hmrc_isa_statistics(payload=payload, verify_feed_identity=False)
+
+
+def test_the_committed_declaration_carries_the_tested_operations():
+    """The packaged manifest declares exactly what these tests exercise."""
+
+    from microcosm.build.country_spec import load_country_spec
+    from test_support.microcosm_build.uk_isa_statistics import (
+        ISA_FACTS_ARTIFACT,
+        ISA_STAGE_OPERATIONS,
+    )
+
+    stages = load_country_spec("uk").sources.stage_map()
+    committed = stages["isa_subscriptions"]
+    assert [
+        {"kind": operation.kind, **dict(operation.parameters)}
+        for operation in committed.operations
+    ] == list(ISA_STAGE_OPERATIONS)
+    assert committed.outputs == stage.UK_ISA_SUBSCRIPTIONS_OUTPUT_COLUMNS
+    assert (
+        committed.nonnegative_outputs
+        == stage.UK_ISA_SUBSCRIPTIONS_NONNEGATIVE_OUTPUT_COLUMNS
+    )
+    roles = {artifact["role"]: artifact for artifact in committed.artifacts}
+    assert roles["isa_statistics_facts"] == ISA_FACTS_ARTIFACT
+    lisa = {artifact["role"]: artifact for artifact in stages["was_lisa"].artifacts}
+    for role in ("was_qrf_donor", "was_person_tab"):
+        assert roles[role] == lisa[role]
+    assert list(stages)[-1] == "isa_subscriptions"

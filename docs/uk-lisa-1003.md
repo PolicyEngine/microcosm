@@ -139,10 +139,13 @@ financial wealth. LISAs are not inside `savings` (savings accounts),
 `cash_isa`, `stocks_and_shares_isa` or `corporate_wealth`. The LISA columns are
 a detail of gross financial wealth: they must never be added to it, to
 `savings`, or to the ISA columns. The engine's `total_wealth` does not read
-`gross_financial_wealth`, and no engine variable reads the LISA columns today;
-the engine's means-test capital reads `savings` and `corporate_wealth`, so
-neither cash ISAs nor LISAs reach it. Innovative-finance ISAs and ISAs of
-unknown type remain inside gross financial wealth only.
+`gross_financial_wealth`. On policyengine-uk 2.162.14 the means tests count a
+LISA at its surrender value (`lifetime_isa_countable_capital`: the balance less
+the withdrawal charge below the charge-free age) as person capital for
+Universal Credit, Housing Benefit, Pension Credit, income-based ESA and JSA and
+Income Support, and count the household `cash_isa` beside `savings` for
+Universal Credit, Housing Benefit and Income Support. Innovative-finance ISAs
+and ISAs of unknown type remain inside gross financial wealth only.
 
 ## Coverage and vintage
 
@@ -157,6 +160,15 @@ unknown type remain inside gross financial wealth only.
   candidate spine's 660,000 holders
   ([Individual Savings Account statistics, September 2026](https://www.gov.uk/government/statistics/annual-savings-statistics-2026),
   Table 9.4; receipts, Part F).
+- Since microcosm#1415 the stage anchors ownership to those payers. The
+  ownership logit shifts up on ages 18 to 47, the ages that can hold a LISA in
+  2024-25, until the weighted holders aged 18 to 49 (who may pay in) that
+  survive the financial-wealth cap equal Table 9.4's 2024-25 accounts
+  subscribed to. Every payer holds a LISA and pays into one a year, so that is
+  the fewest holders consistent with HMRC. The same keyed uniforms decide
+  ownership, so the anchor only adds holders and keeps every drawn one; a
+  target the largest shift cannot reach is named in the receipt
+  (`target_above_reach`), and `uk_stage_was_lisa_anchor` checks the rest.
 - Northern Ireland adults are predicted from the Great Britain model.
 - Conditional ownership odds from 2020-22 are applied to the 2024-25 spine. A
   holder in 2024-25 can be up to about 47; the donor, interviewed earlier,
@@ -168,7 +180,8 @@ unknown type remain inside gross financial wealth only.
 
 ## On the candidate spine
 
-Measured on the licensed candidate spine (receipts, Parts C to F):
+Measured on the licensed candidate spine before the anchor of microcosm#1415
+(receipts, Parts C to F):
 
 - 1.25% of weighted adults hold a LISA, against the donor's 0.89%. Every age
   group under 45 is above the donor's share, the youngest most: 4.1% of the
@@ -190,20 +203,23 @@ Measured on the licensed candidate spine (receipts, Parts C to F):
 
 The fields support analysis of who holds LISAs and how much they hold, for
 example the distribution of LISA wealth, or a means-test or wealth measure that
-counts LISA balances once the engine reads them. They do not support reliable
-scoring of reforms to the annual payment limit or the bonus rate, which depend
-on contributions; reforms to withdrawals or to first-home purchases, which need
-withdrawal and purchase flows and eligibility; or a cash-versus-stocks-and-
-shares split, which WAS does not record.
+counts LISA balances. Payments now come from the `isa_subscriptions` stage
+([microcosm#1415](uk-isa-subscriptions-1415.md)), so reforms to the annual
+payment limit or the bonus rate can be scored with its limits. The fields do not
+support reforms to withdrawals or to first-home purchases, which need withdrawal
+and purchase flows and eligibility, or a cash-versus-stocks-and-shares split,
+which WAS does not record.
 
 ## The annual-contribution gap
 
 WAS measures holdings and values at interview. It has no LISA-specific amount
 paid in during a tax year. A balance accumulates payments, bonuses, returns and
 withdrawals, so it does not identify the payments of a particular year, and
-holding a LISA does not show whether the person paid in that year. The stage
+holding a LISA does not show whether the person paid in that year. This stage
 therefore creates no contribution column and derives no contribution or bonus
-from a balance.
+from a balance. Since microcosm#1415 the `isa_subscriptions` stage draws
+`lifetime_isa_payments` for every holder aged 18 to 49 to Table 9.4's 2024-25
+Lifetime ISA amount; a holder's balance only ranks who pays more.
 
 References for a future contribution extension, carried from the issue as
 references only (not requests to obtain data or to contact providers or HMRC):

@@ -375,18 +375,17 @@ UK_ENGINE_DEFAULT_INPUTS: dict[str, str] = {
     ),
     **dict.fromkeys(
         (
-            "lifetime_isa_payments",
             "lifetime_isa_withdrawals",
             "lifetime_isa_withdrawals_towards_first_home",
             "lifetime_isa_first_time_buyer",
             "lifetime_isa_terminally_ill",
             "lifetime_isa_months_since_first_payment",
         ),
-        "The Lifetime ISA's flows (policyengine-uk 2.162.2). Neither the FRS nor "
-        "the WAS records payments into or withdrawals from a Lifetime ISA (the "
-        "was_lisa stage draws holdings), so payments and withdrawals stay zero: "
-        "the 25% government bonus and the withdrawal charge are zero for every "
-        "account, and the bonus HM Treasury pays is not modelled "
+        "The Lifetime ISA's withdrawals and the conditions on them "
+        "(policyengine-uk 2.162.2). Neither the FRS nor the WAS records "
+        "withdrawals from a Lifetime ISA (the was_lisa stage draws holdings and "
+        "isa_subscriptions the payments, microcosm#1415), so withdrawals stay "
+        "zero and the withdrawal charge is zero for every account "
         "(microcosm#1095; for María's signature).",
     ),
     **dict.fromkeys(

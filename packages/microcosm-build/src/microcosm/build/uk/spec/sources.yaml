@@ -2589,7 +2589,34 @@ stages:
     access: private_local_input
     locator: caller-supplied local input
     runtime_sha256_required: true
+  - role: isa_statistics_facts
+    kind: public_aggregate_reference
+    resource: hmrc_isa_statistics_facts.json
+    format: json
+    runtime_sha256_required: true
   operations:
+  - kind: verify_vendored_fact_resource
+    artifact_role: isa_statistics_facts
+    resource: hmrc_isa_statistics_facts.json
+    feed_pin: chronicle_feed.json
+    record_sets:
+    - hmrc.isa_statistics_2026.table9_7.ty2023.
+    - hmrc.isa_statistics_2026.table9_8.ty2023.
+    - hmrc.isa_statistics_2026.table9_9.ty2023.
+    - hmrc.isa_statistics_2026.table9_4.accounts.ty2023
+    - hmrc.isa_statistics_2026.table9_4.amounts.ty2023
+    - hmrc.isa_statistics_2026.table9_4.accounts.ty2024
+    - hmrc.isa_statistics_2026.table9_4.amounts.ty2024
+    - hmrc.isa_statistics_2026.table9_6.ty2024
+    - hmrc.cash_isa_limit_reduction_2026.cash_subscribers_under_65.ty2022
+    - hmrc.lisa_statistics_2026.table1a.ty2024
+    - hmrc.lisa_statistics_2026.table1a.ty2025
+    source_vintage: 2023-24 individuals; Table 9.4 for 2023-24 and 2024-25
+    mapped_build_period: 2024
+    period_mapping: individual_tables_grown_to_the_table_9_4_build_year
+    require_before_source_read: true
+    runtime_sha256_required: true
+    fail_on_mismatch: true
   - kind: clean_was_lisa_donor
     scope: WAS round-8 person tab joined many-to-one to the cleaned household tab on the anonymised case number; exact lower-case column matching; the released person LISA value must sum to the household aggregate
     household_key: CASER8
@@ -2660,6 +2687,16 @@ stages:
     - num_children
     population:
       minimum_age: 18
+  - kind: anchor_lifetime_isa_ownership
+    output: has_lifetime_isa
+    target: table_9_4_lifetime_isa_accounts_subscribed
+    tax_year: 2024
+    ages:
+      minimum: 18
+      maximum: 47
+    counted_ages:
+      minimum: 18
+      maximum: 49
   - kind: impute_lifetime_isa_balance
     output: lifetime_isa_balance
     seed: 0
@@ -2702,7 +2739,7 @@ stages:
   nonnegative_outputs:
   - lifetime_isa_balance
   - household_lifetime_isa_balance
-  notes: 'Imputes Lifetime ISA holdings per adult from the WAS round-8 person tab (microcosm#1003). The donor is every non-dependent adult of the person tab joined many-to-one on CASER8 to the cleaned household tab (the was_wealth donor, same pins); the released value DVFLISAvR8 (the ONS-completed FLISAVR8_i) must sum to the household aggregate DVFLISAVR8_aggr on every household or the stage refuses the tab, and a missing or negative value is refused rather than read as a zero balance. Response classes (observed, banded with the ONS value inside the reported band, ONS-imputed value or holding, rule-impossible) are receipted and never used as predictors. The declared credibility rule recodes holders recorded in an age band starting at 45 or above to non-holders and keeps holders above the balance ceiling as holders outside the balance fit (basis on the clean operation). Ownership is a weighted logistic regression with a ridge penalty on the slopes and an unpenalised intercept, so the donor''s weighted ownership share is reproduced in-sample, on the age group, the log of person earnings, household net income, gross financial wealth, cash ISA, stocks-and-shares ISA and savings, private renting, sex and the number of children; the house regime gate (gradient boosting) is miscalibrated for an outcome held by under one per cent of adults with about 120 donor holders. Recipients aged 18 or over hold when a uniform keyed on person_id falls below their probability; no upper age limit is imposed. The balance is the regime-gated QRF fitted on the credible holders and drawn at the owner''s keyed quantile (predict_positive_from_uniforms), so it is positive exactly when the person holds. Household predictors reuse the was_wealth definitions; tenure is the private-renter flag on both sides (DVPriRntR8 == 1; tenure_type RENT_PRIVATELY), not the engine is_renting. WAS counts LISAs inside gross financial wealth, so a household total above its gross_financial_wealth draw is scaled down pro rata (receipted) and ownership is re-derived from the capped balance; was_wealth columns are never rewritten. Balances are April 2020 to March 2022 pounds from a Great Britain donor and are not uprated; Northern Ireland recipients are predicted from the GB model. WAS records holdings, not annual contributions, and the stage derives no contribution or bonus.'
+  notes: 'Imputes Lifetime ISA holdings per adult from the WAS round-8 person tab (microcosm#1003). The donor is every non-dependent adult of the person tab joined many-to-one on CASER8 to the cleaned household tab (the was_wealth donor, same pins); the released value DVFLISAvR8 (the ONS-completed FLISAVR8_i) must sum to the household aggregate DVFLISAVR8_aggr on every household or the stage refuses the tab, and a missing or negative value is refused rather than read as a zero balance. Response classes (observed, banded with the ONS value inside the reported band, ONS-imputed value or holding, rule-impossible) are receipted and never used as predictors. The declared credibility rule recodes holders recorded in an age band starting at 45 or above to non-holders and keeps holders above the balance ceiling as holders outside the balance fit (basis on the clean operation). Ownership is a weighted logistic regression with a ridge penalty on the slopes and an unpenalised intercept, so the donor''s weighted ownership share is reproduced in-sample, on the age group, the log of person earnings, household net income, gross financial wealth, cash ISA, stocks-and-shares ISA and savings, private renting, sex and the number of children; the house regime gate (gradient boosting) is miscalibrated for an outcome held by under one per cent of adults with about 120 donor holders. Recipients aged 18 or over hold when a uniform keyed on person_id falls below their probability; no upper age limit is imposed. The balance is the regime-gated QRF fitted on the credible holders and drawn at the owner''s keyed quantile (predict_positive_from_uniforms), so it is positive exactly when the person holds. Household predictors reuse the was_wealth definitions; tenure is the private-renter flag on both sides (DVPriRntR8 == 1; tenure_type RENT_PRIVATELY), not the engine is_renting. WAS counts LISAs inside gross financial wealth, so a household total above its gross_financial_wealth draw is scaled down pro rata (receipted) and ownership is re-derived from the capped balance; was_wealth columns are never rewritten. Balances are April 2020 to March 2022 pounds from a Great Britain donor and are not uprated; Northern Ireland recipients are predicted from the GB model. WAS records holdings, not annual contributions, and the stage derives no contribution or bonus. HMRC''s 2024-25 Lifetime ISA accounts subscribed to (Table 9.4) anchor the holders (microcosm#1415): the ownership logit shifts up on ages 18 to 47, the ages that can hold one in 2024-25, until the holders aged 18 to 49 who survive the financial-wealth cap equal HMRC''s payers, the fewest holders consistent with them; the same keyed uniforms decide ownership, so the anchor only adds holders, and a target it cannot reach is named, not failed.'
 - stage: regional_property_uprating
   survey: Public regional property reference
   source: MHCLG dwellings and the UK House Price Index regional average price averaged over the twelve months of calendar 2024 from the July 2026 full file, the frame's valuation basis, so the engine's annual uprating from 2024 projects the value once (microcosm#1240 fix 5).
@@ -6020,4 +6057,138 @@ stages:
     gate_coupling: The terminal family gate requires a valid mass-conserving MassChangeRecord carrying exactly this stage-specific reason.
   outputs:
   - attends_private_school
-  notes: 'The last spine stage (uk-data#568, microcosm#1095). policyengine-uk imputes attends_private_school with a formula that ranks households by net income at their weights and compares a percentile rate, scaled to the national pupil count, with the stored attends_private_school_random_draw. Left to the formula, attendance is re-imputed in every simulation, so a reform to income tax, National Insurance or benefits switches pupils in or out, a population under one million people of weight imputes none (pe-uk#1905), and the calibration and the release read different flags once the weights change. This stage materializes the engine''s attendance once, at the calibration year and the spine''s design weights, and stores it, as the root stage stores months_since_last_birthday, so the solve and the release read the same flags; no stage after it copies or re-keys a person. Stored attendance no longer responds to income changes or to reforms of the attendance parameters, and a reform to the fee VAT does not move pupils either way in the pinned engine.'
+  notes: 'The last spine stage before the ISA subscriptions (uk-data#568, microcosm#1095). policyengine-uk imputes attends_private_school with a formula that ranks households by net income at their weights and compares a percentile rate, scaled to the national pupil count, with the stored attends_private_school_random_draw. Left to the formula, attendance is re-imputed in every simulation, so a reform to income tax, National Insurance or benefits switches pupils in or out, a population under one million people of weight imputes none (pe-uk#1905), and the calibration and the release read different flags once the weights change. This stage materializes the engine''s attendance once, at the calibration year and the spine''s design weights, and stores it, as the root stage stores months_since_last_birthday, so the solve and the release read the same flags; no stage after it copies or re-keys a person. Stored attendance no longer responds to income changes or to reforms of the attendance parameters, and a reform to the fee VAT does not move pupils either way in the pinned engine.'
+- stage: isa_subscriptions
+  survey: HMRC Annual savings statistics (September 2026 release); Wealth and Assets Survey round 8
+  source: HMRC Individual Savings Account statistics Tables 9.4, 9.6 and 9.7 to 9.9, the cash ISA limit reduction impact note and Lifetime ISA Table 1a, via the vendored facts; Office for National Statistics Wealth and Assets Survey, UK Data Service SN 7215, DOI 10.5255/UKDA-SN-7215-20; local licensed round-8 person and household tabs (interviews April 2020 to March 2022, Great Britain).
+  grain: person
+  artifacts:
+  - role: isa_statistics_facts
+    kind: public_aggregate_reference
+    resource: hmrc_isa_statistics_facts.json
+    format: json
+    runtime_sha256_required: true
+  - role: was_qrf_donor
+    kind: private_microdata
+    ukds_study_number: 7215
+    doi: 10.5255/UKDA-SN-7215-20
+    filename: was_round_8_hhold_eul_may_2025_230525.tab
+    sha256: 18b3eb980c02c99f3d8a3254af859bee31682b2bdc11703877677292b3ce9374
+    size_bytes: 39073613
+    access: private_local_input
+    locator: caller-supplied local input
+    runtime_sha256_required: true
+  - role: was_person_tab
+    kind: private_microdata
+    ukds_study_number: 7215
+    doi: 10.5255/UKDA-SN-7215-20
+    filename: was_round_8_person_eul_may_2025_230525.tab
+    format: tab
+    vintage: round_8
+    sha256: 1ca6fd37d9c677242112e0d7839df8b406eb1611db8322b20771f054e329d71a
+    size_bytes: 356930989
+    access: private_local_input
+    locator: caller-supplied local input
+    runtime_sha256_required: true
+  operations:
+  - kind: verify_vendored_fact_resource
+    artifact_role: isa_statistics_facts
+    resource: hmrc_isa_statistics_facts.json
+    feed_pin: chronicle_feed.json
+    record_sets:
+    - hmrc.isa_statistics_2026.table9_7.ty2023.
+    - hmrc.isa_statistics_2026.table9_8.ty2023.
+    - hmrc.isa_statistics_2026.table9_9.ty2023.
+    - hmrc.isa_statistics_2026.table9_4.accounts.ty2023
+    - hmrc.isa_statistics_2026.table9_4.amounts.ty2023
+    - hmrc.isa_statistics_2026.table9_4.accounts.ty2024
+    - hmrc.isa_statistics_2026.table9_4.amounts.ty2024
+    - hmrc.isa_statistics_2026.table9_6.ty2024
+    - hmrc.cash_isa_limit_reduction_2026.cash_subscribers_under_65.ty2022
+    - hmrc.lisa_statistics_2026.table1a.ty2024
+    - hmrc.lisa_statistics_2026.table1a.ty2025
+    source_vintage: 2023-24 individuals; Table 9.4 for 2023-24 and 2024-25
+    mapped_build_period: 2024
+    period_mapping: individual_tables_grown_to_the_table_9_4_build_year
+    require_before_source_read: true
+    runtime_sha256_required: true
+    fail_on_mismatch: true
+  - kind: clean_was_isa_person_donor
+    household_key: CASER8
+    household_weight: R8xshhwgt
+    person_columns:
+      person_number: PersonR8
+      is_dependent_child: IsDepR8
+      age_band: DVAge17R8
+      cash_isa_value: DVCISAvR8
+      stocks_and_shares_isa_value: DVIISAvR8
+    household_aggregates:
+      cash_isa: DVCISAVR8_aggr
+      stocks_and_shares_isa: DVIISAVR8_aggr
+    aggregate_tolerance_gbp: 1.0
+    non_dependent_code: 2
+  - kind: split_household_isa_balances
+    outputs:
+    - cash_isa_balance
+    - stocks_and_shares_isa_balance
+    seed: 0
+    salt: isa_subscriptions:balance_split
+    maximum_donor_adults: 4
+  - kind: allocate_isa_subscribers
+    seed: 0
+    salt: isa_subscriptions:subscribers
+    minimum_age: 18
+    selection_order:
+    - cash_and_stocks_and_shares
+    - stocks_and_shares_only
+    - cash_only
+  - kind: draw_isa_subscription_amounts
+    outputs:
+    - cash_isa_subscriptions
+    - stocks_and_shares_isa_subscriptions
+    seed: 0
+    salt: isa_subscriptions:amounts
+    within_band: uniform
+    balance_rank_weight: 0.5
+  - kind: split_both_type_subscriptions
+    anchor: table_9_4_stocks_and_shares_residual
+    share_floor: 0.02
+  - kind: grow_isa_subscriptions
+    people: table_9_4_account_growth
+    amounts: table_9_4_amount_growth_capped
+    from_tax_year: 2023
+    to_tax_year: 2024
+    overall_limit_gbp: 20000.0
+  - kind: draw_lifetime_isa_payments
+    outputs:
+    - lifetime_isa_payments
+    seed: 0
+    salt: isa_subscriptions:lifetime_isa_payments
+    minimum_age: 18
+    maximum_age: 49
+    annual_limit_gbp: 4000.0
+  - kind: record_mass_conservation_receipt
+    entity: household
+    reason: 'ISA subscriptions per adult from HMRC''s ISA tables on the source spine: household weights pass through unchanged and total household mass is conserved.'
+    declared_factor: 1.0
+    gate_coupling: The terminal family gate requires a valid mass-conserving MassChangeRecord carrying exactly this stage-specific reason.
+  - kind: classify_isa_facts_with_reviewed_fence
+    calibration_permitted: false
+    fact_fence_id: isa_facts_imputation_seeds_measured_only
+    fenced_fact_count: 1074
+    fenced_fact_composition: Table 9.7 2023-24 subscribers by income and subscription band and holders making no further subscription, for all subscribers and each type paid into (624); Table 9.8 by age and sex (325); Table 9.9 by region (70); Table 9.4 accounts and amounts for 2023-24 and 2024-25 (24); Table 9.6 2024-25 market values (19); the impact note's shares of under-65 cash subscribers either side of GBP 12,000 (2); Lifetime ISA Table 1a for 2024-25 and 2025-26 (10)
+    classification_rationale: The stage draws subscribers and amounts to these cells, so binding them in the weight solve would be circular. The national build reports the subscription cells after calibration, with the holders (Tables 9.10 to 9.12) and market values (Table 9.6) as independent checks; none blocks a build.
+    adjudication: https://github.com/PolicyEngine/microcosm/issues/1415
+  outputs:
+  - cash_isa_balance
+  - stocks_and_shares_isa_balance
+  - cash_isa_subscriptions
+  - stocks_and_shares_isa_subscriptions
+  - lifetime_isa_payments
+  nonnegative_outputs:
+  - cash_isa_balance
+  - stocks_and_shares_isa_balance
+  - cash_isa_subscriptions
+  - stocks_and_shares_isa_subscriptions
+  - lifetime_isa_payments
+  notes: 'Imputes ISA subscriptions per adult by type, and the per-person ISA balances, on the final spine (microcosm#1415). Each household''s was_wealth cash and stocks-and-shares ISA totals are split across its adults by the holding pattern of a WAS round-8 donor household with the same number of adults, so person balances sum exactly to the household totals, which are unchanged. Subscribers in 2023-24 are adults aged 18 or over in households holding the type, raked by class (cash only, stocks and shares only, both) to Table 9.7''s income bands, Table 9.8''s age and sex and Table 9.9''s regions and selected by keyed walks, the both class first. Amounts follow Table 9.7''s subscription bands within each income band and class, uniform inside a band and exactly GBP 20,000 at the top; the both class splits each person''s amount by their balance shares, shifted so the class''s stocks-and-shares total is Table 9.4''s 2023-24 stocks-and-shares amount less the stocks-and-shares-only payments. Table 9.7''s bands imply more cash than Table 9.4 records, so Table 9.4 supplies growth ratios only: people grow to 2024-25 by its account growth (an upper bound on people, as from 6 April 2024 a person may pay into several ISAs of one type) and amounts by its amount growth per type, within the GBP 20,000 overall limit. Every Lifetime ISA holder aged 18 to 49 pays in, amounts in (0, GBP 4,000] drawn to Table 9.4''s 2024-25 Lifetime ISA amount within the overall limit. No ISA fact is a calibration target: binding the cells the stage draws to would be circular, so the reviewed fence keeps them measured only.'

@@ -172,10 +172,13 @@ def _apply_pending_roster_transformations(
     # stage, before the private-school attendance.
     assert "childcare_copy_take_up" not in roster
     roster.append("childcare_copy_take_up")
-    # microcosm#1095 re-mint pending: the stored private-school attendance is
-    # the last stage of the spine.
+    # microcosm#1095 re-mint pending: the stored private-school attendance
+    # follows the copies' childcare re-draw.
     assert "private_school_attendance" not in roster
     roster.append("private_school_attendance")
+    # microcosm#1415 re-mint pending: the ISA subscriptions run last.
+    assert "isa_subscriptions" not in roster
+    roster.append("isa_subscriptions")
     return tuple(roster)
 
 

@@ -1050,7 +1050,7 @@ class TestUKCountryPackage:
         # child_benefit_take_up; childcare_copy_take_up last, after every copy
         # stage; microcosm#1334 uc_take_up after uc_capital_coherence and
         # frs_annual_income_spells after frs_hmrc_spine_leaves.
-        assert len(spec.sources.stages) == 49
+        assert len(spec.sources.stages) == 50
         assert not {"frs_hmrc_retained_leaves", "hmrc_spi_income"}.intersection(
             stage.stage for stage in spec.sources.stages
         )

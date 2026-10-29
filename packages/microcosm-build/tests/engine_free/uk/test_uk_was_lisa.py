@@ -44,7 +44,6 @@ from microcosm.build.uk_runtime.was_lisa import (
 )
 from microcosm.build.uk_runtime.was_wealth import UK_WAS_ENGINE_PREDICTOR_ENTITIES
 from test_support.microcosm_build.uk_isa_statistics import (
-    ISA_FACTS_ARTIFACT,
     ISA_FACTS_VERIFY_OPERATION,
     LISA_ANCHOR_OPERATION,
     synthetic_isa_statistics_payload,
@@ -224,7 +223,7 @@ def _donor():
     return clean_was_lisa_donor(_was_person_donor(), _was_donor(), columns=_columns())
 
 
-def _recipient_frame(households: int = 64, time_period: str = "2023"):
+def _recipient_frame(households: int = 64, time_period: str = "2024"):
     """FRS-like recipients in the synthetic donor's ranges (the fixture's scale)."""
 
     persons: list[dict[str, object]] = []
@@ -526,12 +525,28 @@ def test_cap_scales_a_household_over_its_financial_wealth_pro_rata() -> None:
 # --------------------------------------------------------------------------
 
 
+def _statistics(lifetime_accounts: float = 0.0):
+    """Synthetic ISA facts whose 2024-25 Lifetime ISA accounts are as given.
+
+    The synthetic payload carries 1,100 Lifetime ISA accounts at scale 1; a
+    target of zero leaves the drawn holders as they are.
+    """
+
+    return load_hmrc_isa_statistics(
+        payload=synthetic_isa_statistics_payload(
+            scale=max(lifetime_accounts, 1e-9) / 1_100.0
+        ),
+        verify_feed_identity=False,
+    )
+
+
 def _transform() -> UKWASLISAStageTransform:
     return UKWASLISAStageTransform(
         stage=_committed_stage(),
         engine=_FakeEngine(),
         donor_household=_was_donor(),
         donor_person=_was_person_donor(),
+        statistics=_statistics(),
     )
 
 
@@ -579,7 +594,10 @@ def test_stage_writes_the_declared_outputs_with_receipts() -> None:
         "realised",
         "financial_wealth_coherence",
         "population",
+        "anchored_holders_after_cap",
     }
+    # A zero target leaves the drawn holders as they are (microcosm#1415).
+    assert evidence["ownership_model"]["anchor"]["logit_shift"] == 0.0
     assert evidence["support_clip"]["columns"][BALANCE_COLUMN]["clipped_high_rows"] == 0
     assert (
         evidence["financial_wealth_coherence"]["households_over_financial_wealth"] >= 0
@@ -604,34 +622,6 @@ def test_stage_writes_the_declared_outputs_with_receipts() -> None:
     }
 
 
-def _anchored_stage() -> SourceStageSpec:
-    """The packaged declaration with the #1415 anchor and its facts check."""
-
-    committed = _committed_stage()
-    return SourceStageSpec.from_mapping(
-        {
-            "stage": committed.stage,
-            "survey": committed.survey,
-            "source": committed.source,
-            "grain": committed.grain,
-            "artifacts": [
-                *(dict(artifact) for artifact in committed.artifacts),
-                ISA_FACTS_ARTIFACT,
-            ],
-            "operations": [
-                ISA_FACTS_VERIFY_OPERATION,
-                *(
-                    {"kind": operation.kind, **dict(operation.parameters)}
-                    for operation in committed.operations
-                ),
-                LISA_ANCHOR_OPERATION,
-            ],
-            "outputs": list(committed.outputs),
-            "nonnegative_outputs": list(committed.nonnegative_outputs),
-        }
-    )
-
-
 def _counted_holders(frame) -> float:
     person = frame.table("person")
     weights = (
@@ -648,17 +638,13 @@ def _counted_holders(frame) -> float:
 
 
 def test_the_declared_anchor_adds_holders_up_to_hmrc_payers() -> None:
-    frame = _recipient_frame(households=400, time_period="2024")
+    frame = _recipient_frame(households=400)
     drawn = _transform()(frame)
     before = _counted_holders(drawn)
     target = 1.5 * before
-    # The synthetic facts carry 1,100 Lifetime ISA accounts in 2024-25.
-    statistics = load_hmrc_isa_statistics(
-        payload=synthetic_isa_statistics_payload(scale=target / 1_100.0),
-        verify_feed_identity=False,
-    )
+    statistics = _statistics(target)
     transform = UKWASLISAStageTransform(
-        stage=_anchored_stage(),
+        stage=_committed_stage(),
         engine=_FakeEngine(),
         donor_household=_was_donor(),
         donor_person=_was_person_donor(),
@@ -694,13 +680,11 @@ def test_the_declared_anchor_adds_holders_up_to_hmrc_payers() -> None:
 
 def test_the_anchor_maps_hmrc_facts_to_the_build_year_only() -> None:
     transform = UKWASLISAStageTransform(
-        stage=_anchored_stage(),
+        stage=_committed_stage(),
         engine=_FakeEngine(),
         donor_household=_was_donor(),
         donor_person=_was_person_donor(),
-        statistics=load_hmrc_isa_statistics(
-            payload=synthetic_isa_statistics_payload(), verify_feed_identity=False
-        ),
+        statistics=_statistics(),
     )
 
     with pytest.raises(HMRCISAStatisticsError, match="build period 2024"):
@@ -739,6 +723,13 @@ def test_committed_declaration_carries_the_tested_parameters() -> None:
     assert by_kind["impute_lifetime_isa_ownership"] == OWNERSHIP
     assert by_kind["impute_lifetime_isa_balance"] == {**BALANCE, "n_estimators": 100}
     assert by_kind["cap_lifetime_isa_to_financial_wealth"] == CAP
+    # microcosm#1415: the anchor to HMRC's payers and its facts check.
+    assert by_kind["anchor_lifetime_isa_ownership"] == {
+        key: value for key, value in LISA_ANCHOR_OPERATION.items() if key != "kind"
+    }
+    assert by_kind["verify_vendored_fact_resource"] == {
+        key: value for key, value in ISA_FACTS_VERIFY_OPERATION.items() if key != "kind"
+    }
     assert by_kind["aggregate_person_to_household"] == {
         "method": "sum",
         "aggregates": {HOUSEHOLD_BALANCE_COLUMN: BALANCE_COLUMN},
@@ -790,7 +781,13 @@ def test_committed_support_bounds_match_the_stage_pins() -> None:
     )
     payload = json.loads(resource.read_text(encoding="utf-8"))
     stage = load_country_spec("uk").sources.stage_map()[UK_WAS_LISA_STAGE_NAME]
-    pins = {artifact["role"]: artifact["sha256"] for artifact in stage.artifacts}
+    # The microdata tabs are pinned by digest; the vendored ISA facts are a
+    # packaged resource (microcosm#1415).
+    pins = {
+        artifact["role"]: artifact["sha256"]
+        for artifact in stage.artifacts
+        if "sha256" in artifact
+    }
 
     assert set(payload["bounds"]) == set(UK_WAS_LISA_SUPPORT_CLIP_COLUMNS)
     assert payload["source"]["household_tab_sha256"] == pins["was_qrf_donor"]
