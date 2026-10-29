@@ -16048,7 +16048,7 @@
               "equals": "ENGLAND"
             }
           ],
-          "notes": "Caseload only: entitlement spending is not bound because caseload multiplied by full-usage ceilings would double count assumptions. Counted at the spring term, as DfE's January census counts: a child registered in the term that starts on 1 January of the model year's April-to-March span, by its age on 31 December (uk_runtime/dfe_spring_term.py; accounting note dfe_funded_childcare_single_ages). A child already in reception by January is not funded then, so it is not counted; with the single ages 2 and 3 bound, this row fixes age 4."
+          "notes": "Caseload only: entitlement spending is not bound because caseload multiplied by full-usage ceilings would double count assumptions. Counted at the spring term, as DfE's January census counts: a child registered in the term that starts on 1 January of the model year's April-to-March span, by its age on 31 December (uk_runtime/dfe_spring_term.py; accounting note dfe_funded_childcare_single_ages). A child already in reception by January is not funded then, so it is not counted; with the single ages 2 and 3 bound, this row fixes age 4. Selected at DfE's January 2026 census (observation_period 2026-01): model year 2025's entitlement year runs from April 2025 to March 2026, so its spring term starts on 1 January 2026, and the census counts children by their age on 31 December 2025, the measure's own month and age basis. The January 2025 census, bound before, was a year out (María's ruling of 2026-10-29, microcosm#1095 D5)."
         },
         "axiom": {
           "metric_name": "dfe/funded_childcare/working_parent_children_2_to_4",
@@ -16072,7 +16072,8 @@
         }
       },
       "category_id": "dfe.funded_childcare",
-      "label": "Working parent children 2 to 4"
+      "label": "Working parent children 2 to 4",
+      "observation_period": "2026-01"
     },
     {
       "target_id": "dfe.funded_childcare.early_learning_2_year_olds",
@@ -16112,7 +16113,7 @@
               "equals": "ENGLAND"
             }
           ],
-          "notes": "Caseload only; the published 74.8% denominator is not transferred into the model take-up rate. Counted at the spring term, as DfE's January census counts: a child registered in the term that starts on 1 January of the model year's April-to-March span, by its age on 31 December (uk_runtime/dfe_spring_term.py; accounting note dfe_funded_childcare_single_ages). Funding starts the term after the second birthday, so every child of DfE age 2 in a qualifying family that claims is counted, where policyengine-uk still reads the age on 6 October."
+          "notes": "Caseload only; the published 74.8% denominator is not transferred into the model take-up rate. Counted at the spring term, as DfE's January census counts: a child registered in the term that starts on 1 January of the model year's April-to-March span, by its age on 31 December (uk_runtime/dfe_spring_term.py; accounting note dfe_funded_childcare_single_ages). Funding starts the term after the second birthday, so every child of DfE age 2 in a qualifying family that claims is counted, where policyengine-uk still reads the age on 6 October. Selected at DfE's January 2026 census (observation_period 2026-01): model year 2025's entitlement year runs from April 2025 to March 2026, so its spring term starts on 1 January 2026, and the census counts children by their age on 31 December 2025, the measure's own month and age basis. The January 2025 census, bound before, was a year out (María's ruling of 2026-10-29, microcosm#1095 D5)."
         },
         "axiom": {
           "metric_name": "dfe/funded_childcare/early_learning_2_year_olds",
@@ -16132,7 +16133,8 @@
         }
       },
       "category_id": "dfe.funded_childcare",
-      "label": "Early learning 2 year olds"
+      "label": "Early learning 2 year olds",
+      "observation_period": "2026-01"
     },
     {
       "target_id": "dfe.funded_childcare.universal_only_children",
@@ -16201,7 +16203,7 @@
               "equals": "ENGLAND"
             }
           ],
-          "notes": "Universal-only caseload is the declared difference between the overlapping published universes; no entitlement spending row is bound. Counted at the spring term, as DfE's January census counts: a child registered in the term that starts on 1 January of the model year's April-to-March span, by its age on 31 December (uk_runtime/dfe_spring_term.py; accounting note dfe_funded_childcare_single_ages). Nursery registrations at DfE ages 3 and 4 less working parent registrations at those ages: a working parent child keeps the universal hours (Childcare Act 2016 s.1(6)(a); policyengine-uk 2.128.1), so every working parent child of those ages is a universal child too. Universal hours start the term after the third birthday, so every child of DfE age 3 is counted, where policyengine-uk still reads the age on 6 October. With the nursery age 3 row bound, this row fixes the nursery age 4 cell."
+          "notes": "Universal-only caseload is the declared difference between the overlapping published universes; no entitlement spending row is bound. Counted at the spring term, as DfE's January census counts: a child registered in the term that starts on 1 January of the model year's April-to-March span, by its age on 31 December (uk_runtime/dfe_spring_term.py; accounting note dfe_funded_childcare_single_ages). Nursery registrations at DfE ages 3 and 4 less working parent registrations at those ages: a working parent child keeps the universal hours (Childcare Act 2016 s.1(6)(a); policyengine-uk 2.128.1), so every working parent child of those ages is a universal child too. Universal hours start the term after the third birthday, so every child of DfE age 3 is counted, where policyengine-uk still reads the age on 6 October. With the nursery age 3 row bound, this row fixes the nursery age 4 cell. Selected at DfE's January 2026 census (observation_period 2026-01): model year 2025's entitlement year runs from April 2025 to March 2026, so its spring term starts on 1 January 2026, and the census counts children by their age on 31 December 2025, the measure's own month and age basis. The January 2025 census, bound before, was a year out (María's ruling of 2026-10-29, microcosm#1095 D5)."
         },
         "axiom": {
           "metric_name": "dfe/funded_childcare/universal_only_children",
@@ -16214,7 +16216,8 @@
         "entity_name": "person"
       },
       "category_id": "dfe.funded_childcare",
-      "label": "Universal only children"
+      "label": "Universal only children",
+      "observation_period": "2026-01"
     },
     {
       "target_id": "dfe.funded_childcare.working_parent_children_9_to_11_months",
@@ -16274,7 +16277,7 @@
               "equals": "ENGLAND"
             }
           ],
-          "notes": "Caseload only: working parent registrations at 9 to 11 months in the January census, the 15 hours for children from 9 months from September 2024. Counted at the spring term, as DfE's January census counts: a child registered in the term that starts on 1 January of the model year's April-to-March span, by its age on 31 December (uk_runtime/dfe_spring_term.py; accounting note dfe_funded_childcare_single_ages). From policyengine-uk 2.147.2 a child is funded from the term after it reaches 9 months (SI 2022/1134 reg 27), so a child of DfE age 0 born from January to March is funded in the spring term."
+          "notes": "Caseload only: working parent registrations at 9 to 11 months in the January census, the 15 hours for children from 9 months from September 2024. Counted at the spring term, as DfE's January census counts: a child registered in the term that starts on 1 January of the model year's April-to-March span, by its age on 31 December (uk_runtime/dfe_spring_term.py; accounting note dfe_funded_childcare_single_ages). From policyengine-uk 2.147.2 a child is funded from the term after it reaches 9 months (SI 2022/1134 reg 27), so a child of DfE age 0 born from January to March is funded in the spring term. Selected at DfE's January 2026 census (observation_period 2026-01): model year 2025's entitlement year runs from April 2025 to March 2026, so its spring term starts on 1 January 2026, and the census counts children by their age on 31 December 2025, the measure's own month and age basis. The January 2025 census, bound before, was a year out (María's ruling of 2026-10-29, microcosm#1095 D5)."
         },
         "axiom": {
           "metric_name": "dfe/funded_childcare/working_parent_children_9_to_11_months",
@@ -16295,7 +16298,8 @@
         }
       },
       "category_id": "dfe.funded_childcare",
-      "label": "Working parent children 9 to 11 months"
+      "label": "Working parent children 9 to 11 months",
+      "observation_period": "2026-01"
     },
     {
       "target_id": "dfe.funded_childcare.working_parent_children_age_1",
@@ -16355,7 +16359,7 @@
               "equals": "ENGLAND"
             }
           ],
-          "notes": "Caseload only, by single year of age: working parent registrations at age 1 in the January census. Counted at the spring term, as DfE's January census counts: a child registered in the term that starts on 1 January of the model year's April-to-March span, by its age on 31 December (uk_runtime/dfe_spring_term.py; accounting note dfe_funded_childcare_single_ages)."
+          "notes": "Caseload only, by single year of age: working parent registrations at age 1 in the January census. Counted at the spring term, as DfE's January census counts: a child registered in the term that starts on 1 January of the model year's April-to-March span, by its age on 31 December (uk_runtime/dfe_spring_term.py; accounting note dfe_funded_childcare_single_ages). Selected at DfE's January 2026 census (observation_period 2026-01): model year 2025's entitlement year runs from April 2025 to March 2026, so its spring term starts on 1 January 2026, and the census counts children by their age on 31 December 2025, the measure's own month and age basis. The January 2025 census, bound before, was a year out (María's ruling of 2026-10-29, microcosm#1095 D5)."
         },
         "axiom": {
           "metric_name": "dfe/funded_childcare/working_parent_children_age_1",
@@ -16376,7 +16380,8 @@
         }
       },
       "category_id": "dfe.funded_childcare",
-      "label": "Working parent children age 1"
+      "label": "Working parent children age 1",
+      "observation_period": "2026-01"
     },
     {
       "target_id": "dfe.funded_childcare.working_parent_children_age_2",
@@ -16436,7 +16441,7 @@
               "equals": "ENGLAND"
             }
           ],
-          "notes": "Caseload only, by single year of age: working parent registrations at age 2 in the January census. Counted at the spring term, as DfE's January census counts: a child registered in the term that starts on 1 January of the model year's April-to-March span, by its age on 31 December (uk_runtime/dfe_spring_term.py; accounting note dfe_funded_childcare_single_ages)."
+          "notes": "Caseload only, by single year of age: working parent registrations at age 2 in the January census. Counted at the spring term, as DfE's January census counts: a child registered in the term that starts on 1 January of the model year's April-to-March span, by its age on 31 December (uk_runtime/dfe_spring_term.py; accounting note dfe_funded_childcare_single_ages). Selected at DfE's January 2026 census (observation_period 2026-01): model year 2025's entitlement year runs from April 2025 to March 2026, so its spring term starts on 1 January 2026, and the census counts children by their age on 31 December 2025, the measure's own month and age basis. The January 2025 census, bound before, was a year out (María's ruling of 2026-10-29, microcosm#1095 D5)."
         },
         "axiom": {
           "metric_name": "dfe/funded_childcare/working_parent_children_age_2",
@@ -16457,7 +16462,8 @@
         }
       },
       "category_id": "dfe.funded_childcare",
-      "label": "Working parent children age 2"
+      "label": "Working parent children age 2",
+      "observation_period": "2026-01"
     },
     {
       "target_id": "dfe.funded_childcare.working_parent_children_age_3",
@@ -16517,7 +16523,7 @@
               "equals": "ENGLAND"
             }
           ],
-          "notes": "Caseload only, by single year of age: working parent registrations at age 3 in the January census. Counted at the spring term, as DfE's January census counts: a child registered in the term that starts on 1 January of the model year's April-to-March span, by its age on 31 December (uk_runtime/dfe_spring_term.py; accounting note dfe_funded_childcare_single_ages)."
+          "notes": "Caseload only, by single year of age: working parent registrations at age 3 in the January census. Counted at the spring term, as DfE's January census counts: a child registered in the term that starts on 1 January of the model year's April-to-March span, by its age on 31 December (uk_runtime/dfe_spring_term.py; accounting note dfe_funded_childcare_single_ages). Selected at DfE's January 2026 census (observation_period 2026-01): model year 2025's entitlement year runs from April 2025 to March 2026, so its spring term starts on 1 January 2026, and the census counts children by their age on 31 December 2025, the measure's own month and age basis. The January 2025 census, bound before, was a year out (María's ruling of 2026-10-29, microcosm#1095 D5)."
         },
         "axiom": {
           "metric_name": "dfe/funded_childcare/working_parent_children_age_3",
@@ -16538,7 +16544,8 @@
         }
       },
       "category_id": "dfe.funded_childcare",
-      "label": "Working parent children age 3"
+      "label": "Working parent children age 3",
+      "observation_period": "2026-01"
     },
     {
       "target_id": "dfe.funded_childcare.universal_nursery_children_age_3",
@@ -16598,7 +16605,7 @@
               "equals": "ENGLAND"
             }
           ],
-          "notes": "Universal hours registrations at age 3 outside reception (DfE's nursery provision), counting working parent children too, as DfE's universal counts do. Counted at the spring term, as DfE's January census counts: a child registered in the term that starts on 1 January of the model year's April-to-March span, by its age on 31 December (uk_runtime/dfe_spring_term.py; accounting note dfe_funded_childcare_single_ages). Universal hours start the term after the third birthday, so every child of DfE age 3 is counted, where policyengine-uk still reads the age on 6 October."
+          "notes": "Universal hours registrations at age 3 outside reception (DfE's nursery provision), counting working parent children too, as DfE's universal counts do. Counted at the spring term, as DfE's January census counts: a child registered in the term that starts on 1 January of the model year's April-to-March span, by its age on 31 December (uk_runtime/dfe_spring_term.py; accounting note dfe_funded_childcare_single_ages). Universal hours start the term after the third birthday, so every child of DfE age 3 is counted, where policyengine-uk still reads the age on 6 October. Selected at DfE's January 2026 census (observation_period 2026-01): model year 2025's entitlement year runs from April 2025 to March 2026, so its spring term starts on 1 January 2026, and the census counts children by their age on 31 December 2025, the measure's own month and age basis. The January 2025 census, bound before, was a year out (María's ruling of 2026-10-29, microcosm#1095 D5)."
         },
         "axiom": {
           "metric_name": "dfe/funded_childcare/universal_nursery_children_age_3",
@@ -16619,7 +16626,8 @@
         }
       },
       "category_id": "dfe.funded_childcare",
-      "label": "Universal nursery children age 3"
+      "label": "Universal nursery children age 3",
+      "observation_period": "2026-01"
     },
     {
       "target_id": "dft.bus_fare_receipts.england",

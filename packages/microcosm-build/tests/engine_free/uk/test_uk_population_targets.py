@@ -21,7 +21,6 @@ from microcosm.build.uk_runtime.local_targets import (
 )
 from microcosm.build.uk_runtime.uprating_holds import (
     load_uk_uprating_holds,
-    uk_hold_is_signed,
 )
 
 FORBIDDEN_VALUE_KEYS = {"aggregation", "operation", "registry", "target_value", "value"}
@@ -790,24 +789,29 @@ def test_dfe_rows_read_the_spring_term_measures_only() -> None:
         assert not names & {"age", "current_education"}, target["target_id"]
 
 
-def test_dfe_single_age_rows_hold_the_january_2025_census() -> None:
-    """The rows read the January 2025 census, signed in-year snapshots."""
+def test_dfe_rows_read_the_january_2026_census_without_a_hold() -> None:
+    """Model year 2025's spring term is the January 2026 census (D5).
 
-    holds = load_uk_uprating_holds()["holds"]
-    entries = [
-        entry for entry in holds if set(DFE_SINGLE_AGE_IDS) & set(entry["target_ids"])
+    Every DfE row selects its fact at January 2026, a period after the 2025
+    target period, so none is held (María's ruling of 2026-10-29,
+    microcosm#1095 D5); the January 2025 census, held as an in-year snapshot
+    before, was a year out.
+    """
+
+    dfe = [
+        target
+        for target in _load()["targets"]
+        if target["target_id"].startswith("dfe.funded_childcare.")
     ]
-    assert sorted(
-        target_id for entry in entries for target_id in entry["target_ids"]
-    ) == sorted(DFE_SINGLE_AGE_IDS)
+    assert len(dfe) == 8
+    assert {target["observation_period"] for target in dfe} == {"2026-01"}
+    assert set(DFE_SINGLE_AGE_IDS) <= {target["target_id"] for target in dfe}
+    holds = load_uk_uprating_holds()["holds"]
     assert not any(
-        set(DFE_SIGNED_OUT_AGE_4_IDS) & set(hold["target_ids"]) for hold in holds
+        target_id.startswith("dfe.")
+        for entry in holds
+        for target_id in entry["target_ids"]
     )
-    for entry in entries:
-        assert entry["scope"] == "national"
-        assert entry["kind"] == "in_year_snapshot"
-        assert uk_hold_is_signed(entry)
-    assert {entry["approved_on"] for entry in entries} == {"2026-10-21", "2026-10-22"}
 
 
 def test_uk_population_targets_have_unique_target_ids() -> None:

@@ -780,15 +780,14 @@ DFE_SIGNED_OUT_AGE_4_IDS = (
 )
 
 
-def test_dfe_single_age_references_pin_england_at_the_january_2025_census() -> None:
+def test_dfe_single_age_references_pin_england_at_the_january_2026_census() -> None:
     """The five DfE single-age rows resolve one England fact each.
 
-    The ``dfe.`` prefix pins every DfE row to England (E92000001); each new
-    row selects one age cell of its census table, January 2025, held to the
-    2025 calibration year (María's rulings, 2026-10-21 and 2026-10-22, the
-    9 to 11 months row with its own hold). The age-4 cells are signed out, as
-    the bound rows fix them, so they have no reference and no membership
-    entry.
+    The ``dfe.`` prefix pins every DfE row to England (E92000001); each row
+    selects one age cell of its census table at January 2026, its declared
+    observation period, the spring term of model year 2025, so no uprating
+    hold applies (microcosm#1095 D5). The age-4 cells are signed out, as the
+    bound rows fix them, so they have no reference and no membership entry.
     """
 
     references = {
@@ -806,12 +805,12 @@ def test_dfe_single_age_references_pin_england_at_the_january_2025_census() -> N
         assert reference["family"] == "dfe_funded_childcare"
         assert reference["entity"] == "person"
         assert reference["period"] == 2025
-        assert reference["uprating_from_period"] == "2025-01"
-        assert reference["uprating_to_period"] == 2025
+        assert reference["observation_period"] == "2026-01"
+        assert "uprating_from_period" not in reference
         assert reference["metadata"]["observation_basis"] == "january_stock"
         assert membership["targets"][target_id]["status"] == "active"
         (candidate,) = membership["targets"][target_id]["candidates"]
-        assert candidate["resolved_fact_period"] == "2025-01"
+        assert candidate["resolved_fact_period"] == "2026-01"
     for target_id in DFE_SIGNED_OUT_AGE_4_IDS:
         assert target_id not in references
         assert target_id not in membership["targets"]
