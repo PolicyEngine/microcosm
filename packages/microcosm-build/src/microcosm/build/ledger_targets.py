@@ -104,6 +104,18 @@ MULTI_FACT_VALUE_OPERATIONS = frozenset(
         *MONTHLY_WINDOW_OPERATIONS,
     )
 )
+#: Operations that compose or pin periods of their own, so a reference may
+#: not move its fact selection with ``observation_period``.
+PERIOD_COMPOSING_OPERATIONS = frozenset(
+    (
+        "calendar_year_average",
+        "calendar_year_window",
+        "latest_plateau",
+        "scaled_by_ratio",
+        ROLLED_FORWARD_BY_RATIO,
+        CALENDAR_YEAR_WINDOW_SCALED_BY_RATIO,
+    )
+)
 EXACT_PERIOD_VALUE_OPERATIONS = frozenset(
     (
         "identity",
@@ -249,6 +261,11 @@ class LedgerTargetReference:
     hierarchy: CalibrationHierarchySeed | None = None
     assertion_policy: str = "observed_only"
     period_match_policy: str = "latest_not_after"
+    #: The period the reference's facts are selected at, where it differs
+    #: from the target period the model is measured at: DfE's January census
+    #: for model year Y is January Y + 1, the spring term of the year's
+    #: entitlements (microcosm#1095 D5). ``None`` selects at the target period.
+    observation_period: int | str | None = None
     uprating_index: str | None = None
     uprating_from_period: int | str | None = None
     uprating_to_period: int | str | None = None
@@ -327,6 +344,18 @@ class LedgerTargetReference:
             *MONTHLY_WINDOW_OPERATIONS,
             MONTHLY_WINDOW_COUNT_X_MEAN,
         }
+        if self.observation_period is not None:
+            if not _period_key_from_value(self.observation_period)[0]:
+                raise ValueError(
+                    f"LedgerTargetReference {self.name!r}: observation_period "
+                    f"{self.observation_period!r} is not a parseable period."
+                )
+            if is_window or self.value_operation in PERIOD_COMPOSING_OPERATIONS:
+                raise ValueError(
+                    f"LedgerTargetReference {self.name!r}: observation_period "
+                    "selects facts at one period, but value_operation "
+                    f"{self.value_operation!r} composes periods of its own."
+                )
         if is_window != (self.period_match_policy == "source_window"):
             raise ValueError(
                 "A monthly window operation requires the paired source_window period policy."
@@ -1955,7 +1984,7 @@ def _resolve_reference_fact(
             raise ValueError(
                 f"Ledger target reference {reference.name!r} did not match a "
                 f"Ledger fact {period_requirement} "
-                f"{reference.period!r} for selector: "
+                f"{_selection_period(reference)!r} for selector: "
                 f"{dict(reference.ledger_selector)!r}."
             )
         identifiers = [
@@ -3728,11 +3757,26 @@ def _count_mean_fact_role(fact: object) -> str:
     return ""
 
 
+def _selection_period(reference: LedgerTargetReference) -> int | str | None:
+    """The period a reference selects its facts at: its observation period if
+    it declares one, else its target period."""
+
+    if reference.observation_period is not None:
+        return reference.observation_period
+    return reference.period
+
+
+def _selection_period_label(reference: LedgerTargetReference) -> str:
+    if reference.observation_period is not None:
+        return "observation period"
+    return "target period"
+
+
 def _eligible_selector_matches(
     reference: LedgerTargetReference,
     matches: list[object],
 ) -> list[object]:
-    target_period_key = _period_key_from_value(reference.period)
+    target_period_key = _period_key_from_value(_selection_period(reference))
     if reference.period_match_policy == "source_window":
         return [
             fact
@@ -3820,18 +3864,19 @@ def _validate_reference_period(fact: object, reference: LedgerTargetReference) -
         return
     if reference.period_match_policy != "exact":
         if not _not_after_target_period(
-            _period_key(fact), _period_key_from_value(reference.period)
+            _period_key(fact), _period_key_from_value(_selection_period(reference))
         ):
             raise ValueError(
                 f"Ledger target reference {reference.name!r} requires a fact "
-                f"at or before target period {reference.period!r}, but resolved "
+                f"at or before {_selection_period_label(reference)} "
+                f"{_selection_period(reference)!r}, but resolved "
                 f"fact period {_at(fact, 'period', 'value')!r}."
             )
         return
     if not _exact_period_matches(fact, reference):
         raise ValueError(
             f"Ledger target reference {reference.name!r} requires exact period "
-            f"{reference.period!r}, but resolved fact period "
+            f"{_selection_period(reference)!r}, but resolved fact period "
             f"{_at(fact, 'period', 'type')!r}:"
             f"{_at(fact, 'period', 'value')!r}. A period mismatch must resolve "
             "through a Ledger source_projection at the target period, never "
@@ -3855,7 +3900,7 @@ def _latest_period_selector_match(
     if len(semantic_keys) != 1:
         return None
 
-    target_period_key = _period_key_from_value(reference.period)
+    target_period_key = _period_key_from_value(_selection_period(reference))
     best: tuple[int, int, str] | None = None
     best_matches: list[object] = []
     for fact in matches:
@@ -4041,7 +4086,7 @@ def _period_key(fact: object) -> tuple[int, int, str]:
 def _exact_period_matches(fact: object, reference: LedgerTargetReference) -> bool:
     """Match exact periods by semantic value while retaining period-kind pins."""
 
-    expected_value = reference.period
+    expected_value = _selection_period(reference)
     actual_value = _comparable_period_value(fact)
     actual_type = _str_at(fact, "period", "type")
     selector_type = str(reference.ledger_selector.get("period_type", ""))
@@ -4226,6 +4271,8 @@ def _reference_metadata(reference: LedgerTargetReference) -> dict[str, str]:
     metadata["ledger_value_operation"] = reference.value_operation
     metadata["ledger_assertion_policy"] = reference.assertion_policy
     metadata["ledger_period_match_policy"] = reference.period_match_policy
+    if reference.observation_period is not None:
+        metadata["ledger_observation_period"] = str(reference.observation_period)
     if reference.value_operation in MONTHLY_WINDOW_OPERATIONS:
         months = _declared_source_months(reference)
         metadata["ledger_source_months"] = json.dumps(months, separators=(",", ":"))

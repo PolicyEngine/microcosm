@@ -1075,6 +1075,79 @@ def test__given_fiscal_year_facts_without_coverage__then_the_label_is_compared()
     assert "ledger_fact_period_label" not in spec.metadata
 
 
+def _agi_reference(**overrides) -> LedgerTargetReference:
+    return LedgerTargetReference(
+        **{
+            "name": "SOI AGI total",
+            "ledger_selector": {
+                "source_name": "irs_soi",
+                "source_measure_id": "adjusted_gross_income",
+                "geography_level": "country",
+                "geography_id": "0100000US",
+                "entity_name": "tax_unit",
+                "layout_groupby_value_id": "all",
+            },
+            "entity": "tax_unit",
+            "measure": "adjusted_gross_income",
+            "period": 2023,
+            "family": "irs_soi",
+            **overrides,
+        }
+    )
+
+
+def test__given_an_observation_period__then_facts_are_selected_there() -> None:
+    """A declared observation period moves fact selection, not the target.
+
+    DfE's January census for model year Y is January Y + 1 (microcosm#1095
+    D5): the reference keeps its target period and selects its fact at the
+    period the measure observes, which may follow the target period.
+    """
+
+    rows = [
+        _consumer_fact_row_for_period(2022, value=14_000_000_000_000),
+        _consumer_fact_row_for_period(2023, value=15_000_000_000_000),
+        _consumer_fact_row_for_period(2024, value=16_000_000_000_000),
+        _consumer_fact_row_for_period(2025, value=17_000_000_000_000),
+    ]
+    (plain,) = compile_ledger_target_references(
+        rows, [_agi_reference()], country="us"
+    ).specs
+    assert plain.value == 15_000_000_000_000
+    assert "ledger_observation_period" not in plain.metadata
+
+    (observed,) = compile_ledger_target_references(
+        rows, [_agi_reference(observation_period=2024)], country="us"
+    ).specs
+    assert observed.value == 16_000_000_000_000
+    assert observed.period == 2023
+    assert observed.metadata["ledger_observation_period"] == "2024"
+
+    (exact,) = compile_ledger_target_references(
+        rows,
+        [_agi_reference(observation_period=2024, period_match_policy="exact")],
+        country="us",
+    ).specs
+    assert exact.value == 16_000_000_000_000
+
+
+@pytest.mark.parametrize(
+    ("overrides", "message"),
+    [
+        ({"observation_period": "not a period"}, "not a parseable period"),
+        (
+            {"observation_period": 2024, "value_operation": "calendar_year_window"},
+            "composes periods of its own",
+        ),
+    ],
+)
+def test__given_an_observation_period_the_reference_cannot_honour__then_it_is_refused(
+    overrides, message
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        _agi_reference(**overrides)
+
+
 def test__given_exact_period_policy__then_only_the_target_period_is_used() -> None:
     registry = compile_ledger_target_references(
         [

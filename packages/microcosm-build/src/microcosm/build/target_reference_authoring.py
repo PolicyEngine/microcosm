@@ -23,6 +23,7 @@ from microcosm.build.ledger_targets import (  # pyright: ignore[reportPrivateUsa
     _not_after_target_period,
     _period_key,
     _period_key_from_value,
+    _selection_period,
     compile_ledger_target_references,
     reference_fact_selectors,
 )
@@ -1198,6 +1199,9 @@ def _area_reference_row(
     period_match_policy = target.get("period_match_policy")
     if period_match_policy is not None:
         row["period_match_policy"] = period_match_policy
+    observation_period = target.get("observation_period")
+    if observation_period is not None:
+        row["observation_period"] = observation_period
     uprating_index = target.get("uprating_index")
     if uprating_index is not None:
         row["uprating_index"] = str(uprating_index)
@@ -1422,6 +1426,9 @@ def _reference_row(
     period_match_policy = target.get("period_match_policy")
     if period_match_policy is not None:
         row["period_match_policy"] = period_match_policy
+    observation_period = target.get("observation_period")
+    if observation_period is not None:
+        row["observation_period"] = observation_period
     uprating_index = target.get("uprating_index")
     if uprating_index is not None:
         row["uprating_index"] = str(uprating_index)
@@ -1464,7 +1471,7 @@ def _compact_compile_error(status: str) -> str:
 def _eligible_fact(reference: LedgerTargetReference, fact: Mapping[str, Any]) -> bool:
     return _not_after_target_period(
         _period_key(fact),
-        _period_key_from_value(reference.period),
+        _period_key_from_value(_selection_period(reference)),
     ) and _assertion_allowed(reference, fact)
 
 
