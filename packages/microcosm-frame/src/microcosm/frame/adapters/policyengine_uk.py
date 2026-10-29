@@ -10,6 +10,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from importlib import metadata
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any, Protocol
 
 import numpy as np
@@ -27,11 +28,26 @@ __all__ = [
     "POLICYENGINE_UK_CONCEPT_MAPPING",
     "PolicyEngineUKEngine",
     "ProjectingRulesEngine",
+    "SUPPLIED_ROLE_INPUTS",
+    "UK_ISA_INCOME_CONTRACT",
+    "UK_ISA_INCOME_CONTRACT_ATTR",
     "UK_SCHEMA",
     "validate_uc_claimant_input",
 ]
 
 UK_SCHEMA = EntitySchema(group_entities=("benunit", "household"))
+#: How the frame's savings interest holds ISA interest, declared to
+#: policyengine-uk (its ``isa_income_contract``, from 2.162.2): the frame
+#: stores ``savings_interest_income`` gross, ISA interest included, with the
+#: ISA part in ``tax_free_savings_income``. policyengine-uk reads that as
+#: ``legacy_gross`` and takes the ISA part off when it loads the dataset;
+#: declaring it keeps that reading if the engine's default for a dataset that
+#: declares nothing changes (microcosm#1095).
+UK_ISA_INCOME_CONTRACT: Mapping[str, object] = MappingProxyType(
+    {"version": 1, "representation": "legacy_gross", "projection": "legacy_gross"}
+)
+#: The H5 root attribute policyengine-uk reads that contract from.
+UK_ISA_INCOME_CONTRACT_ATTR = "policyengine_uk.isa_income_contract"
 _PERSON_TABLE = "person"
 _GROUP_TABLES = ("benunit", "household")
 _DTYPE_KIND_BY_VALUE_TYPE: dict[type, str] = {
@@ -211,6 +227,7 @@ class PolicyEngineUKEngine:
             benunit=tables["benunit"].copy(),
             household=tables["household"].copy(),
             fiscal_year=int(period),
+            isa_income_contract=dict(UK_ISA_INCOME_CONTRACT),
         )
 
 
@@ -222,23 +239,41 @@ def _is_engine_computed(variable: Any) -> bool:
     return bool(getattr(variable, "formulas", None))
 
 
+#: Supplied benefit-unit roles and the first policyengine-uk release that
+#: reads each. ``is_claimant_or_partner`` (2.107.0) is read across the
+#: model's programmes, and ``is_uc_claimant`` derives from it from that
+#: release. ``is_hbai_dependent_child`` (2.107.0) sets the HBAI person
+#: types, which the BHC and AHC equivalisation reads.
+SUPPLIED_ROLE_INPUTS: tuple[tuple[str, str], ...] = (
+    ("is_uc_claimant", "2.98.0"),
+    ("is_claimant_or_partner", "2.107.0"),
+    ("is_hbai_dependent_child", "2.107.0"),
+)
+
+
 def validate_uc_claimant_input(simulation: Any, person: Any, period: int | str) -> None:
-    """Require supplied UC roles to survive the model's dataset loader.
+    """Require supplied benefit-unit roles to survive the model's dataset loader.
 
     The UK loader ignores unknown columns. FRS roles must therefore remain
     explicit inputs; recalculating the model's relationship fallback can give
     a different answer for young partners or older nonqualifying dependants.
-    Frames without recorded claimant roles retain ordinary calculator behavior.
+    Frames without recorded roles retain ordinary calculator behavior. Every
+    role in ``SUPPLIED_ROLE_INPUTS`` that the frame carries is checked.
     """
-    name = "is_uc_claimant"
-    if name not in person:
-        return
+    for name, floor in SUPPLIED_ROLE_INPUTS:
+        if name in person:
+            _validate_supplied_role(simulation, person, period, name, floor)
+
+
+def _validate_supplied_role(
+    simulation: Any, person: Any, period: int | str, name: str, floor: str
+) -> None:
     try:
         installed = metadata.version("policyengine-uk")
     except metadata.PackageNotFoundError:
         installed = "unavailable"
     guidance = (
-        f"Supplied {name} requires policyengine-uk>=2.98.0 with explicit "
+        f"Supplied {name} requires policyengine-uk>={floor} with explicit "
         f"person/Boolean/year input support (installed {installed})."
     )
     definition = simulation.tax_benefit_system.variables.get(name)

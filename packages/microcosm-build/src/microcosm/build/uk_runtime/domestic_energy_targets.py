@@ -22,6 +22,13 @@ local-authority rows bind from them, each through a declared
   authority's census households times its gas meters over its electricity
   meters, the share the stage already imposes by region, here by authority.
 
+The same three rows bind by constituency (microcosm#1095). DESNZ publishes no
+constituency cut, so a seat's consumption and meters are Microcosm's split of
+its authorities' totals by DESNZ's small-area figures
+(``uk/desnz_constituency_energy_facts.json``, ``desnz_constituency_energy``):
+the seat cells take the same factor per fuel, and their meter share reads the
+split's seat meters.
+
 The rows keep the fact's own period: consumption is DESNZ's 2024 kWh,
 calendar 2024 for electricity and gas year 2024 for gas, which the
 sub-national lookups pair with calendar 2024
@@ -47,6 +54,14 @@ import numpy as np
 
 from microcosm.build.country_spec import load_country_spec
 from microcosm.build.ledger_targets import LedgerTargetReference, TargetRegistry
+from microcosm.build.uk_runtime.desnz_constituency_energy import (
+    FACTS_RESOURCE as UK_CONSTITUENCY_ENERGY_RESOURCE,
+)
+from microcosm.build.uk_runtime.desnz_constituency_energy import (
+    UKDesnzConstituencyEnergyFacts,
+    load_uk_desnz_constituency_energy_facts,
+    seat_meter_counts,
+)
 from microcosm.build.uk_runtime.energy_pricing import (
     ELECTRICITY_FUEL,
     ELECTRICITY_KWH,
@@ -103,6 +118,11 @@ UK_ENERGY_LEVEL_BASIS = (
 UK_GAS_METER_SHARE_BASIS = (
     "DESNZ sub-national domestic gas meters over electricity meters in the "
     "authority, {year}, applied to the authority's census households"
+)
+UK_SEAT_GAS_METER_SHARE_BASIS = (
+    "DESNZ domestic gas meters over electricity meters in the constituency, "
+    "{year}, Microcosm's split of its authorities' meters by DESNZ's small-area "
+    "figures, applied to the constituency's census households"
 )
 UK_ENERGY_LEVEL_HOLD = "matched_period"
 UK_GAS_CONNECTED_HOLD = "control_rescaled"
@@ -430,22 +450,43 @@ def align_census_households_by_gas_meter_share(
     *,
     year: int = GAS_METER_SHARE_PERIOD,
     rows: Sequence[Mapping[str, Any]] | None = None,
+    seat_facts: UKDesnzConstituencyEnergyFacts | None = None,
 ) -> TargetRegistry:
-    """Each authority's census households times its gas-connected meter share."""
+    """Each area's census households times its gas-connected meter share.
+
+    An authority reads its own DESNZ meters (``rows``, by default the vendored
+    resource); a constituency reads the split of its authorities' meters
+    (``seat_facts``, by default the committed derived resource).
+    """
 
     if reference.uprating_index != UK_GAS_METER_SHARE_INDEX_CONCEPT:
         return registry
-    meters = _meter_rows_by_roster_area(year, rows)
-    basis = UK_GAS_METER_SHARE_BASIS.format(year=year)
+    meters: dict[str, dict[str, float]] | None = None
+    seat_meters: dict[str, dict[str, float]] | None = None
     aligned = []
     for spec in registry.specs:
         area = _cell_area(spec)
-        counts = meters.get(area, {})
+        if str(spec.metadata.get("ledger_geography_level")) == "constituency":
+            if seat_meters is None:
+                seat_meters = seat_meter_counts(
+                    seat_facts or load_uk_desnz_constituency_energy_facts(),
+                    year=year,
+                    period_types=SUBNATIONAL_PERIOD_TYPES,
+                )
+            counts = seat_meters.get(area, {})
+            resource = UK_CONSTITUENCY_ENERGY_RESOURCE
+            basis = UK_SEAT_GAS_METER_SHARE_BASIS.format(year=year)
+        else:
+            if meters is None:
+                meters = _meter_rows_by_roster_area(year, rows)
+            counts = meters.get(area, {})
+            resource = UK_LOCAL_ENERGY_RESOURCE
+            basis = UK_GAS_METER_SHARE_BASIS.format(year=year)
         if set(counts) != {ELECTRICITY_FUEL, GAS_FUEL}:
             raise ValueError(
-                f"UK target {spec.name!r}: {UK_LOCAL_ENERGY_RESOURCE} has no "
+                f"UK target {spec.name!r}: {resource} has no "
                 f"{year} {sorted({ELECTRICITY_FUEL, GAS_FUEL} - set(counts))} "
-                f"meter count for {area!r} (an authority without a gas network "
+                f"meter count for {area!r} (an area without a gas network "
                 "is a signed deferral, never a zero)."
             )
         if counts[ELECTRICITY_FUEL] <= 0:
@@ -462,7 +503,7 @@ def align_census_households_by_gas_meter_share(
             **spec.metadata,
             "uprating_index": UK_GAS_METER_SHARE_INDEX_CONCEPT,
             "uprating_index_basis": basis,
-            "uprating_index_resource": UK_LOCAL_ENERGY_RESOURCE,
+            "uprating_index_resource": resource,
             "uprating_factor": f"{share:.15g}",
             "ledger_value_before_alignment": f"{spec.value:.15g}",
             "uprating_hold": UK_GAS_CONNECTED_HOLD,

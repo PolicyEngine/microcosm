@@ -46,15 +46,15 @@ def test_uk_contract_loads_and_selects_build_year_rates() -> None:
         0.6,
         0.55,
         0.5,
-        # The tool-version-7 refit: the DfE rows at the spring term, universal
-        # nested under working parent (at its lower bound), one usage share per
-        # DfE age under 2 (age 1 at its upper bound).
-        0.9697,
-        0.8262,
-        0.6962,
+        # The tool-version-7 refit on policyengine-uk 2.151.0: the DfE rows at
+        # the spring term, universal nested under working parent (at its lower
+        # bound), one usage share per DfE age under 2 (age 1 at its upper bound).
+        0.9134,
+        0.8217,
+        0.7,
         1.0,
         0.0,
-        0.6551,
+        0.8687,
         0.441,
         0.2682,
         0.97,
@@ -66,6 +66,9 @@ def test_uk_contract_loads_and_selects_build_year_rates() -> None:
         0.384,
         0.0385,
         0.593,
+        # microcosm#1373: DfE apprentices in learning at the start of 2024/25
+        # (participation less starts) per head aged 19 to 24 in England.
+        0.036887,
     ]
 
 
@@ -139,7 +142,7 @@ def test_year_selection_uses_latest_value_at_or_before_build_year() -> None:
 
     assert contract.rate("child_benefit", 2021) == 0.97
     assert contract.rate("child_benefit", 2023) == 0.89
-    assert contract.rate("tax_free_childcare", 2024) == 0.9697
+    assert contract.rate("tax_free_childcare", 2024) == 0.9134
     assert contract.rate("tax_free_childcare", 2023) == 0.586
     assert contract.rate("tv_licence_evasion_rate", 2024) == 0.1252
     assert contract.rate("tax_free_childcare_spend_routed_share", 2017) == 0.359
