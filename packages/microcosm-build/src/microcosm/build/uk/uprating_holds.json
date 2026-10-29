@@ -361,6 +361,21 @@
       "expires_on": "2026-12-15"
     },
     {
+      "scope": "national",
+      "kind": "matched_period",
+      "target_ids": [
+        "slc.repayments.wales_total",
+        "slc.repayments.scotland_total",
+        "slc.repayments.northern_ireland_total"
+      ],
+      "reason": "SLC's net student loan repayments for Wales, Scotland and Northern Ireland, financial year 2024-25, the latest each nation publishes. Each binding declares the frame's own year (measurement_period 2024), so the outturn is measured on the year it was published for, not carried to 2025 by an index (microcosm#1095 R4).",
+      "tracking": "microcosm#1095",
+      "approved_by": "juaristi22",
+      "approved_on": "2026-10-29",
+      "status": "approved",
+      "expires_on": "2027-01-29"
+    },
+    {
       "scope": "local",
       "kind": "control_rescaled",
       "target_ids": [
