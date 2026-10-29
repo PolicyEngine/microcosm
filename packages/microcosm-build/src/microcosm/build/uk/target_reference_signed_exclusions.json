@@ -52,10 +52,10 @@
     {
       "target_id": "ons.household_energy_expenditure",
       "reason_id": "superseded_by_component_targets",
-      "rationale": "ONS Consumer Trends COICOP 04.5 (electricity, gas and other fuels) carries liquid and solid fuels the frame does not model; chronicle #271 (chronicle#270) published the 04.5.1 electricity and 04.5.2 gas sub-classes, which ons.household_electricity_expenditure and ons.household_gas_expenditure carry per fuel on the frame's own columns. Both were bound until microcosm#1113 made them measured diagnostics (María's ruling of 2026-10-08, D1), so no ONS energy row is fitted. The total row is retained in the contract for registry parity and signed out here (microcosm#890 F1).",
+      "rationale": "ONS Consumer Trends COICOP 04.5 (electricity, gas and other fuels): chronicle #271 (chronicle#270) published the 04.5.1 electricity and 04.5.2 gas sub-classes, which ons.household_electricity_expenditure and ons.household_gas_expenditure carry per fuel on the frame's own columns. Since microcosm#1278 the frame also carries the 04.5.3 liquid and 04.5.4 solid fuels (liquid_fuel_consumption, solid_fuel_consumption), which the lcfs_consumption receipt sets beside ONS's own two rows; heat energy (04.5.5) stays in the housing remainder. The electricity and gas rows were bound until microcosm#1113 made them measured diagnostics (María's ruling of 2026-10-08, D1), so no ONS energy row is fitted. The total row is retained in the contract for registry parity, measured on the four fuels (María's ruling of 2026-10-22), and signed out here (microcosm#890 F1).",
       "tracking": "microcosm#890",
       "approved_by": "juaristi22",
-      "approved_on": "2026-09-16"
+      "approved_on": "2026-10-24"
     },
     {
       "target_id": "hmrc.cgt.taxpayers_by_age_band",
@@ -159,6 +159,32 @@
       "row": {
         "dimension": "grouped_amount_of_benefit",
         "value": "£40.00 to under £60.00"
+      }
+    },
+    {
+      "target_id": "microcosm.high_value_homes.over_2m_by_region",
+      "reason_id": "below_local_small_cell_floor",
+      "rationale": "The North East's derived stock of owner-occupied homes over £2m is below the 400-home floor of the local small-cell rule (hvcts_la_household_floor in local_small_cell_rule.json), which already defers every £2m local-authority cell there. That is about one household weight at the ruled 150,000 households, so the row's fit would be noise, and a gate-only sign-off, which is public, would narrow an estimate expected to rest on fewer than 10 records. Signed out of the region fan-out; the same area's £1m and £1.5m rows, which count these homes, stay bound, as do the other regions' £2m rows.",
+      "tracking": "microcosm#1301",
+      "approved_by": "juaristi22",
+      "approved_on": "2026-10-17",
+      "adjudication": "María in session, 2026-10-17: defer both below-floor region rows, in answer to https://github.com/PolicyEngine/microcosm/pull/1307#issuecomment-6234268346",
+      "row": {
+        "dimension": "geography_id",
+        "value": "E12000001"
+      }
+    },
+    {
+      "target_id": "microcosm.high_value_homes.over_2m_by_region",
+      "reason_id": "below_local_small_cell_floor",
+      "rationale": "Wales's derived stock of owner-occupied homes over £2m is below the 400-home floor of the local small-cell rule (hvcts_la_household_floor in local_small_cell_rule.json), which already defers every £2m local-authority cell there. That is about one household weight at the ruled 150,000 households, so the row's fit would be noise, and a gate-only sign-off, which is public, would narrow an estimate expected to rest on fewer than 10 records. Signed out of the region fan-out; the same area's £1m and £1.5m rows, which count these homes, stay bound, as do the other regions' £2m rows.",
+      "tracking": "microcosm#1301",
+      "approved_by": "juaristi22",
+      "approved_on": "2026-10-17",
+      "adjudication": "María in session, 2026-10-17: defer both below-floor region rows, in answer to https://github.com/PolicyEngine/microcosm/pull/1307#issuecomment-6234268346",
+      "row": {
+        "dimension": "geography_id",
+        "value": "W92000004"
       }
     }
   ]

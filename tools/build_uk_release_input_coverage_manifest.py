@@ -863,6 +863,12 @@ def build_manifest(
                 stage_name="cgt_support_split",
                 candidate_source=candidate_source,
             ),
+            # The high-value home support copies whole households at equal weight
+            # (microcosm#1240), the CGT support split's mass semantics.
+            "high_value_home_support": _source_stage_family_coverage_contract(
+                stage_name="high_value_home_support",
+                candidate_source=candidate_source,
+            ),
             "hmrc_cgt_gains_spine": _cgt_spine_family_coverage_contract(
                 candidate_source=candidate_source,
             ),
@@ -882,6 +888,10 @@ def build_manifest(
             ),
             "salary_sacrifice": _source_stage_family_coverage_contract(
                 stage_name="salary_sacrifice",
+                candidate_source=candidate_source,
+            ),
+            "private_school_attendance": _source_stage_family_coverage_contract(
+                stage_name="private_school_attendance",
                 candidate_source=candidate_source,
             ),
             "student_loans": _source_stage_family_coverage_contract(
@@ -916,6 +926,14 @@ def build_manifest(
             ),
             "property_components": _source_stage_family_coverage_contract(
                 stage_name="property_components",
+                candidate_source=candidate_source,
+            ),
+            "regional_home_values": _source_stage_family_coverage_contract(
+                stage_name="regional_home_values",
+                candidate_source=candidate_source,
+            ),
+            "property_purchases": _source_stage_family_coverage_contract(
+                stage_name="property_purchases",
                 candidate_source=candidate_source,
             ),
             "lcfs_consumption": _source_stage_family_coverage_contract(
@@ -1194,6 +1212,9 @@ def _hmrc_family_coverage_contract(
         "base_candidate_tier": validate_uk_release_tier(candidate_source["tier"]),
         "required_predecessor_stages": [
             "frs_hmrc_spine_leaves",
+            # The SPI copies carry the annual income descriptors their twins
+            # hold, and the income stage holds them to the drawn incomes.
+            "frs_annual_income_spells",
             "spi_support_channel",
             "spi_income_band_donors",
         ],

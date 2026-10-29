@@ -16,14 +16,17 @@ Support Survey 2022, findings pack 7); an IDI-based estimate puts Working for
 Families (WFF) take-up at about 87% in 2020 (McLeod and Wilson 2022, targets
 inventory M5).
 
-## Status: 7 October 2026
+## Status: 23 October 2026
 
 The spec-only [NZ country package](../packages/microcosm-build/src/microcosm/build/nz/country_package.json)
-compiles through the shared country seam. It is a declared layout, not a
-calibrated population or a release: every target reference is an unactivated
-placeholder, the threshold-bearing gates read "awaiting D1", and no NZ graph
-node exists yet. Donor records are US support records and are never presented
-as New Zealand microdata.
+compiles through the shared country seam. It declares active demographic
+references and profile-resolved Census size and tenure references, with other
+unresolved target definitions parked. The release gates carry reviewed
+thresholds (d1376: every calibration target within 5%, demography within 2%,
+administrative anchors within 5%); no production fit evidence exists for them
+yet, and graph assembly and calibrated population evidence remain separate.
+Donor records are US support records and are never presented as New Zealand
+microdata.
 
 The package replaces the stage-era scaffold of
 [#821](https://github.com/PolicyEngine/microcosm/pull/821). It keeps #821's
@@ -62,7 +65,7 @@ nz.create (CREATE) ── nz.open (FILTER keep-all: transport, geography, receip
                          │      │      └── nz.scn.S0 … nz.scn.S5 (FILTER each)
                          │      ├── nz.validate (FILTER: WFF tripwire, parked)
                          │      └── nz.terminal (FILTER: bands, diagnostics, gates, export)
-                         └── nz.v.V1 … nz.v.V3 (FILTER each: variant → calibrate → AS → gap)
+                         └── nz.v.V1 … nz.v.V4 (FILTER each: variant → calibrate → AS → gap)
 ```
 
 - **CREATE is to build the benefit units.** Entity ids and person
@@ -96,11 +99,12 @@ nz.create (CREATE) ── nz.open (FILTER keep-all: transport, geography, receip
 | `precal_references.json` | quantile-map destinations (IRD wage bands, MBIE rents, Stats NZ financial net worth), TA population, MSD M1 and O4 for take-up draws | `nz.facts.precal` | MC4, MC6, MC8–MC10 |
 | `as_area_crosswalk.json` | Work and Income area definitions; the TA → AS area population shares are a placeholder (`rows: []`, `status: requires_harvest`) until harvested | `nz.geo.support` | MC9 |
 | `axiom_rules_bindings.json` | rulespec-nz pin, five module bindings, variables, the `2026-27` tax-year period | every Axiom-bound node | MC1 |
-| `target_references.json` | the calibration set (MC5 list) | `nz.targets.compile` | MC5 |
+| `target_references.json` | the calibration set (MC5 list), generated cell-pinned by `tools/generate_nz_target_references.py` and summarized in `reference_inventory.json`; unresolved definitions stay parked with named reasons | `nz.targets.compile` | MC5 |
+| `reference_profiles.json`, `calibration_bindings.json` | d1886 MAR and small-household residual declarations, plus validated usual-resident roster counts and all 136 region-by-size indicators; the shared resolver produces effective references before activation | reference resolution and calibration preparation | MC5 |
 | `as_rate_bridge.json` | reg 17 base rate and reg 18 cutout composition | `nz.as.bridge.*` | MC11 |
-| `scenarios.json` | S0–S5, V1–V3, knobs, gap conventions (×52) | scenario and variant branches | MC3, MC12 |
+| `scenarios.json` | S0–S5, V1–V4, knobs, gap conventions (×52); V4 selects the small-household residual sensitivity | scenario and variant branches | MC3, MC12 |
 | `holdout_references.json` | AS comparators and the WFF tripwire | gap and validation nodes only | MC2, MC5 |
-| `gates.json` | the gate battery, evaluated with the shared transport bindings (`transport/gate_bindings.py`); thresholds await D1; support and release-input coverage remain applicable and block builds until their producers and evidence checks exist | `nz.gates.calibrated` | MC15 |
+| `gates.json` | the gate battery, evaluated with the shared transport bindings (`transport/gate_bindings.py`); fit and admin-aggregate tolerances follow d1376 (each target within 5%, demography within 2%, administrative anchors within 5%); support and release-input coverage remain applicable and block builds until their producers and evidence checks exist | `nz.gates.calibrated` | MC15 |
 | `export_contract.json` | the closed export contract | export nodes | — |
 
 The three reference sets are separate files on purpose. Each planned node is
@@ -110,10 +114,24 @@ transport.
 
 ### Reference sets
 
-- **Calibration (MC5):** region × age × sex population, census household
-  composition, census family type, tenure × region, IRD taxable-income bands
-  (counts and totals), MSD main-benefit recipients, NZ Super and Veterans
-  Pension recipients.
+- **Calibration (MC5):** active are region × age population (all sexes, four
+  age bands). Size × region and tenure × region (owned, including family
+  trusts, and not owned) require the d1886 profile resolver before execution.
+  Their allocated Census 2023 counts receive each region's June 2025 ERP ratio
+  once; region 99 uses the national-growth proxy. Declared but parked until
+  their definitions or producers exist: Census family type, IRD
+  taxable-income bands (counts and totals), MSD main-benefit recipients, and NZ
+  Super and Veterans Pension recipients (counted separately).
+
+G8-r1b implements Max's d1886 residual-allocation convention through shared
+target arithmetic and the common reference-profile resolver. Central size and
+tenure targets close to each region's published Census household total before
+the existing ERP bridge. Calibration variant V4 concentrates only the size
+residual onto one- and two-person households. The implementation preserves raw
+discrepancies and independent national diagnostics, and supplies validated size
+columns before activation. G8-r2 reuses the same resolver for ageing profiles
+and interval preparation; central ageing remains explicitly deferred and V1/V2
+ageing transformations remain unavailable until that work lands.
 - **Pre-calibration:** IRD wage and salary bands, MBIE bond rents by TA, Stats
   NZ household financial net worth, TA population, and the same MSD recipient
   facts as the calibration set (the take-up draws calibrate to them).

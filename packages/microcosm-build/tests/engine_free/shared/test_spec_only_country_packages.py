@@ -6,6 +6,8 @@ import json
 import re
 from pathlib import Path, PurePosixPath
 
+import pytest
+
 from microcosm.build.country_spec import ALLOWED_COUNTRY_RESOURCE_KINDS
 from microcosm.build.spec_engine import GENERATED_LOCK_FILENAMES, load_yaml12
 from test_support.paths import paths_for
@@ -222,6 +224,74 @@ def test__given_schema_kernel_reference__then_it_is_not_an_entrypoint() -> None:
     assert not _looks_like_python_entrypoint("kernel:fit_qrf")
 
 
+def _partition_fact_key_roster() -> dict:
+    keys = [
+        "ledger.aggregate_fact.v2:" + "a" * 24,
+        "ledger.aggregate_fact.v2:" + "1" * 24,
+    ]
+    return {
+        "role": "partition",
+        "member_selectors": [{"aggregate_fact_key": key} for key in keys],
+        "allocation_member_keys": keys.copy(),
+    }
+
+
+@pytest.mark.parametrize(
+    "subset", [False, True], ids=["all_members", "recipient_subset"]
+)
+def test__given_typed_partition_fact_keys__then_the_roster_is_data(subset) -> None:
+    partition = _partition_fact_key_roster()
+    if subset:
+        partition["allocation_member_keys"] = partition["allocation_member_keys"][:1]
+    offenders = []
+    _collect_executable_content(partition, "reference.value_operands[2]", offenders)
+    assert offenders == []
+
+
+@pytest.mark.parametrize(
+    "defect",
+    [
+        "mixed",
+        "callable",
+        "citation",
+        "outside_partition",
+        "wrong_role",
+        "unpinned",
+        "malformed_digest",
+        "duplicate_roster",
+    ],
+)
+def test__given_untyped_partition_keys__then_entrypoint_shapes_are_rejected(
+    defect,
+) -> None:
+    partition = _partition_fact_key_roster()
+    payload = partition
+    expected = "reference.allocation_member_keys[0]"
+    if defect == "mixed":
+        partition["allocation_member_keys"].append("dotted.module:callable")
+        expected = "reference.allocation_member_keys[2]"
+    elif defect == "callable":
+        partition["allocation_member_keys"] = ["dotted.module:callable"]
+    elif defect == "citation":
+        payload = {"partition": partition, "citation": "dotted.module:callable"}
+        expected = "reference.citation"
+    elif defect == "outside_partition":
+        payload = {"allocation_member_keys": partition["allocation_member_keys"]}
+    elif defect == "wrong_role":
+        partition["role"] = "base"
+    elif defect == "unpinned":
+        partition["allocation_member_keys"] = ["ledger.aggregate_fact.v2:" + "b" * 24]
+    elif defect == "malformed_digest":
+        partition["allocation_member_keys"] = ["ledger.aggregate_fact.v2:callable"]
+    else:
+        partition["allocation_member_keys"] = [
+            partition["allocation_member_keys"][0]
+        ] * 2
+    offenders = []
+    _collect_executable_content(payload, "reference", offenders)
+    assert expected in offenders
+
+
 def _collect_executable_content(
     value: object,
     location: str,
@@ -247,7 +317,11 @@ def _collect_executable_content(
                 and not compiler_identity_field
             ):
                 offenders.append(child_location)
-            if compiler_identity_field:
+            if (
+                compiler_identity_field
+                or _is_fact_key_field(key=key, value=child)
+                or _is_partition_fact_key_roster(key=key, value=child, parent=value)
+            ):
                 continue
             _collect_executable_content(child, child_location, offenders)
     elif isinstance(value, list):
@@ -318,6 +392,67 @@ def _looks_like_python_entrypoint(value: str) -> bool:
             r"\b[a-zA-Z_]\w*(?:\.[a-zA-Z_]\w*)+:[a-zA-Z_]\w*\b",
             value,
         )
+    )
+
+
+_FACT_KEY_FIELDS = frozenset(
+    {"aggregate_fact_key", "semantic_fact_key", "legacy_fact_key", "fact_key"}
+)
+_FACT_KEY_NAMESPACES = (
+    "ledger.",
+    "microcosm.derived_fact.",
+    "microcosm.semantic_fact.",
+)
+
+
+def _is_fact_key_field(*, key: str, value: object) -> bool:
+    """Admit consumer-fact identifiers in their published ``namespace:id`` shape.
+
+    Chronicle keys its facts ``ledger.aggregate_fact.v2:<id>`` and Microcosm's
+    derived facts (microcosm#1240) follow the same shape under the owned
+    ``microcosm.derived_fact.`` and ``microcosm.semantic_fact.`` namespaces. They are opaque identifiers the
+    compiler matches by prefix, never entrypoints; only the named key fields
+    with a known namespace are admitted.
+    """
+
+    return (
+        key in _FACT_KEY_FIELDS
+        and isinstance(value, str)
+        and value.startswith(_FACT_KEY_NAMESPACES)
+    )
+
+
+def _is_partition_fact_key_roster(*, key: str, value: object, parent: dict) -> bool:
+    """Admit only canonical recipient keys pinned by a typed atomic partition."""
+    if (
+        key != "allocation_member_keys"
+        or set(parent) != {"role", "member_selectors", "allocation_member_keys"}
+        or parent.get("role") != "partition"
+        or not isinstance(value, list)
+        or not value
+    ):
+        return False
+    pattern = r"ledger\.aggregate_fact\.v\d+:[0-9a-f]{24}"
+    if any(
+        not isinstance(item, str) or re.fullmatch(pattern, item) is None
+        for item in value
+    ):
+        return False
+    members = parent["member_selectors"]
+    if not isinstance(members, list) or not members:
+        return False
+    keys = []
+    for member in members:
+        if not isinstance(member, dict):
+            return False
+        identity = member.get("aggregate_fact_key")
+        if not isinstance(identity, str) or re.fullmatch(pattern, identity) is None:
+            return False
+        keys.append(identity)
+    return (
+        len(set(keys)) == len(keys)
+        and len(set(value)) == len(value)
+        and set(value) <= set(keys)
     )
 
 

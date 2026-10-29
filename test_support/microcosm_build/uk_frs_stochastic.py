@@ -69,6 +69,8 @@ class _Contract:
         "universal_credit": 0.5,
         "tax_free_childcare": 0.5,
         "extended_childcare": 0.5,
+        "extended_childcare_age_0_usage": 0.5,
+        "extended_childcare_age_1_usage": 0.5,
         "universal_childcare": 0.5,
         "targeted_childcare": 0.5,
         "uc_childcare_single": 0.5,
@@ -81,6 +83,7 @@ class _Contract:
         "first_time_buyer_rate": 0.5,
         "property_purchase_rate": 0.5,
         "tax_free_childcare_spend_routed_share": 0.593,
+        "apprentice_stock_19_to_24": 0.06,
     }
 
     def rate(self, key: str, build_year: int | None = None) -> float:
@@ -116,6 +119,9 @@ def _frame() -> object:
             "person_benunit_id": [10, 10, 20, 30],
             "person_household_id": [1, 1, 1, 2],
             "age": [5, 6, 40, 70],
+            "employment_status": ["CHILD", "CHILD", "FT_EMPLOYED", "RETIRED"],
+            "months_since_last_birthday": [0.0] * 4,
+            "is_uc_claimant": [False, False, True, True],
             "child_benefit_reported": [0, 10, 0, 0],
             "pension_credit_reported": [0, 0, 0, 5],
             "universal_credit_reported": [0, 0, 20, 0],

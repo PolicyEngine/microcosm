@@ -19,7 +19,13 @@ regeneration tests accept a `CHRONICLE_UK_FACTS` override and skip only when
 neither is present.
 
 Verify both SHA-256 digests and the manifest's `facts_sha256`, row count, and
-schema version, then update `uk/chronicle_feed.json` and regenerate. Vendor
+schema version, then update `uk/chronicle_feed.json` and the two tests that
+restate it: `tests/engine_free/uk/test_uk_chronicle_feed.py` (the pin and the
+consumer-fact schema digest) and `tests/engine_free/uk/test_uk_full_targets.py`
+(`test_current_national_and_local_pins_share_one_reviewed_identity`). A schema
+digest moves for every country whose feed is built after the Chronicle change,
+so the NZ pin (`nz/chronicle_feed.json`) moves at its own next re-pin. Then
+regenerate. Vendor
 the per-concern fact resources (step 5) before the national generator: the
 generator refuses to compile against a vendored resource whose feed identity
 differs from the pin, so on a fresh pin step 5 has to run first. The rest go in
@@ -38,14 +44,58 @@ this order:
    (`uk/ledger_fact_vendor_selections.json` names them; each records the feed
    identity it was taken from);
 6. the signed compile parity receipts with
-   `tools/build_uk_ledger_compile_parity_signed_differences.py --surface all`;
+   `tools/build_uk_ledger_compile_parity_signed_differences.py`, one `--surface`
+   at a time with nothing else running: the tool holds every parsed fact, and
+   on abf0921 a run over both surfaces peaked at about 25.5 GB and the local
+   surface alone at about 23.9 GB, past a 24 GiB machine. On a smaller machine,
+   the local receipt and the local references and membership can be generated
+   from a cut of the pinned artifact to the constituency and local-authority
+   rows that match a local contract selector, as microcosm#1306 did. That holds
+   only while every local reference sits at those two levels and reads no facts
+   outside its own selector (widen the cut for any other level, such as BRMA
+   rows at `statistical_scope`); check that the regenerated files move only
+   where the change intends;
 7. the release input coverage manifest with
    `tools/build_uk_release_input_coverage_manifest.py`: it hashes the CGT
    conditioning resource, whose vendored header records the feed identity.
 
+Both compile parity receipts are read at build time: the release-blocking
+preflight gates `uk_ledger_compile_parity_*` compare each signed value with the
+live compile, so a receipt left on the old pin blocks every full or dense build
+and the release-cut certifier. Regenerate them on the head that will be built.
+
+The high-value home stock (`uk/high_value_home_stock_facts.json`, with
+`uk/high_value_home_value_knots.json` and `uk/high_value_home_stock.provenance.json`)
+is built from feed facts too: the Census 2021 TS054 tenure record sets, the OBR
+non-owner-occupied share and the ONS HPSSA seat cells. Check that those facts
+are unchanged on the new pin, and rebuild the stock with
+`tools/build_uk_high_value_home_stock.py` if they are not; its provenance names
+the feed it was built from. The feed-gated
+`test_the_pinned_feed_carries_the_inputs_the_stock_was_built_from`
+(`tests/engine_free/uk/test_uk_high_value_homes.py`) runs the check: it
+fingerprints what the builder's own readers take from the pinned feed and
+compares it with the fingerprint recorded there for the feed the provenance
+names. A stock rebuilt on a new feed records that feed's fingerprint beside it;
+the test reports it.
+
+The constituency domestic energy resource (`uk/desnz_constituency_energy_facts.json`,
+microcosm#1095) is built from feed facts too: DESNZ's authority and LSOA / data
+zone consumption and meter counts. Its loader refuses a resource built on
+another feed than the pin, as the vendored resources' readers do, so rebuild
+it on every re-pin beside step 5, before anything compiles, with
+`tools/build_uk_desnz_constituency_energy_facts.py` on the new artifact and
+the committed atomic supports (`tools/build_uk_atomic_area_supports.py`
+rebuilds those byte for byte from its cached publisher files; pass it a
+scratch `--provenance-json` so the committed provenance is left alone). The
+build streams the feed and takes well under a minute.
+
 Verify the complete compiled target diff on both surfaces, including targets
 outside the intended policy area, and record the value moves in the changelog
-fragment.
+fragment. A national reference whose metadata moves (a fact key or a
+geography stamp) moves the national register version even when no value
+does, so the frozen scoring register of the candidate evaluation
+(uk-candidate-eval) must be re-frozen before the next national solve; record
+that in the history entry.
 
 A re-pin also moves the charter-H2 parity fixture: every stage that declares a
 vendored resource as an artifact binds that resource's digest into its
@@ -156,3 +206,119 @@ the periods their stages were built on (UK and regional population 2023 and 2024
 to FY2024-25), so the only spine inputs that move are publisher revisions: the revised mid-2024
 population (UK 69,256,274 against 69,281,437, twelve regional totals) and the DfI edition's
 rounding of seventeen earlier values (eleven receipts and six journeys).
+
+The comparison with the 2023 production surface is retired (microcosm#1257, María's ruling of
+2026-10-13). Two compile-parity receipts remain, both at the 2025 calibration period: the national
+one against the frozen incumbent registry, and the local one. Earlier entries above that name three
+receipts describe the state at their time.
+
+The `735820c` re-pin (microcosm#1240, PolicyEngine/chronicle#343 via #349, on top of `942a1fa`)
+brought the inputs for the High Value Council Tax Surcharge work: the OBR's April 2026 costing
+note (63 rows: properties in scope by surcharge band and the non-owner-occupied share) and the
+ONS house price statistics for small areas by 2024 constituency to the year ending March 2026
+(22,940 rows), plus three raw-only registrations that carry no facts (the HM Land Registry Price
+Paid yearly files, the UK HPI full file and the NSPL) and are read by
+`tools/build_uk_high_value_home_stock.py` against the registered sha256 pins (950,242 rows, up
+23,003). No existing package moved, so no compiled target changed; one vendor selection
+(`obr_hvcts_costing_facts.json`) pins the OBR note for the benchmarks gate.
+
+The `abf0921` re-pin (microcosm#1300, PolicyEngine/chronicle#359 for chronicle#326, #339, #356, #357
+and #358, on top of `735820c`) brought Universal Credit households by area split by Stat-Xplore's
+Payment Indicator, HMRC stamp tax statistics, DWP's Move to UC claim rates, HBAI with its vintages,
+the DWP geography of OBR table 4.9's lines, DESNZ Northern Ireland and LSOA domestic energy,
+rural-urban lookups, the BUS04 country rows, Scotland's UV404 tenure by output area and census
+residence type by age (1,499,301 rows, up 549,059). The v4 schema digest moves to `d953306d…` for
+the new `gas_year` period type. Three selector families moved with the data, and one interim stays:
+
+- the UC area families bind `payment_indicator: Yes` (`dwp.uc.households_by_area` at both grains
+  and the four child bands, whose summed operands name it too), because Chronicle retired the
+  all-claims cells. The cells now count paid claims, as the GB caseload that controls them does, so
+  the bridge's factor moves from 0.921 to about 1.001, and the bridge refuses a factor more than 2%
+  from one (`max_factor_shift`) on each grain's GB total, read before any group rescales it and on
+  the pass that carries the off-surface cells;
+- twelve OBR table 4.9 lines are stamped Great Britain or England and Wales
+  (`TARGET_ID_GEOGRAPHY_PINS`), and the `obr.state_pension` diagnostic reads its Great Britain
+  fact; no value moved;
+- the DESNZ vendor selections pin Great Britain (Northern Ireland's rows share its concepts). The
+  local-authority one accepts `gas_year` and `calendar_year` rows; its expected row count and the
+  per-fuel reads pair gas with gas years and electricity with calendar years, and every sub-national
+  lookup names its period type (`energy_pricing.SUBNATIONAL_PERIOD_TYPES`, gas year Y with calendar
+  year Y), so the 56 regional and 347 local-authority gas rows come back under new keys with the
+  same values;
+- the local energy rows keep Great Britain's share of UK households as the interim for its share of
+  the Energy Trends level. The Northern Ireland facts are now in the feed, on a basis DESNZ calls
+  not directly comparable, and María ruled on 2026-10-16 that the interim stands until a change
+  stacked on this re-pin derives Great Britain's part from them. (microcosm#1306 retires it: Great
+  Britain's part is its share of DESNZ's sub-national consumption with Northern Ireland's
+  all-domestic row added, and that change regenerates the local compile-parity receipt's 694 kWh
+  rows.)
+
+Values move only for the UC area rows: each cell is its area's paid claims, where it was its
+all-claims count scaled by the GB paid share, so the cells keep the GB caseload's total and each
+takes its own area's paid share, as each child band takes its own. The membership reports show it:
+every national reference resolves the fact it resolved before except the twelve restamped OBR
+lines, and every local one except the 3,508 UC area cells and the 346 local-authority gas
+consumption cells, which Chronicle restamped as gas years with the same values. The vendored
+resources carry the same values, and the charter-H2 fixture moves twelve stage contract hashes. The
+local compile-parity receipt is regenerated on this pin, and only the UC cells' signed values move:
+3,507 of the 3,508 change, and one, which now equals the incumbent, leaves the receipt; the full
+surface was not recompiled for this entry. The twelve restamped OBR lines move the
+national register version with no value moved, so the uk-candidate-eval scoring register is
+re-frozen before the next national solve. The high-value home stock still names `735820c`: its
+TS054 tenure, OBR share and HPSSA facts are the same on `abf0921`, so it was not rebuilt.
+
+The `200bf6d` re-pin (microcosm#1359, PolicyEngine/chronicle#381 via #384, on top of `abf0921`)
+brought the UK excise facts: HMRC's Alcohol Bulletin clearances by product, ABV band, duty point
+and relief, the Tobacco Bulletin clearances, HMRC's betting and gaming duty receipts and Machine
+Games Duty liabilities and both bulletins' duty receipts, the Gambling Commission's industry
+statistics for Great Britain (gross gambling yield by sector, activity and betting event, turnover,
+gaming machines and lottery sales), and the OBR March 2026 receipts lines for alcohol, tobacco and
+betting and gaming duties beside its alcohol and tobacco clearances. It also replaced the June 2026
+Consumer Trends edition with September's (chronicle `a8c4a6c4`), whose revisions move every
+Consumer Trends row the feed carries (1,502,291 rows, up 2,990; the schema digest is unchanged).
+
+A new vendored resource, `excise_facts.json`, carries the 98 FY2024-25 rows the LCFS excise step
+reads. The other vendored resources carry the same rows under the new feed identity, except
+`ons_household_expenditure_facts.json`, whose 93 rows take the September values. Compiled values
+move only for the three Consumer Trends rows the contract reads:
+
+- the bound calendar-2024 household road fuel (07.2.2), from GBP 37.025bn to GBP 35.460bn
+  (−4.2%);
+- the measured calendar-2025 electricity (04.5.1), from GBP 26.522bn to GBP 28.840bn;
+- the measured calendar-2025 gas (04.5.2), from GBP 15.339bn to GBP 18.958bn.
+
+The national surface also gains the five OBR excise rows, measured at FY2024-25 and held out of
+the objective; the national receipt lists them as ledger-only.
+
+On the local surface, the reference files and the compile-parity receipt are byte-identical, and
+the membership moves only its feed label.
+
+Both surfaces were regenerated from cuts of the pinned artifact:
+
+- national generator and parity: the constituency, MSOA and county rows dropped (931,024 rows);
+- local generator and parity: the constituency and local-authority rows, plus the
+  statistical-scope rows other than small areas (884,729 rows). The latter carry the Scottish BRMA
+  rents microcosm#1262 binds; a cut without them fails the local generator on those rows.
+
+The regeneration diffs above are the check on both cuts.
+
+The national register version moves with the five new references, so the uk-candidate-eval scoring
+register is re-frozen before the next national solve. The high-value home stock still names
+`735820c`: its inputs are the same on `200bf6d` (the feed-gated fingerprint check passes), so it
+was not rebuilt.
+
+The `272c987` re-pin (microcosm#1359, PolicyEngine/chronicle#391, on top of `200bf6d`) brought the
+Gambling Commission's Gambling Survey for Great Britain 2025 tables: the share of adults who gambled
+in the past four weeks and the past twelve months by sex, age band, country and English region, by
+activity and channel, and the number of activities, with each table's unweighted bases (1,024
+facts; 1,503,315 rows). The merge commit's tree is the pull request head's (`6269a88`), merged onto
+an unmoved base, so the artifact was built from that head's bundle and carries the merge commit's
+digests.
+
+A new vendored resource, `gambling_participation_facts.json`, carries the 426 Great Britain
+participation rows the LCFS `top_up_gambling_participation` step reads. The other vendored resources
+carry the same rows under the new feed identity. No compiled value moves on either surface: the
+national and local reference files are byte-identical, the membership moves only its feed label,
+and both compile-parity receipts are unchanged. Both surfaces were regenerated from the national
+and local cuts, as for `200bf6d`. No reference moves, so the national register version does not
+either. The high-value home stock still names `735820c`: the addition touches none of its inputs.

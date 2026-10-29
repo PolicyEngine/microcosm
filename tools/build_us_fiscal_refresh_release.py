@@ -54,6 +54,11 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from microcosm.build.calibration_epoch_telemetry import (
+    CALIBRATION_EPOCH_EVERY,
+    calibration_epoch_stride,
+    forwards_calibration_epoch,
+)
 from microcosm.build.gates import (
     GateResult,
     TargetFitRequirement,
@@ -136,6 +141,9 @@ from microcosm.build.us_runtime import (
     us_educator_expense_signal_gate,
     us_eligibility_inputs_signal_gate,
     us_energy_subsidy_signal_gate,
+    us_esi_premiums_anchor_feed_mismatches,
+    us_esi_premiums_anchor_gate,
+    us_esi_premiums_signal_gate,
     us_farm_business_income_signal_gate,
     us_fiscal_target_exclusion_receipt,
     us_form_4952_election_signal_gate,
@@ -367,6 +375,10 @@ from microcosm.calibrate.diagnostics import (
 from microcosm.data.contract import (
     EVIDENCE_RELEASE_ID_SEGMENT,
     EVIDENCE_RELEASE_MANIFEST_SCHEMA_VERSION,
+    US_FISCAL_STORED_INPUTS_STAGE,
+    US_STORED_INPUTS_EVIDENCE_KEY,
+    US_STORED_INPUTS_EVIDENCE_SCHEMA_VERSION,
+    stored_input_evidence_manifest_block,
 )
 from microcosm.data.stored_inputs import (
     US_STORED_NON_VARIABLE_COLUMNS,
@@ -1164,8 +1176,11 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help=(
             "Build from a Chronicle feed whose facts (and, for an artifact "
             "pin, manifest) digest differs from the committed US pin in "
-            "us/chronicle_feed.json. Only for an explicitly reviewed "
-            "diagnostic run; a release build must use the pinned feed."
+            "us/chronicle_feed.json. Also lets through a feed whose BEA "
+            "B4923C facts differ from the ESI premium anchor (microcosm#454); "
+            "the difference is recorded in esi_premiums.json, or in the "
+            "dry-run report. Only for an explicitly reviewed diagnostic run; "
+            "a release build must use the pinned feed."
         ),
     )
     parser.add_argument(
@@ -1306,6 +1321,20 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
             "the export drops or leaves degenerate — without failing the "
             "build. Release builds must leave this unset; the gate is a hard "
             "certification blocker."
+        ),
+    )
+    parser.add_argument(
+        "--allow-esi-premium-gaps",
+        action="store_true",
+        help=(
+            "Diagnostic escape hatch (microcosm#454): record the ESI premium "
+            "gates — employer_sponsored_insurance_premiums absent, zero-mass, "
+            "missing its raw ASEC coverage columns, or off the BEA NIPA 7.8 "
+            "line 17 (B4923C) anchor, or a feed whose B4923C facts differ "
+            "from that anchor — without failing the build (for example on a "
+            "base built before the meps_esi_premiums stage). The failures are "
+            "still written to esi_premiums.json. Release builds must leave "
+            "this unset."
         ),
     )
     parser.add_argument(
@@ -7177,7 +7206,7 @@ def _stored_input_gate_failures(
                 "stored tables cannot be listed, so its columns cannot be "
                 f"checked against the engine: {error}"
             ],
-            {"evaluated": False, "error": str(error)},
+            {"evaluated": False, "error": f"{type(error).__name__}: {error}"},
         )
     try:
         engine = installed_us_engine()
@@ -7189,7 +7218,7 @@ def _stored_input_gate_failures(
                 "checked against the engine it is certified against: "
                 f"{error}"
             ],
-            {"evaluated": False, "error": str(error)},
+            {"evaluated": False, "error": f"{type(error).__name__}: {error}"},
         )
     columns = {column for names in stored.values() for column in names}
     details: dict[str, object] = {
@@ -7278,6 +7307,50 @@ def _written_stored_input_verdict_mismatch(
         "release_engine.write_dataset stores; fix the model before this H5 "
         "is certified."
     )
+
+
+def _record_stored_inputs_gate_evidence(
+    release_dir: Path,
+    *,
+    failures: Sequence[str],
+    details: Mapping[str, object],
+    telemetry: _TerminalBatchProgress,
+) -> dict[str, object]:
+    """Write the stored-input gate's verdict as release evidence (microcosm#1034).
+
+    :func:`_stored_input_gate_failures` once recorded its verdict only in run
+    telemetry, so a published release could not show from its own files that
+    the check ran, against which engine, or with which register. This writes
+    ``stored_inputs.json`` in the shape of the other gate-evidence files: the
+    failure lines exactly as they joined the batched raise, ``passed`` exactly
+    when there are none, and the gate's details (the engine label, the register
+    digest, the registered non-variables and refused columns, or why the gate
+    could not evaluate). :func:`_build_manifests` binds the file as a
+    ``release_manifest.json`` artifact, records it as ``bound`` in both
+    manifests' ``gate_evidence`` block, and projects it into both manifests'
+    ``stored_inputs`` block (:func:`microcosm.data.contract.
+    stored_input_evidence_manifest_block`) for the H5 they pin. The publisher
+    requires all three of every US national calibration release.
+
+    The stored-input gate has no waiver, so ``enforced`` is always true; an
+    evidence release carries its refusal lines verbatim in ``known_failures``
+    as well, which the publisher checks.
+    """
+
+    payload: dict[str, object] = {
+        "schema_version": US_STORED_INPUTS_EVIDENCE_SCHEMA_VERSION,
+        "enforced": True,
+        "checked_at_stage": US_FISCAL_STORED_INPUTS_STAGE,
+        US_STORED_INPUTS_EVIDENCE_KEY: {
+            "passed": not failures,
+            "failures": list(failures),
+            "details": dict(details),
+        },
+    }
+    path = release_dir / "stored_inputs.json"
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+    telemetry.attach_artifact(US_STORED_INPUTS_EVIDENCE_KEY, path)
+    return payload
 
 
 def _with_l0_refit_weights(base_frame: Frame, result) -> Frame:
@@ -7455,6 +7528,39 @@ def _write_reported_coverage_vintage_gate_receipt(
 def _engine_input_variables() -> tuple[str, ...]:
     """Persistable PolicyEngine input variables (formula-owned excluded)."""
     return tuple(PolicyEngineUSEngine().variables())
+
+
+def _esi_premiums_signal_evidence(gate: GateResult | None) -> dict[str, object]:
+    """One ESI premium signal verdict for the release evidence file.
+
+    Failures are kept verbatim so a build that waived them
+    (``--allow-esi-premium-gaps``) still records what was red.
+    """
+
+    if gate is None:
+        return {"evaluated": False}
+    return {
+        "evaluated": True,
+        "passed": gate.passed,
+        "failures": list(gate.failures),
+    }
+
+
+def _esi_anchor_feed_evidence(
+    mismatches: Sequence[str], *, enforced: bool
+) -> dict[str, object]:
+    """The anchor-versus-feed verdict for the release evidence file.
+
+    ``mismatches`` is non-empty only when a diagnostic flag waived a feed
+    whose B4923C facts differ from the stage's anchor; they are kept verbatim
+    so the waived difference stays on the record.
+    """
+
+    return {
+        "enforced": enforced,
+        "matches": not mismatches,
+        "mismatches": list(mismatches),
+    }
 
 
 def _input_mass_reference_gate(
@@ -9972,10 +10078,15 @@ def _artifact_entry(path: str, sha: str, *, kind: str, revision: str) -> dict[st
 #: before the terminal gates run, so any present at manifest time are this
 #: run's own.
 US_RELEASE_GATE_EVIDENCE_FILES: dict[str, str] = {
+    "esi_premiums": "esi_premiums.json",
     "input_coverage": "input_coverage.json",
     "input_mass_parity": "input_mass_parity.json",
     "qrf_tail_concentration": "qrf_tail_concentration.json",
     "reform_coverage_smoke": "reform_coverage_smoke.json",
+    # microcosm#1034: the key and file are the contract's
+    # US_STORED_INPUTS_EVIDENCE_KEY / US_STORED_INPUTS_EVIDENCE_FILE, which
+    # the publisher requires bound; a test pins the two together.
+    "stored_inputs": "stored_inputs.json",
 }
 
 #: Key under which ``us_source_coverage.json`` carries the fiscal-target
@@ -10062,6 +10173,26 @@ def _qrf_tail_register_manifest_block(release_dir: Path) -> dict[str, object] | 
         },
         "enforced": payload["enforced"],
     }
+
+
+def _stored_inputs_manifest_block(
+    release_dir: Path, *, dataset_sha256: str
+) -> dict[str, object] | None:
+    """The stored-input verdict, as the gate recorded it, for the pinned H5.
+
+    Read back from ``stored_inputs.json`` rather than rebuilt, so the manifests
+    carry the verdict the gate actually reached. ``_main`` writes the
+    manifests only after the post-write check found the written H5 earns that
+    verdict, so binding it to ``dataset_sha256`` (the bytes the manifests pin)
+    states what was checked. ``None`` when the gate never wrote its evidence.
+    """
+
+    path = release_dir / US_RELEASE_GATE_EVIDENCE_FILES["stored_inputs"]
+    if not path.is_file():
+        return None
+    return stored_input_evidence_manifest_block(
+        json.loads(path.read_text()), dataset_sha256=dataset_sha256
+    )
 
 
 def _fiscal_target_exclusion_receipt_reference(
@@ -10414,6 +10545,9 @@ def _build_manifests(
     # ride build_manifest.json and release_manifest.json's build section.
     gate_evidence_artifacts = _gate_evidence_artifacts(release_dir, revision=release_id)
     qrf_tail_register = _qrf_tail_register_manifest_block(release_dir)
+    stored_inputs = _stored_inputs_manifest_block(
+        release_dir, dataset_sha256=dataset_sha
+    )
     evidence_bindings: dict[str, object] = {
         "gate_evidence": _gate_evidence_status(
             gate_evidence_artifacts, skipped_gates=skipped_gates
@@ -10423,6 +10557,7 @@ def _build_manifests(
             if qrf_tail_register is not None
             else {}
         ),
+        **({"stored_inputs": stored_inputs} if stored_inputs is not None else {}),
         **(
             {"export_input_mass_reference": dict(export_input_mass_reference)}
             if export_input_mass_reference is not None
@@ -11424,8 +11559,25 @@ def _assert_exact_k_original_pool_alignment(
 _ACTIVE_EMITTER: LocalTelemetryEmitter | None = None
 
 
+def _calibration_epoch_every(args: argparse.Namespace) -> int:
+    """The shared calibration epoch stride over this build's solves.
+
+    ``--dense-default-dataset`` solves once; the L0 and exact-k paths solve a
+    selection and then its refit, each for ``--epochs`` (an exact-k ladder
+    whose ``k`` is the whole pool solves once, so two is the most it solves).
+    """
+
+    solves = 1 if args.dense_default_dataset else 2
+    return calibration_epoch_stride(int(args.epochs) * solves)
+
+
 class _BuildProgress:
-    """Report progress to an emitter and, independently, a staging bundle."""
+    """Report progress to an emitter and, independently, a staging bundle.
+
+    Both receive the same calibration epochs: each solve's first and last and
+    every ``epoch_every``-th epoch, the rule the UK build follows too
+    (microcosm#1292).
+    """
 
     def __init__(
         self,
@@ -11434,11 +11586,13 @@ class _BuildProgress:
         emitter: LocalTelemetryEmitter,
         staging_bundle: StagingRunBundleWriter | None,
         staging_opt_out_reason: str | None = None,
+        epoch_every: int = CALIBRATION_EPOCH_EVERY,
     ) -> None:
         self.run_id = run_id
         self.emitter = emitter
         self.staging_bundle = staging_bundle
         self.staging_opt_out_reason = staging_opt_out_reason
+        self.epoch_every = epoch_every
 
     @property
     def repo_id(self) -> str | None:
@@ -11477,6 +11631,8 @@ class _BuildProgress:
             )
 
     def calibration_progress(self, event: dict[str, object]) -> None:
+        if not forwards_calibration_epoch(event, every=self.epoch_every):
+            return
         self.emitter.transition_calibration_progress(event)
         if self.staging_bundle is not None:
             self.staging_bundle.calibration_progress(event)
@@ -11580,6 +11736,10 @@ class _ReleaseDryRun:
         # run's own crash, never a refusal the release would share.
         self.stopped = False
         self.seconds_to_stop_point: float | None = None
+        # Set by _main after the feed checks; a waived B4923C difference
+        # (microcosm#454) is reported here, since a dry run stops before
+        # esi_premiums.json is written.
+        self.esi_anchor_feed_mismatches: list[str] = []
 
     @classmethod
     def start(
@@ -11612,7 +11772,13 @@ class _ReleaseDryRun:
                 "allow_input_mass_drift": bool(args.allow_input_mass_drift),
                 "allow_ecps_parity_gaps": bool(args.allow_ecps_parity_gaps),
                 "allow_input_coverage_gaps": bool(args.allow_input_coverage_gaps),
+                "allow_esi_premium_gaps": bool(args.allow_esi_premium_gaps),
+                "allow_unpinned_feed": bool(args.allow_unpinned_feed),
             },
+            "esi_anchor_feed": _esi_anchor_feed_evidence(
+                self.esi_anchor_feed_mismatches,
+                enforced=not (args.allow_unpinned_feed or args.allow_esi_premium_gaps),
+            ),
             "margins": self.margins.to_dict(),
             # Taken when _main reached the stop point, before any grading;
             # None when the release refused earlier.
@@ -12169,12 +12335,14 @@ def _build_progress(
     # can never be marked failed in place of this build's.
     _ACTIVE_PROGRESS = None
     run_id = run_id or args.staging_run_id or release_id
+    epoch_every = _calibration_epoch_every(args)
     if args.no_staging:
         _ACTIVE_PROGRESS = _BuildProgress(
             run_id=run_id,
             emitter=emitter,
             staging_bundle=None,
             staging_opt_out_reason="--no-staging",
+            epoch_every=epoch_every,
         )
         return _ACTIVE_PROGRESS
     if not args.staging_dir and not args.staging_repo_id:
@@ -12199,6 +12367,7 @@ def _build_progress(
         run_id=run_id,
         emitter=emitter,
         staging_bundle=staging_bundle,
+        epoch_every=epoch_every,
     )
     return _ACTIVE_PROGRESS
 
@@ -12374,6 +12543,35 @@ def _check_committed_us_ledger_feed_pin(
             + "; pass --allow-unpinned-feed only for an explicitly reviewed "
             "diagnostic run"
         )
+
+
+def _check_us_esi_anchor_against_feed(
+    facts: Sequence[Mapping[str, Any]],
+    *,
+    allow_unpinned_feed: bool,
+    allow_esi_premium_gaps: bool,
+) -> list[str]:
+    """Hold the ESI stage's pinned anchor to the feed's banked B4923C facts.
+
+    microcosm#454 / d1317: the ``meps_esi_premiums`` stage scales to BEA
+    B4923C values it pins itself, and the pinned feed banks the same series.
+    On the committed pin a difference means the stage drifted from the feed,
+    so the build stops. A reviewed diagnostic run on another feed
+    (``--allow-unpinned-feed``) or with the ESI gates waived
+    (``--allow-esi-premium-gaps``) continues; the differences are returned
+    either way and written to ``esi_premiums.json``.
+    """
+
+    mismatches = us_esi_premiums_anchor_feed_mismatches(facts)
+    if mismatches and not (allow_unpinned_feed or allow_esi_premium_gaps):
+        raise SystemExit(
+            "error: the meps_esi_premiums anchor differs from the Chronicle "
+            "feed: "
+            + "; ".join(mismatches)
+            + "; pass --allow-unpinned-feed or --allow-esi-premium-gaps only "
+            "for an explicitly reviewed diagnostic run"
+        )
+    return mismatches
 
 
 def _main(argv: Sequence[str] | None = None) -> int | None:
@@ -12597,6 +12795,13 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         manifest_sha256=ledger_artifact.manifest_sha256,
         allow_unpinned_feed=args.allow_unpinned_feed,
     )
+    esi_anchor_feed_mismatches = _check_us_esi_anchor_against_feed(
+        ledger_artifact.facts,
+        allow_unpinned_feed=args.allow_unpinned_feed,
+        allow_esi_premium_gaps=args.allow_esi_premium_gaps,
+    )
+    if dry_run is not None:
+        dry_run.esi_anchor_feed_mismatches = list(esi_anchor_feed_mismatches)
     target_registry = compile_us_fiscal_target_registry(
         ledger_artifact.facts,
         target_period=PERIOD,
@@ -12710,6 +12915,7 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             emitter=_ACTIVE_EMITTER,
             staging_bundle=None,
             staging_opt_out_reason="dry run",
+            epoch_every=_calibration_epoch_every(args),
         )
         _ACTIVE_PROGRESS = telemetry
     if telemetry is not None:
@@ -14230,6 +14436,25 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 for failure in other_health_insurance_gate.failures
             )
         )
+    # microcosm#454: the meps_esi_premiums base stage owns the ESI employer
+    # premium input; refuse a base that lacks or flattens it before the solve.
+    esi_premiums_base_gate = us_esi_premiums_signal_gate(base_frame)
+    if not esi_premiums_base_gate.passed and not args.allow_esi_premium_gaps:
+        if telemetry is not None:
+            telemetry.stage(
+                "esi_premiums_input_gate",
+                status="failed",
+                message="ESI premium signal gate failed on the base.",
+                failures=list(esi_premiums_base_gate.failures),
+                force_upload=True,
+            )
+        raise RuntimeError(
+            "Release gates failed: "
+            + "; ".join(
+                "ESI premium signal failed: " + failure
+                for failure in esi_premiums_base_gate.failures
+            )
+        )
     if telemetry is not None and args.input_mass_reference_h5 is not None:
         telemetry.stage(
             "input_mass_reference_gate",
@@ -14992,6 +15217,25 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             f"Other health insurance signal failed on the export frame: {failure}"
             for failure in other_health_insurance_gate.failures
         )
+    try:
+        esi_premiums_export_gate = us_esi_premiums_signal_gate(export_frame)
+    except Exception as error:
+        if not early_terminal_gate_failures:
+            raise
+        esi_premiums_export_gate = None
+        early_terminal_gate_failures.append(
+            "ESI premium signal evaluation crashed in degraded mode; recorded "
+            f"instead of masking earlier failures: {error}"
+        )
+    if (
+        esi_premiums_export_gate is not None
+        and not esi_premiums_export_gate.passed
+        and not args.allow_esi_premium_gaps
+    ):
+        early_terminal_gate_failures.extend(
+            f"ESI premium signal failed on the export frame: {failure}"
+            for failure in esi_premiums_export_gate.failures
+        )
     if congressional_district_vintage_crosswalk_metadata is not None:
         compilation = {
             **compilation,
@@ -15312,7 +15556,7 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     # the verdict joins the one batched pre-export raise below, so a refusal
     # names every other failing gate too and mints no H5.
     stored_input_failures_, export_frame_stored_inputs = _stored_input_gate_failures(
-        export_frame, stage="export frame"
+        export_frame, stage=US_FISCAL_STORED_INPUTS_STAGE
     )
     terminal_gate_failures.extend(stored_input_failures_)
     terminal_batch_telemetry.stage(
@@ -15343,6 +15587,17 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     # this run skips) would otherwise be certified as this run's own.
     for stale_gate_evidence in US_RELEASE_GATE_EVIDENCE_FILES.values():
         (release_dir / stale_gate_evidence).unlink(missing_ok=True)
+    # microcosm#1034: the stored-input verdict above is release evidence, not
+    # only telemetry. Written once the clear loop has run (so it is this run's
+    # own) and before the batched raise (so a refused run keeps it locally,
+    # like its siblings); _build_manifests binds it and the publisher requires
+    # it of every US national calibration release.
+    _record_stored_inputs_gate_evidence(
+        release_dir,
+        failures=stored_input_failures_,
+        details=export_frame_stored_inputs,
+        telemetry=terminal_batch_telemetry,
+    )
     # microcosm#368: full eCPS input-column coverage as a HARD release gate.
     # Every input column the reference eCPS exports must be persisted by the
     # export as a key with non-default signal, or carry a reviewed exclusion.
@@ -15407,6 +15662,74 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="Release input-column coverage gate failed.",
                 failures=list(input_coverage_gate.failures),
+                force_upload=True,
+            )
+    # microcosm#454: the calibrated ESI premium total over the anchor's
+    # universe (every policyholder) against BEA NIPA 7.8 line 17 within tolerance,
+    # red when the column is absent or zero-mass or the raw ASEC coverage
+    # columns are gone. Runs on the calibrated export for BOTH the dense and
+    # sparse default paths; the verdict ships as the esi_premiums gate
+    # evidence, with the base and export signal verdicts beside it so a waived
+    # assignment failure stays on the record.
+    try:
+        esi_premiums_anchor_gate = us_esi_premiums_anchor_gate(
+            export_frame, time_period=PERIOD
+        )
+    except Exception as exc:
+        if not terminal_gate_failures:
+            raise
+        terminal_gate_failures.append(
+            "ESI premiums failed: evaluation error under earlier gate "
+            f"failures: {type(exc).__name__}: {exc}"
+        )
+        esi_premiums_anchor_gate = None
+    if esi_premiums_anchor_gate is not None:
+        esi_premiums_failed = (
+            not esi_premiums_anchor_gate.passed and not args.allow_esi_premium_gaps
+        )
+        if esi_premiums_failed:
+            terminal_gate_failures.extend(
+                f"ESI premiums failed: {failure}"
+                for failure in esi_premiums_anchor_gate.failures
+            )
+        esi_premiums_path = release_dir / "esi_premiums.json"
+        esi_premiums_path.write_text(
+            json.dumps(
+                {
+                    "schema_version": 3,
+                    "enforced": not args.allow_esi_premium_gaps,
+                    "esi_premiums": {
+                        "passed": esi_premiums_anchor_gate.passed,
+                        "failures": list(esi_premiums_anchor_gate.failures),
+                        "details": dict(esi_premiums_anchor_gate.details),
+                    },
+                    "anchor_feed": _esi_anchor_feed_evidence(
+                        esi_anchor_feed_mismatches,
+                        enforced=not (
+                            args.allow_unpinned_feed or args.allow_esi_premium_gaps
+                        ),
+                    ),
+                    "signal": {
+                        "base_frame": _esi_premiums_signal_evidence(
+                            esi_premiums_base_gate
+                        ),
+                        "export_frame": _esi_premiums_signal_evidence(
+                            esi_premiums_export_gate
+                        ),
+                    },
+                },
+                indent=2,
+                sort_keys=True,
+            )
+            + "\n"
+        )
+        terminal_batch_telemetry.attach_artifact("esi_premiums", esi_premiums_path)
+        if esi_premiums_failed:
+            terminal_batch_telemetry.stage(
+                "export_dataset",
+                status="failed",
+                message="ESI premium anchor gate failed.",
+                failures=list(esi_premiums_anchor_gate.failures),
                 force_upload=True,
             )
     # #327: the export gate compares the calibrated export against a reference.

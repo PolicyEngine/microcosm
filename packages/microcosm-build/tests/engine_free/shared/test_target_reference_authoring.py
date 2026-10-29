@@ -370,14 +370,21 @@ def test_generate_uk_local_target_references_cli_refuses_incomplete_contract(
     # The council-tax country masks refuse a local-authority roster that does
     # not carry the declared 32 Scottish, 11 Northern Irish, 22 Welsh, and
     # 296 English authorities
-    # (covered by test_council_tax_country_masks_refuse_roster_count_drift).
-    # This test is about the *contract* refusal, so give it a roster those
-    # masks accept and let the missing target id be what fails.
+    # (covered by test_council_tax_country_masks_refuse_roster_count_drift),
+    # and the high-value homes constituency deferral one that does not carry
+    # the 575 England and Wales seats (microcosm#1301, covered in
+    # test_uk_high_value_homes_local_cells.py). This test is about the
+    # *contract* refusal, so give it a roster those masks accept and let the
+    # missing target id be what fails.
     crosswalk_path.write_text(
         json.dumps(
             {
                 "levels": {
-                    "constituency": {"area_ids": ["A1"]},
+                    "constituency": {
+                        "area_ids": ["A1"]
+                        + [f"E14{index:06d}" for index in range(543)]
+                        + [f"W07{index:06d}" for index in range(32)]
+                    },
                     "local_authority": {
                         "area_ids": [f"S{index:08d}" for index in range(32)]
                         + [f"N{index:08d}" for index in range(11)]
@@ -698,6 +705,39 @@ def test_author_target_references_fans_out_over_a_geography_roster() -> None:
         ("region", "E12000001", "active", 20.0),
         ("country", "W92000004", "active", 30.0),
     ]
+
+
+def test_a_row_level_signed_exclusion_takes_out_one_geography_cell() -> None:
+    """Keyed on ``geography_id``, a row-level sign-out takes one cell out of a
+    geography fan-out (the high-value homes region rows below the local
+    small-cell floor, microcosm#1301) and leaves the other cells active."""
+    config = TargetReferenceAuthoringConfig(
+        target_period=2025,
+        geography_fanout_by_target_id={"ons.age.0_10_by_region": _REGION_TIER_CELLS},
+        geography_fanout_metadata=_tier_metadata,
+        signed_row_exclusions_by_target_id={
+            "ons.age.0_10_by_region": {
+                ("geography_id", '"E12000001"'): "below the floor",
+                ("geography_id", '"W92000004"'): "below the floor",
+            }
+        },
+        source_fact_feed="synthetic",
+    )
+    authored = author_target_references(_two_level_contract(), _tier_facts(), config)
+    assert [row["name"] for row in authored.references] == [
+        "ons.age.0_10_by_region@E12000007"
+    ]
+    target = authored.membership_report["targets"]["ons.age.0_10_by_region"]
+    assert target["status"] == "active"
+    assert [(entry["name"], entry["status"]) for entry in target["candidates"]] == [
+        ("ons.age.0_10_by_region@E12000007", "active"),
+        ("ons.age.0_10_by_region@E12000001", "signed_excluded"),
+        ("ons.age.0_10_by_region@W92000004", "signed_excluded"),
+    ]
+    assert target["candidates"][1]["signed_row"] == {
+        "dimension": "geography_id",
+        "value": "E12000001",
+    }
 
 
 def test_geography_fanout_refuses_an_absent_roster_cell() -> None:
@@ -1180,3 +1220,49 @@ def test_an_area_index_without_an_applier_is_refused() -> None:
 
     with pytest.raises(ValueError, match="supplies no applier"):
         author_area_target_references(contract, facts, _area_config(areas=("A1", "A2")))
+
+
+def test_a_list_source_name_prefilters_to_its_sources_in_feed_order() -> None:
+    # A family whose published and derived facts sit under two sources
+    # (microcosm#1095) scans both, in the feed's order, and nothing else.
+    from microcosm.build import target_reference_authoring as authoring
+
+    facts = (
+        {"source": {"source_name": "desnz"}, "id": 1},
+        {"source": {"source_name": "ons"}, "id": 2},
+        {"source": {"source_name": "microcosm"}, "id": 3},
+        {"observed_measure": {"source_name": "desnz"}, "id": 4},
+    )
+    buckets = authoring._facts_by_source(facts)
+    listed = {"ledger_selector": {"source_name": ["microcosm", "desnz"]}}
+    assert [
+        fact["id"] for fact in authoring._source_prefilter(facts, buckets, listed)
+    ] == [1, 3, 4]
+    single = {"ledger_selector": {"source_name": "desnz"}}
+    assert [
+        fact["id"] for fact in authoring._source_prefilter(facts, buckets, single)
+    ] == [1, 4]
+
+
+def test_a_declared_value_must_be_finite_and_non_negative() -> None:
+    # A no-network area's zero (microcosm#1095); a negative or NaN value would
+    # move its leg's control.
+    deferral = AreaSignedDeferral(
+        target_id="t",
+        geography_level="local_authority",
+        reason_id="r",
+        rationale="no network",
+        area_ids=("A",),
+        declared_value=0.0,
+    )
+    assert deferral.declared_value == 0.0
+    for value in (-1.0, float("nan")):
+        with pytest.raises(ValueError, match="declared_value"):
+            AreaSignedDeferral(
+                target_id="t",
+                geography_level="local_authority",
+                reason_id="r",
+                rationale="no network",
+                area_ids=("A",),
+                declared_value=value,
+            )

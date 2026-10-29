@@ -37,6 +37,10 @@ from microcosm.diagnostics import (
     DiagnosticsWriteSuccess,
 )
 from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
+from test_support.microcosm_diagnostics.json_schema import (
+    load_strict_json,
+    published_json_schema_errors,
+)
 
 _SPI_COLUMN = "household_is_spi_synthetic"
 _CG_COLUMN = "household_is_capital_gains_clone"
@@ -49,6 +53,7 @@ def _fixture_hierarchy(name: str, geography_level: str) -> CalibrationHierarchy:
         "country": "E92000001",
         "local_authority": "E09000001",
         "constituency": "E14000001",
+        "brma": "S33999999",
     }
     return CalibrationHierarchy(
         provider=HierarchyNode("fixture", "Fixture provider"),
@@ -177,6 +182,27 @@ def test_local_weakest_rollups_pin_family_area_and_country_shapes() -> None:
     assert trimmed["n_areas_scored"] == 2
     assert [row["area_code"] for row in trimmed["bottom_by_fit"]] == ["W07000041"]
 
+    # Each row carries its area's rows, ESS and sources, and the floor flag
+    # beside them when the table has it (María's ruling of 2026-10-26).
+    wales_row = areas["bottom_by_fit"][0]
+    assert (
+        wales_row["nonzero_households"],
+        wales_row["nonzero_source_households"],
+        wales_row["effective_sample_size"],
+    ) == (80, 70, 65.0)
+    flagged = uk_weakest_areas_by_fit(
+        rows, support.assign(support_below_floor=[True, False])
+    )
+    assert {
+        row["area_code"]: row["support_below_floor"] for row in flagged["bottom_by_fit"]
+    } == {"W07000041": True, "E09000001": False}
+    assert all(
+        type(row["support_below_floor"]) is bool for row in flagged["bottom_by_fit"]
+    )
+    # The support figures are required of the support table.
+    with pytest.raises(ValueError, match="missing rollup column"):
+        uk_weakest_areas_by_fit(rows, support.loc[:, ["geography_level", "area_code"]])
+
 
 def test_local_fit_diagnostics_filter_national_rows_and_pin_support_shape() -> None:
     diagnostics = pd.DataFrame(
@@ -235,6 +261,21 @@ def test_local_fit_diagnostics_filter_national_rows_and_pin_support_shape() -> N
     assert result["la"]["n_failing_cells"] == 1
     assert result["la"]["spearman_worst_abs_relative_error_vs_ess"] is None
 
+    # With the floor flag in the support table, each worst area carries it
+    # beside its rows, ESS and sources (María's ruling of 2026-10-26).
+    flagged = uk_support_limited_misses(
+        diagnostics,
+        {
+            grain: frame.assign(support_below_floor=True)
+            for grain, frame in support.items()
+        },
+        max_abs_relative_error=0.25,
+    )
+    assert [
+        (area["area_code"], area["rows"], area["support_below_floor"])
+        for area in flagged["constituency"]["worst_areas"]
+    ] == [("E14000001", 2, True), ("E14000002", 20, True)]
+
     rows = [
         _local_target_row(
             "local",
@@ -281,6 +322,8 @@ def _consumption_columns(n: int) -> dict[str, np.ndarray]:
 
 
 def _diagnostics_case(*, with_skipped: bool = False, with_consumption: bool = False):
+    """One row per geography level, each carried by one household."""
+
     levels_and_weights = (
         ("national", 11.0),
         ("region", 12.0),
@@ -604,6 +647,15 @@ def test_payload_preserves_common_schema_and_adds_versioned_uk_evidence() -> Non
             "n_within_10pct": 1,
             "pass_rate": 1.0,
         },
+        # Every level is written; Scotland's BRMA rows bind no target here.
+        {
+            "geography_level": "brma",
+            "n_targets": 0,
+            "n_scored": 0,
+            "n_skipped": 0,
+            "n_within_10pct": 0,
+            "pass_rate": None,
+        },
     ]
     assert json.loads(json.dumps(payload, allow_nan=False)) == payload
 
@@ -644,6 +696,174 @@ def test_consumption_drift_compares_design_and_final_weights() -> None:
     )
     with pytest.raises(ValueError, match="align"):
         uk_consumption_drift(household, design[:3], final)
+    assert "full_rate_vat_base" not in drift["totals"]
+
+
+def test_consumption_drift_carries_the_heating_fuels_where_the_frame_has_them() -> None:
+    """The liquid and solid fuels the stage draws (pe-uk#2572), read only where
+    the frame carries them, so an older spine keeps its drift block."""
+
+    from microcosm.build.uk_runtime.diagnostics import uk_consumption_drift
+
+    household = pd.DataFrame(_consumption_columns(4))
+    design = np.array([1.0, 1.0, 1.0, 1.0])
+    final = np.array([2.0, 0.0, 1.0, 1.0])
+    assert (
+        "liquid_fuel_consumption"
+        not in uk_consumption_drift(household, design, final)["totals"]
+    )
+    household["liquid_fuel_consumption"] = [100.0, 0.0, 50.0, 0.0]
+    household["solid_fuel_consumption"] = [0.0, 30.0, 0.0, 0.0]
+    totals = uk_consumption_drift(household, design, final)["totals"]
+    assert totals["liquid_fuel_consumption"]["final"] == 250.0
+    assert totals["solid_fuel_consumption"]["relative_change"] == -1.0
+
+
+def test_drift_flags_mark_totals_past_two_percent_and_shares_past_half_a_point() -> (
+    None
+):
+    """Warn-only flags at #1278's R1 thresholds; the payload keeps its shape."""
+
+    from microcosm.build.uk_runtime.diagnostics import (
+        UK_DRIFT_SHARE_FLAG,
+        UK_DRIFT_TOTAL_FLAG,
+        uk_consumption_drift_flags,
+    )
+
+    drift = {
+        "totals": {
+            "moves": {"relative_change": 0.021, "change": 21.0},
+            "edge": {"relative_change": -0.02, "change": -20.0},
+            "none": {"relative_change": None, "change": 0.0},
+        },
+        "shares": {
+            "moves": {"change": -0.0051},
+            "edge": {"change": 0.005},
+        },
+    }
+    flags = uk_consumption_drift_flags(drift)
+    assert flags["total_relative_change_above"] == UK_DRIFT_TOTAL_FLAG == 0.02
+    assert flags["share_change_above"] == UK_DRIFT_SHARE_FLAG == 0.005
+    assert flags["totals"] == ["moves"]
+    assert flags["shares"] == ["moves"]
+
+
+def test_drift_flags_reach_the_payload_as_warnings() -> None:
+    """Vahid's review of #1383, item 11: the flags are wired, not a hand run.
+
+    Each flagged total or share is one warn-only diagnostic warning, naming it
+    and the threshold, never its figures.
+    """
+
+    from microcosm.build.uk_runtime.diagnostics import (
+        UK_CONSUMPTION_DRIFT_WARNING_CODE,
+        uk_consumption_drift_warnings,
+    )
+
+    drift = {
+        "totals": {"solid_fuel_consumption": {"relative_change": -0.3, "change": -1.0}},
+        "shares": {"gas_connected_households": {"change": 0.0001}},
+    }
+    (warning,) = uk_consumption_drift_warnings(drift)
+    assert warning["code"] == UK_CONSUMPTION_DRIFT_WARNING_CODE
+    assert warning["severity"] == "warning"
+    assert "solid_fuel_consumption" in warning["message"]
+    assert "2%" in warning["message"] and "-0.3" not in warning["message"]
+    result, frame, registry, geography = _diagnostics_case(with_consumption=True)
+    payload = uk_calibration_diagnostics_payload(
+        result,
+        frame,
+        target_geography_levels=geography,
+        target_registry=registry,
+    )
+    flagged = [
+        warning
+        for warning in payload["diagnostic_warnings"]
+        if warning["code"] == UK_CONSUMPTION_DRIFT_WARNING_CODE
+    ]
+    assert flagged == uk_consumption_drift_warnings(
+        payload["uk_diagnostics"]["consumption_drift"]
+    )
+
+
+def test_consumption_drift_carries_the_full_rate_vat_base() -> None:
+    """Consumption times the ETB VAT stage's full-rate share (#1207)."""
+
+    from microcosm.build.uk_runtime.diagnostics import uk_consumption_drift
+
+    household = pd.DataFrame(_consumption_columns(4))
+    household["full_rate_vat_expenditure_rate"] = [0.5, 0.5, 0.25, 0.0]
+    design = np.array([1.0, 1.0, 1.0, 1.0])
+    final = np.array([2.0, 0.0, 1.0, 1.0])
+
+    drift = uk_consumption_drift(household, design, final)
+
+    base = drift["totals"]["full_rate_vat_base"]
+    assert base["design"] == pytest.approx(120.0 * (0.5 + 0.5 + 0.25))
+    assert base["final"] == pytest.approx(120.0 * (2 * 0.5 + 0.25))
+
+
+def test_consumption_drift_carries_the_stage_s_kwh() -> None:
+    """The electricity and gas kWh at both weights, from the spend (#1207)."""
+
+    from microcosm.build.uk_runtime.diagnostics import uk_consumption_drift
+    from microcosm.build.uk_runtime.domestic_energy_targets import (
+        household_energy_kwh,
+        household_energy_prices,
+    )
+
+    household = pd.DataFrame(_consumption_columns(4))
+    household["electricity_consumption"] = [900.0, 1100.0, 700.0, 1300.0]
+    household["gas_consumption"] = [800.0, 0.0, 950.0, 0.0]
+    household["region"] = ["LONDON", "WALES", "SCOTLAND", "NORTHERN_IRELAND"]
+    design = np.array([1.0, 1.0, 1.0, 1.0])
+    final = np.array([2.0, 0.0, 1.0, 1.0])
+
+    drift = uk_consumption_drift(household, design, final)
+
+    kwh = household_energy_kwh(
+        household["electricity_consumption"],
+        household["gas_consumption"],
+        region=household["region"],
+        prices=household_energy_prices(),
+    )
+    for name in ("electricity_kwh", "gas_kwh"):
+        assert drift["totals"][name]["design"] == pytest.approx(design @ kwh[name])
+        assert drift["totals"][name]["final"] == pytest.approx(final @ kwh[name])
+    assert drift["totals"]["gas_kwh"]["design"] > 0
+    without_region = uk_consumption_drift(
+        household.drop(columns="region"), design, final
+    )
+    assert "electricity_kwh" not in without_region["totals"]
+
+
+def test_consumption_drift_carries_the_excise_quantities() -> None:
+    """Each excise quantity and base as stored, at both weights (#1359)."""
+
+    from microcosm.build.uk_runtime.diagnostics import uk_consumption_drift
+
+    household = pd.DataFrame(_consumption_columns(4))
+    household["beer_litres"] = [100.0, 0.0, 50.0, 10.0]
+    household["cigarettes_per_week"] = [20.0, 0.0, 0.0, 40.0]
+    household["remote_gaming_net_losses"] = [0.0, 30.0, 0.0, 0.0]
+    household["beer_draught_share"] = 0.4
+    design = np.array([1.0, 1.0, 1.0, 1.0])
+    final = np.array([2.0, 0.0, 1.0, 1.0])
+
+    totals = uk_consumption_drift(household, design, final)["totals"]
+
+    assert totals["beer_litres"]["design"] == pytest.approx(160.0)
+    assert totals["beer_litres"]["final"] == pytest.approx(260.0)
+    assert totals["cigarettes_per_week"]["final"] == pytest.approx(80.0)
+    assert totals["remote_gaming_net_losses"]["relative_change"] == -1.0
+    # A draught share is a ratio, not a quantity, and no other input is on
+    # the frame.
+    assert "beer_draught_share" not in totals
+    assert "wine_litres" not in totals
+    plain = uk_consumption_drift(pd.DataFrame(_consumption_columns(4)), design, final)[
+        "totals"
+    ]
+    assert "beer_litres" not in plain
 
 
 def test_payload_carries_the_consumption_drift_when_the_frame_has_it() -> None:
@@ -865,6 +1085,37 @@ def test_writer_round_trips_strict_json(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize(
+    ("with_skipped", "with_consumption"),
+    [
+        pytest.param(False, False, id="scored-targets-only"),
+        pytest.param(True, True, id="skipped-target-and-consumption-drift"),
+    ],
+)
+def test_written_uk_diagnostics_match_the_published_json_schema(
+    tmp_path: Path,
+    with_skipped: bool,
+    with_consumption: bool,
+) -> None:
+    result, frame, registry, geography = _diagnostics_case(
+        with_skipped=with_skipped,
+        with_consumption=with_consumption,
+    )
+    path = tmp_path / "calibration_diagnostics.json"
+
+    outcome = write_uk_calibration_diagnostics(
+        result,
+        path,
+        frame,
+        target_geography_levels=geography,
+        target_registry=registry,
+        build={"release_id": "fixture"},
+    )
+
+    assert isinstance(outcome, DiagnosticsWriteSuccess)
+    assert published_json_schema_errors(load_strict_json(path.read_bytes())) == []
+
+
+@pytest.mark.parametrize(
     "value",
     [float("nan"), float("inf"), float("-inf")],
     ids=["nan", "positive-infinity", "negative-infinity"],
@@ -965,6 +1216,7 @@ def test_geography_level_vocabulary_includes_future_release_levels() -> None:
         "country",
         "local_authority",
         "constituency",
+        "brma",
     )
 
 
@@ -1072,3 +1324,97 @@ class TestSupportFamilyWeights:
         household = self._household(copies=True).drop(columns=["source_household_id"])
         with pytest.raises(ValueError, match="source_household_id"):
             uk_support_family_weights(household)
+
+
+def test_a_thin_row_keeps_its_model_figures() -> None:
+    """María's ruling of 2026-10-26 dropped the withholding of microcosm#1262.
+
+    One BRMA row rests on three source households, the other on eleven. Both
+    keep their model figures and carry no withholding note or carrier
+    verdict; both count in the pass rates and the family rollup, and the
+    totals are the solve's own.
+    """
+
+    n = 14
+    sources = [0, 0, 1, 1, 2, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    household = pd.DataFrame(
+        {
+            "household_id": np.arange(n, dtype=np.int64),
+            "source_household_id": np.asarray(sources, dtype=np.int64),
+            _SPI_COLUMN: [False] * n,
+            _CG_COLUMN: [False] * n,
+            "thin_measure": [1.0] * 6 + [0.0] * 8,
+            "wide_measure": [1.0] * n,
+        }
+    )
+    specs = [
+        TargetSpec(
+            name=name,
+            entity="household",
+            value=10.0,
+            measure=measure,
+            period=2023,
+            source="Synthetic UK diagnostics fixture",
+            family="private_rent",
+            hierarchy=_fixture_hierarchy(name, "brma"),
+        )
+        for name, measure in (
+            ("thin_brma_target", "thin_measure"),
+            ("wide_brma_target", "wide_measure"),
+        )
+    ]
+    geography = {f"{spec.name}@2023": "brma" for spec in specs}
+    weights = np.ones(n)
+    tables = {
+        "person": pd.DataFrame(
+            {
+                "person_id": np.arange(n, dtype=np.int64),
+                "person_household_id": np.arange(n, dtype=np.int64),
+            }
+        ),
+        "household": household,
+    }
+    frame = Frame(
+        tables,
+        EntitySchema(group_entities=("household",)),
+        {"household": Weights(weights, WeightKind.DESIGN)},
+    )
+    registry = TargetRegistry(specs, country="uk")
+    result = score_targets(frame, registry.to_target_set(), weights=weights)
+    support = pd.DataFrame(
+        columns=[
+            "geography_level",
+            "area_code",
+            "nonzero_households",
+            "nonzero_source_households",
+            "effective_sample_size",
+        ]
+    )
+    payload = uk_calibration_diagnostics_payload(
+        result,
+        frame,
+        target_geography_levels=geography,
+        target_registry=registry,
+        local_area_support=support,
+    )
+    rows = {row["target_name"]: row for row in payload["targets"]}
+    thin, wide = rows["thin_brma_target"], rows["wide_brma_target"]
+    assert thin["final_estimate"] == pytest.approx(6.0)
+    assert thin["relative_error"] == pytest.approx(-0.4)
+    assert wide["final_estimate"] == pytest.approx(14.0)
+    for row in (thin, wide):
+        metadata = row.get("metadata") or {}
+        assert "model_figures_withheld" not in metadata
+        assert "carrier_floor_met" not in metadata
+    (brma,) = [
+        row
+        for row in payload["uk_diagnostics"]["target_pass_rates_by_geography_level"]
+        if row["geography_level"] == "brma"
+    ]
+    assert (brma["n_targets"], brma["n_scored"], brma["n_within_10pct"]) == (2, 2, 0)
+    (family,) = payload["uk_diagnostics"]["weakest_families"]
+    assert family["n_targets"] == 2
+    assert "model_figures_withheld" not in payload["uk_diagnostics"]
+    shared = diagnostics_payload(result, target_registry=registry)
+    for field in ("initial_loss", "final_loss", "loss_trajectory", "options"):
+        assert payload[field] == shared[field]

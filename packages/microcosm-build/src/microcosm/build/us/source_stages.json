@@ -270,7 +270,7 @@
         "unadjusted_basis_qualified_property",
         "w2_wages_from_qualified_business"
       ],
-      "notes": "PUF detail is a primary-source donor and must stay separate from benchmark comparisons. The pinned PUF lineage uprates the raw TY2015 rows before replacing the four IRS disclosure aggregate records (archived puf.py lines 1378-1398). Its seed-42 disaggregator enables the Forbes backbone for aggregate RECID 999999 (archived disaggregate_puf.py lines 55-60 and 85-123), producing the 3,900-record open tail retained by puf_2024.h5. This build consumes that versioned H5 and does not request unsupported Forbes synthesis from the source-stage runtime. Qualified tuition reproduces the retired source transform as max(E03230, E87530), falling back to E03230 when the optional field is absent. Educator expense reproduces the retired direct mapping educator_expense = E03220 at archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe, datasets/puf/puf.py lines 636-649, with filer/spouse allocation by earnings share at lines 617-620 and export at lines 804-815; the processed 1.8.0 artifact carries the leaf. Microcosm places this PUF-only detail on its dedicated PUF support channel and sparsifies to the donor positive rate, rather than reproducing the retired both-half override. Form 4952 elected investment income reproduces the archived direct mapping investment_income_elected_form_4952 = E58990 at puf.py line 708, its export at lines 804-850, and its retired QRF target/override entries at calibration/puf_impute.py lines 90-198; the pinned processed 1.8.0 artifact carries nondefault source signal. SALT refund income reproduces the archived direct mapping salt_refund_income = E00700 at puf.py line 707, its export at lines 804-850, and its retired QRF target/override entries at calibration/puf_impute.py lines 90-198; the pinned processed 1.8.0 artifact carries nondefault source signal. The retired processed person array embodies a randomized EARNSPLIT filer/spouse allocation (puf.py lines 477-546 and 1513-1601), but the hermetic ASEC target has no EARNSPLIT. Microcosm aggregates each processed donor person leaf to a tax-unit QRF target and sparsifies only the PUF support channel to the donor positive rate. Predicted person-output totals are redistributed using copied ASEC within-unit shares or leaf-specific allocation bases, with a stable first-person fallback only where the target support has no allocation mass; this preserves person-sensitive caps and eligibility where a defensible allocation basis exists. Alimony reproduces the retired direct PUF mappings alimony_income = E00800 and alimony_expense = E03500 at archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe, datasets/puf/puf.py lines 640-641, and is re-derived after aggregate-row disaggregation; reported ASEC OI_VAL with OI_OFF = 20 remains on the ASEC half while codes 20 (alimony) and 12 (strike benefits) are excluded from miscellaneous_income per datasets/cps/cps.py lines 1481-1492. Domestic production reproduces the retired direct mapping domestic_production_ald = E03240 at archived puf.py line 646, appears in the exported field list at lines 808-815, and is re-derived after aggregate-row disaggregation; it is the former Section 199 deduction, not Section 199A QBI. The retired weighted-QRF target and override lists include it at calibration/puf_impute.py lines 90-198, with the fit at lines 940-1075. Casualty loss reproduces the retired direct mapping casualty_loss = E20500 at the same commit, datasets/puf/puf.py lines 636-643, and is re-derived after aggregate-row disaggregation. Unreimbursed employee business expenses reproduce the archived E20400 proxy for all deductible miscellaneous expenses at the same commit, datasets/puf/puf.py lines 663-665, and are likewise re-derived after disaggregation. Signed farm business inputs reproduce farm_operations_income = E02100 and farm_rent_income = E27200 at archived puf.py lines 636-704 and are re-derived after disaggregation without clipping; ASEC farm_operations_income = FRSE_VAL at archived cps.py lines 1363-1382 remains measured on that channel, while PUF farm_income = T27800 is a distinct Schedule J leaf and a forbidden substitute. The retired farm QRF overwrote both clone halves (calibration/puf_impute.py lines 513-672); Microcosm deliberately preserves measured ASEC operations income and replaces only the PUF support channel. Section 199A inputs are carried from the versioned processed PUF artifact rather than redrawn: archived puf.py lines 105-405 define the seeded qualification, investment-income, SSTB, W-2, and UBIA simulations; lines 748-787 enforce the all-or-nothing SSTB split; lines 860-879 export the 15 leaves; qbi_assumptions.yaml lines 1-118 pin the assumptions; calibration/puf_impute.py lines 90-198 and 940-1075 pin the retired QRF targets and fit. Microcosm source-aligns boolean person counts and restores the archived split/exposure identities after its weighted PUF QRF."
+      "notes": "PUF detail is a primary-source donor and must stay separate from benchmark comparisons. The pinned PUF lineage (archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe) uprates the raw TY2015 rows before replacing the four IRS disclosure aggregate records (datasets/puf/puf.py lines 1378-1398). Its seed-42 disaggregator enables the Forbes backbone for aggregate RECID 999999 (datasets/puf/disaggregate_puf.py lines 55-60 and 85-123), producing the 3,900-record open tail retained by puf_2024.h5. This build consumes that versioned H5 and does not request unsupported Forbes synthesis from the source-stage runtime. Qualified tuition reproduces the retired source transform as max(E03230, E87530), falling back to E03230 when the optional field is absent. Educator expense reproduces the retired direct mapping educator_expense = E03220 at archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe, datasets/puf/puf.py lines 636-649, with filer/spouse allocation by earnings share at lines 617-620 and export at lines 804-815; the processed 1.8.0 artifact carries the leaf. Microcosm places this PUF-only detail on its dedicated PUF support channel and sparsifies to the donor positive rate, rather than reproducing the retired both-half override. Form 4952 elected investment income reproduces the archived direct mapping investment_income_elected_form_4952 = E58990 at puf.py line 708, its export at lines 804-850, and its retired QRF target/override entries at calibration/puf_impute.py lines 90-198; the pinned processed 1.8.0 artifact carries nondefault source signal. SALT refund income reproduces the archived direct mapping salt_refund_income = E00700 at puf.py line 707, its export at lines 804-850, and its retired QRF target/override entries at calibration/puf_impute.py lines 90-198; the pinned processed 1.8.0 artifact carries nondefault source signal. The retired processed person array embodies a randomized EARNSPLIT filer/spouse allocation (puf.py lines 477-546 and 1513-1601), but the hermetic ASEC target has no EARNSPLIT. Microcosm aggregates each processed donor person leaf to a tax-unit QRF target and sparsifies only the PUF support channel to the donor positive rate. Predicted person-output totals are redistributed using copied ASEC within-unit shares or leaf-specific allocation bases, with a stable first-person fallback only where the target support has no allocation mass; this preserves person-sensitive caps and eligibility where a defensible allocation basis exists. Alimony reproduces the retired direct PUF mappings alimony_income = E00800 and alimony_expense = E03500 at archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe, datasets/puf/puf.py lines 640-641, and is re-derived after aggregate-row disaggregation; reported ASEC OI_VAL with OI_OFF = 20 remains on the ASEC half while codes 20 (alimony) and 12 (strike benefits) are excluded from miscellaneous_income per datasets/cps/cps.py lines 1481-1492. Domestic production reproduces the retired direct mapping domestic_production_ald = E03240 at archived puf.py line 646, appears in the exported field list at lines 808-815, and is re-derived after aggregate-row disaggregation; it is the former Section 199 deduction, not Section 199A QBI. The retired weighted-QRF target and override lists include it at calibration/puf_impute.py lines 90-198, with the fit at lines 940-1075. Casualty loss reproduces the retired direct mapping casualty_loss = E20500 at the same commit, datasets/puf/puf.py lines 636-643, and is re-derived after aggregate-row disaggregation. Unreimbursed employee business expenses reproduce the archived E20400 proxy for all deductible miscellaneous expenses at the same commit, datasets/puf/puf.py lines 663-665, and are likewise re-derived after disaggregation. Signed farm business inputs reproduce farm_operations_income = E02100 and farm_rent_income = E27200 at archived puf.py lines 636-704 and are re-derived after disaggregation without clipping; ASEC farm_operations_income = FRSE_VAL at archived cps.py lines 1363-1382 remains measured on that channel, while PUF farm_income = T27800 is a distinct Schedule J leaf and a forbidden substitute. The retired farm QRF overwrote both clone halves (calibration/puf_impute.py lines 513-672); Microcosm deliberately preserves measured ASEC operations income and replaces only the PUF support channel. Section 199A inputs are carried from the versioned processed PUF artifact rather than redrawn: archived puf.py lines 105-405 define the seeded qualification, investment-income, SSTB, W-2, and UBIA simulations; lines 748-787 enforce the all-or-nothing SSTB split; lines 860-879 export the 15 leaves; qbi_assumptions.yaml lines 1-118 pin the assumptions; calibration/puf_impute.py lines 90-198 and 940-1075 pin the retired QRF targets and fit. Microcosm source-aligns boolean person counts and restores the archived split/exposure identities after its weighted PUF QRF."
     },
     {
       "stage": "education_inputs",
@@ -726,7 +726,7 @@
       "nonnegative_outputs": [
         "workers_compensation"
       ],
-      "notes": "Exact annual person-level WC_VAL carry from archived cps.py lines 1559-1571; code-1 DIS_VAL slots remain excluded from the separate disability_benefits leaf rather than added here. The CPS-only workers_compensation output is replaced on the PUF support half with the archived eight predictors and at most 5,000 ASEC training people (extended_cps.py lines 135-194, 234-248, 639-745, and 1014-1073). Microcosm pins 100 trees and typed person weights as reproducibility hardening."
+      "notes": "Exact annual person-level WC_VAL carry from archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe datasets/cps/cps.py lines 1559-1571; code-1 DIS_VAL slots remain excluded from the separate disability_benefits leaf rather than added here. The CPS-only workers_compensation output is replaced on the PUF support half with the archived eight predictors and at most 5,000 ASEC training people (datasets/cps/extended_cps.py lines 135-194, 234-248, 639-745, and 1014-1073). Microcosm pins 100 trees and typed person weights as reproducibility hardening."
     },
     {
       "stage": "weeks_unemployed_input",
@@ -808,7 +808,7 @@
       "nonnegative_outputs": [
         "weeks_unemployed"
       ],
-      "notes": "Restores the final retired eCPS person-year weeks_unemployed input. Archived cps.py lines 1438-1442 carries Census ASEC LKWEEKS directly, mapping only the historical -1 not-in-universe sentinel to zero; the SHA-pinned 2023 ASEC public-use archive supplies the omitted 2022-income-year source rows exactly. Its 146,133 person records match the locked 2022 H5 one-for-one on PH_SEQ, P_SEQ, A_LINENO, A_AGE, A_FNLWGT, UC_VAL, and WKSWORK. The source has 4,200 positive LKWEEKS rows, range 0--51, 3.1456094276% A_FNLWGT-weighted positive support, and 172,563,622.04 weighted person-weeks; Census allocation flags are retained because the retired direct carry did not filter them. Archived calibration/puf_impute.py lines 703-785 replaces only the PUF support half with a QRF using age, sex, three tax-unit roles, joint filing, and unemployment compensation, caps training at 5,000 ASEC people, clips predictions to 0--52, and forces predictions to zero without positive unemployment compensation. Microcosm pins 100 trees and typed person weights as reproducibility hardening, and rounds its interpolating QRF draws back to the source's integer-week domain; no 2022 source value is filled statistically."
+      "notes": "Restores the final retired eCPS person-year weeks_unemployed input. Archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe datasets/cps/cps.py lines 1438-1442 carries Census ASEC LKWEEKS directly, mapping only the historical -1 not-in-universe sentinel to zero; the SHA-pinned 2023 ASEC public-use archive supplies the omitted 2022-income-year source rows exactly. Its 146,133 person records match the locked 2022 H5 one-for-one on PH_SEQ, P_SEQ, A_LINENO, A_AGE, A_FNLWGT, UC_VAL, and WKSWORK. The source has 4,200 positive LKWEEKS rows, range 0--51, 3.1456094276% A_FNLWGT-weighted positive support, and 172,563,622.04 weighted person-weeks; Census allocation flags are retained because the retired direct carry did not filter them. Archived calibration/puf_impute.py lines 703-785 replaces only the PUF support half with a QRF using age, sex, three tax-unit roles, joint filing, and unemployment compensation, caps training at 5,000 ASEC people, clips predictions to 0--52, and forces predictions to zero without positive unemployment compensation. Microcosm pins 100 trees and typed person weights as reproducibility hardening, and rounds its interpolating QRF draws back to the source's integer-week domain; no 2022 source value is filled statistically."
     },
     {
       "stage": "capital_gain_distributions",
@@ -1191,7 +1191,7 @@
         "bond_assets",
         "stock_assets"
       ],
-      "notes": "Microcosm #374 restores the retired 50/50 SIPP/SCF financial-asset blend: a seeded recipient-household draw selects one complete three-leaf vector, and the reference person carries it while all other people receive zero. The SIPP mapping matches archived commit 42ed5d45's final 13-predictor asset QRF, while the explicitly requested immutable pu2023.csv artifact replaces that commit's later pu2024 default. The full SCF joins all five implicates to the summary extract on (y1, yy1). Archived commit 42ed5d45 utils/asset_imputation.py lines 15-19 maps summary-extract networth directly to the scf_net_worth QRF anchor; calibration/source_impute.py lines 1146-1164 fits that anchor with these eight predictors and calibration/source_impute.py lines 1324-1338 forces its construction-only balance-sheet components to sum back to it before exporting net_worth. Microcosm therefore persists that signed household anchor directly, including indebted households, without manufacturing or exporting the internal scf_* components. Legacy auto_loan_balance preserves the retired pipeline's name for original financed amounts, not remaining principal. Auto outputs and net_worth stay Household-grain; only the three SSI liquid-asset leaves are head-carried to Person. The OBBBA qualifying-interest proxy uses Treasury/IRS's approximately six million qualifying loans issued annually and is bounded by total auto-loan interest. Negative amount/rate codes are floored at the source boundary for the nonnegative auto outputs; signed net_worth is never clipped."
+      "notes": "Microcosm #374 restores the retired 50/50 SIPP/SCF financial-asset blend: a seeded recipient-household draw selects one complete three-leaf vector, and the reference person carries it while all other people receive zero. The SIPP mapping matches archived commit 42ed5d45's final 13-predictor asset QRF, while the explicitly requested immutable pu2023.csv artifact replaces that commit's later pu2024 default. The full SCF joins all five implicates to the summary extract on (y1, yy1). Archived commit 42ed5d45 utils/asset_imputation.py lines 15-19 maps summary-extract networth directly to the scf_net_worth QRF anchor; calibration/source_impute.py lines 1146-1164 add that anchor to the QRF outputs, lines 1227-1240 fit it with these eight predictors (SCF_PREDICTORS, lines 168-177), and calibration/source_impute.py lines 1324-1338 forces its construction-only balance-sheet components to sum back to it before exporting net_worth. Microcosm therefore persists that signed household anchor directly, including indebted households, without manufacturing or exporting the internal scf_* components. Legacy auto_loan_balance preserves the retired pipeline's name for original financed amounts, not remaining principal. Auto outputs and net_worth stay Household-grain; only the three SSI liquid-asset leaves are head-carried to Person. The OBBBA qualifying-interest proxy uses Treasury/IRS's approximately six million qualifying loans issued annually and is bounded by total auto-loan interest. Negative amount/rate codes are floored at the source boundary for the nonnegative auto outputs; signed net_worth is never clipped."
     },
     {
       "stage": "ssi_disability_criteria",
@@ -1569,7 +1569,7 @@
       "outputs": [
         "takes_up_ssi_if_eligible"
       ],
-      "notes": "Restores the final retired eCPS SSI take-up export from source-backed evidence at archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe. datasets/cps/cps.py line 584 maps the direct ASEC SSI_VAL reporter signal, lines 650-657 derive the take-up leaf, and lines 1497-1499 export it; datasets/cps/takeup.py lines 10-35 define the retired stable random assignment. The retired all-age 0.50 rate has no full-population administrative source and is not reused. utils/ssi_targets.py lines 41-74 preserve the archived age-target method and cite SSA SSI Monthly Statistics, December 2024, Table 1, row Total with—Federal payment, by the three published age bands; those recipient counts enter the build only as ledger-fed calibration registry targets (role ssa_ssi_age_band_recipients, microcosm#469 and microcosm#470), never as count-matching goals in this stage. Direct SSI_VAL reporters remain true. Every other source-person identity draws once against the documented band prior — the anchored-mass-corrected count-truthful threshold (band target minus basis reporter floor) over (basis candidate capacity minus basis reporter floor) on weighted uncapped_ssi > 0 candidates, zero once the reporter floor meets the target, falling back to the basis reporter share of capacity when capacity cannot subsample the target — seeded and stable per person_source_id, with the decision fanned identically to both support clones. The capacity basis is this frame's weights by default, or a prior attempt's delivered-weight us_ssi_take_up.json diagnostics (microcosm#507/#508); either way the draw happens exactly once, with no reconcile loop. Delivered recipients on release weights are gated per enforced band (18_64, 65_plus) within a documented relative tolerance; the under-18 band is fenced pending microcosm#453/#509 and its gap ships in the release scorecard."
+      "notes": "Restores the final retired eCPS SSI take-up export from source-backed evidence at archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe. datasets/cps/cps.py lines 1497-1499 map the direct ASEC SSI_VAL reporter signal to the temporary ssi_reported anchor, line 584 loads the retired SSI rate, lines 650-657 derive the take-up leaf from both, and lines 759-766 drop the anchor and save the leaf; datasets/cps/takeup.py lines 10-35 define the retired stable random assignment. The retired all-age 0.50 rate has no full-population administrative source and is not reused. utils/ssi_targets.py lines 41-74 preserve the archived age-target method and cite SSA SSI Monthly Statistics, December 2024, Table 1, row Total with—Federal payment, by the three published age bands; those recipient counts enter the build only as ledger-fed calibration registry targets (role ssa_ssi_age_band_recipients, microcosm#469 and microcosm#470), never as count-matching goals in this stage. Direct SSI_VAL reporters remain true. Every other source-person identity draws once against the documented band prior — the anchored-mass-corrected count-truthful threshold (band target minus basis reporter floor) over (basis candidate capacity minus basis reporter floor) on weighted uncapped_ssi > 0 candidates, zero once the reporter floor meets the target, falling back to the basis reporter share of capacity when capacity cannot subsample the target — seeded and stable per person_source_id, with the decision fanned identically to both support clones. The capacity basis is this frame's weights by default, or a prior attempt's delivered-weight us_ssi_take_up.json diagnostics (microcosm#507/#508); either way the draw happens exactly once, with no reconcile loop. Delivered recipients on release weights are gated per enforced band (18_64, 65_plus) within a documented relative tolerance; the under-18 band is fenced pending microcosm#453/#509 and its gap ships in the release scorecard."
     },
     {
       "stage": "sipp_tips",
@@ -1703,7 +1703,10 @@
           "inputs": [
             "PRDTRACE",
             "PRDTHSP",
-            "POCCU2"
+            "POCCU2",
+            "WEIND",
+            "WEMIND",
+            "WKSWORK"
           ]
         },
         {
@@ -1727,6 +1730,9 @@
         "cps_race",
         "is_hispanic",
         "detailed_occupation_recode",
+        "detailed_industry_recode",
+        "major_industry_recode",
+        "worked_last_year",
         "has_never_worked",
         "is_military",
         "is_computer_scientist",
@@ -1740,53 +1746,116 @@
       "nonnegative_outputs": [
         "cps_race",
         "detailed_occupation_recode",
+        "detailed_industry_recode",
+        "major_industry_recode",
         "hourly_wage",
         "fsla_overtime_premium"
       ],
-      "notes": "Port of the final retired ORG/FLSA method at 9a823603e6b5fb916d65ec45d74c9c7eb0043db1: donor build, weighted QRF for hourly wage and hourly-pay status, archived deterministic BLS 2024 state-rate union assignment, and direct ASEC carries of CPS race, Hispanic status, and FLSA occupation groups are all exact — except the recipient-side QRF income feature, which is deliberately concept-aligned to the donor: the donor's employment_income is the annualized reference week (pternwa x 52), so recipients feed the full-year-equivalent of actual annual income (income x 52/weeks_worked, income untouched when weeks are zero or missing); without this, part-year workers matched low-wage full-year donors and the imputed wage distribution carried a severe sub-minimum tail (microcosm#529 receipts). The twelve official 2024 CPS basic-month files are transformed into the upstream 119,237-row cache; its canonical CSV content hash is pinned so a source reissue fails closed. Usual hours remain owned by hours_worked. fsla_overtime_premium keeps the upstream variable spelling and the archived annual-wage-share formula but deliberately deviates from the retired reference-week-only carrier gate: the retired construction annualized the March survey week (A_HRS1, outside the retrospective income year) and so collapsed incidence to one week's draw — 19.9M weighted carriers on certified Build N against Treasury's published '>29 million' TY2025 claimant floor (sb0517/sb0553, rounded floors, not mintable as exact-valued ledger facts). The two-signal estimator makes usual weekly hours worked last year (HRSWK) the persistent-overtime leg — usual>threshold carries with the usual-hours share as annualizer — while usual<=threshold retains the retired reference-week snapshot leg unchanged: representative for steady schedules, under- or over-recovering an occasional overtimer's annual premium depending on the sampled week (not an unbiased mass estimator), retained because it is the only measured signal for that population. On ASEC-channel rows HRSWK shares the retrospective year with employment_income and weeks_worked; on PUF-support-channel rows both hours signals are donor-ASEC schedule proxies attached to PUF income, the support design's property inherited equally by the reference-week leg. A frame whose ORG surface is already populated is fully re-imputed and compared on every entry: an identical surface passes through unchanged (the seeded QRF, deterministic union lottery, and pure derives make same-code re-entry byte-stable), and any stale construction of any output converges instead of silently surviving. The income-feature scaling also changes the deterministic union lottery's hash inputs, so which individuals carry union coverage reshuffles within unchanged state-level quotas — the assignment method itself remains the exact archived port. Exemption screens unchanged; both hours measures count all jobs while FLSA section 7 applies per employer (inherited upward concept edge). Adjudication and measurements: microcosm#451 item 4 overtime-incidence lane."
+      "notes": "Port of the final retired ORG/FLSA method at 9a823603e6b5fb916d65ec45d74c9c7eb0043db1: donor build, weighted QRF for hourly wage and hourly-pay status, archived deterministic BLS 2024 state-rate union assignment, and direct ASEC carries of CPS race, Hispanic status, and FLSA occupation groups are all exact — except the recipient-side QRF income feature, which is deliberately concept-aligned to the donor: the donor's employment_income is the annualized reference week (pternwa x 52), so recipients feed the full-year-equivalent of actual annual income (income x 52/weeks_worked, income untouched when weeks are zero or missing); without this, part-year workers matched low-wage full-year donors and the imputed wage distribution carried a severe sub-minimum tail (microcosm#529 receipts). The twelve official 2024 CPS basic-month files are transformed into the upstream 119,237-row cache; its canonical CSV content hash is pinned so a source reissue fails closed. Usual hours remain owned by hours_worked. fsla_overtime_premium keeps the upstream variable spelling and the archived annual-wage-share formula but deliberately deviates from the retired reference-week-only carrier gate: the retired construction annualized the March survey week (A_HRS1, outside the retrospective income year) and so collapsed incidence to one week's draw — 19.9M weighted carriers on certified Build N against Treasury's published '>29 million' TY2025 claimant floor (sb0517/sb0553, rounded floors, not mintable as exact-valued ledger facts). The two-signal estimator makes usual weekly hours worked last year (HRSWK) the persistent-overtime leg — usual>threshold carries with the usual-hours share as annualizer — while usual<=threshold retains the retired reference-week snapshot leg unchanged: representative for steady schedules, under- or over-recovering an occasional overtimer's annual premium depending on the sampled week (not an unbiased mass estimator), retained because it is the only measured signal for that population. On ASEC-channel rows HRSWK shares the retrospective year with employment_income and weeks_worked; on PUF-support-channel rows both hours signals are donor-ASEC schedule proxies attached to PUF income, the support design's property inherited equally by the reference-week leg. A frame whose ORG surface is already populated is fully re-imputed and compared on every entry: an identical surface passes through unchanged (the seeded QRF, deterministic union lottery, and pure derives make same-code re-entry byte-stable), and any stale construction of any output converges instead of silently surviving. The income-feature scaling also changes the deterministic union lottery's hash inputs, so which individuals carry union coverage reshuffles within unchanged state-level quotas — the assignment method itself remains the exact archived port. Exemption screens unchanged; both hours measures count all jobs while FLSA section 7 applies per employer (inherited upward concept edge). Adjudication and measurements: microcosm#451 item 4 overtime-incidence lane. Work-experience carries (microcosm#719): WEIND and WEMIND (industry of the longest job last year, restored before pooling from each vintage's pinned Census person member by the asec_census_person_columns restoration) become detailed_industry_recode and major_industry_recode, and worked_last_year is WKSWORK > 0; ACS-spine people get all three from native INDP/WKWN through the release predictor join. Checked on every spine: WEMIND is the major group of WEIND and positive weeks carry a worker industry code (1-22); the converse holds on ASEC rows and is checked before pooling."
     },
     {
       "stage": "meps_esi_premiums",
-      "survey": "MEPS-IC",
+      "survey": "MEPS-IC + CPS ASEC current employment-based coverage",
       "source": "https://meps.ahrq.gov/mepsweb/survey_comp/Insurance.jsp",
       "grain": "person",
       "artifacts": [
         {
           "kind": "public_microdata",
           "format": "census_asec",
-          "vintage": "hermetic ASEC pool years (2022-2024 for target 2024)",
-          "locator": "Census CPS ASEC NOW_OWNGRP, NOW_HIPAID, NOW_GRPFTYP, and PHIP_VAL fields; the three NOW_* fields are absent from the current hermetic HDF inputs"
+          "vintage": "pinned Census ASEC person members, income years 2022-2025",
+          "locator": "Census CPS ASEC person file NOW_OWNGRP, NOW_HIPAID, NOW_GRPFTYP, NOW_GRPFTYP2, PEMLR and NOEMP, restored from the pinned official archives by asec_census_person_columns (exact PERIDNUM join; every pinned H5 lacks them); PEIO1COW from the pinned H5 inputs; household GESTFIPS as state_fips",
+          "source_columns": [
+            "NOW_OWNGRP",
+            "NOW_HIPAID",
+            "NOW_GRPFTYP",
+            "NOW_GRPFTYP2",
+            "PEMLR",
+            "NOEMP",
+            "PEIO1COW",
+            "state_fips"
+          ]
         },
         {
           "kind": "administrative_table",
-          "format": "published_table",
-          "vintage": "build_year",
-          "locator": "MEPS Insurance Component plan-type premium tables"
+          "format": "pdf",
+          "vintage": "2025",
+          "locator": "https://meps.ahrq.gov/mepsweb/data_stats/summ_tables/insr/state/series_2/2025/ic25_iia_f.pdf",
+          "sha256": "ebebf083d132e2b5a72ac99d659ee6d46a382280a47d2ff2d20f6e9e25b69330",
+          "size_bytes": 12530005,
+          "publication": "MEPS-IC 2025 Series II (private sector, by firm size and State): Tables II.C/D/E.1 (average total premium per enrolled employee), II.C/D/E.2 (average employee contribution), II.C/D/E.4.a (percent of enrollees whose coverage required no employee contribution), and the enrollment rows II.B.1, II.B.2, II.B.2.b and II.C/D/E.4"
+        },
+        {
+          "kind": "administrative_table",
+          "format": "pdf",
+          "vintage": "2024",
+          "locator": "https://meps.ahrq.gov/mepsweb/data_stats/summ_tables/insr/state/series_2/2024/ic24_iia_f.pdf",
+          "sha256": "4ae0dada70fac7c147508b946a2d00cf2e8930f5550f6beb9d8a1bf3de71d20b",
+          "size_bytes": 10687163,
+          "publication": "MEPS-IC 2024 Series II (private sector, by firm size and State); the United States rows age the 2024 State and local government cells to 2025 and carry the 2024 private-sector enrollment"
+        },
+        {
+          "kind": "administrative_table",
+          "format": "pdf",
+          "vintage": "2024",
+          "locator": "https://meps.ahrq.gov/mepsweb/data_stats/summ_tables/insr/national/series_3/2024/ic24_iiia_g.pdf",
+          "sha256": "462afdd2b2629b32b0c4822a33d7e32260e4c4e196f6098f0d933a3c8ba0be79",
+          "size_bytes": 1765717,
+          "publication": "MEPS-IC 2024 Series III (State and local government, by government type and size and census division): Tables III.C/D/E.1 and III.C/D/E.2. 2024 is the latest published year for this series (the 2025 series is not yet released)."
+        },
+        {
+          "kind": "administrative_table",
+          "format": "xlsx",
+          "vintage": "BEA annual update published 2026-09-30",
+          "locator": "https://apps.bea.gov/national/Release/XLS/Survey/Section7All_xls.xlsx",
+          "sha256": "de1c34e37da9b8b8d765efc0611cc653102373fe522fe9218c7689067b29b7fd",
+          "size_bytes": 944273,
+          "measure": "NIPA Table 7.8 line 17 Private group health insurance (B4923C), CY2023-2025",
+          "publication": "scale anchor (decision d1317): employer contributions for active and retired employees (BEA State Personal Income methodology, December 2025, paragraphs 3.18-3.19); the pinned US Chronicle feed banks the same values as bea_nipa.cy<year>.private_group_health_insurance"
+        },
+        {
+          "kind": "administrative_table",
+          "format": "xlsx",
+          "vintage": "NHE 2024 release (data through CY2024)",
+          "locator": "https://www.cms.gov/files/zip/nhe-tables.zip!Table 24 Employer-Sponsored Private Health Insurance.xlsx",
+          "sha256": "a09ef6d3e84e25d745047a47b6b08a0d96b303085b4c725b67ce67a0eb0c4420",
+          "size_bytes": 520391,
+          "measure": "NHE Table 24 Employer Contribution to Private Health Insurance Premiums, CY2023-2024",
+          "publication": "cross-check, not gated: a second estimate of employer contributions for active employees, COBRA enrollees and retirees of private, federal and State and local employers, recorded beside the anchor verdict"
         }
       ],
       "operations": [
         {
           "kind": "read_table",
-          "table": "meps_ic_plan_premiums"
+          "table": "person",
+          "weight": "person_weight"
         },
         {
-          "kind": "assign_by_plan_type",
-          "inputs": [
-            "NOW_OWNGRP",
-            "NOW_HIPAID",
-            "NOW_GRPFTYP",
-            "PHIP_VAL"
-          ],
-          "owner_code": 1,
-          "employer_pays_all_code": 1,
-          "employer_pays_some_code": 2,
-          "family_plan_code": 1,
-          "self_only_plan_code": 2,
-          "source_unavailable_when_missing": [
-            "NOW_OWNGRP",
-            "NOW_HIPAID",
-            "NOW_GRPFTYP"
-          ]
+          "kind": "derive_employer_sponsored_insurance_premiums",
+          "cells_resource": "microcosm.build.us_runtime.data/meps_ic_esi_premium_cells.json",
+          "cells_sha256": "29a5502abbd921e70007d6bcec8ed1ae065b309cacfa80f49f9bc4dd9a28ec93",
+          "anchor_universe": "NOW_OWNGRP == 1",
+          "universe": "NOW_OWNGRP == 1 and PEMLR in (1, 2) and PEIO1COW in (1, 2, 3, 4, 5, 6)",
+          "tier_column": "NOW_GRPFTYP2",
+          "size_column": "NOEMP",
+          "sector_column": "PEIO1COW",
+          "payment_column": "NOW_HIPAID",
+          "payment_rule": "1 (employer paid all): average total premium; 2 (some): average total premium minus average employee contribution / (1 - no-contribution share); 3 (none): 0",
+          "no_contribution_share": "MEPS-IC 2025 Tables II.C/D/E.4.a, United States row by firm size; government cells take the 50-or-more share",
+          "other_policyholder_cell": "PEIO1COW outside 1-6: the State's all-sizes private cell",
+          "suppressed_cell_fallback": "national firm-size cell times the State total-to-national ratio",
+          "government_cell_aging": "MEPS-IC 2024 Series III x private-sector national 2025/2024 ratio of the same tier and measure",
+          "scaling": "one factor, anchor / weighted raw share of the anchor universe; written to the universe only",
+          "anchor": {
+            "source": "https://apps.bea.gov/national/Release/XLS/Survey/Section7All_xls.xlsx",
+            "sha256": "de1c34e37da9b8b8d765efc0611cc653102373fe522fe9218c7689067b29b7fd",
+            "table": "NIPA Table 7.8 Supplements to Wages and Salaries by Type",
+            "row": "line 17, series B4923C, Private group health insurance",
+            "values": {
+              "2023": 923195000000,
+              "2024": 977034000000,
+              "2025": 1027929000000
+            }
+          }
         }
       ],
       "outputs": [
@@ -1795,7 +1864,7 @@
       "nonnegative_outputs": [
         "employer_sponsored_insurance_premiums"
       ],
-      "notes": "The retired derivation identifies the policy owner with NOW_OWNGRP, employer payment status with NOW_HIPAID, family/self-only plan type with NOW_GRPFTYP, and reported employee-paid premium with PHIP_VAL, then applies MEPS-IC family/self-only total and employee contribution priors (archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe, datasets/cps/cps.py lines 197-271 and 1575-1581). datasets/cps/census_cps.py lines 13-55 declares the three NOW_* fields optional. All three SHA-recorded 2022-2024 HDF inputs used by the hermetic build omit the three NOW_* fields, so this stage is intentionally source-unavailable; has_esi and NOW_GRP are forbidden proxies."
+      "notes": "Restores the retired eCPS employer-premium input (archived commit 42ed5d45 datasets/cps/cps.py L197-271/L1575-1581) from source fields the hermetic H5 inputs lacked (microcosm#454). Anchor universe: every current ESI policyholder (NOW_OWNGRP 1), employed or not, because the anchor counts employer contributions for active and retired employees. Column universe: employed (PEMLR 1-2) policyholders whose current job has an employer (PEIO1COW 1-6); dependents, non-employed policyholders, the unincorporated self-employed and workers without pay carry 0, and their scaled share stays out of the column rather than being loaded onto workers. Cells: MEPS-IC 2025 Series II private-sector average total premium and employee contribution per enrolled employee by State and firm size (NOEMP 1-2 under 50, 3-6 50+, 0 the State all-sizes cell; the finer MEPS-IC bands do not nest the NOEMP bands) and coverage tier (NOW_GRPFTYP2 family / self plus one / self-only, cross-checked against NOW_GRPFTYP); State government and local/federal employers take the MEPS-IC 2024 Series III State-government and all-government census-division cells (latest published; the federal cell is a stand-in), aged to 2025 by the private national 2025/2024 ratio of the same tier and measure; a policyholder with no employer class (PEIO1COW 0, 7, 8) takes the State all-sizes private cell. AHRQ suppressed nine small-firm contribution cells; each takes the national small-firm cell times the State total-to-national ratio. Employer paid all (NOW_HIPAID 1): premium. Some (2): premium minus the contribution of an employee who pays one, which is the published average contribution (taken over every enrollee, including those who pay nothing) divided by one minus the published share of enrollees whose coverage required no contribution (MEPS-IC 2025 Tables II.C/D/E.4.a, United States row by firm size; State cells of those tables are mostly flagged unreliable; Series III publishes none, so government cells take the private 50-or-more share). None (3): 0; MEPS-IC publishes no share of enrollees who pay the whole premium. One factor scales every policyholder's share so the weighted anchor-universe total equals BEA NIPA Table 7.8 line 17 (B4923C) for the build year ($977.0B CY2024 in the 2026-09-30 vintage, revised from $1,002.9B; banked in the pinned feed as bea_nipa.cy2024.private_group_health_insurance), the anchor decision d1317 chose; the column carries the employed policyholders' part. CMS NHE Table 24 ($1,047.0B CY2024) is a second estimate of the same active-plus-retired concept and is recorded beside the verdict, as is MEPS-IC's own private-sector enrollment total for active employees, which the private part of the column matches within half a percent. No MEPS-IC table prices retiree coverage, so non-employed policyholders are priced as active employees. Measured totals, counts and sensitivities are in experiments/us-esi-454. The stage does not produce pre_tax_health_insurance_premiums: PolicyEngine-US treats that input as disjoint from the other premium inputs (PolicyEngine/policyengine-us#10046), so it needs its own change. Release gates: us_esi_premiums_signal_gate (structure, clone agreement, cell multiples; fails without the raw ASEC columns) and us_esi_premiums_anchor_gate (calibrated anchor-universe total within 5 percent of BEA NIPA 7.8 line 17; employed share within its band)."
     },
     {
       "stage": "prior_year_income",
@@ -1862,7 +1931,7 @@
       "nonnegative_outputs": [
         "employment_income_last_year"
       ],
-      "notes": "Archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe datasets/cps/cps.py lines 1680-1783 returns without creating values when no prior-year artifact exists; otherwise it joins adjacent ASEC files on PERIDNUM, requires I_ERNVAL == I_SEVAL == 0 on the prior record, treats only -1/-9999 as unavailable, records availability before falling back to current WSAL_VAL/SEMP_VAL, and preserves signed self-employment losses. After support cloning, datasets/cps/extended_cps.py lines 140-194, 639-745, and 1014-1073 jointly QRF-imputes both earnings leaves onto the PUF half from the exact eight predictors with a 5,000-person cap. Microcosm adds typed design weights. The archived finalizer drops formula-owned employment_income_last_year; the signed self-employment leaf and availability flag persist."
+      "notes": "Archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe datasets/cps/cps.py lines 1680-1783 returns without creating values when no prior-year artifact exists; otherwise it joins adjacent ASEC files on PERIDNUM, requires I_ERNVAL == I_SEVAL == 0 on the prior record, treats only -1/-9999 as unavailable, records availability before falling back to current WSAL_VAL/SEMP_VAL, and preserves signed self-employment losses. After support cloning, datasets/cps/extended_cps.py lines 140-194, 234-248, 639-745, and 1014-1073 jointly QRF-imputes both earnings leaves onto the PUF half from the exact eight predictors with a 5,000-person cap. Microcosm adds typed design weights. The archived finalizer drops formula-owned employment_income_last_year; the signed self-employment leaf and availability flag persist."
     },
     {
       "stage": "immigration_status",
@@ -2330,7 +2399,7 @@
       "outputs": [
         "takes_up_wic_if_eligible"
       ],
-      "notes": "The retired eCPS derives PolicyEngine-US wic_category_str and assigns a stable seeded Bernoulli at category-specific rates (archived cps.py lines 684-691, wic_takeup.yaml lines 1-33, and randomness.py lines 5-28). The archived rates exactly match USDA FNS CY2022 average-month coverage: pregnant 45.6%, all postpartum 68.9%, breastfeeding 66.3%, infants 78.4%, and children 46.0%. Microcosm deliberately runs this stage after pregnancy; the retired file computed WIC categories before its later pregnancy seed, which accidentally made the pregnant rate unreachable. The hermetic sources carry no breastfeeding assessment, so breastfeeding remains unavailable and mothers of infants use FNS's all-postpartum rate rather than an invented breastfeeding status. Stable source-identity hashes preserve paired support-clone outcomes. The separate is_wic_at_nutritional_risk input remains a reviewed source-unavailability exclusion."
+      "notes": "The retired eCPS derives PolicyEngine-US wic_category_str and assigns a stable seeded Bernoulli at category-specific rates (archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe, datasets/cps/cps.py lines 684-691, parameters/take_up/wic_takeup.yaml lines 1-33, and utils/randomness.py lines 5-28). The archived rates exactly match USDA FNS CY2022 average-month coverage: pregnant 45.6%, all postpartum 68.9%, breastfeeding 66.3%, infants 78.4%, and children 46.0%. Microcosm deliberately runs this stage after pregnancy; the retired file computed WIC categories before its later pregnancy seed, which accidentally made the pregnant rate unreachable. The hermetic sources carry no breastfeeding assessment, so breastfeeding remains unavailable and mothers of infants use FNS's all-postpartum rate rather than an invented breastfeeding status. Stable source-identity hashes preserve paired support-clone outcomes. The separate is_wic_at_nutritional_risk input remains a reviewed source-unavailability exclusion."
     },
     {
       "stage": "snap_abawd_discretionary_exemption",
@@ -2559,7 +2628,7 @@
       "nonnegative_outputs": [
         "pre_subsidy_rent"
       ],
-      "notes": "Exact CPS H_TENURE and SPM carries plus the archived 10-predictor ACS rent QRF. receives_housing_assistance receives the retired second-stage CPS-to-PUF QRF, and takes_up_housing_assistance_if_eligible is kept exactly equal to that measured/imputed receipt anchor. Archived cps.py lines 664-682 preserved reporters before adding eligible nonreporters from a 0.50 draw; parameters/take_up/housing_assistance.yaml lines 12-15 say 0.50 was an ad hoc eCPS benchmark adjustment pending fuller calibration. Archived db/etl_housing_assistance.py lines 35-169 use a live HUD workbook to produce household-grain state counts, not SPM-unit recipient identities; that workbook is not pinned in the hermetic build and allocating its counts to SPM units would synthesize recipients. Microcosm never turns a reporter off and does not add unobserved take-up. Rent and both tenure enums are cloned unchanged."
+      "notes": "Exact CPS H_TENURE and SPM carries plus the archived 10-predictor ACS rent QRF. receives_housing_assistance receives the retired second-stage CPS-to-PUF QRF, and takes_up_housing_assistance_if_eligible is kept exactly equal to that measured/imputed receipt anchor. Archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe datasets/cps/cps.py lines 664-682 preserved reporters before adding eligible nonreporters from a 0.50 draw; parameters/take_up/housing_assistance.yaml lines 12-15 say 0.50 was an ad hoc eCPS benchmark adjustment pending fuller calibration. Archived db/etl_housing_assistance.py lines 35-169 use a live HUD workbook to produce household-grain state counts, not SPM-unit recipient identities; that workbook is not pinned in the hermetic build and allocating its counts to SPM units would synthesize recipients. Microcosm never turns a reporter off and does not add unobserved take-up. Rent and both tenure enums are cloned unchanged."
     },
     {
       "stage": "vehicle_assets",

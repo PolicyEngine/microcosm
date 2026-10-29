@@ -1,7 +1,31 @@
 {
  "schema_version": 2,
- "description": "Reviewed degenerate-release-surface exclusions for the UK terminal battery (#630, schema 2 per #610). Each entry is a complete approval receipt: reason, approver, adjudication reference, approval date, and expiry. The gate reports dormant entries, FAILS stale ones (columns that regain signal), and FAILS expired ones until the adjudication is renewed, so this register cannot rot.",
+ "description": "Reviewed degenerate-release-surface exclusions for the UK terminal battery (#630, schema 2 per #610). Each entry is a complete approval receipt: reason, approver, adjudication reference, approval date, and expiry. The gate reports dormant entries, FAILS stale ones (columns that regain signal), and FAILS expired ones until the adjudication is renewed, so this register cannot rot. An entry may carry release_lines, the release lines whose evidence earned it (national, local); on any other line it is out of line: it neither suppresses a failure nor reads as stale, and the gate details name it.",
  "exclusions": {
+  "household.atomic_area_basis": {
+   "reason": "Constant by construction on the local line: the UK assignment spec draws every household's atomic area from census support and declares no observed-area system (microcosm#932), so the shared operator's basis output is always 'assigned'. Retained deliberately: it tells a consumer that every area code is a modelled assignment, not an observed address. Not signal.",
+   "approved_by": "juaristi22",
+   "adjudication": "microcosm#1124 local release blockers (ruling 2026-10-13 in session; the assignment columns stay at export per microcosm#932)",
+   "approved_on": "2026-10-13",
+   "expires_on": "2027-04-13",
+   "release_lines": [
+    "local"
+   ]
+  },
+  "household.beer_draught_share": {
+   "reason": "Constant by construction: HMRC's alcohol clearances give the share of beer litres of pure alcohol cleared under draught relief, alone or with small producer relief, and the excise step writes that published ratio to every household as it is (microcosm#1359), since the LCFS records no draught or packaged split to distribute it by. policyengine-uk reads it to apply the draught duty rates. Not signal.",
+   "approved_by": "juaristi22",
+   "adjudication": "microcosm#1359",
+   "approved_on": "2026-10-27",
+   "expires_on": "2027-04-27"
+  },
+  "household.cider_draught_share": {
+   "reason": "Constant by construction: HMRC's alcohol clearances give the share of cider litres of pure alcohol cleared under draught relief, alone or with small producer relief, and the excise step writes that published ratio to every household as it is (microcosm#1359), since the LCFS records no draught or packaged split to distribute it by. policyengine-uk reads it to apply the draught duty rates. Not signal.",
+   "approved_by": "juaristi22",
+   "adjudication": "microcosm#1359",
+   "approved_on": "2026-10-27",
+   "expires_on": "2027-04-27"
+  },
   "household.source_year": {
    "reason": "Constant at the build vintage by construction on a single-vintage artifact, and fully derivable from the artifact's time_period metadata (the rowwise clone path re-derives it when absent). Retained deliberately for row-level vintage documentation and UK/US schema symmetry \u2014 the US pools three ASEC vintages, where the same column is irreducible per-row identity. Not signal.",
    "approved_by": "juaristi22",

@@ -36,7 +36,8 @@ UK_PACKAGE = ROOT / "packages/microcosm-build/src/microcosm/build/uk"
 CPI = "gov.economic_assumptions.indices.obr.consumer_price_index"
 
 FAKE_INDICES = {
-    CPI: {2023: 1.51964, 2024: 1.55763},
+    # 2025 serves a diary year that starts in the target year (LCFS 2024-25).
+    CPI: {2023: 1.51964, 2024: 1.55763, 2025: 1.60100},
     "gov.economic_assumptions.indices.obr.average_earnings": {2023: 1.0, 2024: 1.051},
     "gov.economic_assumptions.indices.obr.per_capita.mixed_income": {
         2023: 2.0,

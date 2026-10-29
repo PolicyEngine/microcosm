@@ -38,6 +38,7 @@ from microcosm.build.uk_runtime.cgt_asset_type import (
     HMRCCGTBADRBand,
     HMRCCGTTable7Type,
     UKCGTBADRParameters,
+    _stock_signals,
     assign_uk_cgt_asset_types,
     cgt_asset_type_operation_parameters,
     claimant_status_share_targets,
@@ -177,7 +178,7 @@ def _frame(gains, *, weights=None, time_period: str = "2024", stocks=None) -> Fr
             "age": np.full(rows, 45, dtype="int64"),
         }
     )
-    for column in UK_CGT_TAXABLE_INCOME_PROXY_COMPONENTS:
+    for column in (*UK_CGT_TAXABLE_INCOME_PROXY_COMPONENTS, *CGT_STOCK_PERSON_COLUMNS):
         person[column] = 0.0
     household = pd.DataFrame(
         {
@@ -709,6 +710,21 @@ class TestStockConditioning:
         # the classified frame rather than the pre-split draw.
         business = person["corporate_wealth"].to_numpy(dtype=float) > 0
         assert business[at_limit].mean() > 0.65
+
+    def test_a_loss_making_landlord_shows_the_residential_stock(self) -> None:
+        # property_income counts a letting loss as zero (#1081); the landlord
+        # carrier keeps the person in the residential signal.
+        frame = _frame(
+            np.full(3, 5_000.0),
+            stocks={
+                "property_income": np.array([1.0, 0.0, 0.0]),
+                "reports_rent_from_other_property": np.array([1.0, 1.0, 0.0]),
+            },
+        )
+
+        signals = _stock_signals(frame.table("person"), frame.table("household"))
+
+        assert signals["residential"].tolist() == [True, True, False]
 
     def test_refuses_a_frame_without_a_stock_column(self) -> None:
         gains = _synthetic_gains(3_000)

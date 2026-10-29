@@ -45,64 +45,22 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
+from microcosm.calibrate.geography_constants import (
+    US_STATE_FIPS_TO_NAME,
+    US_STATE_FIPS_TO_POSTAL,
+)
+
 if TYPE_CHECKING:
     from microcosm.build.us_runtime.geography_ladder import UsBlockLadder
 
 #: The 50 states plus DC: (state FIPS, USPS abbreviation, P.L. 94-171
 #: directory name). Puerto Rico and the island territories are outside the
-#: US artifact's state spine.
-US_STATES: tuple[tuple[str, str, str], ...] = (
-    ("01", "AL", "Alabama"),
-    ("02", "AK", "Alaska"),
-    ("04", "AZ", "Arizona"),
-    ("05", "AR", "Arkansas"),
-    ("06", "CA", "California"),
-    ("08", "CO", "Colorado"),
-    ("09", "CT", "Connecticut"),
-    ("10", "DE", "Delaware"),
-    ("11", "DC", "District_of_Columbia"),
-    ("12", "FL", "Florida"),
-    ("13", "GA", "Georgia"),
-    ("15", "HI", "Hawaii"),
-    ("16", "ID", "Idaho"),
-    ("17", "IL", "Illinois"),
-    ("18", "IN", "Indiana"),
-    ("19", "IA", "Iowa"),
-    ("20", "KS", "Kansas"),
-    ("21", "KY", "Kentucky"),
-    ("22", "LA", "Louisiana"),
-    ("23", "ME", "Maine"),
-    ("24", "MD", "Maryland"),
-    ("25", "MA", "Massachusetts"),
-    ("26", "MI", "Michigan"),
-    ("27", "MN", "Minnesota"),
-    ("28", "MS", "Mississippi"),
-    ("29", "MO", "Missouri"),
-    ("30", "MT", "Montana"),
-    ("31", "NE", "Nebraska"),
-    ("32", "NV", "Nevada"),
-    ("33", "NH", "New_Hampshire"),
-    ("34", "NJ", "New_Jersey"),
-    ("35", "NM", "New_Mexico"),
-    ("36", "NY", "New_York"),
-    ("37", "NC", "North_Carolina"),
-    ("38", "ND", "North_Dakota"),
-    ("39", "OH", "Ohio"),
-    ("40", "OK", "Oklahoma"),
-    ("41", "OR", "Oregon"),
-    ("42", "PA", "Pennsylvania"),
-    ("44", "RI", "Rhode_Island"),
-    ("45", "SC", "South_Carolina"),
-    ("46", "SD", "South_Dakota"),
-    ("47", "TN", "Tennessee"),
-    ("48", "TX", "Texas"),
-    ("49", "UT", "Utah"),
-    ("50", "VT", "Vermont"),
-    ("51", "VA", "Virginia"),
-    ("53", "WA", "Washington"),
-    ("54", "WV", "West_Virginia"),
-    ("55", "WI", "Wisconsin"),
-    ("56", "WY", "Wyoming"),
+#: US artifact's state spine. The directory name is the state's Census name
+#: with underscores for spaces ("District_of_Columbia"); the codes and names
+#: come from ``microcosm.calibrate.geography_constants``.
+US_STATES: tuple[tuple[str, str, str], ...] = tuple(
+    (state_fips, postal, US_STATE_FIPS_TO_NAME[state_fips].replace(" ", "_"))
+    for state_fips, postal in US_STATE_FIPS_TO_POSTAL.items()
 )
 
 _PL_GEO_SUMMARY_LEVEL_FIELD = 2

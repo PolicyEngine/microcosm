@@ -2,17 +2,21 @@
 
 The levels of these rows are set by the build or the engine, not by the
 weights (microcosm#1113, microcosm#1123 item 3): ``obr.vat`` by an engine
-coverage factor (policyengine-uk#1996), ``obr.fuel_duties_cars`` by fuel
+coverage factor (policyengine-uk#1996, #2187; held as a diagnostic, and
+measured with VAT on private school fees from policyengine-uk 2.157.1),
+``obr.fuel_duties_cars`` by fuel
 that includes business-paid car fuel, and the ONS electricity and gas rows
 by a published-source residual against the stage's DESNZ volume at QEP
-prices. Rows held out of the objective by the measure-exclusion register stay
-measured here, beside the household road-fuel row (ONS 07.2.2) bound in place
-of the cars receipts: the tool reports each row's estimate on any H5 the
-engine loads, against the value the run's contract registry declares, beside
-the household fuel and energy composition the rows used to pull
-(gas-connected share, fuel-car households with no fuel, consumption total).
-Development diagnostic: it never recalibrates and writes only an aggregate
-JSON.
+prices, and OBR's excise receipts by the clearances and bases the stage
+levels the excise inputs to (microcosm#1359), which are measured at their
+own FY2024-25 period. Rows held out of the objective by the
+measure-exclusion register stay measured here, beside the household
+road-fuel row (ONS 07.2.2) bound in place of the cars receipts: the tool
+reports each row's estimate on any H5 the engine loads, against the value
+the run's contract registry declares, beside the household fuel and energy
+composition the rows used to pull (gas-connected share, fuel-car households
+with no fuel, consumption total). Development diagnostic: it never
+recalibrates and writes only an aggregate JSON.
 """
 
 from __future__ import annotations
@@ -30,11 +34,27 @@ from microcosm.build.uk_runtime.lcfs_consumption import UK_LCFS_COICOP_DIVISION_
 #: The held-out rows and the bound road-fuel row that replaced the cars
 #: receipts, with the engine variables whose weighted sum measures each.
 ROWS: Mapping[str, tuple[str, ...]] = {
-    "obr.vat": ("vat",),
+    "obr.vat": ("vat", "private_school_vat"),
     "obr.fuel_duties_cars": ("fuel_duty",),
     "ons.household_electricity_expenditure": ("electricity_consumption",),
     "ons.household_gas_expenditure": ("gas_consumption",),
     "ons.household_road_fuel_expenditure": ("petrol_spending", "diesel_spending"),
+    # microcosm#1359: the duties on the excise step's quantities and bases.
+    "obr.beer_and_cider_duties": ("beer_duty", "cider_duty", "sparkling_cider_duty"),
+    "obr.wine_duties": ("wine_duty", "other_fermented_duty"),
+    "obr.spirits_duties": ("spirits_duty",),
+    "obr.tobacco_duties": ("tobacco_duty",),
+    "obr.betting_and_gaming_duties": ("gambling_duty",),
+}
+#: Rows measured at their own period, not ``--year``: the excise receipts at
+#: FY2024-25, the year of the stored quantities, which policyengine-uk charges
+#: as model year 2024 and holds flat after it (measurement_period 2024).
+ROW_YEARS: Mapping[str, int] = {
+    "obr.beer_and_cider_duties": 2024,
+    "obr.wine_duties": 2024,
+    "obr.spirits_duties": 2024,
+    "obr.tobacco_duties": 2024,
+    "obr.betting_and_gaming_duties": 2024,
 }
 
 
@@ -113,16 +133,17 @@ def registry_values(path: Path) -> dict[str, float]:
 
 
 def engine_estimates(dataset: str, year: int) -> dict[str, float]:
-    """Weighted engine totals of each held-out row at ``year``."""
+    """Weighted engine totals of each held-out row at ``year`` or its own period."""
 
     from policyengine_uk import Microsimulation
 
     simulation = Microsimulation(dataset=dataset)
     estimates: dict[str, float] = {}
     for name, variables in ROWS.items():
+        period = ROW_YEARS.get(name, year)
         estimates[name] = float(
             sum(
-                float(simulation.calculate(variable, year).sum())
+                float(simulation.calculate(variable, period).sum())
                 for variable in variables
             )
         )

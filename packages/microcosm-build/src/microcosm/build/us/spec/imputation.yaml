@@ -487,6 +487,17 @@ transfer_execution:
         tax_unit_link: person_tax_unit_id
         rule: zero_subset_where_person_or_tax_unit_line_32_is_zero
         mutable_rows: newly_imputed_subset_cells_only
+    self_employment_components:
+      activation:
+        all_targets: []
+      contract:
+        measured_total: self_employment_income_before_lsr
+        components:
+        - farm_operations_income
+        - partnership_self_employment_net_earnings
+        - sstb_self_employment_income_before_lsr
+        operation: set_to_zero
+        mutable_rows: newly_imputed_component_cells_where_recipient_total_not_imputed
   profiles:
     acs_transfer_default:
       derive_schedule_d: false

@@ -452,6 +452,7 @@ class TestUKManifest:
         assert manifest.required_build_stages == frozenset(
             {
                 "frs_hmrc_spine_leaves",
+                "frs_annual_income_spells",
                 "spi_support_channel",
                 "spi_income_band_donors",
                 "hmrc_spi_income_spine",
@@ -463,10 +464,14 @@ class TestUKManifest:
                 "hmrc_cgt_asset_type_spine",
                 "salary_sacrifice",
                 "student_loans",
+                "private_school_attendance",
                 "was_wealth",
                 "was_lisa",
                 "regional_property_uprating",
+                "high_value_home_support",
+                "regional_home_values",
                 "property_components",
+                "property_purchases",
                 "nts_bus_travel",
                 "lcfs_consumption",
                 "etb_vat",

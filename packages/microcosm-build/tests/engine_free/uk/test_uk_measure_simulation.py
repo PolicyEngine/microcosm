@@ -10,7 +10,9 @@ import pandas as pd
 import pytest
 
 from microcosm.build.uk_runtime import measure_simulation
+from microcosm.build.uk_runtime.income_tax_rate_classes import UK_RATE_CLASS_ALLOCATION
 from microcosm.build.uk_runtime.measure_simulation import (
+    UK_SAVINGS_INTEREST_OUTSIDE_ISAS,
     UKMeasureResolver,
     apply_uk_calibration_measure_exclusions,
     compute_uk_measure_input,
@@ -35,6 +37,24 @@ class FrameStub:
 
     def table(self, entity):
         return self._tables[entity]
+
+
+class ReleaseIdentifierFrameStub(FrameStub):
+    """The stub on the identifiers a release carries: one plus the rank per
+    entity (microcosm#1194), which a scratch engine file leaves as they are."""
+
+    def __init__(self):
+        self._tables = {
+            "person": pd.DataFrame(
+                {
+                    "person_id": [1, 2, 3],
+                    "person_benunit_id": [1, 1, 2],
+                    "person_household_id": [1, 1, 2],
+                }
+            ),
+            "benunit": pd.DataFrame({"benunit_id": [1, 2]}),
+            "household": pd.DataFrame({"household_id": [1, 2]}),
+        }
 
 
 def _stub_value_type(values):
@@ -570,16 +590,32 @@ def test_exclusion_applier_warns_within_week_of_expiry():
 #: a drifting count is a register change that must be re-adjudicated,
 #: never absorbed.
 _PACKAGED_EXCLUSION_CENSUS = {
-    # microcosm#1069 c11: the live counterfactual route binds the two NICs
-    # relief rows and the income-tax relief total; the three rate bands wait
-    # for the band-test fix.
-    "hmrc.salary_sacrifice.": 3,
+    # microcosm#1069 c11 held the three salary-sacrifice rate bands out until
+    # a band test that reads the Scottish bands; microcosm#1095 binds them by
+    # rate class, so no salary-sacrifice entry remains.
+    "hmrc.salary_sacrifice.": 0,
+    # The next policyengine-uk bump: every HMRC £1m-and-over cell has carriers
+    # on #1333's 2.145.0 spine, so arm 1 bound the ten; bound, they distorted
+    # their SPI-channel neighbours, so they stay held on that measurement
+    # (María's rule of 2026-10-21), re-signed on 2026-10-23. Of the five SLC
+    # rows, the postgraduate repayments row retired from the targets (the
+    # stage assigns no postgraduate plan) and Plan 5's liable stock binds; the
+    # Plan 5 repayments and the two Plan 2 stocks stay.
     "_1_000_000_to_inf": 10,
-    "slc.": 5,
+    "slc.": 3,
     # microcosm#1095 (2026-10-07): two bands whose few supporting awards
     # policyengine-uk 2.122.2 moves out join the uk-data#452 class.
-    "dwp/uc_payment_dist/": 21,
-    "obr.universal_credit_": 2,
+    # microcosm#1095 U3 (2026-10-16): the sparse-band support floor drops
+    # every band below ten source households, so the nine entries it covers
+    # on the head spine retire (seven uk-data#452, the two microcosm#736
+    # zero-support bands); twelve well-supported bands remain held out per
+    # row, each on its own renewal. Arm 2 of the next policyengine-uk bump
+    # (2026-10-24) binds four of them, which it fits within 10 percent
+    # unbound since the award-band take-up of microcosm#1344.
+    "dwp/uc_payment_dist/": 8,
+    # The OBR welfare-cap split retired from the targets with the next bump:
+    # obr.universal_credit binds the sum of the two cells.
+    "obr.universal_credit_": 0,
     # microcosm#890 E1 (2026-09-11): the all-road-users obr.fuel_duties row
     # is signed out of the reference surface (target_reference_signed_
     # exclusions.json) and obr.fuel_duties_cars binds the cars receipts, so
@@ -601,7 +637,9 @@ _PACKAGED_EXCLUSION_CENSUS = {
     # structural bias: the v20 measurement (-2.8 % unbound, at weights that
     # never solved toward the row) reproduces the 2.79 % other/unknown-tenure
     # gap the entry records, so it is a diagnostic, not a fit target
-    # (docs/evidence/uk-a16-v20/).
+    # (docs/evidence/uk-a16-v20/). microcosm#1095: the five-or-more children
+    # row, held out on María's ruling of microcosm#1271 (2026-10-14), left the
+    # targets for a diagnostic on 2026-10-16, so its entry retired.
     "dwp.uc.households_": 1,
     # microcosm#882 repairs (2026-09-16): the three Housing Benefit caseload
     # rows and the thirteen benefit-cap amount bands outside the 25 percent
@@ -610,15 +648,39 @@ _PACKAGED_EXCLUSION_CENSUS = {
     # re-adjudicated the same day on the mechanism receipts.
     "dwp.hb.": 3,
     # Two amount bands (200.01-300, 400.01-500) retired 2026-09-21 on the
-    # v20 measurement (-10.1 % and -3.8 % unbound); the tail bands stay out.
-    "dwp.benefit_cap.capped_households_": 11,
+    # v20 measurement (-10.1 % and -3.8 % unbound); the eleven tail bands
+    # retired 2026-10-21 under María's rule that thin support alone leaves no
+    # row out: the zero-support floor drops any band no household carries,
+    # and the rest are bound and measured.
+    "dwp.benefit_cap.capped_households_": 0,
     # microcosm#1113 and #1123 item 3 (2026-10-08): rows whose level the
     # engine, a published-source residual or a scope the frame doesn't hold
     # sets, held out and measured with tools/diagnose_uk_consumption_taxes.py.
+    # obr.vat bound again with the next policyengine-uk bump (ruling D3), and
+    # was held again as a diagnostic (María's ruling of 2026-10-24, Vahid's
+    # review of #1383, item 10): the engine's coverage factor was derived on
+    # a certified Microcosm release, so binding the row is circular.
     "obr.vat": 1,
     "obr.fuel_duties_cars": 1,
     "ons.household_electricity_expenditure": 1,
     "ons.household_gas_expenditure": 1,
+    # microcosm#1301 (2026-10-16): employer NICs, gross of the Employment
+    # Allowance in the engine and priced on FY2025-26 rules over a window that
+    # takes a quarter of FY2024-25, held out as a measured diagnostic.
+    "obr.ni_employer": 1,
+    # microcosm#1278 (2026-10-20): ORR's broad rail-support total, far above
+    # the frame's household rail subsidy at design weights while the 7270
+    # versus 7271 basis ruling is open (microcosm#890 G), held out after the
+    # national hold-out arm.
+    "orr.": 1,
+    # microcosm#1359 (2026-10-23): OBR's FY2024-25 excise receipts, whose
+    # level the stage sets from published clearances and bases at the
+    # engine's rates, measured with tools/diagnose_uk_consumption_taxes.py.
+    "obr.beer_and_cider_duties": 1,
+    "obr.wine_duties": 1,
+    "obr.spirits_duties": 1,
+    "obr.tobacco_duties": 1,
+    "obr.betting_and_gaming_duties": 1,
 }
 
 # The carer and childcare rows were retired on 2026-09-16 with the repairs
@@ -644,20 +706,35 @@ _A16_CONCEPT_ROWS = ("ons.savings_interest_income",)
 def test_packaged_exclusions_load():
     exclusions = load_uk_calibration_measure_exclusions()
     names = [entry["name"] for entry in exclusions]
-    assert len(names) == len(set(names)) == 68
-    band_h_region_cells = [
-        entry
-        for entry in exclusions
-        if entry["name"].startswith("mhclg.council_tax_stock.band_h@E12")
-    ]
-    assert [entry["name"] for entry in band_h_region_cells] == [
-        "mhclg.council_tax_stock.band_h@E12000001",
-        "mhclg.council_tax_stock.band_h@E12000002",
-        "mhclg.council_tax_stock.band_h@E12000003",
-    ]
-    assert {entry["approved_on"] for entry in band_h_region_cells} == {"2026-09-14"}
-    assert {entry["tracking"] for entry in band_h_region_cells} == {"microcosm#796"}
-    assert {entry["expires_on"] for entry in band_h_region_cells} == {"2026-11-26"}
+    # 65 less the nine payment bands the support floor covers (microcosm#1095 U3),
+    # plus the employer NICs diagnostic (microcosm#1301) and the rail-support
+    # hold-out (microcosm#1278), less the thirteen rows bound again under
+    # María's rule of 2026-10-21 (the eleven benefit-cap amount bands and the
+    # HMRC £500k to £1m dividend and property-income-count rows), less the
+    # seven the next policyengine-uk bump retires: the three band-H region
+    # cells and Plan 5's liable stock bind, and the OBR welfare-cap split and
+    # the postgraduate repayments leave the targets; and obr.vat binds again
+    # with it (ruling D3). The ten HMRC £1m-and-over cells it bound on arm 1
+    # are held again on that arm's measured distortion. Arm 2 binds four of
+    # the twelve UC payment bands, which it fits unbound (microcosm#1344), and
+    # obr.vat is held again as a diagnostic (Vahid's review of #1383, 10).
+    # microcosm#1359 adds the five OBR excise rows, measured at FY2024-25.
+    # The next policyengine-uk bump (2.162.3) holds obr.domestic_rates once it
+    # compiles (María's ruling of 2026-10-25).
+    assert len(names) == len(set(names)) == 40
+    rehold = [entry for entry in exclusions if "_1_000_000_to_inf" in entry["name"]]
+    assert {(e["approved_on"], e["expires_on"], e["tracking"]) for e in rehold} == {
+        ("2026-10-23", "2027-01-23", "microcosm#1095")
+    }
+    for entry in rehold:
+        assert entry["reason"].startswith("Measured distortion"), entry["name"]
+        assert "arm 1" in entry["adjudication"], entry["name"]
+        # The cells rest on the SPI Public Use Tape: no figure of theirs or
+        # their neighbours' enters the register.
+        assert "%" not in entry["reason"], entry["name"]
+    assert not [name for name in names if name.startswith("dwp.benefit_cap.")]
+    # The band-H region cells bind under the floor's band-H scope.
+    assert not [name for name in names if name.startswith("mhclg.council_tax_stock.")]
 
     for marker, expected in _PACKAGED_EXCLUSION_CENSUS.items():
         matched = [name for name in names if marker in name]
@@ -665,16 +742,15 @@ def test_packaged_exclusions_load():
     # The sparse HMRC band cells are whatever remains: hmrc/ band cells
     # that are not the 1m+ channel cells. After the #807 revision three
     # genuinely thin 500k-1m cells stayed excluded; the self-employment one
-    # retired 2026-09-21 on the v20 measurement (+0.0 % unbound).
+    # retired 2026-09-21 on the v20 measurement (+0.0 % unbound), and the
+    # dividend and property-income-count ones on 2026-10-21, bound again
+    # under María's rule that thin support alone leaves no row out.
     sparse = [
         name
         for name in names
         if name.startswith("hmrc/") and "_1_000_000_to_inf" not in name
     ]
-    assert sorted(sparse) == [
-        "hmrc/dividend_income_income_band_500_000_to_1_000_000",
-        "hmrc/property_income_count_income_band_500_000_to_1_000_000",
-    ], sparse
+    assert sparse == [], sparse
 
     # The 2026-08-26 tranche carries the uk_target_fit disposition
     # adjudication and a uniform three-month window. Its three ONS
@@ -684,12 +760,25 @@ def test_packaged_exclusions_load():
     # entry may remain on the register. 35 since microcosm#890 also retired
     # the obr.fuel_duties entry (2026-09-11): the all-road-users row is
     # signed out of the reference surface and the cars receipts bind instead.
-    tranche = [e for e in exclusions if e["approved_on"] == "2026-08-26"]
-    # Three 2026-08-26 rows retired 2026-09-21 on the v20 measurement.
-    assert len(tranche) == 32
+    # Three 2026-08-26 rows retired 2026-09-21 on the v20 measurement, three
+    # payment bands retired 2026-10-16 under the support floor, the two thin
+    # HMRC 500k-1m cells retired 2026-10-21, bound again, and fourteen more
+    # with the next bump: the ten HMRC £1m-and-over cells (held again on arm
+    # 1's distortion, on their own entries) and Plan 5's liable stock were
+    # bound, and the OBR welfare-cap split and the postgraduate repayments
+    # left the targets. The twelve payment bands and Plan 5's repayments
+    # remained, renewed on 2026-10-23 on arm 1's measurement, and arm 2
+    # bound four of the bands (2026-10-24), so eight bands and Plan 5's
+    # repayments remain.
+    assert [e for e in exclusions if e["approved_on"] == "2026-08-26"] == []
+    tranche = [e for e in exclusions if "5427936411" in e["adjudication"]]
+    assert len(tranche) == 9
     for entry in tranche:
-        assert "5427936411" in entry["adjudication"], entry["name"]
-        assert entry["expires_on"] == "2026-11-26", entry["name"]
+        assert (entry["approved_on"], entry["expires_on"]) == (
+            "2026-10-23",
+            "2027-01-23",
+        ), entry["name"]
+        assert "renewed on 2026-10-23 to 2027-01-23" in entry["adjudication"]
     assert not [n for n in names if n.startswith("ons.household_composition.")]
 
     # The 2026-09-03 tranche was #762's A16: five unreachable national rows,
@@ -698,48 +787,52 @@ def test_packaged_exclusions_load():
     # mechanism receipts (#882) and moved to the 2026-12-08 clock; the
     # savings-interest row moved to the 2026-09-22 concept clock; the two
     # plan-2 borrower rows were renewed one month on 2026-10-02 (microcosm#1063
-    # stack), so nothing remains on the 2026-09-03 clock.
+    # stack) and again on 2026-10-20, to the November PR's renewals (María's
+    # ruling on the pre-Budget PR, microcosm#1278), so nothing remains on the
+    # 2026-09-03 clock. The plan-2 rows track microcosm#1278 since
+    # microcosm#868 closed (María's ruling of 2026-10-17).
     a16_issues = {
         "ons.savings_interest_income": "microcosm#866",
         "obr.housing_benefit": "microcosm#867",
-        "slc.borrowers.plan_2_liable": "microcosm#868",
-        "slc.borrowers.plan_2_above_threshold": "microcosm#868",
+        "slc.borrowers.plan_2_liable": "microcosm#1278",
+        "slc.borrowers.plan_2_above_threshold": "microcosm#1278",
         "dwp.jsa_claimants": "microcosm#869",
     }
     assert [e for e in exclusions if e["approved_on"] == "2026-09-03"] == []
-    today = [e for e in exclusions if e["approved_on"] == "2026-10-02"]
-    # The single-row UC payment cell joined the uk-data#452 class on the
-    # #1063 stack arm (one supporting household, lost to a draw reshuffle).
-    thin = [
+    # The two thin UC payment cells that joined the uk-data#452 class on the
+    # #1063 stack arm retired 2026-10-16 (the support floor drops them), and
+    # the plan-2 rows left the 2026-10-02 clock on their 2026-10-20 renewal.
+    assert [e for e in exclusions if e["approved_on"] == "2026-10-02"] == []
+    # The plan-2 rows were renewed again on 2026-10-23, on arm 1 of the next
+    # bump; the 2026-10-20 entry left is the rail-support hold-out (below).
+    assert sorted(
+        e["name"] for e in exclusions if e["approved_on"] == "2026-10-20"
+    ) == ["orr.rail_government_support"]
+    renewed = [
         e
-        for e in today
-        if e["name"]
-        in (
-            "dwp/uc_payment_dist/SINGLE_annual_payment_28_800_to_30_000",
-            "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_22_800_to_24_000",
-        )
+        for e in exclusions
+        if e["approved_on"] == "2026-10-23" and e["name"] in _A16_UNREACHABLE_ROWS
     ]
-    assert len(thin) == 2
-    for entry in thin:
-        assert entry["tracking"] == "uk-data#452"
-        assert entry["expires_on"] == "2026-11-26"
-        assert "support" in entry["reason"]
-    renewed = [e for e in today if e not in thin]
     assert sorted(e["name"] for e in renewed) == sorted(_A16_UNREACHABLE_ROWS[:2])
-    # The engine bump of microcosm#1095 (policyengine-uk 2.122.2) moves every
-    # supporting award out of two more payment bands: the published LHA rates,
-    # the 2019 mixed-age couple saving and Carer Support Payment as unearned
-    # income. They join the class with its expiry.
-    engine_moved = [e for e in exclusions if e["approved_on"] == "2026-10-07"]
-    assert sorted(e["name"] for e in engine_moved) == [
-        "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_24_000_to_25_200",
-        "dwp/uc_payment_dist/SINGLE_annual_payment_26_400_to_27_600",
-    ]
-    for entry in engine_moved:
-        assert entry["tracking"] == "uk-data#452"
-        assert entry["expires_on"] == "2026-11-26"
-        assert "microcosm#1095" in entry["adjudication"]
-        assert "policyengine-uk 2.122.2" in entry["reason"]
+    # María's ruling of 2026-10-20 (microcosm#1278): the ORR row is held out
+    # only on a national arm whose gates pass and whose share of rows within
+    # 10 percent holds; the 7270 versus 7271 basis ruling stays open.
+    (rail,) = [e for e in exclusions if e["name"] == "orr.rail_government_support"]
+    assert rail["approved_by"] == "juaristi22"
+    assert (rail["approved_on"], rail["expires_on"]) == ("2026-10-20", "2026-12-11")
+    assert rail["tracking"] == "microcosm#1278"
+    assert "7270" in rail["reason"] and "7271" in rail["reason"]
+    assert "microcosm#890 G" in rail["reason"]
+    assert "never fitted" in rail["reason"]
+    assert "within 10 percent" in rail["adjudication"]
+    # Bound on table 7271, the plan's default of 2026-10-22, the row failed
+    # the weight-ratio gate on arm 2c of the next policyengine-uk bump, so
+    # the hold stands and the basis ruling stays open.
+    assert "uk_weight_ratio failed" in rail["reason"]
+    assert "arm 2c" in rail["adjudication"]
+    # So did the two bands the engine bump of microcosm#1095 (policyengine-uk
+    # 2.122.2) emptied, the 2026-10-07 entries.
+    assert [e for e in exclusions if e["approved_on"] == "2026-10-07"] == []
     # The 2026-10-08 consumption-tax tranche (microcosm#1113, #1123 item 3):
     # VAT's level is an engine factor (policyengine-uk#1996) and the two ONS
     # energy rows are a published-source residual against the stage's DESNZ
@@ -748,11 +841,15 @@ def test_packaged_exclusions_load():
     # re-solve with the four masked together left the other rows fitting no
     # worse, so they are held out of the objective and measured by the
     # diagnose tool. The PR that added them closes microcosm#1113, so the
-    # three that tracked it track its follow-up issue, microcosm#1207.
+    # three that tracked it tracked its follow-up issue, microcosm#1207, and
+    # since that closed into it, microcosm#1278. obr.vat tracked
+    # policyengine-uk#1996 until policyengine-uk#2187 (released in 2.135.7)
+    # closed it, bound again with the next policyengine-uk bump, and is held
+    # again on its own entry: the factor #2187 uses was derived on a certified
+    # Microcosm release (María's ruling of 2026-10-24).
     consumption_taxes = [e for e in exclusions if e["approved_on"] == "2026-10-08"]
     assert sorted(e["name"] for e in consumption_taxes) == [
         "obr.fuel_duties_cars",
-        "obr.vat",
         "ons.household_electricity_expenditure",
         "ons.household_gas_expenditure",
     ]
@@ -767,45 +864,91 @@ def test_packaged_exclusions_load():
         ), entry["name"]
     trackings = {e["name"]: e["tracking"] for e in consumption_taxes}
     assert trackings == {
-        "obr.vat": "policyengine-uk#1996",
-        "obr.fuel_duties_cars": "microcosm#1207",
-        "ons.household_electricity_expenditure": "microcosm#1207",
-        "ons.household_gas_expenditure": "microcosm#1207",
+        "obr.fuel_duties_cars": "microcosm#1278",
+        "ons.household_electricity_expenditure": "microcosm#1278",
+        "ons.household_gas_expenditure": "microcosm#1278",
+    }
+    (vat,) = [e for e in exclusions if e["name"] == "obr.vat"]
+    assert (vat["approved_on"], vat["expires_on"]) == ("2026-10-24", "2027-01-24")
+    assert vat["tracking"] == "microcosm#1278"
+    assert "circularity" in vat["reason"]
+    assert "policyengine-uk#2319" in vat["reason"]
+    assert "tools/diagnose_uk_consumption_taxes.py" in vat["reason"]
+    # microcosm#1095: the five-or-more children row held out on 2026-10-14
+    # (María's ruling on microcosm#1271) is no target since 2026-10-16, but a
+    # diagnostic beside the two-child-limit rows, so no exclusion names it and
+    # only the housing-element renewal carries that date. The 2026-10-16
+    # entries are the employer NICs diagnostic and the savings-interest renewal.
+    assert sorted(
+        e["name"] for e in exclusions if e["approved_on"] == "2026-10-16"
+    ) == ["obr.ni_employer", "ons.savings_interest_income"]
+    # The housing-element row's 2026-10-14 renewal was renewed again on
+    # 2026-10-23, on arm 1 of the next bump.
+    assert [e for e in exclusions if e["approved_on"] == "2026-10-14"] == []
+    assert "dwp.uc.households_children_5_or_more" not in names
+    # María's ruling of 2026-10-20 (microcosm#1278): renewed rather than made
+    # diagnostics, and restated on the academic year 2024/25 stock the rows
+    # bind since microcosm#868, not the 2025/26 one the reasons quoted.
+    plan_2_stocks = {
+        "slc.borrowers.plan_2_liable": "8.94M",
+        "slc.borrowers.plan_2_above_threshold": "3.985M",
     }
     for entry in renewed:
-        assert entry["expires_on"] == "2026-11-03", entry["name"]
+        assert entry["approved_by"] == "juaristi22", entry["name"]
+        assert entry["expires_on"] == "2027-01-23", entry["name"]
+        assert "renewed on 2026-10-23 to 2027-01-23" in entry["adjudication"]
         assert entry["tracking"] == a16_issues[entry["name"]], entry["name"]
         assert "A16" in entry["adjudication"], entry["name"]
         assert "renewed one month on 2026-10-02" in entry["adjudication"], entry["name"]
         assert "microcosm#1063" in entry["adjudication"], entry["name"]
+        assert "renewed on 2026-10-20 to 2026-11-26" in entry["adjudication"], entry[
+            "name"
+        ]
+        assert "AY2024/25" in entry["reason"], entry["name"]
+        assert "Table 6a" in entry["reason"], entry["name"]
+        assert plan_2_stocks[entry["name"]] in entry["reason"], entry["name"]
+        assert "frame-side gap" in entry["reason"], entry["name"]
+    # The two re-adjudicated rows left the 2026-12-08 clock on 2026-10-24,
+    # renewed on arm 2 of the next policyengine-uk bump pending the Housing
+    # Benefit and JSA PR.
     for name in _A16_READJUDICATED_ROWS:
         entry = next(e for e in exclusions if e["name"] == name)
-        assert entry["approved_on"] == "2026-09-16", name
-        assert entry["expires_on"] == "2026-12-08", name
+        assert entry["approved_on"] == "2026-10-24", name
+        assert entry["expires_on"] == "2027-01-24", name
         assert entry["tracking"] == a16_issues[name], name
+        assert "Renewed on 2026-10-24 to 2027-01-24" in entry["adjudication"], name
+        assert "arm 2" in entry["reason"], name
     for name in _A16_CONCEPT_ROWS:
         entry = next(e for e in exclusions if e["name"] == name)
-        assert entry["approved_on"] == "2026-09-22", name
-        assert entry["expires_on"] == "2026-10-22", name
+        # Ruling R3 of 2026-09-22, renewed on 2026-10-16 to 2027-01-08.
+        assert entry["approved_on"] == "2026-10-16", name
+        assert entry["expires_on"] == "2027-01-08", name
         assert entry["tracking"] == a16_issues[name], name
         assert "microcosm#1006" in entry["adjudication"], name
+        assert "renewed on 2026-10-16" in entry["adjudication"], name
         assert "D.41" in entry["reason"] and "diagnostic" in entry["reason"], name
         # The fitting anchor the row hands over to: the SPI Table 3.7 interest
         # rows, uprated (PolicyEngine/chronicle#280 lane).
         assert "hmrc.spi.savings_interest_income" in entry["reason"], name
         assert "never fitted" in entry["reason"], name
 
-    # The 2026-09-16 tranche also carries the Housing Benefit caseload rows
+    # The 2026-09-16 tranche also carried the Housing Benefit caseload rows
     # (tracked on #867 like the spend row) and the benefit-cap amount bands
-    # outside the bound (tracked on #882); every entry names its tool.
+    # outside the bound (tracked on #882); every entry names its tool. The
+    # bands retired 2026-10-21, bound again (María's rule of that day), so
+    # the caseload rows remain, renewed on 2026-10-24 on arm 2 of the next
+    # policyengine-uk bump with the spend and JSA rows.
+    assert [e for e in exclusions if e["approved_on"] == "2026-09-16"] == []
     repairs = [
         e
         for e in exclusions
-        if e["approved_on"] == "2026-09-16" and e["name"] not in _A16_READJUDICATED_ROWS
+        if e["approved_on"] == "2026-10-24"
+        and e["name"] not in _A16_READJUDICATED_ROWS
+        and e["name"] != "obr.vat"
     ]
-    assert len(repairs) == 14
+    assert len(repairs) == 3
     for entry in repairs:
-        assert entry["expires_on"] == "2026-12-08", entry["name"]
+        assert entry["expires_on"] == "2027-01-24", entry["name"]
         # Every entry of the tranche points at the ruling that exists (the
         # 2026-09-16 status comment) and explains the shared expiry.
         assert "issuecomment-5694598278" in entry["adjudication"], entry["name"]
@@ -825,11 +968,20 @@ def test_packaged_exclusions_load():
     # retired on 2026-09-16 with their repairs; the any-tenure housing row (a
     # structural bias: DWP's 'Yes' includes an other/unknown tenure the model
     # cannot carry) remains, adjudicated to microcosm#882 and the committed
-    # baseline doc, signed in review of microcosm#921, windowed to one month.
-    elements = [e for e in exclusions if e["approved_on"] == "2026-09-15"]
+    # baseline doc, signed in review of microcosm#921, windowed to one month,
+    # and renewed one month on 2026-10-14 (microcosm#1124 local release), so
+    # nothing remains on the 2026-09-15 clock.
+    assert [e for e in exclusions if e["approved_on"] == "2026-09-15"] == []
+    elements = [
+        e
+        for e in exclusions
+        if e["approved_on"] == "2026-10-23" and e["tracking"] == "microcosm#882"
+    ]
     assert sorted(e["name"] for e in elements) == sorted(_UC_ELEMENT_REGISTER_ROWS)
     for entry in elements:
-        assert entry["expires_on"] == "2026-10-15", entry["name"]
+        assert entry["expires_on"] == "2027-01-23", entry["name"]
+        assert "renewed one month on 2026-10-14" in entry["adjudication"]
+        assert "renewed on 2026-10-23 to 2027-01-23" in entry["adjudication"]
         assert entry["tracking"] == "microcosm#882", entry["name"]
         assert entry["approved_by"] == "juaristi22", entry["name"]
         assert "microcosm#882" in entry["adjudication"], entry["name"]
@@ -878,6 +1030,41 @@ def test_packaged_exclusions_load():
         assert riding not in excluded, riding
 
 
+def test_employer_nics_are_a_measured_diagnostic():
+    # microcosm#1301 (María's ruling of 2026-10-16): the engine's ni_employer
+    # is gross of the Employment Allowance, which OBR's receipts are net of,
+    # and the row's calendar-2025 window takes a quarter of FY2024-25 that the
+    # engine prices on FY2025-26 rules. Modelling the allowance alone would
+    # close only part of the gap, so the row leaves the objective as a
+    # diagnostic until a locked engine nets the allowance out. The other two
+    # class rows stay bound beside it.
+    from datetime import date
+
+    exclusions = {e["name"]: e for e in load_uk_calibration_measure_exclusions()}
+    entry = exclusions["obr.ni_employer"]
+    assert entry["tracking"] == "policyengine-uk#2459"
+    assert entry["approved_by"] == "juaristi22"
+    assert entry["approved_on"] == "2026-10-16"
+    # Three months, the window the 2026-10-08 engine-factor diagnostic had.
+    assert entry["expires_on"] == "2027-01-16"
+    assert (
+        date.fromisoformat(entry["expires_on"])
+        - date.fromisoformat(entry["approved_on"])
+    ).days == (date(2027, 1, 8) - date(2026, 10, 8)).days
+    for phrase in (
+        "Employment Allowance",
+        "calendar-2025 window",
+        "FY2025-26 rules",
+        "diagnostic",
+        "never fitted",
+    ):
+        assert phrase in entry["reason"], phrase
+    assert "microcosm#1301" in entry["adjudication"]
+    assert "policyengine-uk#2459" in entry["adjudication"]
+    assert "obr.ni_employee" not in exclusions
+    assert "obr.ni_self_employed" not in exclusions
+
+
 def test_measure_resolver_direct_and_scratch_receipts(monkeypatch, tmp_path: Path):
     created = []
 
@@ -897,7 +1084,7 @@ def test_measure_resolver_direct_and_scratch_receipts(monkeypatch, tmp_path: Pat
         lambda frame, path: writes.append((frame, path)) or path,
     )
 
-    frame = FrameStub()
+    frame = ReleaseIdentifierFrameStub()
     direct = UKMeasureResolver(
         simulation_source=tmp_path / "input.h5",
         scratch_dir=tmp_path,
@@ -913,8 +1100,11 @@ def test_measure_resolver_direct_and_scratch_receipts(monkeypatch, tmp_path: Pat
 
     assert direct.receipt()["mode"] == "direct_h5"
     assert direct.receipt()["policyengine_uk_version"] == "9.9.9"
+    # An engine without bus pricing parameters records why it has no parity.
+    assert direct.receipt()["bus_engine_parity"]["available"] is False
     assert scratch.receipt()["mode"] == "scratch_frame_export"
-    # A frame carrying no export-dropped column is written as it is.
+    # A frame carrying no export-dropped column, already on the release's
+    # identifiers, is written as it is.
     assert "engine_scratch_dropped_columns" not in scratch.receipt()
     assert writes == [(frame, tmp_path / "simulation-input.h5")]
     assert created == [
@@ -1084,19 +1274,20 @@ def test_packaged_exclusion_names_resolve_to_committed_references():
 def test_cgt_taxable_income_nets_the_allowances_the_engine_formula_nets():
     """Hand-computed rows: the band extension and the floors (microcosm#1014)."""
     parts = {
-        "adjusted_net_income": [0.0, 30_000.0, 60_000.0, 20_000.0, 80_000.0, 5_000.0],
-        "allowances": [12_570.0, 12_570.0, 20_570.0, 32_570.0, 27_570.0, 12_570.0],
-        "gift_aid": [0.0, 0.0, 8_000.0, 0.0, 0.0, 0.0],
+        "net_income": [0.0, 30_000.0, 60_000.0, 20_000.0, 80_000.0, 5_000.0],
+        "allowances": [12_570.0, 12_570.0, 12_570.0, 32_570.0, 27_570.0, 12_570.0],
         "personal_pension_contributions": [0.0, 0.0, 0.0, 30_000.0, 5_000.0, 0.0],
         "pension_contributions_relief": [0.0, 0.0, 0.0, 20_000.0, 15_000.0, 0.0],
     }
     np.testing.assert_allclose(
         measure_simulation.cgt_taxable_income_from_components(parts),
-        # 0 floor; 30,000 - 12,570; gift aid leaves the allowances (it extends
-        # the band instead); relief up to the personal contributions leaves
-        # them too; an allowance above income floors at 0.
+        # 0 floor; 30,000 - 12,570; a Gift Aid donor's income is net income
+        # less the allowances, the gift extending the band instead (2.128.0,
+        # pe-uk#2271); relief up to the personal contributions leaves the
+        # allowances; an allowance above income floors at 0.
         [0.0, 17_430.0, 47_430.0, 7_430.0, 57_430.0, 0.0],
     )
+    assert "gift_aid" not in measure_simulation._CGT_TAXABLE_INCOME_COMPONENTS
 
 
 # microcosm#1069 c11: the live counterfactual route (salary sacrifice returned to pay).
@@ -1184,10 +1375,28 @@ def test_counterfactual_delta_refuses_bands_and_other_periods(monkeypatch, tmp_p
         year=2025,
         frame=FrameStub(),
     )
-    with pytest.raises(ValueError, match="banded counterfactual measures are deferred"):
+    with pytest.raises(ValueError, match="banded counterfactual measures are refused"):
         resolver.counterfactual_delta(
             _relief_binding("income_tax", band={"variable": "adjusted_net_income"}),
             2025,
+        )
+    # A rate-class allocation must be exactly the declared one (microcosm#1095).
+    allocation = {**UK_RATE_CLASS_ALLOCATION, "rate_class": "basic"}
+    for drifted in (
+        {**allocation, "basic_below_rate": 0.25},
+        {**allocation, "rate_class": "starter"},
+        {**allocation, "taxable_income": "adjusted_net_income"},
+        # The bands a Gift Aid donor's gift extends are part of the allocation.
+        {k: v for k, v in allocation.items() if k != "gift_aid_extends_bands"},
+    ):
+        with pytest.raises(ValueError, match="rate-class allocation must declare"):
+            resolver.counterfactual_delta(
+                _relief_binding("earned_taxable_income", allocation=drifted),
+                2025,
+            )
+    with pytest.raises(ValueError, match="rate-class allocation must declare"):
+        resolver.counterfactual_delta(
+            _relief_binding("income_tax", allocation=allocation), 2025
         )
     with pytest.raises(ValueError, match="does not match target period"):
         resolver.counterfactual_delta(_relief_binding("income_tax"), 2024)
@@ -1279,7 +1488,9 @@ def test_scratch_engine_input_leaves_the_native_alias_codes_behind(
     assert not set(aliases) & set(written.columns)
     assert not written.isna().any().any()
     assert written["oa_code"].tolist() == ["E00000001", "S00090001", "N00000101"]
-    assert written["household_id"].tolist() == [100, 200, 300]
+    # The engine file carries the release's identifiers (microcosm#1194); the
+    # resolver's own frame keeps the build's.
+    assert written["household_id"].tolist() == [1, 2, 3]
     # The resolver's own frame is untouched; only the engine's copy changed.
     pd.testing.assert_frame_equal(frame.table("household"), before)
     assert resolver.frame is frame
@@ -1308,7 +1519,7 @@ def test_scratch_engine_input_without_aliases_is_the_frame_itself(
         "write_uk_national_frame",
         lambda frame, path: writes.append(frame) or path,
     )
-    frame = FrameStub()
+    frame = ReleaseIdentifierFrameStub()
     resolver = UKMeasureResolver(
         simulation_source=None, scratch_dir=tmp_path, year=2025, frame=frame
     )
@@ -1359,6 +1570,92 @@ def _tiny_national_frame(weights):
     )
 
 
+def _tiny_release_identifier_frame(weights):
+    from microcosm.build.uk_runtime.national_frame import (
+        uk_national_frame,
+        uk_release_export_frame,
+    )
+
+    released = uk_release_export_frame(_tiny_national_frame(weights))
+    # The engine file carries no build-identifier column: a frame whose own
+    # identifiers are already the release's.
+    tables = {
+        entity: released.table(entity).drop(columns=[f"{entity}_build_id"])
+        for entity in ("person", "benunit", "household")
+    }
+    return uk_national_frame(
+        **tables,
+        time_period="2024",
+        weight_kind=released.weights_for("household").kind,
+        household_weights=released.weights_for("household").values,
+        mass_log=released.mass_log,
+    )
+
+
+def test_engine_scratch_frame_carries_the_release_identifiers():
+    """microcosm#1194: policyengine-uk keys a person's birth month on
+    ``person_id``, so the solve's engine file carries the identifiers the
+    release will: one plus the rank of the build identifier."""
+    frame = _tiny_national_frame([250.0, 125.0])
+
+    engine_frame, dropped = measure_simulation._engine_scratch_frame(frame)
+
+    assert dropped == ()
+    assert engine_frame.table("person")["person_id"].tolist() == [1, 2, 3, 4]
+    assert engine_frame.table("person")["person_benunit_id"].tolist() == [1, 1, 2, 2]
+    assert engine_frame.table("person")["person_household_id"].tolist() == [1, 1, 2, 2]
+    assert engine_frame.table("benunit")["benunit_id"].tolist() == [1, 2]
+    assert engine_frame.table("household")["household_id"].tolist() == [1, 2]
+    # No build-identifier column goes to the engine, and nothing else moves.
+    for entity in ("person", "benunit", "household"):
+        assert f"{entity}_build_id" not in engine_frame.table(entity).columns
+        assert list(engine_frame.table(entity).columns) == list(
+            frame.table(entity).columns
+        )
+    assert engine_frame.table("person")["age"].tolist() == [35, 8, 40, 38]
+    np.testing.assert_array_equal(
+        engine_frame.weights_for("household").values,
+        frame.weights_for("household").values,
+    )
+    assert engine_frame.mass_log == frame.mass_log
+    # The resolver's own frame keeps the build identifiers.
+    assert frame.table("household")["household_id"].tolist() == [100, 200]
+
+
+def test_engine_scratch_block_takes_its_identifiers_from_the_whole_frame():
+    """A per-clone block's rows carry the identifiers they have in the release,
+    which numbers the whole frame, not the block."""
+    whole = _tiny_national_frame([250.0, 125.0])
+    block = whole.select(whole.table("person")["person_household_id"].eq(200))
+
+    alone, _ = measure_simulation._engine_scratch_frame(block)
+    in_whole, _ = measure_simulation._engine_scratch_frame(
+        block, identifier_universe=whole
+    )
+
+    assert alone.table("person")["person_id"].tolist() == [1, 2]
+    assert in_whole.table("person")["person_id"].tolist() == [3, 4]
+    assert in_whole.table("person")["person_household_id"].tolist() == [2, 2]
+    assert in_whole.table("benunit")["benunit_id"].tolist() == [2]
+    assert in_whole.table("household")["household_id"].tolist() == [2]
+
+
+def test_an_identifier_universe_needs_scratch_mode(tmp_path, monkeypatch):
+    monkeypatch.setitem(
+        sys.modules,
+        "policyengine_uk",
+        SimpleNamespace(__version__="9.9.9", Microsimulation=lambda *, dataset: None),
+    )
+    with pytest.raises(ValueError, match="identifier universe needs scratch-mode"):
+        UKMeasureResolver(
+            simulation_source=tmp_path / "input.h5",
+            scratch_dir=tmp_path,
+            year=2025,
+            frame=FrameStub(),
+            engine_identifier_universe=FrameStub(),
+        )
+
+
 def test_engine_scratch_frame_scales_household_weights_for_the_engine_only():
     frame = _tiny_national_frame([250.0, 125.0])
     before = frame.weights_for("household").values.copy()
@@ -1383,11 +1680,13 @@ def test_engine_scratch_frame_scales_household_weights_for_the_engine_only():
     assert record.reason == measure_simulation.ENGINE_WEIGHT_SCALE_REASON
     # the resolver's own frame keeps the block's true mass
     np.testing.assert_array_equal(frame.weights_for("household").values, before)
-    # no scale (or a unit scale) on an alias-free frame: the frame itself
-    assert measure_simulation._engine_scratch_frame(frame)[0] is frame
+    # no scale (or a unit scale) on an alias-free frame already on the
+    # release's identifiers: the frame itself
+    released = _tiny_release_identifier_frame([250.0, 125.0])
+    assert measure_simulation._engine_scratch_frame(released)[0] is released
     assert (
-        measure_simulation._engine_scratch_frame(frame, engine_weight_scale=1.0)[0]
-        is frame
+        measure_simulation._engine_scratch_frame(released, engine_weight_scale=1.0)[0]
+        is released
     )
     with pytest.raises(ValueError, match="positive finite"):
         measure_simulation._engine_scratch_frame(frame, engine_weight_scale=0.0)
@@ -1443,3 +1742,712 @@ def test_resolver_writes_the_scaled_engine_frame_and_records_the_scale(
             frame=frame,
             engine_weight_scale=4.0,
         )
+
+
+def _bus_frame() -> FrameStub:
+    """Three households: North East, London and Wales, with NTS trips."""
+
+    frame = FrameStub()
+    frame._tables["person"] = pd.DataFrame(
+        {
+            "person_id": [1, 2, 3, 4],
+            "person_benunit_id": [10, 10, 20, 30],
+            "person_household_id": [100, 100, 200, 300],
+            "bus_in_london_trips": [10.0, 0.0, 4.0, 1.0],
+            "other_local_bus_trips": [2.0, 3.0, 6.0, 5.0],
+        }
+    )
+    frame._tables["household"] = pd.DataFrame(
+        {"household_id": [100, 200, 300], "region": ["NORTH_EAST", "LONDON", "WALES"]}
+    )
+    return frame
+
+
+def test_bus_boardings_price_each_series_at_the_stage_s_factor():
+    """Household boardings: NTS trips times the lcfs stage's factor (#1207)."""
+
+    from microcosm.build.country_spec import load_country_spec
+    from microcosm.build.uk_runtime.bus_fare_pricing import bus_fare_prices
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        UK_LCFS_VENDORED_RESOURCES,
+        bus_pricing_operation,
+    )
+
+    prices = bus_fare_prices(
+        bus_pricing_operation(
+            load_country_spec("uk").sources.stage_map()["lcfs_consumption"]
+        ),
+        allowed_resources=UK_LCFS_VENDORED_RESOURCES,
+    )
+    london_factor = prices.london.boardings_per_trip
+    other_factor = prices.other_by_region["NORTH_EAST"].boardings_per_trip
+    frame = _bus_frame()
+
+    london, route = compute_uk_measure_input(
+        frame, None, "household", "bus_in_london_boardings", 2025
+    )
+    other, _ = compute_uk_measure_input(
+        frame, None, "household", "other_local_bus_boardings", 2025
+    )
+
+    # Every resident's bus-in-London trips, wherever they live.
+    assert london.tolist() == pytest.approx(
+        [10.0 * london_factor, 4.0 * london_factor, 1.0 * london_factor]
+    )
+    assert route == "stage_boardings_per_trip:bus_in_london_trips"
+    # A London resident's other local trips take England-outside-London's
+    # factor; Wales is unpriced and no row binds it.
+    assert prices.other_by_region["LONDON"].boardings_per_trip == other_factor
+    assert other.tolist() == pytest.approx([5.0 * other_factor, 6.0 * other_factor, 0])
+    with pytest.raises(KeyError, match="household-only"):
+        compute_uk_measure_input(frame, None, "person", "bus_in_london_boardings", 2025)
+
+
+def test_a_persisted_bus_boarding_column_is_refused(monkeypatch, tmp_path: Path):
+    frame = _bus_frame()
+    frame._tables["household"]["other_local_bus_boardings"] = [1.0, 2.0, 3.0]
+    monkeypatch.setitem(
+        sys.modules,
+        "policyengine_uk",
+        SimpleNamespace(__version__="9.9.9", Microsimulation=lambda *, dataset: None),
+    )
+    with pytest.raises(ValueError, match="must not be persisted"):
+        UKMeasureResolver(
+            simulation_source=tmp_path / "input.h5",
+            scratch_dir=tmp_path,
+            year=2025,
+            frame=frame,
+        )
+
+
+def test_the_resolver_routes_bus_boardings_to_households(monkeypatch, tmp_path: Path):
+    resolver = _resolver_over(SimulationStub({}), monkeypatch, tmp_path)
+    for name in ("bus_in_london_boardings", "other_local_bus_boardings"):
+        assert resolver.entity_for(name) == "household"
+        assert resolver.knows("household", name)
+        assert not resolver.knows("person", name)
+
+
+#: microcosm#1301: the three high-value homes region measures and the
+#: threshold each reads.
+_HIGH_VALUE_HOME_MEASURES = {
+    "owner_occupied_home_over_gbp_1m": "over_gbp_1m",
+    "owner_occupied_home_over_gbp_1_5m": "over_gbp_1_5m",
+    "owner_occupied_home_over_gbp_2m": "over_gbp_2m",
+}
+
+
+def _high_value_home_frame() -> FrameStub:
+    """Synthetic households straddling the frame-basis thresholds."""
+
+    from microcosm.build.uk_runtime.high_value_homes import (
+        uk_high_value_home_thresholds,
+    )
+
+    basis = {
+        threshold.threshold_id: threshold.basis_gbp
+        for threshold in uk_high_value_home_thresholds()
+    }
+    frame = FrameStub()
+    frame._tables["person"] = pd.DataFrame(
+        {
+            "person_id": [1, 2, 3, 4, 5],
+            "person_benunit_id": [10, 20, 30, 40, 50],
+            "person_household_id": [100, 200, 300, 400, 500],
+        }
+    )
+    frame._tables["household"] = pd.DataFrame(
+        {
+            "household_id": [100, 200, 300, 400, 500],
+            "main_residence_value": [
+                basis["over_gbp_2m"] + 1.0,  # owner over every threshold
+                basis["over_gbp_1m"] + 1.0,  # owner over the lowest only
+                basis["over_gbp_1m"],  # owner exactly at the threshold
+                basis["over_gbp_2m"] + 1.0,  # private renter: never counted
+                np.nan,  # owner without a stored value
+            ],
+            "tenure_type": [
+                "OWNED_OUTRIGHT",
+                "OWNED_WITH_MORTGAGE",
+                "OWNED_OUTRIGHT",
+                "RENT_PRIVATELY",
+                "OWNED_OUTRIGHT",
+            ],
+        }
+    )
+    return frame
+
+
+def test_high_value_home_measures_mask_stored_owner_values_by_threshold():
+    """Each measure is the shared mask on the stored value and tenure (#1301)."""
+
+    frame = _high_value_home_frame()
+    expected = {
+        "owner_occupied_home_over_gbp_1m": [1.0, 1.0, 0.0, 0.0, 0.0],
+        "owner_occupied_home_over_gbp_1_5m": [1.0, 0.0, 0.0, 0.0, 0.0],
+        "owner_occupied_home_over_gbp_2m": [1.0, 0.0, 0.0, 0.0, 0.0],
+    }
+    for variable, threshold_id in _HIGH_VALUE_HOME_MEASURES.items():
+        # No engine: the stored columns are read off the frame, never uprated.
+        values, route = compute_uk_measure_input(
+            frame, None, "household", variable, 2025
+        )
+        assert values.tolist() == expected[variable], variable
+        assert route == f"frame_columns:high_value_home_mask:{threshold_id}"
+    assert measure_simulation._HIGH_VALUE_HOME_MEASURES == _HIGH_VALUE_HOME_MEASURES
+    with pytest.raises(KeyError, match="household-only"):
+        compute_uk_measure_input(
+            frame, None, "person", "owner_occupied_home_over_gbp_1m", 2025
+        )
+
+
+def test_high_value_home_measures_need_the_stored_columns():
+    frame = _high_value_home_frame()
+    frame._tables["household"] = frame._tables["household"].drop(
+        columns=["tenure_type"]
+    )
+    with pytest.raises(ValueError, match=r"\['tenure_type'\]"):
+        compute_uk_measure_input(
+            frame, None, "household", "owner_occupied_home_over_gbp_2m", 2025
+        )
+
+
+def test_the_contract_binds_each_region_row_on_its_threshold_measure():
+    """The bound value variables are the measures, threshold for threshold."""
+
+    targets = measure_simulation._uk_contract_targets()
+    bound = {
+        target_id: target["bindings"]["policyengine"]["value_variable"]
+        for target_id, target in targets.items()
+        if target_id.startswith("microcosm.high_value_homes.")
+    }
+    assert set(bound.values()) == set(_HIGH_VALUE_HOME_MEASURES)
+    for target_id, variable in bound.items():
+        threshold_id = _HIGH_VALUE_HOME_MEASURES[variable]
+        selector = targets[target_id]["ledger_selector"]
+        assert selector["record_set_spec_id"].endswith(f".{threshold_id}.v1")
+
+
+def test_a_persisted_high_value_home_column_is_refused(monkeypatch, tmp_path: Path):
+    frame = _high_value_home_frame()
+    frame._tables["household"]["owner_occupied_home_over_gbp_1m"] = [1.0] * 5
+    monkeypatch.setitem(
+        sys.modules,
+        "policyengine_uk",
+        SimpleNamespace(__version__="9.9.9", Microsimulation=lambda *, dataset: None),
+    )
+    with pytest.raises(ValueError, match="must not be persisted"):
+        UKMeasureResolver(
+            simulation_source=tmp_path / "input.h5",
+            scratch_dir=tmp_path,
+            year=2025,
+            frame=frame,
+        )
+
+
+def test_the_resolver_routes_high_value_home_measures_to_households(
+    monkeypatch, tmp_path: Path
+):
+    resolver = _resolver_over(SimulationStub({}), monkeypatch, tmp_path)
+    for name in _HIGH_VALUE_HOME_MEASURES:
+        assert resolver.entity_for(name) == "household"
+        assert resolver.knows("household", name)
+        assert not resolver.knows("person", name)
+
+
+def _savings_frame() -> FrameStub:
+    """Gross interest with its ISA part: a saver, an ISA-only saver, a non-saver."""
+
+    frame = FrameStub()
+    frame._tables["person"] = frame._tables["person"].assign(
+        savings_interest_income=[1_000.0, 300.0, 0.0],
+        tax_free_savings_income=[300.0, 300.0, 0.0],
+    )
+    return frame
+
+
+def test_savings_interest_outside_isas_is_the_stored_gross_less_its_isa_part():
+    """SPI Table 3.7 counts recipients of taxable interest (microcosm#1095)."""
+
+    # No engine: the stored columns are read off the frame, never uprated.
+    values, route = compute_uk_measure_input(
+        _savings_frame(), None, "person", UK_SAVINGS_INTEREST_OUTSIDE_ISAS, 2025
+    )
+    assert values.tolist() == [700.0, 0.0, 0.0]
+    assert route == "frame_columns:savings_interest_income_less_tax_free_savings_income"
+    with pytest.raises(KeyError, match="person-only"):
+        compute_uk_measure_input(
+            _savings_frame(), None, "household", UK_SAVINGS_INTEREST_OUTSIDE_ISAS, 2025
+        )
+
+
+def test_the_spi_interest_count_counts_recipients_of_interest_outside_isas():
+    targets = measure_simulation._uk_contract_targets()
+    filters = targets["hmrc.spi.savings_interest_income.count_by_total_income_band"][
+        "bindings"
+    ]["policyengine"]["filters"]
+    assert {
+        "variable": UK_SAVINGS_INTEREST_OUTSIDE_ISAS,
+        "operator": ">",
+        "value": 0,
+    } in (filters)
+    assert "savings_interest_income" not in {f["variable"] for f in filters}
+
+
+def test_the_resolver_routes_interest_outside_isas_to_persons(
+    monkeypatch, tmp_path: Path
+):
+    monkeypatch.setitem(
+        sys.modules,
+        "policyengine_uk",
+        SimpleNamespace(
+            __version__="9.9.9", Microsimulation=lambda *, dataset: SimulationStub({})
+        ),
+    )
+    resolver = UKMeasureResolver(
+        simulation_source=tmp_path / "input.h5",
+        scratch_dir=tmp_path,
+        year=2025,
+        frame=_savings_frame(),
+    )
+    assert resolver.entity_for(UK_SAVINGS_INTEREST_OUTSIDE_ISAS) == "person"
+    assert resolver.knows("person", UK_SAVINGS_INTEREST_OUTSIDE_ISAS)
+    assert not resolver.knows("household", UK_SAVINGS_INTEREST_OUTSIDE_ISAS)
+
+    frame = _savings_frame()
+    frame._tables["person"][UK_SAVINGS_INTEREST_OUTSIDE_ISAS] = [700.0, 0.0, 0.0]
+    with pytest.raises(ValueError, match="must not be persisted"):
+        UKMeasureResolver(
+            simulation_source=tmp_path / "input.h5",
+            scratch_dir=tmp_path,
+            year=2025,
+            frame=frame,
+        )
+
+
+def _stub_engine_term_calendar(monkeypatch) -> None:
+    """policyengine-uk's year of terms, without the engine installed."""
+
+    dates = SimpleNamespace(
+        term_starts=lambda year: (
+            year * 10_000 + 401,
+            year * 10_000 + 901,
+            (year + 1) * 10_000 + 101,
+        )
+    )
+    utils = SimpleNamespace(dates=dates)
+    monkeypatch.setitem(sys.modules, "policyengine_uk", SimpleNamespace(utils=utils))
+    monkeypatch.setitem(sys.modules, "policyengine_uk.utils", utils)
+    monkeypatch.setitem(sys.modules, "policyengine_uk.utils.dates", dates)
+
+
+def _spring_term_simulation() -> SimulationStub:
+    # Person 1 is an adult, person 2 a three-year-old on working-parent hours
+    # in a family that does not claim the universal hours on their own, and
+    # person 3 a four-year-old already in reception (a third of the year).
+    return SimulationStub(
+        {
+            "birth_year": ("person", np.array([1990, 2022, 2021])),
+            "early_years_term_share_before_school": (
+                "person",
+                np.array([1.0, 1.0, 1 / 3], dtype=np.float32),
+            ),
+            "extended_childcare_entitlement_total_per_child": (
+                "person",
+                np.array([0.0, 6_000.0, 2_000.0]),
+            ),
+            # The engine's universal eligibility in the year: the child in
+            # reception is eligible in the summer term, before school starts.
+            "universal_childcare_entitlement_eligible": (
+                "person",
+                np.array([False, True, True]),
+            ),
+            "max_free_entitlement_hours_used": (
+                "person",
+                np.array([30.0, 30.0, 30.0]),
+            ),
+            "maximum_extended_childcare_hours_usage": (
+                "benunit",
+                np.array([30.0, 30.0]),
+            ),
+            # A numeric group value reaches people through map_to.
+            ("maximum_extended_childcare_hours_usage", "person"): (
+                "person",
+                np.array([30.0, 30.0, 30.0]),
+            ),
+            "targeted_childcare_entitlement_eligible": (
+                "benunit",
+                np.array([False, False]),
+            ),
+            "would_claim_targeted_childcare": ("benunit", np.array([True, True])),
+            "would_claim_universal_childcare": ("benunit", np.array([False, True])),
+        }
+    )
+
+
+def test_dfe_spring_term_measures_classify_people_at_the_spring_term(monkeypatch):
+    _stub_engine_term_calendar(monkeypatch)
+    frame, simulation = FrameStub(), _spring_term_simulation()
+    expected = {
+        "dfe_age_at_31_december": [35.0, 3.0, 4.0],
+        # The working-parent child keeps its universal hours; the child in
+        # reception is not funded in the spring term.
+        "dfe_spring_working_parent": [0.0, 1.0, 0.0],
+        "dfe_spring_universal": [0.0, 1.0, 0.0],
+        "dfe_spring_early_learning_2": [0.0, 0.0, 0.0],
+    }
+    for variable, values in expected.items():
+        computed, route = compute_uk_measure_input(
+            frame, simulation, "person", variable, 2025
+        )
+        assert computed.tolist() == values, variable
+        assert route == f"dfe_spring_term:{variable}"
+    with pytest.raises(KeyError, match="person-only"):
+        compute_uk_measure_input(
+            frame, simulation, "household", "dfe_spring_universal", 2025
+        )
+
+
+def test_dfe_spring_term_measures_refuse_a_moved_term_calendar(monkeypatch):
+    dates = SimpleNamespace(term_starts=lambda year: (0, 0, year * 10_000 + 901))
+    utils = SimpleNamespace(dates=dates)
+    monkeypatch.setitem(sys.modules, "policyengine_uk", SimpleNamespace(utils=utils))
+    monkeypatch.setitem(sys.modules, "policyengine_uk.utils", utils)
+    monkeypatch.setitem(sys.modules, "policyengine_uk.utils.dates", dates)
+    with pytest.raises(ValueError, match="April-to-March year"):
+        compute_uk_measure_input(
+            FrameStub(),
+            _spring_term_simulation(),
+            "person",
+            "dfe_spring_universal",
+            2025,
+        )
+
+
+def test_the_resolver_routes_dfe_spring_term_measures_to_people(
+    monkeypatch, tmp_path: Path
+):
+    from microcosm.build.uk_runtime.dfe_spring_term import DFE_SPRING_TERM_MEASURES
+
+    resolver = _resolver_over(_spring_term_simulation(), monkeypatch, tmp_path)
+    for name in DFE_SPRING_TERM_MEASURES:
+        assert resolver.entity_for(name) == "person"
+        assert resolver.knows("person", name)
+        assert not resolver.knows("household", name)
+    # Without one of the engine inputs the route cannot compute, so it is
+    # not known.
+    partial = _spring_term_simulation()
+    del partial.tax_benefit_system.variables["birth_year"]
+    resolver = _resolver_over(partial, monkeypatch, tmp_path)
+    assert not resolver.knows("person", "dfe_spring_universal")
+
+
+def test_a_persisted_dfe_spring_term_column_is_refused(monkeypatch, tmp_path: Path):
+    frame = FrameStub()
+    frame._tables["person"]["dfe_spring_universal"] = [0.0, 1.0, 0.0]
+    monkeypatch.setitem(
+        sys.modules,
+        "policyengine_uk",
+        SimpleNamespace(__version__="9.9.9", Microsimulation=lambda *, dataset: None),
+    )
+    with pytest.raises(ValueError, match="must not be persisted"):
+        UKMeasureResolver(
+            simulation_source=tmp_path / "input.h5",
+            scratch_dir=tmp_path,
+            year=2025,
+            frame=frame,
+        )
+
+
+# The annual income measures: each current measure on a simulation of each
+# person's year, built from the frs_annual_income_spells descriptors.
+_ANNUAL_DESCRIPTORS = {
+    # Person 1 is paid all year; person 2 left a job and retired in the year,
+    # on a State Pension that started two months before its middle; person 3
+    # started a job half way through and ran a business for half of it.
+    "employment_income_annual_share": [1.0, 1.0, 0.5],
+    "employment_income_other_spells": [0.0, 9_000.0, 0.0],
+    "self_employment_income_annual_share": [1.0, 1.0, 0.5],
+    "self_employment_income_other_spells": [0.0, 0.0, 1_000.0],
+    "private_pension_income_annual_share": [1.0, 0.25, 1.0],
+    "contributory_benefits_annual_share": [1.0, 0.25, 1.0],
+}
+
+
+class _AnnualFrameStub(FrameStub):
+    metadata = {"time_period": "2024"}
+
+    def __init__(self, descriptors=_ANNUAL_DESCRIPTORS):
+        super().__init__()
+        for column, values in descriptors.items():
+            self._tables["person"][column] = values
+
+
+class _AnnualSimulation:
+    """A stub engine that uprates stored inputs and taxes total income."""
+
+    created = 0
+    uprating = {
+        "employment_income_before_lsr": 1.05,
+        "self_employment_income": 1.03,
+        "private_pension_income": 1.02,
+        "jsa_contrib_reported": 1.02,
+        "esa_contrib_reported": 1.02,
+        "incapacity_benefit_reported": 1.02,
+    }
+    extra_inputs: dict = {}
+
+    def __init__(self, *, dataset):
+        type(self).created += 1
+        self.stored = {
+            ("employment_income_before_lsr", 2024): np.array([30_000.0, 0.0, 20_000.0]),
+            ("self_employment_income", 2024): np.array([0.0, 0.0, 6_000.0]),
+            ("private_pension_income", 2024): np.array([0.0, 8_000.0, 0.0]),
+            ("jsa_contrib_reported", 2024): np.zeros(3),
+            ("esa_contrib_reported", 2024): np.array([0.0, 2_000.0, 0.0]),
+            ("incapacity_benefit_reported", 2024): np.zeros(3),
+            ("loss_relief", 2024): np.zeros(3),
+            **type(self).extra_inputs,
+        }
+        names = (
+            *self.uprating,
+            "employment_income",
+            "loss_relief",
+            "state_pension",
+            "months_since_state_pension_age",
+            "carers_allowance",
+            "carer_support_payment",
+            "scottish_carer_supplement",
+            "total_income",
+            "income_tax",
+            "income_tax_before_winter_fuel_payment_charge",
+            "basic_rate_savings_income",
+            "higher_rate_savings_income",
+            "add_rate_savings_income",
+        )
+        variables = {
+            name: SimpleNamespace(
+                entity=SimpleNamespace(key="person"), value_type=float
+            )
+            for name in names
+        }
+        variables["tax_band"] = SimpleNamespace(
+            entity=SimpleNamespace(key="person"), value_type=str
+        )
+        self.tax_benefit_system = SimpleNamespace(variables=variables)
+
+    def set_input(self, variable, year, values):
+        self.stored[(variable, int(year))] = np.asarray(values, dtype=float)
+
+    def calculate(self, variable, year, map_to=None):
+        year = int(year)
+        if (variable, year) in self.stored:
+            return self.stored[(variable, year)]
+        if variable in self.uprating or variable == "loss_relief":
+            source = max(y for v, y in self.stored if v == variable and y <= year)
+            factor = self.uprating.get(variable, 1.0) ** (year - source)
+            return self.stored[(variable, source)] * factor
+        pay = self.calculate("employment_income_before_lsr", year)
+        if variable == "employment_income":
+            return pay
+        if variable == "months_since_state_pension_age":
+            return np.array([-200.0, 2.0, -100.0])
+        if variable == "state_pension":
+            return np.array([0.0, 11_000.0, 0.0])
+        if variable == "carers_allowance":
+            # Earnings-tested: the year's pay must not take it away.
+            return np.where(pay < 5_000.0, 4_000.0, 0.0)
+        if variable in ("carer_support_payment", "scottish_carer_supplement"):
+            return np.zeros(3)
+        total = sum(
+            self.calculate(name, year)
+            for name in (
+                "employment_income",
+                "self_employment_income",
+                "private_pension_income",
+                "state_pension",
+                "jsa_contrib_reported",
+                "esa_contrib_reported",
+                "incapacity_benefit_reported",
+                "carers_allowance",
+            )
+        )
+        if variable == "total_income":
+            return total
+        # No stub person passes the Winter Fuel Payment charge's income test.
+        if variable in ("income_tax", "income_tax_before_winter_fuel_payment_charge"):
+            return 0.2 * np.maximum(total - 12_570.0, 0.0)
+        if variable == "tax_band":
+            return np.where(
+                total > 50_270.0, "HIGHER", np.where(total > 12_570.0, "BASIC", "NONE")
+            )
+        # No stub person has savings income (microcosm#1418).
+        if variable in (
+            "basic_rate_savings_income",
+            "higher_rate_savings_income",
+            "add_rate_savings_income",
+        ):
+            return np.zeros(3)
+        raise KeyError(variable)
+
+
+def _annual_resolver(monkeypatch, tmp_path, frame=None):
+    _AnnualSimulation.created = 0
+    monkeypatch.setitem(
+        sys.modules,
+        "policyengine_uk",
+        SimpleNamespace(__version__="9.9.9", Microsimulation=_AnnualSimulation),
+    )
+    return UKMeasureResolver(
+        simulation_source=tmp_path / "input.h5",
+        scratch_dir=tmp_path,
+        year=2025,
+        frame=_AnnualFrameStub() if frame is None else frame,
+    )
+
+
+def test_state_pension_annual_share_counts_the_months_paid_in_the_year():
+    share = measure_simulation.state_pension_annual_share(
+        [-12.0, -6.0, -5.5, 0.0, 2.0, 6.0, 30.0, np.nan]
+    )
+    np.testing.assert_allclose(share, [1.0, 1.0, 0.5 / 12, 0.5, 8 / 12, 1.0, 1.0, 1.0])
+
+
+def test_annual_measures_read_each_persons_year(monkeypatch, tmp_path):
+    resolver = _annual_resolver(monkeypatch, tmp_path)
+
+    pay, route = resolver.compute("person", "employment_income_annual")
+    # The engine carries the year's pay from 2024 at its own index.
+    np.testing.assert_allclose(pay, [31_500.0, 9_450.0, 10_500.0])
+    assert route == "annual_income_simulation:native"
+    profit, route = resolver.compute(
+        "person", "self_employment_income_after_loss_relief_annual"
+    )
+    np.testing.assert_allclose(profit, [0.0, 0.0, 4_120.0])
+    assert route.startswith("annual_income_simulation:engine_components")
+    pension, _ = resolver.compute("person", "private_pension_income_annual")
+    np.testing.assert_allclose(pension, [0.0, 2_040.0, 0.0])
+    state_pension, _ = resolver.compute("person", "state_pension_annual")
+    np.testing.assert_allclose(state_pension, [0.0, 11_000.0 * 8 / 12, 0.0])
+    total, _ = resolver.compute("person", "total_income_after_loss_relief_annual")
+    # Person 2 keeps the Carer's Allowance paid at the earnings of the time.
+    annual_total = np.array(
+        [31_500.0, 9_450.0 + 2_040.0 + 11_000.0 * 8 / 12 + 510.0 + 4_000.0, 14_620.0]
+    )
+    np.testing.assert_allclose(total, annual_total)
+    tax, _ = resolver.compute("person", "income_tax_annual")
+    np.testing.assert_allclose(tax, 0.2 * np.maximum(annual_total - 12_570.0, 0.0))
+    band, _ = resolver.compute("person", "tax_band_annual")
+    assert list(band) == ["BASIC", "BASIC", "BASIC"]
+    # The current measures are untouched, and one annual simulation serves all.
+    current_tax, _ = resolver.compute("person", "income_tax")
+    assert current_tax[1] == pytest.approx(
+        0.2 * (8_160.0 + 11_000.0 + 2_040.0 + 4_000.0 - 12_570.0)
+    )
+    assert _AnnualSimulation.created == 2
+    receipt = resolver.receipt()["annual_income_measures"]
+    assert receipt["route"] == "annual_income_simulation"
+    assert receipt["dataset_year"] == 2024
+    assert receipt["computed_measures"]["income_tax_annual"] == "income_tax"
+    assert receipt["held_at_baseline"] == [
+        "carers_allowance",
+        "carer_support_payment",
+        "scottish_carer_supplement",
+    ]
+    for name in measure_simulation.UK_ANNUAL_INCOME_MEASURES:
+        assert resolver.knows("person", name)
+        assert resolver.entity_for(name) == "person"
+
+
+def test_the_annual_loss_relief_terms_are_the_terms_on_the_annual_simulation(
+    monkeypatch, tmp_path
+):
+    # Each _annual form is its named term evaluated on the engine's leaves on
+    # the annual simulation: the floats the resolver gave by name before the
+    # terms were declared (microcosm#1095).
+    resolver = _annual_resolver(monkeypatch, tmp_path)
+    after, after_route = resolver.compute(
+        "person", "self_employment_income_after_loss_relief_annual"
+    )
+    banded, banded_route = resolver.compute(
+        "person", "total_income_after_loss_relief_annual"
+    )
+
+    annual = resolver._annual_income_simulation()
+    leaf = {
+        name: measure_simulation.compute_uk_measure_input(
+            resolver.frame, annual, "person", name, 2025
+        )[0]
+        for name in ("self_employment_income", "loss_relief", "total_income")
+    }
+    former = np.maximum(leaf["self_employment_income"] - leaf["loss_relief"], 0.0)
+    assert np.array_equal(after, former)
+    assert np.array_equal(
+        banded, leaf["total_income"] - leaf["self_employment_income"] + former
+    )
+    assert after_route == (
+        "annual_income_simulation:engine_components:"
+        "self_employment_income_after_loss_relief"
+    )
+    assert banded_route == (
+        "annual_income_simulation:engine_components:total_income_after_loss_relief"
+    )
+    for name in measure_simulation.UK_NAMED_TERMS:
+        assert resolver.knows("person", name)
+        assert not resolver.knows("household", name)
+        assert resolver.entity_for(name) == "person"
+
+
+def test_annual_measures_refuse_a_frame_without_descriptors(monkeypatch, tmp_path):
+    frame = _AnnualFrameStub(descriptors={})
+    resolver = _annual_resolver(monkeypatch, tmp_path, frame=frame)
+    assert not resolver.knows("person", "income_tax_annual")
+    with pytest.raises(KeyError, match="annual income descriptors"):
+        resolver.compute("person", "income_tax_annual")
+    # The incumbent alone reads its current values.
+    resolver.use_current_income_for_annual_measures(reason="incumbent")
+    assert resolver.knows("person", "income_tax_annual")
+    tax, route = resolver.compute("person", "income_tax_annual")
+    current, _ = resolver.compute("person", "income_tax")
+    np.testing.assert_allclose(tax, current)
+    assert route.startswith("current_values_without_annual_income_descriptors:")
+    assert _AnnualSimulation.created == 1
+    receipt = resolver.receipt()["annual_income_measures"]
+    assert receipt["route"] == "current_values_without_annual_income_descriptors"
+    assert receipt["reason"] == "incumbent"
+
+
+def test_the_incumbent_fallback_never_hides_descriptors(monkeypatch, tmp_path):
+    resolver = _annual_resolver(monkeypatch, tmp_path)
+    resolver.use_current_income_for_annual_measures(reason="incumbent")
+    pay, route = resolver.compute("person", "employment_income_annual")
+    np.testing.assert_allclose(pay, [31_500.0, 9_450.0, 10_500.0])
+    assert route.startswith("annual_income_simulation:")
+    partial = dict(_ANNUAL_DESCRIPTORS)
+    partial.pop("contributory_benefits_annual_share")
+    resolver = _annual_resolver(
+        monkeypatch, tmp_path, frame=_AnnualFrameStub(descriptors=partial)
+    )
+    with pytest.raises(ValueError, match="only some annual income descriptors"):
+        resolver.knows("person", "income_tax_annual")
+
+
+def test_other_spells_follow_one_engine_factor(monkeypatch, tmp_path):
+    # A projection that is not one factor for every row cannot carry the
+    # other spells as it carries pay.
+    _AnnualSimulation.extra_inputs = {
+        ("employment_income_before_lsr", 2025): np.array([31_500.0, 0.0, 22_000.0])
+    }
+    try:
+        resolver = _annual_resolver(monkeypatch, tmp_path)
+        with pytest.raises(ValueError, match="by one factor"):
+            resolver.compute("person", "income_tax_annual")
+    finally:
+        _AnnualSimulation.extra_inputs = {}
+    factors = _annual_resolver(monkeypatch, tmp_path)
+    factors.compute("person", "employment_income_annual")
+    receipt = factors.receipt()["annual_income_measures"]
+    assert receipt["other_spells_engine_factors"] == {
+        "employment_income_before_lsr": pytest.approx(1.05),
+        "self_employment_income": pytest.approx(1.03),
+    }

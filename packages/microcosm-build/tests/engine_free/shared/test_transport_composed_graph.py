@@ -65,13 +65,16 @@ from microcosm.build.transport.compose import (
     TransportGraphConfig,
     compose_transport_graph,
     load_transport_spec,
+    skeleton_create_declaration,
     validate_transport_activation,
 )
 from microcosm.build.transport.population_kernels import TRANSPORT_CURRENCY
+from microcosm.build.transport.takeup_kernels import GAP_TYPE
 from microcosm.build.transport.terminal_kernels import materialize_export
 from microcosm.frame.kernels import SimulateRulesKernel
 from microcosm.graph import (
     ArtifactInput,
+    ArtifactOutput,
     Capabilities,
     ContentStore,
     Determinism,
@@ -88,7 +91,9 @@ from microcosm.graph import (
     graph_to_json,
     run_graph,
 )
+from microcosm.graph.canonical import canonical_json
 from microcosm.graph.keys import node_key, source_content_key
+from test_support.microcosm_build.chronicle_feed import write_pinned_artifact
 from test_support.microcosm_build.transport_composed import (
     FAMILY_INPUTS,
     PROGRAMS,
@@ -245,6 +250,38 @@ def composed(tmp_path_factory):
 
 
 @pytest.fixture(scope="module")
+def feed_compilation_config(composed):
+    """Compose every feed compiler, with an optional explicit gap pin."""
+
+    def make_config(*, gap_pin=None):
+        def extension(spec, config, skeleton):
+            nodes = toy_extension(spec, config, skeleton)
+            compare = next(node for node in nodes if node.kernel == "takeup.compare@1")
+            references = json.loads(compare.params["references"])
+            params = {
+                **compare.params,
+                "annualisation_factors": canonical_json(
+                    {row["name"]: 1 for row in references["target_references"]}
+                ).decode("utf-8"),
+                "scenario": "toy",
+            }
+            if gap_pin is not None:
+                params["chronicle_feed_pin"] = gap_pin
+            gap = replace(
+                compare,
+                id="nz.test.validate.gap",
+                kernel="takeup.gap@1",
+                params=params,
+                artifact_outputs=(ArtifactOutput("gap", GAP_TYPE),),
+            )
+            return (*nodes, gap)
+
+        return replace(composed.config, extensions=(extension,))
+
+    return make_config
+
+
+@pytest.fixture(scope="module")
 def cold(composed, tmp_path_factory):
     """One timed cold run of the extended graph."""
     graph = composed.graph(extended=True)
@@ -258,6 +295,71 @@ def cold(composed, tmp_path_factory):
 # ---------------------------------------------------------------------------
 # Composition invariants
 # ---------------------------------------------------------------------------
+
+
+def test_composition_binds_feed_pin_to_skeleton_preparation_and_extensions(
+    composed, feed_compilation_config
+):
+    rows = [
+        json.loads(line)
+        for line in composed.sources["nz_calibration_facts"].read_text().splitlines()
+    ]
+    _artifact, pin = write_pinned_artifact(composed.root / "pinned-facts", rows)
+    spec = copy.deepcopy(composed.spec)
+    spec["resources"]["chronicle_feed"] = pin
+    config = feed_compilation_config()
+    graph = compose_transport_graph(spec, config)
+    compilers = [
+        node
+        for node in graph.nodes
+        if node.kernel
+        in {
+            "transport.create@1",
+            "targets.compile@1",
+            "takeup.compare@1",
+            "takeup.gap@1",
+        }
+    ]
+    assert {node.kernel for node in compilers} == {
+        "transport.create@1",
+        "targets.compile@1",
+        "takeup.compare@1",
+        "takeup.gap@1",
+    }
+    for node in compilers:
+        assert json.loads(node.params["chronicle_feed_pin"]) == pin
+    declaration = skeleton_create_declaration(spec)
+    assert dict(declaration.params) == dict(graph.node(declaration.id).params)
+    changed = copy.deepcopy(spec)
+    changed["resources"]["chronicle_feed"]["manifest_sha256"] = "0" * 64
+    altered = compose_transport_graph(changed, config)
+    for node in compilers:
+        assert node.params != altered.node(node.id).params
+    for node in graph.nodes:
+        if node not in compilers:
+            assert node.params == altered.node(node.id).params
+
+
+def test_composition_refuses_a_compiler_pin_that_overrides_the_country_pin(composed):
+    spec = copy.deepcopy(composed.spec)
+    spec["resources"]["chronicle_feed"] = {"manifest_sha256": "1" * 64}
+    declaration = next(
+        row
+        for row in spec["resources"]["transport_graph"]["nodes"]
+        if row["kernel"] == "targets.compile@1"
+    )
+    declaration["params"]["chronicle_feed_pin"] = "{}"
+    with pytest.raises(ValueError, match="feed pin differs"):
+        compose_transport_graph(spec, composed.config)
+
+
+def test_composition_refuses_a_gap_pin_that_overrides_the_country_pin(
+    composed, feed_compilation_config
+):
+    spec = copy.deepcopy(composed.spec)
+    spec["resources"]["chronicle_feed"] = {"manifest_sha256": "1" * 64}
+    with pytest.raises(ValueError, match=r"takeup\.gap@1 Chronicle feed pin differs"):
+        compose_transport_graph(spec, feed_compilation_config(gap_pin="{}"))
 
 
 @PROPERTY
@@ -736,6 +838,132 @@ def test_activation_accepts_optional_json_nulls(composed):
     validate_transport_activation(spec)
 
 
+def _transport_spec_with_reference_profile(composed, suffix=""):
+    spec = copy.deepcopy(composed.spec)
+    row = spec["resources"]["target_references"]["target_references"][0]
+    selector = {
+        "aggregate_fact_key": "atom",
+        "source_name": "publisher",
+        "source_measure_id": "count",
+        "source_concept": "population",
+        "entity_name": row["entity"],
+        "record_set_id": "population",
+        "period_type": "calendar_year",
+        "period_value": 2023,
+        "geography_level": "country",
+        "geography_id": "toy",
+        "geography_vintage": "unstated",
+        "dimensions": ["category"],
+        "dimension_values": {"category": 1},
+    }
+    row.pop("ledger_fact_key")
+    row["ledger_selector"] = selector
+    row["metadata"]["activation_status"] = "requires_reference_profile_resolution"
+    total = {key: value for key, value in selector.items() if key != "dimension_values"}
+    total.update(aggregate_fact_key="total", dimensions=[])
+    transformation = {
+        "reference_names": [row["name"]],
+        "operation": "allocated_residual_by_ratio",
+        "value_operands": [
+            {"role": "base", "expected_member_count": 1},
+            {"role": "total", **total},
+            {
+                "role": "partition",
+                "member_selectors": [selector],
+                "allocation_member_keys": ["atom"],
+            },
+        ],
+    }
+    spec["resources"]["reference_profiles"] = {
+        "schema_version": 1,
+        "reference_resource": "target_references" + suffix,
+        "interval_resource": "profile_intervals" + suffix,
+        "dimensions": {
+            "residual": {
+                "default": "central",
+                "profiles": {"central": {"transformations": [transformation]}},
+            },
+            "aging_index": {
+                "default": "central",
+                "profiles": {
+                    "central": {"deferred": True, "transformations": []},
+                    "low": {"available": False, "transformations": []},
+                },
+            },
+        },
+    }
+    spec["resources"]["profile_intervals"] = {"bands": []}
+    return spec, row
+
+
+@pytest.mark.parametrize("suffix", ["", ".json"])
+def test_preflight_and_composition_use_the_same_resolved_reference_view(
+    composed, suffix
+):
+    spec, row = _transport_spec_with_reference_profile(composed, suffix)
+    validate_transport_activation(spec)
+    graph = compose_transport_graph(spec, composed.config)
+    compiler = next(
+        node
+        for node in graph.nodes
+        if node.kernel == "targets.compile@1"
+        and json.loads(node.params["references"])["target_references"][0]["name"]
+        == row["name"]
+    )
+    references = json.loads(compiler.params["references"])
+    receipt = json.loads(compiler.params["reference_resolution"])
+    assert (
+        references["target_references"][0]["metadata"]["activation_status"] == "active"
+    )
+    assert (
+        compiler.params["references_sha256"]
+        == hashlib.sha256(canonical_json(references)).hexdigest()
+    )
+    assert (
+        receipt["effective_references_sha256"] == compiler.params["references_sha256"]
+    )
+    assert (
+        row["metadata"]["activation_status"] == "requires_reference_profile_resolution"
+    )
+    with pytest.raises(ValueError, match="unavailable"):
+        compose_module.reference_profile_view(spec, {"aging_index": "low"})
+
+
+def test_preflight_checks_the_selected_variant_reference_status(composed):
+    spec, row = _transport_spec_with_reference_profile(composed)
+    compiler = copy.deepcopy(
+        next(
+            node
+            for node in spec["resources"]["transport_graph"]["nodes"]
+            if node["kernel"] == "targets.compile@1"
+            and node["params"]["references"]["resource"] == "target_references"
+        )
+    )
+    compiler["id"] = "{variant}.targets"
+    spec["resources"]["entitlement_graph"] = {
+        "schema_version": 1,
+        "variant_nodes": [compiler],
+        "variant_gap": "{variant}.targets",
+    }
+    variant = {
+        "id": "candidate",
+        "tier": "calibration",
+        "knobs": {"residual": "central"},
+    }
+    spec["resources"]["scenarios"]["scenarios"] = [variant]
+    validate_transport_activation(spec)
+    profiles = spec["resources"]["reference_profiles"]["dimensions"]["residual"][
+        "profiles"
+    ]
+    profiles["unresolved"] = {"transformations": []}
+    variant["knobs"]["residual"] = "unresolved"
+    with pytest.raises(
+        ValueError,
+        match="placeholder reference target_references\\." + re.escape(row["name"]),
+    ):
+        validate_transport_activation(spec)
+
+
 class _IllegalOwner(KernelBase):
     ref = "test.illegal_owner@1"
     capabilities = Capabilities(Determinism.DETERMINISTIC)
@@ -1043,7 +1271,6 @@ def test_cli_arguments():
 # ---------------------------------------------------------------------------
 
 _GAPS = (
-    "benefit_unit_rule.dependent_child.age_limit_years",
     "placeholder reference precal_references.",
     "placeholder reference target_references.",
     "placeholder reference holdout_references.",
@@ -1061,8 +1288,13 @@ def test_packaged_spec_refuses_with_every_activation_gap_named():
         validate_transport_activation(spec)
     for gap in _GAPS:
         assert gap in str(error.value), gap
+    # The dependent-child rule is settled from the Social Security Act 2018
+    # Schedule 2, so it is no longer an activation gap.
+    assert "benefit_unit_rule.dependent_child" not in str(error.value)
     for resource in ("precal_references", "target_references", "holdout_references"):
-        for reference in spec["resources"][resource]["target_references"]:
+        for reference in compose_module.transport_resource(spec, resource)[
+            "target_references"
+        ]:
             if reference["metadata"].get("activation_status", "active") != "active":
                 assert f"placeholder reference {resource}.{reference['name']}" in str(
                     error.value

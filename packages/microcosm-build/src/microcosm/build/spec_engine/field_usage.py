@@ -26,9 +26,9 @@ from .resolver import (
 )
 from .schemas import load_schema_registry
 
-EXPECTED_AUTHORED_FIELD_COUNT = 32_464
-EXPECTED_RESOLVED_BINDING_FIELD_COUNT = 9_780
-EXPECTED_CONFIGURATION_FIELD_COUNT = 42_244
+EXPECTED_AUTHORED_FIELD_COUNT = 32_514
+EXPECTED_RESOLVED_BINDING_FIELD_COUNT = 9_781
+EXPECTED_CONFIGURATION_FIELD_COUNT = 42_295
 
 
 class FieldUsageError(AssertionError):
@@ -361,8 +361,8 @@ _PINS: dict[str, tuple[int, str]] = {
         "36564747627fb0058bb99e8e8c4397e41d8ecc472a20c49d4b6d7df1003a80ec",
     ),
     "calibration": (
-        313,
-        "6d4b0c325cc6d36c7aa17f7c5fb330eb93cd7736f4f894f83584b2bb127c42d3",
+        316,
+        "0212e52e2bf1e5996fe6b4785b2d74f2fb5680ec38b258c6ad4dbeadbd181a1b",
     ),
     "catalog_columns": (
         1_683,
@@ -425,8 +425,8 @@ _PINS: dict[str, tuple[int, str]] = {
         "24ac69de166b5e30e4423b51fd5d36e08940080741e118539f4d0a13cdb1228b",
     ),
     "imputation_transfer_execution": (
-        104,
-        "6d248bb79cd728bd88c5382ddee72066a4c5be8033bef9fec64ef1214e55850e",
+        110,
+        "4e1cdee017270e10a123df1e37be3d7c3a88056684c09eace90bd102c7d9ec83",
     ),
     "imputation_waiver_records": (
         70,
@@ -453,8 +453,8 @@ _PINS: dict[str, tuple[int, str]] = {
         "6a781915fd491d2c4b16d2b7d482f69cf362c904130093c59f9629f7a319269b",
     ),
     "resolved_seed_protocol": (
-        826,
-        "7ff2d5d1c2fd8026d17a57244f969dc0e9625a9e47304b693ad15df329041282",
+        827,
+        "525ed8621baa2c6e0c0970a6cec85b3b250f8aadfe93750a08deb0d9f240f15e",
     ),
     "resolved_seed_site_bindings": (
         277,
@@ -485,8 +485,8 @@ _PINS: dict[str, tuple[int, str]] = {
         "d6782c5de5bbed1bdc6bf653c4a6d4aadcad4ccc72d35e1092e130fcb04680a3",
     ),
     "source_stages": (
-        1_717,
-        "d2ce9a34be0c5da08af622685f2f101ff0d62c4d08e1250c153cc252de74cfe6",
+        1758,
+        "baf946a13c027d9e26f786d4ee6b4ba442ead281304896a7d822d53a24e1c9f5",
     ),
     "spine_assembly_household_mass_shares": (
         2,

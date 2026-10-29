@@ -21,20 +21,25 @@ __all__ = [
     "KERNEL_OUTPUTS",
     "COMPARISON_TYPE",
     "CELL_DIAGNOSTICS_TYPE",
+    "INCOME_CELLS_TYPE",
     "DIAGNOSTICS_TYPE",
     "EXPORT_DESCRIPTOR_TYPE",
     "EXPORT_READBACK_TYPE",
     "GATE_REPORT_TYPE",
     "PACKAGE_RECEIPT_TYPE",
+    "CALIBRATION_PREPARATION_TYPE",
     "TARGET_SURFACE_TYPE",
 ]
 
 #: A compiled target registry plus its reference trace (canonical JSON).
 TARGET_SURFACE_TYPE = ArtifactType("microcosm.targets.surface", 1)
+CALIBRATION_PREPARATION_TYPE = ArtifactType("microcosm.targets.preparation", 1)
 #: Hold-out comparators measured on a population (canonical JSON).
 COMPARISON_TYPE = ArtifactType("microcosm.targets.comparison", 1)
 #: Source-household support and donor dollar influence in each scenario cell.
 CELL_DIAGNOSTICS_TYPE = ArtifactType("microcosm.takeup.cell-diagnostics", 1)
+#: Baseline reporting cells, joined across population branches by unit id.
+INCOME_CELLS_TYPE = ArtifactType("microcosm.reporting.income-cells", 1)
 #: One calibration's ``microcosm-diagnostics`` model, validated, as canonical
 #: JSON; the type version is the diagnostics schema version.
 DIAGNOSTICS_TYPE = ArtifactType(
@@ -54,7 +59,15 @@ PACKAGE_RECEIPT_TYPE = ArtifactType("microcosm.transport.package-receipt", 1)
 #: builds its ``ArtifactOutput`` tuples from this table cannot drift.
 KERNEL_OUTPUTS: Mapping[str, Mapping[str, ArtifactType]] = MappingProxyType(
     {
+        "reporting.income_decile@1": MappingProxyType(
+            {"baseline_cells": INCOME_CELLS_TYPE}
+        ),
+        "reporting.carry_income_decile@1": MappingProxyType({}),
+        "reporting.receipt_group@1": MappingProxyType({}),
         "targets.compile@1": MappingProxyType({"surface": TARGET_SURFACE_TYPE}),
+        "calibration.prepare@1": MappingProxyType(
+            {"preparation": CALIBRATION_PREPARATION_TYPE}
+        ),
         "targets.problem@1": MappingProxyType({"problem": PROBLEM_TYPE}),
         "takeup.compare@1": MappingProxyType({"comparison": COMPARISON_TYPE}),
         "takeup.cell_diagnostics@1": MappingProxyType(

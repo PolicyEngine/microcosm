@@ -57,11 +57,13 @@ def test_translate_cd_facts_conserves_values_and_records_lineage() -> None:
     assert set(by_geography) == {"5001900US0601", "5001900US0602"}
     assert by_geography["5001900US0601"]["value"] == pytest.approx(75.0)
     assert by_geography["5001900US0602"]["value"] == pytest.approx(85.0)
+    # The Census Bureau's district names, which the ACS local release's
+    # population targets for the same ids also carry (microcosm#1335).
     assert by_geography["5001900US0601"]["geography"]["name"] == (
-        "CA congressional district 1"
+        "Congressional District 1 (119th Congress), California"
     )
     assert by_geography["5001900US0602"]["layout"]["groupby_value_label"] == (
-        "CA congressional district 2"
+        "Congressional District 2 (119th Congress), California"
     )
     merged_lineage = by_geography["5001900US0602"]["lineage"]
     assert merged_lineage["target_geography_vintage"] == "119th_congress"

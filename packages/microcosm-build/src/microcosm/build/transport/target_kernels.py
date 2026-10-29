@@ -48,10 +48,12 @@ from pathlib import Path
 
 import numpy as np
 
+import microcosm.build.calibration_columns as calibration_columns_module
 import microcosm.build.chronicle_epoch as chronicle_epoch_module
 import microcosm.build.country_spec as country_spec_module
 import microcosm.build.ledger_artifact as ledger_artifact_module
 import microcosm.build.ledger_targets as ledger_targets_module
+import microcosm.build.reference_profiles as reference_profiles_module
 import microcosm.calibrate.artifacts as calibrate_artifacts_module
 import microcosm.calibrate.hierarchy as hierarchy_module
 import microcosm.calibrate.matrix as matrix_module
@@ -61,17 +63,23 @@ import microcosm.calibrate.target as target_module
 import microcosm.frame.bundle as frame_bundle_module
 import microcosm.frame.schema as frame_schema_module
 import microcosm.frame.weights as frame_weights_module
+from microcosm.build.calibration_columns import prepare_calibration_columns
 from microcosm.build.country_spec import _validate_target_references
 from microcosm.build.ledger_artifact import load_ledger_consumer_artifact
 from microcosm.build.ledger_targets import (
     LedgerTargetReference,
     compile_ledger_target_references,
 )
+from microcosm.build.reference_profiles import (
+    REFERENCE_DOCUMENT_KEYS,
+    validate_reference_resolution,
+)
 from microcosm.calibrate import TargetRegistry, TargetSpec
 from microcosm.calibrate.artifacts import encode_problem
 from microcosm.calibrate.matrix import CalibrationProblem, build_constraint_matrix
 from microcosm.frame import Frame
 from microcosm.graph import (
+    ROWS_ALL,
     Capabilities,
     Determinism,
     KernelBase,
@@ -85,7 +93,11 @@ from microcosm.graph import (
 from microcosm.graph.canonical import canonical_json
 
 from . import artifact_types, graph_inputs
-from .artifact_types import COMPARISON_TYPE, TARGET_SURFACE_TYPE
+from .artifact_types import (
+    CALIBRATION_PREPARATION_TYPE,
+    COMPARISON_TYPE,
+    TARGET_SURFACE_TYPE,
+)
 from .graph_inputs import (
     canonical_document_param,
     context_frame,
@@ -99,8 +111,11 @@ from .graph_inputs import (
 )
 
 __all__ = [
+    "TARGET_COMPILATION_KERNELS",
     "COMPARISON_TYPE",
     "TARGETS_COMPILE",
+    "CALIBRATION_PREPARE",
+    "CalibrationPrepareKernel",
     "TARGETS_PROBLEM",
     "TAKEUP_COMPARE",
     "TARGET_SURFACE_TYPE",
@@ -115,15 +130,14 @@ __all__ = [
     "register_target_kernels",
 ]
 
+#: Every transport kernel that resolves references against consumer facts.
+TARGET_COMPILATION_KERNELS = frozenset(
+    {"transport.create@1", "targets.compile@1", "takeup.compare@1", "takeup.gap@1"}
+)
+
 _SURFACE_KIND = "transport_target_surface"
 _COMPARISON_KIND = "transport_target_comparison"
 _PROBLEM_BINDINGS_SCHEMA = "microcosm.transport.problem-bindings.v1"
-
-#: The keys of a node's target-reference document: the subset of a country's
-#: ``target_references.json`` its references need.
-_REFERENCE_DOCUMENT_KEYS = frozenset(
-    {"country", "schema_version", "hierarchy", "target_references"}
-)
 
 #: Statuses ``compile_ledger_target_references`` treats as executable
 #: (``ledger_targets.py`` ``_require_executable_reference``): an absent or
@@ -148,11 +162,11 @@ def parse_reference_document(
     compiled target to its reference by name.
     """
 
-    unknown = sorted(set(document) - _REFERENCE_DOCUMENT_KEYS)
+    unknown = sorted(set(document) - REFERENCE_DOCUMENT_KEYS)
     if unknown:
         raise ValueError(
             f"A node's target-reference document carries only "
-            f"{sorted(_REFERENCE_DOCUMENT_KEYS)}; got also {unknown}. Keys the "
+            f"{sorted(REFERENCE_DOCUMENT_KEYS)}; got also {unknown}. Keys the "
             "kernel would not read must not ride in its parameters."
         )
     references = _validate_target_references(document, country=country)
@@ -186,6 +200,7 @@ class TargetSurface:
     references_sha256: str
     facts: Mapping[str, object]
     sha256: str
+    reference_resolution: Mapping[str, object] | None = None
 
 
 def _trace_row(spec: TargetSpec, reference: LedgerTargetReference) -> dict[str, object]:
@@ -205,6 +220,7 @@ def encode_target_surface(
     *,
     references_sha256: str,
     facts: Mapping[str, object],
+    reference_resolution: Mapping[str, object] | None = None,
 ) -> bytes:
     """Encode a compiled registry with its one-to-one reference trace."""
 
@@ -217,26 +233,74 @@ def encode_target_surface(
             "A target surface needs exactly one compiled target per reference, "
             "in reference order."
         )
-    payload = canonical_json(
-        {
-            "schema_version": 1,
-            "kind": _SURFACE_KIND,
+    document = {
+        "schema_version": 1,
+        "kind": _SURFACE_KIND,
+        "country": registry.country,
+        "registry": {
             "country": registry.country,
-            "registry": {
-                "country": registry.country,
-                "version": registry.version,
-                "specs": [spec.to_dict() for spec in specs],
-            },
-            "trace": [
-                _trace_row(spec, reference)
-                for spec, reference in zip(specs, references, strict=True)
-            ],
-            "references_sha256": references_sha256,
-            "facts": dict(facts),
-        }
-    )
+            "version": registry.version,
+            "specs": [spec.to_dict() for spec in specs],
+        },
+        "trace": [
+            _trace_row(spec, reference)
+            for spec, reference in zip(specs, references, strict=True)
+        ],
+        "references_sha256": references_sha256,
+        "facts": dict(facts),
+    }
+    if reference_resolution is not None:
+        document["reference_resolution"] = dict(reference_resolution)
+    payload = canonical_json(document)
     decode_target_surface(payload)
     return payload
+
+
+def _surface_resolution(document: Mapping, registry: TargetRegistry) -> Mapping | None:
+    resolution = document.get("reference_resolution")
+    resolved = [
+        spec
+        for spec in registry.specs
+        if spec.metadata.get("reference_profiles_resolved")
+    ]
+    if resolution is None:
+        if resolved:
+            raise ValueError(
+                "A profile-resolved surface requires its reference resolution receipt."
+            )
+        return None
+    if not isinstance(resolution, Mapping):
+        raise ValueError("A surface reference resolution receipt must be an object.")
+    body = dict(resolution)
+    claimed = body.pop("receipt_sha256", None)
+    if (
+        body.get("resolver_version")
+        != reference_profiles_module.REFERENCE_PROFILE_RESOLVER_VERSION
+        or claimed != reference_profiles_module.reference_document_sha256(body)
+    ):
+        raise ValueError("Surface reference resolution receipt hash mismatch.")
+    if resolution.get("effective_references_sha256") != document["references_sha256"]:
+        raise ValueError("Surface effective reference hash mismatch.")
+    try:
+        selection = reference_profiles_module.reference_document_sha256(
+            reference_profiles_module._selection_identity(resolution)
+        )
+    except KeyError as error:
+        raise ValueError(
+            "Surface reference selection identity is incomplete."
+        ) from error
+    if selection != resolution.get("reference_selection_sha256"):
+        raise ValueError("Surface reference selection identity mismatch.")
+    for spec in resolved:
+        if spec.metadata.get(
+            "reference_selection_sha256"
+        ) != selection or spec.metadata.get(
+            "effective_intervals_sha256"
+        ) != resolution.get("effective_intervals_sha256"):
+            raise ValueError("Surface reference profile identity mismatch.")
+    if sorted(spec.name for spec in resolved) != resolution.get("transformed_names"):
+        raise ValueError("Surface resolution transformed names mismatch.")
+    return resolution
 
 
 def decode_target_surface(payload: bytes) -> TargetSurface:
@@ -250,7 +314,7 @@ def decode_target_surface(payload: bytes) -> TargetSurface:
     if (
         document.get("schema_version") != 1
         or document.get("kind") != _SURFACE_KIND
-        or set(document)
+        or set(document) - {"reference_resolution"}
         != {
             "schema_version",
             "kind",
@@ -296,6 +360,7 @@ def decode_target_surface(payload: bytes) -> TargetSurface:
         references_sha256=document["references_sha256"],
         facts=document["facts"],
         sha256=sha256_text(payload),
+        reference_resolution=_surface_resolution(document, registry),
     )
 
 
@@ -306,17 +371,32 @@ def compile_target_surface(
     country: str,
     references_sha256: str,
     expected_facts_sha256: str | None = None,
+    feed_pin: Mapping[str, object] | None = None,
+    reference_resolution: Mapping[str, object] | None = None,
 ) -> tuple[bytes, TargetRegistry]:
     """Compile a reference document against one consumer artifact.
 
     Returns the surface bytes and the registry they encode. The artifact
     payload records content identities only, never the source path, so moving
-    a source file changes neither a node key nor an artifact byte.
+    a source file changes neither a node key nor an artifact byte. A declared
+    country feed supplies ``feed_pin`` for all six artifact identities; the
+    optional facts hash remains available for feeds without a full pin.
     """
 
     references = parse_reference_document(document, country=country)
+    resolved = any(
+        ref.metadata.get("reference_profiles_resolved") for ref in references
+    )
+    if resolved and reference_resolution is None:
+        raise ValueError(
+            "Profile-resolved references require a reference resolution receipt."
+        )
+    if reference_resolution is not None:
+        reference_resolution = validate_reference_resolution(
+            document, reference_resolution, references_sha256=references_sha256
+        )
     artifact = load_ledger_consumer_artifact(
-        facts_path, expected_facts_sha256=expected_facts_sha256
+        facts_path, expected_facts_sha256=expected_facts_sha256, feed_pin=feed_pin
     )
     registry = compile_ledger_target_references(
         artifact.facts, references, country=country
@@ -330,6 +410,7 @@ def compile_target_surface(
             "manifest_sha256": artifact.manifest_sha256,
             "n_facts": len(artifact.facts),
         },
+        reference_resolution=reference_resolution,
     )
     return payload, registry
 
@@ -354,6 +435,16 @@ def _registry_from_context(
         country=country,
         references_sha256=references_sha256,
         expected_facts_sha256=expected,
+        feed_pin=(
+            canonical_document_param(context, ref, "chronicle_feed_pin")
+            if "chronicle_feed_pin" in context.params
+            else None
+        ),
+        reference_resolution=(
+            canonical_document_param(context, ref, "reference_resolution")
+            if "reference_resolution" in context.params
+            else None
+        ),
     )
     return registry, payload
 
@@ -398,6 +489,7 @@ _COMPILE_MODULES = (
     ledger_targets_module,
     ledger_artifact_module,
     chronicle_epoch_module,
+    reference_profiles_module,
     registry_module,
     target_module,
     hierarchy_module,
@@ -412,6 +504,197 @@ _MATRIX_MODULES = (
 )
 
 
+class CalibrationPrepareKernel(KernelBase):
+    """Prepare declared columns and attest their reference-profile identity."""
+
+    ref = "calibration.prepare@1"
+    capabilities = Capabilities(
+        Determinism.DETERMINISTIC,
+        numeric=Numeric.BITWISE,
+        seed_source=SeedSource.NONE,
+        dependencies=("numpy", "pandas"),
+    )
+
+    def implementation_hash(self) -> str:
+        from .column_kernels import _columns
+
+        return source_hash(
+            type(self),
+            _columns,
+            graph_inputs,
+            artifact_types,
+            calibration_columns_module,
+            reference_profiles_module,
+            dependencies=self.capabilities.dependencies,
+        )
+
+    def run(self, context: KernelContext) -> KernelResult:
+        from .column_kernels import _columns
+
+        require_params(
+            context,
+            self.ref,
+            required=frozenset({"bindings", "references", "references_sha256"}),
+            optional=frozenset({"reference_resolution", "intervals"}),
+        )
+        require_outputs(context, self.ref)
+        if (
+            context.node.sources
+            or context.artifacts
+            or any(
+                item.rows != ROWS_ALL
+                for item in (*context.node.inputs, *context.node.outputs)
+            )
+        ):
+            raise ValueError(
+                f"{self.ref} requires whole tables and no external sources or artifacts."
+            )
+        bindings = canonical_document_param(context, self.ref, "bindings")
+        document = canonical_document_param(context, self.ref, "references")
+        digest = sha256_param(context, self.ref, "references_sha256")
+        resolution = None
+        if "reference_resolution" in context.params:
+            candidate = canonical_document_param(
+                context, self.ref, "reference_resolution"
+            )
+            if (
+                candidate.get("effective_intervals_sha256") is not None
+                and "intervals" not in context.params
+            ):
+                raise ValueError(
+                    "Calibration preparation requires its effective interval companion."
+                )
+            resolution = validate_reference_resolution(
+                document,
+                candidate,
+                references_sha256=digest,
+                interval_document=(
+                    canonical_document_param(context, self.ref, "intervals")
+                    if "intervals" in context.params
+                    else None
+                ),
+            )
+        elif any(
+            row.get("metadata", {}).get("reference_profiles_resolved")
+            for row in document.get("target_references", ())
+        ):
+            raise ValueError(
+                "Profile-resolved preparation requires a reference resolution receipt."
+            )
+        tables = prepare_calibration_columns(context.tables, bindings)
+        inventory = {
+            (row["entity"], row["name"])
+            for row in (*bindings["columns"], *bindings.get("roster_counts", ()))
+        }
+        if {(item.entity, item.column) for item in context.node.outputs} != inventory:
+            raise ValueError(
+                f"{self.ref} must own the exact prepared-column inventory."
+            )
+        columns = _columns(context, self.ref, tables)
+        evidence = {
+            "schema_version": 1,
+            "kind": "calibration_preparation",
+            "bindings_sha256": sha256_text(canonical_json(bindings)),
+            "bindings": bindings,
+            "references_sha256": digest,
+            "reference_selection_sha256": None
+            if resolution is None
+            else resolution["reference_selection_sha256"],
+            "effective_intervals_sha256": None
+            if resolution is None
+            else resolution["effective_intervals_sha256"],
+            "reference_resolution": resolution,
+            "columns": [
+                {
+                    "entity": entity,
+                    "name": name,
+                    "rows": len(tables[entity]),
+                    "entity_ids_sha256": sha256_text(
+                        canonical_json(columns[entity, name].index.tolist())
+                    ),
+                    "values_sha256": sha256_text(
+                        canonical_json(columns[entity, name].tolist())
+                    ),
+                }
+                for entity, name in sorted(inventory)
+            ],
+        }
+        payload = canonical_json(evidence)
+        return KernelResult(
+            columns=columns,
+            artifacts={"preparation": payload},
+            receipt={**evidence, "preparation_sha256": sha256_text(payload)},
+        )
+
+
+def _preparation_binding(
+    context: KernelContext, surface: TargetSurface
+) -> dict[str, object]:
+    resolution = surface.reference_resolution
+    artifact = context.artifacts.get("preparation")
+    if resolution is None and artifact is None:
+        return {}
+    if artifact is None or artifact.type != CALIBRATION_PREPARATION_TYPE:
+        raise ValueError(
+            "Resolved targets require a typed calibration preparation artifact."
+        )
+    evidence = json.loads(artifact.payload)
+    if (
+        canonical_json(evidence) != artifact.payload
+        or evidence.get("schema_version") != 1
+        or evidence.get("kind") != "calibration_preparation"
+    ):
+        raise ValueError("Invalid calibration preparation artifact.")
+    bindings = evidence.get("bindings", {})
+    inventory = {
+        (row["entity"], row["name"])
+        for row in (*bindings.get("columns", ()), *bindings.get("roster_counts", ()))
+    }
+    rows = evidence.get("columns", ())
+    if (
+        sha256_text(canonical_json(bindings)) != evidence.get("bindings_sha256")
+        or len(rows) != len(inventory)
+        or {(row["entity"], row["name"]) for row in rows} != inventory
+    ):
+        raise ValueError("Calibration preparation inventory differs from its bindings.")
+    expected = {
+        "references_sha256": surface.references_sha256,
+        "reference_selection_sha256": None
+        if resolution is None
+        else resolution["reference_selection_sha256"],
+        "effective_intervals_sha256": None
+        if resolution is None
+        else resolution["effective_intervals_sha256"],
+    }
+    if (
+        any(evidence.get(name) != value for name, value in expected.items())
+        or evidence.get("reference_resolution") != resolution
+    ):
+        raise ValueError(
+            "Calibration preparation reference-profile or interval identity mismatch."
+        )
+    for row in evidence.get("columns", ()):
+        table = context.tables.get(row["entity"])
+        if (
+            table is None
+            or row["name"] not in table
+            or len(table) != row["rows"]
+            or sha256_text(canonical_json(table[f"{row['entity']}_id"].tolist()))
+            != row.get("entity_ids_sha256")
+            or sha256_text(canonical_json(table[row["name"]].tolist()))
+            != row.get("values_sha256")
+        ):
+            raise ValueError(
+                "Calibration preparation inventory differs from the problem population."
+            )
+    return {
+        "reference_resolution": resolution,
+        "preparation_sha256": sha256_text(artifact.payload),
+        "preparation_artifact_key": artifact.key,
+        **expected,
+    }
+
+
 class TargetsCompileKernel(KernelBase):
     """``targets.compile@1``: references plus facts become a target surface."""
 
@@ -422,7 +705,9 @@ class TargetsCompileKernel(KernelBase):
         seed_source=SeedSource.NONE,
     )
     _required = frozenset({"country", "references", "references_sha256"})
-    _optional = frozenset({"facts_sha256"})
+    _optional = frozenset(
+        {"facts_sha256", "chronicle_feed_pin", "reference_resolution"}
+    )
 
     def implementation_hash(self) -> str:
         return source_hash(
@@ -444,6 +729,15 @@ class TargetsCompileKernel(KernelBase):
                 "registry_version": registry.version,
                 "n_targets": len(registry.specs),
                 "surface_sha256": sha256_text(payload),
+                **(
+                    {
+                        "reference_resolution": json.loads(payload)[
+                            "reference_resolution"
+                        ]
+                    }
+                    if "reference_resolution" in context.params
+                    else {}
+                ),
             },
         )
 
@@ -484,6 +778,7 @@ class TargetsProblemKernel(KernelBase):
                 "under the alias 'surface'."
             )
         surface = decode_target_surface(value.payload)
+        preparation = _preparation_binding(context, surface)
         frame = context_frame(
             context, self.ref, entities=entities, weight_entity=weight_entity
         )
@@ -512,6 +807,7 @@ class TargetsProblemKernel(KernelBase):
                 "surface_sha256": surface.sha256,
                 "entities": list(entities),
                 "weight_entity": weight_entity,
+                **preparation,
             },
         )
         return KernelResult(
@@ -523,6 +819,7 @@ class TargetsProblemKernel(KernelBase):
                 "n_targets": int(problem.n_targets),
                 "n_records": int(problem.n_weights),
                 "weight_kind": problem.initial_weights.kind.value,
+                **preparation,
             },
         )
 
@@ -540,7 +837,9 @@ class TakeupCompareKernel(KernelBase):
     _required = frozenset(
         {"country", "references", "references_sha256", "entities", "weight_entity"}
     )
-    _optional = frozenset({"facts_sha256"})
+    _optional = frozenset(
+        {"facts_sha256", "chronicle_feed_pin", "reference_resolution"}
+    )
 
     def implementation_hash(self) -> str:
         return source_hash(
@@ -617,6 +916,7 @@ class TakeupCompareKernel(KernelBase):
 
 
 TARGETS_COMPILE = TargetsCompileKernel()
+CALIBRATION_PREPARE = CalibrationPrepareKernel()
 TARGETS_PROBLEM = TargetsProblemKernel()
 TAKEUP_COMPARE = TakeupCompareKernel()
 
@@ -624,5 +924,10 @@ TAKEUP_COMPARE = TakeupCompareKernel()
 def register_target_kernels(registry: KernelRegistry) -> None:
     """Register the three kernels; repeating the call is a no-op."""
 
-    for kernel in (TARGETS_COMPILE, TARGETS_PROBLEM, TAKEUP_COMPARE):
+    for kernel in (
+        CALIBRATION_PREPARE,
+        TARGETS_COMPILE,
+        TARGETS_PROBLEM,
+        TAKEUP_COMPARE,
+    ):
         registry.register(kernel)

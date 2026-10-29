@@ -15,7 +15,7 @@ the PEP 420 namespace `microcosm.<x>`: `frame`, `fit`, `calibrate`, `build`,
 ## Commands
 
 UK build completion exports and stages Orrery graph evidence. Publication uses
-an independent worker inside the existing local service and a durable queue;
+an independent worker inside the external `microcosm-emitter` service and a durable queue;
 see [configuration and retry](orrery-publication.md). No new producer secret or
 environment variable is required. Keep graph export/publication tests independent
 of the hosted runs app and collector; use synthetic files and fake HTTP.
@@ -93,15 +93,23 @@ engine-free runner installs the supported public Orrery range and locked Node
 dependency set under `tools/orrery-contract/`; the pytest test generates a
 document through Microcosm's public Python API and requires Orrery's public
 parser to accept it. The recorded-evidence assertion in `test_graph_evidence.py`
-uses the same pinned parser for groups, statuses, activities and artifacts.
+uses the same pinned parser for groups, statuses, activities and artifacts, and
+the one in `test_graph_reconstruction.py` uses it for the reconstruction marker
+of a declaration-only document.
 These CI tests perform no browser rendering.
 
 Workspace tests use an in-memory telemetry emitter by default. The shared
-fixture isolates Hugging Face credentials and cache paths and blocks collector
-HTTP requests outside loopback. Tests of actual emitter startup must request
-`real_local_telemetry` and supply an explicit loopback development collector;
-that opt-in retains credential isolation. Other build tests can inspect
-`fake_telemetry_emitters` without creating sockets or service processes.
+fixture isolates Hugging Face credentials and cache paths. Adapter tests replace
+emitter startup, inventory and publication APIs with fakes. Emitter process, persistence
+and HTTP-delivery tests belong in microcosm-emitter; do not copy them
+into Microcosm. Build tests inspect `fake_telemetry_emitters` without creating
+sockets or service processes.
+
+The UK full-build caller sets `close_service_on_finish=False`: reporting an outcome
+leaves the graph worker available, and that caller's existing `finally` cleanup
+closes the combined service. Other callers close automatically when they finish.
+Keep validation-refused outcomes and structured
+failure codes intact when changing the adapter.
 
 New commits to a PR cancel older unfinished CI runs for that same PR.
 Each main-push run has a unique concurrency group, so all main-push runs
@@ -152,6 +160,18 @@ Move fixtures and helper functions shared by those files to
 instead of deriving them from a test module's `__file__`. Keep fixture data in
 the package's root `tests/fixtures/` or `tests/golden/` directory.
 
+A test that commits to or fetches into a throwaway git repository keeps git's
+background maintenance out of it with the settings in
+`test_support.git_repositories`: `["git", *NO_BACKGROUND_MAINTENANCE, ...]` for
+git the test runs, or `NO_BACKGROUND_MAINTENANCE_ENV` in the environment for
+git the code under test runs (a fetch, say). A helper whose environment
+already carries the variables needs no options. Code that strips git's
+repository-local variables (`git rev-parse --local-env-vars`, as the Axiom
+checkout check does) drops the variables. Without these settings, `git commit`
+and `git fetch` can leave a detached maintenance process that removes the
+repository's `objects/maintenance.lock` after the command has returned, and a
+test that lists or hashes `.git` then fails now and then.
+
 `tools/ci_test_plan.py` recursively enumerates and validates this layout. Run
 `python3 tools/ci_test_plan.py verify` after adding, moving, or splitting tests,
 and use `python3 tools/ci_test_plan.py describe` to inspect the generated group,
@@ -164,6 +184,14 @@ RNG-library versions, so they legitimately move when main changes an attested
 module or dependency. CI tests the merge ref, so merge main and re-pin rather
 than hunting for an environment leak. Editable installs hide packaging breaks;
 if you touch packaging, build wheels locally before pushing.
+
+For an intentional US source-stage change, regenerate the release input
+coverage manifest with `tools/build_us_release_input_coverage_manifest.py`,
+then follow the bundle/pin/coverage sequence documented in
+`tools/repin_us_spec_engine_contracts.py`. The repinner derives frozen source
+hashes, compiler field inventories and their test expectations; its `--check`
+mode refuses drift. Full bundle generation needs the US engine environment.
+These commands do not rebuild survey data or certify a release.
 
 The `integration-uk` job in `.github/workflows/test.yml` runs the
 `integration/uk/` directory serially on Python 3.13 whenever the unified
@@ -285,6 +313,18 @@ against both H5 files. The publisher refuses to point `latest.json` at this
 child, so publish it with `--no-latest --tag-only`. See
 [the reported-receipt runbook](us-reported-receipt-source-enrichment.md).
 
+`compatibility_recertification` is a separate release type
+(`microcosm.data.compatibility_recertification`,
+`tools/build_us_compatibility_recertification.py`): a published US
+calibration release, republished byte for byte with a measured claim for a
+newer policyengine-us. Its parent identity is the parent's own published
+`release_manifest.json`, carried and hashed, never a code constant; the
+publisher checks the parent tag on the Hub before any upload. A change in
+what the tested engine reads or ignores must have an entry in
+`RECERTIFICATION_COLUMN_CHANGES`. It takes `--compatibility-wheel` and no
+`--parent-h5`. National parents only for now. See
+[the recertification runbook](us-compatibility-recertification.md).
+
 Three US release seams refuse a stored column that is lowercase snake_case,
 not a variable of the engine the release is certified against, and not in the
 reviewed register `microcosm.data.stored_inputs.US_STORED_NON_VARIABLE_COLUMNS`
@@ -294,8 +334,29 @@ certification and on every replay, and the ACS local-area chain's package
 stage (`tools/build_us_acs_local_release.py`). A new provenance column needs a
 register entry with its reason, bound to its producer in
 `test_us_stored_input_register.py`; a renamed engine input needs its live
-name. A new US lane that writes a release H5 must run the check where it
-records `build.built_with_model_package`.
+name. A new US lane that writes a release H5 must run the check where it records
+`build.built_with_model_package`, and bind the verdict into the release: the
+publisher runs no engine for a calibration release, so it requires the
+fiscal-refresh tool's `stored_inputs.json` and manifest `stored_inputs` block,
+and the ACS local-area `stored_inputs` gate, each naming the built-with engine
+(microcosm#1034). The ACS local-area package stage also refuses a calibrated H5
+on which an SPM unit the built-with engine measures has no classified adult,
+and binds the `spm_measurement_composition` gate the publisher requires
+(microcosm#1263; `microcosm.build.us_runtime.spm_measurement_gate`).
+The same package stage requires complete occupation, industry and
+worked-last-year inputs on every final person row and binds that verdict to
+the H5 hash. ACS staging checks its preserved ASEC donor before acquisition;
+historical donors and staging files missing these inputs must be rebuilt
+through the exact ASEC restoration/fiscal carry and native ACS mapping.
+US household ladders carry both `county_fips` (2020 counties for the locked
+policyengine-us rules) and `county_fips_2023` (3,144 county-equivalents for
+calibration, including Connecticut's nine planning regions). The latter is
+registered non-engine metadata. Geography gates require both columns; older
+artifacts need the new mapping before they pass. County target joins must
+choose the 2023 column explicitly. See [the vintage investigation](us-county-2023-geography.md).
+A source-enrichment publisher claim widens the range
+consumers accept, not what was checked: the bundle's
+`compatibility.claim_measurement` names the one version the probe measured.
 
 A US release or release-gate preflight that receives a multispine pool through
 `--base-h5` must authenticate its sibling terminal manifest. A current stacked
@@ -322,6 +383,19 @@ build evidence, not certification. Its byte-preservation verifier lives in
 `microcosm.data.h5_boolean_append`, so the reported-receipt release contract
 can replay it. See
 [the qualification note](us-acs-donor-receipt-qualification.md).
+
+The ACS local-area release can build its fresh staging H5 on Modal with
+`us-acs-multispine-staging`, then consume its verified H5 and summary through
+`us-acs-local-release`; see [the Modal stage runbook](us-modal-stage-runbook.md#acs-multispine-staging).
+Its optional [county calibration rung](us-acs-local-county-rung.md) uses
+`--geographies state,cd,county --soi-mode state_county`, a county-inclusive
+Ledger feed, and matching county boundaries. Full runs require all 3,144
+county-equivalents and write `county_reliability.json`; the base year is 2024.
+County solves use a run-level loss cap of 10 and a per-record weight cap of 5,
+configurable with `--county-target-loss-cap` and `--county-max-weight-ratio`
+(the pilot also tested 20). Later calibration stages resolve this profile from
+the checkpoint's recorded county surface. Ordinary runs retain their historical
+solver settings. County grades use source-household ESS; row ESS is diagnostic.
 
 The independent US annual static-aging candidate builder lives in
 `microcosm.build.us_annual_static_aging`; it consumes a pinned published parent
@@ -378,6 +452,17 @@ label, search for an existing definition and follow
 [`docs/shared-constants.md`](shared-constants.md). Human contributors and
 AI assistants must import shared static data from its domain-specific constants
 module instead of copying it or reconstructing alternate views in consumers.
+
+## Calibration diagnostics JSON Schema
+
+`packages/microcosm-diagnostics/src/microcosm/diagnostics/schemas/calibration_diagnostics.v8.schema.json`
+is generated from the schema-8 models in `microcosm.diagnostics.schema`. After
+changing one, regenerate it with
+`uv run --no-sync python tools/generate_calibration_diagnostics_json_schema.py`.
+A new model validator also needs an entry in
+`CALIBRATION_DIAGNOSTICS_V8_JSON_SCHEMA_GAPS` and a document in
+`test_json_schema.py` that the schema accepts and the models refuse; the
+diagnostics tests fail until both exist.
 
 ## Review this guide
 

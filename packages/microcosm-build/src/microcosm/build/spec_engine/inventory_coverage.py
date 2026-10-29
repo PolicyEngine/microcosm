@@ -350,12 +350,12 @@ EXPECTED_HASHES = {
     "acs_person_predictors": "878c788a6f037d7aca12b3586ea034eff04f3034ffa11935a736493042551f25",
     "authority": "bf681aedc859fd6398ef72da68f584069b7d25b3085c549bf99f82e8324c4eef",
     "early_families": "4aa9f736fd76e83955477ad1667e58f48f264783f05bdc7f0102cd32d61323bd",
-    "full_checkpoint": "ffb6bc3f23a2baf359fc9d34b910f0b5c8f65a043ce8d12d66eb7081dc9e1442",
+    "full_checkpoint": "183984392a365b617e6cf42b43f12aac3dccd6d3f97341147cad0f892d302597",
     "gap_fill_schedule": "1c31f9868f7884347cc19cf1ff65da43f950b9114941a715bab168246db414a7",
     "graph_nodes": "b68a7e94940b67f65aa2b029278ef0f37b927880fae143d17c2a3ec118d0fe67",
     "geography_assignment": "44e7f5f6cd7ceeef85d532c3d46306d03de4f4ee811376e6d29920742746b65c",
     "late_families": "7857518a5327a816acae80d55a04f43e7445a5e47be822d3ccb747bcb375e199",
-    "late_resource_semantics": "51f674be7de8b738c1a9af1331f0168e7975f43a3395f1ab1bd88f376f0f01f5",
+    "late_resource_semantics": "0be57790c6f5474e841452448598b6a90dc3afe473df32e381d9bff4f3767490",
     "late_schedule": "f1fb754e6ade602be394837bc0d7d091f2fba4b4b83fb00f59a0258fe56eb5da",
     "ownership": "5f64f0aac49e2313177564f71876bffc8c81b3ded4df701e70930e60e9c98356",
     "primary_tuples": "6655e37f15befe053f8de2583c216f97098e4c2bde526f315299c2858c97f055",
@@ -365,12 +365,25 @@ EXPECTED_HASHES = {
     # passive partnership/S-corp leaf after s_corp_income.
     # #1178: puf_support's source bytes attest CPS Social Security preservation.
     # RNG rules and the ordered QRF targets are unchanged. microcosm#104 moves
-    # both again: the protocol attests microcosm.calibrate.solve.
-    "seed_map": "ee4c4d50a035cff1e30fa491270b4cda92b0e3b808cd3e3eb14bcea09f0e0e01",
-    "seed_protocol": "8c8ae60101279c322eba1044bf1f617c5dfd9c1ddb2029947d5985857b4c9f51",
-    "source_manifest": "22763ed5676fa29876951653368cbbc866cbd2425a2394a9f191ee09e448e413",
+    # both again: the protocol attests microcosm.calibrate.solve. microcosm#1124
+    # moves both once more: solve gains the opt-in retain_best_objective, off
+    # by default, so no US solve, RNG rule or QRF target changes. microcosm#1301
+    # moves both again: calibrate gains budget_search_bracket, whose default
+    # keeps the US bracket, and the budget search, which the US solve does
+    # not run, changes its probes, so again no US solve changes. #454: the
+    # meps_esi_premiums stage joins the attested sources and the source
+    # manifest. #1376: the puma_county_vintage draw module joins the seed
+    # protocol's attested kernel modules. #1380: the ACS transfer's
+    # self-employment component step changes acs_transfer's attested bytes.
+    # microcosm#1251 (#1239) moves the seed map and protocol again: puf_support
+    # gains the passive partnership/S-corp leaf, so the PUF QRF targets change.
+    # microcosm#1261 moves both again: the PUF donor carries partnership and
+    # S-corp line-32 shares as separate leaves.
+    "seed_map": "516bbc4d22f7185f21d9d76d6ca8321a7e37dc7b71a91dcf7169cf9bd920240a",
+    "seed_protocol": "a1215fcc203fe07d1ee4524da90e7bc3390edd63f39d5fd70f7868fa585cf759",
+    "source_manifest": "608c3621b1e4a108e57c8f83d16a184acdb3d05e16a81b895f7f72dbf5d0685c",
     "take_up": "9522ce40f7dea569312dd7a7beb474e5a5afadd2f1e10cb5876534c3ef623d35",
-    "tail": "4641e9a919a5c7719dd6e076e1eda06c17ec021d346a2b7f205fd299870a4688",
+    "tail": "071d418bb49976f4682c320d2ad07097c177de3a645d2524f235e1ff33ac83f9",
 }
 
 INVENTORY_REPORT_SCHEMA_VERSION = 1
@@ -450,7 +463,7 @@ EXPECTED_INVENTORY_COUNTS: Mapping[str, int] = {
     "stacked_checkpoint_full_components": 13,
     "stacked_checkpoint_pool_code_components": 19,
     "stacked_checkpoint_static_components": 10,
-    "tail_control_fields": 935,
+    "tail_control_fields": 938,
     "take_up_pipeline_steps": 28,
     "take_up_programs": 17,
     "typed_artifacts": 84,
@@ -1206,7 +1219,7 @@ def build_inventory_coverage(
             "stages": len(_array(sources["stages"], "source stages")),
             "sha256": sha256_json(source_manifest),
         },
-        expected={"stages": 37, "sha256": EXPECTED_HASHES["source_manifest"]},
+        expected={"stages": 38, "sha256": EXPECTED_HASHES["source_manifest"]},
     )
     pipeline = _mapping(spine["pipeline_contract"], "spine pipeline contract")
     operator_order = tuple(
@@ -1418,7 +1431,7 @@ def build_inventory_coverage(
     add(
         "capital_gains_tail_contract_exact",
         clauses={
-            "tail terminal field count differs": tail_count == 935,
+            "tail terminal field count differs": tail_count == 938,
             "resolved calibration tails differ": _json_equal(
                 legacy.get("calibration_tail_contracts"),
                 expected_legacy["calibration_tail_contracts"],
@@ -1446,7 +1459,7 @@ def build_inventory_coverage(
             "legacy_adapter.stacked_checkpoint_static_components",
         ),
         observed={"terminal_fields": tail_count, "sha256": sha256_json(tail_bundle)},
-        expected={"terminal_fields": 935, "sha256": EXPECTED_HASHES["tail"]},
+        expected={"terminal_fields": 938, "sha256": EXPECTED_HASHES["tail"]},
     )
 
     add(

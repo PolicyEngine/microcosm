@@ -38,7 +38,10 @@ from microcosm.build.cross_grain import (
 )
 
 UK_CROSS_GRAIN_DECLARATIONS_RESOURCE = "cross_grain_declarations.json"
-UK_LOCAL_GEOGRAPHY_LEVELS = frozenset({"constituency", "local_authority"})
+#: ``statistical_scope`` is Scotland's BRMA grain (microcosm#1090, #1262).
+UK_LOCAL_GEOGRAPHY_LEVELS = frozenset(
+    {"constituency", "local_authority", "statistical_scope"}
+)
 _RELATION_KINDS = ("subset", "independent")
 _LOCAL_ROUTE_KINDS = ("no_higher_control",)
 
@@ -73,6 +76,13 @@ def uk_cross_grain_bridges(
             higher_target_ids=tuple(str(value) for value in entry["higher_target_ids"]),
             lower_side=str(entry["lower_side"]),
             per_geography=bool(entry.get("per_geography", False)),
+            max_factor_shift=(
+                None
+                if entry.get("max_factor_shift") is None
+                else _declared_bound(
+                    entry, "max_factor_shift", kind="cross-grain bridge"
+                )
+            ),
         )
         for entry in declared["bridges"]
     )
@@ -119,18 +129,24 @@ def uk_fanout_sum_bridges(
             higher_target_id=str(entry["higher_target_id"]),
             lower_target_id=str(entry["lower_target_id"]),
             geography_id=str(entry["geography_id"]),
-            max_factor_shift=_fanout_bound(entry, "max_factor_shift"),
-            max_index_shift=_fanout_bound(entry, "max_index_shift"),
+            max_factor_shift=_declared_bound(entry, "max_factor_shift"),
+            max_index_shift=_declared_bound(entry, "max_index_shift"),
         )
         for entry in declared.get("fanout_sum_bridges", ())
     )
 
 
-def _fanout_bound(entry: Mapping[str, Any], field: str) -> float:
+def _declared_bound(
+    entry: Mapping[str, Any], field: str, *, kind: str = "fan-out sum bridge"
+) -> float:
     bound = entry.get(field)
-    if not isinstance(bound, (int, float)) or not 0.0 < float(bound) < 1.0:
+    if (
+        isinstance(bound, bool)
+        or not isinstance(bound, (int, float))
+        or not 0.0 < float(bound) < 1.0
+    ):
         raise ValueError(
-            f"UK fan-out sum bridge {entry.get('bridge_id')!r} must declare "
+            f"UK {kind} {entry.get('bridge_id')!r} must declare "
             f"{field} in (0, 1), got {bound!r}."
         )
     return float(bound)

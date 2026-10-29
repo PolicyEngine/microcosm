@@ -2487,8 +2487,14 @@ def _eitc_source_decomposition_total_for_bounds(
     lower: float,
     upper: float,
 ) -> float | None:
-    total = 0.0
-    matched = False
+    """Source-period Table 2.5 EITC inside ``[lower, upper)``, all child splits.
+
+    Each child split's record set nests its AGI bins under its all-AGI total
+    row, so summing every contained row would count a split twice once the
+    interval holds both. Count only each split's outermost contained rows.
+    """
+
+    rows_by_split: dict[str, list[tuple[float, float, float]]] = {}
     for spec in registry.specs:
         if not _is_eitc_decomposition_spec(spec):
             continue
@@ -2498,9 +2504,40 @@ def _eitc_source_decomposition_total_for_bounds(
             continue
         spec_lower, spec_upper = _bounds_from_metadata(spec)
         if _contains_bounds(lower, upper, spec_lower, spec_upper):
-            total += spec.value
-            matched = True
-    return total if matched else None
+            rows_by_split.setdefault(
+                spec.metadata.get("ledger_layout_record_set_id", ""), []
+            ).append((spec_lower, spec_upper, spec.value))
+    if not rows_by_split:
+        return None
+    return sum(
+        _outermost_rows_total(record_set_id, rows)
+        for record_set_id, rows in rows_by_split.items()
+    )
+
+
+def _outermost_rows_total(
+    record_set_id: str,
+    rows: list[tuple[float, float, float]],
+) -> float:
+    outermost = sorted(
+        row
+        for index, row in enumerate(rows)
+        if not any(
+            other_index != index
+            and (other[0], other[1]) != (row[0], row[1])
+            and _contains_bounds(other[0], other[1], row[0], row[1])
+            for other_index, other in enumerate(rows)
+        )
+    )
+    for previous, current in zip(outermost, outermost[1:], strict=False):
+        if current[0] < previous[1]:
+            raise ValueError(
+                f"EITC decomposition {record_set_id!r} has overlapping AGI rows "
+                f"[{_format_bound(previous[0])}, {_format_bound(previous[1])}) and "
+                f"[{_format_bound(current[0])}, {_format_bound(current[1])}); "
+                "its rows must nest or be disjoint."
+            )
+    return sum(value for _, _, value in outermost)
 
 
 def _eitc_agi_uprating_group(

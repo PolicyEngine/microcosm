@@ -40,11 +40,14 @@ from microcosm.build.logbook_adoption import (
     role_pins_digest,
     write_error_receipt,
 )
+from microcosm.build.uk_runtime.derived_facts import uk_derived_fact_rows
 from microcosm.build.uk_runtime.frs_release import load_uk_frs_release
+from microcosm.build.uk_runtime.hmrc_uprating import assert_installed_engine_is_pinned
 from microcosm.build.uk_runtime.ledger_targets import (
     compile_uk_local_target_registry,
     compile_uk_target_registry,
     load_uk_local_area_crosswalk,
+    uk_registry_on_calibration_line,
 )
 from microcosm.build.uk_runtime.measure_simulation import (
     apply_uk_calibration_measure_exclusions,
@@ -61,6 +64,12 @@ from microcosm.build.uk_runtime.release_certification import (
 from microcosm.build.uk_runtime.release_input_coverage import (
     PolicyEngineUKCoverageEngine,
 )
+from microcosm.build.uk_runtime.support_floor import (
+    load_uk_support_floor_declaration,
+    narrow_uk_registry_by_support_floor,
+    uk_support_floor_from_payload,
+)
+from microcosm.build.uk_runtime.weight_year import uk_solve_year_frame
 from microcosm.build.uk_runtime.weighted_integrity import (
     exclusion_evaluation_date,
     load_uk_input_mass_reference,
@@ -69,7 +78,7 @@ from microcosm.build.uk_runtime.weighted_integrity import (
 _SHA256 = re.compile(r"[0-9a-f]{64}")
 _REPOSITORY = Path(__file__).resolve().parents[1]
 _PIPELINE = "uk-frs-release-certification"
-_LEDGER_COMPILE_PARITY_PERIODS = (2023, 2025)
+_LEDGER_COMPILE_PARITY_PERIODS = (2025,)
 _LOCAL_COMPILE_PARITY_PERIOD = 2025
 
 
@@ -82,6 +91,8 @@ def _ledger_facts_size(path: Path) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
+    # The engine freeze, before either H5 is hashed (microcosm#1095).
+    assert_installed_engine_is_pinned()
     started_at = time.perf_counter()
     started_ts = datetime.now(UTC)
     code_pin = git_code_pin(_REPOSITORY)
@@ -248,30 +259,65 @@ def _run(args: argparse.Namespace, state: AttemptState) -> dict[str, object]:
         expected_manifest_sha256=args.ledger_manifest_sha256,
     )
     ledger_registries = {}
+    # The compile's own report of the references that did not resolve at each
+    # parity period travels with the registry: the parity gate needs it to
+    # reproduce the ledger_absent rows the signed resources carry. Unlike the
+    # full build, which refuses an unresolved calibration-year reference, this
+    # producer keeps the partial registry and leaves the verdict to the gates.
+    ledger_unsupported = {}
+    # Microcosm-derived facts compile beside the feed: the high-value homes
+    # local cells (microcosm#1240) and region rows (microcosm#1301), and DESNZ's
+    # energy split onto constituencies (microcosm#1095).
+    facts = (*artifact.facts, *uk_derived_fact_rows())
     for period in _LEDGER_COMPILE_PARITY_PERIODS:
-        compilation = compile_uk_target_registry(artifact.facts, target_period=period)
+        compilation = compile_uk_target_registry(facts, target_period=period)
         ledger_registries[period] = compilation.registry
+        ledger_unsupported[period] = compilation.unsupported
     local_compilation = compile_uk_local_target_registry(
-        artifact.facts,
+        facts,
         target_period=_LOCAL_COMPILE_PARITY_PERIOD,
         crosswalk=load_uk_local_area_crosswalk(),
     )
     local_ledger_registries = {_LOCAL_COMPILE_PARITY_PERIOD: local_compilation.registry}
+    local_ledger_unsupported = {
+        _LOCAL_COMPILE_PARITY_PERIOD: local_compilation.unsupported
+    }
     calibration_year = load_uk_frs_release().calibration_year
     if calibration_year in ledger_registries:
         reference_compiled = ledger_registries[calibration_year]
     else:
         reference_compiled = compile_uk_target_registry(
-            artifact.facts, target_period=calibration_year
+            facts, target_period=calibration_year
         ).registry
+    # The calibration reference is the national line's surface: the rows that
+    # bind on the local line only leave it as they leave the national solve
+    # (calibration_lines, microcosm#1301); compile parity keeps them.
+    reference_compiled, _line_receipt = uk_registry_on_calibration_line(
+        reference_compiled, line="national"
+    )
     evaluated_on = exclusion_evaluation_date(None)
     exclusions = load_uk_calibration_measure_exclusions()
     reference_registry, _receipt = apply_uk_calibration_measure_exclusions(
         reference_compiled, exclusions, now=evaluated_on
     )
+    # The support floor drops rows on the candidate's spine (microcosm#1095
+    # U3). The certifier cannot recompute support, so it reads the drops the
+    # run recorded and checks them against the declared floor.
+    floor_declaration = load_uk_support_floor_declaration()
+    reference_registry = narrow_uk_registry_by_support_floor(
+        reference_registry,
+        _nested(diagnostics, "build", "measure_exclusions") or {},
+        None
+        if floor_declaration is None
+        else uk_support_floor_from_payload(floor_declaration),
+    )
     append_phase(state, "registries_compiled")
 
     frame, _provenance = load_uk_national_frame(args.candidate_h5)
+    # A release carries its weights at the dataset's year (microcosm#796 A19).
+    # The gates stand on the solved weights, which policyengine-uk's own
+    # projection to the calibration year gives back.
+    frame = uk_solve_year_frame(frame, solve_year=calibration_year)
     # The spine frame is the evidence for the stage families' build state
     # (importance weights, mass receipts); the candidate is calibrated.
     spine_frame, _spine_provenance = load_uk_national_frame(args.spine_h5)
@@ -291,6 +337,8 @@ def _run(args: argparse.Namespace, state: AttemptState) -> dict[str, object]:
         build_stage_names=sidecar["stages"],
         ledger_registries=ledger_registries,
         local_ledger_registries=local_ledger_registries,
+        ledger_unsupported=ledger_unsupported,
+        local_ledger_unsupported=local_ledger_unsupported,
         parity_evidence=parity_evidence,
         fit_weight_records=rehydrate_uk_fit_weight_records(sidecar),
         input_mass_reference=load_uk_input_mass_reference(args.input_mass_reference),

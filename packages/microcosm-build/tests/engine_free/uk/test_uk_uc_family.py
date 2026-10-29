@@ -237,8 +237,9 @@ def test_full_uc_payment_registry_matches_independent_relationship_and_band_case
             ],
         ),
     ]
-    # Match the published decimal lower edges, independently of _band_bounds.
-    # DWP's last included band is £2,400.01–£2,500/month, inclusive:
+    # Award values around the published decimal lower edges, independently of
+    # _band_bounds. DWP's bands are whole pence, "£0.01 to £100.00" up to
+    # "£2,400.01 to £2,500.00" and "£2,500.01 or over":
     # https://stat-xplore.dwp.gov.uk/webapi/metadata/UC_Households/Monthly%20Award%20Amount%20(bands).html
     # The separately published £2,500.01+ category remains unbound. It must
     # never be silently absorbed into the last finite reference.
@@ -357,10 +358,14 @@ def test_full_uc_payment_registry_matches_independent_relationship_and_band_case
     # (SINGLE 28,800-30,000 and COUPLE_NO_CHILDREN 22,800-24,000, the
     # uk-data#452 class). microcosm#1095 excluded two more whose few
     # supporting awards policyengine-uk 2.122.2 moves out (SINGLE
-    # 26,400-27,600 and COUPLE_NO_CHILDREN 24,000-25,200).
+    # 26,400-27,600 and COUPLE_NO_CHILDREN 24,000-25,200). 88 active / 12
+    # excluded since microcosm#1095 U3: the support floor drops every band
+    # below ten source households on the built frame, so the nine per-row
+    # entries it covers retired. 92 / 8 since arm 2 of the next
+    # policyengine-uk bump binds four bands it fits unbound (microcosm#1344).
     assert len(specs) == 100
-    assert len(active) == 79
-    assert len({s.name for s in specs} & excluded) == 21
+    assert len(active) == 92
+    assert len({s.name for s in specs} & excluded) == 8
     registry = TargetRegistry(active, country="uk")
     result = materialize_uk_ledger_targets(
         adapter, registry, period=2025, band_edge_registry=full_registry
@@ -370,24 +375,22 @@ def test_full_uc_payment_registry_matches_independent_relationship_and_band_case
         adapter.to_frame(), registry.to_target_set(), weight_entity="household"
     )
     assert not problem.skipped
-    assert len(problem.names) == 79
+    assert len(problem.names) == 92
     assert not {f"{name}@2025" for name in excluded}.intersection(problem.names)
     expected_family = np.asarray(expected_families)[bu.benunit_id.to_numpy()]
     uc = bu.universal_credit.to_numpy()
     # Synthetic ids encode the independent fixture's two-benefit-unit dwelling.
     bu_household = bu.benunit_id.to_numpy() // 2
+    # microcosm#1095: band i is (GBP 1,200 i, 1,200 (i + 1)] a year compared in
+    # whole pence, and an award above GBP 30,000 is in no bound band.
+    pence = np.rint(uc * 100.0)
     for spec, name, row in zip(
         active, problem.names, problem.matrix.toarray(), strict=True
     ):
         family_name, band_name = spec.name.split("/")[-1].split("_annual_payment_")
         band_index = int(band_name.split("_to_")[0].replace("_", "")) // 1200
-        lower = edges[band_index]
-        upper = (
-            edges[band_index + 1] if band_index < 24 else np.nextafter(30_000.0, np.inf)
-        )
-        mask = (
-            (expected_family == family_name) & (uc > 0) & (uc >= lower) & (uc < upper)
-        )
+        in_band = (pence > 120_000 * band_index) & (pence <= 120_000 * (band_index + 1))
+        mask = (expected_family == family_name) & (uc > 0) & in_band
         expected = np.array(
             [mask[bu_household == hid].sum() for hid in hh.household_id]
         )

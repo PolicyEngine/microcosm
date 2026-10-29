@@ -2,7 +2,9 @@
 """Generate UK Ledger target references from the national contract.
 
 This is an offline authoring tool. It consumes an already-exported Ledger
-consumer fact JSONL feed; it does not fetch data or contact Chronicle.
+consumer fact JSONL feed and the committed Microcosm-derived facts resource
+(uk/high_value_home_stock_facts.json); it does not fetch data or contact
+Chronicle.
 """
 
 from __future__ import annotations
@@ -20,6 +22,9 @@ from microcosm.build.target_reference_authoring import (
     TargetReferenceAuthoringConfig,
     author_target_references,
     target_references_resource,
+)
+from microcosm.build.uk_runtime.high_value_homes import (
+    load_uk_high_value_home_stock_facts,
 )
 from microcosm.build.uk_runtime.ledger_targets import UK_UPRATING_APPLIERS
 from microcosm.build.uk_runtime.uc_source_periods import (
@@ -44,9 +49,11 @@ UK_GEOGRAPHY_IDS = {
 POLICYENGINE_BINDING_KEYS = frozenset(
     {
         "affected_flag_variable",
+        "allocation",
         "band",
         "band_filter_dimension",
         "band_period_factor",
+        "band_semantics",
         "band_upper_bound",
         "band_upper_bound_inclusive",
         "count_of",
@@ -110,7 +117,31 @@ def main() -> None:
         for line in args.ledger_facts.read_text().splitlines()
         if line.strip()
     ]
+    # microcosm#1301: the high-value homes region rows select the
+    # Microcosm-derived facts the local cells bind (microcosm#1240), carried in
+    # the committed resource rather than the Chronicle feed. Their fan-out
+    # refuses a missing cell, so the national surface always merges them.
+    derived = load_uk_high_value_home_stock_facts(args.derived_facts)
+    facts.extend(dict(row) for row in derived.rows)
+    derived_resources = [
+        {
+            "resource": "high_value_home_stock_facts.json",
+            "rows": len(derived.rows),
+            "rows_sha256": derived.rows_sha256,
+            "inputs_sha256": derived.inputs_sha256,
+        }
+    ]
     inverse_mapping = _registry_inverse(contract)
+    # The facts each family's fan-out leaves unnamed, counted rather than
+    # declared, so the membership report states what the feed carried.
+    skipped_fanout: Counter[str] = Counter()
+
+    def fanout_name(target: Mapping[str, Any], fact: Mapping[str, Any]) -> str | None:
+        name = _fanout_name(target, fact, inverse_mapping)
+        if not name:
+            skipped_fanout[str(target["family"])] += 1
+        return name
+
     config = TargetReferenceAuthoringConfig(
         target_period=args.period,
         geography_pins=_geography_pins(contract),
@@ -118,11 +149,7 @@ def main() -> None:
         geography_fanout_metadata=_geography_fanout_metadata,
         geography_composition_by_target_id=_geography_composition(contract),
         geography_composition_aliases=_geography_composition_aliases(),
-        fanout_name=lambda target, fact: _fanout_name(
-            target,
-            fact,
-            inverse_mapping,
-        ),
+        fanout_name=fanout_name,
         sum_target_ids=_sum_target_ids(contract),
         value_operation_by_target_id=_value_operation_by_target_id(contract),
         selector_pins_by_target_id=_selector_pins(contract),
@@ -134,7 +161,12 @@ def main() -> None:
         uprating_appliers=UK_UPRATING_APPLIERS,
     )
     authored = author_target_references(contract, facts, config)
-    _add_uk_membership_accounting(authored.membership_report, authored.references)
+    _add_uk_membership_accounting(
+        authored.membership_report,
+        authored.references,
+        skipped_fanout=skipped_fanout,
+    )
+    authored.membership_report["derived_fact_resources"] = derived_resources
     resource = target_references_resource(
         country="uk",
         description=DESCRIPTION,
@@ -160,6 +192,15 @@ def _parser() -> argparse.ArgumentParser:
         help="Stable display name recorded in the generated membership report.",
     )
     parser.add_argument("--period", type=int, default=2025)
+    parser.add_argument(
+        "--derived-facts",
+        type=Path,
+        default=None,
+        help=(
+            "Microcosm-derived facts resource merged beside the feed (default: the "
+            "committed uk/high_value_home_stock_facts.json)."
+        ),
+    )
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--membership-report", type=Path, required=True)
     return parser
@@ -242,7 +283,11 @@ def _geography_fanout(
     the binding does not already pin a country itself (the VOA stock bindings
     filter ``country == ENGLAND`` because the Welsh, Scottish and Northern
     Irish stocks are separate publications and contract families), so a
-    nation cell is never a row the binding would measure as zero.
+    nation cell is never a row the binding would measure as zero. A target
+    that declares an ``area_scope`` keeps only the cells whose code starts
+    with a prefix the scope gives for the cell's level (the high-value homes
+    region rows: England's regions and Wales, the Price Paid coverage,
+    microcosm#1301), so a nation its source never covers is not a cell.
     """
 
     fanout: dict[str, tuple[tuple[str, str], ...]] = {}
@@ -255,8 +300,57 @@ def _geography_fanout(
             cells.extend(
                 (level, code) for level, code in UK_REGION_TIER if level == "country"
             )
+        scope = _fanout_area_scope(target)
+        if scope is not None:
+            cells = [
+                (level, code)
+                for level, code in cells
+                if code.startswith(scope.get(level, ()))
+            ]
+            if not cells:
+                raise ValueError(
+                    f"{target['target_id']}: area_scope {scope!r} leaves no "
+                    "region-tier cell."
+                )
         fanout[str(target["target_id"])] = tuple(cells)
     return fanout
+
+
+def _fanout_area_scope(
+    target: Mapping[str, Any],
+) -> dict[str, tuple[str, ...]] | None:
+    """A region-tier target's ``area_scope`` as level -> GSS prefixes, or None.
+
+    Only the tier's own levels may be scoped, each with at least one prefix; a
+    level the scope leaves out keeps none of its cells.
+    """
+
+    declaration = target.get("area_scope")
+    if declaration is None:
+        return None
+    target_id = str(target["target_id"])
+    if not isinstance(declaration, Mapping) or not declaration:
+        raise ValueError(f"{target_id}: area_scope must be a non-empty mapping.")
+    scope: dict[str, tuple[str, ...]] = {}
+    for level, rule in declaration.items():
+        if str(level) not in REGION_TIER_FANOUT_LEVELS:
+            raise ValueError(
+                f"{target_id}: area_scope names level {level!r}; a region-tier "
+                f"target scopes only {sorted(REGION_TIER_FANOUT_LEVELS)}."
+            )
+        prefixes = tuple(
+            str(prefix)
+            for prefix in (
+                rule.get("gss_prefixes", ()) if isinstance(rule, Mapping) else ()
+            )
+            if str(prefix)
+        )
+        if not prefixes:
+            raise ValueError(
+                f"{target_id}: area_scope for {level!r} declares no gss_prefixes."
+            )
+        scope[str(level)] = prefixes
+    return scope
 
 
 def _binding_pins_country(binding: Mapping[str, Any]) -> bool:
@@ -452,11 +546,54 @@ DFT_BUS_AREA_GEOGRAPHY_IDS = {
     "london": "E12000007",
     "england_outside_london": "dft:england_outside_london",
     "uk": UK_GEOGRAPHY_IDS["uk"],
+    # microcosm#1207: BUS01a passenger journeys by English region.
+    "north_east": "E12000001",
+    "north_west": "E12000002",
+    "yorkshire_and_the_humber": "E12000003",
+    "east_midlands": "E12000004",
+    "west_midlands": "E12000005",
+    "east_of_england": "E12000006",
+    "south_east": "E12000008",
+    "south_west": "E12000009",
+}
+
+
+#: Target ids pinned one by one, where neither a prefix nor the substring rule
+#: gives the geography the publisher's fact is stamped with.
+TARGET_ID_GEOGRAPHY_PINS: Mapping[str, str] = {
+    # OBR table 4.1 row 15 sums the England, Scotland and Wales council tax
+    # rows; Chronicle stamps it K02000001, as the table is UK-wide, while the
+    # substring rule would read "scotland" in its concept (microcosm#1095).
+    # The binding scopes the model column to Great Britain.
+    "obr.council_tax": "uk",
+    # Table 4.1's Northern Ireland domestic rates row is stamped K02000001 too;
+    # the substring rule would pin it to Northern Ireland, where no fact sits.
+    # domestic_rates is zero outside Northern Ireland, so the UK total is
+    # Northern Ireland's (microcosm#1095).
+    "obr.domestic_rates": "uk",
+    # OBR table 4.9's DWP lines carry the geography DWP counts them over
+    # (PolicyEngine/chronicle#357 item 4, from DWP's benefit expenditure and
+    # caseload tables, Spring 2026): Great Britain for these eight, England and
+    # Wales for the four below; values are unchanged (microcosm#1300).
+    "obr.pension_credit": "great_britain",
+    "obr.esa": "great_britain",
+    "obr.jobseekers_allowance": "great_britain",
+    "obr.housing_benefit": "great_britain",
+    "obr.statutory_maternity_pay": "great_britain",
+    "obr.universal_credit": "great_britain",
+    "obr.universal_credit_in_cap": "great_britain",
+    "obr.universal_credit_outside_cap": "great_britain",
+    "obr.attendance_allowance": "england_and_wales",
+    "obr.carers_allowance": "england_and_wales",
+    "obr.pip": "england_and_wales",
+    "obr.winter_fuel_allowance": "england_and_wales",
 }
 
 
 def _geography_id_for_target(target: Mapping[str, Any]) -> str:
     target_id = str(target["target_id"]).lower()
+    if target_id in TARGET_ID_GEOGRAPHY_PINS:
+        return UK_GEOGRAPHY_IDS[TARGET_ID_GEOGRAPHY_PINS[target_id]]
     if target_id.startswith("dft."):
         area = str(
             (target.get("ledger_selector") or {}).get("layout_groupby_value_id", "")
@@ -570,7 +707,10 @@ def _signed_row_exclusions(
     An entry carrying ``row: {dimension, value}`` signs out the fan-out row
     whose selector pins that dimension value (the HMRC CGT age band 0-15,
     which the frame cannot carry; the size-of-gain band below the annual
-    exempt amount) and leaves the target's other rows active.
+    exempt amount), or, with ``dimension: geography_id``, one cell of a
+    geography fan-out (the high-value homes region rows below the local
+    small-cell floor, microcosm#1301), and leaves the target's other rows
+    active.
     """
 
     target_ids = {str(target["target_id"]) for target in contract.get("targets", ())}
@@ -780,6 +920,9 @@ def _int_token(value: int) -> str:
 
 def _annual_uc_award_band_token(value: str) -> str:
     normalized = value.strip().lower()
+    # "No payment" and the top-coded "or over" categories stay unbound: bound
+    # to DWP's counts, the GBP 2,500.01 or over band left OBR's Universal
+    # Credit total short (microcosm#1095 receipts).
     if normalized == "no payment" or "or over" in normalized:
         return ""
     if " to " not in normalized:
@@ -798,6 +941,8 @@ def _annual_uc_award_band_token(value: str) -> str:
 def _add_uk_membership_accounting(
     report: dict[str, Any],
     references: tuple[dict[str, Any], ...],
+    *,
+    skipped_fanout: Mapping[str, int],
 ) -> None:
     fanout_counts = Counter(
         reference["family"]
@@ -866,6 +1011,22 @@ def _add_uk_membership_accounting(
             ),
         },
         {
+            "family": "hmrc_itl_age",
+            "status": "active_region_tier_calendar_year_window",
+            "active_reference_count": fanout_counts.get("hmrc_itl_age", 0),
+            "signed_rationale": (
+                "The two HMRC Income Tax liabilities statistics targets for "
+                "Income Tax payers of State Pension age and aged 65 and over "
+                "(Table 2.2, July 2026) fan out over the twelve-area region "
+                "tier (microcosm#905) and bind at the calendar-2025 window of "
+                "HMRC's 2024-25 and 2025-26 projections. Table 2.2 counts "
+                "residents of a nation or region, as the frame does; Table "
+                "2.1's United Kingdom row, which adds taxpayers abroad or of "
+                "unknown region, opens the SPI State Pension rows' uprating "
+                "instead of binding (microcosm#1069)."
+            ),
+        },
+        {
             "family": "hmrc_spi_region",
             "status": "active_region_tier_fanout_uprated",
             "active_reference_count": fanout_counts.get("hmrc_spi_region", 0),
@@ -887,14 +1048,16 @@ def _add_uk_membership_accounting(
             "family": "dwp_universal_credit",
             "status": "active_with_unmapped_vintage_residue_skipped",
             "active_reference_count": fanout_counts.get("dwp_universal_credit", 0),
-            "skipped_unmapped_fact_count": 12,
+            "skipped_unmapped_fact_count": int(
+                skipped_fanout.get("dwp_universal_credit", 0)
+            ),
             "signed_rationale": (
                 "UC payment-distribution targets fan out over family_type and "
                 "monthly_award_amount_bands into incumbent-compatible "
-                "annual-payment rows. The four source-only 'No payment' facts "
-                "and eight overlapping source-only 'or over' facts are left "
-                "out; no active reference may use the legacy nan_to_nan band "
-                "name."
+                "annual-payment rows. The source-only 'No payment' and "
+                "top-coded 'or over' facts are left out, and the skipped count "
+                "is the generator's own (microcosm#1095); no active reference "
+                "may use the legacy nan_to_nan band name."
             ),
         },
         {
@@ -911,7 +1074,9 @@ def _add_uk_membership_accounting(
                 "nine English regions of the region tier (microcosm#905), each "
                 "cell composed as the linear combination of the billing-"
                 "authority facts the crosswalk places in that region "
-                "(microcosm#929)."
+                "(microcosm#929). England's single adult discount is one "
+                "national row, MHCLG Council Taxbase line 8 for all bands "
+                "(microcosm#953)."
             ),
         },
         {
@@ -960,6 +1125,30 @@ def _add_uk_membership_accounting(
                 "of the cross-grain rule (microcosm#905). The former single "
                 "UK-wide row per band is retired: the tier sums to it within "
                 "the same publication."
+            ),
+        },
+        {
+            "family": "high_value_homes",
+            "status": "active_england_and_wales_region_tier_local_line_only",
+            "active_reference_count": fanout_counts.get("high_value_homes", 0),
+            "signed_rationale": (
+                "The three high-value homes region targets (owner-occupied "
+                "homes over £1m, £1.5m and £2m at April-2026 prices) fan out "
+                "over the England-and-Wales part of the region tier, the nine "
+                "English regions and Wales (area_scope: Price Paid covers "
+                "neither Scotland nor Northern Ireland), and select the "
+                "Microcosm-derived stock the constituency and local-authority "
+                "cells bind, merged beside the feed from "
+                "uk/high_value_home_stock_facts.json (microcosm#1240). Each row "
+                "is the cross-grain control for its area cells. They bind on "
+                "the local line only (calibration_lines): the national line "
+                "and the release-cut certifier drop them after the compile "
+                "(microcosm#1301). Since microcosm#1095 the national spine "
+                "reads main_residence_value off the regions' Land Registry "
+                "knots too, but binding the rows there would move the "
+                "national registry and solve while the knots' tails still "
+                "place more homes in the top bands than the derived stock "
+                "(microcosm#1112)."
             ),
         },
         {

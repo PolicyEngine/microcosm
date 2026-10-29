@@ -276,6 +276,7 @@ def test_shipped_baseline_plans_match_whole_file_policyengine_us(
     sweep = _load_sweep_module()
     path = _write_engine_h5(builder, tmp_path, _GUARD_HOUSEHOLDS)
     plans, _, counts = sweep._record_requests(builder)
+    # microcosm#1251's passive partnership/S-corp probe adds one smoke baseline key.
     assert counts["baseline_keys"] == {
         "reform_coverage_smoke": 19,
         "reform_validation": 75,
