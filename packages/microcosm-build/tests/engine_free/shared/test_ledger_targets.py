@@ -5576,6 +5576,84 @@ def test__given_a_window_and_a_pinned_quotient__then_the_window_is_translated() 
     assert metadata["ledger_aggregate_fact_key"] == "ledger.aggregate_fact.v2:fy2025"
 
 
+def test__given_a_complement_numerator__then_its_cells_come_off_the_universe() -> None:
+    """The share is the rest of the published universe (microcosm#1095 D14f).
+
+    England's chargeable dwellings less its second homes and empty dwellings
+    restate OBR's council tax receipts for the main residences households
+    hold.
+    """
+
+    numerator, denominator = _window_ratio_reference().value_operands[1:]
+    reference = _window_ratio_reference(
+        value_operands=(
+            {"role": "base"},
+            {**numerator, "complement": True},
+            denominator,
+        )
+    )
+    registry = compile_ledger_target_references(
+        _window_ratio_facts(numerator=20.0), [reference], country="uk"
+    )
+
+    spec = registry.specs[0]
+    window = 0.25 * 304.0 + 0.75 * 329.0
+    assert spec.value == pytest.approx(window * 60.0 / 80.0)
+    assert spec.metadata["ledger_value_numerator"] == repr(60.0)
+    assert spec.metadata["ledger_value_numerator_rule"] == (
+        "denominator less the numerator cells"
+    )
+    assert spec.metadata["ledger_value_formula"] == (
+        "(3/12 * FY2024 + 9/12 * FY2025) * (denominator - numerator) / denominator"
+    )
+    # The flag is metadata, never a selector field.
+    assert "complement" not in reference_fact_selectors(reference)[1]
+
+
+@pytest.mark.parametrize(
+    "operands",
+    [
+        (
+            {"role": "base"},
+            {
+                "role": "numerator",
+                "source_measure_id": "x",
+                "period_type": "tax_year",
+                "period_value": 2024,
+            },
+            {
+                "role": "denominator",
+                "source_measure_id": "y",
+                "period_type": "tax_year",
+                "period_value": 2024,
+                "complement": True,
+            },
+        ),
+        (
+            {"role": "base"},
+            {
+                "role": "numerator",
+                "source_measure_id": "x",
+                "period_type": "tax_year",
+                "period_value": 2024,
+                "complement": False,
+            },
+            {
+                "role": "denominator",
+                "source_measure_id": "y",
+                "period_type": "tax_year",
+                "period_value": 2024,
+            },
+        ),
+    ],
+)
+def test__given_a_complement_anywhere_but_a_true_numerator__then_it_refuses(
+    operands,
+) -> None:
+    with pytest.raises(ValueError, match="only the numerator may declare complement"):
+        _window_ratio_reference(value_operands=operands)
+
+
 def test__given_a_window_ratio__then_operand_selectors_are_complete_as_declared() -> (
     None
 ):

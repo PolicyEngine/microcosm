@@ -932,9 +932,16 @@ def target_spec_from_ledger_reference(
         )
         numerator = math.fsum(numeric_values[cut : cut + numerators])
         denominator = math.fsum(numeric_values[cut + numerators :])
+        complement = _window_ratio_numerator_is_complement(reference)
+        if complement:
+            numerator = denominator - numerator
         numeric_value, ratio_metadata = _scaled_by_ratio_value(
             reference, [base, numerator, denominator]
         )
+        if complement:
+            ratio_metadata["ledger_value_numerator_rule"] = (
+                "denominator less the numerator cells"
+            )
         value_metadata = {
             **_calendar_year_window_metadata(reference, window),
             **ratio_metadata,
@@ -3291,6 +3298,14 @@ def _validate_calendar_year_window_scaled_by_ratio_reference(
                 "cell(s), so it names them in exactly one list-valued selector "
                 f"field of {count} distinct member(s), got {members!r}."
             )
+    for operand in reference.value_operands[1:]:
+        if "complement" in operand and (
+            operand.get("role") != "numerator" or operand["complement"] is not True
+        ):
+            raise ValueError(
+                f"{prefix}: only the numerator may declare complement, and only "
+                "as true."
+            )
     if SOURCE_MEASURE_ID_BY_OPENING_YEAR in reference.ledger_selector:
         raise ValueError(
             f"{prefix} reads one series; {SOURCE_MEASURE_ID_BY_OPENING_YEAR!r} is "
@@ -3307,9 +3322,12 @@ def _validate_calendar_year_window_scaled_by_ratio_reference(
         raise ValueError(f"{prefix} requires an explicit calendar-year target period.")
 
 
-#: Keys of a window-ratio operand that are not selector fields.
+#: Keys of a window-ratio operand that are not selector fields. A numerator
+#: may declare ``complement``: its cells are taken off the denominator, so
+#: the share is the rest of the published universe (England's chargeable
+#: dwellings less second homes and empty dwellings, microcosm#1095 D14f).
 _WINDOW_RATIO_OPERAND_METADATA_KEYS = frozenset(
-    ("role", "expected_member_count", "label")
+    ("role", "expected_member_count", "label", "complement")
 )
 
 
@@ -3338,6 +3356,12 @@ def _window_ratio_operand_selectors(
         }
         for operand in reference.value_operands[1:]
     )
+
+
+def _window_ratio_numerator_is_complement(reference: LedgerTargetReference) -> bool:
+    """Whether the numerator's cells are taken off the denominator."""
+
+    return reference.value_operands[1].get("complement") is True
 
 
 def _window_ratio_operand_counts(reference: LedgerTargetReference) -> tuple[int, int]:
@@ -4291,7 +4315,11 @@ def _reference_metadata(reference: LedgerTargetReference) -> dict[str, str]:
         target_year = _calendar_year_from_reference(reference)
         metadata["ledger_value_formula"] = (
             f"(3/12 * FY{target_year - 1} + 9/12 * FY{target_year}) "
-            "* numerator / denominator"
+            + (
+                "* (denominator - numerator) / denominator"
+                if _window_ratio_numerator_is_complement(reference)
+                else "* numerator / denominator"
+            )
         )
     if reference.value_operation == "linear_combination":
         metadata["ledger_value_formula"] = _linear_combination_formula(reference)
