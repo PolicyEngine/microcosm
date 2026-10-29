@@ -41,8 +41,9 @@ Both draws are balanced by weight within strata (microcosm#1418). Each
 uniform orders a stratum's records, and each record takes the midpoint of its
 slice of the stratum's cumulative weight (``weight_balanced_uniforms``, as
 policyengine-uk's ``stratified_uniform``), so every stratum claims the rate of
-its weight to within one record. Independent draws reach it only in
-expectation, and on the few source households over the limit one draw put the
+its weight to within one record, and the stage refuses a stratum that
+misses by more (Anthony's review of microcosm#1420). Independent draws reach
+it only in expectation, and on the few source households over the limit one draw put the
 2031 taper's cost a quarter below its expectation. The take-up strata are the
 route (in-household or not), whether the benefit unit reports a means-tested
 benefit at the survey year, and the survey-year weekly earnings band, one
@@ -116,6 +117,7 @@ __all__ = [
     "UKCarersAllowancePool",
     "UKCarersAllowanceTakeUpResult",
     "UKCarersAllowanceTakeUpStageTransform",
+    "assert_strata_within_one_record",
     "carers_allowance_earnings_band",
     "carers_allowance_eligible",
     "carers_allowance_pool",
@@ -323,6 +325,38 @@ def carers_allowance_pool(
     return UKCarersAllowancePool(
         pool=pool, in_household=in_household, other=other, share=share
     )
+
+
+def assert_strata_within_one_record(
+    members: np.ndarray,
+    strata: np.ndarray,
+    taken: np.ndarray,
+    weights: np.ndarray,
+    share: float,
+    *,
+    label: str,
+) -> None:
+    """Refuse a stratum whose taken weight misses ``share`` of its weight by
+    more than its heaviest record.
+
+    The balanced placement takes each stratum's share to within half a record
+    by construction, so a larger miss means the draw was not balanced.
+    """
+
+    weights = np.maximum(np.asarray(weights, dtype=np.float64), 0.0)
+    strata = np.asarray(strata)
+    for code in np.unique(strata[members]):
+        stratum = members & (strata == code)
+        stratum_weights = weights[stratum]
+        miss = abs(
+            float(weights[stratum & taken].sum())
+            - float(share) * float(stratum_weights.sum())
+        )
+        if miss > float(stratum_weights.max()) * (1.0 + 1e-9) + 1e-9:
+            raise ValueError(
+                f"Carer's Allowance {label} stratum {int(code)} misses its share by "
+                "more than one record: the draw was not balanced by weight."
+            )
 
 
 def carers_allowance_eligible(
@@ -601,6 +635,13 @@ def redraw_carers_allowance_take_up(
         take_up_strata[eligible], draws[eligible], weights[eligible]
     )
     drawn = eligible & (positions < rate)
+    drawable_other = pool.other & ~reported
+    assert_strata_within_one_record(
+        eligible, take_up_strata, drawn, weights, rate, label="take-up"
+    )
+    assert_strata_within_one_record(
+        drawable_other, pool_strata, pool.pool, weights, pool.share or 0.0, label="pool"
+    )
     would_claim = reported | drawn
     person[CARERS_ALLOWANCE_TAKE_UP_OUTPUT] = would_claim
     result = uk_national_frame(
@@ -659,7 +700,6 @@ def redraw_carers_allowance_take_up(
             )
         return rows
 
-    drawable_other = pool.other & ~reported
     eligible_sources = sources(eligible)
     eligible_weight = float(weights[eligible].sum())
     hours = care_hours >= resolved.min_hours
@@ -709,9 +749,10 @@ def redraw_carers_allowance_take_up(
         "drawn_support": support_band(sources(drawn)),
         "drawn_share_of_over_limit_pool": guarded_share(drawn, eligible),
         # Each stratum's realised share against its target, to within one
-        # record by construction; a share either side of which one to nine
-        # source households carry is "<10".
+        # record by construction and refused at more; a share either side of
+        # which one to nine source households carry is "<10".
         "weekly_rate": resolved.weekly_rate,
+        "strata_within_one_record": True,
         "take_up_strata": strata_rows(eligible, take_up_strata, drawn, rate),
         "pool_strata": strata_rows(
             drawable_other,

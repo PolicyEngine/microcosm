@@ -567,6 +567,41 @@ def test_each_stratum_claims_the_rate_of_its_eligible_weight() -> None:
     np.testing.assert_array_equal(rerun, flag)
 
 
+def test_the_stage_refuses_a_stratum_off_its_share_by_more_than_a_record(
+    monkeypatch,
+) -> None:
+    # Anthony's review of microcosm#1420: the balance is enforced, not only
+    # reported. Every uniform at zero draws each stratum whole.
+    frame, _, _ = _strata_frame()
+    assert _run(frame, rate=0.6).evidence()["strata_within_one_record"] is True
+    monkeypatch.setattr(
+        ca,
+        "weight_balanced_uniforms",
+        lambda strata, draws, weights: np.zeros(len(draws)),
+    )
+    with pytest.raises(ValueError, match="take-up stratum .* more than one record"):
+        _run(frame, rate=0.6)
+
+
+def test_a_stratum_may_miss_its_share_by_up_to_one_record() -> None:
+    weights = np.array([1.0, 2.0, 3.0, 4.0])
+    members = np.ones(4, dtype=bool)
+    strata = np.zeros(4, dtype=np.int64)
+    # Half of 10 is 5: taking 3 + 4 misses by 2, under the heaviest record.
+    ca.assert_strata_within_one_record(
+        members,
+        strata,
+        np.array([False, False, True, True]),
+        weights,
+        0.5,
+        label="pool",
+    )
+    with pytest.raises(ValueError, match="pool stratum 0 misses its share"):
+        ca.assert_strata_within_one_record(
+            members, strata, np.ones(4, dtype=bool), weights, 0.5, label="pool"
+        )
+
+
 def test_the_outside_pool_draws_its_share_within_each_stratum() -> None:
     # Every carer gives the hours outside the household: none is in the
     # in-household base, so the share is that of a separate in-household half.
