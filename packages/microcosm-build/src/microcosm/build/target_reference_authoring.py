@@ -1108,7 +1108,15 @@ def _target_selector(
     config: TargetReferenceAuthoringConfig,
 ) -> dict[str, Any]:
     target_id = str(target["target_id"])
-    selector = {**dict(target["ledger_selector"]), **dict(geography_pin)}
+    declared = dict(target["ledger_selector"])
+    for key, value in dict(geography_pin).items():
+        if key in declared and declared[key] != value:
+            raise ValueError(
+                f"target {target_id!r} declares {key}={declared[key]!r} in its "
+                f"selector, but its geography pin says {value!r}: a declared "
+                "geography wins, so the pin must follow it."
+            )
+    selector = {**declared, **dict(geography_pin)}
     pins = config.selector_pins_by_target_id.get(target_id, {})
     for key, value in pins.items():
         if key == "dimension_values" and isinstance(value, Mapping):

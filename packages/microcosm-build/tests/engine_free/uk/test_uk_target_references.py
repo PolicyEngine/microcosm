@@ -64,6 +64,7 @@ from tools.generate_uk_target_references import (
     TARGET_ID_GEOGRAPHY_PINS,
     _annual_uc_award_band_token,
     _fanout_name,
+    _geography_id_for_target,
     _geography_pins,
     _reference_metadata,
     _sum_target_ids,
@@ -898,6 +899,29 @@ def test_uc_composition_targets_pin_paid_cells_and_explicit_month_windows() -> N
         assert selector["period_value"] == [
             f"2025-{month:02d}" for month in range(1, 13)
         ]
+
+
+def test_a_geography_the_selector_declares_wins_over_the_inferred_pin() -> None:
+    """A wrong inferred pin reads as "no fact" (microcosm#1095 R8, R9)."""
+
+    # The "slc." rule alone would pin Great Britain, where no devolved fact sits.
+    declared = {
+        "target_id": "slc.repayments.devolved_total",
+        "geography_levels": ["country"],
+        "ledger_selector": {"source_name": "slc", "geography_id": "W92000004"},
+    }
+    assert _geography_id_for_target(declared) == "W92000004"
+    assert _geography_id_for_target({**declared, "ledger_selector": {}}) == (
+        "K03000001"
+    )
+
+    # A one-by-one pin that disagrees with the selector is two declarations.
+    clash = {
+        "target_id": "obr.council_tax",
+        "ledger_selector": {"source_name": "obr", "geography_id": "E92000001"},
+    }
+    with pytest.raises(ValueError, match="keep one declaration"):
+        _geography_id_for_target(clash)
 
 
 def test_prefix_geography_pins_carry_scotgov_and_england_scoped_slc_families() -> None:
