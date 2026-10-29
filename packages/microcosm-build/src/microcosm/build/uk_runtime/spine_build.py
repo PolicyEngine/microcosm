@@ -104,7 +104,6 @@ from microcosm.build.uk_runtime.frs_council_tax import UKFRSCouncilTaxStageTrans
 from microcosm.build.uk_runtime.frs_disability import UKFRSDisabilityStageTransform
 from microcosm.build.uk_runtime.frs_education import UKFRSEducationStageTransform
 from microcosm.build.uk_runtime.frs_education_grants import (
-    FRS_EDUCATION_GRANT_REWRITES,
     UKFRSEducationGrantSplitStageTransform,
 )
 from microcosm.build.uk_runtime.frs_employment import UKFRSEmploymentStageTransform
@@ -889,6 +888,7 @@ def _build_sidecar(
             {
                 "stage": record.stage,
                 "produced": list(record.produced),
+                "rewrote": list(record.rewrote),
                 "nonzero_share": dict(record.nonzero_share),
                 "seconds": record.seconds,
             }
@@ -2332,8 +2332,9 @@ def _main(argv: list[str] | None = None) -> int:
         if args.emit_nonzero_shares is not None:
             final_columns = list(
                 dict.fromkeys(
-                    [column for record in records for column in record.produced]
-                    + list(FRS_EDUCATION_GRANT_REWRITES)
+                    column
+                    for record in records
+                    for column in (*record.produced, *record.rewrote)
                 )
             )
             atomic_write_json(
