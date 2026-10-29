@@ -59,6 +59,7 @@ If an NZ resource starts failing here, ask the NZ hub before exempting it.
 from __future__ import annotations
 
 import ast
+import importlib
 import inspect
 import json
 import re
@@ -269,6 +270,19 @@ def test_an_unresolvable_dotted_symbol_raises(
 ) -> None:
     with pytest.raises(error):
         resolve_dotted_symbol(dotted)
+
+
+@pytest.mark.parametrize(
+    "dotted",
+    [
+        "microcosm.frame.concepts.TransportRule.CARRY",
+        "microcosm.frame.adapters.policyengine_us.PolicyEngineUSEngine._write_and_verify",
+    ],
+)
+def test_a_class_attribute_resolves_through_its_module(dotted: str) -> None:
+    module, cls, attribute = dotted.rsplit(".", 2)
+    expected = getattr(getattr(importlib.import_module(module), cls), attribute)
+    assert resolve_dotted_symbol(dotted) is expected
 
 
 # ---------------------------------------------------------------------------
