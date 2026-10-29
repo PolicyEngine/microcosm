@@ -542,9 +542,9 @@
       "slc/student_loan_repayment/england/plan_1": "slc.repayments.england_plan_1",
       "slc/student_loan_repayment/england/plan_2": "slc.repayments.england_plan_2",
       "slc/student_loan_repayment/england/plan_5": "slc.repayments.england_plan_5",
-      "slc/student_loan_repayment/northern_ireland": "slc.repayments.devolved_total",
-      "slc/student_loan_repayment/scotland": "slc.repayments.devolved_total",
-      "slc/student_loan_repayment/wales": "slc.repayments.devolved_total",
+      "slc/student_loan_repayment/northern_ireland": "slc.repayments.northern_ireland_total",
+      "slc/student_loan_repayment/scotland": "slc.repayments.scotland_total",
+      "slc/student_loan_repayment/wales": "slc.repayments.wales_total",
       "sss/scottish_child_payment": "scotgov.scottish_child_payment_spending",
       "voa/council_tax/EAST_MIDLANDS/A": "mhclg.council_tax_stock.band_a",
       "voa/council_tax/EAST_MIDLANDS/B": "mhclg.council_tax_stock.band_b",
@@ -1126,7 +1126,9 @@
       "ons.land.land_value",
       "ons.land.household_land_value",
       "ons.land.corporate_land_value",
-      "slc.repayments.devolved_total",
+      "slc.repayments.wales_total",
+      "slc.repayments.scotland_total",
+      "slc.repayments.northern_ireland_total",
       "slc.repayments.england_total_higher_education",
       "slc.repayments.england_plan_1",
       "slc.repayments.england_plan_2",
@@ -14893,7 +14895,7 @@
       "selector_note": "Bound to ONS's preliminary end-2025 national balance sheet (published 10 June 2026), the latest official estimate for the calibration year, flagged preliminary; the final 2024 figures are the previous edition (microcosm#1123, PolicyEngine/chronicle#313)."
     },
     {
-      "target_id": "slc.repayments.devolved_total",
+      "target_id": "slc.repayments.wales_total",
       "family": "slc_repayments",
       "geography_levels": [
         "country"
@@ -14901,18 +14903,31 @@
       "measurement": {
         "entity": "person",
         "map_to": "household",
-        "concept": "uk.finance.student_loan_repayments.amount"
+        "concept": "uk.finance.student_loan_repayments.amount",
+        "filters": [
+          {
+            "concept": "uk.geography.country",
+            "equals": "WALES"
+          }
+        ]
       },
       "bindings": {
         "policyengine": {
-          "metric_name": "slc/student_loan_repayment/devolved",
+          "metric_name": "slc/student_loan_repayment/wales",
           "value_variable": "student_loan_repayment",
           "from_entity": "person",
           "map_to": "household",
-          "notes": "One fact per devolved country (Scotland, Wales, Northern Ireland); the resolved geography binds the model country filter (uk-data targets/compute/other.py:116-137 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3)."
+          "notes": "SLC's net student loan repayments for Wales, financial year 2024-25, the latest published; the selector declares Wales's geography (W92000004), which wins over the inferred pin (microcosm#1095 R4, R8). The binding measures the frame's own year (measurement_period 2024), the fact's year, under a matched-period hold (uprating_holds.json). Split from the one devolved row, which compiled no fact at the Great Britain pin (uk-data targets/compute/other.py:116-137 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3).",
+          "measurement_period": 2024,
+          "filters": [
+            {
+              "variable": "country",
+              "equals": "WALES"
+            }
+          ]
         },
         "axiom": {
-          "metric_name": "slc/student_loan_repayment/devolved",
+          "metric_name": "slc/student_loan_repayment/wales",
           "status": "pending",
           "value_rule": "uk.finance.student_loan_repayments.amount"
         }
@@ -14920,10 +14935,105 @@
       "ledger_selector": {
         "source_name": "slc",
         "source_concept": "slc.student_loan_net_repayments_total",
-        "entity_name": "person"
+        "entity_name": "person",
+        "geography_id": "W92000004"
       },
       "category_id": "slc.repayments",
-      "label": "Devolved total"
+      "label": "Wales"
+    },
+    {
+      "target_id": "slc.repayments.scotland_total",
+      "family": "slc_repayments",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.finance.student_loan_repayments.amount",
+        "filters": [
+          {
+            "concept": "uk.geography.country",
+            "equals": "SCOTLAND"
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "slc/student_loan_repayment/scotland",
+          "value_variable": "student_loan_repayment",
+          "from_entity": "person",
+          "map_to": "household",
+          "notes": "SLC's net student loan repayments for Scotland, financial year 2024-25, the latest published; the selector declares Scotland's geography (S92000003), which wins over the inferred pin (microcosm#1095 R4, R8). The binding measures the frame's own year (measurement_period 2024), the fact's year, under a matched-period hold (uprating_holds.json). Held as a measured diagnostic (calibration_measure_exclusions.json): its borrowers repay on their own nation's plan thresholds, which this build does not model for them (plan_4_imputation is False, and policyengine-uk#2636 closed as not planned). Split from the one devolved row, which compiled no fact at the Great Britain pin (uk-data targets/compute/other.py:116-137 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3).",
+          "measurement_period": 2024,
+          "filters": [
+            {
+              "variable": "country",
+              "equals": "SCOTLAND"
+            }
+          ]
+        },
+        "axiom": {
+          "metric_name": "slc/student_loan_repayment/scotland",
+          "status": "pending",
+          "value_rule": "uk.finance.student_loan_repayments.amount"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "slc",
+        "source_concept": "slc.student_loan_net_repayments_total",
+        "entity_name": "person",
+        "geography_id": "S92000003"
+      },
+      "category_id": "slc.repayments",
+      "label": "Scotland"
+    },
+    {
+      "target_id": "slc.repayments.northern_ireland_total",
+      "family": "slc_repayments",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.finance.student_loan_repayments.amount",
+        "filters": [
+          {
+            "concept": "uk.geography.country",
+            "equals": "NORTHERN_IRELAND"
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "slc/student_loan_repayment/northern_ireland",
+          "value_variable": "student_loan_repayment",
+          "from_entity": "person",
+          "map_to": "household",
+          "notes": "SLC's net student loan repayments for Northern Ireland, financial year 2024-25, the latest published; the selector declares Northern Ireland's geography (N92000002), which wins over the inferred pin (microcosm#1095 R4, R8). The binding measures the frame's own year (measurement_period 2024), the fact's year, under a matched-period hold (uprating_holds.json). Held as a measured diagnostic (calibration_measure_exclusions.json): its borrowers repay on their own nation's plan thresholds, which this build does not model for them (plan_4_imputation is False, and policyengine-uk#2636 closed as not planned). Split from the one devolved row, which compiled no fact at the Great Britain pin (uk-data targets/compute/other.py:116-137 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3).",
+          "measurement_period": 2024,
+          "filters": [
+            {
+              "variable": "country",
+              "equals": "NORTHERN_IRELAND"
+            }
+          ]
+        },
+        "axiom": {
+          "metric_name": "slc/student_loan_repayment/northern_ireland",
+          "status": "pending",
+          "value_rule": "uk.finance.student_loan_repayments.amount"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "slc",
+        "source_concept": "slc.student_loan_net_repayments_total",
+        "entity_name": "person",
+        "geography_id": "N92000002"
+      },
+      "category_id": "slc.repayments",
+      "label": "Northern Ireland"
     },
     {
       "target_id": "slc.repayments.england_total_higher_education",

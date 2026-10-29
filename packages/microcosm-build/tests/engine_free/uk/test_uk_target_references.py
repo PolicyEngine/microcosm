@@ -901,6 +901,14 @@ def test_uc_composition_targets_pin_paid_cells_and_explicit_month_windows() -> N
         ]
 
 
+#: SLC's devolved repayments, one row per nation (microcosm#1095 R4).
+DEVOLVED_SLC_REPAYMENT_IDS = (
+    "slc.repayments.wales_total",
+    "slc.repayments.scotland_total",
+    "slc.repayments.northern_ireland_total",
+)
+
+
 def test_a_geography_the_selector_declares_wins_over_the_inferred_pin() -> None:
     """A wrong inferred pin reads as "no fact" (microcosm#1095 R8, R9)."""
 
@@ -935,8 +943,8 @@ def test_prefix_geography_pins_carry_scotgov_and_england_scoped_slc_families() -
     England-scoped too — the borrower bindings filter country == ENGLAND
     explicitly and the support model variables are England-gated by
     construction — while the GB default pin could never match.
-    slc.repayments.devolved_total keeps the GB pin and stays held: activating
-    it needs per-nation repayment rows, not a pin change. The dwp.pip
+    SLC's devolved repayments are one row per nation, each declaring its
+    nation's geography in its selector (microcosm#1095 R4). The dwp.pip
     claimant counts are no targets now: they are England-and-Wales diagnostics
     on obr.pip, pinned K04000001 in their own declarations (microcosm#1095).
     """
@@ -976,7 +984,14 @@ def test_prefix_geography_pins_carry_scotgov_and_england_scoped_slc_families() -
     assert {pins[target_id]["geography_id"] for target_id in england_slc_ids} == {
         "E92000001"
     }
-    assert pins["slc.repayments.devolved_total"]["geography_id"] == "K03000001"
+    assert {
+        target_id: pins[target_id]["geography_id"]
+        for target_id in DEVOLVED_SLC_REPAYMENT_IDS
+    } == {
+        "slc.repayments.wales_total": "W92000004",
+        "slc.repayments.scotland_total": "S92000003",
+        "slc.repayments.northern_ireland_total": "N92000002",
+    }
     assert not [target_id for target_id in pins if target_id.startswith("dwp.pip.")]
 
     def haystack(target: dict) -> str:
@@ -1021,10 +1036,8 @@ def test_prefix_geography_pins_carry_scotgov_and_england_scoped_slc_families() -
     for target_id in sorted(england_slc_ids):
         assert membership["geography_pins"][target_id]["geography_id"] == "E92000001"
         assert membership["targets"][target_id]["status"] == "active"
-    assert (
-        membership["targets"]["slc.repayments.devolved_total"]["status"]
-        == "no_fact_at_or_before_period"
-    )
+    for target_id in DEVOLVED_SLC_REPAYMENT_IDS:
+        assert membership["targets"][target_id]["status"] == "active"
     assert not [
         target_id
         for target_id in membership["targets"]

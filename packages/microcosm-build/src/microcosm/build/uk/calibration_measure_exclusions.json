@@ -464,6 +464,24 @@
       "adjudication": "María's ruling of 2026-10-20 on the pre-Budget PR (microcosm#1278): hold the row out only if a national arm with it held out, run beside the calibration-period fix's arm (microcosm#1324), passes the gates and keeps the share of rows within 10 percent; otherwise keep it bound and label the distributional tables. The expiry, 2026-12-11, matches the uprating holds' renewal, after the Budget. Re-measured on 2026-10-24 on arm 2c of the policyengine-uk 2.151.0 bump: bound on table 7271 the row fails the weight-ratio gate. Her ruling of 2026-10-25 closed the basis question on table 7271 and kept the row held.",
       "approved_on": "2026-10-20",
       "expires_on": "2026-12-11"
+    },
+    {
+      "name": "slc.repayments.scotland_total",
+      "reason": "Model basis, not a weight question: Scotland's borrowers repay on Scotland's own plan thresholds (Plan 4 in Scotland, Plan 1 in Northern Ireland), but this build does not impute those plans for them (plan_4_imputation is False, and policyengine-uk#2636, the plan relabel issue, closed as not planned), so the engine reads English thresholds. Binding the row would reweight borrowers to cover a threshold gap. Measured on every evaluation as a diagnostic; rebind once the plans are modelled.",
+      "tracking": "microcosm#1095",
+      "approved_by": "juaristi22",
+      "adjudication": "María's ruling of 2026-10-29 on the plan for the next #1095 PR (microcosm#1095, item R4): bind Wales's SLC repayments, and hold Scotland's and Northern Ireland's until their plan thresholds are modelled for their borrowers.",
+      "approved_on": "2026-10-29",
+      "expires_on": "2027-01-29"
+    },
+    {
+      "name": "slc.repayments.northern_ireland_total",
+      "reason": "Model basis, not a weight question: Northern Ireland's borrowers repay on Northern Ireland's own plan thresholds (Plan 4 in Scotland, Plan 1 in Northern Ireland), but this build does not impute those plans for them (plan_4_imputation is False, and policyengine-uk#2636, the plan relabel issue, closed as not planned), so the engine reads English thresholds. Binding the row would reweight borrowers to cover a threshold gap. Measured on every evaluation as a diagnostic; rebind once the plans are modelled.",
+      "tracking": "microcosm#1095",
+      "approved_by": "juaristi22",
+      "adjudication": "María's ruling of 2026-10-29 on the plan for the next #1095 PR (microcosm#1095, item R4): bind Wales's SLC repayments, and hold Scotland's and Northern Ireland's until their plan thresholds are modelled for their borrowers.",
+      "approved_on": "2026-10-29",
+      "expires_on": "2027-01-29"
     }
   ]
 }

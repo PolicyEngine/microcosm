@@ -10268,11 +10268,11 @@
    "value": 40869580.81
   },
   {
-   "contract_target_id": "slc.repayments.devolved_total",
+   "contract_target_id": "slc.repayments.scotland_total",
    "entity": "household",
    "family": "slc",
    "geographic_level": "country",
-   "measure": "slc.repayments.devolved_total",
+   "measure": "slc.repayments.scotland_total",
    "metadata": {
     "fixture": "incumbent_2025",
     "resolved_from_year": "2025"
@@ -10284,11 +10284,11 @@
    "value": 203300000.0
   },
   {
-   "contract_target_id": "slc.repayments.devolved_total",
+   "contract_target_id": "slc.repayments.wales_total",
    "entity": "household",
    "family": "slc",
    "geographic_level": "country",
-   "measure": "slc.repayments.devolved_total",
+   "measure": "slc.repayments.wales_total",
    "metadata": {
     "fixture": "incumbent_2025",
     "resolved_from_year": "2025"
@@ -10300,11 +10300,11 @@
    "value": 229100000.0
   },
   {
-   "contract_target_id": "slc.repayments.devolved_total",
+   "contract_target_id": "slc.repayments.northern_ireland_total",
    "entity": "household",
    "family": "slc",
    "geographic_level": "country",
-   "measure": "slc.repayments.devolved_total",
+   "measure": "slc.repayments.northern_ireland_total",
    "metadata": {
     "fixture": "incumbent_2025",
     "resolved_from_year": "2025"
