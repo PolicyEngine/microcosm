@@ -252,10 +252,10 @@ def test_the_frozen_count_is_the_committed_active_reference_count() -> None:
     # since the generator writes both files in one run. microcosm#1262 adds
     # Scotland's 18 PIPR BRMA cells; microcosm#1095 England's 294 single
     # adult discount cells and the 1,894 compiled DESNZ energy cells by
-    # constituency.
+    # constituency; microcosm#1418 the 2,016 compiled SPI pension income cells.
     membership = load_uk_local_target_reference_membership()
-    assert membership["active_reference_count"] == 25_192
-    assert _load_scorer().uk_local_active_reference_count() == 25_192
+    assert membership["active_reference_count"] == 27_208
+    assert _load_scorer().uk_local_active_reference_count() == 27_208
 
 
 @pytest.mark.parametrize("bad", [0, -1, True, "25", None])
