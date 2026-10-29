@@ -55,7 +55,12 @@ from microcosm.build.uk_runtime.national_frame import (
     uk_time_period,
     validate_uk_national_frame,
 )
-from microcosm.build.uk_runtime.receipt_counts import distinct_count, support_band
+from microcosm.build.uk_runtime.receipt_counts import (
+    UK_DISCLOSURE_FLOOR,
+    UK_WITHHELD,
+    distinct_count,
+    support_band,
+)
 from microcosm.build.uk_runtime.take_up_contract import UKTakeUpContract
 from microcosm.frame import Frame
 
@@ -335,13 +340,17 @@ def derive_is_apprentice(
         "realized_mass": realized,
         "realization_deviation": realized - target,
     }
-    # A weighted total carried by one to nine households is withheld, with the
+    # A weighted total carried by one or two households is withheld, with the
     # figures that would give it back: the target is the rate times the
     # population, and the deviation is the flagged weight less the target.
-    if 0 < population_support < 10:
-        receipt.update(population_mass="<10", target="<10", realization_deviation="<10")
-    if 0 < eligible_support < 10:
-        receipt["eligible_mass"] = "<10"
+    if 0 < population_support < UK_DISCLOSURE_FLOOR:
+        receipt.update(
+            population_mass=UK_WITHHELD,
+            target=UK_WITHHELD,
+            realization_deviation=UK_WITHHELD,
+        )
+    if 0 < eligible_support < UK_DISCLOSURE_FLOOR:
+        receipt["eligible_mass"] = UK_WITHHELD
     if relief_schedule is not None and "employment_income" in person.columns:
         pay = pd.to_numeric(person["employment_income"], errors="coerce")
         relieved = np.clip(
@@ -357,10 +366,10 @@ def derive_is_apprentice(
         receipt["implied_relief"] = float(
             relief_schedule["rate"] * (weights[flags] * relieved[flags]).sum()
         )
-    if 0 < flagged_support < 10:
-        receipt.update(realized_mass="<10", realization_deviation="<10")
+    if 0 < flagged_support < UK_DISCLOSURE_FLOOR:
+        receipt.update(realized_mass=UK_WITHHELD, realization_deviation=UK_WITHHELD)
         if "implied_relief" in receipt:
-            receipt["implied_relief"] = "<10"
+            receipt["implied_relief"] = UK_WITHHELD
     return UKApprenticeDraw(flags=flags, receipt=receipt)
 
 

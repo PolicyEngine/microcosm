@@ -55,8 +55,8 @@ converted pay would need the stage after ``salary_sacrifice``, with a draw
 keyed on lineage so that the CGT clones keep their source's draw.
 
 The receipt is aggregate-only (UKDS disclosure control): support as bands of
-distinct source households, a weighted total only where ten or more carry
-it, and a share only where neither of its sides rests on one to nine.
+distinct source households, a weighted total only where three or more carry
+it, and a share only where neither of its sides rests on one or two.
 """
 
 from __future__ import annotations
@@ -78,6 +78,8 @@ from microcosm.build.uk_runtime.national_frame import (
     validate_uk_national_frame,
 )
 from microcosm.build.uk_runtime.receipt_counts import (
+    UK_DISCLOSURE_FLOOR,
+    UK_WITHHELD,
     distinct_count,
     small_cell_share,
     source_household_ids,
@@ -471,21 +473,21 @@ def redraw_carers_allowance_take_up(
 
     source_ids = person_households.map(household_sources).to_numpy()
 
-    # Weighted aggregates only; a figure one to nine source households carry
-    # is "<10" (UKDS disclosure control).
+    # Weighted aggregates only; a figure one or two source households carry
+    # is "<3" (UKDS disclosure control).
     def sources(mask: np.ndarray) -> int:
         return distinct_count(source_ids, mask, weights)
 
     def guarded_share(part: np.ndarray, whole: np.ndarray) -> float | str | None:
         # The share times the whole's weight gives back either side, so a
-        # share is given only where neither side rests on one to nine sources;
+        # share is given only where neither side rests on one or two sources;
         # the part's weight is never given beside the whole's for the same
         # reason.
         whole_weight = float(weights[whole].sum())
         if not whole_weight:
             return None
-        if 0 < min(sources(part & whole), sources(whole & ~part)) < 10:
-            return "<10"
+        if 0 < min(sources(part & whole), sources(whole & ~part)) < UK_DISCLOSURE_FLOOR:
+            return UK_WITHHELD
         return small_cell_share(
             float(weights[part & whole].sum()) / whole_weight, sources(whole)
         )
@@ -522,9 +524,11 @@ def redraw_carers_allowance_take_up(
         # each split by where the hours are given.
         "over_limit_carers_support": support_band(sources(over_limit)),
         # Beside the eligible weight, it would give back the weight the pool
-        # leaves out, so it is withheld where that rests on one to nine.
+        # leaves out, so it is withheld where that rests on one or two.
         "over_limit_carers_weighted_persons": (
-            "<10" if 0 < sources(over_limit & ~eligible) < 10 else weighted(over_limit)
+            UK_WITHHELD
+            if 0 < sources(over_limit & ~eligible) < UK_DISCLOSURE_FLOOR
+            else weighted(over_limit)
         ),
         "over_limit_in_household_support": support_band(
             sources(over_limit & pool.in_household)

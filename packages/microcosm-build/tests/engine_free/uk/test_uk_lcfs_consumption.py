@@ -276,16 +276,16 @@ def test_donor_excise_shares_read_the_diary_lines() -> None:
     assert tobacco["positive_share"] == pytest.approx((1.5 + 3.0) / weights.sum())
     # Two donors carry tobacco and one P602 sits beside its lines: bands, and
     # the withheld share, never the counts.
-    assert tobacco["positive_support"] == "<10"
+    assert tobacco["positive_support"] == "<3"
     assert tobacco["clipped_at_one"] == 0
-    assert tobacco["total_beside_lines"] == "<10"
+    assert tobacco["total_beside_lines"] == "<3"
     on_trade = receipt[ON_TRADE_SHARE]
-    assert on_trade["clipped_at_one"] == "<10"
+    assert on_trade["clipped_at_one"] == "<3"
     assert "total_beside_lines" not in on_trade
     # A share of the stakes has no published total to sit beside.
     lottery = receipt[LOTTERY_SHARE]
     assert lottery["total"] == "gambling_stakes"
-    assert lottery["positive_support"] == "<10"
+    assert lottery["positive_support"] == "<3"
     assert "total_beside_lines" not in lottery
     assert receipt[BETTING_SHARE]["share_of_denominator"] == pytest.approx(
         (1.5 * 0.25 + 2.0 * 1.0) / (1.5 * 0.25 + 2.0 * 1.5 + 3.0 * 1.0)
@@ -495,7 +495,7 @@ def test_clip_holds_drawn_shares_to_the_unit_interval() -> None:
     assert held[TOBACCO_SHARE].tolist() == [0.2, 1.0, 0.0]
     assert held[ON_TRADE_SHARE].tolist() == [0.5] * 3
     assert outside == {
-        TOBACCO_SHARE: "<10",
+        TOBACCO_SHARE: "<3",
         ON_TRADE_SHARE: 0,
         GAMBLING_SHARE: 0,
         LOTTERY_SHARE: 0,
@@ -653,8 +653,8 @@ def test_split_receipt_separates_refunds_read_as_zero_from_other_gaps() -> None:
     )
     # Two donors differ: a small cell, so no share.
     assert receipt["share_of_donors_whose_unclipped_parts_differ_from_p537"] == {
-        "by_over_a_penny_a_week": "<10",
-        "by_over_50p_a_week": "<10",
+        "by_over_a_penny_a_week": "<3",
+        "by_over_50p_a_week": "<3",
     }
 
 
@@ -797,13 +797,14 @@ def test_negative_donor_consumption_is_floored_with_a_receipt() -> None:
         if column not in raised:
             assert floored[column].tolist() == [10.0, 20.0, 30.0]
     assert receipt["floor"] == 0.0
-    # Counts of rows picked out by a negative spend are banded (microcosm#1164).
-    assert receipt["rows_raised"] == "<10"
+    # Counts of rows picked out by a negative spend are banded (microcosm#1164):
+    # three rows in all, two of housing and one of bus fares.
+    assert receipt["rows_raised"] == "3-9"
     assert receipt["remaining_negative_rows"] == 0
     housing = receipt["columns"]["housing_water_and_electricity_consumption"]
     # Counts only: no donor value or statistic of the raised rows.
-    assert housing == {"rows_raised": "<10"}
-    assert receipt["columns"]["bus_fare_spending"] == {"rows_raised": "<10"}
+    assert housing == {"rows_raised": "<3"}
+    assert receipt["columns"]["bus_fare_spending"] == {"rows_raised": "<3"}
     assert receipt["columns"]["food_and_non_alcoholic_beverages_consumption"] == {
         "rows_raised": 0
     }
@@ -1124,32 +1125,34 @@ def test_fuel_flag_evidence_withholds_every_share_beside_a_thin_group() -> None:
             "diesel_spending": [0.0, 0.0, 0.0],
         }
     )
-    # Twenty buyers and ten households without a vehicle, but three
+    # Twenty buyers and ten households without a vehicle, but two
     # fuel-free vehicle households.
     recipient = pd.DataFrame(
         {
-            "num_vehicles": [0] * 10 + [1] * 23,
-            "has_fuel_consumption": [False] * 10 + [True] * 20 + [False] * 3,
+            "num_vehicles": [0] * 10 + [1] * 22,
+            "has_fuel_consumption": [False] * 10 + [True] * 20 + [False] * 2,
         }
     )
     evidence = fuel_flag_evidence(
         donor,
         recipient,
-        recipient_weights=np.ones(33),
+        recipient_weights=np.ones(32),
         ice_share_receipt={"rate": 0.9},
     )
+    # Three donors read exactly at the floor of three; each of their groups
+    # rests on one, so every share beside them is withheld.
     assert evidence["donor"] == {
-        "households": "<10",
-        "with_vehicles_share": "<10",
-        "positive_fuel_share": "<10",
-        "positive_fuel_share_among_vehicle_households": "<10",
+        "households": 3,
+        "with_vehicles_share": "<3",
+        "positive_fuel_share": "<3",
+        "positive_fuel_share_among_vehicle_households": "<3",
     }
     assert evidence["recipient"] == {
-        "households": 33,
-        "with_vehicles_share": "<10",
-        "flagged_share": "<10",
-        "flagged_share_among_vehicle_households": "<10",
-        "fuel_free_share_of_vehicles": "<10",
+        "households": 32,
+        "with_vehicles_share": "<3",
+        "flagged_share": "<3",
+        "flagged_share_among_vehicle_households": "<3",
+        "fuel_free_share_of_vehicles": "<3",
     }
 
 
@@ -1184,8 +1187,8 @@ def test_fuel_flag_evidence_counts_the_cars_in_fuel_free_households() -> None:
     # Forty-two vehicles, ten of them in the ten fuel-free households.
     assert evidence["fuel_free_share_of_vehicles"] == pytest.approx(10 / 42)
     # Copies of one source household count once: the ten fuel-free rows are
-    # copies of three sources, so every share is withheld.
-    sources = list(range(22)) + [100, 100, 100, 100, 101, 101, 101, 102, 102, 102]
+    # copies of two sources, so every share is withheld.
+    sources = list(range(22)) + [100, 100, 100, 100, 100, 101, 101, 101, 101, 101]
     sources += list(range(200, 212))
     withheld = fuel_flag_evidence(
         donor,
@@ -1194,8 +1197,8 @@ def test_fuel_flag_evidence_counts_the_cars_in_fuel_free_households() -> None:
         ice_share_receipt={"rate": 0.96},
         sources=sources,
     )["recipient"]
-    assert withheld["fuel_free_share_of_vehicles"] == "<10"
-    assert withheld["flagged_share"] == "<10"
+    assert withheld["fuel_free_share_of_vehicles"] == "<3"
+    assert withheld["flagged_share"] == "<3"
 
 
 def test_post_imputation_rake_fits_all_four_need_margins_in_kwh() -> None:
@@ -1760,7 +1763,7 @@ def test_stage_transform_prices_bus_fares_from_journeys() -> None:
     assert on_trade["total"] == "restaurants_and_hotels_consumption"
     assert on_trade["frame"]["draws_outside_unit_interval"] == 0
     # Seven donors' drinks pass P611 by pennies and are held at one.
-    assert on_trade["donor"]["clipped_at_one"] == "<10"
+    assert on_trade["donor"]["clipped_at_one"] == "3-9"
     assert "total_beside_lines" not in on_trade["donor"]
     gambling = shares["gambling_stakes_share_of_recreation"]
     assert gambling["total"] == "recreation_consumption"
@@ -2087,9 +2090,9 @@ def test_division_capture_reads_each_division_against_its_donor() -> None:
     )
 
 
-def test_weighted_top_share_withholds_fewer_than_ten_households() -> None:
+def test_weighted_top_share_withholds_fewer_than_three_households() -> None:
     """The top spenders' share of a weighted total (microcosm#1278); a share
-    resting on one to nine households is "<10", as every receipt count."""
+    resting on one or two households is "<3", as every receipt count."""
 
     from microcosm.build.uk_runtime.lcfs_consumption import weighted_top_share
 
@@ -2098,7 +2101,8 @@ def test_weighted_top_share_withholds_fewer_than_ten_households() -> None:
     assert weighted_top_share(values, weights, fraction=0.10) == pytest.approx(
         2_000.0 / 2_180.0
     )
-    assert weighted_top_share(values, weights, fraction=0.01) == "<10"
+    # The top 1% of two hundred is two households.
+    assert weighted_top_share(values, weights, fraction=0.01) == "<3"
     # Weight, not row count, sets the group: at double weight, eleven of the
     # top twenty households carry exactly a tenth of the 220 weight.
     heavy = np.where(values > 1.0, 2.0, 1.0)
@@ -2128,22 +2132,22 @@ def test_weighted_top_shares_count_distinct_source_households() -> None:
     as_sources = weighted_top_shares(
         values, weights, fractions=(0.06,), sources=sources
     )
-    assert as_sources[0.06] == "<10"
+    assert as_sources[0.06] == "<3"
     tail = division_tail(values, weights, values, weights, frame_sources=sources)
     # Each top 10% is twenty rows, the twelve leaders and eight more: ten
     # sources on the frame and twenty on the donor (one row per household),
     # so both ship. The frame's top 1% is two copies of one source.
     assert tail["top_10_percent"]["donor"] == pytest.approx(1_208.0 / 1_388.0)
     assert tail["top_10_percent"]["frame"] == pytest.approx(1_208.0 / 1_388.0)
-    assert tail["top_1_percent"]["frame"] == "<10"
+    assert tail["top_1_percent"]["frame"] == "<3"
     with pytest.raises(ValueError, match="align"):
         weighted_top_shares(values, weights, fractions=(0.1,), sources=sources[:5])
 
 
-def test_weighted_top_shares_withhold_a_difference_of_one_to_nine() -> None:
+def test_weighted_top_shares_withhold_a_difference_of_one_or_two() -> None:
     """The top 1% leads the top 10%, so the two shares' difference is the
-    spend of the households between them: a larger fraction adding one to
-    nine sources to a shipped smaller one is withheld (microcosm#1306 review)."""
+    spend of the households between them: a larger fraction adding one or
+    two sources to a shipped smaller one is withheld (microcosm#1306 review)."""
 
     from microcosm.build.uk_runtime.lcfs_consumption import weighted_top_shares
 
@@ -2152,36 +2156,36 @@ def test_weighted_top_shares_withhold_a_difference_of_one_to_nine() -> None:
         weights = np.array([10.0] * 10 + [next_weight] * next_rows + [90.0] * 100)
         return weighted_top_shares(values, weights, fractions=(0.01, 0.10))
 
-    # Ten households carry the top 1% and five more the rest of the top 10%.
-    five_more = shares(5, 180.0)
-    assert five_more[0.01] == pytest.approx(10_000.0 / 64_000.0)
-    assert five_more[0.10] == "<10"
-    # Ten more is enough.
-    ten_more = shares(10, 90.0)
-    assert ten_more[0.01] == pytest.approx(10_000.0 / 64_000.0)
-    assert ten_more[0.10] == pytest.approx(55_000.0 / 64_000.0)
+    # Ten households carry the top 1% and two more the rest of the top 10%.
+    two_more = shares(2, 450.0)
+    assert two_more[0.01] == pytest.approx(10_000.0 / 64_000.0)
+    assert two_more[0.10] == "<3"
+    # Three more is enough.
+    three_more = shares(3, 300.0)
+    assert three_more[0.01] == pytest.approx(10_000.0 / 64_000.0)
+    assert three_more[0.10] == pytest.approx(55_000.0 / 64_000.0)
 
 
 def test_weighted_top_shares_withhold_a_thin_rest_and_count_spenders() -> None:
     """The receipt's total ships beside the shares, so total x (1 - share) is
-    the spend outside the top group: a share is withheld when one to nine
+    the spend outside the top group: a share is withheld when one or two
     sources spend anything outside it. The floors count spenders, so zero
     rows in a group lend it nothing (microcosm#1306 review)."""
 
     from microcosm.build.uk_runtime.lcfs_consumption import weighted_top_shares
 
-    # Twenty leaders carry the top 10%; five others spend; 175 spend nothing.
-    values = np.array([100.0] * 20 + [7.0] * 5 + [0.0] * 175)
+    # Twenty leaders carry the top 10%; two others spend; 178 spend nothing.
+    values = np.array([100.0] * 20 + [7.0] * 2 + [0.0] * 178)
     shares = weighted_top_shares(values, np.ones(200), fractions=(0.10,))
-    assert shares[0.10] == "<10"
-    # With ten spenders outside it, the share ships.
-    values = np.array([100.0] * 20 + [7.0] * 10 + [0.0] * 170)
+    assert shares[0.10] == "<3"
+    # With three spenders outside it, the share ships.
+    values = np.array([100.0] * 20 + [7.0] * 3 + [0.0] * 177)
     shares = weighted_top_shares(values, np.ones(200), fractions=(0.10,))
-    assert shares[0.10] == pytest.approx(2_000.0 / 2_070.0)
-    # A top group of twenty rows of which four spend rests on four spenders.
-    values = np.array([100.0] * 4 + [0.0] * 196)
+    assert shares[0.10] == pytest.approx(2_000.0 / 2_021.0)
+    # A top group of twenty rows of which two spend rests on two spenders.
+    values = np.array([100.0] * 2 + [0.0] * 198)
     shares = weighted_top_shares(values, np.ones(200), fractions=(0.10,))
-    assert shares[0.10] == "<10"
+    assert shares[0.10] == "<3"
 
 
 def test_division_capture_counts_source_households_not_copies() -> None:
@@ -2190,9 +2194,9 @@ def test_division_capture_counts_source_households_not_copies() -> None:
         division_capture,
     )
 
-    # The twenty leaders are copies of four source households.
+    # The twenty leaders are copies of two source households.
     frame_values = [100.0] * 20 + [1.0] * 180
-    sources = [index // 5 for index in range(20)] + list(range(100, 280))
+    sources = [index // 10 for index in range(20)] + list(range(100, 280))
     draws = pd.DataFrame(
         {column: frame_values for column in UK_LCFS_COICOP_DIVISION_COLUMNS}
     )
@@ -2208,7 +2212,7 @@ def test_division_capture_counts_source_households_not_copies() -> None:
     as_sources = division_capture(
         draws, weights=np.ones(200), period_value=2024, donor=donor, sources=sources
     )["divisions"][column]["tail"]["top_10_percent"]
-    assert as_sources["frame"] == "<10"
+    assert as_sources["frame"] == "<3"
     assert as_sources["donor"] == pytest.approx(0.10)
 
 
@@ -2292,8 +2296,8 @@ def test_division_capture_places_an_over_draw_in_the_tail() -> None:
     assert top_ten["frame_over_donor"] == pytest.approx(2_000.0 / 2_180.0 / 0.10)
     # Two households are the top 1% of two hundred: withheld on both sides.
     assert tail["top_1_percent"] == {
-        "frame": "<10",
-        "donor": "<10",
+        "frame": "<3",
+        "donor": "<3",
         "frame_over_donor": None,
     }
     assert "tail" not in capture["total"]

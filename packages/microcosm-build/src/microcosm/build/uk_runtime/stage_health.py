@@ -8,6 +8,11 @@ from collections.abc import Mapping
 import numpy as np
 
 from microcosm.build.gates import GateResult
+from microcosm.build.uk_runtime.receipt_counts import (
+    UK_BELOW_TEN_BAND,
+    UK_DISCLOSURE_FLOOR,
+    UK_WITHHELD,
+)
 
 _UK_PACKAGE = "microcosm.build.uk"
 _FLOAT_RELATIVE_TOLERANCE = 8.0 * np.finfo(np.float64).eps
@@ -1210,8 +1215,8 @@ def _frs_annual_income_spells_gate(
     current employee earners: the survey's spells can add part-year earners
     but cannot remove a current one. Where the receipt measures it, at least
     the declared share of the pay outside the current job is observed rather
-    than drawn from a donor. A ratio or share carried by fewer than ten
-    households, which the receipt prints "<10", is flagged unmeasured, never
+    than drawn from a donor. A ratio or share carried by fewer than three
+    households, which the receipt prints "<3", is flagged unmeasured, never
     failed: a small-cell rule never stops a build (María's ruling of
     2026-10-26).
     """
@@ -1234,7 +1239,7 @@ def _frs_annual_income_spells_gate(
         upper = _finite_number(bounds[1], label=f"{stage}.{bounds_key}[1]")
         value = evidence.get(key)
         details[key] = value
-        if value == "<10":
+        if value == UK_WITHHELD:
             details[f"{key}_measured"] = False
         elif isinstance(value, bool) or not isinstance(value, int | float):
             failures.append(f"{stage}: {key} is {value!r}, not a measured ratio.")
@@ -1248,7 +1253,7 @@ def _frs_annual_income_spells_gate(
     )
     observed = evidence.get("other_spells_pay_observed_share")
     details["other_spells_pay_observed_share"] = observed
-    if observed == "<10":
+    if observed == UK_WITHHELD:
         details["observed_pay_share_measured"] = False
     elif isinstance(observed, bool) or not isinstance(observed, int | float):
         failures.append(f"{stage}: other_spells_pay_observed_share is {observed!r}.")
@@ -1412,7 +1417,7 @@ def _uc_take_up_gate(
     caseload is within ``maximum_caseload_deviation`` of DWP's count, and the
     family type's whole caseload is no further from DWP's than before the
     redraw, give or take that share of DWP's count. A family type whose
-    caseload rests on fewer than ten sources, which the receipt prints "<10",
+    caseload rests on fewer than three sources, which the receipt prints "<3",
     is flagged unchecked, never failed: a small-cell rule never stops a build
     (María's ruling of 2026-10-26).
     """
@@ -1447,7 +1452,7 @@ def _uc_take_up_gate(
             )
         }
         details[str(name)] = values
-        if any(value == "<10" for value in values.values()):
+        if any(value == UK_WITHHELD for value in values.values()):
             unchecked.append(str(name))
             continue
         if any(not isinstance(value, int | float) for value in values.values()):
@@ -3766,7 +3771,7 @@ def _excise_quantities_gate(
                 f"not {required_support!r}."
             )
         residual = donor.get("total_beside_lines")
-        if residual == "<10":
+        if residual == UK_WITHHELD:
             unchecked_residuals.append(name)
         elif isinstance(residual, int | float) and residual > maximum_residual:
             failures.append(
@@ -4363,8 +4368,8 @@ def _property_purchases_gate(
     not exact); its value is HMRC's less the recorded shortfall, which the
     stage refuses past one fifth, so the gate refuses past the declared share;
     and the individuals' shares that carry the all-buyers totals onto
-    households are proper shares. A kind whose buyers rest on fewer than ten
-    sources, which the receipt prints "<10", is flagged unchecked, never
+    households are proper shares. A kind whose buyers rest on fewer than three
+    sources, which the receipt prints "<3", is flagged unchecked, never
     failed (María's ruling of 2026-10-26).
     """
 
@@ -4393,7 +4398,7 @@ def _property_purchases_gate(
     for kind in kinds:
         name = str(kind.get("property_type"))
         if any(
-            kind.get(field) == "<10"
+            kind.get(field) == UK_WITHHELD
             for field in (
                 "fitted_transactions",
                 "value_shortfall_share",
@@ -4468,7 +4473,7 @@ def _regional_home_values_gate(
     rows; no source sits at the value cap beyond the declared count; the knots
     are the declared basis year and the ranking the declared basis; and the
     weighted value stays positive on both sides of the stage. A count the
-    receipt bands for resting on fewer than ten records is flagged rather
+    receipt bands for resting on fewer than three records is flagged rather
     than failed where the band cannot tell (María's ruling of 2026-10-26).
     """
 
@@ -4482,21 +4487,21 @@ def _regional_home_values_gate(
         failures.append(
             f"{stage}: the receipt rewrites regions {sorted(rewritten)}, not {regions}."
         )
-    # A region the receipt prints "<10" rewrote one to nine rows: it is not
+    # A region the receipt prints "<3" rewrote one or two rows: it is not
     # empty, and it is flagged (a small-cell rule never fails a build, María's
     # ruling of 2026-10-26). The sum check takes it at its lower bound.
     banded = sorted(
-        str(region) for region, count in rewritten.items() if count == "<10"
+        str(region) for region, count in rewritten.items() if count == UK_WITHHELD
     )
     counts = {
-        str(region): 1 if count == "<10" else int(count)
+        str(region): 1 if count == UK_WITHHELD else int(count)
         for region, count in rewritten.items()
     }
     empty = sorted(region for region, count in counts.items() if count <= 0)
     if empty:
         failures.append(f"{stage}: no row is rewritten in {empty}.")
     rows = evidence.get("rows", 0)
-    if rows != "<10" and sum(counts.values()) > int(rows):
+    if rows != UK_WITHHELD and sum(counts.values()) > int(rows):
         failures.append(f"{stage}: more rows are rewritten than the stage carries.")
     at_cap = evidence.get("sources_at_cap", -1)
     maximum_at_cap = int(parameters["maximum_sources_at_cap"])
@@ -4534,7 +4539,7 @@ def _regional_home_values_gate(
     details = {
         "regions": regions,
         "sources_at_cap": at_cap,
-        "regions_rewritten_under_ten": banded,
+        "regions_rewritten_under_floor": banded,
         "sources_at_cap_unchecked": cap_unchecked,
     }
     if failures:
@@ -4543,9 +4548,14 @@ def _regional_home_values_gate(
 
 
 #: The support bands the take-up receipts print (receipt_counts).
-_SUPPORT_BANDS = frozenset({"<10", "10-29", "30+"})
+_SUPPORT_BANDS = frozenset({UK_WITHHELD, UK_BELOW_TEN_BAND, "10-29", "30+"})
 #: The counts each band stands for, lowest and highest.
-_SUPPORT_BAND_BOUNDS = {"<10": (1, 9), "10-29": (10, 29), "30+": (30, math.inf)}
+_SUPPORT_BAND_BOUNDS = {
+    UK_WITHHELD: (1, UK_DISCLOSURE_FLOOR - 1),
+    UK_BELOW_TEN_BAND: (UK_DISCLOSURE_FLOOR, 9),
+    "10-29": (10, 29),
+    "30+": (30, math.inf),
+}
 
 
 def _legacy_closure_take_up_gate(
@@ -4559,7 +4569,7 @@ def _legacy_closure_take_up_gate(
     the contract it can read: the share is measured on the declared basis,
     every combination's rate is a probability from a declared source, its
     support is a printed band, and its unreachable flag is a boolean, a
-    withheld "<10" or absent; the share claiming at closure is a share.
+    withheld "<3" or absent; the share claiming at closure is a share.
     """
 
     check = "legacy_closure_take_up"
@@ -4588,13 +4598,13 @@ def _legacy_closure_take_up_gate(
         if combination.get("support") not in _SUPPORT_BANDS:
             failures.append(f"{stage}: {name} prints no support band.")
         flag = combination.get("rate_unreachable")
-        if flag == "<10":
+        if flag == UK_WITHHELD:
             withheld_flags += 1
         elif not (flag is None or isinstance(flag, bool)):
             failures.append(f"{stage}: {name} flags {flag!r} as unreachable.")
-    # A drawn cohort on fewer than ten sources prints the share withheld.
+    # A drawn cohort on fewer than three sources prints the share withheld.
     printed = evidence.get("great_britain_weighted_share_claiming_at_closure")
-    if printed != "<10":
+    if printed != UK_WITHHELD:
         share = _finite_number(
             printed, label=f"{stage}.great_britain_weighted_share_claiming_at_closure"
         )
@@ -4603,7 +4613,7 @@ def _legacy_closure_take_up_gate(
     details = {
         "combinations": len(combinations),
         "unreachable_flags_withheld": withheld_flags,
-        "share_claiming_at_closure_withheld": printed == "<10",
+        "share_claiming_at_closure_withheld": printed == UK_WITHHELD,
     }
     if failures:
         return _fail(stage, check, failures, details)
@@ -4626,7 +4636,7 @@ def _apprentice_draw_gate(
     flags imply at the engine's own Class 1 schedule must stay at or below
     ``maximum_implied_relief``, HMRC's apprentice relief for every apprentice
     under 25 (Vahid's review of microcosm#1373, S1). A figure resting on fewer
-    than ten source households, which the receipt prints "<10", is named
+    than ten source households, which the receipt prints "<3", is named
     unchecked, never failed: a small-cell rule never stops a build (María's
     ruling of 2026-10-26).
     """
@@ -4674,7 +4684,7 @@ def _apprentice_draw_gate(
             "realization_deviation",
             "implied_relief",
         )
-        if receipt.get(key) == "<10"
+        if receipt.get(key) == UK_WITHHELD
     ]
 
     def _figure(key: str) -> float | None:
@@ -4745,7 +4755,7 @@ def _apprentice_draw_gate(
             f"{stage}: the receipt records no implied relief, so the draw cannot be "
             "held below HMRC's apprentice relief."
         )
-    elif relief != "<10":
+    elif relief != UK_WITHHELD:
         implied = _finite_number(relief, label=f"{stage}.implied_relief")
         if implied > ceiling:
             failures.append(

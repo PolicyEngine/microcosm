@@ -405,26 +405,26 @@ def test_draws_are_keyed_by_person_identity() -> None:
 
 
 def test_the_receipt_bands_support_copies_on_their_sources() -> None:
-    # UKDS disclosure control: twelve support copies of three source
-    # households carry nothing above "<10", however many rows copy them.
+    # UKDS disclosure control: twelve support copies of two source
+    # households carry nothing above "<3", however many rows copy them.
     n = 12
     frame = _frame(
         care_hours=np.full(n, 35.0),
         reported=np.zeros(n),
         weekly_pay=np.full(n, 300.0),
-        source_ids=np.arange(n) % 3,
+        source_ids=np.arange(n) % 2,
     )
     evidence = _run(frame, rate=1.0).evidence()
-    assert evidence["eligible_support"] == "<10"
-    assert evidence["eligible_weighted_persons"] == "<10"
-    assert evidence["drawn_support"] == "<10"
-    assert evidence["drawn_share_of_over_limit_pool"] == "<10"
-    assert evidence["in_household_disabled_member_share"] == "<10"
+    assert evidence["eligible_support"] == "<3"
+    assert evidence["eligible_weighted_persons"] == "<3"
+    assert evidence["drawn_support"] == "<3"
+    assert evidence["drawn_share_of_over_limit_pool"] == "<3"
+    assert evidence["in_household_disabled_member_share"] == "<3"
 
 
 def test_the_share_hides_a_small_side() -> None:
-    # Forty eligible carers on forty sources, three of them drawn: the share
-    # times the eligible weight would give the three carers' weight back.
+    # Forty eligible carers on forty sources, two of them drawn: the share
+    # times the eligible weight would give the two carers' weight back.
     n = 40
     frame = _frame(
         care_hours=np.full(n, 35.0),
@@ -436,20 +436,20 @@ def test_the_share_hides_a_small_side() -> None:
             frame.table("person")["person_id"].to_numpy()[:n], seed=0, salt=_OUTPUT
         )
     )
-    result = _run(frame, rate=float((uniforms[2] + uniforms[3]) / 2))
-    assert int(result.frame.table("person")[_OUTPUT].sum()) == 3
+    result = _run(frame, rate=float((uniforms[1] + uniforms[2]) / 2))
+    assert int(result.frame.table("person")[_OUTPUT].sum()) == 2
     evidence = result.evidence()
     assert evidence["eligible_support"] == "30+"
     assert evidence["eligible_weighted_persons"] == pytest.approx(40.0)
-    assert evidence["drawn_support"] == "<10"
-    assert evidence["drawn_share_of_over_limit_pool"] == "<10"
-    # All but three drawn: the share would give the three undrawn carers'
-    # weight back the same way.
-    result = _run(frame, rate=float((uniforms[36] + uniforms[37]) / 2))
-    assert int(result.frame.table("person")[_OUTPUT].sum()) == 37
+    assert evidence["drawn_support"] == "<3"
+    assert evidence["drawn_share_of_over_limit_pool"] == "<3"
+    # All but two drawn: the share would give the two undrawn carers' weight
+    # back the same way.
+    result = _run(frame, rate=float((uniforms[37] + uniforms[38]) / 2))
+    assert int(result.frame.table("person")[_OUTPUT].sum()) == 38
     evidence = result.evidence()
     assert evidence["drawn_support"] == "30+"
-    assert evidence["drawn_share_of_over_limit_pool"] == "<10"
+    assert evidence["drawn_share_of_over_limit_pool"] == "<3"
 
 
 def test_households_are_read_through_membership_not_position() -> None:
@@ -504,8 +504,12 @@ def test_households_are_read_through_membership_not_position() -> None:
     assert evidence["eligible_weighted_persons"] == pytest.approx(weights.sum())
     assert evidence["eligible_support"] == "10-29"
     assert evidence["drawn_share_of_over_limit_pool"] == 1.0
-    assert evidence["scotland_eligible_support"] == "<10"
-    assert evidence["scotland_eligible_weighted_persons"] == "<10"
+    # Eight Scottish carers on eight sources: their weight is given, read
+    # through membership.
+    assert evidence["scotland_eligible_support"] == "3-9"
+    assert evidence["scotland_eligible_weighted_persons"] == pytest.approx(
+        weights[regions == "SCOTLAND"].sum()
+    )
     assert int(carer[scottish].sum()) == 8
 
 

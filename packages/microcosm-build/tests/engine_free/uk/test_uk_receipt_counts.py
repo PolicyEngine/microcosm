@@ -19,8 +19,12 @@ from microcosm.build.uk_runtime.receipt_counts import (
     ("count", "expected"),
     [
         (0, 0),
-        (1, "<10"),
-        (9, "<10"),
+        # The floor of three (María's ruling of 2026-10-29): one or two are
+        # withheld, three to nine read exactly, then the rounding starts.
+        (1, "<3"),
+        (2, "<3"),
+        (3, 3),
+        (9, 9),
         (10, 10),
         (14, 10),
         (25, 30),
@@ -38,7 +42,9 @@ def test_rounded_count(count, expected) -> None:
     ("count", "expected"),
     [
         (0, 0),
-        (3, "<10"),
+        (2, "<3"),
+        (3, "3-9"),
+        (9, "3-9"),
         (10, "10-49"),
         (49, "10-49"),
         (50, "50-99"),
@@ -54,10 +60,19 @@ def test_extreme_count(count, expected) -> None:
 
 @pytest.mark.parametrize(
     ("count", "expected"),
-    [(0, 0), (1, "<10"), (9, "<10"), (10, "10-29"), (29, "10-29"), (30, "30+")],
+    [
+        (0, 0),
+        (1, "<3"),
+        (2, "<3"),
+        (3, "3-9"),
+        (9, "3-9"),
+        (10, "10-29"),
+        (29, "10-29"),
+        (30, "30+"),
+    ],
 )
 def test_support_band(count, expected) -> None:
-    # An empty cell reads 0, as the other counts here, never "<10" beside a
+    # An empty cell reads 0, as the other counts here, never "<3" beside a
     # zero weight.
     assert support_band(count) == expected
 
@@ -86,7 +101,8 @@ def test_floored_share_refuses_a_share_outside_zero_one() -> None:
 
 def test_small_cell_share() -> None:
     assert small_cell_share(0.0, 0) == 0.0
-    assert small_cell_share(0.01, 9) == "<10"
+    assert small_cell_share(0.01, 2) == "<3"
+    assert small_cell_share(0.01, 3) == pytest.approx(0.01)
     assert small_cell_share(0.25, 40) == pytest.approx(0.25)
     with pytest.raises(ValueError, match="negative"):
         small_cell_share(0.1, -1)

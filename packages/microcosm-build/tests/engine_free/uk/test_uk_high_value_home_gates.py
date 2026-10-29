@@ -120,17 +120,17 @@ def test_evidence_counts_bands_shares_correlations_and_support() -> None:
     evidence = uk_high_value_home_evidence(household, weights=weights, facts=facts)
     summary = evidence.summary
     bands = summary["england_owner_occupied_by_band_2026"]
-    # The toy pool's bands rest on fewer than ten source households, so the
-    # shipped copies are suppressed (PR #1270 review, finding 6), and so is
-    # the total, which rests on five and would give back their sum
-    # (microcosm#1306 review); empty bands stay as zero.
+    # The toy pool's 2.5m to 3.5m band rests on two source households, under
+    # the floor of three, so its shipped copy is suppressed (PR #1270 review,
+    # finding 6), and the 2m to 2.5m band goes with it, since the total less
+    # the shipped bands would give it back (microcosm#1306 review). The total
+    # rests on five and ships; empty bands stay as zero.
     assert bands["gbp_2m_to_2_5m"] is None and bands["gbp_2_5m_to_3_5m"] is None
     assert bands["gbp_3_5m_to_5m"] == 0.0 and bands["over_gbp_5m"] == 0.0
-    assert bands["total"] is None
+    assert bands["total"] == pytest.approx(6.0)
     assert summary["england_bands_suppressed_small_cells"] == [
         "gbp_2_5m_to_3_5m",
         "gbp_2m_to_2_5m",
-        "total",
     ]
     assert summary["obr"]["status"] == "awaiting_vendored_facts"
     shares = summary["regional_over_2m_share"]
@@ -143,8 +143,9 @@ def test_evidence_counts_bands_shares_correlations_and_support() -> None:
     assert shares["gap"] == {"E12000007": None, "E12000008": None}
     assert shares["largest_gap_shipped"] == 0.0
     assert shares["largest_gap_in_suppressed_region"] is True
-    # The frame total ships beside the shares, so it is withheld on the floor.
-    assert shares["frame_total"] is None
+    # The frame total rests on five sources, so it ships beside the withheld
+    # shares, which it cannot give back.
+    assert shares["frame_total"] == pytest.approx(6.0)
     rho = summary["seat_rank_correlation"]["over_gbp_2m"]["final"]
     assert rho["spearman_vs_derived_stock"] == pytest.approx(1.0)
     assert rho["spearman_vs_voa_band_h"] == pytest.approx(1.0)
@@ -179,7 +180,7 @@ def test_support_gate_assesses_only_areas_with_derived_stock_and_reports_bands()
     )
     cell = result.details["cells"]["constituency:over_gbp_2m"]
     assert cell["assessed_areas"] == 2
-    assert cell["areas_by_source_band"] == {"<10": 2, "10-29": 0, "30+": 0}
+    assert cell["areas_by_source_band"] == {"<3": 1, "3-9": 1, "10-29": 0, "30+": 0}
     assert cell["areas_below_floor"] == 1  # seat B carries one source above 2m
     assert not result.passed
     assert any("constituency:over_gbp_2m" in failure for failure in result.failures)
@@ -317,10 +318,14 @@ def test_obr_leg_reads_the_vendored_costing_rows() -> None:
     assert obr["non_owner_occupied_share_status"] == "available"
     assert obr["non_owner_occupied_share_fiscal_year"] == "2028"
     assert obr["owner_occupied_sensitivity_total"] == pytest.approx(99_000.0)
-    # The toy pool's total rests on five source households and is withheld,
-    # so it carries no ratio (the ratios are checked on a larger pool below).
-    assert summary["england_owner_occupied_by_band_2026"]["total"] is None
-    assert obr["frame_over_owner_occupied_sensitivity"] is None
+    # The toy pool's total rests on five source households, above the floor of
+    # three, so it ships with its ratio (the ratios are checked on a larger pool
+    # below).
+    total = summary["england_owner_occupied_by_band_2026"]["total"]
+    assert total == pytest.approx(5.0)
+    assert obr["frame_over_owner_occupied_sensitivity"] == pytest.approx(
+        total / obr["owner_occupied_sensitivity_total"]
+    )
     england = {
         measure: facts.rows_at(
             level="country", measure_id=measure, threshold_id="over_gbp_2m"
@@ -563,9 +568,9 @@ def test_obr_leg_reports_an_unreadable_share_without_raising(value) -> None:
 
 
 def test_small_cell_suppression_withholds_a_thin_total() -> None:
-    # One band on five sources and the rest empty: the total is that band,
+    # One band on two sources and the rest empty: the total is that band,
     # so both go (microcosm#1306 review).
-    household = _pool_by_band_2026({"gbp_2m_to_2_5m": 5})
+    household = _pool_by_band_2026({"gbp_2m_to_2_5m": 2})
     summary = uk_high_value_home_evidence(
         household,
         weights=np.full(len(household), 100.0),
@@ -578,11 +583,11 @@ def test_small_cell_suppression_withholds_a_thin_total() -> None:
 
 
 def test_small_cell_suppression_protects_the_withheld_bands_together() -> None:
-    # Bands on 40, 4 and 3 sources: the two thin bands rest together on 7, so
+    # Bands on 40, 1 and 1 sources: the two thin bands rest together on 2, so
     # the total less the shipped bands would give their sum back; the next
-    # smallest band goes too, and the total, on 47, ships.
+    # smallest band goes too, and the total, on 42, ships.
     household = _pool_by_band_2026(
-        {"gbp_2m_to_2_5m": 40, "gbp_2_5m_to_3_5m": 4, "gbp_3_5m_to_5m": 3}
+        {"gbp_2m_to_2_5m": 40, "gbp_2_5m_to_3_5m": 1, "gbp_3_5m_to_5m": 1}
     )
     summary = uk_high_value_home_evidence(
         household,
@@ -596,7 +601,7 @@ def test_small_cell_suppression_protects_the_withheld_bands_together() -> None:
         "gbp_3_5m_to_5m",
     ]
     assert bands["over_gbp_5m"] == 0.0
-    assert bands["total"] == pytest.approx(4_700.0)
+    assert bands["total"] == pytest.approx(4_200.0)
 
 
 def test_small_cell_suppression_applies_to_shares_summing_to_one() -> None:
@@ -604,12 +609,12 @@ def test_small_cell_suppression_applies_to_shares_summing_to_one() -> None:
 
     sources = {
         "E12000007": set(range(30)),
-        "E12000008": {100, 101, 102},
-        "E12000009": {200, 201},
+        "E12000008": {100},
+        "E12000009": {200},
     }
     shares = {"E12000007": 0.9, "E12000008": 0.06, "E12000009": 0.04}
     shipped, withheld = _suppress_small_cells(shares, sources)
-    # Shares sum to one, so the two thin regions (five sources together) take
+    # Shares sum to one, so the two thin regions (two sources together) take
     # the third with them.
     assert withheld == ["E12000007", "E12000008", "E12000009"]
     assert set(shipped.values()) == {None}

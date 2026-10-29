@@ -809,7 +809,7 @@ def uk_take_up_signal_receipt(
     calibrated weights; a stage gate reads this receipt so that a draw defect
     fails where it is drawn, apart from calibration's drift (María's ruling of
     2026-10-29, microcosm#1095). The receipt is aggregate-only (UKDS disclosure
-    control): a share or a target is given only where ten or more source
+    control): a share or a target is given only where three or more source
     households carry the flag's population, whose support is a band.
     """
 

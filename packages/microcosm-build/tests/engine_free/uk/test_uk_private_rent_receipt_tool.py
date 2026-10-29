@@ -48,8 +48,11 @@ def _frame(rows: list[tuple]) -> pd.DataFrame:
 def test_unweighted_shares_are_floored_and_small_sides_withheld() -> None:
     assert tool.floored_share(0, 100) == 0.0
     assert tool.floored_share(37, 300) == 0.12
-    assert tool.floored_share(5, 100) == "<10"
-    assert tool.floored_share(95, 100) == "<10"
+    # The floor of three: one or two records, or a share leaving out one or
+    # two, read "<3"; three read exactly.
+    assert tool.floored_share(2, 100) == "<3"
+    assert tool.floored_share(98, 100) == "<3"
+    assert tool.floored_share(3, 100) == 0.03
     assert tool.floored_share(1, 0) is None
 
 
@@ -58,56 +61,57 @@ def test_weighted_shares_count_distinct_source_households_on_both_sides() -> Non
     many = np.array([f"s{i}" for i in range(40)], dtype=object)
     mask = np.arange(40) < 20
     assert tool.weighted_share(mask, weight, many) == 0.5
-    # Twenty clones of three source households are still three households.
-    few = np.array([f"s{i % 3}" if i < 20 else f"t{i}" for i in range(40)])
-    assert tool.weighted_share(mask, weight, few) == "<10"
-    assert tool.weighted_share(~mask, weight, few) == "<10"
+    # Twenty clones of two source households are still two households.
+    few = np.array([f"s{i % 2}" if i < 20 else f"t{i}" for i in range(40)])
+    assert tool.weighted_share(mask, weight, few) == "<3"
+    assert tool.weighted_share(~mask, weight, few) == "<3"
 
 
 def test_one_small_cell_takes_a_complement_with_it() -> None:
     cells = {
-        "B": {"source_households": 4, "mean_monthly_rent": 900.0},
+        "B": {"source_households": 2, "mean_monthly_rent": 900.0},
         "C": {"source_households": 40, "mean_monthly_rent": 1000.0},
         "D": {"source_households": 25, "mean_monthly_rent": 1100.0},
     }
     out = tool.suppress_cells(cells)
-    assert out["B"] == {"withheld": "<10"}
+    assert out["B"] == {"withheld": "<3"}
     assert out["D"] == {"withheld": "complement"}
     assert out["C"] == {"source_households": 40, "mean_monthly_rent": 1000.0}
     two_small = tool.suppress_cells(
-        {**cells, "C": {"source_households": 6, "mean_monthly_rent": 1000.0}}
+        {**cells, "C": {"source_households": 1, "mean_monthly_rent": 1000.0}}
     )
-    assert two_small["B"] == two_small["C"] == {"withheld": "<10"}
+    # Two and one households are three together: no complement is needed.
+    assert two_small["B"] == two_small["C"] == {"withheld": "<3"}
     assert two_small["D"]["source_households"] == 30
 
 
-def test_thin_cells_resting_on_under_ten_together_take_a_complement():
-    """Two withheld cells of three and four households are seven together."""
+def test_thin_cells_resting_on_under_three_together_take_a_complement():
+    """Two withheld cells of one household each are two together."""
 
     out = tool.suppress_cells(
         {
-            "B": {"source_households": 3, "mean_monthly_rent": 900.0},
-            "C": {"source_households": 4, "mean_monthly_rent": 950.0},
+            "B": {"source_households": 1, "mean_monthly_rent": 900.0},
+            "C": {"source_households": 1, "mean_monthly_rent": 950.0},
             "D": {"source_households": 25, "mean_monthly_rent": 1100.0},
             "E": {"source_households": 40, "mean_monthly_rent": 1300.0},
         }
     )
-    assert out["B"] == out["C"] == {"withheld": "<10"}
+    assert out["B"] == out["C"] == {"withheld": "<3"}
     assert out["D"] == {"withheld": "complement"}
     assert out["E"]["source_households"] == 40
 
 
-def test_a_cell_with_rows_but_no_counted_carrier_reads_under_ten():
-    """microcosm#1305 re-review: zero counted carriers is fewer than ten."""
+def test_a_cell_with_rows_but_no_counted_carrier_reads_under_three():
+    """microcosm#1305 re-review: zero counted carriers is fewer than three."""
 
     assert tool.suppress_cells(
         {"all": {"source_households": 0, "mean_monthly_rent": 900.0}}
-    ) == {"all": {"withheld": "<10"}}
+    ) == {"all": {"withheld": "<3"}}
     weight = np.ones(20)
     mask = np.arange(20) < 10
     blank = np.array([""] * 10 + [f"s{i}" for i in range(10)], dtype=object)
-    assert tool.weighted_share(mask, weight, blank) == "<10"
-    assert tool.unweighted_share(mask, blank) == "<10"
+    assert tool.weighted_share(mask, weight, blank) == "<3"
+    assert tool.unweighted_share(mask, blank) == "<3"
     # An empty side has nothing to describe.
     assert tool.weighted_share(np.ones(20, dtype=bool), weight, blank[::-1]) == 1.0
 
@@ -117,8 +121,8 @@ def _rent_weighting(carriers=True, *, thin_brma=False, per_group=12):
     row, over 40 households.
 
     The English rows cover households 0-19, the Welsh ones 20-39 and the
-    BRMA rows all forty; with ``thin_brma`` the first BRMA row covers 0-2
-    only. Each household is its own source household.
+    BRMA rows all forty; with ``thin_brma`` the first BRMA row covers 0-1
+    only, under the floor of three. Each household is its own source household.
     """
 
     metadata = [
@@ -144,12 +148,12 @@ def _rent_weighting(carriers=True, *, thin_brma=False, per_group=12):
     rows[per_group : 2 * per_group, 20:] = 1.0
     rows[2 * per_group : 3 * per_group] = 1.0
     if thin_brma:
-        rows[2 * per_group, 3:] = 0.0
+        rows[2 * per_group, 2:] = 0.0
     rows[-1] = 5.0
     weights = np.where(np.arange(40) < 20, 105.0, 70.0) / 20
     targets = np.array(
         [100.0] * (2 * per_group)
-        + [15.75 if thin_brma and i == 0 else 175.0 for i in range(per_group)]
+        + [10.5 if thin_brma and i == 0 else 175.0 for i in range(per_group)]
         + [1.0]
     )
     return tool.Weighting(
@@ -177,7 +181,7 @@ def test_rent_rows_are_scored_by_family_and_nation() -> None:
     assert "rows_withheld" not in summary["all"]
 
 
-def test_a_rent_row_on_fewer_than_ten_households_is_counted_never_summarised():
+def test_a_rent_row_on_fewer_than_three_households_is_counted_never_summarised():
     """microcosm#1305 re-review: the rent rows follow the build's BRMA rule.
 
     With the thin row in its groups, the median and the within-10% count
@@ -185,7 +189,7 @@ def test_a_rent_row_on_fewer_than_ten_households_is_counted_never_summarised():
     """
 
     summary, rows = tool.rent_row_fit(_rent_weighting(thin_brma=True))
-    assert rows[24]["source_households"] == 3
+    assert rows[24]["source_households"] == 2
     assert summary["all"]["rows"] == 35 and summary["all"]["rows_withheld"] == 1
     brma = summary["ons.rent.private_rent_brma Scotland"]
     assert brma["rows"] == 11 and brma["rows_withheld"] == 1
@@ -346,7 +350,7 @@ def test_the_matched_change_reads_each_row_against_its_spine_value() -> None:
     frame.loc[0, "brma"] = "SWANSEA"
     out = tool.matched_change(frame)
     assert out["gb_rows_redrawn"] == 1.0
-    assert out["gb_rows_whose_brma_changed"] == "<10"
+    assert out["gb_rows_whose_brma_changed"] == "<3"
     assert out["region_level_at_design_weights"] == {"WALES": 1.1}
 
 
@@ -379,21 +383,21 @@ def _summary(frame: pd.DataFrame, **kwargs) -> dict:
     return summary
 
 
-def test_a_thin_region_category_cell_reads_under_ten_and_withholds_a_complement():
+def test_a_thin_region_category_cell_reads_under_three_and_withholds_a_complement():
     rows = (
         [_renter(f"b{i}", bedrooms=1) for i in range(12)]
         + [_renter(f"c{i}", bedrooms=2) for i in range(15)]
-        + [_renter(f"d{i}", bedrooms=3) for i in range(4)]
+        + [_renter(f"d{i}", bedrooms=3) for i in range(2)]
         + [_renter(f"e{i}", bedrooms=4) for i in range(20)]
     )
     london = _summary(_frame(rows))["rents_by_cell"]["region"]["LONDON"]
-    assert london["D"] == {"withheld": "<10"}
+    assert london["D"] == {"withheld": "<3"}
     assert london["B"] == {"withheld": "complement"}
     assert london["C"]["source_households"] == 20
     assert london["all"]["mean_monthly_rent"] == 1000.0
 
 
-def test_district_groups_need_ten_cells_of_ten_households():
+def test_district_groups_need_ten_cells_of_three_households():
     pipr = {("la", f"E0900000{i}", "B"): 1_000.0 for i in range(1, 10)}
     rows = [
         (*_renter(f"k{area}-{i}")[:6], f"E0900000{area}", f"k{area}-{i}")
@@ -406,56 +410,58 @@ def test_district_groups_need_ten_cells_of_ten_households():
     # Nine districts pass the household floor: too few to summarise.
     assert group == {
         "withheld": "fewer than 10 cells",
-        "cells_under_10_source_households": 0,
+        "cells_under_floor_source_households": 0,
     }
     assert len(audit["pipr_by_district_and_bedrooms"]) == 9
 
 
-def test_the_top_one_percent_share_needs_ten_rows_and_ten_households():
+def test_the_top_one_percent_share_needs_three_rows_and_three_households():
     # 2,000 renters: the top 20 rows are clones of two households.
     rows = [_renter(f"r{i}") for i in range(1_980)]
     rows += [_renter(f"top{i % 2}", weight=50.0) for i in range(20)]
     weights = _summary(_frame(rows))["weights"]
-    assert weights["top_1pct_weight_share"] == "<10"
+    assert weights["top_1pct_weight_share"] == "<3"
     rows[-20:] = [_renter(f"top{i}", weight=50.0) for i in range(20)]
     assert isinstance(_summary(_frame(rows))["weights"]["top_1pct_weight_share"], float)
-    assert _summary(_frame([_renter(f"r{i}") for i in range(9)]))["weights"] == {
-        "withheld": "<10"
+    assert _summary(_frame([_renter(f"r{i}") for i in range(2)]))["weights"] == {
+        "withheld": "<3"
     }
 
 
 def test_coherence_counts_households_not_clone_rows():
-    # 8 of 800 households, 25 clones each, report HB above their rent.
+    # 2 of 800 households, 25 clones each, report HB above their rent: 50
+    # rows, but two households, under the floor of three.
     frame = _frame([_renter(f"h{i}") for i in range(800) for _ in range(25)])
     frame.loc[
-        frame["source_key"].isin([f"h{i}" for i in range(8)]),
+        frame["source_key"].isin([f"h{i}" for i in range(2)]),
         "housing_benefit_reported",
     ] = 20_000.0
     out = _summary(frame)["coherence"]["housing_benefit_reported_above_rent"]
-    assert out == {"weighted_share": "<10", "unweighted_share": "<10"}
+    assert out == {"weighted_share": "<3", "unweighted_share": "<3"}
 
 
 def test_spine_values_count_frs_channel_households_only():
     frame = _frame(
-        [_renter(f"f{i}") for i in range(4)] + [_renter(f"s{i}") for i in range(6)]
+        [_renter(f"f{i}") for i in range(2)] + [_renter(f"s{i}") for i in range(6)]
     )
-    frame.loc[4:, "channel"] = "spi"
+    frame.loc[2:, "channel"] = "spi"
     every = _summary(frame)["rents_by_cell"]["nation"]["England"]
-    assert every["source_households"] == 10
+    assert every["source_households"] == 8
     frs = _summary(frame, frs_carriers=True)["rents_by_cell"]["nation"]["England"]
-    assert frs == {"withheld": "<10"}
-    # A cell of SPI rows only has no FRS-channel carrier: it reads "<10".
+    assert frs == {"withheld": "<3"}
+    # A cell of SPI rows only has no FRS-channel carrier: it reads "<3".
     spi = frame.assign(channel="spi")
     assert _summary(spi, frs_carriers=True)["rents_by_cell"]["nation"] == {
-        "England": {"withheld": "<10"}
+        "England": {"withheld": "<3"}
     }
 
 
 def test_zero_weight_rows_carry_nothing():
+    # Twelve rows, ten of them of zero weight: two carriers, under the floor.
     frame = _frame([_renter(f"r{i}") for i in range(12)])
-    frame.loc[:2, "weight"] = 0.0
+    frame.loc[:9, "weight"] = 0.0
     cell = _summary(frame)["rents_by_cell"]["nation"]["England"]
-    assert cell == {"withheld": "<10"}
+    assert cell == {"withheld": "<3"}
 
 
 def _work_tree(path):
@@ -543,10 +549,11 @@ def test_the_engine_report_refuses_an_unpinned_engine_before_reading(
 def _synthetic_run(tmp_path):
     """A run directory, its pool table and an empty feed for ``main``.
 
-    Thirty London private renters in category B. Eight are FRS-channel
-    households and 22 SPI-channel rows, so the cell's spine values rest on
-    eight FRS carriers and its built values on thirty source households. The
-    local-authority rent row covers all thirty; the BRMA row three.
+    Thirty London private renters in category B. Two are FRS-channel
+    households and 28 SPI-channel rows, so the cell's spine values rest on
+    two FRS carriers, under the floor of three, and its built values on thirty
+    source households. The local-authority rent row covers all thirty; the
+    BRMA row two.
     """
     pytest.importorskip("tables")
     from microcosm.calibrate import Target, TargetSet, build_constraint_matrix
@@ -556,7 +563,7 @@ def _synthetic_run(tmp_path):
     n = 30
     ids = np.arange(100, 100 + n, dtype=np.int64)
     keys = np.array([f"2024:{i}" for i in range(n)], dtype=object)
-    channel = np.array(["frs"] * 8 + ["spi"] * 22)
+    channel = np.array(["frs"] * 2 + ["spi"] * 28)
     rent = np.full(n, 12_000.0)
     household = pd.DataFrame(
         {
@@ -588,11 +595,11 @@ def _synthetic_run(tmp_path):
         EntitySchema(group_entities=("household",)),
         {"household": Weights(np.ones(n), WeightKind.DESIGN)},
     )
-    thin = np.arange(n) < 3
+    thin = np.arange(n) < 2
     targets = TargetSet(
         [
             Target("rent_la", "household", lambda f: rent, 360_000.0),
-            Target("rent_brma", "household", lambda f: rent * thin, 36_000.0),
+            Target("rent_brma", "household", lambda f: rent * thin, 24_000.0),
         ]
     )
     (run / "uk.full.problem.problem.artifact").write_bytes(
@@ -653,7 +660,7 @@ def test_main_floors_rent_rows_and_spine_values_on_a_synthetic_run(tmp_path):
     built = head["design_weights"]["rents_by_cell"]["region"]["LONDON"]
     assert built["B"]["source_households"] == 30
     spine = head["design_weights_spine_values"]["rents_by_cell"]["region"]["LONDON"]
-    assert spine["B"] == {"withheld": "<10"}
+    assert spine["B"] == {"withheld": "<3"}
     private = json.loads((audit / "private_rent_audit.json").read_text())
     rows = private["runs"]["head"]["rent_rows"]["design"]
-    assert [row["source_households"] for row in rows] == [30, 3]
+    assert [row["source_households"] for row in rows] == [30, 2]

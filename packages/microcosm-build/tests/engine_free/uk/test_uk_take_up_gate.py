@@ -342,8 +342,8 @@ def test_stage_receipt_measures_drawn_flags_and_withholds_thin_populations() -> 
     # Two children in two households: below the disclosure floor, so neither
     # the share nor the age-weighted target is given, and the gate fails.
     assert usage["under_two_usage"] is True
-    assert usage["weighted_share"] == "<10"
-    assert usage["target"] == "<10"
+    assert usage["weighted_share"] == "<3"
+    assert usage["target"] == "<3"
     result = _stage_gate("frs_take_up", receipt)
     assert result.passed is False
     assert any("max_free_entitlement_hours_used" in f for f in result.failures)
