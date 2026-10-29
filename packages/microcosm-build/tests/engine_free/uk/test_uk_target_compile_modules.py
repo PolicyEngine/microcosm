@@ -109,12 +109,15 @@ def test_full_target_kernels_hash_the_measure_simulation(monkeypatch):
 
 def test_full_target_kernels_hash_the_fact_decoder(monkeypatch):
     """full_targets loads the ledger facts inside run through
-    ledger_artifact's decoder, so an edit there alone re-keys both kernels
-    that share this hash (microcosm#1382). The pin holds even if no listed
-    module imports ledger_artifact any more."""
+    ledger_artifact's decoder, so an edit there alone re-keys every full-graph
+    kernel built on this hash: compilation, selection and measure share it,
+    and the problem kernel embeds it (microcosm#1382). The pin holds even if
+    no listed module imports ledger_artifact any more."""
     for kernel in (
         graph_targets.UKFullTargetCompilationKernel(),
+        graph_targets.UKFullTargetSelectionKernel(),
         graph_targets.UKFullMeasureKernel(),
+        graph_targets.UKFullProblemKernel(),
     ):
         assert ledger_artifact in _hashed_by(kernel, monkeypatch, graph_targets)
 
