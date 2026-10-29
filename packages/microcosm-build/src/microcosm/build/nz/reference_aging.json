@@ -8381,6 +8381,3612 @@
         ],
         "receipt_sha256": "6487bd1664ce1e691faaa0771e9835da5437243b06a5c7d749888380a76cd995"
       }
+    },
+    {
+      "declaration": {
+        "schema_version": 1,
+        "id": "donor_cy2024_to_ty2027_low",
+        "operation": "projected_period_average_ratio",
+        "operation_version": 1,
+        "purpose": "money_normalization_input",
+        "feed_identity": {
+          "source_commit": "8f4cfd573c0d6f580d9c51cd67e8f449a42ed174",
+          "facts_sha256": "03f5ea0fe60e6dc93a135ab32cd5cd6ffb56388e702a4734cdb515a956e36b18",
+          "manifest_sha256": "1ea2d1eeb122275a9ce7f861ca3e20e21dd695772c04ce9d71114168e92fe053",
+          "artifact_schema_version": "policyengine_ledger.consumer_artifact.v2",
+          "consumer_fact_schema_versions": [
+            "chronicle.consumer_fact.v4"
+          ],
+          "consumer_fact_schema_sha256": "d953306d6f01fbc64db4372d0262d3012ee590269f8a25b276b18dca0626c6a0",
+          "fact_row_count": 12368
+        },
+        "source_period": "CY2024",
+        "target_period": 2027,
+        "source_schedule": [
+          {
+            "selector": {
+              "source_name": "stats_nz",
+              "source_measure_id": "SBSZ9A",
+              "source_concept": "stats_nz.qes.average_weekly_earnings.ordinary_time",
+              "entity_name": "person",
+              "period_type": "quarter",
+              "period_value": "2024-Q1",
+              "geography_level": "country",
+              "geography_id": "NZ",
+              "geography_vintage": "current",
+              "record_set_id": "stats_nz.qes.awe.2024q1",
+              "dimensions": [
+                "earnings_component",
+                "earnings_denominator",
+                "earnings_sector",
+                "earnings_series_reference",
+                "seasonal_adjustment"
+              ],
+              "dimension_values": {
+                "earnings_component": "ordinary_time",
+                "earnings_denominator": "fte",
+                "earnings_sector": "all_sectors",
+                "earnings_series_reference": "QEMQ.SBSZ9A",
+                "seasonal_adjustment": "actual"
+              },
+              "aggregate_fact_key": "ledger.aggregate_fact.v2:854e91ec1dd95e396659ad8e",
+              "assertion": "observation"
+            },
+            "validation": {
+              "unit": "nzd_per_week",
+              "source_sha256": "25053dcbd343320cad72e2896475eaebaf5f5bb0b5965ca788506ca15efcea30",
+              "source_vintage": "stats_nz_qes_june_2025",
+              "entity_role": "full_time_equivalent_employee",
+              "provenance_class": "survey_aggregate",
+              "assertion": "observation",
+              "period_coverage": {
+                "start_date": "2024-01-01",
+                "end_date": "2024-03-31"
+              },
+              "source_column_id": "SBSZ9A"
+            },
+            "weight": "1",
+            "sequence": 0
+          },
+          {
+            "selector": {
+              "source_name": "stats_nz",
+              "source_measure_id": "SBSZ9A",
+              "source_concept": "stats_nz.qes.average_weekly_earnings.ordinary_time",
+              "entity_name": "person",
+              "period_type": "quarter",
+              "period_value": "2024-Q2",
+              "geography_level": "country",
+              "geography_id": "NZ",
+              "geography_vintage": "current",
+              "record_set_id": "stats_nz.qes.awe.2024q2",
+              "dimensions": [
+                "earnings_component",
+                "earnings_denominator",
+                "earnings_sector",
+                "earnings_series_reference",
+                "seasonal_adjustment"
+              ],
+              "dimension_values": {
+                "earnings_component": "ordinary_time",
+                "earnings_denominator": "fte",
+                "earnings_sector": "all_sectors",
+                "earnings_series_reference": "QEMQ.SBSZ9A",
+                "seasonal_adjustment": "actual"
+              },
+              "aggregate_fact_key": "ledger.aggregate_fact.v2:c07fd9ce3137fa20386bafe0",
+              "assertion": "observation"
+            },
+            "validation": {
+              "unit": "nzd_per_week",
+              "source_sha256": "1af2e7e37f1c108a2656842cf1f519c903e1a982bcdc03ee02d0ad888ebc3a97",
+              "source_vintage": "stats_nz_qes_june_2026",
+              "entity_role": "full_time_equivalent_employee",
+              "provenance_class": "survey_aggregate",
+              "assertion": "observation",
+              "period_coverage": {
+                "start_date": "2024-04-01",
+                "end_date": "2024-06-30"
+              },
+              "source_column_id": "SBSZ9A"
+            },
+            "weight": "1",
+            "sequence": 1
+          },
+          {
+            "selector": {
+              "source_name": "stats_nz",
+              "source_measure_id": "SBSZ9A",
+              "source_concept": "stats_nz.qes.average_weekly_earnings.ordinary_time",
+              "entity_name": "person",
+              "period_type": "quarter",
+              "period_value": "2024-Q3",
+              "geography_level": "country",
+              "geography_id": "NZ",
+              "geography_vintage": "current",
+              "record_set_id": "stats_nz.qes.awe.2024q3",
+              "dimensions": [
+                "earnings_component",
+                "earnings_denominator",
+                "earnings_sector",
+                "earnings_series_reference",
+                "seasonal_adjustment"
+              ],
+              "dimension_values": {
+                "earnings_component": "ordinary_time",
+                "earnings_denominator": "fte",
+                "earnings_sector": "all_sectors",
+                "earnings_series_reference": "QEMQ.SBSZ9A",
+                "seasonal_adjustment": "actual"
+              },
+              "aggregate_fact_key": "ledger.aggregate_fact.v2:54a0eeb64049ba4c15e397bf",
+              "assertion": "observation"
+            },
+            "validation": {
+              "unit": "nzd_per_week",
+              "source_sha256": "1af2e7e37f1c108a2656842cf1f519c903e1a982bcdc03ee02d0ad888ebc3a97",
+              "source_vintage": "stats_nz_qes_june_2026",
+              "entity_role": "full_time_equivalent_employee",
+              "provenance_class": "survey_aggregate",
+              "assertion": "observation",
+              "period_coverage": {
+                "start_date": "2024-07-01",
+                "end_date": "2024-09-30"
+              },
+              "source_column_id": "SBSZ9A"
+            },
+            "weight": "1",
+            "sequence": 2
+          },
+          {
+            "selector": {
+              "source_name": "stats_nz",
+              "source_measure_id": "SBSZ9A",
+              "source_concept": "stats_nz.qes.average_weekly_earnings.ordinary_time",
+              "entity_name": "person",
+              "period_type": "quarter",
+              "period_value": "2024-Q4",
+              "geography_level": "country",
+              "geography_id": "NZ",
+              "geography_vintage": "current",
+              "record_set_id": "stats_nz.qes.awe.2024q4",
+              "dimensions": [
+                "earnings_component",
+                "earnings_denominator",
+                "earnings_sector",
+                "earnings_series_reference",
+                "seasonal_adjustment"
+              ],
+              "dimension_values": {
+                "earnings_component": "ordinary_time",
+                "earnings_denominator": "fte",
+                "earnings_sector": "all_sectors",
+                "earnings_series_reference": "QEMQ.SBSZ9A",
+                "seasonal_adjustment": "actual"
+              },
+              "aggregate_fact_key": "ledger.aggregate_fact.v2:7fc35ba9682ceb04504f2ef9",
+              "assertion": "observation"
+            },
+            "validation": {
+              "unit": "nzd_per_week",
+              "source_sha256": "1af2e7e37f1c108a2656842cf1f519c903e1a982bcdc03ee02d0ad888ebc3a97",
+              "source_vintage": "stats_nz_qes_june_2026",
+              "entity_role": "full_time_equivalent_employee",
+              "provenance_class": "survey_aggregate",
+              "assertion": "observation",
+              "period_coverage": {
+                "start_date": "2024-10-01",
+                "end_date": "2024-12-31"
+              },
+              "source_column_id": "SBSZ9A"
+            },
+            "weight": "1",
+            "sequence": 3
+          }
+        ],
+        "target_schedule": [
+          {
+            "selector": {
+              "source_name": "stats_nz",
+              "source_measure_id": "SBSZ9A",
+              "source_concept": "stats_nz.qes.average_weekly_earnings.ordinary_time",
+              "entity_name": "person",
+              "period_type": "quarter",
+              "period_value": "2026-Q2",
+              "geography_level": "country",
+              "geography_id": "NZ",
+              "geography_vintage": "current",
+              "record_set_id": "stats_nz.qes.awe.2026q2",
+              "dimensions": [
+                "earnings_component",
+                "earnings_denominator",
+                "earnings_sector",
+                "earnings_series_reference",
+                "seasonal_adjustment"
+              ],
+              "dimension_values": {
+                "earnings_component": "ordinary_time",
+                "earnings_denominator": "fte",
+                "earnings_sector": "all_sectors",
+                "earnings_series_reference": "QEMQ.SBSZ9A",
+                "seasonal_adjustment": "actual"
+              },
+              "aggregate_fact_key": "ledger.aggregate_fact.v2:91583e3f39d11b8b4b2923d2",
+              "assertion": "observation"
+            },
+            "validation": {
+              "unit": "nzd_per_week",
+              "source_sha256": "1af2e7e37f1c108a2656842cf1f519c903e1a982bcdc03ee02d0ad888ebc3a97",
+              "source_vintage": "stats_nz_qes_june_2026",
+              "entity_role": "full_time_equivalent_employee",
+              "provenance_class": "survey_aggregate",
+              "assertion": "observation",
+              "period_coverage": {
+                "start_date": "2026-04-01",
+                "end_date": "2026-06-30"
+              },
+              "source_column_id": "SBSZ9A"
+            },
+            "weight": "1",
+            "sequence": 0,
+            "projection_offset": 0
+          },
+          {
+            "selector": {
+              "source_name": "stats_nz",
+              "source_measure_id": "SBSZ9A",
+              "source_concept": "stats_nz.qes.average_weekly_earnings.ordinary_time",
+              "entity_name": "person",
+              "period_type": "quarter",
+              "period_value": "2026-Q3",
+              "geography_level": "country",
+              "geography_id": "NZ",
+              "geography_vintage": "current",
+              "record_set_id": "stats_nz.qes.awe.2026q3",
+              "dimensions": [
+                "earnings_component",
+                "earnings_denominator",
+                "earnings_sector",
+                "earnings_series_reference",
+                "seasonal_adjustment"
+              ],
+              "dimension_values": {
+                "earnings_component": "ordinary_time",
+                "earnings_denominator": "fte",
+                "earnings_sector": "all_sectors",
+                "earnings_series_reference": "QEMQ.SBSZ9A",
+                "seasonal_adjustment": "actual"
+              },
+              "assertion": "observation"
+            },
+            "validation": {
+              "unit": "nzd_per_week",
+              "source_sha256": "1af2e7e37f1c108a2656842cf1f519c903e1a982bcdc03ee02d0ad888ebc3a97",
+              "source_vintage": "stats_nz_qes_june_2026",
+              "entity_role": "full_time_equivalent_employee",
+              "provenance_class": "survey_aggregate",
+              "assertion": "observation",
+              "period_coverage": {
+                "start_date": "2026-07-01",
+                "end_date": "2026-09-30"
+              },
+              "source_column_id": "SBSZ9A"
+            },
+            "weight": "1",
+            "sequence": 1,
+            "projection_offset": 1
+          },
+          {
+            "selector": {
+              "source_name": "stats_nz",
+              "source_measure_id": "SBSZ9A",
+              "source_concept": "stats_nz.qes.average_weekly_earnings.ordinary_time",
+              "entity_name": "person",
+              "period_type": "quarter",
+              "period_value": "2026-Q4",
+              "geography_level": "country",
+              "geography_id": "NZ",
+              "geography_vintage": "current",
+              "record_set_id": "stats_nz.qes.awe.2026q4",
+              "dimensions": [
+                "earnings_component",
+                "earnings_denominator",
+                "earnings_sector",
+                "earnings_series_reference",
+                "seasonal_adjustment"
+              ],
+              "dimension_values": {
+                "earnings_component": "ordinary_time",
+                "earnings_denominator": "fte",
+                "earnings_sector": "all_sectors",
+                "earnings_series_reference": "QEMQ.SBSZ9A",
+                "seasonal_adjustment": "actual"
+              },
+              "assertion": "observation"
+            },
+            "validation": {
+              "unit": "nzd_per_week",
+              "source_sha256": "1af2e7e37f1c108a2656842cf1f519c903e1a982bcdc03ee02d0ad888ebc3a97",
+              "source_vintage": "stats_nz_qes_june_2026",
+              "entity_role": "full_time_equivalent_employee",
+              "provenance_class": "survey_aggregate",
+              "assertion": "observation",
+              "period_coverage": {
+                "start_date": "2026-10-01",
+                "end_date": "2026-12-31"
+              },
+              "source_column_id": "SBSZ9A"
+            },
+            "weight": "1",
+            "sequence": 2,
+            "projection_offset": 2
+          },
+          {
+            "selector": {
+              "source_name": "stats_nz",
+              "source_measure_id": "SBSZ9A",
+              "source_concept": "stats_nz.qes.average_weekly_earnings.ordinary_time",
+              "entity_name": "person",
+              "period_type": "quarter",
+              "period_value": "2027-Q1",
+              "geography_level": "country",
+              "geography_id": "NZ",
+              "geography_vintage": "current",
+              "record_set_id": "stats_nz.qes.awe.2027q1",
+              "dimensions": [
+                "earnings_component",
+                "earnings_denominator",
+                "earnings_sector",
+                "earnings_series_reference",
+                "seasonal_adjustment"
+              ],
+              "dimension_values": {
+                "earnings_component": "ordinary_time",
+                "earnings_denominator": "fte",
+                "earnings_sector": "all_sectors",
+                "earnings_series_reference": "QEMQ.SBSZ9A",
+                "seasonal_adjustment": "actual"
+              },
+              "assertion": "observation"
+            },
+            "validation": {
+              "unit": "nzd_per_week",
+              "source_sha256": "1af2e7e37f1c108a2656842cf1f519c903e1a982bcdc03ee02d0ad888ebc3a97",
+              "source_vintage": "stats_nz_qes_june_2026",
+              "entity_role": "full_time_equivalent_employee",
+              "provenance_class": "survey_aggregate",
+              "assertion": "observation",
+              "period_coverage": {
+                "start_date": "2027-01-01",
+                "end_date": "2027-03-31"
+              },
+              "source_column_id": "SBSZ9A"
+            },
+            "weight": "1",
+            "sequence": 3,
+            "projection_offset": 3
+          }
+        ],
+        "growth": {
+          "selector": {
+            "source_name": "treasury",
+            "source_measure_id": "average_weekly_earnings_annual_percentage_change",
+            "source_concept": "treasury.prefu26.average_weekly_earnings_annual_percentage_change",
+            "entity_name": "government",
+            "period_type": "fiscal_year",
+            "period_value": 2026,
+            "geography_level": "country",
+            "geography_id": "NZ",
+            "geography_vintage": "current",
+            "record_set_id": "treasury.prefu26.average_weekly_earnings.fy2026",
+            "dimensions": [
+              "earnings_component",
+              "publication_status"
+            ],
+            "dimension_values": {
+              "earnings_component": "ordinary_time",
+              "publication_status": "Forecast"
+            },
+            "aggregate_fact_key": "ledger.aggregate_fact.v2:aba7d3d54489b068116e6a25",
+            "assertion": "source_projection",
+            "source_table": "PREFU 2026 Table 4.1 - Key economic assumptions for fiscal forecasts"
+          },
+          "validation": {
+            "unit": "percent",
+            "source_sha256": "e2486375dde515d0722f8c3022f481804bb014beb83c81b8bfc99bc9426544d9",
+            "source_vintage": "prefu_2026_09_29",
+            "entity_role": "forecaster",
+            "provenance_class": "model_output",
+            "assertion": "source_projection",
+            "period_coverage": {
+              "start_date": "2026-07-01",
+              "end_date": "2027-06-30"
+            },
+            "source_column_id": "year_ending_30_june_2027"
+          },
+          "unit_multiplier": "0.01",
+          "scenario_delta": "-0.5",
+          "assertion_policy": "allow_source_projection",
+          "sensitivity_provenance": [
+            "d1599: symmetric ±0.5 percentage-point Microcosm sensitivity; high is not a Treasury forecast path"
+          ]
+        },
+        "subperiods_per_year": 4,
+        "projection_policy": "observed_preferred_latest_contiguous",
+        "rounding": {
+          "digits": 6,
+          "mode": "nearest_half_even"
+        },
+        "expected_operational_factor": {
+          "numerator": 1077090,
+          "denominator": 1000000
+        },
+        "validity": {
+          "declared_on": "2026-10-23",
+          "valid_from": "2026-10-23",
+          "valid_until": "2026-11-03",
+          "as_of": "2026-10-23"
+        },
+        "evidence": [
+          "Stats NZ QES Table 7; QEMQ.SBSZ9A; ordinary-time FTE, all sectors, actual",
+          "Treasury PREFU 2026 Table 4.1; year ending 30 June 2027; Chronicle period 2026",
+          "Declared calendar-2024 money convention (H1), covering flows and asset stocks; the recorded _time_period is a consistency check, not authentication"
+        ],
+        "decision_references": [
+          "d1952 card; NZ money year build item: donor money is calendar-2024 dollars",
+          "G8-w hub rulings 5, 24 October 2026, items H1–H3",
+          "G8-r2 hub rulings 3, 23 October 2026, section 1"
+        ]
+      },
+      "operational_factor": {
+        "numerator": 1077090,
+        "denominator": 1000000
+      },
+      "receipt": {
+        "schema_version": 1,
+        "operation": "projected_period_average_ratio",
+        "operation_version": 1,
+        "factor_id": "donor_cy2024_to_ty2027_low",
+        "declaration_sha256": "814ca4fd84c53431bd05e4db9127a6567923f73f56a149a685424f75a14bcdfe",
+        "feed_identity": {
+          "source_commit": "8f4cfd573c0d6f580d9c51cd67e8f449a42ed174",
+          "facts_sha256": "03f5ea0fe60e6dc93a135ab32cd5cd6ffb56388e702a4734cdb515a956e36b18",
+          "manifest_sha256": "1ea2d1eeb122275a9ce7f861ca3e20e21dd695772c04ce9d71114168e92fe053",
+          "artifact_schema_version": "policyengine_ledger.consumer_artifact.v2",
+          "consumer_fact_schema_versions": [
+            "chronicle.consumer_fact.v4"
+          ],
+          "consumer_fact_schema_sha256": "d953306d6f01fbc64db4372d0262d3012ee590269f8a25b276b18dca0626c6a0",
+          "fact_row_count": 12368
+        },
+        "source_period": "CY2024",
+        "target_period": 2027,
+        "source_schedule": [
+          {
+            "selector": {
+              "source_name": "stats_nz",
+              "source_measure_id": "SBSZ9A",
+              "source_concept": "stats_nz.qes.average_weekly_earnings.ordinary_time",
+              "entity_name": "person",
+              "period_type": "quarter",
+              "period_value": "2024-Q1",
+              "geography_level": "country",
+              "geography_id": "NZ",
+              "geography_vintage": "current",
+              "record_set_id": "stats_nz.qes.awe.2024q1",
+              "dimensions": [
+                "earnings_component",
+                "earnings_denominator",
+                "earnings_sector",
+                "earnings_series_reference",
+                "seasonal_adjustment"
+              ],
+              "dimension_values": {
+                "earnings_component": "ordinary_time",
+                "earnings_denominator": "fte",
+                "earnings_sector": "all_sectors",
+                "earnings_series_reference": "QEMQ.SBSZ9A",
+                "seasonal_adjustment": "actual"
+              },
+              "aggregate_fact_key": "ledger.aggregate_fact.v2:854e91ec1dd95e396659ad8e",
+              "assertion": "observation"
+            },
+            "aggregate_fact_key": "ledger.aggregate_fact.v2:854e91ec1dd95e396659ad8e",
+            "decimal_operand": "1563.54",
+            "numeric_token_proof": {
+              "numeric_representation": "binary_float_with_lexical_token",
+              "lexical_token": "1563.54",
+              "recovered_decimal": "1563.54",
+              "decimal_values_equal": true
+            },
+            "validation": {
+              "unit": "nzd_per_week",
+              "source_sha256": "25053dcbd343320cad72e2896475eaebaf5f5bb0b5965ca788506ca15efcea30",
+              "source_vintage": "stats_nz_qes_june_2025",
+              "entity_role": "full_time_equivalent_employee",
+              "provenance_class": "survey_aggregate",
+              "assertion": "observation",
+              "period_coverage": {
+                "start_date": "2024-01-01",
+                "end_date": "2024-03-31"
+              },
+              "source_column_id": "SBSZ9A"
+            },
+            "period": {
+              "type": "quarter",
+              "value": "2024-Q1"
+            },
+            "source": {
+              "extracted_at": "2026-10-22",
+              "extraction_method": "CellSelectorSpec and SourceRecordSpec resolved from cells",
+              "method_notes": "Each fact carries source_record_id, source_cell_keys, and source_row_keys when available.",
+              "raw_r2_bucket": "ledger-raw",
+              "raw_r2_key": "raw/nz/stats_nz/qes_average_weekly_earnings_june_2025/2025/25053dcbd343320cad72e2896475eaebaf5f5bb0b5965ca788506ca15efcea30/quarterly-employment-survey-june-2025-quarter.xlsx",
+              "raw_r2_uri": "r2://ledger-raw/raw/nz/stats_nz/qes_average_weekly_earnings_june_2025/2025/25053dcbd343320cad72e2896475eaebaf5f5bb0b5965ca788506ca15efcea30/quarterly-employment-survey-june-2025-quarter.xlsx",
+              "source_file": "quarterly-employment-survey-june-2025-quarter.xlsx",
+              "source_name": "stats_nz",
+              "source_sha256": "25053dcbd343320cad72e2896475eaebaf5f5bb0b5965ca788506ca15efcea30",
+              "source_size_bytes": 135784,
+              "source_table": "Quarterly Employment Survey June 2025 quarter, Table 7: Average weekly earnings for FTEs, by sector",
+              "url": "https://www.stats.govt.nz/assets/Uploads/Labour-market-statistics/Labour-market-statistics-June-2025-quarter/Download-data/quarterly-employment-survey-june-2025-quarter.xlsx",
+              "vintage": "stats_nz_qes_june_2025"
+            },
+            "unit": "nzd_per_week",
+            "assertion": "observation",
+            "provenance_class": "survey_aggregate",
+            "entity_role": "full_time_equivalent_employee",
+            "period_coverage": {
+              "basis": "calendar",
+              "end_date": "2024-03-31",
+              "notes": "QES reference period is the pay week ending on or before the 20th of the quarter’s middle month (hub-supplied source-period definition); the fact period is the published quarter, not the pay week. Actual, not seasonally adjusted. No annual averaging or period alignment.",
+              "source_period_label": "Mar 2024 quarter",
+              "start_date": "2024-01-01"
+            },
+            "weight": "1",
+            "sequence": 0
+          },
+          {
+            "selector": {
+              "source_name": "stats_nz",
+              "source_measure_id": "SBSZ9A",
+              "source_concept": "stats_nz.qes.average_weekly_earnings.ordinary_time",
+              "entity_name": "person",
+              "period_type": "quarter",
+              "period_value": "2024-Q2",
+              "geography_level": "country",
+              "geography_id": "NZ",
+              "geography_vintage": "current",
+              "record_set_id": "stats_nz.qes.awe.2024q2",
+              "dimensions": [
+                "earnings_component",
+                "earnings_denominator",
+                "earnings_sector",
+                "earnings_series_reference",
+                "seasonal_adjustment"
+              ],
+              "dimension_values": {
+                "earnings_component": "ordinary_time",
+                "earnings_denominator": "fte",
+                "earnings_sector": "all_sectors",
+                "earnings_series_reference": "QEMQ.SBSZ9A",
+                "seasonal_adjustment": "actual"
+              },
+              "aggregate_fact_key": "ledger.aggregate_fact.v2:c07fd9ce3137fa20386bafe0",
+              "assertion": "observation"
+            },
+            "aggregate_fact_key": "ledger.aggregate_fact.v2:c07fd9ce3137fa20386bafe0",
+            "decimal_operand": "1586.32",
+            "numeric_token_proof": {
+              "numeric_representation": "binary_float_with_lexical_token",
+              "lexical_token": "1586.32",
+              "recovered_decimal": "1586.32",
+              "decimal_values_equal": true
+            },
+            "validation": {
+              "unit": "nzd_per_week",
+              "source_sha256": "1af2e7e37f1c108a2656842cf1f519c903e1a982bcdc03ee02d0ad888ebc3a97",
+              "source_vintage": "stats_nz_qes_june_2026",
+              "entity_role": "full_time_equivalent_employee",
+              "provenance_class": "survey_aggregate",
+              "assertion": "observation",
+              "period_coverage": {
+                "start_date": "2024-04-01",
+                "end_date": "2024-06-30"
+              },
+              "source_column_id": "SBSZ9A"
+            },
+            "period": {
+              "type": "quarter",
+              "value": "2024-Q2"
+            },
+            "source": {
+              "extracted_at": "2026-10-22",
+              "extraction_method": "CellSelectorSpec and SourceRecordSpec resolved from cells",
+              "method_notes": "Each fact carries source_record_id, source_cell_keys, and source_row_keys when available.",
+              "raw_r2_bucket": "ledger-raw",
+              "raw_r2_key": "raw/nz/stats_nz/qes_average_weekly_earnings_june_2026/2026/1af2e7e37f1c108a2656842cf1f519c903e1a982bcdc03ee02d0ad888ebc3a97/quarterly-employment-survey-june-2026-quarter.xlsx",
+              "raw_r2_uri": "r2://ledger-raw/raw/nz/stats_nz/qes_average_weekly_earnings_june_2026/2026/1af2e7e37f1c108a2656842cf1f519c903e1a982bcdc03ee02d0ad888ebc3a97/quarterly-employment-survey-june-2026-quarter.xlsx",
+              "source_file": "quarterly-employment-survey-june-2026-quarter.xlsx",
+              "source_name": "stats_nz",
+              "source_sha256": "1af2e7e37f1c108a2656842cf1f519c903e1a982bcdc03ee02d0ad888ebc3a97",
+              "source_size_bytes": 124556,
+              "source_table": "Quarterly Employment Survey June 2026 quarter, Table 7: Average weekly earnings for FTEs, by sector",
+              "url": "https://www.stats.govt.nz/assets/Uploads/Labour-market-statistics/Labour-market-statistics-June-2026-quarter/Download-data/quarterly-employment-survey-june-2026-quarter.xlsx",
+              "vintage": "stats_nz_qes_june_2026"
+            },
+            "unit": "nzd_per_week",
+            "assertion": "observation",
+            "provenance_class": "survey_aggregate",
+            "entity_role": "full_time_equivalent_employee",
+            "period_coverage": {
+              "basis": "calendar",
+              "end_date": "2024-06-30",
+              "notes": "QES reference period is the pay week ending on or before the 20th of the quarter’s middle month (hub-supplied source-period definition); the fact period is the published quarter, not the pay week. Actual, not seasonally adjusted. No annual averaging or period alignment.",
+              "source_period_label": "Jun 2024 quarter",
+              "start_date": "2024-04-01"
+            },
+            "weight": "1",
+            "sequence": 1
+          },
+          {
+            "selector": {
+              "source_name": "stats_nz",
+              "source_measure_id": "SBSZ9A",
+              "source_concept": "stats_nz.qes.average_weekly_earnings.ordinary_time",
+              "entity_name": "person",
+              "period_type": "quarter",
+              "period_value": "2024-Q3",
+              "geography_level": "country",
+              "geography_id": "NZ",
+              "geography_vintage": "current",
+              "record_set_id": "stats_nz.qes.awe.2024q3",
+              "dimensions": [
+                "earnings_component",
+                "earnings_denominator",
+                "earnings_sector",
+                "earnings_series_reference",
+                "seasonal_adjustment"
+              ],
+              "dimension_values": {
+                "earnings_component": "ordinary_time",
+                "earnings_denominator": "fte",
+                "earnings_sector": "all_sectors",
+                "earnings_series_reference": "QEMQ.SBSZ9A",
+                "seasonal_adjustment": "actual"
+              },
+              "aggregate_fact_key": "ledger.aggregate_fact.v2:54a0eeb64049ba4c15e397bf",
+              "assertion": "observation"
+            },
+            "aggregate_fact_key": "ledger.aggregate_fact.v2:54a0eeb64049ba4c15e397bf",
+            "decimal_operand": "1595.11",
+            "numeric_token_proof": {
+              "numeric_representation": "binary_float_with_lexical_token",
+              "lexical_token": "1595.11",
+              "recovered_decimal": "1595.11",
+              "decimal_values_equal": true
+            },
+            "validation": {
+              "unit": "nzd_per_week",
+              "source_sha256": "1af2e7e37f1c108a2656842cf1f519c903e1a982bcdc03ee02d0ad888ebc3a97",
+              "source_vintage": "stats_nz_qes_june_2026",
+              "entity_role": "full_time_equivalent_employee",
+              "provenance_class": "survey_aggregate",
+              "assertion": "observation",
+              "period_coverage": {
+                "start_date": "2024-07-01",
+                "end_date": "2024-09-30"
+              },
+              "source_column_id": "SBSZ9A"
+            },
+            "period": {
+              "type": "quarter",
+              "value": "2024-Q3"
+            },
+            "source": {
+              "extracted_at": "2026-10-22",
+              "extraction_method": "CellSelectorSpec and SourceRecordSpec resolved from cells",
+              "method_notes": "Each fact carries source_record_id, source_cell_keys, and source_row_keys when available.",
+              "raw_r2_bucket": "ledger-raw",
+              "raw_r2_key": "raw/nz/stats_nz/qes_average_weekly_earnings_june_2026/2026/1af2e7e37f1c108a2656842cf1f519c903e1a982bcdc03ee02d0ad888ebc3a97/quarterly-employment-survey-june-2026-quarter.xlsx",
+              "raw_r2_uri": "r2://ledger-raw/raw/nz/stats_nz/qes_average_weekly_earnings_june_2026/2026/1af2e7e37f1c108a2656842cf1f519c903e1a982bcdc03ee02d0ad888ebc3a97/quarterly-employment-survey-june-2026-quarter.xlsx",
+              "source_file": "quarterly-employment-survey-june-2026-quarter.xlsx",
+              "source_name": "stats_nz",
+              "source_sha256": "1af2e7e37f1c108a2656842cf1f519c903e1a982bcdc03ee02d0ad888ebc3a97",
+              "source_size_bytes": 124556,
+              "source_table": "Quarterly Employment Survey June 2026 quarter, Table 7: Average weekly earnings for FTEs, by sector",
+              "url": "https://www.stats.govt.nz/assets/Uploads/Labour-market-statistics/Labour-market-statistics-June-2026-quarter/Download-data/quarterly-employment-survey-june-2026-quarter.xlsx",
+              "vintage": "stats_nz_qes_june_2026"
+            },
+            "unit": "nzd_per_week",
+            "assertion": "observation",
+            "provenance_class": "survey_aggregate",
+            "entity_role": "full_time_equivalent_employee",
+            "period_coverage": {
+              "basis": "calendar",
+              "end_date": "2024-09-30",
+              "notes": "QES reference period is the pay week ending on or before the 20th of the quarter’s middle month (hub-supplied source-period definition); the fact period is the published quarter, not the pay week. Actual, not seasonally adjusted. No annual averaging or period alignment.",
+              "source_period_label": "Sep 2024 quarter",
+              "start_date": "2024-07-01"
+            },
+            "weight": "1",
+            "sequence": 2
+          },
+          {
+            "selector": {
+              "source_name": "stats_nz",
+              "source_measure_id": "SBSZ9A",
+              "source_concept": "stats_nz.qes.average_weekly_earnings.ordinary_time",
+              "entity_name": "person",
+              "period_type": "quarter",
+              "period_value": "2024-Q4",
+              "geography_level": "country",
+              "geography_id": "NZ",
+              "geography_vintage": "current",
+              "record_set_id": "stats_nz.qes.awe.2024q4",
+              "dimensions": [
+                "earnings_component",
+                "earnings_denominator",
+                "earnings_sector",
+                "earnings_series_reference",
+                "seasonal_adjustment"
+              ],
+              "dimension_values": {
+                "earnings_component": "ordinary_time",
+                "earnings_denominator": "fte",
+                "earnings_sector": "all_sectors",
+                "earnings_series_reference": "QEMQ.SBSZ9A",
+                "seasonal_adjustment": "actual"
+              },
+              "aggregate_fact_key": "ledger.aggregate_fact.v2:7fc35ba9682ceb04504f2ef9",
+              "assertion": "observation"
+            },
+            "aggregate_fact_key": "ledger.aggregate_fact.v2:7fc35ba9682ceb04504f2ef9",
+            "decimal_operand": "1622.73",
+            "numeric_token_proof": {
+              "numeric_representation": "binary_float_with_lexical_token",
+              "lexical_token": "1622.73",
+              "recovered_decimal": "1622.73",
+              "decimal_values_equal": true
+            },
+            "validation": {
+              "unit": "nzd_per_week",
+              "source_sha256": "1af2e7e37f1c108a2656842cf1f519c903e1a982bcdc03ee02d0ad888ebc3a97",
+              "source_vintage": "stats_nz_qes_june_2026",
+              "entity_role": "full_time_equivalent_employee",
+              "provenance_class": "survey_aggregate",
+              "assertion": "observation",
+              "period_coverage": {
+                "start_date": "2024-10-01",
+                "end_date": "2024-12-31"
+              },
+              "source_column_id": "SBSZ9A"
+            },
+            "period": {
+              "type": "quarter",
+              "value": "2024-Q4"
+            },
+            "source": {
+              "extracted_at": "2026-10-22",
+              "extraction_method": "CellSelectorSpec and SourceRecordSpec resolved from cells",
+              "method_notes": "Each fact carries source_record_id, source_cell_keys, and source_row_keys when available.",
+              "raw_r2_bucket": "ledger-raw",
+              "raw_r2_key": "raw/nz/stats_nz/qes_average_weekly_earnings_june_2026/2026/1af2e7e37f1c108a2656842cf1f519c903e1a982bcdc03ee02d0ad888ebc3a97/quarterly-employment-survey-june-2026-quarter.xlsx",
+              "raw_r2_uri": "r2://ledger-raw/raw/nz/stats_nz/qes_average_weekly_earnings_june_2026/2026/1af2e7e37f1c108a2656842cf1f519c903e1a982bcdc03ee02d0ad888ebc3a97/quarterly-employment-survey-june-2026-quarter.xlsx",
+              "source_file": "quarterly-employment-survey-june-2026-quarter.xlsx",
+              "source_name": "stats_nz",
+              "source_sha256": "1af2e7e37f1c108a2656842cf1f519c903e1a982bcdc03ee02d0ad888ebc3a97",
+              "source_size_bytes": 124556,
+              "source_table": "Quarterly Employment Survey June 2026 quarter, Table 7: Average weekly earnings for FTEs, by sector",
+              "url": "https://www.stats.govt.nz/assets/Uploads/Labour-market-statistics/Labour-market-statistics-June-2026-quarter/Download-data/quarterly-employment-survey-june-2026-quarter.xlsx",
+              "vintage": "stats_nz_qes_june_2026"
+            },
+            "unit": "nzd_per_week",
+            "assertion": "observation",
+            "provenance_class": "survey_aggregate",
+            "entity_role": "full_time_equivalent_employee",
+            "period_coverage": {
+              "basis": "calendar",
+              "end_date": "2024-12-31",
+              "notes": "QES reference period is the pay week ending on or before the 20th of the quarter’s middle month (hub-supplied source-period definition); the fact period is the published quarter, not the pay week. Actual, not seasonally adjusted. No annual averaging or period alignment.",
+              "source_period_label": "Dec 2024 quarter",
+              "start_date": "2024-10-01"
+            },
+            "weight": "1",
+            "sequence": 3
+          }
+        ],
+        "target_schedule": [
+          {
+            "selector": {
+              "source_name": "stats_nz",
+              "source_measure_id": "SBSZ9A",
+              "source_concept": "stats_nz.qes.average_weekly_earnings.ordinary_time",
+              "entity_name": "person",
+              "period_type": "quarter",
+              "period_value": "2026-Q2",
+              "geography_level": "country",
+              "geography_id": "NZ",
+              "geography_vintage": "current",
+              "record_set_id": "stats_nz.qes.awe.2026q2",
+              "dimensions": [
+                "earnings_component",
+                "earnings_denominator",
+                "earnings_sector",
+                "earnings_series_reference",
+                "seasonal_adjustment"
+              ],
+              "dimension_values": {
+                "earnings_component": "ordinary_time",
+                "earnings_denominator": "fte",
+                "earnings_sector": "all_sectors",
+                "earnings_series_reference": "QEMQ.SBSZ9A",
+                "seasonal_adjustment": "actual"
+              },
+              "aggregate_fact_key": "ledger.aggregate_fact.v2:91583e3f39d11b8b4b2923d2",
+              "assertion": "observation"
+            },
+            "aggregate_fact_key": "ledger.aggregate_fact.v2:91583e3f39d11b8b4b2923d2",
+            "decimal_operand": "1700.68",
+            "numeric_token_proof": {
+              "numeric_representation": "binary_float_with_lexical_token",
+              "lexical_token": "1700.68",
+              "recovered_decimal": "1700.68",
+              "decimal_values_equal": true
+            },
+            "validation": {
+              "unit": "nzd_per_week",
+              "source_sha256": "1af2e7e37f1c108a2656842cf1f519c903e1a982bcdc03ee02d0ad888ebc3a97",
+              "source_vintage": "stats_nz_qes_june_2026",
+              "entity_role": "full_time_equivalent_employee",
+              "provenance_class": "survey_aggregate",
+              "assertion": "observation",
+              "period_coverage": {
+                "start_date": "2026-04-01",
+                "end_date": "2026-06-30"
+              },
+              "source_column_id": "SBSZ9A"
+            },
+            "period": {
+              "type": "quarter",
+              "value": "2026-Q2"
+            },
+            "source": {
+              "extracted_at": "2026-10-22",
+              "extraction_method": "CellSelectorSpec and SourceRecordSpec resolved from cells",
+              "method_notes": "Each fact carries source_record_id, source_cell_keys, and source_row_keys when available.",
+              "raw_r2_bucket": "ledger-raw",
+              "raw_r2_key": "raw/nz/stats_nz/qes_average_weekly_earnings_june_2026/2026/1af2e7e37f1c108a2656842cf1f519c903e1a982bcdc03ee02d0ad888ebc3a97/quarterly-employment-survey-june-2026-quarter.xlsx",
+              "raw_r2_uri": "r2://ledger-raw/raw/nz/stats_nz/qes_average_weekly_earnings_june_2026/2026/1af2e7e37f1c108a2656842cf1f519c903e1a982bcdc03ee02d0ad888ebc3a97/quarterly-employment-survey-june-2026-quarter.xlsx",
+              "source_file": "quarterly-employment-survey-june-2026-quarter.xlsx",
+              "source_name": "stats_nz",
+              "source_sha256": "1af2e7e37f1c108a2656842cf1f519c903e1a982bcdc03ee02d0ad888ebc3a97",
+              "source_size_bytes": 124556,
+              "source_table": "Quarterly Employment Survey June 2026 quarter, Table 7: Average weekly earnings for FTEs, by sector",
+              "url": "https://www.stats.govt.nz/assets/Uploads/Labour-market-statistics/Labour-market-statistics-June-2026-quarter/Download-data/quarterly-employment-survey-june-2026-quarter.xlsx",
+              "vintage": "stats_nz_qes_june_2026"
+            },
+            "unit": "nzd_per_week",
+            "assertion": "observation",
+            "provenance_class": "survey_aggregate",
+            "entity_role": "full_time_equivalent_employee",
+            "period_coverage": {
+              "basis": "calendar",
+              "end_date": "2026-06-30",
+              "notes": "QES reference period is the pay week ending on or before the 20th of the quarter’s middle month (hub-supplied source-period definition); the fact period is the published quarter, not the pay week. Actual, not seasonally adjusted. No annual averaging or period alignment.",
+              "source_period_label": "Jun 2026 quarter",
+              "start_date": "2026-04-01"
+            },
+            "status": "observed",
+            "sequence": 0,
+            "weight": "1",
+            "projection_offset": 0
+          },
+          {
+            "selector": {
+              "source_name": "stats_nz",
+              "source_measure_id": "SBSZ9A",
+              "source_concept": "stats_nz.qes.average_weekly_earnings.ordinary_time",
+              "entity_name": "person",
+              "period_type": "quarter",
+              "period_value": "2026-Q3",
+              "geography_level": "country",
+              "geography_id": "NZ",
+              "geography_vintage": "current",
+              "record_set_id": "stats_nz.qes.awe.2026q3",
+              "dimensions": [
+                "earnings_component",
+                "earnings_denominator",
+                "earnings_sector",
+                "earnings_series_reference",
+                "seasonal_adjustment"
+              ],
+              "dimension_values": {
+                "earnings_component": "ordinary_time",
+                "earnings_denominator": "fte",
+                "earnings_sector": "all_sectors",
+                "earnings_series_reference": "QEMQ.SBSZ9A",
+                "seasonal_adjustment": "actual"
+              },
+              "assertion": "observation"
+            },
+            "validation": {
+              "unit": "nzd_per_week",
+              "source_sha256": "1af2e7e37f1c108a2656842cf1f519c903e1a982bcdc03ee02d0ad888ebc3a97",
+              "source_vintage": "stats_nz_qes_june_2026",
+              "entity_role": "full_time_equivalent_employee",
+              "provenance_class": "survey_aggregate",
+              "assertion": "observation",
+              "period_coverage": {
+                "start_date": "2026-07-01",
+                "end_date": "2026-09-30"
+              },
+              "source_column_id": "SBSZ9A"
+            },
+            "status": "projected",
+            "sequence": 1,
+            "weight": "1",
+            "projection_offset": 1,
+            "projection_anchor": {
+              "aggregate_fact_key": "ledger.aggregate_fact.v2:91583e3f39d11b8b4b2923d2"
+            }
+          },
+          {
+            "selector": {
+              "source_name": "stats_nz",
+              "source_measure_id": "SBSZ9A",
+              "source_concept": "stats_nz.qes.average_weekly_earnings.ordinary_time",
+              "entity_name": "person",
+              "period_type": "quarter",
+              "period_value": "2026-Q4",
+              "geography_level": "country",
+              "geography_id": "NZ",
+              "geography_vintage": "current",
+              "record_set_id": "stats_nz.qes.awe.2026q4",
+              "dimensions": [
+                "earnings_component",
+                "earnings_denominator",
+                "earnings_sector",
+                "earnings_series_reference",
+                "seasonal_adjustment"
+              ],
+              "dimension_values": {
+                "earnings_component": "ordinary_time",
+                "earnings_denominator": "fte",
+                "earnings_sector": "all_sectors",
+                "earnings_series_reference": "QEMQ.SBSZ9A",
+                "seasonal_adjustment": "actual"
+              },
+              "assertion": "observation"
+            },
+            "validation": {
+              "unit": "nzd_per_week",
+              "source_sha256": "1af2e7e37f1c108a2656842cf1f519c903e1a982bcdc03ee02d0ad888ebc3a97",
+              "source_vintage": "stats_nz_qes_june_2026",
+              "entity_role": "full_time_equivalent_employee",
+              "provenance_class": "survey_aggregate",
+              "assertion": "observation",
+              "period_coverage": {
+                "start_date": "2026-10-01",
+                "end_date": "2026-12-31"
+              },
+              "source_column_id": "SBSZ9A"
+            },
+            "status": "projected",
+            "sequence": 2,
+            "weight": "1",
+            "projection_offset": 2,
+            "projection_anchor": {
+              "aggregate_fact_key": "ledger.aggregate_fact.v2:91583e3f39d11b8b4b2923d2"
+            }
+          },
+          {
+            "selector": {
+              "source_name": "stats_nz",
+              "source_measure_id": "SBSZ9A",
+              "source_concept": "stats_nz.qes.average_weekly_earnings.ordinary_time",
+              "entity_name": "person",
+              "period_type": "quarter",
+              "period_value": "2027-Q1",
+              "geography_level": "country",
+              "geography_id": "NZ",
+              "geography_vintage": "current",
+              "record_set_id": "stats_nz.qes.awe.2027q1",
+              "dimensions": [
+                "earnings_component",
+                "earnings_denominator",
+                "earnings_sector",
+                "earnings_series_reference",
+                "seasonal_adjustment"
+              ],
+              "dimension_values": {
+                "earnings_component": "ordinary_time",
+                "earnings_denominator": "fte",
+                "earnings_sector": "all_sectors",
+                "earnings_series_reference": "QEMQ.SBSZ9A",
+                "seasonal_adjustment": "actual"
+              },
+              "assertion": "observation"
+            },
+            "validation": {
+              "unit": "nzd_per_week",
+              "source_sha256": "1af2e7e37f1c108a2656842cf1f519c903e1a982bcdc03ee02d0ad888ebc3a97",
+              "source_vintage": "stats_nz_qes_june_2026",
+              "entity_role": "full_time_equivalent_employee",
+              "provenance_class": "survey_aggregate",
+              "assertion": "observation",
+              "period_coverage": {
+                "start_date": "2027-01-01",
+                "end_date": "2027-03-31"
+              },
+              "source_column_id": "SBSZ9A"
+            },
+            "status": "projected",
+            "sequence": 3,
+            "weight": "1",
+            "projection_offset": 3,
+            "projection_anchor": {
+              "aggregate_fact_key": "ledger.aggregate_fact.v2:91583e3f39d11b8b4b2923d2"
+            }
+          }
+        ],
+        "subperiods_per_year": 4,
+        "projection_policy": "observed_preferred_latest_contiguous",
+        "denominator_mean": {
+          "numerator": 63677,
+          "denominator": 40
+        },
+        "growth": {
+          "selector": {
+            "source_name": "treasury",
+            "source_measure_id": "average_weekly_earnings_annual_percentage_change",
+            "source_concept": "treasury.prefu26.average_weekly_earnings_annual_percentage_change",
+            "entity_name": "government",
+            "period_type": "fiscal_year",
+            "period_value": 2026,
+            "geography_level": "country",
+            "geography_id": "NZ",
+            "geography_vintage": "current",
+            "record_set_id": "treasury.prefu26.average_weekly_earnings.fy2026",
+            "dimensions": [
+              "earnings_component",
+              "publication_status"
+            ],
+            "dimension_values": {
+              "earnings_component": "ordinary_time",
+              "publication_status": "Forecast"
+            },
+            "aggregate_fact_key": "ledger.aggregate_fact.v2:aba7d3d54489b068116e6a25",
+            "assertion": "source_projection",
+            "source_table": "PREFU 2026 Table 4.1 - Key economic assumptions for fiscal forecasts"
+          },
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:aba7d3d54489b068116e6a25",
+          "decimal_operand": "2.7",
+          "numeric_token_proof": {
+            "numeric_representation": "binary_float_with_lexical_token",
+            "lexical_token": "2.7",
+            "recovered_decimal": "2.7",
+            "decimal_values_equal": true
+          },
+          "validation": {
+            "unit": "percent",
+            "source_sha256": "e2486375dde515d0722f8c3022f481804bb014beb83c81b8bfc99bc9426544d9",
+            "source_vintage": "prefu_2026_09_29",
+            "entity_role": "forecaster",
+            "provenance_class": "model_output",
+            "assertion": "source_projection",
+            "period_coverage": {
+              "start_date": "2026-07-01",
+              "end_date": "2027-06-30"
+            },
+            "source_column_id": "year_ending_30_june_2027"
+          },
+          "period": {
+            "type": "fiscal_year",
+            "value": 2026
+          },
+          "source": {
+            "extracted_at": "2026-10-22",
+            "extraction_method": "CellSelectorSpec and SourceRecordSpec resolved from cells",
+            "method_notes": "Each fact carries source_record_id, source_cell_keys, and source_row_keys when available.",
+            "raw_r2_bucket": "ledger-raw",
+            "raw_r2_key": "raw/nz/treasury/treasury-prefu26-economic-assumptions/2026/e2486375dde515d0722f8c3022f481804bb014beb83c81b8bfc99bc9426544d9/prefu26-charts-data.xlsx",
+            "raw_r2_uri": "r2://ledger-raw/raw/nz/treasury/treasury-prefu26-economic-assumptions/2026/e2486375dde515d0722f8c3022f481804bb014beb83c81b8bfc99bc9426544d9/prefu26-charts-data.xlsx",
+            "source_file": "prefu26-charts-data.xlsx",
+            "source_name": "treasury",
+            "source_sha256": "e2486375dde515d0722f8c3022f481804bb014beb83c81b8bfc99bc9426544d9",
+            "source_size_bytes": 664670,
+            "source_table": "PREFU 2026 Table 4.1 - Key economic assumptions for fiscal forecasts",
+            "url": "https://www.treasury.govt.nz/sites/default/files/2026-09/prefu26-charts-data.xlsx",
+            "vintage": "prefu_2026_09_29"
+          },
+          "unit": "percent",
+          "assertion": "source_projection",
+          "provenance_class": "model_output",
+          "entity_role": "forecaster",
+          "period_coverage": {
+            "basis": "fiscal",
+            "end_date": "2027-06-30",
+            "notes": "Publisher Year ending 30 June 2027; Chronicle opening-year fiscal_year:2026. Publisher column status is Forecast. Footnote 3 (Table 4.1!C21:D21): Ordinary time. Footnote 4 (C22:D22): Measures are actuals except for real GDP and nominal GDP. 2026 earnings are therefore actuals despite the Forecast4 column heading; only 2027–2031 earnings are forecasts. The published annual percentage change is retained unchanged; no annual average, level, factor or period alignment is calculated.",
+            "source_period_label": "Year ending 30 June 2027",
+            "start_date": "2026-07-01"
+          },
+          "unit_multiplier": "0.01",
+          "scenario_delta": "-0.5",
+          "sensitivity_provenance": [
+            "d1599: symmetric ±0.5 percentage-point Microcosm sensitivity; high is not a Treasury forecast path"
+          ],
+          "effective_growth": {
+            "numerator": 11,
+            "denominator": 500
+          }
+        },
+        "root_bounds": {
+          "lower": {
+            "numerator": 50272759932393,
+            "denominator": 50000000000000
+          },
+          "upper": {
+            "numerator": 100545519864787,
+            "denominator": 100000000000000
+          },
+          "exact": false,
+          "decimal_places": 14,
+          "degree": 4,
+          "radicand": {
+            "numerator": 511,
+            "denominator": 500
+          }
+        },
+        "numerator_mean_bounds": {
+          "lower": {
+            "numerator": 21433087509261019469100089110351817978329164269,
+            "denominator": 12500000000000000000000000000000000000000000
+          },
+          "upper": {
+            "numerator": 171464700074090725365853333139754513013059781351,
+            "denominator": 100000000000000000000000000000000000000000000
+          }
+        },
+        "unrounded_factor_bounds": {
+          "lower": {
+            "numerator": 21433087509261019469100089110351817978329164269,
+            "denominator": 19899062500000000000000000000000000000000000000
+          },
+          "upper": {
+            "numerator": 171464700074090725365853333139754513013059781351,
+            "denominator": 159192500000000000000000000000000000000000000000
+          }
+        },
+        "rounding": {
+          "digits": 6,
+          "mode": "nearest_half_even"
+        },
+        "operational_factor": {
+          "numerator": 1077090,
+          "denominator": 1000000
+        },
+        "validity": {
+          "declared_on": "2026-10-23",
+          "valid_from": "2026-10-23",
+          "valid_until": "2026-11-03",
+          "as_of": "2026-10-23"
+        },
+        "evidence": [
+          "Stats NZ QES Table 7; QEMQ.SBSZ9A; ordinary-time FTE, all sectors, actual",
+          "Treasury PREFU 2026 Table 4.1; year ending 30 June 2027; Chronicle period 2026",
+          "Declared calendar-2024 money convention (H1), covering flows and asset stocks; the recorded _time_period is a consistency check, not authentication"
+        ],
+        "decision_references": [
+          "d1952 card; NZ money year build item: donor money is calendar-2024 dollars",
+          "G8-w hub rulings 5, 24 October 2026, items H1–H3",
+          "G8-r2 hub rulings 3, 23 October 2026, section 1"
+        ],
+        "receipt_sha256": "e6a3adeec37249a70142c7801bc031915a0f40d9521b91c567fbf4a11e616ada"
+      }
+    },
+    {
+      "declaration": {
+        "schema_version": 1,
+        "id": "donor_cy2024_to_ty2027_central",
+        "operation": "projected_period_average_ratio",
+        "operation_version": 1,
+        "purpose": "money_normalization_input",
+        "feed_identity": {
+          "source_commit": "8f4cfd573c0d6f580d9c51cd67e8f449a42ed174",
+          "facts_sha256": "03f5ea0fe60e6dc93a135ab32cd5cd6ffb56388e702a4734cdb515a956e36b18",
+          "manifest_sha256": "1ea2d1eeb122275a9ce7f861ca3e20e21dd695772c04ce9d71114168e92fe053",
+          "artifact_schema_version": "policyengine_ledger.consumer_artifact.v2",
+          "consumer_fact_schema_versions": [
+            "chronicle.consumer_fact.v4"
+          ],
+          "consumer_fact_schema_sha256": "d953306d6f01fbc64db4372d0262d3012ee590269f8a25b276b18dca0626c6a0",
+          "fact_row_count": 12368
+        },
+        "source_period": "CY2024",
+        "target_period": 2027,
+        "source_schedule": [
+          {
+            "selector": {
+              "source_name": "stats_nz",
+              "source_measure_id": "SBSZ9A",
+              "source_concept": "stats_nz.qes.average_weekly_earnings.ordinary_time",
+              "entity_name": "person",
+              "period_type": "quarter",
+              "period_value": "2024-Q1",
+              "geography_level": "country",
+              "geography_id": "NZ",
+              "geography_vintage": "current",
+              "record_set_id": "stats_nz.qes.awe.2024q1",
+              "dimensions": [
+                "earnings_component",
+                "earnings_denominator",
+                "earnings_sector",
+                "earnings_series_reference",
+                "seasonal_adjustment"
+              ],
+              "dimension_values": {
+                "earnings_component": "ordinary_time",
+                "earnings_denominator": "fte",
+                "earnings_sector": "all_sectors",
+                "earnings_series_reference": "QEMQ.SBSZ9A",
+                "seasonal_adjustment": "actual"
+              },
+              "aggregate_fact_key": "ledger.aggregate_fact.v2:854e91ec1dd95e396659ad8e",
+              "assertion": "observation"
+            },
+            "validation": {
+              "unit": "nzd_per_week",
+              "source_sha256": "25053dcbd343320cad72e2896475eaebaf5f5bb0b5965ca788506ca15efcea30",
+              "source_vintage": "stats_nz_qes_june_2025",
+              "entity_role": "full_time_equivalent_employee",
+              "provenance_class": "survey_aggregate",
+              "assertion": "observation",
+              "period_coverage": {
+                "start_date": "2024-01-01",
+                "end_date": "2024-03-31"
+              },
+              "source_column_id": "SBSZ9A"
+            },
+            "weight": "1",
+            "sequence": 0
+          },
+          {
+            "selector": {
+              "source_name": "stats_nz",
+              "source_measure_id": "SBSZ9A",
+              "source_concept": "stats_nz.qes.average_weekly_earnings.ordinary_time",
+              "entity_name": "person",
+              "period_type": "quarter",
+              "period_value": "2024-Q2",
+              "geography_level": "country",
+              "geography_id": "NZ",
+              "geography_vintage": "current",
+              "record_set_id": "stats_nz.qes.awe.2024q2",
+              "dimensions": [
+                "earnings_component",
+                "earnings_denominator",
+                "earnings_sector",
+                "earnings_series_reference",
+                "seasonal_adjustment"
+              ],
+              "dimension_values": {
+                "earnings_component": "ordinary_time",
+                "earnings_denominator": "fte",
+                "earnings_sector": "all_sectors",
+                "earnings_series_reference": "QEMQ.SBSZ9A",
+                "seasonal_adjustment": "actual"
+              },
+              "aggregate_fact_key": "ledger.aggregate_fact.v2:c07fd9ce3137fa20386bafe0",
+              "assertion": "observation"
+            },
+            "validation": {
+              "unit": "nzd_per_week",
+              "source_sha256": "1af2e7e37f1c108a2656842cf1f519c903e1a982bcdc03ee02d0ad888ebc3a97",
+              "source_vintage": "stats_nz_qes_june_2026",
+              "entity_role": "full_time_equivalent_employee",
+              "provenance_class": "survey_aggregate",
+              "assertion": "observation",
+              "period_coverage": {
+                "start_date": "2024-04-01",
+                "end_date": "2024-06-30"
+              },
+              "source_column_id": "SBSZ9A"
+            },
+            "weight": "1",
+            "sequence": 1
+          },
+          {
+            "selector": {
+              "source_name": "stats_nz",
+              "source_measure_id": "SBSZ9A",
+              "source_concept": "stats_nz.qes.average_weekly_earnings.ordinary_time",
+              "entity_name": "person",
+              "period_type": "quarter",
+              "period_value": "2024-Q3",
+              "geography_level": "country",
+              "geography_id": "NZ",
+              "geography_vintage": "current",
+              "record_set_id": "stats_nz.qes.awe.2024q3",
+              "dimensions": [
+                "earnings_component",
+                "earnings_denominator",
+                "earnings_sector",
+                "earnings_series_reference",
+                "seasonal_adjustment"
+              ],
+              "dimension_values": {
+                "earnings_component": "ordinary_time",
+                "earnings_denominator": "fte",
+                "earnings_sector": "all_sectors",
+                "earnings_series_reference": "QEMQ.SBSZ9A",
+                "seasonal_adjustment": "actual"
+              },
+              "aggregate_fact_key": "ledger.aggregate_fact.v2:54a0eeb64049ba4c15e397bf",
+              "assertion": "observation"
+            },
+            "validation": {
+              "unit": "nzd_per_week",
+              "source_sha256": "1af2e7e37f1c108a2656842cf1f519c903e1a982bcdc03ee02d0ad888ebc3a97",
+              "source_vintage": "stats_nz_qes_june_2026",
+              "entity_role": "full_time_equivalent_employee",
+              "provenance_class": "survey_aggregate",
+              "assertion": "observation",
+              "period_coverage": {
+                "start_date": "2024-07-01",
+                "end_date": "2024-09-30"
+              },
+              "source_column_id": "SBSZ9A"
+            },
+            "weight": "1",
+            "sequence": 2
+          },
+          {
+            "selector": {
+              "source_name": "stats_nz",
+              "source_measure_id": "SBSZ9A",
+              "source_concept": "stats_nz.qes.average_weekly_earnings.ordinary_time",
+              "entity_name": "person",
+              "period_type": "quarter",
+              "period_value": "2024-Q4",
+              "geography_level": "country",
+              "geography_id": "NZ",
+              "geography_vintage": "current",
+              "record_set_id": "stats_nz.qes.awe.2024q4",
+              "dimensions": [
+                "earnings_component",
+                "earnings_denominator",
+                "earnings_sector",
+                "earnings_series_reference",
+                "seasonal_adjustment"
+              ],
+              "dimension_values": {
+                "earnings_component": "ordinary_time",
+                "earnings_denominator": "fte",
+                "earnings_sector": "all_sectors",
+                "earnings_series_reference": "QEMQ.SBSZ9A",
+                "seasonal_adjustment": "actual"
+              },
+              "aggregate_fact_key": "ledger.aggregate_fact.v2:7fc35ba9682ceb04504f2ef9",
+              "assertion": "observation"
+            },
+            "validation": {
+              "unit": "nzd_per_week",
+              "source_sha256": "1af2e7e37f1c108a2656842cf1f519c903e1a982bcdc03ee02d0ad888ebc3a97",
+              "source_vintage": "stats_nz_qes_june_2026",
+              "entity_role": "full_time_equivalent_employee",
+              "provenance_class": "survey_aggregate",
+              "assertion": "observation",
+              "period_coverage": {
+                "start_date": "2024-10-01",
+                "end_date": "2024-12-31"
+              },
+              "source_column_id": "SBSZ9A"
+            },
+            "weight": "1",
+            "sequence": 3
+          }
+        ],
+        "target_schedule": [
+          {
+            "selector": {
+              "source_name": "stats_nz",
+              "source_measure_id": "SBSZ9A",
+              "source_concept": "stats_nz.qes.average_weekly_earnings.ordinary_time",
+              "entity_name": "person",
+              "period_type": "quarter",
+              "period_value": "2026-Q2",
+              "geography_level": "country",
+              "geography_id": "NZ",
+              "geography_vintage": "current",
+              "record_set_id": "stats_nz.qes.awe.2026q2",
+              "dimensions": [
+                "earnings_component",
+                "earnings_denominator",
+                "earnings_sector",
+                "earnings_series_reference",
+                "seasonal_adjustment"
+              ],
+              "dimension_values": {
+                "earnings_component": "ordinary_time",
+                "earnings_denominator": "fte",
+                "earnings_sector": "all_sectors",
+                "earnings_series_reference": "QEMQ.SBSZ9A",
+                "seasonal_adjustment": "actual"
+              },
+              "aggregate_fact_key": "ledger.aggregate_fact.v2:91583e3f39d11b8b4b2923d2",
+              "assertion": "observation"
+            },
+            "validation": {
+              "unit": "nzd_per_week",
+              "source_sha256": "1af2e7e37f1c108a2656842cf1f519c903e1a982bcdc03ee02d0ad888ebc3a97",
+              "source_vintage": "stats_nz_qes_june_2026",
+              "entity_role": "full_time_equivalent_employee",
+              "provenance_class": "survey_aggregate",
+              "assertion": "observation",
+              "period_coverage": {
+                "start_date": "2026-04-01",
+                "end_date": "2026-06-30"
+              },
+              "source_column_id": "SBSZ9A"
+            },
+            "weight": "1",
+            "sequence": 0,
+            "projection_offset": 0
+          },
+          {
+            "selector": {
+              "source_name": "stats_nz",
+              "source_measure_id": "SBSZ9A",
+              "source_concept": "stats_nz.qes.average_weekly_earnings.ordinary_time",
+              "entity_name": "person",
+              "period_type": "quarter",
+              "period_value": "2026-Q3",
+              "geography_level": "country",
+              "geography_id": "NZ",
+              "geography_vintage": "current",
+              "record_set_id": "stats_nz.qes.awe.2026q3",
+              "dimensions": [
+                "earnings_component",
+                "earnings_denominator",
+                "earnings_sector",
+                "earnings_series_reference",
+                "seasonal_adjustment"
+              ],
+              "dimension_values": {
+                "earnings_component": "ordinary_time",
+                "earnings_denominator": "fte",
+                "earnings_sector": "all_sectors",
+                "earnings_series_reference": "QEMQ.SBSZ9A",
+                "seasonal_adjustment": "actual"
+              },
+              "assertion": "observation"
+            },
+            "validation": {
+              "unit": "nzd_per_week",
+              "source_sha256": "1af2e7e37f1c108a2656842cf1f519c903e1a982bcdc03ee02d0ad888ebc3a97",
+              "source_vintage": "stats_nz_qes_june_2026",
+              "entity_role": "full_time_equivalent_employee",
+              "provenance_class": "survey_aggregate",
+              "assertion": "observation",
+              "period_coverage": {
+                "start_date": "2026-07-01",
+                "end_date": "2026-09-30"
+              },
+              "source_column_id": "SBSZ9A"
+            },
+            "weight": "1",
+            "sequence": 1,
+            "projection_offset": 1
+          },
+          {
+            "selector": {
+              "source_name": "stats_nz",
+              "source_measure_id": "SBSZ9A",
+              "source_concept": "stats_nz.qes.average_weekly_earnings.ordinary_time",
+              "entity_name": "person",
+              "period_type": "quarter",
+              "period_value": "2026-Q4",
+              "geography_level": "country",
+              "geography_id": "NZ",
+              "geography_vintage": "current",
+              "record_set_id": "stats_nz.qes.awe.2026q4",
+              "dimensions": [
+                "earnings_component",
+                "earnings_denominator",
+                "earnings_sector",
+                "earnings_series_reference",
+                "seasonal_adjustment"
+              ],
+              "dimension_values": {
+                "earnings_component": "ordinary_time",
+                "earnings_denominator": "fte",
+                "earnings_sector": "all_sectors",
+                "earnings_series_reference": "QEMQ.SBSZ9A",
+                "seasonal_adjustment": "actual"
+              },
+              "assertion": "observation"
+            },
+            "validation": {
+              "unit": "nzd_per_week",
+              "source_sha256": "1af2e7e37f1c108a2656842cf1f519c903e1a982bcdc03ee02d0ad888ebc3a97",
+              "source_vintage": "stats_nz_qes_june_2026",
+              "entity_role": "full_time_equivalent_employee",
+              "provenance_class": "survey_aggregate",
+              "assertion": "observation",
+              "period_coverage": {
+                "start_date": "2026-10-01",
+                "end_date": "2026-12-31"
+              },
+              "source_column_id": "SBSZ9A"
+            },
+            "weight": "1",
+            "sequence": 2,
+            "projection_offset": 2
+          },
+          {
+            "selector": {
+              "source_name": "stats_nz",
+              "source_measure_id": "SBSZ9A",
+              "source_concept": "stats_nz.qes.average_weekly_earnings.ordinary_time",
+              "entity_name": "person",
+              "period_type": "quarter",
+              "period_value": "2027-Q1",
+              "geography_level": "country",
+              "geography_id": "NZ",
+              "geography_vintage": "current",
+              "record_set_id": "stats_nz.qes.awe.2027q1",
+              "dimensions": [
+                "earnings_component",
+                "earnings_denominator",
+                "earnings_sector",
+                "earnings_series_reference",
+                "seasonal_adjustment"
+              ],
+              "dimension_values": {
+                "earnings_component": "ordinary_time",
+                "earnings_denominator": "fte",
+                "earnings_sector": "all_sectors",
+                "earnings_series_reference": "QEMQ.SBSZ9A",
+                "seasonal_adjustment": "actual"
+              },
+              "assertion": "observation"
+            },
+            "validation": {
+              "unit": "nzd_per_week",
+              "source_sha256": "1af2e7e37f1c108a2656842cf1f519c903e1a982bcdc03ee02d0ad888ebc3a97",
+              "source_vintage": "stats_nz_qes_june_2026",
+              "entity_role": "full_time_equivalent_employee",
+              "provenance_class": "survey_aggregate",
+              "assertion": "observation",
+              "period_coverage": {
+                "start_date": "2027-01-01",
+                "end_date": "2027-03-31"
+              },
+              "source_column_id": "SBSZ9A"
+            },
+            "weight": "1",
+            "sequence": 3,
+            "projection_offset": 3
+          }
+        ],
+        "growth": {
+          "selector": {
+            "source_name": "treasury",
+            "source_measure_id": "average_weekly_earnings_annual_percentage_change",
+            "source_concept": "treasury.prefu26.average_weekly_earnings_annual_percentage_change",
+            "entity_name": "government",
+            "period_type": "fiscal_year",
+            "period_value": 2026,
+            "geography_level": "country",
+            "geography_id": "NZ",
+            "geography_vintage": "current",
+            "record_set_id": "treasury.prefu26.average_weekly_earnings.fy2026",
+            "dimensions": [
+              "earnings_component",
+              "publication_status"
+            ],
+            "dimension_values": {
+              "earnings_component": "ordinary_time",
+              "publication_status": "Forecast"
+            },
+            "aggregate_fact_key": "ledger.aggregate_fact.v2:aba7d3d54489b068116e6a25",
+            "assertion": "source_projection",
+            "source_table": "PREFU 2026 Table 4.1 - Key economic assumptions for fiscal forecasts"
+          },
+          "validation": {
+            "unit": "percent",
+            "source_sha256": "e2486375dde515d0722f8c3022f481804bb014beb83c81b8bfc99bc9426544d9",
+            "source_vintage": "prefu_2026_09_29",
+            "entity_role": "forecaster",
+            "provenance_class": "model_output",
+            "assertion": "source_projection",
+            "period_coverage": {
+              "start_date": "2026-07-01",
+              "end_date": "2027-06-30"
+            },
+            "source_column_id": "year_ending_30_june_2027"
+          },
+          "unit_multiplier": "0.01",
+          "scenario_delta": "0",
+          "assertion_policy": "allow_source_projection",
+          "sensitivity_provenance": [
+            "d1599: symmetric ±0.5 percentage-point Microcosm sensitivity; high is not a Treasury forecast path"
+          ]
+        },
+        "subperiods_per_year": 4,
+        "projection_policy": "observed_preferred_latest_contiguous",
+        "rounding": {
+          "digits": 6,
+          "mode": "nearest_half_even"
+        },
+        "expected_operational_factor": {
+          "numerator": 1079073,
+          "denominator": 1000000
+        },
+        "validity": {
+          "declared_on": "2026-10-23",
+          "valid_from": "2026-10-23",
+          "valid_until": "2026-11-03",
+          "as_of": "2026-10-23"
+        },
+        "evidence": [
+          "Stats NZ QES Table 7; QEMQ.SBSZ9A; ordinary-time FTE, all sectors, actual",
+          "Treasury PREFU 2026 Table 4.1; year ending 30 June 2027; Chronicle period 2026",
+          "Declared calendar-2024 money convention (H1), covering flows and asset stocks; the recorded _time_period is a consistency check, not authentication"
+        ],
+        "decision_references": [
+          "d1952 card; NZ money year build item: donor money is calendar-2024 dollars",
+          "G8-w hub rulings 5, 24 October 2026, items H1–H3",
+          "G8-r2 hub rulings 3, 23 October 2026, section 1"
+        ]
+      },
+      "operational_factor": {
+        "numerator": 1079073,
+        "denominator": 1000000
+      },
+      "receipt": {
+        "schema_version": 1,
+        "operation": "projected_period_average_ratio",
+        "operation_version": 1,
+        "factor_id": "donor_cy2024_to_ty2027_central",
+        "declaration_sha256": "cb026f66df5cc07468a0c517e348b399082f0648b81856b4ca888587ba8d9d25",
+        "feed_identity": {
+          "source_commit": "8f4cfd573c0d6f580d9c51cd67e8f449a42ed174",
+          "facts_sha256": "03f5ea0fe60e6dc93a135ab32cd5cd6ffb56388e702a4734cdb515a956e36b18",
+          "manifest_sha256": "1ea2d1eeb122275a9ce7f861ca3e20e21dd695772c04ce9d71114168e92fe053",
+          "artifact_schema_version": "policyengine_ledger.consumer_artifact.v2",
+          "consumer_fact_schema_versions": [
+            "chronicle.consumer_fact.v4"
+          ],
+          "consumer_fact_schema_sha256": "d953306d6f01fbc64db4372d0262d3012ee590269f8a25b276b18dca0626c6a0",
+          "fact_row_count": 12368
+        },
+        "source_period": "CY2024",
+        "target_period": 2027,
+        "source_schedule": [
+          {
+            "selector": {
+              "source_name": "stats_nz",
+              "source_measure_id": "SBSZ9A",
+              "source_concept": "stats_nz.qes.average_weekly_earnings.ordinary_time",
+              "entity_name": "person",
+              "period_type": "quarter",
+              "period_value": "2024-Q1",
+              "geography_level": "country",
+              "geography_id": "NZ",
+              "geography_vintage": "current",
+              "record_set_id": "stats_nz.qes.awe.2024q1",
+              "dimensions": [
+                "earnings_component",
+                "earnings_denominator",
+                "earnings_sector",
+                "earnings_series_reference",
+                "seasonal_adjustment"
+              ],
+              "dimension_values": {
+                "earnings_component": "ordinary_time",
+                "earnings_denominator": "fte",
+                "earnings_sector": "all_sectors",
+                "earnings_series_reference": "QEMQ.SBSZ9A",
+                "seasonal_adjustment": "actual"
+              },
+              "aggregate_fact_key": "ledger.aggregate_fact.v2:854e91ec1dd95e396659ad8e",
+              "assertion": "observation"
+            },
+            "aggregate_fact_key": "ledger.aggregate_fact.v2:854e91ec1dd95e396659ad8e",
+            "decimal_operand": "1563.54",
+            "numeric_token_proof": {
+              "numeric_representation": "binary_float_with_lexical_token",
+              "lexical_token": "1563.54",
+              "recovered_decimal": "1563.54",
+              "decimal_values_equal": true
+            },
+            "validation": {
+              "unit": "nzd_per_week",
+              "source_sha256": "25053dcbd343320cad72e2896475eaebaf5f5bb0b5965ca788506ca15efcea30",
+              "source_vintage": "stats_nz_qes_june_2025",
+              "entity_role": "full_time_equivalent_employee",
+              "provenance_class": "survey_aggregate",
+              "assertion": "observation",
+              "period_coverage": {
+                "start_date": "2024-01-01",
+                "end_date": "2024-03-31"
+              },
+              "source_column_id": "SBSZ9A"
+            },
+            "period": {
+              "type": "quarter",
+              "value": "2024-Q1"
+            },
+            "source": {
+              "extracted_at": "2026-10-22",
+              "extraction_method": "CellSelectorSpec and SourceRecordSpec resolved from cells",
+              "method_notes": "Each fact carries source_record_id, source_cell_keys, and source_row_keys when available.",
+              "raw_r2_bucket": "ledger-raw",
+              "raw_r2_key": "raw/nz/stats_nz/qes_average_weekly_earnings_june_2025/2025/25053dcbd343320cad72e2896475eaebaf5f5bb0b5965ca788506ca15efcea30/quarterly-employment-survey-june-2025-quarter.xlsx",
+              "raw_r2_uri": "r2://ledger-raw/raw/nz/stats_nz/qes_average_weekly_earnings_june_2025/2025/25053dcbd343320cad72e2896475eaebaf5f5bb0b5965ca788506ca15efcea30/quarterly-employment-survey-june-2025-quarter.xlsx",
+              "source_file": "quarterly-employment-survey-june-2025-quarter.xlsx",
+              "source_name": "stats_nz",
+              "source_sha256": "25053dcbd343320cad72e2896475eaebaf5f5bb0b5965ca788506ca15efcea30",
+              "source_size_bytes": 135784,
+              "source_table": "Quarterly Employment Survey June 2025 quarter, Table 7: Average weekly earnings for FTEs, by sector",
+              "url": "https://www.stats.govt.nz/assets/Uploads/Labour-market-statistics/Labour-market-statistics-June-2025-quarter/Download-data/quarterly-employment-survey-june-2025-quarter.xlsx",
+              "vintage": "stats_nz_qes_june_2025"
+            },
+            "unit": "nzd_per_week",
+            "assertion": "observation",
+            "provenance_class": "survey_aggregate",
+            "entity_role": "full_time_equivalent_employee",
+            "period_coverage": {
+              "basis": "calendar",
+              "end_date": "2024-03-31",
+              "notes": "QES reference period is the pay week ending on or before the 20th of the quarter’s middle month (hub-supplied source-period definition); the fact period is the published quarter, not the pay week. Actual, not seasonally adjusted. No annual averaging or period alignment.",
+              "source_period_label": "Mar 2024 quarter",
+              "start_date": "2024-01-01"
+            },
+            "weight": "1",
+            "sequence": 0
+          },
+          {
+            "selector": {
+              "source_name": "stats_nz",
+              "source_measure_id": "SBSZ9A",
+              "source_concept": "stats_nz.qes.average_weekly_earnings.ordinary_time",
+              "entity_name": "person",
+              "period_type": "quarter",
+              "period_value": "2024-Q2",
+              "geography_level": "country",
+              "geography_id": "NZ",
+              "geography_vintage": "current",
+              "record_set_id": "stats_nz.qes.awe.2024q2",
+              "dimensions": [
+                "earnings_component",
+                "earnings_denominator",
+                "earnings_sector",
+                "earnings_series_reference",
+                "seasonal_adjustment"
+              ],
+              "dimension_values": {
+                "earnings_component": "ordinary_time",
+                "earnings_denominator": "fte",
+                "earnings_sector": "all_sectors",
+                "earnings_series_reference": "QEMQ.SBSZ9A",
+                "seasonal_adjustment": "actual"
+              },
+              "aggregate_fact_key": "ledger.aggregate_fact.v2:c07fd9ce3137fa20386bafe0",
+              "assertion": "observation"
+            },
+            "aggregate_fact_key": "ledger.aggregate_fact.v2:c07fd9ce3137fa20386bafe0",
+            "decimal_operand": "1586.32",
+            "numeric_token_proof": {
+              "numeric_representation": "binary_float_with_lexical_token",
+              "lexical_token": "1586.32",
+              "recovered_decimal": "1586.32",
+              "decimal_values_equal": true
+            },
+            "validation": {
+              "unit": "nzd_per_week",
+              "source_sha256": "1af2e7e37f1c108a2656842cf1f519c903e1a982bcdc03ee02d0ad888ebc3a97",
+              "source_vintage": "stats_nz_qes_june_2026",
+              "entity_role": "full_time_equivalent_employee",
+              "provenance_class": "survey_aggregate",
+              "assertion": "observation",
+              "period_coverage": {
+                "start_date": "2024-04-01",
+                "end_date": "2024-06-30"
+              },
+              "source_column_id": "SBSZ9A"
+            },
+            "period": {
+              "type": "quarter",
+              "value": "2024-Q2"
+            },
+            "source": {
+              "extracted_at": "2026-10-22",
+              "extraction_method": "CellSelectorSpec and SourceRecordSpec resolved from cells",
+              "method_notes": "Each fact carries source_record_id, source_cell_keys, and source_row_keys when available.",
+              "raw_r2_bucket": "ledger-raw",
+              "raw_r2_key": "raw/nz/stats_nz/qes_average_weekly_earnings_june_2026/2026/1af2e7e37f1c108a2656842cf1f519c903e1a982bcdc03ee02d0ad888ebc3a97/quarterly-employment-survey-june-2026-quarter.xlsx",
+              "raw_r2_uri": "r2://ledger-raw/raw/nz/stats_nz/qes_average_weekly_earnings_june_2026/2026/1af2e7e37f1c108a2656842cf1f519c903e1a982bcdc03ee02d0ad888ebc3a97/quarterly-employment-survey-june-2026-quarter.xlsx",
+              "source_file": "quarterly-employment-survey-june-2026-quarter.xlsx",
+              "source_name": "stats_nz",
+              "source_sha256": "1af2e7e37f1c108a2656842cf1f519c903e1a982bcdc03ee02d0ad888ebc3a97",
+              "source_size_bytes": 124556,
+              "source_table": "Quarterly Employment Survey June 2026 quarter, Table 7: Average weekly earnings for FTEs, by sector",
+              "url": "https://www.stats.govt.nz/assets/Uploads/Labour-market-statistics/Labour-market-statistics-June-2026-quarter/Download-data/quarterly-employment-survey-june-2026-quarter.xlsx",
+              "vintage": "stats_nz_qes_june_2026"
+            },
+            "unit": "nzd_per_week",
+            "assertion": "observation",
+            "provenance_class": "survey_aggregate",
+            "entity_role": "full_time_equivalent_employee",
+            "period_coverage": {
+              "basis": "calendar",
+              "end_date": "2024-06-30",
+              "notes": "QES reference period is the pay week ending on or before the 20th of the quarter’s middle month (hub-supplied source-period definition); the fact period is the published quarter, not the pay week. Actual, not seasonally adjusted. No annual averaging or period alignment.",
+              "source_period_label": "Jun 2024 quarter",
+              "start_date": "2024-04-01"
+            },
+            "weight": "1",
+            "sequence": 1
+          },
+          {
+            "selector": {
+              "source_name": "stats_nz",
+              "source_measure_id": "SBSZ9A",
+              "source_concept": "stats_nz.qes.average_weekly_earnings.ordinary_time",
+              "entity_name": "person",
+              "period_type": "quarter",
+              "period_value": "2024-Q3",
+              "geography_level": "country",
+              "geography_id": "NZ",
+              "geography_vintage": "current",
+              "record_set_id": "stats_nz.qes.awe.2024q3",
+              "dimensions": [
+                "earnings_component",
+                "earnings_denominator",
+                "earnings_sector",
+                "earnings_series_reference",
+                "seasonal_adjustment"
+              ],
+              "dimension_values": {
+                "earnings_component": "ordinary_time",
+                "earnings_denominator": "fte",
+                "earnings_sector": "all_sectors",
+                "earnings_series_reference": "QEMQ.SBSZ9A",
+                "seasonal_adjustment": "actual"
+              },
+              "aggregate_fact_key": "ledger.aggregate_fact.v2:54a0eeb64049ba4c15e397bf",
+              "assertion": "observation"
+            },
+            "aggregate_fact_key": "ledger.aggregate_fact.v2:54a0eeb64049ba4c15e397bf",
+            "decimal_operand": "1595.11",
+            "numeric_token_proof": {
+              "numeric_representation": "binary_float_with_lexical_token",
+              "lexical_token": "1595.11",
+              "recovered_decimal": "1595.11",
+              "decimal_values_equal": true
+            },
+            "validation": {
+              "unit": "nzd_per_week",
+              "source_sha256": "1af2e7e37f1c108a2656842cf1f519c903e1a982bcdc03ee02d0ad888ebc3a97",
+              "source_vintage": "stats_nz_qes_june_2026",
+              "entity_role": "full_time_equivalent_employee",
+              "provenance_class": "survey_aggregate",
+              "assertion": "observation",
+              "period_coverage": {
+                "start_date": "2024-07-01",
+                "end_date": "2024-09-30"
+              },
+              "source_column_id": "SBSZ9A"
+            },
+            "period": {
+              "type": "quarter",
+              "value": "2024-Q3"
+            },
+            "source": {
+              "extracted_at": "2026-10-22",
+              "extraction_method": "CellSelectorSpec and SourceRecordSpec resolved from cells",
+              "method_notes": "Each fact carries source_record_id, source_cell_keys, and source_row_keys when available.",
+              "raw_r2_bucket": "ledger-raw",
+              "raw_r2_key": "raw/nz/stats_nz/qes_average_weekly_earnings_june_2026/2026/1af2e7e37f1c108a2656842cf1f519c903e1a982bcdc03ee02d0ad888ebc3a97/quarterly-employment-survey-june-2026-quarter.xlsx",
+              "raw_r2_uri": "r2://ledger-raw/raw/nz/stats_nz/qes_average_weekly_earnings_june_2026/2026/1af2e7e37f1c108a2656842cf1f519c903e1a982bcdc03ee02d0ad888ebc3a97/quarterly-employment-survey-june-2026-quarter.xlsx",
+              "source_file": "quarterly-employment-survey-june-2026-quarter.xlsx",
+              "source_name": "stats_nz",
+              "source_sha256": "1af2e7e37f1c108a2656842cf1f519c903e1a982bcdc03ee02d0ad888ebc3a97",
+              "source_size_bytes": 124556,
+              "source_table": "Quarterly Employment Survey June 2026 quarter, Table 7: Average weekly earnings for FTEs, by sector",
+              "url": "https://www.stats.govt.nz/assets/Uploads/Labour-market-statistics/Labour-market-statistics-June-2026-quarter/Download-data/quarterly-employment-survey-june-2026-quarter.xlsx",
+              "vintage": "stats_nz_qes_june_2026"
+            },
+            "unit": "nzd_per_week",
+            "assertion": "observation",
+            "provenance_class": "survey_aggregate",
+            "entity_role": "full_time_equivalent_employee",
+            "period_coverage": {
+              "basis": "calendar",
+              "end_date": "2024-09-30",
+              "notes": "QES reference period is the pay week ending on or before the 20th of the quarter’s middle month (hub-supplied source-period definition); the fact period is the published quarter, not the pay week. Actual, not seasonally adjusted. No annual averaging or period alignment.",
+              "source_period_label": "Sep 2024 quarter",
+              "start_date": "2024-07-01"
+            },
+            "weight": "1",
+            "sequence": 2
+          },
+          {
+            "selector": {
+              "source_name": "stats_nz",
+              "source_measure_id": "SBSZ9A",
+              "source_concept": "stats_nz.qes.average_weekly_earnings.ordinary_time",
+              "entity_name": "person",
+              "period_type": "quarter",
+              "period_value": "2024-Q4",
+              "geography_level": "country",
+              "geography_id": "NZ",
+              "geography_vintage": "current",
+              "record_set_id": "stats_nz.qes.awe.2024q4",
+              "dimensions": [
+                "earnings_component",
+                "earnings_denominator",
+                "earnings_sector",
+                "earnings_series_reference",
+                "seasonal_adjustment"
+              ],
+              "dimension_values": {
+                "earnings_component": "ordinary_time",
+                "earnings_denominator": "fte",
+                "earnings_sector": "all_sectors",
+                "earnings_series_reference": "QEMQ.SBSZ9A",
+                "seasonal_adjustment": "actual"
+              },
+              "aggregate_fact_key": "ledger.aggregate_fact.v2:7fc35ba9682ceb04504f2ef9",
+              "assertion": "observation"
+            },
+            "aggregate_fact_key": "ledger.aggregate_fact.v2:7fc35ba9682ceb04504f2ef9",
+            "decimal_operand": "1622.73",
+            "numeric_token_proof": {
+              "numeric_representation": "binary_float_with_lexical_token",
+              "lexical_token": "1622.73",
+              "recovered_decimal": "1622.73",
+              "decimal_values_equal": true
+            },
+            "validation": {
+              "unit": "nzd_per_week",
+              "source_sha256": "1af2e7e37f1c108a2656842cf1f519c903e1a982bcdc03ee02d0ad888ebc3a97",
+              "source_vintage": "stats_nz_qes_june_2026",
+              "entity_role": "full_time_equivalent_employee",
+              "provenance_class": "survey_aggregate",
+              "assertion": "observation",
+              "period_coverage": {
+                "start_date": "2024-10-01",
+                "end_date": "2024-12-31"
+              },
+              "source_column_id": "SBSZ9A"
+            },
+            "period": {
+              "type": "quarter",
+              "value": "2024-Q4"
+            },
+            "source": {
+              "extracted_at": "2026-10-22",
+              "extraction_method": "CellSelectorSpec and SourceRecordSpec resolved from cells",
+              "method_notes": "Each fact carries source_record_id, source_cell_keys, and source_row_keys when available.",
+              "raw_r2_bucket": "ledger-raw",
+              "raw_r2_key": "raw/nz/stats_nz/qes_average_weekly_earnings_june_2026/2026/1af2e7e37f1c108a2656842cf1f519c903e1a982bcdc03ee02d0ad888ebc3a97/quarterly-employment-survey-june-2026-quarter.xlsx",
+              "raw_r2_uri": "r2://ledger-raw/raw/nz/stats_nz/qes_average_weekly_earnings_june_2026/2026/1af2e7e37f1c108a2656842cf1f519c903e1a982bcdc03ee02d0ad888ebc3a97/quarterly-employment-survey-june-2026-quarter.xlsx",
+              "source_file": "quarterly-employment-survey-june-2026-quarter.xlsx",
+              "source_name": "stats_nz",
+              "source_sha256": "1af2e7e37f1c108a2656842cf1f519c903e1a982bcdc03ee02d0ad888ebc3a97",
+              "source_size_bytes": 124556,
+              "source_table": "Quarterly Employment Survey June 2026 quarter, Table 7: Average weekly earnings for FTEs, by sector",
+              "url": "https://www.stats.govt.nz/assets/Uploads/Labour-market-statistics/Labour-market-statistics-June-2026-quarter/Download-data/quarterly-employment-survey-june-2026-quarter.xlsx",
+              "vintage": "stats_nz_qes_june_2026"
+            },
+            "unit": "nzd_per_week",
+            "assertion": "observation",
+            "provenance_class": "survey_aggregate",
+            "entity_role": "full_time_equivalent_employee",
+            "period_coverage": {
+              "basis": "calendar",
+              "end_date": "2024-12-31",
+              "notes": "QES reference period is the pay week ending on or before the 20th of the quarter’s middle month (hub-supplied source-period definition); the fact period is the published quarter, not the pay week. Actual, not seasonally adjusted. No annual averaging or period alignment.",
+              "source_period_label": "Dec 2024 quarter",
+              "start_date": "2024-10-01"
+            },
+            "weight": "1",
+            "sequence": 3
+          }
+        ],
+        "target_schedule": [
+          {
+            "selector": {
+              "source_name": "stats_nz",
+              "source_measure_id": "SBSZ9A",
+              "source_concept": "stats_nz.qes.average_weekly_earnings.ordinary_time",
+              "entity_name": "person",
+              "period_type": "quarter",
+              "period_value": "2026-Q2",
+              "geography_level": "country",
+              "geography_id": "NZ",
+              "geography_vintage": "current",
+              "record_set_id": "stats_nz.qes.awe.2026q2",
+              "dimensions": [
+                "earnings_component",
+                "earnings_denominator",
+                "earnings_sector",
+                "earnings_series_reference",
+                "seasonal_adjustment"
+              ],
+              "dimension_values": {
+                "earnings_component": "ordinary_time",
+                "earnings_denominator": "fte",
+                "earnings_sector": "all_sectors",
+                "earnings_series_reference": "QEMQ.SBSZ9A",
+                "seasonal_adjustment": "actual"
+              },
+              "aggregate_fact_key": "ledger.aggregate_fact.v2:91583e3f39d11b8b4b2923d2",
+              "assertion": "observation"
+            },
+            "aggregate_fact_key": "ledger.aggregate_fact.v2:91583e3f39d11b8b4b2923d2",
+            "decimal_operand": "1700.68",
+            "numeric_token_proof": {
+              "numeric_representation": "binary_float_with_lexical_token",
+              "lexical_token": "1700.68",
+              "recovered_decimal": "1700.68",
+              "decimal_values_equal": true
+            },
+            "validation": {
+              "unit": "nzd_per_week",
+              "source_sha256": "1af2e7e37f1c108a2656842cf1f519c903e1a982bcdc03ee02d0ad888ebc3a97",
+              "source_vintage": "stats_nz_qes_june_2026",
+              "entity_role": "full_time_equivalent_employee",
+              "provenance_class": "survey_aggregate",
+              "assertion": "observation",
+              "period_coverage": {
+                "start_date": "2026-04-01",
+                "end_date": "2026-06-30"
+              },
+              "source_column_id": "SBSZ9A"
+            },
+            "period": {
+              "type": "quarter",
+              "value": "2026-Q2"
+            },
+            "source": {
+              "extracted_at": "2026-10-22",
+              "extraction_method": "CellSelectorSpec and SourceRecordSpec resolved from cells",
+              "method_notes": "Each fact carries source_record_id, source_cell_keys, and source_row_keys when available.",
+              "raw_r2_bucket": "ledger-raw",
+              "raw_r2_key": "raw/nz/stats_nz/qes_average_weekly_earnings_june_2026/2026/1af2e7e37f1c108a2656842cf1f519c903e1a982bcdc03ee02d0ad888ebc3a97/quarterly-employment-survey-june-2026-quarter.xlsx",
+              "raw_r2_uri": "r2://ledger-raw/raw/nz/stats_nz/qes_average_weekly_earnings_june_2026/2026/1af2e7e37f1c108a2656842cf1f519c903e1a982bcdc03ee02d0ad888ebc3a97/quarterly-employment-survey-june-2026-quarter.xlsx",
+              "source_file": "quarterly-employment-survey-june-2026-quarter.xlsx",
+              "source_name": "stats_nz",
+              "source_sha256": "1af2e7e37f1c108a2656842cf1f519c903e1a982bcdc03ee02d0ad888ebc3a97",
+              "source_size_bytes": 124556,
+              "source_table": "Quarterly Employment Survey June 2026 quarter, Table 7: Average weekly earnings for FTEs, by sector",
+              "url": "https://www.stats.govt.nz/assets/Uploads/Labour-market-statistics/Labour-market-statistics-June-2026-quarter/Download-data/quarterly-employment-survey-june-2026-quarter.xlsx",
+              "vintage": "stats_nz_qes_june_2026"
+            },
+            "unit": "nzd_per_week",
+            "assertion": "observation",
+            "provenance_class": "survey_aggregate",
+            "entity_role": "full_time_equivalent_employee",
+            "period_coverage": {
+              "basis": "calendar",
+              "end_date": "2026-06-30",
+              "notes": "QES reference period is the pay week ending on or before the 20th of the quarter’s middle month (hub-supplied source-period definition); the fact period is the published quarter, not the pay week. Actual, not seasonally adjusted. No annual averaging or period alignment.",
+              "source_period_label": "Jun 2026 quarter",
+              "start_date": "2026-04-01"
+            },
+            "status": "observed",
+            "sequence": 0,
+            "weight": "1",
+            "projection_offset": 0
+          },
+          {
+            "selector": {
+              "source_name": "stats_nz",
+              "source_measure_id": "SBSZ9A",
+              "source_concept": "stats_nz.qes.average_weekly_earnings.ordinary_time",
+              "entity_name": "person",
+              "period_type": "quarter",
+              "period_value": "2026-Q3",
+              "geography_level": "country",
+              "geography_id": "NZ",
+              "geography_vintage": "current",
+              "record_set_id": "stats_nz.qes.awe.2026q3",
+              "dimensions": [
+                "earnings_component",
+                "earnings_denominator",
+                "earnings_sector",
+                "earnings_series_reference",
+                "seasonal_adjustment"
+              ],
+              "dimension_values": {
+                "earnings_component": "ordinary_time",
+                "earnings_denominator": "fte",
+                "earnings_sector": "all_sectors",
+                "earnings_series_reference": "QEMQ.SBSZ9A",
+                "seasonal_adjustment": "actual"
+              },
+              "assertion": "observation"
+            },
+            "validation": {
+              "unit": "nzd_per_week",
+              "source_sha256": "1af2e7e37f1c108a2656842cf1f519c903e1a982bcdc03ee02d0ad888ebc3a97",
+              "source_vintage": "stats_nz_qes_june_2026",
+              "entity_role": "full_time_equivalent_employee",
+              "provenance_class": "survey_aggregate",
+              "assertion": "observation",
+              "period_coverage": {
+                "start_date": "2026-07-01",
+                "end_date": "2026-09-30"
+              },
+              "source_column_id": "SBSZ9A"
+            },
+            "status": "projected",
+            "sequence": 1,
+            "weight": "1",
+            "projection_offset": 1,
+            "projection_anchor": {
+              "aggregate_fact_key": "ledger.aggregate_fact.v2:91583e3f39d11b8b4b2923d2"
+            }
+          },
+          {
+            "selector": {
+              "source_name": "stats_nz",
+              "source_measure_id": "SBSZ9A",
+              "source_concept": "stats_nz.qes.average_weekly_earnings.ordinary_time",
+              "entity_name": "person",
+              "period_type": "quarter",
+              "period_value": "2026-Q4",
+              "geography_level": "country",
+              "geography_id": "NZ",
+              "geography_vintage": "current",
+              "record_set_id": "stats_nz.qes.awe.2026q4",
+              "dimensions": [
+                "earnings_component",
+                "earnings_denominator",
+                "earnings_sector",
+                "earnings_series_reference",
+                "seasonal_adjustment"
+              ],
+              "dimension_values": {
+                "earnings_component": "ordinary_time",
+                "earnings_denominator": "fte",
+                "earnings_sector": "all_sectors",
+                "earnings_series_reference": "QEMQ.SBSZ9A",
+                "seasonal_adjustment": "actual"
+              },
+              "assertion": "observation"
+            },
+            "validation": {
+              "unit": "nzd_per_week",
+              "source_sha256": "1af2e7e37f1c108a2656842cf1f519c903e1a982bcdc03ee02d0ad888ebc3a97",
+              "source_vintage": "stats_nz_qes_june_2026",
+              "entity_role": "full_time_equivalent_employee",
+              "provenance_class": "survey_aggregate",
+              "assertion": "observation",
+              "period_coverage": {
+                "start_date": "2026-10-01",
+                "end_date": "2026-12-31"
+              },
+              "source_column_id": "SBSZ9A"
+            },
+            "status": "projected",
+            "sequence": 2,
+            "weight": "1",
+            "projection_offset": 2,
+            "projection_anchor": {
+              "aggregate_fact_key": "ledger.aggregate_fact.v2:91583e3f39d11b8b4b2923d2"
+            }
+          },
+          {
+            "selector": {
+              "source_name": "stats_nz",
+              "source_measure_id": "SBSZ9A",
+              "source_concept": "stats_nz.qes.average_weekly_earnings.ordinary_time",
+              "entity_name": "person",
+              "period_type": "quarter",
+              "period_value": "2027-Q1",
+              "geography_level": "country",
+              "geography_id": "NZ",
+              "geography_vintage": "current",
+              "record_set_id": "stats_nz.qes.awe.2027q1",
+              "dimensions": [
+                "earnings_component",
+                "earnings_denominator",
+                "earnings_sector",
+                "earnings_series_reference",
+                "seasonal_adjustment"
+              ],
+              "dimension_values": {
+                "earnings_component": "ordinary_time",
+                "earnings_denominator": "fte",
+                "earnings_sector": "all_sectors",
+                "earnings_series_reference": "QEMQ.SBSZ9A",
+                "seasonal_adjustment": "actual"
+              },
+              "assertion": "observation"
+            },
+            "validation": {
+              "unit": "nzd_per_week",
+              "source_sha256": "1af2e7e37f1c108a2656842cf1f519c903e1a982bcdc03ee02d0ad888ebc3a97",
+              "source_vintage": "stats_nz_qes_june_2026",
+              "entity_role": "full_time_equivalent_employee",
+              "provenance_class": "survey_aggregate",
+              "assertion": "observation",
+              "period_coverage": {
+                "start_date": "2027-01-01",
+                "end_date": "2027-03-31"
+              },
+              "source_column_id": "SBSZ9A"
+            },
+            "status": "projected",
+            "sequence": 3,
+            "weight": "1",
+            "projection_offset": 3,
+            "projection_anchor": {
+              "aggregate_fact_key": "ledger.aggregate_fact.v2:91583e3f39d11b8b4b2923d2"
+            }
+          }
+        ],
+        "subperiods_per_year": 4,
+        "projection_policy": "observed_preferred_latest_contiguous",
+        "denominator_mean": {
+          "numerator": 63677,
+          "denominator": 40
+        },
+        "growth": {
+          "selector": {
+            "source_name": "treasury",
+            "source_measure_id": "average_weekly_earnings_annual_percentage_change",
+            "source_concept": "treasury.prefu26.average_weekly_earnings_annual_percentage_change",
+            "entity_name": "government",
+            "period_type": "fiscal_year",
+            "period_value": 2026,
+            "geography_level": "country",
+            "geography_id": "NZ",
+            "geography_vintage": "current",
+            "record_set_id": "treasury.prefu26.average_weekly_earnings.fy2026",
+            "dimensions": [
+              "earnings_component",
+              "publication_status"
+            ],
+            "dimension_values": {
+              "earnings_component": "ordinary_time",
+              "publication_status": "Forecast"
+            },
+            "aggregate_fact_key": "ledger.aggregate_fact.v2:aba7d3d54489b068116e6a25",
+            "assertion": "source_projection",
+            "source_table": "PREFU 2026 Table 4.1 - Key economic assumptions for fiscal forecasts"
+          },
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:aba7d3d54489b068116e6a25",
+          "decimal_operand": "2.7",
+          "numeric_token_proof": {
+            "numeric_representation": "binary_float_with_lexical_token",
+            "lexical_token": "2.7",
+            "recovered_decimal": "2.7",
+            "decimal_values_equal": true
+          },
+          "validation": {
+            "unit": "percent",
+            "source_sha256": "e2486375dde515d0722f8c3022f481804bb014beb83c81b8bfc99bc9426544d9",
+            "source_vintage": "prefu_2026_09_29",
+            "entity_role": "forecaster",
+            "provenance_class": "model_output",
+            "assertion": "source_projection",
+            "period_coverage": {
+              "start_date": "2026-07-01",
+              "end_date": "2027-06-30"
+            },
+            "source_column_id": "year_ending_30_june_2027"
+          },
+          "period": {
+            "type": "fiscal_year",
+            "value": 2026
+          },
+          "source": {
+            "extracted_at": "2026-10-22",
+            "extraction_method": "CellSelectorSpec and SourceRecordSpec resolved from cells",
+            "method_notes": "Each fact carries source_record_id, source_cell_keys, and source_row_keys when available.",
+            "raw_r2_bucket": "ledger-raw",
+            "raw_r2_key": "raw/nz/treasury/treasury-prefu26-economic-assumptions/2026/e2486375dde515d0722f8c3022f481804bb014beb83c81b8bfc99bc9426544d9/prefu26-charts-data.xlsx",
+            "raw_r2_uri": "r2://ledger-raw/raw/nz/treasury/treasury-prefu26-economic-assumptions/2026/e2486375dde515d0722f8c3022f481804bb014beb83c81b8bfc99bc9426544d9/prefu26-charts-data.xlsx",
+            "source_file": "prefu26-charts-data.xlsx",
+            "source_name": "treasury",
+            "source_sha256": "e2486375dde515d0722f8c3022f481804bb014beb83c81b8bfc99bc9426544d9",
+            "source_size_bytes": 664670,
+            "source_table": "PREFU 2026 Table 4.1 - Key economic assumptions for fiscal forecasts",
+            "url": "https://www.treasury.govt.nz/sites/default/files/2026-09/prefu26-charts-data.xlsx",
+            "vintage": "prefu_2026_09_29"
+          },
+          "unit": "percent",
+          "assertion": "source_projection",
+          "provenance_class": "model_output",
+          "entity_role": "forecaster",
+          "period_coverage": {
+            "basis": "fiscal",
+            "end_date": "2027-06-30",
+            "notes": "Publisher Year ending 30 June 2027; Chronicle opening-year fiscal_year:2026. Publisher column status is Forecast. Footnote 3 (Table 4.1!C21:D21): Ordinary time. Footnote 4 (C22:D22): Measures are actuals except for real GDP and nominal GDP. 2026 earnings are therefore actuals despite the Forecast4 column heading; only 2027–2031 earnings are forecasts. The published annual percentage change is retained unchanged; no annual average, level, factor or period alignment is calculated.",
+            "source_period_label": "Year ending 30 June 2027",
+            "start_date": "2026-07-01"
+          },
+          "unit_multiplier": "0.01",
+          "scenario_delta": "0",
+          "sensitivity_provenance": [
+            "d1599: symmetric ±0.5 percentage-point Microcosm sensitivity; high is not a Treasury forecast path"
+          ],
+          "effective_growth": {
+            "numerator": 27,
+            "denominator": 1000
+          }
+        },
+        "root_bounds": {
+          "lower": {
+            "numerator": 100668271307927,
+            "denominator": 100000000000000
+          },
+          "upper": {
+            "numerator": 12583533913491,
+            "denominator": 12500000000000
+          },
+          "exact": false,
+          "decimal_places": 14,
+          "degree": 4,
+          "radicand": {
+            "numerator": 1027,
+            "denominator": 1000
+          }
+        },
+        "numerator_mean_bounds": {
+          "lower": {
+            "numerator": 171780381168748188591006079321988113950935096211,
+            "denominator": 100000000000000000000000000000000000000000000
+          },
+          "upper": {
+            "numerator": 335508556970216332809143747140199880884173607,
+            "denominator": 195312500000000000000000000000000000000000
+          }
+        },
+        "unrounded_factor_bounds": {
+          "lower": {
+            "numerator": 171780381168748188591006079321988113950935096211,
+            "denominator": 159192500000000000000000000000000000000000000000
+          },
+          "upper": {
+            "numerator": 335508556970216332809143747140199880884173607,
+            "denominator": 310922851562500000000000000000000000000000000
+          }
+        },
+        "rounding": {
+          "digits": 6,
+          "mode": "nearest_half_even"
+        },
+        "operational_factor": {
+          "numerator": 1079073,
+          "denominator": 1000000
+        },
+        "validity": {
+          "declared_on": "2026-10-23",
+          "valid_from": "2026-10-23",
+          "valid_until": "2026-11-03",
+          "as_of": "2026-10-23"
+        },
+        "evidence": [
+          "Stats NZ QES Table 7; QEMQ.SBSZ9A; ordinary-time FTE, all sectors, actual",
+          "Treasury PREFU 2026 Table 4.1; year ending 30 June 2027; Chronicle period 2026",
+          "Declared calendar-2024 money convention (H1), covering flows and asset stocks; the recorded _time_period is a consistency check, not authentication"
+        ],
+        "decision_references": [
+          "d1952 card; NZ money year build item: donor money is calendar-2024 dollars",
+          "G8-w hub rulings 5, 24 October 2026, items H1–H3",
+          "G8-r2 hub rulings 3, 23 October 2026, section 1"
+        ],
+        "receipt_sha256": "ce934982c900e9996911b0a8d5b0de52d567c99124d33b597ea9fb481df45db1"
+      }
+    },
+    {
+      "declaration": {
+        "schema_version": 1,
+        "id": "donor_cy2024_to_ty2027_high",
+        "operation": "projected_period_average_ratio",
+        "operation_version": 1,
+        "purpose": "money_normalization_input",
+        "feed_identity": {
+          "source_commit": "8f4cfd573c0d6f580d9c51cd67e8f449a42ed174",
+          "facts_sha256": "03f5ea0fe60e6dc93a135ab32cd5cd6ffb56388e702a4734cdb515a956e36b18",
+          "manifest_sha256": "1ea2d1eeb122275a9ce7f861ca3e20e21dd695772c04ce9d71114168e92fe053",
+          "artifact_schema_version": "policyengine_ledger.consumer_artifact.v2",
+          "consumer_fact_schema_versions": [
+            "chronicle.consumer_fact.v4"
+          ],
+          "consumer_fact_schema_sha256": "d953306d6f01fbc64db4372d0262d3012ee590269f8a25b276b18dca0626c6a0",
+          "fact_row_count": 12368
+        },
+        "source_period": "CY2024",
+        "target_period": 2027,
+        "source_schedule": [
+          {
+            "selector": {
+              "source_name": "stats_nz",
+              "source_measure_id": "SBSZ9A",
+              "source_concept": "stats_nz.qes.average_weekly_earnings.ordinary_time",
+              "entity_name": "person",
+              "period_type": "quarter",
+              "period_value": "2024-Q1",
+              "geography_level": "country",
+              "geography_id": "NZ",
+              "geography_vintage": "current",
+              "record_set_id": "stats_nz.qes.awe.2024q1",
+              "dimensions": [
+                "earnings_component",
+                "earnings_denominator",
+                "earnings_sector",
+                "earnings_series_reference",
+                "seasonal_adjustment"
+              ],
+              "dimension_values": {
+                "earnings_component": "ordinary_time",
+                "earnings_denominator": "fte",
+                "earnings_sector": "all_sectors",
+                "earnings_series_reference": "QEMQ.SBSZ9A",
+                "seasonal_adjustment": "actual"
+              },
+              "aggregate_fact_key": "ledger.aggregate_fact.v2:854e91ec1dd95e396659ad8e",
+              "assertion": "observation"
+            },
+            "validation": {
+              "unit": "nzd_per_week",
+              "source_sha256": "25053dcbd343320cad72e2896475eaebaf5f5bb0b5965ca788506ca15efcea30",
+              "source_vintage": "stats_nz_qes_june_2025",
+              "entity_role": "full_time_equivalent_employee",
+              "provenance_class": "survey_aggregate",
+              "assertion": "observation",
+              "period_coverage": {
+                "start_date": "2024-01-01",
+                "end_date": "2024-03-31"
+              },
+              "source_column_id": "SBSZ9A"
+            },
+            "weight": "1",
+            "sequence": 0
+          },
+          {
+            "selector": {
+              "source_name": "stats_nz",
+              "source_measure_id": "SBSZ9A",
+              "source_concept": "stats_nz.qes.average_weekly_earnings.ordinary_time",
+              "entity_name": "person",
+              "period_type": "quarter",
+              "period_value": "2024-Q2",
+              "geography_level": "country",
+              "geography_id": "NZ",
+              "geography_vintage": "current",
+              "record_set_id": "stats_nz.qes.awe.2024q2",
+              "dimensions": [
+                "earnings_component",
+                "earnings_denominator",
+                "earnings_sector",
+                "earnings_series_reference",
+                "seasonal_adjustment"
+              ],
+              "dimension_values": {
+                "earnings_component": "ordinary_time",
+                "earnings_denominator": "fte",
+                "earnings_sector": "all_sectors",
+                "earnings_series_reference": "QEMQ.SBSZ9A",
+                "seasonal_adjustment": "actual"
+              },
+              "aggregate_fact_key": "ledger.aggregate_fact.v2:c07fd9ce3137fa20386bafe0",
+              "assertion": "observation"
+            },
+            "validation": {
+              "unit": "nzd_per_week",
+              "source_sha256": "1af2e7e37f1c108a2656842cf1f519c903e1a982bcdc03ee02d0ad888ebc3a97",
+              "source_vintage": "stats_nz_qes_june_2026",
+              "entity_role": "full_time_equivalent_employee",
+              "provenance_class": "survey_aggregate",
+              "assertion": "observation",
+              "period_coverage": {
+                "start_date": "2024-04-01",
+                "end_date": "2024-06-30"
+              },
+              "source_column_id": "SBSZ9A"
+            },
+            "weight": "1",
+            "sequence": 1
+          },
+          {
+            "selector": {
+              "source_name": "stats_nz",
+              "source_measure_id": "SBSZ9A",
+              "source_concept": "stats_nz.qes.average_weekly_earnings.ordinary_time",
+              "entity_name": "person",
+              "period_type": "quarter",
+              "period_value": "2024-Q3",
+              "geography_level": "country",
+              "geography_id": "NZ",
+              "geography_vintage": "current",
+              "record_set_id": "stats_nz.qes.awe.2024q3",
+              "dimensions": [
+                "earnings_component",
+                "earnings_denominator",
+                "earnings_sector",
+                "earnings_series_reference",
+                "seasonal_adjustment"
+              ],
+              "dimension_values": {
+                "earnings_component": "ordinary_time",
+                "earnings_denominator": "fte",
+                "earnings_sector": "all_sectors",
+                "earnings_series_reference": "QEMQ.SBSZ9A",
+                "seasonal_adjustment": "actual"
+              },
+              "aggregate_fact_key": "ledger.aggregate_fact.v2:54a0eeb64049ba4c15e397bf",
+              "assertion": "observation"
+            },
+            "validation": {
+              "unit": "nzd_per_week",
+              "source_sha256": "1af2e7e37f1c108a2656842cf1f519c903e1a982bcdc03ee02d0ad888ebc3a97",
+              "source_vintage": "stats_nz_qes_june_2026",
+              "entity_role": "full_time_equivalent_employee",
+              "provenance_class": "survey_aggregate",
+              "assertion": "observation",
+              "period_coverage": {
+                "start_date": "2024-07-01",
+                "end_date": "2024-09-30"
+              },
+              "source_column_id": "SBSZ9A"
+            },
+            "weight": "1",
+            "sequence": 2
+          },
+          {
+            "selector": {
+              "source_name": "stats_nz",
+              "source_measure_id": "SBSZ9A",
+              "source_concept": "stats_nz.qes.average_weekly_earnings.ordinary_time",
+              "entity_name": "person",
+              "period_type": "quarter",
+              "period_value": "2024-Q4",
+              "geography_level": "country",
+              "geography_id": "NZ",
+              "geography_vintage": "current",
+              "record_set_id": "stats_nz.qes.awe.2024q4",
+              "dimensions": [
+                "earnings_component",
+                "earnings_denominator",
+                "earnings_sector",
+                "earnings_series_reference",
+                "seasonal_adjustment"
+              ],
+              "dimension_values": {
+                "earnings_component": "ordinary_time",
+                "earnings_denominator": "fte",
+                "earnings_sector": "all_sectors",
+                "earnings_series_reference": "QEMQ.SBSZ9A",
+                "seasonal_adjustment": "actual"
+              },
+              "aggregate_fact_key": "ledger.aggregate_fact.v2:7fc35ba9682ceb04504f2ef9",
+              "assertion": "observation"
+            },
+            "validation": {
+              "unit": "nzd_per_week",
+              "source_sha256": "1af2e7e37f1c108a2656842cf1f519c903e1a982bcdc03ee02d0ad888ebc3a97",
+              "source_vintage": "stats_nz_qes_june_2026",
+              "entity_role": "full_time_equivalent_employee",
+              "provenance_class": "survey_aggregate",
+              "assertion": "observation",
+              "period_coverage": {
+                "start_date": "2024-10-01",
+                "end_date": "2024-12-31"
+              },
+              "source_column_id": "SBSZ9A"
+            },
+            "weight": "1",
+            "sequence": 3
+          }
+        ],
+        "target_schedule": [
+          {
+            "selector": {
+              "source_name": "stats_nz",
+              "source_measure_id": "SBSZ9A",
+              "source_concept": "stats_nz.qes.average_weekly_earnings.ordinary_time",
+              "entity_name": "person",
+              "period_type": "quarter",
+              "period_value": "2026-Q2",
+              "geography_level": "country",
+              "geography_id": "NZ",
+              "geography_vintage": "current",
+              "record_set_id": "stats_nz.qes.awe.2026q2",
+              "dimensions": [
+                "earnings_component",
+                "earnings_denominator",
+                "earnings_sector",
+                "earnings_series_reference",
+                "seasonal_adjustment"
+              ],
+              "dimension_values": {
+                "earnings_component": "ordinary_time",
+                "earnings_denominator": "fte",
+                "earnings_sector": "all_sectors",
+                "earnings_series_reference": "QEMQ.SBSZ9A",
+                "seasonal_adjustment": "actual"
+              },
+              "aggregate_fact_key": "ledger.aggregate_fact.v2:91583e3f39d11b8b4b2923d2",
+              "assertion": "observation"
+            },
+            "validation": {
+              "unit": "nzd_per_week",
+              "source_sha256": "1af2e7e37f1c108a2656842cf1f519c903e1a982bcdc03ee02d0ad888ebc3a97",
+              "source_vintage": "stats_nz_qes_june_2026",
+              "entity_role": "full_time_equivalent_employee",
+              "provenance_class": "survey_aggregate",
+              "assertion": "observation",
+              "period_coverage": {
+                "start_date": "2026-04-01",
+                "end_date": "2026-06-30"
+              },
+              "source_column_id": "SBSZ9A"
+            },
+            "weight": "1",
+            "sequence": 0,
+            "projection_offset": 0
+          },
+          {
+            "selector": {
+              "source_name": "stats_nz",
+              "source_measure_id": "SBSZ9A",
+              "source_concept": "stats_nz.qes.average_weekly_earnings.ordinary_time",
+              "entity_name": "person",
+              "period_type": "quarter",
+              "period_value": "2026-Q3",
+              "geography_level": "country",
+              "geography_id": "NZ",
+              "geography_vintage": "current",
+              "record_set_id": "stats_nz.qes.awe.2026q3",
+              "dimensions": [
+                "earnings_component",
+                "earnings_denominator",
+                "earnings_sector",
+                "earnings_series_reference",
+                "seasonal_adjustment"
+              ],
+              "dimension_values": {
+                "earnings_component": "ordinary_time",
+                "earnings_denominator": "fte",
+                "earnings_sector": "all_sectors",
+                "earnings_series_reference": "QEMQ.SBSZ9A",
+                "seasonal_adjustment": "actual"
+              },
+              "assertion": "observation"
+            },
+            "validation": {
+              "unit": "nzd_per_week",
+              "source_sha256": "1af2e7e37f1c108a2656842cf1f519c903e1a982bcdc03ee02d0ad888ebc3a97",
+              "source_vintage": "stats_nz_qes_june_2026",
+              "entity_role": "full_time_equivalent_employee",
+              "provenance_class": "survey_aggregate",
+              "assertion": "observation",
+              "period_coverage": {
+                "start_date": "2026-07-01",
+                "end_date": "2026-09-30"
+              },
+              "source_column_id": "SBSZ9A"
+            },
+            "weight": "1",
+            "sequence": 1,
+            "projection_offset": 1
+          },
+          {
+            "selector": {
+              "source_name": "stats_nz",
+              "source_measure_id": "SBSZ9A",
+              "source_concept": "stats_nz.qes.average_weekly_earnings.ordinary_time",
+              "entity_name": "person",
+              "period_type": "quarter",
+              "period_value": "2026-Q4",
+              "geography_level": "country",
+              "geography_id": "NZ",
+              "geography_vintage": "current",
+              "record_set_id": "stats_nz.qes.awe.2026q4",
+              "dimensions": [
+                "earnings_component",
+                "earnings_denominator",
+                "earnings_sector",
+                "earnings_series_reference",
+                "seasonal_adjustment"
+              ],
+              "dimension_values": {
+                "earnings_component": "ordinary_time",
+                "earnings_denominator": "fte",
+                "earnings_sector": "all_sectors",
+                "earnings_series_reference": "QEMQ.SBSZ9A",
+                "seasonal_adjustment": "actual"
+              },
+              "assertion": "observation"
+            },
+            "validation": {
+              "unit": "nzd_per_week",
+              "source_sha256": "1af2e7e37f1c108a2656842cf1f519c903e1a982bcdc03ee02d0ad888ebc3a97",
+              "source_vintage": "stats_nz_qes_june_2026",
+              "entity_role": "full_time_equivalent_employee",
+              "provenance_class": "survey_aggregate",
+              "assertion": "observation",
+              "period_coverage": {
+                "start_date": "2026-10-01",
+                "end_date": "2026-12-31"
+              },
+              "source_column_id": "SBSZ9A"
+            },
+            "weight": "1",
+            "sequence": 2,
+            "projection_offset": 2
+          },
+          {
+            "selector": {
+              "source_name": "stats_nz",
+              "source_measure_id": "SBSZ9A",
+              "source_concept": "stats_nz.qes.average_weekly_earnings.ordinary_time",
+              "entity_name": "person",
+              "period_type": "quarter",
+              "period_value": "2027-Q1",
+              "geography_level": "country",
+              "geography_id": "NZ",
+              "geography_vintage": "current",
+              "record_set_id": "stats_nz.qes.awe.2027q1",
+              "dimensions": [
+                "earnings_component",
+                "earnings_denominator",
+                "earnings_sector",
+                "earnings_series_reference",
+                "seasonal_adjustment"
+              ],
+              "dimension_values": {
+                "earnings_component": "ordinary_time",
+                "earnings_denominator": "fte",
+                "earnings_sector": "all_sectors",
+                "earnings_series_reference": "QEMQ.SBSZ9A",
+                "seasonal_adjustment": "actual"
+              },
+              "assertion": "observation"
+            },
+            "validation": {
+              "unit": "nzd_per_week",
+              "source_sha256": "1af2e7e37f1c108a2656842cf1f519c903e1a982bcdc03ee02d0ad888ebc3a97",
+              "source_vintage": "stats_nz_qes_june_2026",
+              "entity_role": "full_time_equivalent_employee",
+              "provenance_class": "survey_aggregate",
+              "assertion": "observation",
+              "period_coverage": {
+                "start_date": "2027-01-01",
+                "end_date": "2027-03-31"
+              },
+              "source_column_id": "SBSZ9A"
+            },
+            "weight": "1",
+            "sequence": 3,
+            "projection_offset": 3
+          }
+        ],
+        "growth": {
+          "selector": {
+            "source_name": "treasury",
+            "source_measure_id": "average_weekly_earnings_annual_percentage_change",
+            "source_concept": "treasury.prefu26.average_weekly_earnings_annual_percentage_change",
+            "entity_name": "government",
+            "period_type": "fiscal_year",
+            "period_value": 2026,
+            "geography_level": "country",
+            "geography_id": "NZ",
+            "geography_vintage": "current",
+            "record_set_id": "treasury.prefu26.average_weekly_earnings.fy2026",
+            "dimensions": [
+              "earnings_component",
+              "publication_status"
+            ],
+            "dimension_values": {
+              "earnings_component": "ordinary_time",
+              "publication_status": "Forecast"
+            },
+            "aggregate_fact_key": "ledger.aggregate_fact.v2:aba7d3d54489b068116e6a25",
+            "assertion": "source_projection",
+            "source_table": "PREFU 2026 Table 4.1 - Key economic assumptions for fiscal forecasts"
+          },
+          "validation": {
+            "unit": "percent",
+            "source_sha256": "e2486375dde515d0722f8c3022f481804bb014beb83c81b8bfc99bc9426544d9",
+            "source_vintage": "prefu_2026_09_29",
+            "entity_role": "forecaster",
+            "provenance_class": "model_output",
+            "assertion": "source_projection",
+            "period_coverage": {
+              "start_date": "2026-07-01",
+              "end_date": "2027-06-30"
+            },
+            "source_column_id": "year_ending_30_june_2027"
+          },
+          "unit_multiplier": "0.01",
+          "scenario_delta": "0.5",
+          "assertion_policy": "allow_source_projection",
+          "sensitivity_provenance": [
+            "d1599: symmetric ±0.5 percentage-point Microcosm sensitivity; high is not a Treasury forecast path"
+          ]
+        },
+        "subperiods_per_year": 4,
+        "projection_policy": "observed_preferred_latest_contiguous",
+        "rounding": {
+          "digits": 6,
+          "mode": "nearest_half_even"
+        },
+        "expected_operational_factor": {
+          "numerator": 1081052,
+          "denominator": 1000000
+        },
+        "validity": {
+          "declared_on": "2026-10-23",
+          "valid_from": "2026-10-23",
+          "valid_until": "2026-11-03",
+          "as_of": "2026-10-23"
+        },
+        "evidence": [
+          "Stats NZ QES Table 7; QEMQ.SBSZ9A; ordinary-time FTE, all sectors, actual",
+          "Treasury PREFU 2026 Table 4.1; year ending 30 June 2027; Chronicle period 2026",
+          "Declared calendar-2024 money convention (H1), covering flows and asset stocks; the recorded _time_period is a consistency check, not authentication"
+        ],
+        "decision_references": [
+          "d1952 card; NZ money year build item: donor money is calendar-2024 dollars",
+          "G8-w hub rulings 5, 24 October 2026, items H1–H3",
+          "G8-r2 hub rulings 3, 23 October 2026, section 1"
+        ]
+      },
+      "operational_factor": {
+        "numerator": 1081052,
+        "denominator": 1000000
+      },
+      "receipt": {
+        "schema_version": 1,
+        "operation": "projected_period_average_ratio",
+        "operation_version": 1,
+        "factor_id": "donor_cy2024_to_ty2027_high",
+        "declaration_sha256": "2dea33aa96b4a553780bf9f7b361b48a1487470c710a080b79330e8db3793bbd",
+        "feed_identity": {
+          "source_commit": "8f4cfd573c0d6f580d9c51cd67e8f449a42ed174",
+          "facts_sha256": "03f5ea0fe60e6dc93a135ab32cd5cd6ffb56388e702a4734cdb515a956e36b18",
+          "manifest_sha256": "1ea2d1eeb122275a9ce7f861ca3e20e21dd695772c04ce9d71114168e92fe053",
+          "artifact_schema_version": "policyengine_ledger.consumer_artifact.v2",
+          "consumer_fact_schema_versions": [
+            "chronicle.consumer_fact.v4"
+          ],
+          "consumer_fact_schema_sha256": "d953306d6f01fbc64db4372d0262d3012ee590269f8a25b276b18dca0626c6a0",
+          "fact_row_count": 12368
+        },
+        "source_period": "CY2024",
+        "target_period": 2027,
+        "source_schedule": [
+          {
+            "selector": {
+              "source_name": "stats_nz",
+              "source_measure_id": "SBSZ9A",
+              "source_concept": "stats_nz.qes.average_weekly_earnings.ordinary_time",
+              "entity_name": "person",
+              "period_type": "quarter",
+              "period_value": "2024-Q1",
+              "geography_level": "country",
+              "geography_id": "NZ",
+              "geography_vintage": "current",
+              "record_set_id": "stats_nz.qes.awe.2024q1",
+              "dimensions": [
+                "earnings_component",
+                "earnings_denominator",
+                "earnings_sector",
+                "earnings_series_reference",
+                "seasonal_adjustment"
+              ],
+              "dimension_values": {
+                "earnings_component": "ordinary_time",
+                "earnings_denominator": "fte",
+                "earnings_sector": "all_sectors",
+                "earnings_series_reference": "QEMQ.SBSZ9A",
+                "seasonal_adjustment": "actual"
+              },
+              "aggregate_fact_key": "ledger.aggregate_fact.v2:854e91ec1dd95e396659ad8e",
+              "assertion": "observation"
+            },
+            "aggregate_fact_key": "ledger.aggregate_fact.v2:854e91ec1dd95e396659ad8e",
+            "decimal_operand": "1563.54",
+            "numeric_token_proof": {
+              "numeric_representation": "binary_float_with_lexical_token",
+              "lexical_token": "1563.54",
+              "recovered_decimal": "1563.54",
+              "decimal_values_equal": true
+            },
+            "validation": {
+              "unit": "nzd_per_week",
+              "source_sha256": "25053dcbd343320cad72e2896475eaebaf5f5bb0b5965ca788506ca15efcea30",
+              "source_vintage": "stats_nz_qes_june_2025",
+              "entity_role": "full_time_equivalent_employee",
+              "provenance_class": "survey_aggregate",
+              "assertion": "observation",
+              "period_coverage": {
+                "start_date": "2024-01-01",
+                "end_date": "2024-03-31"
+              },
+              "source_column_id": "SBSZ9A"
+            },
+            "period": {
+              "type": "quarter",
+              "value": "2024-Q1"
+            },
+            "source": {
+              "extracted_at": "2026-10-22",
+              "extraction_method": "CellSelectorSpec and SourceRecordSpec resolved from cells",
+              "method_notes": "Each fact carries source_record_id, source_cell_keys, and source_row_keys when available.",
+              "raw_r2_bucket": "ledger-raw",
+              "raw_r2_key": "raw/nz/stats_nz/qes_average_weekly_earnings_june_2025/2025/25053dcbd343320cad72e2896475eaebaf5f5bb0b5965ca788506ca15efcea30/quarterly-employment-survey-june-2025-quarter.xlsx",
+              "raw_r2_uri": "r2://ledger-raw/raw/nz/stats_nz/qes_average_weekly_earnings_june_2025/2025/25053dcbd343320cad72e2896475eaebaf5f5bb0b5965ca788506ca15efcea30/quarterly-employment-survey-june-2025-quarter.xlsx",
+              "source_file": "quarterly-employment-survey-june-2025-quarter.xlsx",
+              "source_name": "stats_nz",
+              "source_sha256": "25053dcbd343320cad72e2896475eaebaf5f5bb0b5965ca788506ca15efcea30",
+              "source_size_bytes": 135784,
+              "source_table": "Quarterly Employment Survey June 2025 quarter, Table 7: Average weekly earnings for FTEs, by sector",
+              "url": "https://www.stats.govt.nz/assets/Uploads/Labour-market-statistics/Labour-market-statistics-June-2025-quarter/Download-data/quarterly-employment-survey-june-2025-quarter.xlsx",
+              "vintage": "stats_nz_qes_june_2025"
+            },
+            "unit": "nzd_per_week",
+            "assertion": "observation",
+            "provenance_class": "survey_aggregate",
+            "entity_role": "full_time_equivalent_employee",
+            "period_coverage": {
+              "basis": "calendar",
+              "end_date": "2024-03-31",
+              "notes": "QES reference period is the pay week ending on or before the 20th of the quarter’s middle month (hub-supplied source-period definition); the fact period is the published quarter, not the pay week. Actual, not seasonally adjusted. No annual averaging or period alignment.",
+              "source_period_label": "Mar 2024 quarter",
+              "start_date": "2024-01-01"
+            },
+            "weight": "1",
+            "sequence": 0
+          },
+          {
+            "selector": {
+              "source_name": "stats_nz",
+              "source_measure_id": "SBSZ9A",
+              "source_concept": "stats_nz.qes.average_weekly_earnings.ordinary_time",
+              "entity_name": "person",
+              "period_type": "quarter",
+              "period_value": "2024-Q2",
+              "geography_level": "country",
+              "geography_id": "NZ",
+              "geography_vintage": "current",
+              "record_set_id": "stats_nz.qes.awe.2024q2",
+              "dimensions": [
+                "earnings_component",
+                "earnings_denominator",
+                "earnings_sector",
+                "earnings_series_reference",
+                "seasonal_adjustment"
+              ],
+              "dimension_values": {
+                "earnings_component": "ordinary_time",
+                "earnings_denominator": "fte",
+                "earnings_sector": "all_sectors",
+                "earnings_series_reference": "QEMQ.SBSZ9A",
+                "seasonal_adjustment": "actual"
+              },
+              "aggregate_fact_key": "ledger.aggregate_fact.v2:c07fd9ce3137fa20386bafe0",
+              "assertion": "observation"
+            },
+            "aggregate_fact_key": "ledger.aggregate_fact.v2:c07fd9ce3137fa20386bafe0",
+            "decimal_operand": "1586.32",
+            "numeric_token_proof": {
+              "numeric_representation": "binary_float_with_lexical_token",
+              "lexical_token": "1586.32",
+              "recovered_decimal": "1586.32",
+              "decimal_values_equal": true
+            },
+            "validation": {
+              "unit": "nzd_per_week",
+              "source_sha256": "1af2e7e37f1c108a2656842cf1f519c903e1a982bcdc03ee02d0ad888ebc3a97",
+              "source_vintage": "stats_nz_qes_june_2026",
+              "entity_role": "full_time_equivalent_employee",
+              "provenance_class": "survey_aggregate",
+              "assertion": "observation",
+              "period_coverage": {
+                "start_date": "2024-04-01",
+                "end_date": "2024-06-30"
+              },
+              "source_column_id": "SBSZ9A"
+            },
+            "period": {
+              "type": "quarter",
+              "value": "2024-Q2"
+            },
+            "source": {
+              "extracted_at": "2026-10-22",
+              "extraction_method": "CellSelectorSpec and SourceRecordSpec resolved from cells",
+              "method_notes": "Each fact carries source_record_id, source_cell_keys, and source_row_keys when available.",
+              "raw_r2_bucket": "ledger-raw",
+              "raw_r2_key": "raw/nz/stats_nz/qes_average_weekly_earnings_june_2026/2026/1af2e7e37f1c108a2656842cf1f519c903e1a982bcdc03ee02d0ad888ebc3a97/quarterly-employment-survey-june-2026-quarter.xlsx",
+              "raw_r2_uri": "r2://ledger-raw/raw/nz/stats_nz/qes_average_weekly_earnings_june_2026/2026/1af2e7e37f1c108a2656842cf1f519c903e1a982bcdc03ee02d0ad888ebc3a97/quarterly-employment-survey-june-2026-quarter.xlsx",
+              "source_file": "quarterly-employment-survey-june-2026-quarter.xlsx",
+              "source_name": "stats_nz",
+              "source_sha256": "1af2e7e37f1c108a2656842cf1f519c903e1a982bcdc03ee02d0ad888ebc3a97",
+              "source_size_bytes": 124556,
+              "source_table": "Quarterly Employment Survey June 2026 quarter, Table 7: Average weekly earnings for FTEs, by sector",
+              "url": "https://www.stats.govt.nz/assets/Uploads/Labour-market-statistics/Labour-market-statistics-June-2026-quarter/Download-data/quarterly-employment-survey-june-2026-quarter.xlsx",
+              "vintage": "stats_nz_qes_june_2026"
+            },
+            "unit": "nzd_per_week",
+            "assertion": "observation",
+            "provenance_class": "survey_aggregate",
+            "entity_role": "full_time_equivalent_employee",
+            "period_coverage": {
+              "basis": "calendar",
+              "end_date": "2024-06-30",
+              "notes": "QES reference period is the pay week ending on or before the 20th of the quarter’s middle month (hub-supplied source-period definition); the fact period is the published quarter, not the pay week. Actual, not seasonally adjusted. No annual averaging or period alignment.",
+              "source_period_label": "Jun 2024 quarter",
+              "start_date": "2024-04-01"
+            },
+            "weight": "1",
+            "sequence": 1
+          },
+          {
+            "selector": {
+              "source_name": "stats_nz",
+              "source_measure_id": "SBSZ9A",
+              "source_concept": "stats_nz.qes.average_weekly_earnings.ordinary_time",
+              "entity_name": "person",
+              "period_type": "quarter",
+              "period_value": "2024-Q3",
+              "geography_level": "country",
+              "geography_id": "NZ",
+              "geography_vintage": "current",
+              "record_set_id": "stats_nz.qes.awe.2024q3",
+              "dimensions": [
+                "earnings_component",
+                "earnings_denominator",
+                "earnings_sector",
+                "earnings_series_reference",
+                "seasonal_adjustment"
+              ],
+              "dimension_values": {
+                "earnings_component": "ordinary_time",
+                "earnings_denominator": "fte",
+                "earnings_sector": "all_sectors",
+                "earnings_series_reference": "QEMQ.SBSZ9A",
+                "seasonal_adjustment": "actual"
+              },
+              "aggregate_fact_key": "ledger.aggregate_fact.v2:54a0eeb64049ba4c15e397bf",
+              "assertion": "observation"
+            },
+            "aggregate_fact_key": "ledger.aggregate_fact.v2:54a0eeb64049ba4c15e397bf",
+            "decimal_operand": "1595.11",
+            "numeric_token_proof": {
+              "numeric_representation": "binary_float_with_lexical_token",
+              "lexical_token": "1595.11",
+              "recovered_decimal": "1595.11",
+              "decimal_values_equal": true
+            },
+            "validation": {
+              "unit": "nzd_per_week",
+              "source_sha256": "1af2e7e37f1c108a2656842cf1f519c903e1a982bcdc03ee02d0ad888ebc3a97",
+              "source_vintage": "stats_nz_qes_june_2026",
+              "entity_role": "full_time_equivalent_employee",
+              "provenance_class": "survey_aggregate",
+              "assertion": "observation",
+              "period_coverage": {
+                "start_date": "2024-07-01",
+                "end_date": "2024-09-30"
+              },
+              "source_column_id": "SBSZ9A"
+            },
+            "period": {
+              "type": "quarter",
+              "value": "2024-Q3"
+            },
+            "source": {
+              "extracted_at": "2026-10-22",
+              "extraction_method": "CellSelectorSpec and SourceRecordSpec resolved from cells",
+              "method_notes": "Each fact carries source_record_id, source_cell_keys, and source_row_keys when available.",
+              "raw_r2_bucket": "ledger-raw",
+              "raw_r2_key": "raw/nz/stats_nz/qes_average_weekly_earnings_june_2026/2026/1af2e7e37f1c108a2656842cf1f519c903e1a982bcdc03ee02d0ad888ebc3a97/quarterly-employment-survey-june-2026-quarter.xlsx",
+              "raw_r2_uri": "r2://ledger-raw/raw/nz/stats_nz/qes_average_weekly_earnings_june_2026/2026/1af2e7e37f1c108a2656842cf1f519c903e1a982bcdc03ee02d0ad888ebc3a97/quarterly-employment-survey-june-2026-quarter.xlsx",
+              "source_file": "quarterly-employment-survey-june-2026-quarter.xlsx",
+              "source_name": "stats_nz",
+              "source_sha256": "1af2e7e37f1c108a2656842cf1f519c903e1a982bcdc03ee02d0ad888ebc3a97",
+              "source_size_bytes": 124556,
+              "source_table": "Quarterly Employment Survey June 2026 quarter, Table 7: Average weekly earnings for FTEs, by sector",
+              "url": "https://www.stats.govt.nz/assets/Uploads/Labour-market-statistics/Labour-market-statistics-June-2026-quarter/Download-data/quarterly-employment-survey-june-2026-quarter.xlsx",
+              "vintage": "stats_nz_qes_june_2026"
+            },
+            "unit": "nzd_per_week",
+            "assertion": "observation",
+            "provenance_class": "survey_aggregate",
+            "entity_role": "full_time_equivalent_employee",
+            "period_coverage": {
+              "basis": "calendar",
+              "end_date": "2024-09-30",
+              "notes": "QES reference period is the pay week ending on or before the 20th of the quarter’s middle month (hub-supplied source-period definition); the fact period is the published quarter, not the pay week. Actual, not seasonally adjusted. No annual averaging or period alignment.",
+              "source_period_label": "Sep 2024 quarter",
+              "start_date": "2024-07-01"
+            },
+            "weight": "1",
+            "sequence": 2
+          },
+          {
+            "selector": {
+              "source_name": "stats_nz",
+              "source_measure_id": "SBSZ9A",
+              "source_concept": "stats_nz.qes.average_weekly_earnings.ordinary_time",
+              "entity_name": "person",
+              "period_type": "quarter",
+              "period_value": "2024-Q4",
+              "geography_level": "country",
+              "geography_id": "NZ",
+              "geography_vintage": "current",
+              "record_set_id": "stats_nz.qes.awe.2024q4",
+              "dimensions": [
+                "earnings_component",
+                "earnings_denominator",
+                "earnings_sector",
+                "earnings_series_reference",
+                "seasonal_adjustment"
+              ],
+              "dimension_values": {
+                "earnings_component": "ordinary_time",
+                "earnings_denominator": "fte",
+                "earnings_sector": "all_sectors",
+                "earnings_series_reference": "QEMQ.SBSZ9A",
+                "seasonal_adjustment": "actual"
+              },
+              "aggregate_fact_key": "ledger.aggregate_fact.v2:7fc35ba9682ceb04504f2ef9",
+              "assertion": "observation"
+            },
+            "aggregate_fact_key": "ledger.aggregate_fact.v2:7fc35ba9682ceb04504f2ef9",
+            "decimal_operand": "1622.73",
+            "numeric_token_proof": {
+              "numeric_representation": "binary_float_with_lexical_token",
+              "lexical_token": "1622.73",
+              "recovered_decimal": "1622.73",
+              "decimal_values_equal": true
+            },
+            "validation": {
+              "unit": "nzd_per_week",
+              "source_sha256": "1af2e7e37f1c108a2656842cf1f519c903e1a982bcdc03ee02d0ad888ebc3a97",
+              "source_vintage": "stats_nz_qes_june_2026",
+              "entity_role": "full_time_equivalent_employee",
+              "provenance_class": "survey_aggregate",
+              "assertion": "observation",
+              "period_coverage": {
+                "start_date": "2024-10-01",
+                "end_date": "2024-12-31"
+              },
+              "source_column_id": "SBSZ9A"
+            },
+            "period": {
+              "type": "quarter",
+              "value": "2024-Q4"
+            },
+            "source": {
+              "extracted_at": "2026-10-22",
+              "extraction_method": "CellSelectorSpec and SourceRecordSpec resolved from cells",
+              "method_notes": "Each fact carries source_record_id, source_cell_keys, and source_row_keys when available.",
+              "raw_r2_bucket": "ledger-raw",
+              "raw_r2_key": "raw/nz/stats_nz/qes_average_weekly_earnings_june_2026/2026/1af2e7e37f1c108a2656842cf1f519c903e1a982bcdc03ee02d0ad888ebc3a97/quarterly-employment-survey-june-2026-quarter.xlsx",
+              "raw_r2_uri": "r2://ledger-raw/raw/nz/stats_nz/qes_average_weekly_earnings_june_2026/2026/1af2e7e37f1c108a2656842cf1f519c903e1a982bcdc03ee02d0ad888ebc3a97/quarterly-employment-survey-june-2026-quarter.xlsx",
+              "source_file": "quarterly-employment-survey-june-2026-quarter.xlsx",
+              "source_name": "stats_nz",
+              "source_sha256": "1af2e7e37f1c108a2656842cf1f519c903e1a982bcdc03ee02d0ad888ebc3a97",
+              "source_size_bytes": 124556,
+              "source_table": "Quarterly Employment Survey June 2026 quarter, Table 7: Average weekly earnings for FTEs, by sector",
+              "url": "https://www.stats.govt.nz/assets/Uploads/Labour-market-statistics/Labour-market-statistics-June-2026-quarter/Download-data/quarterly-employment-survey-june-2026-quarter.xlsx",
+              "vintage": "stats_nz_qes_june_2026"
+            },
+            "unit": "nzd_per_week",
+            "assertion": "observation",
+            "provenance_class": "survey_aggregate",
+            "entity_role": "full_time_equivalent_employee",
+            "period_coverage": {
+              "basis": "calendar",
+              "end_date": "2024-12-31",
+              "notes": "QES reference period is the pay week ending on or before the 20th of the quarter’s middle month (hub-supplied source-period definition); the fact period is the published quarter, not the pay week. Actual, not seasonally adjusted. No annual averaging or period alignment.",
+              "source_period_label": "Dec 2024 quarter",
+              "start_date": "2024-10-01"
+            },
+            "weight": "1",
+            "sequence": 3
+          }
+        ],
+        "target_schedule": [
+          {
+            "selector": {
+              "source_name": "stats_nz",
+              "source_measure_id": "SBSZ9A",
+              "source_concept": "stats_nz.qes.average_weekly_earnings.ordinary_time",
+              "entity_name": "person",
+              "period_type": "quarter",
+              "period_value": "2026-Q2",
+              "geography_level": "country",
+              "geography_id": "NZ",
+              "geography_vintage": "current",
+              "record_set_id": "stats_nz.qes.awe.2026q2",
+              "dimensions": [
+                "earnings_component",
+                "earnings_denominator",
+                "earnings_sector",
+                "earnings_series_reference",
+                "seasonal_adjustment"
+              ],
+              "dimension_values": {
+                "earnings_component": "ordinary_time",
+                "earnings_denominator": "fte",
+                "earnings_sector": "all_sectors",
+                "earnings_series_reference": "QEMQ.SBSZ9A",
+                "seasonal_adjustment": "actual"
+              },
+              "aggregate_fact_key": "ledger.aggregate_fact.v2:91583e3f39d11b8b4b2923d2",
+              "assertion": "observation"
+            },
+            "aggregate_fact_key": "ledger.aggregate_fact.v2:91583e3f39d11b8b4b2923d2",
+            "decimal_operand": "1700.68",
+            "numeric_token_proof": {
+              "numeric_representation": "binary_float_with_lexical_token",
+              "lexical_token": "1700.68",
+              "recovered_decimal": "1700.68",
+              "decimal_values_equal": true
+            },
+            "validation": {
+              "unit": "nzd_per_week",
+              "source_sha256": "1af2e7e37f1c108a2656842cf1f519c903e1a982bcdc03ee02d0ad888ebc3a97",
+              "source_vintage": "stats_nz_qes_june_2026",
+              "entity_role": "full_time_equivalent_employee",
+              "provenance_class": "survey_aggregate",
+              "assertion": "observation",
+              "period_coverage": {
+                "start_date": "2026-04-01",
+                "end_date": "2026-06-30"
+              },
+              "source_column_id": "SBSZ9A"
+            },
+            "period": {
+              "type": "quarter",
+              "value": "2026-Q2"
+            },
+            "source": {
+              "extracted_at": "2026-10-22",
+              "extraction_method": "CellSelectorSpec and SourceRecordSpec resolved from cells",
+              "method_notes": "Each fact carries source_record_id, source_cell_keys, and source_row_keys when available.",
+              "raw_r2_bucket": "ledger-raw",
+              "raw_r2_key": "raw/nz/stats_nz/qes_average_weekly_earnings_june_2026/2026/1af2e7e37f1c108a2656842cf1f519c903e1a982bcdc03ee02d0ad888ebc3a97/quarterly-employment-survey-june-2026-quarter.xlsx",
+              "raw_r2_uri": "r2://ledger-raw/raw/nz/stats_nz/qes_average_weekly_earnings_june_2026/2026/1af2e7e37f1c108a2656842cf1f519c903e1a982bcdc03ee02d0ad888ebc3a97/quarterly-employment-survey-june-2026-quarter.xlsx",
+              "source_file": "quarterly-employment-survey-june-2026-quarter.xlsx",
+              "source_name": "stats_nz",
+              "source_sha256": "1af2e7e37f1c108a2656842cf1f519c903e1a982bcdc03ee02d0ad888ebc3a97",
+              "source_size_bytes": 124556,
+              "source_table": "Quarterly Employment Survey June 2026 quarter, Table 7: Average weekly earnings for FTEs, by sector",
+              "url": "https://www.stats.govt.nz/assets/Uploads/Labour-market-statistics/Labour-market-statistics-June-2026-quarter/Download-data/quarterly-employment-survey-june-2026-quarter.xlsx",
+              "vintage": "stats_nz_qes_june_2026"
+            },
+            "unit": "nzd_per_week",
+            "assertion": "observation",
+            "provenance_class": "survey_aggregate",
+            "entity_role": "full_time_equivalent_employee",
+            "period_coverage": {
+              "basis": "calendar",
+              "end_date": "2026-06-30",
+              "notes": "QES reference period is the pay week ending on or before the 20th of the quarter’s middle month (hub-supplied source-period definition); the fact period is the published quarter, not the pay week. Actual, not seasonally adjusted. No annual averaging or period alignment.",
+              "source_period_label": "Jun 2026 quarter",
+              "start_date": "2026-04-01"
+            },
+            "status": "observed",
+            "sequence": 0,
+            "weight": "1",
+            "projection_offset": 0
+          },
+          {
+            "selector": {
+              "source_name": "stats_nz",
+              "source_measure_id": "SBSZ9A",
+              "source_concept": "stats_nz.qes.average_weekly_earnings.ordinary_time",
+              "entity_name": "person",
+              "period_type": "quarter",
+              "period_value": "2026-Q3",
+              "geography_level": "country",
+              "geography_id": "NZ",
+              "geography_vintage": "current",
+              "record_set_id": "stats_nz.qes.awe.2026q3",
+              "dimensions": [
+                "earnings_component",
+                "earnings_denominator",
+                "earnings_sector",
+                "earnings_series_reference",
+                "seasonal_adjustment"
+              ],
+              "dimension_values": {
+                "earnings_component": "ordinary_time",
+                "earnings_denominator": "fte",
+                "earnings_sector": "all_sectors",
+                "earnings_series_reference": "QEMQ.SBSZ9A",
+                "seasonal_adjustment": "actual"
+              },
+              "assertion": "observation"
+            },
+            "validation": {
+              "unit": "nzd_per_week",
+              "source_sha256": "1af2e7e37f1c108a2656842cf1f519c903e1a982bcdc03ee02d0ad888ebc3a97",
+              "source_vintage": "stats_nz_qes_june_2026",
+              "entity_role": "full_time_equivalent_employee",
+              "provenance_class": "survey_aggregate",
+              "assertion": "observation",
+              "period_coverage": {
+                "start_date": "2026-07-01",
+                "end_date": "2026-09-30"
+              },
+              "source_column_id": "SBSZ9A"
+            },
+            "status": "projected",
+            "sequence": 1,
+            "weight": "1",
+            "projection_offset": 1,
+            "projection_anchor": {
+              "aggregate_fact_key": "ledger.aggregate_fact.v2:91583e3f39d11b8b4b2923d2"
+            }
+          },
+          {
+            "selector": {
+              "source_name": "stats_nz",
+              "source_measure_id": "SBSZ9A",
+              "source_concept": "stats_nz.qes.average_weekly_earnings.ordinary_time",
+              "entity_name": "person",
+              "period_type": "quarter",
+              "period_value": "2026-Q4",
+              "geography_level": "country",
+              "geography_id": "NZ",
+              "geography_vintage": "current",
+              "record_set_id": "stats_nz.qes.awe.2026q4",
+              "dimensions": [
+                "earnings_component",
+                "earnings_denominator",
+                "earnings_sector",
+                "earnings_series_reference",
+                "seasonal_adjustment"
+              ],
+              "dimension_values": {
+                "earnings_component": "ordinary_time",
+                "earnings_denominator": "fte",
+                "earnings_sector": "all_sectors",
+                "earnings_series_reference": "QEMQ.SBSZ9A",
+                "seasonal_adjustment": "actual"
+              },
+              "assertion": "observation"
+            },
+            "validation": {
+              "unit": "nzd_per_week",
+              "source_sha256": "1af2e7e37f1c108a2656842cf1f519c903e1a982bcdc03ee02d0ad888ebc3a97",
+              "source_vintage": "stats_nz_qes_june_2026",
+              "entity_role": "full_time_equivalent_employee",
+              "provenance_class": "survey_aggregate",
+              "assertion": "observation",
+              "period_coverage": {
+                "start_date": "2026-10-01",
+                "end_date": "2026-12-31"
+              },
+              "source_column_id": "SBSZ9A"
+            },
+            "status": "projected",
+            "sequence": 2,
+            "weight": "1",
+            "projection_offset": 2,
+            "projection_anchor": {
+              "aggregate_fact_key": "ledger.aggregate_fact.v2:91583e3f39d11b8b4b2923d2"
+            }
+          },
+          {
+            "selector": {
+              "source_name": "stats_nz",
+              "source_measure_id": "SBSZ9A",
+              "source_concept": "stats_nz.qes.average_weekly_earnings.ordinary_time",
+              "entity_name": "person",
+              "period_type": "quarter",
+              "period_value": "2027-Q1",
+              "geography_level": "country",
+              "geography_id": "NZ",
+              "geography_vintage": "current",
+              "record_set_id": "stats_nz.qes.awe.2027q1",
+              "dimensions": [
+                "earnings_component",
+                "earnings_denominator",
+                "earnings_sector",
+                "earnings_series_reference",
+                "seasonal_adjustment"
+              ],
+              "dimension_values": {
+                "earnings_component": "ordinary_time",
+                "earnings_denominator": "fte",
+                "earnings_sector": "all_sectors",
+                "earnings_series_reference": "QEMQ.SBSZ9A",
+                "seasonal_adjustment": "actual"
+              },
+              "assertion": "observation"
+            },
+            "validation": {
+              "unit": "nzd_per_week",
+              "source_sha256": "1af2e7e37f1c108a2656842cf1f519c903e1a982bcdc03ee02d0ad888ebc3a97",
+              "source_vintage": "stats_nz_qes_june_2026",
+              "entity_role": "full_time_equivalent_employee",
+              "provenance_class": "survey_aggregate",
+              "assertion": "observation",
+              "period_coverage": {
+                "start_date": "2027-01-01",
+                "end_date": "2027-03-31"
+              },
+              "source_column_id": "SBSZ9A"
+            },
+            "status": "projected",
+            "sequence": 3,
+            "weight": "1",
+            "projection_offset": 3,
+            "projection_anchor": {
+              "aggregate_fact_key": "ledger.aggregate_fact.v2:91583e3f39d11b8b4b2923d2"
+            }
+          }
+        ],
+        "subperiods_per_year": 4,
+        "projection_policy": "observed_preferred_latest_contiguous",
+        "denominator_mean": {
+          "numerator": 63677,
+          "denominator": 40
+        },
+        "growth": {
+          "selector": {
+            "source_name": "treasury",
+            "source_measure_id": "average_weekly_earnings_annual_percentage_change",
+            "source_concept": "treasury.prefu26.average_weekly_earnings_annual_percentage_change",
+            "entity_name": "government",
+            "period_type": "fiscal_year",
+            "period_value": 2026,
+            "geography_level": "country",
+            "geography_id": "NZ",
+            "geography_vintage": "current",
+            "record_set_id": "treasury.prefu26.average_weekly_earnings.fy2026",
+            "dimensions": [
+              "earnings_component",
+              "publication_status"
+            ],
+            "dimension_values": {
+              "earnings_component": "ordinary_time",
+              "publication_status": "Forecast"
+            },
+            "aggregate_fact_key": "ledger.aggregate_fact.v2:aba7d3d54489b068116e6a25",
+            "assertion": "source_projection",
+            "source_table": "PREFU 2026 Table 4.1 - Key economic assumptions for fiscal forecasts"
+          },
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:aba7d3d54489b068116e6a25",
+          "decimal_operand": "2.7",
+          "numeric_token_proof": {
+            "numeric_representation": "binary_float_with_lexical_token",
+            "lexical_token": "2.7",
+            "recovered_decimal": "2.7",
+            "decimal_values_equal": true
+          },
+          "validation": {
+            "unit": "percent",
+            "source_sha256": "e2486375dde515d0722f8c3022f481804bb014beb83c81b8bfc99bc9426544d9",
+            "source_vintage": "prefu_2026_09_29",
+            "entity_role": "forecaster",
+            "provenance_class": "model_output",
+            "assertion": "source_projection",
+            "period_coverage": {
+              "start_date": "2026-07-01",
+              "end_date": "2027-06-30"
+            },
+            "source_column_id": "year_ending_30_june_2027"
+          },
+          "period": {
+            "type": "fiscal_year",
+            "value": 2026
+          },
+          "source": {
+            "extracted_at": "2026-10-22",
+            "extraction_method": "CellSelectorSpec and SourceRecordSpec resolved from cells",
+            "method_notes": "Each fact carries source_record_id, source_cell_keys, and source_row_keys when available.",
+            "raw_r2_bucket": "ledger-raw",
+            "raw_r2_key": "raw/nz/treasury/treasury-prefu26-economic-assumptions/2026/e2486375dde515d0722f8c3022f481804bb014beb83c81b8bfc99bc9426544d9/prefu26-charts-data.xlsx",
+            "raw_r2_uri": "r2://ledger-raw/raw/nz/treasury/treasury-prefu26-economic-assumptions/2026/e2486375dde515d0722f8c3022f481804bb014beb83c81b8bfc99bc9426544d9/prefu26-charts-data.xlsx",
+            "source_file": "prefu26-charts-data.xlsx",
+            "source_name": "treasury",
+            "source_sha256": "e2486375dde515d0722f8c3022f481804bb014beb83c81b8bfc99bc9426544d9",
+            "source_size_bytes": 664670,
+            "source_table": "PREFU 2026 Table 4.1 - Key economic assumptions for fiscal forecasts",
+            "url": "https://www.treasury.govt.nz/sites/default/files/2026-09/prefu26-charts-data.xlsx",
+            "vintage": "prefu_2026_09_29"
+          },
+          "unit": "percent",
+          "assertion": "source_projection",
+          "provenance_class": "model_output",
+          "entity_role": "forecaster",
+          "period_coverage": {
+            "basis": "fiscal",
+            "end_date": "2027-06-30",
+            "notes": "Publisher Year ending 30 June 2027; Chronicle opening-year fiscal_year:2026. Publisher column status is Forecast. Footnote 3 (Table 4.1!C21:D21): Ordinary time. Footnote 4 (C22:D22): Measures are actuals except for real GDP and nominal GDP. 2026 earnings are therefore actuals despite the Forecast4 column heading; only 2027–2031 earnings are forecasts. The published annual percentage change is retained unchanged; no annual average, level, factor or period alignment is calculated.",
+            "source_period_label": "Year ending 30 June 2027",
+            "start_date": "2026-07-01"
+          },
+          "unit_multiplier": "0.01",
+          "scenario_delta": "0.5",
+          "sensitivity_provenance": [
+            "d1599: symmetric ±0.5 percentage-point Microcosm sensitivity; high is not a Treasury forecast path"
+          ],
+          "effective_growth": {
+            "numerator": 4,
+            "denominator": 125
+          }
+        },
+        "root_bounds": {
+          "lower": {
+            "numerator": 100790575349881,
+            "denominator": 100000000000000
+          },
+          "upper": {
+            "numerator": 50395287674941,
+            "denominator": 50000000000000
+          },
+          "exact": false,
+          "decimal_places": 14,
+          "degree": 4,
+          "radicand": {
+            "numerator": 129,
+            "denominator": 125
+          }
+        },
+        "numerator_mean_bounds": {
+          "lower": {
+            "numerator": 172095423947015521933465483088234150187075944797,
+            "denominator": 100000000000000000000000000000000000000000000
+          },
+          "upper": {
+            "numerator": 21511927993377262490437471966978882670435826057,
+            "denominator": 12500000000000000000000000000000000000000000
+          }
+        },
+        "unrounded_factor_bounds": {
+          "lower": {
+            "numerator": 172095423947015521933465483088234150187075944797,
+            "denominator": 159192500000000000000000000000000000000000000000
+          },
+          "upper": {
+            "numerator": 21511927993377262490437471966978882670435826057,
+            "denominator": 19899062500000000000000000000000000000000000000
+          }
+        },
+        "rounding": {
+          "digits": 6,
+          "mode": "nearest_half_even"
+        },
+        "operational_factor": {
+          "numerator": 1081052,
+          "denominator": 1000000
+        },
+        "validity": {
+          "declared_on": "2026-10-23",
+          "valid_from": "2026-10-23",
+          "valid_until": "2026-11-03",
+          "as_of": "2026-10-23"
+        },
+        "evidence": [
+          "Stats NZ QES Table 7; QEMQ.SBSZ9A; ordinary-time FTE, all sectors, actual",
+          "Treasury PREFU 2026 Table 4.1; year ending 30 June 2027; Chronicle period 2026",
+          "Declared calendar-2024 money convention (H1), covering flows and asset stocks; the recorded _time_period is a consistency check, not authentication"
+        ],
+        "decision_references": [
+          "d1952 card; NZ money year build item: donor money is calendar-2024 dollars",
+          "G8-w hub rulings 5, 24 October 2026, items H1–H3",
+          "G8-r2 hub rulings 3, 23 October 2026, section 1"
+        ],
+        "receipt_sha256": "a26a1e5d24afca6c15b33bc043379c8d96c497a8c30080c89c3c682427d24cbc"
+      }
     }
   ]
 }

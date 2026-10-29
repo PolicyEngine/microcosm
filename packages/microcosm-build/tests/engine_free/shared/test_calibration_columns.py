@@ -3,15 +3,17 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 
 import numpy as np
 import pandas as pd
 import pytest
-from hypothesis import given, settings
+from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
 from microcosm.build.calibration_columns import prepare_calibration_columns
+from microcosm.build.calibration_predicates import calibration_predicate_mask
 from microcosm.build.country_spec import _validate_target_references
 from microcosm.build.reference_profiles import resolve_reference_profiles
 from microcosm.calibrate import Target, TargetSet
@@ -534,3 +536,203 @@ def test_signed_integer_domain_admits_losses_and_refuses_booleans_and_floats():
         tables["person"]["net_cents"] = values
         with pytest.raises(ValueError):
             prepare_calibration_columns(tables, bindings)
+
+
+def _shared_predicate_bindings():
+    return {
+        "schema_version": 1,
+        "required_inputs": {"person": ["age", "category"]},
+        "input_domains": {
+            "person": {
+                "age": {"kind": "nonnegative_integer"},
+                "category": {"values": ["a", "b", "c"]},
+            }
+        },
+        "columns": [
+            {
+                "entity": "person",
+                "name": "young_a",
+                "predicates": [
+                    {"column": "age", "operator": "ge", "value": 18},
+                    {"column": "age", "operator": "lt", "value": 25},
+                    {"column": "category", "operator": "eq", "value": "a"},
+                ],
+            },
+            {
+                "entity": "person",
+                "name": "older_ab",
+                "predicates": [
+                    {"column": "age", "operator": "ge", "value": 25},
+                    {"column": "category", "operator": "in", "value": ["a", "b"]},
+                ],
+            },
+        ],
+    }
+
+
+def _shared_predicate_tables():
+    return {
+        "person": pd.DataFrame(
+            {"age": [17, 18, 24, 25, 64], "category": ["a", "a", "b", "b", "c"]}
+        )
+    }
+
+
+def test_receipt_predicate_uses_declared_filter_and_ignores_stale_indicators():
+    tables, bindings = _shared_predicate_tables(), _shared_predicate_bindings()
+    tables["person"]["young_a"] = True
+    young = calibration_predicate_mask(
+        tables, bindings, entity="person", name="young_a"
+    )
+    older = calibration_predicate_mask(
+        tables, bindings, entity="person", name="older_ab"
+    )
+    assert young.tolist() == [False, True, False, False, False]
+    assert older.tolist() == [False, False, False, True, False]
+    assert tables["person"]["young_a"].all()
+
+
+@pytest.mark.parametrize(
+    ("column", "value", "message"),
+    [
+        ("age", None, "contains missing values"),
+        ("age", -1, "outside its declared domain"),
+        ("age", 18.5, "outside its declared domain"),
+        ("age", True, "outside its declared domain"),
+        ("age", "18", "outside its declared domain"),
+        ("category", None, "contains missing values"),
+        ("category", "unknown", "outside its declared domain"),
+    ],
+)
+def test_receipt_predicate_validates_inputs_before_mask(column, value, message):
+    tables, bindings = _shared_predicate_tables(), _shared_predicate_bindings()
+    tables["person"][column] = tables["person"][column].astype(object)
+    tables["person"].loc[0, column] = value
+    with pytest.raises(ValueError, match=message):
+        calibration_predicate_mask(tables, bindings, entity="person", name="young_a")
+
+
+def test_receipt_predicate_validates_even_required_inputs_absent_from_its_mask():
+    tables, bindings = _shared_predicate_tables(), _shared_predicate_bindings()
+    bindings["columns"][0]["predicates"] = [
+        {"column": "age", "operator": "ge", "value": 18}
+    ]
+    tables["person"].loc[0, "category"] = "unknown"
+    with pytest.raises(ValueError, match="Calibration input person.category"):
+        calibration_predicate_mask(tables, bindings, entity="person", name="young_a")
+
+
+@pytest.mark.parametrize(
+    ("change", "message"),
+    [
+        ("schema", "require schema_version 1"),
+        ("required", "need required_inputs and input_domains"),
+        ("domains", "need required_inputs and input_domains"),
+        ("columns", "need nonempty columns"),
+        ("empty_required", "required_inputs.*invalid"),
+        ("missing_domain", "needs a domain"),
+        ("unsupported_domain", "unsupported domain"),
+        ("missing_column", "preparation needs person.age"),
+        ("missing_table", "needs the 'person' table"),
+    ],
+)
+def test_receipt_predicate_validates_complete_binding_inputs(change, message):
+    tables, bindings = _shared_predicate_tables(), _shared_predicate_bindings()
+    if change == "schema":
+        bindings["schema_version"] = 2
+    elif change in {"required", "domains"}:
+        bindings.pop("required_inputs" if change == "required" else "input_domains")
+    elif change == "columns":
+        bindings["columns"] = []
+    elif change == "empty_required":
+        bindings["required_inputs"]["person"] = []
+    elif change == "missing_domain":
+        bindings["input_domains"]["person"].pop("age")
+    elif change == "unsupported_domain":
+        bindings["input_domains"]["person"]["age"] = {"kind": "unsupported"}
+    elif change == "missing_column":
+        tables["person"] = tables["person"].drop(columns="age")
+    elif change == "missing_table":
+        tables = {}
+    with pytest.raises(ValueError, match=message):
+        calibration_predicate_mask(tables, bindings, entity="person", name="young_a")
+
+
+@pytest.mark.parametrize(
+    ("change", "message"),
+    [
+        ("missing", "exactly one declared predicate column"),
+        ("repeated", "exactly one declared predicate column"),
+        ("constant", "must use predicates"),
+        ("interval", "must use predicates"),
+        ("empty", "needs predicates"),
+        ("not_object", "predicates must be objects"),
+        ("unvalidated", "needs a validated person input"),
+        ("missing_value", "needs a validated person input"),
+        ("operator", "Unsupported calibration predicate"),
+        ("empty_in", "Unsupported calibration predicate"),
+    ],
+)
+def test_receipt_predicate_refuses_undeclared_or_invalid_filter(change, message):
+    tables, bindings = _shared_predicate_tables(), _shared_predicate_bindings()
+    entry = bindings["columns"][0]
+    if change == "missing":
+        bindings["columns"].pop(0)
+    elif change == "repeated":
+        bindings["columns"].append(copy.deepcopy(entry))
+    elif change in {"constant", "interval"}:
+        entry[change] = 1
+    elif change == "empty":
+        entry["predicates"] = []
+    elif change == "not_object":
+        entry["predicates"] = [None]
+    elif change == "unvalidated":
+        tables["person"]["undeclared"] = 18
+        entry["predicates"][0]["column"] = "undeclared"
+    elif change == "missing_value":
+        entry["predicates"][0].pop("value")
+    elif change == "operator":
+        entry["predicates"][0]["operator"] = "unsupported"
+    elif change == "empty_in":
+        entry["predicates"][0].update(operator="in", value=[])
+    with pytest.raises(ValueError, match=message):
+        calibration_predicate_mask(tables, bindings, entity="person", name="young_a")
+
+
+@settings(max_examples=25, deadline=None, suppress_health_check=[HealthCheck.too_slow])
+@given(
+    st.lists(
+        st.tuples(
+            st.integers(min_value=0, max_value=120), st.sampled_from(["a", "b", "c"])
+        ),
+        min_size=1,
+        max_size=30,
+    )
+)
+def test_receipt_predicate_masks_match_preparation_for_validated_raw_inputs(rows):
+    tables = {"person": pd.DataFrame(rows, columns=["age", "category"])}
+    bindings = _shared_predicate_bindings()
+    prepared = prepare_calibration_columns(tables, bindings)["person"]
+    for name in ("young_a", "older_ab"):
+        np.testing.assert_array_equal(
+            calibration_predicate_mask(tables, bindings, entity="person", name=name),
+            prepared[name].to_numpy(),
+        )
+
+
+def test_prepare_matches_pinned_legacy_output_digest():
+    # Captured from the pre-refactor implementation at 4f333f2c2ee70b6b758586f402d966df7297a2f0.
+    tables = prepare_calibration_columns(_tables(), _bindings())
+    document = {
+        entity: {
+            "columns": list(table),
+            "dtypes": [str(dtype) for dtype in table.dtypes],
+            "index": table.index.tolist(),
+            "values": table.to_dict(orient="list"),
+        }
+        for entity, table in tables.items()
+    }
+    payload = json.dumps(document, sort_keys=True, separators=(",", ":")).encode()
+    assert hashlib.sha256(payload).hexdigest() == (
+        "dca0e085cb3074f75bffc1d964284760a250924ab64464ca26b4b207b17e45ad"
+    )

@@ -24,6 +24,11 @@ from microcosm.graph.canonical import canonical_json
 
 OPERATION = "projected_period_average_ratio"
 OPERATION_VERSION = 1
+#: Closed and additive: a reference profile accepts only ``profile_input``,
+#: and money normalization accepts only ``money_normalization_input``.
+FACTOR_PURPOSES = frozenset(
+    {"profile_input", "diagnostic", "money_normalization_input"}
+)
 # Exact powers in projected receipts grow with both schedule size and root
 # precision. Keep ordinary schedules within the stock integer serialization
 # budget, including when rounding needs a finer root enclosure.
@@ -183,7 +188,7 @@ def _declaration(declaration: object) -> dict:
         raise ValueError("Unknown factor operation or operation version.")
     if not isinstance(row["id"], str) or not row["id"]:
         raise ValueError("Factor id must be nonempty text.")
-    if row["purpose"] not in {"profile_input", "diagnostic"}:
+    if row["purpose"] not in FACTOR_PURPOSES:
         raise ValueError("Unknown factor purpose.")
     for field in ("source_period", "target_period"):
         label = row[field]
@@ -435,6 +440,30 @@ def _operand(
         "entity_role": actual["entity_role"],
         "period_coverage": actual["period_coverage"],
     }
+
+
+def resolve_feed_operand(
+    slot: Mapping, facts: Iterable, *, assertion_policy: str = "observed_only"
+) -> tuple[Fraction, dict]:
+    """Resolve one declared operand exactly once, as factor operands resolve.
+
+    The slot is ``{"selector", "validation"}`` in the factor vocabulary. The
+    exact value comes from the authenticated lexical token, never a float.
+    """
+    row = _closed(slot, {"selector", "validation"}, "feed operand")
+    selector = _mapping(row.get("selector"), "feed operand selector")
+    if not selector or any(not selector_field_is_supported(key) for key in selector):
+        raise ValueError(
+            "Unknown or empty feed operand selector; use the closed selector vocabulary."
+        )
+    if assertion_policy not in ALLOWED_ASSERTION_POLICIES:
+        raise ValueError("Unknown feed operand assertion policy.")
+    _validation(row.get("validation"))
+    return _operand(
+        {"selector": selector, "validation": row["validation"]},
+        tuple(facts),
+        assertion_policy=assertion_policy,
+    )
 
 
 def resolve_reference_factor(

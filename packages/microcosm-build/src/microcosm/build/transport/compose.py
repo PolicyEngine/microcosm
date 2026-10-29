@@ -49,7 +49,10 @@ Activation checks selected resource paths, non-null selected roots and encoding
 shapes, the receipt kernel's data-independent contract constraints, reference
 activation rows, required age/pin presence and null scenario knobs. Refusals
 name every enumerated gap (:func:`validate_transport_activation`). Optional
-null JSON fields remain allowed; no proposed value is chosen.
+null JSON fields remain allowed; no proposed value is chosen. A spec that
+declares the opt-in ``money_normalization`` resource also gets its consumed
+money columns checked for exactly one declared producer, and composition
+refuses a second money producer in any population lineage.
 """
 
 from __future__ import annotations
@@ -63,6 +66,7 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Protocol
 
+from microcosm.build.calibration_predicates import validate_calibration_inputs
 from microcosm.build.country_spec import load_country_spec
 from microcosm.build.graph_atomic_geography import (
     ATOMIC_GEOGRAPHY_VALIDATION_TYPE,
@@ -72,12 +76,18 @@ from microcosm.build.ledger_artifact import (
     CHRONICLE_FEED_RESOURCE,
     chronicle_feed_identity,
 )
+from microcosm.build.money_normalization import (
+    money_column_rosters,
+    money_concept_columns,
+    validate_money_normalization,
+)
 from microcosm.build.reference_profiles import resolve_reference_profiles
 from microcosm.calibrate.ordered_kernels import OUTPUT_TYPES
 from microcosm.graph import (
     ArtifactInput,
     ArtifactOutput,
     ArtifactType,
+    CompiledGraph,
     Graph,
     Node,
     Owned,
@@ -92,10 +102,13 @@ from microcosm.graph.canonical import canonical_json
 
 from .artifact_types import KERNEL_OUTPUTS
 from .column_kernels import validate_receipt_contract
+from .money_kernels import MONEY_NORMALIZE_REF
+from .reference_selection import selection_resources, validate_exemptions
 from .target_kernels import TARGET_COMPILATION_KERNELS
 
 __all__ = [
     "GRAPH_RESOURCE",
+    "MONEY_NORMALIZATION_RESOURCE",
     "RULES_ROUTER",
     "SKELETON_KERNELS",
     "TransportGraphConfig",
@@ -126,6 +139,7 @@ SKELETON_KERNELS = frozenset(
         "transport.boundary@1",
         "transport.currency@1",
         "transport.quantile_map@1",
+        MONEY_NORMALIZE_REF,
         "transport.unit_attributes@1",
         "concepts.encode@1",
         "concepts.encode_groups@1",
@@ -146,6 +160,16 @@ SKELETON_KERNELS = frozenset(
         "transport.package@1",
     }
 )
+#: The opt-in spec resource that declares exact donor money normalization.
+MONEY_NORMALIZATION_RESOURCE = "money_normalization"
+#: The only kernels that may produce donor money after CREATE once a spec
+#: declares money normalization.
+_MONEY_PRODUCERS = frozenset({MONEY_NORMALIZE_REF, "transport.quantile_map@1"})
+#: Conversion changes the basis of an existing donor column; derived money
+#: outputs and cross-population evidence artifacts do not change that basis.
+_MONEY_CONVERSIONS = frozenset({MONEY_NORMALIZE_REF, "transport.currency@1"})
+#: Kernels outside target compilation that replay factors against the feed.
+_FEED_REPLAY_KERNELS = frozenset({MONEY_NORMALIZE_REF})
 _DOCUMENT_FIELDS = frozenset(
     {
         "schema_version",
@@ -341,7 +365,7 @@ def _target_feed_params(
     """Bind the declared feed to every target compiler, including preparation."""
 
     result = dict(params)
-    if kernel in TARGET_COMPILATION_KERNELS and _has_resource(
+    if kernel in TARGET_COMPILATION_KERNELS | _FEED_REPLAY_KERNELS and _has_resource(
         spec, CHRONICLE_FEED_RESOURCE
     ):
         pin = canonical_json(transport_resource(spec, CHRONICLE_FEED_RESOURCE)).decode(
@@ -551,14 +575,423 @@ def _null_paths(value: object, path: str = "") -> Iterator[str]:
             yield from _null_paths(item, f"{path}[{index}]")
 
 
-def _reference_activation_gaps(document: Mapping, resource: str) -> Iterator[str]:
+def _reference_activation_gaps(
+    document: Mapping,
+    resource: str,
+    exempt: Mapping | None = None,
+    selected: Mapping[str, Sequence[str]] | None = None,
+) -> Iterator[str]:
+    # The absent-resource path preserves the legacy activation walk and messages.
+    exemptions = (
+        set()
+        if exempt is None
+        else {
+            row["name"]
+            for row in validate_exemptions(
+                document, exempt, resource=resource, selected=selected
+            )
+        }
+    )
     for row in _sequence(
         document.get("target_references"), f"{resource}.target_references"
     ):
         reference = _mapping(row, f"{resource} reference")
         metadata = _mapping(reference.get("metadata", {}), f"{resource}.metadata")
-        if metadata.get("activation_status", "active") != "active":
+        if (
+            reference.get("name") not in exemptions
+            and metadata.get("activation_status", "active") != "active"
+        ):
             yield f"placeholder reference {resource}.{reference.get('name', '?')}"
+
+
+def _reference_selections(spec: Mapping[str, object]) -> dict[str, dict]:
+    if not _has_resource(spec, "reference_selection"):
+        return {}
+    return selection_resources(transport_resource(spec, "reference_selection"))
+
+
+def _instantiated_rows(
+    spec: Mapping[str, object],
+) -> list[tuple[Mapping, Mapping | None]]:
+    """Common, scenario and variant rows actually used by the factories."""
+    rows = []
+    if _has_resource(spec, GRAPH_RESOURCE):
+        rows.extend(
+            (row, None)
+            for row in transport_resource(spec, GRAPH_RESOURCE).get("nodes", ())
+            if isinstance(row, Mapping)
+        )
+    if _has_resource(spec, "entitlement_graph") and _has_resource(spec, "scenarios"):
+        from .entitlement import _rows
+
+        rows.extend(_rows(spec)[0])
+    return rows
+
+
+def _preflight_parameter(spec, value, scenario):
+    """Resolve only data selectors; preparation-dependent bindings stay literal."""
+    if isinstance(value, Mapping) and "resource" in value:
+        selected = _resource_param(
+            spec,
+            value,
+            allow_json_sequences=True,
+            profile_selection=None if scenario is None else scenario.get("knobs", {}),
+        )
+        return json.loads(selected) if value.get("encoding") == "json" else selected
+    if isinstance(value, Mapping) and "scenario" in value and scenario is not None:
+        selected = (
+            scenario if value["scenario"] == "row" else scenario[value["scenario"]]
+        )
+        for component in value.get("path", ()):
+            selected = selected[component]
+        return selected
+    if isinstance(value, str):
+        try:
+            return json.loads(value)
+        except json.JSONDecodeError:
+            return value
+    return value
+
+
+def _named_reference_values(value: object) -> Iterator[str]:
+    if isinstance(value, Mapping):
+        for key, item in value.items():
+            if key in {"reference", "target"} and isinstance(item, str):
+                yield item
+            else:
+                yield from _named_reference_values(item)
+    elif isinstance(value, list | tuple):
+        for item in value:
+            yield from _named_reference_values(item)
+
+
+def _reference_selection_closure(spec: Mapping[str, object]) -> dict[str, dict]:
+    """Map resource/row to selecting node ids, before exemption filtering.
+
+    Reading a complete ``references`` document in a target compiler is not a
+    row selection. A comparison selects every row it requests. Explicit target
+    and reference keys, receipt strata, mass rows and annualisation-factor keys
+    select rows. Artifact edges associate these names with their source
+    reference resource; unbound names are checked against every matching row.
+    """
+    rows = _instantiated_rows(spec)
+    by_id = {row.get("id"): row for row, _ in rows}
+    resources = {
+        _stem(name): document
+        for name, document in _resources(spec).items()
+        if isinstance(document, Mapping) and "target_references" in document
+    }
+    closure: dict[str, dict[str, list[str]]] = {name: {} for name in resources}
+
+    def origins(row):
+        result = set()
+        for name in ("references", "mass_reference"):
+            value = row.get("params", {}).get(name)
+            if isinstance(value, Mapping) and isinstance(value.get("resource"), str):
+                result.add(_stem(value["resource"]))
+        for edge in row.get("artifact_inputs", ()):
+            producer = by_id.get(edge.get("producer"), {})
+            value = producer.get("params", {}).get("references")
+            if isinstance(value, Mapping) and isinstance(value.get("resource"), str):
+                result.add(_stem(value["resource"]))
+        return result
+
+    for row, scenario in rows:
+        params = row.get("params", {})
+        names = set()
+        for key, value in params.items():
+            data = _preflight_parameter(spec, value, scenario)
+            if key in {"reference", "target"} and isinstance(data, str):
+                names.add(data)
+            elif key == "annualisation_factors" and isinstance(data, Mapping):
+                names.update(data)
+            elif key == "mass_reference" or (
+                key == "references" and row.get("kernel") == "takeup.compare@1"
+            ):
+                if isinstance(data, Mapping):
+                    names.update(
+                        item["name"] for item in data.get("target_references", ())
+                    )
+            elif key not in {"references", "reference_resolution"}:
+                names.update(_named_reference_values(data))
+        candidates = origins(row) or set(resources)
+        for resource in candidates:
+            if resource not in closure:
+                continue
+            known = {
+                item.get("name") for item in resources[resource]["target_references"]
+            }
+            for name in names & known:
+                closure[resource].setdefault(name, []).append(str(row.get("id", "?")))
+    # Every mass row is a required population denominator, even if a malformed
+    # graph omitted its CREATE consumer. Give that requirement a concrete label.
+    if "mass_references" in resources:
+        for item in resources["mass_references"]["target_references"]:
+            closure["mass_references"].setdefault(item["name"], ["mass_references"])
+    return closure
+
+
+def _declared_rows(spec: Mapping[str, object]) -> list[Mapping]:
+    """Skeleton rows plus the entitlement rows the factory instantiates."""
+    rows = []
+    if _has_resource(spec, GRAPH_RESOURCE):
+        nodes = transport_resource(spec, GRAPH_RESOURCE).get("nodes", ())
+        rows.extend(
+            row
+            for row in _sequence(nodes, "transport nodes")
+            if isinstance(row, Mapping)
+        )
+    if _has_resource(spec, "entitlement_graph") and _has_resource(spec, "scenarios"):
+        from .entitlement import _rows
+
+        rows.extend(row for row, _ in _rows(spec)[0])
+    return rows
+
+
+def _owned_columns(row: Mapping, *, rewrite: bool | None = None) -> set:
+    return {
+        (output.get("entity"), output.get("column"))
+        for output in row.get("outputs", ())
+        if isinstance(output, Mapping)
+        and (rewrite is None or bool(output.get("rewrite")) is rewrite)
+    }
+
+
+def _derived_money_owner(key, donor_columns, kernel, *, rewrite: bool) -> bool:
+    """Distinguish newly derived money from the declaration's donor columns.
+
+    A new engine output may be a money concept (for example a destination
+    pension), but it neither rewrites donor money nor supplies its basis.
+    A declared donor route always retains its stricter producer contract.
+    """
+    return (
+        key not in donor_columns
+        and kernel not in _MONEY_PRODUCERS | _MONEY_CONVERSIONS
+        and not rewrite
+    )
+
+
+def _money_producer_gaps(spec: Mapping[str, object]) -> list[str]:
+    """Name every consumed money column without exactly one declared producer.
+
+    Opt-in: a spec without the money-normalization resource returns no gap
+    and reads nothing. Otherwise every donor money concept a node reads
+    after CREATE needs exactly one producer in its population lineage (its
+    own version and each base version): ``money.normalize@1`` for a
+    normalized column, ``transport.quantile_map@1`` for a quantile-mapped
+    one. The concept's default transport rule is not consulted. A consumed
+    pending or quantile-mapped column without its producer names what it
+    awaits. New destination money outputs are classified separately.
+    """
+    if not _has_resource(spec, MONEY_NORMALIZATION_RESOURCE):
+        return []
+    try:
+        declaration = validate_money_normalization(
+            _raw_transport_resource(spec, MONEY_NORMALIZATION_RESOURCE)
+        )
+    except (ValueError, TypeError) as error:
+        return [f"{MONEY_NORMALIZATION_RESOURCE}.json: {error}"]
+    rows = _declared_rows(spec)
+    structural = {
+        row["id"]: row
+        for row in rows
+        if row.get("structural", "none") != "none" and isinstance(row.get("id"), str)
+    }
+    default = next(iter(structural)) if len(structural) == 1 else None
+
+    def lineage(version: object) -> list[str]:
+        chain: list[str] = []
+        while isinstance(version, str) and version in structural:
+            if version in chain:
+                break
+            chain.append(version)
+            version = structural[version].get("base")
+        return chain
+
+    owners: dict[tuple, list[Mapping]] = {}
+    for row in rows:
+        if row.get("structural", "none") == "none":
+            version = row.get("population") or default
+            for entity, column in _owned_columns(row):
+                owners.setdefault((version, entity, column), []).append(row)
+    money = money_concept_columns()
+    rosters = money_column_rosters(declaration)
+    found: dict[str, set[str]] = {}
+    for row in rows:
+        reads = (
+            row.get("base")
+            if row.get("structural", "none") != "none"
+            else row.get("population") or default
+        )
+        donor_columns = set(rosters)
+        donor_columns.update(
+            key
+            for version in lineage(reads)
+            if structural[version].get("structural") == "create"
+            for key in _owned_columns(structural[version])
+        )
+        rewritten = _owned_columns(row, rewrite=True)
+        for item in row.get("inputs", ()):
+            if not isinstance(item, Mapping):
+                continue
+            for column in item.get("columns", ()):
+                key = (item.get("entity"), column)
+                if key not in money or key in rewritten:
+                    continue
+                producers = [
+                    producer
+                    for version in lineage(reads)
+                    for producer in owners.get((version, *key), ())
+                ]
+                route, awaits = rosters.get(key, (None, ()))
+                name = f"money column {key[0]}.{key[1]}"
+                if not producers:
+                    if route == "pending":
+                        message = f"{name} awaits {', '.join(awaits)}"
+                    elif route == "quantile_mapped":
+                        message = f"{name} awaits quantile map <- {', '.join(awaits)}"
+                    elif route == "normalized":
+                        message = f"{name} has no {MONEY_NORMALIZE_REF} producer"
+                    else:
+                        message = (
+                            f"{name} is not declared in "
+                            f"{MONEY_NORMALIZATION_RESOURCE}.json"
+                        )
+                elif len(producers) > 1:
+                    message = (
+                        f"{name} has {len(producers)} producers in one lineage "
+                        f"{sorted(str(item.get('id')) for item in producers)}"
+                    )
+                else:
+                    (producer,) = producers
+                    kernel = producer.get("kernel")
+                    if _derived_money_owner(
+                        key,
+                        donor_columns,
+                        kernel,
+                        rewrite=key in _owned_columns(producer, rewrite=True),
+                    ):
+                        continue
+                    expected = {
+                        "normalized": MONEY_NORMALIZE_REF,
+                        "quantile_mapped": "transport.quantile_map@1",
+                    }.get(route)
+                    if kernel not in _MONEY_PRODUCERS:
+                        message = (
+                            f"{name} is produced by {kernel} node "
+                            f"{producer.get('id')!r}; only {MONEY_NORMALIZE_REF} or "
+                            "transport.quantile_map@1 may produce it after CREATE"
+                        )
+                    elif kernel != expected:
+                        message = (
+                            f"{name} is declared {route} but produced by {kernel} "
+                            f"node {producer.get('id')!r}"
+                        )
+                    else:
+                        continue
+                found.setdefault(message, set()).add(str(row.get("id")))
+    return [
+        f"{message} (read by {sorted(readers)})"
+        for message, readers in sorted(found.items())
+    ]
+
+
+def _check_single_money_normalization(
+    spec: Mapping[str, object], graph: Graph, compiled: CompiledGraph
+) -> None:
+    """Track donor money ownership and currency basis through base versions.
+
+    Opt-in like :func:`_money_producer_gaps`. A FILTER carries every column
+    of its base version and its members. Artifact predecessors cross versions
+    without changing ownership, so they never enter this structural chain.
+    Newly derived money is classified separately from declared donor money.
+    """
+    if not _has_resource(spec, MONEY_NORMALIZATION_RESOURCE):
+        return
+    declaration = validate_money_normalization(
+        _raw_transport_resource(spec, MONEY_NORMALIZATION_RESOURCE)
+    )
+    rosters = money_column_rosters(declaration)
+    money = money_concept_columns()
+    expected = {
+        MONEY_NORMALIZE_REF: "normalized",
+        "transport.quantile_map@1": "quantile_mapped",
+    }
+    by_id = {node.id: node for node in graph.nodes}
+    for (_, entity, column), owner in compiled.owners.items():
+        node = by_id[owner]
+        if node.kernel in expected and (entity, column) in money:
+            route = rosters.get((entity, column), (None, ()))[0]
+            if route != expected[node.kernel]:
+                raise ValueError(
+                    f"Money column {entity}.{column} is declared {route} but "
+                    f"{node.kernel} node {owner!r} produces it."
+                )
+    for version in sorted(set(compiled.versions.values())):
+        chain, current = [], version
+        while current is not None and current not in chain:
+            chain.append(current)
+            current = by_id[current].base
+        donor_columns = set(rosters)
+        donor_columns.update(
+            (entity, column)
+            for (item, entity, column), owner in compiled.owners.items()
+            if item in chain and by_id[owner].structural is StructuralDelta.CREATE
+        )
+        normalizers = sorted(
+            node.id
+            for node in graph.nodes
+            if node.kernel == MONEY_NORMALIZE_REF
+            and compiled.versions[node.id] in chain
+        )
+        if len(normalizers) > 1:
+            raise ValueError(
+                f"Money is normalized more than once in the lineage of {version!r}: "
+                f"{normalizers}."
+            )
+        for entity, column in money:
+            producers = sorted(
+                owner
+                for item in chain
+                if (owner := compiled.owners.get((item, entity, column))) is not None
+                and by_id[owner].structural is StructuralDelta.NONE
+            )
+            conversions = [
+                owner
+                for owner in producers
+                if by_id[owner].kernel in _MONEY_CONVERSIONS
+            ]
+            if len(conversions) > 1:
+                raise ValueError(
+                    f"Money is normalized more than once in the lineage of {version!r} "
+                    f"for {entity}.{column}: {conversions}."
+                )
+            if producers and all(
+                _derived_money_owner(
+                    (entity, column),
+                    donor_columns,
+                    by_id[owner].kernel,
+                    rewrite=any(
+                        item.entity == entity and item.column == column and item.rewrite
+                        for item in by_id[owner].outputs
+                    ),
+                )
+                for owner in producers
+            ):
+                continue
+            for owner in producers:
+                kernel = by_id[owner].kernel
+                route = rosters.get((entity, column), (None, ()))[0]
+                if kernel not in expected or route != expected[kernel]:
+                    raise ValueError(
+                        f"Money column {entity}.{column} is declared {route} but "
+                        f"{kernel} node {owner!r} produces it."
+                    )
+            if len(producers) > 1:
+                raise ValueError(
+                    f"Money column {entity}.{column} has {len(producers)} producers "
+                    f"in the lineage of {version!r}: {producers}."
+                )
 
 
 def validate_transport_activation(spec: Mapping[str, object]) -> None:
@@ -577,6 +1010,12 @@ def validate_transport_activation(spec: Mapping[str, object]) -> None:
     missing = []
     # Resolve first so activation never inspects an executable profile's raw rows.
     reference_profile_views(spec)
+    reference_selections = _reference_selections(spec)
+    selection_closure = (
+        _reference_selection_closure(spec)
+        if _has_resource(spec, "reference_selection")
+        else {}
+    )
     selections = (
         tuple(_declared_resource_selections(transport_resource(spec, GRAPH_RESOURCE)))
         if _has_resource(spec, GRAPH_RESOURCE)
@@ -642,6 +1081,7 @@ def validate_transport_activation(spec: Mapping[str, object]) -> None:
         if _has_resource(spec, name)
         and "target_references" in transport_resource(spec, name)
     )
+    reference_resources.update(reference_selections)
     checked_reference_views = set()
     for resource in sorted(reference_resources):
         if not _has_resource(spec, resource):
@@ -650,10 +1090,24 @@ def validate_transport_activation(spec: Mapping[str, object]) -> None:
         document = transport_resource(spec, resource)
         identity = hashlib.sha256(canonical_json(document)).hexdigest()
         checked_reference_views.add((resource, identity))
-        missing.extend(_reference_activation_gaps(document, resource))
+        missing.extend(
+            _reference_activation_gaps(
+                document,
+                resource,
+                reference_selections.get(resource),
+                selection_closure.get(resource),
+            )
+        )
     for (resource, identity), document in selected_reference_views.items():
         if (resource, identity) not in checked_reference_views:
-            missing.extend(_reference_activation_gaps(document, resource))
+            missing.extend(
+                _reference_activation_gaps(
+                    document,
+                    resource,
+                    reference_selections.get(resource),
+                    selection_closure.get(resource),
+                )
+            )
     receipt = (
         transport_resource(spec, "receipt_contract")
         if _has_resource(spec, "receipt_contract")
@@ -669,6 +1123,40 @@ def validate_transport_activation(spec: Mapping[str, object]) -> None:
     else:
         try:
             validate_receipt_contract(contracts)
+            if contracts.get("contract_version") == 2:
+                scenarios = transport_resource(spec, "scenarios")
+                central = _mapping(scenarios.get("central_knobs", {}), "central_knobs")
+                knob = contracts["assignment_knob"]
+                if central.get(knob) != contracts["default_assignment_profile"]:
+                    raise ValueError(
+                        "default_assignment_profile must equal "
+                        f"central_knobs[{knob!r}]."
+                    )
+                strata_declared = any(
+                    program.get("strata") for program in contracts["programs"]
+                )
+                bindings = (
+                    transport_resource(spec, "calibration_bindings")
+                    if strata_declared
+                    else {}
+                )
+                if strata_declared:
+                    validate_calibration_inputs(None, bindings)
+                filters = {
+                    (entry.get("entity"), entry.get("name"))
+                    for entry in bindings.get("columns", ())
+                    if isinstance(entry, Mapping) and "predicates" in entry
+                }
+                for program in contracts["programs"]:
+                    for stratum in program.get("strata", ()):
+                        if (
+                            program.get("projection", "person"),
+                            stratum["filter"],
+                        ) not in filters:
+                            raise ValueError(
+                                f"Receipt stratum {stratum['filter']!r} must name "
+                                "calibration_bindings predicates."
+                            )
         except (ValueError, TypeError) as error:
             missing.append(f"receipt_contract.json path ['receipts']: {error}")
     if _has_resource(spec, "axiom_rules_bindings"):
@@ -686,6 +1174,7 @@ def validate_transport_activation(spec: Mapping[str, object]) -> None:
                 missing.append(f"scenario {scenario.get('id', '?')} {path}")
     if not _has_resource(spec, GRAPH_RESOURCE):
         missing.append(f"{GRAPH_RESOURCE}.json (the skeleton declaration)")
+    missing.extend(_money_producer_gaps(spec))
     if missing:
         raise ValueError("Transport spec is not activated: " + "; ".join(missing) + ".")
 
@@ -1234,6 +1723,47 @@ def _node(
         }
     )
     params = _target_feed_params(spec, kernel, params)
+    raw_params = _mapping(row.get("params", {}), "node params")
+    raw_references = raw_params.get("references")
+    if (
+        kernel in TARGET_COMPILATION_KERNELS
+        and isinstance(raw_references, Mapping)
+        and isinstance(raw_references.get("resource"), str)
+    ):
+        selection = _reference_selections(spec).get(_stem(raw_references["resource"]))
+        if selection is not None and selection["exempt"]:
+            params["reference_selection"] = canonical_json(selection).decode("utf-8")
+    if kernel == "takeup.assign@1" and "receipt_contract" in params:
+        receipt_contract = json.loads(params["receipt_contract"])
+        if (
+            isinstance(receipt_contract, Mapping)
+            and receipt_contract.get("contract_version") == 2
+        ):
+            # Activation checks receipt_contract.json, but a node may select
+            # another document: refuse it as the kernel would, before use.
+            try:
+                validate_receipt_contract(receipt_contract)
+            except (ValueError, TypeError) as error:
+                raise ValueError(
+                    f"Node {row.get('id')!r} receipt_contract: {error}"
+                ) from error
+            if _has_resource(spec, "calibration_bindings"):
+                params["calibration_bindings"] = canonical_json(
+                    transport_resource(spec, "calibration_bindings")
+                ).decode("utf-8")
+                params["calibration_bindings_sha256"] = _resource_digest(
+                    spec, "calibration_bindings"
+                )
+            central = transport_resource(spec, "scenarios").get("central_knobs", {})
+            assignment_knob = receipt_contract["assignment_knob"]
+            selected_knobs = {**central, **(profile_selection or {})}
+            if assignment_knob not in selected_knobs:
+                raise ValueError(
+                    f"Receipt assignment_knob {assignment_knob!r} is not a resolved knob."
+                )
+            params["profile_selection"] = canonical_json(
+                {assignment_knob: selected_knobs[assignment_knob]}
+            ).decode("utf-8")
     if (
         kernel in TARGET_COMPILATION_KERNELS | {"calibration.prepare@1"}
         and "references" in params
@@ -1399,6 +1929,8 @@ def compose_transport_graph(
     )
     compiled = compile_graph(skeleton)
     validate_transport_calibration_ancestry(spec, graph=skeleton, config=config)
+    # Money ownership is checked after each graph pass of the ancestry guard.
+    _check_single_money_normalization(spec, skeleton, compiled)
     endpoints = transport_endpoints(spec)
     named = {endpoints["geography"], endpoints["calibration"], *endpoints["terminal"]}
     if not named <= set(compiled.order):
@@ -1487,6 +2019,8 @@ def compose_transport_graph(
     extended = compile_graph(graph)
     _check_extension_checkpoints(spec, config, graph, extended)
     validate_transport_calibration_ancestry(spec, graph=graph, config=config)
+    # Money ownership is checked after each graph pass of the ancestry guard.
+    _check_single_money_normalization(spec, graph, extended)
     for node in skeleton.nodes:
         expected = (
             set(compiled.predecessors[node.id])

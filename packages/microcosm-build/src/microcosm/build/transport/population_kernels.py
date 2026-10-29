@@ -273,6 +273,7 @@ class TransportCreateKernel(KernelBase):
                 "donor_country": donor.donor_country,
                 "country": country,
                 "donor_currency": donor.currency,
+                "donor_time_period": donor.time_period,
             },
         )
         return KernelResult(
@@ -281,6 +282,7 @@ class TransportCreateKernel(KernelBase):
                 "content_basis": donor.content_basis.value,
                 "donor_country": donor.donor_country,
                 "country": country,
+                "donor_time_period": donor.time_period,
                 "dropped_columns": {
                     entity: list(names) for entity, names in dropped.items()
                 },

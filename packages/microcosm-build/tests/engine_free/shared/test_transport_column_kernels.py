@@ -893,6 +893,23 @@ def test_target_driven_receipts_bind_surface_and_report_expected_and_realized_ma
                 artifacts={"surface": replace(artifact, payload=wrong_unit_surface)},
             )
         )
+    # A v1 contract takes none of v2's optional parameters: each refuses as
+    # unknown, exactly as before v2 existed.
+    for name in (
+        "calibration_bindings",
+        "calibration_bindings_sha256",
+        "profile_selection",
+    ):
+        with pytest.raises(ValueError, match=rf"unknown parameter\(s\): \['{name}'\]"):
+            TAKEUP_ASSIGN.run(
+                _context(
+                    TAKEUP_ASSIGN,
+                    frame,
+                    {**params, name: "{}"},
+                    (Owned("person", "receives_alpha", "bool"),),
+                    artifacts={"surface": artifact},
+                )
+            )
 
 
 def test_wrappers_refuse_missing_resource_ids_missing_columns_and_non_input_overrides(
