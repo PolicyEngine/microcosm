@@ -53,6 +53,7 @@ import microcosm.build.chronicle_epoch as chronicle_epoch_module
 import microcosm.build.country_spec as country_spec_module
 import microcosm.build.ledger_artifact as ledger_artifact_module
 import microcosm.build.ledger_targets as ledger_targets_module
+import microcosm.build.reference_factors as reference_factors_module
 import microcosm.build.reference_profiles as reference_profiles_module
 import microcosm.calibrate.artifacts as calibrate_artifacts_module
 import microcosm.calibrate.hierarchy as hierarchy_module
@@ -71,7 +72,9 @@ from microcosm.build.ledger_targets import (
     compile_ledger_target_references,
 )
 from microcosm.build.reference_profiles import (
+    ALLOWED_REFERENCE_PROFILE_RESOLVER_VERSIONS,
     REFERENCE_DOCUMENT_KEYS,
+    validate_reference_factor_evidence,
     validate_reference_resolution,
 )
 from microcosm.calibrate import TargetRegistry, TargetSpec
@@ -274,8 +277,7 @@ def _surface_resolution(document: Mapping, registry: TargetRegistry) -> Mapping 
     body = dict(resolution)
     claimed = body.pop("receipt_sha256", None)
     if (
-        body.get("resolver_version")
-        != reference_profiles_module.REFERENCE_PROFILE_RESOLVER_VERSION
+        body.get("resolver_version") not in ALLOWED_REFERENCE_PROFILE_RESOLVER_VERSIONS
         or claimed != reference_profiles_module.reference_document_sha256(body)
     ):
         raise ValueError("Surface reference resolution receipt hash mismatch.")
@@ -291,6 +293,7 @@ def _surface_resolution(document: Mapping, registry: TargetRegistry) -> Mapping 
         ) from error
     if selection != resolution.get("reference_selection_sha256"):
         raise ValueError("Surface reference selection identity mismatch.")
+    validate_reference_factor_evidence(resolution)
     for spec in resolved:
         if spec.metadata.get(
             "reference_selection_sha256"
@@ -396,8 +399,37 @@ def compile_target_surface(
             document, reference_resolution, references_sha256=references_sha256
         )
     artifact = load_ledger_consumer_artifact(
-        facts_path, expected_facts_sha256=expected_facts_sha256, feed_pin=feed_pin
+        facts_path,
+        expected_facts_sha256=expected_facts_sha256,
+        feed_pin=feed_pin,
+        lexical_floats=bool(
+            reference_resolution and reference_resolution.get("selected_factors")
+        ),
     )
+    if reference_resolution is not None:
+        for entry in reference_resolution.get("selected_factors", {}).values():
+            factor_feed_identity = ledger_artifact_module.chronicle_feed_identity(
+                feed_pin
+                if feed_pin is not None
+                else entry["declaration"]["feed_identity"]
+            )
+            if feed_pin is None:
+                ledger_artifact_module.validate_chronicle_feed_pin(
+                    artifact, factor_feed_identity
+                )
+                if (artifact.manifest or {}).get(
+                    "source_commit"
+                ) != factor_feed_identity["source_commit"]:
+                    raise ValueError(
+                        "Factor source commit cannot be authenticated without a feed pin."
+                    )
+            reference_factors_module.replay_reference_factor(
+                entry["declaration"],
+                artifact.facts,
+                factor_feed_identity,
+                entry["operational_factor"],
+                entry["receipt"],
+            )
     registry = compile_ledger_target_references(
         artifact.facts, references, country=country
     )
@@ -489,6 +521,7 @@ _COMPILE_MODULES = (
     ledger_targets_module,
     ledger_artifact_module,
     chronicle_epoch_module,
+    reference_factors_module,
     reference_profiles_module,
     registry_module,
     target_module,

@@ -43,6 +43,7 @@ import re
 import shutil
 import time
 from dataclasses import replace
+from datetime import UTC, date, datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import Mock
 
@@ -51,8 +52,10 @@ import pytest
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
+from microcosm.build.reference_profiles import reference_document_sha256
 from microcosm.build.transport import cli as cli_module
 from microcosm.build.transport import compose as compose_module
+from microcosm.build.transport import target_kernels as target_kernels_module
 from microcosm.build.transport.artifact_types import COMPARISON_TYPE
 from microcosm.build.transport.cli import (
     EXPORT_FILENAME,
@@ -94,6 +97,9 @@ from microcosm.graph import (
 from microcosm.graph.canonical import canonical_json
 from microcosm.graph.keys import node_key, source_content_key
 from test_support.microcosm_build.chronicle_feed import write_pinned_artifact
+from test_support.microcosm_build.reference_factor_transport import (
+    factor_transport_fixture,
+)
 from test_support.microcosm_build.transport_composed import (
     FAMILY_INPUTS,
     PROGRAMS,
@@ -964,6 +970,143 @@ def test_preflight_checks_the_selected_variant_reference_status(composed):
         validate_transport_activation(spec)
 
 
+def test_factor_context_is_read_without_composition_feed_io(tmp_path, monkeypatch):
+    _, pin, _, _, spec = factor_transport_fixture(tmp_path)
+    spec["resources"]["chronicle_feed"] = pin
+
+    def no_feed_io(*args, **kwargs):
+        raise AssertionError("Composition must not load the consumer artifact.")
+
+    monkeypatch.setattr(
+        "microcosm.build.ledger_artifact.load_ledger_consumer_artifact", no_feed_io
+    )
+    view = compose_module.reference_profile_view(spec)
+    assert view[2]["selected_factors"]["toy_factor"]["operational_factor"] == {
+        "numerator": 1100000,
+        "denominator": 1000000,
+    }
+    assert all(
+        row["metadata"]["activation_status"] == "requires_prerequisites"
+        for row in view[0]["target_references"]
+    )
+    assert compose_module.transport_resource(spec, "target_references") == view[0]
+
+
+def test_factor_context_ignores_feed_pin_prose(tmp_path):
+    _, pin, _, _, spec = factor_transport_fixture(tmp_path)
+    spec["resources"]["chronicle_feed"] = pin
+    before = compose_module.reference_profile_view(spec)
+    pin["build"] = "Reviewed prose edit"
+    pin["source_repo"] = "Reviewed repository description"
+    assert compose_module.reference_profile_view(spec) == before
+
+
+@pytest.mark.parametrize(
+    "defect",
+    ["missing", "wrong_feed", "wrong_commit", "wrong_manifest", "wrong_factor"],
+)
+def test_preflight_refuses_missing_or_incompatible_default_factor_context(
+    tmp_path, defect
+):
+    _, pin, _, _, spec = factor_transport_fixture(tmp_path)
+    spec["resources"]["chronicle_feed"] = pin
+    if defect == "missing":
+        spec["resources"].pop("factor_context")
+    elif defect == "wrong_feed":
+        spec["resources"]["chronicle_feed"] = {**pin, "facts_sha256": "0" * 64}
+    elif defect == "wrong_commit":
+        pin["source_commit"] = "d" * 40
+    elif defect == "wrong_manifest":
+        pin["manifest_sha256"] = "0" * 64
+    else:
+        spec["resources"]["factor_context"]["factors"][0]["operational_factor"][
+            "numerator"
+        ] += 1
+    with pytest.raises(
+        ValueError, match="missing resource|incompatible|factor differs"
+    ):
+        validate_transport_activation(spec)
+
+
+def test_preflight_resolves_empty_knobs_only_once(tmp_path, monkeypatch):
+    _, _, _, _, spec = factor_transport_fixture(tmp_path)
+    original = compose_module.reference_profile_view
+    selections = []
+
+    def recording_view(spec, selection=None):
+        selections.append(selection)
+        return original(spec, selection)
+
+    monkeypatch.setattr(compose_module, "reference_profile_view", recording_view)
+    with pytest.raises(ValueError, match="Transport spec is not activated"):
+        validate_transport_activation(spec)
+    assert selections
+    assert all(selection is None for selection in selections)
+
+
+def test_preflight_validates_scenario_factor_context_before_activation(tmp_path):
+    _, _, _, _, spec = factor_transport_fixture(tmp_path)
+    profiles = spec["resources"]["reference_profiles"]["dimensions"]["index"][
+        "profiles"
+    ]
+    profiles["low"]["transformations"][0]["factor_id"] = "missing-scenario-factor"
+    assert compose_module.reference_profile_view(spec)[2]["selection"] == {
+        "index": "central"
+    }
+    spec["resources"]["scenarios"]["scenarios"].append(
+        {"id": "variant", "knobs": {"index": "low"}}
+    )
+    with pytest.raises(ValueError, match="Missing selected factor"):
+        validate_transport_activation(spec)
+
+
+def test_declared_ageing_scenarios_bind_selected_evidence_and_preserve_locality():
+    spec = load_transport_spec("nz")
+    profiles = spec["resources"]["reference_profiles"]
+    receipts = {}
+    for scenario in spec["resources"]["scenarios"]["scenarios"]:
+        receipt = compose_module.reference_profile_view(spec, scenario["knobs"])[2]
+        receipts[scenario["id"]] = receipt
+        profile = {"V1": "low", "V2": "high"}.get(scenario["id"], "central")
+        factor_id = f"ird_ty2024_to_ty2027_{profile}"
+        assert receipt["selection"] == {
+            "aging_index": profile,
+            "census_residual_allocation": (
+                "small_households" if scenario["id"] == "V4" else "mar"
+            ),
+        }
+        assert set(receipt["selected_factors"]) == {factor_id}
+        entry = next(
+            entry
+            for entry in spec["resources"]["reference_aging"]["factors"]
+            if entry["declaration"]["id"] == factor_id
+        )
+        assert receipt["selected_factors"][factor_id] == entry
+        chosen = {
+            dimension: {
+                "name": name,
+                "declaration": profiles["dimensions"][dimension]["profiles"][name],
+            }
+            for dimension, name in receipt["selection"].items()
+        }
+        assert (
+            receipt["selected_declarations_sha256"]
+            == hashlib.sha256(canonical_json(chosen)).hexdigest()
+        )
+    profiles["dimensions"]["aging_index"]["profiles"]["high"]["notes"] = (
+        "Reviewed edit confined to the unselected high profile."
+    )
+    for scenario in spec["resources"]["scenarios"]["scenarios"]:
+        revised = compose_module.reference_profile_view(spec, scenario["knobs"])[2]
+        if scenario["id"] == "V2":
+            assert (
+                revised["reference_selection_sha256"]
+                != receipts["V2"]["reference_selection_sha256"]
+            )
+        else:
+            assert revised == receipts[scenario["id"]]
+
+
 class _IllegalOwner(KernelBase):
     ref = "test.illegal_owner@1"
     capabilities = Capabilities(Determinism.DETERMINISTIC)
@@ -1314,7 +1457,10 @@ def test_packaged_spec_refuses_before_reading_any_source(tmp_path):
         )
 
 
-def test_cli_main_refuses_the_packaged_spec_and_writes_nothing(tmp_path, capsys):
+def test_cli_main_refuses_the_packaged_spec_and_writes_nothing(
+    tmp_path, monkeypatch, capsys
+):
+    monkeypatch.setattr(cli_module, "_today", lambda: date(2026, 10, 24))
     out = tmp_path / "out"
     assert cli_module.main(["--country", "nz", "--out", str(out)]) == 1
     message = capsys.readouterr().err
@@ -1503,6 +1649,104 @@ def test_cli_main_turns_key_errors_into_refusals(
     assert not (out / EXPORT_FILENAME).exists()
 
 
+_AFTER_FACTOR_EXPIRY = date(2100, 1, 1)
+
+
+@pytest.mark.parametrize("resume", ["auto", "forbid"])
+@pytest.mark.parametrize("selection", ["default", "scenario"])
+def test_cli_main_refuses_expired_factors_before_create(
+    tmp_path, monkeypatch, capsys, resume, selection
+):
+    _, _, _, _, spec = factor_transport_fixture(tmp_path)
+    if selection == "scenario":
+        spec["resources"]["reference_profiles"]["dimensions"]["index"]["profiles"][
+            "central"
+        ]["transformations"] = []
+        spec["resources"]["scenarios"]["scenarios"].append(
+            {"id": "variant", "knobs": {"index": "low"}}
+        )
+    monkeypatch.setattr(cli_module, "_today", lambda: _AFTER_FACTOR_EXPIRY)
+    monkeypatch.setattr(cli_module, "load_transport_spec", lambda source: spec)
+    later = _mock_steps_after_the_currency_check(monkeypatch)
+    out = tmp_path / "out"
+    assert (
+        cli_module.main(["--country", "xx", "--out", str(out), "--resume", resume]) == 1
+    )
+    error = capsys.readouterr().err
+    assert "toy_factor" in error
+    assert "reviewed re-declaration" in error
+    for step in later:
+        step.assert_not_called()
+    assert not out.exists()
+
+
+def _mock_steps_after_the_currency_check(monkeypatch):
+    """Activation, the registry, the CREATE inventory and CREATE, each refusing."""
+    steps = []
+    for owner, name in (
+        (cli_module, "validate_transport_activation"),
+        (cli_module, "build_transport_registry"),
+        (cli_module, "prepare_create_outputs"),
+        (cli_module.TRANSPORT_CREATE, "run"),
+    ):
+        step = Mock(side_effect=AssertionError(f"Must refuse before {name}."))
+        monkeypatch.setattr(owner, name, step)
+        steps.append(step)
+    return steps
+
+
+@pytest.mark.parametrize("resume", ["auto", "forbid"])
+@pytest.mark.parametrize("selection", ["default", "scenario"])
+def test_preparation_refuses_expired_factors_for_library_callers(
+    tmp_path, monkeypatch, resume, selection
+):
+    # prepare_transport_build is exported: a caller that skips main must meet
+    # the same run-entry check, before activation, the registry or CREATE.
+    _, _, _, _, spec = factor_transport_fixture(tmp_path)
+    if selection == "scenario":
+        spec["resources"]["reference_profiles"]["dimensions"]["index"]["profiles"][
+            "central"
+        ]["transformations"] = []
+        spec["resources"]["scenarios"]["scenarios"].append(
+            {"id": "variant", "knobs": {"index": "low"}}
+        )
+    monkeypatch.setattr(cli_module, "_today", lambda: _AFTER_FACTOR_EXPIRY)
+    later = _mock_steps_after_the_currency_check(monkeypatch)
+    with pytest.raises(ValueError, match="toy_factor") as error:
+        cli_module.prepare_transport_build(spec, sources={}, resume=resume)
+    assert "reviewed re-declaration" in str(error.value)
+    for step in later:
+        step.assert_not_called()
+
+
+def test_preparation_lets_require_reach_stored_work_after_expiry(tmp_path, monkeypatch):
+    # require skips the currency check and goes on to activation and the store.
+    _, _, _, _, spec = factor_transport_fixture(tmp_path)
+    monkeypatch.setattr(cli_module, "_today", lambda: _AFTER_FACTOR_EXPIRY)
+    reached = Mock(side_effect=LookupError("activation reached"))
+    monkeypatch.setattr(cli_module, "validate_transport_activation", reached)
+    with pytest.raises(LookupError, match="activation reached"):
+        cli_module.prepare_transport_build(spec, sources={}, resume="require")
+    reached.assert_called_once_with(spec)
+
+
+def test_preparation_checks_resume_before_currency(tmp_path, monkeypatch):
+    _, _, _, _, spec = factor_transport_fixture(tmp_path)
+    monkeypatch.setattr(cli_module, "_today", lambda: _AFTER_FACTOR_EXPIRY)
+    with pytest.raises(ValueError, match="resume must be"):
+        cli_module.prepare_transport_build(spec, sources={}, resume="sometimes")
+
+
+def test_cli_factor_currency_decision_allows_historical_replay(tmp_path, monkeypatch):
+    # The factor fixture has parked measurement rows and no runnable skeleton.
+    # Exercise the CLI decision directly; the warm-store test below verifies
+    # actual require execution with the engine-free composed skeleton.
+    _, _, _, _, spec = factor_transport_fixture(tmp_path)
+    assert compose_module.reference_profile_view(spec)[2]["selected_factors"]
+    monkeypatch.setattr(cli_module, "_today", lambda: _AFTER_FACTOR_EXPIRY)
+    cli_module._require_current_run_factors(spec, resume="require")
+
+
 def test_cli_main_and_path_loader_success(composed, tmp_path, monkeypatch, capsys):
     # Real Path loading, registry preparation and execution; only the injected
     # engine seam replaces Axiom with the fixture's pure-Python adapters.
@@ -1551,9 +1795,199 @@ def test_cli_main_and_path_loader_success(composed, tmp_path, monkeypatch, capsy
     assert (out / EXPORT_FILENAME).is_file()
     assert json.loads((out / "manifest.json").read_bytes())["nodes"]
     observe_warm.append(True)
+    monkeypatch.setattr(cli_module, "_today", lambda: _AFTER_FACTOR_EXPIRY)
     assert cli_module.main([*argv, "--resume", "require"]) == 0
     assert capsys.readouterr().err == ""
     assert calls == []
+
+
+def test_cli_run_date_is_the_utc_date(monkeypatch):
+    # 11:30pm in New York on 3 November is already 4 November in UTC, where CI runs.
+    instant = datetime(2026, 11, 4, 3, 30, tzinfo=UTC)
+
+    class Clock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return instant.astimezone(tz or timezone(timedelta(hours=-5)))
+
+    monkeypatch.setattr(cli_module, "datetime", Clock)
+    assert cli_module._today() == date(2026, 11, 4)
+
+
+def test_cli_currency_check_walks_the_views_activation_walks(tmp_path, monkeypatch):
+    # Activation resolves scenario views only when both resources exist and
+    # validates their shapes; the run-entry check shares that walk.
+    _, _, _, _, spec = factor_transport_fixture(tmp_path)
+    del spec["resources"]["scenarios"]
+    assert len(compose_module.reference_profile_views(spec)) == 1
+    monkeypatch.setattr(cli_module, "_today", lambda: date(2050, 1, 1))
+    cli_module._require_current_run_factors(spec, resume="auto")
+    monkeypatch.setattr(cli_module, "_today", lambda: _AFTER_FACTOR_EXPIRY)
+    with pytest.raises(ValueError, match="toy_factor"):
+        cli_module._require_current_run_factors(spec, resume="auto")
+    spec["resources"]["scenarios"] = {"scenarios": {"id": "malformed"}}
+    with pytest.raises(TypeError) as activation:
+        compose_module.validate_transport_activation(spec)
+    with pytest.raises(TypeError) as run_entry:
+        cli_module._require_current_run_factors(spec, resume="auto")
+    assert str(run_entry.value) == str(activation.value) == "scenarios must be a list."
+
+
+def test_cli_require_replays_a_warm_store_after_selected_factors_expire(
+    composed, tmp_path, monkeypatch, capsys
+):
+    # End to end: warm a real store while a selected factor is current, then
+    # replay it past valid_until. require verifies and runs nothing; a new run
+    # of the same spec refuses on that factor before preparation work.
+    facts, pin, _, _, factors = factor_transport_fixture(tmp_path / "factor")
+    spec = copy.deepcopy(composed.spec)
+    spec["resources"].update(
+        factor_target_references=factors["resources"]["target_references"],
+        factor_context=factors["resources"]["factor_context"],
+        factor_feed=pin,
+        reference_profiles={
+            **factors["resources"]["reference_profiles"],
+            "reference_resource": "factor_target_references",
+        },
+    )
+    profile_view = compose_module.reference_profile_view
+
+    def measured_view(spec, selection=None):
+        # As in factor_transport_fixture(activate=True), supply a synthetic
+        # reviewed measurement closure. The real resolver still selects and
+        # binds the factors; composition must attach its rehashed receipt.
+        # Copies, so the resolver's own return values are never edited.
+        references, intervals, receipt = profile_view(spec, selection)
+        references, receipt = copy.deepcopy(references), copy.deepcopy(receipt)
+        for row in references["target_references"]:
+            row["metadata"]["activation_status"] = "active"
+        receipt["effective_references_sha256"] = reference_document_sha256(references)
+        receipt.pop("receipt_sha256")
+        receipt["receipt_sha256"] = reference_document_sha256(receipt)
+        return references, intervals, receipt
+
+    monkeypatch.setattr(compose_module, "reference_profile_view", measured_view)
+    declaration = spec["resources"]["transport_graph"]
+    compiler_id = "nz.factor.targets.compile"
+    declaration["sources"].append(
+        {
+            **next(
+                source
+                for source in declaration["sources"]
+                if source["name"] == "nz_calibration_facts"
+            ),
+            "name": "factor_facts",
+        }
+    )
+    declaration["nodes"].append(
+        {
+            "id": compiler_id,
+            "kernel": "targets.compile@1",
+            "population": "nz.open",
+            "sources": ["factor_facts"],
+            "params": {
+                "country": factors["country"],
+                "references": {
+                    "resource": "factor_target_references",
+                    "encoding": "json",
+                },
+                "references_sha256": {
+                    "resource": "factor_target_references",
+                    "encoding": "sha256",
+                },
+                "chronicle_feed_pin": {"resource": "factor_feed", "encoding": "json"},
+            },
+        }
+    )
+    # This factor-bound compiler is an explicit CLI terminal endpoint, so its
+    # target surface must actually be compiled and cached during the warm run.
+    declaration["endpoints"]["terminal"].append(compiler_id)
+    compiler = compose_transport_graph(spec, composed.config).node(compiler_id)
+    assert compiler.kernel == "targets.compile@1"
+    assert "reference_resolution" in compiler.params
+    resolution = json.loads(compiler.params["reference_resolution"])
+    assert resolution["selected_factors"]
+    assert json.loads(compiler.params["chronicle_feed_pin"]) == pin
+    directory = _write_local_transport_spec(tmp_path / "spec", spec)
+    build_registry = cli_module.build_transport_registry
+    calls = []
+    replay = Mock(
+        wraps=target_kernels_module.reference_factors_module.replay_reference_factor
+    )
+    monkeypatch.setattr(
+        target_kernels_module.reference_factors_module,
+        "replay_reference_factor",
+        replay,
+    )
+
+    def injected_registry(bindings, root, *, unit_rule, engines_by_binding=None):
+        registry = build_registry(
+            bindings,
+            root,
+            unit_rule=unit_rule,
+            engines_by_binding=composed.engines_by_binding,
+        )
+        for ref in registry.kernels.refs():
+            kernel = registry.kernels.get(ref)
+            run = kernel.run
+
+            def counted(context, _run=run):
+                calls.append(context.node.id)
+                return _run(context)
+
+            monkeypatch.setattr(kernel, "run", counted)
+        return registry
+
+    monkeypatch.setattr(cli_module, "build_transport_registry", injected_registry)
+    out = tmp_path / "out"
+    argv = ["--spec-dir", str(directory), "--out", str(out)]
+    for name, path in {**composed.sources, "factor_facts": facts}.items():
+        argv.extend(["--source", f"{name}={path}"])
+    monkeypatch.setattr(cli_module, "_today", lambda: date(2050, 1, 1))
+    assert cli_module.main(argv) == 0
+    assert capsys.readouterr().err == ""
+    assert calls.count(compiler_id) == 1
+    replay.assert_called_once()
+    factor = resolution["selected_factors"]["toy_factor"]
+    # The replay ran against the authenticated factor feed: the facts an
+    # independent load of the pinned factor_facts source yields.
+    fed_facts = (
+        target_kernels_module.ledger_artifact_module.load_ledger_consumer_artifact(
+            facts, feed_pin=pin, lexical_floats=True
+        ).facts
+    )
+    assert fed_facts
+    replay.assert_called_once_with(
+        factor["declaration"],
+        fed_facts,
+        factor["declaration"]["feed_identity"],
+        factor["operational_factor"],
+        factor["receipt"],
+    )
+    warm_node = json.loads((out / "manifest.json").read_bytes())["nodes"][compiler_id]
+    assert warm_node["receipt"]["n_targets"] == 2
+    exported = (out / EXPORT_FILENAME).read_bytes()
+    calls.clear()
+    replay.reset_mock()
+    monkeypatch.setattr(cli_module, "_today", lambda: _AFTER_FACTOR_EXPIRY)
+    assert cli_module.main([*argv, "--resume", "require"]) == 0
+    assert capsys.readouterr().err == ""
+    # require reads back the stored run's export and rewrites nothing.
+    assert (out / EXPORT_FILENAME).read_bytes() == exported
+    assert calls == []
+    replay.assert_not_called()
+    stored_node = json.loads((out / "manifest.json").read_bytes())["nodes"][compiler_id]
+    assert stored_node["hit"] is True
+    assert stored_node["key"] == warm_node["key"]
+    assert stored_node["opaque_artifacts"] == warm_node["opaque_artifacts"]
+    later = _mock_steps_after_the_currency_check(monkeypatch)
+    assert cli_module.main([*argv, "--resume", "auto"]) == 1
+    error = capsys.readouterr().err
+    assert "toy_factor" in error
+    assert "reviewed re-declaration" in error
+    assert calls == []
+    for step in later:
+        step.assert_not_called()
 
 
 def test_cli_main_invalid_arguments_are_a_refusal(capsys):

@@ -182,10 +182,14 @@ def test_receipt_age_indicators_retain_the_published_strata_boundaries():
 def test_all_active_calibration_bindings_enter_the_small_frame_matrix():
     frame = _frame(prepare_calibration_columns(_tables(), _bindings()))
     root = paths_for("microcosm-build").package / "src/microcosm/build/nz"
+    profiles = json.loads((root / "reference_profiles.json").read_text())
     effective, _, _ = resolve_reference_profiles(
         json.loads((root / "target_references.json").read_text()),
-        json.loads((root / "reference_profiles.json").read_text()),
+        profiles,
         {},
+        factor_context=json.loads(
+            (root / profiles["factor_context_resource"]).read_text()
+        ),
     )
     references = [
         ref

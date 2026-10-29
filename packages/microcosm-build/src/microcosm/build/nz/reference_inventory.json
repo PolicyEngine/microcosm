@@ -36,7 +36,7 @@
         "active": 64,
         "requires_reference_profile_resolution": 170,
         "requires_census_family_nucleus_standard": 51,
-        "requires_g8r2_taxable_income_contract_intervals_and_ageing": 474,
+        "requires_prerequisites": 474,
         "requires_stratified_receipt_assignment": 12,
         "requires_receipt_binding": 1,
         "requires_unsupported_veterans_pension": 1
@@ -14290,7 +14290,7 @@
     },
     {
       "id": "qes_prefu_and_b5_ageing",
-      "reason": "G8-r2; QES/PREFU rows are present in the pinned artifact but unused by this residual-allocation task."
+      "reason": "QES/PREFU feed rows support the declared factor calculations in reference_aging.json; they never become direct calibration references or carried target values."
     },
     {
       "id": "wff_tripwires",

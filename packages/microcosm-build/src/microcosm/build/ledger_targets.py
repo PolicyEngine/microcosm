@@ -20,6 +20,7 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any
 
+from microcosm.build.ledger_artifact import LexicalFloat
 from microcosm.calibrate import (
     CalibrationHierarchy,
     CalibrationHierarchySeed,
@@ -5058,7 +5059,9 @@ def _dimension_values_match(fact: object, expected: object) -> bool:
 
 
 def _strict_scalar_equal(actual: object, expected: object) -> bool:
-    return type(actual) is type(expected) and actual == expected
+    actual_type = float if type(actual) is LexicalFloat else type(actual)
+    expected_type = float if type(expected) is LexicalFloat else type(expected)
+    return actual_type is expected_type and actual == expected
 
 
 def _measure_concepts(fact: object) -> tuple[str, ...]:
