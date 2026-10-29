@@ -23,14 +23,15 @@ parameters at 30 April). Such a person claims at the take-up contract's
 
 The allowance is paid only for caring for a person the engine holds
 ``is_severely_disabled_for_carers_allowance`` (SSCBA 1992 s. 70(2)), which the
-FRS care hours do not record (microcosm#1418). A carer whose care inside the
-household alone reaches the hours (``frs_care_hours_in_household``, the
-largest of the four in-household FRS bands) cares for such a person when
-another member of the household is one at the survey year. A carer whose
-hours are not all given inside the household cares for someone the survey
-does not see; such a carer joins the pool on a second identity-keyed uniform
-below the share of the in-household carers who report no allowance that have
-such a member (María's decision (a) of 2026-10-28):
+FRS care hours do not record (microcosm#1418). A carer whose largest
+in-household band alone reaches the hours (``frs_care_hours_in_household``,
+the largest of the four in-household FRS bands) cares for such a person when
+another member of the household is one at the survey year: the allowance
+needs the hours for one person (SSCBA 1992 s. 70). A carer whose largest
+in-household band does not reach the hours cares outside the household, or
+spreads the hours over bands; such a carer joins the pool on a second
+identity-keyed uniform below the share of the in-household carers who report
+no allowance that have such a member (María's decision (a) of 2026-10-28):
 
     pool = (in_household AND other_member_severely_disabled)
            OR (other_carer AND u_pool < in_household_share)
@@ -139,7 +140,7 @@ CARERS_ALLOWANCE_POOL_RULE = (
     "a carer whose frs_care_hours_in_household reach min_hours cares for a "
     "severely disabled person when another member of the household is "
     "is_severely_disabled_for_carers_allowance at the survey year; a carer "
-    "whose hours are not all given inside the household does on a second "
+    "whose largest in-household band does not reach the hours does on a second "
     "identity-keyed uniform (salt carers_allowance_outside_household_pool) "
     "below the household-weighted share of the in-household carers reporting "
     "no allowance who have such a member"
@@ -213,8 +214,9 @@ def uk_carers_allowance_policy(year: int | str) -> UKCarersAllowancePolicy:
 class UKCarersAllowancePool:
     """The carers of a severely disabled person, and the groups they come from.
 
-    ``in_household`` carers give the hours inside the household alone and
-    ``other`` carers do not; ``pool`` holds the first where another member is
+    ``in_household`` carers reach the hours in their largest in-household band
+    and ``other`` carers do not (they care outside the household, or spread
+    the hours over bands); ``pool`` holds the first where another member is
     severely disabled and the second where their pool uniform falls below
     ``share``.
     """
