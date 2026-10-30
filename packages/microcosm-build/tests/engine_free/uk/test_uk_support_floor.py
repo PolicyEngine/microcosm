@@ -532,10 +532,26 @@ def test_readers_narrow_by_the_recorded_drops_under_the_declared_floor():
         narrow_uk_registry_by_support_floor(registry, {"other": record}, floor)
     with pytest.raises(ValueError, match="not a row of the register"):
         narrow_uk_registry_by_support_floor(registry, {"absent": record}, floor)
-    with pytest.raises(ValueError, match="declared signature"):
-        narrow_uk_registry_by_support_floor(
-            registry, {"thin": {**record, "approved_by": "someone"}}, floor
-        )
+    for field, value in (
+        ("approved_by", "someone"),
+        ("approved_on", "2026-01-01"),
+        ("expires_on", "2027-12-31"),
+        ("tracking", "microcosm#1"),
+    ):
+        with pytest.raises(ValueError, match="declared signature"):
+            narrow_uk_registry_by_support_floor(
+                registry, {"thin": {**record, field: value}}, floor
+            )
+    # A drop recorded before the floor's texts were re-worded keeps its
+    # signature, so a run built then can still be certified at a later head
+    # (the re-review of microcosm#1420, 3).
+    reworded = {**record, "reason": "an older reason", "adjudication": "older"}
+    assert [
+        spec.name
+        for spec in narrow_uk_registry_by_support_floor(
+            registry, {"thin": reworded}, floor
+        ).specs
+    ] == ["low", "other"]
     tight = uk_support_floor_from_payload(_block(scope={"max_dropped_rows": 0}))
     with pytest.raises(ValueError, match="in scope 'uc_bands', more than its signed"):
         narrow_uk_registry_by_support_floor(registry, {"thin": record}, tight)

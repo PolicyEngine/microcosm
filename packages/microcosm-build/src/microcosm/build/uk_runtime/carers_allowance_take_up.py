@@ -41,8 +41,8 @@ Both draws are balanced by weight within strata (microcosm#1418). Each
 uniform orders a stratum's records, and each record takes the midpoint of its
 slice of the stratum's cumulative weight (``weight_balanced_uniforms``, as
 policyengine-uk's ``stratified_uniform``), rotated by a start drawn per
-stratum from its code and its members' identities, so every stratum claims
-the rate of its weight to within one record and every carer claims with
+stratum from its code and its lowest-draw member's identity, so every stratum
+claims the rate of its weight to within one record and every carer claims with
 probability equal to the rate, however few share the stratum (the independent
 review of microcosm#1420, finding 4, and its re-review, G). The stage
 refuses a stratum that misses by more than its heaviest record (Anthony's
@@ -79,7 +79,6 @@ it, and a share only where neither of its sides rests on one to nine.
 
 from __future__ import annotations
 
-import hashlib
 from dataclasses import dataclass, field
 from importlib import metadata
 from pathlib import Path
@@ -284,7 +283,7 @@ class UKCarersAllowancePool:
     severely disabled and the second where their pool uniform falls below
     ``share``. With ``pool_strata`` the uniforms of the other carers who report
     no allowance are first placed by weight within those strata and rotated by
-    a start drawn per stratum from its members' identities (``pool_identities``),
+    a start drawn per stratum from its lowest-draw member (``pool_identities``),
     so that each stratum draws ``share`` of its weight to within one record and
     each carer joins with probability ``share``.
     """
@@ -340,6 +339,7 @@ def carers_allowance_pool(
                 drawable_strata,
                 salt=CARERS_ALLOWANCE_POOL_SALT,
                 identities=np.asarray(pool_identities)[drawable],
+                draws=draws[drawable],
             ),
         )
     drawn = draws < (share or 0.0)
@@ -350,31 +350,34 @@ def carers_allowance_pool(
 
 
 def stratum_starts(
-    strata: np.ndarray, *, salt: str, identities: np.ndarray
+    strata: np.ndarray, *, salt: str, identities: np.ndarray, draws: np.ndarray
 ) -> np.ndarray:
     """Each record's stratum start: one identity-keyed uniform per stratum.
 
-    Keyed on the stratum code and a digest of its members' sorted identities,
-    under the draw's salt. A rebuild of the same people rotates each stratum
-    the same way whatever the row order, as the records' own draws are keyed
-    on the person, while a stratum of other people starts elsewhere: a carer
-    alone in a stratum claims with probability equal to the rate over
-    identities, in any build or survey vintage (the re-review of
-    microcosm#1420, G). Keyed on the code alone, a one-record stratum's
-    outcome was fixed per code in every build.
+    Keyed on the stratum code and the identity of its lowest-draw member,
+    under the draw's salt. A carer alone in a stratum then claims with
+    probability equal to the rate over identities, in any build or survey
+    vintage, and a rebuild of the same people rotates each stratum the same
+    way whatever the row order. A change of membership re-draws a stratum only
+    when its lowest-draw member leaves or a lower one joins, about one change
+    in its size; otherwise the start stays and only the moved weights shift
+    positions (the re-review of microcosm#1420, 2). Keyed on every member,
+    any change re-drew about half the stratum; on the code alone, a one-record
+    stratum's outcome was fixed per code in every build.
     """
 
     codes = np.asarray(strata)
     members = integer_record_keys(identities, label="Carer's Allowance identities")
-    if codes.shape != members.shape:
-        raise ValueError("Stratum starts need one identity per record.")
+    uniforms = np.asarray(draws, dtype=np.float64)
+    if not codes.shape == members.shape == uniforms.shape:
+        raise ValueError("Stratum starts need one identity and draw per record.")
     unique = np.unique(codes)
-    keys = []
-    for code in unique:
-        digest = hashlib.blake2b(digest_size=16)
-        for member in np.sort(members[codes == code]):
-            digest.update(f"{int(member)},".encode())
-        keys.append(f"{code}:{digest.hexdigest()}")
+    order = np.lexsort((members, uniforms, codes))
+    first = np.searchsorted(codes[order], unique)
+    keys = [
+        f"{code}:{int(member)}"
+        for code, member in zip(unique, members[order][first], strict=True)
+    ]
     starts = stable_identity_uniforms(
         keys, seed=CARERS_ALLOWANCE_TAKE_UP_SEED, salt=f"{salt}:stratum_start"
     )
@@ -695,6 +698,7 @@ def redraw_carers_allowance_take_up(
             take_up_strata[eligible],
             salt=CARERS_ALLOWANCE_TAKE_UP_OUTPUT,
             identities=person["person_id"].to_numpy()[eligible],
+            draws=draws[eligible],
         ),
     )
     drawn = eligible & (positions < rate)

@@ -1,5 +1,5 @@
 {
-  "built_on": "2026-10-29",
+  "built_on": "2026-10-30",
   "counts": {
     "by_system": {
       "uk_ew_output_area_2021": {
@@ -340,7 +340,7 @@
       ]
     }
   },
-  "layer_sha256": "62f0bc78cd76e4ec39bd3c945adfa43d3c94b16380c6e3beff2ff247261c97f1",
+  "layer_sha256": "be4f6ae33fb3ebf1b20aaa0bc118ec563b2068baba50e9ca676154a3d79a8242",
   "nspl_registration": {
     "manifest": "PolicyEngine/chronicle db/data/ons/nspl_august_2026/manifest.yaml",
     "zip_sha256": "f5d86a518d360cad67f0304f25574d3ce619f242d9ea6385a120abab7c15b15c"

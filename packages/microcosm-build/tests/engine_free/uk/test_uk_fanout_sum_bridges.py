@@ -466,45 +466,129 @@ def test_each_committed_bridge_holds_its_declared_index_gap(bridge) -> None:
     assert abs(gap) <= bridge["max_index_shift"], (bridge["bridge_id"], gap)
 
 
-@pytest.mark.parametrize("bridge", uk_fanout_sum_bridges(), ids=lambda b: b.bridge_id)
-def test_each_committed_bridge_holds_its_declared_source_gap(bridge) -> None:
-    """The re-review of microcosm#1420, D: the source half of a bridge's factor,
-    with the pension bridge's one-sided floor, is checked only inside a dense
-    build, so a feed re-pin or a change in which cells are deferred could stop
-    every dense build with CI green. It is recomputed here, at each grain, from
-    the committed registers: the national bands before their index over the
-    cells at their published values, the deferred cells that keep a value
-    counted, as the surface counts them. The surface also fills an area with no
-    fact from the other grain, which this leaves out, so a grain short of an
-    area reads a little higher here than in a build."""
+def _committed_surface_rows(bridge, *, scale_la: float = 1.0) -> list[dict]:
+    """The bridge's rows from the runtime surface on the committed registers.
 
-    membership = _committed("target_reference_membership.json")
+    The bridge's area cells come from the committed local references at their
+    resolved values, with their published values and factors; its control is
+    its national bands summed, before and after their index; the small-cell
+    deferrals and the other off-surface cells come from the committed
+    membership. ``scale_la`` moves the local-authority cells, for a test.
+    """
+
+    from microcosm.build.uk_runtime.ledger_targets import (
+        uk_local_target_surface,
+        uk_off_surface_cells,
+        uk_small_cell_deferred_cells,
+    )
+
+    national = _committed("target_reference_membership.json")
     local = _committed("local_target_reference_membership.json")
-    published = {
-        row["name"]: float(row["value_before_uprating"])
-        for row in local["uprating_holds"]
-        if "value_before_uprating" in row
+    references = {
+        reference["name"]: reference
+        for reference in _committed("local_target_references.json")["target_references"]
     }
-    control = 0.0
+    indexed = {
+        row["name"]: row
+        for row in local["uprating_holds"]
+        if row.get("value_before_uprating") is not None
+    }
+    specs = []
+    for level, payload in local["targets"][bridge.lower_target_id][
+        "geography_levels"
+    ].items():
+        scale = scale_la if level == "local_authority" else 1.0
+        for candidate in payload["candidates"]:
+            if candidate["status"] != "active":
+                continue
+            reference = references[candidate["name"]]
+            metadata = {
+                key: str(value)
+                for key, value in (reference.get("metadata") or {}).items()
+            }
+            row = indexed.get(candidate["name"])
+            if row is not None:
+                before = float(row["value_before_uprating"]) * scale
+                metadata["ledger_value_before_alignment"] = repr(before)
+                metadata["uprating_factor"] = str(row["factor"])
+            specs.append(
+                TargetSpec(
+                    name=candidate["name"],
+                    entity=reference["entity"],
+                    measure=reference["measure"],
+                    value=float(candidate["resolved_value"]) * scale,
+                    period=2025,
+                    source="committed",
+                    family=reference.get("family", "hmrc"),
+                    metadata=metadata,
+                )
+            )
+    control = control_before = 0.0
     for higher in bridge.higher_target_ids:
-        for candidate in membership["targets"][higher]["candidates"]:
+        for candidate in national["targets"][higher]["candidates"]:
             uprating = candidate.get("uprating")
-            control += (
+            control += float(candidate["resolved_value"])
+            control_before += (
                 float(uprating["value_before_uprating"])
                 if uprating
                 else float(candidate["resolved_value"])
             )
+    _, receipt = uk_local_target_surface(
+        TargetRegistry(specs, country="uk"),
+        bound_national_target_ids=(),
+        period=2025,
+        fanout_sum_controls={
+            bridge.bridge_id: {
+                "control": control,
+                "control_before_alignment": control_before,
+            }
+        },
+        deferred_cells=[
+            cell
+            for cell in uk_small_cell_deferred_cells(local)
+            if cell["target_id"] == bridge.lower_target_id
+        ],
+        off_surface_cells=[
+            cell
+            for cell in uk_off_surface_cells(local)
+            if cell["target_id"] == bridge.lower_target_id
+        ],
+    )
+    return receipt["fanout_sum_bridges"]
+
+
+@pytest.mark.parametrize("bridge", uk_fanout_sum_bridges(), ids=lambda b: b.bridge_id)
+def test_each_committed_bridge_holds_its_declared_gaps_on_the_runtime_surface(
+    bridge,
+) -> None:
+    """The re-reviews of microcosm#1420, D and 1: both halves of each bridge's
+    factor, with the pension bridge's one-sided floor, are checked only inside
+    a dense build, so a feed re-pin or a change in which cells are deferred
+    could stop every dense build with CI green. The runtime surface itself
+    runs here on the committed registers, so each grain reads the quantity a
+    build reads, the areas it fills in from the other grain included."""
+
+    rows = _committed_surface_rows(bridge)
+    assert {row["geography_level"] for row in rows} == {
+        "constituency",
+        "local_authority",
+    }
     lowest, highest = bridge.source_factor_bounds
-    levels = local["targets"][bridge.lower_target_id]["geography_levels"]
-    assert set(levels) == {"constituency", "local_authority"}
-    for level, payload in levels.items():
-        cells = 0.0
-        for candidate in payload["candidates"]:
-            if candidate["status"] == "active":
-                cells += published.get(
-                    candidate["name"], float(candidate["resolved_value"])
-                )
-            elif candidate.get("deferred_value") is not None:
-                cells += float(candidate["deferred_value"])
-        source = control / cells
-        assert lowest <= source <= highest, (bridge.bridge_id, level, source)
+    for row in rows:
+        assert lowest <= row["source_factor"] <= highest, row
+        assert abs(row["index_factor"] - 1.0) <= bridge.max_index_shift, row
+
+
+def test_the_runtime_surface_refuses_local_authority_cells_moved_past_the_floor():
+    # The re-review of microcosm#1420, 1: raising only the local-authority
+    # pension cells by half a percent takes their source factor below the
+    # bridge's 1.025 floor, and the surface refuses, as a dense build would.
+    (bridge,) = [
+        b
+        for b in uk_fanout_sum_bridges()
+        if b.bridge_id == "spi_pension_amount_bands_vs_area"
+    ]
+    with pytest.raises(
+        ValueError, match="local_authority cells .* outside the declared"
+    ):
+        _committed_surface_rows(bridge, scale_la=1.005)

@@ -1099,7 +1099,7 @@
       "S00174882"
     ]
   },
-  "built_on": "2026-10-29",
+  "built_on": "2026-10-30",
   "definition": {
     "districts": [
       "EX35",
@@ -1395,7 +1395,7 @@
       "PA34 5UQ"
     ]
   },
-  "description": "The 2021 output areas of England and Wales and 2022 output areas of Scotland more than half of whose postcodes lie in the Rural Fuel Duty Relief scheme's areas (HMRC Notice 2001), by the ONS postcode lookup and Microcosm's declared translation of the notice's island groups into postcode districts and sectors. Read by the post-geography node uk.full.geography.rfdr (microcosm#1418); rebuilt by tools/build_uk_rfdr_area_layer.py.",
+  "description": "The 2021 output areas of England and Wales and 2022 output areas of Scotland more than half of whose postcodes lie in the Rural Fuel Duty Relief scheme's areas (HMRC Notice 2001), by the ONS postcode lookup and Microcosm's declared translation of the notice's island groups into postcode districts, unit postcodes and excluded units. Read by the post-geography node uk.full.geography.rfdr (microcosm#1418); rebuilt by tools/build_uk_rfdr_area_layer.py.",
   "kind": "uk_rfdr_area_layer",
   "licence": {
     "attribution": "Contains OS data and Royal Mail data, Crown copyright and database right; Source: Office for National Statistics, licensed under the Open Government Licence v3.0.",

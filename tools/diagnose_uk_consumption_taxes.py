@@ -152,18 +152,61 @@ def registry_values(path: Path) -> dict[str, float]:
     return values
 
 
-def engine_estimates(dataset: str, year: int) -> dict[str, float]:
-    """Weighted engine totals of each measured row at ``year`` or its own period."""
+def registry_row_years(path: Path) -> dict[str, int]:
+    """Each measured row's period as the run's own registry declares it.
+
+    A run built before a row's binding moved its period measured the row at
+    the run's period, and its registry value is that period's fact, so the
+    tool reads the period the run used, not the package's (the re-review of
+    microcosm#1420, 5). A row the registry gives no period is measured at
+    ``--year``.
+    """
+
+    payload = json.loads(path.read_text())
+    years: dict[str, int] = {}
+    for spec in payload.get("specs", []):
+        period = (spec.get("metadata") or {}).get("measurement_period")
+        if spec.get("name") in ROWS and period is not None:
+            years[str(spec["name"])] = int(period)
+    return years
+
+
+def engine_estimates(
+    dataset: str, year: int, row_years: Mapping[str, int] | None = None
+) -> dict[str, float]:
+    """Each measured row's engine total at its own period or ``year``.
+
+    Every row is weighted at ``year``, the calibration's: a release H5 stores
+    the solved weights divided by the engine's projection from its own year,
+    so the engine's weights at an earlier period read the calibration's
+    figure low (by 0.3% at 2024; the re-review of microcosm#1420, 5). The
+    calibration weighs a row measured at the frame's year with its solved
+    weights, as the certifier and the scorer do.
+    """
 
     from policyengine_uk import Microsimulation
 
+    periods = ROW_YEARS if row_years is None else row_years
     simulation = Microsimulation(dataset=dataset)
+    weights = np.asarray(
+        simulation.calculate("household_weight", year).values, dtype=float
+    )
     estimates: dict[str, float] = {}
     for name, variables in ROWS.items():
-        period = ROW_YEARS.get(name, year)
+        period = periods.get(name, year)
         estimates[name] = float(
             sum(
-                float(simulation.calculate(variable, period).sum())
+                float(
+                    np.dot(
+                        np.asarray(
+                            simulation.calculate(
+                                variable, period, map_to="household"
+                            ).values,
+                            dtype=float,
+                        ),
+                        weights,
+                    )
+                )
                 for variable in variables
             )
         )
@@ -183,10 +226,12 @@ def main() -> None:
     args = parser.parse_args()
     household = pd.read_hdf(args.dataset, "household")
     targets = registry_values(args.registry) if args.registry else {}
+    row_years = registry_row_years(args.registry) if args.registry else ROW_YEARS
     report = {
         "dataset": args.dataset,
         "year": args.year,
-        "rows": compare(engine_estimates(args.dataset, args.year), targets),
+        "row_years": dict(row_years),
+        "rows": compare(engine_estimates(args.dataset, args.year, row_years), targets),
         "composition": composition(household),
     }
     args.out.write_text(json.dumps(report, indent=1, sort_keys=True))

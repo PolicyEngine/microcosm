@@ -10,8 +10,11 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import sys
 from importlib.resources import files
+from types import SimpleNamespace
 
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -140,3 +143,62 @@ def test_excise_rows_are_measured_at_their_own_period() -> None:
     }
     assert _tool.ROW_YEARS["ons.household_electricity_expenditure"] == 2024
     assert _tool.ROW_YEARS["ons.household_road_fuel_expenditure"] == 2024
+
+
+def test_rows_at_an_earlier_period_are_weighted_at_the_calibration_year(
+    monkeypatch,
+) -> None:
+    # The re-review of microcosm#1420, 5: a release H5 stores the solved
+    # weights divided by the engine's projection, so the engine's own 2024
+    # weights would read a 2024 row 0.3% low. Rows are weighted at --year.
+    calls = []
+
+    class _Simulation:
+        def __init__(self, dataset):
+            pass
+
+        def calculate(self, variable, period, map_to=None):
+            calls.append((variable, period))
+            if variable == "household_weight":
+                values = [2.0, 3.0] if period == 2025 else [1.0, 1.0]
+            else:
+                values = [10.0, 20.0] if period == 2024 else [100.0, 200.0]
+            return SimpleNamespace(values=np.asarray(values))
+
+    monkeypatch.setitem(
+        sys.modules, "policyengine_uk", SimpleNamespace(Microsimulation=_Simulation)
+    )
+    estimates = _tool.engine_estimates(
+        "dataset.h5", 2025, {"ons.household_electricity_expenditure": 2024}
+    )
+    assert estimates["ons.household_electricity_expenditure"] == 2 * 10 + 3 * 20
+    # Two variables at --year.
+    assert estimates["obr.vat"] == 2 * (2 * 100 + 3 * 200)
+    assert ("household_weight", 2024) not in calls
+
+
+def test_a_registry_supplies_the_periods_its_run_measured(tmp_path) -> None:
+    # The re-review of microcosm#1420, 5: a run built before electricity moved
+    # to 2024 holds the 2025 fact, so its own registry's periods win.
+    path = tmp_path / "registry.json"
+    path.write_text(
+        json.dumps(
+            {
+                "specs": [
+                    {
+                        "name": "ons.household_road_fuel_expenditure",
+                        "value": 1.0,
+                        "metadata": {"measurement_period": "2024"},
+                    },
+                    {"name": "ons.household_electricity_expenditure", "value": 2.0},
+                    {
+                        "name": "not.a.tool.row",
+                        "metadata": {"measurement_period": "2024"},
+                    },
+                ]
+            }
+        )
+    )
+    assert _tool.registry_row_years(path) == {
+        "ons.household_road_fuel_expenditure": 2024
+    }

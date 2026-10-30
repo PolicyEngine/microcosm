@@ -5,8 +5,8 @@ HMRC Notice 2001 opens the relief to retailers in the Inner and Outer
 Hebrides, the Northern Isles, the Islands in the Clyde, the Isles of Scilly,
 the post town of Hawes and sixteen mainland postcode districts. The notice
 names the island groups without bounding them, so ``RFDR_POSTCODE_DEFINITION``
-below declares Microcosm's translation of every part into postcode districts
-and sectors, with its sources.
+below declares Microcosm's translation of every part into postcode districts,
+unit postcodes and excluded units, with its sources.
 
 The tool reads the ONS National Statistics Postcode Lookup's best-fit 2021
 output area of every postcode (Scotland's 2022 output areas under the same
@@ -586,7 +586,8 @@ def main(argv: list[str] | None = None) -> int:
             "Scotland more than half of whose postcodes lie in the Rural Fuel Duty "
             "Relief scheme's areas (HMRC Notice 2001), by the ONS postcode lookup "
             "and Microcosm's declared translation of the notice's island groups "
-            "into postcode districts and sectors. Read by the post-geography node "
+            "into postcode districts, unit postcodes and excluded units. Read by the "
+            "post-geography node "
             "uk.full.geography.rfdr (microcosm#1418); rebuilt by "
             "tools/build_uk_rfdr_area_layer.py."
         ),

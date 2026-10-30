@@ -346,6 +346,9 @@ class UKSpineGateKernel(KernelBase):
     the persisted verdict binds the policy it was judged under:
     ``synthetic_smoke`` mirrors ``GateBatteryRun(synthetic_smoke=...)`` — on a
     data-only fixture the population-fact gates are recorded but never block.
+    The transferred phase also carries ``energy_pricing_code``, the hash of
+    the module that sets the energy level its rake gate recomputes, so only
+    that phase re-keys when the level's code changes.
     """
 
     ref = "uk.spine-gates@1"

@@ -620,15 +620,19 @@ def test_a_stratum_may_miss_its_share_by_up_to_one_record() -> None:
 def test_a_one_record_stratum_claims_with_probability_equal_to_the_rate() -> None:
     # The independent review of microcosm#1420, finding 4: at its midpoint a
     # stratum of one record always sits at 0.5. Rotated by a start keyed on
-    # the stratum's members, a carer alone in a stratum claims at the rate
-    # over identities, whatever the code (the re-review, G): keyed on the code
-    # alone, a one-record stratum's outcome was fixed per code in every build.
+    # the stratum's lowest-draw member, a carer alone in a stratum claims at
+    # the rate over identities, whatever the code (its re-reviews, G and 2):
+    # keyed on the code alone, a one-record stratum's outcome was fixed per
+    # code in every build.
     ids = np.arange(1, 4_001, dtype=np.int64)
     for code in (0, 7):
         starts = np.array(
             [
                 ca.stratum_starts(
-                    np.array([code]), salt=_OUTPUT, identities=np.array([person])
+                    np.array([code]),
+                    salt=_OUTPUT,
+                    identities=np.array([person]),
+                    draws=np.array([0.5]),
                 )[0]
                 for person in ids
             ]
@@ -636,22 +640,48 @@ def test_a_one_record_stratum_claims_with_probability_equal_to_the_rate() -> Non
         positions = np.mod(0.5 + starts, 1.0)
         for rate in (0.45, 0.6, 0.75):
             assert (positions < rate).mean() == pytest.approx(rate, abs=0.03)
-    # The same people take the same start whatever their order; a stratum's
-    # records share one start, and another member moves it.
+    # The same people take the same start whatever their order, and a
+    # stratum's records share one start.
     codes = np.repeat(np.arange(4), 3)
     members = np.arange(100, 112, dtype=np.int64)
-    starts = ca.stratum_starts(codes, salt=_OUTPUT, identities=members)
+    draws = stable_identity_uniforms(members, seed=0, salt=_OUTPUT)
+    starts = ca.stratum_starts(codes, salt=_OUTPUT, identities=members, draws=draws)
     order = np.random.default_rng(1).permutation(codes.size)
     np.testing.assert_array_equal(
-        ca.stratum_starts(codes[order], salt=_OUTPUT, identities=members[order]),
+        ca.stratum_starts(
+            codes[order], salt=_OUTPUT, identities=members[order], draws=draws[order]
+        ),
         starts[order],
     )
     assert all(np.unique(starts[codes == code]).size == 1 for code in range(4))
-    moved = members.copy()
-    moved[0] = 999
-    assert ca.stratum_starts(codes, salt=_OUTPUT, identities=moved)[0] != starts[0]
-    with pytest.raises(ValueError, match="one identity per record"):
-        ca.stratum_starts(codes, salt=_OUTPUT, identities=members[:-1])
+    with pytest.raises(ValueError, match="one identity and draw per record"):
+        ca.stratum_starts(
+            codes, salt=_OUTPUT, identities=members[:-1], draws=draws[:-1].copy()
+        )
+
+
+def test_a_stratum_keeps_its_start_unless_its_lowest_draw_member_changes() -> None:
+    # The re-review of microcosm#1420, 2: keyed on every member, one member
+    # leaving re-drew about half the stratum. Keyed on the lowest-draw member,
+    # the start moves only when that member leaves or a lower one joins.
+    members = np.arange(200, 220, dtype=np.int64)
+    draws = stable_identity_uniforms(members, seed=0, salt=_OUTPUT)
+    codes = np.zeros(members.size, dtype=np.int64)
+
+    def start(keep: np.ndarray) -> float:
+        return ca.stratum_starts(
+            codes[keep], salt=_OUTPUT, identities=members[keep], draws=draws[keep]
+        )[0]
+
+    everyone = np.ones(members.size, dtype=bool)
+    lowest = int(np.argmin(draws))
+    other = next(i for i in range(members.size) if i != lowest)
+    without_other = everyone.copy()
+    without_other[other] = False
+    without_lowest = everyone.copy()
+    without_lowest[lowest] = False
+    assert start(without_other) == start(everyone)
+    assert start(without_lowest) != start(everyone)
 
 
 def _outside_pool_frame():
@@ -1054,7 +1084,9 @@ def test_the_stage_places_each_carer_by_their_identity_and_their_strata(
         assert call["starts"] is not None, label
         np.testing.assert_array_equal(
             call["starts"],
-            ca.stratum_starts(call["strata"], salt=salt, identities=people),
+            ca.stratum_starts(
+                call["strata"], salt=salt, identities=people, draws=call["draws"]
+            ),
         )
         placed = weight_balanced_uniforms(
             call["strata"], call["draws"], call["weights"], starts=call["starts"]
@@ -1071,6 +1103,13 @@ def test_the_stage_places_each_carer_by_their_identity_and_their_strata(
     outside = frame.table("person")["person_id"].to_numpy()[:n]
     assert set(pool.index) == set(outside)
     assert set(take_up.index) & set(outside) == set(pool.index[pool < share])
+    # The take-up strata add the route to the pool's: no stratum mixes carers
+    # who give the hours inside the household with those who don't (the
+    # re-review of microcosm#1420, 6).
+    route = np.isin(take_up.index.to_numpy(), outside)
+    assert route.any() and not route.all()
+    for code in np.unique(take_up_call["strata"]):
+        assert np.unique(route[take_up_call["strata"] == code]).size == 1
 
 
 def test_the_stage_draws_the_same_carers_whatever_the_row_order() -> None:

@@ -7,8 +7,8 @@ policyengine-uk prices a household's petrol and diesel at the relieved rate
 when ``in_rural_fuel_duty_relief_area`` is true.
 
 The notice names the island groups without bounding them, so Microcosm
-declares its own translation into postcode districts and sectors, beside the
-notice's own districts (``tools/build_uk_rfdr_area_layer.py``). The tool reads
+declares its own translation into postcode districts, unit postcodes and
+excluded units, beside the notice's own districts (``tools/build_uk_rfdr_area_layer.py``). The tool reads
 the ONS postcode lookup and flags every 2021 output area of England and Wales
 and 2022 output area of Scotland whose postcodes mostly lie in the scheme;
 ``uk/rfdr_area_layer.json`` lists them. The post-geography node
