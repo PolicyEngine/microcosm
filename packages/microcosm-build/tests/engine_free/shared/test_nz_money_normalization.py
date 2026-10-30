@@ -9,6 +9,9 @@ from __future__ import annotations
 
 import ast
 import json
+import re
+from collections.abc import Mapping
+from decimal import Decimal, InvalidOperation
 from fractions import Fraction
 
 import pytest
@@ -41,6 +44,68 @@ def _load(name):
 
 def _declaration():
     return validate_money_normalization(_load("money_normalization.json"))
+
+
+# A whole numeric token: an optional sign, digits and points, then any
+# exponent, with no letter, digit or underscore right after it. A sign that
+# follows a digit separates two numbers, as in the range 1.650-1.654 or the sum
+# 0+1.654, so the number after it stands unsigned. Otherwise the token,
+# including its sign, may not follow a letter, digit, underscore, point or
+# sign: -1.654 is negative, and v-1.654, v1.654 and a1654e-3b hold no number.
+# A run with two points such as 2.1.654 matches, but Decimal rejects it and
+# _text_numbers skips it. _text_numbers also drops one trailing point, which
+# ends a sentence.
+_NUMBER_TOKEN = re.compile(
+    r"(?:(?<![\w.+-])[-+]?|(?<=\d[-+]))(?:\d[\d.]*|\.\d+)(?:[eE][-+]?\d+)?(?!\w)"
+)
+
+
+def _text_numbers(text):
+    for token in _NUMBER_TOKEN.findall(text):
+        try:
+            yield Decimal(token.removesuffix("."))
+        except InvalidOperation:
+            continue
+
+
+def _rate_locations(value, rate, path=()):
+    """Yield each JSON location that states ``rate`` exactly, in any form.
+
+    A location matches when it holds the rate as a JSON number, as a
+    numerator/denominator object, or as a whole numeric token inside text,
+    including signs and exponents. Longer numbers such as 1.6541 or 11.654 do
+    not match. Decimal and Fraction compare exactly.
+    """
+    if isinstance(value, Mapping):
+        numerator, denominator = value.get("numerator"), value.get("denominator")
+        if (
+            type(numerator) is int
+            and type(denominator) is int
+            and denominator
+            and Fraction(numerator, denominator) == rate
+        ):
+            yield path
+        for key, item in value.items():
+            yield from _rate_locations(item, rate, (*path, key))
+    elif isinstance(value, list):
+        for index, item in enumerate(value):
+            yield from _rate_locations(item, rate, (*path, index))
+    elif isinstance(value, Decimal):
+        if value == rate:
+            yield path
+    elif isinstance(value, str):
+        if any(number == rate for number in _text_numbers(value)):
+            yield path
+
+
+def _spec_rate_locations(rate):
+    return [
+        (path.name, location)
+        for path in sorted(_SPEC.rglob("*.json"))
+        for location in _rate_locations(
+            json.loads(path.read_text(), parse_float=Decimal), rate
+        )
+    ]
 
 
 def _factor(factor_id):
@@ -259,18 +324,64 @@ def test_the_rate_has_one_source_and_the_bridge_points_to_it():
     assert rate == Fraction(827, 500)
     assert evidence["citation"]["url"].startswith("https://www.irs.gov/")
     assert evidence["citation"]["column"] == "2024"
-    occurrences = [
-        path.name
-        for path in sorted(_SPEC.rglob("*.json"))
-        if "1.654" in path.read_text()
+    assert _spec_rate_locations(rate) == [
+        ("money_normalization.json", ("rate", "text"))
     ]
-    assert occurrences == ["money_normalization.json"]
     assert _load("money_normalization.json")["rate"]["text"] == "1.654"
     bridge = _load("currency_bridge.json")
     assert bridge["rate"] == {"resource": "money_normalization.json", "path": ["rate"]}
     assert "awaiting D1" not in bridge["status"]
     assert "d1043" in bridge["status"]
     assert "method-card-D1-adopted.md" in bridge["status"]
+
+
+@pytest.mark.parametrize(
+    ("value", "found"),
+    [
+        (Decimal("1.654"), True),
+        ({"numerator": 827, "denominator": 500}, True),
+        ({"numerator": 1654, "denominator": 1000}, True),
+        ("converted at 1.654 NZD per USD", True),
+        ("The rate is 1.654.", True),
+        ("1654e-3", True),
+        ("16.54E-1", True),
+        ("+1.654", True),
+        ("1.654e0", True),
+        ("1.654e1", False),
+        ("1.654e-3", False),
+        ("-1.654", False),
+        ("1,654", False),
+        ("Dependency version v1.654.", False),
+        ("a1654e-3b", False),
+        ("1.654e+", False),
+        ("rate_1.654", False),
+        ("Dependency version v-1.654.", False),
+        ("a-1.654", False),
+        ("v-1654e-3", False),
+        ("(-1.654)", False),
+        ("(+1.654)", True),
+        ("+-1.654", False),
+        ("The exchange-rate range is 1.650-1.654.", True),
+        ("The exchange-rate range is 1.700-1.654.", True),
+        ("The exchange-rate formula is 0+1.654.", True),
+        ("Valid 2026-04-01 to 2026-11-03.", False),
+        ("(1.654)", True),
+        ("1.6540", True),
+        ("1.6541", False),
+        ("11.654", False),
+        ("1.654.2", False),
+        ("2.1.654", False),
+        ("v1654", False),
+        (Decimal("1.6541"), False),
+        ({"numerator": True, "denominator": 1}, False),
+        ({"numerator": 827, "denominator": 0}, False),
+        (1654, False),
+    ],
+)
+def test_the_rate_scan_matches_exact_values_only(value, found):
+    document = {"outer": [{"inner": value}]}
+    expected = [("outer", 0, "inner")] if found else []
+    assert list(_rate_locations(document, Fraction(827, 500))) == expected
 
 
 def test_the_three_donor_factors_are_exact_and_only_money_may_apply_them():
