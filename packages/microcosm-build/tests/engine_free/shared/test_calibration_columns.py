@@ -3,8 +3,12 @@
 from __future__ import annotations
 
 import copy
-import hashlib
+import functools
 import json
+import math
+from collections.abc import Mapping
+from numbers import Integral, Real
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -15,6 +19,10 @@ from hypothesis import strategies as st
 from microcosm.build.calibration_columns import prepare_calibration_columns
 from microcosm.build.calibration_predicates import calibration_predicate_mask
 from microcosm.build.country_spec import _validate_target_references
+from microcosm.build.reference_intervals import (
+    interval_indicators,
+    validate_interval_document,
+)
 from microcosm.build.reference_profiles import resolve_reference_profiles
 from microcosm.calibrate import Target, TargetSet
 from microcosm.calibrate.matrix import build_constraint_matrix
@@ -720,11 +728,35 @@ def test_receipt_predicate_masks_match_preparation_for_validated_raw_inputs(rows
         )
 
 
-def test_prepare_matches_pinned_legacy_output_digest():
-    # Captured from the pre-refactor implementation at 4f333f2c2ee70b6b758586f402d966df7297a2f0,
-    # run on these NZ bindings, which #1398 extended after the capture.
-    tables = prepare_calibration_columns(_tables(), _bindings())
-    document = {
+@functools.cache
+def _legacy_prepare():
+    """Run 4f333f2c's frozen preparation with today's interval module.
+
+    2f220f70c moved the predicates into calibration_predicates; the frozen
+    functions are the oracle for that refactor and for later binding edits.
+    """
+    path = (
+        paths_for("microcosm-build").tests
+        / "fixtures/calibration_columns_legacy.py.txt"
+    )
+    scope = {
+        "Any": Any,
+        "Integral": Integral,
+        "Mapping": Mapping,
+        "Real": Real,
+        "interval_indicators": interval_indicators,
+        "math": math,
+        "np": np,
+        "pd": pd,
+        "validate_interval_document": validate_interval_document,
+    }
+    source = "from __future__ import annotations\n" + path.read_text()
+    exec(compile(source, str(path), "exec"), scope)
+    return scope["prepare_calibration_columns"]
+
+
+def _table_document(tables):
+    return {
         entity: {
             "columns": list(table),
             "dtypes": [str(dtype) for dtype in table.dtypes],
@@ -733,7 +765,205 @@ def test_prepare_matches_pinned_legacy_output_digest():
         }
         for entity, table in tables.items()
     }
-    payload = json.dumps(document, sort_keys=True, separators=(",", ":")).encode()
-    assert hashlib.sha256(payload).hexdigest() == (
-        "1b22f4e11e6e6c901866010d709acadaaad638e0774e80751e0ff23257a2bde7"
+
+
+def _prepared_document(tables):
+    return json.dumps(_table_document(tables), sort_keys=True, separators=(",", ":"))
+
+
+def _outcome(prepare, tables, bindings, **options):
+    """Return one implementation's result and the state of its own input copies.
+
+    Each call gets independent copies of every argument, so neither
+    implementation can change what the other reads, and the snapshot shows
+    any write an implementation makes to its inputs.
+    """
+    tables, bindings, options = copy.deepcopy((tables, bindings, options))
+    try:
+        prepared = prepare(tables, bindings, **options)
+    except ValueError as error:
+        result = ("refused", str(error))
+    else:
+        result = ("prepared", _prepared_document(prepared))
+    inputs = json.dumps(
+        {"bindings": bindings, "options": options, "tables": _table_document(tables)},
+        sort_keys=True,
+        separators=(",", ":"),
+        default=repr,
     )
+    return result, inputs
+
+
+def test_prepare_matches_the_frozen_legacy_on_nz_bindings():
+    live = prepare_calibration_columns(_tables(), _bindings())
+    legacy = _legacy_prepare()(_tables(), _bindings())
+    assert list(live) == list(legacy) == ["person", "household"]
+    for entity, table in legacy.items():
+        pd.testing.assert_frame_equal(live[entity], table, check_exact=True)
+    assert _prepared_document(live) == _prepared_document(legacy)
+
+
+_NZ_DEFECTS = (
+    "negative_age",
+    "fractional_age",
+    "boolean_age",
+    "missing_age",
+    "unknown_region",
+    "unknown_household_region",
+    "unknown_tenure",
+    "orphan_member",
+    "empty_household",
+    "duplicate_person",
+    "boolean_identity",
+)
+
+
+@st.composite
+def _nz_raw_tables(draw, defect):
+    domains = _bindings()["input_domains"]
+    households = draw(st.integers(min_value=0 if defect is None else 1, max_value=6))
+    membership = draw(
+        st.permutations(
+            [
+                *range(households),
+                *draw(
+                    st.lists(
+                        st.integers(min_value=0, max_value=max(households - 1, 0)),
+                        min_size=1 if defect == "duplicate_person" else 0,
+                        max_size=10 if households else 0,
+                    )
+                ),
+            ]
+        )
+    )
+    people = len(membership)
+    identities = st.one_of(
+        st.integers(min_value=-(10**6), max_value=10**6),
+        st.integers(min_value=-(10**6), max_value=10**6).map(np.int64),
+        st.text(alphabet="abcdefgh0123456789", min_size=1, max_size=4),
+    )
+    household_ids = draw(
+        st.lists(identities, min_size=households, max_size=households, unique=True)
+    )
+    ages = st.integers(min_value=0, max_value=130)
+    tables = {
+        "person": pd.DataFrame(
+            {
+                "person_id": draw(
+                    st.lists(identities, min_size=people, max_size=people, unique=True)
+                ),
+                "person_household_id": [household_ids[index] for index in membership],
+                "age": draw(
+                    st.lists(
+                        st.one_of(ages, ages.map(float)),
+                        min_size=people,
+                        max_size=people,
+                    )
+                ),
+                "region_code": draw(
+                    st.lists(
+                        st.sampled_from(domains["person"]["region_code"]["values"]),
+                        min_size=people,
+                        max_size=people,
+                    )
+                ),
+            }
+        ),
+        "household": pd.DataFrame(
+            {
+                "household_id": household_ids,
+                "household_region_code": draw(
+                    st.lists(
+                        st.sampled_from(
+                            domains["household"]["household_region_code"]["values"]
+                        ),
+                        min_size=households,
+                        max_size=households,
+                    )
+                ),
+                "tenure": draw(
+                    st.lists(
+                        st.sampled_from(domains["household"]["tenure"]["values"]),
+                        min_size=households,
+                        max_size=households,
+                    )
+                ),
+            }
+        ),
+    }
+    if draw(st.booleans()):
+        for table in tables.values():
+            table.index = draw(st.permutations(range(100, 100 + len(table))))
+    if defect is None:
+        return tables
+    person, household = tables["person"], tables["household"]
+    position = draw(st.integers(min_value=0, max_value=people - 1))
+    row, next_row = person.index[position], person.index[(position + 1) % people]
+    if defect == "negative_age":
+        person["age"] = person["age"].astype(object)
+        person.at[row, "age"] = -1
+    elif defect == "fractional_age":
+        person["age"] = person["age"].astype(float)
+        person.at[row, "age"] = 40.5
+    elif defect == "boolean_age":
+        person["age"] = person["age"].astype(object)
+        person.at[row, "age"] = True
+    elif defect == "missing_age":
+        person["age"] = person["age"].astype(float)
+        person.at[row, "age"] = np.nan
+    elif defect == "unknown_region":
+        person.at[row, "region_code"] = "10"
+    elif defect == "unknown_household_region":
+        household.at[household.index[0], "household_region_code"] = "1"
+    elif defect == "unknown_tenure":
+        household.at[household.index[0], "tenure"] = "owned"
+    elif defect == "orphan_member":
+        person["person_household_id"] = person["person_household_id"].astype(object)
+        person.at[row, "person_household_id"] = "orphan-household"
+    elif defect == "empty_household":
+        tables["household"] = pd.concat(
+            [household, household.iloc[:1].assign(household_id="empty-household")],
+            ignore_index=True,
+        )
+    elif defect == "duplicate_person":
+        person["person_id"] = person["person_id"].astype(object)
+        person.at[row, "person_id"] = person.at[next_row, "person_id"]
+    elif defect == "boolean_identity":
+        person["person_id"] = person["person_id"].astype(object)
+        person.at[row, "person_id"] = False
+    return tables
+
+
+@pytest.mark.parametrize("defect", [None, *_NZ_DEFECTS])
+@settings(max_examples=15, deadline=None, suppress_health_check=[HealthCheck.too_slow])
+@given(data=st.data())
+def test_prepare_agrees_with_the_frozen_legacy_on_generated_nz_tables(defect, data):
+    tables = data.draw(_nz_raw_tables(defect))
+    bindings = _bindings()
+    live = _outcome(prepare_calibration_columns, tables, bindings)
+    assert live[0][0] == ("prepared" if defect is None else "refused")
+    assert live == _outcome(_legacy_prepare(), tables, bindings)
+
+
+@settings(max_examples=60, deadline=None, suppress_health_check=[HealthCheck.too_slow])
+@given(
+    st.sampled_from(["person", "household"]),
+    st.lists(
+        st.tuples(
+            st.one_of(
+                st.sampled_from([-1, 0, 1, 99_999, 100_000, 100_001, 1_000_000]),
+                st.integers(min_value=-(10**7), max_value=10**7),
+                st.sampled_from([True, 10.0, "10", pd.NA]),
+            ),
+            st.sampled_from(["included", "excluded", "unresolved"]),
+        ),
+        min_size=1,
+        max_size=12,
+    ),
+)
+def test_interval_outputs_agree_with_the_frozen_legacy(entity, rows):
+    intervals, bindings = _interval_contract(entity=entity)
+    amounts, statuses = zip(*rows, strict=True)
+    tables = _interval_tables(pd.array(amounts, dtype=object), list(statuses), entity)
+    live = _outcome(prepare_calibration_columns, tables, bindings, intervals=intervals)
+    assert live == _outcome(_legacy_prepare(), tables, bindings, intervals=intervals)
