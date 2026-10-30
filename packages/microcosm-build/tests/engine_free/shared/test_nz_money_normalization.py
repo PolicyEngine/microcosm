@@ -46,9 +46,18 @@ def _declaration():
     return validate_money_normalization(_load("money_normalization.json"))
 
 
-# A whole numeric token: sign, digits and points, then any exponent. A run with
-# two points, such as 2.1.654, is not a number; one trailing point ends a sentence.
-_NUMBER_TOKEN = re.compile(r"(?<![\d.])[-+]?(?:\d[\d.]*|\.\d+)(?:[eE][-+]?\d+)?")
+# A whole numeric token: an optional sign, digits and points, then any
+# exponent, with no letter, digit or underscore right after it. A sign that
+# follows a digit separates two numbers, as in the range 1.650-1.654 or the sum
+# 0+1.654, so the number after it stands unsigned. Otherwise the token,
+# including its sign, may not follow a letter, digit, underscore, point or
+# sign: -1.654 is negative, and v-1.654, v1.654 and a1654e-3b hold no number.
+# A run with two points such as 2.1.654 matches, but Decimal rejects it and
+# _text_numbers skips it. _text_numbers also drops one trailing point, which
+# ends a sentence.
+_NUMBER_TOKEN = re.compile(
+    r"(?:(?<![\w.+-])[-+]?|(?<=\d[-+]))(?:\d[\d.]*|\.\d+)(?:[eE][-+]?\d+)?(?!\w)"
+)
 
 
 def _text_numbers(text):
@@ -64,7 +73,7 @@ def _rate_locations(value, rate, path=()):
 
     A location matches when it holds the rate as a JSON number, as a
     numerator/denominator object, or as a whole numeric token inside text,
-    signs and exponents included. Longer numbers such as 1.6541 or 11.654 do
+    including signs and exponents. Longer numbers such as 1.6541 or 11.654 do
     not match. Decimal and Fraction compare exactly.
     """
     if isinstance(value, Mapping):
@@ -336,6 +345,20 @@ def test_the_rate_has_one_source_and_the_bridge_points_to_it():
         ("1.654e-3", False),
         ("-1.654", False),
         ("1,654", False),
+        ("Dependency version v1.654.", False),
+        ("a1654e-3b", False),
+        ("1.654e+", False),
+        ("rate_1.654", False),
+        ("Dependency version v-1.654.", False),
+        ("a-1.654", False),
+        ("v-1654e-3", False),
+        ("(-1.654)", False),
+        ("(+1.654)", True),
+        ("+-1.654", False),
+        ("The exchange-rate range is 1.650-1.654.", True),
+        ("The exchange-rate range is 1.700-1.654.", True),
+        ("The exchange-rate formula is 0+1.654.", True),
+        ("Valid 2026-04-01 to 2026-11-03.", False),
         ("(1.654)", True),
         ("1.6540", True),
         ("1.6541", False),

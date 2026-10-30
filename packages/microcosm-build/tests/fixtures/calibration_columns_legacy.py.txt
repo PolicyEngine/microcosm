@@ -3,6 +3,7 @@
 # 2f220f70c moved its predicates into calibration_predicates. This fixture
 # retains only the pure functions; the loader supplies their imports.
 
+
 def prepare_calibration_columns(
     tables: Mapping[str, pd.DataFrame],
     bindings: Mapping[str, Any],

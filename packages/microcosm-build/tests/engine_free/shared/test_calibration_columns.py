@@ -13,7 +13,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 import pytest
-from hypothesis import HealthCheck, given, settings
+from hypothesis import HealthCheck, example, given, settings
 from hypothesis import strategies as st
 
 from microcosm.build.calibration_columns import prepare_calibration_columns
@@ -771,12 +771,51 @@ def _prepared_document(tables):
     return json.dumps(_table_document(tables), sort_keys=True, separators=(",", ":"))
 
 
+def _axis(axis):
+    return [
+        type(axis).__qualname__,
+        repr(axis.dtype),
+        _typed(list(axis.names)),
+        _typed(axis.tolist()),
+    ]
+
+
+def _typed(value):
+    """Encode ``value`` so that a change of type, content or pandas metadata shows.
+
+    Each scalar carries its type and repr, so ``pd.NA``, ``None``, ``np.int64(7)``
+    and the text ``"np.int64(7)"`` all encode differently. A frame keeps each
+    column's dtype repr (including categories, order flag and string storage),
+    both axes' class, dtype, names and labels, its ``attrs`` and its
+    duplicate-label flag. Mapping order doesn't count; sequence order does. State
+    that a repr hides, such as a MultiIndex level's dtype, stays out of view.
+    """
+    if isinstance(value, pd.DataFrame):
+        return {
+            "attrs": _typed(value.attrs),
+            "columns": _axis(value.columns),
+            "dtypes": [repr(dtype) for dtype in value.dtypes],
+            "flags": value.flags.allows_duplicate_labels,
+            "index": _axis(value.index),
+            "values": [
+                _typed(value.iloc[:, position].tolist())
+                for position in range(value.shape[1])
+            ],
+        }
+    if isinstance(value, Mapping):
+        items = [[_typed(key), _typed(item)] for key, item in value.items()]
+        return ["mapping", sorted(items, key=json.dumps)]
+    if isinstance(value, (list, tuple)):
+        return [type(value).__qualname__, [_typed(item) for item in value]]
+    return [f"{type(value).__module__}.{type(value).__qualname__}", repr(value)]
+
+
 def _outcome(prepare, tables, bindings, **options):
     """Return one implementation's result and the state of its own input copies.
 
     Each call gets independent copies of every argument, so neither
-    implementation can change what the other reads, and the snapshot shows
-    any write an implementation makes to its inputs.
+    implementation can change what the other reads, and the typed snapshot
+    shows a write an implementation makes to its inputs.
     """
     tables, bindings, options = copy.deepcopy((tables, bindings, options))
     try:
@@ -784,14 +823,8 @@ def _outcome(prepare, tables, bindings, **options):
     except ValueError as error:
         result = ("refused", str(error))
     else:
-        result = ("prepared", _prepared_document(prepared))
-    inputs = json.dumps(
-        {"bindings": bindings, "options": options, "tables": _table_document(tables)},
-        sort_keys=True,
-        separators=(",", ":"),
-        default=repr,
-    )
-    return result, inputs
+        result = ("prepared", json.dumps(_typed(prepared)))
+    return result, json.dumps(_typed((tables, bindings, options)))
 
 
 def test_prepare_matches_the_frozen_legacy_on_nz_bindings():
@@ -934,11 +967,23 @@ def _nz_raw_tables(draw, defect):
     return tables
 
 
+@st.composite
+def _nz_tables_with_categories(draw, defect):
+    tables = draw(_nz_raw_tables(defect))
+    if draw(st.booleans()):
+        tenure = tables["household"]["tenure"]
+        categories = draw(st.permutations(sorted(set(tenure.tolist()))))
+        tables["household"]["tenure"] = tenure.astype(
+            pd.CategoricalDtype(categories, ordered=draw(st.booleans()))
+        )
+    return tables
+
+
 @pytest.mark.parametrize("defect", [None, *_NZ_DEFECTS])
 @settings(max_examples=15, deadline=None, suppress_health_check=[HealthCheck.too_slow])
 @given(data=st.data())
 def test_prepare_agrees_with_the_frozen_legacy_on_generated_nz_tables(defect, data):
-    tables = data.draw(_nz_raw_tables(defect))
+    tables = data.draw(_nz_tables_with_categories(defect))
     bindings = _bindings()
     live = _outcome(prepare_calibration_columns, tables, bindings)
     assert live[0][0] == ("prepared" if defect is None else "refused")
@@ -961,6 +1006,9 @@ def test_prepare_agrees_with_the_frozen_legacy_on_generated_nz_tables(defect, da
         max_size=12,
     ),
 )
+# An excluded row may carry a missing amount and still prepare.
+@example("person", [(pd.NA, "excluded"), (100_001, "included")])
+@example("household", [(None, "excluded")])
 def test_interval_outputs_agree_with_the_frozen_legacy(entity, rows):
     intervals, bindings = _interval_contract(entity=entity)
     amounts, statuses = zip(*rows, strict=True)
