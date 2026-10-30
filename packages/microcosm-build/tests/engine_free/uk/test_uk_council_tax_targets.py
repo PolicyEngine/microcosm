@@ -613,10 +613,13 @@ def test_composed_english_region_cells_sum_to_the_publisher_england_row() -> Non
 
     facts = _pinned_feed_facts()
     spec = load_country_spec("uk")
+    # England's single adult discount row (microcosm#953) is national, not a
+    # composed region cell.
     composed = {
         reference.name: reference
         for reference in spec.target_references
         if reference.name.startswith("mhclg.council_tax_stock.")
+        and reference.name != _SINGLE_ADULT_DISCOUNT
     }
     assert len(composed) == 81
     compiled = compile_uk_target_registry(facts, target_period=2025).registry
@@ -626,6 +629,7 @@ def test_composed_english_region_cells_sum_to_the_publisher_england_row() -> Non
         else target.name: (target.value)
         for target in compiled.specs
         if target.name.startswith("mhclg.council_tax_stock.")
+        and target.name.removesuffix("@2025") != _SINGLE_ADULT_DISCOUNT
     }
     assert len(values) == 81, sorted(values)[:3]
 
