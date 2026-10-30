@@ -533,6 +533,15 @@ def test_chronicle_household_reference_surface_is_complete() -> None:
     assert not any(name.startswith("external:") for name in names)
 
 
+#: The June 2026 BUS0415a release blended over policyengine-uk's model years,
+#: as test_uk_bus_targets.py derives it (microcosm#1331). London's fares were
+#: held, and DfT's unrounded March 2026 value lifts them a little.
+_LONDON_FARE_FACTOR = (196.1 * 270 + 196.10649454164795 * 95) / 365 / 196.1
+_OUTSIDE_LONDON_FARE_FACTOR = (
+    210.5 * 86 + 213.6 * 92 + 214.3 * 92 + 217.95569364121366 * 95
+) / (181.6 * 86 + 185.7 * 92 + 185.9 * 92 + 206.4 * 90 + 210.5 * 5)
+
+
 def test_childcare_and_bus_references_compile_with_declared_provenance() -> None:
     root = _TEST_PATHS.repository
     feed = root / STABLE_UK_FACT_FEED_NAME
@@ -593,10 +602,13 @@ def test_childcare_and_bus_references_compile_with_declared_provenance() -> None
         "dfe.funded_childcare.working_parent_children_age_3": 278_640.0,
         "dfe.funded_childcare.universal_nursery_children_age_3": 565_954.0,
         "dft.bus_fare_receipts.england": pytest.approx(
-            3_417_388_656.43538 * 204.125 / 193.125
+            1_347_434_943.01459 * _LONDON_FARE_FACTOR
+            + 2_069_953_713.42079 * _OUTSIDE_LONDON_FARE_FACTOR
         ),
         "dft.bus_net_support.england": 3_024_904_320.8399997,
-        "dft.bus_fare_receipts.london": 1_347_434_943.01459,
+        "dft.bus_fare_receipts.london": pytest.approx(
+            1_347_434_943.01459 * _LONDON_FARE_FACTOR
+        ),
         "dft.bus_net_support.london": 1_130_214_000.0,
         "scotgov.bus.passenger_revenue": 391_000_000.0,
         "scotgov.bus.government_support": 499_000_000.0,
