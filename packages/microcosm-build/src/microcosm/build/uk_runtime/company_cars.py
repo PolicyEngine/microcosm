@@ -58,7 +58,10 @@ import pandas as pd
 from microcosm.build.gates import FitWeightRecord
 from microcosm.build.source_manifest import SourceStageSpec
 from microcosm.build.stochastic_assignment import stable_identity_uniforms
-from microcosm.build.uk_runtime.frs_spine import read_pinned_tab
+from microcosm.build.uk_runtime.frs_spine import (
+    FRS_COMPANY_CAR_CARRIER_COLUMNS,
+    read_pinned_tab,
+)
 from microcosm.build.uk_runtime.hmrc_company_car_statistics import (
     HMRCCompanyCarStatistics,
     check_company_car_statistics_declaration,
@@ -122,16 +125,13 @@ UK_COMPANY_CAR_FACT_FENCE: dict[str, Any] = {
 }
 
 #: The root stage's carriers (frs_spine.frs_company_car_carriers).
-PRICE_BAND_CARRIER = "frs_company_car_price_band"
-FUEL_CODE_CARRIER = "frs_company_car_fuel_code"
-PRIVATE_FUEL_CARRIER = "frs_company_car_private_fuel"
-CONTRIBUTION_CARRIER = "frs_company_car_contribution"
-CARRIER_COLUMNS = (
+CARRIER_COLUMNS = FRS_COMPANY_CAR_CARRIER_COLUMNS
+(
     PRICE_BAND_CARRIER,
     FUEL_CODE_CARRIER,
     PRIVATE_FUEL_CARRIER,
     CONTRIBUTION_CARRIER,
-)
+) = FRS_COMPANY_CAR_CARRIER_COLUMNS
 
 LIST_PRICE = "company_car_list_price"
 CO2_EMISSIONS = "company_car_co2_emissions"

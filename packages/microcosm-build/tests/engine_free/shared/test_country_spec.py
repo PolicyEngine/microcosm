@@ -1486,6 +1486,7 @@ class TestUKGatesManifest:
             "uk_stage_frs_person_draws_apprentices",
             "uk_stage_isa_subscriptions_invariants",
             "uk_stage_isa_subscriptions",
+            "uk_stage_company_cars_invariants",
             "uk_release_input_coverage",
             "uk_degenerate_release_surface",
             "uk_zero_weight_strata",
@@ -1620,6 +1621,7 @@ class TestUKGatesManifest:
             "uk_stage_frs_person_draws_apprentices",
             "uk_stage_isa_subscriptions_invariants",
             "uk_stage_isa_subscriptions",
+            "uk_stage_company_cars_invariants",
             "uk_weights_audit",
             # The #970 projection fence: a seam that cannot project cannot
             # certify the candidate's sub-exempt gainers.
