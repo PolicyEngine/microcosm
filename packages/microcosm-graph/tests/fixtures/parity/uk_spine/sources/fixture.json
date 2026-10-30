@@ -3264,7 +3264,7 @@
               "hmrc_spi_state_pension_income": "srp_regular_code5",
               "hmrc_spi_taxable_termination_pay": null,
               "hmrc_spi_unemployment_benefit_income": "hmrc_spi_unemployment_benefit_income",
-              "other_investment_income": null,
+              "other_investment_income": "other_investment_income",
               "private_pension_income": "private_pension_income",
               "property_finance_costs": null,
               "property_income": "property_income",
