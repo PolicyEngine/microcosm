@@ -586,9 +586,10 @@ def _bound_rows_refused_at_their_declared_period(exclusions=None) -> list[str]:
     stored: dict[str, set[str]] = {}
     for cells in uk_spine_endpoint(uk_spine_graph()).inputs:
         stored.setdefault(str(cells.entity), set()).update(map(str, cells.columns))
+    release = load_uk_frs_release()
     frame = SimpleNamespace(
         stored_columns={entity: frozenset(names) for entity, names in stored.items()},
-        frame_period=str(load_uk_frs_release().time_period),
+        frame_period=str(release.time_period),
     )
     adapter = SimpleNamespace(
         frame_period=frame.frame_period,
@@ -614,6 +615,7 @@ def _bound_rows_refused_at_their_declared_period(exclusions=None) -> list[str]:
         for entry in resource("target_reference_signed_exclusions.json")["exclusions"]
         if "row" not in entry
     }
+    membership = resource("target_reference_membership.json")["targets"]
     refused = []
     for target in resource("uk_population_targets.json")["targets"]:
         binding = (target.get("bindings") or {}).get("policyengine") or {}
@@ -627,8 +629,23 @@ def _bound_rows_refused_at_their_declared_period(exclusions=None) -> list[str]:
             name=target["target_id"], entity=target["measurement"]["entity"]
         )
         try:
-            _refuse_ignored_measurement_period(spec, binding, adapter, 2025)
+            _refuse_ignored_measurement_period(
+                spec, binding, adapter, release.calibration_year
+            )
         except MeasurementPeriodError:
+            refused.append(target["target_id"])
+            continue
+        # The solve's fact-period check: a row that requires its fact at the
+        # declared period resolves to it (target_materialization, the fifth
+        # re-review of microcosm#1420, 4).
+        if binding.get("require_matching_fact_period") and any(
+            str(candidate.get("resolved_fact_period"))
+            != str(binding["measurement_period"])
+            for candidate in membership.get(target["target_id"], {}).get(
+                "candidates", ()
+            )
+            if candidate.get("status") == "active"
+        ):
             refused.append(target["target_id"])
     return refused
 

@@ -17,7 +17,8 @@ betting and gaming receipts also because the solve cannot yet measure their
 national binds it, as it binds the household road-fuel row (ONS 07.2.2) in
 place of the cars receipts and the ONS electricity row (microcosm#1418). It
 reports each row's
-estimate on any H5 the engine loads, against the value the run's contract
+estimate on a national H5 that ``load_uk_national_frame`` accepts (the engine loads
+it too), against the value the run's contract
 registry declares, beside the household fuel and energy composition the rows
 used to pull (gas-connected share, fuel-car households with no fuel,
 consumption total). Development diagnostic: it never recalibrates and writes
@@ -214,9 +215,9 @@ def engine_estimates(
     simulation = Microsimulation(dataset=dataset)
     by_id = solved_household_weights(dataset, year) if weights is None else weights
     households = np.asarray(simulation.calculate("household_id", year).values)
-    weights = by_id.reindex(households).to_numpy(dtype=float)
-    if np.isnan(weights).any():
+    if set(households.tolist()) != set(by_id.index.tolist()):
         raise ValueError("The engine's households and the frame's do not match.")
+    weights = by_id.reindex(households).to_numpy(dtype=float)
     estimates: dict[str, float] = {}
     for name, variables in ROWS.items():
         period = periods.get(name, year)
@@ -241,7 +242,11 @@ def engine_estimates(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--dataset", required=True, help="an H5 the engine loads")
+    parser.add_argument(
+        "--dataset",
+        required=True,
+        help="a national H5 that load_uk_national_frame accepts",
+    )
     parser.add_argument(
         "--registry",
         type=Path,
@@ -251,10 +256,21 @@ def main() -> None:
         "--year",
         type=int,
         default=None,
-        help="the calibration year (default: the FRS release's)",
+        help=(
+            "the calibration year (default: the --registry run's, else the FRS "
+            "release's)"
+        ),
     )
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
+    if args.year is None and args.registry:
+        periods = {
+            spec.get("period")
+            for spec in json.loads(args.registry.read_text()).get("specs", [])
+            if spec.get("period") is not None
+        }
+        if len(periods) == 1:
+            args.year = int(periods.pop())
     if args.year is None:
         from microcosm.build.uk_runtime.frs_release import load_uk_frs_release
 

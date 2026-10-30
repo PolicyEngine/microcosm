@@ -261,3 +261,95 @@ def test_a_registry_supplies_the_periods_its_run_measured(tmp_path) -> None:
     assert _tool.registry_row_years(path) == {
         "ons.household_road_fuel_expenditure": 2024
     }
+
+
+def test_the_tool_reads_the_solved_weights_of_a_release_and_a_solved_file(
+    tmp_path, monkeypatch
+) -> None:
+    # The fifth re-review of microcosm#1420, 2: the default weight path, from
+    # the H5 through load_uk_national_frame and uk_solve_year_frame to the
+    # engine's households by id, on a file divided for release and on one
+    # written as solved.
+    from microcosm.build.uk_runtime.national_frame import (
+        uk_national_frame,
+        write_uk_national_frame,
+    )
+    from microcosm.build.uk_runtime.weight_year import uk_dataset_year_frame
+    from microcosm.frame import WeightKind
+
+    ids = np.asarray([11, 12, 13], dtype="int64")
+    solved = np.asarray([2.0, 3.0, 5.0])
+
+    def frame():
+        return uk_national_frame(
+            person=pd.DataFrame(
+                {"person_id": ids, "person_benunit_id": ids, "person_household_id": ids}
+            ),
+            benunit=pd.DataFrame({"benunit_id": ids}),
+            household=pd.DataFrame({"household_id": ids, "household_weight": solved}),
+            time_period="2024",
+            weight_kind=WeightKind.CALIBRATED,
+        )
+
+    as_solved = tmp_path / "solved.h5"
+    write_uk_national_frame(frame(), as_solved)
+    released = tmp_path / "released.h5"
+    write_uk_national_frame(uk_dataset_year_frame(frame(), solve_year=2025), released)
+    for path in (as_solved, released):
+        weights = _tool.solved_household_weights(str(path), 2025)
+        np.testing.assert_allclose(weights.loc[ids].to_numpy(), solved)
+
+    households = [13, 11, 12]
+
+    class _Simulation:
+        def __init__(self, dataset):
+            pass
+
+        def calculate(self, variable, period, map_to=None):
+            if variable == "household_id":
+                return SimpleNamespace(values=np.asarray(households))
+            return SimpleNamespace(values=np.asarray([1.0, 10.0, 100.0]))
+
+    monkeypatch.setitem(
+        sys.modules, "policyengine_uk", SimpleNamespace(Microsimulation=_Simulation)
+    )
+    estimates = _tool.engine_estimates(str(released), 2025, {})
+    # Engine order 13, 11, 12 takes the weights 5, 2, 3.
+    assert estimates["obr.tobacco_duties"] == pytest.approx(5 * 1 + 2 * 10 + 3 * 100)
+    # A household on either side alone refuses.
+    households = [11, 12]
+    with pytest.raises(ValueError, match="households and the frame's"):
+        _tool.engine_estimates(str(released), 2025, {})
+
+
+def test_main_takes_the_year_from_the_runs_registry(tmp_path, monkeypatch) -> None:
+    # The fifth re-review of microcosm#1420, 3: with --registry and no --year,
+    # the run's own calibration period wins over the package's release.
+    registry = tmp_path / "registry.json"
+    registry.write_text(
+        json.dumps({"specs": [{"name": "obr.vat", "value": 1.0, "period": 2026}]})
+    )
+    seen = {}
+
+    def estimates(dataset, year, row_years):
+        seen["year"] = year
+        return {"obr.vat": 1.0}
+
+    monkeypatch.setattr(_tool, "engine_estimates", estimates)
+    monkeypatch.setattr(_tool, "composition", lambda household: {})
+    monkeypatch.setattr(_tool.pd, "read_hdf", lambda path, key: pd.DataFrame())
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "tool",
+            "--dataset",
+            "x.h5",
+            "--registry",
+            str(registry),
+            "--out",
+            str(tmp_path / "out.json"),
+        ],
+    )
+    _tool.main()
+    assert seen == {"year": 2026}

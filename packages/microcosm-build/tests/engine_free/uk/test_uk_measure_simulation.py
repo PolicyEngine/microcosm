@@ -2474,3 +2474,25 @@ def test_other_spells_follow_one_engine_factor(monkeypatch, tmp_path):
         "employment_income_before_lsr": pytest.approx(1.05),
         "self_employment_income": pytest.approx(1.03),
     }
+
+
+def test_no_committed_exclusion_is_about_to_lapse():
+    # The fifth re-review of microcosm#1420, 1: the loader keeps an expired
+    # entry, and only the national targets' window check refuses it, after
+    # the spine. A clock on purpose, as for the uprating holds: this fails
+    # UK_HOLD_EXPIRY_NOTICE_DAYS days before the earliest expiry. Clear it by
+    # a new review and signature, or by binding the row.
+    from datetime import date
+
+    from microcosm.build.uk_runtime.uprating_holds import UK_HOLD_EXPIRY_NOTICE_DAYS
+
+    earliest = min(
+        date.fromisoformat(str(entry["expires_on"]))
+        for entry in load_uk_calibration_measure_exclusions()
+        if entry.get("expires_on")
+    )
+    days_left = (earliest - date.today()).days
+    assert days_left > UK_HOLD_EXPIRY_NOTICE_DAYS, (
+        f"A UK calibration measure exclusion expires on {earliest.isoformat()}, "
+        f"in {days_left} day(s); every UK national refuses it from the next day."
+    )
