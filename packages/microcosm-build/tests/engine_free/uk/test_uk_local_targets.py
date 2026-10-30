@@ -240,6 +240,7 @@ def test_uc_child_bands_sum_uc_benefit_units_to_household(
             "self_employment_income": [0.0] * people,
             "loss_relief": [0.0] * people,
             "employment_income": [0.0] * people,
+            "benefits_in_kind": [0.0] * people,
             "total_pension_income": [0.0] * people,
             "income_tax": [0.0] * people,
             "income_tax_before_winter_fuel_payment_charge": [0.0] * people,
