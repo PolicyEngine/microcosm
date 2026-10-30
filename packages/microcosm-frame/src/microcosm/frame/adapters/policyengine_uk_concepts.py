@@ -35,7 +35,7 @@ __all__ = [
 # ---------------------------------------------------------------------------
 #
 # Which PolicyEngine-UK inputs each engine-neutral concept feeds
-# (microcosm.frame.concepts), reviewed against policyengine-uk 2.164.2. Every
+# (microcosm.frame.concepts), reviewed against policyengine-uk 2.165.1. Every
 # target is a pure input (in ``PolicyEngineUKEngine.variables``). The UK
 # loader also accepts some formula-owned variables as overrides
 # (``employment_income``, ``state_pension_reported``, ``is_household_head``);
@@ -398,6 +398,27 @@ UK_ENGINE_DEFAULT_INPUTS: dict[str, str] = {
         "Lifetime ISA withdrawals they change nothing, so they stay false "
         "(microcosm#1095; for María's signature).",
     ),
+    **dict.fromkeys(
+        (
+            "company_car_availability",
+            "company_car_capital_contributions",
+            "company_car_co2_emissions",
+            "company_car_electric_range",
+            "company_car_fuel_type",
+            "company_car_list_price",
+            "company_car_private_fuel_provided",
+            "company_car_private_use_payments",
+            "company_car_registered_from_6_april_2020",
+        ),
+        "The company car and car fuel benefits in kind and the Class 1A NICs "
+        "on them (policyengine-uk 2.165.0, policyengine-uk#2750) read these "
+        "person inputs, and a zero company_car_list_price means no company "
+        "car. Until a company car stage supplies them (the company car PR for "
+        "the Autumn Budget dashboard's #316), every list price is zero, so no "
+        "one has a company car and both benefits are zero: income tax and "
+        "employers' Class 1A NICs leave them out, as before 2.165.0, and "
+        "nothing else moves (microcosm#1095; for María's signature).",
+    ),
     "is_in_first_year_of_apprenticeship": (
         "Whether an apprentice is in the first 12 months of the apprenticeship "
         "(policyengine-uk 2.162.8, policyengine-uk#2683): the apprentice "
@@ -434,7 +455,7 @@ def _uk_take_up(program: str, entity: str) -> InputBinding:
 
 POLICYENGINE_UK_CONCEPT_MAPPING = ConceptMapping(
     engine="policyengine-uk",
-    engine_version="2.164.2",
+    engine_version="2.165.1",
     entity_correspondence={"person": "person", "household": "household"},
     input_declaration=InputDeclaration.ENGINE_TYPED,
     bindings=(
