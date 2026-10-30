@@ -11,8 +11,9 @@ clearances and bases the stage levels the excise inputs to at prior weights
 (microcosm#1359), measured at their own FY2024-25 period. The tool measures
 each row whether the measure-exclusion register holds it out of the
 objective, as it holds the gas row while ONS 04.5.2 counts bottled gas
-(microcosm#1095) and the excise rows, the betting and gaming receipts among
-them while the solve cannot measure their 2024 duty (microcosm#1420), or the
+(microcosm#1095) and the excise rows (María's ruling of 2026-10-23; the
+betting and gaming receipts also because the solve cannot yet measure their
+2024 duty, microcosm#1420), or the
 national binds it, as it binds the household road-fuel row (ONS 07.2.2) in
 place of the cars receipts and the ONS electricity row (microcosm#1418). It
 reports each row's
@@ -172,26 +173,50 @@ def registry_row_years(path: Path) -> dict[str, int]:
     return years
 
 
+def solved_household_weights(dataset: str, year: int) -> pd.Series:
+    """The household weights the dataset was solved with, by household id.
+
+    Read as the certifier reads them (``load_uk_national_frame`` then
+    ``uk_solve_year_frame``): a release H5 stores the solved weights divided
+    by the engine's projection from its own year, and an H5 written as solved
+    (a national released before that, or the engine scratch file) stores them
+    as they are (the fourth re-review of microcosm#1420, 4).
+    """
+
+    from microcosm.build.uk_runtime.national_frame import load_uk_national_frame
+    from microcosm.build.uk_runtime.weight_year import uk_solve_year_frame
+
+    frame, _provenance = load_uk_national_frame(dataset)
+    frame = uk_solve_year_frame(frame, solve_year=year)
+    return pd.Series(
+        np.asarray(frame.weights_for("household").values, dtype=float),
+        index=frame.table("household")["household_id"].to_numpy(),
+    )
+
+
 def engine_estimates(
-    dataset: str, year: int, row_years: Mapping[str, int] | None = None
+    dataset: str,
+    year: int,
+    row_years: Mapping[str, int] | None = None,
+    weights: pd.Series | None = None,
 ) -> dict[str, float]:
     """Each measured row's engine total at its own period or ``year``.
 
-    Every row is weighted at ``year``, the calibration's: a release H5 stores
-    the solved weights divided by the engine's projection from its own year,
-    so the engine's weights at an earlier period read the calibration's
-    figure low (by 0.3% at 2024; the re-review of microcosm#1420, 5). The
-    calibration weighs a row measured at the frame's year with its solved
-    weights, as the certifier and the scorer do.
+    Every row is weighted with the solved weights, the calibration's, read by
+    household id (``solved_household_weights`` unless ``weights`` is given):
+    the engine's own weights at an earlier period read a release's 2024 rows
+    0.3% low (the re-reviews of microcosm#1420, 5 and 4).
     """
 
     from policyengine_uk import Microsimulation
 
     periods = ROW_YEARS if row_years is None else row_years
     simulation = Microsimulation(dataset=dataset)
-    weights = np.asarray(
-        simulation.calculate("household_weight", year).values, dtype=float
-    )
+    by_id = solved_household_weights(dataset, year) if weights is None else weights
+    households = np.asarray(simulation.calculate("household_id", year).values)
+    weights = by_id.reindex(households).to_numpy(dtype=float)
+    if np.isnan(weights).any():
+        raise ValueError("The engine's households and the frame's do not match.")
     estimates: dict[str, float] = {}
     for name, variables in ROWS.items():
         period = periods.get(name, year)
@@ -222,9 +247,18 @@ def main() -> None:
         type=Path,
         help="the run's national_contract_registry.json (declared row values)",
     )
-    parser.add_argument("--year", type=int, default=2025)
+    parser.add_argument(
+        "--year",
+        type=int,
+        default=None,
+        help="the calibration year (default: the FRS release's)",
+    )
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
+    if args.year is None:
+        from microcosm.build.uk_runtime.frs_release import load_uk_frs_release
+
+        args.year = int(load_uk_frs_release().calibration_year)
     household = pd.read_hdf(args.dataset, "household")
     targets = registry_values(args.registry) if args.registry else {}
     row_years = registry_row_years(args.registry) if args.registry else ROW_YEARS

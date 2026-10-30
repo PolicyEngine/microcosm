@@ -561,3 +561,92 @@ def test_plain_column_population_variables_are_reviewed():
         "does not change between the frame's period and the calibration period "
         "(microcosm#1324), then add it here."
     )
+
+
+def _bound_rows_refused_at_their_declared_period(exclusions=None) -> list[str]:
+    """The packaged national rows the solve would refuse to measure.
+
+    Runs the solve's own check (``_refuse_ignored_measurement_period``) over
+    every bound plain-column row that declares a measurement period, with the
+    spine's stored columns and the release's frame period standing in for the
+    frame: a value is held at the frame's period only as a stored column or a
+    CGT dated measure (``UKFrameTargetAdapter.value_period``).
+    """
+
+    from microcosm.build.target_materialization import (
+        MeasurementPeriodError,
+        _refuse_ignored_measurement_period,
+    )
+    from microcosm.build.uk_runtime.frs_release import load_uk_frs_release
+    from microcosm.build.uk_runtime.graph import uk_spine_endpoint, uk_spine_graph
+    from microcosm.build.uk_runtime.measure_simulation import (
+        load_uk_calibration_measure_exclusions,
+    )
+
+    stored: dict[str, set[str]] = {}
+    for cells in uk_spine_endpoint(uk_spine_graph()).inputs:
+        stored.setdefault(str(cells.entity), set()).update(map(str, cells.columns))
+    frame = SimpleNamespace(
+        stored_columns={entity: frozenset(names) for entity, names in stored.items()},
+        frame_period=str(load_uk_frs_release().time_period),
+    )
+    adapter = SimpleNamespace(
+        frame_period=frame.frame_period,
+        value_period=lambda entity, variable: UKFrameTargetAdapter.value_period(
+            frame, entity, variable
+        ),
+    )
+
+    def resource(name: str):
+        return json.loads(
+            importlib_resources.files("microcosm.build.uk").joinpath(name).read_text()
+        )
+
+    held = {
+        entry["name"]
+        for entry in (
+            load_uk_calibration_measure_exclusions()
+            if exclusions is None
+            else exclusions
+        )
+    } | {
+        entry["target_id"]
+        for entry in resource("target_reference_signed_exclusions.json")["exclusions"]
+        if "row" not in entry
+    }
+    refused = []
+    for target in resource("uk_population_targets.json")["targets"]:
+        binding = (target.get("bindings") or {}).get("policyengine") or {}
+        if (
+            binding.get("kind")
+            or binding.get("measurement_period") is None
+            or target["target_id"] in held
+        ):
+            continue
+        spec = SimpleNamespace(
+            name=target["target_id"], entity=target["measurement"]["entity"]
+        )
+        try:
+            _refuse_ignored_measurement_period(spec, binding, adapter, 2025)
+        except MeasurementPeriodError:
+            refused.append(target["target_id"])
+    return refused
+
+
+def test_every_bound_row_with_a_declared_period_can_be_measured_there():
+    """The fourth re-review of microcosm#1420, 1: the solve refuses a bound
+    row whose declared period the frame does not hold, and stops the whole
+    run at the national problem, after the spine and engine stages. Binding
+    the betting and gaming row passed CI and refused on the first national;
+    this runs the same check over the packaged contract."""
+
+    assert _bound_rows_refused_at_their_declared_period() == []
+    # Unheld, the row bound by commit 16 is the one the build refused.
+    exclusions = [
+        entry
+        for entry in measure_simulation.load_uk_calibration_measure_exclusions()
+        if entry["name"] != "obr.betting_and_gaming_duties"
+    ]
+    assert _bound_rows_refused_at_their_declared_period(exclusions) == [
+        "obr.betting_and_gaming_duties"
+    ]

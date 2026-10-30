@@ -580,15 +580,26 @@ def test_each_committed_bridge_holds_its_declared_gaps_on_the_runtime_surface(
 
 
 def test_the_runtime_surface_refuses_local_authority_cells_moved_past_the_floor():
-    # The re-review of microcosm#1420, 1: raising only the local-authority
-    # pension cells by half a percent takes their source factor below the
-    # bridge's 1.025 floor, and the surface refuses, as a dense build would.
+    # The re-reviews of microcosm#1420, 1 and 3: raising only the
+    # local-authority pension cells just past the factor that takes their
+    # source factor to the bridge's floor makes the surface refuse, as a dense
+    # build would. The scale is derived from the committed baseline, so a
+    # legitimate move of the baseline inside the bounds keeps this a mutation
+    # test. The committed small-cell deferrals are pinned too: a regenerated
+    # membership that lost them would still read inside the bounds.
     (bridge,) = [
         b
         for b in uk_fanout_sum_bridges()
         if b.bridge_id == "spi_pension_amount_bands_vs_area"
     ]
+    rows = {row["geography_level"]: row for row in _committed_surface_rows(bridge)}
+    assert {level: row["small_cell_deferrals"] for level, row in rows.items()} == {
+        "constituency": 17,
+        "local_authority": 3,
+    }
+    lowest, _ = bridge.source_factor_bounds
+    scale = rows["local_authority"]["source_factor"] / lowest * 1.001
     with pytest.raises(
         ValueError, match="local_authority cells .* outside the declared"
     ):
-        _committed_surface_rows(bridge, scale_la=1.005)
+        _committed_surface_rows(bridge, scale_la=scale)

@@ -148,9 +148,9 @@ def test_excise_rows_are_measured_at_their_own_period() -> None:
 def test_rows_at_an_earlier_period_are_weighted_at_the_calibration_year(
     monkeypatch,
 ) -> None:
-    # The re-review of microcosm#1420, 5: a release H5 stores the solved
-    # weights divided by the engine's projection, so the engine's own 2024
-    # weights would read a 2024 row 0.3% low. Rows are weighted at --year.
+    # The re-reviews of microcosm#1420, 5 and 4: rows are weighted with the
+    # solved weights, read by household id, never with the engine's weights
+    # at the row's own period, and each duty is summed to households first.
     calls = []
 
     class _Simulation:
@@ -158,9 +158,9 @@ def test_rows_at_an_earlier_period_are_weighted_at_the_calibration_year(
             pass
 
         def calculate(self, variable, period, map_to=None):
-            calls.append((variable, period))
-            if variable == "household_weight":
-                values = [2.0, 3.0] if period == 2025 else [1.0, 1.0]
+            calls.append((variable, period, map_to))
+            if variable == "household_id":
+                values = [12, 11]
             else:
                 values = [10.0, 20.0] if period == 2024 else [100.0, 200.0]
             return SimpleNamespace(values=np.asarray(values))
@@ -168,13 +168,72 @@ def test_rows_at_an_earlier_period_are_weighted_at_the_calibration_year(
     monkeypatch.setitem(
         sys.modules, "policyengine_uk", SimpleNamespace(Microsimulation=_Simulation)
     )
+    solved = pd.Series([2.0, 3.0], index=[11, 12])
     estimates = _tool.engine_estimates(
-        "dataset.h5", 2025, {"ons.household_electricity_expenditure": 2024}
+        "dataset.h5",
+        2025,
+        {"ons.household_electricity_expenditure": 2024},
+        weights=solved,
     )
-    assert estimates["ons.household_electricity_expenditure"] == 2 * 10 + 3 * 20
+    # The engine's households come in the order 12, 11.
+    assert estimates["ons.household_electricity_expenditure"] == 3 * 10 + 2 * 20
     # Two variables at --year.
-    assert estimates["obr.vat"] == 2 * (2 * 100 + 3 * 200)
-    assert ("household_weight", 2024) not in calls
+    assert estimates["obr.vat"] == 2 * (3 * 100 + 2 * 200)
+    assert not any(variable == "household_weight" for variable, _, _ in calls)
+    assert {map_to for variable, _, map_to in calls if variable != "household_id"} == {
+        "household"
+    }
+    with pytest.raises(ValueError, match="households and the frame's"):
+        _tool.engine_estimates(
+            "dataset.h5", 2025, {}, weights=pd.Series([1.0], index=[11])
+        )
+
+
+def test_main_reads_the_registry_and_the_release_year(tmp_path, monkeypatch) -> None:
+    # The fourth re-review of microcosm#1420, 4: --registry supplies both the
+    # declared values and the periods the run measured, and --year defaults to
+    # the FRS release's calibration year.
+    from microcosm.build.uk_runtime.frs_release import load_uk_frs_release
+
+    registry = tmp_path / "registry.json"
+    registry.write_text(
+        json.dumps(
+            {
+                "specs": [
+                    {
+                        "name": "ons.household_road_fuel_expenditure",
+                        "value": 4.0,
+                        "metadata": {"measurement_period": "2024"},
+                    }
+                ]
+            }
+        )
+    )
+    seen = {}
+
+    def estimates(dataset, year, row_years):
+        seen.update(dataset=dataset, year=year, row_years=dict(row_years))
+        return {"ons.household_road_fuel_expenditure": 5.0}
+
+    monkeypatch.setattr(_tool, "engine_estimates", estimates)
+    monkeypatch.setattr(_tool, "composition", lambda household: {})
+    monkeypatch.setattr(_tool.pd, "read_hdf", lambda path, key: pd.DataFrame())
+    out = tmp_path / "report.json"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["tool", "--dataset", "x.h5", "--registry", str(registry), "--out", str(out)],
+    )
+    _tool.main()
+    assert seen == {
+        "dataset": "x.h5",
+        "year": load_uk_frs_release().calibration_year,
+        "row_years": {"ons.household_road_fuel_expenditure": 2024},
+    }
+    report = json.loads(out.read_text())
+    assert report["rows"]["ons.household_road_fuel_expenditure"][
+        "relative_error"
+    ] == pytest.approx(0.25)
 
 
 def test_a_registry_supplies_the_periods_its_run_measured(tmp_path) -> None:
