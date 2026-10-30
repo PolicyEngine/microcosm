@@ -115,6 +115,13 @@ UK_INPUT_MASS_REVIEWED_EXCLUSIONS: dict[str, dict[str, str]] = {
         "approved_on": "2026-10-11",
         "expires_on": "2027-04-11",
     },
+    "tax_free_savings_income": {
+        "reason": "The candidate no longer ships person.tax_free_savings_income: policyengine-uk derives it as the sum of individual_savings_account_interest_income, which the candidate stores apart from non-ISA interest under the additive ISA income contract, and a persisted copy overrides that sum and is never uprated (microcosm#1360). The enhanced-FRS reference stores it in the legacy gross layout, so the column is present in the reference and absent from the candidate, which this gate otherwise fails whatever the tolerance. Non-ISA savings_interest_income stays compared; it falls below the reference's gross total by the ISA part.",
+        "approved_by": "juaristi22",
+        "adjudication": "microcosm#1360 folded into microcosm#1418's PR B (ruling 2026-10-28 in session)",
+        "approved_on": "2026-10-28",
+        "expires_on": "2027-04-28",
+    },
 }
 GIT_COMMIT = "5fa48f07436a806ad75ff76fd22cfb8613bddbe0"
 DATASET_SHA = "d" * 64
@@ -213,19 +220,19 @@ def _trusted_terminal_gate_signing_key(monkeypatch) -> None:
 UK_GATE_BATTERY_PRODUCER = "microcosm.build.gate_battery"
 UK_GATE_BATTERY_SIGNING_KEY_ENV = "MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY"
 UK_GATE_BATTERY_POLICY_SHA256 = (
-    "b02785c2052f52bd620d0fc731470bf77528e91360faf53bce489cc697dd2472"
+    "c75be1e28265a22887a5fd7ec59fd24e22c3471283c777ce7503bbebce753d6c"
 )
 UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "84f304421b51fdc0a2a44e1f3e541fb8e6575b97332735e46ecba917e8f07ae4"
+    "f28f6d7fba60b2359c2a729032286f051f02308950093f4f0811b5863d53df9c"
 )
 UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "d80b60d2a74f4a0b7ad072f22314f87a9f7c75a673957fd1b56d72dc4d5c6ddd"
+    "3b3869c29affa16b48df06b7cc888167e186aa88f5050ff053ab4cd01cc67a3e"
 )
 UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256 = (
     "f246388de42654dd68dbbb40c42282001b5b0a8bf48976162bcb1199085cb1d3"
 )
 UK_GATE_BATTERY_INPUT_MASS_EVIDENCE_SHA256 = (
-    "82a5fa0c7dec5ac5c169f0b8b2f4acc6b302e80637dc698d3247e75a6d133933"
+    "24bb96f93de3bda45425b797a2f5069df7477bf3a56616080cc04376beab56e5"
 )
 #: Spec entry id -> (neutral gate name, phase, legacy detail-schema name).
 #: microcosm#1240: the two report-only high-value homes gates.
@@ -246,6 +253,7 @@ UK_GATE_BATTERY_ENTRIES = {
     ),
     "uk_stage_was_wealth_support": ("stage_health", "transferred", None),
     "uk_stage_was_lisa_support": ("stage_health", "transferred", None),
+    "uk_stage_was_lisa_anchor": ("stage_health", "transferred", None),
     "uk_stage_property_components": ("stage_health", "transferred", None),
     "uk_stage_was_wealth_coherence": ("stage_health", "transferred", None),
     "uk_stage_uc_deduction_attributes": (
@@ -359,6 +367,8 @@ UK_GATE_BATTERY_ENTRIES = {
         "transferred",
         None,
     ),
+    "uk_stage_isa_subscriptions_invariants": ("stage_health", "transferred", None),
+    "uk_stage_isa_subscriptions": ("stage_health", "transferred", None),
     "uk_stage_frs_take_up_signal": (
         "stage_health",
         "assembled",
@@ -1407,6 +1417,7 @@ def _gate_battery_payload(
     stage_health_stages = {
         "uk_stage_was_wealth_support": "was_wealth",
         "uk_stage_was_lisa_support": "was_lisa",
+        "uk_stage_was_lisa_anchor": "was_lisa",
         "uk_stage_property_components": "property_components",
         "uk_stage_was_wealth_coherence": "was_wealth",
         "uk_stage_uc_deduction_attributes": "uc_deduction_attributes",
@@ -1446,6 +1457,8 @@ def _gate_battery_payload(
         "uk_stage_property_purchases_fit": "property_purchases",
         "uk_stage_uc_legacy_closure_take_up_contract": "uc_legacy_closure_take_up",
         "uk_stage_frs_person_draws_apprentices": "frs_person_draws",
+        "uk_stage_isa_subscriptions_invariants": "isa_subscriptions",
+        "uk_stage_isa_subscriptions": "isa_subscriptions",
         "uk_stage_frs_take_up_signal": "frs_take_up",
         "uk_stage_frs_person_draws_take_up_signal": "frs_person_draws",
         "uk_stage_frs_household_draws_take_up_signal": "frs_household_draws",

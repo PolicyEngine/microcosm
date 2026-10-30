@@ -152,6 +152,7 @@ def graph_and_registry(
     property_localisation_mode="none",
     brma_localisation_mode="none",
     private_rent_localisation_mode="none",
+    rfdr_localisation_mode="none",
     full_scale=True,
 ):
     graph = append_uk_population_nodes(
@@ -172,6 +173,7 @@ def graph_and_registry(
         property_localisation_mode=property_localisation_mode,
         brma_localisation_mode=brma_localisation_mode,
         private_rent_localisation_mode=private_rent_localisation_mode,
+        rfdr_localisation_mode=rfdr_localisation_mode,
         full_scale=full_scale,
     )
     registry = KernelRegistry()

@@ -3214,6 +3214,77 @@ def test_a_release_candidate_refuses_the_brma_and_rent_measurement_modes(
         )
 
 
+def test_a_release_candidate_refuses_the_rfdr_measurement_mode(tmp_path, monkeypatch):
+    """Anthony's review of microcosm#1420: the release line flags its Rural
+    Fuel Duty Relief areas; none is for measurement builds only."""
+    monkeypatch.setenv(SIGNING_KEY_ENV, TEST_SIGNING_KEY)
+    with pytest.raises(ValueError, match="--rfdr-localisation none"):
+        cli.validate_cli_args(
+            arguments(tmp_path, "--release-candidate", "--rfdr-localisation", "none")
+        )
+
+
+def test_the_rfdr_layer_needs_area_mode_and_a_release_the_committed_layer(tmp_path):
+    """Anthony's review of microcosm#1420: an override nothing reads is refused,
+    and a release candidate builds on the committed layer only."""
+    other = tmp_path / "other.json"
+    other.write_text("{}")
+    with pytest.raises(ValueError, match="need --rfdr-localisation area"):
+        cli._prepare_rfdr_localisation(
+            SimpleNamespace(
+                rfdr_localisation="none",
+                rfdr_area_layer=other,
+                rfdr_area_layer_sha256=None,
+            ),
+            {},
+            {},
+        )
+    with pytest.raises(ValueError, match="requires the committed RFDR area layer"):
+        cli._prepare_rfdr_localisation(
+            SimpleNamespace(
+                rfdr_localisation="area",
+                rfdr_area_layer=other,
+                rfdr_area_layer_sha256=None,
+                release_candidate=True,
+            ),
+            {},
+            {},
+        )
+    pins: dict = {}
+    sources: dict = {}
+    binding = cli._prepare_rfdr_localisation(
+        SimpleNamespace(
+            rfdr_localisation="area",
+            rfdr_area_layer=None,
+            rfdr_area_layer_sha256=None,
+            release_candidate=True,
+        ),
+        pins,
+        sources,
+    )
+    assert binding["mode"] == "area"
+    assert set(pins) == set(sources) == {"uk_rfdr_area_layer"}
+    assert sources["uk_rfdr_area_layer"].name == "rfdr_area_layer.json"
+    assert binding["resource_pins"]["uk_rfdr_area_layer"] == pins["uk_rfdr_area_layer"]
+
+
+@pytest.mark.parametrize(
+    ("assignment", "mode"), [("atomic", "area"), ("legacy", "none")]
+)
+def test_an_unset_rfdr_mode_follows_the_geography_assignment(
+    tmp_path, assignment, mode
+):
+    """The independent review of microcosm#1420: a legacy-assignment build
+    through the CLI need not pass --rfdr-localisation none, as the build config
+    resolves it the same way."""
+    args = arguments(tmp_path, "--geography-assignment", assignment)
+    assert args.rfdr_localisation is None
+    pins: dict = {}
+    binding = cli._prepare_rfdr_localisation(args, pins, {})
+    assert binding["mode"] == args.rfdr_localisation == mode
+    assert bool(pins) is (mode == "area")
+
+
 def test_target_geographies_can_name_the_brma_rows(tmp_path):
     assert arguments(
         tmp_path, "--target-geographies", "la,brma"

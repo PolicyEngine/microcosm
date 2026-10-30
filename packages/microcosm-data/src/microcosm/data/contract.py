@@ -451,13 +451,13 @@ _UK_GATE_BATTERY_SHIPPABLE_STATUSES = frozenset({"passed", "not_applicable"})
 # fingerprint derives from the manifest digest. Editing the spec moves all
 # three here in the same reviewed change.
 _UK_GATE_BATTERY_POLICY_SHA256 = (
-    "b02785c2052f52bd620d0fc731470bf77528e91360faf53bce489cc697dd2472"
+    "c75be1e28265a22887a5fd7ec59fd24e22c3471283c777ce7503bbebce753d6c"
 )
 _UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "84f304421b51fdc0a2a44e1f3e541fb8e6575b97332735e46ecba917e8f07ae4"
+    "f28f6d7fba60b2359c2a729032286f051f02308950093f4f0811b5863d53df9c"
 )
 _UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "d80b60d2a74f4a0b7ad072f22314f87a9f7c75a673957fd1b56d72dc4d5c6ddd"
+    "3b3869c29affa16b48df06b7cc888167e186aa88f5050ff053ab4cd01cc67a3e"
 )
 #: Spec entry id -> the legacy gate name whose observable detail checks
 #: apply unchanged (the battery re-keys the report by entry id; the gate
@@ -501,6 +501,7 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
     ),
     "uk_stage_was_wealth_support": ("stage_health", "transferred"),
     "uk_stage_was_lisa_support": ("stage_health", "transferred"),
+    "uk_stage_was_lisa_anchor": ("stage_health", "transferred"),
     "uk_stage_property_components": ("stage_health", "transferred"),
     "uk_stage_was_wealth_coherence": ("stage_health", "transferred"),
     "uk_stage_nts_bus_travel_support": ("stage_health", "transferred"),
@@ -558,6 +559,8 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
     "uk_stage_property_purchases_fit": ("stage_health", "transferred"),
     "uk_stage_uc_legacy_closure_take_up_contract": ("stage_health", "transferred"),
     "uk_stage_frs_person_draws_apprentices": ("stage_health", "transferred"),
+    "uk_stage_isa_subscriptions_invariants": ("stage_health", "transferred"),
+    "uk_stage_isa_subscriptions": ("stage_health", "transferred"),
     "uk_stage_frs_take_up_signal": ("stage_health", "assembled"),
     "uk_stage_frs_person_draws_take_up_signal": ("stage_health", "assembled"),
     "uk_stage_frs_household_draws_take_up_signal": ("stage_health", "assembled"),
@@ -628,6 +631,7 @@ _UK_GATE_BATTERY_EVIDENCE_IDS = frozenset(
         "uk_input_mass_parity",
         "uk_stage_was_wealth_support",
         "uk_stage_was_lisa_support",
+        "uk_stage_was_lisa_anchor",
         "uk_stage_property_components",
         "uk_stage_was_wealth_coherence",
         "uk_stage_nts_bus_travel_support",
@@ -667,6 +671,8 @@ _UK_GATE_BATTERY_EVIDENCE_IDS = frozenset(
         "uk_stage_property_purchases_fit",
         "uk_stage_uc_legacy_closure_take_up_contract",
         "uk_stage_frs_person_draws_apprentices",
+        "uk_stage_isa_subscriptions_invariants",
+        "uk_stage_isa_subscriptions",
         "uk_stage_frs_take_up_signal",
         "uk_stage_frs_person_draws_take_up_signal",
         "uk_stage_frs_household_draws_take_up_signal",
@@ -680,7 +686,7 @@ _UK_GATE_BATTERY_EVIDENCE_IDS = frozenset(
 # canonical hash; this pins the wrapped digest so the entry's evidence line
 # still binds the enhanced-FRS incumbent totals.
 _UK_GATE_BATTERY_INPUT_MASS_EVIDENCE_SHA256 = (
-    "82a5fa0c7dec5ac5c169f0b8b2f4acc6b302e80637dc698d3247e75a6d133933"
+    "24bb96f93de3bda45425b797a2f5069df7477bf3a56616080cc04376beab56e5"
 )
 # The degenerate binding's evidence payload digests the resolved exclusion
 # records; for a release that must be the committed register, so its digest
@@ -899,6 +905,8 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
             "uk_stage_hmrc_cgt_asset_type_spine_summary",
             "uk_stage_hmrc_cgt_gains_spine_summary",
             "uk_stage_hmrc_spi_income_spine_identity",
+            "uk_stage_isa_subscriptions",
+            "uk_stage_isa_subscriptions_invariants",
             "uk_stage_lcfs_consumption_basis",
             "uk_stage_lcfs_consumption_bus_pricing",
             "uk_stage_lcfs_consumption_energy_rake",
@@ -921,6 +929,7 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
             "uk_stage_uc_deduction_attributes",
             "uk_stage_uc_legacy_closure_take_up_contract",
             "uk_stage_uc_take_up",
+            "uk_stage_was_lisa_anchor",
             "uk_stage_was_lisa_support",
             "uk_stage_was_wealth_coherence",
             "uk_stage_was_wealth_support",
@@ -964,26 +973,26 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
 _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     "spine": {
         "gates_manifest_sha256": (
-            "93fe9eb37992d2bd401653bd2b3cbb5f51af130d638a4e2624c0d11ffdff0c53"
+            "be49af00334a04190c8dabed6f2c357304a00f69d7995dcbddea4785fd5452e2"
         ),
         "policy_sha256": (
-            "c5e2159ed6f5db35b9efee701e7989b277d3120fd53e0ec084b5bd3a3c6a6340"
+            "e46455a5ef4e1d2902064c4cd352fd1f52523881932487b8f0c0c0c80e9ae7b1"
         ),
     },
     "calibration_seam": {
         "gates_manifest_sha256": (
-            "99bae00d3eb7cf2a55057e381298c24b00b403783353018e4e9f8420103475fc"
+            "49549ca969fda237e1782cec7882913a183529725008c37b54ba18a3d49fb4fe"
         ),
         "policy_sha256": (
-            "40faef54f76298c32f541603d1ef768cde412d6295ceaa4c67c0b01445f36144"
+            "e420d4b55a803255886a32e8397a8e7f2671c68ac7e085d281b6cbf8f14008b6"
         ),
     },
     "release_cut": {
         "gates_manifest_sha256": (
-            "7dba221ce8ab8237643275a6f6336870f8938cbbd9ca2734c097d2532cb04d92"
+            "3bf99e5bbfb9f7fc45545ced42f24b4e77c20691f8e7eb22d5adf210715e86d3"
         ),
         "policy_sha256": (
-            "44d6e0fc2a8fb78cb358969b4a471cb15274371e31b6234ddd29e6979b43cc00"
+            "ef203e6f80fa406a78bf93d9fa8f96c2b040c5dab351ec34afc170914cef5f91"
         ),
     },
 }
@@ -6531,7 +6540,7 @@ def _check_local_area_calibration_diagnostics(
             )
         else:
             seen_names.add(name)
-        # A UK row resting on fewer than ten source households keeps its place
+        # A UK row resting on one or two source households keeps its place
         # without its model figures (microcosm#1262): its estimates are null,
         # and the payload's withheld block counts it.
         metadata = row.get("metadata")

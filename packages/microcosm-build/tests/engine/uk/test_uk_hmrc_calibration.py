@@ -1,6 +1,9 @@
 """Tests split from packages/microcosm-build/tests/test_uk_hmrc_calibration.py."""
 
 # ruff: noqa: F403, F405
+from microcosm.build.uk_runtime.hmrc_calibration import (
+    HMRC_TAXABLE_SAVINGS_INTEREST_COLUMN,
+)
 from test_support.microcosm_build.uk_hmrc_calibration import *
 
 
@@ -107,15 +110,69 @@ def test_materialization_fails_closed_when_one_component_has_no_band_support() -
         )
 
 
-def test_materialization_rejects_tax_free_interest_above_gross() -> None:
+def test_materialization_rejects_negative_interest_outside_isas() -> None:
     dataset, targets = _feasible_dataset_and_targets()
     person = dataset.person.copy()
-    person.loc[0, "tax_free_savings_income"] = 1.0
+    person.loc[0, "savings_interest_income"] = -1.0
     broken = _with(dataset, person=person)
 
-    with pytest.raises(ValueError, match="gross savings_interest_income"):
+    with pytest.raises(ValueError, match="negative"):
         materialize_uk_hmrc_calibration_frame(
             broken,
             targets,
             simulation_factory=_simulation_factory,
+        )
+
+
+def test_materialization_counts_interest_outside_isas_once_in_either_layout() -> None:
+    """Table 3.7 and its bands read non-ISA interest once (microcosm#1360).
+
+    The producer stores it; a legacy gross frame stores gross interest with the
+    ISA part in tax_free_savings_income, taken off once.
+    """
+
+    from microcosm.frame.adapters.policyengine_uk import (
+        UK_LEGACY_ISA_INCOME_CONTRACT,
+    )
+
+    dataset, targets = _feasible_dataset_and_targets()
+    person = dataset.person.copy()
+    person["individual_savings_account_interest_income"] = 25.0
+    additive = _with(dataset, person=person)
+    legacy_person = person.drop(columns="individual_savings_account_interest_income")
+    legacy_person["savings_interest_income"] = person["savings_interest_income"] + 25.0
+    legacy_person["tax_free_savings_income"] = 25.0
+    legacy = _with(
+        dataset,
+        person=legacy_person,
+        isa_income_contract=UK_LEGACY_ISA_INCOME_CONTRACT,
+    )
+
+    readings = [
+        materialize_uk_hmrc_calibration_frame(
+            frame, targets, simulation_factory=_simulation_factory
+        )
+        for frame in (additive, legacy)
+    ]
+    columns = (HMRC_TAXABLE_SAVINGS_INTEREST_COLUMN, "hmrc_spi_assessable_income")
+    tables = [reading.frame.table("person") for reading in readings]
+    for column in columns:
+        np.testing.assert_allclose(
+            tables[0][column].to_numpy(dtype=float),
+            tables[1][column].to_numpy(dtype=float),
+        )
+    assert readings[0].taxpayer_rows == readings[1].taxpayer_rows
+
+    broken_person = legacy_person.copy()
+    broken_person.loc[0, "tax_free_savings_income"] = (
+        broken_person.loc[0, "savings_interest_income"] + 1.0
+    )
+    broken = _with(
+        dataset,
+        person=broken_person,
+        isa_income_contract=UK_LEGACY_ISA_INCOME_CONTRACT,
+    )
+    with pytest.raises(ValueError, match="negative"):
+        materialize_uk_hmrc_calibration_frame(
+            broken, targets, simulation_factory=_simulation_factory
         )

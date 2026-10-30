@@ -226,7 +226,8 @@
           "S5",
           "V1",
           "V2",
-          "V3"
+          "V3",
+          "V4"
         ],
         "required_cells": [
           "income_decile_by_family_type/1/single",
@@ -313,7 +314,8 @@
           "S5",
           "V1",
           "V2",
-          "V3"
+          "V3",
+          "V4"
         ],
         "required_cells": [
           "income_decile_by_family_type/1/single",

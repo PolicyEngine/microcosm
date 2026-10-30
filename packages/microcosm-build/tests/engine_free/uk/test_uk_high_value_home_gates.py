@@ -651,7 +651,7 @@ def test_benchmarks_gate_outcome_does_not_depend_on_the_obr_leg() -> None:
 
 def test_evidence_and_both_gates_name_the_main_residence_scope() -> None:
     # Until the coverage decision (microcosm#1240 fix 6, tracked on
-    # microcosm#1278), every reading of these figures says they cover
+    # microcosm#1095), every reading of these figures says they cover
     # owner-occupiers' main residences only.
     facts = _facts(
         {"E14000001": 500.0, "E14000002": 200.0, "E14000003": 0.0},

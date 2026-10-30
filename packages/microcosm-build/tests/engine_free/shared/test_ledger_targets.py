@@ -7,9 +7,14 @@ from microcosm.build.gates import (
     TargetCoverageRequirement,
     target_profile_coverage_gate,
 )
+from microcosm.build.ledger_artifact import (
+    LexicalFloat,
+    load_ledger_consumer_artifact,
+)
 from microcosm.build.ledger_targets import (
     LedgerTargetMapping,
     LedgerTargetReference,
+    _strict_scalar_equal,
     apply_ledger_target_profile,
     compile_ledger_target_references,
     constraint_bound_shadowing_dimensions,
@@ -1802,6 +1807,58 @@ def test__given_selector_matches_multiple_eligible_months__then_latest_month_is_
 
 
 class TestLedgerSelectorExtensions:
+    @pytest.mark.parametrize(
+        ("actual", "expected", "equal"),
+        [
+            (LexicalFloat("0.1"), 0.1, True),
+            (0.1, LexicalFloat("0.1"), True),
+            (LexicalFloat("0.1"), LexicalFloat("0.10"), True),
+            (1, 1.0, False),
+            (1.0, 1, False),
+            (True, 1, False),
+            (1, True, False),
+            (True, 1.0, False),
+            (1.0, True, False),
+            (LexicalFloat("1.0"), 1, False),
+            (1, LexicalFloat("1.0"), False),
+            (LexicalFloat("1.0"), True, False),
+            (True, LexicalFloat("1.0"), False),
+        ],
+    )
+    def test_strict_scalar_equal_treats_lexical_floats_as_floats(
+        self, actual, expected, equal
+    ) -> None:
+        assert _strict_scalar_equal(actual, expected) is equal
+
+    @pytest.mark.parametrize("lexical_floats", [False, True])
+    def test_float_dimension_pin_compiles_loaded_fact(
+        self, tmp_path, lexical_floats
+    ) -> None:
+        facts_path = tmp_path / "consumer_facts.jsonl"
+        facts_path.write_text(
+            json.dumps(_consumer_fact_row(dimensions={"band": 0.1})) + "\n"
+        )
+        artifact = load_ledger_consumer_artifact(
+            facts_path, lexical_floats=lexical_floats
+        )
+        dimension = artifact.facts[0]["dimensions"]["band"]
+        assert type(dimension) is (LexicalFloat if lexical_floats else float)
+        reference = LedgerTargetReference(
+            name="float dimension selector",
+            ledger_selector={"dimension_values": {"band": 0.1}},
+            entity="tax_unit",
+            measure="adjusted_gross_income",
+            period=2023,
+            family="irs_soi",
+        )
+
+        (target,) = compile_ledger_target_references(
+            artifact.facts, [reference], country="us"
+        ).specs
+
+        assert target.name == reference.name
+        assert target.value == artifact.facts[0]["value"]
+
     def test_dimension_values_use_strict_typed_equality(self) -> None:
         reference = LedgerTargetReference(
             name="typed dimension selector",

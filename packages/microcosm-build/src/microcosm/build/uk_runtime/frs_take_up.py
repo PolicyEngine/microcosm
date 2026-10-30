@@ -87,7 +87,7 @@ UK_TAKE_UP_DECLARED_SEEDS = {
     for output in (*FRS_TAKE_UP_OUTPUT_COLUMNS, *FRS_TAKE_UP_PERSON_OUTPUT_COLUMNS)
 }
 # Universal Credit is claimable only by a benefit unit whose claimant or
-# partner meets its age conditions: policyengine-uk 2.162.14's ``is_uc_eligible``
+# partner meets its age conditions: policyengine-uk 2.164.2's ``is_uc_eligible``
 # (capital aside) needs a single or joint claimant, taken from
 # ``is_uc_claimant``, who meets UC's minimum age and has not reached Pension
 # Credit qualifying age. The draw's population is therefore the units with a

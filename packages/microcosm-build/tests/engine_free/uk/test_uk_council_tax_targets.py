@@ -480,12 +480,14 @@ def test_support_floor_deferrals_cover_the_two_authorities_remaining_cells() -> 
     # microcosm#1240 adds the three high_value_homes local-authority legs, and
     # microcosm#1207 the three DESNZ energy rows. microcosm#1095 adds the
     # single adult discount cells, one row for both authorities.
-    assert len(rows) == 49
-    assert sum(len(row["area_ids"]) for row in rows) == 93
+    # microcosm#1418 adds the City of London's two SPI pension income cells
+    # (the Isles of Scilly's are signed under the SPI coverage gap).
+    assert len(rows) == 51
+    assert sum(len(row["area_ids"]) for row in rows) == 95
     assert {
         area_id: sum(area_id in row["area_ids"] for row in rows)
         for area_id in ("E06000053", "E09000001")
-    } == {"E06000053": 44, "E09000001": 49}
+    } == {"E06000053": 44, "E09000001": 51}
     assert all(row["defer_if_compiles"] is True for row in rows)
     # The English band-H family is wholly deferred on spine support, so it
     # carries no support-floor row; the Welsh and Scottish band-H targets do
@@ -527,16 +529,18 @@ def test_a14_deferral_declarations_cover_only_currently_active_cells() -> None:
     # microcosm#1240: the three high_value_homes local-authority legs take the
     # same support-floor deferral on the Isles of Scilly and the City of London;
     # microcosm#1207's three DESNZ energy rows take it too, and so do
-    # microcosm#1095's single adult discount cells. A target scoped to Wales
-    # or Scotland has no cell at the two English authorities, so the nine
+    # microcosm#1095's single adult discount cells and the City of London's
+    # two SPI pension income cells (microcosm#1418; the Isles of Scilly's are
+    # signed under the SPI coverage gap). A target scoped to Wales or
+    # Scotland has no cell at the two English authorities, so the nine
     # Welsh and eight Scottish families take none (microcosm#796, via #1095).
-    assert len(support) == 32
-    assert sum(len(row.area_ids) for row in support) == 59
+    assert len(support) == 34
+    assert sum(len(row.area_ids) for row in support) == 61
     by_area = {
         area_id: sum(area_id in row.area_ids for row in support)
         for area_id in ("E06000053", "E09000001")
     }
-    assert by_area == {"E06000053": 27, "E09000001": 32}
+    assert by_area == {"E06000053": 27, "E09000001": 34}
     assert all(row.defer_if_compiles for row in support)
     assert "mhclg.council_tax_stock.by_area.band_h" not in {
         row.target_id for row in support
@@ -611,10 +615,13 @@ def test_composed_english_region_cells_sum_to_the_publisher_england_row() -> Non
 
     facts = _pinned_feed_facts()
     spec = load_country_spec("uk")
+    # England's single adult discount row (microcosm#953) is national, not a
+    # composed region cell.
     composed = {
         reference.name: reference
         for reference in spec.target_references
         if reference.name.startswith("mhclg.council_tax_stock.")
+        and reference.name != _SINGLE_ADULT_DISCOUNT
     }
     assert len(composed) == 81
     compiled = compile_uk_target_registry(facts, target_period=2025).registry
@@ -624,6 +631,7 @@ def test_composed_english_region_cells_sum_to_the_publisher_england_row() -> Non
         else target.name: (target.value)
         for target in compiled.specs
         if target.name.startswith("mhclg.council_tax_stock.")
+        and target.name.removesuffix("@2025") != _SINGLE_ADULT_DISCOUNT
     }
     assert len(values) == 81, sorted(values)[:3]
 

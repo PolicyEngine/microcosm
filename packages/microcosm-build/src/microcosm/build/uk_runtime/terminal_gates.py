@@ -265,6 +265,9 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "household.household_lifetime_isa_balance",
     # #930: the NTS bus-travel stage's household journey cell.
     "household.household_local_bus_trips",
+    # microcosm#1418: the dense build's Rural Fuel Duty Relief flag, set off
+    # each placed household's output area; the incumbent does not carry it.
+    "household.in_rural_fuel_duty_relief_area",
     "household.spi_income_band_donor_lower_bound",
     "household.intermediate_zone_code",
     "household.la_code_oa",
@@ -328,6 +331,12 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "person.is_uc_claimant",
     "person.legacy_jobseeker_proxy",
     "person.lifetime_isa_balance",
+    "person.lifetime_isa_payments",
+    "person.cash_isa_balance",
+    "person.stocks_and_shares_isa_balance",
+    "person.cash_isa_subscriptions",
+    "person.stocks_and_shares_isa_subscriptions",
+    "person.individual_savings_account_interest_income",
     "person.local_bus_single_fare_share",
     "person.local_bus_trips",
     "person.local_bus_use_band",
@@ -475,6 +484,13 @@ UK_REVIEWED_EXPORT_EXCLUSIONS: Mapping[str, str] = {
         "other_residential_property_value and non_residential_property_value; "
         "a persisted copy overrides that sum and has no uprating index, so the "
         "candidate must drop it (microcosm#1106, the uk-data#543 defect)."
+    ),
+    "person.tax_free_savings_income": (
+        "policyengine-uk derives tax_free_savings_income as the sum of the ISA "
+        "interest it adds (individual_savings_account_interest_income); a "
+        "persisted copy overrides that sum and is never uprated, so the "
+        "candidate stores ISA interest apart from non-ISA interest under the "
+        "additive ISA income contract and drops it (microcosm#1360)."
     ),
 }
 

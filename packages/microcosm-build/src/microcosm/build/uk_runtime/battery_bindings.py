@@ -2157,6 +2157,11 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 "maximum_connected_share_deviation",
                 "convergence_window_sweeps",
                 "maximum_residual_change_over_window",
+                # #1418: the bounds on an ONS-spend level over Energy Trends',
+                # which catch a wrong input row the recomputation shares, and
+                # the QEP payment method the stage must price at.
+                "ons_level_to_energy_trends_ratio",
+                "qep_payment_method",
                 # #930 bus_travel_facts check: NTS0313 incidence and NTS0303
                 # trip rates recomputed from the vendored rows.
                 "trip_rates_period_value",
@@ -2178,6 +2183,11 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 # bounds on the scale that anchors the added stakes.
                 "maximum_stratum_shortfall",
                 "amount_scale_bounds",
+                # #1415 isa_subscriptions check: how far a total may sit from
+                # its target, and how far person balances may miss the
+                # household draws they split.
+                "maximum_relative_total_deviation",
+                "maximum_household_sum_error_gbp",
                 # #1113 road_fuel_incidence check: the ceiling on the chain's
                 # zero share among flagged fuel-car households.
                 "maximum_flagged_zero_share",
