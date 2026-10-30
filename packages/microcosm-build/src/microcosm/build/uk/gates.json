@@ -167,6 +167,20 @@
       "notes": "Stage-time support-clip health gate over the WAS Lifetime ISA receipt (microcosm#1003): the balance is drawn from the QRF fitted on the credible donor holders, so every draw lies inside their realised range and non-holders are zero; the zero allowances make any clip a signal."
     },
     {
+      "id": "uk_stage_was_lisa_anchor",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "evidence_absent_blocks": true,
+      "population_fact_check": true,
+      "parameters": {
+        "stage": "was_lisa",
+        "check": "was_lisa_anchor",
+        "maximum_relative_deviation": 0.01
+      },
+      "notes": "Stage-time check on the was_lisa ownership anchor (microcosm#1415): WAS round 8 implies about half the Lifetime ISA holders HMRC's 2024-25 subscriptions need, so the stage shifts its ownership logit on ages 18 to 47, the ages that can hold and pay into one in 2024-25, until the weighted holders at those ages the financial-wealth cap leaves equal Table 9.4's Lifetime ISA accounts subscribed to (one subscription a year, so payers). The receipt's realised post-cap holders must sit within maximum_relative_deviation of that target, and a positive shift must remove no holder (the same person-keyed uniforms decide ownership). A target above the largest shift's reach and unshifted holders above the target are named, not failed: the anchor only adds holders. A population fact check: the synthetic smoke records it without blocking."
+    },
+    {
       "id": "uk_stage_property_components",
       "gate": "stage_health",
       "phase": "transferred",
@@ -922,6 +936,33 @@
       "notes": "Stage-time gate over the is_apprentice receipt (microcosm#1373). The draw's target is the contract's apprentice_stock_19_to_24 for the build year (DfE's England apprentices in learning at the start of the academic year, participation less starts, per head aged 19 to 24) times the weighted population aged 21 to 24 at the stage's weights, and eligible employees aged 21 to 24 are flagged in the order of their identity-keyed uniform until their weight is nearest it, so the stage misses it by at most half one person's weight. The gate checks that the receipt carries the contract's rate under the declared key, that its target is that rate times its population, that its support is printed in bands, and, unless the eligible employees weigh no more than the target (cap-bound, every one of them flagged), that the flagged weight lies within maximum_relative_realization_deviation (5 percent) of the target. That tolerance is a declared rule set above the half-weight bound, not a fact. A figure resting on fewer than ten source households, which the receipt withholds under the UKDS disclosure rule and prints \"<10\", is named unchecked, never failed: a small-cell rule never stops a build (María's ruling of 2026-10-26). The receipt also records the relief the flags imply at the installed engine's own Class 1 schedule for the build year (on a 2024 frame, 13.8 percent between GBP 9,100 and GBP 50,270), with each flagged employee's pay standing in for NIC earnings, and the gate holds it at or below maximum_implied_relief: GBP 370m, HMRC's NIC - NS1 for 2024-25 (tax relief statistics, January 2026, Table 2), which covers every apprentice under 25, under-21s included, since the apprentice relief takes precedence (Vahid's review of microcosm#1373, S1). It is a ceiling, not a target. The stage refuses an installed engine without the s.9B threshold or without policyengine-uk#2683's split of the apprentice minimum wage from the flag. The entry is a population_fact_check, so the synthetic smoke build over the H2 fixture records its outcome without blocking; every licensed build blocks on it."
     },
     {
+      "id": "uk_stage_isa_subscriptions_invariants",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "evidence_absent_blocks": true,
+      "parameters": {
+        "stage": "isa_subscriptions",
+        "check": "isa_subscriptions_invariants",
+        "maximum_household_sum_error_gbp": 0.01
+      },
+      "notes": "Stage-time rules of the isa_subscriptions receipt that hold for any population (microcosm#1415, review of microcosm#1421). It fails on any record the receipt counts against them (a non-finite value; cash, stocks and shares and Lifetime ISA payments over GBP 20,000; a Lifetime ISA payment over GBP 4,000; a subscriber under 18; a payment into a type the person does not hold; a both-type subscriber missing a part; a negative amount) and on person balances that miss the household was_wealth draws by more than maximum_household_sum_error_gbp. It is no population fact check, so the synthetic smoke build blocks on it as every licensed build does; the comparisons with HMRC's tables are uk_stage_isa_subscriptions."
+    },
+    {
+      "id": "uk_stage_isa_subscriptions",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "evidence_absent_blocks": true,
+      "population_fact_check": true,
+      "parameters": {
+        "stage": "isa_subscriptions",
+        "check": "isa_subscriptions",
+        "maximum_relative_total_deviation": 1e-06
+      },
+      "notes": "Stage-time check of the isa_subscriptions receipt against HMRC's tables (microcosm#1415). It fails on the 2024-25 cash and stocks-and-shares totals off Table 9.4's 2024-25 amounts (María's ruling of 29 October 2026), the both-type split's stocks-and-shares residual or the Lifetime ISA total off its Table 9.4 amount by more than maximum_relative_total_deviation; a reported saturation is named, not failed. Cells short of eligible holders are named, never failed: the stage invents no holders, and the distance from HMRC's tables after calibration is measured, not gated (María's ruling of 28 October 2026). A population fact check: the synthetic smoke records it without blocking, since a synthetic population cannot reach HMRC's national totals; the rules any population must keep are uk_stage_isa_subscriptions_invariants."
+    },
+    {
       "id": "uk_release_input_coverage",
       "gate": "release_input_coverage",
       "phase": "terminal",
@@ -1226,6 +1267,12 @@
           "person.is_uc_claimant",
           "person.legacy_jobseeker_proxy",
           "person.lifetime_isa_balance",
+          "person.lifetime_isa_payments",
+          "person.cash_isa_balance",
+          "person.stocks_and_shares_isa_balance",
+          "person.cash_isa_subscriptions",
+          "person.stocks_and_shares_isa_subscriptions",
+          "person.individual_savings_account_interest_income",
           "person.local_bus_single_fare_share",
           "person.local_bus_trips",
           "person.local_bus_use_band",
@@ -1329,10 +1376,11 @@
         ],
         "reviewed_exclusions": {
           "person.incapacity_benefit_reported": "The enhanced FRS stores this legacy reported-benefit input as an all-zero layer; the candidate must drop dead zero layers.",
-          "household.property_wealth": "policyengine-uk derives property_wealth from main_residence_value, other_residential_property_value and non_residential_property_value; a persisted copy overrides that sum and has no uprating index, so the candidate must drop it (microcosm#1106, the uk-data#543 defect)."
+          "household.property_wealth": "policyengine-uk derives property_wealth from main_residence_value, other_residential_property_value and non_residential_property_value; a persisted copy overrides that sum and has no uprating index, so the candidate must drop it (microcosm#1106, the uk-data#543 defect).",
+          "person.tax_free_savings_income": "policyengine-uk derives tax_free_savings_income as the sum of the ISA interest it adds (individual_savings_account_interest_income); a persisted copy overrides that sum and is never uprated, so the candidate stores ISA interest apart from non-ISA interest under the additive ISA income contract and drops it (microcosm#1360)."
         }
       },
-      "notes": "Reviewed candidate-only fields from the June UK prototype (source provenance or genuine additional model inputs, not incumbent-surface losses), with household.uses_energy_prepayment_meter added for microcosm#1110 (the LCFS prepayment-meter flag policyengine-uk reads from 2.123.3 for the Energy Price Guarantee prepayment discount; an older engine ignores it, and the incumbent does not carry it until uk-data#539), the LCFS excise step's 24 household inputs added for microcosm#1359 (alcohol litres and the beer and cider draught shares, tobacco a week and the gambling duty bases; policyengine-uk reads the alcohol and tobacco ones from 2.145.0 and the gambling ones from 2.151.0, an older engine ignores them, and the incumbent carries none) plus the two reviewed reference-side exclusions (the all-zero incapacity benefit layer and the formula-owned property_wealth total, microcosm#1106). The two hard-required columns that may never be waived stay a code-level guard, per the microcosm#327 rule that a parity comparison's registers are declared inputs. During the migration window the runtime merges the exclusion register with the legacy constant and the spec-pin tests hold the two equal; the register becomes solely load-bearing when the constant retires."
+      "notes": "Reviewed candidate-only fields from the June UK prototype (source provenance or genuine additional model inputs, not incumbent-surface losses), with household.uses_energy_prepayment_meter added for microcosm#1110 (the LCFS prepayment-meter flag policyengine-uk reads from 2.123.3 for the Energy Price Guarantee prepayment discount; an older engine ignores it, and the incumbent does not carry it until uk-data#539), the LCFS excise step's 24 household inputs added for microcosm#1359 (alcohol litres and the beer and cider draught shares, tobacco a week and the gambling duty bases; policyengine-uk reads the alcohol and tobacco ones from 2.145.0 and the gambling ones from 2.151.0, an older engine ignores them, and the incumbent carries none) plus the reviewed reference-side exclusions (the all-zero incapacity benefit layer and the formula-owned property_wealth total, microcosm#1106; the formula-owned tax_free_savings_income total, whose ISA interest the candidate stores apart under the additive ISA income contract, microcosm#1360). The two hard-required columns that may never be waived stay a code-level guard, per the microcosm#327 rule that a parity comparison's registers are declared inputs. During the migration window the runtime merges the exclusion register with the legacy constant and the spec-pin tests hold the two equal; the register becomes solely load-bearing when the constant retires."
     },
     {
       "id": "uk_take_up_signal",
@@ -1541,14 +1589,14 @@
         "gains_growth_parameter": "gov.economic_assumptions.yoy_growth.obr.per_capita.gdp",
         "exempt_amount_parameter": "gov.hmrc.cgt.annual_exempt_amount",
         "expected_yoy_growth_by_year": {
-          "2023": 0.0524,
-          "2024": 0.0389,
-          "2025": 0.0474,
-          "2026": 0.0294,
-          "2027": 0.0326,
-          "2028": 0.0317,
-          "2029": 0.0306,
-          "2030": 0.0315
+          "2023": 0.0522,
+          "2024": 0.0401,
+          "2025": 0.0462,
+          "2026": 0.04,
+          "2027": 0.031,
+          "2028": 0.0344,
+          "2029": 0.036,
+          "2030": 0.0343
         },
         "expected_exempt_amount_by_year": {
           "2023": 6000.0,
@@ -1564,7 +1612,7 @@
         "bound_resource": "hmrc_cgt_conditioning_facts.json",
         "bound_size_band_lower_bound": 3000
       },
-      "notes": "Projection fence over the calibrated frame's sub-exempt gainers (microcosm#970). The engine freezes the annual exempt amount at its nominal value and uprates capital_gains by OBR per-capita GDP growth, so a gainer at or just below the exempt amount in the build period becomes a CGT taxpayer in a later projected year without any change in behaviour. For every year to the horizon the gate counts the cumulative stock of build-period sub-exempt gainers (gains in (0, exempt amount]) whose gains, uprated by the cumulative growth factor to that year, exceed that year's exempt amount; the stock is non-decreasing in the year, so the horizon year carries the largest count. The bound is the vendored HMRC Table 2.1a count of 2024-25 taxpayers with gains from 3,000 to 5,999 (73,000): people already above the exempt amount, not entrants, so the bound is a plausibility ceiling (the population of the thinnest liable band), not a published entrant count. The horizon 2030 is the last year of the OBR per-capita growth path in the engine's parameter tree; later years repeat the 2030 rate, so a longer horizon would only compound a constant. The growth path and the exempt amount by year the seam reads from the installed engine are pinned here and drift-checked (the exempt amount was 6,000 in 2023-24 and 3,000 from 2024-25, so a 2023-period frame's base year reads 6,000), so an engine bump cannot move the verdict silently and re-pinning is a reviewed change (re-pinned at the policyengine-uk 2.161.0 lock: from 2.155.0 the engine takes population growth from the OBR's March 2026 determinants, microcosm#1095); without an installed engine the seam builds the projection from these pins and the receipt says so. The margin is thin by construction: on the first rebuilt candidate the stock ran from 12.7k in 2025 to 67.6k in 2030, about 13k a year, and 61k of the 67.6k were band donors the redraw had demoted below the exempt amount, a separate decision; the anchored clones contributed 6.4k. The v20 candidate would have failed with 10.8 million in the first projected year. The bound comes from the same vendored facts the amounts stage is pinned to, never from a literal."
+      "notes": "Projection fence over the calibrated frame's sub-exempt gainers (microcosm#970). The engine freezes the annual exempt amount at its nominal value and uprates capital_gains by OBR per-capita GDP growth, so a gainer at or just below the exempt amount in the build period becomes a CGT taxpayer in a later projected year without any change in behaviour. For every year to the horizon the gate counts the cumulative stock of build-period sub-exempt gainers (gains in (0, exempt amount]) whose gains, uprated by the cumulative growth factor to that year, exceed that year's exempt amount; the stock is non-decreasing in the year, so the horizon year carries the largest count. The bound is the vendored HMRC Table 2.1a count of 2024-25 taxpayers with gains from 3,000 to 5,999 (73,000): people already above the exempt amount, not entrants, so the bound is a plausibility ceiling (the population of the thinnest liable band), not a published entrant count. The horizon 2030 was the last year of the OBR per-capita growth path in the engine's parameter tree, so a longer horizon would only have compounded a constant; since policyengine-uk 2.164.1 the October 2026 path runs to 2031 and later years repeat the 2031 rate, so a 2031 horizon would add one more year of growth to the count. The growth path and the exempt amount by year the seam reads from the installed engine are pinned here and drift-checked (the exempt amount was 6,000 in 2023-24 and 3,000 from 2024-25, so a 2023-period frame's base year reads 6,000), so an engine bump cannot move the verdict silently and re-pinning is a reviewed change (re-pinned at the policyengine-uk 2.161.0 lock: from 2.155.0 the engine takes population growth from the OBR's March 2026 determinants, microcosm#1095; and at the 2.164.2 lock for the OBR's October 2026 outlook, microcosm#1415); without an installed engine the seam builds the projection from these pins and the receipt says so. The margin is thin by construction: on the first rebuilt candidate the stock ran from 12.7k in 2025 to 67.6k in 2030, about 13k a year, and 61k of the 67.6k were band donors the redraw had demoted below the exempt amount, a separate decision; the anchored clones contributed 6.4k. The v20 candidate would have failed with 10.8 million in the first projected year. The bound comes from the same vendored facts the amounts stage is pinned to, never from a literal."
     },
     {
       "id": "uk_input_mass_parity",

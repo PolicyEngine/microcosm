@@ -20,7 +20,9 @@ any country's data.
 from __future__ import annotations
 
 import json
+from copy import deepcopy
 from dataclasses import replace
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -28,12 +30,22 @@ import pytest
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
+import microcosm.build.reference_factors as reference_factors_module
+import microcosm.build.reference_intervals as reference_intervals_module
+import microcosm.build.reference_profiles as reference_profiles_module
+import microcosm.build.transport.target_kernels as target_kernels_module
 from microcosm.build.ledger_artifact import ChronicleFeedPinMismatchError
+from microcosm.build.reference_profiles import (
+    reference_document_sha256,
+    resolve_reference_profiles,
+)
 from microcosm.build.transport.artifact_types import (
+    CALIBRATION_PREPARATION_TYPE,
     COMPARISON_TYPE,
     TARGET_SURFACE_TYPE,
 )
 from microcosm.build.transport.target_kernels import (
+    CALIBRATION_PREPARE,
     TAKEUP_COMPARE,
     TARGETS_COMPILE,
     TARGETS_PROBLEM,
@@ -41,6 +53,7 @@ from microcosm.build.transport.target_kernels import (
     decode_target_surface,
     parse_reference_document,
 )
+from microcosm.calibrate import TargetRegistry
 from microcosm.calibrate.artifacts import PROBLEM_TYPE, decode_problem
 from microcosm.frame import WeightKind
 from microcosm.graph import (
@@ -50,10 +63,20 @@ from microcosm.graph import (
     KernelContext,
     Node,
     NumericScope,
+    Owned,
     Slice,
 )
 from microcosm.graph.canonical import canonical_json
 from test_support.microcosm_build.chronicle_feed import write_pinned_artifact
+from test_support.microcosm_build.reference_factor_transport import (
+    factor_transport_fixture,
+)
+from test_support.microcosm_build.reference_intervals import (
+    INCOME_COLUMN,
+    UNIVERSE_COLUMN,
+    interval_bindings,
+    interval_table_fixture,
+)
 from test_support.microcosm_build.transport_graph import (
     CALIBRATION_TARGETS,
     COUNTRY,
@@ -136,7 +159,12 @@ def _problem_node() -> Node:
 
 
 def test_kernels_declare_honest_country_neutral_contracts() -> None:
-    for kernel in (TARGETS_COMPILE, TARGETS_PROBLEM, TAKEUP_COMPARE):
+    for kernel in (
+        CALIBRATION_PREPARE,
+        TARGETS_COMPILE,
+        TARGETS_PROBLEM,
+        TAKEUP_COMPARE,
+    ):
         assert isinstance(kernel, Kernel)
         assert "nz" not in kernel.ref
         assert kernel.capabilities.consumes_se is False
@@ -145,12 +173,307 @@ def test_kernels_declare_honest_country_neutral_contracts() -> None:
         len(
             {
                 TARGETS_COMPILE.implementation_hash(),
+                CALIBRATION_PREPARE.implementation_hash(),
                 TARGETS_PROBLEM.implementation_hash(),
                 TAKEUP_COMPARE.implementation_hash(),
             }
         )
-        == 3
+        == 4
     )
+
+
+@pytest.mark.parametrize(
+    "kernel", [TARGETS_COMPILE, TAKEUP_COMPARE], ids=lambda k: k.ref
+)
+def test_factor_verifier_source_changes_compilation_identity(
+    tmp_path, monkeypatch, kernel
+):
+    before = kernel.implementation_hash()
+    source = Path(reference_factors_module.__file__)
+    changed = tmp_path / source.name
+    changed.write_bytes(source.read_bytes() + b"\n# verifier implementation mutation\n")
+    monkeypatch.setattr(reference_factors_module, "__file__", str(changed))
+    assert kernel.implementation_hash() != before
+
+
+def test_compiler_replays_factor_and_applies_one_common_money_weight(tmp_path):
+    path, pin, document, receipt, _ = factor_transport_fixture(tmp_path, activate=True)
+    payload, registry = compile_target_surface(
+        path,
+        document,
+        country=COUNTRY,
+        references_sha256=reference_document_sha256(document),
+        feed_pin=pin,
+        reference_resolution=receipt,
+    )
+    assert registry.specs[0].value == 3
+    assert registry.specs[1].value == pytest.approx(110)
+    assert decode_target_surface(payload).reference_resolution == receipt
+
+
+def test_compile_replay_refuses_self_consistent_forged_factor(tmp_path):
+    path, pin, document, receipt, _ = factor_transport_fixture(
+        tmp_path, forged=True, activate=True
+    )
+    # Composition has accepted all declaration/receipt hashes; only feed replay
+    # can distinguish this forged level from the authenticated source operand.
+    with pytest.raises(ValueError, match="expected factor mismatch"):
+        compile_target_surface(
+            path,
+            document,
+            country=COUNTRY,
+            references_sha256=reference_document_sha256(document),
+            feed_pin=pin,
+            reference_resolution=receipt,
+        )
+
+
+def test_compile_replays_correct_factor_without_pin_when_manifest_binds_commit(
+    tmp_path,
+):
+    path, _, document, receipt, _ = factor_transport_fixture(
+        tmp_path, activate=True, manifest_commit=True
+    )
+    _, registry = compile_target_surface(
+        path,
+        document,
+        country=COUNTRY,
+        references_sha256=reference_document_sha256(document),
+        reference_resolution=receipt,
+    )
+    assert registry.specs[1].value == pytest.approx(110)
+
+
+@pytest.mark.parametrize("manifest_commit", [False, True])
+def test_compile_without_pin_refuses_unauthenticated_or_different_feed(
+    tmp_path, manifest_commit
+):
+    path, _, document, receipt, _ = factor_transport_fixture(
+        tmp_path, activate=True, manifest_commit=manifest_commit
+    )
+    if manifest_commit:
+        # The declaration still has a valid receipt for its original artifact.
+        manifest_path = path / "manifest.json"
+        manifest = json.loads(manifest_path.read_text())
+        manifest["source_commit"] = "d" * 40
+        manifest_path.write_text(json.dumps(manifest))
+    with pytest.raises(ValueError, match="cannot be authenticated|manifest_sha256"):
+        compile_target_surface(
+            path,
+            document,
+            country=COUNTRY,
+            references_sha256=reference_document_sha256(document),
+            reference_resolution=receipt,
+        )
+
+
+def test_compile_factor_ignores_pin_prose(tmp_path):
+    path, pin, document, receipt, _ = factor_transport_fixture(tmp_path, activate=True)
+    arguments = dict(
+        country=COUNTRY,
+        references_sha256=reference_document_sha256(document),
+        reference_resolution=receipt,
+    )
+    before, _ = compile_target_surface(path, document, feed_pin=pin, **arguments)
+    after, _ = compile_target_surface(
+        path, document, feed_pin={**pin, "build": "Reviewed prose edit"}, **arguments
+    )
+    assert before == after
+
+
+@pytest.mark.parametrize("field", ["source_commit", "facts_sha256", "manifest_sha256"])
+def test_compile_factor_refuses_changed_pin_identity(tmp_path, field):
+    path, pin, document, receipt, _ = factor_transport_fixture(tmp_path, activate=True)
+    pin[field] = "d" * len(pin[field])
+    with pytest.raises(ValueError, match="feed identity mismatch|pin mismatch"):
+        compile_target_surface(
+            path,
+            document,
+            country=COUNTRY,
+            references_sha256=reference_document_sha256(document),
+            feed_pin=pin,
+            reference_resolution=receipt,
+        )
+
+
+def test_compile_replay_refuses_tampered_evidence_with_recomputed_hashes(tmp_path):
+    path, pin, document, receipt, _ = factor_transport_fixture(tmp_path, activate=True)
+    factor_receipt = receipt["selected_factors"]["toy_factor"]["receipt"]
+    factor_receipt["source_schedule"][0]["decimal_operand"] = "99"
+    factor_receipt.pop("receipt_sha256")
+    factor_receipt["receipt_sha256"] = reference_document_sha256(factor_receipt)
+    receipt["selected_factor_identities"]["toy_factor"]["receipt_sha256"] = (
+        factor_receipt["receipt_sha256"]
+    )
+    receipt["reference_selection_sha256"] = reference_document_sha256(
+        reference_profiles_module._selection_identity(receipt)
+    )
+    for row in document["target_references"]:
+        row["metadata"]["reference_selection_sha256"] = receipt[
+            "reference_selection_sha256"
+        ]
+    receipt["effective_references_sha256"] = reference_document_sha256(document)
+    receipt.pop("receipt_sha256")
+    receipt["receipt_sha256"] = reference_document_sha256(receipt)
+    with pytest.raises(ValueError, match="Factor replay differs"):
+        compile_target_surface(
+            path,
+            document,
+            country=COUNTRY,
+            references_sha256=reference_document_sha256(document),
+            feed_pin=pin,
+            reference_resolution=receipt,
+        )
+
+
+@pytest.mark.parametrize("target", ["count", "money"])
+def test_compile_replay_refuses_rehashed_factor_application_tampering(tmp_path, target):
+    path, pin, document, receipt, _ = factor_transport_fixture(tmp_path, activate=True)
+    row = next(
+        row for row in document["target_references"] if row["name"] == f"toy-{target}"
+    )
+    row["value_operation"] = "linear_combination"
+    row["value_operands"] = [
+        {
+            "aggregate_fact_key": row["ledger_selector"]["aggregate_fact_key"],
+            "expected_member_count": 1,
+            "weight": 2,
+        }
+    ]
+    if target == "money":
+        receipt["transformations"][row["name"]]["operation"] = "identity"
+    receipt["effective_references_sha256"] = reference_document_sha256(document)
+    receipt.pop("receipt_sha256")
+    receipt["receipt_sha256"] = reference_document_sha256(receipt)
+    with pytest.raises(ValueError, match="roster role|count value semantics"):
+        compile_target_surface(
+            path,
+            document,
+            country=COUNTRY,
+            references_sha256=reference_document_sha256(document),
+            feed_pin=pin,
+            reference_resolution=receipt,
+        )
+
+
+@pytest.mark.parametrize("target", ["count", "money"])
+def test_compile_refuses_rehashed_companion_role_with_unchanged_selection(
+    tmp_path, target
+):
+    path, pin, document, receipt, _ = factor_transport_fixture(tmp_path, activate=True)
+    name = f"toy-{target}"
+    companion = receipt["factor_companions"][name]
+    role = "count" if target == "money" else "money"
+    companion["role"] = role
+    companion["source"]["metadata"]["reference_value_kind"] = role
+    row = next(row for row in document["target_references"] if row["name"] == name)
+    action = receipt["transformations"][name]
+    # Make the forged role internally consistent. Its original selection hash
+    # must still refuse even when the action and effective row agree with it.
+    operation = "linear_combination" if role == "money" else "identity"
+    rational = action["operational_factor"]
+    operands = (
+        [
+            {
+                "aggregate_fact_key": row["ledger_selector"]["aggregate_fact_key"],
+                "expected_member_count": 1,
+                "weight": rational["numerator"] / rational["denominator"],
+            }
+        ]
+        if role == "money"
+        else []
+    )
+    row["metadata"]["reference_value_kind"] = role
+    row["value_operation"] = operation
+    row["value_operands"] = operands
+    action["operation"] = operation
+    action["operand_selectors"] = operands
+    receipt["factor_companions_sha256"] = reference_document_sha256(
+        receipt["factor_companions"]
+    )
+    receipt["effective_references_sha256"] = reference_document_sha256(document)
+    receipt.pop("receipt_sha256")
+    receipt["receipt_sha256"] = reference_document_sha256(receipt)
+    with pytest.raises(ValueError, match="Reference selection identity mismatch"):
+        compile_target_surface(
+            path,
+            document,
+            country=COUNTRY,
+            references_sha256=reference_document_sha256(document),
+            feed_pin=pin,
+            reference_resolution=receipt,
+        )
+
+
+def test_compile_refuses_outside_roster_row_with_residual_action(tmp_path):
+    path, pin, document, receipt, _ = factor_transport_fixture(tmp_path, activate=True)
+    extra = deepcopy(document["target_references"][0])
+    previous = extra["name"]
+    extra["name"] = "unlisted-count"
+    document["target_references"].append(extra)
+    action = deepcopy(receipt["transformations"][previous])
+    action.pop("factor_id")
+    action["operation"] = "allocated_residual_by_ratio"
+    receipt["transformations"][extra["name"]] = action
+    receipt["transformed_names"] = sorted(receipt["transformations"])
+    receipt["effective_references_sha256"] = reference_document_sha256(document)
+    receipt.pop("receipt_sha256")
+    receipt["receipt_sha256"] = reference_document_sha256(receipt)
+    with pytest.raises(
+        ValueError, match="selection identity|outside its companion roster"
+    ):
+        compile_target_surface(
+            path,
+            document,
+            country=COUNTRY,
+            references_sha256=reference_document_sha256(document),
+            feed_pin=pin,
+            reference_resolution=receipt,
+        )
+
+
+@pytest.mark.parametrize(
+    "resolved", [False, True], ids=["unresolved", "legacy-resolution"]
+)
+def test_no_factor_compilation_is_identical_with_or_without_lexical_loading(
+    tmp_path, monkeypatch, resolved
+):
+    facts = toy_facts(CALIBRATION_TARGETS)
+    path = write_facts(tmp_path / "facts.jsonl", facts)
+    document = references_for(CALIBRATION_TARGETS)
+    receipt = None
+    if resolved:
+        document, _, receipt = resolve_reference_profiles(
+            document, {"schema_version": 1, "dimensions": {}}, {}
+        )
+    original_loader = target_kernels_module.load_ledger_consumer_artifact
+    requests = []
+    outputs = []
+    registries = []
+    for force_lexical in (False, True):
+
+        def load_with_selected_representation(*args, lexical=force_lexical, **kwargs):
+            requests.append(kwargs.get("lexical_floats", False))
+            kwargs["lexical_floats"] = lexical
+            return original_loader(*args, **kwargs)
+
+        monkeypatch.setattr(
+            target_kernels_module,
+            "load_ledger_consumer_artifact",
+            load_with_selected_representation,
+        )
+        payload, registry = compile_target_surface(
+            path,
+            document,
+            country=COUNTRY,
+            references_sha256=reference_document_sha256(document),
+            reference_resolution=receipt,
+        )
+        outputs.append(payload)
+        registries.append([spec.value for spec in registry.specs])
+    assert requests == [False, False]
+    assert outputs[0] == outputs[1]
+    assert registries[0] == registries[1]
 
 
 def test_compile_emits_a_traced_surface_bound_to_facts_not_paths(tmp_path) -> None:
@@ -183,6 +506,244 @@ def test_compile_values_are_the_fact_values(tmp_path) -> None:
     facts = {fact["label"]: fact["value"] for fact in toy_facts(CALIBRATION_TARGETS)}
     for spec in surface.registry.specs:
         assert spec.value == facts[f"Toy fact {spec.name}"]
+
+
+def _profile_document(choice="central", intervals=None):
+    declarations = {
+        "schema_version": 1,
+        "dimensions": {
+            "allocation": {
+                "default": "central",
+                "profiles": {
+                    name: {"transformations": []} for name in ("central", "sensitivity")
+                },
+            }
+        },
+    }
+    return resolve_reference_profiles(
+        references_for(CALIBRATION_TARGETS),
+        declarations,
+        {"allocation": choice},
+        intervals,
+    )
+
+
+def _preparation_node(document, receipt, intervals=None, *, dtype="int64"):
+    bindings = {
+        "schema_version": 1,
+        "required_inputs": {"household": ["household_id"]},
+        "input_domains": {"household": {"household_id": {"kind": "identity"}}},
+        "columns": [{"entity": "household", "name": "prepared_marker", "constant": 1}],
+    }
+    return Node(
+        "prepare",
+        "calibration.prepare@1",
+        population="open",
+        params={
+            "bindings": canonical_text(bindings),
+            "references": canonical_text(document),
+            "references_sha256": reference_document_sha256(document),
+            "reference_resolution": canonical_text(receipt),
+            **(
+                {"intervals": canonical_text(intervals)}
+                if intervals is not None
+                else {}
+            ),
+        },
+        outputs=(Owned("household", "prepared_marker", dtype=dtype),),
+        artifact_outputs=(ArtifactOutput("preparation", CALIBRATION_PREPARATION_TYPE),),
+    )
+
+
+@pytest.mark.parametrize(
+    "defect",
+    [
+        "selection",
+        "interval",
+        "reference",
+        "missing",
+        "inventory",
+        "empty_inventory",
+        "values",
+        "identities",
+    ],
+)
+def test_problem_refuses_stale_interval_or_preparation_profile(tmp_path, defect):
+    intervals = {"bands": [1, 2]}
+    document, _, receipt = _profile_document(intervals=intervals)
+    facts = write_facts(tmp_path / "facts.jsonl", toy_facts(CALIBRATION_TARGETS))
+    payload, _ = compile_target_surface(
+        facts,
+        document,
+        country=COUNTRY,
+        references_sha256=reference_document_sha256(document),
+        reference_resolution=receipt,
+    )
+    frame = toy_frame()
+    prepared = CALIBRATION_PREPARE.run(
+        _context(_preparation_node(document, receipt, intervals), frame=frame)
+    )
+    evidence = json.loads(prepared.artifacts["preparation"])
+    if defect in {"selection", "interval", "reference"}:
+        key = {
+            "selection": "reference_selection_sha256",
+            "interval": "effective_intervals_sha256",
+            "reference": "references_sha256",
+        }[defect]
+        evidence[key] = "f" * 64
+    elif defect == "empty_inventory":
+        evidence["columns"] = []
+    artifacts = {"surface": _artifact(payload, TARGET_SURFACE_TYPE)}
+    if defect != "missing":
+        artifacts["preparation"] = _artifact(
+            canonical_json(evidence), CALIBRATION_PREPARATION_TYPE
+        )
+    context = _context(_problem_node(), frame=frame, artifacts=artifacts)
+    if defect != "inventory":
+        context.tables["household"]["prepared_marker"] = 1
+    if defect == "values":
+        context.tables["household"]["prepared_marker"] = 2
+    elif defect == "identities":
+        context.tables["household"]["household_id"] = list(
+            reversed(context.tables["household"]["household_id"].tolist())
+        )
+    with pytest.raises(ValueError, match="preparation"):
+        TARGETS_PROBLEM.run(context)
+
+
+@pytest.mark.parametrize("dtype", ["int64", "float64"])
+def test_preparation_and_resolution_evidence_bind_the_problem(tmp_path, dtype):
+    document, _, receipt = _profile_document()
+    facts = write_facts(tmp_path / "facts.jsonl", toy_facts(CALIBRATION_TARGETS))
+    payload, _ = compile_target_surface(
+        facts,
+        document,
+        country=COUNTRY,
+        references_sha256=reference_document_sha256(document),
+        reference_resolution=receipt,
+    )
+    frame = toy_frame()
+    prepared = CALIBRATION_PREPARE.run(
+        _context(_preparation_node(document, receipt, dtype=dtype), frame=frame)
+    )
+    emitted = prepared.columns["household", "prepared_marker"]
+    assert emitted.dtype == np.dtype(dtype)
+    evidence = json.loads(prepared.artifacts["preparation"])
+    assert evidence["columns"][0]["values_sha256"] == reference_document_sha256(
+        emitted.tolist()
+    )
+    context = _context(
+        _problem_node(),
+        frame=frame,
+        artifacts={
+            "surface": _artifact(payload, TARGET_SURFACE_TYPE),
+            "preparation": _artifact(
+                prepared.artifacts["preparation"], CALIBRATION_PREPARATION_TYPE
+            ),
+        },
+    )
+    context.tables["household"]["prepared_marker"] = emitted.to_numpy(copy=True)
+    result = TARGETS_PROBLEM.run(context)
+    decoded = decode_problem(result.artifacts["problem"])
+    assert decoded.bindings["reference_resolution"] == receipt
+    assert (
+        decoded.bindings["reference_selection_sha256"]
+        == receipt["reference_selection_sha256"]
+    )
+    assert result.receipt["preparation_sha256"] == reference_document_sha256(
+        json.loads(prepared.artifacts["preparation"])
+    )
+
+
+def test_profile_compilation_checks_actual_reference_document_hash(tmp_path):
+    document, _, receipt = _profile_document()
+    facts = write_facts(tmp_path / "facts.jsonl", toy_facts(CALIBRATION_TARGETS))
+    with pytest.raises(ValueError, match="hash mismatch"):
+        compile_target_surface(
+            facts,
+            document,
+            country=COUNTRY,
+            references_sha256=SHA,
+            reference_resolution=receipt,
+        )
+
+    document["target_references"][0]["notes"] = "stale effective document"
+    with pytest.raises(ValueError, match="hash mismatch"):
+        compile_target_surface(
+            facts,
+            document,
+            country=COUNTRY,
+            references_sha256=reference_document_sha256(document),
+            reference_resolution=receipt,
+        )
+
+
+def test_decode_resolved_surface_requires_the_resolution_receipt(tmp_path):
+    payload = _surface(tmp_path)
+    surface = decode_target_surface(payload)
+    specs = list(surface.registry.specs)
+    specs[0] = replace(
+        specs[0], metadata={**specs[0].metadata, "reference_profiles_resolved": "1"}
+    )
+    registry = TargetRegistry(specs, country=COUNTRY)
+    document = json.loads(payload)
+    document["registry"].update(
+        version=registry.version, specs=[spec.to_dict() for spec in registry.specs]
+    )
+    with pytest.raises(ValueError, match="requires its reference resolution receipt"):
+        decode_target_surface(canonical_json(document))
+
+
+@pytest.mark.parametrize("defect", ["receipt", "references", "selection", "interval"])
+def test_decode_surface_refuses_stale_resolution_evidence(tmp_path, defect):
+    document, _, receipt = _profile_document(intervals={"bands": []})
+    facts = write_facts(tmp_path / "facts.jsonl", toy_facts(CALIBRATION_TARGETS))
+    payload, registry = compile_target_surface(
+        facts,
+        document,
+        country=COUNTRY,
+        references_sha256=reference_document_sha256(document),
+        reference_resolution=receipt,
+    )
+    raw = json.loads(payload)
+    if defect == "receipt":
+        raw["reference_resolution"]["selection"]["allocation"] = "sensitivity"
+    elif defect == "references":
+        raw["references_sha256"] = "f" * 64
+    else:
+        specs = list(registry.specs)
+        metadata = {
+            **specs[0].metadata,
+            "reference_profiles_resolved": "1",
+            "reference_selection_sha256": receipt["reference_selection_sha256"],
+            "effective_intervals_sha256": receipt["effective_intervals_sha256"],
+        }
+        metadata[
+            {
+                "selection": "reference_selection_sha256",
+                "interval": "effective_intervals_sha256",
+            }[defect]
+        ] = "f" * 64
+        specs[0] = replace(specs[0], metadata=metadata)
+        altered = TargetRegistry(specs, country=COUNTRY)
+        raw["registry"].update(
+            version=altered.version, specs=[spec.to_dict() for spec in altered.specs]
+        )
+    with pytest.raises(
+        ValueError, match="receipt hash|reference hash|profile identity"
+    ):
+        decode_target_surface(canonical_json(raw))
+
+
+@pytest.mark.parametrize("defect", ["missing", "stale"])
+def test_preparation_requires_its_effective_interval_companion(defect):
+    intervals = {"bands": [1, 2]}
+    document, _, receipt = _profile_document(intervals=intervals)
+    node = _preparation_node(
+        document, receipt, None if defect == "missing" else {"bands": [2, 3]}
+    )
+    with pytest.raises(ValueError, match="interval"):
+        CALIBRATION_PREPARE.run(_context(node, frame=toy_frame()))
 
 
 def test_target_compiler_passes_full_feed_pin_to_loader(tmp_path) -> None:
@@ -330,10 +891,15 @@ _STATUSES = (
 )
 
 
+# Base/current seeded draws have identical inputs and measured generation cost.
+# Host contention can exceed Hypothesis' wall-clock generation health check.
 @settings(
     max_examples=40,
     deadline=None,
-    suppress_health_check=(HealthCheck.function_scoped_fixture,),
+    suppress_health_check=(
+        HealthCheck.function_scoped_fixture,
+        HealthCheck.too_slow,
+    ),
 )
 @given(
     chosen=st.lists(
@@ -550,3 +1116,257 @@ def test_property_comparison_reports_the_fact_and_the_weighted_model(
     assert row["reference"] == row["name"] == HOLDOUT_TARGETS[0][0]
     assert document["weight_kind"] == "calibrated"
     assert result.receipt["n_comparisons"] == 1
+
+
+# ---------------------------------------------------------------------------
+# Interval preparation and pre-fit boundary diagnostics
+# ---------------------------------------------------------------------------
+
+
+def _interval_document():
+    return {
+        "schema_version": 1,
+        "tables": [interval_table_fixture(source_period=2002)],
+    }
+
+
+def _interval_preparation_node(document, receipt, intervals, bindings=None):
+    table = intervals["tables"][0]
+    bindings = interval_bindings(table) if bindings is None else bindings
+    params = {
+        "bindings": canonical_text(bindings),
+        "references": canonical_text(document),
+        "references_sha256": reference_document_sha256(document),
+        "intervals": canonical_text(intervals),
+    }
+    if receipt is not None:
+        params["reference_resolution"] = canonical_text(receipt)
+    return Node(
+        "prepare",
+        "calibration.prepare@1",
+        population="open",
+        params=params,
+        outputs=tuple(
+            Owned("person", band["indicator"], dtype="bool") for band in table["bands"]
+        ),
+        artifact_outputs=(ArtifactOutput("preparation", CALIBRATION_PREPARATION_TYPE),),
+    )
+
+
+def _with_interval_inputs(tables, persons):
+    pattern = [0, -400, 99_999, 100_000, 100_001, 1_000_000, 1_000_001, 7]
+    statuses = ["included", "included", "included", "excluded"]
+    tables["person"][INCOME_COLUMN] = [pattern[i % 8] for i in range(persons)]
+    tables["person"][UNIVERSE_COLUMN] = [statuses[i % 4] for i in range(persons)]
+
+
+def _interval_case(tmp_path):
+    intervals = _interval_document()
+    document, effective, receipt = _profile_document(intervals=intervals)
+    assert effective == intervals
+    facts = write_facts(tmp_path / "facts.jsonl", toy_facts(CALIBRATION_TARGETS))
+    payload, _ = compile_target_surface(
+        facts,
+        document,
+        country=COUNTRY,
+        references_sha256=reference_document_sha256(document),
+        reference_resolution=receipt,
+    )
+    frame = toy_frame()
+    persons = len(frame.table("person"))
+    context = _context(
+        _interval_preparation_node(document, receipt, intervals), frame=frame
+    )
+    _with_interval_inputs(context.tables, persons)
+    prepared = CALIBRATION_PREPARE.run(context)
+    return intervals, document, receipt, payload, frame, prepared
+
+
+def _interval_problem_context(frame, payload, preparation, prepared_columns):
+    context = _context(
+        _problem_node(),
+        frame=frame,
+        artifacts={
+            "surface": _artifact(payload, TARGET_SURFACE_TYPE),
+            "preparation": _artifact(preparation, CALIBRATION_PREPARATION_TYPE),
+        },
+    )
+    _with_interval_inputs(context.tables, len(frame.table("person")))
+    for (entity, name), values in prepared_columns.items():
+        context.tables[entity][name] = values.to_numpy(copy=True)
+    return context
+
+
+def test_interval_preparation_carries_digest_inputs_and_payload(tmp_path):
+    intervals, _, receipt, _, frame, prepared = _interval_case(tmp_path)
+    evidence = json.loads(prepared.artifacts["preparation"])
+    assert evidence["effective_intervals_sha256"] == reference_document_sha256(
+        intervals
+    )
+    assert evidence["effective_intervals"] == intervals
+    (row,) = evidence["interval_inputs"]
+    persons = frame.table("person")
+    assert row["table"] == "toy_income" and row["entity"] == "person"
+    assert row["rows"] == len(persons)
+    assert row["income_values_sha256"] == (
+        reference_intervals_module.interval_input_fingerprint(
+            [
+                [0, -400, 99_999, 100_000, 100_001, 1_000_000, 1_000_001, 7][i % 8]
+                for i in range(len(persons))
+            ]
+        )
+    )
+    nil = prepared.columns["person", "toy_income_band_nil"]
+    b0 = prepared.columns["person", "toy_income_band_b0"]
+    statuses = [
+        ["included", "included", "included", "excluded"][i % 4]
+        for i in range(len(persons))
+    ]
+    incomes = [
+        [0, -400, 99_999, 100_000, 100_001, 1_000_000, 1_000_001, 7][i % 8]
+        for i in range(len(persons))
+    ]
+    assert nil.tolist() == [
+        status == "included" and income <= 0
+        for status, income in zip(statuses, incomes, strict=True)
+    ]
+    assert b0.tolist() == [
+        status == "included" and 0 < income <= 100_000
+        for status, income in zip(statuses, incomes, strict=True)
+    ]
+
+
+def test_problem_binds_boundary_diagnostics_without_changing_targets(tmp_path):
+    _, document, receipt, payload, frame, prepared = _interval_case(tmp_path)
+    result = TARGETS_PROBLEM.run(
+        _interval_problem_context(
+            frame, payload, prepared.artifacts["preparation"], prepared.columns
+        )
+    )
+    decoded = decode_problem(result.artifacts["problem"])
+    report = decoded.bindings["interval_diagnostics"]
+    assert decoded.bindings["interval_diagnostics_sha256"] == reference_document_sha256(
+        report
+    )
+    assert result.receipt["interval_diagnostics"] == report
+    assert report["effective_intervals_sha256"] == receipt["effective_intervals_sha256"]
+    (table,) = report["tables"]
+    assert table["table"] == "toy_income"
+    assert table["weight_kind"] == "design"
+    assert table["publisher_reclassification"] == "unavailable"
+    evidence = json.loads(prepared.artifacts["preparation"])
+    assert (
+        table["digests"]["record_order_sha256"]
+        == (evidence["interval_inputs"][0]["entity_ids_sha256"])
+    )
+    # The same surface prepared without interval outputs has identical targets.
+    plain = CALIBRATION_PREPARE.run(
+        _context(
+            _preparation_node(document, receipt, _interval_document()), frame=frame
+        )
+    )
+    context = _context(
+        _problem_node(),
+        frame=frame,
+        artifacts={
+            "surface": _artifact(payload, TARGET_SURFACE_TYPE),
+            "preparation": _artifact(
+                plain.artifacts["preparation"], CALIBRATION_PREPARATION_TYPE
+            ),
+        },
+    )
+    context.tables["household"]["prepared_marker"] = 1
+    baseline = TARGETS_PROBLEM.run(context)
+    without = decode_problem(baseline.artifacts["problem"])
+    assert "interval_diagnostics" not in without.bindings
+    np.testing.assert_array_equal(
+        decoded.problem.target_vector, without.problem.target_vector
+    )
+    np.testing.assert_array_equal(
+        decoded.problem.target_vector,
+        [spec.value for spec in decode_target_surface(payload).registry.specs],
+    )
+
+
+@pytest.mark.parametrize(
+    "defect",
+    [
+        "income",
+        "universe",
+        "payload",
+        "dropped_inputs",
+        "dropped_payload",
+        "missing_income_column",
+    ],
+)
+def test_problem_refuses_stale_interval_preparation(tmp_path, defect):
+    _, _, _, payload, frame, prepared = _interval_case(tmp_path)
+    evidence = json.loads(prepared.artifacts["preparation"])
+    if defect == "payload":
+        evidence["effective_intervals"]["tables"][0]["bands"][1]["upper_cent"] = 99_000
+    elif defect == "dropped_inputs":
+        evidence.pop("interval_inputs")
+    elif defect == "dropped_payload":
+        evidence.pop("effective_intervals")
+    context = _interval_problem_context(
+        frame, payload, canonical_json(evidence), prepared.columns
+    )
+    if defect == "income":
+        context.tables["person"].loc[0, INCOME_COLUMN] = 100_001
+    elif defect == "universe":
+        context.tables["person"].loc[0, UNIVERSE_COLUMN] = "excluded"
+    elif defect == "missing_income_column":
+        context.tables["person"].pop(INCOME_COLUMN)
+    with pytest.raises(ValueError, match="preparation|missing"):
+        TARGETS_PROBLEM.run(context)
+
+
+def test_missing_diagnostic_entity_refuses_as_missing_evidence():
+    table = reference_intervals_module.interval_table(
+        interval_table_fixture(entity="tax_unit", source_period=2002)
+    )
+    with pytest.raises(ValueError, match="missing evidence"):
+        target_kernels_module._interval_diagnostics(
+            toy_frame(), [table], ENTITIES, "0" * 64
+        )
+
+
+@pytest.mark.parametrize(
+    "defect", ["wrong_document", "no_receipt", "no_document", "unresolved"]
+)
+def test_preparation_refuses_wrong_unbound_or_unresolved_intervals(tmp_path, defect):
+    intervals = _interval_document()
+    document, _, receipt = _profile_document(intervals=intervals)
+    supplied = deepcopy(intervals)
+    if defect == "wrong_document":
+        supplied["tables"][0]["bands"][1]["upper_cent"] = 99_000
+    node = _interval_preparation_node(
+        document, None if defect == "no_receipt" else receipt, supplied
+    )
+    if defect == "no_document":
+        document, _, receipt = _profile_document()
+        node = _interval_preparation_node(document, receipt, intervals)
+        node = replace(
+            node, params={k: v for k, v in node.params.items() if k != "intervals"}
+        )
+    frame = toy_frame()
+    context = _context(node, frame=frame)
+    _with_interval_inputs(context.tables, len(frame.table("person")))
+    if defect == "unresolved":
+        context.tables["person"].loc[1, UNIVERSE_COLUMN] = "unresolved"
+    with pytest.raises(ValueError):
+        CALIBRATION_PREPARE.run(context)
+
+
+@pytest.mark.parametrize(
+    "kernel", [CALIBRATION_PREPARE, TARGETS_PROBLEM], ids=lambda k: k.ref
+)
+def test_interval_module_source_changes_preparation_and_problem_identity(
+    tmp_path, monkeypatch, kernel
+):
+    before = kernel.implementation_hash()
+    source = Path(reference_intervals_module.__file__)
+    changed = tmp_path / source.name
+    changed.write_bytes(source.read_bytes() + b"\n# interval helper mutation\n")
+    monkeypatch.setattr(reference_intervals_module, "__file__", str(changed))
+    assert kernel.implementation_hash() != before

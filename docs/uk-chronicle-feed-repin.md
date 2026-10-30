@@ -345,3 +345,9 @@ The national register version moves with the new references, so the uk-candidate
 register is re-frozen before the next national solve. The high-value home stock still names
 `735820c`: its inputs are the same on `53815b2` (the feed-gated fingerprint check passes), so it
 was not rebuilt.
+
+The ISA subscriptions (microcosm#1415, PolicyEngine/microcosm#1421) then vendored a new resource
+from the same `53815b2` artifact: `hmrc_isa_statistics_facts.json`, the 1,074 rows of #392's ISA
+statistics the ISA subscriptions stage and the Lifetime ISA anchor read. None is a calibration
+target, so no reference moves for it. That pull request first pinned #392's head (`e56af9a`) and
+then its merge (`0b721a4`), and took `53815b2` when PR C merged first.

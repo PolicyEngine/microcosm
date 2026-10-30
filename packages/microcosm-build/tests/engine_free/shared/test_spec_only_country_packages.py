@@ -6,6 +6,8 @@ import json
 import re
 from pathlib import Path, PurePosixPath
 
+import pytest
+
 from microcosm.build.country_spec import ALLOWED_COUNTRY_RESOURCE_KINDS
 from microcosm.build.spec_engine import GENERATED_LOCK_FILENAMES, load_yaml12
 from test_support.paths import paths_for
@@ -222,6 +224,151 @@ def test__given_schema_kernel_reference__then_it_is_not_an_entrypoint() -> None:
     assert not _looks_like_python_entrypoint("kernel:fit_qrf")
 
 
+def _partition_fact_key_roster() -> dict:
+    keys = [
+        "ledger.aggregate_fact.v2:" + "a" * 24,
+        "ledger.aggregate_fact.v2:" + "1" * 24,
+    ]
+    return {
+        "role": "partition",
+        "member_selectors": [{"aggregate_fact_key": key} for key in keys],
+        "allocation_member_keys": keys.copy(),
+    }
+
+
+def _signed_partition_fact_key_roster() -> dict:
+    partition = _partition_fact_key_roster()
+    partition["discrepancy_policy"] = {
+        "kind": "signed_proportional_reconciliation",
+        "max_abs": 3,
+    }
+    partition["positive_allocation_member_keys"] = partition["allocation_member_keys"][
+        :1
+    ]
+    return partition
+
+
+@pytest.mark.parametrize(
+    "shape",
+    ["all_members", "recipient_subset", "signed", "signed_positive"],
+)
+def test__given_typed_partition_fact_keys__then_the_roster_is_data(shape) -> None:
+    partition = _partition_fact_key_roster()
+    if shape == "recipient_subset":
+        partition["allocation_member_keys"] = partition["allocation_member_keys"][:1]
+    elif shape.startswith("signed"):
+        partition = _signed_partition_fact_key_roster()
+        if shape == "signed":
+            del partition["positive_allocation_member_keys"]
+    offenders = []
+    _collect_executable_content(partition, "reference.value_operands[2]", offenders)
+    assert offenders == []
+
+
+@pytest.mark.parametrize(
+    "defect",
+    [
+        "mixed",
+        "callable",
+        "citation",
+        "outside_partition",
+        "wrong_role",
+        "unpinned",
+        "malformed_digest",
+        "duplicate_roster",
+        "positive_unsigned",
+        "positive_two",
+        "positive_outside",
+    ],
+)
+def test__given_untyped_partition_keys__then_entrypoint_shapes_are_rejected(
+    defect,
+) -> None:
+    partition = _partition_fact_key_roster()
+    payload = partition
+    expected = "reference.allocation_member_keys[0]"
+    if defect == "mixed":
+        partition["allocation_member_keys"].append("dotted.module:callable")
+        expected = "reference.allocation_member_keys[2]"
+    elif defect == "callable":
+        partition["allocation_member_keys"] = ["dotted.module:callable"]
+    elif defect == "citation":
+        payload = {"partition": partition, "citation": "dotted.module:callable"}
+        expected = "reference.citation"
+    elif defect == "outside_partition":
+        payload = {"allocation_member_keys": partition["allocation_member_keys"]}
+    elif defect == "wrong_role":
+        partition["role"] = "base"
+    elif defect == "unpinned":
+        partition["allocation_member_keys"] = ["ledger.aggregate_fact.v2:" + "b" * 24]
+    elif defect == "malformed_digest":
+        partition["allocation_member_keys"] = ["ledger.aggregate_fact.v2:callable"]
+    elif defect == "duplicate_roster":
+        partition["allocation_member_keys"] = [
+            partition["allocation_member_keys"][0]
+        ] * 2
+    else:
+        payload = partition = _signed_partition_fact_key_roster()
+        expected = "reference.positive_allocation_member_keys[0]"
+        if defect == "positive_unsigned":
+            del partition["discrepancy_policy"]
+        elif defect == "positive_two":
+            partition["positive_allocation_member_keys"] = partition[
+                "allocation_member_keys"
+            ].copy()
+        else:
+            partition["positive_allocation_member_keys"] = [
+                "ledger.aggregate_fact.v2:" + "b" * 24
+            ]
+    offenders = []
+    _collect_executable_content(payload, "reference", offenders)
+    assert expected in offenders
+
+
+def _reconciliation_receipt() -> dict:
+    keys = ["ledger.aggregate_fact.v2:" + letter * 24 for letter in "abc"]
+    return {
+        "leaf_selectors": [{"aggregate_fact_key": key} for key in keys[:2]],
+        "total_selector": {"aggregate_fact_key": keys[2]},
+        "raw_fact_keys": {"leaves": {"1": keys[0], "2": keys[1]}, "total": keys[2]},
+    }
+
+
+def test__given_reconciliation_raw_keys_copying_their_pins__then_they_are_data() -> (
+    None
+):
+    offenders = []
+    _collect_executable_content(_reconciliation_receipt(), "receipt", offenders)
+    assert offenders == []
+
+
+@pytest.mark.parametrize(
+    "defect",
+    ["callable_total", "unpinned_leaf", "outside_receipt", "extra_field"],
+)
+def test__given_untyped_raw_fact_keys__then_entrypoint_shapes_are_rejected(
+    defect,
+) -> None:
+    receipt = _reconciliation_receipt()
+    raw = receipt["raw_fact_keys"]
+    payload = receipt
+    expected = "reference.raw_fact_keys.leaves.1"
+    if defect == "callable_total":
+        raw["total"] = "dotted.module:callable"
+        expected = "reference.raw_fact_keys.total"
+    elif defect == "unpinned_leaf":
+        raw["leaves"]["2"] = "ledger.aggregate_fact.v2:" + "d" * 24
+        expected = "reference.raw_fact_keys.leaves.2"
+    elif defect == "outside_receipt":
+        payload = {"raw_fact_keys": raw}
+    else:
+        raw["citation"] = "dotted.module:callable"
+        expected = "reference.raw_fact_keys.citation"
+    offenders = []
+    _collect_executable_content(payload, "reference", offenders)
+    assert expected in offenders
+
+
 def _collect_executable_content(
     value: object,
     location: str,
@@ -247,7 +394,12 @@ def _collect_executable_content(
                 and not compiler_identity_field
             ):
                 offenders.append(child_location)
-            if compiler_identity_field or _is_fact_key_field(key=key, value=child):
+            if (
+                compiler_identity_field
+                or _is_fact_key_field(key=key, value=child)
+                or _is_partition_fact_key_roster(key=key, value=child, parent=value)
+                or _is_reconciliation_raw_fact_keys(key=key, value=child, parent=value)
+            ):
                 continue
             _collect_executable_content(child, child_location, offenders)
     elif isinstance(value, list):
@@ -345,6 +497,93 @@ def _is_fact_key_field(*, key: str, value: object) -> bool:
         key in _FACT_KEY_FIELDS
         and isinstance(value, str)
         and value.startswith(_FACT_KEY_NAMESPACES)
+    )
+
+
+_AGGREGATE_FACT_KEY = r"ledger\.aggregate_fact\.v\d+:[0-9a-f]{24}"
+
+
+def _is_partition_fact_key_roster(*, key: str, value: object, parent: dict) -> bool:
+    """Admit only canonical recipient keys pinned by a typed atomic partition.
+
+    The fields mirror the compiler's partition operand
+    (``ledger_targets._validate_allocation_reference``): a signed partition adds
+    ``discrepancy_policy`` and may name one positive recipient.
+    """
+    fields = {"role", "member_selectors", "allocation_member_keys"}
+    if "discrepancy_policy" in parent:
+        fields.add("discrepancy_policy")
+        if "positive_allocation_member_keys" in parent:
+            fields.add("positive_allocation_member_keys")
+    if (
+        key not in {"allocation_member_keys", "positive_allocation_member_keys"}
+        or set(parent) != fields
+        or parent.get("role") != "partition"
+        or not isinstance(value, list)
+        or not value
+        or (key == "positive_allocation_member_keys" and len(value) != 1)
+    ):
+        return False
+    if any(
+        not isinstance(item, str) or re.fullmatch(_AGGREGATE_FACT_KEY, item) is None
+        for item in value
+    ):
+        return False
+    members = parent["member_selectors"]
+    if not isinstance(members, list) or not members:
+        return False
+    keys = []
+    for member in members:
+        if not isinstance(member, dict):
+            return False
+        identity = member.get("aggregate_fact_key")
+        if (
+            not isinstance(identity, str)
+            or re.fullmatch(_AGGREGATE_FACT_KEY, identity) is None
+        ):
+            return False
+        keys.append(identity)
+    return (
+        len(set(keys)) == len(keys)
+        and len(set(value)) == len(value)
+        and set(value) <= set(keys)
+    )
+
+
+def _is_reconciliation_raw_fact_keys(*, key: str, value: object, parent: dict) -> bool:
+    """Admit a reconciliation receipt's raw keys only as copies of its own pins.
+
+    Each leaf key must equal the matching ``leaf_selectors`` pin (numbered from
+    1) and the total must equal ``total_selector``'s, so the record names no
+    string its selectors do not already pin.
+    """
+    if (
+        key != "raw_fact_keys"
+        or not isinstance(value, dict)
+        or set(value) != {"leaves", "total"}
+    ):
+        return False
+    selectors = parent.get("leaf_selectors")
+    total = parent.get("total_selector")
+    if (
+        not isinstance(selectors, list)
+        or not selectors
+        or not all(isinstance(selector, dict) for selector in selectors)
+        or not isinstance(total, dict)
+    ):
+        return False
+    pinned = {
+        str(code): selector.get("aggregate_fact_key")
+        for code, selector in enumerate(selectors, 1)
+    }
+    keys = [*pinned.values(), total.get("aggregate_fact_key")]
+    return (
+        value["leaves"] == pinned
+        and value["total"] == keys[-1]
+        and all(
+            isinstance(item, str) and re.fullmatch(_AGGREGATE_FACT_KEY, item)
+            for item in keys
+        )
     )
 
 

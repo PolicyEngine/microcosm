@@ -14820,7 +14820,7 @@
           "value_expression": "savings_interest_income + tax_free_savings_income + other_investment_income",
           "from_entity": "person",
           "map_to": "household",
-          "notes": "uk-data holds the last actual flat for later years - a populace-side declaration (uk-data targets/sources/ons_savings.py:39-44 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3). The row measures cash interest in and outside tax-free accounts. From policyengine-uk 2.162.2 savings_interest_income is the interest outside them: the engine takes the frame's tax_free_savings_income out of the frame's gross interest when it loads the frame. The ISA part, tax_free_savings_income, is added back (microcosm#1095). D.41 also counts interest on gilts, National Savings bonds and other securities, which the frame holds in other_investment_income: the SPI tape's other investment income on SPI rows and, from microcosm#1418, the FRS NS&I and gilt accounts on FRS rows. The engine taxes it as savings income beside savings_interest_income."
+          "notes": "uk-data holds the last actual flat for later years - a populace-side declaration (uk-data targets/sources/ons_savings.py:39-44 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3). The row measures cash interest in and outside tax-free accounts. From policyengine-uk 2.162.2 savings_interest_income is the interest outside them, which the frame stores so under the additive ISA income contract, with ISA interest apart in individual_savings_account_interest_income; the ISA part, tax_free_savings_income, adds it back (microcosm#1095, microcosm#1360). D.41 also counts interest on gilts, National Savings bonds and other securities, which the frame holds in other_investment_income: the SPI tape's other investment income on SPI rows and, from microcosm#1418, the FRS NS&I and gilt accounts on FRS rows. The engine taxes it as savings income beside savings_interest_income."
         },
         "axiom": {
           "metric_name": "ons/savings_interest_income",
@@ -21901,7 +21901,7 @@
           "map_to": "household",
           "groupby_variable": "total_income_after_loss_relief_annual",
           "band_filter_dimension": "total_income",
-          "notes": "Taxable interest from banks and building societies of taxpayers by total-income band (SPI Table 3.7; ISA interest excluded), the taxpayer-concept anchor microcosm#866 asked for in place of the ONS D.41 row. Banded by person-level total income; band edges come from the fact dimension. From policyengine-uk 2.162.2 the engine's savings_interest_income leaves ISA interest out, as Table 3.7 does: the engine takes the frame's tax_free_savings_income out of the frame's gross interest when it loads the frame. Through 2.161.0 the measure was gross of ISA interest (microcosm#1095). The frame declares the legacy-gross contract, so the engine grows the gross interest to the calibration year and takes off the stored ISA part unchanged; the measure then overstates the interest outside ISAs a little, by about the ISA share times the year's interest growth. Writing ordinary interest under the additive contract would remove that (microcosm#1095).",
+          "notes": "Taxable interest from banks and building societies of taxpayers by total-income band (SPI Table 3.7; ISA interest excluded), the taxpayer-concept anchor microcosm#866 asked for in place of the ONS D.41 row. Banded by person-level total income; band edges come from the fact dimension. From policyengine-uk 2.162.2 the engine's savings_interest_income leaves ISA interest out, as Table 3.7 does. Through 2.161.0 the measure was gross of ISA interest (microcosm#1095). Under the legacy-gross contract the engine grew the gross interest to the calibration year and took off the stored ISA part unchanged, overstating the interest outside ISAs by about the ISA share times the year's interest growth; since microcosm#1360 the frame stores interest outside ISAs under the additive contract, which grows it by its own index.",
           "filters": [
             {
               "variable": "income_tax_before_winter_fuel_payment_charge_annual",
@@ -21971,7 +21971,7 @@
           "value_variable": "person_count",
           "from_entity": "person",
           "map_to": "household",
-          "notes": "Counts the recipients of interest outside ISAs, as SPI Table 3.7 counts the recipients of taxable interest: the filter reads savings_interest_income_outside_isas, the frame's stored gross savings_interest_income less its tax_free_savings_income, so a person whose only interest is ISA interest is not counted (Vahid's review of #1400, round 2)."
+          "notes": "Counts the recipients of interest outside ISAs, as SPI Table 3.7 counts the recipients of taxable interest: the filter reads savings_interest_income_outside_isas, the frame's stored interest outside ISAs (a legacy gross reference's savings_interest_income less its tax_free_savings_income), so a person whose only interest is ISA interest is not counted (Vahid's review of #1400, round 2; microcosm#1360)."
         },
         "axiom": {
           "metric_name": "hmrc/savings_interest_income_count_income_band",
