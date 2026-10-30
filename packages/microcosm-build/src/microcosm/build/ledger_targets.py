@@ -4022,7 +4022,8 @@ def _validate_calendar_year_window_reference(
         raise ValueError(
             f"LedgerTargetReference {reference.name!r}: calendar_year_window "
             f"reads {SOURCE_MEASURE_ID_BY_OPENING_YEAR!r} as one series; it "
-            "cannot be combined with a list-valued series key."
+            "cannot be combined with a list-valued series key or several "
+            "pinned dimension values."
         )
     # The map's years are checked against the window when it resolves, not
     # here: a compile may restamp the reference to another period, and a map
@@ -4345,22 +4346,53 @@ _CALENDAR_YEAR_WINDOW_SERIES_KEYS = (
 
 
 def _calendar_year_window_series_count(reference: LedgerTargetReference) -> int:
-    """How many series the window composes: one per declared selector member."""
+    """How many series the window composes: one per declared selector member.
 
+    A dimension the selector pins to several values names one series per value,
+    as a list-valued source concept, measure or table does (DfI's Translink
+    receipts by service).
+    """
+
+    selector = reference.ledger_selector or {}
     count = 1
     for key in _CALENDAR_YEAR_WINDOW_SERIES_KEYS:
-        value = (reference.ledger_selector or {}).get(key)
+        value = selector.get(key)
         if isinstance(value, (list, tuple)):
             count *= len(value)
+    for name in _calendar_year_window_listed_dimensions(reference):
+        count *= len(selector["dimension_values"][name])
     return count
 
 
-def _calendar_year_window_series_label(fact: object) -> str:
-    return (
+def _calendar_year_window_listed_dimensions(
+    reference: LedgerTargetReference,
+) -> tuple[str, ...]:
+    """The dimensions the selector pins to several values, in name order."""
+
+    pins = (reference.ledger_selector or {}).get("dimension_values") or {}
+    return tuple(
+        sorted(
+            str(name)
+            for name, value in pins.items()
+            if isinstance(value, (list, tuple)) and len(value) > 1
+        )
+    )
+
+
+def _calendar_year_window_series_label(
+    fact: object, reference: LedgerTargetReference
+) -> str:
+    label = (
         _str_at(fact, "observed_measure", "source_measure_id")
         or _str_at(fact, "layout", "measure_id")
         or _source_measure_concept(fact)
     )
+    listed = _calendar_year_window_listed_dimensions(reference)
+    if not listed:
+        return label
+    dimensions = _dimensions(fact)
+    members = ",".join(f"{name}={dimensions.get(name, '')}" for name in listed)
+    return f"{label}[{members}]"
 
 
 def _calendar_year_window_weights(
@@ -4386,7 +4418,7 @@ def _calendar_year_window_metadata(
         member_key = (
             str(opening_year)
             if series_count == 1
-            else f"{_calendar_year_window_series_label(fact)}@{opening_year}"
+            else f"{_calendar_year_window_series_label(fact, reference)}@{opening_year}"
         )
         members[member_key] = {
             "weight": f"{CALENDAR_YEAR_WINDOW_WEIGHTS[opening_year - target_year]:.15g}",

@@ -5000,6 +5000,77 @@ def test__given_a_two_series_selector__then_calendar_year_window_sums_the_window
     assert members["outside_cap@2025"]["weight"] == "0.75"
 
 
+def test__given_several_pinned_dimension_values__then_calendar_year_window_sums_each() -> (
+    None
+):
+    # Given: one measure published per service (DfI's Translink receipts), the
+    # selector pinning two services, each with both years of the window.
+    facts = []
+    for service, values in (
+        ("ulsterbus", (38.0, 38.4)),
+        ("metro_glider", (49.6, 49.0)),
+    ):
+        for opening_year, value in zip((2024, 2025), values, strict=True):
+            fact = _cy_window_fact(
+                key=f"{service}_fy{opening_year}",
+                value=value,
+                opening_year=opening_year,
+                measure_id="passenger_receipts",
+            )
+            fact["dimensions"] = {**fact["dimensions"], "service": service}
+            facts.append(fact)
+    reference = _cy_window_reference(
+        name="bus passenger receipts, calendar 2025",
+        ledger_selector={
+            "source_name": "irs_soi",
+            "source_measure_id": "passenger_receipts",
+            "geography_level": "country",
+            "geography_id": "0100000US",
+            "dimension_values": {"service": ["ulsterbus", "metro_glider"]},
+        },
+    )
+    registry = compile_ledger_target_references(facts, [reference], country="uk")
+
+    spec = registry.specs[0]
+    assert spec.value == pytest.approx(0.25 * (38.0 + 49.6) + 0.75 * (38.4 + 49.0))
+    assert spec.metadata["ledger_calendar_year_window_series"] == "2"
+    members = json.loads(spec.metadata["ledger_calendar_year_window_members"])
+    assert set(members) == {
+        "passenger_receipts[service=metro_glider]@2024",
+        "passenger_receipts[service=metro_glider]@2025",
+        "passenger_receipts[service=ulsterbus]@2024",
+        "passenger_receipts[service=ulsterbus]@2025",
+    }
+
+
+def test__given_a_pinned_dimension_value_short_of_a_year__then_calendar_year_window_refuses() -> (
+    None
+):
+    facts = []
+    for service, years in (("ulsterbus", (2024, 2025)), ("metro_glider", (2025,))):
+        for opening_year in years:
+            fact = _cy_window_fact(
+                key=f"{service}_fy{opening_year}",
+                value=10.0,
+                opening_year=opening_year,
+                measure_id="passenger_receipts",
+            )
+            fact["dimensions"] = {**fact["dimensions"], "service": service}
+            facts.append(fact)
+    reference = _cy_window_reference(
+        ledger_selector={
+            "source_name": "irs_soi",
+            "source_measure_id": "passenger_receipts",
+            "geography_level": "country",
+            "geography_id": "0100000US",
+            "dimension_values": {"service": ["ulsterbus", "metro_glider"]},
+        },
+    )
+
+    with pytest.raises(ValueError, match="1 of 2 matched series carry both"):
+        compile_ledger_target_references(facts, [reference], country="uk")
+
+
 def test__given_a_two_series_selector_short_of_a_year__then_calendar_year_window_refuses() -> (
     None
 ):
