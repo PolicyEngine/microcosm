@@ -224,6 +224,8 @@ SPI_HISTORY_INDEX_DIFFERS_FROM_PROJECTION = {
 #: Chronicle feed pin), the year they describe, and each rebased column's
 #: Table 3.7 concept.
 SPI_SAVINGS_REBASE_RESOURCE = "hmrc_spi_table_3_7_savings_rows.json"
+#: The prepared tape's taxpayer flag, the records the rebase factors read.
+SPI_DONOR_TAXPAYER_COLUMN = "is_taxpayer"
 SPI_SAVINGS_REBASE_YEAR = 2023
 SPI_SAVINGS_REBASE_CONCEPTS = {
     "savings_interest_income": "hmrc.spi_savings_interest_income_amount",
@@ -1868,10 +1870,11 @@ def rebase_spi_donor_savings(
 ) -> tuple[pd.DataFrame, dict[str, object]]:
     """Move the tape's interest and other income to SPI's 2023-24 bands.
 
-    Each donor's column is scaled by its band's factor: HMRC's published
-    2023-24 amount over the tape's FACT-weighted 2022-23 amount in the same
-    range of total income, the tape banded by its own total income. A donor
-    below the first band takes the factor of all bands together. The rebased
+    Each taxpayer donor's column is scaled by its band's factor: HMRC's
+    published 2023-24 amount over the tape's FACT-weighted 2022-23 amount for
+    the taxpayers in the same range of total income, the tape banded by its own
+    total income, since Table 3.7 counts taxpayers only. A donor below the first
+    band, or who pays no tax, takes the factor of all bands together. The rebased
     tape reproduces the published amounts band by band; the OBR's savings
     income growth then carries both columns to the frame's year
     (``_spi_income_uprating_factors``). A band the tape carries none of has
@@ -1886,13 +1889,21 @@ def rebase_spi_donor_savings(
     band = (
         np.searchsorted(np.asarray(bounds, dtype=np.float64), income, side="right") - 1
     )
-    banded = band >= 0
+    taxpayer = (
+        donor[SPI_DONOR_TAXPAYER_COLUMN].to_numpy(dtype=bool)
+        if SPI_DONOR_TAXPAYER_COLUMN in donor
+        else np.ones(len(donor), dtype=bool)
+    )
+    banded = (band >= 0) & taxpayer
     rebased = donor.copy()
     receipt: dict[str, object] = {
         "resource": SPI_SAVINGS_REBASE_RESOURCE,
         "from_period": SPI_DONOR_INCOME_YEAR,
         "to_period": SPI_SAVINGS_REBASE_YEAR,
         "band_by": "total_income",
+        "factors_over": (
+            "taxpayers" if SPI_DONOR_TAXPAYER_COLUMN in donor else "all_records"
+        ),
         "band_lower_bounds": [int(bound) for bound in bounds],
         "columns": {},
     }
@@ -2004,6 +2015,13 @@ def _prepare_spi_donor(
     # on the prepared tape for the band donors' propensity and band pools;
     # they are never QRF inputs or outputs.
     donor["total_income"] = numeric["TI"].to_numpy(dtype=float)
+    # Table 3.7 counts taxpayers only, so the savings rebase reads the tape's
+    # TAXPAYER flag (1, a taxpayer); a tape without it counts every record.
+    donor[SPI_DONOR_TAXPAYER_COLUMN] = (
+        pd.to_numeric(raw["TAXPAYER"], errors="coerce").eq(1).to_numpy()
+        if "TAXPAYER" in raw.columns
+        else np.ones(len(raw), dtype=bool)
+    )
     donor["is_composite"] = numeric["AGERANGE"].astype(int).eq(-1).to_numpy()
     # The published age band travels with the record so band pools can match
     # a carrier's age band; composites (-1) have none and never age-match.

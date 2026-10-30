@@ -183,3 +183,28 @@ def test_the_savings_columns_grow_on_the_obr_path_from_2023_24(monkeypatch) -> N
     assert unchanged["other_investment_income"] == pytest.approx(1.0)
     with pytest.raises(ValueError, match="runs forward only"):
         uk_obr_savings_income_level(2024, 2023)
+
+
+def test_the_factors_read_the_tapes_taxpayers() -> None:
+    # Table 3.7 counts taxpayers only, so a band's factor is its published
+    # amount over the tape's taxpayers' amount there; a donor who pays no tax
+    # takes the factor of all bands together (option F of the microcosm#1428
+    # other-income investigation).
+    donor = _donor()
+    donor[spi_income.SPI_DONOR_TAXPAYER_COLUMN] = [False, True, False, True, True]
+    rebased, receipt = rebase_spi_donor_savings(donor, PUBLISHED)
+    interest = receipt["columns"]["savings_interest_income"]
+    assert receipt["factors_over"] == "taxpayers"
+    # The £12,570 band's taxpayers hold 5 x 40 = 200 of the tape's interest
+    # there: 1,500 over 200. All bands: 6,500 over 2,200.
+    assert interest["band_factors"]["12570"] == pytest.approx(7.5)
+    assert rebased.loc[1, "savings_interest_income"] == pytest.approx(40.0 * 7.5)
+    all_bands = 6_500.0 / 2_200.0
+    assert interest["below_first_band_factor"] == pytest.approx(all_bands)
+    assert rebased.loc[2, "savings_interest_income"] == pytest.approx(60.0 * all_bands)
+    # The band's taxpayers reproduce its published amount.
+    weighted = rebased.loc[[1], "savings_interest_income"] * rebased.loc[[1], "FACT"]
+    assert weighted.sum() == pytest.approx(1_500.0)
+    # Without the flag every record counts, as before.
+    _, plain = rebase_spi_donor_savings(_donor(), PUBLISHED)
+    assert plain["factors_over"] == "all_records"
