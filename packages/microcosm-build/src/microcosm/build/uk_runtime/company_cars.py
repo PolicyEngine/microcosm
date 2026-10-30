@@ -940,6 +940,7 @@ def impute_company_cars(
 
     pay = table["employment_income"].to_numpy(float)
     new_pay = pay.copy()
+    carved = np.zeros(len(pay))
     spi_holders = holders & spi
     carve_receipt: dict[str, Any] = {"holders": rounded_count(0)}
     identity_error = 0.0
@@ -968,6 +969,7 @@ def impute_company_cars(
         columns[FUEL_TYPE][dropped] = DEFAULT_FUEL_TYPE
         columns[PRIVATE_FUEL][rows] = carve.private_fuel
         new_pay[rows] = pay[rows] - carve.benefit
+        carved[rows] = carve.benefit
         identity_error = float(
             np.max(np.abs(new_pay[rows] + carve.benefit - pay[rows]), initial=0.0)
         )
@@ -1010,8 +1012,64 @@ def impute_company_cars(
             **carve_receipt,
             "max_abs_pay_plus_benefit_error_gbp": identity_error,
         },
+        "checks": {
+            "violations": _violations(
+                columns,
+                holders=holders,
+                spi=spi,
+                epb=table["epb"].to_numpy(float),
+                carved=carved,
+            ),
+            "frs_holders_without_pay": rounded_count(
+                int((holders & ~spi & (pay <= 0)).sum())
+            ),
+        },
     }
     return _frame_with(frame, person, UK_COMPANY_CARS_MASS_CONSERVATION_REASON), receipt
+
+
+def _violations(
+    columns: Mapping[str, np.ndarray],
+    *,
+    holders: np.ndarray,
+    spi: np.ndarray,
+    epb: np.ndarray,
+    carved: np.ndarray,
+) -> dict[str, int]:
+    """Counts of rows breaking an invariant every population keeps; all zero."""
+
+    price = columns[LIST_PRICE]
+    co2 = columns[CO2_EMISSIONS]
+    electric_range = columns[ELECTRIC_RANGE]
+    contributions = columns[CAPITAL_CONTRIBUTIONS]
+    private = columns[PRIVATE_FUEL]
+    fuel = columns[FUEL_TYPE]
+    electric = fuel == ELECTRIC
+    numbers = (price, co2, electric_range, contributions)
+    # NaN compares false, so every comparison below would pass it: count it first.
+    finite = np.logical_and.reduce([np.isfinite(values) for values in numbers])
+    without_car = ~holders & (
+        np.logical_or.reduce([values != 0 for values in numbers])
+        | private
+        | (fuel != DEFAULT_FUEL_TYPE)
+    )
+    return {
+        "non_finite_values": int((~finite).sum()),
+        "negative_values": int(
+            np.logical_or.reduce([values < 0 for values in numbers]).sum()
+        ),
+        "holder_without_list_price": int((holders & ~(price > 0)).sum()),
+        "inputs_without_a_car": int(without_car.sum()),
+        "unknown_fuel_type": int((holders & ~np.isin(fuel, ENGINE_FUEL_TYPES)).sum()),
+        "emitting_car_without_co2": int((holders & ~electric & (co2 < 1)).sum()),
+        "electric_car_with_co2": int((holders & electric & (co2 != 0)).sum()),
+        "private_fuel_on_an_electric_car": int((private & electric).sum()),
+        "contributions_above_list_price": int((contributions > price + 1e-6).sum()),
+        "electric_range_outside_1_to_50_g_km": int(
+            ((electric_range > 0) & ((co2 < 1) | (co2 > 50))).sum()
+        ),
+        "spi_benefit_above_epb": int((spi & (carved > epb + 1e-6)).sum()),
+    }
 
 
 def _live_parameter(path: str, instant: str) -> float:

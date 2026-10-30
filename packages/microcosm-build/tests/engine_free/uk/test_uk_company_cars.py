@@ -391,6 +391,56 @@ def test_the_whole_stage_writes_its_columns_and_carves_spi_pay(statistics) -> No
     receipt = transform.checkpoint_metadata()["evidence"]
     assert receipt["stage"] == "company_cars"
     assert receipt["spi_carve_out"]["max_abs_pay_plus_benefit_error_gbp"] < 1e-6
+    assert set(receipt["checks"]["violations"].values()) == {0}
+
+
+def test_each_invariant_counts_the_rows_that_break_it() -> None:
+    """Row 0 is a sound petrol car; each later row breaks one invariant."""
+
+    holders = np.array([True, True, True, True, True, False, True, True, True])
+    columns = {
+        stage.LIST_PRICE: np.array([30e3, 30e3, 30e3, 30e3, 0.0, 0.0, 30e3, 30e3, 9e3]),
+        stage.CO2_EMISSIONS: np.array([120.0, 0.0, 5.0, 0.0, 0, 0, 120, 120, 40]),
+        stage.FUEL_TYPE: np.array(
+            [
+                stage.PETROL,
+                stage.PETROL,
+                stage.ELECTRIC,
+                stage.ELECTRIC,
+                stage.ELECTRIC,
+                stage.PETROL,
+                "LPG",
+                stage.PETROL,
+                stage.ALTERNATIVE_FUEL,
+            ],
+            dtype=object,
+        ),
+        stage.ELECTRIC_RANGE: np.array([0.0, 0, 0, 0, 0, 0, 0, 30.0, 50.0]),
+        stage.CAPITAL_CONTRIBUTIONS: np.array([0.0, 0, 0, 0, 0, 0, 0, 0, 10e3]),
+        stage.PRIVATE_FUEL: np.array(
+            [True, False, False, True, False, True, False, False, False]
+        ),
+    }
+    violations = stage._violations(
+        columns,
+        holders=holders,
+        spi=np.zeros(9, dtype=bool),
+        epb=np.zeros(9),
+        carved=np.zeros(9),
+    )
+    assert violations == {
+        "non_finite_values": 0,
+        "negative_values": 0,
+        "holder_without_list_price": 1,
+        "inputs_without_a_car": 1,
+        "unknown_fuel_type": 1,
+        "emitting_car_without_co2": 1,
+        "electric_car_with_co2": 1,
+        "private_fuel_on_an_electric_car": 1,
+        "contributions_above_list_price": 1,
+        "electric_range_outside_1_to_50_g_km": 1,
+        "spi_benefit_above_epb": 0,
+    }
 
 
 def test_the_stage_s_draws_follow_identity_not_row_order(statistics) -> None:
