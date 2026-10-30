@@ -39,6 +39,34 @@ under an existing publication ID. No population H5 or content-store arrays are
 included; only allowlisted graph declarations, execution receipts and reviewed
 aggregate summaries can be published publicly.
 
+## Status
+
+No upload is published today. The runs application accepts an upload only
+after the collector authorizes it, and the collector has no authorization
+endpoint: PolicyEngine/calibration-diagnostics#208, which would have added
+one, was closed unmerged. Builds still queue uploads as described above. A
+queued job stays pending in the emitter's local queue, its files stay in the
+preserved directory, and no retry can succeed.
+
+The collector will build the Orrery graph files itself instead. Builds will
+submit the graph's inputs to the collector's artifact intake
+(PolicyEngine/microcosm-collector#12): `graph.schema.json`,
+`graph.execution.json`, the `upstream-<sha256>.json` files and the native
+evidence files, which the collector keeps private. They will not submit
+`graph.orrery.json`: the collector's Orrery worker will build it from the
+schema and the execution overlay. The worker keeps the graph of a build that
+used licensed microdata, as UK builds do, private; it becomes public only
+after output clearance. The direct upload to the runs application will then
+be removed.
+
+By default, a build queues an upload only when remote staging is enabled, and
+after queuing it stages its artifact bundle to Hugging Face under
+`staged/<run_id>/`. That bundle holds every file of the queued upload, plus
+`graph.execution.json` when execution was recorded, so the Orrery graph files
+can be rebuilt from it later. This does not hold for an interrupted build, a
+build run with `--publish-orrery` while staging is local-only or disabled, or a
+build whose Hugging Face staging failed or did not complete.
+
 ## Configuration
 
 | Setting | Source and consumer | Provisioning |
@@ -49,9 +77,7 @@ aggregate summaries can be published publicly.
 | `XDG_CACHE_HOME` | Optional existing cache-location setting | Defaults to the user's cache directory |
 
 The separately deployed runs application retains its Vercel Blob configuration.
-Authenticated production publication also requires
-PolicyEngine/calibration-diagnostics#208 deployed, and the runs application's
-publication API. Producer tests do not contact either hosted service.
+Producer tests do not contact the runs application or the collector.
 
 No new Microcosm runtime variable or secret is required. Tests isolate ambient
 credentials and caches and use fake HTTP or explicit loopback services.
@@ -116,5 +142,4 @@ an existing workstation, upgrade any old unversioned queue using the preceding
 Microcosm implementation. Versioned telemetry and graph jobs keep their existing
 IDs, eligibility, path and Alembic revision; do not delete a queue to migrate.
 No new runtime variable, credential, hosted service or infrastructure is required
-by this migration. The previously required hosted authorization/API deployments
-remain prerequisites for remote publication.
+by this migration.
