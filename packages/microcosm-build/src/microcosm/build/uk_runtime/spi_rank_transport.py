@@ -85,8 +85,8 @@ SPI_TRANSPORT_DRAW = "twin_conditional_quantiles"
 SPI_TRANSPORT_SALT = "spi_stage1"
 #: The identity a recipient's uniforms are keyed on: the FRS person it copies.
 SPI_TRANSPORT_KEY_COLUMN = "person_source_id"
-#: Taxable savings interest on the twin: the FRS gross interest less the
-#: tax-free part, the concept the tape's INCBBS leaf holds.
+#: Taxable savings interest on the twin: the FRS interest outside ISAs
+#: (microcosm#1360), the concept the tape's INCBBS leaf holds.
 TAXABLE_SAVINGS_INTEREST_ANALOGUE = "taxable_savings_interest"
 #: Per-group uniformity is reported only over at least this many rows.
 SPI_TRANSPORT_GROUP_MINIMUM_ROWS = 10
@@ -186,7 +186,7 @@ def analogue_source_columns() -> tuple[str, ...]:
         for column in SPI_STAGE1_ANALOGUE_COLUMNS.values()
         if column and column != TAXABLE_SAVINGS_INTEREST_ANALOGUE
     }
-    columns |= {"savings_interest_income", "tax_free_savings_income"}
+    columns |= {"savings_interest_income"}
     return tuple(sorted(columns))
 
 
@@ -197,8 +197,8 @@ def observed_analogues(
     """The twin's observed values of every analogue target, named by target.
 
     Rows are FRS persons (the twins, or the SPI copies before the draw, which
-    still carry the twin's values). Taxable savings interest is derived as the
-    gross FRS interest less the tax-free part, floored at zero.
+    still carry the twin's values). Taxable savings interest is the FRS
+    interest outside ISAs, floored at zero.
     """
 
     missing = sorted(set(analogue_source_columns()) - set(person.columns))
@@ -206,9 +206,6 @@ def observed_analogues(
         raise ValueError(f"SPI transport analogues are missing column(s): {missing}.")
     taxable_interest = np.maximum(
         pd.to_numeric(person["savings_interest_income"], errors="coerce").to_numpy(
-            dtype=np.float64, na_value=np.nan
-        )
-        - pd.to_numeric(person["tax_free_savings_income"], errors="coerce").to_numpy(
             dtype=np.float64, na_value=np.nan
         ),
         0.0,

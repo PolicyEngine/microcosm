@@ -248,7 +248,7 @@ OUTPUT_COLUMNS = (
     "loss_relief",
     "ni_class_4_losses_brought_forward",
     "private_pension_income",
-    "tax_free_savings_income",
+    "individual_savings_account_interest_income",
     "savings_interest_income",
     "dividend_income",
     "other_investment_income",
@@ -740,9 +740,13 @@ def _add_private_pension(
 
 
 #: FRS ACCOUNTS.ACCOUNT codes (FRS 2024-25 variable listing, SN 9563) by the
-#: input their weekly interest (ACCINT) lands in (microcosm#1418). ISAs (21)
-#: are tax-free, kept apart in tax_free_savings_income inside gross interest.
+#: input their weekly interest (ACCINT) lands in (microcosm#1418). ISA (21)
+#: interest is tax-free and stored apart from non-ISA interest, in
+#: individual_savings_account_interest_income (microcosm#1360).
 FRS_ISA_ACCOUNT = 21
+#: ISA interest under the producer's additive ISA income contract
+#: (microcosm#1360); policyengine-uk's tax_free_savings_income adds it.
+ISA_INTEREST_COLUMN = "individual_savings_account_interest_income"
 #: Deposit interest, savings_interest_income: current (1), NS&I investment
 #: (3), savings and investment (5), fixed-rate, guaranteed income and
 #: guaranteed growth bond (25; no interest recorded on FRS 2024-25), basic
@@ -794,8 +798,13 @@ def _add_accounts(
     # A savings product answers ACCTAX and a gilt INVTAX.
     other = annual(FRS_OTHER_INTEREST_ACCOUNTS, (acctax == 1) | (invtax == 1))
     dividends = annual(FRS_DIVIDEND_ACCOUNTS, invtax == 1)
-    pe_person["tax_free_savings_income"] = np.maximum(0, tax_free)
-    pe_person["savings_interest_income"] = np.maximum(0, taxable + tax_free)
+    isa_interest = np.maximum(0, tax_free)
+    pe_person[ISA_INTEREST_COLUMN] = isa_interest
+    # Non-ISA interest is gross interest less the ISA part, as policyengine-uk
+    # normalises the legacy gross layout, so base-year amounts match it exactly.
+    pe_person["savings_interest_income"] = (
+        np.maximum(0, taxable + tax_free) - isa_interest
+    )
     pe_person["dividend_income"] = np.maximum(0, dividends)
     pe_person["other_investment_income"] = np.maximum(0, other)
 

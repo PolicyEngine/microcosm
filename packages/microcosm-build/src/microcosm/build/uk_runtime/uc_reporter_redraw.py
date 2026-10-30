@@ -115,10 +115,13 @@ UC_REPORTER_TARGET_ROWS = "spi_channel_screened"
 UC_REPORTER_REWRITE_ROWS = "spi_channel"
 UC_REPORTER_LANDING = "eldest_working_age_adult_lowest_person_id"
 _HOUSEHOLD_CGT_CLONE_COLUMN = "household_is_capital_gains_clone"
+#: Interest is ISA interest included, as gross interest held it before the
+#: additive contract (microcosm#1360).
 _PERSON_INCOME_COLUMNS = (
     "employment_income",
     "self_employment_income",
     "savings_interest_income",
+    "individual_savings_account_interest_income",
     "dividend_income",
     "property_income",
     "other_investment_income",
@@ -553,6 +556,7 @@ def _benefit_unit_predictors(
         grouped[
             [
                 "savings_interest_income",
+                "individual_savings_account_interest_income",
                 "dividend_income",
                 "property_income",
                 "other_investment_income",

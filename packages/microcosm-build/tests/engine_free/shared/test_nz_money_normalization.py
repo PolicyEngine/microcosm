@@ -190,10 +190,16 @@ def test_every_family_uses_the_donor_factor_for_its_profile_with_a_disclosure():
             for profile in ("low", "central", "high")
         }, family
         assert "AWE" in entry["disclosure"], family
+        disclosure = entry["disclosure"]
         assert (
-            "provisional pending Max's ruling on non-wage ageing (H3)"
-            in entry["disclosure"]
+            "Max's ruling d1981 (2026-10-26) adopts this as an interim convention"
+            in disclosure
         ), family
+        assert (
+            "pre-declares a hold-fixed sensitivity (factor 1), which no profile "
+            "here carries yet (G8-w3)" in disclosure
+        ), family
+        assert "provisional" not in disclosure, family
 
 
 def test_donor_money_basis_cites_model_lineage_as_a_declared_convention():

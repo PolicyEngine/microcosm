@@ -23,6 +23,7 @@ from microcosm.build.uk_runtime.hmrc_income import (
 )
 from microcosm.build.uk_runtime.national_frame import (
     uk_household_weight_kind,
+    uk_isa_income_contract,
     uk_time_period,
 )
 from microcosm.build.uk_runtime.spi_income import derive_hmrc_income_auxiliaries
@@ -110,7 +111,7 @@ def materialize_uk_hmrc_calibration_frame(
     """
 
     _validate_materialization_inputs(frame, source_targets)
-    person = frame.table("person").copy()
+    person = _person_with_interest_outside_isas(frame)
     household = frame.table("household").copy()
 
     simulation_input = _uk_single_year_dataset(frame)
@@ -135,7 +136,6 @@ def materialize_uk_hmrc_calibration_frame(
     person = derive_hmrc_income_auxiliaries(person)
 
     component_values: dict[str, np.ndarray] = {}
-    tax_free_values: np.ndarray | None = None
     for component in HMRC_SPI_INCOME_COMPONENTS:
         if component == "employment_income":
             source_column = SPI_HMRC_EMPLOYED_INCOME_COLUMN
@@ -165,36 +165,17 @@ def materialize_uk_hmrc_calibration_frame(
                 .to_numpy(dtype=float),
             )
         if component == "savings_interest_income":
-            if "tax_free_savings_income" not in person:
+            # HMRC Table 3.7 and its total-income bands count interest outside
+            # ISAs, the column after _person_with_interest_outside_isas; it
+            # feeds both the measure and the band assignment.
+            if (values < 0.0).any():
                 raise ValueError(
-                    "HMRC savings-interest materialization requires "
-                    "tax_free_savings_income so Table 3.7 excludes tax-exempt "
-                    "interest."
+                    "HMRC taxable-savings bridge requires non-negative savings "
+                    "interest outside ISAs on every person row."
                 )
-            tax_free = pd.to_numeric(
-                person["tax_free_savings_income"], errors="coerce"
-            ).to_numpy(dtype=float, na_value=np.nan)
-            if not np.isfinite(tax_free).all() or (tax_free < 0.0).any():
-                raise ValueError(
-                    "HMRC tax-free savings interest must be finite and non-negative."
-                )
-            if (values < tax_free).any():
-                raise ValueError(
-                    "HMRC taxable-savings bridge requires PolicyEngine gross "
-                    "savings_interest_income to be at least "
-                    "tax_free_savings_income on every person row."
-                )
-            # PolicyEngine's persisted input is gross savings interest, while
-            # HMRC Table 3.7 and its total-income bands exclude tax-exempt
-            # interest. Keep the PE input intact and derive the taxable source
-            # component explicitly for both the measure and band assignment.
-            values = values - tax_free
-            tax_free_values = tax_free
             person[HMRC_TAXABLE_SAVINGS_INTEREST_COLUMN] = values
         component_values[component] = values
 
-    if tax_free_values is None:  # pragma: no cover - fixed component contract
-        raise RuntimeError("HMRC savings-interest bridge was not materialized.")
     auxiliary_values: dict[str, np.ndarray] = {}
     for column in (
         SPI_HMRC_OTHER_INCOME_COLUMN,
@@ -439,6 +420,34 @@ def _validate_materialization_inputs(
         )
 
 
+def _person_with_interest_outside_isas(frame: Frame) -> pd.DataFrame:
+    """The person table with ``savings_interest_income`` outside ISAs.
+
+    The producer's additive layout stores it so. A legacy gross frame stores
+    gross interest with the exempt part in ``tax_free_savings_income``, taken
+    off here once (microcosm#1360); the engine reads either from the frame's
+    declared contract.
+    """
+
+    person = frame.table("person").copy()
+    if uk_isa_income_contract(frame)["representation"] != "legacy_gross":
+        return person
+    if "tax_free_savings_income" not in person:
+        raise ValueError(
+            "A legacy gross frame must carry tax_free_savings_income so Table "
+            "3.7 excludes tax-exempt interest."
+        )
+    tax_free = pd.to_numeric(person["tax_free_savings_income"], errors="coerce")
+    tax_free = tax_free.to_numpy(dtype=float, na_value=np.nan)
+    if not np.isfinite(tax_free).all() or (tax_free < 0.0).any():
+        raise ValueError(
+            "HMRC tax-free savings interest must be finite and non-negative."
+        )
+    gross = pd.to_numeric(person["savings_interest_income"], errors="coerce")
+    person["savings_interest_income"] = gross.to_numpy(dtype=float) - tax_free
+    return person
+
+
 def _uk_single_year_dataset(frame: Frame) -> Any:
     try:
         from policyengine_uk.data import UKSingleYearDataset
@@ -446,7 +455,6 @@ def _uk_single_year_dataset(frame: Frame) -> Any:
         raise ImportError(
             "HMRC target materialization requires policyengine-uk."
         ) from exc
-    from microcosm.frame.adapters.policyengine_uk import UK_ISA_INCOME_CONTRACT
 
     tables = engine_tables(frame)
     return UKSingleYearDataset(
@@ -454,7 +462,7 @@ def _uk_single_year_dataset(frame: Frame) -> Any:
         benunit=tables["benunit"],
         household=tables["household"],
         fiscal_year=int(uk_time_period(frame)),
-        isa_income_contract=dict(UK_ISA_INCOME_CONTRACT),
+        isa_income_contract=uk_isa_income_contract(frame),
     )
 
 

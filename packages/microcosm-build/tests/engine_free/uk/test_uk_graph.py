@@ -60,7 +60,7 @@ def test_uk_spine_graph_contains_every_manifest_stage() -> None:
     # regional_home_values, microcosm#1319 carers_allowance_take_up, the
     # copies' childcare re-draw childcare_copy_take_up, and microcosm#1334
     # uc_take_up and frs_annual_income_spells.
-    assert len(expected) == 49
+    assert len(expected) == 50
     assert {"frs_hmrc_retained_leaves", "hmrc_spi_income"}.isdisjoint(expected)
     assert set(expected) <= ids
     assert {"frs_hmrc_retained_leaves", "hmrc_spi_income"}.isdisjoint(ids)
@@ -206,6 +206,34 @@ def test_spi_income_source_changes_invalidate_the_stages_that_run_it(monkeypatch
     control = graph.node("frs_council_tax").kernel
     before = {ref: registry.implementation_hash(ref) for ref in (*affected, control)}
     helper_path = Path(spi_income.__file__).resolve()
+    original = Path.read_bytes
+
+    def changed_helper_bytes(path: Path) -> bytes:
+        content = original(path)
+        if path.resolve() == helper_path:
+            return content + b"\n# A helper-only source change.\n"
+        return content
+
+    monkeypatch.setattr(Path, "read_bytes", changed_helper_bytes)
+    for ref in affected:
+        assert registry.implementation_hash(ref) != before[ref]
+    assert registry.implementation_hash(control) == before[control]
+
+
+def test_isa_statistics_source_changes_invalidate_the_stages_that_read_them(
+    monkeypatch,
+):
+    # The ISA subscriptions and the Lifetime ISA anchor read HMRC's ISA tables
+    # through the typed loader, so it is bound as both stages' helper
+    # (microcosm#1415).
+    from microcosm.build.uk_runtime import hmrc_isa_statistics
+
+    graph = uk_spine_graph()
+    registry = uk_registry(graph=graph)
+    affected = [graph.node(stage).kernel for stage in ("isa_subscriptions", "was_lisa")]
+    control = graph.node("frs_council_tax").kernel
+    before = {ref: registry.implementation_hash(ref) for ref in (*affected, control)}
+    helper_path = Path(hmrc_isa_statistics.__file__).resolve()
     original = Path.read_bytes
 
     def changed_helper_bytes(path: Path) -> bytes:

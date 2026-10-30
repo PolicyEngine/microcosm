@@ -17,6 +17,7 @@ from importlib import metadata
 import numpy as np
 import pandas as pd
 
+from microcosm.build.stochastic_assignment import weight_balanced_uniforms
 from microcosm.build.uk_runtime import carers_allowance_take_up as ca
 from microcosm.build.uk_runtime.national_frame import uk_national_frame
 from microcosm.frame import WeightKind
@@ -60,6 +61,7 @@ def test_the_policy_is_the_engines_hours_condition_and_limit() -> None:
     assert ca.uk_carers_allowance_policy(2024) == ca.UKCarersAllowancePolicy(
         min_hours=35.0,
         earnings_limit=151.0,
+        weekly_rate=81.90,
         instant="2024-04-30",
         source=(
             f"policyengine-uk {metadata.version('policyengine-uk')} "
@@ -167,6 +169,7 @@ def _frame():
             "carers_allowance_reported": reported,
             "would_claim_carers_allowance": reported > 0,
             "aa_category": ["NONE"] * 5,
+            **{name: [0.0] * 5 for name in ca.CARERS_ALLOWANCE_MEANS_TESTED_REPORTED},
         }
     )
     members = pd.DataFrame(
@@ -181,6 +184,7 @@ def _frame():
             "carers_allowance_reported": [0.0] * 5,
             "would_claim_carers_allowance": [False] * 5,
             "aa_category": ["HIGHER"] * 4 + ["NONE"],
+            **{name: [0.0] * 5 for name in ca.CARERS_ALLOWANCE_MEANS_TESTED_REPORTED},
         }
     )
     benunit = pd.DataFrame({"benunit_id": list(range(1, 11))})
@@ -235,3 +239,23 @@ def test_the_stage_reaches_the_carers_the_2025_rise_entitles() -> None:
     assert support[1] > 0
     assert after[1] == 0
     assert after[2] == 0
+
+
+def test_the_balanced_draw_is_policyengine_uks_stratified_uniform() -> None:
+    """Without a start, the helper places records as policyengine-uk's
+    stratified_uniform does (which the engine uses to place birthdays); the
+    stage adds a start per stratum (the independent review of microcosm#1420,
+    finding 4)."""
+
+    from policyengine_uk.utils.stochastic import stratified_uniform
+
+    rng = np.random.default_rng(7)
+    n = 2_000
+    strata = rng.integers(0, 16, n)
+    draws = rng.random(n)
+    weights = rng.uniform(0.0, 8.0, n)
+    weights[strata == 3] = 0.0
+    np.testing.assert_array_equal(
+        weight_balanced_uniforms(strata, draws, weights),
+        stratified_uniform(strata, draws, weights),
+    )
