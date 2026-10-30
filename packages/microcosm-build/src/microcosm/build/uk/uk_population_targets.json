@@ -3560,12 +3560,12 @@
       "bindings": {
         "policyengine": {
           "metric_name": "hmrc/employment_income_income_band",
-          "value_variable": "employment_income_annual",
+          "value_variable": "employment_income_with_benefits_in_kind_annual",
           "from_entity": "person",
           "map_to": "household",
           "groupby_variable": "total_income_after_loss_relief_annual",
           "band_filter_dimension": "total_income",
-          "notes": "Banded by person-level total income; band edges come from the fact dimension (uk-data targets/compute/income.py:8-20 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3).",
+          "notes": "Banded by person-level total income; band edges come from the fact dimension (uk-data targets/compute/income.py:8-20 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3). The amount is pay plus the company car and car fuel benefits (benefits_in_kind, policyengine-uk 2.165.0), which HMRC's employment income counts: on SPI-channel rows that is the tape's PAY + EPB + TAXTERM, as before the company_cars stage carved the car benefits out of pay; on FRS rows, payslip pay plus the car benefits, while HMRC also counts the other benefits in kind (María's ruling of 30 October 2026, PolicyEngine/uk-autumn-budget-dashboard-2026#316).",
           "filters": [
             {
               "variable": "income_tax_before_winter_fuel_payment_charge_annual",
@@ -30871,7 +30871,7 @@
       "bindings": {
         "policyengine": {
           "metric_name": "hmrc/employment_income/amount",
-          "value_variable": "employment_income_annual",
+          "value_variable": "employment_income_with_benefits_in_kind_annual",
           "from_entity": "person",
           "map_to": "household",
           "filters": [
@@ -30899,7 +30899,7 @@
           "uk.local_geography.spi_income.by_local_authority.v1"
         ]
       },
-      "selector_note": "The area amount is the published count times the published mean (count_x_mean). SPI 2023-24 area Tables 3.15 (constituency) and 3.14 (local authority), the latest edition (2024-25 due early 2027). Projected to calendar 2025 by HMRC's own all-ranges growth in Income Tax Liabilities Table 2.5 (total income, calendar-2025 window over tax year 2023-24), the index the national band rows use band by band, and then reconciled to the national SPI band partition summed over every band (fan-out sum bridge). The bridge is gated on source agreement at each grain: the bands over the area cells before either side's index, within 2% (microcosm#1123). HMRC's employment income also includes taxable benefits in kind and Incapacity Benefit, contribution-based Employment and Support Allowance and Jobseeker's Allowance, which employment_income_annual leaves out.",
+      "selector_note": "The area amount is the published count times the published mean (count_x_mean). SPI 2023-24 area Tables 3.15 (constituency) and 3.14 (local authority), the latest edition (2024-25 due early 2027). Projected to calendar 2025 by HMRC's own all-ranges growth in Income Tax Liabilities Table 2.5 (total income, calendar-2025 window over tax year 2023-24), the index the national band rows use band by band, and then reconciled to the national SPI band partition summed over every band (fan-out sum bridge). The bridge is gated on source agreement at each grain: the bands over the area cells before either side's index, within 2% (microcosm#1123). The amount counts pay plus the company car and car fuel benefits (benefits_in_kind, policyengine-uk 2.165.0), which HMRC's employment income counts (María's ruling of 30 October 2026, PolicyEngine/uk-autumn-budget-dashboard-2026#316); HMRC's figure also includes the other taxable benefits in kind and Incapacity Benefit, contribution-based Employment and Support Allowance and Jobseeker's Allowance, which the measure leaves out.",
       "category_id": "hmrc.tax_statistics",
       "label": "Amount",
       "uprating_index": "hmrc.itl_2026.total_income_growth_all_bands"

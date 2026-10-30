@@ -8,6 +8,7 @@ from collections.abc import Mapping
 from datetime import date
 from importlib import resources as importlib_resources
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any
 
 import numpy as np
@@ -289,8 +290,21 @@ def savings_interest_outside_isas(frame: Any) -> np.ndarray:
 #: count the year's profit after losses brought forward, which policyengine-uk
 #: keeps apart in loss_relief: the self-employment rows read that profit, and
 #: every row on HMRC's total income (its bands, its amounts, its regional
-#: filters) reads total income with that profit (microcosm#1095).
-UK_NAMED_TERMS: Mapping[str, str] = UK_LOSS_RELIEF_TERMS
+#: filters) reads total income with that profit (microcosm#1095). HMRC's
+#: employment income counts taxable benefits in kind, which policyengine-uk
+#: 2.165.0 keeps out of employment_income: the rows on it read pay plus
+#: benefits_in_kind, the company car and car fuel benefits, whose SPI-channel
+#: part the company_cars stage carves out of the tape's pay
+#: (PolicyEngine/uk-autumn-budget-dashboard-2026#316).
+UK_EMPLOYMENT_INCOME_WITH_BENEFITS_IN_KIND = "employment_income_with_benefits_in_kind"
+UK_NAMED_TERMS: Mapping[str, str] = MappingProxyType(
+    {
+        **UK_LOSS_RELIEF_TERMS,
+        UK_EMPLOYMENT_INCOME_WITH_BENEFITS_IN_KIND: (
+            "employment_income + benefits_in_kind"
+        ),
+    }
+)
 UK_SELF_EMPLOYMENT_INCOME_AFTER_LOSS_RELIEF = "self_employment_income_after_loss_relief"
 UK_TOTAL_INCOME_AFTER_LOSS_RELIEF = "total_income_after_loss_relief"
 
@@ -320,6 +334,11 @@ UK_HOUSEHOLD_ENERGY_MEASURES: Mapping[str, str] = {
 #: benefits and the engine's published tax keep reading current income.
 UK_ANNUAL_INCOME_MEASURES: Mapping[str, str] = {
     "employment_income_annual": "employment_income",
+    # Pay plus the company car and car fuel benefits, which HMRC's employment
+    # income counts (PolicyEngine/uk-autumn-budget-dashboard-2026#316).
+    "employment_income_with_benefits_in_kind_annual": (
+        UK_EMPLOYMENT_INCOME_WITH_BENEFITS_IN_KIND
+    ),
     "self_employment_income_after_loss_relief_annual": (
         UK_SELF_EMPLOYMENT_INCOME_AFTER_LOSS_RELIEF
     ),
