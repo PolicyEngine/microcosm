@@ -668,6 +668,28 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
                 "NATURE": 4,
                 "DIRPERC": 2 if household_id % 10 == 0 else -1,
                 "DIVIDEND": 1000.0 if household_id % 10 == 0 else 0.0,
+                # Two employee jobs come with a company car (EXPBEN01 1;
+                # PolicyEngine/uk-autumn-budget-dashboard-2026#316): household
+                # 7's a diesel (FUELTYP 2) listed at GBP 30,001 to 40,000
+                # (CARVAL 8), with fuel for private use (EXPBEN03 1) and a
+                # contribution to its cost (CARCON 1, CARAMT); household 17's
+                # of unknown price band and fuel (CARVAL 10, FUELTYP 6, "Don't
+                # know"). Other employee jobs answer no; self-employed jobs are
+                # not asked.
+                "EXPBEN01": (
+                    ""
+                    if household_id % 8 in (2, 3)
+                    else 1
+                    if household_id in (7, 17)
+                    else 2
+                ),
+                "EXPBEN03": (
+                    "" if household_id % 8 in (2, 3) else 1 if household_id == 7 else 2
+                ),
+                "CARVAL": {7: 8, 17: 10}.get(household_id, ""),
+                "FUELTYP": {7: 2, 17: 6}.get(household_id, ""),
+                "CARCON": {7: 1, 17: 2}.get(household_id, ""),
+                "CARAMT": 1500.0 if household_id == 7 else "",
                 # Every fifth job pays one bonus, given before or after tax by
                 # turn (#1340).
                 **{

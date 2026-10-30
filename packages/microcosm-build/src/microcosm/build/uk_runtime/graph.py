@@ -673,8 +673,14 @@ _ROOT_PERSON_BOOL = {
     "owned_company_carries_on_trade",
     "owned_company_carries_on_property_business",
     "would_claim_carers_allowance",
+    "frs_company_car_private_fuel",
 }
-_ROOT_PERSON_INT = {"age"}
+_ROOT_PERSON_INT = {
+    "age",
+    # The company car carriers' FRS codes (frs_spine.frs_company_car_carriers).
+    "frs_company_car_price_band",
+    "frs_company_car_fuel_code",
+}
 _ROOT_PERSON_FLOAT: set[str] = set()
 _ROOT_BENUNIT_TYPES = {
     "frs_benunit_capital": "float64",
@@ -718,7 +724,8 @@ def _root_cells(stage_outputs: Iterable[str]) -> tuple[_Cell, ...]:
             # integral, and age_tail keeps an integer input integer (its
             # bands are integral), so the legacy runner and this declaration
             # agree without relying on the CREATE-time cast (#845).  Rewrites
-            # cannot change their base's dtype.
+            # cannot change their base's dtype.  frs_spine writes the company
+            # car codes as int64 too.
             cells.append(_Cell("person", column, "int64"))
         elif column in _ROOT_PERSON_FLOAT:
             cells.append(_Cell("person", column, "float64"))

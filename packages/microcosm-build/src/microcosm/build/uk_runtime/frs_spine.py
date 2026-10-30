@@ -220,6 +220,17 @@ OWNER_MANAGER_COLUMNS = (
     "owned_company_carries_on_property_business",
     "owned_company_income_share",
 )
+#: Each person's company car from the FRS job tab, the four carriers the
+#: company_cars stage reads to set policyengine-uk's company car inputs
+#: (PolicyEngine/uk-autumn-budget-dashboard-2026#316); see
+#: frs_company_car_carriers. They are no engine inputs and leave at the
+#: release boundary.
+FRS_COMPANY_CAR_CARRIER_COLUMNS = (
+    "frs_company_car_price_band",
+    "frs_company_car_fuel_code",
+    "frs_company_car_private_fuel",
+    "frs_company_car_contribution",
+)
 OUTPUT_COLUMNS = (
     "person_id",
     "person_benunit_id",
@@ -280,6 +291,7 @@ OUTPUT_COLUMNS = (
     "salary_sacrifice_reported",
     "salary_sacrifice_asked",
     "frs_bonus_amount",
+    *FRS_COMPANY_CAR_CARRIER_COLUMNS,
     "child_benefit_reported",
     "income_support_reported",
     "housing_benefit_reported",
@@ -618,6 +630,9 @@ def _assemble_frame(
     for column in OWNER_MANAGER_COLUMNS:
         pe_person[column] = owner_managers[column].to_numpy()
     pe_person[FRS_BONUS_CARRIER_COLUMN] = frs_annual_bonuses(person, frs["job"])
+    company_cars = frs_company_car_carriers(person, frs["job"])
+    for column in FRS_COMPANY_CAR_CARRIER_COLUMNS:
+        pe_person[column] = company_cars[column].to_numpy()
     _add_person_income(pe_person, person, household, frs["oddjob"], evidence=evidence)
     _add_benefits(pe_person, person, frs["benefits"])
     # The engine pays Carer's Allowance on hours or receipt; a dataset keeps it
@@ -914,6 +929,111 @@ def frs_owner_manager_inputs(person: pd.DataFrame, job: pd.DataFrame) -> pd.Data
                 job_person,
                 persons,
             ),
+        },
+        index=person.index,
+    )
+
+
+#: The JOB tab's company car answers (FRS 2024-25, SN 9563). EXPBEN01 and
+#: EXPBEN03 (1 yes) record a company car and fuel for private use from the
+#: present employer in the last 12 months. CARVAL is the respondent's estimate
+#: of the car's list price when new, in bands; FUELTYP its fuel; CARCON (1
+#: yes) whether the employee contributed to its purchase cost, and CARAMT the
+#: contribution, one total to date: a lump sum, or the salary deductions so
+#: far. JOBTYPE orders a person's jobs, the main job (1) first.
+FRS_COMPANY_CAR_JOB_COLUMNS = (
+    "expben01",
+    "expben03",
+    "carval",
+    "fueltyp",
+    "carcon",
+    "caramt",
+    "jobtype",
+)
+#: CARVAL's list price bands: 1 up to GBP 10,000, 2 GBP 10,001 to 13,000, 3 to
+#: 16,000, 4 to 19,000, 5 to 22,000, 6 to 25,000, 7 to 30,000, 8 to 40,000
+#: and 9 GBP 40,001 and over. Its code 10, "Don't know", is also the carrier's
+#: code for a car whose band is unanswered.
+FRS_COMPANY_CAR_PRICE_BANDS = tuple(range(1, 10))
+FRS_COMPANY_CAR_PRICE_BAND_UNKNOWN = 10
+#: FUELTYP's fuels: 1 petrol, 2 diesel, 3 hybrid (petrol and electricity), 4
+#: electric and 5 other. Its code 6, "Don't know", is also the carrier's code
+#: for a car whose fuel is unanswered.
+FRS_COMPANY_CAR_FUEL_CODES = tuple(range(1, 6))
+FRS_COMPANY_CAR_FUEL_UNKNOWN = 6
+
+
+def frs_company_car_carriers(person: pd.DataFrame, job: pd.DataFrame) -> pd.DataFrame:
+    """Each person's company car, from the job tab, as four carriers.
+
+    EXPBEN, one of the FRS's Employee Pay Details questions, asked of each
+    current employee job, records whether the present employer provided a
+    company car (EXPBEN01) and fuel for private use (EXPBEN03) in the last 12
+    months. A person's company car is the one on their car job with the
+    lowest JOBTYPE, the main job (1) first, so a person has at most one, as in
+    the engine. Its carriers are its list price band (CARVAL 1 to 9, or 10
+    where the band is "Don't know" or unanswered), its fuel (FUELTYP 1 to 5,
+    or 6 likewise), whether the job provides fuel for private use, and what
+    the person contributed to its purchase cost (CARAMT where CARCON is 1, a
+    negative or missing amount as 0). CARAMT is one total to date, so it is
+    not annualised. A person without a company car carries 0, 0, false and 0.
+
+    The survey asks CARVAL and CARCON of a company van (EXPBEN02) too, and
+    they are taken as the car's; FUELTYP is asked of a car only. The carriers
+    are no engine inputs and leave at the release boundary: the company_cars
+    stage reads them, and SPI-channel rows inherit their FRS twin's carriers,
+    as they do every root column. A tab without these columns refuses, rather
+    than set nobody's car.
+    """
+
+    missing = [column for column in FRS_COMPANY_CAR_JOB_COLUMNS if column not in job]
+    if missing:
+        raise KeyError(
+            f"The FRS job tab has no {missing} column(s), so company cars cannot "
+            "be set."
+        )
+    car_jobs = pd.DataFrame(
+        {
+            "person_id": np.asarray(job["person_id"]),
+            "jobtype": _number(job, "jobtype").to_numpy(),
+            "carval": _number(job, "carval").to_numpy(),
+            "fueltyp": _number(job, "fueltyp").to_numpy(),
+            "private_fuel": (_number(job, "expben03") == 1).to_numpy(dtype=float),
+            "contribution": np.where(
+                _number(job, "carcon") == 1, np.maximum(_number(job, "caramt"), 0), 0.0
+            ),
+        }
+    ).loc[(_number(job, "expben01") == 1).to_numpy()]
+    # After a stable sort on JOBTYPE, each person's first car job is the one
+    # with the lowest JOBTYPE, the tab's order breaking any tie.
+    car = (
+        car_jobs.sort_values("jobtype", kind="stable")
+        .drop_duplicates("person_id")
+        .set_index("person_id")
+        .reindex(person["person_id"])
+    )
+    # A person without a company car reindexes to NaN, and carries 0 codes.
+    holder = car["jobtype"].notna().to_numpy()
+    carval = car["carval"].to_numpy()
+    fueltyp = car["fueltyp"].to_numpy()
+    price_band = np.select(
+        [~holder, np.isin(carval, FRS_COMPANY_CAR_PRICE_BANDS)],
+        [0, carval],
+        default=FRS_COMPANY_CAR_PRICE_BAND_UNKNOWN,
+    ).astype("int64")
+    fuel_code = np.select(
+        [~holder, np.isin(fueltyp, FRS_COMPANY_CAR_FUEL_CODES)],
+        [0, fueltyp],
+        default=FRS_COMPANY_CAR_FUEL_UNKNOWN,
+    ).astype("int64")
+    private_fuel = car["private_fuel"].fillna(0).to_numpy() > 0
+    contribution = car["contribution"].fillna(0).to_numpy(dtype="float64")
+    return pd.DataFrame(
+        {
+            "frs_company_car_price_band": price_band,
+            "frs_company_car_fuel_code": fuel_code,
+            "frs_company_car_private_fuel": private_fuel,
+            "frs_company_car_contribution": contribution,
         },
         index=person.index,
     )
