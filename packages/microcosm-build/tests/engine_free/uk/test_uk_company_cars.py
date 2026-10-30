@@ -52,7 +52,7 @@ def _replaced(kind: str, **changes):
 
 def test_the_declaration_is_read_once_and_checked(spec) -> None:
     assert spec.diesel_fuel_type == stage.DIESEL_RDE2
-    assert spec.minimum_donor_households == 10
+    assert spec.minimum_donor_households == 3
     assert spec.columns.list_price == ("LISTPR1R8", "LISTPR2R8", "LISTPR3R8")
     with pytest.raises(stage.CompanyCarsError, match="fence"):
         stage.CompanyCarsSpec.from_stage(

@@ -6307,7 +6307,7 @@ stages:
       '9':
       - 40000.0
       - null
-    minimum_donor_households: 10
+    minimum_donor_households: 3
     open_band_fallback_upper_gbp: 80000.0
     seed: 0
     salt: company_cars:list_price

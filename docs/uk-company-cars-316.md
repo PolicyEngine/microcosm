@@ -45,7 +45,7 @@ Every draw is keyed on the person's identity, so reordering rows moves none.
   index from 2021, and each holder draws within their CARVAL band from the weighted
   quantile function of the WAS cars inside it. The open band (£40,001 and over) and
   an unknown band draw from the WAS cars of the same fuel class (electric or not). A
-  cell with fewer than 10 WAS households falls back to all fuel classes, then to a
+  cell with fewer than 3 WAS households falls back to all fuel classes, then to a
   uniform draw within the band (up to £80,000 for the open band).
 - **CO2.** HMRC publishes recipients by CO2 band and by fuel, but no table crosses
   them. An electric car emits none. The others are split between 1 to 50 g/km and the

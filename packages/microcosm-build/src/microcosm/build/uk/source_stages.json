@@ -7857,7 +7857,7 @@
       ]
      },
      "kind": "draw_company_car_list_prices",
-     "minimum_donor_households": 10,
+     "minimum_donor_households": 3,
      "open_band_fallback_upper_gbp": 80000,
      "outputs": [
       "company_car_list_price",

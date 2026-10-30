@@ -198,7 +198,8 @@ ENGINE_FUEL_TYPES = (PETROL, DIESEL_RDE2, DIESEL_NON_RDE2, ALTERNATIVE_FUEL, ELE
 DEFAULT_FUEL_TYPE = PETROL
 
 #: No list price cell may rest on fewer WAS households than CD171's absolute
-#: floor; the declared minimum is the modelling choice above it.
+#: floor of 3, the floor María set for every UK output on 29 October 2026; the
+#: declared minimum may not go below it.
 DONOR_HOUSEHOLD_FLOOR = 3
 
 CPI_INDEX = "gov.economic_assumptions.indices.obr.consumer_price_index"

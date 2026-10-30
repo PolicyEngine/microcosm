@@ -61,7 +61,7 @@ COMPANY_CARS_STAGE_OPERATIONS: tuple[dict[str, Any], ...] = (
         "kind": "draw_company_car_list_prices",
         "outputs": ["company_car_list_price", "company_car_capital_contributions"],
         "bands": {str(band): list(bounds) for band, bounds in FRS_PRICE_BANDS.items()},
-        "minimum_donor_households": 10,
+        "minimum_donor_households": 3,
         "open_band_fallback_upper_gbp": 80_000.0,
         "seed": 0,
         "salt": "company_car_list_price",
