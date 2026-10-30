@@ -619,17 +619,39 @@ def test_a_stratum_may_miss_its_share_by_up_to_one_record() -> None:
 
 def test_a_one_record_stratum_claims_with_probability_equal_to_the_rate() -> None:
     # The independent review of microcosm#1420, finding 4: at its midpoint a
-    # stratum of one record always sits at 0.5. Rotated by a start drawn per
-    # stratum, one-record strata claim at the rate across strata.
-    codes = np.arange(4_000)
-    starts = ca.stratum_starts(codes, salt=_OUTPUT)
-    positions = weight_balanced_uniforms(
-        codes, np.full(codes.size, 0.5), np.ones(codes.size), starts=starts
+    # stratum of one record always sits at 0.5. Rotated by a start keyed on
+    # the stratum's members, a carer alone in a stratum claims at the rate
+    # over identities, whatever the code (the re-review, G): keyed on the code
+    # alone, a one-record stratum's outcome was fixed per code in every build.
+    ids = np.arange(1, 4_001, dtype=np.int64)
+    for code in (0, 7):
+        starts = np.array(
+            [
+                ca.stratum_starts(
+                    np.array([code]), salt=_OUTPUT, identities=np.array([person])
+                )[0]
+                for person in ids
+            ]
+        )
+        positions = np.mod(0.5 + starts, 1.0)
+        for rate in (0.45, 0.6, 0.75):
+            assert (positions < rate).mean() == pytest.approx(rate, abs=0.03)
+    # The same people take the same start whatever their order; a stratum's
+    # records share one start, and another member moves it.
+    codes = np.repeat(np.arange(4), 3)
+    members = np.arange(100, 112, dtype=np.int64)
+    starts = ca.stratum_starts(codes, salt=_OUTPUT, identities=members)
+    order = np.random.default_rng(1).permutation(codes.size)
+    np.testing.assert_array_equal(
+        ca.stratum_starts(codes[order], salt=_OUTPUT, identities=members[order]),
+        starts[order],
     )
-    for rate in (0.45, 0.6, 0.75):
-        assert (positions < rate).mean() == pytest.approx(rate, abs=0.03)
-    # The same code always takes the same start.
-    np.testing.assert_array_equal(ca.stratum_starts(codes, salt=_OUTPUT), starts)
+    assert all(np.unique(starts[codes == code]).size == 1 for code in range(4))
+    moved = members.copy()
+    moved[0] = 999
+    assert ca.stratum_starts(codes, salt=_OUTPUT, identities=moved)[0] != starts[0]
+    with pytest.raises(ValueError, match="one identity per record"):
+        ca.stratum_starts(codes, salt=_OUTPUT, identities=members[:-1])
 
 
 def _outside_pool_frame():
@@ -969,3 +991,107 @@ def test_the_stage_key_covers_the_placement_helper() -> None:
     from microcosm.build.uk_runtime.graph_kernels import _STAGE_HELPER_MODULES
 
     assert stochastic_assignment in _STAGE_HELPER_MODULES["carers_allowance_take_up"]
+
+
+def _spied_run(monkeypatch, frame, *, rate: float):
+    """Run the stage, recording each balanced placement it asks for."""
+
+    calls = []
+    balanced = weight_balanced_uniforms
+
+    def spy(strata, draws, weights, **kwargs):
+        calls.append(
+            {
+                "strata": np.asarray(strata).copy(),
+                "draws": np.asarray(draws, dtype=float).copy(),
+                "weights": np.asarray(weights, dtype=float).copy(),
+                "starts": kwargs.get("starts"),
+            }
+        )
+        return balanced(strata, draws, weights, **kwargs)
+
+    monkeypatch.setattr(ca, "weight_balanced_uniforms", spy)
+    return _run(frame, rate=rate), calls
+
+
+def _identities(frame, draws: np.ndarray, salt: str) -> np.ndarray:
+    """The people whose identity-keyed uniforms are these draws, in order."""
+
+    ids = frame.table("person")["person_id"].to_numpy()
+    keyed = dict(
+        zip(
+            stable_identity_uniforms(
+                ids, seed=ca.CARERS_ALLOWANCE_TAKE_UP_SEED, salt=salt
+            ),
+            ids,
+            strict=True,
+        )
+    )
+    missing = [draw for draw in draws if draw not in keyed]
+    assert not missing, "the stage's draws are not the carers' identity-keyed uniforms"
+    return np.array([keyed[draw] for draw in draws], dtype=np.int64)
+
+
+def test_the_stage_places_each_carer_by_their_identity_and_their_strata(
+    monkeypatch,
+) -> None:
+    # The re-review of microcosm#1420, B: the flags are the balanced positions
+    # of the carers' own identity-keyed uniforms, rotated by their strata's
+    # member-keyed starts, against the pool share and then the rate. Dropping
+    # the starts, or drawing by row position, fails here.
+    combined, frame, _, n = _outside_pool_frame()
+    rate = 0.6
+    result, calls = _spied_run(monkeypatch, combined, rate=rate)
+    assert len(calls) == 2
+    pool_call, take_up_call = calls
+    flag = result.frame.table("person").set_index("person_id")[_OUTPUT]
+    positions = {}
+    for label, call, salt in (
+        ("pool", pool_call, ca.CARERS_ALLOWANCE_POOL_SALT),
+        ("take_up", take_up_call, _OUTPUT),
+    ):
+        people = _identities(combined, call["draws"], salt)
+        assert call["starts"] is not None, label
+        np.testing.assert_array_equal(
+            call["starts"],
+            ca.stratum_starts(call["strata"], salt=salt, identities=people),
+        )
+        placed = weight_balanced_uniforms(
+            call["strata"], call["draws"], call["weights"], starts=call["starts"]
+        )
+        positions[label] = pd.Series(placed, index=people)
+    # The take-up draw opens the flag to the eligible carers it places below
+    # the rate, and to no one else who reports nothing.
+    take_up = positions["take_up"]
+    np.testing.assert_array_equal(flag.loc[take_up.index].to_numpy(), take_up < rate)
+    # The outside carers are all over the limit and report nothing, so the
+    # take-up draw reaches exactly those the pool placed below its share.
+    share = result.evidence()["in_household_disabled_member_share"]
+    pool = positions["pool"]
+    outside = frame.table("person")["person_id"].to_numpy()[:n]
+    assert set(pool.index) == set(outside)
+    assert set(take_up.index) & set(outside) == set(pool.index[pool < share])
+
+
+def test_the_stage_draws_the_same_carers_whatever_the_row_order() -> None:
+    # The re-review of microcosm#1420, B: every draw and start is keyed on the
+    # people, so permuting the person rows moves no flag.
+    combined, _, _, _ = _outside_pool_frame()
+    first = (
+        _run(combined, rate=0.6).frame.table("person").set_index("person_id")[_OUTPUT]
+    )
+    person = combined.table("person")
+    shuffled = uk_national_frame(
+        person=person.iloc[
+            np.random.default_rng(11).permutation(len(person))
+        ].reset_index(drop=True),
+        benunit=combined.table("benunit"),
+        household=combined.table("household"),
+        time_period="2024",
+        weight_kind=WeightKind.DESIGN,
+        household_weights=combined.weights_for("household").values,
+    )
+    again = (
+        _run(shuffled, rate=0.6).frame.table("person").set_index("person_id")[_OUTPUT]
+    )
+    pd.testing.assert_series_equal(again.loc[first.index], first)

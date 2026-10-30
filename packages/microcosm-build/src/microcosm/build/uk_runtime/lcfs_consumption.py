@@ -3612,7 +3612,8 @@ def rake_recipient_energy(
     gas_payers: GasPayerDraws | None = None,
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     """Price the drawn spend to kWh, impose the published gas connection, rake the
-    NEED shape at the DESNZ level, price back.
+    NEED shape at each fuel's declared level (DESNZ volume, or for electricity
+    the kWh ONS household spending buys), price back.
 
     ``identity`` (the household ids, row-aligned) keys the disconnection walk
     when the declared rule is ``identity_uniform_order``, and the connection

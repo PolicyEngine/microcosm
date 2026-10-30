@@ -49,16 +49,33 @@ ROWS: Mapping[str, tuple[str, ...]] = {
     "obr.tobacco_duties": ("tobacco_duty",),
     "obr.betting_and_gaming_duties": ("gambling_duty",),
 }
-#: Rows measured at their own period, not ``--year``: the excise receipts at
-#: FY2024-25, the year of the stored quantities, which policyengine-uk charges
-#: as model year 2024 and holds flat after it (measurement_period 2024).
-ROW_YEARS: Mapping[str, int] = {
-    "obr.beer_and_cider_duties": 2024,
-    "obr.wine_duties": 2024,
-    "obr.spirits_duties": 2024,
-    "obr.tobacco_duties": 2024,
-    "obr.betting_and_gaming_duties": 2024,
-}
+
+
+def declared_row_years() -> dict[str, int]:
+    """Each measured row's own period, where its binding declares one."""
+
+    from importlib.resources import files
+
+    payload = json.loads(
+        files("microcosm.build.uk")
+        .joinpath("uk_population_targets.json")
+        .read_text(encoding="utf-8")
+    )
+    years: dict[str, int] = {}
+    for target in payload["targets"]:
+        period = target["bindings"]["policyengine"].get("measurement_period")
+        if target["target_id"] in ROWS and period is not None:
+            years[str(target["target_id"])] = int(period)
+    return years
+
+
+#: Rows measured at their own period, not ``--year``: every row whose binding
+#: declares a measurement_period, read from the contract so the tool measures
+#: what the national binds. The excise receipts sit at FY2024-25, the year of
+#: the stored quantities, which policyengine-uk charges as model year 2024 and
+#: holds flat after it (microcosm#1359); road fuel and electricity at calendar
+#: 2024, on the frame's own columns (microcosm#1324, #1418).
+ROW_YEARS: Mapping[str, int] = declared_row_years()
 
 
 def composition(household: pd.DataFrame) -> dict[str, float]:

@@ -129,3 +129,14 @@ def test_excise_rows_are_measured_at_their_own_period() -> None:
     assert set(_tool.ROW_YEARS) <= set(_tool.ROWS)
     for name, year in _tool.ROW_YEARS.items():
         assert periods[name] == year, name
+    # Every measured row whose binding declares its own period is measured
+    # there: electricity and road fuel at calendar 2024 on the frame's own
+    # columns, not through the engine's projection to --year (the re-review
+    # of microcosm#1420, A).
+    assert _tool.ROW_YEARS == {
+        name: int(period)
+        for name, period in periods.items()
+        if name in _tool.ROWS and period is not None
+    }
+    assert _tool.ROW_YEARS["ons.household_electricity_expenditure"] == 2024
+    assert _tool.ROW_YEARS["ons.household_road_fuel_expenditure"] == 2024

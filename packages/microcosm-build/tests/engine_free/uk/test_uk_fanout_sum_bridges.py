@@ -464,3 +464,47 @@ def test_each_committed_bridge_holds_its_declared_index_gap(bridge) -> None:
     ) / value_in(2023)
     gap = (after / before) / cells - 1.0
     assert abs(gap) <= bridge["max_index_shift"], (bridge["bridge_id"], gap)
+
+
+@pytest.mark.parametrize("bridge", uk_fanout_sum_bridges(), ids=lambda b: b.bridge_id)
+def test_each_committed_bridge_holds_its_declared_source_gap(bridge) -> None:
+    """The re-review of microcosm#1420, D: the source half of a bridge's factor,
+    with the pension bridge's one-sided floor, is checked only inside a dense
+    build, so a feed re-pin or a change in which cells are deferred could stop
+    every dense build with CI green. It is recomputed here, at each grain, from
+    the committed registers: the national bands before their index over the
+    cells at their published values, the deferred cells that keep a value
+    counted, as the surface counts them. The surface also fills an area with no
+    fact from the other grain, which this leaves out, so a grain short of an
+    area reads a little higher here than in a build."""
+
+    membership = _committed("target_reference_membership.json")
+    local = _committed("local_target_reference_membership.json")
+    published = {
+        row["name"]: float(row["value_before_uprating"])
+        for row in local["uprating_holds"]
+        if "value_before_uprating" in row
+    }
+    control = 0.0
+    for higher in bridge.higher_target_ids:
+        for candidate in membership["targets"][higher]["candidates"]:
+            uprating = candidate.get("uprating")
+            control += (
+                float(uprating["value_before_uprating"])
+                if uprating
+                else float(candidate["resolved_value"])
+            )
+    lowest, highest = bridge.source_factor_bounds
+    levels = local["targets"][bridge.lower_target_id]["geography_levels"]
+    assert set(levels) == {"constituency", "local_authority"}
+    for level, payload in levels.items():
+        cells = 0.0
+        for candidate in payload["candidates"]:
+            if candidate["status"] == "active":
+                cells += published.get(
+                    candidate["name"], float(candidate["resolved_value"])
+                )
+            elif candidate.get("deferred_value") is not None:
+                cells += float(candidate["deferred_value"])
+        source = control / cells
+        assert lowest <= source <= highest, (bridge.bridge_id, level, source)

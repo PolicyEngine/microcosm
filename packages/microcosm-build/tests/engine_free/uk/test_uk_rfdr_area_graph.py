@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import functools
+import json
+
 import pytest
 
 from microcosm.build.uk_runtime.atomic_area_support import (
@@ -9,10 +12,15 @@ from microcosm.build.uk_runtime.atomic_area_support import (
 )
 from microcosm.build.uk_runtime.graph_build import UKFullBuildConfig
 from microcosm.build.uk_runtime.graph_population import _rfdr_area_nodes
-from microcosm.build.uk_runtime.rfdr_area_layer import RFDR_COLUMN
+from microcosm.build.uk_runtime.rfdr_area_layer import (
+    RFDR_AREA_LAYER_SOURCE,
+    RFDR_COLUMN,
+)
 from microcosm.graph import ContentStore, compile_graph, run_graph
+from microcosm.graph.errors import NodeRejectedError
 from test_support.microcosm_build.uk_atomic_support_fixtures import (
     TOY_RFDR_AREAS,
+    toy_rfdr_area_layer,
     toy_support_sources,
     write_toy_rfdr_area_layer,
     write_toy_supports,
@@ -25,7 +33,7 @@ from test_support.microcosm_build.uk_ladder_rowwise_clone import (
 )
 
 
-def _atomic(k: int, tmp_path, mode: str = "area"):
+def _atomic(k: int, tmp_path, mode: str = "area", *, full_scale: bool = True):
     payloads, paths = write_toy_supports(tmp_path / "supports")
     definition = uk_atomic_assignment_definition(payloads, seed=7)
     graph, registry = graph_and_registry(
@@ -33,6 +41,7 @@ def _atomic(k: int, tmp_path, mode: str = "area"):
         geography_assignment="atomic",
         definition=definition,
         rfdr_localisation_mode=mode,
+        full_scale=full_scale,
     )
     return graph, registry, paths
 
@@ -130,3 +139,53 @@ def test_config_follows_the_geography_assignment() -> None:
             property_localisation="none",
             rfdr_localisation="area",
         )
+
+
+@pytest.mark.parametrize("full_scale", [True, False])
+def test_the_rfdr_node_is_strict_exactly_at_full_scale(full_scale, tmp_path) -> None:
+    """The re-review of microcosm#1420, C: the graph sets the switch from the
+    build's own scale, not only a direct call."""
+
+    graph, _, _ = _atomic(1, tmp_path, full_scale=full_scale)
+    assert graph.node("uk.full.geography.rfdr").params["strict_flags"] is full_scale
+
+
+@pytest.mark.parametrize("full_scale", [True, False])
+def test_the_rfdr_kernel_refuses_an_unflagged_system_only_at_full_scale(
+    full_scale, toy_ladder, tmp_path
+) -> None:
+    """The re-review of microcosm#1420, C: the kernel honours the node's
+    switch. England and Wales's flagged area is one no household is placed
+    in: a full-scale run refuses, a sampled rung flags none there and runs."""
+
+    _, ladder_path = toy_ladder
+    graph, registry, paths = _atomic(1, tmp_path, full_scale=full_scale)
+    layer = toy_rfdr_area_layer()
+    layer["areas"]["uk_ew_output_area_2021"] = ["E00099999"]
+    layer_path = tmp_path / "unplaced-rfdr-area-layer.json"
+    layer_path.write_text(json.dumps(layer), encoding="utf-8")
+    sources = {
+        "uk_ladder": ladder_path,
+        "fixture": ladder_path,
+        **toy_support_sources(paths),
+        RFDR_AREA_LAYER_SOURCE: layer_path,
+    }
+    run = functools.partial(
+        run_graph,
+        compile_graph(graph),
+        sources=sources,
+        store=ContentStore(tmp_path / "store"),
+        kernels=registry,
+    )
+    if full_scale:
+        with pytest.raises(
+            NodeRejectedError, match="flags none of the 2 uk_ew_output_area_2021"
+        ):
+            run()
+        return
+    household = run().population("uk.full.expand").table("household")
+    england_wales = (
+        household["atomic_area_system"].astype(str) == "uk_ew_output_area_2021"
+    )
+    assert england_wales.any()
+    assert not household.loc[england_wales, RFDR_COLUMN].astype(bool).any()

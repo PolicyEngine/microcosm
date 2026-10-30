@@ -171,7 +171,9 @@ def _small_cell_deferrals(
     """Deferrals for every active cell a rule's floor puts out of reach.
 
     Read from the first authoring pass, so the rule names the cells by their
-    published values, never by hand; each carries the rule's expiry. A target
+    published values, never by hand; each carries the rule's expiry. A cell an
+    index moved is read at its value before the index, the published one the
+    rule's floor is set on (the re-review of microcosm#1420, F). A target
     the rule's ``floor_reads`` maps to another reads the floor off that
     target's cell for the same area: a pension income amount is HMRC's count
     times its mean, so it carries the count's rounding (microcosm#1420).
@@ -186,6 +188,11 @@ def _small_cell_deferrals(
     )
     if register.get("schema_version") != 1:
         raise ValueError("UK local small-cell rule schema_version must be 1.")
+    published = {
+        str(row["name"]): float(row["value_before_uprating"])
+        for row in membership_report.get("uprating_holds", ())
+        if row.get("value_before_uprating") is not None
+    }
     deferrals: list[AreaSignedDeferral] = []
     for rule in register["rules"]:
         if not uk_small_cell_rule_is_signed(rule):
@@ -218,7 +225,9 @@ def _small_cell_deferrals(
             read = membership_report["targets"][read_id]
             for level, payload in sorted(target["geography_levels"].items()):
                 floor_values = {
-                    str(candidate["geography_id"]): float(candidate["resolved_value"])
+                    str(candidate["geography_id"]): published.get(
+                        str(candidate.get("name")), float(candidate["resolved_value"])
+                    )
                     for candidate in read["geography_levels"]
                     .get(level, {})
                     .get("candidates", ())

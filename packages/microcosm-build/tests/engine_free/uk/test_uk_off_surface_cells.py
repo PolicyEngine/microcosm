@@ -732,3 +732,22 @@ def test_tiers_short_of_one_area_reconcile_at_its_declared_zero():
     )
     assert [row["value"] for row in rows] == [0.0, 0.0]
     assert receipt["implied_absent"] == []
+
+
+def test_the_surface_hands_its_placed_deferrals_to_the_fanout_bridges(monkeypatch):
+    # The re-review of microcosm#1420, D: the fan-out sum bridges count the
+    # small-cell deferrals the surface placed, at their published values.
+    # Without this wiring the pension bridge's source factor would read the
+    # deferred cells as missing.
+    from microcosm.build.uk_runtime import ledger_targets
+
+    seen = []
+
+    def spy(registry, controls, *, off_surface_rows=(), deferred_cells=()):
+        seen.append(list(deferred_cells))
+        return []
+
+    monkeypatch.setattr(ledger_targets, "_assert_uk_fanout_sum_agreement", spy)
+    deferrals = [_off("local_authority", "S12000034", 40.0, target_id=_UC_AREA_TARGET)]
+    _uc_surface(deferred_cells=deferrals, gb=200.0)
+    assert seen == [deferrals]

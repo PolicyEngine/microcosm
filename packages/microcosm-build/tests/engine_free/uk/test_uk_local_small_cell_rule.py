@@ -128,6 +128,35 @@ def test_an_amount_defers_where_its_count_is_below_the_floor(tmp_path):
     )
 
 
+def test_the_floor_reads_a_cells_published_value_not_its_uprated_one(tmp_path):
+    # The re-review of microcosm#1420, F: the floor is set on HMRC's published
+    # counts, so an indexed cell is read before its index. Grown x1.12, a count
+    # published at 5,000 passes 5,500 and would bind again otherwise.
+    growth = 1.12
+    membership = _pension_membership(
+        {"E14000001": 5_000.0 * growth, "E14000002": 6_000.0 * growth},
+        {"E14000001": 75e6, "E14000002": 90e6},
+    )
+    for target_id, target in membership["targets"].items():
+        for candidate in target["geography_levels"]["constituency"]["candidates"]:
+            candidate["name"] = f"{target_id}@{candidate['geography_id']}"
+    membership["uprating_holds"] = [
+        {
+            "name": f"hmrc.pension_income.count@{area}",
+            "value_before_uprating": repr(published),
+        }
+        for area, published in (("E14000001", 5_000.0), ("E14000002", 6_000.0))
+    ]
+    deferrals = {
+        deferral.target_id: deferral.area_ids
+        for deferral in _small_cell_deferrals(membership, _rule_register(tmp_path))
+    }
+    assert deferrals == {
+        "hmrc.pension_income.count": ("E14000001",),
+        "hmrc.pension_income.amount": ("E14000001",),
+    }
+
+
 def test_an_amount_whose_count_has_no_active_cell_is_refused(tmp_path):
     membership = _pension_membership({"E14000002": 9_000.0}, {"E14000001": 75e6})
     with pytest.raises(ValueError, match="floor target has none"):

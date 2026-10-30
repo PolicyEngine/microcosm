@@ -523,7 +523,10 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--built-on",
         default=None,
-        help="The layer's build date (default: today; with --check, the committed one).",
+        help=(
+            "The layer's build date (default: the committed layer's when nothing "
+            "else in it moves, else today)."
+        ),
     )
     parser.add_argument(
         "--check",
@@ -562,10 +565,15 @@ def main(argv: list[str] | None = None) -> int:
     if not {"postcode", "oa21cd"} <= set(postcodes.columns):
         raise SystemExit("error: the postcode lookup lacks postcode or oa21cd.")
     flagged, receipt = layer_module.flag_output_areas(postcodes, definition)
+    # The committed layer's date stands unless something else in the layer
+    # moves: a rebuild that changes only the date would move its digest, the
+    # run-time pin and the node's source digest for nothing (the re-review of
+    # microcosm#1420, 15). A missing file is a difference, not an error.
+    committed = (
+        json.loads(args.out.read_text(encoding="utf-8")) if args.out.is_file() else None
+    )
     built_on = args.built_on or (
-        json.loads(args.out.read_text(encoding="utf-8"))["built_on"]
-        if args.check
-        else date.today().isoformat()
+        committed["built_on"] if committed is not None else date.today().isoformat()
     )
     layer = {
         "schema_version": layer_module.SCHEMA_VERSION,
@@ -599,6 +607,13 @@ def main(argv: list[str] | None = None) -> int:
         },
         "areas": flagged,
     }
+    if (
+        args.built_on is None
+        and not args.check
+        and committed is not None
+        and layer != committed
+    ):
+        built_on = layer["built_on"] = date.today().isoformat()
     layer_text = json.dumps(layer, indent=2, sort_keys=True) + "\n"
     provenance = {
         "resource": "rfdr_area_layer.json",

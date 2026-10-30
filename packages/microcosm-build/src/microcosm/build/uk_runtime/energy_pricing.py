@@ -144,9 +144,11 @@ ONS_HOUSEHOLD_SPEND_COICOP: Mapping[str, str] = {
     ELECTRICITY_KWH: "04.5.1",
     GAS_KWH: "04.5.2",
 }
-#: The variant of every Consumer Trends row Microcosm reads: annual, current
-#: prices, not seasonally adjusted. Defined once here for the lcfs_consumption
-#: stage's road fuel level and division diagnostic too (docs/shared-constants.md).
+#: The variant of the Consumer Trends rows the energy level reads: annual,
+#: current prices, not seasonally adjusted. Defined once here; the
+#: lcfs_consumption stage's division diagnostic reads it too
+#: (docs/shared-constants.md). The road-fuel level and the heating
+#: recomposition read one row per class on its COICOP code and frequency.
 UK_ONS_HFCE_ROW_DIMENSIONS: Mapping[str, str] = MappingProxyType(
     {
         "frequency": "annual",

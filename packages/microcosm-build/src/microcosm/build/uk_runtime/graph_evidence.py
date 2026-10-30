@@ -290,6 +290,11 @@ def add_uk_spine_gate_nodes(
                     "phase": phase,
                     "time_period": "2024",
                     "stage_names": phase_stages,
+                    **(
+                        {"energy_pricing_code": source_hash(energy_pricing)}
+                        if phase == "transferred"
+                        else {}
+                    ),
                     "gate_manifest": json.dumps(
                         gate_battery._gates_manifest_payload(gates), sort_keys=True
                     ),
@@ -365,18 +370,16 @@ class UKSpineGateKernel(KernelBase):
         # part of theirs. No spine gate reads a gate-only register, so it keys
         # on the solve fingerprint and a sign-off between two release builds
         # leaves an in-graph spine a cache hit (microcosm#1301). The stage
-        # checks live in stage_health and read the energy level through
-        # energy_pricing, so both key the gate too (the independent review of
-        # microcosm#1420, finding 5).
+        # checks live in stage_health, so it keys the gate too (the independent
+        # review of microcosm#1420, finding 5). Only the transferred phase reads
+        # the energy level, through energy_pricing, so that phase alone carries
+        # its hash, as a node param: an energy change re-keys it, not the
+        # assembled gate every later spine stage waits on (the re-review, E).
         return hashlib.sha256(
             canonical_json(
                 {
                     "code": source_hash(
-                        type(self),
-                        gate_battery,
-                        battery_bindings,
-                        energy_pricing,
-                        stage_health,
+                        type(self), gate_battery, battery_bindings, stage_health
                     ),
                     "country_resources": uk_solve_fingerprint(),
                 }

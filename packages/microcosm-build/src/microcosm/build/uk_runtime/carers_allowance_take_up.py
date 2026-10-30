@@ -41,9 +41,10 @@ Both draws are balanced by weight within strata (microcosm#1418). Each
 uniform orders a stratum's records, and each record takes the midpoint of its
 slice of the stratum's cumulative weight (``weight_balanced_uniforms``, as
 policyengine-uk's ``stratified_uniform``), rotated by a start drawn per
-stratum, so every stratum claims the rate of its weight to within one record
-and every carer claims with probability equal to the rate, however few share
-the stratum (the independent review of microcosm#1420, finding 4). The stage
+stratum from its code and its members' identities, so every stratum claims
+the rate of its weight to within one record and every carer claims with
+probability equal to the rate, however few share the stratum (the independent
+review of microcosm#1420, finding 4, and its re-review, G). The stage
 refuses a stratum that misses by more than its heaviest record (Anthony's
 reviews of microcosm#1420). Independent draws reach
 it only in expectation, and on the few source households over the limit one draw put the
@@ -78,6 +79,7 @@ it, and a share only where neither of its sides rests on one to nine.
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass, field
 from importlib import metadata
 from pathlib import Path
@@ -87,6 +89,7 @@ import pandas as pd
 
 from microcosm.build.source_manifest import SourceStageSpec
 from microcosm.build.stochastic_assignment import (
+    integer_record_keys,
     stable_identity_uniforms,
     weight_balanced_uniforms,
 )
@@ -281,9 +284,9 @@ class UKCarersAllowancePool:
     severely disabled and the second where their pool uniform falls below
     ``share``. With ``pool_strata`` the uniforms of the other carers who report
     no allowance are first placed by weight within those strata and rotated by
-    a start drawn per stratum, so that each stratum draws ``share`` of its
-    weight to within one record and each carer joins with probability
-    ``share``.
+    a start drawn per stratum from its members' identities (``pool_identities``),
+    so that each stratum draws ``share`` of its weight to within one record and
+    each carer joins with probability ``share``.
     """
 
     pool: np.ndarray
@@ -302,6 +305,7 @@ def carers_allowance_pool(
     pool_draws: np.ndarray,
     min_hours: float,
     pool_strata: np.ndarray | None = None,
+    pool_identities: np.ndarray | None = None,
 ) -> UKCarersAllowancePool:
     """The carers whom the allowance can pay for the care they give."""
 
@@ -321,6 +325,8 @@ def carers_allowance_pool(
     )
     draws = np.asarray(pool_draws, dtype=np.float64)
     if pool_strata is not None:
+        if pool_identities is None:
+            raise ValueError("Balanced pool draws need the carers' identities.")
         # Only the other carers who report no allowance can join the pool's
         # eligible part, so the balance is struck over them.
         drawable = other & ~np.asarray(reported, dtype=bool)
@@ -330,7 +336,11 @@ def carers_allowance_pool(
             drawable_strata,
             draws[drawable],
             weights[drawable],
-            starts=stratum_starts(drawable_strata, salt=CARERS_ALLOWANCE_POOL_SALT),
+            starts=stratum_starts(
+                drawable_strata,
+                salt=CARERS_ALLOWANCE_POOL_SALT,
+                identities=np.asarray(pool_identities)[drawable],
+            ),
         )
     drawn = draws < (share or 0.0)
     pool = (in_household & disabled_member) | (other & drawn)
@@ -339,17 +349,34 @@ def carers_allowance_pool(
     )
 
 
-def stratum_starts(strata: np.ndarray, *, salt: str) -> np.ndarray:
-    """Each record's stratum start: one identity-keyed uniform per stratum code.
+def stratum_starts(
+    strata: np.ndarray, *, salt: str, identities: np.ndarray
+) -> np.ndarray:
+    """Each record's stratum start: one identity-keyed uniform per stratum.
 
-    Keyed on the stratum code under the draw's salt, so a rebuild rotates each
-    stratum the same way, as the records' own draws are keyed on the person.
+    Keyed on the stratum code and a digest of its members' sorted identities,
+    under the draw's salt. A rebuild of the same people rotates each stratum
+    the same way whatever the row order, as the records' own draws are keyed
+    on the person, while a stratum of other people starts elsewhere: a carer
+    alone in a stratum claims with probability equal to the rate over
+    identities, in any build or survey vintage (the re-review of
+    microcosm#1420, G). Keyed on the code alone, a one-record stratum's
+    outcome was fixed per code in every build.
     """
 
     codes = np.asarray(strata)
+    members = integer_record_keys(identities, label="Carer's Allowance identities")
+    if codes.shape != members.shape:
+        raise ValueError("Stratum starts need one identity per record.")
     unique = np.unique(codes)
+    keys = []
+    for code in unique:
+        digest = hashlib.blake2b(digest_size=16)
+        for member in np.sort(members[codes == code]):
+            digest.update(f"{int(member)},".encode())
+        keys.append(f"{code}:{digest.hexdigest()}")
     starts = stable_identity_uniforms(
-        unique, seed=CARERS_ALLOWANCE_TAKE_UP_SEED, salt=f"{salt}:stratum_start"
+        keys, seed=CARERS_ALLOWANCE_TAKE_UP_SEED, salt=f"{salt}:stratum_start"
     )
     return starts[np.searchsorted(unique, codes)]
 
@@ -645,6 +672,7 @@ def redraw_carers_allowance_take_up(
         ),
         min_hours=resolved.min_hours,
         pool_strata=pool_strata,
+        pool_identities=person["person_id"].to_numpy(),
     )
     eligible = carers_allowance_eligible(
         pool=pool.pool,
@@ -664,7 +692,9 @@ def redraw_carers_allowance_take_up(
         draws[eligible],
         weights[eligible],
         starts=stratum_starts(
-            take_up_strata[eligible], salt=CARERS_ALLOWANCE_TAKE_UP_OUTPUT
+            take_up_strata[eligible],
+            salt=CARERS_ALLOWANCE_TAKE_UP_OUTPUT,
+            identities=person["person_id"].to_numpy()[eligible],
         ),
     )
     drawn = eligible & (positions < rate)

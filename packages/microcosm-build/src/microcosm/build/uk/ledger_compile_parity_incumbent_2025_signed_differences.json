@@ -1923,245 +1923,245 @@
    "ledger_value": 15500.0,
    "name": "hmrc.itl.additional_rate_taxpayers@E12000001",
    "period": 2025,
-   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income rows by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest rows moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income amounts by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest amounts moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095), with the savings-interest counts by band grown by HMRC's projected taxpayers in the same Table 2.5 band; the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
    "ledger_value": 63250.0,
    "name": "hmrc.itl.additional_rate_taxpayers@E12000002",
    "period": 2025,
-   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income rows by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest rows moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income amounts by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest amounts moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095), with the savings-interest counts by band grown by HMRC's projected taxpayers in the same Table 2.5 band; the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
    "ledger_value": 41000.0,
    "name": "hmrc.itl.additional_rate_taxpayers@E12000003",
    "period": 2025,
-   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income rows by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest rows moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income amounts by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest amounts moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095), with the savings-interest counts by band grown by HMRC's projected taxpayers in the same Table 2.5 band; the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
    "ledger_value": 43750.0,
    "name": "hmrc.itl.additional_rate_taxpayers@E12000004",
    "period": 2025,
-   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income rows by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest rows moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income amounts by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest amounts moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095), with the savings-interest counts by band grown by HMRC's projected taxpayers in the same Table 2.5 band; the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
    "ledger_value": 48750.0,
    "name": "hmrc.itl.additional_rate_taxpayers@E12000005",
    "period": 2025,
-   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income rows by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest rows moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income amounts by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest amounts moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095), with the savings-interest counts by band grown by HMRC's projected taxpayers in the same Table 2.5 band; the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
    "ledger_value": 122250.0,
    "name": "hmrc.itl.additional_rate_taxpayers@E12000006",
    "period": 2025,
-   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income rows by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest rows moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income amounts by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest amounts moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095), with the savings-interest counts by band grown by HMRC's projected taxpayers in the same Table 2.5 band; the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
    "ledger_value": 345500.0,
    "name": "hmrc.itl.additional_rate_taxpayers@E12000007",
    "period": 2025,
-   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income rows by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest rows moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income amounts by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest amounts moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095), with the savings-interest counts by band grown by HMRC's projected taxpayers in the same Table 2.5 band; the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
    "ledger_value": 232250.0,
    "name": "hmrc.itl.additional_rate_taxpayers@E12000008",
    "period": 2025,
-   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income rows by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest rows moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income amounts by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest amounts moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095), with the savings-interest counts by band grown by HMRC's projected taxpayers in the same Table 2.5 band; the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
    "ledger_value": 62750.0,
    "name": "hmrc.itl.additional_rate_taxpayers@E12000009",
    "period": 2025,
-   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income rows by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest rows moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income amounts by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest amounts moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095), with the savings-interest counts by band grown by HMRC's projected taxpayers in the same Table 2.5 band; the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
    "ledger_value": 10750.0,
    "name": "hmrc.itl.additional_rate_taxpayers@N92000002",
    "period": 2025,
-   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income rows by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest rows moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income amounts by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest amounts moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095), with the savings-interest counts by band grown by HMRC's projected taxpayers in the same Table 2.5 band; the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
    "ledger_value": 184500.0,
    "name": "hmrc.itl.additional_rate_taxpayers@S92000003",
    "period": 2025,
-   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income rows by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest rows moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income amounts by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest amounts moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095), with the savings-interest counts by band grown by HMRC's projected taxpayers in the same Table 2.5 band; the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
    "ledger_value": 17500.0,
    "name": "hmrc.itl.additional_rate_taxpayers@W92000004",
    "period": 2025,
-   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income rows by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest rows moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income amounts by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest amounts moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095), with the savings-interest counts by band grown by HMRC's projected taxpayers in the same Table 2.5 band; the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
    "ledger_value": 197000.0,
    "name": "hmrc.itl.higher_rate_taxpayers@E12000001",
    "period": 2025,
-   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income rows by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest rows moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income amounts by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest amounts moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095), with the savings-interest counts by band grown by HMRC's projected taxpayers in the same Table 2.5 band; the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
    "ledger_value": 645500.0,
    "name": "hmrc.itl.higher_rate_taxpayers@E12000002",
    "period": 2025,
-   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income rows by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest rows moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income amounts by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest amounts moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095), with the savings-interest counts by band grown by HMRC's projected taxpayers in the same Table 2.5 band; the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
    "ledger_value": 434500.0,
    "name": "hmrc.itl.higher_rate_taxpayers@E12000003",
    "period": 2025,
-   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income rows by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest rows moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income amounts by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest amounts moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095), with the savings-interest counts by band grown by HMRC's projected taxpayers in the same Table 2.5 band; the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
    "ledger_value": 436750.0,
    "name": "hmrc.itl.higher_rate_taxpayers@E12000004",
    "period": 2025,
-   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income rows by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest rows moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income amounts by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest amounts moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095), with the savings-interest counts by band grown by HMRC's projected taxpayers in the same Table 2.5 band; the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
    "ledger_value": 518500.0,
    "name": "hmrc.itl.higher_rate_taxpayers@E12000005",
    "period": 2025,
-   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income rows by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest rows moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income amounts by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest amounts moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095), with the savings-interest counts by band grown by HMRC's projected taxpayers in the same Table 2.5 band; the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
    "ledger_value": 766000.0,
    "name": "hmrc.itl.higher_rate_taxpayers@E12000006",
    "period": 2025,
-   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income rows by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest rows moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income amounts by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest amounts moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095), with the savings-interest counts by band grown by HMRC's projected taxpayers in the same Table 2.5 band; the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
    "ledger_value": 1305000.0,
    "name": "hmrc.itl.higher_rate_taxpayers@E12000007",
    "period": 2025,
-   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income rows by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest rows moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income amounts by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest amounts moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095), with the savings-interest counts by band grown by HMRC's projected taxpayers in the same Table 2.5 band; the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
    "ledger_value": 1255000.0,
    "name": "hmrc.itl.higher_rate_taxpayers@E12000008",
    "period": 2025,
-   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income rows by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest rows moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income amounts by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest amounts moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095), with the savings-interest counts by band grown by HMRC's projected taxpayers in the same Table 2.5 band; the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
    "ledger_value": 574250.0,
    "name": "hmrc.itl.higher_rate_taxpayers@E12000009",
    "period": 2025,
-   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income rows by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest rows moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income amounts by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest amounts moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095), with the savings-interest counts by band grown by HMRC's projected taxpayers in the same Table 2.5 band; the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
    "ledger_value": 121500.0,
    "name": "hmrc.itl.higher_rate_taxpayers@N92000002",
    "period": 2025,
-   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income rows by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest rows moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income amounts by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest amounts moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095), with the savings-interest counts by band grown by HMRC's projected taxpayers in the same Table 2.5 band; the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
    "ledger_value": 593250.0,
    "name": "hmrc.itl.higher_rate_taxpayers@S92000003",
    "period": 2025,
-   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income rows by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest rows moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income amounts by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest amounts moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095), with the savings-interest counts by band grown by HMRC's projected taxpayers in the same Table 2.5 band; the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
    "ledger_value": 238750.0,
    "name": "hmrc.itl.higher_rate_taxpayers@W92000004",
    "period": 2025,
-   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income rows by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest rows moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income amounts by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest amounts moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095), with the savings-interest counts by band grown by HMRC's projected taxpayers in the same Table 2.5 band; the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
    "ledger_value": 11550000000.0,
    "name": "hmrc.itl.income_tax_by_total_income_band.band_1000000_2000000",
    "period": 2025,
-   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income rows by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest rows moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income amounts by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest amounts moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095), with the savings-interest counts by band grown by HMRC's projected taxpayers in the same Table 2.5 band; the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
    "ledger_value": 38000000000.0,
    "name": "hmrc.itl.income_tax_by_total_income_band.band_100000_150000",
    "period": 2025,
-   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income rows by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest rows moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income amounts by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest amounts moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095), with the savings-interest counts by band grown by HMRC's projected taxpayers in the same Table 2.5 band; the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
    "ledger_value": 650750000.0,
    "name": "hmrc.itl.income_tax_by_total_income_band.band_12570_15000",
    "period": 2025,
-   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income rows by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest rows moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income amounts by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest amounts moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095), with the savings-interest counts by band grown by HMRC's projected taxpayers in the same Table 2.5 band; the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
    "ledger_value": 20000000000.0,
    "name": "hmrc.itl.income_tax_by_total_income_band.band_150000_200000",
    "period": 2025,
-   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income rows by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest rows moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income amounts by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest amounts moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095), with the savings-interest counts by band grown by HMRC's projected taxpayers in the same Table 2.5 band; the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
    "ledger_value": 4532500000.0,
    "name": "hmrc.itl.income_tax_by_total_income_band.band_15000_20000",
    "period": 2025,
-   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income rows by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest rows moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income amounts by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest amounts moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095), with the savings-interest counts by band grown by HMRC's projected taxpayers in the same Table 2.5 band; the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
    "ledger_value": 21800000000.0,
    "name": "hmrc.itl.income_tax_by_total_income_band.band_2000000_plus",
    "period": 2025,
-   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income rows by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest rows moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income amounts by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest amounts moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095), with the savings-interest counts by band grown by HMRC's projected taxpayers in the same Table 2.5 band; the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
    "ledger_value": 41075000000.0,
    "name": "hmrc.itl.income_tax_by_total_income_band.band_200000_500000",
    "period": 2025,
-   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income rows by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest rows moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income amounts by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest amounts moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095), with the savings-interest counts by band grown by HMRC's projected taxpayers in the same Table 2.5 band; the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
    "ledger_value": 23025000000.0,
    "name": "hmrc.itl.income_tax_by_total_income_band.band_20000_30000",
    "period": 2025,
-   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income rows by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest rows moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income amounts by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest amounts moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095), with the savings-interest counts by band grown by HMRC's projected taxpayers in the same Table 2.5 band; the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
    "ledger_value": 57925000000.0,
    "name": "hmrc.itl.income_tax_by_total_income_band.band_30000_50000",
    "period": 2025,
-   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income rows by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest rows moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income amounts by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest amounts moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095), with the savings-interest counts by band grown by HMRC's projected taxpayers in the same Table 2.5 band; the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
    "ledger_value": 18100000000.0,
    "name": "hmrc.itl.income_tax_by_total_income_band.band_500000_1000000",
    "period": 2025,
-   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income rows by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest rows moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income amounts by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest amounts moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095), with the savings-interest counts by band grown by HMRC's projected taxpayers in the same Table 2.5 band; the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
    "ledger_value": 86025000000.0,
    "name": "hmrc.itl.income_tax_by_total_income_band.band_50000_100000",
    "period": 2025,
-   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income rows by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest rows moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income amounts by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest amounts moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095), with the savings-interest counts by band grown by HMRC's projected taxpayers in the same Table 2.5 band; the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
@@ -2357,154 +2357,154 @@
    "ledger_value": 20750.0,
    "name": "hmrc.itl.taxpayers_by_total_income_band.band_1000000_2000000",
    "period": 2025,
-   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income rows by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest rows moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income amounts by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest amounts moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095), with the savings-interest counts by band grown by HMRC's projected taxpayers in the same Table 2.5 band; the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
    "ledger_value": 1092500.0,
    "name": "hmrc.itl.taxpayers_by_total_income_band.band_100000_150000",
    "period": 2025,
-   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income rows by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest rows moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income amounts by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest amounts moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095), with the savings-interest counts by band grown by HMRC's projected taxpayers in the same Table 2.5 band; the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
    "ledger_value": 2972500.0,
    "name": "hmrc.itl.taxpayers_by_total_income_band.band_12570_15000",
    "period": 2025,
-   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income rows by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest rows moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income amounts by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest amounts moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095), with the savings-interest counts by band grown by HMRC's projected taxpayers in the same Table 2.5 band; the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
    "ledger_value": 342750.0,
    "name": "hmrc.itl.taxpayers_by_total_income_band.band_150000_200000",
    "period": 2025,
-   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income rows by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest rows moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income amounts by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest amounts moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095), with the savings-interest counts by band grown by HMRC's projected taxpayers in the same Table 2.5 band; the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
    "ledger_value": 5412500.0,
    "name": "hmrc.itl.taxpayers_by_total_income_band.band_15000_20000",
    "period": 2025,
-   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income rows by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest rows moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income amounts by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest amounts moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095), with the savings-interest counts by band grown by HMRC's projected taxpayers in the same Table 2.5 band; the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
    "ledger_value": 10750.0,
    "name": "hmrc.itl.taxpayers_by_total_income_band.band_2000000_plus",
    "period": 2025,
-   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income rows by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest rows moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income amounts by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest amounts moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095), with the savings-interest counts by band grown by HMRC's projected taxpayers in the same Table 2.5 band; the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
    "ledger_value": 372500.0,
    "name": "hmrc.itl.taxpayers_by_total_income_band.band_200000_500000",
    "period": 2025,
-   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income rows by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest rows moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income amounts by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest amounts moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095), with the savings-interest counts by band grown by HMRC's projected taxpayers in the same Table 2.5 band; the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
    "ledger_value": 10225000.0,
    "name": "hmrc.itl.taxpayers_by_total_income_band.band_20000_30000",
    "period": 2025,
-   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income rows by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest rows moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income amounts by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest amounts moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095), with the savings-interest counts by band grown by HMRC's projected taxpayers in the same Table 2.5 band; the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
    "ledger_value": 12125000.0,
    "name": "hmrc.itl.taxpayers_by_total_income_band.band_30000_50000",
    "period": 2025,
-   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income rows by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest rows moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income amounts by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest amounts moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095), with the savings-interest counts by band grown by HMRC's projected taxpayers in the same Table 2.5 band; the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
    "ledger_value": 65500.0,
    "name": "hmrc.itl.taxpayers_by_total_income_band.band_500000_1000000",
    "period": 2025,
-   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income rows by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest rows moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income amounts by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest amounts moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095), with the savings-interest counts by band grown by HMRC's projected taxpayers in the same Table 2.5 band; the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
    "ledger_value": 6950000.0,
    "name": "hmrc.itl.taxpayers_by_total_income_band.band_50000_100000",
    "period": 2025,
-   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income rows by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest rows moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income amounts by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest amounts moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095), with the savings-interest counts by band grown by HMRC's projected taxpayers in the same Table 2.5 band; the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
    "ledger_value": 28425000000.0,
    "name": "hmrc.itl.total_income_by_total_income_band.band_1000000_2000000",
    "period": 2025,
-   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income rows by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest rows moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income amounts by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest amounts moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095), with the savings-interest counts by band grown by HMRC's projected taxpayers in the same Table 2.5 band; the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
    "ledger_value": 129750000000.0,
    "name": "hmrc.itl.total_income_by_total_income_band.band_100000_150000",
    "period": 2025,
-   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income rows by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest rows moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income amounts by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest amounts moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095), with the savings-interest counts by band grown by HMRC's projected taxpayers in the same Table 2.5 band; the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
    "ledger_value": 40950000000.0,
    "name": "hmrc.itl.total_income_by_total_income_band.band_12570_15000",
    "period": 2025,
-   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income rows by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest rows moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income amounts by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest amounts moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095), with the savings-interest counts by band grown by HMRC's projected taxpayers in the same Table 2.5 band; the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
    "ledger_value": 58525000000.0,
    "name": "hmrc.itl.total_income_by_total_income_band.band_150000_200000",
    "period": 2025,
-   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income rows by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest rows moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income amounts by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest amounts moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095), with the savings-interest counts by band grown by HMRC's projected taxpayers in the same Table 2.5 band; the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
    "ledger_value": 94200000000.0,
    "name": "hmrc.itl.total_income_by_total_income_band.band_15000_20000",
    "period": 2025,
-   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income rows by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest rows moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income amounts by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest amounts moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095), with the savings-interest counts by band grown by HMRC's projected taxpayers in the same Table 2.5 band; the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
    "ledger_value": 55175000000.0,
    "name": "hmrc.itl.total_income_by_total_income_band.band_2000000_plus",
    "period": 2025,
-   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income rows by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest rows moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income amounts by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest amounts moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095), with the savings-interest counts by band grown by HMRC's projected taxpayers in the same Table 2.5 band; the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
    "ledger_value": 108250000000.0,
    "name": "hmrc.itl.total_income_by_total_income_band.band_200000_500000",
    "period": 2025,
-   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income rows by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest rows moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income amounts by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest amounts moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095), with the savings-interest counts by band grown by HMRC's projected taxpayers in the same Table 2.5 band; the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
    "ledger_value": 253750000000.0,
    "name": "hmrc.itl.total_income_by_total_income_band.band_20000_30000",
    "period": 2025,
-   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income rows by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest rows moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income amounts by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest amounts moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095), with the savings-interest counts by band grown by HMRC's projected taxpayers in the same Table 2.5 band; the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
    "ledger_value": 465500000000.0,
    "name": "hmrc.itl.total_income_by_total_income_band.band_30000_50000",
    "period": 2025,
-   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income rows by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest rows moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income amounts by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest amounts moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095), with the savings-interest counts by band grown by HMRC's projected taxpayers in the same Table 2.5 band; the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
    "ledger_value": 44350000000.0,
    "name": "hmrc.itl.total_income_by_total_income_band.band_500000_1000000",
    "period": 2025,
-   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income rows by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest rows moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income amounts by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest amounts moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095), with the savings-interest counts by band grown by HMRC's projected taxpayers in the same Table 2.5 band; the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
    "ledger_value": 455500000000.0,
    "name": "hmrc.itl.total_income_by_total_income_band.band_50000_100000",
    "period": 2025,
-   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income rows by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest rows moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income amounts by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest amounts moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095), with the savings-interest counts by band grown by HMRC's projected taxpayers in the same Table 2.5 band; the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
@@ -2532,273 +2532,273 @@
    "ledger_value": 617065102.3673128,
    "name": "hmrc.spi.other_investment_income.amount_by_total_income_band.band_100000",
    "period": 2025,
-   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income rows by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest rows moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income amounts by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest amounts moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095), with the savings-interest counts by band grown by HMRC's projected taxpayers in the same Table 2.5 band; the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
    "ledger_value": 2427574798.3241534,
    "name": "hmrc.spi.other_investment_income.amount_by_total_income_band.band_1000000",
    "period": 2025,
-   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income rows by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest rows moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income amounts by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest amounts moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095), with the savings-interest counts by band grown by HMRC's projected taxpayers in the same Table 2.5 band; the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
    "ledger_value": 8137122.229019509,
    "name": "hmrc.spi.other_investment_income.amount_by_total_income_band.band_12570",
    "period": 2025,
-   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income rows by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest rows moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income amounts by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest amounts moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095), with the savings-interest counts by band grown by HMRC's projected taxpayers in the same Table 2.5 band; the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
    "ledger_value": 44754172.2596073,
    "name": "hmrc.spi.other_investment_income.amount_by_total_income_band.band_15000",
    "period": 2025,
-   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income rows by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest rows moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income amounts by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest amounts moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095), with the savings-interest counts by band grown by HMRC's projected taxpayers in the same Table 2.5 band; the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
    "ledger_value": 436692226.29071367,
    "name": "hmrc.spi.other_investment_income.amount_by_total_income_band.band_150000",
    "period": 2025,
-   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income rows by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest rows moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income amounts by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest amounts moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095), with the savings-interest counts by band grown by HMRC's projected taxpayers in the same Table 2.5 band; the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
    "ledger_value": 212921364.99267715,
    "name": "hmrc.spi.other_investment_income.amount_by_total_income_band.band_20000",
    "period": 2025,
-   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income rows by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest rows moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income amounts by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest amounts moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095), with the savings-interest counts by band grown by HMRC's projected taxpayers in the same Table 2.5 band; the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
    "ledger_value": 676737332.0467892,
    "name": "hmrc.spi.other_investment_income.amount_by_total_income_band.band_200000",
    "period": 2025,
-   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income rows by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest rows moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income amounts by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest amounts moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095), with the savings-interest counts by band grown by HMRC's projected taxpayers in the same Table 2.5 band; the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
    "ledger_value": 257675537.25228444,
    "name": "hmrc.spi.other_investment_income.amount_by_total_income_band.band_30000",
    "period": 2025,
-   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income rows by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest rows moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income amounts by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest amounts moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095), with the savings-interest counts by band grown by HMRC's projected taxpayers in the same Table 2.5 band; the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
    "ledger_value": 870672078.5050875,
    "name": "hmrc.spi.other_investment_income.amount_by_total_income_band.band_300000",
    "period": 2025,
-   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income rows by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest rows moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income amounts by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest amounts moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095), with the savings-interest counts by band grown by HMRC's projected taxpayers in the same Table 2.5 band; the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
    "ledger_value": 292936400.24470234,
    "name": "hmrc.spi.other_investment_income.amount_by_total_income_band.band_40000",
    "period": 2025,
-   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income rows by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest rows moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income amounts by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest amounts moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095), with the savings-interest counts by band grown by HMRC's projected taxpayers in the same Table 2.5 band; the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
    "ledger_value": 511282513.3900591,
    "name": "hmrc.spi.other_investment_income.amount_by_total_income_band.band_50000",
    "period": 2025,
-   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income rows by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest rows moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income amounts by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest amounts moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095), with the savings-interest counts by band grown by HMRC's projected taxpayers in the same Table 2.5 band; the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
    "ledger_value": 1009003156.3984191,
    "name": "hmrc.spi.other_investment_income.amount_by_total_income_band.band_500000",
    "period": 2025,
-   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income rows by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest rows moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income amounts by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest amounts moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095), with the savings-interest counts by band grown by HMRC's projected taxpayers in the same Table 2.5 band; the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
    "ledger_value": 562817620.8405161,
    "name": "hmrc.spi.other_investment_income.amount_by_total_income_band.band_70000",
    "period": 2025,
-   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income rows by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest rows moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income amounts by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest amounts moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095), with the savings-interest counts by band grown by HMRC's projected taxpayers in the same Table 2.5 band; the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
    "ledger_value": 1708795668.094097,
    "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_100000",
    "period": 2025,
-   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income rows by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest rows moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income amounts by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest amounts moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095), with the savings-interest counts by band grown by HMRC's projected taxpayers in the same Table 2.5 band; the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
    "ledger_value": 1681671927.3306985,
    "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_1000000",
    "period": 2025,
-   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income rows by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest rows moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income amounts by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest amounts moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095), with the savings-interest counts by band grown by HMRC's projected taxpayers in the same Table 2.5 band; the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
    "ledger_value": 371595248.45855755,
    "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_12570",
    "period": 2025,
-   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income rows by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest rows moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income amounts by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest amounts moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095), with the savings-interest counts by band grown by HMRC's projected taxpayers in the same Table 2.5 band; the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
    "ledger_value": 1857976242.2927878,
    "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_15000",
    "period": 2025,
-   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income rows by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest rows moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income amounts by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest amounts moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095), with the savings-interest counts by band grown by HMRC's projected taxpayers in the same Table 2.5 band; the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
    "ledger_value": 881521574.8104467,
    "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_150000",
    "period": 2025,
-   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income rows by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest rows moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income amounts by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest amounts moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095), with the savings-interest counts by band grown by HMRC's projected taxpayers in the same Table 2.5 band; the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
    "ledger_value": 4244865429.4718437,
    "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_20000",
    "period": 2025,
-   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income rows by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest rows moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income amounts by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest amounts moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095), with the savings-interest counts by band grown by HMRC's projected taxpayers in the same Table 2.5 band; the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
    "ledger_value": 994085098.97855,
    "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_200000",
    "period": 2025,
-   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income rows by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest rows moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income amounts by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest amounts moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095), with the savings-interest counts by band grown by HMRC's projected taxpayers in the same Table 2.5 band; the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
    "ledger_value": 3431153206.569893,
    "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_30000",
    "period": 2025,
-   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income rows by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest rows moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income amounts by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest amounts moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095), with the savings-interest counts by band grown by HMRC's projected taxpayers in the same Table 2.5 band; the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
    "ledger_value": 912713876.688355,
    "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_300000",
    "period": 2025,
-   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income rows by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest rows moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income amounts by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest amounts moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095), with the savings-interest counts by band grown by HMRC's projected taxpayers in the same Table 2.5 band; the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
    "ledger_value": 2536069761.377747,
    "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_40000",
    "period": 2025,
-   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income rows by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest rows moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income amounts by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest amounts moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095), with the savings-interest counts by band grown by HMRC's projected taxpayers in the same Table 2.5 band; the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
    "ledger_value": 3173477669.3176084,
    "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_50000",
    "period": 2025,
-   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income rows by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest rows moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income amounts by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest amounts moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095), with the savings-interest counts by band grown by HMRC's projected taxpayers in the same Table 2.5 band; the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
    "ledger_value": 885590135.9249566,
    "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_500000",
    "period": 2025,
-   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income rows by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest rows moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income amounts by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest amounts moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095), with the savings-interest counts by band grown by HMRC's projected taxpayers in the same Table 2.5 band; the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
    "ledger_value": 2197023001.8352675,
    "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_70000",
    "period": 2025,
-   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income rows by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest rows moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income amounts by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest amounts moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095), with the savings-interest counts by band grown by HMRC's projected taxpayers in the same Table 2.5 band; the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
    "ledger_value": 608465.2619589977,
    "name": "hmrc.spi.savings_interest_income.count_by_total_income_band.band_100000",
    "period": 2025,
-   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income rows by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest rows moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income amounts by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest amounts moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095), with the savings-interest counts by band grown by HMRC's projected taxpayers in the same Table 2.5 band; the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
    "ledger_value": 24500.0,
    "name": "hmrc.spi.savings_interest_income.count_by_total_income_band.band_1000000",
    "period": 2025,
-   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income rows by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest rows moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income amounts by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest amounts moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095), with the savings-interest counts by band grown by HMRC's projected taxpayers in the same Table 2.5 band; the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
    "ledger_value": 1303728.0701754387,
    "name": "hmrc.spi.savings_interest_income.count_by_total_income_band.band_12570",
    "period": 2025,
-   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income rows by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest rows moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income amounts by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest amounts moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095), with the savings-interest counts by band grown by HMRC's projected taxpayers in the same Table 2.5 band; the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
    "ledger_value": 2779656.419529837,
    "name": "hmrc.spi.savings_interest_income.count_by_total_income_band.band_15000",
    "period": 2025,
-   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income rows by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest rows moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income amounts by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest amounts moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095), with the savings-interest counts by band grown by HMRC's projected taxpayers in the same Table 2.5 band; the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
    "ledger_value": 170209.1836734694,
    "name": "hmrc.spi.savings_interest_income.count_by_total_income_band.band_150000",
    "period": 2025,
-   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income rows by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest rows moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income amounts by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest amounts moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095), with the savings-interest counts by band grown by HMRC's projected taxpayers in the same Table 2.5 band; the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
    "ledger_value": 5262867.647058823,
    "name": "hmrc.spi.savings_interest_income.count_by_total_income_band.band_20000",
    "period": 2025,
-   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income rows by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest rows moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income amounts by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest amounts moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095), with the savings-interest counts by band grown by HMRC's projected taxpayers in the same Table 2.5 band; the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
    "ledger_value": 132950.16077170416,
    "name": "hmrc.spi.savings_interest_income.count_by_total_income_band.band_200000",
    "period": 2025,
-   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income rows by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest rows moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income amounts by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest amounts moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095), with the savings-interest counts by band grown by HMRC's projected taxpayers in the same Table 2.5 band; the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
    "ledger_value": 4142708.333333333,
    "name": "hmrc.spi.savings_interest_income.count_by_total_income_band.band_30000",
    "period": 2025,
-   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income rows by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest rows moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income amounts by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest amounts moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095), with the savings-interest counts by band grown by HMRC's projected taxpayers in the same Table 2.5 band; the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
    "ledger_value": 81446.94533762058,
    "name": "hmrc.spi.savings_interest_income.count_by_total_income_band.band_300000",
    "period": 2025,
-   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income rows by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest rows moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income amounts by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest amounts moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095), with the savings-interest counts by band grown by HMRC's projected taxpayers in the same Table 2.5 band; the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
    "ledger_value": 2660763.8888888885,
    "name": "hmrc.spi.savings_interest_income.count_by_total_income_band.band_40000",
    "period": 2025,
-   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income rows by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest rows moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income amounts by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest amounts moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095), with the savings-interest counts by band grown by HMRC's projected taxpayers in the same Table 2.5 band; the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
    "ledger_value": 2714273.204903678,
    "name": "hmrc.spi.savings_interest_income.count_by_total_income_band.band_50000",
    "period": 2025,
-   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income rows by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest rows moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income amounts by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest amounts moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095), with the savings-interest counts by band grown by HMRC's projected taxpayers in the same Table 2.5 band; the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
    "ledger_value": 46092.59259259259,
    "name": "hmrc.spi.savings_interest_income.count_by_total_income_band.band_500000",
    "period": 2025,
-   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income rows by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest rows moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income amounts by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest amounts moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095), with the savings-interest counts by band grown by HMRC's projected taxpayers in the same Table 2.5 band; the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
    "ledger_value": 1302364.2732049038,
    "name": "hmrc.spi.savings_interest_income.count_by_total_income_band.band_70000",
    "period": 2025,
-   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income rows by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest rows moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 Table 3.7 savings-interest and other-income amounts by band, grown to the calibration year by the OBR's savings income forecast (October 2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until then the interest amounts moved to the dataset's year by the household interest index and on by GDP per head, microcosm#1095), with the savings-interest counts by band grown by HMRC's projected taxpayers in the same Table 2.5 band; the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",

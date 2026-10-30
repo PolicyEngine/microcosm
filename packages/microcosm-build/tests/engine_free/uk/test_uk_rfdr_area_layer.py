@@ -271,6 +271,10 @@ def test_the_committed_layer_was_built_from_the_registered_nspl_zip() -> None:
         pin["package_id"],
         pin["filename"],
     )
+    # Both tools read the same member of the zip (the re-review of
+    # microcosm#1420, I).
+    stock_tool = _load_tool("tools/build_uk_high_value_home_stock.py")
+    assert pin["member"] == stock_tool.NSPL_DATA_MEMBER
     registered = provenance["nspl_registration"]["zip_sha256"]
     assert registered == stock_file["sha256"] == pin["sha256"]
     assert provenance["nspl_registration"]["manifest"] == (
@@ -301,9 +305,9 @@ def test_the_committed_layer_flags_the_scheme_s_output_areas() -> None:
     assert "IV45 8YD" in definition["excluded_units"]
 
 
-def _load_tool():
-    path = _TEST_PATHS.repository / "tools/build_uk_rfdr_area_layer.py"
-    spec = importlib.util.spec_from_file_location("build_uk_rfdr_area_layer", path)
+def _load_tool(relative: str = "tools/build_uk_rfdr_area_layer.py"):
+    path = _TEST_PATHS.repository / relative
+    spec = importlib.util.spec_from_file_location(Path(relative).stem, path)
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
     spec.loader.exec_module(module)
@@ -387,3 +391,25 @@ def test_the_tool_refuses_a_lookup_without_the_output_area_column(tmp_path) -> N
             ]
         )
     assert not (tmp_path / "layer.json").exists()
+
+
+def test_check_mode_reports_a_missing_layer_as_a_difference(tmp_path) -> None:
+    # The re-review of microcosm#1420, 15: --check against a file that is not
+    # there reports a difference, not a FileNotFoundError.
+    lookup = tmp_path / "lookup.parquet"
+    pd.DataFrame({"postcode": ["HS1 2AA"], "oa21cd": ["S00000001"]}).to_parquet(lookup)
+    code = _load_tool().main(
+        [
+            "--check",
+            "--postcode-oa-parquet",
+            str(lookup),
+            "--nspl-manifest",
+            str(_manifest(tmp_path)),
+            "--out",
+            str(tmp_path / "missing-layer.json"),
+            "--provenance-json",
+            str(tmp_path / "missing-provenance.json"),
+        ]
+    )
+    assert code == 1
+    assert not (tmp_path / "missing-layer.json").exists()

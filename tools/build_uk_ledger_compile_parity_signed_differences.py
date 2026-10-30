@@ -84,12 +84,14 @@ _INCOME_ANCHOR_LEDGER_ONLY_RATIONALE = (
     "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax "
     "liabilities Table 2.5 taxpayers, total income and tax by band as the "
     "calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI "
-    "2023-24 Table 3.7 savings-interest and other-income rows by band, grown "
+    "2023-24 Table 3.7 savings-interest and other-income amounts by band, grown "
     "to the calibration year by the OBR's savings income forecast (October "
     "2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until "
-    "then the interest rows moved to the dataset's year by the household "
-    "interest index and on by GDP per head, microcosm#1095); the incumbent "
-    "registry binds neither (chronicle#282)."
+    "then the interest amounts moved to the dataset's year by the household "
+    "interest index and on by GDP per head, microcosm#1095), with the "
+    "savings-interest counts by band grown by HMRC's projected taxpayers in "
+    "the same Table 2.5 band; the incumbent registry binds neither "
+    "(chronicle#282)."
 )
 
 _SPI_REGION_LEDGER_ONLY_RATIONALE = (
