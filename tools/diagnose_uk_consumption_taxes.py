@@ -11,10 +11,11 @@ clearances and bases the stage levels the excise inputs to at prior weights
 (microcosm#1359), measured at their own FY2024-25 period. The tool measures
 each row whether the measure-exclusion register holds it out of the
 objective, as it holds the gas row while ONS 04.5.2 counts bottled gas
-(microcosm#1095), or the national binds it, as it binds the household
-road-fuel row (ONS 07.2.2) in place of the cars receipts, the ONS electricity
-row and, since calibration moved the gambling bases, the betting and gaming
-receipts (microcosm#1418). It reports each row's
+(microcosm#1095) and the excise rows, the betting and gaming receipts among
+them while the solve cannot measure their 2024 duty (microcosm#1420), or the
+national binds it, as it binds the household road-fuel row (ONS 07.2.2) in
+place of the cars receipts and the ONS electricity row (microcosm#1418). It
+reports each row's
 estimate on any H5 the engine loads, against the value the run's contract
 registry declares, beside the household fuel and energy composition the rows
 used to pull (gas-connected share, fuel-car households with no fuel,

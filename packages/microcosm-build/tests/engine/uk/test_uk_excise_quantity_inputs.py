@@ -167,7 +167,8 @@ def test_the_engine_charges_gambling_duty_in_proportion_to_the_bases(
 #: by the strengths, reliefs and products the engine leaves out, as their
 #: measure exclusions state; betting and gaming at them by construction, at
 #: prior weights, but for Machine Games Duty's liabilities over its cash
-#: receipts (the national binds that row since microcosm#1418).
+#: receipts (held out while the solve cannot measure its 2024 duty,
+#: microcosm#1420).
 OBR_DUTY_GAPS = {
     "obr.beer_and_cider_duties": 0.081,
     "obr.wine_duties": 0.026,

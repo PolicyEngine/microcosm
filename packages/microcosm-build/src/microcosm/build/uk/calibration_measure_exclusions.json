@@ -370,6 +370,15 @@
       "expires_on": "2027-01-08"
     },
     {
+      "name": "obr.betting_and_gaming_duties",
+      "reason": "An identity, not a check: the lcfs_consumption stage levels each gambling base to HMRC's FY2024-25 cash receipts for its duty, or Machine Games Duty's liabilities for its band, over the engine's own rate (Gaming Duty's over the engine's effective-rate proxy, itself those receipts over the Gambling Commission's casino yield), at prior weights (microcosm#1359), so the engine charges the receipts back by construction: £3.619bn against OBR's £3.616bn in cash (+0.1 percent), the gap being Machine Games Duty's £612.3m of liabilities against its £609.2m of receipts. Only weight drift can move it, so the row is measured for drift and is no evidence that the gambling inputs are right: their test is who carries them, by income decile. Binding it would move weight onto the households that gamble to hold a level the build already sets. Measured at its FY2024-25 period on every evaluation with tools/diagnose_uk_consumption_taxes.py; rebind if the bases come from published stakes or yield rather than receipts.",
+      "tracking": "microcosm#1359",
+      "approved_by": "juaristi22",
+      "adjudication": "María's ruling of 2026-10-23 on the microcosm#1359 plan (decision 3): the OBR alcohol and tobacco rows are compared at FY2024-25, the base year, as measured diagnostics, with the exclusions expiring beside the VAT and road-fuel ones; the betting and gaming row is the plan's Group C row. Receipts: experiments/1359-excise-quantities-receipts.md. Restored on 2026-10-30 in microcosm#1420, pending María's decision: her ruling of 2026-10-28 to bind the row cannot take effect yet. The national solve measures a declared period only on a stored column or a CGT dated measure, and this row's value is the engine's 2024 duty, so the first PR C national refused at the national problem. Binding it needs a dated duty measure, or bases bound at the frame's period. Until then the row is measured on every evaluation, beside the other excise rows.",
+      "approved_on": "2026-10-23",
+      "expires_on": "2027-01-08"
+    },
+    {
       "name": "obr.vat",
       "reason": "Engine-factor circularity, not a weight question: policyengine-uk's gov.simulation.vat.survey_consumption_coverage (0.67 since policyengine-uk#2187, released in 2.135.7) was derived on the certified Microcosm UK 2024-25 national release (5c6b3f68) so that its VAT meets OBR's 2024-25 receipts, so binding obr.vat mostly pulls the consumption weights back toward that release, after the next policyengine-uk bump changes the consumption base (the heating fuels and the division levelling, microcosm#1278). OBR's receipts also include VAT on private school fees from 1 January 2025, which policyengine-uk charges as private_school_vat from 2.157.1 (policyengine-uk#2319); the row measures vat + private_school_vat. Measured on every evaluation as a diagnostic, with tools/diagnose_uk_consumption_taxes.py; rebind when policyengine-uk re-derives the factor on a file that does not bind the row.",
       "tracking": "microcosm#1095",
