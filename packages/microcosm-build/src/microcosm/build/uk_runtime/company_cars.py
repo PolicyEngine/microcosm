@@ -63,6 +63,7 @@ from microcosm.build.uk_runtime.frs_spine import (
     read_pinned_tab,
 )
 from microcosm.build.uk_runtime.hmrc_company_car_statistics import (
+    HMRC_LOW_EMISSION_BAND,
     HMRCCompanyCarStatistics,
     check_company_car_statistics_declaration,
     co2_band_bounds,
@@ -577,7 +578,13 @@ def assign_fuel_types(
     drawn = fuel == ""
     if drawn.any():
         shares = statistics.fuel_type_shares()
-        cumulative = np.cumsum([shares["electric"], shares["petrol"], shares["diesel"]])
+        cumulative = np.cumsum(
+            [
+                shares["fully_electric"],
+                shares["petrol_including_hybrids"],
+                shares["diesel_including_hybrids"],
+            ]
+        )
         names = np.array([ELECTRIC, PETROL, spec.diesel_fuel_type], dtype=object)
         uniforms = _uniforms(ids[drawn], spec.fuel_seed, f"{spec.fuel_salt}:fuel")
         index = np.searchsorted(cumulative / cumulative[-1], uniforms, side="right")
@@ -722,7 +729,7 @@ def draw_co2_emissions(
     weights = np.asarray(weights, dtype=float)
     emits = fuel != ELECTRIC
     shares = statistics.nonzero_co2_shares()
-    low_share = shares["1_50"]
+    low_share = shares[HMRC_LOW_EMISSION_BAND]
     hybrid_mass = float(weights[emits & hybrid].sum())
     other_mass = float(weights[emits & ~hybrid].sum())
     target = low_share * (hybrid_mass + other_mass)
@@ -737,7 +744,7 @@ def draw_co2_emissions(
     position = _uniforms(ids, spec.co2_seed, f"{spec.co2_salt}:g_km")
     co2 = np.zeros(len(fuel), dtype=float)
     co2[low] = 1.0 + np.floor(position[low] * 50.0)
-    above_bands = [band for band in shares if band != "1_50"]
+    above_bands = [band for band in shares if band != HMRC_LOW_EMISSION_BAND]
     above_shares = np.array([shares[band] for band in above_bands], dtype=float)
     cumulative = np.cumsum(above_shares) / above_shares.sum()
     above = emits & ~low

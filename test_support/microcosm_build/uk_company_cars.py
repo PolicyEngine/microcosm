@@ -19,7 +19,9 @@ from microcosm.build.uk_runtime.company_cars import (
 )
 from microcosm.build.uk_runtime.hmrc_company_car_statistics import (
     HMRC_CO2_BAND_IDS,
+    HMRC_COMPANY_CAR_RECORD_SETS,
     HMRCCompanyCarStatistics,
+    load_hmrc_company_car_statistics,
 )
 
 WAS_VEHICLES = tuple(
@@ -36,6 +38,7 @@ COMPANY_CARS_STAGE_OPERATIONS: tuple[dict[str, Any], ...] = (
         "kind": "verify_vendored_fact_resource",
         "artifact_role": "benefits_in_kind_facts",
         "resource": "hmrc_benefits_in_kind_facts.json",
+        "record_sets": list(HMRC_COMPANY_CAR_RECORD_SETS),
         "mapped_build_period": 2024,
     },
     {
@@ -131,22 +134,75 @@ def company_cars_stage_spec(
     )
 
 
-def synthetic_company_car_statistics() -> HMRCCompanyCarStatistics:
-    """Invented 2024-25 margins: half the cars electric, a fifth at 1 to 50 g/km."""
+_PREFIX = "hmrc.benefits_in_kind_july_2026."
 
-    above = {band: 10.0 for band in HMRC_CO2_BAND_IDS if band not in ("zero", "1_50")}
-    above["115_124"] = 40.0
-    above["125_134"] = 30.0
-    return HMRCCompanyCarStatistics(
-        tax_year=2024,
-        co2_band_recipients={"zero": 500.0, "1_50": 200.0, **above},
-        fuel_type_recipients={"electric": 500.0, "petrol": 400.0, "diesel": 100.0},
-        car_recipients=1000.0,
-        car_taxable_value_gbp_m=3000.0,
-        car_income_tax_gbp_m=1100.0,
-        car_nics_gbp_m=400.0,
-        fuel_recipients=40.0,
-        fuel_taxable_value_gbp_m=150.0,
+
+def synthetic_company_car_statistics_payload() -> dict[str, Any]:
+    """Every 2024-25 row the loader reads, as the vendored resource carries them.
+
+    Invented, consistent figures in persons and pounds: 930,000 cars, half of
+    them electric and two fifths of the rest at 1 to 50 g/km.
+    """
+
+    above = {
+        band: 10_000.0
+        for band in HMRC_CO2_BAND_IDS
+        if band not in ("co2_0", "co2_1_to_50")
+    }
+    above["co2_115_to_124"] = 69_000.0
+    above["co2_125_to_134"] = 50_000.0
+    rows: dict[str, float] = {}
+
+    def add(record_set: str, row: str, measure: str, value: float) -> None:
+        rows[f"{_PREFIX}{record_set}.ty2024.{row}.{measure}"] = value
+
+    for band, value in {"co2_0": 465_000.0, "co2_1_to_50": 186_000.0, **above}.items():
+        add("table2a.recipients", band, "recipients", value)
+    for fuel, value in (
+        ("diesel_including_hybrids", 93_000.0),
+        ("petrol_including_hybrids", 372_000.0),
+        ("fully_electric", 465_000.0),
+    ):
+        add("table2c.recipients", fuel, "recipients", value)
+    for row, figures in (
+        ("car", (930_000.0, 3.0e9, 1.1e9, 4.1e8)),
+        ("fuel", (40_000.0, 1.5e8, 6.0e7, 2.0e7)),
+        ("all", (950_000.0, 3.15e9, 1.16e9, 4.3e8)),
+    ):
+        for measure, value in zip(
+            (
+                "recipients",
+                "taxable_value",
+                "income_tax_liability",
+                "class_1a_nic_liability",
+            ),
+            figures,
+            strict=True,
+        ):
+            add(f"table1.{measure}", row, measure, value)
+    for income, recipients, value in (
+        ("income_30000_to_39999", 80_000.0, 2.0e8),
+        ("income_50000_to_74999", 320_000.0, 1.08e9),
+        ("income_200000_plus", 50_000.0, 2.8e8),
+    ):
+        add("table3a.recipients", income, "recipients", recipients)
+        add("table3a.taxable_value", income, "taxable_value", value)
+    for region, recipients in (("E12000007", 150_000.0), ("S92000003", 60_000.0)):
+        add("table4.recipients", region, "recipients", recipients)
+    return {
+        "source_fact_feed": {"source_commit": "synthetic"},
+        "rows": [
+            {"source_record_id": record_id, "value": value}
+            for record_id, value in rows.items()
+        ],
+    }
+
+
+def synthetic_company_car_statistics() -> HMRCCompanyCarStatistics:
+    """The synthetic payload, typed by the loader the stage uses."""
+
+    return load_hmrc_company_car_statistics(
+        payload=synthetic_company_car_statistics_payload(), verify_feed_identity=False
     )
 
 

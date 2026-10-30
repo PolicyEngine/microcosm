@@ -10,7 +10,10 @@ import pytest
 
 from microcosm.build.uk_runtime import company_cars as stage
 from microcosm.build.uk_runtime.hmrc_company_car_statistics import (
+    HMRC_COMPANY_CAR_RECORD_SETS,
+    HMRC_LOW_EMISSION_BAND,
     HMRCCompanyCarStatisticsError,
+    check_company_car_statistics_declaration,
     co2_band_bounds,
     load_hmrc_company_car_statistics,
 )
@@ -20,6 +23,7 @@ from test_support.microcosm_build.uk_company_cars import (
     COMPANY_CARS_STAGE_OPERATIONS,
     company_cars_stage_spec,
     synthetic_company_car_statistics,
+    synthetic_company_car_statistics_payload,
     synthetic_was_company_car_tab,
 )
 
@@ -207,7 +211,7 @@ def test_co2_matches_table_2a_among_cars_that_emit_it(spec, statistics) -> None:
     low = emits & (co2 <= 50)
     share = weights[low].sum() / weights[emits].sum()
     # The non-hybrids' draw meets the share in expectation.
-    target = statistics.nonzero_co2_shares()["1_50"]
+    target = statistics.nonzero_co2_shares()[HMRC_LOW_EMISSION_BAND]
     assert receipt["table_2a_share_1_50"] == target
     assert share == pytest.approx(target, abs=0.01)
     # Hybrids go first: their weight is below the target, so every one is low.
@@ -215,7 +219,7 @@ def test_co2_matches_table_2a_among_cars_that_emit_it(spec, statistics) -> None:
     assert (electric_range[low] == spec.electric_range_miles).all()
     assert (electric_range[~low] == 0).all()
     assert receipt["max_abs_band_share_gap"] < 0.01
-    for band in ("95_104", "170_plus"):
+    for band in ("co2_95_to_104", "co2_170_plus"):
         lowest, _ = co2_band_bounds(band)
         assert (co2[emits & (co2 >= lowest)] >= lowest).all()
 
@@ -482,3 +486,62 @@ def test_the_stage_refuses_a_frame_without_the_carriers(statistics) -> None:
 def test_the_vendored_facts_are_refused_until_the_feed_carries_them() -> None:
     with pytest.raises(HMRCCompanyCarStatisticsError, match="not vendored yet"):
         load_hmrc_company_car_statistics()
+
+
+def test_the_loader_types_chronicle_s_2024_25_rows(statistics) -> None:
+    assert statistics.car_recipients == 930_000.0
+    assert statistics.car_taxable_value_gbp == 3.0e9
+    assert statistics.fuel_class_1a_nics_gbp == 2.0e7
+    assert statistics.fuel_type_shares()["fully_electric"] == pytest.approx(0.5)
+    assert statistics.nonzero_co2_shares()[HMRC_LOW_EMISSION_BAND] == pytest.approx(0.4)
+    assert statistics.income_range_recipients["income_200000_plus"] == 50_000.0
+    assert statistics.region_recipients == {
+        "E12000007": 150_000.0,
+        "S92000003": 60_000.0,
+    }
+    assert statistics.evidence()["source_commit"] == "synthetic"
+
+
+def test_a_cell_the_feed_lacks_is_refused_never_read_as_zero() -> None:
+    payload = synthetic_company_car_statistics_payload()
+    payload["rows"] = [
+        row
+        for row in payload["rows"]
+        if ".table2a." not in row["source_record_id"]
+        or not row["source_record_id"].endswith("co2_165_to_169.recipients")
+    ]
+    with pytest.raises(HMRCCompanyCarStatisticsError, match="co2_165_to_169"):
+        load_hmrc_company_car_statistics(payload=payload, verify_feed_identity=False)
+
+
+def test_tables_that_disagree_beyond_their_rounding_are_refused() -> None:
+    payload = synthetic_company_car_statistics_payload()
+    for row in payload["rows"]:
+        if row["source_record_id"].endswith(
+            "table2c.recipients.ty2024.fully_electric.recipients"
+        ):
+            row["value"] = 400_000.0
+    with pytest.raises(HMRCCompanyCarStatisticsError, match="Table 2C"):
+        load_hmrc_company_car_statistics(payload=payload, verify_feed_identity=False)
+
+
+def test_the_declaration_names_the_2024_25_record_sets() -> None:
+    declared = {
+        "artifact_role": "benefits_in_kind_facts",
+        "resource": "hmrc_benefits_in_kind_facts.json",
+        "record_sets": list(HMRC_COMPANY_CAR_RECORD_SETS),
+        "mapped_build_period": 2024,
+    }
+    check_company_car_statistics_declaration(
+        declared, stage="company_cars", period=2024
+    )
+    with pytest.raises(HMRCCompanyCarStatisticsError, match="record_sets"):
+        check_company_car_statistics_declaration(
+            {**declared, "record_sets": declared["record_sets"][:-1]},
+            stage="company_cars",
+            period=2024,
+        )
+    with pytest.raises(HMRCCompanyCarStatisticsError, match="period"):
+        check_company_car_statistics_declaration(
+            declared, stage="company_cars", period=2025
+        )
