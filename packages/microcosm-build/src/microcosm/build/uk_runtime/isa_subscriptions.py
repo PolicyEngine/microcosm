@@ -1174,6 +1174,13 @@ def scale_to_build_year_amounts(
     up to the limit would empty the range just below it whenever it fell under
     one (review of microcosm#1421). The scaled amounts are capped at the limit,
     pro rata across the two types.
+
+    The line rises only while a person's factor is below ``limit / taper_from``
+    (about 1.11 from GBP 18,000). Above it the scaled ``taper_from`` already
+    passes the limit, so the cap puts everyone above ``limit / factor`` at the
+    limit, exactly as the plain factor would, and the taper does nothing. The
+    totals still rise with each factor, so the bisection holds either way
+    (Vahid's review of microcosm#1421). 2024-25's cash factor is about 0.88.
     """
 
     if not 0 < taper_from < limit:
@@ -1242,6 +1249,8 @@ def scale_to_build_year_amounts(
         "stocks_and_shares_achieved_gbp": achieved[1],
         "held_at_overall_limit_records": rounded_count(int(at_limit.sum())),
         "taper_from_gbp": taper_from,
+        # Above this factor the taper is inactive: the cap alone binds.
+        "taper_bound_factor": limit / taper_from,
         "tapered_records": rounded_count(int(tapered.sum())),
         "at_overall_limit_records": rounded_count(
             int(((scaled_cash + scaled_stocks) >= limit - 1e-6).sum())

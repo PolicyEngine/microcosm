@@ -43,16 +43,20 @@ import re
 import shutil
 import time
 from dataclasses import replace
+from datetime import UTC, date, datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import Mock
 
 import numpy as np
+import pandas as pd
 import pytest
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
+from microcosm.build.reference_profiles import reference_document_sha256
 from microcosm.build.transport import cli as cli_module
 from microcosm.build.transport import compose as compose_module
+from microcosm.build.transport import target_kernels as target_kernels_module
 from microcosm.build.transport.artifact_types import COMPARISON_TYPE
 from microcosm.build.transport.cli import (
     EXPORT_FILENAME,
@@ -70,6 +74,7 @@ from microcosm.build.transport.compose import (
 )
 from microcosm.build.transport.population_kernels import TRANSPORT_CURRENCY
 from microcosm.build.transport.takeup_kernels import GAP_TYPE
+from microcosm.build.transport.target_kernels import CALIBRATION_PREPARE
 from microcosm.build.transport.terminal_kernels import materialize_export
 from microcosm.frame.kernels import SimulateRulesKernel
 from microcosm.graph import (
@@ -80,6 +85,7 @@ from microcosm.graph import (
     Determinism,
     GraphError,
     KernelBase,
+    KernelContext,
     KernelRegistry,
     Node,
     NodeRejectedError,
@@ -94,6 +100,15 @@ from microcosm.graph import (
 from microcosm.graph.canonical import canonical_json
 from microcosm.graph.keys import node_key, source_content_key
 from test_support.microcosm_build.chronicle_feed import write_pinned_artifact
+from test_support.microcosm_build.reference_factor_transport import (
+    factor_transport_fixture,
+)
+from test_support.microcosm_build.reference_intervals import (
+    INCOME_COLUMN,
+    UNIVERSE_COLUMN,
+    interval_bindings,
+    interval_profile_fixture,
+)
 from test_support.microcosm_build.transport_composed import (
     FAMILY_INPUTS,
     PROGRAMS,
@@ -838,6 +853,431 @@ def test_activation_accepts_optional_json_nulls(composed):
     validate_transport_activation(spec)
 
 
+def _transport_spec_with_reference_profile(composed, suffix=""):
+    spec = copy.deepcopy(composed.spec)
+    row = spec["resources"]["target_references"]["target_references"][0]
+    selector = {
+        "aggregate_fact_key": "atom",
+        "source_name": "publisher",
+        "source_measure_id": "count",
+        "source_concept": "population",
+        "entity_name": row["entity"],
+        "record_set_id": "population",
+        "period_type": "calendar_year",
+        "period_value": 2023,
+        "geography_level": "country",
+        "geography_id": "toy",
+        "geography_vintage": "unstated",
+        "dimensions": ["category"],
+        "dimension_values": {"category": 1},
+    }
+    row.pop("ledger_fact_key")
+    row["ledger_selector"] = selector
+    row["metadata"]["activation_status"] = "requires_reference_profile_resolution"
+    total = {key: value for key, value in selector.items() if key != "dimension_values"}
+    total.update(aggregate_fact_key="total", dimensions=[])
+    transformation = {
+        "reference_names": [row["name"]],
+        "operation": "allocated_residual_by_ratio",
+        "value_operands": [
+            {"role": "base", "expected_member_count": 1},
+            {"role": "total", **total},
+            {
+                "role": "partition",
+                "member_selectors": [selector],
+                "allocation_member_keys": ["atom"],
+            },
+        ],
+    }
+    spec["resources"]["reference_profiles"] = {
+        "schema_version": 1,
+        "reference_resource": "target_references" + suffix,
+        "interval_resource": "profile_intervals" + suffix,
+        "dimensions": {
+            "residual": {
+                "default": "central",
+                "profiles": {"central": {"transformations": [transformation]}},
+            },
+            "aging_index": {
+                "default": "central",
+                "profiles": {
+                    "central": {"deferred": True, "transformations": []},
+                    "low": {"available": False, "transformations": []},
+                },
+            },
+        },
+    }
+    spec["resources"]["profile_intervals"] = {"bands": []}
+    return spec, row
+
+
+@pytest.mark.parametrize("suffix", ["", ".json"])
+def test_preflight_and_composition_use_the_same_resolved_reference_view(
+    composed, suffix
+):
+    spec, row = _transport_spec_with_reference_profile(composed, suffix)
+    validate_transport_activation(spec)
+    graph = compose_transport_graph(spec, composed.config)
+    compiler = next(
+        node
+        for node in graph.nodes
+        if node.kernel == "targets.compile@1"
+        and json.loads(node.params["references"])["target_references"][0]["name"]
+        == row["name"]
+    )
+    references = json.loads(compiler.params["references"])
+    receipt = json.loads(compiler.params["reference_resolution"])
+    assert (
+        references["target_references"][0]["metadata"]["activation_status"] == "active"
+    )
+    assert (
+        compiler.params["references_sha256"]
+        == hashlib.sha256(canonical_json(references)).hexdigest()
+    )
+    assert (
+        receipt["effective_references_sha256"] == compiler.params["references_sha256"]
+    )
+    assert (
+        row["metadata"]["activation_status"] == "requires_reference_profile_resolution"
+    )
+    with pytest.raises(ValueError, match="unavailable"):
+        compose_module.reference_profile_view(spec, {"aging_index": "low"})
+
+
+def test_preflight_checks_the_selected_variant_reference_status(composed):
+    spec, row = _transport_spec_with_reference_profile(composed)
+    compiler = copy.deepcopy(
+        next(
+            node
+            for node in spec["resources"]["transport_graph"]["nodes"]
+            if node["kernel"] == "targets.compile@1"
+            and node["params"]["references"]["resource"] == "target_references"
+        )
+    )
+    compiler["id"] = "{variant}.targets"
+    spec["resources"]["entitlement_graph"] = {
+        "schema_version": 1,
+        "variant_nodes": [compiler],
+        "variant_gap": "{variant}.targets",
+    }
+    variant = {
+        "id": "candidate",
+        "tier": "calibration",
+        "knobs": {"residual": "central"},
+    }
+    spec["resources"]["scenarios"]["scenarios"] = [variant]
+    validate_transport_activation(spec)
+    profiles = spec["resources"]["reference_profiles"]["dimensions"]["residual"][
+        "profiles"
+    ]
+    profiles["unresolved"] = {"transformations": []}
+    variant["knobs"]["residual"] = "unresolved"
+    with pytest.raises(
+        ValueError,
+        match="placeholder reference target_references\\." + re.escape(row["name"]),
+    ):
+        validate_transport_activation(spec)
+
+
+def test_factor_context_is_read_without_composition_feed_io(tmp_path, monkeypatch):
+    _, pin, _, _, spec = factor_transport_fixture(tmp_path)
+    spec["resources"]["chronicle_feed"] = pin
+
+    def no_feed_io(*args, **kwargs):
+        raise AssertionError("Composition must not load the consumer artifact.")
+
+    monkeypatch.setattr(
+        "microcosm.build.ledger_artifact.load_ledger_consumer_artifact", no_feed_io
+    )
+    view = compose_module.reference_profile_view(spec)
+    assert view[2]["selected_factors"]["toy_factor"]["operational_factor"] == {
+        "numerator": 1100000,
+        "denominator": 1000000,
+    }
+    assert all(
+        row["metadata"]["activation_status"] == "requires_prerequisites"
+        for row in view[0]["target_references"]
+    )
+    assert compose_module.transport_resource(spec, "target_references") == view[0]
+
+
+def test_factor_context_ignores_feed_pin_prose(tmp_path):
+    _, pin, _, _, spec = factor_transport_fixture(tmp_path)
+    spec["resources"]["chronicle_feed"] = pin
+    before = compose_module.reference_profile_view(spec)
+    pin["build"] = "Reviewed prose edit"
+    pin["source_repo"] = "Reviewed repository description"
+    assert compose_module.reference_profile_view(spec) == before
+
+
+@pytest.mark.parametrize(
+    "defect",
+    ["missing", "wrong_feed", "wrong_commit", "wrong_manifest", "wrong_factor"],
+)
+def test_preflight_refuses_missing_or_incompatible_default_factor_context(
+    tmp_path, defect
+):
+    _, pin, _, _, spec = factor_transport_fixture(tmp_path)
+    spec["resources"]["chronicle_feed"] = pin
+    if defect == "missing":
+        spec["resources"].pop("factor_context")
+    elif defect == "wrong_feed":
+        spec["resources"]["chronicle_feed"] = {**pin, "facts_sha256": "0" * 64}
+    elif defect == "wrong_commit":
+        pin["source_commit"] = "d" * 40
+    elif defect == "wrong_manifest":
+        pin["manifest_sha256"] = "0" * 64
+    else:
+        spec["resources"]["factor_context"]["factors"][0]["operational_factor"][
+            "numerator"
+        ] += 1
+    with pytest.raises(
+        ValueError, match="missing resource|incompatible|factor differs"
+    ):
+        validate_transport_activation(spec)
+
+
+def test_preflight_resolves_empty_knobs_only_once(tmp_path, monkeypatch):
+    _, _, _, _, spec = factor_transport_fixture(tmp_path)
+    original = compose_module.reference_profile_view
+    selections = []
+
+    def recording_view(spec, selection=None):
+        selections.append(selection)
+        return original(spec, selection)
+
+    monkeypatch.setattr(compose_module, "reference_profile_view", recording_view)
+    with pytest.raises(ValueError, match="Transport spec is not activated"):
+        validate_transport_activation(spec)
+    assert selections
+    assert all(selection is None for selection in selections)
+
+
+def test_preflight_validates_scenario_factor_context_before_activation(tmp_path):
+    _, _, _, _, spec = factor_transport_fixture(tmp_path)
+    profiles = spec["resources"]["reference_profiles"]["dimensions"]["index"][
+        "profiles"
+    ]
+    profiles["low"]["transformations"][0]["factor_id"] = "missing-scenario-factor"
+    assert compose_module.reference_profile_view(spec)[2]["selection"] == {
+        "index": "central"
+    }
+    spec["resources"]["scenarios"]["scenarios"].append(
+        {"id": "variant", "knobs": {"index": "low"}}
+    )
+    with pytest.raises(ValueError, match="Missing selected factor"):
+        validate_transport_activation(spec)
+
+
+def test_declared_ageing_scenarios_bind_selected_evidence_and_preserve_locality():
+    spec = load_transport_spec("nz")
+    profiles = spec["resources"]["reference_profiles"]
+    receipts = {}
+    for scenario in spec["resources"]["scenarios"]["scenarios"]:
+        receipt = compose_module.reference_profile_view(spec, scenario["knobs"])[2]
+        receipts[scenario["id"]] = receipt
+        profile = {"V1": "low", "V2": "high"}.get(scenario["id"], "central")
+        factor_id = f"ird_ty2024_to_ty2027_{profile}"
+        assert receipt["selection"] == {
+            "aging_index": profile,
+            "census_residual_allocation": (
+                "small_households" if scenario["id"] == "V4" else "mar"
+            ),
+            "family_discrepancy": "central",
+        }
+        assert set(receipt["selected_factors"]) == {factor_id}
+        entry = next(
+            entry
+            for entry in spec["resources"]["reference_aging"]["factors"]
+            if entry["declaration"]["id"] == factor_id
+        )
+        assert receipt["selected_factors"][factor_id] == entry
+        chosen = {
+            dimension: {
+                "name": name,
+                "declaration": profiles["dimensions"][dimension]["profiles"][name],
+            }
+            for dimension, name in receipt["selection"].items()
+        }
+        assert (
+            receipt["selected_declarations_sha256"]
+            == hashlib.sha256(canonical_json(chosen)).hexdigest()
+        )
+    profiles["dimensions"]["aging_index"]["profiles"]["high"]["notes"] = (
+        "Reviewed edit confined to the unselected high profile."
+    )
+    for scenario in spec["resources"]["scenarios"]["scenarios"]:
+        revised = compose_module.reference_profile_view(spec, scenario["knobs"])[2]
+        if scenario["id"] == "V2":
+            assert (
+                revised["reference_selection_sha256"]
+                != receipts["V2"]["reference_selection_sha256"]
+            )
+        else:
+            assert revised == receipts[scenario["id"]]
+
+
+def _interval_prepare_spec():
+    base, profiles, context, intervals = interval_profile_fixture()
+    table = intervals["tables"][0]
+    spec = {
+        "country": "xx",
+        "resources": {
+            "target_references": base,
+            "reference_profiles": profiles,
+            "factor_context": context,
+            "profile_intervals": intervals,
+            "calibration_bindings": interval_bindings(table),
+        },
+    }
+    row = {
+        "id": "prepare",
+        "kernel": "calibration.prepare@1",
+        "population": "open",
+        "params": {
+            "bindings": {"resource": "calibration_bindings", "encoding": "json"},
+            "references": {"resource": "target_references", "encoding": "json"},
+            "references_sha256": {
+                "resource": "target_references",
+                "encoding": "sha256",
+            },
+        },
+        "outputs": [
+            {"entity": "person", "column": band["indicator"], "dtype": "bool"}
+            for band in table["bands"]
+        ],
+    }
+    return spec, row
+
+
+_INTERVAL_CONFIG = TransportGraphConfig(
+    engine_refs={}, create_outputs=(Owned("person", "age", "int64"),)
+)
+
+
+def _prepare_node(spec, row, knobs, *, interval_knobs="same"):
+    params = {
+        name: compose_module._resource_param(spec, value, profile_selection=knobs)
+        for name, value in row["params"].items()
+    }
+    if interval_knobs != "same":
+        params["intervals"] = compose_module._resource_param(
+            spec,
+            {"resource": "profile_intervals", "encoding": "json"},
+            profile_selection=interval_knobs,
+        )
+    return compose_module._node(
+        spec,
+        row,
+        _INTERVAL_CONFIG,
+        {},
+        resolved_params=params,
+        profile_selection=knobs,
+    )
+
+
+def _run_prepare(node, incomes):
+    tables = {
+        "person": pd.DataFrame(
+            {
+                "person_id": range(len(incomes)),
+                INCOME_COLUMN: incomes,
+                UNIVERSE_COLUMN: ["included"] * len(incomes),
+            }
+        )
+    }
+    return CALIBRATION_PREPARE.run(
+        KernelContext(
+            node=node,
+            tables=tables,
+            weights={},
+            strata=pd.Series([], dtype=object, name="stratum"),
+            params=node.params,
+            rng=np.random.default_rng(0),
+            sources={},
+            artifacts={},
+        )
+    )
+
+
+def test_composition_supplies_each_variant_its_own_effective_interval_companion():
+    spec, row = _interval_prepare_spec()
+    incomes = [104_999, 107_000, 112_000, 114_000, 116_000]
+    first_band = {}
+    for profile, knobs in (
+        ("central", None),
+        ("low", {"index": "low"}),
+        ("high", {"index": "high"}),
+    ):
+        node = _prepare_node(spec, row, knobs)
+        view = compose_module.reference_profile_view(spec, knobs)
+        assert node.params["intervals"] == canonical_json(view[1]).decode("utf-8")
+        assert json.loads(node.params["reference_resolution"]) == view[2]
+        result = _run_prepare(node, incomes)
+        first_band[profile] = result.columns["person", "toy_income_band_b0"].tolist()
+        evidence = json.loads(result.artifacts["preparation"])
+        assert (
+            evidence["effective_intervals_sha256"]
+            == view[2]["effective_intervals_sha256"]
+        )
+    # 100,000 source cents become 105,000, 110,000 and 115,000: each variant
+    # regenerates its indicators from its own cuts rather than reusing S0's.
+    assert first_band == {
+        "low": [True, False, False, False, False],
+        "central": [True, True, False, False, False],
+        "high": [True, True, True, True, False],
+    }
+
+
+def test_composition_refuses_a_supplied_interval_document_from_another_profile():
+    spec, row = _interval_prepare_spec()
+    row = copy.deepcopy(row)
+    row["params"]["intervals"] = {"resource": "profile_intervals", "encoding": "json"}
+    node = _prepare_node(spec, row, {"index": "low"})
+    assert (
+        json.loads(node.params["intervals"])["tables"][0]["scaling"]["factor_id"]
+        == "toy_low"
+    )
+    with pytest.raises(ValueError, match="differs from its effective interval"):
+        _prepare_node(spec, row, {"index": "low"}, interval_knobs=None)
+
+
+def test_declared_scenarios_scale_national_cuts_with_their_own_factor():
+    from fractions import Fraction
+
+    spec = load_transport_spec("nz")
+    source = spec["resources"]["reference_intervals"]
+    by_id = {table["id"]: table for table in source["tables"]}
+    seen = {}
+    for scenario in spec["resources"]["scenarios"]["scenarios"]:
+        _, intervals, receipt = compose_module.reference_profile_view(
+            spec, scenario["knobs"]
+        )
+        profile = {"V1": "low", "V2": "high"}.get(scenario["id"], "central")
+        tables = {table["id"]: table for table in intervals["tables"]}
+        national = tables["ird_taxable_income_national_ty2024"]
+        assert national["scaling"]["factor_id"] == f"ird_ty2024_to_ty2027_{profile}"
+        assert (
+            tables["ird_taxable_income_age_ty2024"]
+            == by_id["ird_taxable_income_age_ty2024"]
+        )
+        factor = national["scaling"]["operational_factor"]
+        rational = Fraction(factor["numerator"], factor["denominator"])
+        for band, original in zip(
+            national["bands"],
+            by_id["ird_taxable_income_national_ty2024"]["bands"],
+            strict=True,
+        ):
+            if original.get("upper_cent") is not None:
+                upper = band["upper_cent"]
+                assert Fraction(upper["numerator"], upper["denominator"]) == (
+                    original["upper_cent"] * rational
+                )
+        seen.setdefault(profile, set()).add(receipt["effective_intervals_sha256"])
+    assert all(len(hashes) == 1 for hashes in seen.values())
+    assert len(set().union(*seen.values())) == 3
+
+
 class _IllegalOwner(KernelBase):
     ref = "test.illegal_owner@1"
     capabilities = Capabilities(Determinism.DETERMINISTIC)
@@ -1166,7 +1606,9 @@ def test_packaged_spec_refuses_with_every_activation_gap_named():
     # Schedule 2, so it is no longer an activation gap.
     assert "benefit_unit_rule.dependent_child" not in str(error.value)
     for resource in ("precal_references", "target_references", "holdout_references"):
-        for reference in spec["resources"][resource]["target_references"]:
+        for reference in compose_module.transport_resource(spec, resource)[
+            "target_references"
+        ]:
             if reference["metadata"].get("activation_status", "active") != "active":
                 assert f"placeholder reference {resource}.{reference['name']}" in str(
                     error.value
@@ -1186,7 +1628,10 @@ def test_packaged_spec_refuses_before_reading_any_source(tmp_path):
         )
 
 
-def test_cli_main_refuses_the_packaged_spec_and_writes_nothing(tmp_path, capsys):
+def test_cli_main_refuses_the_packaged_spec_and_writes_nothing(
+    tmp_path, monkeypatch, capsys
+):
+    monkeypatch.setattr(cli_module, "_today", lambda: date(2026, 10, 24))
     out = tmp_path / "out"
     assert cli_module.main(["--country", "nz", "--out", str(out)]) == 1
     message = capsys.readouterr().err
@@ -1375,6 +1820,104 @@ def test_cli_main_turns_key_errors_into_refusals(
     assert not (out / EXPORT_FILENAME).exists()
 
 
+_AFTER_FACTOR_EXPIRY = date(2100, 1, 1)
+
+
+@pytest.mark.parametrize("resume", ["auto", "forbid"])
+@pytest.mark.parametrize("selection", ["default", "scenario"])
+def test_cli_main_refuses_expired_factors_before_create(
+    tmp_path, monkeypatch, capsys, resume, selection
+):
+    _, _, _, _, spec = factor_transport_fixture(tmp_path)
+    if selection == "scenario":
+        spec["resources"]["reference_profiles"]["dimensions"]["index"]["profiles"][
+            "central"
+        ]["transformations"] = []
+        spec["resources"]["scenarios"]["scenarios"].append(
+            {"id": "variant", "knobs": {"index": "low"}}
+        )
+    monkeypatch.setattr(cli_module, "_today", lambda: _AFTER_FACTOR_EXPIRY)
+    monkeypatch.setattr(cli_module, "load_transport_spec", lambda source: spec)
+    later = _mock_steps_after_the_currency_check(monkeypatch)
+    out = tmp_path / "out"
+    assert (
+        cli_module.main(["--country", "xx", "--out", str(out), "--resume", resume]) == 1
+    )
+    error = capsys.readouterr().err
+    assert "toy_factor" in error
+    assert "reviewed re-declaration" in error
+    for step in later:
+        step.assert_not_called()
+    assert not out.exists()
+
+
+def _mock_steps_after_the_currency_check(monkeypatch):
+    """Activation, the registry, the CREATE inventory and CREATE, each refusing."""
+    steps = []
+    for owner, name in (
+        (cli_module, "validate_transport_activation"),
+        (cli_module, "build_transport_registry"),
+        (cli_module, "prepare_create_outputs"),
+        (cli_module.TRANSPORT_CREATE, "run"),
+    ):
+        step = Mock(side_effect=AssertionError(f"Must refuse before {name}."))
+        monkeypatch.setattr(owner, name, step)
+        steps.append(step)
+    return steps
+
+
+@pytest.mark.parametrize("resume", ["auto", "forbid"])
+@pytest.mark.parametrize("selection", ["default", "scenario"])
+def test_preparation_refuses_expired_factors_for_library_callers(
+    tmp_path, monkeypatch, resume, selection
+):
+    # prepare_transport_build is exported: a caller that skips main must meet
+    # the same run-entry check, before activation, the registry or CREATE.
+    _, _, _, _, spec = factor_transport_fixture(tmp_path)
+    if selection == "scenario":
+        spec["resources"]["reference_profiles"]["dimensions"]["index"]["profiles"][
+            "central"
+        ]["transformations"] = []
+        spec["resources"]["scenarios"]["scenarios"].append(
+            {"id": "variant", "knobs": {"index": "low"}}
+        )
+    monkeypatch.setattr(cli_module, "_today", lambda: _AFTER_FACTOR_EXPIRY)
+    later = _mock_steps_after_the_currency_check(monkeypatch)
+    with pytest.raises(ValueError, match="toy_factor") as error:
+        cli_module.prepare_transport_build(spec, sources={}, resume=resume)
+    assert "reviewed re-declaration" in str(error.value)
+    for step in later:
+        step.assert_not_called()
+
+
+def test_preparation_lets_require_reach_stored_work_after_expiry(tmp_path, monkeypatch):
+    # require skips the currency check and goes on to activation and the store.
+    _, _, _, _, spec = factor_transport_fixture(tmp_path)
+    monkeypatch.setattr(cli_module, "_today", lambda: _AFTER_FACTOR_EXPIRY)
+    reached = Mock(side_effect=LookupError("activation reached"))
+    monkeypatch.setattr(cli_module, "validate_transport_activation", reached)
+    with pytest.raises(LookupError, match="activation reached"):
+        cli_module.prepare_transport_build(spec, sources={}, resume="require")
+    reached.assert_called_once_with(spec)
+
+
+def test_preparation_checks_resume_before_currency(tmp_path, monkeypatch):
+    _, _, _, _, spec = factor_transport_fixture(tmp_path)
+    monkeypatch.setattr(cli_module, "_today", lambda: _AFTER_FACTOR_EXPIRY)
+    with pytest.raises(ValueError, match="resume must be"):
+        cli_module.prepare_transport_build(spec, sources={}, resume="sometimes")
+
+
+def test_cli_factor_currency_decision_allows_historical_replay(tmp_path, monkeypatch):
+    # The factor fixture has parked measurement rows and no runnable skeleton.
+    # Exercise the CLI decision directly; the warm-store test below verifies
+    # actual require execution with the engine-free composed skeleton.
+    _, _, _, _, spec = factor_transport_fixture(tmp_path)
+    assert compose_module.reference_profile_view(spec)[2]["selected_factors"]
+    monkeypatch.setattr(cli_module, "_today", lambda: _AFTER_FACTOR_EXPIRY)
+    cli_module._require_current_run_factors(spec, resume="require")
+
+
 def test_cli_main_and_path_loader_success(composed, tmp_path, monkeypatch, capsys):
     # Real Path loading, registry preparation and execution; only the injected
     # engine seam replaces Axiom with the fixture's pure-Python adapters.
@@ -1423,9 +1966,199 @@ def test_cli_main_and_path_loader_success(composed, tmp_path, monkeypatch, capsy
     assert (out / EXPORT_FILENAME).is_file()
     assert json.loads((out / "manifest.json").read_bytes())["nodes"]
     observe_warm.append(True)
+    monkeypatch.setattr(cli_module, "_today", lambda: _AFTER_FACTOR_EXPIRY)
     assert cli_module.main([*argv, "--resume", "require"]) == 0
     assert capsys.readouterr().err == ""
     assert calls == []
+
+
+def test_cli_run_date_is_the_utc_date(monkeypatch):
+    # 11:30pm in New York on 3 November is already 4 November in UTC, where CI runs.
+    instant = datetime(2026, 11, 4, 3, 30, tzinfo=UTC)
+
+    class Clock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return instant.astimezone(tz or timezone(timedelta(hours=-5)))
+
+    monkeypatch.setattr(cli_module, "datetime", Clock)
+    assert cli_module._today() == date(2026, 11, 4)
+
+
+def test_cli_currency_check_walks_the_views_activation_walks(tmp_path, monkeypatch):
+    # Activation resolves scenario views only when both resources exist and
+    # validates their shapes; the run-entry check shares that walk.
+    _, _, _, _, spec = factor_transport_fixture(tmp_path)
+    del spec["resources"]["scenarios"]
+    assert len(compose_module.reference_profile_views(spec)) == 1
+    monkeypatch.setattr(cli_module, "_today", lambda: date(2050, 1, 1))
+    cli_module._require_current_run_factors(spec, resume="auto")
+    monkeypatch.setattr(cli_module, "_today", lambda: _AFTER_FACTOR_EXPIRY)
+    with pytest.raises(ValueError, match="toy_factor"):
+        cli_module._require_current_run_factors(spec, resume="auto")
+    spec["resources"]["scenarios"] = {"scenarios": {"id": "malformed"}}
+    with pytest.raises(TypeError) as activation:
+        compose_module.validate_transport_activation(spec)
+    with pytest.raises(TypeError) as run_entry:
+        cli_module._require_current_run_factors(spec, resume="auto")
+    assert str(run_entry.value) == str(activation.value) == "scenarios must be a list."
+
+
+def test_cli_require_replays_a_warm_store_after_selected_factors_expire(
+    composed, tmp_path, monkeypatch, capsys
+):
+    # End to end: warm a real store while a selected factor is current, then
+    # replay it past valid_until. require verifies and runs nothing; a new run
+    # of the same spec refuses on that factor before preparation work.
+    facts, pin, _, _, factors = factor_transport_fixture(tmp_path / "factor")
+    spec = copy.deepcopy(composed.spec)
+    spec["resources"].update(
+        factor_target_references=factors["resources"]["target_references"],
+        factor_context=factors["resources"]["factor_context"],
+        factor_feed=pin,
+        reference_profiles={
+            **factors["resources"]["reference_profiles"],
+            "reference_resource": "factor_target_references",
+        },
+    )
+    profile_view = compose_module.reference_profile_view
+
+    def measured_view(spec, selection=None):
+        # As in factor_transport_fixture(activate=True), supply a synthetic
+        # reviewed measurement closure. The real resolver still selects and
+        # binds the factors; composition must attach its rehashed receipt.
+        # Copies, so the resolver's own return values are never edited.
+        references, intervals, receipt = profile_view(spec, selection)
+        references, receipt = copy.deepcopy(references), copy.deepcopy(receipt)
+        for row in references["target_references"]:
+            row["metadata"]["activation_status"] = "active"
+        receipt["effective_references_sha256"] = reference_document_sha256(references)
+        receipt.pop("receipt_sha256")
+        receipt["receipt_sha256"] = reference_document_sha256(receipt)
+        return references, intervals, receipt
+
+    monkeypatch.setattr(compose_module, "reference_profile_view", measured_view)
+    declaration = spec["resources"]["transport_graph"]
+    compiler_id = "nz.factor.targets.compile"
+    declaration["sources"].append(
+        {
+            **next(
+                source
+                for source in declaration["sources"]
+                if source["name"] == "nz_calibration_facts"
+            ),
+            "name": "factor_facts",
+        }
+    )
+    declaration["nodes"].append(
+        {
+            "id": compiler_id,
+            "kernel": "targets.compile@1",
+            "population": "nz.open",
+            "sources": ["factor_facts"],
+            "params": {
+                "country": factors["country"],
+                "references": {
+                    "resource": "factor_target_references",
+                    "encoding": "json",
+                },
+                "references_sha256": {
+                    "resource": "factor_target_references",
+                    "encoding": "sha256",
+                },
+                "chronicle_feed_pin": {"resource": "factor_feed", "encoding": "json"},
+            },
+        }
+    )
+    # This factor-bound compiler is an explicit CLI terminal endpoint, so its
+    # target surface must actually be compiled and cached during the warm run.
+    declaration["endpoints"]["terminal"].append(compiler_id)
+    compiler = compose_transport_graph(spec, composed.config).node(compiler_id)
+    assert compiler.kernel == "targets.compile@1"
+    assert "reference_resolution" in compiler.params
+    resolution = json.loads(compiler.params["reference_resolution"])
+    assert resolution["selected_factors"]
+    assert json.loads(compiler.params["chronicle_feed_pin"]) == pin
+    directory = _write_local_transport_spec(tmp_path / "spec", spec)
+    build_registry = cli_module.build_transport_registry
+    calls = []
+    replay = Mock(
+        wraps=target_kernels_module.reference_factors_module.replay_reference_factor
+    )
+    monkeypatch.setattr(
+        target_kernels_module.reference_factors_module,
+        "replay_reference_factor",
+        replay,
+    )
+
+    def injected_registry(bindings, root, *, unit_rule, engines_by_binding=None):
+        registry = build_registry(
+            bindings,
+            root,
+            unit_rule=unit_rule,
+            engines_by_binding=composed.engines_by_binding,
+        )
+        for ref in registry.kernels.refs():
+            kernel = registry.kernels.get(ref)
+            run = kernel.run
+
+            def counted(context, _run=run):
+                calls.append(context.node.id)
+                return _run(context)
+
+            monkeypatch.setattr(kernel, "run", counted)
+        return registry
+
+    monkeypatch.setattr(cli_module, "build_transport_registry", injected_registry)
+    out = tmp_path / "out"
+    argv = ["--spec-dir", str(directory), "--out", str(out)]
+    for name, path in {**composed.sources, "factor_facts": facts}.items():
+        argv.extend(["--source", f"{name}={path}"])
+    monkeypatch.setattr(cli_module, "_today", lambda: date(2050, 1, 1))
+    assert cli_module.main(argv) == 0
+    assert capsys.readouterr().err == ""
+    assert calls.count(compiler_id) == 1
+    replay.assert_called_once()
+    factor = resolution["selected_factors"]["toy_factor"]
+    # The replay ran against the authenticated factor feed: the facts an
+    # independent load of the pinned factor_facts source yields.
+    fed_facts = (
+        target_kernels_module.ledger_artifact_module.load_ledger_consumer_artifact(
+            facts, feed_pin=pin, lexical_floats=True
+        ).facts
+    )
+    assert fed_facts
+    replay.assert_called_once_with(
+        factor["declaration"],
+        fed_facts,
+        factor["declaration"]["feed_identity"],
+        factor["operational_factor"],
+        factor["receipt"],
+    )
+    warm_node = json.loads((out / "manifest.json").read_bytes())["nodes"][compiler_id]
+    assert warm_node["receipt"]["n_targets"] == 2
+    exported = (out / EXPORT_FILENAME).read_bytes()
+    calls.clear()
+    replay.reset_mock()
+    monkeypatch.setattr(cli_module, "_today", lambda: _AFTER_FACTOR_EXPIRY)
+    assert cli_module.main([*argv, "--resume", "require"]) == 0
+    assert capsys.readouterr().err == ""
+    # require reads back the stored run's export and rewrites nothing.
+    assert (out / EXPORT_FILENAME).read_bytes() == exported
+    assert calls == []
+    replay.assert_not_called()
+    stored_node = json.loads((out / "manifest.json").read_bytes())["nodes"][compiler_id]
+    assert stored_node["hit"] is True
+    assert stored_node["key"] == warm_node["key"]
+    assert stored_node["opaque_artifacts"] == warm_node["opaque_artifacts"]
+    later = _mock_steps_after_the_currency_check(monkeypatch)
+    assert cli_module.main([*argv, "--resume", "auto"]) == 1
+    error = capsys.readouterr().err
+    assert "toy_factor" in error
+    assert "reviewed re-declaration" in error
+    assert calls == []
+    for step in later:
+        step.assert_not_called()
 
 
 def test_cli_main_invalid_arguments_are_a_refusal(capsys):

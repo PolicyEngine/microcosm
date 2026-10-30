@@ -3,8 +3,9 @@
   "country": "uk",
   "kind": "uk_vendored_ledger_facts",
   "resource": "ons_household_expenditure_facts.json",
-  "purpose": "ONS Consumer Trends household final consumption expenditure, current prices, annual (30 June 2026 release). The seven specific series, 2020 to 2025: COICOP 04.5 and its sub-classes 04.5.1 to 04.5.4, 07.2.2 fuels and lubricants for personal transport and 07.3.2 passenger transport by road, all on the domestic concept. For 2023 to 2025: the national (NAT0) and domestic (0) totals and the twelve domestic divisions from the overview sheet, and the three classes a household diary does not record (02.3 narcotics, 04.2 imputed rentals, 12.6.1 FISIM). Consumed by the lcfs_consumption road-fuel level (07.2.2, microcosm#1113) and the division-capture diagnostic.",
+  "purpose": "ONS Consumer Trends household final consumption expenditure, current prices, annual (30 September 2026 release). The seven specific series, 2020 to 2025: COICOP 04.5 and its sub-classes 04.5.1 to 04.5.4, 07.2.2 fuels and lubricants for personal transport and 07.3.2 passenger transport by road, all on the domestic concept. For 2023 to 2025: the national (NAT0) and domestic (0) totals and the twelve domestic divisions from the overview sheet, and the three classes a household diary does not record (02.3 narcotics, 04.2 imputed rentals, 12.6.1 FISIM). Consumed by the lcfs_consumption road-fuel level (07.2.2, microcosm#1113), the energy stage's electricity level (04.5.1, microcosm#1418) and the division-capture diagnostic.",
   "consumers": [
+    "uk_runtime.energy_pricing",
     "uk_runtime.lcfs_consumption"
   ],
   "planned_consumers": [
@@ -17,12 +18,12 @@
   },
   "source_fact_feed": {
     "source_repo": "PolicyEngine/chronicle",
-    "source_commit": "0b721a4ccd7a99bd509f064c119a3ed61fe92a9e",
+    "source_commit": "53815b24844cb63c103209f197f9d3d9e2e424a9",
     "build": "build-bundle --suite uk -> build-consumer-artifact",
     "artifact_schema_version": "policyengine_ledger.consumer_artifact.v2",
-    "fact_row_count": 1506587,
-    "facts_sha256": "39ee4926f650f3d38d8c5220a750af4037339359179d70279d170cfbb3b42775",
-    "manifest_sha256": "a663586f8b3c6d13aa6fc5f64991951efe528b83bd5ea63c3b7267a20fff1c5f"
+    "fact_row_count": 1511063,
+    "facts_sha256": "4b0e5c1ad057946407807428a1c79c70d9b14e2f8539ea8fb93524573c026227",
+    "manifest_sha256": "708231c77432d2838bf1ee7d8f3080e49ca0e59edccdd45c36b3405db2cb45fb"
   },
   "selections": [
     {

@@ -323,22 +323,31 @@ and both compile-parity receipts are unchanged. Both surfaces were regenerated f
 and local cuts, as for `200bf6d`. No reference moves, so the national register version does not
 either. The high-value home stock still names `735820c`: the addition touches none of its inputs.
 
-The `0b721a4` re-pin (microcosm#1415, PolicyEngine/chronicle#392, on top of `272c987`) brought
-HMRC's 2026 annual savings statistics: the ISA tables (accounts, amounts and market values by type
-to 2024-25, and 2023-24 subscribers and holders by income, size of subscription, age, sex and
-region), Lifetime ISA Table 1a and the cash ISA limit reduction impact note (3,272 facts; 1,506,587
-rows; the schema digest is unchanged). The merge commit's tree is the pull request head's
-(`e56af9a`), merged onto an unmoved base, so the artifact was built from that head's bundle and
-carries the merge commit's digests. The pull request first pinned the head; moving the pin to the
-merge commit changed only what restates the commit or hashes it.
+The `53815b2` re-pin (microcosm#1418 PR C, the merge of PolicyEngine/chronicle#394, on top of the
+`0b721a4` merge of PolicyEngine/chronicle#392) brought SPI 2023-24 Table 3.10 and the OBR's October
+2026 EFO beside March's, with #392's HMRC ISA statistics (1,511,063 rows; the schema digest is
+unchanged). The merge commit's tree is the pull request head's (`2ba21f3`), merged onto an unmoved
+base, so the artifact was built from that head's bundle and carries the merge commit's identity.
 
-A new vendored resource, `hmrc_isa_statistics_facts.json`, carries the 1,074 rows the ISA
-subscriptions stage and the Lifetime ISA anchor read; none is a calibration target. The other
-vendored resources carry the same rows under the new feed identity, and the DESNZ constituency
-resource the same values under keys re-derived from it. No compiled value moves on either surface:
-the national and local reference files are byte-identical, each membership moves its feed label
-(the local one also the DESNZ keys), and both compile-parity receipts are unchanged. Both surfaces were regenerated from cuts of
-the pinned artifact by the `272c987` rules (935,320 national and 884,748 local rows). No reference
-moves, so the national register version does not either. The high-value home stock still names
-`735820c`: the addition touches none of its inputs (the feed-gated fingerprint check passes).
+A new vendored resource, `obr_savings_income_growth_facts.json`, carries the eight October 2026 EFO
+Table 4.5 savings income growth rates the SPI Table 3.7 interest and other-income rows now grow by.
+The other vendored resources, and the constituency energy resource rebuilt beside them, carry the
+same rows under the new feed identity. On the national surface only the intended values move: the
+13 interest rows (up 13.4%), 13 other-income rows and 16 Table 3.10 rows, whose zero band and bands
+from £10,000 are signed out row by row. October's edition starts the OBR lines at FY2025-26, so the
+targets that window FY2024-25 and FY2025-26 into calendar 2025 still resolve to March's facts;
+`obr.winter_fuel_allowance`, which reads FY2025-26 alone, matched both editions and is pinned to
+March's expenditure table (`source_table`). On the local surface the statuses and the reference
+file are unchanged, and the membership moves its feed label and the DESNZ gas cells, which return
+to the Energy Trends level in the same PR.
 
+The national register version moves with the new references, so the uk-candidate-eval scoring
+register is re-frozen before the next national solve. The high-value home stock still names
+`735820c`: its inputs are the same on `53815b2` (the feed-gated fingerprint check passes), so it
+was not rebuilt.
+
+The ISA subscriptions (microcosm#1415, PolicyEngine/microcosm#1421) then vendored a new resource
+from the same `53815b2` artifact: `hmrc_isa_statistics_facts.json`, the 1,074 rows of #392's ISA
+statistics the ISA subscriptions stage and the Lifetime ISA anchor read. None is a calibration
+target, so no reference moves for it. That pull request first pinned #392's head (`e56af9a`) and
+then its merge (`0b721a4`), and took `53815b2` when PR C merged first.

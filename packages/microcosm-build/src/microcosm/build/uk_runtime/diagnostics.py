@@ -652,8 +652,9 @@ def _stratum_columns(columns: Sequence[str]) -> tuple[str, ...]:
     return materialized
 
 
-#: Columns whose level the lcfs_consumption stage sets (energy at DESNZ volume
-#: and QEP prices, road fuel at ONS 07.2.2) and calibration should leave alone.
+#: Columns whose level the lcfs_consumption stage sets (gas at DESNZ volume,
+#: electricity at the kWh ONS 04.5.1 household spending buys, both at QEP
+#: prices; road fuel at ONS 07.2.2) and calibration should leave alone.
 _UK_DRIFT_TOTAL_COLUMNS: tuple[str, ...] = (
     "electricity_consumption",
     "gas_consumption",

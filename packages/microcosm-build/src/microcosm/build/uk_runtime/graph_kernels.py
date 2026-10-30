@@ -44,10 +44,11 @@ from microcosm.graph import (
 )
 from microcosm.graph.population import dtype_for_token
 
-from .. import stage_evidence
+from .. import stage_evidence, stochastic_assignment
 from . import (
     bus_use_incidence,
     cgt_imputation,
+    energy_pricing,
     frs_disability,
     frs_education,
     frs_hmrc_source,
@@ -168,7 +169,10 @@ _STAGE_HELPER_MODULES = {
     # reader and mark SDLT's regions from the FRS region map (microcosm#1095).
     "property_purchases": (ledger_fact_vendoring, rowwise_geography),
     "nts_bus_travel": (uk_engine_adapter, bus_use_incidence),
-    "lcfs_consumption": (uk_engine_adapter,),
+    # The energy level and prices are energy_pricing's (microcosm#1418): a
+    # code-only change to them must re-key the stage (the independent review
+    # of microcosm#1420, finding 5).
+    "lcfs_consumption": (uk_engine_adapter, energy_pricing),
     "etb_vat": (uk_engine_adapter,),
     "etb_services": (uk_engine_adapter,),
     "uc_reporter_redraw": (uc_relationships, uk_engine_adapter),
@@ -208,8 +212,13 @@ _STAGE_HELPER_MODULES = {
     "child_benefit_take_up": (uc_capital_coherence, uk_engine_adapter),
     # The Carer's Allowance draw reads the earnings test through the adapter's
     # engine materialization and counts its receipt's support on the source
-    # lineage (microcosm#1319).
-    "carers_allowance_take_up": (uk_engine_adapter, receipt_counts),
+    # lineage (microcosm#1319), and balances its draws through the shared
+    # placement helper (microcosm#1418).
+    "carers_allowance_take_up": (
+        uk_engine_adapter,
+        receipt_counts,
+        stochastic_assignment,
+    ),
     # The stored attendance is one engine materialization (microcosm#1095).
     "private_school_attendance": (uk_engine_adapter,),
     # The subscriptions walk the CGT bands on its income proxy (with the

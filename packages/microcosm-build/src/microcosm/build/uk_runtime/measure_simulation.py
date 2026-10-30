@@ -325,6 +325,9 @@ UK_ANNUAL_INCOME_MEASURES: Mapping[str, str] = {
     ),
     "private_pension_income_annual": "private_pension_income",
     "state_pension_annual": "state_pension",
+    # Private and State Pension together, the SPI area tables' pension income
+    # (microcosm#1418): the engine's sum of the two annual inputs.
+    "total_pension_income_annual": "total_pension_income",
     "total_income_after_loss_relief_annual": UK_TOTAL_INCOME_AFTER_LOSS_RELIEF,
     "income_tax_annual": "income_tax",
     # The HMRC and OBR income tax rows read the tax before the Winter Fuel

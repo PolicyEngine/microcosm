@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import shutil
 from dataclasses import FrozenInstanceError, replace
+from importlib.resources import files
 from pathlib import Path
 
 import pytest
@@ -943,6 +944,7 @@ class TestUKCountryPackage:
             "salary_sacrifice_anchor.json",
             "bonus_sacrifice_anchor.json",
             "obr_salary_sacrifice_costing_facts.json",
+            "obr_savings_income_growth_facts.json",
             "slc_liable_stocks.json",
             "hmrc_income_release_gate_report.json",
             "hmrc_income_replay_report.json",
@@ -969,6 +971,8 @@ class TestUKCountryPackage:
             "brma_area_layer.provenance.json",
             "brma_rent_quantiles.json",
             "scotland_brma_la_overlap.json",
+            "rfdr_area_layer.json",
+            "rfdr_area_layer.provenance.json",
             "price_paid_property_support_bounds.json",
             "source_stages.json",
             "take_up_contract.json",
@@ -1103,6 +1107,7 @@ class TestExistingPackagesGeneralize:
             "salary_sacrifice_anchor.json",
             "bonus_sacrifice_anchor.json",
             "obr_salary_sacrifice_costing_facts.json",
+            "obr_savings_income_growth_facts.json",
             "slc_liable_stocks.json",
             "hmrc_income_release_gate_report.json",
             "hmrc_income_replay_report.json",
@@ -1129,6 +1134,8 @@ class TestExistingPackagesGeneralize:
             "brma_area_layer.provenance.json",
             "brma_rent_quantiles.json",
             "scotland_brma_la_overlap.json",
+            "rfdr_area_layer.json",
+            "rfdr_area_layer.provenance.json",
             "price_paid_property_support_bounds.json",
             "source_stages.json",
             "take_up_contract.json",
@@ -1193,41 +1200,15 @@ class TestExistingPackagesGeneralize:
         spec = load_country_spec("uk")
 
         references = {reference.name: reference for reference in spec.target_references}
-        assert (
-            len(references) == 1374
-        )  # microcosm#1418: + 3, HMRC's Income Tax on savings at each rate; microcosm#1069: + 24, HMRC's Income Tax payers of State Pension age and aged 65 and over in the twelve region-tier areas; microcosm#1095 (the bump after #1383): + 1, obr.domestic_rates compiles, pinned to the UK; + 5, HMRC's Child Benefit families in payment by number of children; microcosm#1359: + 5 OBR excise receipts rows, measured at FY2024-25; microcosm#953: + 1, England's single adult council tax discount; microcosm#1095 (the next policyengine-uk bump): - 3, the OBR welfare-cap split and the England postgraduate repayments retire; childcare costing fixes: + 5, DfE funded childcare by single age (working parent 9-11 months and 1-3, universal nursery 3; the age-4 cells are signed out); item 6: + 11, the UK's ONS single years 3 to 6 and England's 0 to 6; microcosm#1278: + 3, the ONS single years 0, 1 and 2 for all persons; microcosm#1095: + 4, the two national 15_19 sex bands split into ages 15, 16-17 and 18-19; microcosm#1106: + 13 SPI property amounts; microcosm#1113: + 1 ONS 07.2.2 household road fuel; PolicyEngine/chronicle#280 lane: 705 + 33 HMRC liabilities rows (Table 2.5, three
-        # measures by eleven bands) + 26 SPI savings-interest rows (two measures by
-        # thirteen bands) + 360 SPI Table 3.11 region-tier rows (three measures by
-        # ten regional bands over twelve areas); microcosm#905: 424 - 18 country
-        # rows + 189 region-tier cells;
-        # microcosm#929: the 81 VOA region cells become 81 composed MHCLG
-        # cells and Wales gains ten country rows (bands A-I + total);
-        # microcosm#725/#467: 24 CGT age-band rows, 24 region-tier cells and
-        # 24 size-of-gain rows; microcosm#1014: 16 Table 4.1 BADR/IR band rows
-        # and 12 Table 3 taxable-income margin rows; microcosm#1069: 60 State
-        # Pension rows (4 levels, 14 age-by-sex cells, 22 area cells, 20 bands)
-        # less the OBR State Pension line, now a diagnostic, and the signed-out
-        # empty new State Pension £40-£60 band; 14 Pension Credit caseload rows
-        # (Great Britain total, six type-by-partner cells, six age bands, NI);
-        # the DWP employer contribution total, less the salary-sacrifice users
-        # total (the Table 3.8 rows and the DWP employee total left the fit); two
-        # Attendance Allowance and three pension-age Housing Benefit rows; the
-        # income-tax relief total on salary sacrifice in place of the amount row;
-        # microcosm#1095: Great Britain pension-age Housing Benefit spending,
-        # less OBR's NICs total and the all-rates salary-sacrifice relief, now
-        # diagnostics beside the bound rows they repeat; the two
-        # England-and-Wales PIP daily-living caseload rows are diagnostics too;
-        # microcosm#1123: the 12 nation household control cells and the 24
-        # ITL Table 2.2 marginal-rate cells;
-        # microcosm#1106: the 13 SPI Table 3.7 net property-income amounts by
-        # total-income band, bound unscaled once the x1.9 exclusion retired;
-        # microcosm#1207: the 9 DfT BUS01a bus journey rows (London and the
-        # eight English regions outside London); microcosm#1095: less DWP's
-        # five-or-more-children UC count, a diagnostic beside the two-child
-        # limit rows; microcosm#1301: the 30 high-value homes region cells
-        # (three thresholds over England's regions and Wales), which the
-        # national line drops after the compile, less the North East and
-        # Wales rows over £2m, signed out below the small-cell floor
+        # The national count is pinned once, in test_uk_target_references.py;
+        # here the packaged spec only has to load every active reference of
+        # the committed membership.
+        membership = json.loads(
+            files("microcosm.build.uk")
+            .joinpath("target_reference_membership.json")
+            .read_text(encoding="utf-8")
+        )
+        assert len(references) == membership["active_reference_count"]
         assert references["obr.esa"].value_operation == "calendar_year_window"
         assert references["dwp.uc.households"].value_operation == (
             "monthly_window_sum_average"

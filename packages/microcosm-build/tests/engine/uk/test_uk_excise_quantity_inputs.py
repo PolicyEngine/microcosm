@@ -12,7 +12,7 @@ there, the engine's week is the step's, the strengths and rates a
 declaration divides by are the ones the engine multiplies back, the
 duties the engine charges on the inputs are linear in them and reach
 household tax and net income, and on the committed declaration's national
-levels they sit at the gaps from OBR's receipts the measure exclusions state.
+levels they sit at their stated gaps from OBR's receipts.
 """
 
 from __future__ import annotations
@@ -161,12 +161,14 @@ def test_the_engine_charges_gambling_duty_in_proportion_to_the_bases(
     assert none[2] - one[2] == pytest.approx(one[0], abs=0.01)
 
 
-#: Each OBR row the excise inputs are measured against, with the gap its
-#: measure exclusion states between the engine's duty on the committed
-#: declaration's national levels and OBR's FY2024-25 receipts (microcosm#1359):
-#: alcohol and tobacco above the receipts by the strengths, reliefs and
-#: products the engine leaves out, betting and gaming at them by construction
-#: but for Machine Games Duty's liabilities over its cash receipts.
+#: Each OBR row the excise inputs are measured against, with the gap between
+#: the engine's duty on the committed declaration's national levels and OBR's
+#: FY2024-25 receipts (microcosm#1359): alcohol and tobacco above the receipts
+#: by the strengths, reliefs and products the engine leaves out, as their
+#: measure exclusions state; betting and gaming at them by construction, at
+#: prior weights, but for Machine Games Duty's liabilities over its cash
+#: receipts (held out while the solve cannot measure its 2024 duty,
+#: microcosm#1420).
 OBR_DUTY_GAPS = {
     "obr.beer_and_cider_duties": 0.081,
     "obr.wine_duties": 0.026,
@@ -189,7 +191,7 @@ def test_the_national_levels_sit_at_the_stated_gaps_from_obr() -> None:
     resolves to. Every duty is linear in its inputs, so this is the frame's
     duty at prior weights however the levels are shared out. A rate,
     strength or relief that moves in the engine, or a level that moves in the
-    vendored rows, moves a gap the exclusion reasons state, and fails here.
+    vendored rows, moves a stated gap, and fails here.
     OBR's values are the pinned feed's, as the national compile-parity
     receipt records them; each row's variables are its own binding's.
     """

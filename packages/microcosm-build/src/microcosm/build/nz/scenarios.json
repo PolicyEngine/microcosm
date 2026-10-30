@@ -2,7 +2,7 @@
   "version": 1,
   "country": "nz",
   "method_card_row": "MC3",
-  "description": "The declared Accommodation Supplement scenario set (method card amendment MC3a): entitlement-tier scenarios S0-S5 branch from the shared AS version after calibration; calibration-tier variants V1-V3 branch before calibration and re-run it. Each non-central scenario changes exactly one knob from the central defaults. Bands are the minimum, S0 and the maximum of each gap table across every scenario, and each band bound names the scenario that set it.",
+  "description": "The declared Accommodation Supplement scenario set (method card amendment MC3a): entitlement-tier scenarios S0-S5 branch from the shared AS version after calibration; calibration-tier variants V1-V4 branch before calibration and re-run it. Each non-central scenario changes exactly one knob from the central defaults. Bands are the minimum, S0 and the maximum of each gap table across every scenario, and each band bound names the scenario that set it.",
   "status": "awaiting D1 (MC3a, MC8-MC12); S4's factor awaits Chronicle evidence",
   "tiers": {
     "entitlement": {
@@ -19,7 +19,8 @@
     "rent_stock_factor": 1.0,
     "superannuitant_treatment": "exclude_and_count",
     "aging_index": "central",
-    "beneficiary_assignment": "central"
+    "beneficiary_assignment": "central",
+    "census_residual_allocation": "mar"
   },
   "knob_domains": {
     "rent_allocation": [
@@ -47,6 +48,10 @@
     "beneficiary_assignment": [
       "central",
       "variant"
+    ],
+    "census_residual_allocation": [
+      "mar",
+      "small_households"
     ]
   },
   "knob_method_card_rows": {
@@ -56,7 +61,8 @@
     "rent_stock_factor": "MC8",
     "superannuitant_treatment": "MC11",
     "aging_index": "MC5",
-    "beneficiary_assignment": "MC6"
+    "beneficiary_assignment": "MC6",
+    "census_residual_allocation": "MC5"
   },
   "scenarios": [
     {
@@ -144,6 +150,15 @@
         "beneficiary_assignment": "variant"
       },
       "description": "beneficiary assignment variant for the main-benefit and NZ Super receipt layer"
+    },
+    {
+      "id": "V4",
+      "tier": "calibration",
+      "method_card_row": "MC5",
+      "knobs": {
+        "census_residual_allocation": "small_households"
+      },
+      "description": "d1886: allocate each region's Census size residual only to one- and two-person households in their stated proportions; tenure remains proportionally allocated"
     }
   ],
   "gap_conventions": {
@@ -170,11 +185,27 @@
           "axes": [
             {
               "column": "income_decile",
-              "values": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+              "values": [
+                1,
+                2,
+                3,
+                4,
+                5,
+                6,
+                7,
+                8,
+                9,
+                10
+              ]
             },
             {
               "column": "family_type",
-              "values": ["single", "couple", "sole_parent", "couple_with_children"]
+              "values": [
+                "single",
+                "couple",
+                "sole_parent",
+                "couple_with_children"
+              ]
             }
           ]
         },
@@ -183,7 +214,11 @@
           "axes": [
             {
               "column": "receipt_group",
-              "values": ["beneficiary", "superannuitant", "other"]
+              "values": [
+                "beneficiary",
+                "superannuitant",
+                "other"
+              ]
             }
           ]
         }

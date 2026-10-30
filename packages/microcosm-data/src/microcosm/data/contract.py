@@ -451,13 +451,13 @@ _UK_GATE_BATTERY_SHIPPABLE_STATUSES = frozenset({"passed", "not_applicable"})
 # fingerprint derives from the manifest digest. Editing the spec moves all
 # three here in the same reviewed change.
 _UK_GATE_BATTERY_POLICY_SHA256 = (
-    "6f147aa07ade5e10930b5faf124e1f7050da4db07282805e6196f44e91c2bd80"
+    "29c866ba365999cfd39a5ddceb94e159396759e575a8ac99de619e3f03525653"
 )
 _UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "694910b0853654ab4a2057e1e5bb91144b8b466c1723420eeb57f67f1c53482d"
+    "a9e1187a619794b9e159b209a6f6476a24260791df6bb14ae72f9f9bfcaa7514"
 )
 _UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "ec2c3674449d4073507c495ca529216cb756b890d8192afb94e865ee65ac2c64"
+    "6bd701aa0257a7faad66f5ee8f80f8e4afb664298b70c7093e5b0e220677049d"
 )
 #: Spec entry id -> the legacy gate name whose observable detail checks
 #: apply unchanged (the battery re-keys the report by entry id; the gate
@@ -964,15 +964,15 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
 _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     "spine": {
         "gates_manifest_sha256": (
-            "e987ed46237b42c25714958093313cd535635ca566a22a5a81dc7ed11d621d43"
+            "06f62df651d151e586d6102ed2110b3b2348bd881826d4d6d66621e4ab8abb1f"
         ),
         "policy_sha256": (
-            "c91124202e9e74e128ff4f6db9bb233c84837cfc8128ca116abe4354ab02dec1"
+            "390a79297f7817def126c7805f492328c447e6a0d6d376dc8b946b98b9f96725"
         ),
     },
     "calibration_seam": {
         "gates_manifest_sha256": (
-            "ce7a812f24a633c43b49f8ad2cf008fd6ae1085972d180147480011dc307bc17"
+            "fc75904db7b9574a65ec38b8542f151702f110dd09a99b823d59e86aa47f6d9d"
         ),
         "policy_sha256": (
             "322c96ce9632577262861012d10cbe0bb1924f68e2595042e75ac9af808c5143"
@@ -980,10 +980,10 @@ _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     },
     "release_cut": {
         "gates_manifest_sha256": (
-            "f872e884f294cb1c33500d16edad69b18ea31fb4ecccdea939fc27cd19342573"
+            "c44ce8629cfc9a48e6aaeb9d77012c4fad382b8ef0e232476b9bc8c8e83dbefc"
         ),
         "policy_sha256": (
-            "fe04d5e69c718403304b6bdc9a6fccd20db165e7d217ba5cbf7045d3a326f029"
+            "b335bef4e20b9803b60e728bfb2f045d282d16309429b00d72bf86dd4f4bafd8"
         ),
     },
 }

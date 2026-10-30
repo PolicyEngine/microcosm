@@ -116,11 +116,14 @@ def write_population_sources(
     permutation=None,
     band_entity: str = "person",
     edit_tables=None,
+    time_period: int | None = None,
 ) -> PopulationSources:
     """Write the synthetic donor H5 and toy facts.
 
     ``edit_tables`` may change the raw donor tables (a dict of DataFrames) in
-    place before they are written, for a test-local donor.
+    place before they are written, for a test-local donor. ``time_period``
+    writes the exporter's one-row ``_time_period`` table; by default the
+    donor records none.
     """
     root.mkdir(parents=True, exist_ok=True)
     document = json.loads(SYNTHETIC_DONOR.read_text())
@@ -135,6 +138,8 @@ def write_population_sources(
     with pd.HDFStore(donor, mode="w") as store:
         for entity, table in tables.items():
             store.put(entity, table, format="table")
+        if time_period is not None:
+            store.put("_time_period", pd.Series([time_period]), format="table")
     return PopulationSources(
         donor=donor,
         facts=write_facts(
