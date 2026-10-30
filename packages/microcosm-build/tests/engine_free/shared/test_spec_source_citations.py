@@ -59,6 +59,7 @@ If an NZ resource starts failing here, ask the NZ hub before exempting it.
 from __future__ import annotations
 
 import ast
+import gc
 import importlib
 import inspect
 import json
@@ -3250,12 +3251,65 @@ def test_a_line_link_of_this_repository_is_refused_however_markup_escapes_it(
     }
 
 
+def _assert_scans_quickly(text: str, *scans: Callable[[str], object]) -> None:
+    """Fail when ``scans`` of ``text`` take 2 s of CPU time between them.
+
+    The collector stays off while the clock runs. On CI, one full collection of
+    a worker's heap took 1.1 to 1.2 s, which says nothing about a scan, and a
+    slow runner took twice as long as a fast one over the same scans. So each
+    text gets its own 2 s, and only the scans count against it.
+    """
+    collecting = gc.isenabled()
+    gc.disable()
+    try:
+        started = time.process_time()
+        for scan in scans:
+            scan(text)
+        spent = time.process_time() - started
+    finally:
+        if collecting:
+            gc.enable()
+    assert spent < 2, text[:24]
+
+
+def test_the_scan_clock_stops_the_collector_and_restores_it() -> None:
+    states = []
+    _assert_scans_quickly("x", lambda _: states.append(gc.isenabled()))
+    assert states == [False]
+    assert gc.isenabled()
+
+    def fail(_: str) -> None:
+        raise ValueError("scan failed")
+
+    with pytest.raises(ValueError, match="scan failed"):
+        _assert_scans_quickly("x", fail)
+    assert gc.isenabled()
+
+    gc.disable()
+    try:
+        _assert_scans_quickly("x", str)
+        assert not gc.isenabled()
+    finally:
+        gc.enable()
+
+
+@pytest.mark.parametrize(("spent", "fails"), [(1.99, False), (2.0, True)])
+def test_the_scan_clock_refuses_2_s(
+    monkeypatch: pytest.MonkeyPatch, spent: float, fails: bool
+) -> None:
+    monkeypatch.setattr(time, "process_time", iter((0.0, spent)).__next__)
+    if fails:
+        with pytest.raises(AssertionError, match="^long text"):
+            _assert_scans_quickly("long text", str)
+    else:
+        _assert_scans_quickly("long text", str)
+
+
 def test_a_long_string_is_scanned_in_linear_time() -> None:
     # Each of these once took time quadratic in its length: a run of path
     # characters was rescanned from each of its characters, and a user was
     # looked for before a GitHub host from each character of a run that can
     # be in one. At these lengths the quadratic scans took seconds each.
-    started = time.process_time()
     for text in (
         ":" * 60_000,
         "//" * 30_000,
@@ -3263,8 +3317,7 @@ def test_a_long_string_is_scanned_in_linear_time() -> None:
         "github.com/" * 6_000,
         "https://a/" + "%74" * 20_000,
     ):
-        line_citations(text)
-        unrecognised_line_locators(text)
+        _assert_scans_quickly(text, line_citations, unrecognised_line_locators)
     # So did a string holding thousands of citations: each one's clause,
     # commits and commit-like tokens were found again from the whole string.
     for text in (
@@ -3273,10 +3326,12 @@ def test_a_long_string_is_scanned_in_linear_time() -> None:
         "a1b2c3d; " + "x.py:1; " * 8_000,
         "x.py:1 y.py foo L1 " * 4_000,
     ):
-        misspelled_commit_pins(text)
-        unpinned_line_citations(text)
-        unrecognised_line_locators(text)
-    assert time.process_time() - started < 2
+        _assert_scans_quickly(
+            text,
+            misspelled_commit_pins,
+            unpinned_line_citations,
+            unrecognised_line_locators,
+        )
     # Each of these took 4 to 28 seconds: a list of line numbers that failed
     # was retried once for each way to share its whitespace out (exponential
     # in its length), a failed locator once for each way to share a run of
@@ -3299,9 +3354,7 @@ def test_a_long_string_is_scanned_in_linear_time() -> None:
         "L1 and " * 8_000,
         "https://" + "".join(map(chr, range(0x4000, 0x4000 + 8_000))) + "/a.py#L12",
     ):
-        line_citations(text)
-        unrecognised_line_locators(text)
-        assert time.process_time() - started < 2, text[:24]
+        _assert_scans_quickly(text, line_citations, unrecognised_line_locators)
     # Since round 9: ranges that each end where the next starts, a list read
     # again from its last number, and runs of what a markup escape starts with.
     for text in (
@@ -3312,28 +3365,22 @@ def test_a_long_string_is_scanned_in_linear_time() -> None:
         "\\" * 100_000,
         "&a" * 50_000,
     ):
-        line_citations(text)
-        unrecognised_line_locators(text)
-        assert time.process_time() - started < 2, text[:24]
-    # Since round 10, in 2 s of their own: runs of what an attribute's value,
-    # a destination in angle brackets, a long legacy-looking name and a URL
-    # read through Unicode spaces start with.
-    started = time.process_time()
+        _assert_scans_quickly(text, line_citations, unrecognised_line_locators)
+    # Since round 10: runs of what an attribute's value, a destination in angle
+    # brackets, a long legacy-looking name and a URL read through Unicode spaces
+    # start with.
     for text in (
         '="https:' * 20_000,
         "='" + "x" * 100_000,
         "](<https:" * 20_000,
         "](<https:" + "\\x" * 50_000,
         ("&amp" + "x" * 28) * 3_000,
-        "https:" + "\u00a0" * 100_000,
-        "https://a\u00a0" * 20_000,
+        "https:" + " " * 100_000,
+        "https://a " * 20_000,
     ):
-        line_citations(text)
-        unrecognised_line_locators(text)
-        assert time.process_time() - started < 2, text[:24]
-    # Since round 11, in 2 s of their own: runs of what a dot segment, a URL
-    # read through its query and a destination after whitespace start with.
-    started = time.process_time()
+        _assert_scans_quickly(text, line_citations, unrecognised_line_locators)
+    # Since round 11: runs of what a dot segment, a URL read through its query
+    # and a destination after whitespace start with.
     for text in (
         "/.." * 30_000,
         "=%2e." * 20_000,
@@ -3345,16 +3392,17 @@ def test_a_long_string_is_scanned_in_linear_time() -> None:
         "](" + " " * 100_000 + "\n<",
         "](\t \t<https:" * 15_000,
     ):
-        line_citations(text)
-        unrecognised_line_locators(text)
-        dot_segment_line_citations(text)
-        assert time.process_time() - started < 2, text[:24]
-    # Since round 12, in 2 s of their own: runs of what this repository's path,
-    # a line fragment, a run of slashes or ``.`` segments, a dot segment beside
-    # a ``%2f``, and the run of path characters before a name start with; and
-    # dot segments a browser resolves, after a ``?`` too, escaped or beside a
-    # backslash, which pop 10,000 segments back to the owner.
-    started = time.process_time()
+        _assert_scans_quickly(
+            text,
+            line_citations,
+            unrecognised_line_locators,
+            dot_segment_line_citations,
+        )
+    # Since round 12: runs of what this repository's path, a line fragment, a
+    # run of slashes or ``.`` segments, a dot segment beside a ``%2f``, and the
+    # run of path characters before a name start with; and dot segments a
+    # browser resolves, after a ``?`` too, escaped or beside a backslash, which
+    # pop 10,000 segments back to the owner.
     for text in (
         "policyengine/microcosm" * 2_500 + "#L1",
         "PolicyEngine/microcosm/#L1" * 2_000,
@@ -3372,11 +3420,13 @@ def test_a_long_string_is_scanned_in_linear_time() -> None:
         "%2e%2E/" * 9_000 + "#L1",
         "\\.." * 20_000 + "#L1",
     ):
-        line_citations(text)
-        in_repository_line_citations(text)
-        dot_segment_line_citations(text)
-        line_links_of_this_repository(text)
-        assert time.process_time() - started < 2, text[:24]
+        _assert_scans_quickly(
+            text,
+            line_citations,
+            in_repository_line_citations,
+            dot_segment_line_citations,
+            line_links_of_this_repository,
+        )
 
 
 #: Pieces of text around source names and line locators.
