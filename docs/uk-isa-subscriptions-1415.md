@@ -31,7 +31,8 @@ read the sum of the person balances.
 ## Sources
 
 - HMRC, [Annual savings statistics 2026](https://www.gov.uk/government/statistics/annual-savings-statistics-2026)
-  (September 2026), through the pinned Chronicle feed (PolicyEngine/chronicle#392):
+  (September 2026), through the pinned Chronicle feed (`53815b2`, which carries
+  PolicyEngine/chronicle#392's ISA statistics):
   - Table 9.7: individuals subscribing in 2023-24 by total income and size of
     subscription, for each type paid into (cash only, stocks and shares only,
     both). The tables head their columns "(thousands)" but count people.
