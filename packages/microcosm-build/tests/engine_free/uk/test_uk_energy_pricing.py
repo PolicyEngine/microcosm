@@ -1637,3 +1637,82 @@ def test_the_energy_rake_gate_takes_only_the_declared_held_cells() -> None:
     assert any("does not declare" in f for f in run(undeclared).failures)
     missing = {k: v for k, v in receipt.items() if k != "cells_held_at_need_mean"}
     assert any("carries no cells_held_at_need_mean" in f for f in run(missing).failures)
+
+
+def test_the_lcfs_stage_key_covers_energy_pricing() -> None:
+    """The independent review of microcosm#1420, finding 5: the stage's energy
+    level and prices live in energy_pricing, so a code-only change there must
+    re-key the stage rather than resume a cached pass."""
+
+    from microcosm.build.uk_runtime import energy_pricing
+    from microcosm.build.uk_runtime.graph_kernels import _STAGE_HELPER_MODULES
+
+    assert energy_pricing in _STAGE_HELPER_MODULES["lcfs_consumption"]
+
+
+def test_each_bound_ons_energy_row_is_a_fuel_levelled_to_ons_spending() -> None:
+    """The independent review of microcosm#1420, finding 11: a per-fuel ONS
+    spending row binds only when the stage levels that fuel to ONS spending.
+    Otherwise the solve pulls a frame levelled to Energy Trends onto ONS's
+    level, the pull microcosm#1113 took out (D1). Gas's row is held out while
+    ONS 04.5.2 counts bottled gas, so rebinding it (microcosm#1095) needs gas
+    in spend_level_fuels too."""
+
+    from importlib import resources as importlib_resources
+
+    from microcosm.build.uk_runtime.energy_pricing import (
+        ELECTRICITY_FUEL,
+        GAS_FUEL,
+        ONS_HOUSEHOLD_SPEND_CONCEPTS,
+        declared_spend_level_fuels,
+    )
+    from microcosm.build.uk_runtime.measure_simulation import (
+        load_uk_calibration_measure_exclusions,
+    )
+
+    def load(resource: str) -> dict:
+        return json.loads(
+            importlib_resources.files("microcosm.build.uk")
+            .joinpath(resource)
+            .read_text(encoding="utf-8")
+        )
+
+    fuel_of_concept = {
+        ONS_HOUSEHOLD_SPEND_CONCEPTS[ELECTRICITY_KWH]: ELECTRICITY_FUEL,
+        ONS_HOUSEHOLD_SPEND_CONCEPTS[GAS_KWH]: GAS_FUEL,
+    }
+    rows = {}
+    for target in load("uk_population_targets.json")["targets"]:
+        concept = (target.get("ledger_selector") or {}).get("source_concept")
+        if isinstance(concept, str) and concept in fuel_of_concept:
+            rows[target["target_id"]] = fuel_of_concept[concept]
+    assert sorted(rows.values()) == [ELECTRICITY_FUEL, GAS_FUEL]
+    held = {entry["name"] for entry in load_uk_calibration_measure_exclusions()} | {
+        entry["target_id"]
+        for entry in load("target_reference_signed_exclusions.json")["exclusions"]
+        if "row" not in entry
+    }
+    bound = {
+        target_id: fuel for target_id, fuel in rows.items() if target_id not in held
+    }
+    assert bound == {"ons.household_electricity_expenditure": ELECTRICITY_FUEL}
+    assert set(bound.values()) <= set(declared_spend_level_fuels(_declared()))
+
+
+def test_the_ons_row_variant_is_defined_once() -> None:
+    """docs/shared-constants.md: the lcfs_consumption stage reads the ONS
+    resource and row variant energy_pricing defines (the independent review of
+    microcosm#1420), and the energy view only adds the domestic concept."""
+
+    from microcosm.build.uk_runtime import energy_pricing, lcfs_consumption
+
+    assert lcfs_consumption.UK_ONS_HFCE_ROW_DIMENSIONS is (
+        energy_pricing.UK_ONS_HFCE_ROW_DIMENSIONS
+    )
+    assert lcfs_consumption.UK_LCFS_ROAD_FUEL_LEVEL_RESOURCE == (
+        energy_pricing.UK_ONS_HOUSEHOLD_EXPENDITURE_RESOURCE
+    )
+    assert dict(energy_pricing.ONS_HOUSEHOLD_SPEND_DIMENSIONS) == {
+        "consumption_concept": "domestic",
+        **energy_pricing.UK_ONS_HFCE_ROW_DIMENSIONS,
+    }

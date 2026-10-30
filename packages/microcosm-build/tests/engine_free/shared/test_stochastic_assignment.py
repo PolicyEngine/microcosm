@@ -188,7 +188,10 @@ def test_a_repeated_id_is_refused() -> None:
         integer_record_keys(np.array([1, 2, 1]), label="ids")
 
 
-def test_balanced_uniforms_give_each_stratum_its_rate_to_within_one_record() -> None:
+def test_balanced_uniforms_give_each_stratum_its_rate_to_within_half_a_record() -> None:
+    # At midpoints the last record taken sits below the rate and the next one
+    # at or above it, so a stratum misses by at most half its heaviest record
+    # (the independent review of microcosm#1420, finding 13).
     rng = np.random.default_rng(3)
     n = 500
     strata = rng.integers(0, 6, n)
@@ -199,9 +202,44 @@ def test_balanced_uniforms_give_each_stratum_its_rate_to_within_one_record() -> 
         for stratum in np.unique(strata):
             members = strata == stratum
             claimed = float(weights[members][positions[members] < rate].sum())
-            assert (
-                abs(claimed - rate * weights[members].sum()) <= weights[members].max()
+            assert abs(claimed - rate * weights[members].sum()) <= (
+                0.5 * weights[members].max() + 1e-9
             )
+
+
+def test_a_start_per_stratum_keeps_one_record_and_restores_the_rate() -> None:
+    # Rotated by a start per stratum (systematic sampling), a stratum misses by
+    # at most half a record at each end of its arc, and every record is taken
+    # with probability equal to the rate, which midpoints alone miss in a
+    # stratum of one record.
+    rng = np.random.default_rng(5)
+    n = 600
+    strata = rng.integers(0, 8, n)
+    draws = rng.random(n)
+    weights = rng.uniform(0.5, 5.0, n)
+    per_stratum = rng.random(8)
+    positions = weight_balanced_uniforms(
+        strata, draws, weights, starts=per_stratum[strata]
+    )
+    for rate in (0.1, 0.6, 0.9):
+        for stratum in np.unique(strata):
+            members = strata == stratum
+            claimed = float(weights[members][positions[members] < rate].sum())
+            assert abs(claimed - rate * weights[members].sum()) <= (
+                weights[members].max() + 1e-9
+            )
+    singles = np.arange(1_000)
+    rotated = weight_balanced_uniforms(
+        singles,
+        np.zeros(singles.size),
+        np.ones(singles.size),
+        starts=(np.arange(1_000) + 0.5) / 1_000,
+    )
+    assert (rotated < 0.6).mean() == pytest.approx(0.6, abs=0.002)
+    with pytest.raises(ValueError, match="aligned"):
+        weight_balanced_uniforms(strata, draws, weights, starts=per_stratum)
+    with pytest.raises(ValueError, match=r"\[0, 1\)"):
+        weight_balanced_uniforms(strata, draws, weights, starts=np.ones(n))
 
 
 def test_balanced_uniforms_follow_the_draws_and_not_the_row_order() -> None:

@@ -40,9 +40,12 @@ no allowance that have such a member (María's decision (a) of 2026-10-28):
 Both draws are balanced by weight within strata (microcosm#1418). Each
 uniform orders a stratum's records, and each record takes the midpoint of its
 slice of the stratum's cumulative weight (``weight_balanced_uniforms``, as
-policyengine-uk's ``stratified_uniform``), so every stratum claims the rate of
-its weight to within half its heaviest record, and the stage refuses a
-stratum that misses by more (Anthony's reviews of microcosm#1420). Independent draws reach
+policyengine-uk's ``stratified_uniform``), rotated by a start drawn per
+stratum, so every stratum claims the rate of its weight to within one record
+and every carer claims with probability equal to the rate, however few share
+the stratum (the independent review of microcosm#1420, finding 4). The stage
+refuses a stratum that misses by more than its heaviest record (Anthony's
+reviews of microcosm#1420). Independent draws reach
 it only in expectation, and on the few source households over the limit one draw put the
 2031 taper's cost a quarter below its expectation. The take-up strata are the
 route (in-household or not), whether the benefit unit reports a means-tested
@@ -117,7 +120,7 @@ __all__ = [
     "UKCarersAllowancePool",
     "UKCarersAllowanceTakeUpResult",
     "UKCarersAllowanceTakeUpStageTransform",
-    "assert_strata_within_half_a_record",
+    "assert_strata_within_one_record",
     "carers_allowance_earnings_band",
     "carers_allowance_eligible",
     "carers_allowance_pool",
@@ -125,6 +128,7 @@ __all__ = [
     "means_tested_benefit_unit",
     "other_member_severely_disabled",
     "redraw_carers_allowance_take_up",
+    "stratum_starts",
     "uk_carers_allowance_policy",
 ]
 
@@ -208,8 +212,10 @@ CARERS_ALLOWANCE_ELIGIBILITY = (
 CARERS_ALLOWANCE_RATE_DERIVATION = (
     "the take-up contract's carers_allowance_newly_entitled rate, with the "
     "identity-keyed uniforms placed by weight within strata "
-    f"({CARERS_ALLOWANCE_STRATA}), so that every stratum claims the rate of its "
-    "eligible weight to within one record; would_claim = reported OR (eligible "
+    f"({CARERS_ALLOWANCE_STRATA}) and rotated by a start drawn per stratum, so "
+    "that every stratum claims the rate of its eligible weight to within one "
+    "record and every eligible carer claims with probability equal to the rate; "
+    "would_claim = reported OR (eligible "
     "AND position < rate), so a reporter stays true and every other person false"
 )
 
@@ -274,8 +280,10 @@ class UKCarersAllowancePool:
     the hours over bands); ``pool`` holds the first where another member is
     severely disabled and the second where their pool uniform falls below
     ``share``. With ``pool_strata`` the uniforms of the other carers who report
-    no allowance are first placed by weight within those strata, so that each
-    stratum draws ``share`` of its weight to within one record.
+    no allowance are first placed by weight within those strata and rotated by
+    a start drawn per stratum, so that each stratum draws ``share`` of its
+    weight to within one record and each carer joins with probability
+    ``share``.
     """
 
     pool: np.ndarray
@@ -317,8 +325,12 @@ def carers_allowance_pool(
         # eligible part, so the balance is struck over them.
         drawable = other & ~np.asarray(reported, dtype=bool)
         draws = draws.copy()
+        drawable_strata = np.asarray(pool_strata)[drawable]
         draws[drawable] = weight_balanced_uniforms(
-            np.asarray(pool_strata)[drawable], draws[drawable], weights[drawable]
+            drawable_strata,
+            draws[drawable],
+            weights[drawable],
+            starts=stratum_starts(drawable_strata, salt=CARERS_ALLOWANCE_POOL_SALT),
         )
     drawn = draws < (share or 0.0)
     pool = (in_household & disabled_member) | (other & drawn)
@@ -327,7 +339,22 @@ def carers_allowance_pool(
     )
 
 
-def assert_strata_within_half_a_record(
+def stratum_starts(strata: np.ndarray, *, salt: str) -> np.ndarray:
+    """Each record's stratum start: one identity-keyed uniform per stratum code.
+
+    Keyed on the stratum code under the draw's salt, so a rebuild rotates each
+    stratum the same way, as the records' own draws are keyed on the person.
+    """
+
+    codes = np.asarray(strata)
+    unique = np.unique(codes)
+    starts = stable_identity_uniforms(
+        unique, seed=CARERS_ALLOWANCE_TAKE_UP_SEED, salt=f"{salt}:stratum_start"
+    )
+    return starts[np.searchsorted(unique, codes)]
+
+
+def assert_strata_within_one_record(
     members: np.ndarray,
     strata: np.ndarray,
     taken: np.ndarray,
@@ -337,12 +364,11 @@ def assert_strata_within_half_a_record(
     label: str,
 ) -> None:
     """Refuse a stratum whose taken weight misses ``share`` of its weight by
-    more than half its heaviest record.
+    more than its heaviest record.
 
-    The balanced placement takes each stratum's share to within half a record
-    by construction: the last record taken has its midpoint below the share
-    and the next one at or above it. A larger miss means the draw was not
-    balanced.
+    The rotated placement takes each stratum's share to within half a record
+    at each end of the stratum's arc, one record in all, by construction. A
+    larger miss means the draw was not balanced.
     """
 
     weights = np.maximum(np.asarray(weights, dtype=np.float64), 0.0)
@@ -354,10 +380,10 @@ def assert_strata_within_half_a_record(
             float(weights[stratum & taken].sum())
             - float(share) * float(stratum_weights.sum())
         )
-        if miss > 0.5 * float(stratum_weights.max()) * (1.0 + 1e-9) + 1e-9:
+        if miss > float(stratum_weights.max()) * (1.0 + 1e-9) + 1e-9:
             raise ValueError(
                 f"Carer's Allowance {label} stratum {int(code)} misses its share by "
-                "more than half a record: the draw was not balanced by weight."
+                "more than one record: the draw was not balanced by weight."
             )
 
 
@@ -634,14 +660,19 @@ def redraw_carers_allowance_take_up(
     take_up_strata = pool.other.astype(np.int64) * 2 * _BAND_COUNT + pool_strata
     positions = draws.copy()
     positions[eligible] = weight_balanced_uniforms(
-        take_up_strata[eligible], draws[eligible], weights[eligible]
+        take_up_strata[eligible],
+        draws[eligible],
+        weights[eligible],
+        starts=stratum_starts(
+            take_up_strata[eligible], salt=CARERS_ALLOWANCE_TAKE_UP_OUTPUT
+        ),
     )
     drawn = eligible & (positions < rate)
     drawable_other = pool.other & ~reported
-    assert_strata_within_half_a_record(
+    assert_strata_within_one_record(
         eligible, take_up_strata, drawn, weights, rate, label="take-up"
     )
-    assert_strata_within_half_a_record(
+    assert_strata_within_one_record(
         drawable_other, pool_strata, pool.pool, weights, pool.share or 0.0, label="pool"
     )
     would_claim = reported | drawn
@@ -750,11 +781,11 @@ def redraw_carers_allowance_take_up(
         ),
         "drawn_support": support_band(sources(drawn)),
         "drawn_share_of_over_limit_pool": guarded_share(drawn, eligible),
-        # Each stratum's realised share against its target, to within half
-        # a record by construction and refused at more; a share either side
-        # of which one to nine source households carry is "<10".
+        # Each stratum's realised share against its target, to within one
+        # record by construction and refused at more; a share either side of
+        # which one to nine source households carry is "<10".
         "weekly_rate": resolved.weekly_rate,
-        "strata_within_half_a_record": True,
+        "strata_within_one_record": True,
         "take_up_strata": strata_rows(eligible, take_up_strata, drawn, rate),
         "pool_strata": strata_rows(
             drawable_other,

@@ -20,13 +20,18 @@
     {
       "rule_id": "hmrc_rounded_thousand_floor",
       "target_id_prefixes": [
-        "hmrc.higher_rate_taxpayers.count"
+        "hmrc.higher_rate_taxpayers.count",
+        "hmrc.pension_income.count",
+        "hmrc.pension_income.amount"
       ],
+      "floor_reads": {
+        "hmrc.pension_income.amount": "hmrc.pension_income.count"
+      },
       "absolute_floor": 5500,
-      "reason": "HMRC publishes the SPI area cells rounded to the thousand, so a published cell can be up to 500 from its true count: up to 10% of a cell of 5,000, and up to 25% of the smallest cell, 2,000. The floor defers the cells where the rounding can reach 10%. 192 of the 919 cells sit there (155 constituencies, 37 local authorities). The deferred cell's taxpayers still count in its region's or nation's control through reconciliation.",
+      "reason": "HMRC publishes the SPI area counts rounded to the thousand, so a published count can be up to 500 from its true value: up to 10% of a cell of 5,000, and up to 25% of the smallest cell, 2,000. The floor defers the cells where the rounding can reach 10%: 192 of the 919 higher rate taxpayer cells (155 constituencies, 37 local authorities), signed on 2026-10-14, and, by María's ruling of 2026-10-29 (microcosm#1420), 20 of the 1,008 cells of taxpayers with pension income (17 constituencies, 3 local authorities). Each pension income amount is HMRC's count times its mean, so it carries the count's rounding and defers where its count does (floor_reads). That ruling reaches pension income only: the employment and self-employment cells stay bound, and the 405 self-employment count cells below the floor carry the rounding as a known error. A deferred cell's value still counts in its region's or nation's control through reconciliation.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "approved_on": "2026-10-14",
+      "approved_on": "2026-10-29",
       "status": "approved",
       "expires_on": "2027-04-01"
     },

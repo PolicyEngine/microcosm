@@ -155,6 +155,19 @@ UK_HMRC_ITL_ALL_BAND_GROWTH_MEASURES: Mapping[str, tuple[str, str]] = {
         "total_income_amount",
     ),
 }
+#: SPI Table 3.10's self-employment amounts by self-employment band
+#: (microcosm#1418): a band's amount is its count times its mean, so it moves
+#: by the count rows' all-ranges taxpayer growth times the OBR's mixed income
+#: per head, the index policyengine-uk grows self-employment income by. Each
+#: band's mean then moves as the engine moves incomes, where growing the two
+#: rows on unrelated indices would make calibration tilt the band (the
+#: independent review of microcosm#1420, finding 2).
+UK_SPI_SELF_EMPLOYMENT_BAND_AMOUNT_INDEX_CONCEPT = (
+    "hmrc.itl_2026.taxpayer_count_growth_all_bands_times_obr_per_capita_mixed_income"
+)
+UK_SPI_SELF_EMPLOYMENT_PROFIT_PARAMETER = (
+    "gov.economic_assumptions.indices.obr.per_capita.mixed_income"
+)
 UK_HMRC_ITL_ALL_BAND_GROWTH_BASIS = (
     "HMRC Income Tax liabilities statistics Table 2.5 {measure} over all income "
     "ranges: the calendar-year window of the two tax years overlapping the "
@@ -1301,6 +1314,10 @@ _RECIPIENT_COUNT_APPLIERS: Mapping[str, Callable[..., TargetRegistry]] = {
     UK_HMRC_STATE_PENSION_AGE_GROWTH_INDEX_CONCEPT: (
         align_hmrc_row_by_resident_state_pension_age_growth
     ),
+    UK_HMRC_TAXPAYER_GROWTH_ALL_BANDS_INDEX_CONCEPT: partial(
+        align_hmrc_row_by_itl_all_band_growth,
+        index_concept=UK_HMRC_TAXPAYER_GROWTH_ALL_BANDS_INDEX_CONCEPT,
+    ),
 }
 
 
@@ -1447,6 +1464,12 @@ def hmrc_uprating_appliers() -> dict[str, Any]:
         parameter_path=UK_SPI_STATE_PENSION_RATE_PARAMETER,
         count_index_concept=UK_HMRC_STATE_PENSION_AGE_GROWTH_INDEX_CONCEPT,
     )
+    appliers[UK_SPI_SELF_EMPLOYMENT_BAND_AMOUNT_INDEX_CONCEPT] = partial(
+        align_hmrc_amount_by_recipient_growth_and_rate,
+        index_concept=UK_SPI_SELF_EMPLOYMENT_BAND_AMOUNT_INDEX_CONCEPT,
+        parameter_path=UK_SPI_SELF_EMPLOYMENT_PROFIT_PARAMETER,
+        count_index_concept=UK_HMRC_TAXPAYER_GROWTH_ALL_BANDS_INDEX_CONCEPT,
+    )
     appliers[UK_SPI_SAVINGS_INTEREST_INDEX_CONCEPT] = partial(
         align_hmrc_row_by_history_then_projection,
         index_concept=UK_SPI_SAVINGS_INTEREST_INDEX_CONCEPT,
@@ -1485,6 +1508,8 @@ __all__ = [
     "UK_SPI_SAVINGS_INTEREST_HISTORY_PARAMETER",
     "UK_SPI_SAVINGS_INTEREST_INDEX_CONCEPT",
     "UK_SPI_SAVINGS_INTEREST_PROJECTION_PARAMETER",
+    "UK_SPI_SELF_EMPLOYMENT_BAND_AMOUNT_INDEX_CONCEPT",
+    "UK_SPI_SELF_EMPLOYMENT_PROFIT_PARAMETER",
     "UK_OBR_SAVINGS_INCOME_GROWTH_CONCEPT",
     "UK_OBR_SAVINGS_INCOME_GROWTH_INDEX_CONCEPT",
     "UK_OBR_SAVINGS_INCOME_GROWTH_RESOURCE",

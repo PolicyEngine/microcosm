@@ -27,11 +27,15 @@ def test_spi_band_targets_move_by_the_engines_dataset_projection() -> None:
     """An HMRC SPI amount family projects its value by the index
     policyengine-uk's dataset projection grows the variable with, so the
     targets move with the data the engine runs on (microcosm#1095,
-    uk-data#541). Savings interest reaches the dataset's year by the index of
-    its own history first. The Table 3.7 interest and other income rows follow
-    the OBR's savings income forecast instead, by María's ruling of 2026-10-29
-    (microcosm#1418), and a measure derived from an input moves by the input's
-    index."""
+    uk-data#541). The Table 3.7 interest and other income rows follow the
+    OBR's savings income forecast instead, by María's ruling of 2026-10-29
+    (microcosm#1418); Table 3.10's amounts move by their count index times the
+    engine's index for self-employment income (the independent review of
+    microcosm#1420); and a measure derived from an input moves by the input's
+    index. The SPI donors still reach the dataset's year by savings interest's
+    own history index and run on the projection's from there
+    (``spi_income.SPI_HISTORY_INDEX_DIFFERS_FROM_PROJECTION``), so both are
+    held to the engine's."""
 
     import json
     from importlib.resources import files
@@ -43,8 +47,12 @@ def test_spi_band_targets_move_by_the_engines_dataset_projection() -> None:
     from microcosm.build.uk_runtime.hmrc_uprating import (
         UK_OBR_SAVINGS_INCOME_GROWTH_INDEX_CONCEPT,
         UK_SPI_SAVINGS_INTEREST_HISTORY_PARAMETER,
-        UK_SPI_SAVINGS_INTEREST_INDEX_CONCEPT,
         UK_SPI_SAVINGS_INTEREST_PROJECTION_PARAMETER,
+        UK_SPI_SELF_EMPLOYMENT_BAND_AMOUNT_INDEX_CONCEPT,
+        UK_SPI_SELF_EMPLOYMENT_PROFIT_PARAMETER,
+    )
+    from microcosm.build.uk_runtime.spi_income import (
+        SPI_HISTORY_INDEX_DIFFERS_FROM_PROJECTION,
     )
 
     derived_from = {
@@ -62,6 +70,16 @@ def test_spi_band_targets_move_by_the_engines_dataset_projection() -> None:
         for variable in variables
     }
     variables = policyengine_uk.CountryTaxBenefitSystem().variables
+    assert SPI_HISTORY_INDEX_DIFFERS_FROM_PROJECTION == {
+        "savings_interest_income": UK_SPI_SAVINGS_INTEREST_PROJECTION_PARAMETER
+    }
+    assert (
+        UK_SPI_SAVINGS_INTEREST_PROJECTION_PARAMETER
+        == (projection["savings_interest_income"])
+    )
+    assert UK_SPI_SAVINGS_INTEREST_HISTORY_PARAMETER == (
+        variables["savings_interest_income"].uprating
+    )
     contract = json.loads(
         files("microcosm.build.uk").joinpath("uk_population_targets.json").read_text()
     )
@@ -75,11 +93,10 @@ def test_spi_band_targets_move_by_the_engines_dataset_projection() -> None:
         if index == UK_OBR_SAVINGS_INCOME_GROWTH_INDEX_CONCEPT:
             on_savings_path.add(family["target_id"])
             continue
-        if index == UK_SPI_SAVINGS_INTEREST_INDEX_CONCEPT:
-            assert variable == "savings_interest_income"
-            assert UK_SPI_SAVINGS_INTEREST_PROJECTION_PARAMETER == projection[variable]
-            assert UK_SPI_SAVINGS_INTEREST_HISTORY_PARAMETER == (
-                variables[variable].uprating
+        if index == UK_SPI_SELF_EMPLOYMENT_BAND_AMOUNT_INDEX_CONCEPT:
+            assert (
+                UK_SPI_SELF_EMPLOYMENT_PROFIT_PARAMETER
+                == (projection[derived_from.get(variable, variable)])
             )
             checked.append(family["target_id"])
             continue

@@ -3268,6 +3268,23 @@ def test_the_rfdr_layer_needs_area_mode_and_a_release_the_committed_layer(tmp_pa
     assert binding["resource_pins"]["uk_rfdr_area_layer"] == pins["uk_rfdr_area_layer"]
 
 
+@pytest.mark.parametrize(
+    ("assignment", "mode"), [("atomic", "area"), ("legacy", "none")]
+)
+def test_an_unset_rfdr_mode_follows_the_geography_assignment(
+    tmp_path, assignment, mode
+):
+    """The independent review of microcosm#1420: a legacy-assignment build
+    through the CLI need not pass --rfdr-localisation none, as the build config
+    resolves it the same way."""
+    args = arguments(tmp_path, "--geography-assignment", assignment)
+    assert args.rfdr_localisation is None
+    pins: dict = {}
+    binding = cli._prepare_rfdr_localisation(args, pins, {})
+    assert binding["mode"] == args.rfdr_localisation == mode
+    assert bool(pins) is (mode == "area")
+
+
 def test_target_geographies_can_name_the_brma_rows(tmp_path):
     assert arguments(
         tmp_path, "--target-geographies", "la,brma"

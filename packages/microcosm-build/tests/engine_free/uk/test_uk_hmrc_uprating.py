@@ -12,6 +12,7 @@ from test_support.microcosm_build.uk_hmrc_uprating import *
 def test_every_declared_engine_index_and_the_count_index_have_an_applier() -> None:
     from microcosm.build.uk_runtime.hmrc_uprating import (
         UK_OBR_SAVINGS_INCOME_GROWTH_INDEX_CONCEPT,
+        UK_SPI_SELF_EMPLOYMENT_BAND_AMOUNT_INDEX_CONCEPT,
     )
 
     appliers = hmrc_uprating_appliers()
@@ -26,6 +27,7 @@ def test_every_declared_engine_index_and_the_count_index_have_an_applier() -> No
         UK_SPI_STATE_PENSION_AGE_AMOUNT_INDEX_CONCEPT,
         UK_SPI_SAVINGS_INTEREST_INDEX_CONCEPT,
         UK_OBR_SAVINGS_INCOME_GROWTH_INDEX_CONCEPT,
+        UK_SPI_SELF_EMPLOYMENT_BAND_AMOUNT_INDEX_CONCEPT,
     }
     assert set(appliers) <= set(UK_UPRATING_APPLIERS)
     assert len(UK_ENGINE_INDEX_PARAMETERS) == 7
@@ -458,6 +460,57 @@ def test_all_band_growth_moves_an_unbanded_area_row_by_the_all_ranges_window() -
         index_concept="hmrc.itl_2026.taxpayer_count_growth_all_bands",
     )
     assert passthrough is registry
+
+
+def test_table_3_10_amounts_move_by_the_count_index_times_mixed_income() -> None:
+    """The independent review of microcosm#1420, finding 2: a Table 3.10 band's
+    amount moves as its count does, times the engine's mixed income per head,
+    so the band's mean moves as the engine moves incomes."""
+
+    from microcosm.build.uk_runtime.hmrc_uprating import (
+        UK_SPI_SELF_EMPLOYMENT_BAND_AMOUNT_INDEX_CONCEPT as INDEX,
+    )
+    from microcosm.build.uk_runtime.hmrc_uprating import (
+        UK_SPI_SELF_EMPLOYMENT_PROFIT_PARAMETER as PARAMETER,
+    )
+    from microcosm.build.uk_runtime.hmrc_uprating import (
+        align_hmrc_row_by_itl_all_band_growth,
+    )
+
+    count_index = "hmrc.itl_2026.taxpayer_count_growth_all_bands"
+    registry = TargetRegistry(
+        (
+            _spec(
+                name="hmrc/self_employment_income_self_employment_income_band@2025",
+                value=2.0e7,
+                lower_bound=1,
+            ),
+        ),
+        country="uk",
+    )
+
+    def mixed_income(path: str, instant: str) -> float:
+        assert path == PARAMETER
+        return {"2023-01-01": 100.0, "2025-01-01": 104.0}[instant]
+
+    (spec,) = align_hmrc_amount_by_recipient_growth_and_rate(
+        _reference(INDEX),
+        registry,
+        index_concept=INDEX,
+        parameter_path=PARAMETER,
+        count_index_concept=count_index,
+        parameter_value=mixed_income,
+    ).specs
+    (count,) = align_hmrc_row_by_itl_all_band_growth(
+        _reference(count_index), registry, index_concept=count_index
+    ).specs
+    count_factor = float(count.metadata["uprating_factor"])
+    assert spec.value == pytest.approx(2.0e7 * count_factor * 1.04)
+    assert spec.metadata["uprating_index"] == INDEX
+    assert float(spec.metadata["uprating_rate_factor"]) == pytest.approx(1.04)
+    applier = hmrc_uprating_appliers()[INDEX]
+    assert applier.keywords["count_index_concept"] == count_index
+    assert applier.keywords["parameter_path"] == PARAMETER
 
 
 def _savings_growth_rows(growth: dict[int, float]) -> list[dict]:

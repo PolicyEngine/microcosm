@@ -170,8 +170,9 @@ _FAMILIES: tuple[dict[str, Any], ...] = (
     {
         "family": "hmrc_income_by_area",
         "description": (
-            "SPI-frame employment and self-employment income amounts and "
-            "taxpayer counts by area."
+            "SPI-frame employment, self-employment and pension income "
+            "amounts and taxpayer counts, and higher rate taxpayer counts, by "
+            "area."
         ),
         "sources": ["hmrc_personal_incomes_constituency_la"],
         "adjudications": [
@@ -268,8 +269,10 @@ _FAMILIES: tuple[dict[str, Any], ...] = (
             "Domestic electricity and gas consumption (kWh) and gas-connected "
             "households by local authority, Great Britain, from DESNZ's "
             "sub-national statistics (microcosm#1207). The kWh cells keep "
-            "DESNZ's split between authorities at the lcfs stage's Energy "
-            "Trends level (one factor per fuel); the gas-connected cells are "
+            "DESNZ's split between authorities at the lcfs stage's level, one "
+            "factor per fuel: the kWh ONS 04.5.1 household spending buys for "
+            "electricity since microcosm#1418, DESNZ Energy Trends for gas. "
+            "The gas-connected cells are "
             "each authority's census households times its gas meters over its "
             "electricity meters, a member of the census household partition. "
             "The frame reads each household's stored spend at the dataset "
@@ -924,8 +927,9 @@ _BINDING_FENCES: tuple[dict[str, Any], ...] = (
             "uk_population_targets.json declarations "
             "hmrc.employment_income.amount, hmrc.employment_income.count, "
             "hmrc.self_employment_income.amount, "
-            "hmrc.self_employment_income.count and "
-            "hmrc.higher_rate_taxpayers.count (their "
+            "hmrc.self_employment_income.count, "
+            "hmrc.higher_rate_taxpayers.count, hmrc.pension_income.amount and "
+            "hmrc.pension_income.count (their "
             "income_tax_before_winter_fuel_payment_charge_annual filter); "
             "microcosm#495 scoping."
         ),

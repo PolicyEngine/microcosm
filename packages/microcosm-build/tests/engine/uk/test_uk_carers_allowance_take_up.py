@@ -242,7 +242,10 @@ def test_the_stage_reaches_the_carers_the_2025_rise_entitles() -> None:
 
 
 def test_the_balanced_draw_is_policyengine_uks_stratified_uniform() -> None:
-    """The stage balances its draws as the engine's own take-up draws do."""
+    """Without a start, the helper places records as policyengine-uk's
+    stratified_uniform does (which the engine uses to place birthdays); the
+    stage adds a start per stratum (the independent review of microcosm#1420,
+    finding 4)."""
 
     from policyengine_uk.utils.stochastic import stratified_uniform
 

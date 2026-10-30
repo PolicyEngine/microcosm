@@ -104,7 +104,10 @@ class UKFanoutSumBridge:
     sides no longer measure one quantity. The index factor is the rest, the
     gap between the bands' band-by-band growth and the cells' all-ranges
     growth: one further than ``max_index_shift`` from one means a re-pinned
-    index has moved the area targets.
+    index has moved the area targets. A source gap known to run one way is
+    bounded on both sides: ``min_factor_shift`` is the lowest signed shift the
+    source factor may take, and without it the bound is symmetric (the
+    independent review of microcosm#1420).
 
     A bridge may sum several national fan-outs whose cells together are the
     area cells' quantity (``higher_target_ids``): the State Pension and the
@@ -117,6 +120,18 @@ class UKFanoutSumBridge:
     geography_id: str
     max_factor_shift: float
     max_index_shift: float
+    min_factor_shift: float | None = None
+
+    @property
+    def source_factor_bounds(self) -> tuple[float, float]:
+        """The lowest and highest source factor the bridge accepts."""
+
+        lower = (
+            -self.max_factor_shift
+            if self.min_factor_shift is None
+            else self.min_factor_shift
+        )
+        return 1.0 + lower, 1.0 + self.max_factor_shift
 
     @property
     def higher_target_id(self) -> str:
@@ -141,9 +156,30 @@ def uk_fanout_sum_bridges(
             geography_id=str(entry["geography_id"]),
             max_factor_shift=_declared_bound(entry, "max_factor_shift"),
             max_index_shift=_declared_bound(entry, "max_index_shift"),
+            min_factor_shift=_declared_floor(entry),
         )
         for entry in declared.get("fanout_sum_bridges", ())
     )
+
+
+def _declared_floor(entry: Mapping[str, Any]) -> float | None:
+    """A bridge's signed lower bound on its source shift, if it declares one."""
+
+    floor = entry.get("min_factor_shift")
+    if floor is None:
+        return None
+    ceiling = _declared_bound(entry, "max_factor_shift")
+    if (
+        isinstance(floor, bool)
+        or not isinstance(floor, (int, float))
+        or not -ceiling <= float(floor) < ceiling
+    ):
+        raise ValueError(
+            f"UK fan-out sum bridge {entry.get('bridge_id')!r} must declare "
+            f"min_factor_shift in [-max_factor_shift, max_factor_shift), got "
+            f"{floor!r}."
+        )
+    return float(floor)
 
 
 def _fanout_higher_target_ids(entry: Mapping[str, Any]) -> tuple[str, ...]:

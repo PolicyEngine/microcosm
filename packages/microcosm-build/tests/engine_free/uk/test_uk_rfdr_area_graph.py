@@ -100,6 +100,21 @@ def test_the_node_refuses_a_pool_without_its_columns() -> None:
         _rfdr_area_nodes(cells, common={"time_period": "2023"})
 
 
+def test_only_a_full_scale_build_refuses_a_system_with_none_flagged() -> None:
+    # Vahid's review and the independent review of microcosm#1420: a sampled
+    # rung can miss the 41 English and Welsh output areas by chance.
+    cells = {
+        ("household", "atomic_area_system"): "string",
+        ("household", "atomic_area_code"): "string",
+    }
+    ((full,), _) = _rfdr_area_nodes(dict(cells), common={"time_period": "2023"})
+    ((sampled,), _) = _rfdr_area_nodes(
+        dict(cells), common={"time_period": "2023"}, strict=False
+    )
+    assert full.params["strict_flags"] is True
+    assert sampled.params["strict_flags"] is False
+
+
 def test_config_follows_the_geography_assignment() -> None:
     assert UKFullBuildConfig(calibration_year=2025).rfdr_localisation == "area"
     legacy = UKFullBuildConfig(

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -227,10 +228,31 @@ def test_a_system_whose_households_none_is_flagged_is_refused() -> None:
     assert not flags.any() and counts["flagged"] == 0
 
 
+def test_a_sampled_rung_may_flag_none_but_still_refuses_malformed_codes() -> None:
+    layer = load_rfdr_area_layer(_layer())
+    flags, counts = area_flags(
+        layer=layer,
+        area_system=["uk_ew_output_area_2021", "uk_scotland_output_area_2022"],
+        area_code=["E00000003", "S00135401"],
+        require_flagged=False,
+    )
+    assert not flags.any() and counts["flagged"] == 0
+    with pytest.raises(ValueError, match="well-formed"):
+        area_flags(
+            layer=layer,
+            area_system=["uk_ew_output_area_2021"],
+            area_code=["e00000003"],
+            require_flagged=False,
+        )
+
+
 def test_the_committed_layer_was_built_from_the_registered_nspl_zip() -> None:
     """Anthony's review of microcosm#1420, 7b: the committed layer comes from
     the NSPL zip Chronicle registers, not from a reduction of it, and its
-    provenance carries the layer's own digest."""
+    provenance carries the layer's own digest. The digest is held to the
+    tool's pin and to the high value home stock's own record of the same
+    registration, which the tool does not write (the independent review of
+    microcosm#1420)."""
 
     import hashlib
     from importlib.resources import files
@@ -239,7 +261,21 @@ def test_the_committed_layer_was_built_from_the_registered_nspl_zip() -> None:
     provenance = json.loads(
         uk.joinpath("rfdr_area_layer.provenance.json").read_text(encoding="utf-8")
     )
+    stock = json.loads(
+        uk.joinpath("high_value_home_stock.provenance.json").read_text(encoding="utf-8")
+    )
+    nspl = stock["inputs"]["registrations"]["nspl"]
+    ((stock_file,),) = [list(nspl["files"].values())]
+    pin = _load_tool().NSPL_REGISTRATION
+    assert (nspl["chronicle_package_id"], stock_file["filename"]) == (
+        pin["package_id"],
+        pin["filename"],
+    )
     registered = provenance["nspl_registration"]["zip_sha256"]
+    assert registered == stock_file["sha256"] == pin["sha256"]
+    assert provenance["nspl_registration"]["manifest"] == (
+        "PolicyEngine/chronicle db/data/ons/nspl_august_2026/manifest.yaml"
+    )
     assert provenance["postcode_source"] == {"kind": "nspl_zip", "sha256": registered}
     layer = uk.joinpath("rfdr_area_layer.json").read_bytes()
     assert provenance["layer_sha256"] == hashlib.sha256(layer).hexdigest()
@@ -274,11 +310,65 @@ def _load_tool():
     return module
 
 
+def _manifest(tmp_path, **overrides) -> Path:
+    pin = _load_tool().NSPL_REGISTRATION
+    fields = {
+        "package_id": pin["package_id"],
+        "filename": pin["filename"],
+        "sha256": pin["sha256"],
+        **overrides,
+    }
+    manifest = tmp_path / "manifest.yaml"
+    manifest.write_text(
+        f"package_id: {fields['package_id']}\nfiles:\n  2026:\n"
+        f"    filename: {fields['filename']}\n    sha256: {fields['sha256']}\n"
+        + (
+            "  2025:\n    filename: other.zip\n    sha256: " + "1" * 64 + "\n"
+            if fields.get("second")
+            else ""
+        )
+    )
+    return manifest
+
+
+@pytest.mark.parametrize(
+    ("overrides", "match"),
+    [
+        ({"package_id": "ons-nspl-may-2026"}, "registers package"),
+        ({"filename": "NSPL_MAY_2026.zip"}, "not the pinned"),
+        ({"sha256": "0" * 64}, "not the pinned"),
+        ({"second": True}, "registers 2 files"),
+    ],
+)
+def test_the_tool_reads_only_the_pinned_nspl_registration(
+    tmp_path, overrides, match
+) -> None:
+    """The independent review of microcosm#1420: any one-file manifest used to
+    pass, so another lookup's registration could stand in for the pinned one."""
+
+    tool = _load_tool()
+    assert (
+        tool._registered_sha256(_manifest(tmp_path))
+        == (tool.NSPL_REGISTRATION["sha256"])
+    )
+    with pytest.raises(SystemExit, match=match):
+        tool._registered_sha256(_manifest(tmp_path, **overrides))
+
+
+def test_the_provenance_names_the_manifest_it_read(tmp_path) -> None:
+    tool = _load_tool()
+    manifest = tmp_path / "chronicle/db/data/ons/nspl_august_2026/manifest.yaml"
+    assert tool._manifest_label(manifest) == (
+        "PolicyEngine/chronicle db/data/ons/nspl_august_2026/manifest.yaml"
+    )
+    elsewhere = tmp_path / "manifest.yaml"
+    assert tool._manifest_label(elsewhere) == str(elsewhere)
+
+
 def test_the_tool_refuses_a_lookup_without_the_output_area_column(tmp_path) -> None:
     # Anthony's review of microcosm#1420: a lookup that has the postcode but
     # not the 2021 output area refuses by name, not by a later KeyError.
-    manifest = tmp_path / "manifest.yaml"
-    manifest.write_text("files:\n  nspl.zip:\n    sha256: " + "0" * 64 + "\n")
+    manifest = _manifest(tmp_path)
     lookup = tmp_path / "lookup.parquet"
     pd.DataFrame({"postcode": ["HS1 2AA"], "lsoa21cd": ["S01000001"]}).to_parquet(
         lookup

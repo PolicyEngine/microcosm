@@ -48,6 +48,8 @@ read one function.
 
 from __future__ import annotations
 
+import copy
+import functools
 import math
 from collections.abc import Mapping, Sequence
 from dataclasses import replace
@@ -279,9 +281,33 @@ def gb_energy_level_factors(
     consumption with Northern Ireland's row added, so the factor is the UK
     level over the UK sub-national total. ``local_rows`` stands in for the
     local energy resource's rows (tests).
+
+    The declared call reads only committed resources, so it is computed once
+    per process: every local energy reference levels through it, and the
+    ONS-spend level re-reads the QEP table, which made a local compile about
+    twenty minutes slower (the independent review of microcosm#1420, finding
+    6).
     """
 
-    parameters = declared_energy_pricing() if parameters is None else parameters
+    if parameters is None and local_rows is None:
+        factors, receipt = _declared_gb_energy_level_factors()
+        return dict(factors), copy.deepcopy(receipt)
+    return _gb_energy_level_factors(
+        declared_energy_pricing() if parameters is None else parameters,
+        local_rows=local_rows,
+    )
+
+
+@functools.lru_cache(maxsize=1)
+def _declared_gb_energy_level_factors() -> tuple[dict[str, float], dict[str, Any]]:
+    return _gb_energy_level_factors(declared_energy_pricing(), local_rows=None)
+
+
+def _gb_energy_level_factors(
+    parameters: Mapping[str, Any],
+    *,
+    local_rows: Sequence[Mapping[str, Any]] | None,
+) -> tuple[dict[str, float], dict[str, Any]]:
     if str(parameters.get("level_period_type")) != "calendar_year":
         raise ValueError(
             "The local energy rows bind calendar-year sub-national totals: the "

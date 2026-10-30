@@ -84,10 +84,12 @@ _INCOME_ANCHOR_LEDGER_ONLY_RATIONALE = (
     "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax "
     "liabilities Table 2.5 taxpayers, total income and tax by band as the "
     "calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI "
-    "2023-24 savings-interest rows by band, moved to the dataset's year by the "
-    "household interest index and from there to the calibration year by GDP "
-    "per head, the index the engine's dataset projection applies "
-    "(microcosm#1095); the incumbent registry binds neither (chronicle#282)."
+    "2023-24 Table 3.7 savings-interest and other-income rows by band, grown "
+    "to the calibration year by the OBR's savings income forecast (October "
+    "2026 EFO Table 4.5; María's ruling of 2026-10-29, microcosm#1418; until "
+    "then the interest rows moved to the dataset's year by the household "
+    "interest index and on by GDP per head, microcosm#1095); the incumbent "
+    "registry binds neither (chronicle#282)."
 )
 
 _SPI_REGION_LEDGER_ONLY_RATIONALE = (
@@ -216,7 +218,11 @@ _STATE_PENSION_LEDGER_ONLY_RATIONALE = (
     "sex by type, area by type and weekly amount band by type. The frozen fixture "
     "has no State Pension caseload or resident-level row."
 )
-_INCOME_ANCHOR_PREFIXES = ("hmrc.itl.", "hmrc.spi.savings_interest_income.")
+_INCOME_ANCHOR_PREFIXES = (
+    "hmrc.itl.",
+    "hmrc.spi.savings_interest_income.",
+    "hmrc.spi.other_investment_income.",
+)
 #: microcosm#1069: Income Tax payers by age (ITL Table 2.2), a family the
 #: incumbent registry has no row of.
 _ITL_AGE_PREFIXES = (

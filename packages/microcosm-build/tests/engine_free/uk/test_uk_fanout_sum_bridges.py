@@ -4,11 +4,14 @@ from __future__ import annotations
 
 import copy
 import json
+import math
+from dataclasses import replace
 from importlib import resources as importlib_resources
 
 import pytest
 
 from microcosm.build.cross_grain import _measurement_signature
+from microcosm.build.uk_runtime import ledger_targets
 from microcosm.build.uk_runtime.cross_grain_declarations import (
     is_uk_fanout_target,
     load_uk_cross_grain_declarations,
@@ -313,6 +316,95 @@ def test_a_grain_the_single_winner_rule_reconciles_first_is_still_gated():
         _assert_uk_fanout_sum_agreement(registry, _controls(1_000.0, 1_000.0))
 
 
+def _employment_bridge_floored(floor: float) -> list:
+    return [
+        replace(bridge, min_factor_shift=floor)
+        if bridge.bridge_id == _EMPLOYMENT
+        else bridge
+        for bridge in UK_FANOUT_SUM_BRIDGES
+    ]
+
+
+def test_a_one_way_source_gap_is_bounded_on_both_sides(monkeypatch):
+    # The pension bands sit 3.0% to 3.2% above the cells at source, so a
+    # factor at or below one is as wrong as one past the top (the independent
+    # review of microcosm#1420). The employment bridge stands in, floored at
+    # +0.5%: its cells agree with the bands exactly here.
+    monkeypatch.setattr(
+        ledger_targets, "UK_FANOUT_SUM_BRIDGES", _employment_bridge_floored(0.005)
+    )
+    with pytest.raises(ValueError, match=r"outside the declared \[1.005, 1.02\]"):
+        _assert_uk_fanout_sum_agreement(_grown_cells(1.0), _controls(1_000.0, 1_000.0))
+    rows = _assert_uk_fanout_sum_agreement(
+        _grown_cells(1.0), _controls(1_010.0, 1_010.0)
+    )
+    assert {row["min_factor_shift"] for row in rows} == {0.005}
+
+
+def test_the_pension_bridge_declares_its_one_way_gap():
+    (bridge,) = [
+        b
+        for b in UK_FANOUT_SUM_BRIDGES
+        if b.bridge_id == "spi_pension_amount_bands_vs_area"
+    ]
+    assert bridge.source_factor_bounds == pytest.approx((1.025, 1.037))
+    # The other bridges keep a symmetric bound.
+    assert all(
+        b.min_factor_shift is None
+        for b in UK_FANOUT_SUM_BRIDGES
+        if b.bridge_id != "spi_pension_amount_bands_vs_area"
+    )
+
+
+@pytest.mark.parametrize("floor", [0.02, 0.05, -0.03, True, "0.01"])
+def test_a_floor_outside_the_ceiling_is_refused(floor):
+    declarations = {
+        "fanout_sum_bridges": [
+            {
+                "bridge_id": "test",
+                "higher_target_id": "a",
+                "lower_target_id": "c",
+                "geography_id": "K02000001",
+                "max_factor_shift": 0.02,
+                "max_index_shift": 0.01,
+                "min_factor_shift": floor,
+            }
+        ]
+    }
+    with pytest.raises(ValueError, match="min_factor_shift in"):
+        uk_fanout_sum_bridges(declarations)
+
+
+def test_cells_the_small_cell_rule_defers_count_on_the_source_side_only():
+    # Without the deferred 100 the cells read 4.5% short of the bands at
+    # source; counted, they agree, and grown by the bound cells' own index
+    # they leave the index factor where it was.
+    registry = TargetRegistry(
+        [
+            _area("constituency", "E14000001", 450.0 * 1.15, 450.0),
+            _area("constituency", "E14000002", 450.0 * 1.15, 450.0),
+        ],
+        country="uk",
+    )
+    deferred = [
+        {
+            "target_id": "hmrc.employment_income.amount",
+            "geography_level": "constituency",
+            "geography_id": "E14000003",
+            "value": 100.0,
+        }
+    ]
+    with pytest.raises(ValueError, match="constituency cells.*no longer measure"):
+        _assert_uk_fanout_sum_agreement(registry, _controls(1_000.0 * 1.155, 1_000.0))
+    (row,) = _assert_uk_fanout_sum_agreement(
+        registry, _controls(1_000.0 * 1.155, 1_000.0), deferred_cells=deferred
+    )
+    assert row["small_cell_deferrals"] == 1
+    assert row["source_factor"] == pytest.approx(1.0)
+    assert row["index_factor"] == pytest.approx(1.155 / 1.15)
+    assert row["cell_total_before_alignment"] == pytest.approx(1_000.0)
+
+
 def test_a_surface_binding_the_cells_needs_the_control_to_gate_them():
     registry = TargetRegistry(
         [_area("constituency", "E14000001", 1.0, 1.0)], country="uk"
@@ -320,3 +412,55 @@ def test_a_surface_binding_the_cells_needs_the_control_to_gate_them():
     with pytest.raises(ValueError, match="no summed control"):
         _assert_uk_fanout_sum_agreement(registry, {})
     assert _assert_uk_fanout_sum_agreement(TargetRegistry([], country="uk"), {}) == []
+
+
+def _committed(resource: str) -> dict:
+    return json.loads(
+        importlib_resources.files("microcosm.build.uk").joinpath(resource).read_text()
+    )
+
+
+@pytest.mark.parametrize(
+    "bridge",
+    _committed("cross_grain_declarations.json")["fanout_sum_bridges"],
+    ids=lambda bridge: bridge["bridge_id"],
+)
+def test_each_committed_bridge_holds_its_declared_index_gap(bridge) -> None:
+    """The independent review of microcosm#1420, finding 1: the surface's own
+    check only runs in a dense build, and these tests use synthetic registers,
+    so a declared index gap went stale unseen. The index part of a bridge's
+    factor is its national bands' growth over the cells' own index, so it is
+    recomputed here from the committed national membership and the cells'
+    applier rows (the SPI facts open in 2023; the calibration year is 2025).
+    """
+
+    from microcosm.build.uk_runtime import hmrc_uprating
+
+    membership = _committed("target_reference_membership.json")
+    contract = {
+        target["target_id"]: target
+        for target in _committed("uk_population_targets.json")["targets"]
+    }
+    before = after = 0.0
+    for higher in bridge.get("higher_target_ids") or [bridge["higher_target_id"]]:
+        for candidate in membership["targets"][higher]["candidates"]:
+            assert candidate["status"] == "active", candidate["name"]
+            value = float(candidate["resolved_value"])
+            uprating = candidate.get("uprating")
+            after += value
+            before += float(uprating["value_before_uprating"]) if uprating else value
+    index = contract[bridge["lower_target_id"]]["uprating_index"]
+    concept, measure_id = hmrc_uprating.UK_HMRC_ITL_ALL_BAND_GROWTH_MEASURES[index]
+    rows = list(hmrc_uprating._vendored_itl_rows(concept))
+
+    def value_in(year: int) -> float:
+        return hmrc_uprating._itl_all_ranges_value(
+            rows, measure_id=measure_id, opening_year=year, spec_name=index
+        )[0]
+
+    cells = math.fsum(
+        weight * value_in(2025 + offset)
+        for offset, weight in hmrc_uprating.CALENDAR_YEAR_WINDOW_WEIGHTS.items()
+    ) / value_in(2023)
+    gap = (after / before) / cells - 1.0
+    assert abs(gap) <= bridge["max_index_shift"], (bridge["bridge_id"], gap)

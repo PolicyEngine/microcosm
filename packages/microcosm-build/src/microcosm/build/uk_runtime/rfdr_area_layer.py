@@ -240,7 +240,11 @@ def load_rfdr_area_layer(payload: bytes | str | Mapping) -> RFDRAreaLayer:
 
 
 def area_flags(
-    *, layer: RFDRAreaLayer, area_system: Iterable[object], area_code: Iterable[object]
+    *,
+    layer: RFDRAreaLayer,
+    area_system: Iterable[object],
+    area_code: Iterable[object],
+    require_flagged: bool = True,
 ) -> tuple[np.ndarray, dict[str, int]]:
     """Each household's flag from its assigned output area.
 
@@ -250,7 +254,11 @@ def area_flags(
     well-formed output-area code of its system refuses too, and so does a
     system (England and Wales, or Scotland) with households none of which is
     flagged: either would let a change of code format or vintage publish its
-    households unflagged (Anthony's reviews of microcosm#1420).
+    households unflagged (Anthony's reviews of microcosm#1420). The zero-flag
+    refusal holds only with ``require_flagged``, which a full-scale build
+    sets: a sampled rung places so few England and Wales households (41 of
+    188,880 output areas are in the scheme) that it can miss them all by
+    chance (Vahid's review and the independent review of microcosm#1420).
     """
 
     systems = np.asarray(list(area_system), dtype=object)
@@ -276,7 +284,7 @@ def area_flags(
                 f"well-formed output-area codes (first: {malformed[0]!r})."
             )
         flags[rows] = np.asarray([code in flagged for code in codes[rows]], dtype=bool)
-        if rows.any() and not flags[rows].any():
+        if require_flagged and rows.any() and not flags[rows].any():
             raise ValueError(
                 f"RFDR flags none of the {int(rows.sum())} {system} households: the "
                 "layer's output areas and the assignment's cannot be the same codes."

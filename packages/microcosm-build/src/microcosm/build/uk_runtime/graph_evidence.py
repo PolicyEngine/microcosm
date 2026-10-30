@@ -41,7 +41,7 @@ from ..stage_evidence import (
     decode_stage_evidence,
     encode_stage_evidence,
 )
-from . import battery_bindings
+from . import battery_bindings, energy_pricing, stage_health
 from .calibration_run import UK_SPINE_GATE_SCOPE, uk_scoped_gate_manifest
 from .cgt_asset_type import CGT_ASSET_TYPE_DOMAIN
 from .frs_relationships import CHRONICLE_ONS_HOUSEHOLD_TYPE_VALUE_IDS
@@ -364,11 +364,20 @@ class UKSpineGateKernel(KernelBase):
         # The spine stages after a gate wait on its verdict, so its key is
         # part of theirs. No spine gate reads a gate-only register, so it keys
         # on the solve fingerprint and a sign-off between two release builds
-        # leaves an in-graph spine a cache hit (microcosm#1301).
+        # leaves an in-graph spine a cache hit (microcosm#1301). The stage
+        # checks live in stage_health and read the energy level through
+        # energy_pricing, so both key the gate too (the independent review of
+        # microcosm#1420, finding 5).
         return hashlib.sha256(
             canonical_json(
                 {
-                    "code": source_hash(type(self), gate_battery, battery_bindings),
+                    "code": source_hash(
+                        type(self),
+                        gate_battery,
+                        battery_bindings,
+                        energy_pricing,
+                        stage_health,
+                    ),
                     "country_resources": uk_solve_fingerprint(),
                 }
             )

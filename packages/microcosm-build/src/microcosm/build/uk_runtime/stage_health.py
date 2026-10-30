@@ -308,14 +308,18 @@ def _energy_rake_gate(
     bottled gas), the level over Energy Trends' volume must therefore sit
     inside ``ons_level_to_energy_trends_ratio``: 0.926 on the September 2026
     vintage, so a wrong ONS class or vintage, or a unit error, that moves it
-    by more than about 8% fails. Every QEP payment method's level falls
+    by more than about 8% fails. ONS's own revisions can move it as far: the
+    June 2026 vintage gave 0.840 (Vahid's review of microcosm#1420), so a
+    re-pin that crosses the bounds asks for the level to be re-adjudicated
+    and is not by itself a data error. Every QEP payment method's level falls
     inside the bounds (0.882 to 0.970), so the stage's declared
     ``payment_method`` must equal the gate's ``qep_payment_method`` instead.
 
     This is where NEED, DESNZ and the connection share are checked; the
-    calibrated frame is held to the bound ONS 04.5.1 and 04.5.2 spend rows
-    instead (María's ruling, 2026-09-15), and no gate re-checks these facts
-    after calibration.
+    calibrated frame is held to the bound ONS 04.5.1 electricity spend row
+    instead (María's ruling, 2026-09-15; the 04.5.2 gas row is measured but
+    held out while it counts bottled gas, microcosm#1095), and no gate
+    re-checks these facts after calibration.
     """
 
     from microcosm.build.country_spec import load_country_spec
@@ -430,13 +434,17 @@ def _energy_rake_gate(
                 f"{stage}: energy_rake declares no ons_level_to_energy_trends_ratio "
                 "minimum and maximum for its ONS-spend levels."
             )
+        lower = _finite_number(
+            ratio_bounds["minimum"],
+            label=f"{stage}.ons_level_to_energy_trends_ratio.minimum",
+        )
+        upper = _finite_number(
+            ratio_bounds["maximum"],
+            label=f"{stage}.ons_level_to_energy_trends_ratio.maximum",
+        )
         ratio = float(fuel_level["total_kwh"]) / float(fuel_level["energy_trends_kwh"])
         details["ons_level_to_energy_trends_ratio"][fuel] = ratio
-        if (
-            not float(ratio_bounds["minimum"])
-            <= ratio
-            <= float(ratio_bounds["maximum"])
-        ):
+        if not lower <= ratio <= upper:
             failures.append(
                 f"{stage}: {fuel}'s ONS-spend level is {ratio:.4f} of Energy Trends', "
                 f"outside [{ratio_bounds['minimum']}, {ratio_bounds['maximum']}]: check "

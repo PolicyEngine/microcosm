@@ -47,6 +47,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date
 from importlib.resources import files
+from types import MappingProxyType
 from typing import Any
 
 import numpy as np
@@ -143,12 +144,19 @@ ONS_HOUSEHOLD_SPEND_COICOP: Mapping[str, str] = {
     ELECTRICITY_KWH: "04.5.1",
     GAS_KWH: "04.5.2",
 }
-ONS_HOUSEHOLD_SPEND_DIMENSIONS: Mapping[str, str] = {
-    "consumption_concept": "domestic",
-    "frequency": "annual",
-    "price_basis": "current_prices",
-    "seasonal_adjustment": "not_seasonally_adjusted",
-}
+#: The variant of every Consumer Trends row Microcosm reads: annual, current
+#: prices, not seasonally adjusted. Defined once here for the lcfs_consumption
+#: stage's road fuel level and division diagnostic too (docs/shared-constants.md).
+UK_ONS_HFCE_ROW_DIMENSIONS: Mapping[str, str] = MappingProxyType(
+    {
+        "frequency": "annual",
+        "price_basis": "current_prices",
+        "seasonal_adjustment": "not_seasonally_adjusted",
+    }
+)
+ONS_HOUSEHOLD_SPEND_DIMENSIONS: Mapping[str, str] = MappingProxyType(
+    {"consumption_concept": "domestic", **UK_ONS_HFCE_ROW_DIMENSIONS}
+)
 #: The basis each fuel's level block names.
 LEVEL_BASIS_ENERGY_TRENDS = "energy_trends_volume"
 LEVEL_BASIS_ONS_HOUSEHOLD_SPEND = "ons_household_spend"

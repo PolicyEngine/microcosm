@@ -541,11 +541,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--rfdr-localisation",
         choices=RFDR_LOCALISATION_MODES,
-        default="area",
+        default=None,
         help=(
-            "Dense role: area (default) sets each placed household's Rural Fuel Duty "
-            "Relief flag off its assigned output area (microcosm#1418); none leaves "
-            "the engine's default, for measurement builds only."
+            "Dense role: area (the default with the atomic assignment) sets each "
+            "placed household's Rural Fuel Duty Relief flag off its assigned output "
+            "area (microcosm#1418); none (the default with the legacy assignment) "
+            "leaves the engine's default, for measurement builds only."
         ),
     )
     parser.add_argument(
@@ -1038,7 +1039,16 @@ def _prepare_rfdr_localisation(
     name and a release candidate must build on the committed bytes
     (microcosm#1418). ``none`` binds nothing here.
     """
-    mode = getattr(args, "rfdr_localisation", "none")
+    mode = getattr(args, "rfdr_localisation", None)
+    if mode is None:
+        # Unset, the mode follows the geography assignment, as the build config
+        # resolves it (the independent review of microcosm#1420).
+        mode = (
+            "area"
+            if getattr(args, "geography_assignment", "atomic") == "atomic"
+            else "none"
+        )
+        args.rfdr_localisation = mode
     if mode == "none":
         if getattr(args, "rfdr_area_layer", None) or getattr(
             args, "rfdr_area_layer_sha256", None

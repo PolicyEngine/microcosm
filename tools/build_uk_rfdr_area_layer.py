@@ -24,7 +24,14 @@ value home stock's stage A already reduced from the same registered zip
 (``tools/build_uk_high_value_home_stock.py``), when the zip is not at hand;
 the provenance names which input the layer was built from. The committed layer
 is built from the registered zip, and ``test_uk_rfdr_area_layer.py`` holds it
-to that (Anthony's review of microcosm#1420).
+to that (Anthony's review of microcosm#1420). The registration is pinned here,
+package id, file and digest, as the BRMA tool pins its own, and ``--check``
+rebuilds the layer in memory and compares it with the committed files, writing
+nothing (the independent review of microcosm#1420):
+
+    uv run --no-sync python tools/build_uk_rfdr_area_layer.py --check \\
+        --nspl-zip NSPL_AUG_2026.zip \\
+        --nspl-manifest ../chronicle/db/data/ons/nspl_august_2026/manifest.yaml
 """
 
 from __future__ import annotations
@@ -50,6 +57,14 @@ _HVH_MODULE = (
     / "packages/microcosm-build/src/microcosm/build/uk_runtime/high_value_home_stock.py"
 )
 NOTICE_URL = "https://www.gov.uk/guidance/rural-duty-relief-scheme-notice-2001"
+#: The Chronicle raw-only registration the layer reads, with the bytes pinned
+#: here; the high value home stock's provenance registers the same zip.
+NSPL_REGISTRATION = {
+    "package_id": "ons-nspl-august-2026",
+    "filename": "NSPL_AUG_2026.zip",
+    "sha256": "f5d86a518d360cad67f0304f25574d3ce619f242d9ea6385a120abab7c15b15c",
+    "member": "Data/NSPL_AUG_2026_UK.csv",
+}
 #: Microcosm's translation of the scheme's areas (microcosm#1418). SI 2011/2935
 #: Schedule 1 (inserted by SI 2015/550) and Notice 2001 name the island groups
 #: without listing islands or postcodes, so each group is its postcode
@@ -447,26 +462,49 @@ def _sha256(path: Path) -> str:
 
 
 def _registered_sha256(manifest: Path) -> str:
-    """The NSPL zip's registered digest, from the Chronicle manifest."""
+    """The NSPL zip's digest, once the Chronicle manifest registers the pin.
+
+    The manifest must be the pinned package's, registering the pinned file and
+    bytes alone: another lookup's manifest refuses, whatever its digest.
+    """
 
     import yaml
 
     payload = yaml.safe_load(manifest.read_text(encoding="utf-8"))
+    if payload.get("package_id") != NSPL_REGISTRATION["package_id"]:
+        raise SystemExit(
+            f"error: {manifest} registers package {payload.get('package_id')!r}, "
+            f"not {NSPL_REGISTRATION['package_id']!r}."
+        )
     entries = [entry for entry in payload.get("files", {}).values()]
     if len(entries) != 1:
         raise SystemExit(f"error: {manifest} registers {len(entries)} files, not one.")
-    return str(entries[0]["sha256"])
+    (entry,) = entries
+    if (entry.get("filename"), entry.get("sha256")) != (
+        NSPL_REGISTRATION["filename"],
+        NSPL_REGISTRATION["sha256"],
+    ):
+        raise SystemExit(
+            f"error: {manifest} registers {entry.get('filename')!r} with sha256 "
+            f"{entry.get('sha256')}, not the pinned {NSPL_REGISTRATION['filename']!r}."
+        )
+    return str(entry["sha256"])
+
+
+def _manifest_label(manifest: Path) -> str:
+    """The manifest's path in the Chronicle repository, as the provenance names it."""
+
+    parts = manifest.resolve().parts
+    for index in range(len(parts) - 1):
+        if parts[index : index + 2] == ("db", "data"):
+            return "PolicyEngine/chronicle " + "/".join(parts[index:])
+    return str(manifest)
 
 
 def _postcodes_from_zip(path: Path) -> pd.DataFrame:
     hvh = _load(_HVH_MODULE, "_rfdr_hvh")
     with zipfile.ZipFile(path) as archive:
-        (name,) = [
-            member
-            for member in archive.namelist()
-            if member.startswith("Data/NSPL") and member.endswith("_UK.csv")
-        ]
-        with archive.open(name) as stream:
+        with archive.open(NSPL_REGISTRATION["member"]) as stream:
             return hvh.read_nspl_postcode_output_areas(stream)
 
 
@@ -482,7 +520,19 @@ def _parser() -> argparse.ArgumentParser:
         type=Path,
         default=UK / "rfdr_area_layer.provenance.json",
     )
-    parser.add_argument("--built-on", default=None)
+    parser.add_argument(
+        "--built-on",
+        default=None,
+        help="The layer's build date (default: today; with --check, the committed one).",
+    )
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help=(
+            "Rebuild in memory and compare with --out and --provenance-json, "
+            "writing nothing; exits 1 if either would change."
+        ),
+    )
     return parser
 
 
@@ -512,7 +562,11 @@ def main(argv: list[str] | None = None) -> int:
     if not {"postcode", "oa21cd"} <= set(postcodes.columns):
         raise SystemExit("error: the postcode lookup lacks postcode or oa21cd.")
     flagged, receipt = layer_module.flag_output_areas(postcodes, definition)
-    built_on = args.built_on or date.today().isoformat()
+    built_on = args.built_on or (
+        json.loads(args.out.read_text(encoding="utf-8"))["built_on"]
+        if args.check
+        else date.today().isoformat()
+    )
     layer = {
         "schema_version": layer_module.SCHEMA_VERSION,
         "kind": layer_module.KIND,
@@ -545,13 +599,13 @@ def main(argv: list[str] | None = None) -> int:
         },
         "areas": flagged,
     }
-    args.out.write_text(json.dumps(layer, indent=2, sort_keys=True) + "\n")
+    layer_text = json.dumps(layer, indent=2, sort_keys=True) + "\n"
     provenance = {
         "resource": "rfdr_area_layer.json",
         "built_on": built_on,
-        "layer_sha256": _sha256(args.out),
+        "layer_sha256": hashlib.sha256(layer_text.encode("utf-8")).hexdigest(),
         "nspl_registration": {
-            "manifest": "PolicyEngine/chronicle db/data/ons/nspl_august_2026/manifest.yaml",
+            "manifest": _manifest_label(args.nspl_manifest),
             "zip_sha256": registered,
         },
         "postcode_source": source,
@@ -560,9 +614,20 @@ def main(argv: list[str] | None = None) -> int:
         "sources": RFDR_SOURCES,
         "counts": receipt,
     }
-    args.provenance_json.write_text(
-        json.dumps(provenance, indent=2, sort_keys=True) + "\n"
-    )
+    provenance_text = json.dumps(provenance, indent=2, sort_keys=True) + "\n"
+    if args.check:
+        moved = [
+            str(path)
+            for path, text in (
+                (args.out, layer_text),
+                (args.provenance_json, provenance_text),
+            )
+            if not path.is_file() or path.read_text(encoding="utf-8") != text
+        ]
+        print(json.dumps({"check": "differs" if moved else "same", "files": moved}))
+        return 1 if moved else 0
+    args.out.write_text(layer_text)
+    args.provenance_json.write_text(provenance_text)
     print(json.dumps({"areas": {k: len(v) for k, v in flagged.items()}, **receipt}))
     return 0
 

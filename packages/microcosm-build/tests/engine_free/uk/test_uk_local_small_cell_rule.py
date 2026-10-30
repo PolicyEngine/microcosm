@@ -84,6 +84,70 @@ def test_a_target_outside_the_rule_is_never_deferred(tmp_path):
     assert _small_cell_deferrals(membership, _rule_register(tmp_path)) == ()
 
 
+def _pension_membership(counts: dict, amounts: dict) -> dict:
+    return {
+        "targets": {
+            target_id: {
+                "geography_levels": {
+                    "constituency": {
+                        "candidates": [
+                            _candidate(area, value) for area, value in cells.items()
+                        ]
+                    }
+                }
+            }
+            for target_id, cells in (
+                ("hmrc.pension_income.count", counts),
+                ("hmrc.pension_income.amount", amounts),
+            )
+        }
+    }
+
+
+def test_an_amount_defers_where_its_count_is_below_the_floor(tmp_path):
+    # Each pension income amount is HMRC's rounded count times its mean, so it
+    # defers where its count does, though its own value is far above 5,500
+    # (María's ruling of 2026-10-29, microcosm#1420).
+    membership = _pension_membership(
+        {"E14000001": 5_000.0, "E14000002": 9_000.0},
+        {"E14000001": 75e6, "E14000002": 135e6},
+    )
+    deferrals = {
+        deferral.target_id: deferral
+        for deferral in _small_cell_deferrals(membership, _rule_register(tmp_path))
+    }
+    assert {target_id: d.area_ids for target_id, d in deferrals.items()} == {
+        "hmrc.pension_income.count": ("E14000001",),
+        "hmrc.pension_income.amount": ("E14000001",),
+    }
+    assert deferrals["hmrc.pension_income.amount"].reason_id == (
+        "hmrc_rounded_thousand_floor"
+    )
+    assert "published value of hmrc.pension_income.count below 5500" in (
+        deferrals["hmrc.pension_income.amount"].rationale
+    )
+
+
+def test_an_amount_whose_count_has_no_active_cell_is_refused(tmp_path):
+    membership = _pension_membership({"E14000002": 9_000.0}, {"E14000001": 75e6})
+    with pytest.raises(ValueError, match="floor target has none"):
+        _small_cell_deferrals(membership, _rule_register(tmp_path))
+    del membership["targets"]["hmrc.pension_income.count"]
+    with pytest.raises(ValueError, match="which the membership does not carry"):
+        _small_cell_deferrals(membership, _rule_register(tmp_path))
+
+
+def test_a_floor_read_outside_the_rules_prefixes_is_refused(tmp_path):
+    path = _rule_register(tmp_path)
+    register = json.loads(path.read_text(encoding="utf-8"))
+    for rule in register["rules"]:
+        if rule["rule_id"] == "hmrc_rounded_thousand_floor":
+            rule["floor_reads"] = {"hmrc.employment_income.amount": "x"}
+    path.write_text(json.dumps(register), encoding="utf-8")
+    with pytest.raises(ValueError, match="which its prefixes do not reach"):
+        _small_cell_deferrals(_membership(), path)
+
+
 @pytest.mark.parametrize(
     "unsigned",
     [
@@ -200,7 +264,8 @@ def _committed(resource: str):
 def test_every_committed_rule_is_signed():
     # An unsigned rule defers nothing, so a proposed rule left in the register
     # would leave the cells it names bound without a word. Both rules were
-    # signed on 2026-10-14 (microcosm#1278).
+    # signed on 2026-10-14 (microcosm#1278); the HMRC rule was extended to the
+    # pension income cells on 2026-10-29 (microcosm#1420).
     rules = _committed("local_small_cell_rule.json")["rules"]
     assert [
         rule["rule_id"] for rule in rules if not uk_small_cell_rule_is_signed(rule)
@@ -227,7 +292,9 @@ def test_no_committed_rule_is_about_to_lapse():
 def test_the_committed_membership_defers_each_rules_cells():
     # The regenerated references carry the signed rules' deferrals: the
     # council-tax band cells under 50 dwellings (band G 3, band H 7, band I 6),
-    # the higher rate taxpayer cells HMRC publishes at 5,000 or fewer, and the
+    # the higher rate taxpayer cells HMRC publishes at 5,000 or fewer (155
+    # constituencies, 37 authorities) with, since microcosm#1420, the pension
+    # income count cells so published and their amounts (17 and 3 of each), and the
     # derived high-value homes authority cells under 400 homes (948 cells less
     # the 350 kept: 192 over £1m, 101 over £1.5m and 57 over £2m;
     # microcosm#1301). The constituency cells are deferred level-wide first,
@@ -247,7 +314,7 @@ def test_the_committed_membership_defers_each_rules_cells():
     assert cells == {
         "council_tax_band_household_floor": Counter({"local_authority": 16}),
         "hmrc_rounded_thousand_floor": Counter(
-            {"constituency": 155, "local_authority": 37}
+            {"constituency": 155 + 2 * 17, "local_authority": 37 + 2 * 3}
         ),
         "hvcts_la_household_floor": Counter({"local_authority": 598}),
     }

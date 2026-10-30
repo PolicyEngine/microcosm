@@ -310,18 +310,19 @@ def test_the_draw_opens_the_flag_to_the_eligible_carers_only() -> None:
     # Scotland is drawn too: there the flag is Carer Support Payment's. The
     # uniforms are balanced within strata: GBP 200 a week is under one weekly
     # rate over the limit and GBP 250 over one, so the two pay levels draw
-    # apart, each six tenths of its weight to within one carer (#1418).
+    # apart, each six tenths of its weight to within one carer (#1418), and a
+    # rerun draws the same carers.
     eligible = np.isin(labels, ["eligible", "eligible_ni", "scotland"])
-    uniforms = stable_identity_uniforms(
-        person["person_id"].to_numpy(), seed=0, salt=_OUTPUT
-    )
     band_one = labels == "eligible_ni"
-    positions = weight_balanced_uniforms(
-        band_one[eligible], uniforms[eligible], np.ones(int(eligible.sum()))
-    )
-    np.testing.assert_array_equal(flag[eligible], positions < 0.6)
     for stratum in (eligible & ~band_one, band_one):
         assert abs(flag[stratum].sum() - 0.6 * stratum.sum()) <= 1
+    assert not flag[
+        ~eligible
+        & ~np.isin(labels, ["reporter", "reporter_over_limit", "scotland_reporter"])
+    ].any()
+    np.testing.assert_array_equal(
+        _run(frame).frame.table("person")[_OUTPUT].to_numpy(), flag
+    )
     assert person[_OUTPUT].dtype == bool
     # A flag only: every other cell, the weights and the mass log pass through.
     before = frame.table("person").drop(columns=[_OUTPUT])
@@ -368,17 +369,12 @@ def test_the_draw_leaves_out_carers_of_no_disabled_member_and_draws_the_others()
     )
     result = _run(frame, rate=1.0)
     person = result.frame.table("person")
-    pool_draws = stable_identity_uniforms(
-        person["person_id"].to_numpy()[:n], seed=0, salt=ca.CARERS_ALLOWANCE_POOL_SALT
-    )
     # The outside carers are one stratum (no means-tested benefit, all paid one
-    # to two weekly rates over the limit), so exactly half of them join.
-    balanced = weight_balanced_uniforms(
-        np.zeros(n_out), pool_draws[n_in:], np.ones(n_out)
-    )
+    # to two weekly rates over the limit). Equal weights put their midpoints a
+    # two-hundredth apart, so the rotated half-share arc holds exactly half of
+    # them whatever the stratum's start.
     np.testing.assert_array_equal(
-        person[_OUTPUT].to_numpy()[:n],
-        np.r_[member_disabled[:n_in], balanced < 0.5],
+        person[_OUTPUT].to_numpy()[:n_in], member_disabled[:n_in]
     )
     assert int(person[_OUTPUT].to_numpy()[n_in:n].sum()) == n_out // 2
     evidence = result.evidence()
@@ -571,13 +567,13 @@ def test_the_stage_refuses_a_take_up_stratum_off_its_share(monkeypatch) -> None:
     # Anthony's reviews of microcosm#1420: the balance is enforced, not only
     # reported. Every uniform at zero draws each stratum whole.
     frame, _, _ = _strata_frame()
-    assert _run(frame, rate=0.6).evidence()["strata_within_half_a_record"] is True
+    assert _run(frame, rate=0.6).evidence()["strata_within_one_record"] is True
     monkeypatch.setattr(
         ca,
         "weight_balanced_uniforms",
-        lambda strata, draws, weights: np.zeros(len(draws)),
+        lambda strata, draws, weights, **_: np.zeros(len(draws)),
     )
-    with pytest.raises(ValueError, match="take-up stratum .* more than half a record"):
+    with pytest.raises(ValueError, match="take-up stratum .* more than one record"):
         _run(frame, rate=0.6)
 
 
@@ -588,47 +584,52 @@ def test_the_stage_refuses_a_pool_stratum_off_its_share(monkeypatch) -> None:
     balanced = ca.weight_balanced_uniforms
     calls = []
 
-    def pool_unbalanced(strata, draws, weights):
+    def pool_unbalanced(strata, draws, weights, **kwargs):
         calls.append(len(draws))
         if len(calls) == 1:
             return np.zeros(len(draws))
-        return balanced(strata, draws, weights)
+        return balanced(strata, draws, weights, **kwargs)
 
     monkeypatch.setattr(ca, "weight_balanced_uniforms", pool_unbalanced)
-    with pytest.raises(ValueError, match="pool stratum .* more than half a record"):
+    with pytest.raises(ValueError, match="pool stratum .* more than one record"):
         _run(combined, rate=1.0)
     assert len(calls) == 2
 
 
-def test_a_stratum_may_miss_its_share_by_up_to_half_a_record() -> None:
+def test_a_stratum_may_miss_its_share_by_up_to_one_record() -> None:
     weights = np.array([1.0, 2.0, 3.0, 4.0])
     members = np.ones(4, dtype=bool)
     strata = np.zeros(4, dtype=np.int64)
-    # Half of 10 is 5: taking 3 + 4 misses by 2, half the heaviest record.
-    ca.assert_strata_within_half_a_record(
+    # Half of 10 is 5: taking 2 + 3 + 4 misses by 4, its heaviest record, the
+    # most the rotated placement allows (half a record at each end).
+    ca.assert_strata_within_one_record(
         members,
         strata,
-        np.array([False, False, True, True]),
+        np.array([False, True, True, True]),
         weights,
         0.5,
         label="pool",
     )
     # Taking every record misses by 5.
     with pytest.raises(ValueError, match="pool stratum 0 misses its share"):
-        ca.assert_strata_within_half_a_record(
+        ca.assert_strata_within_one_record(
             members, strata, np.ones(4, dtype=bool), weights, 0.5, label="pool"
         )
-    # Taking 2 + 3 + 4 misses by 4, one whole heaviest record, which the
-    # earlier one-record rule let through.
-    with pytest.raises(ValueError, match="more than half a record"):
-        ca.assert_strata_within_half_a_record(
-            members,
-            strata,
-            np.array([False, True, True, True]),
-            weights,
-            0.5,
-            label="pool",
-        )
+
+
+def test_a_one_record_stratum_claims_with_probability_equal_to_the_rate() -> None:
+    # The independent review of microcosm#1420, finding 4: at its midpoint a
+    # stratum of one record always sits at 0.5. Rotated by a start drawn per
+    # stratum, one-record strata claim at the rate across strata.
+    codes = np.arange(4_000)
+    starts = ca.stratum_starts(codes, salt=_OUTPUT)
+    positions = weight_balanced_uniforms(
+        codes, np.full(codes.size, 0.5), np.ones(codes.size), starts=starts
+    )
+    for rate in (0.45, 0.6, 0.75):
+        assert (positions < rate).mean() == pytest.approx(rate, abs=0.03)
+    # The same code always takes the same start.
+    np.testing.assert_array_equal(ca.stratum_starts(codes, salt=_OUTPUT), starts)
 
 
 def _outside_pool_frame():
@@ -958,3 +959,13 @@ def test_the_graph_node_reads_the_lineage_and_rewrites_the_flag_on_its_own_bound
     # The open-surface readers before it bind the incumbent flag, so the
     # rewrite runs on a boundary of its own.
     assert node.population == f"{ca.CARERS_ALLOWANCE_TAKE_UP_STAGE_NAME}.boundary"
+
+
+def test_the_stage_key_covers_the_placement_helper() -> None:
+    """The independent review of microcosm#1420, finding 5: the draws are
+    placed by the shared helper, so a change to it re-keys the stage."""
+
+    from microcosm.build import stochastic_assignment
+    from microcosm.build.uk_runtime.graph_kernels import _STAGE_HELPER_MODULES
+
+    assert stochastic_assignment in _STAGE_HELPER_MODULES["carers_allowance_take_up"]

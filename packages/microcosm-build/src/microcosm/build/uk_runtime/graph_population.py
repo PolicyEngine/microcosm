@@ -730,10 +730,12 @@ class UKRFDRAreaKernel(_PopulationKernel):
             context.sources[rfdr_area_layer.RFDR_AREA_LAYER_SOURCE]
         ).read_bytes()
         layer = rfdr_area_layer.load_rfdr_area_layer(payload)
+        strict = bool(context.params.get("strict_flags", True))
         flags, counts = rfdr_area_layer.area_flags(
             layer=layer,
             area_system=household["atomic_area_system"].to_numpy(),
             area_code=household["atomic_area_code"].to_numpy(),
+            require_flagged=strict,
         )
         index = pd.Index(household["household_id"], name="household_id")
         column = rfdr_area_layer.RFDR_COLUMN
@@ -748,6 +750,7 @@ class UKRFDRAreaKernel(_PopulationKernel):
                     if system != "flagged"
                 },
                 "rows_flagged": rounded_count(counts["flagged"]),
+                "zero_flag_refusal": strict,
                 "layer_sha256": hashlib.sha256(payload).hexdigest(),
                 "method": layer.method,
             },
@@ -1328,7 +1331,9 @@ def _atomic_geography_nodes(
     rfdr_nodes: tuple[Node, ...] = ()
     rfdr_sources: tuple[SourceRef, ...] = ()
     if rfdr_localisation_mode == "area":
-        rfdr_nodes, rfdr_sources = _rfdr_area_nodes(cells, common=common)
+        rfdr_nodes, rfdr_sources = _rfdr_area_nodes(
+            cells, common=common, strict=full_scale
+        )
     property_nodes: tuple[Node, ...] = ()
     property_sources: tuple[SourceRef, ...] = ()
     if property_localisation_mode == "price_paid":
@@ -1534,9 +1539,14 @@ def _brma_area_nodes(
 
 
 def _rfdr_area_nodes(
-    cells: dict, *, common: Mapping
+    cells: dict, *, common: Mapping, strict: bool = True
 ) -> tuple[tuple[Node, ...], tuple[SourceRef, ...]]:
-    """The microcosm#1418 area RFDR node, after the local-authority resolve."""
+    """The microcosm#1418 area RFDR node, after the local-authority resolve.
+
+    ``strict`` (the build's full scale) keeps the refusal of a support system
+    none of whose households is flagged, as the private-rent node keeps its
+    strict cells; malformed codes refuse at every scale.
+    """
 
     for column in _RFDR_AREA_COLUMNS:
         if ("household", column) not in cells:
@@ -1551,7 +1561,11 @@ def _rfdr_area_nodes(
         inputs=(Slice("household", _RFDR_AREA_COLUMNS),),
         outputs=(Owned("household", column, "bool"),),
         sources=(rfdr_area_layer.RFDR_AREA_LAYER_SOURCE,),
-        params={**common, "method": rfdr_area_layer.METHOD_VERSION},
+        params={
+            **common,
+            "method": rfdr_area_layer.METHOD_VERSION,
+            "strict_flags": bool(strict),
+        },
         description="Set each placed household's Rural Fuel Duty Relief flag off its area.",
     )
     cells[("household", column)] = "bool"

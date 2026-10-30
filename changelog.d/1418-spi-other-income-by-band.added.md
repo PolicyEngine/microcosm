@@ -1,1 +1,3 @@
 The national calibration binds SPI 2023-24 Table 3.7's other income by total-income band (`hmrc.spi.other_investment_income.amount_by_total_income_band`, taxpayers only, on `other_investment_income`), uprated to 2025 by the OBR's forecast growth of savings income (October 2026 EFO, receipts Table 4.5), as the interest rows now are (#1418). No row held that column, so the Income Tax on savings rows were met mostly through it: about £9.5bn on PR A's national against Table 3.7's £5.85bn (María's ruling of 2026-10-29).
+
+The family sits in the zero-support floor's HMRC amounts scope, so a band no household carries, most likely £500k to £1m or £1m and over, is dropped and receipted, not refused.

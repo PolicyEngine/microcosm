@@ -188,6 +188,19 @@
       "scope": "national",
       "kind": "matched_period",
       "target_ids": [
+        "ons.household_electricity_expenditure"
+      ],
+      "reason": "ONS Consumer Trends electricity (COICOP 04.5.1) for calendar 2024, measured on the frame's own 2024 electricity column (measurement_period 2024, require_matching_fact_period), as the road fuel row is. The lcfs_consumption stage levels the column from this row's 2024 value and the local DESNZ electricity rows sit on 2024 too, so the fact and the stored column are the same year; measuring the calendar-2025 figure through the engine would put the engine's consumer-price projection of electricity into the weights (+3.4 percent to 2025 in policyengine-uk 2.162.14, against +2.5 percent in ONS's own row; the independent review of microcosm#1420, finding 10).",
+      "tracking": "microcosm#1418",
+      "approved_by": "juaristi22",
+      "approved_on": "2026-10-29",
+      "status": "approved",
+      "expires_on": "2026-12-11"
+    },
+    {
+      "scope": "national",
+      "kind": "matched_period",
+      "target_ids": [
         "obr.beer_and_cider_duties",
         "obr.wine_duties",
         "obr.spirits_duties",

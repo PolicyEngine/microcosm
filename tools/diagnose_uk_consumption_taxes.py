@@ -4,15 +4,17 @@ The build or the engine sets the levels these rows read (microcosm#1113,
 microcosm#1123 item 3): ``obr.vat`` an engine coverage factor
 (policyengine-uk#1996, #2187; held as a diagnostic, and measured with VAT on
 private school fees from policyengine-uk 2.157.1), ``obr.fuel_duties_cars``
-fuel that includes business-paid car fuel, the ONS electricity and gas rows
-the stage's level, the kWh ONS household spending buys (microcosm#1418), and
-OBR's excise receipts the clearances and bases the stage levels the excise
-inputs to at prior weights (microcosm#1359), measured at their own FY2024-25
-period. The tool measures each row whether the measure-exclusion register
-holds it out of the objective or the national binds it, as it binds the
-household road-fuel row (ONS 07.2.2) in place of the cars receipts, the ONS
-electricity and gas rows and, since calibration moved the gambling bases,
-the betting and gaming receipts (microcosm#1418). It reports each row's
+fuel that includes business-paid car fuel, the ONS electricity row the
+stage's level, the kWh ONS household spending buys (microcosm#1418), the ONS
+gas row the stage's Energy Trends level, and OBR's excise receipts the
+clearances and bases the stage levels the excise inputs to at prior weights
+(microcosm#1359), measured at their own FY2024-25 period. The tool measures
+each row whether the measure-exclusion register holds it out of the
+objective, as it holds the gas row while ONS 04.5.2 counts bottled gas
+(microcosm#1095), or the national binds it, as it binds the household
+road-fuel row (ONS 07.2.2) in place of the cars receipts, the ONS electricity
+row and, since calibration moved the gambling bases, the betting and gaming
+receipts (microcosm#1418). It reports each row's
 estimate on any H5 the engine loads, against the value the run's contract
 registry declares, beside the household fuel and energy composition the rows
 used to pull (gas-connected share, fuel-car households with no fuel,
