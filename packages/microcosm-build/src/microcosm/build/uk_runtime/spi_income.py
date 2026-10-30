@@ -1004,6 +1004,13 @@ def impute_uk_spi_income_support(
             columns=initialize_frs_channel_columns,
         )
     person = _seed_frs_hmrc_auxiliary_leaves(person, spi_people=spi_people)
+    # The stage-1 transport reads each twin's analogue. A stage-1 output that is
+    # its own analogue and that the frame does not carry (other income, on a
+    # frame whose FRS rows hold none) is the stage-time zero the fill below
+    # writes, on every row, so the twins locate as non-carriers (microcosm#1428).
+    for column in SPI_INCOME_QRF_OUTPUT_COLUMNS:
+        if SPI_STAGE1_ANALOGUE_COLUMNS.get(column) == column and column not in person:
+            person[column] = 0.0
 
     base_household = household[household_channel] == BASE_FRS_SUPPORT_CHANNEL
     if "clone_index" in household:
