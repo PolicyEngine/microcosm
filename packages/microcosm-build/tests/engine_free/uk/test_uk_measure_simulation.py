@@ -19,6 +19,10 @@ from microcosm.build.uk_runtime.measure_simulation import (
     load_uk_calibration_measure_exclusions,
 )
 from microcosm.calibrate import TargetRegistry, TargetSpec
+from microcosm.frame.adapters.policyengine_uk import (
+    UK_ISA_INCOME_CONTRACT_ATTR,
+    UK_LEGACY_ISA_INCOME_CONTRACT,
+)
 
 
 class FrameStub:
@@ -1970,9 +1974,23 @@ def test_the_resolver_routes_high_value_home_measures_to_households(
 
 
 def _savings_frame() -> FrameStub:
-    """Gross interest with its ISA part: a saver, an ISA-only saver, a non-saver."""
+    """The producer's additive layout: a saver, an ISA-only saver, a non-saver."""
 
     frame = FrameStub()
+    frame._tables["person"] = frame._tables["person"].assign(
+        savings_interest_income=[700.0, 0.0, 0.0],
+        individual_savings_account_interest_income=[300.0, 300.0, 0.0],
+    )
+    return frame
+
+
+def _legacy_savings_frame() -> FrameStub:
+    """The same people in the legacy gross layout (the enhanced FRS reference)."""
+
+    frame = FrameStub()
+    frame.metadata = {
+        UK_ISA_INCOME_CONTRACT_ATTR: json.dumps(dict(UK_LEGACY_ISA_INCOME_CONTRACT))
+    }
     frame._tables["person"] = frame._tables["person"].assign(
         savings_interest_income=[1_000.0, 300.0, 0.0],
         tax_free_savings_income=[300.0, 300.0, 0.0],
@@ -1980,18 +1998,31 @@ def _savings_frame() -> FrameStub:
     return frame
 
 
-def test_savings_interest_outside_isas_is_the_stored_gross_less_its_isa_part():
-    """SPI Table 3.7 counts recipients of taxable interest (microcosm#1095)."""
+@pytest.mark.parametrize(
+    ("frame", "route"),
+    [
+        (_savings_frame, "frame_columns:savings_interest_income"),
+        (
+            _legacy_savings_frame,
+            "frame_columns:savings_interest_income_less_tax_free_savings_income",
+        ),
+    ],
+)
+def test_savings_interest_outside_isas_counts_isa_interest_once(frame, route):
+    """SPI Table 3.7 counts recipients of taxable interest (microcosm#1095).
+
+    Each layout reads the frame's declared contract (microcosm#1360).
+    """
 
     # No engine: the stored columns are read off the frame, never uprated.
-    values, route = compute_uk_measure_input(
-        _savings_frame(), None, "person", UK_SAVINGS_INTEREST_OUTSIDE_ISAS, 2025
+    values, measured = compute_uk_measure_input(
+        frame(), None, "person", UK_SAVINGS_INTEREST_OUTSIDE_ISAS, 2025
     )
     assert values.tolist() == [700.0, 0.0, 0.0]
-    assert route == "frame_columns:savings_interest_income_less_tax_free_savings_income"
+    assert measured == route
     with pytest.raises(KeyError, match="person-only"):
         compute_uk_measure_input(
-            _savings_frame(), None, "household", UK_SAVINGS_INTEREST_OUTSIDE_ISAS, 2025
+            frame(), None, "household", UK_SAVINGS_INTEREST_OUTSIDE_ISAS, 2025
         )
 
 

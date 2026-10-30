@@ -451,13 +451,13 @@ _UK_GATE_BATTERY_SHIPPABLE_STATUSES = frozenset({"passed", "not_applicable"})
 # fingerprint derives from the manifest digest. Editing the spec moves all
 # three here in the same reviewed change.
 _UK_GATE_BATTERY_POLICY_SHA256 = (
-    "2cba4eea2a100807d7beac76df4fa753a81be869af13859ab91de6ab27096e6d"
+    "29c866ba365999cfd39a5ddceb94e159396759e575a8ac99de619e3f03525653"
 )
 _UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "1cb27600d7520fa5d049be0fec0898cd0f512c395918ee6f4cc9b9c9478713a2"
+    "a9e1187a619794b9e159b209a6f6476a24260791df6bb14ae72f9f9bfcaa7514"
 )
 _UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "80c3b49acd8c039c82b247997e7bc25aa7e8e22cfbfb424362274c2cbbd9c895"
+    "6bd701aa0257a7faad66f5ee8f80f8e4afb664298b70c7093e5b0e220677049d"
 )
 #: Spec entry id -> the legacy gate name whose observable detail checks
 #: apply unchanged (the battery re-keys the report by entry id; the gate
@@ -501,6 +501,7 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
     ),
     "uk_stage_was_wealth_support": ("stage_health", "transferred"),
     "uk_stage_was_lisa_support": ("stage_health", "transferred"),
+    "uk_stage_was_lisa_anchor": ("stage_health", "transferred"),
     "uk_stage_property_components": ("stage_health", "transferred"),
     "uk_stage_was_wealth_coherence": ("stage_health", "transferred"),
     "uk_stage_nts_bus_travel_support": ("stage_health", "transferred"),
@@ -558,6 +559,8 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
     "uk_stage_property_purchases_fit": ("stage_health", "transferred"),
     "uk_stage_uc_legacy_closure_take_up_contract": ("stage_health", "transferred"),
     "uk_stage_frs_person_draws_apprentices": ("stage_health", "transferred"),
+    "uk_stage_isa_subscriptions_invariants": ("stage_health", "transferred"),
+    "uk_stage_isa_subscriptions": ("stage_health", "transferred"),
     "uk_stage_age_tail_targets": ("stage_health", "assembled"),
     "uk_stage_frs_relationships_composition": ("stage_health", "assembled"),
     "uk_ledger_compile_parity_local_incumbent_2025": (
@@ -625,6 +628,7 @@ _UK_GATE_BATTERY_EVIDENCE_IDS = frozenset(
         "uk_input_mass_parity",
         "uk_stage_was_wealth_support",
         "uk_stage_was_lisa_support",
+        "uk_stage_was_lisa_anchor",
         "uk_stage_property_components",
         "uk_stage_was_wealth_coherence",
         "uk_stage_nts_bus_travel_support",
@@ -664,6 +668,8 @@ _UK_GATE_BATTERY_EVIDENCE_IDS = frozenset(
         "uk_stage_property_purchases_fit",
         "uk_stage_uc_legacy_closure_take_up_contract",
         "uk_stage_frs_person_draws_apprentices",
+        "uk_stage_isa_subscriptions_invariants",
+        "uk_stage_isa_subscriptions",
         "uk_stage_age_tail_targets",
         "uk_stage_frs_relationships_composition",
         "uk_cgt_projection_entrants",
@@ -674,7 +680,7 @@ _UK_GATE_BATTERY_EVIDENCE_IDS = frozenset(
 # canonical hash; this pins the wrapped digest so the entry's evidence line
 # still binds the enhanced-FRS incumbent totals.
 _UK_GATE_BATTERY_INPUT_MASS_EVIDENCE_SHA256 = (
-    "82a5fa0c7dec5ac5c169f0b8b2f4acc6b302e80637dc698d3247e75a6d133933"
+    "24bb96f93de3bda45425b797a2f5069df7477bf3a56616080cc04376beab56e5"
 )
 # The degenerate binding's evidence payload digests the resolved exclusion
 # records; for a release that must be the committed register, so its digest
@@ -890,6 +896,8 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
             "uk_stage_hmrc_cgt_asset_type_spine_summary",
             "uk_stage_hmrc_cgt_gains_spine_summary",
             "uk_stage_hmrc_spi_income_spine_identity",
+            "uk_stage_isa_subscriptions",
+            "uk_stage_isa_subscriptions_invariants",
             "uk_stage_lcfs_consumption_basis",
             "uk_stage_lcfs_consumption_bus_pricing",
             "uk_stage_lcfs_consumption_energy_rake",
@@ -912,6 +920,7 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
             "uk_stage_uc_deduction_attributes",
             "uk_stage_uc_legacy_closure_take_up_contract",
             "uk_stage_uc_take_up",
+            "uk_stage_was_lisa_anchor",
             "uk_stage_was_lisa_support",
             "uk_stage_was_wealth_coherence",
             "uk_stage_was_wealth_support",
@@ -955,26 +964,26 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
 _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     "spine": {
         "gates_manifest_sha256": (
-            "75684f2b3e1ce0dd8fdb6e220cb4336a4e845c2802f67f507d27385346a4b790"
+            "06f62df651d151e586d6102ed2110b3b2348bd881826d4d6d66621e4ab8abb1f"
         ),
         "policy_sha256": (
-            "53a93836d048a4e652b943d866e64801f5b29b41b92965e0641a9387f8cb67e5"
+            "390a79297f7817def126c7805f492328c447e6a0d6d376dc8b946b98b9f96725"
         ),
     },
     "calibration_seam": {
         "gates_manifest_sha256": (
-            "12f79bcc5eea788a589fc81c9d6d6ed7282d4d289c7fff99b7818afeb2eac21e"
+            "fc75904db7b9574a65ec38b8542f151702f110dd09a99b823d59e86aa47f6d9d"
         ),
         "policy_sha256": (
-            "98b174b57459d1f3a553e9a15efc8a47aaf322470207a448224c1c61bd19b621"
+            "322c96ce9632577262861012d10cbe0bb1924f68e2595042e75ac9af808c5143"
         ),
     },
     "release_cut": {
         "gates_manifest_sha256": (
-            "32db04cc11945031c609ff183a75e991856cb9b47057b95db4c408fb6b32ccc3"
+            "c44ce8629cfc9a48e6aaeb9d77012c4fad382b8ef0e232476b9bc8c8e83dbefc"
         ),
         "policy_sha256": (
-            "08ecff88f63133e776ab20950f6e82541997e3e0d9d44b768cdd670e0807c3f0"
+            "b335bef4e20b9803b60e728bfb2f045d282d16309429b00d72bf86dd4f4bafd8"
         ),
     },
 }

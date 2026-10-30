@@ -176,6 +176,7 @@
             "private_pension_income",
             "property_income",
             "savings_interest_income",
+            "individual_savings_account_interest_income",
             "dividend_income",
             "miscellaneous_income"
           ],
@@ -256,6 +257,7 @@
             "private_pension_income",
             "property_income",
             "savings_interest_income",
+            "individual_savings_account_interest_income",
             "dividend_income",
             "miscellaneous_income"
           ],
@@ -290,7 +292,7 @@
     "cgt_residential_split": {
       "artifacts": [
         {
-          "dependency": "policyengine-uk>=2.162.14 via microcosm-build[uk]",
+          "dependency": "policyengine-uk>=2.164.2 via microcosm-build[uk]",
           "dependency_discipline": "deferred inside uk_cgt_policy_parameters; the base package never imports policyengine-uk at import time",
           "instant_rule": "raw dated parameter files evaluated at 1 June of the build period's tax year",
           "kind": "versioned_parameter_tree",
@@ -425,6 +427,7 @@
             "private_pension_income",
             "property_income",
             "savings_interest_income",
+            "individual_savings_account_interest_income",
             "dividend_income",
             "miscellaneous_income"
           ],
@@ -2265,7 +2268,7 @@
         "loss_relief",
         "ni_class_4_losses_brought_forward",
         "private_pension_income",
-        "tax_free_savings_income",
+        "individual_savings_account_interest_income",
         "savings_interest_income",
         "dividend_income",
         "other_investment_income",
@@ -2362,7 +2365,7 @@
         "loss_relief",
         "ni_class_4_losses_brought_forward",
         "private_pension_income",
-        "tax_free_savings_income",
+        "individual_savings_account_interest_income",
         "savings_interest_income",
         "dividend_income",
         "other_investment_income",
@@ -2464,7 +2467,7 @@
         "maximum_extended_childcare_hours_usage",
         "max_free_entitlement_hours_used"
       ],
-      "notes": "Identity-keyed seed 0 streams replace the incumbent sequential take-up seed 100; salts are output variable names. Reported positive receipt anchors are transient and consumed only. The Universal Credit draw's population is the benefit units with a UC claimant or partner (is_uc_claimant) aged 18 or over and under Pension Credit qualifying age (66 for everyone who can reach it in this release), the age and role conditions of policyengine-uk 2.162.14's is_uc_eligible; the engine lockstep test pins it and names the three engine cases not mirrored (16- and 17-year-old claimants under the UC Regs 2013 reg 8 exceptions, mixed-age couples on the Pension Credit route, and from 2.128.0 pension-age families moved onto Universal Credit when their legacy benefit closes, SI 2014/1230 reg 60A). So the contract rate is a share of those units, an anchor outside them stays true, and any other unit is never drawn; a unit with no claimant or partner of that age keeps its reported Housing Benefit, which a claim it cannot make no longer zeroes (#882, microcosm#867, microcosm#1095). The universal childcare flag is nested under the working-parent one. A unit that claims the extended hours claims the universal hours, and any other unit claims them at the contract's universal_childcare rate, the rate conditional on not claiming the extended hours; the extended draw is unchanged. childcare_copy_take_up later re-draws the childcare flags and hours of the support and CGT copies on their own benefit units. A child of DfE age 0 or 1 (its age on 31 December of the fit's model year, the age DfE counts by) in a unit that claims the working-parent hours uses them at its age's contract rate, extended_childcare_age_0_usage or extended_childcare_age_1_usage (DfE registers far fewer of the youngest eligible children than of those aged 2 to 4, and fewer at 9 to 11 months than at age 1); a child that does not gets max_free_entitlement_hours_used 0, so the engine funds it no hours, and every other person keeps the engine's default of 30.",
+      "notes": "Identity-keyed seed 0 streams replace the incumbent sequential take-up seed 100; salts are output variable names. Reported positive receipt anchors are transient and consumed only. The Universal Credit draw's population is the benefit units with a UC claimant or partner (is_uc_claimant) aged 18 or over and under Pension Credit qualifying age (66 for everyone who can reach it in this release), the age and role conditions of policyengine-uk 2.164.2's is_uc_eligible; the engine lockstep test pins it and names the three engine cases not mirrored (16- and 17-year-old claimants under the UC Regs 2013 reg 8 exceptions, mixed-age couples on the Pension Credit route, and from 2.128.0 pension-age families moved onto Universal Credit when their legacy benefit closes, SI 2014/1230 reg 60A). So the contract rate is a share of those units, an anchor outside them stays true, and any other unit is never drawn; a unit with no claimant or partner of that age keeps its reported Housing Benefit, which a claim it cannot make no longer zeroes (#882, microcosm#867, microcosm#1095). The universal childcare flag is nested under the working-parent one. A unit that claims the extended hours claims the universal hours, and any other unit claims them at the contract's universal_childcare rate, the rate conditional on not claiming the extended hours; the extended draw is unchanged. childcare_copy_take_up later re-draws the childcare flags and hours of the support and CGT copies on their own benefit units. A child of DfE age 0 or 1 (its age on 31 December of the fit's model year, the age DfE counts by) in a unit that claims the working-parent hours uses them at its age's contract rate, extended_childcare_age_0_usage or extended_childcare_age_1_usage (DfE registers far fewer of the youngest eligible children than of those aged 2 to 4, and fewer at 9 to 11 months than at age 1); a child that does not gets max_free_entitlement_hours_used 0, so the engine funds it no hours, and every other person keeps the engine's default of 30.",
       "operations": [
         {
           "aggregates": {
@@ -2645,7 +2648,7 @@
     "hmrc_cgt_asset_type_spine": {
       "artifacts": [
         {
-          "dependency": "policyengine-uk>=2.162.14 via microcosm-build[uk]",
+          "dependency": "policyengine-uk>=2.164.2 via microcosm-build[uk]",
           "dependency_discipline": "deferred inside uk_cgt_policy_parameters and uk_cgt_badr_parameters; the base package never imports policyengine-uk at import time",
           "instant_rule": "raw dated parameter files evaluated at 1 June of the build period's tax year",
           "kind": "versioned_parameter_tree",
@@ -2854,10 +2857,11 @@
             "private_pension_income",
             "property_income",
             "savings_interest_income",
+            "individual_savings_account_interest_income",
             "dividend_income",
             "miscellaneous_income"
           ],
-          "components_semantics": "Persisted leaves of the model's total_income concept (ITA 2007 s.23); state_pension_reported stands in for social_security_income, whose other taxable benefits are not persisted; reliefs such as pension contributions and Gift Aid are not deducted.",
+          "components_semantics": "Persisted leaves of the model's total_income concept (ITA 2007 s.23); state_pension_reported stands in for social_security_income, whose other taxable benefits are not persisted; reliefs such as pension contributions and Gift Aid are not deducted. ISA interest is exempt but stays beside non-ISA interest, as gross interest held it before microcosm#1360, so the proxy is unchanged.",
           "fail_on_missing_component": true,
           "kind": "taxable_income_proxy"
         },
@@ -3239,7 +3243,7 @@
           ],
           "rebase_income_to_build_period": true,
           "recipient_income_rule": {
-            "drawn": "the twin reports pay, a trade (self_employment_income > 0 or a self-employed main job) or a pension (private_pension_income + state_pension_reported > 0), or more than the floor of taxable interest (savings_interest_income less tax_free_savings_income), dividend_income, property_income and miscellaneous_income together; a reserved band carrier is always drawn; a twin whose only record is the State Pension is drawn, against a tape that mostly holds taxpayers, which can lift its pension leaves",
+            "drawn": "the twin reports pay, a trade (self_employment_income > 0 or a self-employed main job) or a pension (private_pension_income + state_pension_reported > 0), or more than the floor of taxable interest (savings_interest_income, the interest outside ISAs), dividend_income, property_income and miscellaneous_income together; a reserved band carrier is always drawn; a twin whose only record is the State Pension is drawn, against a tape that mostly holds taxpayers, which can lift its pension leaves",
             "undrawn": "the twin has no tax record for the tape to condition on; the copy keeps the twin's values at stage 1 and stage 2 (a declared modelling boundary like the under-16 one, microcosm#840)",
             "unearned_income_floor_gbp": 1000
           },
@@ -3272,7 +3276,7 @@
             "fit_weight_kind": "importance",
             "fold_key": "predictor cell (gender, region, whole-year age, main_source, has_pay, has_trade, at_or_over_spa), the fold being floor(uniform x folds) of the cell's stable_identity_uniforms draw at the stage seed and salt spi_stage1:reference_fold; each fold's recipients are located by a forest fitted on the other folds, so the forest that locates a copy never saw its twin, and every row of a cell is located by one forest",
             "folds": 5,
-            "method": "Rosenblatt transport (microcosm#840): each drawn recipient's twin values are located on the reference forest, the sign uniform in the gate's cumulative class probabilities and the quantile on the sign's magnitude forest, each leaf chained on the twin's observed earlier leaves, and the stage-1 forest draws at those uniforms, so the recipient receives the SPI income of someone in the same position among SPI people like it as the twin holds among FRS people like it. taxable_savings_interest is savings_interest_income less tax_free_savings_income, floored at zero. A leaf without an analogue, or whose analogue is degenerate on the FRS rows, draws at identity-keyed uniforms, as do the placements inside a class or a flat stretch of a conditional; no model random stream is consumed. The reference locates a leaf given the twin's observed earlier analogue leaves, while the stage-1 forest draws it given every earlier output, the identity-uniform leaves included, so the located quantile is read off a conditional the identity draws also shape (microcosm#840 follow-up: the chain order). A full build refuses a reference the predictor cells cannot cross-fit (only a sampled rung or a synthetic fixture may locate in-sample, and its receipt says so), a recipient whose fold differs from its twin's, and a reference whose sign classes differ from the stage-1 forest's on any located target.",
+            "method": "Rosenblatt transport (microcosm#840): each drawn recipient's twin values are located on the reference forest, the sign uniform in the gate's cumulative class probabilities and the quantile on the sign's magnitude forest, each leaf chained on the twin's observed earlier leaves, and the stage-1 forest draws at those uniforms, so the recipient receives the SPI income of someone in the same position among SPI people like it as the twin holds among FRS people like it. taxable_savings_interest is savings_interest_income, the interest outside ISAs, floored at zero. A leaf without an analogue, or whose analogue is degenerate on the FRS rows, draws at identity-keyed uniforms, as do the placements inside a class or a flat stretch of a conditional; no model random stream is consumed. The reference locates a leaf given the twin's observed earlier analogue leaves, while the stage-1 forest draws it given every earlier output, the identity-uniform leaves included, so the located quantile is read off a conditional the identity draws also shape (microcosm#840 follow-up: the chain order). A full build refuses a reference the predictor cells cannot cross-fit (only a sampled rung or a synthetic fixture may locate in-sample, and its receipt says so), a recipient whose fold differs from its twin's, and a reference whose sign classes differ from the stage-1 forest's on any located target.",
             "n_estimators": 4,
             "population": "uk_frs_raw_spine_base_support_channel claimants and partners (is_uc_claimant) aged 16 and over with taxable income under recipient_income_rule",
             "predictors": "the stage-1 predictors, encoded identically",
@@ -3428,7 +3432,7 @@
             "employer_pension_contributions",
             "personal_pension_contributions",
             "pension_contributions_via_salary_sacrifice",
-            "tax_free_savings_income",
+            "individual_savings_account_interest_income",
             "universal_credit_reported",
             "pension_credit_reported",
             "child_benefit_reported",
@@ -3464,7 +3468,6 @@
             "owned_company_income_share"
           ],
           "postprocess": {
-            "gross_savings_interest_income": "stage1 INCBBS draw + stage2 tax_free_savings_income",
             "refresh_disability_categories": [
               "aa_category",
               "dla_sc_category",
@@ -3476,7 +3479,8 @@
               "is_disabled_for_benefits",
               "is_enhanced_disabled_for_benefits",
               "is_severely_disabled_for_benefits"
-            ]
+            ],
+            "savings_interest_income": "the stage-1 INCBBS draw, interest outside ISAs; individual_savings_account_interest_income is the stage-2 draw beside it (microcosm#1360)"
           },
           "predictors": [
             "age",
@@ -3814,7 +3818,7 @@
         "employer_pension_contributions",
         "personal_pension_contributions",
         "pension_contributions_via_salary_sacrifice",
-        "tax_free_savings_income",
+        "individual_savings_account_interest_income",
         "universal_credit_reported",
         "pension_credit_reported",
         "child_benefit_reported",
@@ -3863,6 +3867,181 @@
       "source": "https://assets.publishing.service.gov.uk/media/69f1f12d2fae53a03709682f/Collated_Tables_3_1_to_3_11_2324.ods",
       "stage": "hmrc_spi_income_spine",
       "survey": "Survey of Personal Incomes Public Use Tape 2022-23 and HMRC Personal Incomes Tables 3.6/3.7 2023-24"
+    },
+    "isa_subscriptions": {
+      "artifacts": [
+        {
+          "format": "json",
+          "kind": "public_aggregate_reference",
+          "resource": "hmrc_isa_statistics_facts.json",
+          "role": "isa_statistics_facts",
+          "runtime_sha256_required": true
+        },
+        {
+          "access": "private_local_input",
+          "doi": "10.5255/UKDA-SN-7215-20",
+          "filename": "was_round_8_hhold_eul_may_2025_230525.tab",
+          "kind": "private_microdata",
+          "locator": "caller-supplied local input",
+          "role": "was_qrf_donor",
+          "runtime_sha256_required": true,
+          "sha256": "18b3eb980c02c99f3d8a3254af859bee31682b2bdc11703877677292b3ce9374",
+          "size_bytes": 39073613,
+          "ukds_study_number": 7215
+        },
+        {
+          "access": "private_local_input",
+          "doi": "10.5255/UKDA-SN-7215-20",
+          "filename": "was_round_8_person_eul_may_2025_230525.tab",
+          "format": "tab",
+          "kind": "private_microdata",
+          "locator": "caller-supplied local input",
+          "role": "was_person_tab",
+          "runtime_sha256_required": true,
+          "sha256": "1ca6fd37d9c677242112e0d7839df8b406eb1611db8322b20771f054e329d71a",
+          "size_bytes": 356930989,
+          "ukds_study_number": 7215,
+          "vintage": "round_8"
+        }
+      ],
+      "grain": "person",
+      "nonnegative_outputs": [
+        "cash_isa_balance",
+        "stocks_and_shares_isa_balance",
+        "cash_isa_subscriptions",
+        "stocks_and_shares_isa_subscriptions",
+        "lifetime_isa_payments"
+      ],
+      "notes": "Imputes ISA subscriptions per adult by type, and the per-person ISA balances, on the final spine (microcosm#1415). Each household's was_wealth cash and stocks-and-shares ISA totals are split across its adults by the holding pattern of a WAS round-8 donor household with the same number of adults, so person balances sum exactly to the household totals, which are unchanged. Subscribers in 2023-24 are adults aged 18 or over in households holding the type, raked by class (cash only, stocks and shares only, both) to Table 9.7's income bands, Table 9.8's age and sex and Table 9.9's regions and selected by keyed walks, the both class first. Amounts follow Table 9.7's subscription bands within each income band and class, uniform inside a band and exactly GBP 20,000 at the top; the both class splits each person's amount by their balance shares, shifted so the class's stocks-and-shares total is Table 9.4's 2023-24 stocks-and-shares amount less the stocks-and-shares-only payments. People grow to 2024-25 by Table 9.4's account growth (an upper bound on people, as from 6 April 2024 a person may pay into several ISAs of one type), and amounts scale to Table 9.4's 2024-25 amounts per type, holding subscribers already at the GBP 20,000 overall limit and moving combined amounts between GBP 18,000 (Table 9.7's last band floor below the limit) and the limit on a line up to it, so a factor below one leaves no empty range under the limit (Mar\u00eda's rulings of 29 October 2026): Table 9.7's cash bands sit above Table 9.4, and growing that excess by Table 9.4's ratio against the limit pushed the subscribers below it far up. Every Lifetime ISA holder aged 18 to 47 (the ages that can hold one in 2024-25) with room under the overall limit pays in, amounts in (0, GBP 4,000] drawn to Table 9.4's 2024-25 Lifetime ISA amount. No ISA fact is a calibration target: binding the cells the stage draws to would be circular, so the reviewed fence keeps them measured only.",
+      "operations": [
+        {
+          "artifact_role": "isa_statistics_facts",
+          "fail_on_mismatch": true,
+          "feed_pin": "chronicle_feed.json",
+          "kind": "verify_vendored_fact_resource",
+          "mapped_build_period": 2024,
+          "period_mapping": "individual_tables_grown_to_the_table_9_4_build_year",
+          "record_sets": [
+            "hmrc.isa_statistics_2026.table9_7.ty2023.",
+            "hmrc.isa_statistics_2026.table9_8.ty2023.",
+            "hmrc.isa_statistics_2026.table9_9.ty2023.",
+            "hmrc.isa_statistics_2026.table9_4.accounts.ty2023",
+            "hmrc.isa_statistics_2026.table9_4.amounts.ty2023",
+            "hmrc.isa_statistics_2026.table9_4.accounts.ty2024",
+            "hmrc.isa_statistics_2026.table9_4.amounts.ty2024",
+            "hmrc.isa_statistics_2026.table9_6.ty2024",
+            "hmrc.cash_isa_limit_reduction_2026.cash_subscribers_under_65.ty2022",
+            "hmrc.lisa_statistics_2026.table1a.ty2024",
+            "hmrc.lisa_statistics_2026.table1a.ty2025"
+          ],
+          "require_before_source_read": true,
+          "resource": "hmrc_isa_statistics_facts.json",
+          "runtime_sha256_required": true,
+          "source_vintage": "2023-24 individuals; Table 9.4 for 2023-24 and 2024-25"
+        },
+        {
+          "aggregate_tolerance_gbp": 1,
+          "household_aggregates": {
+            "cash_isa": "DVCISAVR8_aggr",
+            "stocks_and_shares_isa": "DVIISAVR8_aggr"
+          },
+          "household_key": "CASER8",
+          "household_weight": "R8xshhwgt",
+          "kind": "clean_was_isa_person_donor",
+          "non_dependent_code": 2,
+          "person_columns": {
+            "age_band": "DVAge17R8",
+            "cash_isa_value": "DVCISAvR8",
+            "is_dependent_child": "IsDepR8",
+            "person_number": "PersonR8",
+            "stocks_and_shares_isa_value": "DVIISAvR8"
+          }
+        },
+        {
+          "kind": "split_household_isa_balances",
+          "maximum_donor_adults": 4,
+          "outputs": [
+            "cash_isa_balance",
+            "stocks_and_shares_isa_balance"
+          ],
+          "salt": "isa_subscriptions:balance_split",
+          "seed": 0
+        },
+        {
+          "kind": "allocate_isa_subscribers",
+          "minimum_age": 18,
+          "salt": "isa_subscriptions:subscribers",
+          "seed": 0,
+          "selection_order": [
+            "cash_and_stocks_and_shares",
+            "stocks_and_shares_only",
+            "cash_only"
+          ]
+        },
+        {
+          "balance_rank_weight": 0.5,
+          "kind": "draw_isa_subscription_amounts",
+          "outputs": [
+            "cash_isa_subscriptions",
+            "stocks_and_shares_isa_subscriptions"
+          ],
+          "salt": "isa_subscriptions:amounts",
+          "seed": 0,
+          "within_band": "uniform"
+        },
+        {
+          "anchor": "table_9_4_stocks_and_shares_residual",
+          "kind": "split_both_type_subscriptions",
+          "share_floor": 0.02
+        },
+        {
+          "amounts": "table_9_4_amount_level_tapered_to_limit",
+          "from_tax_year": 2023,
+          "kind": "grow_isa_subscriptions",
+          "overall_limit_gbp": 20000,
+          "people": "table_9_4_account_growth",
+          "taper_from_gbp": 18000,
+          "to_tax_year": 2024
+        },
+        {
+          "annual_limit_gbp": 4000,
+          "kind": "draw_lifetime_isa_payments",
+          "maximum_age": 47,
+          "minimum_age": 18,
+          "outputs": [
+            "lifetime_isa_payments"
+          ],
+          "salt": "isa_subscriptions:lifetime_isa_payments",
+          "seed": 0
+        },
+        {
+          "declared_factor": 1,
+          "entity": "household",
+          "gate_coupling": "The terminal family gate requires a valid mass-conserving MassChangeRecord carrying exactly this stage-specific reason.",
+          "kind": "record_mass_conservation_receipt",
+          "reason": "ISA subscriptions per adult from HMRC's ISA tables on the source spine: household weights pass through unchanged and total household mass is conserved."
+        },
+        {
+          "adjudication": "https://github.com/PolicyEngine/microcosm/issues/1415",
+          "calibration_permitted": false,
+          "classification_rationale": "The stage draws subscribers and amounts to these cells, so binding them in the weight solve would be circular. The national build reports the subscription cells after calibration, with the holders (Tables 9.10 to 9.12) and market values (Table 9.6) as independent checks; none blocks a build.",
+          "fact_fence_id": "isa_facts_imputation_seeds_measured_only",
+          "fenced_fact_composition": "Table 9.7 2023-24 subscribers by income and subscription band and holders making no further subscription, for all subscribers and each type paid into (624); Table 9.8 by age and sex (325); Table 9.9 by region (70); Table 9.4 accounts and amounts for 2023-24 and 2024-25 (24); Table 9.6 2024-25 market values (19); the impact note's shares of under-65 cash subscribers either side of GBP 12,000 (2); Lifetime ISA Table 1a for 2024-25 and 2025-26 (10)",
+          "fenced_fact_count": 1074,
+          "kind": "classify_isa_facts_with_reviewed_fence"
+        }
+      ],
+      "outputs": [
+        "cash_isa_balance",
+        "stocks_and_shares_isa_balance",
+        "cash_isa_subscriptions",
+        "stocks_and_shares_isa_subscriptions",
+        "lifetime_isa_payments"
+      ],
+      "rewrites": [],
+      "source": "HMRC Individual Savings Account statistics Tables 9.4, 9.6 and 9.7 to 9.9, the cash ISA limit reduction impact note and Lifetime ISA Table 1a, via the vendored facts; Office for National Statistics Wealth and Assets Survey, UK Data Service SN 7215, DOI 10.5255/UKDA-SN-7215-20; local licensed round-8 person and household tabs (interviews April 2020 to March 2022, Great Britain).",
+      "stage": "isa_subscriptions",
+      "survey": "HMRC Annual savings statistics (September 2026 release); Wealth and Assets Survey round 8"
     },
     "lcfs_consumption": {
       "artifacts": [
@@ -5661,7 +5840,7 @@
       ],
       "grain": "person",
       "nonnegative_outputs": [],
-      "notes": "The last spine stage (uk-data#568, microcosm#1095). policyengine-uk imputes attends_private_school with a formula that ranks households by net income at their weights and compares a percentile rate, scaled to the national pupil count, with the stored attends_private_school_random_draw. Left to the formula, attendance is re-imputed in every simulation, so a reform to income tax, National Insurance or benefits switches pupils in or out, a population under one million people of weight imputes none (pe-uk#1905), and the calibration and the release read different flags once the weights change. This stage materializes the engine's attendance once, at the calibration year and the spine's design weights, and stores it, as the root stage stores months_since_last_birthday, so the solve and the release read the same flags; no stage after it copies or re-keys a person. Stored attendance no longer responds to income changes or to reforms of the attendance parameters, and a reform to the fee VAT does not move pupils either way in the pinned engine.",
+      "notes": "The last spine stage before the ISA subscriptions (uk-data#568, microcosm#1095). policyengine-uk imputes attends_private_school with a formula that ranks households by net income at their weights and compares a percentile rate, scaled to the national pupil count, with the stored attends_private_school_random_draw. Left to the formula, attendance is re-imputed in every simulation, so a reform to income tax, National Insurance or benefits switches pupils in or out, a population under one million people of weight imputes none (pe-uk#1905), and the calibration and the release read different flags once the weights change. This stage materializes the engine's attendance once, at the calibration year and the spine's design weights, and stores it, as the root stage stores months_since_last_birthday, so the solve and the release read the same flags; no stage after it copies or re-keys a person. Stored attendance no longer responds to income changes or to reforms of the attendance parameters, and a reform to the fee VAT does not move pupils either way in the pinned engine.",
       "operations": [
         {
           "draw": "attends_private_school_random_draw",
@@ -6613,7 +6792,7 @@
       "artifacts": [],
       "grain": "benunit",
       "nonnegative_outputs": [],
-      "notes": "Runs after the last universal_credit_reported writer and before CGT cloning. Redraws every SPI benefit unit's capital, since the channel's incomes are SPI draws and the copied FRS answer no longer belongs to the unit (uk-data#495, microcosm#1095), from weighted base-FRS units with available capital in cells of UC reporter status by financial investment income band (interest, dividends and other investment income; property income is excluded because TOTCAPB4 counts accounts and assets) by is_uc_couple (two retained FRS claimant/partner roles, independently of legal is_married) by dependent-children band. A cell with fewer than 20 donors widens in the declared coarsening order, and reporter status is never coarsened. It then applies the monotone reported-UC OR refresh. The recorded capitals add property (uk-data#495, microcosm#1095), since policyengine-uk 2.162.14 replaces every capital source with a recorded figure of 0 or more and takes it as countable, and TOTCAPB4 has no property. WAS records the property for the household, and each means test counts the claimant's and partner's own capital (UC Regs 2013 reg 18; SPCA 2002 s.5). The household reference person's benefit unit therefore holds all of the household's property, and no other unit records any (Mar\u00eda's ruling of 2026-10-12), since that person is the one in whose name the home is owned or rented, the best single reading of the owner. The engine shares household property over every claimant or partner instead, which puts a parent's property on an adult child's claim; a recorded figure consumes its own unit's share, so the engine's shares reach only a unit on the unavailable sentinel, and since policyengine-uk 2.136.1 such a unit takes its share whatever a recording unit beside it holds (the receipt counts any unit left there). The property counts at 90% of its value, market value less 10% for the costs of sale, less the debt secured on it, class by class and floored at zero per class (UC Regs 2013 reg 49(1); SPC Regs 2002 reg 19), as policyengine-uk values Universal Credit property capital. The was_wealth stage draws the debt on other residential and on non-residential property (microcosm#1095), and owned land carries none, as the engine has no input for it (pe-uk#1969). Universal Credit counts other residential and non-residential property, and Pension Credit counts those and owned land. A unit that reports Universal Credit keeps its receipt and records the carrier alone for Universal Credit, since DWP assessed its capital to pay it and the property is imputed without that receipt. frs_benunit_capital stays the financial carrier, and its unavailable sentinel -1 passes through to both. Both recorded figures project to later years by GDP per head, as financial capital does, while policyengine-uk 2.139.1 projects other residential property by house prices, so the other residential property in a recorded figure grows faster than the engine's own projection of it; by the OBR indices the engine carries, it grows 1.5% faster by 2025 and 2.0% by 2026 from a 2024 base.",
+      "notes": "Runs after the last universal_credit_reported writer and before CGT cloning. Redraws every SPI benefit unit's capital, since the channel's incomes are SPI draws and the copied FRS answer no longer belongs to the unit (uk-data#495, microcosm#1095), from weighted base-FRS units with available capital in cells of UC reporter status by financial investment income band (interest, dividends and other investment income; property income is excluded because TOTCAPB4 counts accounts and assets) by is_uc_couple (two retained FRS claimant/partner roles, independently of legal is_married) by dependent-children band. A cell with fewer than 20 donors widens in the declared coarsening order, and reporter status is never coarsened. It then applies the monotone reported-UC OR refresh. The recorded capitals add property (uk-data#495, microcosm#1095), since policyengine-uk 2.164.2 replaces every capital source with a recorded figure of 0 or more and takes it as countable, and TOTCAPB4 has no property. WAS records the property for the household, and each means test counts the claimant's and partner's own capital (UC Regs 2013 reg 18; SPCA 2002 s.5). The household reference person's benefit unit therefore holds all of the household's property, and no other unit records any (Mar\u00eda's ruling of 2026-10-12), since that person is the one in whose name the home is owned or rented, the best single reading of the owner. The engine shares household property over every claimant or partner instead, which puts a parent's property on an adult child's claim; a recorded figure consumes its own unit's share, so the engine's shares reach only a unit on the unavailable sentinel, and since policyengine-uk 2.136.1 such a unit takes its share whatever a recording unit beside it holds (the receipt counts any unit left there). The property counts at 90% of its value, market value less 10% for the costs of sale, less the debt secured on it, class by class and floored at zero per class (UC Regs 2013 reg 49(1); SPC Regs 2002 reg 19), as policyengine-uk values Universal Credit property capital. The was_wealth stage draws the debt on other residential and on non-residential property (microcosm#1095), and owned land carries none, as the engine has no input for it (pe-uk#1969). Universal Credit counts other residential and non-residential property, and Pension Credit counts those and owned land. A unit that reports Universal Credit keeps its receipt and records the carrier alone for Universal Credit, since DWP assessed its capital to pay it and the property is imputed without that receipt. frs_benunit_capital stays the financial carrier, and its unavailable sentinel -1 passes through to both. Both recorded figures project to later years by GDP per head, as financial capital does, while policyengine-uk 2.139.1 projects other residential property by house prices, so the other residential property in a recorded figure grows faster than the engine's own projection of it; by the OBR indices the engine carries, it grows 1.5% faster by 2025 and 2.0% by 2026 from a 2024 base.",
       "operations": [
         {
           "aggregates": {
@@ -6640,7 +6819,7 @@
           "donor_rows": "base_frs_with_available_capital",
           "draw": "weighted_empirical",
           "identity": "benunit_id",
-          "investment_income": "savings_interest_income + dividend_income + other_investment_income, summed over benefit-unit members",
+          "investment_income": "savings_interest_income + individual_savings_account_interest_income + dividend_income + other_investment_income, summed over benefit-unit members",
           "investment_income_band_edges": [
             0,
             240,
@@ -7001,6 +7180,13 @@
           "size_bytes": 356930989,
           "ukds_study_number": 7215,
           "vintage": "round_8"
+        },
+        {
+          "format": "json",
+          "kind": "public_aggregate_reference",
+          "resource": "hmrc_isa_statistics_facts.json",
+          "role": "isa_statistics_facts",
+          "runtime_sha256_required": true
         }
       ],
       "grain": "person",
@@ -7008,8 +7194,33 @@
         "lifetime_isa_balance",
         "household_lifetime_isa_balance"
       ],
-      "notes": "Imputes Lifetime ISA holdings per adult from the WAS round-8 person tab (microcosm#1003). The donor is every non-dependent adult of the person tab joined many-to-one on CASER8 to the cleaned household tab (the was_wealth donor, same pins); the released value DVFLISAvR8 (the ONS-completed FLISAVR8_i) must sum to the household aggregate DVFLISAVR8_aggr on every household or the stage refuses the tab, and a missing or negative value is refused rather than read as a zero balance. Response classes (observed, banded with the ONS value inside the reported band, ONS-imputed value or holding, rule-impossible) are receipted and never used as predictors. The declared credibility rule recodes holders recorded in an age band starting at 45 or above to non-holders and keeps holders above the balance ceiling as holders outside the balance fit (basis on the clean operation). Ownership is a weighted logistic regression with a ridge penalty on the slopes and an unpenalised intercept, so the donor's weighted ownership share is reproduced in-sample, on the age group, the log of person earnings, household net income, gross financial wealth, cash ISA, stocks-and-shares ISA and savings, private renting, sex and the number of children; the house regime gate (gradient boosting) is miscalibrated for an outcome held by under one per cent of adults with about 120 donor holders. Recipients aged 18 or over hold when a uniform keyed on person_id falls below their probability; no upper age limit is imposed. The balance is the regime-gated QRF fitted on the credible holders and drawn at the owner's keyed quantile (predict_positive_from_uniforms), so it is positive exactly when the person holds. Household predictors reuse the was_wealth definitions; tenure is the private-renter flag on both sides (DVPriRntR8 == 1; tenure_type RENT_PRIVATELY), not the engine is_renting. WAS counts LISAs inside gross financial wealth, so a household total above its gross_financial_wealth draw is scaled down pro rata (receipted) and ownership is re-derived from the capped balance; was_wealth columns are never rewritten. Balances are April 2020 to March 2022 pounds from a Great Britain donor and are not uprated; Northern Ireland recipients are predicted from the GB model. WAS records holdings, not annual contributions, and the stage derives no contribution or bonus.",
+      "notes": "Imputes Lifetime ISA holdings per adult from the WAS round-8 person tab (microcosm#1003). The donor is every non-dependent adult of the person tab joined many-to-one on CASER8 to the cleaned household tab (the was_wealth donor, same pins); the released value DVFLISAvR8 (the ONS-completed FLISAVR8_i) must sum to the household aggregate DVFLISAVR8_aggr on every household or the stage refuses the tab, and a missing or negative value is refused rather than read as a zero balance. Response classes (observed, banded with the ONS value inside the reported band, ONS-imputed value or holding, rule-impossible) are receipted and never used as predictors. The declared credibility rule recodes holders recorded in an age band starting at 45 or above to non-holders and keeps holders above the balance ceiling as holders outside the balance fit (basis on the clean operation). Ownership is a weighted logistic regression with a ridge penalty on the slopes and an unpenalised intercept, so the donor's weighted ownership share is reproduced in-sample, on the age group, the log of person earnings, household net income, gross financial wealth, cash ISA, stocks-and-shares ISA and savings, private renting, sex and the number of children; the house regime gate (gradient boosting) is miscalibrated for an outcome held by under one per cent of adults with about 120 donor holders. Recipients aged 18 or over hold when a uniform keyed on person_id falls below their probability; no upper age limit is imposed. The balance is the regime-gated QRF fitted on the credible holders and drawn at the owner's keyed quantile (predict_positive_from_uniforms), so it is positive exactly when the person holds. Household predictors reuse the was_wealth definitions; tenure is the private-renter flag on both sides (DVPriRntR8 == 1; tenure_type RENT_PRIVATELY), not the engine is_renting. WAS counts LISAs inside gross financial wealth, so a household total above its gross_financial_wealth draw is scaled down pro rata (receipted) and ownership is re-derived from the capped balance; was_wealth columns are never rewritten. Balances are April 2020 to March 2022 pounds from a Great Britain donor and are not uprated; Northern Ireland recipients are predicted from the GB model. WAS records holdings, not annual contributions, and the stage derives no contribution or bonus. HMRC's 2024-25 Lifetime ISA accounts subscribed to (Table 9.4) anchor the holders (microcosm#1415): the ownership logit shifts up on ages 18 to 47, the ages that can hold and pay into one in 2024-25 (opened at 18 to 39 since April 2017), until the holders at those ages who survive the financial-wealth cap equal HMRC's payers, the fewest holders consistent with them; the same keyed uniforms decide ownership, so the anchor only adds holders, and a target it cannot reach is named, not failed. Where the cap binds, an added holder scales the household's balances down pro rata, existing holders' included. Three later stages read the whole frame (uc_reporter_redraw, uc_take_up, pension_credit_take_up), and the Lifetime ISA counts as Universal Credit and Pension Credit capital, so the added holders can move their draws; the pair build counts the benefit units whose entitlement moves (Mar\u00eda's ruling of 29 October 2026).",
       "operations": [
+        {
+          "artifact_role": "isa_statistics_facts",
+          "fail_on_mismatch": true,
+          "feed_pin": "chronicle_feed.json",
+          "kind": "verify_vendored_fact_resource",
+          "mapped_build_period": 2024,
+          "period_mapping": "individual_tables_grown_to_the_table_9_4_build_year",
+          "record_sets": [
+            "hmrc.isa_statistics_2026.table9_7.ty2023.",
+            "hmrc.isa_statistics_2026.table9_8.ty2023.",
+            "hmrc.isa_statistics_2026.table9_9.ty2023.",
+            "hmrc.isa_statistics_2026.table9_4.accounts.ty2023",
+            "hmrc.isa_statistics_2026.table9_4.amounts.ty2023",
+            "hmrc.isa_statistics_2026.table9_4.accounts.ty2024",
+            "hmrc.isa_statistics_2026.table9_4.amounts.ty2024",
+            "hmrc.isa_statistics_2026.table9_6.ty2024",
+            "hmrc.cash_isa_limit_reduction_2026.cash_subscribers_under_65.ty2022",
+            "hmrc.lisa_statistics_2026.table1a.ty2024",
+            "hmrc.lisa_statistics_2026.table1a.ty2025"
+          ],
+          "require_before_source_read": true,
+          "resource": "hmrc_isa_statistics_facts.json",
+          "runtime_sha256_required": true,
+          "source_vintage": "2023-24 individuals; Table 9.4 for 2023-24 and 2024-25"
+        },
         {
           "age_band_edges": [
             0,
@@ -7123,6 +7334,20 @@
           "seed": 0,
           "solver": "lbfgs",
           "standardise": "donor_unweighted_mean_sd"
+        },
+        {
+          "ages": {
+            "maximum": 47,
+            "minimum": 18
+          },
+          "counted_ages": {
+            "maximum": 47,
+            "minimum": 18
+          },
+          "kind": "anchor_lifetime_isa_ownership",
+          "output": "has_lifetime_isa",
+          "target": "table_9_4_lifetime_isa_accounts_subscribed",
+          "tax_year": 2024
         },
         {
           "expected_regime": "positive_only",

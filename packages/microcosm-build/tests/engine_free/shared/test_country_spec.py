@@ -934,6 +934,7 @@ class TestUKCountryPackage:
             "hmrc_cgt_asset_type_facts.json",
             "hmrc_property_rental_income_facts.json",
             "hmrc_stamp_tax_facts.json",
+            "hmrc_isa_statistics_facts.json",
             "dwp_move_to_uc_facts.json",
             "dwp_uc_award_band_facts.json",
             "obr_hvcts_costing_facts.json",
@@ -1053,7 +1054,7 @@ class TestUKCountryPackage:
         # child_benefit_take_up; childcare_copy_take_up last, after every copy
         # stage; microcosm#1334 uc_take_up after uc_capital_coherence and
         # frs_annual_income_spells after frs_hmrc_spine_leaves.
-        assert len(spec.sources.stages) == 49
+        assert len(spec.sources.stages) == 50
         assert not {"frs_hmrc_retained_leaves", "hmrc_spi_income"}.intersection(
             stage.stage for stage in spec.sources.stages
         )
@@ -1096,6 +1097,7 @@ class TestExistingPackagesGeneralize:
             "hmrc_cgt_asset_type_facts.json",
             "hmrc_property_rental_income_facts.json",
             "hmrc_stamp_tax_facts.json",
+            "hmrc_isa_statistics_facts.json",
             "dwp_move_to_uc_facts.json",
             "dwp_uc_award_band_facts.json",
             "obr_hvcts_costing_facts.json",
@@ -1441,6 +1443,7 @@ class TestUKGatesManifest:
             "uk_stage_was_wealth_support",
             "uk_stage_was_wealth_coherence",
             "uk_stage_was_lisa_support",
+            "uk_stage_was_lisa_anchor",
             "uk_stage_property_components",
             "uk_stage_nts_bus_travel_support",
             "uk_stage_nts_bus_travel_facts",
@@ -1481,6 +1484,8 @@ class TestUKGatesManifest:
             "uk_stage_property_purchases_fit",
             "uk_stage_uc_legacy_closure_take_up_contract",
             "uk_stage_frs_person_draws_apprentices",
+            "uk_stage_isa_subscriptions_invariants",
+            "uk_stage_isa_subscriptions",
             "uk_release_input_coverage",
             "uk_degenerate_release_surface",
             "uk_zero_weight_strata",
@@ -1572,6 +1577,7 @@ class TestUKGatesManifest:
             "uk_stage_was_wealth_support",
             "uk_stage_was_wealth_coherence",
             "uk_stage_was_lisa_support",
+            "uk_stage_was_lisa_anchor",
             "uk_stage_property_components",
             "uk_stage_nts_bus_travel_support",
             "uk_stage_nts_bus_travel_facts",
@@ -1612,6 +1618,8 @@ class TestUKGatesManifest:
             "uk_stage_property_purchases_fit",
             "uk_stage_uc_legacy_closure_take_up_contract",
             "uk_stage_frs_person_draws_apprentices",
+            "uk_stage_isa_subscriptions_invariants",
+            "uk_stage_isa_subscriptions",
             "uk_weights_audit",
             # The #970 projection fence: a seam that cannot project cannot
             # certify the candidate's sub-exempt gainers.

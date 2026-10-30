@@ -373,7 +373,9 @@ def uk_full_graph(
 
 
 def _load_spine_h5(path: Path) -> Frame:
-    return national_frame.load_uk_national_frame(path)[0]
+    frame = national_frame.load_uk_national_frame(path)[0]
+    national_frame.require_uk_producer_isa_income_contract(frame, label=str(path))
+    return frame
 
 
 SOURCE_CODECS.register("uk-spine-h5-v1", _load_spine_h5)

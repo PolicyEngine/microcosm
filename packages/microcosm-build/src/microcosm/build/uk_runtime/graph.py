@@ -159,6 +159,9 @@ _SPLIT_STAGE_SOURCES: Mapping[str, tuple[str, ...]] = {
     "frs_legacy_proxies": ("frs",),
     "was_wealth": ("was",),
     "was_lisa": ("was", "was_person"),
+    # The ISA subscriptions split household ISA balances by a WAS donor
+    # household's holding pattern (microcosm#1415).
+    "isa_subscriptions": ("was", "was_person"),
     # The finance-cost model trains on the SPI tape (microcosm#1106).
     "property_components": ("spi",),
     "nts_bus_travel": (
@@ -356,6 +359,7 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
             ("person", "self_employment_income"),
             ("person", "private_pension_income"),
             ("person", "savings_interest_income"),
+            ("person", "individual_savings_account_interest_income"),
             ("person", "dividend_income"),
             ("person", "property_income"),
             ("person", "other_investment_income"),
@@ -436,6 +440,7 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
             ("person", "universal_credit_reported"),
             # The capital cells' financial investment income (microcosm#1095).
             ("person", "savings_interest_income"),
+            ("person", "individual_savings_account_interest_income"),
             ("person", "dividend_income"),
             ("person", "other_investment_income"),
             # The recorded capitals' property: the household reference
@@ -501,7 +506,7 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
                     "private_pension_income",
                     "property_income",
                     "state_pension_reported",
-                    "tax_free_savings_income",
+                    "individual_savings_account_interest_income",
                     "age",
                 )
             ),
@@ -559,6 +564,7 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
                     "private_pension_income",
                     "property_income",
                     "savings_interest_income",
+                    "individual_savings_account_interest_income",
                     "dividend_income",
                     "miscellaneous_income",
                 )
@@ -570,6 +576,35 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
     # One engine materialization of private-school attendance over the whole
     # frame at its weights: an open surface (microcosm#1095).
     "private_school_attendance": None,
+    # Subscribers are cells of age, sex, region and the CGT income proxy; the
+    # balance split reads the household ISA totals and the payments the LISA
+    # holding (microcosm#1415).
+    "isa_subscriptions": frozenset(
+        {
+            *(
+                ("person", column)
+                for column in (
+                    "age",
+                    "gender",
+                    "has_lifetime_isa",
+                    "lifetime_isa_balance",
+                    "employment_income",
+                    "self_employment_income",
+                    "state_pension_reported",
+                    "private_pension_income",
+                    "property_income",
+                    "savings_interest_income",
+                    "individual_savings_account_interest_income",
+                    "dividend_income",
+                    "miscellaneous_income",
+                    "loss_relief",
+                )
+            ),
+            ("household", "region"),
+            ("household", "cash_isa"),
+            ("household", "stocks_and_shares_isa"),
+        }
+    ),
     # The copies' childcare re-draw reads every household's clone path (the
     # lineage columns of each copy stage) and keeps the native units' cells:
     # an open surface, like the other take-up redraws.
@@ -1174,6 +1209,16 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
     ),
     "student_loans": (_Cell("person", "student_loan_plan", "string"),),
     "private_school_attendance": (_Cell("person", "attends_private_school", "bool"),),
+    "isa_subscriptions": _cells(
+        "person",
+        (
+            "cash_isa_balance",
+            "stocks_and_shares_isa_balance",
+            "cash_isa_subscriptions",
+            "stocks_and_shares_isa_subscriptions",
+            "lifetime_isa_payments",
+        ),
+    ),
     "childcare_copy_take_up": (
         *_cells(
             "benunit",
@@ -1218,7 +1263,7 @@ _HMRC_SPI_FLOAT_COLUMNS = (
     "employer_pension_contributions",
     "personal_pension_contributions",
     "pension_contributions_via_salary_sacrifice",
-    "tax_free_savings_income",
+    "individual_savings_account_interest_income",
     "universal_credit_reported",
     "pension_credit_reported",
     "child_benefit_reported",

@@ -1726,6 +1726,99 @@
           "expected_row_count": 8
         }
       ]
+    },
+    {
+      "resource": "hmrc_isa_statistics_facts.json",
+      "purpose": "HMRC Annual savings statistics (September 2026 release), the rows the ISA subscriptions stage draws subscribers and amounts from and the Lifetime ISA anchor counts payers against (microcosm#1415): Table 9.7 2023-24 subscribers by total income and size of subscription, and the holders who made no further subscription, for all subscribers and each type paid into; Table 9.8 subscribers by age and sex; Table 9.9 subscribers by region; Table 9.4 accounts and amounts subscribed by component for 2023-24 and 2024-25 (the latest year provisional); Table 9.6 market values at 5 April 2025; the cash ISA limit reduction impact note's shares of under-65 cash subscribers either side of GBP 12,000 in 2022-23; and Lifetime ISA Table 1a withdrawals for 2024-25 and 2025-26. Tables 9.7 to 9.9 count individuals and Table 9.4 accounts. None is a calibration target: the stage's reviewed fence keeps them measured only. No value is derived here.",
+      "consumers": [
+        "uk_runtime.hmrc_isa_statistics"
+      ],
+      "planned_consumers": [],
+      "selections": [
+        {
+          "label": "table9_7_ty2023_subscribers_and_holders_by_income_and_subscription",
+          "selector": {
+            "source_name": "hmrc",
+            "record_set_id": [
+              "hmrc.isa_statistics_2026.table9_7.ty2023.all.subscribers",
+              "hmrc.isa_statistics_2026.table9_7.ty2023.all.holders",
+              "hmrc.isa_statistics_2026.table9_7.ty2023.cash_only.subscribers",
+              "hmrc.isa_statistics_2026.table9_7.ty2023.cash_only.holders",
+              "hmrc.isa_statistics_2026.table9_7.ty2023.stocks_and_shares_only.subscribers",
+              "hmrc.isa_statistics_2026.table9_7.ty2023.stocks_and_shares_only.holders",
+              "hmrc.isa_statistics_2026.table9_7.ty2023.cash_and_stocks_and_shares.subscribers",
+              "hmrc.isa_statistics_2026.table9_7.ty2023.cash_and_stocks_and_shares.holders"
+            ]
+          },
+          "expected_row_count": 624
+        },
+        {
+          "label": "table9_8_ty2023_subscribers_and_holders_by_age_and_sex",
+          "selector": {
+            "source_name": "hmrc",
+            "record_set_id": [
+              "hmrc.isa_statistics_2026.table9_8.ty2023.male.subscribers",
+              "hmrc.isa_statistics_2026.table9_8.ty2023.male.holders",
+              "hmrc.isa_statistics_2026.table9_8.ty2023.female.subscribers",
+              "hmrc.isa_statistics_2026.table9_8.ty2023.female.holders",
+              "hmrc.isa_statistics_2026.table9_8.ty2023.all.subscribers",
+              "hmrc.isa_statistics_2026.table9_8.ty2023.all.holders"
+            ]
+          },
+          "expected_row_count": 325
+        },
+        {
+          "label": "table9_9_ty2023_subscribers_and_holders_by_region",
+          "selector": {
+            "source_name": "hmrc",
+            "record_set_id": [
+              "hmrc.isa_statistics_2026.table9_9.ty2023.subscribers",
+              "hmrc.isa_statistics_2026.table9_9.ty2023.holders"
+            ]
+          },
+          "expected_row_count": 70
+        },
+        {
+          "label": "table9_4_ty2023_ty2024_accounts_and_amounts_subscribed",
+          "selector": {
+            "source_name": "hmrc",
+            "record_set_id": [
+              "hmrc.isa_statistics_2026.table9_4.accounts.ty2023",
+              "hmrc.isa_statistics_2026.table9_4.amounts.ty2023",
+              "hmrc.isa_statistics_2026.table9_4.accounts.ty2024",
+              "hmrc.isa_statistics_2026.table9_4.amounts.ty2024"
+            ]
+          },
+          "expected_row_count": 24
+        },
+        {
+          "label": "table9_6_ty2024_market_value",
+          "selector": {
+            "source_name": "hmrc",
+            "record_set_id": "hmrc.isa_statistics_2026.table9_6.ty2024"
+          },
+          "expected_row_count": 19
+        },
+        {
+          "label": "impact_note_ty2022_cash_subscribers_under_65_by_band",
+          "selector": {
+            "source_name": "hmrc",
+            "record_set_id": "hmrc.cash_isa_limit_reduction_2026.cash_subscribers_under_65.ty2022"
+          },
+          "expected_row_count": 2
+        },
+        {
+          "label": "lisa_table1a_ty2024_ty2025_withdrawals",
+          "selector": {
+            "source_name": "hmrc",
+            "record_set_id": [
+              "hmrc.lisa_statistics_2026.table1a.ty2024",
+              "hmrc.lisa_statistics_2026.table1a.ty2025"
+            ]
+          },
+          "expected_row_count": 10
+        }
+      ]
     }
   ]
 }

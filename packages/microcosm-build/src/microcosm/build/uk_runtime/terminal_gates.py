@@ -322,6 +322,12 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "person.is_uc_claimant",
     "person.legacy_jobseeker_proxy",
     "person.lifetime_isa_balance",
+    "person.lifetime_isa_payments",
+    "person.cash_isa_balance",
+    "person.stocks_and_shares_isa_balance",
+    "person.cash_isa_subscriptions",
+    "person.stocks_and_shares_isa_subscriptions",
+    "person.individual_savings_account_interest_income",
     "person.local_bus_single_fare_share",
     "person.local_bus_trips",
     "person.local_bus_use_band",
@@ -472,6 +478,13 @@ UK_REVIEWED_EXPORT_EXCLUSIONS: Mapping[str, str] = {
         "other_residential_property_value and non_residential_property_value; "
         "a persisted copy overrides that sum and has no uprating index, so the "
         "candidate must drop it (microcosm#1106, the uk-data#543 defect)."
+    ),
+    "person.tax_free_savings_income": (
+        "policyengine-uk derives tax_free_savings_income as the sum of the ISA "
+        "interest it adds (individual_savings_account_interest_income); a "
+        "persisted copy overrides that sum and is never uprated, so the "
+        "candidate stores ISA interest apart from non-ISA interest under the "
+        "additive ISA income contract and drops it (microcosm#1360)."
     ),
 }
 

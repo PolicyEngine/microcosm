@@ -7,6 +7,7 @@ without the UK extra.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping, Sequence
 from importlib import metadata
 from pathlib import Path
@@ -31,23 +32,91 @@ __all__ = [
     "SUPPLIED_ROLE_INPUTS",
     "UK_ISA_INCOME_CONTRACT",
     "UK_ISA_INCOME_CONTRACT_ATTR",
+    "UK_LEGACY_ISA_INCOME_CONTRACT",
     "UK_SCHEMA",
+    "frame_isa_income_contract",
+    "uk_isa_income_contract_from",
     "validate_uc_claimant_input",
 ]
 
 UK_SCHEMA = EntitySchema(group_entities=("benunit", "household"))
-#: How the frame's savings interest holds ISA interest, declared to
-#: policyengine-uk (its ``isa_income_contract``, from 2.162.2): the frame
-#: stores ``savings_interest_income`` gross, ISA interest included, with the
-#: ISA part in ``tax_free_savings_income``. policyengine-uk reads that as
-#: ``legacy_gross`` and takes the ISA part off when it loads the dataset;
-#: declaring it keeps that reading if the engine's default for a dataset that
-#: declares nothing changes (microcosm#1095).
+#: How the producer's savings interest holds ISA interest, declared to
+#: policyengine-uk (its ``isa_income_contract``, from 2.162.2): non-ISA interest
+#: in ``savings_interest_income`` and ISA interest in
+#: ``individual_savings_account_interest_income``, each projected by its own
+#: index (microcosm#1360). ``tax_free_savings_income`` is the engine's sum of
+#: the ISA parts; a stored copy would override it and never be uprated, so the
+#: producer never stores it.
 UK_ISA_INCOME_CONTRACT: Mapping[str, object] = MappingProxyType(
+    {"version": 1, "representation": "additive", "projection": "additive"}
+)
+#: How policyengine-uk reads a dataset that declares no contract: gross
+#: ``savings_interest_income`` with the ISA part in ``tax_free_savings_income``,
+#: the enhanced FRS's layout and Microcosm's before microcosm#1360.
+UK_LEGACY_ISA_INCOME_CONTRACT: Mapping[str, object] = MappingProxyType(
     {"version": 1, "representation": "legacy_gross", "projection": "legacy_gross"}
 )
-#: The H5 root attribute policyengine-uk reads that contract from.
+#: The H5 root attribute policyengine-uk reads the contract from, and the frame
+#: metadata key that carries it.
 UK_ISA_INCOME_CONTRACT_ATTR = "policyengine_uk.isa_income_contract"
+#: The (representation, projection) pairs policyengine-uk accepts at version 1.
+_ISA_INCOME_CONTRACT_PAIRS = frozenset(
+    {
+        ("legacy_gross", "legacy_gross"),
+        ("additive", "legacy_gross"),
+        ("additive", "additive"),
+    }
+)
+
+
+def uk_isa_income_contract_from(value: object) -> dict[str, object]:
+    """Read a declared ISA income contract, a mapping or its JSON.
+
+    Anything but one of policyengine-uk's version-1 pairs fails, so a frame's
+    reading of its savings columns is never inferred from their amounts.
+    """
+
+    if isinstance(value, bytes):
+        value = value.decode("utf-8")
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except json.JSONDecodeError as exc:
+            raise ValueError(
+                f"ISA income contract {value!r} is not valid JSON."
+            ) from exc
+    if not isinstance(value, Mapping):
+        raise ValueError(
+            f"ISA income contract must be a mapping, got {type(value).__name__}."
+        )
+    contract = dict(value)
+    version = contract.get("version")
+    pair = (contract.get("representation"), contract.get("projection"))
+    if (
+        set(contract) != {"version", "representation", "projection"}
+        or type(version) is not int
+        or version != 1
+        or pair not in _ISA_INCOME_CONTRACT_PAIRS
+    ):
+        raise ValueError(f"Unsupported ISA income contract {contract!r}.")
+    return {"version": 1, "representation": pair[0], "projection": pair[1]}
+
+
+def frame_isa_income_contract(bundle: Frame) -> dict[str, object]:
+    """The contract a frame's savings columns follow.
+
+    A frame loaded from an H5 carries the file's declaration (one declaring
+    nothing reads as legacy gross); a frame assembled in process holds the
+    producer's columns and declares the producer's contract.
+    """
+
+    metadata = getattr(bundle, "metadata", None) or {}
+    declared = metadata.get(UK_ISA_INCOME_CONTRACT_ATTR)
+    if declared is None:
+        return dict(UK_ISA_INCOME_CONTRACT)
+    return uk_isa_income_contract_from(declared)
+
+
 _PERSON_TABLE = "person"
 _GROUP_TABLES = ("benunit", "household")
 _DTYPE_KIND_BY_VALUE_TYPE: dict[type, str] = {
@@ -227,7 +296,7 @@ class PolicyEngineUKEngine:
             benunit=tables["benunit"].copy(),
             household=tables["household"].copy(),
             fiscal_year=int(period),
-            isa_income_contract=dict(UK_ISA_INCOME_CONTRACT),
+            isa_income_contract=frame_isa_income_contract(bundle),
         )
 
 
