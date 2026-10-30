@@ -125,6 +125,7 @@ def company_cars_stage_spec(
             "company_car_electric_range",
             "company_car_capital_contributions",
             "company_car_private_fuel_provided",
+            "employment_income",
         ),
         rewrites=("employment_income",),
     )

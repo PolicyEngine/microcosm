@@ -93,6 +93,9 @@ from microcosm.build.uk_runtime.child_benefit_take_up import (
 from microcosm.build.uk_runtime.childcare_copy_take_up import (
     UKChildcareCopyTakeUpStageTransform,
 )
+from microcosm.build.uk_runtime.company_cars import (
+    UKCompanyCarsStageTransform,
+)
 from microcosm.build.uk_runtime.content_identity import uk_frame_content_identity
 from microcosm.build.uk_runtime.etb_services import UKETBServicesStageTransform
 from microcosm.build.uk_runtime.etb_vat import UKETBVATStageTransform
@@ -361,8 +364,8 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--was-person-tab",
         type=Path,
         help=(
-            "Caller-supplied private WAS round-8 person tab for was_lisa and "
-            "isa_subscriptions (with --was-tab)."
+            "Caller-supplied private WAS round-8 person tab for was_lisa, "
+            "isa_subscriptions and company_cars (with --was-tab)."
         ),
     )
     parser.add_argument(
@@ -853,6 +856,9 @@ def _declared_seeds(stages) -> dict[str, dict[str, int]]:
                     "allocate_isa_subscribers",
                     "draw_isa_subscription_amounts",
                     "draw_lifetime_isa_payments",
+                    "assign_company_car_fuel_types",
+                    "draw_company_car_list_prices",
+                    "draw_company_car_co2_emissions",
                 ):
                     # Identity-keyed draws: the seed is declared under the salt
                     # it is hashed with (microcosm#1415).
@@ -1558,7 +1564,7 @@ def prepare_uk_spine_execution(
         raise ValueError(
             "--was-tab is required when the was_wealth stage is scheduled."
         )
-    for was_person_stage in ("was_lisa", "isa_subscriptions"):
+    for was_person_stage in ("was_lisa", "isa_subscriptions", "company_cars"):
         if (
             args.synthetic_fixture_dir is not None
             or was_person_stage not in stage_names
@@ -1716,6 +1722,14 @@ def prepare_uk_spine_execution(
                 stage=stages_by_name["isa_subscriptions"],
                 engine=engine,
                 was_tab_path=sources["was"],
+                was_person_tab_path=sources["was_person"],
+            )
+        )
+    if "company_cars" in stage_names:
+        implementations["company_cars"] = _GraphSourceTransform(
+            lambda sources: UKCompanyCarsStageTransform(
+                stage=stages_by_name["company_cars"],
+                engine=engine,
                 was_person_tab_path=sources["was_person"],
             )
         )
@@ -1956,7 +1970,11 @@ def prepare_uk_spine_execution(
         graph_sources = _synthetic_graph_sources(args.synthetic_fixture_dir)
     else:
         graph_sources = {"frs": args.frs_raw_dir}
-        was_person_stages = {"was_lisa", "isa_subscriptions"} & set(stage_names)
+        was_person_stages = {
+            "was_lisa",
+            "isa_subscriptions",
+            "company_cars",
+        } & set(stage_names)
         if "was_wealth" in stage_names or was_person_stages:
             graph_sources["was"] = args.was_tab
         if was_person_stages:

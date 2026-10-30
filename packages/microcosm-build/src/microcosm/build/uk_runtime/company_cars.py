@@ -139,7 +139,9 @@ FUEL_TYPE = "company_car_fuel_type"
 ELECTRIC_RANGE = "company_car_electric_range"
 CAPITAL_CONTRIBUTIONS = "company_car_capital_contributions"
 PRIVATE_FUEL = "company_car_private_fuel_provided"
-UK_COMPANY_CARS_OUTPUT_COLUMNS = (
+EMPLOYMENT_INCOME = "employment_income"
+#: The six engine inputs the stage writes.
+UK_COMPANY_CARS_INPUT_COLUMNS = (
     LIST_PRICE,
     CO2_EMISSIONS,
     FUEL_TYPE,
@@ -147,13 +149,15 @@ UK_COMPANY_CARS_OUTPUT_COLUMNS = (
     CAPITAL_CONTRIBUTIONS,
     PRIVATE_FUEL,
 )
+#: The manifest's outputs: the inputs and the SPI-channel pay it rewrites.
+UK_COMPANY_CARS_OUTPUT_COLUMNS = (*UK_COMPANY_CARS_INPUT_COLUMNS, EMPLOYMENT_INCOME)
 UK_COMPANY_CARS_NONNEGATIVE_OUTPUT_COLUMNS = (
     LIST_PRICE,
     CO2_EMISSIONS,
     ELECTRIC_RANGE,
     CAPITAL_CONTRIBUTIONS,
+    EMPLOYMENT_INCOME,
 )
-EMPLOYMENT_INCOME = "employment_income"
 UK_COMPANY_CARS_REWRITES = (EMPLOYMENT_INCOME,)
 #: The engine variables the SPI carve-out reads.
 COMPANY_CAR_BENEFIT = "company_car_benefit"
@@ -1175,6 +1179,7 @@ class UKCompanyCarsStageTransform:
 
 
 __all__ = [
+    "UK_COMPANY_CARS_INPUT_COLUMNS",
     "UK_COMPANY_CARS_MASS_CONSERVATION_REASON",
     "UK_COMPANY_CARS_NONNEGATIVE_OUTPUT_COLUMNS",
     "UK_COMPANY_CARS_OUTPUT_COLUMNS",

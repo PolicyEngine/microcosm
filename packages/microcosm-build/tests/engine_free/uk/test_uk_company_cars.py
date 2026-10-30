@@ -448,7 +448,7 @@ def test_the_stage_s_draws_follow_identity_not_row_order(statistics) -> None:
     reversed_ = _transform(statistics)(
         _stage_frame(order=lambda n: np.arange(n)[::-1])
     ).table("person")
-    columns = [*stage.UK_COMPANY_CARS_OUTPUT_COLUMNS, "employment_income"]
+    columns = list(stage.UK_COMPANY_CARS_OUTPUT_COLUMNS)
     pd.testing.assert_frame_equal(
         straight.set_index("person_id")[columns].sort_index(),
         reversed_.set_index("person_id")[columns].sort_index(),

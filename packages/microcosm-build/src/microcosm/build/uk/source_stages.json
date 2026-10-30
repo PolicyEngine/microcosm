@@ -7719,6 +7719,210 @@
    "source": "HMRC Individual Savings Account statistics Tables 9.4, 9.6 and 9.7 to 9.9, the cash ISA limit reduction impact note and Lifetime ISA Table 1a, via the vendored facts; Office for National Statistics Wealth and Assets Survey, UK Data Service SN 7215, DOI 10.5255/UKDA-SN-7215-20; local licensed round-8 person and household tabs (interviews April 2020 to March 2022, Great Britain).",
    "stage": "isa_subscriptions",
    "survey": "HMRC Annual savings statistics (September 2026 release); Wealth and Assets Survey round 8"
+  },
+  {
+   "artifacts": [
+    {
+     "format": "json",
+     "kind": "public_aggregate_reference",
+     "resource": "hmrc_benefits_in_kind_facts.json",
+     "role": "benefits_in_kind_facts",
+     "runtime_sha256_required": true
+    },
+    {
+     "access": "private_local_input",
+     "doi": "10.5255/UKDA-SN-7215-20",
+     "filename": "was_round_8_person_eul_may_2025_230525.tab",
+     "format": "tab",
+     "kind": "private_microdata",
+     "locator": "caller-supplied local input",
+     "role": "was_person_tab",
+     "runtime_sha256_required": true,
+     "sha256": "1ca6fd37d9c677242112e0d7839df8b406eb1611db8322b20771f054e329d71a",
+     "size_bytes": 356930989,
+     "ukds_study_number": 7215,
+     "vintage": "round_8"
+    }
+   ],
+   "grain": "person",
+   "nonnegative_outputs": [
+    "company_car_list_price",
+    "company_car_co2_emissions",
+    "company_car_electric_range",
+    "company_car_capital_contributions",
+    "employment_income"
+   ],
+   "notes": "Writes six of policyengine-uk 2.165.0's company car inputs on the final spine (PolicyEngine/uk-autumn-budget-dashboard-2026#316) and runs last, so no stage reads the pay it rewrites. An FRS-channel person keeps the company car frs_spine's carriers record; an SPI-channel person keeps their twin's only where their drawn EPB is positive. Fuel maps from the FRS code (a hybrid is an alternative fuel; a diesel meets RDE2, which every new diesel has since January 2021), and an unknown fuel draws at Table 2C's shares. The list price is drawn within the respondent's CARVAL band from WAS round-8 company cars' prices grown by the engine's CPI index from 2021, the open and unknown bands by fuel class, uniformly where a band has fewer than minimum_donor_households WAS households. CO2 is zero for an electric car; the others split between 1 to 50 g/km (hybrids first) and the bands above at Table 2A's shares among cars that emit CO2, uniformly within each band, and a car at 1 to 50 g/km takes electric_range_miles, which matters only to 2027-28. Availability, payments for private use and the 2020 registration flag keep the engine's defaults, which no survey records. SPI-channel pay is the tape's PAY + EPB + TAXTERM, so the engine's car and fuel benefits come out of employment_income, capped at EPB: fuel first where it alone exceeds EPB, then the list price scaled down to fit with its contributions dropped, or the car dropped below minimum_scaled_list_price_gbp (María's ruling of 30 October 2026). No HMRC fact is a calibration target: binding the cells the stage draws to would be circular, and the calibrated file is measured against Tables 1, 3A and 4.",
+   "operations": [
+    {
+     "artifact_role": "benefits_in_kind_facts",
+     "fail_on_mismatch": true,
+     "feed_pin": "chronicle_feed.json",
+     "kind": "verify_vendored_fact_resource",
+     "mapped_build_period": 2024,
+     "period_mapping": "tax_year_2024_25_is_the_build_period",
+     "record_sets": [
+      "hmrc.benefits_in_kind_july_2026.table1.recipients.ty2024",
+      "hmrc.benefits_in_kind_july_2026.table1.taxable_value.ty2024",
+      "hmrc.benefits_in_kind_july_2026.table1.income_tax_liability.ty2024",
+      "hmrc.benefits_in_kind_july_2026.table1.class_1a_nic_liability.ty2024",
+      "hmrc.benefits_in_kind_july_2026.table2a.recipients.ty2024",
+      "hmrc.benefits_in_kind_july_2026.table2c.recipients.ty2024",
+      "hmrc.benefits_in_kind_july_2026.table3a.recipients.ty2024",
+      "hmrc.benefits_in_kind_july_2026.table3a.taxable_value.ty2024",
+      "hmrc.benefits_in_kind_july_2026.table3b.recipients.ty2024",
+      "hmrc.benefits_in_kind_july_2026.table3b.taxable_value.ty2024",
+      "hmrc.benefits_in_kind_july_2026.table4.recipients.ty2024",
+      "hmrc.benefits_in_kind_july_2026.table4.taxable_value.ty2024"
+     ],
+     "require_before_source_read": true,
+     "resource": "hmrc_benefits_in_kind_facts.json",
+     "runtime_sha256_required": true,
+     "source_vintage": "2024-25, provisional (July 2026 release)"
+    },
+    {
+     "car_code": 1,
+     "electric_code": 4,
+     "has_company_vehicle": "COMPVEHR8",
+     "household_key": "CASER8",
+     "household_weight": "R8xshhwgt",
+     "kind": "clean_was_company_car_donor",
+     "price_year": 2021,
+     "vehicles": [
+      {
+       "car_or_van": "CARVAN1R8",
+       "fuel": "PETROL1R8",
+       "list_price": "LISTPR1R8"
+      },
+      {
+       "car_or_van": "CARVAN2R8",
+       "fuel": "PETROL2R8",
+       "list_price": "LISTPR2R8"
+      },
+      {
+       "car_or_van": "CARVAN3R8",
+       "fuel": "PETROL3R8",
+       "list_price": "LISTPR3R8"
+      }
+     ],
+     "yes_code": 1
+    },
+    {
+     "diesel_fuel_type": "DIESEL_RDE2",
+     "kind": "assign_company_car_fuel_types",
+     "outputs": [
+      "company_car_fuel_type"
+     ],
+     "salt": "company_cars:fuel_type",
+     "seed": 0,
+     "unknown_fuel": "table_2c_shares"
+    },
+    {
+     "bands": {
+      "1": [
+       0,
+       10000
+      ],
+      "2": [
+       10000,
+       13000
+      ],
+      "3": [
+       13000,
+       16000
+      ],
+      "4": [
+       16000,
+       19000
+      ],
+      "5": [
+       19000,
+       22000
+      ],
+      "6": [
+       22000,
+       25000
+      ],
+      "7": [
+       25000,
+       30000
+      ],
+      "8": [
+       30000,
+       40000
+      ],
+      "9": [
+       40000,
+       null
+      ]
+     },
+     "kind": "draw_company_car_list_prices",
+     "minimum_donor_households": 10,
+     "open_band_fallback_upper_gbp": 80000,
+     "outputs": [
+      "company_car_list_price",
+      "company_car_capital_contributions"
+     ],
+     "salt": "company_cars:list_price",
+     "seed": 0
+    },
+    {
+     "electric_range_miles": 50,
+     "kind": "draw_company_car_co2_emissions",
+     "margins": "table_2a_nonzero_shares_hybrids_first",
+     "outputs": [
+      "company_car_co2_emissions",
+      "company_car_electric_range"
+     ],
+     "salt": "company_cars:co2",
+     "seed": 0,
+     "top_band_upper_g_km": 179
+    },
+    {
+     "benefits": [
+      "company_car_benefit",
+      "car_fuel_benefit"
+     ],
+     "epb_column": "hmrc_spi_employment_benefits",
+     "kind": "carve_spi_company_car_benefits",
+     "minimum_scaled_list_price_gbp": 5000,
+     "outputs": [
+      "employment_income",
+      "company_car_private_fuel_provided"
+     ]
+    },
+    {
+     "declared_factor": 1,
+     "entity": "household",
+     "gate_coupling": "The terminal family gate requires a valid mass-conserving MassChangeRecord carrying exactly this stage-specific reason.",
+     "kind": "record_mass_conservation_receipt",
+     "reason": "Company cars per employee from the FRS job record, WAS round-8 list prices and HMRC's company car tables on the source spine: household weights pass through unchanged and total household mass is conserved."
+    },
+    {
+     "adjudication": "https://github.com/PolicyEngine/uk-autumn-budget-dashboard-2026/issues/316",
+     "calibration_permitted": false,
+     "classification_rationale": "The stage draws fuel and CO2 to Tables 2A and 2C, so binding them in the weight solve would be circular. The national build reports the calibrated file against Tables 1, 3A and 4; none blocks a build.",
+     "fact_fence_id": "company_car_facts_imputation_seeds_measured_only",
+     "fenced_fact_composition": "HMRC Benefits in kind statistics (July 2026): Table 1 car and car fuel benefit recipients, taxable value, income tax and NICs; Table 2A recipients by CO2 band; Table 2C recipients by fuel; Tables 3A and 3B recipients and taxable value by income range; Table 4 recipients by region",
+     "fenced_fact_count": 96,
+     "kind": "classify_company_car_facts_with_reviewed_fence"
+    }
+   ],
+   "outputs": [
+    "company_car_list_price",
+    "company_car_co2_emissions",
+    "company_car_fuel_type",
+    "company_car_electric_range",
+    "company_car_capital_contributions",
+    "company_car_private_fuel_provided",
+    "employment_income"
+   ],
+   "rewrites": [
+    "employment_income"
+   ],
+   "source": "The FRS job record's company car answers through frs_spine's carriers (EXPBEN01, EXPBEN03, CARVAL, FUELTYP, CARCON, CARAMT), WAS round-8 company cars' list prices, and HMRC's 2024-25 company car recipients by CO2 band (Table 2A) and fuel (Table 2C), via the vendored facts",
+   "stage": "company_cars",
+   "survey": "Family Resources Survey 2024-25 job record; Wealth and Assets Survey round 8; HMRC Benefits in kind statistics (July 2026)"
   }
  ]
 }

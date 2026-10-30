@@ -6204,3 +6204,157 @@ stages:
   - stocks_and_shares_isa_subscriptions
   - lifetime_isa_payments
   notes: 'Imputes ISA subscriptions per adult by type, and the per-person ISA balances, on the final spine (microcosm#1415). Each household''s was_wealth cash and stocks-and-shares ISA totals are split across its adults by the holding pattern of a WAS round-8 donor household with the same number of adults, so person balances sum exactly to the household totals, which are unchanged. Subscribers in 2023-24 are adults aged 18 or over in households holding the type, raked by class (cash only, stocks and shares only, both) to Table 9.7''s income bands, Table 9.8''s age and sex and Table 9.9''s regions and selected by keyed walks, the both class first. Amounts follow Table 9.7''s subscription bands within each income band and class, uniform inside a band and exactly GBP 20,000 at the top; the both class splits each person''s amount by their balance shares, shifted so the class''s stocks-and-shares total is Table 9.4''s 2023-24 stocks-and-shares amount less the stocks-and-shares-only payments. People grow to 2024-25 by Table 9.4''s account growth (an upper bound on people, as from 6 April 2024 a person may pay into several ISAs of one type), and amounts scale to Table 9.4''s 2024-25 amounts per type, holding subscribers already at the GBP 20,000 overall limit and moving combined amounts between GBP 18,000 (Table 9.7''s last band floor below the limit) and the limit on a line up to it, so a factor below one leaves no empty range under the limit (María''s rulings of 29 October 2026): Table 9.7''s cash bands sit above Table 9.4, and growing that excess by Table 9.4''s ratio against the limit pushed the subscribers below it far up. Every Lifetime ISA holder aged 18 to 47 (the ages that can hold one in 2024-25) with room under the overall limit pays in, amounts in (0, GBP 4,000] drawn to Table 9.4''s 2024-25 Lifetime ISA amount. No ISA fact is a calibration target: binding the cells the stage draws to would be circular, so the reviewed fence keeps them measured only.'
+- stage: company_cars
+  survey: Family Resources Survey 2024-25 job record; Wealth and Assets Survey round 8; HMRC Benefits in kind statistics (July 2026)
+  source: The FRS job record's company car answers through frs_spine's carriers (EXPBEN01, EXPBEN03, CARVAL, FUELTYP, CARCON, CARAMT), WAS round-8 company cars' list prices, and HMRC's 2024-25 company car recipients by CO2 band (Table 2A) and fuel (Table 2C), via the vendored facts
+  grain: person
+  artifacts:
+  - role: benefits_in_kind_facts
+    kind: public_aggregate_reference
+    resource: hmrc_benefits_in_kind_facts.json
+    format: json
+    runtime_sha256_required: true
+  - role: was_person_tab
+    kind: private_microdata
+    ukds_study_number: 7215
+    doi: 10.5255/UKDA-SN-7215-20
+    filename: was_round_8_person_eul_may_2025_230525.tab
+    format: tab
+    vintage: round_8
+    sha256: 1ca6fd37d9c677242112e0d7839df8b406eb1611db8322b20771f054e329d71a
+    size_bytes: 356930989
+    access: private_local_input
+    locator: caller-supplied local input
+    runtime_sha256_required: true
+  operations:
+  - kind: verify_vendored_fact_resource
+    artifact_role: benefits_in_kind_facts
+    resource: hmrc_benefits_in_kind_facts.json
+    feed_pin: chronicle_feed.json
+    record_sets:
+    - hmrc.benefits_in_kind_july_2026.table1.recipients.ty2024
+    - hmrc.benefits_in_kind_july_2026.table1.taxable_value.ty2024
+    - hmrc.benefits_in_kind_july_2026.table1.income_tax_liability.ty2024
+    - hmrc.benefits_in_kind_july_2026.table1.class_1a_nic_liability.ty2024
+    - hmrc.benefits_in_kind_july_2026.table2a.recipients.ty2024
+    - hmrc.benefits_in_kind_july_2026.table2c.recipients.ty2024
+    - hmrc.benefits_in_kind_july_2026.table3a.recipients.ty2024
+    - hmrc.benefits_in_kind_july_2026.table3a.taxable_value.ty2024
+    - hmrc.benefits_in_kind_july_2026.table3b.recipients.ty2024
+    - hmrc.benefits_in_kind_july_2026.table3b.taxable_value.ty2024
+    - hmrc.benefits_in_kind_july_2026.table4.recipients.ty2024
+    - hmrc.benefits_in_kind_july_2026.table4.taxable_value.ty2024
+    source_vintage: 2024-25, provisional (July 2026 release)
+    mapped_build_period: 2024
+    period_mapping: tax_year_2024_25_is_the_build_period
+    require_before_source_read: true
+    runtime_sha256_required: true
+    fail_on_mismatch: true
+  - kind: clean_was_company_car_donor
+    household_key: CASER8
+    household_weight: R8xshhwgt
+    has_company_vehicle: COMPVEHR8
+    vehicles:
+    - car_or_van: CARVAN1R8
+      fuel: PETROL1R8
+      list_price: LISTPR1R8
+    - car_or_van: CARVAN2R8
+      fuel: PETROL2R8
+      list_price: LISTPR2R8
+    - car_or_van: CARVAN3R8
+      fuel: PETROL3R8
+      list_price: LISTPR3R8
+    yes_code: 1
+    car_code: 1
+    electric_code: 4
+    price_year: 2021
+  - kind: assign_company_car_fuel_types
+    outputs:
+    - company_car_fuel_type
+    diesel_fuel_type: DIESEL_RDE2
+    unknown_fuel: table_2c_shares
+    seed: 0
+    salt: company_cars:fuel_type
+  - kind: draw_company_car_list_prices
+    outputs:
+    - company_car_list_price
+    - company_car_capital_contributions
+    bands:
+      '1':
+      - 0.0
+      - 10000.0
+      '2':
+      - 10000.0
+      - 13000.0
+      '3':
+      - 13000.0
+      - 16000.0
+      '4':
+      - 16000.0
+      - 19000.0
+      '5':
+      - 19000.0
+      - 22000.0
+      '6':
+      - 22000.0
+      - 25000.0
+      '7':
+      - 25000.0
+      - 30000.0
+      '8':
+      - 30000.0
+      - 40000.0
+      '9':
+      - 40000.0
+      - null
+    minimum_donor_households: 10
+    open_band_fallback_upper_gbp: 80000.0
+    seed: 0
+    salt: company_cars:list_price
+  - kind: draw_company_car_co2_emissions
+    outputs:
+    - company_car_co2_emissions
+    - company_car_electric_range
+    margins: table_2a_nonzero_shares_hybrids_first
+    top_band_upper_g_km: 179
+    electric_range_miles: 50.0
+    seed: 0
+    salt: company_cars:co2
+  - kind: carve_spi_company_car_benefits
+    outputs:
+    - employment_income
+    - company_car_private_fuel_provided
+    epb_column: hmrc_spi_employment_benefits
+    benefits:
+    - company_car_benefit
+    - car_fuel_benefit
+    minimum_scaled_list_price_gbp: 5000.0
+  - kind: record_mass_conservation_receipt
+    entity: household
+    reason: 'Company cars per employee from the FRS job record, WAS round-8 list prices and HMRC''s company car tables on the source spine: household weights pass through unchanged and total household mass is conserved.'
+    declared_factor: 1.0
+    gate_coupling: The terminal family gate requires a valid mass-conserving MassChangeRecord carrying exactly this stage-specific reason.
+  - kind: classify_company_car_facts_with_reviewed_fence
+    calibration_permitted: false
+    fact_fence_id: company_car_facts_imputation_seeds_measured_only
+    fenced_fact_count: 96
+    fenced_fact_composition: 'HMRC Benefits in kind statistics (July 2026): Table 1 car and car fuel benefit recipients, taxable value, income tax and NICs; Table 2A recipients by CO2 band; Table 2C recipients by fuel; Tables 3A and 3B recipients and taxable value by income range; Table 4 recipients by region'
+    classification_rationale: The stage draws fuel and CO2 to Tables 2A and 2C, so binding them in the weight solve would be circular. The national build reports the calibrated file against Tables 1, 3A and 4; none blocks a build.
+    adjudication: https://github.com/PolicyEngine/uk-autumn-budget-dashboard-2026/issues/316
+  outputs:
+  - company_car_list_price
+  - company_car_co2_emissions
+  - company_car_fuel_type
+  - company_car_electric_range
+  - company_car_capital_contributions
+  - company_car_private_fuel_provided
+  - employment_income
+  nonnegative_outputs:
+  - company_car_list_price
+  - company_car_co2_emissions
+  - company_car_electric_range
+  - company_car_capital_contributions
+  - employment_income
+  rewrites:
+  - employment_income
+  notes: 'Writes six of policyengine-uk 2.165.0''s company car inputs on the final spine (PolicyEngine/uk-autumn-budget-dashboard-2026#316) and runs last, so no stage reads the pay it rewrites. An FRS-channel person keeps the company car frs_spine''s carriers record; an SPI-channel person keeps their twin''s only where their drawn EPB is positive. Fuel maps from the FRS code (a hybrid is an alternative fuel; a diesel meets RDE2, which every new diesel has since January 2021), and an unknown fuel draws at Table 2C''s shares. The list price is drawn within the respondent''s CARVAL band from WAS round-8 company cars'' prices grown by the engine''s CPI index from 2021, the open and unknown bands by fuel class, uniformly where a band has fewer than minimum_donor_households WAS households. CO2 is zero for an electric car; the others split between 1 to 50 g/km (hybrids first) and the bands above at Table 2A''s shares among cars that emit CO2, uniformly within each band, and a car at 1 to 50 g/km takes electric_range_miles, which matters only to 2027-28. Availability, payments for private use and the 2020 registration flag keep the engine''s defaults, which no survey records. SPI-channel pay is the tape''s PAY + EPB + TAXTERM, so the engine''s car and fuel benefits come out of employment_income, capped at EPB: fuel first where it alone exceeds EPB, then the list price scaled down to fit with its contributions dropped, or the car dropped below minimum_scaled_list_price_gbp (María''s ruling of 30 October 2026). No HMRC fact is a calibration target: binding the cells the stage draws to would be circular, and the calibrated file is measured against Tables 1, 3A and 4.'
