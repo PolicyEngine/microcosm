@@ -211,12 +211,19 @@ def test_main_reads_the_registry_and_the_release_year(tmp_path, monkeypatch) -> 
     )
     seen = {}
 
-    def estimates(dataset, year, row_years):
+    def estimates(dataset, year, row_years, weights=None):
         seen.update(dataset=dataset, year=year, row_years=dict(row_years))
+        assert weights is solved
         return {"ons.household_road_fuel_expenditure": 5.0}
 
+    solved = pd.Series([1.0], index=[11])
     monkeypatch.setattr(_tool, "engine_estimates", estimates)
-    monkeypatch.setattr(_tool, "composition", lambda household: {})
+    monkeypatch.setattr(_tool, "solved_household_weights", lambda dataset, year: solved)
+    monkeypatch.setattr(
+        _tool,
+        "composition",
+        lambda household, weights=None: {"solved": weights is solved},
+    )
     monkeypatch.setattr(_tool.pd, "read_hdf", lambda path, key: pd.DataFrame())
     out = tmp_path / "report.json"
     monkeypatch.setattr(
@@ -234,6 +241,8 @@ def test_main_reads_the_registry_and_the_release_year(tmp_path, monkeypatch) -> 
     assert report["rows"]["ons.household_road_fuel_expenditure"][
         "relative_error"
     ] == pytest.approx(0.25)
+    # The composition reads the same solved weights (the sixth re-review, 3).
+    assert report["composition"] == {"solved": True}
 
 
 def test_a_registry_supplies_the_periods_its_run_measured(tmp_path) -> None:
@@ -322,21 +331,29 @@ def test_the_tool_reads_the_solved_weights_of_a_release_and_a_solved_file(
         _tool.engine_estimates(str(released), 2025, {})
 
 
-def test_main_takes_the_year_from_the_runs_registry(tmp_path, monkeypatch) -> None:
-    # The fifth re-review of microcosm#1420, 3: with --registry and no --year,
-    # the run's own calibration period wins over the package's release.
+def _main_with_registry(tmp_path, monkeypatch, periods) -> dict:
     registry = tmp_path / "registry.json"
     registry.write_text(
-        json.dumps({"specs": [{"name": "obr.vat", "value": 1.0, "period": 2026}]})
+        json.dumps(
+            {
+                "specs": [
+                    {"name": "obr.vat", "value": 1.0, "period": period}
+                    for period in periods
+                ]
+            }
+        )
     )
     seen = {}
 
-    def estimates(dataset, year, row_years):
+    def estimates(dataset, year, row_years, weights=None):
         seen["year"] = year
         return {"obr.vat": 1.0}
 
     monkeypatch.setattr(_tool, "engine_estimates", estimates)
-    monkeypatch.setattr(_tool, "composition", lambda household: {})
+    monkeypatch.setattr(
+        _tool, "solved_household_weights", lambda dataset, year: pd.Series(dtype=float)
+    )
+    monkeypatch.setattr(_tool, "composition", lambda household, weights=None: {})
     monkeypatch.setattr(_tool.pd, "read_hdf", lambda path, key: pd.DataFrame())
     monkeypatch.setattr(
         sys,
@@ -352,4 +369,40 @@ def test_main_takes_the_year_from_the_runs_registry(tmp_path, monkeypatch) -> No
         ],
     )
     _tool.main()
-    assert seen == {"year": 2026}
+    return seen
+
+
+def test_main_takes_the_year_from_the_runs_registry(tmp_path, monkeypatch) -> None:
+    # The fifth re-review of microcosm#1420, 3: with --registry and no --year,
+    # the run's own calibration period wins over the package's release, here
+    # one year past it so the check holds whatever the release's year (the
+    # sixth re-review, 3).
+    from microcosm.build.uk_runtime.frs_release import load_uk_frs_release
+
+    later = int(load_uk_frs_release().calibration_year) + 1
+    assert _main_with_registry(tmp_path, monkeypatch, [later]) == {"year": later}
+
+
+def test_main_refuses_a_registry_with_mixed_periods(
+    tmp_path, monkeypatch, capsys
+) -> None:
+    # The sixth re-review of microcosm#1420, 3: with no --year, a registry
+    # whose specs span several periods refuses rather than falling back.
+    with pytest.raises(SystemExit):
+        _main_with_registry(tmp_path, monkeypatch, [2025, 2026])
+    assert "pass --year" in capsys.readouterr().err
+
+
+def test_composition_reads_the_solved_weights_by_household_id() -> None:
+    # The sixth re-review of microcosm#1420, 3: the composition is weighted
+    # as the estimates are, by id; a household on either side alone refuses.
+    table = _household()
+    table["household_id"] = [11, 12, 13]
+    stored = _tool.composition(table)
+    solved = _tool.composition(table, pd.Series([2.0, 1.0, 4.0], index=[12, 11, 13]))
+    assert stored["households"] == 4.0
+    # Households one and three are on gas: weight 1 + 4 of 7 by id.
+    assert solved["households"] == 7.0
+    assert solved["gas_connected_share"] == pytest.approx(5.0 / 7.0)
+    with pytest.raises(ValueError, match="households and the frame's"):
+        _tool.composition(table, pd.Series([1.0, 1.0], index=[11, 12]))

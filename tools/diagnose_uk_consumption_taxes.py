@@ -81,10 +81,25 @@ def declared_row_years() -> dict[str, int]:
 ROW_YEARS: Mapping[str, int] = declared_row_years()
 
 
-def composition(household: pd.DataFrame) -> dict[str, float]:
-    """Weighted fuel and energy composition from the stored household table."""
+def composition(
+    household: pd.DataFrame, weights: pd.Series | None = None
+) -> dict[str, float]:
+    """Weighted fuel and energy composition from the stored household table.
 
-    weight = household["household_weight"].to_numpy(dtype=float)
+    ``weights`` are the solved weights by household id, as the estimates use
+    (the sixth re-review of microcosm#1420, 3): a release stores them 0.3%
+    lower, at the dataset's year. Without them the stored weights are used.
+    """
+
+    if weights is None:
+        weight = household["household_weight"].to_numpy(dtype=float)
+    else:
+        ids = household["household_id"].to_numpy()
+        if set(ids.tolist()) != set(weights.index.tolist()):
+            raise ValueError(
+                "The household table's households and the frame's do not match."
+            )
+        weight = weights.reindex(ids).to_numpy(dtype=float)
     total = float(weight.sum())
     if total <= 0:
         raise ValueError("household weights sum to zero.")
@@ -271,19 +286,26 @@ def main() -> None:
         }
         if len(periods) == 1:
             args.year = int(periods.pop())
+        elif len(periods) > 1:
+            parser.error(
+                f"the registry's specs span the periods {sorted(map(str, periods))}; "
+                "pass --year"
+            )
     if args.year is None:
         from microcosm.build.uk_runtime.frs_release import load_uk_frs_release
 
         args.year = int(load_uk_frs_release().calibration_year)
     household = pd.read_hdf(args.dataset, "household")
+    weights = solved_household_weights(args.dataset, args.year)
     targets = registry_values(args.registry) if args.registry else {}
     row_years = registry_row_years(args.registry) if args.registry else ROW_YEARS
+    estimates = engine_estimates(args.dataset, args.year, row_years, weights=weights)
     report = {
         "dataset": args.dataset,
         "year": args.year,
         "row_years": dict(row_years),
-        "rows": compare(engine_estimates(args.dataset, args.year, row_years), targets),
-        "composition": composition(household),
+        "rows": compare(estimates, targets),
+        "composition": composition(household, weights),
     }
     args.out.write_text(json.dumps(report, indent=1, sort_keys=True))
     print(json.dumps(report["rows"], indent=1))

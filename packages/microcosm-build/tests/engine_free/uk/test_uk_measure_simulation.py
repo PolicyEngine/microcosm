@@ -2481,18 +2481,32 @@ def test_no_committed_exclusion_is_about_to_lapse():
     # entry, and only the national targets' window check refuses it, after
     # the spine. A clock on purpose, as for the uprating holds: this fails
     # UK_HOLD_EXPIRY_NOTICE_DAYS days before the earliest expiry. Clear it by
-    # a new review and signature, or by binding the row.
+    # a new review and signature, or by binding the row. The register's
+    # support floor is refused at the same step, so its window is on the clock
+    # too (the sixth re-review, 1).
     from datetime import date
 
+    from microcosm.build.uk_runtime.support_floor import (
+        load_uk_support_floor_declaration,
+        uk_support_floor_from_payload,
+    )
     from microcosm.build.uk_runtime.uprating_holds import UK_HOLD_EXPIRY_NOTICE_DAYS
 
-    earliest = min(
-        date.fromisoformat(str(entry["expires_on"]))
+    expiries = {
+        str(entry["name"]): date.fromisoformat(str(entry["expires_on"]))
         for entry in load_uk_calibration_measure_exclusions()
         if entry.get("expires_on")
-    )
+    }
+    floor = load_uk_support_floor_declaration()
+    if floor is not None:
+        expiries["support_floor"] = uk_support_floor_from_payload(floor).expires_on
+    if not expiries:
+        return
+    earliest = min(expiries.values())
+    lapsing = sorted(name for name, expiry in expiries.items() if expiry == earliest)
     days_left = (earliest - date.today()).days
     assert days_left > UK_HOLD_EXPIRY_NOTICE_DAYS, (
-        f"A UK calibration measure exclusion expires on {earliest.isoformat()}, "
-        f"in {days_left} day(s); every UK national refuses it from the next day."
+        f"UK calibration measure exclusions {lapsing} expire on "
+        f"{earliest.isoformat()}, in {days_left} day(s); every UK national "
+        "refuses them from the next day."
     )

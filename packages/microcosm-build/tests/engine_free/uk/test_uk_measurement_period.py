@@ -9,6 +9,7 @@ conditions and bands keep their stored reads.
 
 from __future__ import annotations
 
+import copy
 import json
 import sys
 from importlib import resources as importlib_resources
@@ -563,14 +564,20 @@ def test_plain_column_population_variables_are_reviewed():
     )
 
 
-def _bound_rows_refused_at_their_declared_period(exclusions=None) -> list[str]:
+def _bound_rows_refused_at_their_declared_period(
+    exclusions=None, membership=None
+) -> list[str]:
     """The packaged national rows the solve would refuse to measure.
 
-    Runs the solve's own check (``_refuse_ignored_measurement_period``) over
-    every bound plain-column row that declares a measurement period, with the
-    spine's stored columns and the release's frame period standing in for the
-    frame: a value is held at the frame's period only as a stored column or a
-    CGT dated measure (``UKFrameTargetAdapter.value_period``).
+    Runs the solve's two checks in its order (``target_materialization``):
+    on every bound row of any kind that requires its fact at the measurement
+    period, each active candidate in the committed membership resolves to
+    that period, and a row with none refuses; then
+    ``_refuse_ignored_measurement_period`` over every bound plain-column row
+    that declares a period, with the spine's stored columns and the release's
+    frame period standing in for the frame: a value is held at the frame's
+    period only as a stored column or a CGT dated measure
+    (``UKFrameTargetAdapter.value_period``).
     """
 
     from microcosm.build.target_materialization import (
@@ -615,38 +622,36 @@ def _bound_rows_refused_at_their_declared_period(exclusions=None) -> list[str]:
         for entry in resource("target_reference_signed_exclusions.json")["exclusions"]
         if "row" not in entry
     }
-    membership = resource("target_reference_membership.json")["targets"]
+    if membership is None:
+        membership = resource("target_reference_membership.json")["targets"]
     refused = []
     for target in resource("uk_population_targets.json")["targets"]:
         binding = (target.get("bindings") or {}).get("policyengine") or {}
-        if (
-            binding.get("kind")
-            or binding.get("measurement_period") is None
-            or target["target_id"] in held
-        ):
+        target_id = target["target_id"]
+        if target_id in held:
             continue
-        spec = SimpleNamespace(
-            name=target["target_id"], entity=target["measurement"]["entity"]
-        )
+        # The fact-period check runs before the solve branches on kind, so it
+        # covers the CGT provider rows too (the fifth and sixth re-reviews of
+        # microcosm#1420, 4 and 2).
+        if binding.get("require_matching_fact_period"):
+            expected = str(binding.get("measurement_period", release.calibration_year))
+            periods = [
+                str(candidate.get("resolved_fact_period"))
+                for candidate in membership.get(target_id, {}).get("candidates", ())
+                if candidate.get("status") == "active"
+            ]
+            if not periods or any(period != expected for period in periods):
+                refused.append(target_id)
+                continue
+        if binding.get("kind") or binding.get("measurement_period") is None:
+            continue
+        spec = SimpleNamespace(name=target_id, entity=target["measurement"]["entity"])
         try:
             _refuse_ignored_measurement_period(
                 spec, binding, adapter, release.calibration_year
             )
         except MeasurementPeriodError:
-            refused.append(target["target_id"])
-            continue
-        # The solve's fact-period check: a row that requires its fact at the
-        # declared period resolves to it (target_materialization, the fifth
-        # re-review of microcosm#1420, 4).
-        if binding.get("require_matching_fact_period") and any(
-            str(candidate.get("resolved_fact_period"))
-            != str(binding["measurement_period"])
-            for candidate in membership.get(target["target_id"], {}).get(
-                "candidates", ()
-            )
-            if candidate.get("status") == "active"
-        ):
-            refused.append(target["target_id"])
+            refused.append(target_id)
     return refused
 
 
@@ -666,4 +671,35 @@ def test_every_bound_row_with_a_declared_period_can_be_measured_there():
     ]
     assert _bound_rows_refused_at_their_declared_period(exclusions) == [
         "obr.betting_and_gaming_duties"
+    ]
+
+
+def test_the_fact_period_check_covers_every_binding_kind():
+    """The sixth re-review of microcosm#1420, 2: the solve checks a row's fact
+    period before it branches on kind, so a re-pin that resolves a CGT
+    provider row to a later fact, or drops a required row from the membership,
+    stops the national after the spine. Both fail here."""
+
+    membership = json.loads(
+        importlib_resources.files("microcosm.build.uk")
+        .joinpath("target_reference_membership.json")
+        .read_text()
+    )["targets"]
+    later = copy.deepcopy(membership)
+    (candidate, *_) = [
+        candidate
+        for candidate in later["hmrc.cgt.gains_by_region"]["candidates"]
+        if candidate.get("status") == "active"
+    ]
+    candidate["resolved_fact_period"] = "2025"
+    assert _bound_rows_refused_at_their_declared_period(membership=later) == [
+        "hmrc.cgt.gains_by_region"
+    ]
+    missing = {
+        name: entry
+        for name, entry in membership.items()
+        if name != "hmrc.cgt.residential_property_gains"
+    }
+    assert _bound_rows_refused_at_their_declared_period(membership=missing) == [
+        "hmrc.cgt.residential_property_gains"
     ]
