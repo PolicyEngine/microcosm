@@ -192,7 +192,13 @@ policyengine-uk), through `isa_subscriptions_above_limit` and
 `cash_isa_subscriptions_above_limit`. policyengine-uk 2.164.2 reads neither in
 any tax or spending variable, so a limit reform changes those amounts but costs
 nothing until the engine models where the excess goes. The subscriptions are
-flows the engine does not uprate, so a later year reads 2024-25 amounts. The
+flows the engine does not uprate, so a later year reads 2024-25 amounts. In
+particular the cash subscriptions above £12,000 in 2027-28, which a £12,000 cash
+limit from April 2027 would leave out, are 2024-25 levels here, not a 2027-28
+base: the dashboard's cash ISA card should not read them as one (Vahid's review
+of microcosm#1421). policyengine-uk's own docstring notes a producer could grow
+them and cap each person at the limit in force; this stage does not, since
+HMRC's tables stop at 2024-25. The
 Lifetime ISA bonus does reach government spending, so its rate and payment
 limit score. The fields also support analyses of who subscribes how much. They
 do not support withdrawals or first-home purchase rules, Innovative Finance or
