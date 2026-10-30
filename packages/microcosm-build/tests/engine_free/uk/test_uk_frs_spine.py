@@ -393,13 +393,28 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
                 "SERNUM": 1,
                 "BENUNIT": 1,
                 "PERSON": 1,
+                "PENTYPE": 1,
                 "PENPAY": 10.0,
                 "PTAMT": 2.0,
                 "PTINC": 2,
                 "POAMT": 3.0,
                 "POINC": 2,
                 "PENOTH": 0,
-            }
+            },
+            # Income from a trust (PENTYPE 5) is savings income SPI counts as
+            # other income, not pension (microcosm#1428).
+            {
+                "SERNUM": 2,
+                "BENUNIT": 1,
+                "PERSON": 1,
+                "PENTYPE": 5,
+                "PENPAY": 6.0,
+                "PTAMT": 0.0,
+                "PTINC": 0,
+                "POAMT": 0.0,
+                "POINC": 0,
+                "PENOTH": 0,
+            },
         ],
         "oddjob": [{"SERNUM": 1, "BENUNIT": 1, "PERSON": 1, "OJAMT": 4.0, "OJNOW": 1}],
         "accounts": [
@@ -430,8 +445,9 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
                 "ACCTAX": 0,
                 "INVTAX": 0,
             },
-            # Other interest (microcosm#1418): an NS&I Direct Saver paid after
-            # tax and a gilt paid after tax, both grossed up at the basic rate.
+            # An NS&I Direct Saver paid after tax, deposit interest since
+            # microcosm#1428 (SPI Table 3.7 note 4), and a gilt paid after tax,
+            # other interest (microcosm#1418), both grossed up at the basic rate.
             {
                 "SERNUM": 1,
                 "BENUNIT": 1,
@@ -1244,11 +1260,15 @@ def test_direct_person_mapping_values_are_ported(tmp_path: Path) -> None:
     assert adult["trading_loss"] == 0.0
     assert adult["private_pension_income"] == pytest.approx(15 * WEEKS_IN_YEAR)
     assert adult["tax_free_savings_income"] == pytest.approx(1 * WEEKS_IN_YEAR)
-    assert adult["savings_interest_income"] == pytest.approx(3.5 * WEEKS_IN_YEAR)
+    # The ISA (1), the current account (2 x 1.25) and the NS&I Direct Saver
+    # (2 x 1.25), deposit interest since microcosm#1428.
+    assert adult["savings_interest_income"] == pytest.approx(6.0 * WEEKS_IN_YEAR)
     # The gilt is other interest, no longer a dividend (microcosm#1418).
     assert adult["dividend_income"] == pytest.approx(3 * WEEKS_IN_YEAR)
-    assert adult["other_investment_income"] == pytest.approx(7.5 * WEEKS_IN_YEAR)
-    assert other["other_investment_income"] == 0.0
+    assert adult["other_investment_income"] == pytest.approx(5.0 * WEEKS_IN_YEAR)
+    # Household 2's trust income is other income, not pension (microcosm#1428).
+    assert other["other_investment_income"] == pytest.approx(6.0 * WEEKS_IN_YEAR)
+    assert other["private_pension_income"] == 0.0
     # ROYYR1 2 only: CVPAY (1 a week) is rent the adult pays as a lodger
     # (rent_paid_as_lodger, pe-uk#2006), not their own income, and household 1
     # does not sub-let.
