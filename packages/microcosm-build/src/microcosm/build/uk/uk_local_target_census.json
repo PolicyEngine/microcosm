@@ -90,7 +90,7 @@
       "rule": "No local target family may bind facts banded by SPI Total Income: the FRS instrument cannot materialize complete Total Income, so band membership is unassignable. This is the census's application of the national adjudication that holds all 208 published banded facts as fenced exclusions (the canonical fence text lives with the national constants); minting banded local variants is forbidden."
     },
     {
-      "authority": "uk_population_targets.json declarations hmrc.employment_income.amount, hmrc.employment_income.count, hmrc.self_employment_income.amount, hmrc.self_employment_income.count and hmrc.higher_rate_taxpayers.count (their income_tax_before_winter_fuel_payment_charge_annual filter); microcosm#495 scoping.",
+      "authority": "uk_population_targets.json declarations hmrc.employment_income.amount, hmrc.employment_income.count, hmrc.self_employment_income.amount, hmrc.self_employment_income.count, hmrc.higher_rate_taxpayers.count, hmrc.pension_income.amount and hmrc.pension_income.count (their income_tax_before_winter_fuel_payment_charge_annual filter); microcosm#495 scoping.",
       "enforcement": "review_required_before_binding",
       "fence_id": "hmrc_spi_frame_model_proxy",
       "fenced_fact_count": null,
@@ -206,7 +206,7 @@
         "hmrc_spi_frame_model_proxy",
         "full_frs_tei_band_unavailable"
       ],
-      "description": "SPI-frame employment and self-employment income amounts and taxpayer counts by area.",
+      "description": "SPI-frame employment, self-employment and pension income amounts and taxpayer counts, and higher rate taxpayer counts, by area.",
       "family": "hmrc_income_by_area",
       "sources": [
         "hmrc_personal_incomes_constituency_la"
@@ -289,7 +289,7 @@
         "desnz_regional_meter_share_in_stage",
         "desnz_small_area_split_for_constituencies"
       ],
-      "description": "Domestic electricity and gas consumption (kWh) and gas-connected households by local authority, Great Britain, from DESNZ's sub-national statistics (microcosm#1207). The kWh cells keep DESNZ's split between authorities at the lcfs stage's Energy Trends level (one factor per fuel); the gas-connected cells are each authority's census households times its gas meters over its electricity meters, a member of the census household partition. The frame reads each household's stored spend at the dataset period and turns it back into kWh at the stage's declared prices. DESNZ publishes no constituency cut, so the constituency cells bind Microcosm's split of each authority's totals by DESNZ's LSOA and data zone figures, which keeps every authority's total (microcosm#1095).",
+      "description": "Domestic electricity and gas consumption (kWh) and gas-connected households by local authority, Great Britain, from DESNZ's sub-national statistics (microcosm#1207). The kWh cells keep DESNZ's split between authorities at the lcfs stage's level, one factor per fuel: the kWh ONS 04.5.1 household spending buys for electricity since microcosm#1418, DESNZ Energy Trends for gas. The gas-connected cells are each authority's census households times its gas meters over its electricity meters, a member of the census household partition. The frame reads each household's stored spend at the dataset period and turns it back into kWh at the stage's declared prices. DESNZ publishes no constituency cut, so the constituency cells bind Microcosm's split of each authority's totals by DESNZ's LSOA and data zone figures, which keeps every authority's total (microcosm#1095).",
       "family": "domestic_energy",
       "sources": [
         "desnz_subnational_electricity_la",

@@ -5346,64 +5346,64 @@
       "name": "hmrc.spi.self_employment_income.amount_by_self_employment_income_band.band_1_500",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
-      "factor": "1.03840098569375",
+      "index": "hmrc.itl_2026.taxpayer_count_growth_all_bands_times_obr_per_capita_mixed_income",
+      "factor": "1.11762503909818",
       "value_before_uprating": "26000000.0"
     },
     {
       "name": "hmrc.spi.self_employment_income.amount_by_self_employment_income_band.band_1000_2000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
-      "factor": "1.03840098569375",
+      "index": "hmrc.itl_2026.taxpayer_count_growth_all_bands_times_obr_per_capita_mixed_income",
+      "factor": "1.11762503909818",
       "value_before_uprating": "339000000.0"
     },
     {
       "name": "hmrc.spi.self_employment_income.amount_by_self_employment_income_band.band_2000_3000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
-      "factor": "1.03840098569375",
+      "index": "hmrc.itl_2026.taxpayer_count_growth_all_bands_times_obr_per_capita_mixed_income",
+      "factor": "1.11762503909818",
       "value_before_uprating": "500000000.0"
     },
     {
       "name": "hmrc.spi.self_employment_income.amount_by_self_employment_income_band.band_3000_4000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
-      "factor": "1.03840098569375",
+      "index": "hmrc.itl_2026.taxpayer_count_growth_all_bands_times_obr_per_capita_mixed_income",
+      "factor": "1.11762503909818",
       "value_before_uprating": "647000000.0"
     },
     {
       "name": "hmrc.spi.self_employment_income.amount_by_self_employment_income_band.band_4000_5000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
-      "factor": "1.03840098569375",
+      "index": "hmrc.itl_2026.taxpayer_count_growth_all_bands_times_obr_per_capita_mixed_income",
+      "factor": "1.11762503909818",
       "value_before_uprating": "780000000.0"
     },
     {
       "name": "hmrc.spi.self_employment_income.amount_by_self_employment_income_band.band_500_1000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
-      "factor": "1.03840098569375",
+      "index": "hmrc.itl_2026.taxpayer_count_growth_all_bands_times_obr_per_capita_mixed_income",
+      "factor": "1.11762503909818",
       "value_before_uprating": "82000000.0"
     },
     {
       "name": "hmrc.spi.self_employment_income.amount_by_self_employment_income_band.band_5000_7500",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
-      "factor": "1.03840098569375",
+      "index": "hmrc.itl_2026.taxpayer_count_growth_all_bands_times_obr_per_capita_mixed_income",
+      "factor": "1.11762503909818",
       "value_before_uprating": "2540000000.0"
     },
     {
       "name": "hmrc.spi.self_employment_income.amount_by_self_employment_income_band.band_7500_10000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
-      "factor": "1.03840098569375",
+      "index": "hmrc.itl_2026.taxpayer_count_growth_all_bands_times_obr_per_capita_mixed_income",
+      "factor": "1.11762503909818",
       "value_before_uprating": "3470000000.0"
     },
     {
@@ -7493,6 +7493,11 @@
     },
     {
       "name": "orr.rail_government_support",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.household_electricity_expenditure",
       "from": "2024",
       "to": "2025"
     },
@@ -12834,12 +12839,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 26998425.628037516,
+          "resolved_value": 29058251.016552746,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_5aff5e57f05ddba9ad025b36",
           "uprating": {
-            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
-            "factor": "1.03840098569375",
+            "index": "hmrc.itl_2026.taxpayer_count_growth_all_bands_times_obr_per_capita_mixed_income",
+            "factor": "1.11762503909818",
             "value_before_uprating": "26000000.0"
           }
         },
@@ -12849,12 +12854,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 352017934.1501815,
+          "resolved_value": 378874888.2542839,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_fc3c7927013f5264698979d8",
           "uprating": {
-            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
-            "factor": "1.03840098569375",
+            "index": "hmrc.itl_2026.taxpayer_count_growth_all_bands_times_obr_per_capita_mixed_income",
+            "factor": "1.11762503909818",
             "value_before_uprating": "339000000.0"
           }
         },
@@ -12897,12 +12902,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 519200492.8468753,
+          "resolved_value": 558812519.5490913,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_6b85f6be706ccfed238bf1f9",
           "uprating": {
-            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
-            "factor": "1.03840098569375",
+            "index": "hmrc.itl_2026.taxpayer_count_growth_all_bands_times_obr_per_capita_mixed_income",
+            "factor": "1.11762503909818",
             "value_before_uprating": "500000000.0"
           }
         },
@@ -12923,12 +12928,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 671845437.7438567,
+          "resolved_value": 723103400.2965242,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_5852a008bcd3cea2bc99b092",
           "uprating": {
-            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
-            "factor": "1.03840098569375",
+            "index": "hmrc.itl_2026.taxpayer_count_growth_all_bands_times_obr_per_capita_mixed_income",
+            "factor": "1.11762503909818",
             "value_before_uprating": "647000000.0"
           }
         },
@@ -12949,12 +12954,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 809952768.8411255,
+          "resolved_value": 871747530.4965824,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_2d34b4d9693e393903c5f638",
           "uprating": {
-            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
-            "factor": "1.03840098569375",
+            "index": "hmrc.itl_2026.taxpayer_count_growth_all_bands_times_obr_per_capita_mixed_income",
+            "factor": "1.11762503909818",
             "value_before_uprating": "780000000.0"
           }
         },
@@ -12964,12 +12969,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 85148880.82688755,
+          "resolved_value": 91645253.20605098,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_e493ddc5770b5a2e89c83fcf",
           "uprating": {
-            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
-            "factor": "1.03840098569375",
+            "index": "hmrc.itl_2026.taxpayer_count_growth_all_bands_times_obr_per_capita_mixed_income",
+            "factor": "1.11762503909818",
             "value_before_uprating": "82000000.0"
           }
         },
@@ -12979,12 +12984,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 2637538503.6621265,
+          "resolved_value": 2838767599.309384,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_ae77cfe6ff63112b006c6a30",
           "uprating": {
-            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
-            "factor": "1.03840098569375",
+            "index": "hmrc.itl_2026.taxpayer_count_growth_all_bands_times_obr_per_capita_mixed_income",
+            "factor": "1.11762503909818",
             "value_before_uprating": "2540000000.0"
           }
         },
@@ -13005,12 +13010,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 3603251420.3573146,
+          "resolved_value": 3878158885.6706934,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_91323471e9baa2fc4904040a",
           "uprating": {
-            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
-            "factor": "1.03840098569375",
+            "index": "hmrc.itl_2026.taxpayer_count_growth_all_bands_times_obr_per_capita_mixed_income",
+            "factor": "1.11762503909818",
             "value_before_uprating": "3470000000.0"
           }
         }
@@ -20777,7 +20782,7 @@
           "status": "signed_excluded",
           "matched_fact_count_overall": 6,
           "matched_fact_count_at_or_before_period": 6,
-          "signed_rationale": "ONS Consumer Trends COICOP 04.5 (electricity, gas and other fuels): chronicle #271 (chronicle#270) published the 04.5.1 electricity and 04.5.2 gas sub-classes, which ons.household_electricity_expenditure and ons.household_gas_expenditure carry per fuel on the frame's own columns. Since microcosm#1278 the frame also carries the 04.5.3 liquid and 04.5.4 solid fuels (liquid_fuel_consumption, solid_fuel_consumption), which the lcfs_consumption receipt sets beside ONS's own two rows; heat energy (04.5.5) stays in the housing remainder. The electricity and gas rows were bound until microcosm#1113 made them measured diagnostics (Mar\u00eda's ruling of 2026-10-08, D1), so no ONS energy row is fitted. The total row is retained in the contract for registry parity, measured on the four fuels (Mar\u00eda's ruling of 2026-10-22), and signed out here (microcosm#890 F1)."
+          "signed_rationale": "ONS Consumer Trends COICOP 04.5 (electricity, gas and other fuels): chronicle #271 (chronicle#270) published the 04.5.1 electricity and 04.5.2 gas sub-classes, which ons.household_electricity_expenditure and ons.household_gas_expenditure carry per fuel on the frame's own columns. Since microcosm#1278 the frame also carries the 04.5.3 liquid and 04.5.4 solid fuels (liquid_fuel_consumption, solid_fuel_consumption), which the lcfs_consumption receipt sets beside ONS's own two rows; heat energy (04.5.5) stays in the housing remainder. The electricity and gas rows were bound until microcosm#1113 made them measured diagnostics (Mar\u00eda's ruling of 2026-10-08, D1). Since microcosm#1418 the electricity row is bound again, at the level the lcfs_consumption stage sets from it, while the gas row stays a measured diagnostic until bottled gas is netted out of 04.5.2 (microcosm#1095). The total row is retained in the contract for registry parity, measured on the four fuels (Mar\u00eda's ruling of 2026-10-22), and signed out here (microcosm#890 F1)."
         }
       ]
     },
@@ -20787,12 +20792,12 @@
         {
           "name": "ons.household_electricity_expenditure",
           "status": "active",
-          "matched_fact_count_overall": 6,
-          "matched_fact_count_at_or_before_period": 6,
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 28840000000.0,
-          "resolved_fact_period": "2025",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_f3cf2a0e3e5ab3e4771086f2"
+          "resolved_value": 28129000000.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_c8825aa49363757f1b8df415"
         }
       ]
     },

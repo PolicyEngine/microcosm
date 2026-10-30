@@ -1,11 +1,11 @@
 {
- "compiled_count": 27208,
+ "compiled_count": 27168,
  "counts_by_kind": {
   "calibration_drift": 19274,
   "fixture_only": 4267,
-  "ledger_only": 7930
+  "ledger_only": 7890
  },
- "difference_count": 31471,
+ "difference_count": 31431,
  "differences": [
   {
    "fixture_value": 70.0,
@@ -57724,20 +57724,6 @@
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 106141176.47058824,
-   "name": "hmrc.pension_income.amount@E14001085",
-   "period": 2025,
-   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
-  },
-  {
-   "kind": "ledger_only",
-   "ledger_value": 36514379.08496732,
-   "name": "hmrc.pension_income.amount@E14001086",
-   "period": 2025,
-   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
-  },
-  {
-   "kind": "ledger_only",
    "ledger_value": 494418300.65359473,
    "name": "hmrc.pension_income.amount@E14001087",
    "period": 2025,
@@ -57796,13 +57782,6 @@
    "kind": "ledger_only",
    "ledger_value": 184726470.5882353,
    "name": "hmrc.pension_income.amount@E14001095",
-   "period": 2025,
-   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
-  },
-  {
-   "kind": "ledger_only",
-   "ledger_value": 68492810.45751634,
-   "name": "hmrc.pension_income.amount@E14001096",
    "period": 2025,
    "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
   },
@@ -58354,13 +58333,6 @@
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 111130718.95424837,
-   "name": "hmrc.pension_income.amount@E14001175",
-   "period": 2025,
-   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
-  },
-  {
-   "kind": "ledger_only",
    "ledger_value": 314000980.39215684,
    "name": "hmrc.pension_income.amount@E14001176",
    "period": 2025,
@@ -58615,13 +58587,6 @@
    "kind": "ledger_only",
    "ledger_value": 585137254.9019607,
    "name": "hmrc.pension_income.amount@E14001212",
-   "period": 2025,
-   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
-  },
-  {
-   "kind": "ledger_only",
-   "ledger_value": 88450980.39215685,
-   "name": "hmrc.pension_income.amount@E14001213",
    "period": 2025,
    "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
   },
@@ -58944,13 +58909,6 @@
    "kind": "ledger_only",
    "ledger_value": 131996078.43137254,
    "name": "hmrc.pension_income.amount@E14001259",
-   "period": 2025,
-   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
-  },
-  {
-   "kind": "ledger_only",
-   "ledger_value": 87997385.62091503,
-   "name": "hmrc.pension_income.amount@E14001260",
    "period": 2025,
    "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
   },
@@ -59453,13 +59411,6 @@
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 134377450.98039216,
-   "name": "hmrc.pension_income.amount@E14001332",
-   "period": 2025,
-   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
-  },
-  {
-   "kind": "ledger_only",
    "ledger_value": 252879084.96732026,
    "name": "hmrc.pension_income.amount@E14001333",
    "period": 2025,
@@ -59490,13 +59441,6 @@
    "kind": "ledger_only",
    "ledger_value": 366504575.1633987,
    "name": "hmrc.pension_income.amount@E14001337",
-   "period": 2025,
-   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
-  },
-  {
-   "kind": "ledger_only",
-   "ledger_value": 100924836.60130718,
-   "name": "hmrc.pension_income.amount@E14001338",
    "period": 2025,
    "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
   },
@@ -59595,13 +59539,6 @@
    "kind": "ledger_only",
    "ledger_value": 141294771.24183005,
    "name": "hmrc.pension_income.amount@E14001352",
-   "period": 2025,
-   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
-  },
-  {
-   "kind": "ledger_only",
-   "ledger_value": 59534313.7254902,
-   "name": "hmrc.pension_income.amount@E14001353",
    "period": 2025,
    "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
   },
@@ -60076,13 +60013,6 @@
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 107161764.70588236,
-   "name": "hmrc.pension_income.amount@E14001421",
-   "period": 2025,
-   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
-  },
-  {
-   "kind": "ledger_only",
    "ledger_value": 368318954.248366,
    "name": "hmrc.pension_income.amount@E14001422",
    "period": 2025,
@@ -60134,13 +60064,6 @@
    "kind": "ledger_only",
    "ledger_value": 527870915.03267974,
    "name": "hmrc.pension_income.amount@E14001429",
-   "period": 2025,
-   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
-  },
-  {
-   "kind": "ledger_only",
-   "ledger_value": 113852287.58169934,
-   "name": "hmrc.pension_income.amount@E14001430",
    "period": 2025,
    "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
   },
@@ -60393,13 +60316,6 @@
    "kind": "ledger_only",
    "ledger_value": 143335947.7124183,
    "name": "hmrc.pension_income.amount@E14001466",
-   "period": 2025,
-   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
-  },
-  {
-   "kind": "ledger_only",
-   "ledger_value": 123037581.69934641,
-   "name": "hmrc.pension_income.amount@E14001467",
    "period": 2025,
    "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
   },
@@ -60804,13 +60720,6 @@
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 77111111.1111111,
-   "name": "hmrc.pension_income.amount@E14001525",
-   "period": 2025,
-   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
-  },
-  {
-   "kind": "ledger_only",
    "ledger_value": 590580392.1568627,
    "name": "hmrc.pension_income.amount@E14001526",
    "period": 2025,
@@ -61000,13 +60909,6 @@
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 114532679.73856209,
-   "name": "hmrc.pension_income.amount@E14001553",
-   "period": 2025,
-   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
-  },
-  {
-   "kind": "ledger_only",
    "ledger_value": 455182352.9411765,
    "name": "hmrc.pension_income.amount@E14001554",
    "period": 2025,
@@ -61042,13 +60944,6 @@
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 103192810.45751634,
-   "name": "hmrc.pension_income.amount@E14001559",
-   "period": 2025,
-   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
-  },
-  {
-   "kind": "ledger_only",
    "ledger_value": 338495098.0392157,
    "name": "hmrc.pension_income.amount@E14001560",
    "period": 2025,
@@ -61065,13 +60960,6 @@
    "kind": "ledger_only",
    "ledger_value": 206385620.91503268,
    "name": "hmrc.pension_income.amount@E14001562",
-   "period": 2025,
-   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
-  },
-  {
-   "kind": "ledger_only",
-   "ledger_value": 94687908.49673203,
-   "name": "hmrc.pension_income.amount@E14001563",
    "period": 2025,
    "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
   },
@@ -61609,13 +61497,6 @@
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 83007843.1372549,
-   "name": "hmrc.pension_income.amount@S12000013",
-   "period": 2025,
-   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
-  },
-  {
-   "kind": "ledger_only",
    "ledger_value": 627661764.7058823,
    "name": "hmrc.pension_income.amount@S12000014",
    "period": 2025,
@@ -61658,22 +61539,8 @@
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 70760784.31372549,
-   "name": "hmrc.pension_income.amount@S12000023",
-   "period": 2025,
-   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
-  },
-  {
-   "kind": "ledger_only",
    "ledger_value": 582415686.2745098,
    "name": "hmrc.pension_income.amount@S12000026",
-   "period": 2025,
-   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
-  },
-  {
-   "kind": "ledger_only",
-   "ledger_value": 74843137.25490196,
-   "name": "hmrc.pension_income.amount@S12000027",
    "period": 2025,
    "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
   },
@@ -61800,13 +61667,6 @@
    "kind": "ledger_only",
    "ledger_value": 478996078.4313725,
    "name": "hmrc.pension_income.amount@S14000021",
-   "period": 2025,
-   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
-  },
-  {
-   "kind": "ledger_only",
-   "ledger_value": 83007843.1372549,
-   "name": "hmrc.pension_income.amount@S14000027",
    "period": 2025,
    "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
   },
@@ -64780,20 +64640,6 @@
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 4305.177111716622,
-   "name": "hmrc.pension_income.count@E14001085",
-   "period": 2025,
-   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
-  },
-  {
-   "kind": "ledger_only",
-   "ledger_value": 2152.588555858311,
-   "name": "hmrc.pension_income.count@E14001086",
-   "period": 2025,
-   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
-  },
-  {
-   "kind": "ledger_only",
    "ledger_value": 21525.885558583108,
    "name": "hmrc.pension_income.count@E14001087",
    "period": 2025,
@@ -64852,13 +64698,6 @@
    "kind": "ledger_only",
    "ledger_value": 9686.648501362399,
    "name": "hmrc.pension_income.count@E14001095",
-   "period": 2025,
-   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
-  },
-  {
-   "kind": "ledger_only",
-   "ledger_value": 4305.177111716622,
-   "name": "hmrc.pension_income.count@E14001096",
    "period": 2025,
    "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
   },
@@ -65410,13 +65249,6 @@
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 5381.471389645777,
-   "name": "hmrc.pension_income.count@E14001175",
-   "period": 2025,
-   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
-  },
-  {
-   "kind": "ledger_only",
    "ledger_value": 13991.82561307902,
    "name": "hmrc.pension_income.count@E14001176",
    "period": 2025,
@@ -65671,13 +65503,6 @@
    "kind": "ledger_only",
    "ledger_value": 21525.885558583108,
    "name": "hmrc.pension_income.count@E14001212",
-   "period": 2025,
-   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
-  },
-  {
-   "kind": "ledger_only",
-   "ledger_value": 5381.471389645777,
-   "name": "hmrc.pension_income.count@E14001213",
    "period": 2025,
    "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
   },
@@ -66000,13 +65825,6 @@
    "kind": "ledger_only",
    "ledger_value": 6457.765667574932,
    "name": "hmrc.pension_income.count@E14001259",
-   "period": 2025,
-   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
-  },
-  {
-   "kind": "ledger_only",
-   "ledger_value": 4305.177111716622,
-   "name": "hmrc.pension_income.count@E14001260",
    "period": 2025,
    "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
   },
@@ -66509,13 +66327,6 @@
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 5381.471389645777,
-   "name": "hmrc.pension_income.count@E14001332",
-   "period": 2025,
-   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
-  },
-  {
-   "kind": "ledger_only",
    "ledger_value": 10762.942779291554,
    "name": "hmrc.pension_income.count@E14001333",
    "period": 2025,
@@ -66546,13 +66357,6 @@
    "kind": "ledger_only",
    "ledger_value": 17220.708446866487,
    "name": "hmrc.pension_income.count@E14001337",
-   "period": 2025,
-   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
-  },
-  {
-   "kind": "ledger_only",
-   "ledger_value": 5381.471389645777,
-   "name": "hmrc.pension_income.count@E14001338",
    "period": 2025,
    "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
   },
@@ -66651,13 +66455,6 @@
    "kind": "ledger_only",
    "ledger_value": 7534.059945504087,
    "name": "hmrc.pension_income.count@E14001352",
-   "period": 2025,
-   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
-  },
-  {
-   "kind": "ledger_only",
-   "ledger_value": 3228.882833787466,
-   "name": "hmrc.pension_income.count@E14001353",
    "period": 2025,
    "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
   },
@@ -67132,13 +66929,6 @@
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 5381.471389645777,
-   "name": "hmrc.pension_income.count@E14001421",
-   "period": 2025,
-   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
-  },
-  {
-   "kind": "ledger_only",
    "ledger_value": 17220.708446866487,
    "name": "hmrc.pension_income.count@E14001422",
    "period": 2025,
@@ -67190,13 +66980,6 @@
    "kind": "ledger_only",
    "ledger_value": 20449.591280653953,
    "name": "hmrc.pension_income.count@E14001429",
-   "period": 2025,
-   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
-  },
-  {
-   "kind": "ledger_only",
-   "ledger_value": 4305.177111716622,
-   "name": "hmrc.pension_income.count@E14001430",
    "period": 2025,
    "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
   },
@@ -67449,13 +67232,6 @@
    "kind": "ledger_only",
    "ledger_value": 8610.354223433244,
    "name": "hmrc.pension_income.count@E14001466",
-   "period": 2025,
-   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
-  },
-  {
-   "kind": "ledger_only",
-   "ledger_value": 5381.471389645777,
-   "name": "hmrc.pension_income.count@E14001467",
    "period": 2025,
    "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
   },
@@ -67860,13 +67636,6 @@
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 4305.177111716622,
-   "name": "hmrc.pension_income.count@E14001525",
-   "period": 2025,
-   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
-  },
-  {
-   "kind": "ledger_only",
    "ledger_value": 22602.179836512263,
    "name": "hmrc.pension_income.count@E14001526",
    "period": 2025,
@@ -68056,13 +67825,6 @@
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 5381.471389645777,
-   "name": "hmrc.pension_income.count@E14001553",
-   "period": 2025,
-   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
-  },
-  {
-   "kind": "ledger_only",
    "ledger_value": 19373.297002724797,
    "name": "hmrc.pension_income.count@E14001554",
    "period": 2025,
@@ -68098,13 +67860,6 @@
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 5381.471389645777,
-   "name": "hmrc.pension_income.count@E14001559",
-   "period": 2025,
-   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
-  },
-  {
-   "kind": "ledger_only",
    "ledger_value": 16144.41416893733,
    "name": "hmrc.pension_income.count@E14001560",
    "period": 2025,
@@ -68121,13 +67876,6 @@
    "kind": "ledger_only",
    "ledger_value": 10762.942779291554,
    "name": "hmrc.pension_income.count@E14001562",
-   "period": 2025,
-   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
-  },
-  {
-   "kind": "ledger_only",
-   "ledger_value": 5381.471389645777,
-   "name": "hmrc.pension_income.count@E14001563",
    "period": 2025,
    "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
   },
@@ -68665,13 +68413,6 @@
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 4305.177111716622,
-   "name": "hmrc.pension_income.count@S12000013",
-   "period": 2025,
-   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
-  },
-  {
-   "kind": "ledger_only",
    "ledger_value": 29059.945504087194,
    "name": "hmrc.pension_income.count@S12000014",
    "period": 2025,
@@ -68714,22 +68455,8 @@
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 3228.882833787466,
-   "name": "hmrc.pension_income.count@S12000023",
-   "period": 2025,
-   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
-  },
-  {
-   "kind": "ledger_only",
    "ledger_value": 25831.06267029973,
    "name": "hmrc.pension_income.count@S12000026",
-   "period": 2025,
-   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
-  },
-  {
-   "kind": "ledger_only",
-   "ledger_value": 4305.177111716622,
-   "name": "hmrc.pension_income.count@S12000027",
    "period": 2025,
    "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
   },
@@ -68856,13 +68583,6 @@
    "kind": "ledger_only",
    "ledger_value": 17220.708446866487,
    "name": "hmrc.pension_income.count@S14000021",
-   "period": 2025,
-   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
-  },
-  {
-   "kind": "ledger_only",
-   "ledger_value": 4305.177111716622,
-   "name": "hmrc.pension_income.count@S14000027",
    "period": 2025,
    "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
   },

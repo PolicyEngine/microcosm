@@ -741552,66 +741552,6 @@
       "uprating_to_period": 2025
     },
     {
-      "name": "hmrc.pension_income.amount@E14001085",
-      "ledger_selector": {
-        "source_name": "hmrc",
-        "source_measure_id": [
-          "pension_income_count",
-          "pension_income_mean"
-        ],
-        "record_set_spec_id": [
-          "uk.local_geography.spi_income.by_constituency.v1",
-          "uk.local_geography.spi_income.by_local_authority.v1"
-        ],
-        "geography_level": "constituency",
-        "geography_id": "E14001085"
-      },
-      "entity": "person",
-      "measure": "hmrc/pension_income/amount",
-      "family": "hmrc",
-      "period": 2025,
-      "metadata": {
-        "contract_target_id": "hmrc.pension_income.amount",
-        "measure_kind": "prepared_column",
-        "geography_level": "constituency",
-        "geography_id": "E14001085"
-      },
-      "uprating_index": "hmrc.itl_2026.total_income_growth_all_bands",
-      "value_operation": "count_x_mean",
-      "uprating_from_period": "2023",
-      "uprating_to_period": 2025
-    },
-    {
-      "name": "hmrc.pension_income.amount@E14001086",
-      "ledger_selector": {
-        "source_name": "hmrc",
-        "source_measure_id": [
-          "pension_income_count",
-          "pension_income_mean"
-        ],
-        "record_set_spec_id": [
-          "uk.local_geography.spi_income.by_constituency.v1",
-          "uk.local_geography.spi_income.by_local_authority.v1"
-        ],
-        "geography_level": "constituency",
-        "geography_id": "E14001086"
-      },
-      "entity": "person",
-      "measure": "hmrc/pension_income/amount",
-      "family": "hmrc",
-      "period": 2025,
-      "metadata": {
-        "contract_target_id": "hmrc.pension_income.amount",
-        "measure_kind": "prepared_column",
-        "geography_level": "constituency",
-        "geography_id": "E14001086"
-      },
-      "uprating_index": "hmrc.itl_2026.total_income_growth_all_bands",
-      "value_operation": "count_x_mean",
-      "uprating_from_period": "2023",
-      "uprating_to_period": 2025
-    },
-    {
       "name": "hmrc.pension_income.amount@E14001087",
       "ledger_selector": {
         "source_name": "hmrc",
@@ -741875,36 +741815,6 @@
         "measure_kind": "prepared_column",
         "geography_level": "constituency",
         "geography_id": "E14001095"
-      },
-      "uprating_index": "hmrc.itl_2026.total_income_growth_all_bands",
-      "value_operation": "count_x_mean",
-      "uprating_from_period": "2023",
-      "uprating_to_period": 2025
-    },
-    {
-      "name": "hmrc.pension_income.amount@E14001096",
-      "ledger_selector": {
-        "source_name": "hmrc",
-        "source_measure_id": [
-          "pension_income_count",
-          "pension_income_mean"
-        ],
-        "record_set_spec_id": [
-          "uk.local_geography.spi_income.by_constituency.v1",
-          "uk.local_geography.spi_income.by_local_authority.v1"
-        ],
-        "geography_level": "constituency",
-        "geography_id": "E14001096"
-      },
-      "entity": "person",
-      "measure": "hmrc/pension_income/amount",
-      "family": "hmrc",
-      "period": 2025,
-      "metadata": {
-        "contract_target_id": "hmrc.pension_income.amount",
-        "measure_kind": "prepared_column",
-        "geography_level": "constituency",
-        "geography_id": "E14001096"
       },
       "uprating_index": "hmrc.itl_2026.total_income_growth_all_bands",
       "value_operation": "count_x_mean",
@@ -744252,36 +744162,6 @@
       "uprating_to_period": 2025
     },
     {
-      "name": "hmrc.pension_income.amount@E14001175",
-      "ledger_selector": {
-        "source_name": "hmrc",
-        "source_measure_id": [
-          "pension_income_count",
-          "pension_income_mean"
-        ],
-        "record_set_spec_id": [
-          "uk.local_geography.spi_income.by_constituency.v1",
-          "uk.local_geography.spi_income.by_local_authority.v1"
-        ],
-        "geography_level": "constituency",
-        "geography_id": "E14001175"
-      },
-      "entity": "person",
-      "measure": "hmrc/pension_income/amount",
-      "family": "hmrc",
-      "period": 2025,
-      "metadata": {
-        "contract_target_id": "hmrc.pension_income.amount",
-        "measure_kind": "prepared_column",
-        "geography_level": "constituency",
-        "geography_id": "E14001175"
-      },
-      "uprating_index": "hmrc.itl_2026.total_income_growth_all_bands",
-      "value_operation": "count_x_mean",
-      "uprating_from_period": "2023",
-      "uprating_to_period": 2025
-    },
-    {
       "name": "hmrc.pension_income.amount@E14001176",
       "ledger_selector": {
         "source_name": "hmrc",
@@ -745385,36 +745265,6 @@
         "measure_kind": "prepared_column",
         "geography_level": "constituency",
         "geography_id": "E14001212"
-      },
-      "uprating_index": "hmrc.itl_2026.total_income_growth_all_bands",
-      "value_operation": "count_x_mean",
-      "uprating_from_period": "2023",
-      "uprating_to_period": 2025
-    },
-    {
-      "name": "hmrc.pension_income.amount@E14001213",
-      "ledger_selector": {
-        "source_name": "hmrc",
-        "source_measure_id": [
-          "pension_income_count",
-          "pension_income_mean"
-        ],
-        "record_set_spec_id": [
-          "uk.local_geography.spi_income.by_constituency.v1",
-          "uk.local_geography.spi_income.by_local_authority.v1"
-        ],
-        "geography_level": "constituency",
-        "geography_id": "E14001213"
-      },
-      "entity": "person",
-      "measure": "hmrc/pension_income/amount",
-      "family": "hmrc",
-      "period": 2025,
-      "metadata": {
-        "contract_target_id": "hmrc.pension_income.amount",
-        "measure_kind": "prepared_column",
-        "geography_level": "constituency",
-        "geography_id": "E14001213"
       },
       "uprating_index": "hmrc.itl_2026.total_income_growth_all_bands",
       "value_operation": "count_x_mean",
@@ -746795,36 +746645,6 @@
         "measure_kind": "prepared_column",
         "geography_level": "constituency",
         "geography_id": "E14001259"
-      },
-      "uprating_index": "hmrc.itl_2026.total_income_growth_all_bands",
-      "value_operation": "count_x_mean",
-      "uprating_from_period": "2023",
-      "uprating_to_period": 2025
-    },
-    {
-      "name": "hmrc.pension_income.amount@E14001260",
-      "ledger_selector": {
-        "source_name": "hmrc",
-        "source_measure_id": [
-          "pension_income_count",
-          "pension_income_mean"
-        ],
-        "record_set_spec_id": [
-          "uk.local_geography.spi_income.by_constituency.v1",
-          "uk.local_geography.spi_income.by_local_authority.v1"
-        ],
-        "geography_level": "constituency",
-        "geography_id": "E14001260"
-      },
-      "entity": "person",
-      "measure": "hmrc/pension_income/amount",
-      "family": "hmrc",
-      "period": 2025,
-      "metadata": {
-        "contract_target_id": "hmrc.pension_income.amount",
-        "measure_kind": "prepared_column",
-        "geography_level": "constituency",
-        "geography_id": "E14001260"
       },
       "uprating_index": "hmrc.itl_2026.total_income_growth_all_bands",
       "value_operation": "count_x_mean",
@@ -748962,36 +748782,6 @@
       "uprating_to_period": 2025
     },
     {
-      "name": "hmrc.pension_income.amount@E14001332",
-      "ledger_selector": {
-        "source_name": "hmrc",
-        "source_measure_id": [
-          "pension_income_count",
-          "pension_income_mean"
-        ],
-        "record_set_spec_id": [
-          "uk.local_geography.spi_income.by_constituency.v1",
-          "uk.local_geography.spi_income.by_local_authority.v1"
-        ],
-        "geography_level": "constituency",
-        "geography_id": "E14001332"
-      },
-      "entity": "person",
-      "measure": "hmrc/pension_income/amount",
-      "family": "hmrc",
-      "period": 2025,
-      "metadata": {
-        "contract_target_id": "hmrc.pension_income.amount",
-        "measure_kind": "prepared_column",
-        "geography_level": "constituency",
-        "geography_id": "E14001332"
-      },
-      "uprating_index": "hmrc.itl_2026.total_income_growth_all_bands",
-      "value_operation": "count_x_mean",
-      "uprating_from_period": "2023",
-      "uprating_to_period": 2025
-    },
-    {
       "name": "hmrc.pension_income.amount@E14001333",
       "ledger_selector": {
         "source_name": "hmrc",
@@ -749135,36 +748925,6 @@
         "measure_kind": "prepared_column",
         "geography_level": "constituency",
         "geography_id": "E14001337"
-      },
-      "uprating_index": "hmrc.itl_2026.total_income_growth_all_bands",
-      "value_operation": "count_x_mean",
-      "uprating_from_period": "2023",
-      "uprating_to_period": 2025
-    },
-    {
-      "name": "hmrc.pension_income.amount@E14001338",
-      "ledger_selector": {
-        "source_name": "hmrc",
-        "source_measure_id": [
-          "pension_income_count",
-          "pension_income_mean"
-        ],
-        "record_set_spec_id": [
-          "uk.local_geography.spi_income.by_constituency.v1",
-          "uk.local_geography.spi_income.by_local_authority.v1"
-        ],
-        "geography_level": "constituency",
-        "geography_id": "E14001338"
-      },
-      "entity": "person",
-      "measure": "hmrc/pension_income/amount",
-      "family": "hmrc",
-      "period": 2025,
-      "metadata": {
-        "contract_target_id": "hmrc.pension_income.amount",
-        "measure_kind": "prepared_column",
-        "geography_level": "constituency",
-        "geography_id": "E14001338"
       },
       "uprating_index": "hmrc.itl_2026.total_income_growth_all_bands",
       "value_operation": "count_x_mean",
@@ -749585,36 +749345,6 @@
         "measure_kind": "prepared_column",
         "geography_level": "constituency",
         "geography_id": "E14001352"
-      },
-      "uprating_index": "hmrc.itl_2026.total_income_growth_all_bands",
-      "value_operation": "count_x_mean",
-      "uprating_from_period": "2023",
-      "uprating_to_period": 2025
-    },
-    {
-      "name": "hmrc.pension_income.amount@E14001353",
-      "ledger_selector": {
-        "source_name": "hmrc",
-        "source_measure_id": [
-          "pension_income_count",
-          "pension_income_mean"
-        ],
-        "record_set_spec_id": [
-          "uk.local_geography.spi_income.by_constituency.v1",
-          "uk.local_geography.spi_income.by_local_authority.v1"
-        ],
-        "geography_level": "constituency",
-        "geography_id": "E14001353"
-      },
-      "entity": "person",
-      "measure": "hmrc/pension_income/amount",
-      "family": "hmrc",
-      "period": 2025,
-      "metadata": {
-        "contract_target_id": "hmrc.pension_income.amount",
-        "measure_kind": "prepared_column",
-        "geography_level": "constituency",
-        "geography_id": "E14001353"
       },
       "uprating_index": "hmrc.itl_2026.total_income_growth_all_bands",
       "value_operation": "count_x_mean",
@@ -751632,36 +751362,6 @@
       "uprating_to_period": 2025
     },
     {
-      "name": "hmrc.pension_income.amount@E14001421",
-      "ledger_selector": {
-        "source_name": "hmrc",
-        "source_measure_id": [
-          "pension_income_count",
-          "pension_income_mean"
-        ],
-        "record_set_spec_id": [
-          "uk.local_geography.spi_income.by_constituency.v1",
-          "uk.local_geography.spi_income.by_local_authority.v1"
-        ],
-        "geography_level": "constituency",
-        "geography_id": "E14001421"
-      },
-      "entity": "person",
-      "measure": "hmrc/pension_income/amount",
-      "family": "hmrc",
-      "period": 2025,
-      "metadata": {
-        "contract_target_id": "hmrc.pension_income.amount",
-        "measure_kind": "prepared_column",
-        "geography_level": "constituency",
-        "geography_id": "E14001421"
-      },
-      "uprating_index": "hmrc.itl_2026.total_income_growth_all_bands",
-      "value_operation": "count_x_mean",
-      "uprating_from_period": "2023",
-      "uprating_to_period": 2025
-    },
-    {
       "name": "hmrc.pension_income.amount@E14001422",
       "ledger_selector": {
         "source_name": "hmrc",
@@ -751895,36 +751595,6 @@
         "measure_kind": "prepared_column",
         "geography_level": "constituency",
         "geography_id": "E14001429"
-      },
-      "uprating_index": "hmrc.itl_2026.total_income_growth_all_bands",
-      "value_operation": "count_x_mean",
-      "uprating_from_period": "2023",
-      "uprating_to_period": 2025
-    },
-    {
-      "name": "hmrc.pension_income.amount@E14001430",
-      "ledger_selector": {
-        "source_name": "hmrc",
-        "source_measure_id": [
-          "pension_income_count",
-          "pension_income_mean"
-        ],
-        "record_set_spec_id": [
-          "uk.local_geography.spi_income.by_constituency.v1",
-          "uk.local_geography.spi_income.by_local_authority.v1"
-        ],
-        "geography_level": "constituency",
-        "geography_id": "E14001430"
-      },
-      "entity": "person",
-      "measure": "hmrc/pension_income/amount",
-      "family": "hmrc",
-      "period": 2025,
-      "metadata": {
-        "contract_target_id": "hmrc.pension_income.amount",
-        "measure_kind": "prepared_column",
-        "geography_level": "constituency",
-        "geography_id": "E14001430"
       },
       "uprating_index": "hmrc.itl_2026.total_income_growth_all_bands",
       "value_operation": "count_x_mean",
@@ -753005,36 +752675,6 @@
         "measure_kind": "prepared_column",
         "geography_level": "constituency",
         "geography_id": "E14001466"
-      },
-      "uprating_index": "hmrc.itl_2026.total_income_growth_all_bands",
-      "value_operation": "count_x_mean",
-      "uprating_from_period": "2023",
-      "uprating_to_period": 2025
-    },
-    {
-      "name": "hmrc.pension_income.amount@E14001467",
-      "ledger_selector": {
-        "source_name": "hmrc",
-        "source_measure_id": [
-          "pension_income_count",
-          "pension_income_mean"
-        ],
-        "record_set_spec_id": [
-          "uk.local_geography.spi_income.by_constituency.v1",
-          "uk.local_geography.spi_income.by_local_authority.v1"
-        ],
-        "geography_level": "constituency",
-        "geography_id": "E14001467"
-      },
-      "entity": "person",
-      "measure": "hmrc/pension_income/amount",
-      "family": "hmrc",
-      "period": 2025,
-      "metadata": {
-        "contract_target_id": "hmrc.pension_income.amount",
-        "measure_kind": "prepared_column",
-        "geography_level": "constituency",
-        "geography_id": "E14001467"
       },
       "uprating_index": "hmrc.itl_2026.total_income_growth_all_bands",
       "value_operation": "count_x_mean",
@@ -754752,36 +754392,6 @@
       "uprating_to_period": 2025
     },
     {
-      "name": "hmrc.pension_income.amount@E14001525",
-      "ledger_selector": {
-        "source_name": "hmrc",
-        "source_measure_id": [
-          "pension_income_count",
-          "pension_income_mean"
-        ],
-        "record_set_spec_id": [
-          "uk.local_geography.spi_income.by_constituency.v1",
-          "uk.local_geography.spi_income.by_local_authority.v1"
-        ],
-        "geography_level": "constituency",
-        "geography_id": "E14001525"
-      },
-      "entity": "person",
-      "measure": "hmrc/pension_income/amount",
-      "family": "hmrc",
-      "period": 2025,
-      "metadata": {
-        "contract_target_id": "hmrc.pension_income.amount",
-        "measure_kind": "prepared_column",
-        "geography_level": "constituency",
-        "geography_id": "E14001525"
-      },
-      "uprating_index": "hmrc.itl_2026.total_income_growth_all_bands",
-      "value_operation": "count_x_mean",
-      "uprating_from_period": "2023",
-      "uprating_to_period": 2025
-    },
-    {
       "name": "hmrc.pension_income.amount@E14001526",
       "ledger_selector": {
         "source_name": "hmrc",
@@ -755592,36 +755202,6 @@
       "uprating_to_period": 2025
     },
     {
-      "name": "hmrc.pension_income.amount@E14001553",
-      "ledger_selector": {
-        "source_name": "hmrc",
-        "source_measure_id": [
-          "pension_income_count",
-          "pension_income_mean"
-        ],
-        "record_set_spec_id": [
-          "uk.local_geography.spi_income.by_constituency.v1",
-          "uk.local_geography.spi_income.by_local_authority.v1"
-        ],
-        "geography_level": "constituency",
-        "geography_id": "E14001553"
-      },
-      "entity": "person",
-      "measure": "hmrc/pension_income/amount",
-      "family": "hmrc",
-      "period": 2025,
-      "metadata": {
-        "contract_target_id": "hmrc.pension_income.amount",
-        "measure_kind": "prepared_column",
-        "geography_level": "constituency",
-        "geography_id": "E14001553"
-      },
-      "uprating_index": "hmrc.itl_2026.total_income_growth_all_bands",
-      "value_operation": "count_x_mean",
-      "uprating_from_period": "2023",
-      "uprating_to_period": 2025
-    },
-    {
       "name": "hmrc.pension_income.amount@E14001554",
       "ledger_selector": {
         "source_name": "hmrc",
@@ -755772,36 +755352,6 @@
       "uprating_to_period": 2025
     },
     {
-      "name": "hmrc.pension_income.amount@E14001559",
-      "ledger_selector": {
-        "source_name": "hmrc",
-        "source_measure_id": [
-          "pension_income_count",
-          "pension_income_mean"
-        ],
-        "record_set_spec_id": [
-          "uk.local_geography.spi_income.by_constituency.v1",
-          "uk.local_geography.spi_income.by_local_authority.v1"
-        ],
-        "geography_level": "constituency",
-        "geography_id": "E14001559"
-      },
-      "entity": "person",
-      "measure": "hmrc/pension_income/amount",
-      "family": "hmrc",
-      "period": 2025,
-      "metadata": {
-        "contract_target_id": "hmrc.pension_income.amount",
-        "measure_kind": "prepared_column",
-        "geography_level": "constituency",
-        "geography_id": "E14001559"
-      },
-      "uprating_index": "hmrc.itl_2026.total_income_growth_all_bands",
-      "value_operation": "count_x_mean",
-      "uprating_from_period": "2023",
-      "uprating_to_period": 2025
-    },
-    {
       "name": "hmrc.pension_income.amount@E14001560",
       "ledger_selector": {
         "source_name": "hmrc",
@@ -755885,36 +755435,6 @@
         "measure_kind": "prepared_column",
         "geography_level": "constituency",
         "geography_id": "E14001562"
-      },
-      "uprating_index": "hmrc.itl_2026.total_income_growth_all_bands",
-      "value_operation": "count_x_mean",
-      "uprating_from_period": "2023",
-      "uprating_to_period": 2025
-    },
-    {
-      "name": "hmrc.pension_income.amount@E14001563",
-      "ledger_selector": {
-        "source_name": "hmrc",
-        "source_measure_id": [
-          "pension_income_count",
-          "pension_income_mean"
-        ],
-        "record_set_spec_id": [
-          "uk.local_geography.spi_income.by_constituency.v1",
-          "uk.local_geography.spi_income.by_local_authority.v1"
-        ],
-        "geography_level": "constituency",
-        "geography_id": "E14001563"
-      },
-      "entity": "person",
-      "measure": "hmrc/pension_income/amount",
-      "family": "hmrc",
-      "period": 2025,
-      "metadata": {
-        "contract_target_id": "hmrc.pension_income.amount",
-        "measure_kind": "prepared_column",
-        "geography_level": "constituency",
-        "geography_id": "E14001563"
       },
       "uprating_index": "hmrc.itl_2026.total_income_growth_all_bands",
       "value_operation": "count_x_mean",
@@ -757745,36 +757265,6 @@
         "measure_kind": "prepared_column",
         "geography_level": "constituency",
         "geography_id": "S14000021"
-      },
-      "uprating_index": "hmrc.itl_2026.total_income_growth_all_bands",
-      "value_operation": "count_x_mean",
-      "uprating_from_period": "2023",
-      "uprating_to_period": 2025
-    },
-    {
-      "name": "hmrc.pension_income.amount@S14000027",
-      "ledger_selector": {
-        "source_name": "hmrc",
-        "source_measure_id": [
-          "pension_income_count",
-          "pension_income_mean"
-        ],
-        "record_set_spec_id": [
-          "uk.local_geography.spi_income.by_constituency.v1",
-          "uk.local_geography.spi_income.by_local_authority.v1"
-        ],
-        "geography_level": "constituency",
-        "geography_id": "S14000027"
-      },
-      "entity": "person",
-      "measure": "hmrc/pension_income/amount",
-      "family": "hmrc",
-      "period": 2025,
-      "metadata": {
-        "contract_target_id": "hmrc.pension_income.amount",
-        "measure_kind": "prepared_column",
-        "geography_level": "constituency",
-        "geography_id": "S14000027"
       },
       "uprating_index": "hmrc.itl_2026.total_income_growth_all_bands",
       "value_operation": "count_x_mean",
@@ -769670,36 +769160,6 @@
       "uprating_to_period": 2025
     },
     {
-      "name": "hmrc.pension_income.amount@S12000013",
-      "ledger_selector": {
-        "source_name": "hmrc",
-        "source_measure_id": [
-          "pension_income_count",
-          "pension_income_mean"
-        ],
-        "record_set_spec_id": [
-          "uk.local_geography.spi_income.by_constituency.v1",
-          "uk.local_geography.spi_income.by_local_authority.v1"
-        ],
-        "geography_level": "local_authority",
-        "geography_id": "S12000013"
-      },
-      "entity": "person",
-      "measure": "hmrc/pension_income/amount",
-      "family": "hmrc",
-      "period": 2025,
-      "metadata": {
-        "contract_target_id": "hmrc.pension_income.amount",
-        "measure_kind": "prepared_column",
-        "geography_level": "local_authority",
-        "geography_id": "S12000013"
-      },
-      "uprating_index": "hmrc.itl_2026.total_income_growth_all_bands",
-      "value_operation": "count_x_mean",
-      "uprating_from_period": "2023",
-      "uprating_to_period": 2025
-    },
-    {
       "name": "hmrc.pension_income.amount@S12000014",
       "ledger_selector": {
         "source_name": "hmrc",
@@ -769880,36 +769340,6 @@
       "uprating_to_period": 2025
     },
     {
-      "name": "hmrc.pension_income.amount@S12000023",
-      "ledger_selector": {
-        "source_name": "hmrc",
-        "source_measure_id": [
-          "pension_income_count",
-          "pension_income_mean"
-        ],
-        "record_set_spec_id": [
-          "uk.local_geography.spi_income.by_constituency.v1",
-          "uk.local_geography.spi_income.by_local_authority.v1"
-        ],
-        "geography_level": "local_authority",
-        "geography_id": "S12000023"
-      },
-      "entity": "person",
-      "measure": "hmrc/pension_income/amount",
-      "family": "hmrc",
-      "period": 2025,
-      "metadata": {
-        "contract_target_id": "hmrc.pension_income.amount",
-        "measure_kind": "prepared_column",
-        "geography_level": "local_authority",
-        "geography_id": "S12000023"
-      },
-      "uprating_index": "hmrc.itl_2026.total_income_growth_all_bands",
-      "value_operation": "count_x_mean",
-      "uprating_from_period": "2023",
-      "uprating_to_period": 2025
-    },
-    {
       "name": "hmrc.pension_income.amount@S12000026",
       "ledger_selector": {
         "source_name": "hmrc",
@@ -769933,36 +769363,6 @@
         "measure_kind": "prepared_column",
         "geography_level": "local_authority",
         "geography_id": "S12000026"
-      },
-      "uprating_index": "hmrc.itl_2026.total_income_growth_all_bands",
-      "value_operation": "count_x_mean",
-      "uprating_from_period": "2023",
-      "uprating_to_period": 2025
-    },
-    {
-      "name": "hmrc.pension_income.amount@S12000027",
-      "ledger_selector": {
-        "source_name": "hmrc",
-        "source_measure_id": [
-          "pension_income_count",
-          "pension_income_mean"
-        ],
-        "record_set_spec_id": [
-          "uk.local_geography.spi_income.by_constituency.v1",
-          "uk.local_geography.spi_income.by_local_authority.v1"
-        ],
-        "geography_level": "local_authority",
-        "geography_id": "S12000027"
-      },
-      "entity": "person",
-      "measure": "hmrc/pension_income/amount",
-      "family": "hmrc",
-      "period": 2025,
-      "metadata": {
-        "contract_target_id": "hmrc.pension_income.amount",
-        "measure_kind": "prepared_column",
-        "geography_level": "local_authority",
-        "geography_id": "S12000027"
       },
       "uprating_index": "hmrc.itl_2026.total_income_growth_all_bands",
       "value_operation": "count_x_mean",
@@ -771712,58 +771112,6 @@
       "uprating_to_period": 2025
     },
     {
-      "name": "hmrc.pension_income.count@E14001085",
-      "ledger_selector": {
-        "source_name": "hmrc",
-        "source_measure_id": "pension_income_count",
-        "record_set_spec_id": [
-          "uk.local_geography.spi_income.by_constituency.v1",
-          "uk.local_geography.spi_income.by_local_authority.v1"
-        ],
-        "geography_level": "constituency",
-        "geography_id": "E14001085"
-      },
-      "entity": "person",
-      "measure": "hmrc/pension_income/count",
-      "family": "hmrc",
-      "period": 2025,
-      "metadata": {
-        "contract_target_id": "hmrc.pension_income.count",
-        "measure_kind": "prepared_column",
-        "geography_level": "constituency",
-        "geography_id": "E14001085"
-      },
-      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_all_bands",
-      "uprating_from_period": "2023",
-      "uprating_to_period": 2025
-    },
-    {
-      "name": "hmrc.pension_income.count@E14001086",
-      "ledger_selector": {
-        "source_name": "hmrc",
-        "source_measure_id": "pension_income_count",
-        "record_set_spec_id": [
-          "uk.local_geography.spi_income.by_constituency.v1",
-          "uk.local_geography.spi_income.by_local_authority.v1"
-        ],
-        "geography_level": "constituency",
-        "geography_id": "E14001086"
-      },
-      "entity": "person",
-      "measure": "hmrc/pension_income/count",
-      "family": "hmrc",
-      "period": 2025,
-      "metadata": {
-        "contract_target_id": "hmrc.pension_income.count",
-        "measure_kind": "prepared_column",
-        "geography_level": "constituency",
-        "geography_id": "E14001086"
-      },
-      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_all_bands",
-      "uprating_from_period": "2023",
-      "uprating_to_period": 2025
-    },
-    {
       "name": "hmrc.pension_income.count@E14001087",
       "ledger_selector": {
         "source_name": "hmrc",
@@ -771992,32 +771340,6 @@
         "measure_kind": "prepared_column",
         "geography_level": "constituency",
         "geography_id": "E14001095"
-      },
-      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_all_bands",
-      "uprating_from_period": "2023",
-      "uprating_to_period": 2025
-    },
-    {
-      "name": "hmrc.pension_income.count@E14001096",
-      "ledger_selector": {
-        "source_name": "hmrc",
-        "source_measure_id": "pension_income_count",
-        "record_set_spec_id": [
-          "uk.local_geography.spi_income.by_constituency.v1",
-          "uk.local_geography.spi_income.by_local_authority.v1"
-        ],
-        "geography_level": "constituency",
-        "geography_id": "E14001096"
-      },
-      "entity": "person",
-      "measure": "hmrc/pension_income/count",
-      "family": "hmrc",
-      "period": 2025,
-      "metadata": {
-        "contract_target_id": "hmrc.pension_income.count",
-        "measure_kind": "prepared_column",
-        "geography_level": "constituency",
-        "geography_id": "E14001096"
       },
       "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_all_bands",
       "uprating_from_period": "2023",
@@ -774052,32 +773374,6 @@
       "uprating_to_period": 2025
     },
     {
-      "name": "hmrc.pension_income.count@E14001175",
-      "ledger_selector": {
-        "source_name": "hmrc",
-        "source_measure_id": "pension_income_count",
-        "record_set_spec_id": [
-          "uk.local_geography.spi_income.by_constituency.v1",
-          "uk.local_geography.spi_income.by_local_authority.v1"
-        ],
-        "geography_level": "constituency",
-        "geography_id": "E14001175"
-      },
-      "entity": "person",
-      "measure": "hmrc/pension_income/count",
-      "family": "hmrc",
-      "period": 2025,
-      "metadata": {
-        "contract_target_id": "hmrc.pension_income.count",
-        "measure_kind": "prepared_column",
-        "geography_level": "constituency",
-        "geography_id": "E14001175"
-      },
-      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_all_bands",
-      "uprating_from_period": "2023",
-      "uprating_to_period": 2025
-    },
-    {
       "name": "hmrc.pension_income.count@E14001176",
       "ledger_selector": {
         "source_name": "hmrc",
@@ -775034,32 +774330,6 @@
         "measure_kind": "prepared_column",
         "geography_level": "constituency",
         "geography_id": "E14001212"
-      },
-      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_all_bands",
-      "uprating_from_period": "2023",
-      "uprating_to_period": 2025
-    },
-    {
-      "name": "hmrc.pension_income.count@E14001213",
-      "ledger_selector": {
-        "source_name": "hmrc",
-        "source_measure_id": "pension_income_count",
-        "record_set_spec_id": [
-          "uk.local_geography.spi_income.by_constituency.v1",
-          "uk.local_geography.spi_income.by_local_authority.v1"
-        ],
-        "geography_level": "constituency",
-        "geography_id": "E14001213"
-      },
-      "entity": "person",
-      "measure": "hmrc/pension_income/count",
-      "family": "hmrc",
-      "period": 2025,
-      "metadata": {
-        "contract_target_id": "hmrc.pension_income.count",
-        "measure_kind": "prepared_column",
-        "geography_level": "constituency",
-        "geography_id": "E14001213"
       },
       "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_all_bands",
       "uprating_from_period": "2023",
@@ -776256,32 +775526,6 @@
         "measure_kind": "prepared_column",
         "geography_level": "constituency",
         "geography_id": "E14001259"
-      },
-      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_all_bands",
-      "uprating_from_period": "2023",
-      "uprating_to_period": 2025
-    },
-    {
-      "name": "hmrc.pension_income.count@E14001260",
-      "ledger_selector": {
-        "source_name": "hmrc",
-        "source_measure_id": "pension_income_count",
-        "record_set_spec_id": [
-          "uk.local_geography.spi_income.by_constituency.v1",
-          "uk.local_geography.spi_income.by_local_authority.v1"
-        ],
-        "geography_level": "constituency",
-        "geography_id": "E14001260"
-      },
-      "entity": "person",
-      "measure": "hmrc/pension_income/count",
-      "family": "hmrc",
-      "period": 2025,
-      "metadata": {
-        "contract_target_id": "hmrc.pension_income.count",
-        "measure_kind": "prepared_column",
-        "geography_level": "constituency",
-        "geography_id": "E14001260"
       },
       "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_all_bands",
       "uprating_from_period": "2023",
@@ -778134,32 +777378,6 @@
       "uprating_to_period": 2025
     },
     {
-      "name": "hmrc.pension_income.count@E14001332",
-      "ledger_selector": {
-        "source_name": "hmrc",
-        "source_measure_id": "pension_income_count",
-        "record_set_spec_id": [
-          "uk.local_geography.spi_income.by_constituency.v1",
-          "uk.local_geography.spi_income.by_local_authority.v1"
-        ],
-        "geography_level": "constituency",
-        "geography_id": "E14001332"
-      },
-      "entity": "person",
-      "measure": "hmrc/pension_income/count",
-      "family": "hmrc",
-      "period": 2025,
-      "metadata": {
-        "contract_target_id": "hmrc.pension_income.count",
-        "measure_kind": "prepared_column",
-        "geography_level": "constituency",
-        "geography_id": "E14001332"
-      },
-      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_all_bands",
-      "uprating_from_period": "2023",
-      "uprating_to_period": 2025
-    },
-    {
       "name": "hmrc.pension_income.count@E14001333",
       "ledger_selector": {
         "source_name": "hmrc",
@@ -778284,32 +777502,6 @@
         "measure_kind": "prepared_column",
         "geography_level": "constituency",
         "geography_id": "E14001337"
-      },
-      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_all_bands",
-      "uprating_from_period": "2023",
-      "uprating_to_period": 2025
-    },
-    {
-      "name": "hmrc.pension_income.count@E14001338",
-      "ledger_selector": {
-        "source_name": "hmrc",
-        "source_measure_id": "pension_income_count",
-        "record_set_spec_id": [
-          "uk.local_geography.spi_income.by_constituency.v1",
-          "uk.local_geography.spi_income.by_local_authority.v1"
-        ],
-        "geography_level": "constituency",
-        "geography_id": "E14001338"
-      },
-      "entity": "person",
-      "measure": "hmrc/pension_income/count",
-      "family": "hmrc",
-      "period": 2025,
-      "metadata": {
-        "contract_target_id": "hmrc.pension_income.count",
-        "measure_kind": "prepared_column",
-        "geography_level": "constituency",
-        "geography_id": "E14001338"
       },
       "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_all_bands",
       "uprating_from_period": "2023",
@@ -778674,32 +777866,6 @@
         "measure_kind": "prepared_column",
         "geography_level": "constituency",
         "geography_id": "E14001352"
-      },
-      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_all_bands",
-      "uprating_from_period": "2023",
-      "uprating_to_period": 2025
-    },
-    {
-      "name": "hmrc.pension_income.count@E14001353",
-      "ledger_selector": {
-        "source_name": "hmrc",
-        "source_measure_id": "pension_income_count",
-        "record_set_spec_id": [
-          "uk.local_geography.spi_income.by_constituency.v1",
-          "uk.local_geography.spi_income.by_local_authority.v1"
-        ],
-        "geography_level": "constituency",
-        "geography_id": "E14001353"
-      },
-      "entity": "person",
-      "measure": "hmrc/pension_income/count",
-      "family": "hmrc",
-      "period": 2025,
-      "metadata": {
-        "contract_target_id": "hmrc.pension_income.count",
-        "measure_kind": "prepared_column",
-        "geography_level": "constituency",
-        "geography_id": "E14001353"
       },
       "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_all_bands",
       "uprating_from_period": "2023",
@@ -780448,32 +779614,6 @@
       "uprating_to_period": 2025
     },
     {
-      "name": "hmrc.pension_income.count@E14001421",
-      "ledger_selector": {
-        "source_name": "hmrc",
-        "source_measure_id": "pension_income_count",
-        "record_set_spec_id": [
-          "uk.local_geography.spi_income.by_constituency.v1",
-          "uk.local_geography.spi_income.by_local_authority.v1"
-        ],
-        "geography_level": "constituency",
-        "geography_id": "E14001421"
-      },
-      "entity": "person",
-      "measure": "hmrc/pension_income/count",
-      "family": "hmrc",
-      "period": 2025,
-      "metadata": {
-        "contract_target_id": "hmrc.pension_income.count",
-        "measure_kind": "prepared_column",
-        "geography_level": "constituency",
-        "geography_id": "E14001421"
-      },
-      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_all_bands",
-      "uprating_from_period": "2023",
-      "uprating_to_period": 2025
-    },
-    {
       "name": "hmrc.pension_income.count@E14001422",
       "ledger_selector": {
         "source_name": "hmrc",
@@ -780676,32 +779816,6 @@
         "measure_kind": "prepared_column",
         "geography_level": "constituency",
         "geography_id": "E14001429"
-      },
-      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_all_bands",
-      "uprating_from_period": "2023",
-      "uprating_to_period": 2025
-    },
-    {
-      "name": "hmrc.pension_income.count@E14001430",
-      "ledger_selector": {
-        "source_name": "hmrc",
-        "source_measure_id": "pension_income_count",
-        "record_set_spec_id": [
-          "uk.local_geography.spi_income.by_constituency.v1",
-          "uk.local_geography.spi_income.by_local_authority.v1"
-        ],
-        "geography_level": "constituency",
-        "geography_id": "E14001430"
-      },
-      "entity": "person",
-      "measure": "hmrc/pension_income/count",
-      "family": "hmrc",
-      "period": 2025,
-      "metadata": {
-        "contract_target_id": "hmrc.pension_income.count",
-        "measure_kind": "prepared_column",
-        "geography_level": "constituency",
-        "geography_id": "E14001430"
       },
       "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_all_bands",
       "uprating_from_period": "2023",
@@ -781638,32 +780752,6 @@
         "measure_kind": "prepared_column",
         "geography_level": "constituency",
         "geography_id": "E14001466"
-      },
-      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_all_bands",
-      "uprating_from_period": "2023",
-      "uprating_to_period": 2025
-    },
-    {
-      "name": "hmrc.pension_income.count@E14001467",
-      "ledger_selector": {
-        "source_name": "hmrc",
-        "source_measure_id": "pension_income_count",
-        "record_set_spec_id": [
-          "uk.local_geography.spi_income.by_constituency.v1",
-          "uk.local_geography.spi_income.by_local_authority.v1"
-        ],
-        "geography_level": "constituency",
-        "geography_id": "E14001467"
-      },
-      "entity": "person",
-      "measure": "hmrc/pension_income/count",
-      "family": "hmrc",
-      "period": 2025,
-      "metadata": {
-        "contract_target_id": "hmrc.pension_income.count",
-        "measure_kind": "prepared_column",
-        "geography_level": "constituency",
-        "geography_id": "E14001467"
       },
       "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_all_bands",
       "uprating_from_period": "2023",
@@ -783152,32 +782240,6 @@
       "uprating_to_period": 2025
     },
     {
-      "name": "hmrc.pension_income.count@E14001525",
-      "ledger_selector": {
-        "source_name": "hmrc",
-        "source_measure_id": "pension_income_count",
-        "record_set_spec_id": [
-          "uk.local_geography.spi_income.by_constituency.v1",
-          "uk.local_geography.spi_income.by_local_authority.v1"
-        ],
-        "geography_level": "constituency",
-        "geography_id": "E14001525"
-      },
-      "entity": "person",
-      "measure": "hmrc/pension_income/count",
-      "family": "hmrc",
-      "period": 2025,
-      "metadata": {
-        "contract_target_id": "hmrc.pension_income.count",
-        "measure_kind": "prepared_column",
-        "geography_level": "constituency",
-        "geography_id": "E14001525"
-      },
-      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_all_bands",
-      "uprating_from_period": "2023",
-      "uprating_to_period": 2025
-    },
-    {
       "name": "hmrc.pension_income.count@E14001526",
       "ledger_selector": {
         "source_name": "hmrc",
@@ -783880,32 +782942,6 @@
       "uprating_to_period": 2025
     },
     {
-      "name": "hmrc.pension_income.count@E14001553",
-      "ledger_selector": {
-        "source_name": "hmrc",
-        "source_measure_id": "pension_income_count",
-        "record_set_spec_id": [
-          "uk.local_geography.spi_income.by_constituency.v1",
-          "uk.local_geography.spi_income.by_local_authority.v1"
-        ],
-        "geography_level": "constituency",
-        "geography_id": "E14001553"
-      },
-      "entity": "person",
-      "measure": "hmrc/pension_income/count",
-      "family": "hmrc",
-      "period": 2025,
-      "metadata": {
-        "contract_target_id": "hmrc.pension_income.count",
-        "measure_kind": "prepared_column",
-        "geography_level": "constituency",
-        "geography_id": "E14001553"
-      },
-      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_all_bands",
-      "uprating_from_period": "2023",
-      "uprating_to_period": 2025
-    },
-    {
       "name": "hmrc.pension_income.count@E14001554",
       "ledger_selector": {
         "source_name": "hmrc",
@@ -784036,32 +783072,6 @@
       "uprating_to_period": 2025
     },
     {
-      "name": "hmrc.pension_income.count@E14001559",
-      "ledger_selector": {
-        "source_name": "hmrc",
-        "source_measure_id": "pension_income_count",
-        "record_set_spec_id": [
-          "uk.local_geography.spi_income.by_constituency.v1",
-          "uk.local_geography.spi_income.by_local_authority.v1"
-        ],
-        "geography_level": "constituency",
-        "geography_id": "E14001559"
-      },
-      "entity": "person",
-      "measure": "hmrc/pension_income/count",
-      "family": "hmrc",
-      "period": 2025,
-      "metadata": {
-        "contract_target_id": "hmrc.pension_income.count",
-        "measure_kind": "prepared_column",
-        "geography_level": "constituency",
-        "geography_id": "E14001559"
-      },
-      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_all_bands",
-      "uprating_from_period": "2023",
-      "uprating_to_period": 2025
-    },
-    {
       "name": "hmrc.pension_income.count@E14001560",
       "ledger_selector": {
         "source_name": "hmrc",
@@ -784134,32 +783144,6 @@
         "measure_kind": "prepared_column",
         "geography_level": "constituency",
         "geography_id": "E14001562"
-      },
-      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_all_bands",
-      "uprating_from_period": "2023",
-      "uprating_to_period": 2025
-    },
-    {
-      "name": "hmrc.pension_income.count@E14001563",
-      "ledger_selector": {
-        "source_name": "hmrc",
-        "source_measure_id": "pension_income_count",
-        "record_set_spec_id": [
-          "uk.local_geography.spi_income.by_constituency.v1",
-          "uk.local_geography.spi_income.by_local_authority.v1"
-        ],
-        "geography_level": "constituency",
-        "geography_id": "E14001563"
-      },
-      "entity": "person",
-      "measure": "hmrc/pension_income/count",
-      "family": "hmrc",
-      "period": 2025,
-      "metadata": {
-        "contract_target_id": "hmrc.pension_income.count",
-        "measure_kind": "prepared_column",
-        "geography_level": "constituency",
-        "geography_id": "E14001563"
       },
       "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_all_bands",
       "uprating_from_period": "2023",
@@ -785746,32 +784730,6 @@
         "measure_kind": "prepared_column",
         "geography_level": "constituency",
         "geography_id": "S14000021"
-      },
-      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_all_bands",
-      "uprating_from_period": "2023",
-      "uprating_to_period": 2025
-    },
-    {
-      "name": "hmrc.pension_income.count@S14000027",
-      "ledger_selector": {
-        "source_name": "hmrc",
-        "source_measure_id": "pension_income_count",
-        "record_set_spec_id": [
-          "uk.local_geography.spi_income.by_constituency.v1",
-          "uk.local_geography.spi_income.by_local_authority.v1"
-        ],
-        "geography_level": "constituency",
-        "geography_id": "S14000027"
-      },
-      "entity": "person",
-      "measure": "hmrc/pension_income/count",
-      "family": "hmrc",
-      "period": 2025,
-      "metadata": {
-        "contract_target_id": "hmrc.pension_income.count",
-        "measure_kind": "prepared_column",
-        "geography_level": "constituency",
-        "geography_id": "S14000027"
       },
       "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_all_bands",
       "uprating_from_period": "2023",
@@ -796082,32 +795040,6 @@
       "uprating_to_period": 2025
     },
     {
-      "name": "hmrc.pension_income.count@S12000013",
-      "ledger_selector": {
-        "source_name": "hmrc",
-        "source_measure_id": "pension_income_count",
-        "record_set_spec_id": [
-          "uk.local_geography.spi_income.by_constituency.v1",
-          "uk.local_geography.spi_income.by_local_authority.v1"
-        ],
-        "geography_level": "local_authority",
-        "geography_id": "S12000013"
-      },
-      "entity": "person",
-      "measure": "hmrc/pension_income/count",
-      "family": "hmrc",
-      "period": 2025,
-      "metadata": {
-        "contract_target_id": "hmrc.pension_income.count",
-        "measure_kind": "prepared_column",
-        "geography_level": "local_authority",
-        "geography_id": "S12000013"
-      },
-      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_all_bands",
-      "uprating_from_period": "2023",
-      "uprating_to_period": 2025
-    },
-    {
       "name": "hmrc.pension_income.count@S12000014",
       "ledger_selector": {
         "source_name": "hmrc",
@@ -796264,32 +795196,6 @@
       "uprating_to_period": 2025
     },
     {
-      "name": "hmrc.pension_income.count@S12000023",
-      "ledger_selector": {
-        "source_name": "hmrc",
-        "source_measure_id": "pension_income_count",
-        "record_set_spec_id": [
-          "uk.local_geography.spi_income.by_constituency.v1",
-          "uk.local_geography.spi_income.by_local_authority.v1"
-        ],
-        "geography_level": "local_authority",
-        "geography_id": "S12000023"
-      },
-      "entity": "person",
-      "measure": "hmrc/pension_income/count",
-      "family": "hmrc",
-      "period": 2025,
-      "metadata": {
-        "contract_target_id": "hmrc.pension_income.count",
-        "measure_kind": "prepared_column",
-        "geography_level": "local_authority",
-        "geography_id": "S12000023"
-      },
-      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_all_bands",
-      "uprating_from_period": "2023",
-      "uprating_to_period": 2025
-    },
-    {
       "name": "hmrc.pension_income.count@S12000026",
       "ledger_selector": {
         "source_name": "hmrc",
@@ -796310,32 +795216,6 @@
         "measure_kind": "prepared_column",
         "geography_level": "local_authority",
         "geography_id": "S12000026"
-      },
-      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_all_bands",
-      "uprating_from_period": "2023",
-      "uprating_to_period": 2025
-    },
-    {
-      "name": "hmrc.pension_income.count@S12000027",
-      "ledger_selector": {
-        "source_name": "hmrc",
-        "source_measure_id": "pension_income_count",
-        "record_set_spec_id": [
-          "uk.local_geography.spi_income.by_constituency.v1",
-          "uk.local_geography.spi_income.by_local_authority.v1"
-        ],
-        "geography_level": "local_authority",
-        "geography_id": "S12000027"
-      },
-      "entity": "person",
-      "measure": "hmrc/pension_income/count",
-      "family": "hmrc",
-      "period": 2025,
-      "metadata": {
-        "contract_target_id": "hmrc.pension_income.count",
-        "measure_kind": "prepared_column",
-        "geography_level": "local_authority",
-        "geography_id": "S12000027"
       },
       "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_all_bands",
       "uprating_from_period": "2023",

@@ -3132,7 +3132,7 @@
         "contract_target_id": "hmrc.spi.self_employment_income.amount_by_self_employment_income_band",
         "measure_kind": "prepared_column"
       },
-      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_all_bands_times_obr_per_capita_mixed_income",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -3157,7 +3157,7 @@
         "contract_target_id": "hmrc.spi.self_employment_income.amount_by_self_employment_income_band",
         "measure_kind": "prepared_column"
       },
-      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_all_bands_times_obr_per_capita_mixed_income",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -3182,7 +3182,7 @@
         "contract_target_id": "hmrc.spi.self_employment_income.amount_by_self_employment_income_band",
         "measure_kind": "prepared_column"
       },
-      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_all_bands_times_obr_per_capita_mixed_income",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -3207,7 +3207,7 @@
         "contract_target_id": "hmrc.spi.self_employment_income.amount_by_self_employment_income_band",
         "measure_kind": "prepared_column"
       },
-      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_all_bands_times_obr_per_capita_mixed_income",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -3232,7 +3232,7 @@
         "contract_target_id": "hmrc.spi.self_employment_income.amount_by_self_employment_income_band",
         "measure_kind": "prepared_column"
       },
-      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_all_bands_times_obr_per_capita_mixed_income",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -3257,7 +3257,7 @@
         "contract_target_id": "hmrc.spi.self_employment_income.amount_by_self_employment_income_band",
         "measure_kind": "prepared_column"
       },
-      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_all_bands_times_obr_per_capita_mixed_income",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -3282,7 +3282,7 @@
         "contract_target_id": "hmrc.spi.self_employment_income.amount_by_self_employment_income_band",
         "measure_kind": "prepared_column"
       },
-      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_all_bands_times_obr_per_capita_mixed_income",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -3307,7 +3307,7 @@
         "contract_target_id": "hmrc.spi.self_employment_income.amount_by_self_employment_income_band",
         "measure_kind": "prepared_column"
       },
-      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_all_bands_times_obr_per_capita_mixed_income",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -25198,6 +25198,7 @@
         "source_concept": "ons.household_expenditure.electricity",
         "entity_name": "household",
         "period_type": "calendar_year",
+        "period_value": 2024,
         "dimension_values": {
           "coicop": "04.5.1",
           "frequency": "annual",
@@ -25214,8 +25215,12 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "ons.household_electricity_expenditure",
-        "measure_kind": "prepared_column"
-      }
+        "measure_kind": "prepared_column",
+        "measurement_period": "2024",
+        "source_period_policy": "exact_observation"
+      },
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
     },
     {
       "name": "ons.household_gas_expenditure",
