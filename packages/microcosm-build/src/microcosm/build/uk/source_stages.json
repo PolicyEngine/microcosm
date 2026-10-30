@@ -1954,7 +1954,7 @@
        "dividend_income": "dividend_income",
        "private_pension_income": "private_pension_income",
        "property_income": "property_income",
-       "other_investment_income": null,
+       "other_investment_income": "other_investment_income",
        "gift_aid": null,
        "charitable_investment_gifts": null,
        "hmrc_spi_pay": "hmrc_spi_pay",

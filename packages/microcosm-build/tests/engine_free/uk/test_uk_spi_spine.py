@@ -62,6 +62,8 @@ def _base_frame(*, time_period: str = "2023") -> object:
             "dividend_income": [20.0, 10.0],
             "private_pension_income": [0.0, 0.0],
             "property_income": [0.0, 0.0],
+            # The twin's other income locates the copy's draw (microcosm#1428).
+            "other_investment_income": [0.0, 0.0],
             "employee_pension_contributions": [3.0, 2.0],
             "employer_pension_contributions": [9.0, 6.0],
             "hmrc_spi_pay": [0.0, 0.0],
