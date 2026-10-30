@@ -895,7 +895,8 @@
       "hmrc.itl.savings_tax_at_additional_rate": "Post-freeze fact family (HMRC Income Tax liabilities statistics Table 2.6, July 2026, in Chronicle: Income Tax on savings income at each rate, all payers, the calendar-2025 window of the 2024-25 and 2025-26 projections), no uk-data metric (microcosm#1418).",
       "hmrc.spi.other_investment_income.amount_by_total_income_band": "New declaration backed by SPI 2023-24 Table 3.7 other income in Chronicle (spi_income_bands_2023_24); no uk-data metric holds other investment income by band (microcosm#1418).",
       "hmrc.spi.self_employment_income.count_by_self_employment_income_band": "New declaration backed by SPI 2023-24 Table 3.10 in Chronicle (spi_income_bands_2023_24, PolicyEngine/chronicle#394); no uk-data metric holds self-employment income by self-employment band (microcosm#1418).",
-      "hmrc.spi.self_employment_income.amount_by_self_employment_income_band": "New declaration backed by SPI 2023-24 Table 3.10 in Chronicle (spi_income_bands_2023_24, PolicyEngine/chronicle#394); no uk-data metric holds self-employment income by self-employment band (microcosm#1418)."
+      "hmrc.spi.self_employment_income.amount_by_self_employment_income_band": "New declaration backed by SPI 2023-24 Table 3.10 in Chronicle (spi_income_bands_2023_24, PolicyEngine/chronicle#394); no uk-data metric holds self-employment income by self-employment band (microcosm#1418).",
+      "hmrc.spi.employment_income.count_by_self_employment_income_band": "New declaration backed by SPI 2023-24 Table 3.10 in Chronicle (spi_income_bands_2023_24, PolicyEngine/chronicle#394); no uk-data metric holds employment income by self-employment band (microcosm#1418)."
     },
     "suppressed_ancestors": {
       "hmrc/salary_sacrifice_it_relief_basic_rate": {
@@ -971,6 +972,7 @@
       "hmrc.spi.self_employment_income.count_by_total_income_band",
       "hmrc.spi.self_employment_income.count_by_self_employment_income_band",
       "hmrc.spi.self_employment_income.amount_by_self_employment_income_band",
+      "hmrc.spi.employment_income.count_by_self_employment_income_band",
       "hmrc.spi.dividend_income.amount_by_total_income_band",
       "hmrc.spi.dividend_income.count_by_total_income_band",
       "hmrc.spi.property_income.amount_by_total_income_band",
@@ -3847,6 +3849,54 @@
       "label": "Amount by self-employment income band",
       "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_all_bands_times_obr_per_capita_mixed_income",
       "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period as recipients times the amount per recipient: the count rows' index (HMRC's projected growth of all taxpayers over all income ranges, Income Tax liabilities statistics Table 2.5) times gov.economic_assumptions.indices.obr.per_capita.mixed_income on the pinned engine, the index policyengine-uk grows self_employment_income by. Each band's mean therefore moves as the engine moves incomes; growing the counts and amounts on unrelated indices would have made calibration add people to each band and tilt them toward its bottom edge (the independent review of microcosm#1420, finding 2). The calibration binds at calendar 2025 under María's ruling of 2026-09-22 (PolicyEngine/chronicle#280 lane)."
+    },
+    {
+      "target_id": "hmrc.spi.employment_income.count_by_self_employment_income_band",
+      "family": "hmrc_spi",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "groupby_dimension": "hmrc.self_employment_income_band"
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "hmrc/employment_income_count_self_employment_income_band",
+          "value_variable": "person_count",
+          "from_entity": "person",
+          "map_to": "household",
+          "groupby_variable": "self_employment_income_after_loss_relief_annual",
+          "band_filter_dimension": "self_employment_income",
+          "band_upper_bound": 10000,
+          "band_upper_bound_inclusive": false,
+          "filters": [
+            {
+              "variable": "employment_income_annual",
+              "operator": "!=",
+              "value": 0
+            }
+          ],
+          "notes": "SPI 2023-24 Table 3.10: the individuals with a self-employment source, taxpayer or not, who also have employment income, by range of self-employment income. Bound for the eight bands from GBP 1 to GBP 10,000 beside the self-employment counts (María's rulings of 2026-10-29 and 2026-10-30, microcosm#1418): the counts alone let the solve meet each band with traders who have no pay, where more than half of Table 3.10's traders below GBP 3,000 have employment income too, and the trading allowance measures (Table 6.1 line 15) reach the ones who pay Income Tax. The target fans out over every published band and target_reference_signed_exclusions.json signs out the others. Banded by the person's own self-employment income after loss relief, half-open, with the top bound band closed at GBP 10,000 (band_upper_bound). Employment income is the year's pay, employment_income_annual, the variable Table 3.6's employment rows read."
+        },
+        "axiom": {
+          "metric_name": "hmrc/employment_income_count_self_employment_income_band",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_table_3_10_employment_income_count",
+        "groupby_dimension": "hmrc.self_employment_income_band",
+        "entity_name": "person"
+      },
+      "category_id": "hmrc.survey_of_personal_incomes",
+      "label": "Count with employment income by self-employment income band",
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_all_bands",
+      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by HMRC's projected growth of all taxpayers over all income ranges (Income Tax liabilities statistics Table 2.5), as the self-employment counts by self-employment band are. Table 3.10's employment income is income assessed under the Income Tax (Earnings and Pensions) Act 2003 and other miscellaneous income (its note 4), wider than Table 3.6's: the binding reads employment_income_annual, as Table 3.6's employment rows do, so it leaves out miscellaneous income, taxable benefits in kind, and Incapacity Benefit, contribution-based Employment and Support Allowance and Jobseeker's Allowance. The calibration binds at calendar 2025 under María's ruling of 2026-09-22 (PolicyEngine/chronicle#280 lane)."
     },
     {
       "target_id": "hmrc.spi.dividend_income.amount_by_total_income_band",
