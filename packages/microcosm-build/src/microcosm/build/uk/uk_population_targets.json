@@ -707,7 +707,7 @@
       "obr.fuel_duties_cars": "No incumbent ancestor: uk-data bound the all-road-users OBR fuel duties total; the cars receipts from the OBR vehicle-type release are a net-new household-incidence target (microcosm#890 E1, ruling 2026-09-10); a measured diagnostic since microcosm#1113.",
       "orr.rail_government_support": "No incumbent target: uk-data scaled rail_subsidy_spending to the ORR total after calibration (the #790 rail scaler); microcosm#890 G binds the ORR table 7270 fact instead.",
       "ons.household_energy_expenditure": "No incumbent target: uk-data raked energy to NEED means and never bound a household-sector expenditure total; microcosm#890 F1 declared ONS Consumer Trends COICOP 04.5, signed out for its per-fuel sub-classes.",
-      "ons.household_electricity_expenditure": "No incumbent target: uk-data raked energy to NEED means and never bound a household-sector expenditure total; microcosm#890 F1 bound ONS Consumer Trends COICOP 04.5.1 electricity per fuel (chronicle#270 / #271); a measured diagnostic since microcosm#1113.",
+      "ons.household_electricity_expenditure": "No incumbent target: uk-data raked energy to NEED means and never bound a household-sector expenditure total; microcosm#890 F1 bound ONS Consumer Trends COICOP 04.5.1 electricity per fuel (chronicle#270 / #271); a measured diagnostic from microcosm#1113, and bound again since microcosm#1418.",
       "ons.household_gas_expenditure": "No incumbent target: uk-data raked energy to NEED means and never bound a household-sector expenditure total; microcosm#890 F1 bound ONS Consumer Trends COICOP 04.5.2 gas per fuel (chronicle#270 / #271); a measured diagnostic since microcosm#1113.",
       "ons.household_road_fuel_expenditure": "No incumbent target: uk-data bound the all-road-users OBR fuel duties total and never a household road-fuel spend; microcosm#1113 binds ONS Consumer Trends COICOP 07.2.2 on petrol plus diesel spend in place of the OBR cars receipts, which stay measured as a diagnostic.",
       "scotgov.bus.passenger_revenue": "No incumbent target: uk-data uplifted DfT England fares to the UK by population; microcosm#890 binds the Scotland leg from Scottish Transport Statistics.",
@@ -892,7 +892,10 @@
       "hmrc.itl.taxpayers_aged_65_and_over": "Post-freeze fact family (HMRC Income Tax liabilities statistics Table 2.2, July 2026, in Chronicle: Income Tax payers by age for each English region and nation, the calendar-2025 window of the 2024-25 and 2025-26 projections), no uk-data metric (microcosm#1069).",
       "hmrc.itl.savings_tax_at_basic_rate": "Post-freeze fact family (HMRC Income Tax liabilities statistics Table 2.6, July 2026, in Chronicle: Income Tax on savings income at each rate, all payers, the calendar-2025 window of the 2024-25 and 2025-26 projections), no uk-data metric (microcosm#1418).",
       "hmrc.itl.savings_tax_at_higher_rate": "Post-freeze fact family (HMRC Income Tax liabilities statistics Table 2.6, July 2026, in Chronicle: Income Tax on savings income at each rate, all payers, the calendar-2025 window of the 2024-25 and 2025-26 projections), no uk-data metric (microcosm#1418).",
-      "hmrc.itl.savings_tax_at_additional_rate": "Post-freeze fact family (HMRC Income Tax liabilities statistics Table 2.6, July 2026, in Chronicle: Income Tax on savings income at each rate, all payers, the calendar-2025 window of the 2024-25 and 2025-26 projections), no uk-data metric (microcosm#1418)."
+      "hmrc.itl.savings_tax_at_additional_rate": "Post-freeze fact family (HMRC Income Tax liabilities statistics Table 2.6, July 2026, in Chronicle: Income Tax on savings income at each rate, all payers, the calendar-2025 window of the 2024-25 and 2025-26 projections), no uk-data metric (microcosm#1418).",
+      "hmrc.spi.other_investment_income.amount_by_total_income_band": "New declaration backed by SPI 2023-24 Table 3.7 other income in Chronicle (spi_income_bands_2023_24); no uk-data metric holds other investment income by band (microcosm#1418).",
+      "hmrc.spi.self_employment_income.count_by_self_employment_income_band": "New declaration backed by SPI 2023-24 Table 3.10 in Chronicle (spi_income_bands_2023_24, PolicyEngine/chronicle#394); no uk-data metric holds self-employment income by self-employment band (microcosm#1418).",
+      "hmrc.spi.self_employment_income.amount_by_self_employment_income_band": "New declaration backed by SPI 2023-24 Table 3.10 in Chronicle (spi_income_bands_2023_24, PolicyEngine/chronicle#394); no uk-data metric holds self-employment income by self-employment band (microcosm#1418)."
     },
     "suppressed_ancestors": {
       "hmrc/salary_sacrifice_it_relief_basic_rate": {
@@ -966,6 +969,8 @@
       "hmrc.spi.employment_income.count_by_total_income_band",
       "hmrc.spi.self_employment_income.amount_by_total_income_band",
       "hmrc.spi.self_employment_income.count_by_total_income_band",
+      "hmrc.spi.self_employment_income.count_by_self_employment_income_band",
+      "hmrc.spi.self_employment_income.amount_by_self_employment_income_band",
       "hmrc.spi.dividend_income.amount_by_total_income_band",
       "hmrc.spi.dividend_income.count_by_total_income_band",
       "hmrc.spi.property_income.amount_by_total_income_band",
@@ -1235,6 +1240,7 @@
       "hmrc.itl.savings_tax_at_additional_rate",
       "hmrc.spi.savings_interest_income.amount_by_total_income_band",
       "hmrc.spi.savings_interest_income.count_by_total_income_band",
+      "hmrc.spi.other_investment_income.amount_by_total_income_band",
       "hmrc.spi_region.taxpayers_by_region_12570_15000",
       "hmrc.spi_region.taxpayers_by_region_15000_20000",
       "hmrc.spi_region.taxpayers_by_region_20000_30000",
@@ -1330,7 +1336,7 @@
     "source_schema_version": "policyengine_ledger.target_profile.v1",
     "source_profile_id": "uk_local_geography",
     "source_target_count": 25,
-    "contract_target_count": 60,
+    "contract_target_count": 62,
     "corrected_rows": 25,
     "corrected": [
       {
@@ -1793,7 +1799,7 @@
         "reason": "Narrowed to the private-rent local-area record-set spec; non-English/masked absences are signed by the area compiler."
       }
     ],
-    "activation_added_rows": 35,
+    "activation_added_rows": 37,
     "activation_additions": [
       {
         "target_id": "ons.census.households",
@@ -1917,7 +1923,7 @@
       },
       {
         "target_id": "desnz.subnational.electricity_kwh",
-        "basis": "microcosm#1207, #1095; DESNZ sub-national domestic electricity consumption by local authority (Great Britain) and its split onto constituencies by DESNZ's small-area figures (the committed derived-facts resource), levelled onto the lcfs stage's Energy Trends level by one factor per fuel"
+        "basis": "microcosm#1207, #1095; DESNZ sub-national domestic electricity consumption by local authority (Great Britain) and its split onto constituencies by DESNZ's small-area figures (the committed derived-facts resource), levelled onto the lcfs stage's level (the kWh ONS household spending buys, microcosm#1418) by one factor per fuel"
       },
       {
         "target_id": "desnz.subnational.gas_kwh",
@@ -1934,6 +1940,14 @@
       {
         "target_id": "mhclg.council_tax_stock.by_area.single_adult_discount",
         "basis": "microcosm#1095; pinned MHCLG council taxbase (CTB line 8, the dwellings with the single adult household 25% discount, all bands) by billing authority"
+      },
+      {
+        "target_id": "hmrc.pension_income.amount",
+        "basis": "microcosm#1418; HMRC SPI 2023-24 pension income by constituency and local authority (Tables 3.15 and 3.14), count times mean, reconciled to the national State Pension and private pension bands"
+      },
+      {
+        "target_id": "hmrc.pension_income.count",
+        "basis": "microcosm#1418; HMRC SPI 2023-24 taxpayers with pension income by constituency and local authority (Tables 3.15 and 3.14), at HMRC's own area level"
       }
     ],
     "scope_target_ids": [
@@ -1996,7 +2010,9 @@
       "desnz.subnational.electricity_kwh",
       "desnz.subnational.gas_kwh",
       "desnz.subnational.gas_connected_households",
-      "mhclg.council_tax_stock.by_area.single_adult_discount"
+      "mhclg.council_tax_stock.by_area.single_adult_discount",
+      "hmrc.pension_income.amount",
+      "hmrc.pension_income.count"
     ]
   },
   "targets": [
@@ -3158,13 +3174,14 @@
       "ledger_selector": {
         "source_name": "obr",
         "source_concept": "obr.winter_fuel_payment",
+        "source_table": "EFO March 2026 detailed forecast tables: expenditure",
         "entity_name": "person",
         "period_type": "fiscal_year",
         "period_value": 2025
       },
       "category_id": "obr.efo_expenditure",
       "label": "Winter fuel allowance",
-      "selector_note": "OBR EFO March 2026, table 4.9, winter fuel payments: period_value 2025 is the OBR April-start label for FY2025-26, the winter whose payments fall in calendar 2025 (no window)."
+      "selector_note": "OBR EFO March 2026, table 4.9, winter fuel payments: period_value 2025 is the OBR April-start label for FY2025-26, the winter whose payments fall in calendar 2025 (no window). Pinned to the March edition's table (source_table): PolicyEngine/chronicle#394 adds the October 2026 EFO, whose table 5.9 gives FY2025-26 as outturn, 0.02% above March's projection, and the two would otherwise be refused as matching two facts (microcosm#1418). The OBR targets that window FY2024-25 and FY2025-26 into calendar 2025 stay on March without a pin, since only March's edition carries FY2024-25; moving them to October is a separate ruling."
     },
     {
       "target_id": "isc.private_school_students",
@@ -3748,6 +3765,88 @@
       "label": "Count by total income band",
       "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by HMRC's own projected growth in Income Tax payers for the Table 2.5 band containing this band (Income Tax liabilities statistics, July 2026): the calendar-2025 window of the 2024-25 and 2025-26 projections (3/12 and 9/12) over the 2023-24 outturn, from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): calendar 2025, months to the end of the year for fiscal- and tax-year facts. Taxpayers only (income_tax_annual > 0, the tax on each person's income over the 12 months before their interview, a proxy for the tax year), as SPI Table 3.6 and the area Tables 3.14 and 3.15 are: the tables cover individuals liable to UK income tax (microcosm#1123, taxpayer basis everywhere). Counted as income != 0: HMRC includes an individual whose source made a loss, with nil income (SPI Table 3.10 notes), so the national and area counts share one rule."
+    },
+    {
+      "target_id": "hmrc.spi.self_employment_income.count_by_self_employment_income_band",
+      "family": "hmrc_spi",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "groupby_dimension": "hmrc.self_employment_income_band"
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "hmrc/self_employment_income_count_self_employment_income_band",
+          "value_variable": "person_count",
+          "from_entity": "person",
+          "map_to": "household",
+          "groupby_variable": "self_employment_income_after_loss_relief_annual",
+          "band_filter_dimension": "self_employment_income",
+          "band_upper_bound": 10000,
+          "band_upper_bound_inclusive": false,
+          "notes": "SPI 2023-24 Table 3.10: every individual with a self-employment source, taxpayer or not (the table's scope), by range of self-employment income, the small-profit end of the Budget's trading allowance measures (Table 6.1 line 15). Bound for the eight bands from GBP 1 to GBP 10,000 (María's ruling of 2026-10-29, microcosm#1418): the target fans out over every published band and target_reference_signed_exclusions.json signs out the others; the bands above stay with Table 3.6's self-employment rows by total income, so the two tables do not pull against each other. Banded by the person's own self-employment income after loss relief, half-open, with the top bound band closed at GBP 10,000 (band_upper_bound)."
+        },
+        "axiom": {
+          "metric_name": "hmrc/self_employment_income_count_self_employment_income_band",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_self_employment_income_count",
+        "groupby_dimension": "hmrc.self_employment_income_band",
+        "entity_name": "person"
+      },
+      "category_id": "hmrc.survey_of_personal_incomes",
+      "label": "Count by self-employment income band",
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_all_bands",
+      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by HMRC's projected growth of all taxpayers over all income ranges (Income Tax liabilities statistics Table 2.5), the index the area self-employment counts use: Table 2.5 has no self-employment band, and Table 3.10 counts non-taxpayers too, whom it moves as the taxpayers move. The calibration binds at calendar 2025 under María's ruling of 2026-09-22 (PolicyEngine/chronicle#280 lane)."
+    },
+    {
+      "target_id": "hmrc.spi.self_employment_income.amount_by_self_employment_income_band",
+      "family": "hmrc_spi",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.income.self_employment.amount",
+        "groupby_dimension": "hmrc.self_employment_income_band"
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "hmrc/self_employment_income_self_employment_income_band",
+          "value_variable": "self_employment_income_after_loss_relief_annual",
+          "from_entity": "person",
+          "map_to": "household",
+          "groupby_variable": "self_employment_income_after_loss_relief_annual",
+          "band_filter_dimension": "self_employment_income",
+          "band_upper_bound": 10000,
+          "band_upper_bound_inclusive": false,
+          "notes": "SPI 2023-24 Table 3.10: every individual with a self-employment source, taxpayer or not (the table's scope), by range of self-employment income, the small-profit end of the Budget's trading allowance measures (Table 6.1 line 15). Bound for the eight bands from GBP 1 to GBP 10,000 (María's ruling of 2026-10-29, microcosm#1418): the target fans out over every published band and target_reference_signed_exclusions.json signs out the others; the bands above stay with Table 3.6's self-employment rows by total income, so the two tables do not pull against each other. Banded by the person's own self-employment income after loss relief, half-open, with the top bound band closed at GBP 10,000 (band_upper_bound)."
+        },
+        "axiom": {
+          "metric_name": "hmrc/self_employment_income_self_employment_income_band",
+          "status": "pending",
+          "value_rule": "uk.income.self_employment.amount"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_self_employment_income_amount",
+        "groupby_dimension": "hmrc.self_employment_income_band",
+        "entity_name": "person"
+      },
+      "category_id": "hmrc.survey_of_personal_incomes",
+      "label": "Amount by self-employment income band",
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_all_bands_times_obr_per_capita_mixed_income",
+      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period as recipients times the amount per recipient: the count rows' index (HMRC's projected growth of all taxpayers over all income ranges, Income Tax liabilities statistics Table 2.5) times gov.economic_assumptions.indices.obr.per_capita.mixed_income on the pinned engine, the index policyengine-uk grows self_employment_income by. Each band's mean therefore moves as the engine moves incomes; growing the counts and amounts on unrelated indices would have made calibration add people to each band and tilt them toward its bottom edge (the independent review of microcosm#1420, finding 2). The calibration binds at calendar 2025 under María's ruling of 2026-09-22 (PolicyEngine/chronicle#280 lane)."
     },
     {
       "target_id": "hmrc.spi.dividend_income.amount_by_total_income_band",
@@ -17363,7 +17462,7 @@
         "policyengine": {
           "metric_name": "ons/household_energy_expenditure",
           "value_expression": "electricity_consumption + gas_consumption + liquid_fuel_consumption + solid_fuel_consumption",
-          "notes": "ONS Consumer Trends COICOP 04.5 electricity, gas and other fuels, current prices, calendar year, measured on the frame's electricity, gas, liquid fuel and solid fuel spend (María's ruling of 2026-10-22: LPG with liquid, heat in the remainder; the heating fuels are policyengine-uk 2.149.0's inputs, pe-uk#2572). The publisher class also holds 04.5.5 heat energy, which no column carries. Signed out of calibration once the 04.5.1 electricity and 04.5.2 gas sub-classes were published and bound per fuel (chronicle #271); since microcosm#1113 those per-fuel rows are reviewed measure exclusions, measured on every evaluation and held out of the objective; retained for registry parity."
+          "notes": "ONS Consumer Trends COICOP 04.5 electricity, gas and other fuels, current prices, calendar year, measured on the frame's electricity, gas, liquid fuel and solid fuel spend (María's ruling of 2026-10-22: LPG with liquid, heat in the remainder; the heating fuels are policyengine-uk 2.149.0's inputs, pe-uk#2572). The publisher class also holds 04.5.5 heat energy, which no column carries. Signed out of calibration once the 04.5.1 electricity and 04.5.2 gas sub-classes were published and bound per fuel (chronicle #271); microcosm#1113 made those per-fuel rows reviewed measure exclusions, measured on every evaluation and held out of the objective, and since microcosm#1418 the electricity row is bound again while the gas row stays held out (microcosm#1095); retained for registry parity."
         },
         "axiom": {
           "metric_name": "ons/household_energy_expenditure",
@@ -17401,7 +17500,9 @@
         "policyengine": {
           "metric_name": "ons/household_electricity_expenditure",
           "value_variable": "electricity_consumption",
-          "notes": "ONS Consumer Trends COICOP 04.5.1 electricity, current prices, calendar year, bound on the frame's electricity spend column; replaces the 04.5 total (which carries other fuels the frame does not model) once chronicle #271 published the sub-classes (microcosm#890 F1, chronicle#270). The stage sets the column's level from DESNZ volumes at QEP average prices paid, so the design-weight gap to this row is the published-source residual the receipts record."
+          "notes": "ONS Consumer Trends COICOP 04.5.1 electricity, current prices, calendar year, bound on the frame's electricity spend column; replaces the 04.5 total (which carries other fuels the frame does not model) once chronicle #271 published the sub-classes (microcosm#890 F1, chronicle#270). The stage sets the column's level from this row's calendar-2024 value since microcosm#1418, as the kWh it buys at QEP's United Kingdom average prices once every domestic meter's standing charge comes off, so at design weights the column sits below this row by the standing charges of meters that are not frame households' (about 1 percent). The row binds ONS's calendar-2024 figure on the frame's own 2024 electricity column, declared as the frame's period (measurement_period 2024, require_matching_fact_period), as the road fuel row does (microcosm#1324). The stage's level and the local DESNZ electricity rows sit on 2024 too, and measuring the calendar-2025 figure through the engine would put the engine's projection into the weights: consumer prices, +3.4 percent from 2024 in policyengine-uk 2.162.14, against +2.5 percent in ONS's own row (María's ruling of 2026-10-29, microcosm#1420).",
+          "measurement_period": 2024,
+          "require_matching_fact_period": true
         },
         "axiom": {
           "metric_name": "ons/household_electricity_expenditure",
@@ -17414,6 +17515,7 @@
         "source_concept": "ons.household_expenditure.electricity",
         "entity_name": "household",
         "period_type": "calendar_year",
+        "period_value": 2024,
         "dimension_values": {
           "coicop": "04.5.1",
           "frequency": "annual",
@@ -17439,7 +17541,7 @@
         "policyengine": {
           "metric_name": "ons/household_gas_expenditure",
           "value_variable": "gas_consumption",
-          "notes": "ONS Consumer Trends COICOP 04.5.2 gas, current prices, calendar year, bound on the frame's gas spend column (zero for households without a gas connection); replaces the 04.5 total once chronicle #271 published the sub-classes (microcosm#890 F1, chronicle#270). The stage sets the column's level from DESNZ volumes at QEP average prices paid over the published gas-connected share, so the design-weight gap to this row is the published-source residual the receipts record."
+          "notes": "ONS Consumer Trends COICOP 04.5.2 gas, current prices, calendar year, measured on the frame's gas spend column (zero for households without a gas connection); replaces the 04.5 total once chronicle #271 published the sub-classes (microcosm#890 F1, chronicle#270). The class also counts bottled gas (COICOP 04.5.2.2), which the frame holds in liquid_fuel_consumption, so the row is held out of the objective as a measured diagnostic until that share is netted out (calibration_measure_exclusions.json, microcosm#1095). The stage sets the column's level from DESNZ volumes at QEP average prices paid over the published gas-connected share, so the design-weight gap to this row is the published-source residual the receipts record, bottled gas included."
         },
         "axiom": {
           "metric_name": "ons/household_gas_expenditure",
@@ -17670,7 +17772,7 @@
         "policyengine": {
           "metric_name": "obr/betting_and_gaming_duties",
           "value_variable": "gambling_duty",
-          "notes": "OBR's FY2024-25 betting and gaming duty cash receipts (EFO March 2026 detailed forecast tables, sheet 3.8), measured as the engine's 2024 gambling duty on the frame's stored gambling duty bases (policyengine-uk 2.151.0) (measurement_period 2024, require_matching_fact_period): policyengine-uk charges model year 2024 at the FY2024-25 rates and holds the excise inputs flat after it (PolicyEngine/policyengine-uk#2596), so a later year would read the engine's projection, not the data (María's ruling of 2026-10-23, microcosm#1359). The lcfs_consumption stage levels each gambling duty base to HMRC's FY2024-25 receipts for the duty, or Machine Games Duty's liabilities for the band, over the engine's rate, so the row reads the HMRC receipts back by construction, against OBR's total: the gap is spread betting, which has no published base, and the difference between HMRC's receipts series and OBR's, not the weights. Held out of the objective as a measured diagnostic (calibration_measure_exclusions.json) and measured with tools/diagnose_uk_consumption_taxes.py.",
+          "notes": "OBR's FY2024-25 betting and gaming duty cash receipts (EFO March 2026 detailed forecast tables, sheet 3.8), measured as the engine's 2024 gambling duty on the frame's stored gambling duty bases (policyengine-uk 2.151.0) (measurement_period 2024, require_matching_fact_period): policyengine-uk charges model year 2024 at the FY2024-25 rates and holds the excise inputs flat after it (PolicyEngine/policyengine-uk#2596), so a later year would read the engine's projection, not the data (María's ruling of 2026-10-23, microcosm#1359). The lcfs_consumption stage levels each gambling duty base to HMRC's FY2024-25 receipts for the duty, or Machine Games Duty's liabilities for the band, over the engine's rate, so at prior weights the row reads the HMRC receipts back, against OBR's total: the gap is spread betting, which has no published base, and the difference between HMRC's receipts series and OBR's. Calibration moves the weights of the households that carry the bases and nothing else holds their level (on the 3c0d11b6 national they sat about 12 percent above HMRC's receipts at final weights), so María ruled on 2026-10-28 to bind the row. The national solve measures a declared period only on a stored column or a CGT dated measure, and this row's value is the engine's 2024 duty, so the row is held out of the objective again, a measured diagnostic, until the solve can measure it (calibration_measure_exclusions.json, microcosm#1420); tools/diagnose_uk_consumption_taxes.py measures it. The row is one duty-weighted sum of two separately weighted carriers, National Lottery stakes and betting and gaming stakes, so it can be met by moving either: the next national measures each carrier against HMRC's receipts by duty before any split is bound (María's ruling of 2026-10-29, microcosm#1420).",
           "measurement_period": 2024,
           "require_matching_fact_period": true
         },
@@ -21822,8 +21924,8 @@
       },
       "category_id": "hmrc.survey_of_personal_incomes",
       "label": "Amount by total income band",
-      "uprating_index": "policyengine_uk.household_interest_income_to_dataset_year_then_per_capita_gdp",
-      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period in two legs on the pinned engine's parameters: gov.economic_assumptions.indices.ons.household_interest_income between 1 January 2023 and 1 January 2024, the index of the variable's history up to the dataset's year, then gov.economic_assumptions.indices.obr.per_capita.gdp between 1 January 2024 and 1 January 2025, the index policyengine-uk's dataset projection grows savings_interest_income with (policyengine_uk/data/uprating_indices.yaml; uk-data#541). The SPI donors take the same path: rebased to the dataset's year by the history index, then projected by the engine. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane), with the projection leg moved to the engine's index by her ruling of 2026-10-09 (microcosm#1095). The ONS UKEA HAXV row (ons.savings_interest_income) is a national-accounts D.41 resources concept and stays a measured diagnostic on the exclusion register (microcosm#866)."
+      "uprating_index": "obr.efo_2026_10.savings_income_growth",
+      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by the OBR's forecast growth of savings income (October 2026 EFO, receipts Table 4.5, the savings income row of \"Self-employed income streams: growth rates\"), chained from 2023-24 and weighted over the two fiscal years overlapping calendar 2025, about x1.36 (María's ruling of 2026-10-29, microcosm#1418): the path the Budget's savings costing grows its base by. The engine's own index, ONS household interest income to the dataset's year then GDP per head (x1.192; rulings of 2026-09-22 and 2026-10-09, microcosm#1095), held the interest rows below HMRC's growing tax on savings, so the calibration met the Income Tax on savings rows through other_investment_income (microcosm#1419). The engine still projects the frame's interest by GDP per head (PolicyEngine/policyengine-uk#2638 would move it), so the calibration reweights to the OBR level at 2025. The ONS UKEA HAXV row (ons.savings_interest_income) is a national-accounts D.41 resources concept and stays a measured diagnostic on the exclusion register (microcosm#866)."
     },
     {
       "target_id": "hmrc.spi.savings_interest_income.count_by_total_income_band",
@@ -21886,6 +21988,59 @@
       "label": "Count by total income band",
       "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by HMRC's own projected growth in Income Tax payers for the Table 2.5 band containing this band (Income Tax liabilities statistics, July 2026): the calendar-2025 window of the 2024-25 and 2025-26 projections (3/12 and 9/12) over the 2023-24 outturn, from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): calendar 2025, months to the end of the year for fiscal- and tax-year facts. Taxpayers only (income_tax_annual > 0, the tax on each person's income over the 12 months before their interview, a proxy for the tax year), as SPI Table 3.6 and the area Tables 3.14 and 3.15 are: the tables cover individuals liable to UK income tax (microcosm#1123, taxpayer basis everywhere)."
+    },
+    {
+      "target_id": "hmrc.spi.other_investment_income.amount_by_total_income_band",
+      "family": "hmrc_spi",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.income.other_investment.amount",
+        "groupby_dimension": "hmrc.total_income_band",
+        "filters": [
+          {
+            "concept": "uk.tax.income_tax.amount",
+            "operator": ">",
+            "value": 0
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "hmrc/other_investment_income_income_band",
+          "value_variable": "other_investment_income",
+          "from_entity": "person",
+          "map_to": "household",
+          "groupby_variable": "total_income_after_loss_relief_annual",
+          "band_filter_dimension": "total_income",
+          "notes": "Other investment income of taxpayers by total-income band: SPI Table 3.7's 'Other income' [Note 6], the part of total investment income outside property, bank and building society interest and dividends (SPI's OTHERINV, which the SPI donors carry into other_investment_income). From microcosm#1418 the frame also holds the FRS NS&I and gilt accounts there, and the engine taxes the column as savings income beside savings_interest_income. Banded by person-level total income; band edges come from the fact dimension. No row held the column before, so the ITL Table 2.6 savings tax rows were met mostly through it: on PR A's national (microcosm#1419) it carried about GBP 9.5bn in 2024, where Table 3.7 publishes GBP 5.85bn for 2023-24 (María's ruling of 2026-10-29, microcosm#1418).",
+          "filters": [
+            {
+              "variable": "income_tax_before_winter_fuel_payment_charge_annual",
+              "operator": ">",
+              "value": 0
+            }
+          ]
+        },
+        "axiom": {
+          "metric_name": "hmrc/other_investment_income_income_band",
+          "status": "pending",
+          "value_rule": "uk.income.other_investment.amount"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_other_income_amount",
+        "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person"
+      },
+      "category_id": "hmrc.survey_of_personal_incomes",
+      "label": "Amount by total income band",
+      "uprating_index": "obr.efo_2026_10.savings_income_growth",
+      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by the OBR's forecast growth of savings income, as the Table 3.7 interest rows are (October 2026 EFO, receipts Table 4.5; María's ruling of 2026-10-29, microcosm#1418): the Budget's savings costing grows its whole base, other savings income included, by it. The calibration binds at calendar 2025 under María's ruling of 2026-09-22 (PolicyEngine/chronicle#280 lane). Taxpayers only (income tax above zero), as Table 3.7 counts them. Bound by María's ruling of 2026-10-29 (microcosm#1418), amounts only: Table 3.7's count of taxpayers with other income stays unbound."
     },
     {
       "target_id": "hmrc.spi_region.taxpayers_by_region_12570_15000",
@@ -34066,7 +34221,7 @@
       "category_id": "desnz.domestic_energy",
       "label": "Domestic electricity consumption (kWh)",
       "uprating_index": "desnz.energy_trends.gb_domestic_level",
-      "selector_note": "DESNZ sub-national domestic electricity consumption by local authority, calendar 2024 (non-half-hourly meters read 31 January 2024 to 30 January 2025 and half-hourly meters over calendar 2024, both counted, as reported), levelled onto the lcfs stage's Energy Trends level by one Great Britain factor per fuel (desnz.energy_trends.gb_domestic_level): the cells keep DESNZ's split between areas and bind as a distribution, with Northern Ireland's part of the UK level taken out at its share of DESNZ's sub-national domestic consumption (the Northern Ireland row, all domestic meters, read as published; microcosm#1278). DESNZ publishes no constituency cut: the constituency cells are Microcosm's split of each authority's total over its constituencies by DESNZ's LSOA and data zone figures for the same year (uk/desnz_constituency_energy_facts.json, microcosm#1095), so every authority keeps its total and the two grains agree. The frame reads each household's stored electricity_consumption at the dataset period and turns it back into kWh at the stage's declared QEP prices. The region rows are the authorities' sums and are not bound (microcosm#1207)."
+      "selector_note": "DESNZ sub-national domestic electricity consumption by local authority, calendar 2024 (non-half-hourly meters read 31 January 2024 to 30 January 2025 and half-hourly meters over calendar 2024, both counted, as reported), levelled onto the lcfs stage's level, the kWh ONS household spending on electricity buys at QEP prices (microcosm#1418), by one Great Britain factor per fuel (desnz.energy_trends.gb_domestic_level): the cells keep DESNZ's split between areas and bind as a distribution, with Northern Ireland's part of the UK level taken out at its share of DESNZ's sub-national domestic consumption (the Northern Ireland row, all domestic meters, read as published; microcosm#1278). DESNZ publishes no constituency cut: the constituency cells are Microcosm's split of each authority's total over its constituencies by DESNZ's LSOA and data zone figures for the same year (uk/desnz_constituency_energy_facts.json, microcosm#1095), so every authority keeps its total and the two grains agree. The frame reads each household's stored electricity_consumption at the dataset period and turns it back into kWh at the stage's declared QEP prices. The region rows are the authorities' sums and are not bound (microcosm#1207)."
     },
     {
       "target_id": "desnz.subnational.gas_kwh",
@@ -34239,6 +34394,123 @@
           ]
         }
       }
+    },
+    {
+      "target_id": "hmrc.pension_income.amount",
+      "family": "hmrc",
+      "geography_levels": [
+        "constituency",
+        "local_authority"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.income.pension.amount",
+        "filters": [
+          {
+            "concept": "uk.tax.income_tax.amount",
+            "operator": ">",
+            "value": 0
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "hmrc/pension_income/amount",
+          "value_variable": "total_pension_income_annual",
+          "from_entity": "person",
+          "map_to": "household",
+          "filters": [
+            {
+              "variable": "income_tax_before_winter_fuel_payment_charge_annual",
+              "operator": ">",
+              "value": 0
+            }
+          ]
+        },
+        "axiom": {
+          "metric_name": "hmrc/pension_income/amount",
+          "status": "pending",
+          "value_rule": "uk.income.pension.amount"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_measure_id": [
+          "pension_income_count",
+          "pension_income_mean"
+        ],
+        "record_set_spec_id": [
+          "uk.local_geography.spi_income.by_constituency.v1",
+          "uk.local_geography.spi_income.by_local_authority.v1"
+        ]
+      },
+      "selector_note": "The area amount is the published count times the published mean (count_x_mean): the taxpayers with pension income, private and State Pension together, and their mean. SPI 2023-24 area Tables 3.15 (constituency) and 3.14 (local authority), the latest edition (2024-25 due early 2027). Projected to calendar 2025 by HMRC's own all-ranges growth in Income Tax Liabilities Table 2.5 (total income, calendar-2025 window over tax year 2023-24), 1.5% below the growth the national State Pension and private pension bands show together (x1.134 against x1.151), and then reconciled to those bands summed over every band (fan-out sum bridge), which carries that gap into the cells. The area cells leave out the taxpayers HMRC places in no area, so the bands sit about 3% above them at source, and the reconciliation spreads that over the areas pro rata. An amount carries its count's rounding, so it is deferred where its count is (local_small_cell_rule.json floor_reads), and the bridge still counts the deferred cells at source. The frame reads each taxpayer's private and State Pension over the year (microcosm#1418).",
+      "category_id": "hmrc.tax_statistics",
+      "label": "Amount",
+      "uprating_index": "hmrc.itl_2026.total_income_growth_all_bands"
+    },
+    {
+      "target_id": "hmrc.pension_income.count",
+      "family": "hmrc",
+      "geography_levels": [
+        "constituency",
+        "local_authority"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.income.pension.amount",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "concept": "uk.tax.income_tax.amount",
+            "operator": ">",
+            "value": 0
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "hmrc/pension_income/count",
+          "value_variable": "person_count",
+          "from_entity": "person",
+          "map_to": "household",
+          "filters": [
+            {
+              "variable": "total_pension_income_annual",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "income_tax_before_winter_fuel_payment_charge_annual",
+              "operator": ">",
+              "value": 0
+            }
+          ]
+        },
+        "axiom": {
+          "metric_name": "hmrc/pension_income/count",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_measure_id": "pension_income_count",
+        "record_set_spec_id": [
+          "uk.local_geography.spi_income.by_constituency.v1",
+          "uk.local_geography.spi_income.by_local_authority.v1"
+        ]
+      },
+      "category_id": "hmrc.tax_statistics",
+      "label": "Count",
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_all_bands",
+      "selector_note": "SPI 2023-24 area Tables 3.15 (constituency) and 3.14 (local authority): the taxpayers with pension income, private or State Pension, the latest edition (2024-25 due early 2027). Projected to calendar 2025 by HMRC's own all-ranges growth in Income Tax Liabilities Table 2.5 (taxpayer counts, calendar-2025 window over tax year 2023-24), and bound at HMRC's own area level: no national row counts the union of State Pension and private pension recipients, which the national SPI bands count apart and most taxpayers of State Pension age are both (María's ruling of 2026-10-28, microcosm#1418). HMRC rounds the counts to the thousand, so the cells published at 5,000 or fewer, where the rounding can reach 10%, are deferred by the rounded-thousand floor (local_small_cell_rule.json; María's ruling of 2026-10-29, microcosm#1420) and still count in their leg's control through reconciliation. The frame counts each taxpayer with private or State Pension over the year."
     }
   ],
   "diagnostic_references": {

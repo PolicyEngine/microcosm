@@ -1086,6 +1086,9 @@ def validate_cli_args(args: argparse.Namespace) -> None:
         if getattr(args, "private_rent_localisation", "brma_list") == "none":
             # The release line re-draws private rents from the area's list.
             refused.append("--private-rent-localisation none")
+        if getattr(args, "rfdr_localisation", "area") == "none":
+            # The release line flags its Rural Fuel Duty Relief areas (#1418).
+            refused.append("--rfdr-localisation none")
         target_levels = getattr(args, "target_geographies", None)
         if target_levels is not None and not set(target_levels) & {
             "constituency",

@@ -171,7 +171,12 @@ def _small_cell_deferrals(
     """Deferrals for every active cell a rule's floor puts out of reach.
 
     Read from the first authoring pass, so the rule names the cells by their
-    published values, never by hand; each carries the rule's expiry.
+    published values, never by hand; each carries the rule's expiry. A cell an
+    index moved is read at its value before the index, the published one the
+    rule's floor is set on (the re-review of microcosm#1420, F). A target
+    the rule's ``floor_reads`` maps to another reads the floor off that
+    target's cell for the same area: a pension income amount is HMRC's count
+    times its mean, so it carries the count's rounding (microcosm#1420).
     """
 
     register = json.loads(
@@ -183,6 +188,11 @@ def _small_cell_deferrals(
     )
     if register.get("schema_version") != 1:
         raise ValueError("UK local small-cell rule schema_version must be 1.")
+    published = {
+        str(row["name"]): float(row["value_before_uprating"])
+        for row in membership_report.get("uprating_holds", ())
+        if row.get("value_before_uprating") is not None
+    }
     deferrals: list[AreaSignedDeferral] = []
     for rule in register["rules"]:
         if not uk_small_cell_rule_is_signed(rule):
@@ -191,15 +201,52 @@ def _small_cell_deferrals(
             continue
         floor = float(rule["absolute_floor"])
         prefixes = tuple(str(prefix) for prefix in rule["target_id_prefixes"])
+        floor_reads = {
+            str(target_id): str(read)
+            for target_id, read in (rule.get("floor_reads") or {}).items()
+        }
+        stray = sorted(
+            target_id for target_id in floor_reads if not target_id.startswith(prefixes)
+        )
+        if stray:
+            raise ValueError(
+                f"Small-cell rule {rule['rule_id']}: floor_reads names {stray}, "
+                "which its prefixes do not reach."
+            )
         for target_id, target in sorted(membership_report["targets"].items()):
             if not target_id.startswith(prefixes):
                 continue
+            read_id = floor_reads.get(target_id, target_id)
+            if read_id not in membership_report["targets"]:
+                raise ValueError(
+                    f"Small-cell rule {rule['rule_id']}: {target_id} reads its "
+                    f"floor off {read_id}, which the membership does not carry."
+                )
+            read = membership_report["targets"][read_id]
             for level, payload in sorted(target["geography_levels"].items()):
-                areas = sorted(
+                floor_values = {
+                    str(candidate["geography_id"]): published.get(
+                        str(candidate.get("name")), float(candidate["resolved_value"])
+                    )
+                    for candidate in read["geography_levels"]
+                    .get(level, {})
+                    .get("candidates", ())
+                    if candidate.get("status") == "active"
+                }
+                active = [
                     str(candidate["geography_id"])
                     for candidate in payload["candidates"]
                     if candidate.get("status") == "active"
-                    and abs(float(candidate["resolved_value"])) < floor
+                ]
+                unread = sorted(set(active) - set(floor_values))
+                if unread:
+                    raise ValueError(
+                        f"Small-cell rule {rule['rule_id']}: {target_id} has "
+                        f"active {level} cells whose floor target has none: "
+                        f"{unread[:5]}."
+                    )
+                areas = sorted(
+                    area for area in active if abs(floor_values[area]) < floor
                 )
                 if not areas:
                     continue
@@ -211,7 +258,12 @@ def _small_cell_deferrals(
                         rationale=(
                             f"{rule['reason']} Rule {rule['rule_id']} in "
                             "uk/local_small_cell_rule.json: published value "
-                            f"below {floor:g}; approved by "
+                            + (
+                                f"of {floor_reads[target_id]} "
+                                if target_id in floor_reads
+                                else ""
+                            )
+                            + f"below {floor:g}; approved by "
                             f"{rule['approved_by']} on {rule['approved_on']}."
                         ),
                         area_ids=tuple(areas),
@@ -369,6 +421,7 @@ def _value_operation_by_target_id(contract: Mapping[str, Any]) -> dict[str, str]
         if target_id in {
             "hmrc.self_employment_income.amount",
             "hmrc.employment_income.amount",
+            "hmrc.pension_income.amount",
         }:
             operations[target_id] = "count_x_mean"
         if target_id == "dwp.uc.households_by_area_children_3plus" and declared is None:
@@ -539,6 +592,8 @@ def _area_signed_deferrals(
         "hmrc.employment_income.amount",
         "hmrc.employment_income.count",
         "hmrc.higher_rate_taxpayers.count",
+        "hmrc.pension_income.amount",
+        "hmrc.pension_income.count",
     ):
         add(
             target_id=target_id,

@@ -200,9 +200,11 @@ SPI_DONOR_INCOME_YEAR = 2022
 #: uprating_indices.yaml``). Savings interest's own index is ONS household
 #: interest income, x2.27 from 2022 to 2024 as rates rose, where the
 #: projection's GDP per head gives x1.09. The projection's index applies from
-#: the survey year on, where the engine runs it and the SPI band targets follow
+#: the survey year on, where the engine runs it. The SPI band targets followed
 #: it (``hmrc_uprating.UK_SPI_SAVINGS_INTEREST_INDEX_CONCEPT``, uk-data#541,
-#: microcosm#1095). The engine lockstep test holds both statements.
+#: microcosm#1095) until microcosm#1418 moved them to the OBR's savings income
+#: forecast, so the calibration closes the gap between the two. The engine
+#: lockstep test holds both indices to the engine's.
 SPI_HISTORY_INDEX_DIFFERS_FROM_PROJECTION = {
     "savings_interest_income": "gov.economic_assumptions.indices.obr.per_capita.gdp",
 }
