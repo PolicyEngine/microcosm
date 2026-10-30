@@ -208,3 +208,14 @@ def test_the_factors_read_the_tapes_taxpayers() -> None:
     # Without the flag every record counts, as before.
     _, plain = rebase_spi_donor_savings(_donor(), PUBLISHED)
     assert plain["factors_over"] == "all_records"
+
+
+def test_a_tape_that_does_not_gross_to_the_population_is_left_as_it_is() -> None:
+    # A synthetic tape's weights do not gross to the published amounts, and its
+    # factors would run to millions; the rebase leaves such a column as it is.
+    donor = _donor()
+    donor["FACT"] = donor["FACT"] / 1e6
+    rebased, receipt = rebase_spi_donor_savings(donor, PUBLISHED)
+    for column in PUBLISHED:
+        assert "skipped" in receipt["columns"][column]
+        pd.testing.assert_series_equal(rebased[column], donor[column])

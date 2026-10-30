@@ -230,6 +230,12 @@ SPI_HISTORY_INDEX_DIFFERS_FROM_PROJECTION = {
 SPI_SAVINGS_REBASE_RESOURCE = "hmrc_spi_table_3_7_savings_rows.json"
 #: The prepared tape's taxpayer flag, the records the rebase factors read.
 SPI_DONOR_TAXPAYER_COLUMN = "is_taxpayer"
+#: The band factors assume the tape's FACT weights gross to the taxpayer
+#: population. A column whose banded tape amount is under this share of the
+#: published amount does not (a synthetic tape, whose factors would run to
+#: millions), and is left as it is. The production tape holds about 0.37 of
+#: the published interest and 0.6 of the other income.
+SPI_SAVINGS_REBASE_MINIMUM_GROSSING = 0.1
 SPI_SAVINGS_REBASE_YEAR = 2023
 SPI_SAVINGS_REBASE_CONCEPTS = {
     "savings_interest_income": "hmrc.spi_savings_interest_income_amount",
@@ -1895,8 +1901,10 @@ def rebase_spi_donor_savings(
     income growth then carries both columns to the frame's year
     (``_spi_income_uprating_factors``). A band the tape carries none of has
     nothing to scale and is left as it is, named in the receipt: the
-    production tape carries every band, a synthetic one need not. The receipt
-    carries the factors only.
+    production tape carries every band, a synthetic one need not. A column
+    whose tape does not gross to the population (under
+    SPI_SAVINGS_REBASE_MINIMUM_GROSSING of the published amount) is left as it
+    is, and the receipt says so. The receipt carries the factors only.
     """
 
     bounds = sorted(next(iter(published.values())))
@@ -1930,6 +1938,16 @@ def rebase_spi_donor_savings(
         )
         target = np.asarray([float(by_bound[bound]) for bound in bounds])
         carried = tape > 0.0
+        # Over the bands the tape carries; an empty band is left as it is.
+        if (
+            tape[carried].sum()
+            < SPI_SAVINGS_REBASE_MINIMUM_GROSSING * target[carried].sum()
+        ):
+            receipt["columns"][column] = {
+                "concept": SPI_SAVINGS_REBASE_CONCEPTS[column],
+                "skipped": "the tape's weights do not gross to the published amounts",
+            }
+            continue
         factors = np.where(carried, target / np.where(carried, tape, 1.0), 1.0)
         all_bands = (
             float(target[carried].sum() / tape[carried].sum()) if carried.any() else 1.0
