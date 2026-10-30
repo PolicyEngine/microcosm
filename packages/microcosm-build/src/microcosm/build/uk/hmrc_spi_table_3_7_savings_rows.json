@@ -1,0 +1,1217 @@
+{
+  "schema_version": 1,
+  "country": "uk",
+  "kind": "uk_vendored_ledger_facts",
+  "resource": "hmrc_spi_table_3_7_savings_rows.json",
+  "purpose": "HMRC Survey of Personal Incomes 2023-24, Table 3.7 (income by source and range of total income, taxpayers): the United Kingdom interest from banks and building societies and other income amounts in each of the 13 total-income bands. Consumed by the SPI income stage, which rebases each donor's interest and other income from the 2022-23 tape to these 2023-24 amounts band by band before the OBR's savings income growth carries them to the frame's year (microcosm#1418 savings follow-up).",
+  "consumers": [
+    "uk_runtime.spi_income"
+  ],
+  "planned_consumers": [],
+  "policy": "Rows are copied verbatim from the pinned Chronicle consumer feed named in source_fact_feed; every value is a publisher-stated fact. Consumers declare their own arithmetic on these rows and never edit this file by hand: regenerate it with tools/vendor_uk_ledger_facts.py.",
+  "generator": {
+    "tool": "tools/vendor_uk_ledger_facts.py",
+    "version": 1
+  },
+  "source_fact_feed": {
+    "source_repo": "PolicyEngine/chronicle",
+    "source_commit": "53815b24844cb63c103209f197f9d3d9e2e424a9",
+    "build": "build-bundle --suite uk -> build-consumer-artifact",
+    "artifact_schema_version": "policyengine_ledger.consumer_artifact.v2",
+    "fact_row_count": 1511063,
+    "facts_sha256": "4b0e5c1ad057946407807428a1c79c70d9b14e2f8539ea8fb93524573c026227",
+    "manifest_sha256": "708231c77432d2838bf1ee7d8f3080e49ca0e59edccdd45c36b3405db2cb45fb"
+  },
+  "selections": [
+    {
+      "label": "spi_2023_24_table_3_7_savings_rows",
+      "selector": {
+        "source_name": "hmrc",
+        "source_concept": [
+          "hmrc.spi_savings_interest_income_amount",
+          "hmrc.spi_other_income_amount"
+        ],
+        "groupby_dimension": "hmrc.total_income_band",
+        "geography_id": "K02000001",
+        "period_type": "tax_year",
+        "period_value": [
+          2023
+        ]
+      },
+      "row_count": 26
+    }
+  ],
+  "row_count": 26,
+  "rows": [
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_e5510c38e40c6826732890f1",
+      "semantic_fact_key": "ledger_semantic_fact_v2_a03df98dc27f88f8be477fa5",
+      "source_record_id": "hmrc.spi_2324.table_3_7.band_100000.other_income_amount",
+      "concept": "hmrc.spi_other_income_amount",
+      "measure_id": "other_income_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.spi_2324.table_3_7",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_100000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 100000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "SPI collated Tables 3.1 to 3.11, tax year 2023-24: income by range of total income",
+        "source_file": "Collated_Tables_3_1_to_3_11_2324.ods",
+        "source_sha256": "ad063b06b2bdeef8600dbbb09d48153337a4966f8c7eea50df7a2e0304ebd73e",
+        "vintage": "spi_2023_24",
+        "raw_r2_key": "raw/hmrc/hmrc-spi-income-bands-2023-24/2024/ad063b06b2bdeef8600dbbb09d48153337a4966f8c7eea50df7a2e0304ebd73e/Collated_Tables_3_1_to_3_11_2324.ods"
+      },
+      "value": 455000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_4587a245d3c10ba59c5bfa6e",
+      "semantic_fact_key": "ledger_semantic_fact_v2_985c94cce353d872448c574e",
+      "source_record_id": "hmrc.spi_2324.table_3_7.band_1000000.other_income_amount",
+      "concept": "hmrc.spi_other_income_amount",
+      "measure_id": "other_income_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.spi_2324.table_3_7",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_1000000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 1000000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "SPI collated Tables 3.1 to 3.11, tax year 2023-24: income by range of total income",
+        "source_file": "Collated_Tables_3_1_to_3_11_2324.ods",
+        "source_sha256": "ad063b06b2bdeef8600dbbb09d48153337a4966f8c7eea50df7a2e0304ebd73e",
+        "vintage": "spi_2023_24",
+        "raw_r2_key": "raw/hmrc/hmrc-spi-income-bands-2023-24/2024/ad063b06b2bdeef8600dbbb09d48153337a4966f8c7eea50df7a2e0304ebd73e/Collated_Tables_3_1_to_3_11_2324.ods"
+      },
+      "value": 1790000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_2717645cfa430002f67162c4",
+      "semantic_fact_key": "ledger_semantic_fact_v2_b414f94aba1bea525e7006f5",
+      "source_record_id": "hmrc.spi_2324.table_3_7.band_12570.other_income_amount",
+      "concept": "hmrc.spi_other_income_amount",
+      "measure_id": "other_income_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.spi_2324.table_3_7",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_12570",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 12570
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "SPI collated Tables 3.1 to 3.11, tax year 2023-24: income by range of total income",
+        "source_file": "Collated_Tables_3_1_to_3_11_2324.ods",
+        "source_sha256": "ad063b06b2bdeef8600dbbb09d48153337a4966f8c7eea50df7a2e0304ebd73e",
+        "vintage": "spi_2023_24",
+        "raw_r2_key": "raw/hmrc/hmrc-spi-income-bands-2023-24/2024/ad063b06b2bdeef8600dbbb09d48153337a4966f8c7eea50df7a2e0304ebd73e/Collated_Tables_3_1_to_3_11_2324.ods"
+      },
+      "value": 6000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_c83a328cd251998df1d53dd8",
+      "semantic_fact_key": "ledger_semantic_fact_v2_1b8445c61dc70638ebd2c74c",
+      "source_record_id": "hmrc.spi_2324.table_3_7.band_15000.other_income_amount",
+      "concept": "hmrc.spi_other_income_amount",
+      "measure_id": "other_income_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.spi_2324.table_3_7",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_15000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 15000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "SPI collated Tables 3.1 to 3.11, tax year 2023-24: income by range of total income",
+        "source_file": "Collated_Tables_3_1_to_3_11_2324.ods",
+        "source_sha256": "ad063b06b2bdeef8600dbbb09d48153337a4966f8c7eea50df7a2e0304ebd73e",
+        "vintage": "spi_2023_24",
+        "raw_r2_key": "raw/hmrc/hmrc-spi-income-bands-2023-24/2024/ad063b06b2bdeef8600dbbb09d48153337a4966f8c7eea50df7a2e0304ebd73e/Collated_Tables_3_1_to_3_11_2324.ods"
+      },
+      "value": 33000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_75e68302293f837179617425",
+      "semantic_fact_key": "ledger_semantic_fact_v2_92ae7dc34ae10b892c099284",
+      "source_record_id": "hmrc.spi_2324.table_3_7.band_150000.other_income_amount",
+      "concept": "hmrc.spi_other_income_amount",
+      "measure_id": "other_income_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.spi_2324.table_3_7",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_150000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 150000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "SPI collated Tables 3.1 to 3.11, tax year 2023-24: income by range of total income",
+        "source_file": "Collated_Tables_3_1_to_3_11_2324.ods",
+        "source_sha256": "ad063b06b2bdeef8600dbbb09d48153337a4966f8c7eea50df7a2e0304ebd73e",
+        "vintage": "spi_2023_24",
+        "raw_r2_key": "raw/hmrc/hmrc-spi-income-bands-2023-24/2024/ad063b06b2bdeef8600dbbb09d48153337a4966f8c7eea50df7a2e0304ebd73e/Collated_Tables_3_1_to_3_11_2324.ods"
+      },
+      "value": 322000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_8573ad2cda65bae28ddde217",
+      "semantic_fact_key": "ledger_semantic_fact_v2_0577f10c1b94d5cbecb0534e",
+      "source_record_id": "hmrc.spi_2324.table_3_7.band_20000.other_income_amount",
+      "concept": "hmrc.spi_other_income_amount",
+      "measure_id": "other_income_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.spi_2324.table_3_7",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_20000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 20000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "SPI collated Tables 3.1 to 3.11, tax year 2023-24: income by range of total income",
+        "source_file": "Collated_Tables_3_1_to_3_11_2324.ods",
+        "source_sha256": "ad063b06b2bdeef8600dbbb09d48153337a4966f8c7eea50df7a2e0304ebd73e",
+        "vintage": "spi_2023_24",
+        "raw_r2_key": "raw/hmrc/hmrc-spi-income-bands-2023-24/2024/ad063b06b2bdeef8600dbbb09d48153337a4966f8c7eea50df7a2e0304ebd73e/Collated_Tables_3_1_to_3_11_2324.ods"
+      },
+      "value": 157000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_e8bdf778e214cd826bd17df2",
+      "semantic_fact_key": "ledger_semantic_fact_v2_7f0ee30171c114dd081beccf",
+      "source_record_id": "hmrc.spi_2324.table_3_7.band_200000.other_income_amount",
+      "concept": "hmrc.spi_other_income_amount",
+      "measure_id": "other_income_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.spi_2324.table_3_7",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_200000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 200000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "SPI collated Tables 3.1 to 3.11, tax year 2023-24: income by range of total income",
+        "source_file": "Collated_Tables_3_1_to_3_11_2324.ods",
+        "source_sha256": "ad063b06b2bdeef8600dbbb09d48153337a4966f8c7eea50df7a2e0304ebd73e",
+        "vintage": "spi_2023_24",
+        "raw_r2_key": "raw/hmrc/hmrc-spi-income-bands-2023-24/2024/ad063b06b2bdeef8600dbbb09d48153337a4966f8c7eea50df7a2e0304ebd73e/Collated_Tables_3_1_to_3_11_2324.ods"
+      },
+      "value": 499000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_93e6a9a54395ba63cfbc019f",
+      "semantic_fact_key": "ledger_semantic_fact_v2_0b8fdecf9e2abefa1317682b",
+      "source_record_id": "hmrc.spi_2324.table_3_7.band_30000.other_income_amount",
+      "concept": "hmrc.spi_other_income_amount",
+      "measure_id": "other_income_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.spi_2324.table_3_7",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_30000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 30000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "SPI collated Tables 3.1 to 3.11, tax year 2023-24: income by range of total income",
+        "source_file": "Collated_Tables_3_1_to_3_11_2324.ods",
+        "source_sha256": "ad063b06b2bdeef8600dbbb09d48153337a4966f8c7eea50df7a2e0304ebd73e",
+        "vintage": "spi_2023_24",
+        "raw_r2_key": "raw/hmrc/hmrc-spi-income-bands-2023-24/2024/ad063b06b2bdeef8600dbbb09d48153337a4966f8c7eea50df7a2e0304ebd73e/Collated_Tables_3_1_to_3_11_2324.ods"
+      },
+      "value": 190000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_678dce88d0d33cf807237111",
+      "semantic_fact_key": "ledger_semantic_fact_v2_14476dce35fafee69ee1e6a1",
+      "source_record_id": "hmrc.spi_2324.table_3_7.band_300000.other_income_amount",
+      "concept": "hmrc.spi_other_income_amount",
+      "measure_id": "other_income_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.spi_2324.table_3_7",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_300000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 300000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "SPI collated Tables 3.1 to 3.11, tax year 2023-24: income by range of total income",
+        "source_file": "Collated_Tables_3_1_to_3_11_2324.ods",
+        "source_sha256": "ad063b06b2bdeef8600dbbb09d48153337a4966f8c7eea50df7a2e0304ebd73e",
+        "vintage": "spi_2023_24",
+        "raw_r2_key": "raw/hmrc/hmrc-spi-income-bands-2023-24/2024/ad063b06b2bdeef8600dbbb09d48153337a4966f8c7eea50df7a2e0304ebd73e/Collated_Tables_3_1_to_3_11_2324.ods"
+      },
+      "value": 642000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_9c1b58625019a01860f2e32d",
+      "semantic_fact_key": "ledger_semantic_fact_v2_523120d087c5cbdb6b343d44",
+      "source_record_id": "hmrc.spi_2324.table_3_7.band_40000.other_income_amount",
+      "concept": "hmrc.spi_other_income_amount",
+      "measure_id": "other_income_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.spi_2324.table_3_7",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_40000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 40000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "SPI collated Tables 3.1 to 3.11, tax year 2023-24: income by range of total income",
+        "source_file": "Collated_Tables_3_1_to_3_11_2324.ods",
+        "source_sha256": "ad063b06b2bdeef8600dbbb09d48153337a4966f8c7eea50df7a2e0304ebd73e",
+        "vintage": "spi_2023_24",
+        "raw_r2_key": "raw/hmrc/hmrc-spi-income-bands-2023-24/2024/ad063b06b2bdeef8600dbbb09d48153337a4966f8c7eea50df7a2e0304ebd73e/Collated_Tables_3_1_to_3_11_2324.ods"
+      },
+      "value": 216000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_e718979f8b1e09d15cffce7e",
+      "semantic_fact_key": "ledger_semantic_fact_v2_0d0e169580b0ac5e5513ce4e",
+      "source_record_id": "hmrc.spi_2324.table_3_7.band_50000.other_income_amount",
+      "concept": "hmrc.spi_other_income_amount",
+      "measure_id": "other_income_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.spi_2324.table_3_7",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_50000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 50000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "SPI collated Tables 3.1 to 3.11, tax year 2023-24: income by range of total income",
+        "source_file": "Collated_Tables_3_1_to_3_11_2324.ods",
+        "source_sha256": "ad063b06b2bdeef8600dbbb09d48153337a4966f8c7eea50df7a2e0304ebd73e",
+        "vintage": "spi_2023_24",
+        "raw_r2_key": "raw/hmrc/hmrc-spi-income-bands-2023-24/2024/ad063b06b2bdeef8600dbbb09d48153337a4966f8c7eea50df7a2e0304ebd73e/Collated_Tables_3_1_to_3_11_2324.ods"
+      },
+      "value": 377000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_e7005d9bc7c85c2f94930ad0",
+      "semantic_fact_key": "ledger_semantic_fact_v2_1075f7c5b2ce05bea3dd9e7f",
+      "source_record_id": "hmrc.spi_2324.table_3_7.band_500000.other_income_amount",
+      "concept": "hmrc.spi_other_income_amount",
+      "measure_id": "other_income_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.spi_2324.table_3_7",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_500000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 500000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "SPI collated Tables 3.1 to 3.11, tax year 2023-24: income by range of total income",
+        "source_file": "Collated_Tables_3_1_to_3_11_2324.ods",
+        "source_sha256": "ad063b06b2bdeef8600dbbb09d48153337a4966f8c7eea50df7a2e0304ebd73e",
+        "vintage": "spi_2023_24",
+        "raw_r2_key": "raw/hmrc/hmrc-spi-income-bands-2023-24/2024/ad063b06b2bdeef8600dbbb09d48153337a4966f8c7eea50df7a2e0304ebd73e/Collated_Tables_3_1_to_3_11_2324.ods"
+      },
+      "value": 744000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_b28e1ec629932e2237eee742",
+      "semantic_fact_key": "ledger_semantic_fact_v2_e2edc5ca161535de4675b008",
+      "source_record_id": "hmrc.spi_2324.table_3_7.band_70000.other_income_amount",
+      "concept": "hmrc.spi_other_income_amount",
+      "measure_id": "other_income_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.spi_2324.table_3_7",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_70000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 70000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "SPI collated Tables 3.1 to 3.11, tax year 2023-24: income by range of total income",
+        "source_file": "Collated_Tables_3_1_to_3_11_2324.ods",
+        "source_sha256": "ad063b06b2bdeef8600dbbb09d48153337a4966f8c7eea50df7a2e0304ebd73e",
+        "vintage": "spi_2023_24",
+        "raw_r2_key": "raw/hmrc/hmrc-spi-income-bands-2023-24/2024/ad063b06b2bdeef8600dbbb09d48153337a4966f8c7eea50df7a2e0304ebd73e/Collated_Tables_3_1_to_3_11_2324.ods"
+      },
+      "value": 415000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_0ef4a95b830d9e4e41b15e02",
+      "semantic_fact_key": "ledger_semantic_fact_v2_4a4569704cc5a077919d551c",
+      "source_record_id": "hmrc.spi_2324.table_3_7.band_100000.savings_interest_amount",
+      "concept": "hmrc.spi_savings_interest_income_amount",
+      "measure_id": "savings_interest_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.spi_2324.table_3_7",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_100000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 100000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "SPI collated Tables 3.1 to 3.11, tax year 2023-24: income by range of total income",
+        "source_file": "Collated_Tables_3_1_to_3_11_2324.ods",
+        "source_sha256": "ad063b06b2bdeef8600dbbb09d48153337a4966f8c7eea50df7a2e0304ebd73e",
+        "vintage": "spi_2023_24",
+        "raw_r2_key": "raw/hmrc/hmrc-spi-income-bands-2023-24/2024/ad063b06b2bdeef8600dbbb09d48153337a4966f8c7eea50df7a2e0304ebd73e/Collated_Tables_3_1_to_3_11_2324.ods"
+      },
+      "value": 1260000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_4f8e330da2fcd6774dd7ea1a",
+      "semantic_fact_key": "ledger_semantic_fact_v2_d70e23809e18fd573e088875",
+      "source_record_id": "hmrc.spi_2324.table_3_7.band_1000000.savings_interest_amount",
+      "concept": "hmrc.spi_savings_interest_income_amount",
+      "measure_id": "savings_interest_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.spi_2324.table_3_7",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_1000000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 1000000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "SPI collated Tables 3.1 to 3.11, tax year 2023-24: income by range of total income",
+        "source_file": "Collated_Tables_3_1_to_3_11_2324.ods",
+        "source_sha256": "ad063b06b2bdeef8600dbbb09d48153337a4966f8c7eea50df7a2e0304ebd73e",
+        "vintage": "spi_2023_24",
+        "raw_r2_key": "raw/hmrc/hmrc-spi-income-bands-2023-24/2024/ad063b06b2bdeef8600dbbb09d48153337a4966f8c7eea50df7a2e0304ebd73e/Collated_Tables_3_1_to_3_11_2324.ods"
+      },
+      "value": 1240000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_bd65aa884ad89d9837551b0e",
+      "semantic_fact_key": "ledger_semantic_fact_v2_1fd7e186cfe18dc8101d732e",
+      "source_record_id": "hmrc.spi_2324.table_3_7.band_12570.savings_interest_amount",
+      "concept": "hmrc.spi_savings_interest_income_amount",
+      "measure_id": "savings_interest_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.spi_2324.table_3_7",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_12570",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 12570
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "SPI collated Tables 3.1 to 3.11, tax year 2023-24: income by range of total income",
+        "source_file": "Collated_Tables_3_1_to_3_11_2324.ods",
+        "source_sha256": "ad063b06b2bdeef8600dbbb09d48153337a4966f8c7eea50df7a2e0304ebd73e",
+        "vintage": "spi_2023_24",
+        "raw_r2_key": "raw/hmrc/hmrc-spi-income-bands-2023-24/2024/ad063b06b2bdeef8600dbbb09d48153337a4966f8c7eea50df7a2e0304ebd73e/Collated_Tables_3_1_to_3_11_2324.ods"
+      },
+      "value": 274000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_34ecf84ec234f3525db59f91",
+      "semantic_fact_key": "ledger_semantic_fact_v2_b71d465fa22f287f801e1600",
+      "source_record_id": "hmrc.spi_2324.table_3_7.band_15000.savings_interest_amount",
+      "concept": "hmrc.spi_savings_interest_income_amount",
+      "measure_id": "savings_interest_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.spi_2324.table_3_7",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_15000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 15000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "SPI collated Tables 3.1 to 3.11, tax year 2023-24: income by range of total income",
+        "source_file": "Collated_Tables_3_1_to_3_11_2324.ods",
+        "source_sha256": "ad063b06b2bdeef8600dbbb09d48153337a4966f8c7eea50df7a2e0304ebd73e",
+        "vintage": "spi_2023_24",
+        "raw_r2_key": "raw/hmrc/hmrc-spi-income-bands-2023-24/2024/ad063b06b2bdeef8600dbbb09d48153337a4966f8c7eea50df7a2e0304ebd73e/Collated_Tables_3_1_to_3_11_2324.ods"
+      },
+      "value": 1370000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_89bdbe74eda3cee8844ad898",
+      "semantic_fact_key": "ledger_semantic_fact_v2_7455ca917af359f592f53baa",
+      "source_record_id": "hmrc.spi_2324.table_3_7.band_150000.savings_interest_amount",
+      "concept": "hmrc.spi_savings_interest_income_amount",
+      "measure_id": "savings_interest_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.spi_2324.table_3_7",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_150000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 150000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "SPI collated Tables 3.1 to 3.11, tax year 2023-24: income by range of total income",
+        "source_file": "Collated_Tables_3_1_to_3_11_2324.ods",
+        "source_sha256": "ad063b06b2bdeef8600dbbb09d48153337a4966f8c7eea50df7a2e0304ebd73e",
+        "vintage": "spi_2023_24",
+        "raw_r2_key": "raw/hmrc/hmrc-spi-income-bands-2023-24/2024/ad063b06b2bdeef8600dbbb09d48153337a4966f8c7eea50df7a2e0304ebd73e/Collated_Tables_3_1_to_3_11_2324.ods"
+      },
+      "value": 650000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_752ea2329d313046c61bf1e2",
+      "semantic_fact_key": "ledger_semantic_fact_v2_5565e9911ead200a021feed5",
+      "source_record_id": "hmrc.spi_2324.table_3_7.band_20000.savings_interest_amount",
+      "concept": "hmrc.spi_savings_interest_income_amount",
+      "measure_id": "savings_interest_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.spi_2324.table_3_7",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_20000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 20000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "SPI collated Tables 3.1 to 3.11, tax year 2023-24: income by range of total income",
+        "source_file": "Collated_Tables_3_1_to_3_11_2324.ods",
+        "source_sha256": "ad063b06b2bdeef8600dbbb09d48153337a4966f8c7eea50df7a2e0304ebd73e",
+        "vintage": "spi_2023_24",
+        "raw_r2_key": "raw/hmrc/hmrc-spi-income-bands-2023-24/2024/ad063b06b2bdeef8600dbbb09d48153337a4966f8c7eea50df7a2e0304ebd73e/Collated_Tables_3_1_to_3_11_2324.ods"
+      },
+      "value": 3130000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_02f3a7f7b7097a3fd455b702",
+      "semantic_fact_key": "ledger_semantic_fact_v2_319901210d0afbf0de06c224",
+      "source_record_id": "hmrc.spi_2324.table_3_7.band_200000.savings_interest_amount",
+      "concept": "hmrc.spi_savings_interest_income_amount",
+      "measure_id": "savings_interest_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.spi_2324.table_3_7",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_200000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 200000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "SPI collated Tables 3.1 to 3.11, tax year 2023-24: income by range of total income",
+        "source_file": "Collated_Tables_3_1_to_3_11_2324.ods",
+        "source_sha256": "ad063b06b2bdeef8600dbbb09d48153337a4966f8c7eea50df7a2e0304ebd73e",
+        "vintage": "spi_2023_24",
+        "raw_r2_key": "raw/hmrc/hmrc-spi-income-bands-2023-24/2024/ad063b06b2bdeef8600dbbb09d48153337a4966f8c7eea50df7a2e0304ebd73e/Collated_Tables_3_1_to_3_11_2324.ods"
+      },
+      "value": 733000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_d341b6820714e38a12ac4b1c",
+      "semantic_fact_key": "ledger_semantic_fact_v2_1fb51f0e371951a3d0d67dc5",
+      "source_record_id": "hmrc.spi_2324.table_3_7.band_30000.savings_interest_amount",
+      "concept": "hmrc.spi_savings_interest_income_amount",
+      "measure_id": "savings_interest_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.spi_2324.table_3_7",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_30000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 30000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "SPI collated Tables 3.1 to 3.11, tax year 2023-24: income by range of total income",
+        "source_file": "Collated_Tables_3_1_to_3_11_2324.ods",
+        "source_sha256": "ad063b06b2bdeef8600dbbb09d48153337a4966f8c7eea50df7a2e0304ebd73e",
+        "vintage": "spi_2023_24",
+        "raw_r2_key": "raw/hmrc/hmrc-spi-income-bands-2023-24/2024/ad063b06b2bdeef8600dbbb09d48153337a4966f8c7eea50df7a2e0304ebd73e/Collated_Tables_3_1_to_3_11_2324.ods"
+      },
+      "value": 2530000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_8fc8bdb298f62c90d7af57b8",
+      "semantic_fact_key": "ledger_semantic_fact_v2_cf9ed3d017bb0c21d24bd5ce",
+      "source_record_id": "hmrc.spi_2324.table_3_7.band_300000.savings_interest_amount",
+      "concept": "hmrc.spi_savings_interest_income_amount",
+      "measure_id": "savings_interest_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.spi_2324.table_3_7",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_300000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 300000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "SPI collated Tables 3.1 to 3.11, tax year 2023-24: income by range of total income",
+        "source_file": "Collated_Tables_3_1_to_3_11_2324.ods",
+        "source_sha256": "ad063b06b2bdeef8600dbbb09d48153337a4966f8c7eea50df7a2e0304ebd73e",
+        "vintage": "spi_2023_24",
+        "raw_r2_key": "raw/hmrc/hmrc-spi-income-bands-2023-24/2024/ad063b06b2bdeef8600dbbb09d48153337a4966f8c7eea50df7a2e0304ebd73e/Collated_Tables_3_1_to_3_11_2324.ods"
+      },
+      "value": 673000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_367d1c49bfab3c640463ded8",
+      "semantic_fact_key": "ledger_semantic_fact_v2_88d6fe5ff5e512fd0baae89c",
+      "source_record_id": "hmrc.spi_2324.table_3_7.band_40000.savings_interest_amount",
+      "concept": "hmrc.spi_savings_interest_income_amount",
+      "measure_id": "savings_interest_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.spi_2324.table_3_7",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_40000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 40000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "SPI collated Tables 3.1 to 3.11, tax year 2023-24: income by range of total income",
+        "source_file": "Collated_Tables_3_1_to_3_11_2324.ods",
+        "source_sha256": "ad063b06b2bdeef8600dbbb09d48153337a4966f8c7eea50df7a2e0304ebd73e",
+        "vintage": "spi_2023_24",
+        "raw_r2_key": "raw/hmrc/hmrc-spi-income-bands-2023-24/2024/ad063b06b2bdeef8600dbbb09d48153337a4966f8c7eea50df7a2e0304ebd73e/Collated_Tables_3_1_to_3_11_2324.ods"
+      },
+      "value": 1870000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_819d2f77e45b3ba5a7907a4a",
+      "semantic_fact_key": "ledger_semantic_fact_v2_6f58eabf6f4f5ca53a106611",
+      "source_record_id": "hmrc.spi_2324.table_3_7.band_50000.savings_interest_amount",
+      "concept": "hmrc.spi_savings_interest_income_amount",
+      "measure_id": "savings_interest_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.spi_2324.table_3_7",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_50000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 50000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "SPI collated Tables 3.1 to 3.11, tax year 2023-24: income by range of total income",
+        "source_file": "Collated_Tables_3_1_to_3_11_2324.ods",
+        "source_sha256": "ad063b06b2bdeef8600dbbb09d48153337a4966f8c7eea50df7a2e0304ebd73e",
+        "vintage": "spi_2023_24",
+        "raw_r2_key": "raw/hmrc/hmrc-spi-income-bands-2023-24/2024/ad063b06b2bdeef8600dbbb09d48153337a4966f8c7eea50df7a2e0304ebd73e/Collated_Tables_3_1_to_3_11_2324.ods"
+      },
+      "value": 2340000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_5d68b2314b5c54a09f274733",
+      "semantic_fact_key": "ledger_semantic_fact_v2_66db03562553db442bf55fd1",
+      "source_record_id": "hmrc.spi_2324.table_3_7.band_500000.savings_interest_amount",
+      "concept": "hmrc.spi_savings_interest_income_amount",
+      "measure_id": "savings_interest_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.spi_2324.table_3_7",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_500000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 500000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "SPI collated Tables 3.1 to 3.11, tax year 2023-24: income by range of total income",
+        "source_file": "Collated_Tables_3_1_to_3_11_2324.ods",
+        "source_sha256": "ad063b06b2bdeef8600dbbb09d48153337a4966f8c7eea50df7a2e0304ebd73e",
+        "vintage": "spi_2023_24",
+        "raw_r2_key": "raw/hmrc/hmrc-spi-income-bands-2023-24/2024/ad063b06b2bdeef8600dbbb09d48153337a4966f8c7eea50df7a2e0304ebd73e/Collated_Tables_3_1_to_3_11_2324.ods"
+      },
+      "value": 653000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_ab8a5ac6dd4ba75e194133f1",
+      "semantic_fact_key": "ledger_semantic_fact_v2_0cf642d6a0e4224ef468b28c",
+      "source_record_id": "hmrc.spi_2324.table_3_7.band_70000.savings_interest_amount",
+      "concept": "hmrc.spi_savings_interest_income_amount",
+      "measure_id": "savings_interest_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.spi_2324.table_3_7",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_70000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 70000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "SPI collated Tables 3.1 to 3.11, tax year 2023-24: income by range of total income",
+        "source_file": "Collated_Tables_3_1_to_3_11_2324.ods",
+        "source_sha256": "ad063b06b2bdeef8600dbbb09d48153337a4966f8c7eea50df7a2e0304ebd73e",
+        "vintage": "spi_2023_24",
+        "raw_r2_key": "raw/hmrc/hmrc-spi-income-bands-2023-24/2024/ad063b06b2bdeef8600dbbb09d48153337a4966f8c7eea50df7a2e0304ebd73e/Collated_Tables_3_1_to_3_11_2324.ods"
+      },
+      "value": 1620000000
+    }
+  ]
+}

@@ -32,10 +32,11 @@ def test_spi_band_targets_move_by_the_engines_dataset_projection() -> None:
     (microcosm#1418); Table 3.10's amounts move by their count index times the
     engine's index for self-employment income (the independent review of
     microcosm#1420); and a measure derived from an input moves by the input's
-    index. The SPI donors still reach the dataset's year by savings interest's
-    own history index and run on the projection's from there
-    (``spi_income.SPI_HISTORY_INDEX_DIFFERS_FROM_PROJECTION``), so both are
-    held to the engine's."""
+    index. The SPI donors reach the dataset's year with interest and other
+    income on SPI's 2023-24 bands and the OBR's savings income growth (the
+    microcosm#1418 savings follow-up) and run on the projection's index from
+    there (``spi_income.SPI_HISTORY_INDEX_DIFFERS_FROM_PROJECTION``), so the
+    projection's index is held to the engine's."""
 
     import json
     from importlib.resources import files
@@ -71,7 +72,8 @@ def test_spi_band_targets_move_by_the_engines_dataset_projection() -> None:
     }
     variables = policyengine_uk.CountryTaxBenefitSystem().variables
     assert SPI_HISTORY_INDEX_DIFFERS_FROM_PROJECTION == {
-        "savings_interest_income": UK_SPI_SAVINGS_INTEREST_PROJECTION_PARAMETER
+        "savings_interest_income": UK_SPI_SAVINGS_INTEREST_PROJECTION_PARAMETER,
+        "other_investment_income": projection["other_investment_income"],
     }
     assert (
         UK_SPI_SAVINGS_INTEREST_PROJECTION_PARAMETER

@@ -1,6 +1,8 @@
 """Tests split from packages/microcosm-build/tests/test_uk_spi_income.py."""
 
 # ruff: noqa: F403, F405
+from microcosm.build.uk_runtime.hmrc_uprating import uk_obr_savings_income_level
+from microcosm.build.uk_runtime.spi_income import SPI_SAVINGS_REBASE_CONCEPTS
 from test_support.microcosm_build.uk_spi_income import *
 
 
@@ -69,6 +71,15 @@ def test_spi_rebases_income_before_frs_fill_and_preserves_child_inputs(
         lambda year: (factors, {"from_period": 2022, "to_period": year}),
         raising=False,
     )
+    # The donor savings rebase runs on the prepared tape when the stage rebases
+    # to the build year, and only then (microcosm#1418 savings follow-up).
+    rebased = []
+
+    def rebase(donor, published):
+        rebased.append(sorted(published))
+        return donor, {"rebased": True}
+
+    monkeypatch.setattr(spi_income, "rebase_spi_donor_savings", rebase)
     options = dict(
         seed=9,
         n_estimators=3,
@@ -77,6 +88,7 @@ def test_spi_rebases_income_before_frs_fill_and_preserves_child_inputs(
         allow_in_sample_reference=True,
     )
     reference = impute_uk_spi_income_support(support, donor_path, **options)
+    assert rebased == []
     result = impute_uk_spi_income_support(
         support,
         donor_path,
@@ -99,7 +111,12 @@ def test_spi_rebases_income_before_frs_fill_and_preserves_child_inputs(
         result.person.loc[base, "dividend_income"],
         person.loc[base, "dividend_income"],
     )
-    assert result.income_uprating == {"from_period": 2022, "to_period": 2024}
+    assert rebased == [sorted(SPI_SAVINGS_REBASE_CONCEPTS)]
+    assert result.income_uprating == {
+        "from_period": 2022,
+        "to_period": 2024,
+        "savings_rebase": {"rebased": True},
+    }
 
 
 def test_child_exclusion_keeps_the_other_recipients_draws(
@@ -702,6 +719,10 @@ def test_spi_uprating_uses_actual_engine_indices_and_explicit_nominal_holdouts()
         for column, row in receipt["columns"].items()
         if row["basis"] == "held_nominal"
     } == nominal
+    # Interest and other income are rebased to SPI's 2023-24 bands first and
+    # grow on the OBR's savings income path from there (microcosm#1418 savings
+    # follow-up).
+    obr_level, _ = uk_obr_savings_income_level(2023, 2024)
     for column, row in receipt["columns"].items():
         if column in nominal:
             assert row == {
@@ -710,6 +731,10 @@ def test_spi_uprating_uses_actual_engine_indices_and_explicit_nominal_holdouts()
                 "factor": 1.0,
                 "basis": "held_nominal",
             }
+        elif column in SPI_SAVINGS_REBASE_CONCEPTS:
+            assert row["basis"] == "spi_published_bands_then_obr_savings_income"
+            assert row["from_period"] == 2023
+            assert factors[column] == pytest.approx(obr_level)
         else:
             path, ratio = expected[row["variable"]]
             assert row["index"] == "gov.economic_assumptions.indices." + path
@@ -769,11 +794,13 @@ def test_spi_rebasing_index_is_the_projections_except_where_named() -> None:
         else:
             assert row["index"] == projection[row["variable"]], column
             assert "dataset_projection_index" not in row
-    savings = receipt["columns"]["savings_interest_income"]
-    assert savings["index"] == (
-        "gov.economic_assumptions.indices.ons.household_interest_income"
-    )
-    assert savings["factor"] == pytest.approx(2.2692, abs=1e-4)
+    # Interest and other income reach the frame's year on SPI's own path, the
+    # 2023-24 bands then the OBR's savings income growth (+35.0% in 2024-25),
+    # and run on the projection's GDP per head from there.
+    for column in SPI_SAVINGS_REBASE_CONCEPTS:
+        savings = receipt["columns"][column]
+        assert savings["index"] == "obr.efo_2026_10.savings_income_growth"
+        assert savings["factor"] == pytest.approx(1.3496108, abs=1e-7)
 
 
 def _zero_taxable_income(person: pd.DataFrame, rows) -> None:

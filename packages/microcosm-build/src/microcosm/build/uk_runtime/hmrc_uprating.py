@@ -1368,6 +1368,46 @@ def _savings_income_level(
     return value
 
 
+def uk_obr_savings_income_level(
+    opening_year: int,
+    year: int,
+    *,
+    rows: list[Mapping[str, Any]] | None = None,
+) -> tuple[float, dict[int, tuple[float, str]]]:
+    """Savings income in fiscal ``year`` over fiscal ``opening_year``.
+
+    The OBR's growth rates chained between the two fiscal years, read from
+    the vendored resource the SPI savings rows grow by; returns the level and
+    each year's growth with its source record. The SPI income stage rebases
+    its donors' savings to the frame's year on it (microcosm#1418 savings
+    follow-up). A year the resource does not carry is refused.
+    """
+
+    if rows is None:
+        rows = list(
+            vendored_rows(
+                UK_OBR_SAVINGS_INCOME_GROWTH_RESOURCE,
+                concept=UK_OBR_SAVINGS_INCOME_GROWTH_CONCEPT,
+                period_type="fiscal_year",
+            )
+        )
+    if int(year) < int(opening_year):
+        raise ValueError(
+            f"The OBR savings income path runs forward only: fiscal year {year} "
+            f"is before {opening_year}."
+        )
+    growth = _obr_savings_income_growth(rows)
+    used: dict[int, tuple[float, str]] = {}
+    level = _savings_income_level(
+        growth,
+        opening_year=int(opening_year),
+        year=int(year),
+        spec_name="SPI donor savings",
+        used=used,
+    )
+    return level, used
+
+
 def align_hmrc_row_by_obr_savings_income_growth(
     reference: LedgerTargetReference,
     registry: TargetRegistry,
@@ -1534,4 +1574,5 @@ __all__ = [
     "installed_engine_version",
     "live_engine_parameter_value",
     "hmrc_uprating_appliers",
+    "uk_obr_savings_income_level",
 ]

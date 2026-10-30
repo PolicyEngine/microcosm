@@ -1726,6 +1726,33 @@
           "expected_row_count": 8
         }
       ]
+    },
+    {
+      "resource": "hmrc_spi_table_3_7_savings_rows.json",
+      "purpose": "HMRC Survey of Personal Incomes 2023-24, Table 3.7 (income by source and range of total income, taxpayers): the United Kingdom interest from banks and building societies and other income amounts in each of the 13 total-income bands. Consumed by the SPI income stage, which rebases each donor's interest and other income from the 2022-23 tape to these 2023-24 amounts band by band before the OBR's savings income growth carries them to the frame's year (microcosm#1418 savings follow-up).",
+      "consumers": [
+        "uk_runtime.spi_income"
+      ],
+      "planned_consumers": [],
+      "selections": [
+        {
+          "label": "spi_2023_24_table_3_7_savings_rows",
+          "selector": {
+            "source_name": "hmrc",
+            "source_concept": [
+              "hmrc.spi_savings_interest_income_amount",
+              "hmrc.spi_other_income_amount"
+            ],
+            "groupby_dimension": "hmrc.total_income_band",
+            "geography_id": "K02000001",
+            "period_type": "tax_year",
+            "period_value": [
+              2023
+            ]
+          },
+          "expected_row_count": 26
+        }
+      ]
     }
   ]
 }
