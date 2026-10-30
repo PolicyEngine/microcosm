@@ -169,7 +169,7 @@ def test_a_2024_frame_read_at_2025_projects_each_component(tmp_path) -> None:
     """The build's frame is FRS 2024-25, read at 2025.
 
     Under legacy_gross the engine grows gross interest (by per-capita GDP,
-    1.0462 to 2025 on policyengine-uk 2.164.2) and takes off the stored ISA part
+    1.0462 to 2025 on policyengine-uk 2.165.0) and takes off the stored ISA part
     unchanged: 1,000 x 1.0462 - 300 and 300 x 0.0462 outside ISAs. The additive
     contract grows non-ISA and ISA interest each by its own index, so the
     ISA-only saver has no interest outside ISAs and both savers' ISA interest
