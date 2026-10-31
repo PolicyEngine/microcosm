@@ -1953,6 +1953,67 @@ def test_soi_component_amounts_use_source_specific_signs() -> None:
         builder._signed_component(np.array([-5.0, 7.0]), "adjusted_gross_income"),
         np.array([-5.0, 7.0]),
     )
+    # microcosm#1258: Table 1.4's entity legs, net income as the positive part
+    # and net loss as the negative-part magnitude of each entity's own leaf.
+    for income, loss in (
+        ("partnership_income", "partnership_losses"),
+        ("s_corp_income", "s_corp_losses"),
+    ):
+        assert np.array_equal(
+            builder._signed_component(np.array([-5.0, 0.0, 7.0]), income),
+            np.array([0.0, 0.0, 7.0]),
+        )
+        assert np.array_equal(
+            builder._signed_component(np.array([-5.0, 0.0, 7.0]), loss),
+            np.array([5.0, -0.0, -0.0]),
+        )
+
+
+def test_table_1_4_entity_legs_partition_each_signed_leaf() -> None:
+    """Invariant (microcosm#1258): each entity's legs partition its leaf.
+
+    For every tax-unit vector of a signed entity leaf, the net-income leg less
+    the net-loss leg is the leaf itself, both legs are nonnegative, no unit
+    sits in both, and the two return-count indicators partition the units
+    with a nonzero amount. Hypothesis is a workspace dependency; the wheels
+    job installs no test extras, so it skips there.
+    """
+
+    pytest.importorskip("hypothesis")
+    from hypothesis import given, settings
+    from hypothesis import strategies as st
+
+    builder = _load_builder_module()
+
+    @settings(max_examples=300, deadline=None)
+    @given(
+        st.lists(
+            st.one_of(
+                st.just(0.0),
+                st.floats(-1e10, 1e10, allow_nan=False, allow_infinity=False),
+            ),
+            min_size=1,
+            max_size=60,
+        )
+    )
+    def check(values: list[float]) -> None:
+        leaf = np.asarray(values, dtype=np.float64)
+        for income, loss in (
+            ("partnership_income", "partnership_losses"),
+            ("s_corp_income", "s_corp_losses"),
+        ):
+            income_leg = builder._signed_component(leaf, income)
+            loss_leg = builder._signed_component(leaf, loss)
+            assert (income_leg >= 0.0).all() and (loss_leg >= 0.0).all()
+            assert not ((income_leg > 0.0) & (loss_leg > 0.0)).any()
+            np.testing.assert_array_equal(income_leg - loss_leg, leaf)
+            income_returns = builder._soi_component_row(leaf, income, indicator=True)
+            loss_returns = builder._soi_component_row(leaf, loss, indicator=True)
+            np.testing.assert_array_equal(
+                income_returns + loss_returns, (leaf != 0.0).astype(np.float64)
+            )
+
+    check()
 
 
 def test_export_target_audit_is_opt_in(monkeypatch) -> None:

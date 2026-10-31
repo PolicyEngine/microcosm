@@ -2,8 +2,8 @@
 
 This module owns only the input boundary: it reads the root arrays from one
 explicit processed PUF HDF5 file, aligns them to E00100 and to Schedule E
-line 32 and its passive subset from one explicit source-year PUF CSV, and
-delegates donor construction to the shared runtime.
+line 32 by entity and its passive subset from one explicit source-year PUF
+CSV, and delegates donor construction to the shared runtime.
 It does not acquire data, choose a donor source, or relax the source-year
 alignment checks.
 """

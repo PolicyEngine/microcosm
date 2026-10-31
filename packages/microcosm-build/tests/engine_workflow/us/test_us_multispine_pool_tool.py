@@ -106,7 +106,7 @@ def test_stacked_tool_entrypoint_fixture_e2e_emits_one_logbook_row_at_every_term
         assert published_transfer["completion"] == {
             "status": "complete",
             "group_count": 19,
-            "target_count": 71,
+            "target_count": 72,
             "residual_null_rows": 0,
         }
         calibrated = [
@@ -349,7 +349,8 @@ def test_constants_adapter_equals_live_constants_and_stays_out_of_identities(
             # the source-stage citation rewrites that pin us-data at a commit.
             # microcosm#1251's passive partnership/S-corp leaf in puf_support moves it.
             # microcosm#1259's recipient-share bound in puf_support moves it again.
-            "spec_sha256": "623e595678f4c4b0fa7a55504f442214ebe31efe743833ac10d6751aba8a1553",
+            # microcosm#1261's entity split of line 32 moves it too.
+            "spec_sha256": "9b4b3260c20c30ba71a0947f8d78e322c8d2a3e6cb94e87a3729be950a9e90f2",
         },
     }
 

@@ -1,6 +1,8 @@
-"""Schedule E line 32 and its passive subset on the PUF donor (microcosm#1239).
+"""Schedule E line 32 by entity and its passive subset on the PUF donor.
 
-The invariants below hold for every input the PUF can carry:
+microcosm#1239 put line 32 and its passive subset on the donor; microcosm#1258
+splits line 32 into its partnership and S corporation shares. The invariants
+below hold for every input the PUF can carry:
 
 1. Line-32 identity: E26270 equals its Schedule E line 28 column fields,
    (g) + (j) - (f) - (h) - (i) for both entity types, to within the PUF's
@@ -11,9 +13,17 @@ The invariants below hold for every input the PUF can carry:
 3. Leg bounds: the passive amount lies between minus the loss columns and the
    income columns.
 4. Donor alignment: every regular processed tax unit carries its source
-   record's E26270 exactly, every aggregate-row bucket carries that row's
-   weighted line-32 and passive totals, and the processed nonpassive column
-   must equal the archived sum before anything is replaced.
+   record's entity shares and passive amount exactly, every aggregate-row
+   bucket carries that row's weighted partnership, S-corporation and passive
+   totals, and the processed nonpassive column must equal the archived sum
+   before anything is replaced.
+5. Entity partition: ``partnership + s_corp`` equals ``passive + nonpassive``
+   exactly (two partitions of the same ten fields), so the passive subset is
+   unchanged by the split and the entity sum meets invariant 1.
+6. Entity support: an entity share is zero whenever that entity's five columns
+   are zero, so the split never puts a rounding residual on a return with no
+   activity of that type, and each share lies between minus its own loss
+   columns and its own income columns.
 
 "passive <= total where both are positive" is deliberately not an invariant:
 a passive gain offset by a nonpassive loss is a lawful return whose passive
@@ -37,6 +47,9 @@ from microcosm.build.us_runtime.puf_source_schedule_e import (
     PUF_SCHEDULE_E_INCOME_LEGS,
     PUF_SCHEDULE_E_LOSS_LEGS,
     PUF_SCHEDULE_E_PART_II_LEGS,
+    PUF_SCHEDULE_E_PARTNERSHIP_LEGS,
+    PUF_SCHEDULE_E_S_CORP_LEGS,
+    SCHEDULE_E_DONOR_OUTPUTS,
     processed_puf_tax_unit_partnership_s_corp_income,
     schedule_e_line_32_rounding_bound,
     schedule_e_partnership_s_corp_columns,
@@ -48,6 +61,11 @@ _PASSIVE_LOSS = ("E25920", "E26160")
 _NONPASSIVE_INCOME = ("E25980", "E26190")
 _NONPASSIVE_LOSS = ("E25960", "E26180")
 _SECTION_179 = ("E26110", "E26100")
+# Booklet roles by entity, written out independently of the module constants.
+_PARTNERSHIP_INCOME = ("E25940", "E25980")
+_PARTNERSHIP_LOSSES = ("E25920", "E25960", "E26110")
+_S_CORP_INCOME = ("E26170", "E26190")
+_S_CORP_LOSSES = ("E26160", "E26180", "E26100")
 
 # The restricted pinned inputs live in the archived pipeline's storage folder,
 # as for the E00100 alignment test; MICROCOSM_RESTRICTED_PUF_DIR points
@@ -70,9 +88,14 @@ _REAL_PROCESSED_PUF_SHA256 = (
 _REAL_SOURCE_PUF_SHA256 = (
     "0a7fd643edb1acc55c507db795914b41d232922be78c149b58d111f4672499df"
 )
-_REAL_LINE_32_VECTOR_SHA256 = (
-    "b0cb8de0955a88ae310da01a35d25d3d3a4ebfd1a260818faa99ea6c102489b4"
+_REAL_PARTNERSHIP_VECTOR_SHA256 = (
+    "b710efb7c1e273d75b0dc0146bd10c5265794688bd9e29ab07452fcdf4d64d37"
 )
+_REAL_S_CORP_VECTOR_SHA256 = (
+    "d0ce9c9dc009545e4af7c1654812625e86b9caa283aca009b70684c42cf5d0c7"
+)
+# Unchanged from microcosm#1239: the entity split does not touch the passive
+# subset, byte for byte.
 _REAL_PASSIVE_VECTOR_SHA256 = (
     "6c76e077304567ff5b499142012aae8c7863153d95c41ddbff385b968c4eca53"
 )
@@ -145,6 +168,9 @@ def test_booklet_field_roles_define_line_32_and_the_passive_subset() -> None:
     np.testing.assert_array_equal(
         columns["line_32"], [1_000.0, -400.0, 4_300.0, 2_340.0]
     )
+    # (g) + (j) - (f) - (h) - (i) of each entity's own columns.
+    np.testing.assert_array_equal(columns["partnership"], [1_000.0, 0.0, 0.0, 1_610.0])
+    np.testing.assert_array_equal(columns["s_corp"], [0.0, -400.0, 4_300.0, 730.0])
     np.testing.assert_array_equal(columns["passive"], [1_000.0, -400.0, 0.0, 330.0])
     np.testing.assert_array_equal(columns["nonpassive"], [0.0, 0.0, 4_300.0, 2_010.0])
     # The processed artifact's archived column omits the passive legs and
@@ -273,6 +299,127 @@ def test_passive_lies_between_the_loss_and_income_columns(
     assert passive >= -sum(legs[field] for field in _PASSIVE_LOSS)
 
 
+def test_module_entity_legs_match_the_booklet_roles() -> None:
+    """The entity constants name exactly the booklet's columns for each type."""
+
+    assert PUF_SCHEDULE_E_PARTNERSHIP_LEGS == (_PARTNERSHIP_INCOME, _PARTNERSHIP_LOSSES)
+    assert PUF_SCHEDULE_E_S_CORP_LEGS == (_S_CORP_INCOME, _S_CORP_LOSSES)
+    assert sorted(
+        (*_PARTNERSHIP_INCOME, *_PARTNERSHIP_LOSSES, *_S_CORP_INCOME, *_S_CORP_LOSSES)
+    ) == sorted(PUF_SCHEDULE_E_PART_II_LEGS)
+    assert SCHEDULE_E_DONOR_OUTPUTS == (
+        "partnership_income",
+        "s_corp_income",
+        "passive_partnership_s_corp_income",
+    )
+
+
+@settings(max_examples=500, deadline=None)
+@given(_leg_rows)
+def test_entity_shares_partition_line_32_exactly(legs: dict[str, float]) -> None:
+    """Invariant 5: partnership + S corp == passive + nonpassive, bit for bit.
+
+    PUF amounts are whole dollars far below 2**53, so both partitions of the
+    ten fields sum without rounding.
+    """
+
+    row = dict(legs)
+    row["E26270"] = _line_32(legs)
+
+    columns = schedule_e_partnership_s_corp_columns(pd.DataFrame([row]))
+
+    entity_total = columns["partnership"][0] + columns["s_corp"][0]
+    assert entity_total == columns["passive"][0] + columns["nonpassive"][0]
+    assert entity_total == _line_32(legs)
+    assert columns["partnership"][0] == sum(
+        legs[field] for field in _PARTNERSHIP_INCOME
+    ) - sum(legs[field] for field in _PARTNERSHIP_LOSSES)
+    assert columns["s_corp"][0] == sum(legs[field] for field in _S_CORP_INCOME) - sum(
+        legs[field] for field in _S_CORP_LOSSES
+    )
+
+
+@settings(max_examples=500, deadline=None)
+@given(_leg_rows, st.sampled_from(("partnership", "s_corp")))
+def test_an_entity_without_columns_carries_nothing(
+    legs: dict[str, float],
+    silent: str,
+) -> None:
+    """Invariant 6: no rounding residual lands on an entity with no columns.
+
+    The stored E26270 is rounded independently of the fields, yet the entity
+    with five zero columns stays exactly zero, so a return reporting only S
+    corporation activity never becomes a partnership carrier (or vice versa).
+    """
+
+    silenced = (
+        (*_PARTNERSHIP_INCOME, *_PARTNERSHIP_LOSSES)
+        if silent == "partnership"
+        else (*_S_CORP_INCOME, *_S_CORP_LOSSES)
+    )
+    full = {field: 0.0 if field in silenced else value for field, value in legs.items()}
+    stored = {field: _puf_round(value) for field, value in full.items()}
+    stored["E26270"] = _puf_round(_line_32(full))
+
+    columns = schedule_e_partnership_s_corp_columns(pd.DataFrame([stored]))
+
+    assert columns[silent][0] == 0.0
+    other = "s_corp" if silent == "partnership" else "partnership"
+    assert abs(stored["E26270"] - columns[other][0]) <= columns["rounding_bound"][0]
+
+
+@settings(max_examples=500, deadline=None)
+@given(_leg_rows)
+def test_each_entity_share_lies_between_its_own_loss_and_income_columns(
+    legs: dict[str, float],
+) -> None:
+    """Invariant 6: an entity share is bounded by that entity's columns only."""
+
+    row = dict(legs)
+    row["E26270"] = _line_32(legs)
+
+    columns = schedule_e_partnership_s_corp_columns(pd.DataFrame([row]))
+
+    for column, income, losses in (
+        ("partnership", _PARTNERSHIP_INCOME, _PARTNERSHIP_LOSSES),
+        ("s_corp", _S_CORP_INCOME, _S_CORP_LOSSES),
+    ):
+        share = columns[column][0]
+        assert share <= sum(legs[field] for field in income)
+        assert share >= -sum(legs[field] for field in losses)
+
+
+@settings(max_examples=300, deadline=None)
+@given(_leg_rows)
+def test_raw_array_path_agrees_with_the_source_year_columns(
+    legs: dict[str, float],
+) -> None:
+    """Differential: puf_support's raw-field derivation equals this module's.
+
+    A raw PUF array (one carrying the Part II fields) derives the three leaves
+    inside ``puf_support``; the processed donor takes them from
+    :func:`schedule_e_partnership_s_corp_columns`. Both must agree exactly.
+    """
+
+    from microcosm.build.us_runtime.puf_support import (
+        _raw_schedule_e_line_32_values,
+    )
+
+    row = dict(legs)
+    row["E26270"] = _line_32(legs)
+    columns = schedule_e_partnership_s_corp_columns(pd.DataFrame([row]))
+    arrays = {field: np.asarray([value]) for field, value in legs.items()}
+
+    for output, column in (
+        ("partnership_income", "partnership"),
+        ("s_corp_income", "s_corp"),
+        ("passive_partnership_s_corp_income", "passive"),
+    ):
+        raw = _raw_schedule_e_line_32_values(arrays, output)
+        assert raw is not None
+        np.testing.assert_array_equal(raw, columns[column])
+
+
 @pytest.mark.parametrize("field", PUF_SCHEDULE_E_PART_II_LEGS)
 def test_columns_refuse_a_missing_or_negative_leg(field: str) -> None:
     row = _row(E25940=10.0, E25980=20.0)
@@ -361,13 +508,28 @@ def _align(source: pd.DataFrame, processed: dict[str, np.ndarray], **kwargs):
     )
 
 
-def test_alignment_carries_literal_line_32_and_passive_on_regular_records() -> None:
+def test_alignment_carries_entity_shares_and_passive_on_regular_records() -> None:
     source, processed = _source_and_processed()
 
     aligned = _align(source, processed)
 
+    assert tuple(aligned) == SCHEDULE_E_DONOR_OUTPUTS
+    expected_partnership = (
+        source[list(_PARTNERSHIP_INCOME)].sum(axis=1)
+        - source[list(_PARTNERSHIP_LOSSES)].sum(axis=1)
+    ).to_numpy()[:30]
+    expected_s_corp = (
+        source[list(_S_CORP_INCOME)].sum(axis=1)
+        - source[list(_S_CORP_LOSSES)].sum(axis=1)
+    ).to_numpy()[:30]
     np.testing.assert_array_equal(
-        aligned["partnership_income"][:30], source["E26270"].to_numpy()[:30]
+        aligned["partnership_income"][:30], expected_partnership
+    )
+    np.testing.assert_array_equal(aligned["s_corp_income"][:30], expected_s_corp)
+    # The fixture's E26270 is the exact field sum, so the entities meet it.
+    np.testing.assert_array_equal(
+        aligned["partnership_income"][:30] + aligned["s_corp_income"][:30],
+        source["E26270"].to_numpy()[:30],
     )
     expected_passive = (
         source["E25940"] - source["E25920"] + source["E26170"] - source["E26160"]
@@ -375,6 +537,25 @@ def test_alignment_carries_literal_line_32_and_passive_on_regular_records() -> N
     np.testing.assert_array_equal(
         aligned["passive_partnership_s_corp_income"][:30], expected_passive
     )
+
+
+def test_alignment_keeps_entity_shares_when_e26270_carries_a_rounding_residual() -> (
+    None
+):
+    """The donor carries the field sums, not a residual-bearing E26270."""
+
+    source, processed = _source_and_processed()
+    rounded = source.copy()
+    # A rounding residual inside the booklet bound on a regular record whose
+    # fields are untouched (so the archived nonpassive check still passes).
+    row = int(np.flatnonzero(rounded["E26270"].to_numpy()[:30] != 0)[0])
+    rounded.loc[row, "E26270"] = rounded.loc[row, "E26270"] + 3.0
+
+    aligned = _align(rounded, processed)
+    baseline = _align(source, processed)
+
+    for output in SCHEDULE_E_DONOR_OUTPUTS:
+        np.testing.assert_array_equal(aligned[output], baseline[output])
 
 
 def test_alignment_preserves_each_aggregate_rows_weighted_totals() -> None:
@@ -392,26 +573,51 @@ def test_alignment_preserves_each_aggregate_rows_weighted_totals() -> None:
         rows = slice(int(starts[index]), int(stops[index]))
         population = float(source["S006"].iloc[30 + index]) / 100.0
         row = source.iloc[30 + index]
+        partnership = sum(row[f] for f in _PARTNERSHIP_INCOME) - sum(
+            row[f] for f in _PARTNERSHIP_LOSSES
+        )
+        s_corp = sum(row[f] for f in _S_CORP_INCOME) - sum(
+            row[f] for f in _S_CORP_LOSSES
+        )
         passive = row["E25940"] - row["E25920"] + row["E26170"] - row["E26160"]
-        assert float(weights[rows] @ aligned["partnership_income"][rows]) == (
-            pytest.approx(population * row["E26270"], rel=1e-12)
-        )
+        archived = row["E25980"] - row["E25960"] + row["E26190"] - row["E26180"]
+        for output, per_return in (
+            ("partnership_income", partnership),
+            ("s_corp_income", s_corp),
+            ("passive_partnership_s_corp_income", passive),
+        ):
+            # Each bucket carries its aggregate row's weighted total by entity.
+            assert float(weights[rows] @ aligned[output][rows]) == pytest.approx(
+                population * per_return, rel=1e-12, abs=1e-6
+            )
+            # Each synthetic record keeps its processed sign pattern.
+            np.testing.assert_allclose(
+                aligned[output][rows],
+                processed["nonpassive"][rows] * (per_return / archived),
+                rtol=1e-12,
+            )
         assert float(
-            weights[rows] @ aligned["passive_partnership_s_corp_income"][rows]
-        ) == pytest.approx(population * passive, rel=1e-12, abs=1e-6)
-        # Each synthetic record keeps its processed sign pattern.
-        ratio = row["E26270"] / (
-            row["E25980"] - row["E25960"] + row["E26190"] - row["E26180"]
+            weights[rows]
+            @ (aligned["partnership_income"][rows] + aligned["s_corp_income"][rows])
+        ) == pytest.approx(population * row["E26270"], rel=1e-12)
+        bucket = receipt["synthetic_buckets"][str(recid)]
+        assert bucket["partnership_per_return"] == partnership
+        assert bucket["s_corp_per_return"] == s_corp
+    line_32 = aligned["partnership_income"] + aligned["s_corp_income"]
+    assert receipt["weighted_line_32"] == pytest.approx(float(weights @ line_32))
+    for output in ("partnership_income", "s_corp_income"):
+        legs = receipt["entities"][output]
+        values = aligned[output]
+        assert legs["weighted_net"] == pytest.approx(float(weights @ values))
+        assert legs["weighted_income"] - legs["weighted_loss"] == pytest.approx(
+            legs["weighted_net"]
         )
-        np.testing.assert_allclose(
-            aligned["partnership_income"][rows],
-            processed["nonpassive"][rows] * ratio,
-            rtol=1e-12,
+        assert legs["weighted_income_returns"] == pytest.approx(
+            float(weights[values > 0].sum())
         )
-        assert str(recid) in receipt["synthetic_buckets"]
-    assert receipt["weighted_line_32"] == pytest.approx(
-        float(weights @ aligned["partnership_income"])
-    )
+        assert legs["weighted_loss_returns"] == pytest.approx(
+            float(weights[values < 0].sum())
+        )
 
 
 def test_alignment_is_bit_deterministic() -> None:
@@ -520,18 +726,35 @@ def test_alignment_matches_the_pinned_flat_array_artifact() -> None:
         receipt=receipt,
     )
 
-    line_32 = aligned["partnership_income"]
+    partnership = aligned["partnership_income"]
+    s_corp = aligned["s_corp_income"]
     passive = aligned["passive_partnership_s_corp_income"]
-    assert len(line_32) == 211_677
-    assert sha256(line_32.astype("<f8").tobytes()).hexdigest() == (
-        _REAL_LINE_32_VECTOR_SHA256
+    assert len(partnership) == 211_677
+    assert sha256(partnership.astype("<f8").tobytes()).hexdigest() == (
+        _REAL_PARTNERSHIP_VECTOR_SHA256
+    )
+    assert sha256(s_corp.astype("<f8").tobytes()).hexdigest() == (
+        _REAL_S_CORP_VECTOR_SHA256
     )
     assert sha256(passive.astype("<f8").tobytes()).hexdigest() == (
         _REAL_PASSIVE_VECTOR_SHA256
     )
-    # TY2015 dollars on the processed 2024 weights (microcosm#1239 evidence).
+    # TY2015 dollars on the processed 2024 weights (microcosm#1239 and #1258
+    # evidence). The entity sum keeps #1239's line-32 total to the dollar
+    # shown; the stored E26270 differs from the fields on 38,378 regular
+    # records, by $0.145 billion weighted in absolute value.
     assert receipt["weighted_line_32"] / 1e9 == pytest.approx(676.562, abs=1e-3)
     assert receipt["weighted_passive"] / 1e9 == pytest.approx(82.990, abs=1e-3)
     assert receipt["weighted_processed_nonpassive"] / 1e9 == pytest.approx(
         642.391, abs=1e-3
     )
+    entities = receipt["entities"]
+    assert entities["partnership_income"]["weighted_net"] / 1e9 == pytest.approx(
+        250.584, abs=1e-3
+    )
+    assert entities["s_corp_income"]["weighted_net"] / 1e9 == pytest.approx(
+        425.978, abs=1e-3
+    )
+    residual = receipt["regular_stored_e26270_residual"]
+    assert residual["records_differing"] == 38_378
+    assert residual["max_share_of_rounding_bound"] <= 1.0

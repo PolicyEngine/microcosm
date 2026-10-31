@@ -410,86 +410,24 @@ def test_selection_digest_uses_raw_spine_ids_under_collision_remap() -> None:
     )
 
 
-def test_s_corp_universe_zero_materializes_native_rows_with_exact_receipt() -> None:
-    frame = _s_corp_universe_fixture()
-    input_person = frame.table("person").copy(deep=True)
-    donor = pd.DataFrame({"s_corp_income": [0.0, -0.0, 0.0]})
-
-    materialized, receipt = (
-        stacked_spine_module._materialize_us_puf_s_corp_universe_zero(frame, donor)
-    )
-
-    clone_column = support_clone_index_column("person")
-    clone_index = input_person[clone_column]
-    native = clone_index.eq(0)
-    assert input_person.loc[native, "s_corp_income"].isna().all()
-    assert materialized.table("person")["s_corp_income"].eq(0.0).all()
-    assert receipt["rule"] == (
-        stacked_spine_module.us_puf_s_corp_universe_zero_rule_identity()
-    )
-    assert receipt["status"] == "materialized"
-    assert receipt["donor_rows_verified"] == 3
-    assert receipt["native_rows_materialized"] == int(native.sum())
-    assert receipt["produced_rows_verified"] == int((clone_index > 0).sum())
-    assert receipt["person_rows"] == len(input_person)
-    assert receipt["person_rows_by_clone_role"] == {
-        str(role): int(clone_index.eq(role).sum()) for role in (0, 1, 2)
-    }
-    assert receipt["post_materialization_nonfinite_rows"] == 0
-    assert receipt["post_materialization_nonzero_rows"] == 0
-    assert len(receipt["donor_values_sha256"]) == 64
-    assert len(receipt["person_values_sha256"]) == 64
-    assert receipt["sha256"] == stacked_spine_module._canonical_sha256(
-        {key: value for key, value in receipt.items() if key != "sha256"}
-    )
-
-
-@pytest.mark.parametrize(
-    ("mutation", "match"),
-    (
-        ("donor_nonfinite", r"donor precondition failed: 1 nonfinite"),
-        ("donor_nonzero", r"donor precondition failed: 1 nonzero"),
-        ("native_preexisting", r"native precondition failed: 1 native cell"),
-        ("clone_nonfinite", r"clone precondition failed: 1 nonfinite"),
-        ("tail_nonzero", r"clone precondition failed: 1 nonzero"),
-    ),
-)
-def test_s_corp_universe_zero_fails_closed(
-    mutation: str,
-    match: str,
-) -> None:
-    frame = _s_corp_universe_fixture()
-    donor = pd.DataFrame({"s_corp_income": [0.0, 0.0]})
-    person = frame.table("person")
-    clone_index = person[support_clone_index_column("person")]
-    if mutation == "donor_nonfinite":
-        donor.loc[0, "s_corp_income"] = np.nan
-    elif mutation == "donor_nonzero":
-        donor.loc[0, "s_corp_income"] = 1.0
-    elif mutation == "native_preexisting":
-        person.loc[person.index[clone_index.eq(0)][0], "s_corp_income"] = 0.0
-    elif mutation == "clone_nonfinite":
-        person.loc[person.index[clone_index.eq(1)][0], "s_corp_income"] = np.nan
-    else:
-        person.loc[person.index[clone_index.eq(2)][0], "s_corp_income"] = 1.0
-
-    with pytest.raises(ValueError, match=match):
-        stacked_spine_module._materialize_us_puf_s_corp_universe_zero(frame, donor)
-
-
-def test_stacked_primary_applies_s_corp_universe_rule_after_qrf(
+def test_stacked_primary_leaves_native_s_corp_rows_to_the_late_transfer(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    events: list[str] = []
+    """microcosm#1258 retired the whole-pool S-corp universe-zero rule.
+
+    The donor carries the S-corporation share of Schedule E line 32 as its own
+    leaf, so the primary pass treats ``s_corp_income`` like
+    ``partnership_income``: clone rows keep their drawn values and native rows
+    stay null for the late transfer to fill. Nothing assigns zero.
+    """
 
     def impute(frame: Frame, *_args: object, **kwargs: object) -> Frame:
-        events.append("primary_qrf")
         receipts = kwargs["predictor_universe_receipts"]
         assert isinstance(receipts, list)
         receipts.append({"fixture": "recipient-universe"})
         person = frame.table("person").copy(deep=True)
         clone_index = person[support_clone_index_column("person")]
-        person["s_corp_income"] = np.where(clone_index.eq(0), np.nan, 0.0)
+        person["s_corp_income"] = np.where(clone_index.eq(0), np.nan, -250.0)
         tables = {entity: frame.table(entity) for entity in frame.entities}
         tables["person"] = person
         return Frame(
@@ -501,29 +439,15 @@ def test_stacked_primary_applies_s_corp_universe_rule_after_qrf(
             metadata=frame.metadata,
         )
 
-    materialize = stacked_spine_module._materialize_us_puf_s_corp_universe_zero
-
-    def materialize_after_qrf(
-        frame: Frame,
-        donor: pd.DataFrame,
-    ) -> tuple[Frame, dict[str, object]]:
-        events.append("s_corp_universe_zero")
-        return materialize(frame, donor)
-
     monkeypatch.setattr(
         stacked_spine_module,
         "impute_us_puf_tax_detail_support",
         impute,
     )
-    monkeypatch.setattr(
-        stacked_spine_module,
-        "_materialize_us_puf_s_corp_universe_zero",
-        materialize_after_qrf,
-    )
 
     result = stacked_spine_module._run_stacked_puf_pass_without_tail_for_test(
         _late_primary_entry(_stacked_gap_fixture()),
-        pd.DataFrame({"s_corp_income": [0.0, 0.0]}),
+        pd.DataFrame({"s_corp_income": [1_000.0, -400.0]}),
         clone_attachment_fraction=1.0,
         clone_attachment_seed=578,
         predictors=(),
@@ -531,14 +455,21 @@ def test_stacked_primary_applies_s_corp_universe_rule_after_qrf(
         tax_unit_outputs=(),
     )
 
-    assert events == ["primary_qrf", "s_corp_universe_zero"]
-    assert result.frame.table("person")["s_corp_income"].eq(0.0).all()
-    assert result.receipt["s_corp_income_universe_zero"]["status"] == "materialized"
-    assert result.receipt["doctrines"]["whole_pool_output_universes"] == {
-        "person.s_corp_income": (
-            stacked_spine_module.us_puf_s_corp_universe_zero_rule_identity()
-        )
+    person = result.frame.table("person")
+    clone_index = person[support_clone_index_column("person")]
+    assert person.loc[clone_index.eq(0), "s_corp_income"].isna().all()
+    assert person.loc[clone_index.gt(0), "s_corp_income"].eq(-250.0).all()
+    assert "s_corp_income_universe_zero" not in result.receipt
+    assert result.receipt["doctrines"] == {
+        "require_complete_recipient_predictors": True,
+        "absent_cells": stacked_spine_module.PUF_ABSENT_CELLS_PRESERVE_NULLS,
     }
+    for retired in (
+        "US_PUF_S_CORP_UNIVERSE_ZERO_RULE_ID",
+        "us_puf_s_corp_universe_zero_rule_identity",
+        "_materialize_us_puf_s_corp_universe_zero",
+    ):
+        assert not hasattr(stacked_spine_module, retired)
 
 
 def test_finalize_preserve_nulls_keeps_unowned_cells_null() -> None:
@@ -1211,7 +1142,7 @@ def test_canonical_authority_objects_are_deeply_immutable() -> None:
         calibration["scope"]["reference"] = "forged"
 
 
-def test_canonical_metric_registry_covers_the_declared_135_target_split() -> None:
+def test_canonical_metric_registry_covers_the_declared_136_target_split() -> None:
     surface = stacked_spine_module.CANONICAL_STACKED_DECLARED_SURFACE
     registry = stacked_spine_module.CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY
     surface_targets = {
@@ -1221,9 +1152,9 @@ def test_canonical_metric_registry_covers_the_declared_135_target_split() -> Non
         for target in targets
     }
 
-    assert len(surface_targets) == 135
+    assert len(surface_targets) == 136
     assert Counter(entity for entity, _family, _target, _clone in surface_targets) == {
-        "person": 115,
+        "person": 116,
         "tax_unit": 12,
         "spm_unit": 8,
     }
@@ -1239,7 +1170,7 @@ def test_canonical_metric_registry_covers_the_declared_135_target_split() -> Non
     )
     assert set(registry) == surface_targets
     assert Counter(registry.values()) == {
-        "monetary_sign_separated": 80,
+        "monetary_sign_separated": 81,
         "boolean_incidence": 51,
         "categorical_tvd": 4,
     }
@@ -1280,13 +1211,13 @@ def test_canonical_metric_registry_covers_the_declared_135_target_split() -> Non
         for target in targets
     }
     assert len(gap_targets) == 48
-    assert len(post_puf_targets) == 71
-    assert len(puf_producer_targets) == 44
+    assert len(post_puf_targets) == 72
+    assert len(puf_producer_targets) == 45
     assert len(source_producer_targets) == 29
     assert len(puf_producer_targets & source_producer_targets) == 2
     assert puf_producer_targets | source_producer_targets == post_puf_targets
     assert gap_targets.isdisjoint(post_puf_targets)
-    assert len(gap_targets | post_puf_targets) == 119
+    assert len(gap_targets | post_puf_targets) == 120
     assert gap_targets | post_puf_targets < surface_targets
     assert not {
         "bank_account_assets",
@@ -1310,7 +1241,7 @@ def test_canonical_metric_registry_drives_checkpoint_round_trip(
     registry = stacked_spine_module.CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY
     nullable_booleans = _transferred_registry_boolean_targets()
     assert Counter(registry.values()) == {
-        "monetary_sign_separated": 80,
+        "monetary_sign_separated": 81,
         "boolean_incidence": 51,
         "categorical_tvd": 4,
     }
@@ -1478,7 +1409,7 @@ def test_registry_drives_every_late_callback_dtype_family_check() -> None:
         (entity, column): metric
         for (entity, _family, column, _clone_index), metric in registry.items()
     }
-    assert len(by_column) == len(registry) == 135
+    assert len(by_column) == len(registry) == 136
 
     representative = {
         "monetary_sign_separated": pd.Series([1.0, pd.NA], dtype="Float64"),
@@ -1520,11 +1451,11 @@ def test_registry_drives_every_late_callback_dtype_family_check() -> None:
         for output in contract.outputs
         if (key := (output.entity, output.column)) in by_column
     ]
-    assert len(registered_occurrences) == 165
+    assert len(registered_occurrences) == 167
     assert Counter(
         metric for _producer, _entity, _column, metric in registered_occurrences
     ) == {
-        "monetary_sign_separated": 122,
+        "monetary_sign_separated": 124,
         "boolean_incidence": 37,
         "categorical_tvd": 6,
     }
@@ -1532,9 +1463,9 @@ def test_registry_drives_every_late_callback_dtype_family_check() -> None:
         (entity, column): metric
         for _producer, entity, column, metric in registered_occurrences
     }
-    assert len(unique_late_targets) == 91
+    assert len(unique_late_targets) == 92
     assert Counter(unique_late_targets.values()) == {
-        "monetary_sign_separated": 68,
+        "monetary_sign_separated": 69,
         "boolean_incidence": 20,
         "categorical_tvd": 3,
     }
@@ -4203,23 +4134,35 @@ def test_late_primary_resources_bind_donor_content_and_execution_config(
     assert execution["qrf"]["recipient_share_bound"]["rule"] == (
         "recipient_share_slice_mass"
     )
-    assert execution["doctrines"]["whole_pool_output_universes"] == {
+    # microcosm#1258: the S-corp universe-zero doctrine is retired.
+    assert execution["doctrines"] == {
+        "require_complete_recipient_predictors": True,
+        "absent_cells": "preserve_nulls",
+    }
+    # A receipt written before the retirement still declares the doctrine; the
+    # exact doctrine check refuses it rather than reading it as current.
+    legacy = copy.deepcopy(execution)
+    legacy["doctrines"]["whole_pool_output_universes"] = {
         "person.s_corp_income": {
             "rule_id": "puf_tax_detail_s_corp_income_universe_zero_v1",
-            "schema_version": 1,
-            "entity": "person",
-            "column": "s_corp_income",
-            "coverage_scope": "whole_pool",
             "materialized_value": 0.0,
-            "source_semantics": (
-                "puf_combined_partnership_s_corp_carried_by_partnership_income"
-            ),
-            "donor_precondition": "finite_exact_zero",
-            "puf_clone_precondition": "finite_exact_zero",
-            "native_precondition": "all_null",
-            "assignment": "explicit_array_assignment",
         }
     }
+    stacked_spine_module._validate_late_resource_binding(
+        execution,
+        producer="primary_puf_qrf",
+        entity="tax_unit",
+        column="@primary_puf_execution_config",
+        boundary="current receipt",
+    )
+    with pytest.raises(ValueError, match="late primary-PUF doctrines changed"):
+        stacked_spine_module._validate_late_resource_binding(
+            legacy,
+            producer="primary_puf_qrf",
+            entity="tax_unit",
+            column="@primary_puf_execution_config",
+            boundary="pre-#1258 receipt",
+        )
     worker = execution["qrf"]["worker_execution"]
     assert set(worker) == {
         "schema_version",
@@ -7785,7 +7728,7 @@ def test_completeness_receipts_bind_live_authority_per_target() -> None:
     )
     canonical = stacked_completeness_gate(frame)
     assert canonical.passed, canonical.failures
-    assert canonical.details["declared_targets"] == 135
+    assert canonical.details["declared_targets"] == 136
     authority = canonical.details["authority"]
     assert authority["authority_form"] == "CANONICAL"
     assert authority["canonical"] is True
@@ -8273,7 +8216,7 @@ def test_fresh_gate_result_cannot_graft_canonical_authority_onto_test_surface() 
 
     with pytest.raises(
         ValueError,
-        match="must declare exactly 135 targets.*manifest emission is forbidden",
+        match="must declare exactly 136 targets.*manifest emission is forbidden",
     ):
         GateReport((grafted,)).to_manifest()
 
@@ -8408,7 +8351,7 @@ def test_fresh_battery_result_cannot_forge_canonical_coverage_receipts() -> None
 
     with pytest.raises(
         ValueError,
-        match="coverage receipt must bind all 135 targets.*emission is forbidden",
+        match="coverage receipt must bind all 136 targets.*emission is forbidden",
     ):
         GateReport((forged,)).to_manifest()
 
@@ -8822,7 +8765,7 @@ def test_battery_taxable_interest_metric_cannot_be_relabelled_rare_incidence() -
     assert not result.passed
     assert result.details["tested_comparisons"] == 0
     metric_receipt = result.details["authority"]["components"]["metric_registry"]
-    assert metric_receipt["target_count"] == 135
+    assert metric_receipt["target_count"] == 136
     assert any(
         "person/puf_tax_itemization/taxable_interest_income[clone_0]" in failure
         and "authoritative metric 'monetary_sign_separated'" in failure
