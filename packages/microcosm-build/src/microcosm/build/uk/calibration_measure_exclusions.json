@@ -172,6 +172,15 @@
       "expires_on": "2027-01-23"
     },
     {
+      "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_1000000",
+      "reason": "Measured distortion, not thin support, as for the ten HMRC £1m-and-over cells (María's rule of 2026-10-21). With the SPI donors' interest and other income rebased to SPI's 2023-24 bands (microcosm#1428), the first national built from f3cb3ddd3 fitted every other interest and other-income band, the £1m-and-over other-income row included, and missed this row outside the uk_target_fit band. Held out of the objective and measured on every evaluation. The row rests on the SPI Public Use Tape, so its figures and its neighbours' stay out of this register.",
+      "tracking": "microcosm#1428",
+      "approved_by": "juaristi22",
+      "adjudication": "María's ruling of 2026-10-30 on the savings follow-up (microcosm#1428): hold the £1m-and-over savings interest amount row as a measured distortion, rebuild the national on the same spine and score it; how the rebase sits in the top bands at design weights is a follow-up.",
+      "approved_on": "2026-10-30",
+      "expires_on": "2027-01-30"
+    },
+    {
       "name": "slc.repayments.england_plan_5",
       "reason": "Structural under-support: the student-loans stage tops Plan 5 up to SLC's liable stock, which binds, and fewer than ten source households carry Plan 5 repayments on #1333's 2.145.0 spine, so no weights reach SLC's repayment figure; the row's model figures are withheld.",
       "tracking": "microcosm#757",

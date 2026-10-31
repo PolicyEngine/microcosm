@@ -135,6 +135,7 @@ _STAGE_MODULES = {
     "student_loans": "student_loans",
     "private_school_attendance": "private_school_attendance",
     "isa_subscriptions": "isa_subscriptions",
+    "trading_allowance_receipts": "trading_allowance_receipts",
     "childcare_copy_take_up": "childcare_copy_take_up",
     "age_tail": "age_tail",
 }
@@ -230,6 +231,9 @@ _STAGE_HELPER_MODULES = {
         hmrc_isa_statistics,
         receipt_counts,
     ),
+    # The claimant draw is keyed on identity and its receipt rounds its
+    # support (microcosm#1428).
+    "trading_allowance_receipts": (receipt_counts, stochastic_assignment),
     # The copies' childcare re-draw draws through frs_take_up's childcare
     # helper and reads each household's clone path.
     "childcare_copy_take_up": (frs_take_up, household_lineage),
@@ -582,6 +586,7 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
     )
     from .student_loans import UKStudentLoansStageTransform
     from .take_up_contract import load_uk_take_up_contract
+    from .trading_allowance_receipts import UKTradingAllowanceReceiptsStageTransform
     from .uc_capital_coherence import UKUCCapitalCoherenceStageTransform
     from .uc_deduction_attributes import UKUCDeductionAttributesStageTransform
     from .uc_reporter_redraw import UKUCReporterRedrawStageTransform
@@ -846,6 +851,9 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
                 engine=engine,
                 donor_household=was,
                 donor_person=was_person,
+            ),
+            "trading_allowance_receipts": UKTradingAllowanceReceiptsStageTransform(
+                stage=stages["trading_allowance_receipts"]
             ),
             "childcare_copy_take_up": UKChildcareCopyTakeUpStageTransform(
                 contract=contract, stage=stages["childcare_copy_take_up"]

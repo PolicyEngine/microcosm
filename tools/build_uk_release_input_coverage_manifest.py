@@ -932,6 +932,10 @@ def build_manifest(
                 stage_name="isa_subscriptions",
                 candidate_source=candidate_source,
             ),
+            "trading_allowance_receipts": _source_stage_family_coverage_contract(
+                stage_name="trading_allowance_receipts",
+                candidate_source=candidate_source,
+            ),
             "nts_bus_travel": _source_stage_family_coverage_contract(
                 stage_name="nts_bus_travel",
                 candidate_source=candidate_source,

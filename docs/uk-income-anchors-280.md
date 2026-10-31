@@ -78,6 +78,17 @@ membership carries the uprated value with its receipt.
   by `tools/pin_uk_uprating_engine_values.py`, whose `--check` refuses drift), so
   it runs and reproduces without policyengine-uk; a `requires_uk` test holds the
   pins in lockstep with the installed engine, and an engine bump re-runs the tool.
+
+  The SPI donors reach the frame's year apart from these indices for interest
+  and other income (microcosm#1418 savings follow-up). The income stage first
+  scales each donor's two columns to HMRC's published 2023-24 Table 3.7 amounts
+  in its band of total income (`spi_income.rebase_spi_donor_savings`, the rows
+  vendored as `uk/hmrc_spi_table_3_7_savings_rows.json`), then grows them on the
+  OBR's savings income path the Table 3.7 targets take
+  (`hmrc_uprating.uk_obr_savings_income_level`). Each band's factor is the
+  published amount over the tape's FACT-weighted one; a band the tape carries
+  none of is left as it is. From the frame's year on, the engine projects both
+  columns at GDP per head.
 - Count rows: `hmrc.itl_2026.taxpayer_count_growth_by_total_income_band`, HMRC's
   own projected growth in Income Tax payers for the Table 2.5 band that contains
   the SPI band (Income Tax liabilities statistics, July 2026), as the

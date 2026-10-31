@@ -1728,6 +1728,33 @@
       ]
     },
     {
+      "resource": "hmrc_spi_table_3_7_savings_rows.json",
+      "purpose": "HMRC Survey of Personal Incomes 2023-24, Table 3.7 (income by source and range of total income, taxpayers): the United Kingdom interest from banks and building societies and other income amounts in each of the 13 total-income bands. Consumed by the SPI income stage, which rebases each donor's interest and other income from the 2022-23 tape to these 2023-24 amounts band by band before the OBR's savings income growth carries them to the frame's year (microcosm#1418 savings follow-up).",
+      "consumers": [
+        "uk_runtime.spi_income"
+      ],
+      "planned_consumers": [],
+      "selections": [
+        {
+          "label": "spi_2023_24_table_3_7_savings_rows",
+          "selector": {
+            "source_name": "hmrc",
+            "source_concept": [
+              "hmrc.spi_savings_interest_income_amount",
+              "hmrc.spi_other_income_amount"
+            ],
+            "groupby_dimension": "hmrc.total_income_band",
+            "geography_id": "K02000001",
+            "period_type": "tax_year",
+            "period_value": [
+              2023
+            ]
+          },
+          "expected_row_count": 26
+        }
+      ]
+    },
+    {
       "resource": "hmrc_isa_statistics_facts.json",
       "purpose": "HMRC Annual savings statistics (September 2026 release), the rows the ISA subscriptions stage draws subscribers and amounts from and the Lifetime ISA anchor counts payers against (microcosm#1415): Table 9.7 2023-24 subscribers by total income and size of subscription, and the holders who made no further subscription, for all subscribers and each type paid into; Table 9.8 subscribers by age and sex; Table 9.9 subscribers by region; Table 9.4 accounts and amounts subscribed by component for 2023-24 and 2024-25 (the latest year provisional); Table 9.6 market values at 5 April 2025; the cash ISA limit reduction impact note's shares of under-65 cash subscribers either side of GBP 12,000 in 2022-23; and Lifetime ISA Table 1a withdrawals for 2024-25 and 2025-26. Tables 9.7 to 9.9 count individuals and Table 9.4 accounts. None is a calibration target: the stage's reviewed fence keeps them measured only. No value is derived here.",
       "consumers": [

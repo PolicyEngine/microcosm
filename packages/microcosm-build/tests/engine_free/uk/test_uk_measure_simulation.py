@@ -606,6 +606,9 @@ _PACKAGED_EXCLUSION_CENSUS = {
     # stage assigns no postgraduate plan) and Plan 5's liable stock binds; the
     # Plan 5 repayments and the two Plan 2 stocks stay.
     "_1_000_000_to_inf": 10,
+    # The SPI Table 3.7 £1m-and-over interest amount row, held on the savings
+    # follow-up's measured distortion (microcosm#1428, 2026-10-30).
+    "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_1000000": 1,
     "slc.": 3,
     # microcosm#1095 (2026-10-07): two bands whose few supporting awards
     # policyengine-uk 2.122.2 moves out join the uk-data#452 class.
@@ -734,8 +737,10 @@ def test_packaged_exclusions_load():
     # electricity row again (María's ruling of 2026-10-28), and holds the ONS
     # gas row again for bottled gas (María's ruling of 2026-10-29). The
     # betting and gaming row stays held: the solve cannot yet measure its
-    # 2024 duty (microcosm#1420).
-    assert len(names) == len(set(names)) == 39
+    # 2024 duty (microcosm#1420). The savings follow-up holds the SPI £1m-and-over
+    # interest amount row on its measured distortion (microcosm#1428, María's
+    # ruling of 2026-10-30).
+    assert len(names) == len(set(names)) == 40
     (gas,) = [
         entry
         for entry in exclusions

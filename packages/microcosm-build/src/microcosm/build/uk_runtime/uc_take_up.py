@@ -55,7 +55,7 @@ early draw's keeps its claim only if it had one.
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -119,6 +119,7 @@ __all__ = [
     "UC_TAKE_UP_ENTITLEMENT_VARIABLES",
     "UC_TAKE_UP_MINIMUM_POOL_SOURCES",
     "UC_TAKE_UP_OPERATION_KIND",
+    "UC_TAKE_UP_POOLING",
     "UC_TAKE_UP_RECORD_SETS",
     "UC_TAKE_UP_RESOURCE",
     "UC_TAKE_UP_STAGE_NAME",
@@ -187,6 +188,15 @@ UC_AWARD_BAND_LABELS: tuple[str, ...] = (
     f"£{100 * _BOUND_BANDS}.01 or over",
 )
 UC_TAKE_UP_MINIMUM_POOL_SOURCES = 30
+UC_TAKE_UP_POOLING = (
+    "adjacent bands within a family type, lowest first, until the drawn units "
+    "rest on minimum_pool_sources distinct household_source_id values; a short "
+    "last pool joins the one before it. Then, lowest first, a pool that cannot "
+    "meet DWP's count (its undrawn entitled units' expected claims exceed the "
+    "count, or the count exceeds them plus the weight of every drawn unit) joins "
+    "the adjacent pool with more room for its gap, the lower on a tie, until "
+    "every pool can meet its count or the family type is one pool"
+)
 UC_TAKE_UP_RESIDUAL_RATE = (
     "(T - F) / D, clipped to [0, 1]; T DWP's calendar-2025 mean count of the "
     "pool's bands, D the weight of the pool's drawn units and F the expected "
@@ -332,6 +342,55 @@ def _pools(
     return pools
 
 
+def _join_unmet_pools(
+    pools: list[list[int]],
+    balance: Callable[[list[int]], tuple[float, float, float]],
+) -> list[list[int]]:
+    """Join, lowest first, each pool that cannot meet DWP's count to a neighbour.
+
+    ``balance`` gives a pool's DWP count ``T``, the expected claims ``F`` of its
+    undrawn entitled units and the weight ``D`` of its drawn units. A pool
+    cannot meet ``T`` when ``F`` already exceeds it or when ``T`` exceeds
+    ``F + D``; its clipped rate then leaves the family type's caseload off
+    DWP's by the gap, and which bands fall short moves with small upstream
+    changes (microcosm#1428). The pool joins the adjacent pool with more room
+    for its gap, the lower on a tie: the claims the neighbour's drawn units can
+    add beyond its own count (``F + D - T``) when the pool falls short, or the
+    drawn claims it can give up (``T - F``) when the pool overshoots. Joining
+    repeats until every pool can meet its count or the family type is one
+    pool, as a family type whose count exceeds all its entitled units stays.
+    """
+
+    pools = [list(bands) for bands in pools]
+    while len(pools) > 1:
+        sums = [balance(bands) for bands in pools]
+        unmet = next(
+            (
+                index
+                for index, (target, undrawn, drawn) in enumerate(sums)
+                if target < undrawn or target > undrawn + drawn
+            ),
+            None,
+        )
+        if unmet is None:
+            break
+        target, undrawn, drawn = sums[unmet]
+        short = target > undrawn + drawn
+        rooms = {
+            index: (
+                sums[index][1] + sums[index][2] - sums[index][0]
+                if short
+                else sums[index][0] - sums[index][1]
+            )
+            for index in (unmet - 1, unmet + 1)
+            if 0 <= index < len(pools)
+        }
+        partner = max(rooms.items(), key=lambda item: (item[1], -item[0]))[0]
+        low, high = sorted((unmet, partner))
+        pools[low : high + 1] = [pools[low] + pools[high]]
+    return pools
+
+
 def _realized_rate(
     residual: float, *, need: float, draws: np.ndarray, weights: np.ndarray
 ) -> float:
@@ -452,22 +511,35 @@ def assign_award_band_take_up(
     def sources(mask: np.ndarray) -> int:
         return distinct_count(source_ids, mask, weights)
 
+    def balance(
+        name: str, in_family: np.ndarray, bands: list[int]
+    ) -> tuple[float, float, float]:
+        solve = in_family & np.isin(band, bands) & gb
+        return (
+            float(sum(targets[(name, index)] for index in bands)),
+            float((weights * fixed)[solve & ~drawable].sum()),
+            float(weights[solve & drawable].sum()),
+        )
+
     pools: list[dict[str, object]] = []
     for name, _ in UC_FAMILY_TYPES:
         in_family = family == name
-        for bands in _pools(
-            band=band,
-            in_family=in_family,
-            drawable_gb=drawable & gb,
-            source_ids=source_ids,
-            weights=weights,
-            minimum_sources=minimum_pool_sources,
+        for bands in _join_unmet_pools(
+            _pools(
+                band=band,
+                in_family=in_family,
+                drawable_gb=drawable & gb,
+                source_ids=source_ids,
+                weights=weights,
+                minimum_sources=minimum_pool_sources,
+            ),
+            lambda bands, name=name, in_family=in_family: balance(
+                name, in_family, bands
+            ),
         ):
             in_pool = in_family & np.isin(band, bands)
             solve = in_pool & gb
-            target = float(sum(targets[(name, index)] for index in bands))
-            undrawn = float((weights * fixed)[solve & ~drawable].sum())
-            drawn = float(weights[solve & drawable].sum())
+            target, undrawn, drawn = balance(name, in_family, bands)
             # Where the undrawn claims reach DWP's count, or the count exceeds
             # every entitled unit, the clipped rate cannot meet it.
             if drawn > 0.0:
@@ -946,12 +1018,7 @@ def uc_take_up_operation_parameters() -> tuple[tuple[str, dict[str, object]], ..
                     "DWP Stat-Xplore Households on Universal Credit by family type "
                     "and monthly award band, mean of April to December 2025"
                 ),
-                "pooling": (
-                    "adjacent bands within a family type, lowest first, until the "
-                    "drawn units rest on minimum_pool_sources distinct "
-                    "household_source_id values; a short last pool joins the one "
-                    "before it"
-                ),
+                "pooling": UC_TAKE_UP_POOLING,
                 "minimum_pool_sources": UC_TAKE_UP_MINIMUM_POOL_SOURCES,
                 "drawn_units": (
                     "entitled, non-reporting units of the population that the "

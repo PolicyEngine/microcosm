@@ -258,8 +258,9 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
     # rates, three national rows, SPI pension income and the taxpayers with
     # it by constituency and local authority, SPI Table 3.7's other income by
     # total-income band, and SPI Table 3.10's self-employment counts and
-    # amounts by self-employment band.
-    assert len(resource["targets"]) == 456
+    # amounts by self-employment band and the counts with employment income
+    # among them.
+    assert len(resource["targets"]) == 457
 
     providers = resource["hierarchy"]["providers"]
     categories = resource["hierarchy"]["categories"]
@@ -273,10 +274,10 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
     target_ids = [target["target_id"] for target in resource["targets"]]
     registry_scope = resource["registry_parity"]["scope_target_ids"]
     profile_scope = resource["profile_parity"]["scope_target_ids"]
-    assert len(registry_scope) == 394
+    assert len(registry_scope) == 395
     assert len(profile_scope) == 62
-    assert target_ids[:394] == registry_scope
-    assert target_ids[394:] == profile_scope
+    assert target_ids[:395] == registry_scope
+    assert target_ids[395:] == profile_scope
 
     parity = resource["registry_parity"]
     assert parity["pinned_ref"] == "12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3"
@@ -303,9 +304,9 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
     # OBR excise rows have no uk-data metric (uk-data never measured excise
     # duty), nor microcosm#1069's two Income Tax payer by age rows, nor
     # microcosm#1418's three Income Tax on savings rows, its SPI other income
-    # row or its two Table 3.10 rows.
+    # row or its three Table 3.10 rows.
     assert len(mapped_target_ids) == 183
-    assert len(unmapped_declarations) == 211
+    assert len(unmapped_declarations) == 212
     suppressed_ancestors = parity["suppressed_ancestors"]
     assert len(suppressed_ancestors) == 5
     assert set(suppressed_ancestors).isdisjoint(parity["mapped"])
@@ -812,7 +813,7 @@ def test_uk_population_targets_have_unique_target_ids() -> None:
     resource = _load()
 
     target_ids = [target["target_id"] for target in resource["targets"]]
-    assert len(target_ids) == 456
+    assert len(target_ids) == 457
     assert len(target_ids) == len(set(target_ids))
 
 
@@ -1315,7 +1316,7 @@ def test_uc_payment_bands_share_administrative_family_but_keep_source_window() -
 
 def test_paid_joint_diagnostics_do_not_add_active_targets() -> None:
     targets = _load()["targets"]
-    assert len(targets) == 456
+    assert len(targets) == 457
     assert not any(
         f.get("variable") == "uc_calibration_child_entitlement"
         for target in targets
@@ -1565,7 +1566,7 @@ def test_household_composition_cells_do_not_share_the_household_total_signature(
 
 def test_only_the_uc_award_bands_read_whole_pence() -> None:
     """microcosm#1095: the four UC payment families opt in to whole-pence,
-    upper-closed bands; the other 31 banded bindings keep the half-open
+    upper-closed bands; the other 32 banded bindings keep the half-open
     reading."""
 
     banded = {
@@ -1578,7 +1579,7 @@ def test_only_the_uc_award_bands_read_whole_pence() -> None:
         for target_id, binding in banded.items()
         if binding.get("band_semantics") == "whole_pence_upper_closed"
     }
-    assert len(banded) == 35
+    assert len(banded) == 36
     assert whole_pence == {
         f"dwp.uc.payment_distribution_{family}"
         for family in (

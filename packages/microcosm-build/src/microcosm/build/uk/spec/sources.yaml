@@ -1690,7 +1690,7 @@ stages:
         dividend_income: dividend_income
         private_pension_income: private_pension_income
         property_income: property_income
-        other_investment_income: null
+        other_investment_income: other_investment_income
         gift_aid: null
         charitable_investment_gifts: null
         hmrc_spi_pay: hmrc_spi_pay
@@ -4994,7 +4994,7 @@ stages:
     family_type: two FRS claimant or partner roles make a couple; children are UC children or qualifying young people and other non-claimants under 20 (the calibration measure's uc_calibration_family_type)
     award_bands: GBP 1,200 a year (DWP's GBP 100 a month), (1,200 i, 1,200 (i + 1)] in whole pence for i < 25, and above GBP 30,000
     targets: DWP Stat-Xplore Households on Universal Credit by family type and monthly award band, mean of April to December 2025
-    pooling: adjacent bands within a family type, lowest first, until the drawn units rest on minimum_pool_sources distinct household_source_id values; a short last pool joins the one before it
+    pooling: adjacent bands within a family type, lowest first, until the drawn units rest on minimum_pool_sources distinct household_source_id values; a short last pool joins the one before it. Then, lowest first, a pool that cannot meet DWP's count (its undrawn entitled units' expected claims exceed the count, or the count exceeds them plus the weight of every drawn unit) joins the adjacent pool with more room for its gap, the lower on a tie, until every pool can meet its count or the family type is one pool
     minimum_pool_sources: 30
     drawn_units: entitled, non-reporting units of the population that the engine does not move off their legacy benefits (legacy_benefits_closed) and that report none, since a legacy benefit the engine leaves in place ends once the unit claims UC
     undrawn_claims: a reporter at 1, a moved unit at the claim probability uc_legacy_closure_take_up's rule gives it (dwp_move_to_uc_facts.json), a unit keeping income-related ESA at 0, any other at its stored flag
@@ -6197,3 +6197,33 @@ stages:
   - stocks_and_shares_isa_subscriptions
   - lifetime_isa_payments
   notes: 'Imputes ISA subscriptions per adult by type, and the per-person ISA balances, on the final spine (microcosm#1415). Each household''s was_wealth cash and stocks-and-shares ISA totals are split across its adults by the holding pattern of a WAS round-8 donor household with the same number of adults, so person balances sum exactly to the household totals, which are unchanged. Subscribers in 2023-24 are adults aged 18 or over in households holding the type, raked by class (cash only, stocks and shares only, both) to Table 9.7''s income bands, Table 9.8''s age and sex and Table 9.9''s regions and selected by keyed walks, the both class first. Amounts follow Table 9.7''s subscription bands within each income band and class, uniform inside a band and exactly GBP 20,000 at the top; the both class splits each person''s amount by their balance shares, shifted so the class''s stocks-and-shares total is Table 9.4''s 2023-24 stocks-and-shares amount less the stocks-and-shares-only payments. People grow to 2024-25 by Table 9.4''s account growth (an upper bound on people, as from 6 April 2024 a person may pay into several ISAs of one type), and amounts scale to Table 9.4''s 2024-25 amounts per type, holding subscribers already at the GBP 20,000 overall limit and moving combined amounts between GBP 18,000 (Table 9.7''s last band floor below the limit) and the limit on a line up to it, so a factor below one leaves no empty range under the limit (María''s rulings of 29 October 2026): Table 9.7''s cash bands sit above Table 9.4, and growing that excess by Table 9.4''s ratio against the limit pushed the subscribers below it far up. Every Lifetime ISA holder aged 18 to 47 (the ages that can hold one in 2024-25) with room under the overall limit pays in, amounts in (0, GBP 4,000] drawn to Table 9.4''s 2024-25 Lifetime ISA amount. No ISA fact is a calibration target: binding the cells the stage draws to would be circular, so the reviewed fence keeps them measured only.'
+- stage: trading_allowance_receipts
+  survey: The self-employed's own profit on the final spine, and HMRC's policy paper on the Budget 2026 trading allowance raise (calibration)
+  source: self_employment_income after the SPI income stage; HMRC's published gainers of the raise to GBP 3,000, about 400,000 taxpayers with a lower bill by about GBP 380 on average
+  grain: person
+  operations:
+  - kind: assign_trading_allowance_receipts
+    output: self_employment_gross_receipts
+    profit: self_employment_income
+    draw: trading_allowance_claimant
+    seed: 0
+    claimant_bands:
+    - upper_inclusive: 4500.0
+      rate: 0.64
+    - upper_inclusive: 9000.0
+      rate: 0.32
+    - rate: 0.0
+    claimant_expenses: 1000.0
+    other_expenses: 3000.0
+    calibration: 'HMRC''s policy paper on the Budget 2026 trading allowance raise: about 400,000 taxpayers with a lower bill, by about GBP 380 on average, on the microcosm#1428 national b441bb5a0''s final weights at 2028-29 prices, until HMRC publishes claimant counts (María''s choice of 2026-10-31)'
+    rule: a person with a positive self_employment_income claims the allowance where their uniform falls below their profit band's rate; a claimant's receipts are their profit plus claimant_expenses, any other trader's their profit plus other_expenses, and a person with no positive profit keeps zero
+  - kind: record_mass_conservation_receipt
+    entity: household
+    reason: 'Self-employed gross receipts stored on the source spine: household weights pass through unchanged and total household mass is conserved.'
+    declared_factor: 1.0
+    gate_coupling: The terminal family gate requires a valid mass-conserving MassChangeRecord carrying exactly this stage-specific reason.
+  outputs:
+  - self_employment_gross_receipts
+  nonnegative_outputs:
+  - self_employment_gross_receipts
+  notes: 'The last spine stage (microcosm#1428). policyengine-uk applies the trading allowance against self_employment_gross_receipts, which neither the FRS nor the SPI tape records; without receipts a rise in the allowance relieves only profits up to the new allowance, in full, and misses its main base, the traders who already claim the GBP 1,000 allowance against larger receipts. Under current law a claimant''s receipts are their profit plus GBP 1,000 exactly. Each trader with a positive profit is flagged a claimant at their profit band''s rate, drawn on their own person_id: a claimant''s receipts are their profit plus GBP 1,000, any other trader''s their profit plus GBP 3,000 (expenses at the raised allowance, so the raise does not relieve them; the costing books switchers as behaviour), and a person with no positive profit keeps zero, which the engine reads as unknown. Every trader with a positive profit is treated as filing, as SPI Table 3.10''s counts, which bind the frame''s traders, are of filers, so a profit of GBP 1,000 or less is now taxed where the engine used to relieve it in full. The rates are calibrated to HMRC''s policy paper until HMRC publishes claimant counts. The engine uprates receipts with profit, so a claimant''s GBP 1,000 grows with the mixed income index and the raise relieves slightly less than GBP 2,000 more in later years.'
