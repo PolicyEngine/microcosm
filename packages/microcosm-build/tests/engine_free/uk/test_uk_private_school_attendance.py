@@ -107,17 +107,16 @@ def test_the_stage_needs_the_stored_draw_and_writes_attendance_once():
         store_private_school_attendance(stored, engine=engine, calibration_year=2025)
 
 
-def test_only_the_isa_subscriptions_and_company_cars_follow_the_stage():
+def test_only_the_isa_subscriptions_follow_the_stage():
     """No later stage copies or re-keys a person, so the stored flags reach
     the release as the engine set them. Only the ISA subscriptions
-    (microcosm#1415) and the company cars
-    (PolicyEngine/uk-autumn-budget-dashboard-2026#316) follow it, writing person
-    columns on the rows they are given."""
+    (microcosm#1415) follow it, writing person columns on the rows they are
+    given."""
 
     stages = load_country_spec("uk").sources.stages
     names = [stage.stage for stage in stages]
     later = stages[names.index("private_school_attendance") + 1 :]
-    assert [stage.stage for stage in later] == ["isa_subscriptions", "company_cars"]
+    assert [stage.stage for stage in later] == ["isa_subscriptions"]
     for stage in later:
         assert PRIVATE_SCHOOL_ATTENDANCE_OUTPUT not in {
             *stage.outputs,

@@ -674,7 +674,7 @@
       "obr/capital_gains_tax": "Observed FY2024-25 treatment (#875): the incumbent OBR cash forecast is retained only as diagnostic provenance. It has no same-basis liability mapping and is removed from fitting; no source value is adjusted.",
       "obr/state_pension": "Resident treatment (microcosm#1069 R4): the incumbent OBR FY State Pension forecast counts Great Britain plus pensioners paid abroad and leaves out Northern Ireland. The DWP Stat-Xplore and DfC resident level is bound instead and the exact OBR FY2025-26 figure is retained only as diagnostic provenance on dwp.state_pension.amount; no source value is adjusted.",
       "obr/salary_sacrifice_users_total": "R10 (microcosm#1069 c9): the salary-sacrifice users total contradicts the staged support and the two headcounts either side of £2,000 already bind it; it leaves the fit.",
-      "obr/ni": "Diagnostic only (María's ruling of 2026-10-09, microcosm#1095; uk-data#537 drops the row): OBR's total NICs receipts (table 3.8 row 12) is a cash total, while the three bound class rows are accrued, and it carries statutory-payment recoveries, Class 1A, 1B and 3 and settlements, which no household carries; at the calendar-2025 window it sits about 1.8% above the class rows. The exact OBR FY2025-26 figure is retained only as diagnostic provenance on obr.ni_employee; no source value is adjusted.",
+      "obr/ni": "Diagnostic only (María's ruling of 2026-10-09, microcosm#1095; uk-data#537 drops the row): OBR's total NICs receipts (October 2026 EFO table 4.8 row 12) is a cash total, while the three bound class rows are accrued, and it carries statutory-payment recoveries, Class 1A on benefits other than the company cars and fuel the build carries, Class 1B and 3, and settlements, which no household carries; at the calendar-2025 window it sits about 2.1% above the class rows. The exact OBR FY2025-26 figure is retained only as diagnostic provenance on obr.ni_employee; no source value is adjusted.",
       "dwp/pip_dl_standard_claimants": "Diagnostic only (María's ruling of 2026-10-10, microcosm#1095): DWP's England-and-Wales PIP daily living caseload (FOI2025/24990, end of January 2025) resolves at K04000001 and fits within 0.1%, but fitting the two rows takes the calibration over the uk_weight_ratio fence. The exact figure is retained only as diagnostic provenance on obr.pip; no source value is adjusted.",
       "dwp/pip_dl_enhanced_claimants": "Diagnostic only (María's ruling of 2026-10-10, microcosm#1095): DWP's England-and-Wales PIP daily living caseload (FOI2025/24990, end of January 2025) resolves at K04000001 and fits within 0.1%, but fitting the two rows takes the calibration over the uk_weight_ratio fence. The exact figure is retained only as diagnostic provenance on obr.pip; no source value is adjusted.",
       "ons/female_15_19": "Split, not dropped (María's ruling of 2026-10-13 (microcosm#1095, uk-data#563)): a fit to the five-year band leaves the ages inside it free to drift, so the contract binds ages 15, 16-17 and 18-19 instead (ons.population.female_15, female_16_17 and female_18_19). The three rows partition this row's population and read the same ONS mid-year estimate by single year of age, so they sum to it. No single contract row has this row's definition.",
@@ -2110,10 +2110,10 @@
       "bindings": {
         "policyengine": {
           "metric_name": "obr/ni_employer",
-          "value_variable": "ni_employer",
+          "value_variable": "ni_class_1_employer",
           "from_entity": "person",
           "map_to": "household",
-          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). Since PolicyEngine/chronicle#397 each EFO line and year keeps only its latest edition's number, so the window reads FY2024-25 from the March 2026 EFO and FY2025-26 from the October 2026 EFO, both outturns (source_table_by_opening_year; María's ruling of 2026-10-31, microcosm#1430)."
+          "notes": "Class 1 employer NICs (ni_class_1_employer): OBR's line is table 4.4 row 18, and Class 1A sits in row 21 ('Other NIC', footnote 2), so the engine's Class 1A on the company cars and fuel the build carries (ni_class_1a, which ni_employer adds since policyengine-uk 2.165.0) stays out of the row (microcosm#1430). Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). Since PolicyEngine/chronicle#397 each EFO line and year keeps only its latest edition's number, so the window reads FY2024-25 from the March 2026 EFO and FY2025-26 from the October 2026 EFO, both outturns (source_table_by_opening_year; María's ruling of 2026-10-31, microcosm#1430)."
         },
         "axiom": {
           "metric_name": "obr/ni_employer",
@@ -3680,7 +3680,7 @@
           "map_to": "household",
           "groupby_variable": "total_income_after_loss_relief_annual",
           "band_filter_dimension": "total_income",
-          "notes": "Banded by person-level total income; band edges come from the fact dimension (uk-data targets/compute/income.py:8-20 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3). The amount is pay plus the company car and car fuel benefits (benefits_in_kind, policyengine-uk 2.165.0), which HMRC's employment income counts: on SPI-channel rows that is the tape's PAY + EPB + TAXTERM, as before the company_cars stage carved the car benefits out of pay; on FRS rows, payslip pay plus the car benefits, while HMRC also counts the other benefits in kind (María's ruling of 30 October 2026, PolicyEngine/uk-autumn-budget-dashboard-2026#316).",
+          "notes": "Banded by person-level total income; band edges come from the fact dimension (uk-data targets/compute/income.py:8-20 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3). The amount is pay plus the company car and car fuel benefits (benefits_in_kind, policyengine-uk 2.165.0), which HMRC's employment income counts: on the SPI channel's tape rows that is the tape's PAY + EPB + TAXTERM, as before the company_cars stage carved the car benefits out of pay; on FRS rows, payslip pay plus the car benefits, while HMRC also counts the other benefits in kind (María's ruling of 30 October 2026, PolicyEngine/uk-autumn-budget-dashboard-2026#316).",
           "filters": [
             {
               "variable": "income_tax_before_winter_fuel_payment_charge_annual",
@@ -3737,7 +3737,7 @@
           "band_filter_dimension": "total_income",
           "filters": [
             {
-              "variable": "employment_income_annual",
+              "variable": "employment_income_with_benefits_in_kind_annual",
               "operator": "!=",
               "value": 0
             },
@@ -3749,7 +3749,8 @@
           ],
           "value_variable": "person_count",
           "from_entity": "person",
-          "map_to": "household"
+          "map_to": "household",
+          "notes": "Counts taxpayers with employment income as HMRC's counts read it, pay plus the company car and car fuel benefits (employment_income_with_benefits_in_kind_annual), the term the amount rows bind: a tape row whose pay the company_cars stage carves to nothing keeps its car, and stays in the count as it stays in the amount (microcosm#1430)."
         },
         "axiom": {
           "metric_name": "hmrc/employment_income_count_income_band",
@@ -31181,7 +31182,7 @@
           "map_to": "household",
           "filters": [
             {
-              "variable": "employment_income_annual",
+              "variable": "employment_income_with_benefits_in_kind_annual",
               "operator": "!=",
               "value": 0
             },
@@ -34996,7 +34997,7 @@
         "period_match_policy": "exact",
         "ledger_fact_key": "ledger.aggregate_fact.v2:15666112c805ca76ee67ecde"
       },
-      "notes": "OBR's FY2025-26 total National Insurance contributions, the October 2026 EFO's outturn (table 4.8 row 12), retained as diagnostic provenance beside the bound class rows obr.ni_employee, obr.ni_employer and obr.ni_self_employed (María's ruling of 2026-10-09, microcosm#1095; uk-data#537 drops it). It replaced the March 2026 forecast (table 3.8 row 12) this diagnostic first carried, which Chronicle no longer publishes: each EFO line and year keeps only its latest edition's number (PolicyEngine/chronicle#397; María's ruling of 2026-10-31, microcosm#1430). The engine's total_national_insurance is the sum of its class columns, and at the calendar-2025 window OBR's total sits about 2.1% above the three class rows: it is a cash total against accrued class rows, and it carries statutory-payment recoveries, Class 1A, 1B and 3 and settlements, which no household carries. Never insert it into the fitting registry."
+      "notes": "OBR's FY2025-26 total National Insurance contributions, the October 2026 EFO's outturn (table 4.8 row 12), retained as diagnostic provenance beside the bound class rows obr.ni_employee, obr.ni_employer and obr.ni_self_employed (María's ruling of 2026-10-09, microcosm#1095; uk-data#537 drops it). It replaced the March 2026 forecast (table 3.8 row 12) this diagnostic first carried, which Chronicle no longer publishes: each EFO line and year keeps only its latest edition's number (PolicyEngine/chronicle#397; María's ruling of 2026-10-31, microcosm#1430). The engine's total_national_insurance is the sum of its class columns, and at the calendar-2025 window OBR's total sits about 2.1% above the three class rows: it is a cash total against accrued class rows, and it carries statutory-payment recoveries, Class 1A on benefits other than the company cars and fuel the build carries, Class 1B and 3, and settlements, which no household carries. Never insert it into the fitting registry."
     },
     "hmrc.salary_sacrifice.it_relief_total": {
       "attach_to_target": "hmrc.salary_sacrifice.it_relief_higher_rate",

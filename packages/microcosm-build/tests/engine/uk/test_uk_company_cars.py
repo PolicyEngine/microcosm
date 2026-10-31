@@ -55,10 +55,9 @@ def _frame():
             "frs_company_car_private_fuel": [False, True, False, False, False],
             "frs_company_car_contribution": [0.0, 1_000.0, 0.0, 0.0, 0.0],
             "person_support_channel": ["frs", "frs", "spi", "spi", "frs"],
+            "person_is_spi_income_recipient": [False, False, True, True, False],
             "hmrc_spi_employment_benefits": [0.0, 0.0, 30_000.0, 1_500.0, 0.0],
             "employee_pension_contributions": [3_000.0, 0.0, 9_000.0, 2_000.0, 0.0],
-            "pension_contributions_via_salary_sacrifice": [0.0] * 5,
-            "pension_contributions_via_bonus_sacrifice": [0.0] * 5,
         }
     )
     household = pd.DataFrame(

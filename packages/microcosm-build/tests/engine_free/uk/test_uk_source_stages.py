@@ -67,6 +67,10 @@ E7_STAGE_NAMES = [
     "spi_support_channel",
     "spi_income_band_donors",
     "hmrc_spi_income_spine",
+    # The company cars carve their benefits out of SPI-channel pay right after
+    # the income stage writes it, so every later stage reads pay without them
+    # (PolicyEngine/uk-autumn-budget-dashboard-2026#316).
+    "company_cars",
 ]
 HOUSING_SHELL_STAGE_NAMES = [
     "spi_housing_shell",
@@ -125,9 +129,6 @@ E8_STAGE_NAMES = [
     # microcosm#1415: the ISA subscriptions run on final incomes; nothing
     # reads their outputs.
     "isa_subscriptions",
-    # The company cars run last, so no stage reads the SPI-channel pay they
-    # rewrite (PolicyEngine/uk-autumn-budget-dashboard-2026#316).
-    "company_cars",
 ]
 UK_SOURCE_STAGE_NAMES = [
     "frs_spine",
@@ -209,7 +210,7 @@ class TestUKSourceStagesManifest:
         names = [stage["stage"] for stage in canonical["stages"]]
 
         assert names[
-            names.index("hmrc_spi_income_spine") + 1 : names.index("cgt_support_split")
+            names.index(E7_STAGE_NAMES[-1]) + 1 : names.index("cgt_support_split")
         ] == [
             *HOUSING_SHELL_STAGE_NAMES,
             *E5_STAGE_NAMES,

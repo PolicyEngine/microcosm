@@ -497,10 +497,16 @@ def test_export_candidate_columns_strip_ids_and_carry_the_weight() -> None:
 
 
 def test_no_spine_column_writes_an_input_signed_at_the_engine_default() -> None:
-    """A signed engine default (microcosm#1095) holds only while no stage writes it."""
+    """A signed engine default (microcosm#1095) holds only while no stage writes it.
+
+    The source tables' columns and every stage's declared outputs both count:
+    the company_cars stage writes six of the engine's company car inputs
+    (PolicyEngine/uk-autumn-budget-dashboard-2026#316).
+    """
 
     import json
 
+    from microcosm.build.country_spec import load_country_spec
     from microcosm.frame.adapters.policyengine_uk_concepts import (
         UK_ENGINE_DEFAULT_INPUTS,
     )
@@ -513,7 +519,12 @@ def test_no_spine_column_writes_an_input_signed_at_the_engine_default() -> None:
         ).read_text()
     )
     written = {column for dtypes in schema["dtypes"].values() for column in dtypes}
-    assert "self_employment_income" in written
+    written |= {
+        column
+        for stage in load_country_spec("uk").sources.stages
+        for column in stage.outputs
+    }
+    assert {"self_employment_income", "company_car_list_price"} <= written
     assert not written & set(UK_ENGINE_DEFAULT_INPUTS)
 
 

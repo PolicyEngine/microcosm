@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Collection, Mapping
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any
 
 import numpy as np
@@ -952,14 +953,42 @@ FRS_COMPANY_CAR_JOB_COLUMNS = (
 )
 #: CARVAL's list price bands: 1 up to GBP 10,000, 2 GBP 10,001 to 13,000, 3 to
 #: 16,000, 4 to 19,000, 5 to 22,000, 6 to 25,000, 7 to 30,000, 8 to 40,000
-#: and 9 GBP 40,001 and over. Its code 10, "Don't know", is also the carrier's
+#: and 9 GBP 40,001 and over, each as (above, up to) in GBP of the price when
+#: new; the top band is open. Its code 10, "Don't know", is also the carrier's
 #: code for a car whose band is unanswered.
-FRS_COMPANY_CAR_PRICE_BANDS = tuple(range(1, 10))
+FRS_COMPANY_CAR_PRICE_BAND_BOUNDS: Mapping[int, tuple[float, float | None]] = (
+    MappingProxyType(
+        {
+            1: (0.0, 10_000.0),
+            2: (10_000.0, 13_000.0),
+            3: (13_000.0, 16_000.0),
+            4: (16_000.0, 19_000.0),
+            5: (19_000.0, 22_000.0),
+            6: (22_000.0, 25_000.0),
+            7: (25_000.0, 30_000.0),
+            8: (30_000.0, 40_000.0),
+            9: (40_000.0, None),
+        }
+    )
+)
+FRS_COMPANY_CAR_PRICE_BANDS = tuple(FRS_COMPANY_CAR_PRICE_BAND_BOUNDS)
+FRS_COMPANY_CAR_PRICE_BAND_OPEN = FRS_COMPANY_CAR_PRICE_BANDS[-1]
 FRS_COMPANY_CAR_PRICE_BAND_UNKNOWN = 10
 #: FUELTYP's fuels: 1 petrol, 2 diesel, 3 hybrid (petrol and electricity), 4
 #: electric and 5 other. Its code 6, "Don't know", is also the carrier's code
 #: for a car whose fuel is unanswered.
-FRS_COMPANY_CAR_FUEL_CODES = tuple(range(1, 6))
+FRS_COMPANY_CAR_FUEL_PETROL = 1
+FRS_COMPANY_CAR_FUEL_DIESEL = 2
+FRS_COMPANY_CAR_FUEL_HYBRID = 3
+FRS_COMPANY_CAR_FUEL_ELECTRIC = 4
+FRS_COMPANY_CAR_FUEL_OTHER = 5
+FRS_COMPANY_CAR_FUEL_CODES = (
+    FRS_COMPANY_CAR_FUEL_PETROL,
+    FRS_COMPANY_CAR_FUEL_DIESEL,
+    FRS_COMPANY_CAR_FUEL_HYBRID,
+    FRS_COMPANY_CAR_FUEL_ELECTRIC,
+    FRS_COMPANY_CAR_FUEL_OTHER,
+)
 FRS_COMPANY_CAR_FUEL_UNKNOWN = 6
 
 

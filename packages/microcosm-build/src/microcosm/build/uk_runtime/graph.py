@@ -109,8 +109,9 @@ _STRUCTURAL_WEIGHT_KIND = {
 # units without an observed FRS capital answer.
 _READER_ISOLATION_BOUNDARIES = frozenset(
     {
-        # The housing shell rewrites root household cells right after the
-        # open-surface SPI income stage, which would otherwise bind them.
+        # The housing shell rewrites root household cells after the
+        # open-surface SPI income stage and the company cars, which would
+        # otherwise bind them.
         "spi_housing_shell",
         "uc_reporter_redraw",
         # The SPI benefit pass rewrites cells the open-surface readers before
@@ -143,9 +144,9 @@ _READER_ISOLATION_BOUNDARIES = frozenset(
         # its own version right after the root, the root cells are inherited
         # rather than owned there, so the isolation must be declared.
         "frs_education_grant_split",
-        # The company cars carve their benefits out of SPI-channel pay, which
-        # the open-surface readers before them bind
-        # (PolicyEngine/uk-autumn-budget-dashboard-2026#316).
+        # The company cars carve their benefits out of SPI-channel pay right
+        # after the open-surface SPI income stage, which would otherwise bind
+        # the carved cell (PolicyEngine/uk-autumn-budget-dashboard-2026#316).
         "company_cars",
     }
 )
@@ -583,9 +584,10 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
     # One engine materialization of private-school attendance over the whole
     # frame at its weights: an open surface (microcosm#1095).
     "private_school_attendance": None,
-    # One engine materialization of the company car and car fuel benefits
-    # over the whole frame, which the stage carves out of SPI-channel pay:
-    # an open surface (PolicyEngine/uk-autumn-budget-dashboard-2026#316).
+    # Two engine materializations of the company car and car fuel benefits
+    # over the whole frame: one the stage carves out of the tape rows' pay, and
+    # one on its output to check the carve-out. An open surface
+    # (PolicyEngine/uk-autumn-budget-dashboard-2026#316).
     "company_cars": None,
     # Subscribers are cells of age, sex, region and the CGT income proxy; the
     # balance split reads the household ISA totals and the payments the LISA
@@ -1244,7 +1246,7 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
         _Cell("person", "company_car_electric_range", "float64"),
         _Cell("person", "company_car_capital_contributions", "float64"),
         _Cell("person", "company_car_private_fuel_provided", "bool"),
-        # SPI-channel pay gives up the benefits carved out of it.
+        # A tape row's pay gives up the benefits carved out of it.
         _Cell("person", "employment_income", "float64"),
     ),
     "childcare_copy_take_up": (

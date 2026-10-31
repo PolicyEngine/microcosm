@@ -46,6 +46,12 @@ from microcosm.build.uk_runtime.frs_spine import (
     BENEFIT_CODES,
     BSP_MONTHLY_RATES,
     FRS_COMPANY_CAR_CARRIER_COLUMNS,
+    FRS_COMPANY_CAR_FUEL_CODES,
+    FRS_COMPANY_CAR_FUEL_ELECTRIC,
+    FRS_COMPANY_CAR_FUEL_HYBRID,
+    FRS_COMPANY_CAR_PRICE_BAND_BOUNDS,
+    FRS_COMPANY_CAR_PRICE_BAND_OPEN,
+    FRS_COMPANY_CAR_PRICE_BANDS,
     FRS_SPINE_TABLES,
     OWNER_MANAGER_COLUMNS,
     REGION_MAP,
@@ -2319,6 +2325,20 @@ def test_company_car_carriers_come_from_the_job_tab(
     # Nobody else in the fixture holds a job, so nobody else has a car.
     others = carriers.drop(index=1001)
     assert not others.to_numpy(dtype=float).any()
+
+
+def test_the_company_car_code_views_follow_their_definitions() -> None:
+    """CARVAL's bands and FUELTYP's codes are defined once here and the
+    company_cars stage reads them (docs/shared-constants.md)."""
+
+    assert FRS_COMPANY_CAR_PRICE_BANDS == tuple(range(1, 10))
+    assert FRS_COMPANY_CAR_PRICE_BAND_OPEN == 9
+    bounds = list(FRS_COMPANY_CAR_PRICE_BAND_BOUNDS.values())
+    # The bands tile from zero, each opening where the last closes; the top is open.
+    assert bounds[0][0] == 0.0 and bounds[-1][1] is None
+    assert [low for low, _ in bounds[1:]] == [high for _, high in bounds[:-1]]
+    assert FRS_COMPANY_CAR_FUEL_CODES == tuple(range(1, 6))
+    assert (FRS_COMPANY_CAR_FUEL_HYBRID, FRS_COMPANY_CAR_FUEL_ELECTRIC) == (3, 4)
 
 
 def test_a_persons_main_job_car_is_their_company_car(tmp_path: Path) -> None:

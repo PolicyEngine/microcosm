@@ -176,10 +176,11 @@ _OBR_STATE_PENSION_DIAGNOSTIC_RATIONALE = (
 _OBR_NI_DIAGNOSTIC_RATIONALE = (
     "microcosm#1095 (María's ruling of 2026-10-09; uk-data#537 drops the row) moves "
     "OBR's total NICs receipts out of the fit: a cash total against the three "
-    "accrued class rows, carrying statutory-payment recoveries, Class 1A, 1B and 3 "
-    "and settlements that no household carries. The exact FY2025-26 figure is "
-    "retained as diagnostic provenance on obr.ni_employee, so the frozen fixture's "
-    "fitted row is fixture-only on the current surface."
+    "accrued class rows, carrying statutory-payment recoveries, Class 1A on "
+    "benefits other than the company cars and fuel the build carries, Class 1B "
+    "and 3, and settlements that no household carries. The exact FY2025-26 "
+    "figure is retained as diagnostic provenance on obr.ni_employee, so the frozen "
+    "fixture's fitted row is fixture-only on the current surface."
 )
 #: The next policyengine-uk bump (microcosm#1095, María's ruling of
 #: 2026-10-22) retires these rows from the targets to registry_parity.excluded.

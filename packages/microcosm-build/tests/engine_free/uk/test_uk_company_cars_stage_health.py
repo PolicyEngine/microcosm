@@ -6,7 +6,7 @@ import copy
 
 import pytest
 
-from microcosm.build.uk_runtime.receipt_counts import extreme_count
+from microcosm.build.uk_runtime.receipt_counts import extreme_count, rounded_count
 from microcosm.build.uk_runtime.stage_health import uk_stage_health_gate
 
 PARAMETERS = {"maximum_pay_identity_error_gbp": 0.05}
@@ -14,8 +14,13 @@ PASSING = {
     "stage": "company_cars",
     "holders": {
         "frs_channel": 1200,
-        "spi_channel": 300,
-        "spi_dropped_without_epb": 40,
+        "spi_channel_tape": 300,
+        "spi_channel_twin_pay": 20,
+        "spi_dropped_without_epb": {
+            "count": 40,
+            "weighted": 30_000.0,
+            "weighted_list_price_gbp": 1.2e9,
+        },
         "weighted": 900_000.0,
     },
     "spi_carve_out": {"holders": 300, "max_abs_pay_identity_error_gbp": 0.01},
@@ -33,7 +38,7 @@ PASSING = {
             "electric_range_outside_1_to_50_g_km": 0,
             "spi_benefit_above_epb": 0,
         },
-        "frs_holders_without_pay": "<10",
+        "frs_holders_without_pay": rounded_count(5),
     },
 }
 
@@ -50,7 +55,7 @@ def _gate(evidence, parameters=PARAMETERS):
 def test_a_coherent_receipt_passes() -> None:
     result = _gate(PASSING)
     assert result.passed
-    assert result.details["holders"]["spi_channel"] == 300
+    assert result.details["holders"]["spi_channel_tape"] == 300
 
 
 def test_any_invariant_break_fails_and_is_named() -> None:

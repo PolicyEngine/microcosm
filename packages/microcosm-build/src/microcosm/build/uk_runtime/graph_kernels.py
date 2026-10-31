@@ -240,16 +240,21 @@ _STAGE_HELPER_MODULES = {
         hmrc_isa_statistics,
         receipt_counts,
     ),
-    # The company cars read their carriers' names from frs_spine, HMRC's
-    # company car tables through their typed loader, the engine's CPI
-    # index and contribution cap, and the SPI channel's EPB, and round
-    # their receipts' support (PolicyEngine/uk-autumn-budget-dashboard-2026#316).
+    # The company cars read their carriers' names and codes from frs_spine,
+    # HMRC's company car tables through their typed loader, the engine's CPI
+    # index and contribution cap, the SPI channel's EPB and tape-row flag, and
+    # price the cars twice through the engine adapter; their draws are keyed on
+    # identity, and their receipts' support is rounded
+    # (PolicyEngine/uk-autumn-budget-dashboard-2026#316).
     "company_cars": (
         frs_spine,
         hmrc_company_car_statistics,
         hmrc_uprating,
         receipt_counts,
+        spi_income,
         spi_support,
+        stochastic_assignment,
+        uk_engine_adapter,
     ),
     # The copies' childcare re-draw draws through frs_take_up's childcare
     # helper and reads each household's clone path.

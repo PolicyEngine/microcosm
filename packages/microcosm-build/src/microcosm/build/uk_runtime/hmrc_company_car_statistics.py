@@ -151,6 +151,8 @@ class HMRCCompanyCarStatistics:
     region_taxable_value_gbp: Mapping[str, float] = field(default_factory=dict)
     source_commit: str | None = None
     resource_sha256: str | None = None
+    #: The rows the facts were typed from, which the stage's fact fence counts.
+    row_count: int | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -193,6 +195,7 @@ class HMRCCompanyCarStatistics:
             "resource_sha256": self.resource_sha256,
             "source_commit": self.source_commit,
             "tax_year": self.tax_year,
+            "row_count": self.row_count,
         }
 
 
@@ -290,7 +293,8 @@ def load_hmrc_company_car_statistics(
         if verify_feed_identity:
             verify_vendored_resource_feed_identity(payload)
         digest = "supplied"
-    values = _row_values(list(payload.get("rows", ())))
+    rows = list(payload.get("rows", ()))
+    values = _row_values(rows)
 
     def table1(row: str, measure: str) -> float:
         return _take(values, f"{_PREFIX}table1.{measure}.{_YEAR}.{row}.{measure}")
@@ -327,6 +331,7 @@ def load_hmrc_company_car_statistics(
         ),
         source_commit=dict(payload.get("source_fact_feed", {})).get("source_commit"),
         resource_sha256=digest,
+        row_count=len(rows),
     )
     _check_published_identities(statistics)
     return statistics

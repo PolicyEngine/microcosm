@@ -391,6 +391,12 @@ _ANNUAL_INCOME_HELD_VARIABLES = (
     "carer_support_payment",
     "scottish_carer_supplement",
 )
+#: The engine prorates the company car and car fuel benefits by the share of
+#: the tax year the car is available (ITEPA 2003 ss. 143 and 152), so the
+#: annual simulation makes a car available for the share of the year the
+#: person's pay covers, as it takes that share of the pay
+#: (PolicyEngine/uk-autumn-budget-dashboard-2026#316).
+_COMPANY_CAR_AVAILABILITY = "company_car_availability"
 #: ``months_since_state_pension_age`` counts to the middle of the fiscal year
 #: (6 October), so someone attaining State Pension age within the year was
 #: paid for that many months plus six of it.
@@ -1552,6 +1558,7 @@ class UKMeasureResolver:
         amount times its annual share, plus the other spells carried from the
         dataset's year by the factor the engine carries the current amount by.
         The State Pension is set to the share of it paid in the fiscal year,
+        a company car is available for the share of the year the pay covers,
         and the earnings-tested carer benefits to their baseline values.
         Pension contributions and salary sacrifice keep their current values:
         for a part-year entrant they can be large against the year's pay,
@@ -1589,6 +1596,13 @@ class UKMeasureResolver:
         annual_pension = pension.astype(float) * state_pension_annual_share(months)
         simulation.set_input("state_pension", self.year, annual_pension)
         annual_inputs["state_pension"] = annual_pension
+        availability = _values(
+            self.simulation.calculate(_COMPANY_CAR_AVAILABILITY, self.year)
+        ).astype(float) * np.clip(
+            person[EMPLOYMENT_INCOME_ANNUAL_SHARE].to_numpy(dtype=float), 0.0, 1.0
+        )
+        simulation.set_input(_COMPANY_CAR_AVAILABILITY, self.year, availability)
+        annual_inputs[_COMPANY_CAR_AVAILABILITY] = availability
         for name in _ANNUAL_INCOME_HELD_VARIABLES:
             held = _values(self.simulation.calculate(name, self.year)).astype(float)
             simulation.set_input(name, self.year, held)
@@ -1772,6 +1786,10 @@ class UKMeasureResolver:
                 "state_pension at the measurement year times the share of the "
                 "fiscal year paid: (months_since_state_pension_age + 6) / 12 "
                 "within six months of the year's middle, else 1"
+            ),
+            "company_car_availability": (
+                "company_car_availability at the measurement year times "
+                f"{EMPLOYMENT_INCOME_ANNUAL_SHARE}, at most 1"
             ),
             "held_at_baseline": list(_ANNUAL_INCOME_HELD_VARIABLES),
         }

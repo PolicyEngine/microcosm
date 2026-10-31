@@ -13,10 +13,11 @@ import pandas as pd
 
 from microcosm.build.source_manifest import SourceOperationSpec, SourceStageSpec
 from microcosm.build.uk_runtime.company_cars import (
-    FRS_PRICE_BANDS,
     UK_COMPANY_CAR_FACT_FENCE,
     UK_COMPANY_CARS_MASS_CONSERVATION_REASON,
+    UNKNOWN_FUEL_RULE,
 )
+from microcosm.build.uk_runtime.frs_spine import FRS_COMPANY_CAR_PRICE_BAND_BOUNDS
 from microcosm.build.uk_runtime.hmrc_company_car_statistics import (
     HMRC_CO2_BAND_IDS,
     HMRC_COMPANY_CAR_RECORD_SETS,
@@ -32,6 +33,10 @@ WAS_VEHICLES = tuple(
     }
     for index in (1, 2, 3)
 )
+
+#: The rows ``synthetic_company_car_statistics_payload`` carries, which the
+#: synthetic declaration's fact fence counts.
+SYNTHETIC_FACT_ROWS = 43
 
 COMPANY_CARS_STAGE_OPERATIONS: tuple[dict[str, Any], ...] = (
     {
@@ -56,14 +61,17 @@ COMPANY_CARS_STAGE_OPERATIONS: tuple[dict[str, Any], ...] = (
         "kind": "assign_company_car_fuel_types",
         "outputs": ["company_car_fuel_type"],
         "diesel_fuel_type": "DIESEL_RDE2",
-        "unknown_fuel": "table_2c_shares",
+        "unknown_fuel": UNKNOWN_FUEL_RULE,
         "seed": 0,
         "salt": "company_car_fuel_type",
     },
     {
         "kind": "draw_company_car_list_prices",
         "outputs": ["company_car_list_price", "company_car_capital_contributions"],
-        "bands": {str(band): list(bounds) for band, bounds in FRS_PRICE_BANDS.items()},
+        "bands": {
+            str(band): list(bounds)
+            for band, bounds in FRS_COMPANY_CAR_PRICE_BAND_BOUNDS.items()
+        },
         "minimum_donor_households": 3,
         "open_band_fallback_upper_gbp": 80_000.0,
         "seed": 0,
@@ -94,6 +102,8 @@ COMPANY_CARS_STAGE_OPERATIONS: tuple[dict[str, Any], ...] = (
     {
         "kind": "classify_company_car_facts_with_reviewed_fence",
         **UK_COMPANY_CAR_FACT_FENCE,
+        # The synthetic payload's rows (synthetic_company_car_statistics_payload).
+        "fenced_fact_count": SYNTHETIC_FACT_ROWS,
     },
 )
 
