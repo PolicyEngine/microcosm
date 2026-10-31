@@ -111,6 +111,18 @@ _FIXED_PATHS = [
 ]
 
 
+# Each of these updates the multipliers in its own branch of the solver.
+_ADAPTIVE_PATHS = [
+    pytest.param({}, id="adam-free"),
+    pytest.param({"mass": "conserve"}, id="adam-projection"),
+    pytest.param(
+        {"mass": "conserve", "mass_parametrization": "softmax"},
+        id="adam-softmax",
+    ),
+    pytest.param({"method": "prox"}, id="prox"),
+]
+
+
 def _assert_same_result(actual, expected) -> None:
     # Comparing bytes, rather than a tolerance, also catches signed-zero changes.
     assert actual.weights.tobytes() == expected.weights.tobytes()
@@ -169,6 +181,9 @@ def test_step_zero_preserves_both_l0_refit_phases(monkeypatch) -> None:
         st.tuples(
             st.floats(min_value=-2.0, max_value=2.0),
             st.floats(min_value=-2.0, max_value=2.0),
+            st.floats(min_value=-1e6, max_value=1e6),
+            st.floats(min_value=0.0, max_value=80.0),
+            st.floats(min_value=-500.0, max_value=0.0),
         ),
         min_size=1,
         max_size=30,
@@ -177,17 +192,25 @@ def test_step_zero_preserves_both_l0_refit_phases(monkeypatch) -> None:
 def test_property_multipliers_rise_only_for_violations_and_respect_the_cap(
     cap, step, estimates
 ) -> None:
-    # Include a zero target (absolute-error scale) and a negative target.
-    targets = torch.tensor([0.0, -1.0])
+    # A zero target (absolute-error scale), a unit negative target, an unbanded
+    # row that shifts the rows after it, and two targets with nonunit scales.
+    target_values = (0.0, -1.0, 7.0, 40.0, -250.0)
+    tolerances = (0.2, 0.1, float("nan"), 0.05, 0.02)
+    banded = (0, 1, 3, 4)
+    targets = torch.tensor(target_values)
     band = solve_module._TargetBand.build(
-        np.array([0.2, 0.1]), targets.numpy(), cap, adaptive_step=step
+        np.array(tolerances), targets.numpy(), cap, adaptive_step=step
     )
     assert torch.equal(band.multipliers, torch.zeros_like(band.multipliers))
-    first = [None, None]
-    last = [None, None]
+    first = [None] * len(banded)
+    last = [None] * len(banded)
     for epoch, values in enumerate(estimates):
         estimate = torch.tensor(values, dtype=torch.float32, requires_grad=True)
-        hinge = _oracle_hinge(values, (0.0, -1.0), (0.2, 0.1))
+        hinge = _oracle_hinge(
+            [values[row] for row in banded],
+            [target_values[row] for row in banded],
+            [tolerances[row] for row in banded],
+        )
         previous = band.multipliers.clone()
         band.update(estimate, targets, epoch)
         current = band.multipliers
@@ -202,7 +225,7 @@ def test_property_multipliers_rise_only_for_violations_and_respect_the_cap(
         )
         assert current.requires_grad is False
         assert current.grad_fn is None
-        for row in range(2):
+        for row in range(len(banded)):
             if hinge[row] > 0.0:
                 first[row] = epoch if first[row] is None else first[row]
                 last[row] = epoch
@@ -243,6 +266,25 @@ def test_property_an_always_satisfied_row_has_zero_multiplier_and_gradient(
     assert estimate.grad.tolist() == [0.0, 0.0]
 
 
+def test_the_adaptive_term_pulls_each_banded_row_back_on_its_own_slope() -> None:
+    targets = torch.tensor([40.0, 7.0, -250.0, 0.0])
+    band = solve_module._TargetBand.build(
+        np.array([0.05, np.nan, 0.02, 0.1]), targets.numpy(), 5.0, adaptive_step=1.0
+    )
+    band.multipliers.copy_(torch.tensor([0.5, 0.25, 2.0], dtype=torch.float64))
+    estimate = torch.tensor([60.0, 99.0, -200.0, -1.0], requires_grad=True)
+    term = band.term(estimate, targets)
+    term.backward()
+    # Each slope is the multiplier over the row's scale, signed toward the target.
+    assert term.item() == pytest.approx(
+        0.5 * (0.5 - 0.05) + 0.25 * (0.2 - 0.02) + 2.0 * (1.0 - 0.1), rel=1e-6
+    )
+    np.testing.assert_allclose(
+        estimate.grad.numpy(), [0.5 / 40.0, 0.0, 0.25 / 250.0, -2.0], rtol=1e-6
+    )
+    assert band.multipliers.grad is None
+
+
 def test_a_cleared_row_keeps_its_multiplier_and_stops_rising() -> None:
     targets = torch.tensor([10.0])
     band = solve_module._TargetBand.build(
@@ -258,8 +300,8 @@ def test_a_cleared_row_keeps_its_multiplier_and_stops_rising() -> None:
     assert band.last_violation_epoch.tolist() == [0]
 
 
-@pytest.mark.parametrize("method", ["adam", "prox"])
-def test_diagnostics_record_the_observed_violation_epochs(monkeypatch, method) -> None:
+@pytest.mark.parametrize("path", _ADAPTIVE_PATHS)
+def test_diagnostics_record_the_observed_violation_epochs(monkeypatch, path) -> None:
     frame, targets, tolerances = _problem()
     tolerances[2] = 10.0  # the second banded row never violates
     observations = []
@@ -274,11 +316,11 @@ def test_diagnostics_record_the_observed_violation_epochs(monkeypatch, method) -
     result = calibrate(
         frame,
         targets,
-        method=method,
         epochs=80,
         target_band_tolerances=tolerances,
         target_band_penalty=1.0,
         target_band_adaptive_step=0.1,
+        **path,
     )
     assert [epoch for epoch, _, _ in observations] == list(range(80))
     for band_index, row in enumerate(result.options["target_band"]["targets"]):
@@ -294,30 +336,39 @@ def test_diagnostics_record_the_observed_violation_epochs(monkeypatch, method) -
         assert row["final_multiplier"] == observations[-1][2][band_index].item()
 
 
-@pytest.mark.parametrize("method", ["adam", "prox"])
+@pytest.mark.parametrize("path", _ADAPTIVE_PATHS)
 def test_the_first_update_uses_the_estimate_its_step_came_from(
-    monkeypatch, method
+    monkeypatch, path
 ) -> None:
-    frame, targets, tolerances = _problem()
+    frame, targets, tolerances = _problem(critical_factor=0.9)
     # Start with the critical row outside the band. Its first gradient uses
     # multiplier zero; the multiplier increases only after that optimizer step.
     warm_start = np.full(24, 120.0)
     kwargs = dict(
         epochs=1,
-        method=method,
         seed=7,
         warm_start_weights=warm_start,
+        **path,
     )
-    if method == "adam":
+    if path.get("method") != "prox":
         kwargs["l2_lambda"] = 1e-6  # select the closing state on the plain solve
     plain = calibrate(frame, targets, **kwargs)
     hinges = []
+    forward_passes = []
     original_update = solve_module._TargetBand.update
+    original_apply = solve_module._apply_constraint
+
+    def observe_apply(matrix, weights):
+        forward_passes.append(original_apply(matrix, weights))
+        return forward_passes[-1]
 
     def observe_update(self, estimate, target_vector, epoch):
+        assert len(forward_passes) == 1
+        assert estimate is forward_passes[0]
         hinges.append(self.hinge(estimate, target_vector).item())
         original_update(self, estimate, target_vector, epoch)
 
+    monkeypatch.setattr(solve_module, "_apply_constraint", observe_apply)
     monkeypatch.setattr(solve_module._TargetBand, "update", observe_update)
     adaptive = calibrate(
         frame,
@@ -484,16 +535,16 @@ def test_adaptive_returns_its_last_iterate_after_an_earlier_better_epoch(
         target_band_penalty=1.0,
         target_band_adaptive_step=0.1,
     )
-    # A longer solve's next estimate comes from the state the shorter one closes on.
+    # A longer solve's next forward pass reads the state the shorter one closes on.
     seen = []
-    original_update = solve_module._TargetBand.update
+    original_apply = solve_module._apply_constraint
 
-    def observe_update(self, estimate, target_vector, epoch):
-        seen.append(estimate.detach().numpy().copy())
-        original_update(self, estimate, target_vector, epoch)
+    def observe_apply(matrix, weights):
+        seen.append(weights.detach().numpy().copy())
+        return original_apply(matrix, weights)
 
     with monkeypatch.context() as patched:
-        patched.setattr(solve_module._TargetBand, "update", observe_update)
+        patched.setattr(solve_module, "_apply_constraint", observe_apply)
         calibrate(frame, targets, epochs=epochs + 1, **kwargs)
     result = calibrate(
         frame, targets, epochs=epochs, retain_best_objective=True, **kwargs
@@ -501,9 +552,7 @@ def test_adaptive_returns_its_last_iterate_after_an_earlier_better_epoch(
     best_epoch = int(np.argmin(result.loss_trajectory))
     assert best_epoch < epochs - 1
     assert not np.allclose(seen[best_epoch], seen[epochs], rtol=1e-6)
-    np.testing.assert_allclose(
-        result.problem.estimates(result.weights), seen[epochs], rtol=1e-6
-    )
+    np.testing.assert_allclose(result.weights, seen[epochs], rtol=1e-6)
 
 
 def test_adaptive_solve_clears_a_critical_row_without_worsening_fixed_band_fit() -> (
@@ -582,8 +631,10 @@ def test_frozen_l0_support_can_be_refit_with_an_adaptive_band() -> None:
         target_band_tolerances=tolerances,
         target_band_penalty=1.0,
         target_band_adaptive_step=0.1,
+        target_band_adaptive_warmup_epochs=5,
     )
     assert result.refit.options["target_band"]["adaptive_step"] == 0.1
+    assert result.refit.options["target_band"]["adaptive_warmup_epochs"] == 5
     assert result.refit.options["iterate_selection"] == "closing_state"
 
 
@@ -609,8 +660,8 @@ def test_adaptive_mode_requires_a_positive_cap() -> None:
         )
 
 
-@pytest.mark.parametrize("method", ["adam", "prox"])
-def test_adaptive_mode_adds_no_forward_pass(monkeypatch, method) -> None:
+@pytest.mark.parametrize("path", _ADAPTIVE_PATHS)
+def test_adaptive_mode_adds_no_forward_pass(monkeypatch, path) -> None:
     frame, targets, tolerances = _problem()
     original = solve_module._apply_constraint
     calls = [0]
@@ -622,10 +673,10 @@ def test_adaptive_mode_adds_no_forward_pass(monkeypatch, method) -> None:
     monkeypatch.setattr(solve_module, "_apply_constraint", counted)
     kwargs = dict(
         epochs=30,
-        method=method,
         seed=7,
         target_band_tolerances=tolerances,
         target_band_penalty=1.0,
+        **path,
     )
     calibrate(frame, targets, **kwargs)
     fixed_calls = calls[0]

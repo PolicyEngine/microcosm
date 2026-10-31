@@ -3820,6 +3820,68 @@ def test_target_registry_version_must_match_between_manifest_and_diagnostics(
     assert "target_registry.version must match" in failures
 
 
+_BAND_RECORD = {
+    "penalty": 1.0,
+    "margin": 0.9,
+    "adaptive_step": 0.25,
+    "adaptive_warmup_epochs": 200,
+    "banded_rows": 22,
+}
+
+
+def _write_band_records(
+    release_dir: Path,
+    *,
+    build: dict | None,
+    release: dict | None,
+    diagnostics: dict | None,
+) -> None:
+    build_manifest = json.loads((release_dir / "build_manifest.json").read_text())
+    if build is not None:
+        build_manifest["calibration"]["critical_target_band"] = build
+    (release_dir / "build_manifest.json").write_text(json.dumps(build_manifest))
+    payload = json.loads((release_dir / "calibration_diagnostics.json").read_text())
+    if diagnostics is not None:
+        payload.setdefault("build", {})["critical_target_band"] = diagnostics
+    _write_json_and_refresh_manifest_hash(
+        release_dir,
+        filename="calibration_diagnostics.json",
+        artifact_key="calibration_diagnostics",
+        payload=payload,
+    )
+    if release is not None:
+        manifest_path = release_dir / "release_manifest.json"
+        release_manifest = json.loads(manifest_path.read_text())
+        release_manifest["build"]["critical_target_band"] = release
+        manifest_path.write_text(json.dumps(release_manifest))
+
+
+def test_matching_band_records_pass(release_dir: Path) -> None:
+    _write_band_records(
+        release_dir,
+        build=_BAND_RECORD,
+        release=_BAND_RECORD,
+        diagnostics=_BAND_RECORD,
+    )
+    validate_release_dir(release_dir)
+
+
+@pytest.mark.parametrize("file", ["build", "release", "diagnostics"])
+@pytest.mark.parametrize(
+    "value",
+    [{**_BAND_RECORD, "adaptive_step": 0.5}, None],
+    ids=["different", "missing"],
+)
+def test_band_records_must_agree_across_files(
+    release_dir: Path, file: str, value: dict | None
+) -> None:
+    records = dict.fromkeys(("build", "release", "diagnostics"), _BAND_RECORD)
+    _write_band_records(release_dir, **{**records, file: value})
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(release_dir)
+    assert "critical_target_band must match" in "\n".join(excinfo.value.failures)
+
+
 def test_unparseable_manifest_is_a_named_failure(release_dir: Path) -> None:
     (release_dir / "build_manifest.json").write_text("{not json")
     with pytest.raises(ReleaseContractError, match="not valid JSON"):
