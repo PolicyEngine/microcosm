@@ -2270,6 +2270,7 @@ class _AnnualSimulation:
             "higher_rate_savings_income",
             "add_rate_savings_income",
             "total_pension_income",
+            "benefits_in_kind",
         )
         variables = {
             name: SimpleNamespace(
@@ -2310,6 +2311,11 @@ class _AnnualSimulation:
             return self.calculate("private_pension_income", year) + self.calculate(
                 "state_pension", year
             )
+        if variable == "benefits_in_kind":
+            # The first stub person has a company car; the engine computes its
+            # benefit from the car, not from pay
+            # (PolicyEngine/uk-autumn-budget-dashboard-2026#316).
+            return np.array([3_000.0, 0.0, 0.0])
         total = sum(
             self.calculate(name, year)
             for name in (
@@ -2371,6 +2377,15 @@ def test_annual_measures_read_each_persons_year(monkeypatch, tmp_path):
     # The engine carries the year's pay from 2024 at its own index.
     np.testing.assert_allclose(pay, [31_500.0, 9_450.0, 10_500.0])
     assert route == "annual_income_simulation:native"
+    # HMRC's employment income: the year's pay plus the company car benefits.
+    with_cars, route = resolver.compute(
+        "person", "employment_income_with_benefits_in_kind_annual"
+    )
+    np.testing.assert_allclose(with_cars, [34_500.0, 9_450.0, 10_500.0])
+    assert route == (
+        "annual_income_simulation:engine_components:"
+        "employment_income_with_benefits_in_kind"
+    )
     profit, route = resolver.compute(
         "person", "self_employment_income_after_loss_relief_annual"
     )

@@ -68,6 +68,9 @@ NATIONAL_SELECTOR_KEYS = {
     "period_value",
     "layout_groupby_value_id",
     "source_measure_id_by_opening_year",
+    # microcosm#1430: the 19 OBR rows windowed into calendar 2025 read
+    # FY2024-25 from the March 2026 EFO and FY2025-26 from October's.
+    "source_table_by_opening_year",
     # microcosm#1301: the high-value homes region rows select the derived
     # stock's record set, as its local cells do.
     "record_set_spec_id",

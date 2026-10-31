@@ -76,7 +76,7 @@ UC_CAPITAL_COARSENING = (
 _UC_CAPITAL_LEVELS = ("exact_cell", *UC_CAPITAL_COARSENING)
 #: The UC capital limits the receipt measures the redraw against.
 _UC_CAPITAL_RECEIPT_LIMITS = (6_000.0, 16_000.0)
-#: policyengine-uk 2.164.2 counts these household property values as Universal
+#: policyengine-uk 2.165.0 counts these household property values as Universal
 #: Credit capital (``property_sources`` under
 #: ``gov.dwp.universal_credit.means_test.capital``, at 90% of value less any
 #: secured debt since 2.136.1) and as Pension Credit capital (the ``sources``

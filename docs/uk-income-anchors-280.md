@@ -45,6 +45,22 @@ names exactly the two years of the window, and a selector that declares it
 cannot also declare `source_measure_id` (microcosm#1095: the Great Britain
 pension-age Housing Benefit spending row).
 
+Since PolicyEngine/chronicle#397, OBR's EFO gives each year to one edition:
+Chronicle keeps one number per line and year, the latest edition's, so the
+March 2026 tables carry FY2024-25 and the October 2026 tables FY2025-26. Each
+edition's record sets are their own series, so no edition carries both years
+of the window. The 19 OBR rows windowed into calendar 2025 therefore declare
+`source_table_by_opening_year`, mapping each year to the table that carries it
+(María's ruling of 2026-10-31, microcosm#1430). A fact matches only
+the table its own year declares, and the record set drops out of the series
+identity, so the two tables form the window's one series. A list-valued
+`source_concept` still names several series, each read across the two tables
+(universal credit's two welfare-cap cells), and the selector cannot also
+declare `source_table`. The SDLT row's `calendar_year_window_scaled_by_ratio`
+reads its window the same way. The map names editions, so a later EFO that
+carries FY2025-26 moves it: Chronicle then drops October's number, and the
+window refuses until the map names the new table.
+
 Facts already at a calendar-year period (the DWP monthly cubes) keep their
 calendar-2025 windows; the ESA rows join them below.
 

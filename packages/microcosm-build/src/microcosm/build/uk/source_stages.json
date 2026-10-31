@@ -314,6 +314,10 @@
     "salary_sacrifice_reported",
     "salary_sacrifice_asked",
     "frs_bonus_amount",
+    "frs_company_car_price_band",
+    "frs_company_car_fuel_code",
+    "frs_company_car_private_fuel",
+    "frs_company_car_contribution",
     "child_benefit_reported",
     "income_support_reported",
     "housing_benefit_reported",
@@ -402,9 +406,12 @@
     "housing_service_charges",
     "external_child_payments",
     "care_hours",
-    "frs_care_hours_in_household"
+    "frs_care_hours_in_household",
+    "frs_company_car_price_band",
+    "frs_company_car_fuel_code",
+    "frs_company_car_contribution"
    ],
-   "notes": "Root E2 spine assembly. It carries direct raw mappings only; education-grant aggregate and council-tax reported fields remain raw carriers for E3. Benefit take-up, BRMA/LHA assignment, stochastic flags, and imputations are intentionally absent from this stage, except two identity-keyed draws. One is the UC start-up claim recency (uk-data#527). The other is each person's months_since_last_birthday, which policyengine-uk reads to place a date of birth (the two-child limit, the State Pension scheme, the Pension Credit qualifying age). Each single year of age and sex is spread evenly over the year at the FRS weights, in an order set by a draw on the person's stable id, as the engine spreads it when the column is unset, and the column is stored so every later engine read, the calibration's and the release's included, takes the same months whatever weights or identifiers the file carries (microcosm#1095). The UC start-up period needs the raw claim, interview and job dates only this stage reads, so a UC record without a linked claim date takes its claim recency from a benefit-unit-keyed draw at the linked share. The 2024-25 househol.tab is not sernum-ordered; the declared household sort guards stable identity. care_hours carries the FRS banded care-hours code as weekly hours (lower band edge), and frs_care_hours_in_household the largest of the four in-household care bands (HOURAB, HOURAH, HOURCB, HOURCH) the same way, a stage-internal carrier the Carer's Allowance draw reads and the release drops (microcosm#1418); would_claim_carers_allowance follows reported receipt, so the engine keeps Carer's Allowance on reported claimants while the hours qualify carers for the Universal Credit carer element (#882); after the SPI income chain, carers_allowance_take_up opens the flag to carers the earnings limit alone keeps from the allowance (microcosm#1319). SEINCAM2, the self-employment income the respondent gives, splits by its sign (uk-data#528), so profits go to self_employment_income and losses to trading_loss as a positive amount, the two inputs policyengine-uk reads from 2.131.0 (pe-uk#2085). The engine uprates trading_loss into each projected year as it does self_employment_income, so a loss persists like a profit; the engine documents that a one-off loss would be set to zero in later years, which a one-year survey cannot tell apart. Six of policyengine-uk's eleven owned-company inputs (pe-uk#1965) come from the FRS job tab (microcosm#1095). A director (DIRECTOR 1 or NATURE 1) who owns at least half of the company (DIRPERC 1 to 3, the ruling of 2026-10-16) stands as its sole owner or partner and works in it. The company is their main employment when the job is their first (JOBTYPE 1); it carries on a property business when the main job's SIC division is 68 and a trade otherwise, and its income share is the dividends the job records (DIVIDEND, after tax), the part of the company's profit the survey sees. A company held in another job carries on neither, since ADULT.SIC codes the main job only, which leaves the engine's company-owner rules off for it. The stocks and the intermediaries inputs keep the engine's defaults."
+   "notes": "Root E2 spine assembly. It carries direct raw mappings only; education-grant aggregate and council-tax reported fields remain raw carriers for E3. Benefit take-up, BRMA/LHA assignment, stochastic flags, and imputations are intentionally absent from this stage, except two identity-keyed draws. One is the UC start-up claim recency (uk-data#527). The other is each person's months_since_last_birthday, which policyengine-uk reads to place a date of birth (the two-child limit, the State Pension scheme, the Pension Credit qualifying age). Each single year of age and sex is spread evenly over the year at the FRS weights, in an order set by a draw on the person's stable id, as the engine spreads it when the column is unset, and the column is stored so every later engine read, the calibration's and the release's included, takes the same months whatever weights or identifiers the file carries (microcosm#1095). The UC start-up period needs the raw claim, interview and job dates only this stage reads, so a UC record without a linked claim date takes its claim recency from a benefit-unit-keyed draw at the linked share. The 2024-25 househol.tab is not sernum-ordered; the declared household sort guards stable identity. care_hours carries the FRS banded care-hours code as weekly hours (lower band edge), and frs_care_hours_in_household the largest of the four in-household care bands (HOURAB, HOURAH, HOURCB, HOURCH) the same way, a stage-internal carrier the Carer's Allowance draw reads and the release drops (microcosm#1418); would_claim_carers_allowance follows reported receipt, so the engine keeps Carer's Allowance on reported claimants while the hours qualify carers for the Universal Credit carer element (#882); after the SPI income chain, carers_allowance_take_up opens the flag to carers the earnings limit alone keeps from the allowance (microcosm#1319). SEINCAM2, the self-employment income the respondent gives, splits by its sign (uk-data#528), so profits go to self_employment_income and losses to trading_loss as a positive amount, the two inputs policyengine-uk reads from 2.131.0 (pe-uk#2085). The engine uprates trading_loss into each projected year as it does self_employment_income, so a loss persists like a profit; the engine documents that a one-off loss would be set to zero in later years, which a one-year survey cannot tell apart. Six of policyengine-uk's eleven owned-company inputs (pe-uk#1965) come from the FRS job tab (microcosm#1095). A director (DIRECTOR 1 or NATURE 1) who owns at least half of the company (DIRPERC 1 to 3, the ruling of 2026-10-16) stands as its sole owner or partner and works in it. The company is their main employment when the job is their first (JOBTYPE 1); it carries on a property business when the main job's SIC division is 68 and a trade otherwise, and its income share is the dividends the job records (DIVIDEND, after tax), the part of the company's profit the survey sees. A company held in another job carries on neither, since ADULT.SIC codes the main job only, which leaves the engine's company-owner rules off for it. The stocks and the intermediaries inputs keep the engine's defaults. frs_company_car_price_band, frs_company_car_fuel_code, frs_company_car_private_fuel and frs_company_car_contribution carry each person's company car from the FRS job tab (CARVAL, FUELTYP, EXPBEN03, and CARAMT where CARCON is 1, on their EXPBEN01 job with the lowest JOBTYPE), stage-internal carriers the company_cars stage reads and the release drops (PolicyEngine/uk-autumn-budget-dashboard-2026#316)."
   },
   {
    "stage": "age_tail",
@@ -1133,7 +1140,7 @@
     "maximum_extended_childcare_hours_usage",
     "max_free_entitlement_hours_used"
    ],
-   "notes": "Identity-keyed seed 0 streams replace the incumbent sequential take-up seed 100; salts are output variable names. Reported positive receipt anchors are transient and consumed only. The Universal Credit draw's population is the benefit units with a UC claimant or partner (is_uc_claimant) aged 18 or over and under Pension Credit qualifying age (66 for everyone who can reach it in this release), the age and role conditions of policyengine-uk 2.164.2's is_uc_eligible; the engine lockstep test pins it and names the three engine cases not mirrored (16- and 17-year-old claimants under the UC Regs 2013 reg 8 exceptions, mixed-age couples on the Pension Credit route, and from 2.128.0 pension-age families moved onto Universal Credit when their legacy benefit closes, SI 2014/1230 reg 60A). So the contract rate is a share of those units, an anchor outside them stays true, and any other unit is never drawn; a unit with no claimant or partner of that age keeps its reported Housing Benefit, which a claim it cannot make no longer zeroes (#882, microcosm#867, microcosm#1095). The universal childcare flag is nested under the working-parent one. A unit that claims the extended hours claims the universal hours, and any other unit claims them at the contract's universal_childcare rate, the rate conditional on not claiming the extended hours; the extended draw is unchanged. childcare_copy_take_up later re-draws the childcare flags and hours of the support and CGT copies on their own benefit units. A child of DfE age 0 or 1 (its age on 31 December of the fit's model year, the age DfE counts by) in a unit that claims the working-parent hours uses them at its age's contract rate, extended_childcare_age_0_usage or extended_childcare_age_1_usage (DfE registers far fewer of the youngest eligible children than of those aged 2 to 4, and fewer at 9 to 11 months than at age 1); a child that does not gets max_free_entitlement_hours_used 0, so the engine funds it no hours, and every other person keeps the engine's default of 30."
+   "notes": "Identity-keyed seed 0 streams replace the incumbent sequential take-up seed 100; salts are output variable names. Reported positive receipt anchors are transient and consumed only. The Universal Credit draw's population is the benefit units with a UC claimant or partner (is_uc_claimant) aged 18 or over and under Pension Credit qualifying age (66 for everyone who can reach it in this release), the age and role conditions of policyengine-uk 2.165.0's is_uc_eligible; the engine lockstep test pins it and names the three engine cases not mirrored (16- and 17-year-old claimants under the UC Regs 2013 reg 8 exceptions, mixed-age couples on the Pension Credit route, and from 2.128.0 pension-age families moved onto Universal Credit when their legacy benefit closes, SI 2014/1230 reg 60A). So the contract rate is a share of those units, an anchor outside them stays true, and any other unit is never drawn; a unit with no claimant or partner of that age keeps its reported Housing Benefit, which a claim it cannot make no longer zeroes (#882, microcosm#867, microcosm#1095). The universal childcare flag is nested under the working-parent one. A unit that claims the extended hours claims the universal hours, and any other unit claims them at the contract's universal_childcare rate, the rate conditional on not claiming the extended hours; the extended draw is unchanged. childcare_copy_take_up later re-draws the childcare flags and hours of the support and CGT copies on their own benefit units. A child of DfE age 0 or 1 (its age on 31 December of the fit's model year, the age DfE counts by) in a unit that claims the working-parent hours uses them at its age's contract rate, extended_childcare_age_0_usage or extended_childcare_age_1_usage (DfE registers far fewer of the youngest eligible children than of those aged 2 to 4, and fewer at 9 to 11 months than at age 1); a child that does not gets max_free_entitlement_hours_used 0, so the engine funds it no hours, and every other person keeps the engine's default of 30."
   },
   {
    "stage": "frs_person_draws",
@@ -6110,7 +6117,7 @@
     "frs_benunit_capital",
     "would_claim_uc"
    ],
-   "notes": "Runs after the last universal_credit_reported writer and before CGT cloning. Redraws every SPI benefit unit's capital, since the channel's incomes are SPI draws and the copied FRS answer no longer belongs to the unit (uk-data#495, microcosm#1095), from weighted base-FRS units with available capital in cells of UC reporter status by financial investment income band (interest, dividends and other investment income; property income is excluded because TOTCAPB4 counts accounts and assets) by is_uc_couple (two retained FRS claimant/partner roles, independently of legal is_married) by dependent-children band. A cell with fewer than 20 donors widens in the declared coarsening order, and reporter status is never coarsened. It then applies the monotone reported-UC OR refresh. The recorded capitals add property (uk-data#495, microcosm#1095), since policyengine-uk 2.164.2 replaces every capital source with a recorded figure of 0 or more and takes it as countable, and TOTCAPB4 has no property. WAS records the property for the household, and each means test counts the claimant's and partner's own capital (UC Regs 2013 reg 18; SPCA 2002 s.5). The household reference person's benefit unit therefore holds all of the household's property, and no other unit records any (María's ruling of 2026-10-12), since that person is the one in whose name the home is owned or rented, the best single reading of the owner. The engine shares household property over every claimant or partner instead, which puts a parent's property on an adult child's claim; a recorded figure consumes its own unit's share, so the engine's shares reach only a unit on the unavailable sentinel, and since policyengine-uk 2.136.1 such a unit takes its share whatever a recording unit beside it holds (the receipt counts any unit left there). The property counts at 90% of its value, market value less 10% for the costs of sale, less the debt secured on it, class by class and floored at zero per class (UC Regs 2013 reg 49(1); SPC Regs 2002 reg 19), as policyengine-uk values Universal Credit property capital. The was_wealth stage draws the debt on other residential and on non-residential property (microcosm#1095), and owned land carries none, as the engine has no input for it (pe-uk#1969). Universal Credit counts other residential and non-residential property, and Pension Credit counts those and owned land. A unit that reports Universal Credit keeps its receipt and records the carrier alone for Universal Credit, since DWP assessed its capital to pay it and the property is imputed without that receipt. frs_benunit_capital stays the financial carrier, and its unavailable sentinel -1 passes through to both. Both recorded figures project to later years by GDP per head, as financial capital does, while policyengine-uk 2.139.1 projects other residential property by house prices, so the other residential property in a recorded figure grows faster than the engine's own projection of it; by the OBR indices the engine carries, it grows 1.5% faster by 2025 and 2.0% by 2026 from a 2024 base."
+   "notes": "Runs after the last universal_credit_reported writer and before CGT cloning. Redraws every SPI benefit unit's capital, since the channel's incomes are SPI draws and the copied FRS answer no longer belongs to the unit (uk-data#495, microcosm#1095), from weighted base-FRS units with available capital in cells of UC reporter status by financial investment income band (interest, dividends and other investment income; property income is excluded because TOTCAPB4 counts accounts and assets) by is_uc_couple (two retained FRS claimant/partner roles, independently of legal is_married) by dependent-children band. A cell with fewer than 20 donors widens in the declared coarsening order, and reporter status is never coarsened. It then applies the monotone reported-UC OR refresh. The recorded capitals add property (uk-data#495, microcosm#1095), since policyengine-uk 2.165.0 replaces every capital source with a recorded figure of 0 or more and takes it as countable, and TOTCAPB4 has no property. WAS records the property for the household, and each means test counts the claimant's and partner's own capital (UC Regs 2013 reg 18; SPCA 2002 s.5). The household reference person's benefit unit therefore holds all of the household's property, and no other unit records any (María's ruling of 2026-10-12), since that person is the one in whose name the home is owned or rented, the best single reading of the owner. The engine shares household property over every claimant or partner instead, which puts a parent's property on an adult child's claim; a recorded figure consumes its own unit's share, so the engine's shares reach only a unit on the unavailable sentinel, and since policyengine-uk 2.136.1 such a unit takes its share whatever a recording unit beside it holds (the receipt counts any unit left there). The property counts at 90% of its value, market value less 10% for the costs of sale, less the debt secured on it, class by class and floored at zero per class (UC Regs 2013 reg 49(1); SPC Regs 2002 reg 19), as policyengine-uk values Universal Credit property capital. The was_wealth stage draws the debt on other residential and on non-residential property (microcosm#1095), and owned land carries none, as the engine has no input for it (pe-uk#1969). Universal Credit counts other residential and non-residential property, and Pension Credit counts those and owned land. A unit that reports Universal Credit keeps its receipt and records the carrier alone for Universal Credit, since DWP assessed its capital to pay it and the property is imputed without that receipt. frs_benunit_capital stays the financial carrier, and its unavailable sentinel -1 passes through to both. Both recorded figures project to later years by GDP per head, as financial capital does, while policyengine-uk 2.139.1 projects other residential property by house prices, so the other residential property in a recorded figure grows faster than the engine's own projection of it; by the OBR indices the engine carries, it grows 1.5% faster by 2025 and 2.0% by 2026 from a 2024 base."
   },
   {
    "stage": "uc_take_up",
@@ -6966,7 +6973,7 @@
     {
      "role": "policy_parameters",
      "kind": "versioned_parameter_tree",
-     "dependency": "policyengine-uk>=2.164.2 via microcosm-build[uk]",
+     "dependency": "policyengine-uk>=2.165.0 via microcosm-build[uk]",
      "parameters": [
       "gov.hmrc.cgt.annual_exempt_amount"
      ],
@@ -7047,7 +7054,7 @@
     {
      "role": "policy_parameters",
      "kind": "versioned_parameter_tree",
-     "dependency": "policyengine-uk>=2.164.2 via microcosm-build[uk]",
+     "dependency": "policyengine-uk>=2.165.0 via microcosm-build[uk]",
      "parameters": [
       "gov.hmrc.cgt.annual_exempt_amount",
       "gov.hmrc.cgt.badr.lifetime_limit",
@@ -7712,6 +7719,210 @@
    "source": "HMRC Individual Savings Account statistics Tables 9.4, 9.6 and 9.7 to 9.9, the cash ISA limit reduction impact note and Lifetime ISA Table 1a, via the vendored facts; Office for National Statistics Wealth and Assets Survey, UK Data Service SN 7215, DOI 10.5255/UKDA-SN-7215-20; local licensed round-8 person and household tabs (interviews April 2020 to March 2022, Great Britain).",
    "stage": "isa_subscriptions",
    "survey": "HMRC Annual savings statistics (September 2026 release); Wealth and Assets Survey round 8"
+  },
+  {
+   "artifacts": [
+    {
+     "format": "json",
+     "kind": "public_aggregate_reference",
+     "resource": "hmrc_benefits_in_kind_facts.json",
+     "role": "benefits_in_kind_facts",
+     "runtime_sha256_required": true
+    },
+    {
+     "access": "private_local_input",
+     "doi": "10.5255/UKDA-SN-7215-20",
+     "filename": "was_round_8_person_eul_may_2025_230525.tab",
+     "format": "tab",
+     "kind": "private_microdata",
+     "locator": "caller-supplied local input",
+     "role": "was_person_tab",
+     "runtime_sha256_required": true,
+     "sha256": "1ca6fd37d9c677242112e0d7839df8b406eb1611db8322b20771f054e329d71a",
+     "size_bytes": 356930989,
+     "ukds_study_number": 7215,
+     "vintage": "round_8"
+    }
+   ],
+   "grain": "person",
+   "nonnegative_outputs": [
+    "company_car_list_price",
+    "company_car_co2_emissions",
+    "company_car_electric_range",
+    "company_car_capital_contributions",
+    "employment_income"
+   ],
+   "notes": "Writes six of policyengine-uk 2.165.0's company car inputs on the final spine (PolicyEngine/uk-autumn-budget-dashboard-2026#316) and runs last, so no stage reads the pay it rewrites. An FRS-channel person keeps the company car frs_spine's carriers record; an SPI-channel person keeps their twin's only where their drawn EPB is positive. Fuel maps from the FRS code (a hybrid is an alternative fuel; a diesel meets RDE2, which every new diesel has since January 2021), and an unknown fuel draws at Table 2C's shares. The list price is drawn within the respondent's CARVAL band from WAS round-8 company cars' prices grown by the engine's CPI index from 2021, the open and unknown bands by fuel class, uniformly where a band has fewer than minimum_donor_households WAS households. CO2 is zero for an electric car; the others split between 1 to 50 g/km (hybrids first) and the bands above at Table 2A's shares among cars that emit CO2, uniformly within each band, and a car at 1 to 50 g/km takes electric_range_miles, which matters only to 2027-28. Availability, payments for private use and the 2020 registration flag keep the engine's defaults, which no survey records. SPI-channel pay is the tape's PAY + EPB + TAXTERM, so the engine's car and fuel benefits come out of employment_income, capped at EPB: fuel first where it alone exceeds EPB, then the list price scaled down to fit with its contributions dropped, or the car dropped below minimum_scaled_list_price_gbp (María's ruling of 30 October 2026). No HMRC fact is a calibration target: binding the cells the stage draws to would be circular, and the calibrated file is measured against Tables 1, 3A and 4.",
+   "operations": [
+    {
+     "artifact_role": "benefits_in_kind_facts",
+     "fail_on_mismatch": true,
+     "feed_pin": "chronicle_feed.json",
+     "kind": "verify_vendored_fact_resource",
+     "mapped_build_period": 2024,
+     "period_mapping": "tax_year_2024_25_is_the_build_period",
+     "record_sets": [
+      "hmrc.benefits_in_kind_july_2026.table1.recipients.ty2024",
+      "hmrc.benefits_in_kind_july_2026.table1.taxable_value.ty2024",
+      "hmrc.benefits_in_kind_july_2026.table1.income_tax_liability.ty2024",
+      "hmrc.benefits_in_kind_july_2026.table1.class_1a_nic_liability.ty2024",
+      "hmrc.benefits_in_kind_july_2026.table2a.recipients.ty2024",
+      "hmrc.benefits_in_kind_july_2026.table2c.recipients.ty2024",
+      "hmrc.benefits_in_kind_july_2026.table3a.recipients.ty2024",
+      "hmrc.benefits_in_kind_july_2026.table3a.taxable_value.ty2024",
+      "hmrc.benefits_in_kind_july_2026.table3b.recipients.ty2024",
+      "hmrc.benefits_in_kind_july_2026.table3b.taxable_value.ty2024",
+      "hmrc.benefits_in_kind_july_2026.table4.recipients.ty2024",
+      "hmrc.benefits_in_kind_july_2026.table4.taxable_value.ty2024"
+     ],
+     "require_before_source_read": true,
+     "resource": "hmrc_benefits_in_kind_facts.json",
+     "runtime_sha256_required": true,
+     "source_vintage": "2024-25, provisional (July 2026 release)"
+    },
+    {
+     "car_code": 1,
+     "electric_code": 4,
+     "has_company_vehicle": "COMPVEHR8",
+     "household_key": "CASER8",
+     "household_weight": "R8xshhwgt",
+     "kind": "clean_was_company_car_donor",
+     "price_year": 2021,
+     "vehicles": [
+      {
+       "car_or_van": "CARVAN1R8",
+       "fuel": "PETROL1R8",
+       "list_price": "LISTPR1R8"
+      },
+      {
+       "car_or_van": "CARVAN2R8",
+       "fuel": "PETROL2R8",
+       "list_price": "LISTPR2R8"
+      },
+      {
+       "car_or_van": "CARVAN3R8",
+       "fuel": "PETROL3R8",
+       "list_price": "LISTPR3R8"
+      }
+     ],
+     "yes_code": 1
+    },
+    {
+     "diesel_fuel_type": "DIESEL_RDE2",
+     "kind": "assign_company_car_fuel_types",
+     "outputs": [
+      "company_car_fuel_type"
+     ],
+     "salt": "company_cars:fuel_type",
+     "seed": 0,
+     "unknown_fuel": "table_2c_shares"
+    },
+    {
+     "bands": {
+      "1": [
+       0,
+       10000
+      ],
+      "2": [
+       10000,
+       13000
+      ],
+      "3": [
+       13000,
+       16000
+      ],
+      "4": [
+       16000,
+       19000
+      ],
+      "5": [
+       19000,
+       22000
+      ],
+      "6": [
+       22000,
+       25000
+      ],
+      "7": [
+       25000,
+       30000
+      ],
+      "8": [
+       30000,
+       40000
+      ],
+      "9": [
+       40000,
+       null
+      ]
+     },
+     "kind": "draw_company_car_list_prices",
+     "minimum_donor_households": 3,
+     "open_band_fallback_upper_gbp": 80000,
+     "outputs": [
+      "company_car_list_price",
+      "company_car_capital_contributions"
+     ],
+     "salt": "company_cars:list_price",
+     "seed": 0
+    },
+    {
+     "electric_range_miles": 50,
+     "kind": "draw_company_car_co2_emissions",
+     "margins": "table_2a_nonzero_shares_hybrids_first",
+     "outputs": [
+      "company_car_co2_emissions",
+      "company_car_electric_range"
+     ],
+     "salt": "company_cars:co2",
+     "seed": 0,
+     "top_band_upper_g_km": 179
+    },
+    {
+     "benefits": [
+      "company_car_benefit",
+      "car_fuel_benefit"
+     ],
+     "epb_column": "hmrc_spi_employment_benefits",
+     "kind": "carve_spi_company_car_benefits",
+     "minimum_scaled_list_price_gbp": 5000,
+     "outputs": [
+      "employment_income",
+      "company_car_private_fuel_provided"
+     ]
+    },
+    {
+     "declared_factor": 1,
+     "entity": "household",
+     "gate_coupling": "The terminal family gate requires a valid mass-conserving MassChangeRecord carrying exactly this stage-specific reason.",
+     "kind": "record_mass_conservation_receipt",
+     "reason": "Company cars per employee from the FRS job record, WAS round-8 list prices and HMRC's company car tables on the source spine: household weights pass through unchanged and total household mass is conserved."
+    },
+    {
+     "adjudication": "https://github.com/PolicyEngine/uk-autumn-budget-dashboard-2026/issues/316",
+     "calibration_permitted": false,
+     "classification_rationale": "The stage draws fuel and CO2 to Tables 2A and 2C, so binding them in the weight solve would be circular. The national build reports the calibrated file against Tables 1, 3A and 4; none blocks a build.",
+     "fact_fence_id": "company_car_facts_imputation_seeds_measured_only",
+     "fenced_fact_composition": "HMRC Benefits in kind statistics (July 2026): Table 1 car and car fuel benefit recipients, taxable value, income tax and NICs; Table 2A recipients by CO2 band; Table 2C recipients by fuel; Tables 3A and 3B recipients and taxable value by income range; Table 4 recipients by region",
+     "fenced_fact_count": 96,
+     "kind": "classify_company_car_facts_with_reviewed_fence"
+    }
+   ],
+   "outputs": [
+    "company_car_list_price",
+    "company_car_co2_emissions",
+    "company_car_fuel_type",
+    "company_car_electric_range",
+    "company_car_capital_contributions",
+    "company_car_private_fuel_provided",
+    "employment_income"
+   ],
+   "rewrites": [
+    "employment_income"
+   ],
+   "source": "The FRS job record's company car answers through frs_spine's carriers (EXPBEN01, EXPBEN03, CARVAL, FUELTYP, CARCON, CARAMT), WAS round-8 company cars' list prices, and HMRC's 2024-25 company car recipients by CO2 band (Table 2A) and fuel (Table 2C), via the vendored facts",
+   "stage": "company_cars",
+   "survey": "Family Resources Survey 2024-25 job record; Wealth and Assets Survey round 8; HMRC Benefits in kind statistics (July 2026)"
   }
  ]
 }

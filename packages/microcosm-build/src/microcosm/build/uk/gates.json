@@ -963,6 +963,19 @@
       "notes": "Stage-time check of the isa_subscriptions receipt against HMRC's tables (microcosm#1415). It fails on the 2024-25 cash and stocks-and-shares totals off Table 9.4's 2024-25 amounts (María's ruling of 29 October 2026), the both-type split's stocks-and-shares residual or the Lifetime ISA total off its Table 9.4 amount by more than maximum_relative_total_deviation; a reported saturation is named, not failed. Cells short of eligible holders are named, never failed: the stage invents no holders, and the distance from HMRC's tables after calibration is measured, not gated (María's ruling of 28 October 2026). A population fact check: the synthetic smoke records it without blocking, since a synthetic population cannot reach HMRC's national totals; the rules any population must keep are uk_stage_isa_subscriptions_invariants."
     },
     {
+      "id": "uk_stage_company_cars_invariants",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "evidence_absent_blocks": true,
+      "parameters": {
+        "stage": "company_cars",
+        "check": "company_cars",
+        "maximum_pay_identity_error_gbp": 0.05
+      },
+      "notes": "Stage-time rules of the company_cars receipt that hold for any population (PolicyEngine/uk-autumn-budget-dashboard-2026#316). It fails on any record the receipt counts against them (a non-finite or negative value; a holder without a list price; an input written for someone without a car; an unknown fuel type; a car that emits CO2 without a figure, or an electric car with one; private fuel on an electric car; contributions above the list price; an electric range outside 1 to 50 g/km; an SPI benefit above its EPB) and on any SPI-channel row whose pay plus the car and fuel benefits the engine computes again on the stage's output misses the pay the row brought in (the tape's PAY + EPB + TAXTERM, less any salary sacrifice) by more than maximum_pay_identity_error_gbp, rounded up to the penny: the carve-out of the benefits from pay assumes how the engine prices a car, and the engine computes in single precision (María's ruling of 30 October 2026). It is no population fact check, so the synthetic smoke build blocks on it as every licensed build does; how far the calibrated file sits from HMRC's company car tables is measured, not gated (María's ruling of 28 October 2026 on the ISA facts)."
+    },
+    {
       "id": "uk_release_input_coverage",
       "gate": "release_input_coverage",
       "phase": "terminal",
@@ -1272,6 +1285,12 @@
           "person.stocks_and_shares_isa_balance",
           "person.cash_isa_subscriptions",
           "person.stocks_and_shares_isa_subscriptions",
+          "person.company_car_list_price",
+          "person.company_car_co2_emissions",
+          "person.company_car_fuel_type",
+          "person.company_car_electric_range",
+          "person.company_car_capital_contributions",
+          "person.company_car_private_fuel_provided",
           "person.individual_savings_account_interest_income",
           "person.local_bus_single_fare_share",
           "person.local_bus_trips",

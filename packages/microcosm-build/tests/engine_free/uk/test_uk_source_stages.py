@@ -122,9 +122,12 @@ E8_STAGE_NAMES = [
     "childcare_copy_take_up",
     # microcosm#1095: the stored private-school attendance runs after them.
     "private_school_attendance",
-    # microcosm#1415: the ISA subscriptions run last, on final incomes; nothing
+    # microcosm#1415: the ISA subscriptions run on final incomes; nothing
     # reads their outputs.
     "isa_subscriptions",
+    # The company cars run last, so no stage reads the SPI-channel pay they
+    # rewrite (PolicyEngine/uk-autumn-budget-dashboard-2026#316).
+    "company_cars",
 ]
 UK_SOURCE_STAGE_NAMES = [
     "frs_spine",
@@ -312,6 +315,7 @@ class TestUKSourceStagesManifest:
                     "student_loans": _identity,
                     "private_school_attendance": _identity,
                     "isa_subscriptions": _identity,
+                    "company_cars": _identity,
                     "childcare_copy_take_up": _identity,
                     "age_tail": _identity,
                     "frs_relationships": _identity,

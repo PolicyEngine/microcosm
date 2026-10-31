@@ -143,6 +143,10 @@ _READER_ISOLATION_BOUNDARIES = frozenset(
         # its own version right after the root, the root cells are inherited
         # rather than owned there, so the isolation must be declared.
         "frs_education_grant_split",
+        # The company cars carve their benefits out of SPI-channel pay, which
+        # the open-surface readers before them bind
+        # (PolicyEngine/uk-autumn-budget-dashboard-2026#316).
+        "company_cars",
     }
 )
 # ``age_tail`` needs no isolation entry: it is declared immediately after the
@@ -162,6 +166,9 @@ _SPLIT_STAGE_SOURCES: Mapping[str, tuple[str, ...]] = {
     # The ISA subscriptions split household ISA balances by a WAS donor
     # household's holding pattern (microcosm#1415).
     "isa_subscriptions": ("was", "was_person"),
+    # The company cars draw list prices from WAS round-8 company cars
+    # (PolicyEngine/uk-autumn-budget-dashboard-2026#316).
+    "company_cars": ("was_person",),
     # The finance-cost model trains on the SPI tape (microcosm#1106).
     "property_components": ("spi",),
     "nts_bus_travel": (
@@ -576,6 +583,10 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
     # One engine materialization of private-school attendance over the whole
     # frame at its weights: an open surface (microcosm#1095).
     "private_school_attendance": None,
+    # One engine materialization of the company car and car fuel benefits
+    # over the whole frame, which the stage carves out of SPI-channel pay:
+    # an open surface (PolicyEngine/uk-autumn-budget-dashboard-2026#316).
+    "company_cars": None,
     # Subscribers are cells of age, sex, region and the CGT income proxy; the
     # balance split reads the household ISA totals and the payments the LISA
     # holding (microcosm#1415).
@@ -673,8 +684,14 @@ _ROOT_PERSON_BOOL = {
     "owned_company_carries_on_trade",
     "owned_company_carries_on_property_business",
     "would_claim_carers_allowance",
+    "frs_company_car_private_fuel",
 }
-_ROOT_PERSON_INT = {"age"}
+_ROOT_PERSON_INT = {
+    "age",
+    # The company car carriers' FRS codes (frs_spine.frs_company_car_carriers).
+    "frs_company_car_price_band",
+    "frs_company_car_fuel_code",
+}
 _ROOT_PERSON_FLOAT: set[str] = set()
 _ROOT_BENUNIT_TYPES = {
     "frs_benunit_capital": "float64",
@@ -718,7 +735,8 @@ def _root_cells(stage_outputs: Iterable[str]) -> tuple[_Cell, ...]:
             # integral, and age_tail keeps an integer input integer (its
             # bands are integral), so the legacy runner and this declaration
             # agree without relying on the CREATE-time cast (#845).  Rewrites
-            # cannot change their base's dtype.
+            # cannot change their base's dtype.  frs_spine writes the company
+            # car codes as int64 too.
             cells.append(_Cell("person", column, "int64"))
         elif column in _ROOT_PERSON_FLOAT:
             cells.append(_Cell("person", column, "float64"))
@@ -1218,6 +1236,16 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
             "stocks_and_shares_isa_subscriptions",
             "lifetime_isa_payments",
         ),
+    ),
+    "company_cars": (
+        _Cell("person", "company_car_list_price", "float64"),
+        _Cell("person", "company_car_co2_emissions", "float64"),
+        _Cell("person", "company_car_fuel_type", "string"),
+        _Cell("person", "company_car_electric_range", "float64"),
+        _Cell("person", "company_car_capital_contributions", "float64"),
+        _Cell("person", "company_car_private_fuel_provided", "bool"),
+        # SPI-channel pay gives up the benefits carved out of it.
+        _Cell("person", "employment_income", "float64"),
     ),
     "childcare_copy_take_up": (
         *_cells(
