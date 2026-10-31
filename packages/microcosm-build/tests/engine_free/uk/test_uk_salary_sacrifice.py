@@ -867,9 +867,10 @@ def test_the_stage_adds_bonus_sacrifice_beside_pay(
     assert receipt["pay"] == "unchanged: a sacrificed bonus is never received"
     assert receipt["spi_drawn_support"] == 0
     assert receipt["target_base"] == 90_000.0
-    # Five sources: the base and the band are withheld under ten.
-    assert receipt["participant_support"] == "<10"
-    assert receipt["projected_base"] == "<10"
+    # Five sources: above the floor of three, so the band reads "3-9" and the
+    # base is given: five bonuses of 18,000 above the threshold.
+    assert receipt["participant_support"] == "3-9"
+    assert receipt["projected_base"] == pytest.approx(90_000.0)
     assert receipt["candidate_support"] == "10-29"
     assert BONUS_SACRIFICE_OUTPUT in UKSalarySacrificeStageTransform.output_columns()
 

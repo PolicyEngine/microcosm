@@ -3,11 +3,12 @@
   "exclusions": [
     {
       "target_id": "ons.population.scotland_households_3plus_children",
-      "reason_id": "no_household_composition_fact",
-      "rationale": "Signed out pending a Scotland household-composition fact: the current selector reaches person-level ONS mid-year population age rows, not households with three or more children. microcosm#736 tracks the missing declaration.",
-      "tracking": "microcosm#736",
+      "reason_id": "couples_only_composition_fact",
+      "rationale": "Kept out: Chronicle's Scotland household-composition cut counts couple households only, so binding it would fix part of the group and leave lone parents free, and the current selector reaches person-level ONS mid-year population age rows, not households with three or more children (María's ruling of 2026-10-29, microcosm#1095 D3).",
+      "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "approved_on": "2026-09-05"
+      "approved_on": "2026-10-29",
+      "adjudication": "María in session, 2026-10-29: keep Scotland's households with three or more children out, and correct the reason (microcosm#1095 D3)."
     },
     {
       "target_id": "dft.bus_fare_receipts.england_outside_london",

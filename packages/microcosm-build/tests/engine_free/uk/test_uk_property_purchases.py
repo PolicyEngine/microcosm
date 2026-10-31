@@ -167,7 +167,7 @@ def test_prices_fit_the_count_and_value_within_the_floor_and_the_stock() -> None
     assert np.all(prices <= inputs["stock"] + 1e-6)
     assert not bought[:6].any()  # below the floor, or at zero weight
     assert result.receipt["fitted_value"] == pytest.approx(target.value, rel=1e-8)
-    assert result.receipt["purchaser_support"] in {"<10", "10-29", "30+"}
+    assert result.receipt["purchaser_support"] in {"<3", "3-9", "10-29", "30+"}
 
 
 def test_the_threshold_applies_outside_the_fit_regions() -> None:
@@ -178,29 +178,34 @@ def test_the_threshold_applies_outside_the_fit_regions() -> None:
     outside = result.prices[-50:] > 0
     # Scotland and Wales buy at the same hazard and threshold, unfitted.
     assert outside.any()
-    assert result.receipt["outside_sdlt_regions_support"] in {"<10", "10-29", "30+"}
+    assert result.receipt["outside_sdlt_regions_support"] in {
+        "<3",
+        "3-9",
+        "10-29",
+        "30+",
+    }
 
 
-def test_receipt_cells_on_fewer_than_ten_sources_are_banded() -> None:
-    # UKDS disclosure control: a weighted figure one to nine source
-    # households carry is "<10", and so is anything derived from it.
+def test_receipt_cells_on_fewer_than_three_sources_are_banded() -> None:
+    # UKDS disclosure control: a weighted figure one or two source
+    # households carry is "<3", and so is anything derived from it.
     inputs = _inputs()
     inputs["sdlt_mask"] = np.ones_like(inputs["sdlt_mask"])
     inputs["sdlt_mask"][-50:] = False
     n = len(inputs["stock"])
-    # Every row outside the fit regions belongs to one of three households.
+    # Every row outside the fit regions belongs to one of two households.
     sources = np.arange(n)
-    sources[-50:] = 10_000 + np.arange(50) % 3
+    sources[-50:] = 10_000 + np.arange(50) % 2
     result = pp.impute_property_purchase_prices(
         **{**inputs, "source_ids": sources}, target=_target()
     )
     receipt = result.receipt
     assert (result.prices[-50:] > 0).any()
-    assert receipt["outside_sdlt_regions_support"] == "<10"
-    assert receipt["purchases_outside_sdlt_regions_weight"] == "<10"
+    assert receipt["outside_sdlt_regions_support"] == "<3"
+    assert receipt["purchases_outside_sdlt_regions_weight"] == "<3"
     assert receipt["fitted_value"] == pytest.approx(9e6, rel=1e-8)
-    # Every fit-region row belongs to one of five households.
-    few = np.arange(n) % 5
+    # Every fit-region row belongs to one of two households.
+    few = np.arange(n) % 2
     result = pp.impute_property_purchase_prices(
         **{**inputs, "source_ids": few}, target=_target()
     )
@@ -212,8 +217,8 @@ def test_receipt_cells_on_fewer_than_ten_sources_are_banded() -> None:
         "event_rate",
         "price_scale",
     ):
-        assert result.receipt[field] == "<10", field
-    assert result.receipt["purchaser_support"] == "<10"
+        assert result.receipt[field] == "<3", field
+    assert result.receipt["purchaser_support"] == "<3"
 
 
 def _capped_inputs(capped: int, uncapped: int) -> dict[str, np.ndarray]:
@@ -246,37 +251,37 @@ def _capped_receipt(capped: int, uncapped: int, sources: np.ndarray) -> dict:
 
 
 def test_the_stock_cap_share_counts_each_side_on_its_sources() -> None:
-    # Twelve capped rows past ten, but on two sources: the share is withheld,
-    # though counting rows would give it.
+    # Twelve capped rows past three, but on two sources: the share is
+    # withheld, though counting rows would give it.
     receipt = _capped_receipt(12, 28, np.r_[np.arange(12) % 2, 100 + np.arange(28)])
-    assert receipt["stock_cap_support"] == "<10"
-    assert receipt["weighted_share_at_stock_cap"] == "<10"
-    # Three uncapped rows that copy capped sources: the uncapped side rests on
-    # three sources, so the share, which would give its weight back, is
+    assert receipt["stock_cap_support"] == "<3"
+    assert receipt["weighted_share_at_stock_cap"] == "<3"
+    # Three uncapped rows that copy two capped sources: the uncapped side rests
+    # on two sources, so the share, which would give its weight back, is
     # withheld too.
-    receipt = _capped_receipt(37, 3, np.r_[np.arange(37), np.arange(3)])
+    receipt = _capped_receipt(37, 3, np.r_[np.arange(37), np.array([0, 1, 1])])
     assert receipt["stock_cap_support"] == "10-49"
-    assert receipt["weighted_share_at_stock_cap"] == "<10"
-    # Both sides on ten or more sources: the share is given.
+    assert receipt["weighted_share_at_stock_cap"] == "<3"
+    # Both sides on three or more sources: the share is given.
     receipt = _capped_receipt(12, 28, np.arange(40))
     assert receipt["weighted_share_at_stock_cap"] == pytest.approx(12 / 40)
 
 
-def test_a_fit_on_fewer_than_ten_sources_withholds_the_share_at_the_cap() -> None:
+def test_a_fit_on_fewer_than_three_sources_withholds_the_share_at_the_cap() -> None:
     # At the stock cap every purchaser buys at its stock, so a share of 1.0
-    # beside a "<10" fit would still say so: it is withheld.
+    # beside a "<3" fit would still say so: it is withheld.
     result = pp.impute_property_purchase_prices(
         **_capped_inputs(12, 0),
         target=_target(transactions=12.0, value=12 * 40_000.0 / 0.9),
-        source_ids=np.arange(12) % 5,
+        source_ids=np.arange(12) % 2,
     )
     assert result.receipt["value_fit"] == "stock_cap"
-    assert result.receipt["purchaser_support"] == "<10"
-    assert result.receipt["weighted_share_at_stock_cap"] == "<10"
+    assert result.receipt["purchaser_support"] == "<3"
+    assert result.receipt["weighted_share_at_stock_cap"] == "<3"
 
 
 def test_an_empty_cell_reads_zero() -> None:
-    # No purchase outside the fit regions: 0 beside a zero weight, not "<10".
+    # No purchase outside the fit regions: 0 beside a zero weight, not "<3".
     receipt = _capped_receipt(12, 28, np.arange(40))
     assert receipt["purchases_outside_sdlt_regions_weight"] == 0.0
     assert receipt["outside_sdlt_regions_support"] == 0
@@ -305,8 +310,8 @@ def test_the_eligible_weight_hides_a_small_side_that_does_not_buy() -> None:
     # source's weight back, and so would the event rate: both are withheld.
     receipt = _non_buyer_receipt(38, 2, np.r_[np.arange(38), 100, 100])
     assert receipt["fitted_transactions"] == pytest.approx(38.0)
-    assert receipt["eligible_owner_weight"] == "<10"
-    assert receipt["event_rate"] == "<10"
+    assert receipt["eligible_owner_weight"] == "<3"
+    assert receipt["event_rate"] == "<3"
     # Twenty-two others on their own sources: both are given.
     receipt = _non_buyer_receipt(38, 22, np.arange(60))
     assert receipt["eligible_owner_weight"] == pytest.approx(60.0)
@@ -546,7 +551,7 @@ def test_the_stage_refuses_a_stored_output_or_a_missing_lineage() -> None:
 
 
 def _copies_frame():
-    """Twelve London households, support copies of three sources, each with
+    """Twelve London households, support copies of two sources, each with
     other residential stock to buy with."""
 
     n = 12
@@ -554,7 +559,7 @@ def _copies_frame():
     household = pd.DataFrame(
         {
             "household_id": ids,
-            "household_source_id": np.arange(n, dtype="int64") % 3,
+            "household_source_id": np.arange(n, dtype="int64") % 2,
             "region": pd.array(["LONDON"] * n, dtype="string"),
             "other_residential_property_value": np.full(n, 200_000.0),
             "non_residential_property_value": np.zeros(n),
@@ -618,16 +623,16 @@ def _graph_evidence(frame) -> dict:
 
 
 def test_support_copies_band_on_their_sources_in_the_stage_and_the_node() -> None:
-    # UKDS disclosure control: twelve purchasers past ten rows, but three
-    # sources, so the support reads "<10", in a direct call and through the
+    # UKDS disclosure control: twelve purchasers past three rows, but two
+    # sources, so the support reads "<3", in a direct call and through the
     # production node as a graph build runs it (it declares the lineage).
     frame = _copies_frame()
     direct = pp.impute_property_purchases(frame, targets=_copies_targets())
     for evidence in (direct.evidence(), _graph_evidence(frame)):
         kind = evidence["kinds"][0]
         assert kind["property_type"] == "additional_residential"
-        assert kind["purchaser_support"] == "<10"
-        assert kind["fitted_transactions"] == "<10"
+        assert kind["purchaser_support"] == "<3"
+        assert kind["fitted_transactions"] == "<3"
 
 
 @pytest.mark.parametrize("period", ["2023", "2030", "2024-25"])

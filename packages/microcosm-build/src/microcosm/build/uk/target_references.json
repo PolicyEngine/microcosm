@@ -495,6 +495,9 @@
       "obr.carers_allowance": "obr.efo_expenditure",
       "obr.child_benefit": "obr.efo_expenditure",
       "obr.council_tax": "obr.efo_expenditure",
+      "obr.council_tax_england": "obr.efo_expenditure",
+      "obr.council_tax_scotland": "obr.efo_expenditure",
+      "obr.council_tax_wales": "obr.efo_expenditure",
       "obr.domestic_rates": "obr.efo_expenditure",
       "obr.esa": "obr.efo_expenditure",
       "obr.fuel_duties_cars": "obr.efo_receipts",
@@ -623,6 +626,9 @@
       "slc.repayments.england_plan_2": "slc.repayments",
       "slc.repayments.england_plan_5": "slc.repayments",
       "slc.repayments.england_total_higher_education": "slc.repayments",
+      "slc.repayments.northern_ireland_total": "slc.repayments",
+      "slc.repayments.scotland_total": "slc.repayments",
+      "slc.repayments.wales_total": "slc.repayments",
       "slc.support.adult_dependants_grant_recipients": "slc.student_support",
       "slc.support.adult_dependants_grant_spend": "slc.student_support",
       "slc.support.maintenance_loan_recipients": "slc.student_support",
@@ -880,6 +886,9 @@
       "obr.carers_allowance": "Carers allowance",
       "obr.child_benefit": "Child benefit",
       "obr.council_tax": "Council tax",
+      "obr.council_tax_england": "Council tax england",
+      "obr.council_tax_scotland": "Council tax scotland",
+      "obr.council_tax_wales": "Council tax wales",
       "obr.domestic_rates": "Domestic rates",
       "obr.esa": "Employment and Support Allowance",
       "obr.fuel_duties_cars": "Fuel duties from cars",
@@ -1008,6 +1017,9 @@
       "slc.repayments.england_plan_2": "England plan 2",
       "slc.repayments.england_plan_5": "England plan 5",
       "slc.repayments.england_total_higher_education": "England total higher education",
+      "slc.repayments.northern_ireland_total": "Northern Ireland",
+      "slc.repayments.scotland_total": "Scotland",
+      "slc.repayments.wales_total": "Wales",
       "slc.support.adult_dependants_grant_recipients": "Adult dependants grant recipients",
       "slc.support.adult_dependants_grant_spend": "Adult dependants grant spend",
       "slc.support.maintenance_loan_recipients": "Maintenance loan recipients",
@@ -1295,6 +1307,93 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "obr.council_tax",
+        "measure_kind": "prepared_column"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window_scaled_by_ratio",
+      "value_operands": [
+        {
+          "role": "base"
+        },
+        {
+          "role": "numerator",
+          "source_name": "mhclg",
+          "source_measure_id": "total",
+          "layout_groupby_value_id": "e92000001",
+          "period_type": "month",
+          "period_value": "2025-10",
+          "source_concept": [
+            "mhclg.council_taxbase.second_homes",
+            "mhclg.council_taxbase.empty_dwellings"
+          ],
+          "expected_member_count": 2,
+          "complement": true,
+          "label": "England's second homes and empty dwellings, Council Taxbase October 2025, taken off the chargeable stock"
+        },
+        {
+          "role": "denominator",
+          "source_name": "mhclg",
+          "source_measure_id": "total",
+          "layout_groupby_value_id": "e92000001",
+          "period_type": "month",
+          "period_value": "2025-10",
+          "source_concept": "mhclg.council_taxbase.chargeable_dwellings",
+          "label": "England's chargeable dwellings, Council Taxbase October 2025"
+        }
+      ]
+    },
+    {
+      "name": "obr.council_tax_england",
+      "ledger_selector": {
+        "source_name": "obr",
+        "source_concept": "obr.council_tax_england",
+        "geography_level": "country",
+        "geography_id": "K02000001"
+      },
+      "entity": "household",
+      "measure": "obr/council_tax_england",
+      "family": "obr",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "obr.council_tax_england",
+        "measure_kind": "prepared_column"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
+    },
+    {
+      "name": "obr.council_tax_scotland",
+      "ledger_selector": {
+        "source_name": "obr",
+        "source_concept": "obr.council_tax_scotland",
+        "geography_level": "country",
+        "geography_id": "K02000001"
+      },
+      "entity": "household",
+      "measure": "obr/council_tax_scotland",
+      "family": "obr",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "obr.council_tax_scotland",
+        "measure_kind": "prepared_column"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
+    },
+    {
+      "name": "obr.council_tax_wales",
+      "ledger_selector": {
+        "source_name": "obr",
+        "source_concept": "obr.council_tax_wales",
+        "geography_level": "country",
+        "geography_id": "K02000001"
+      },
+      "entity": "household",
+      "measure": "obr/council_tax_wales",
+      "family": "obr",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "obr.council_tax_wales",
         "measure_kind": "prepared_column"
       },
       "assertion_policy": "allow_source_projection",
@@ -23954,7 +24053,8 @@
         "contract_target_id": "scotgov.scottish_child_payment_spending",
         "measure_kind": "prepared_column"
       },
-      "assertion_policy": "allow_source_projection"
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
     },
     {
       "name": "ons.savings_interest_income",
@@ -24065,6 +24165,69 @@
       }
     },
     {
+      "name": "slc.repayments.wales_total",
+      "ledger_selector": {
+        "source_name": "slc",
+        "source_concept": "slc.student_loan_net_repayments_total",
+        "entity_name": "person",
+        "geography_id": "W92000004",
+        "geography_level": "country"
+      },
+      "entity": "person",
+      "measure": "slc/student_loan_repayment/wales",
+      "family": "slc_repayments",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "slc.repayments.wales_total",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "slc.repayments.scotland_total",
+      "ledger_selector": {
+        "source_name": "slc",
+        "source_concept": "slc.student_loan_net_repayments_total",
+        "entity_name": "person",
+        "geography_id": "S92000003",
+        "geography_level": "country"
+      },
+      "entity": "person",
+      "measure": "slc/student_loan_repayment/scotland",
+      "family": "slc_repayments",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "slc.repayments.scotland_total",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "slc.repayments.northern_ireland_total",
+      "ledger_selector": {
+        "source_name": "slc",
+        "source_concept": "slc.student_loan_net_repayments_total",
+        "entity_name": "person",
+        "geography_id": "N92000002",
+        "geography_level": "country"
+      },
+      "entity": "person",
+      "measure": "slc/student_loan_repayment/northern_ireland",
+      "family": "slc_repayments",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "slc.repayments.northern_ireland_total",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
       "name": "slc.repayments.england_total_higher_education",
       "ledger_selector": {
         "source_name": "slc",
@@ -24084,7 +24247,7 @@
         "contract_target_id": "slc.repayments.england_total_higher_education",
         "measure_kind": "prepared_column"
       },
-      "value_operation": "sum"
+      "value_operation": "calendar_year_window"
     },
     {
       "name": "slc.repayments.england_plan_1",
@@ -24106,7 +24269,7 @@
         "contract_target_id": "slc.repayments.england_plan_1",
         "measure_kind": "prepared_column"
       },
-      "value_operation": "sum"
+      "value_operation": "calendar_year_window"
     },
     {
       "name": "slc.repayments.england_plan_2",
@@ -24129,7 +24292,7 @@
         "contract_target_id": "slc.repayments.england_plan_2",
         "measure_kind": "prepared_column"
       },
-      "value_operation": "sum"
+      "value_operation": "calendar_year_window"
     },
     {
       "name": "slc.repayments.england_plan_5",
@@ -24152,7 +24315,7 @@
         "contract_target_id": "slc.repayments.england_plan_5",
         "measure_kind": "prepared_column"
       },
-      "value_operation": "sum"
+      "value_operation": "calendar_year_window"
     },
     {
       "name": "slc.borrowers.plan_2_above_threshold",
@@ -24537,7 +24700,8 @@
         "contract_target_id": "hmrc.tfc.government_top_up",
         "measure_kind": "prepared_column",
         "observation_basis": "annual_flow"
-      }
+      },
+      "value_operation": "calendar_year_window"
     },
     {
       "name": "hmrc.tfc.children_with_used_accounts",
@@ -24590,10 +24754,9 @@
         "measure_kind": "prepared_column",
         "observation_basis": "january_stock"
       },
+      "observation_period": "2026-01",
       "value_operation": "sum",
-      "expected_member_count": 2,
-      "uprating_from_period": "2025-01",
-      "uprating_to_period": 2025
+      "expected_member_count": 2
     },
     {
       "name": "dfe.funded_childcare.early_learning_2_year_olds",
@@ -24619,8 +24782,7 @@
         "measure_kind": "prepared_column",
         "observation_basis": "january_stock"
       },
-      "uprating_from_period": "2025-01",
-      "uprating_to_period": 2025
+      "observation_period": "2026-01"
     },
     {
       "name": "dfe.funded_childcare.universal_only_children",
@@ -24639,6 +24801,7 @@
         "measure_kind": "prepared_column",
         "observation_basis": "january_stock"
       },
+      "observation_period": "2026-01",
       "value_operation": "difference",
       "value_operands": [
         {
@@ -24659,9 +24822,7 @@
             "age": "3 to 4 years"
           }
         }
-      ],
-      "uprating_from_period": "2025-01",
-      "uprating_to_period": 2025
+      ]
     },
     {
       "name": "dfe.funded_childcare.working_parent_children_9_to_11_months",
@@ -24688,8 +24849,7 @@
         "measure_kind": "prepared_column",
         "observation_basis": "january_stock"
       },
-      "uprating_from_period": "2025-01",
-      "uprating_to_period": 2025
+      "observation_period": "2026-01"
     },
     {
       "name": "dfe.funded_childcare.working_parent_children_age_1",
@@ -24716,8 +24876,7 @@
         "measure_kind": "prepared_column",
         "observation_basis": "january_stock"
       },
-      "uprating_from_period": "2025-01",
-      "uprating_to_period": 2025
+      "observation_period": "2026-01"
     },
     {
       "name": "dfe.funded_childcare.working_parent_children_age_2",
@@ -24744,8 +24903,7 @@
         "measure_kind": "prepared_column",
         "observation_basis": "january_stock"
       },
-      "uprating_from_period": "2025-01",
-      "uprating_to_period": 2025
+      "observation_period": "2026-01"
     },
     {
       "name": "dfe.funded_childcare.working_parent_children_age_3",
@@ -24772,8 +24930,7 @@
         "measure_kind": "prepared_column",
         "observation_basis": "january_stock"
       },
-      "uprating_from_period": "2025-01",
-      "uprating_to_period": 2025
+      "observation_period": "2026-01"
     },
     {
       "name": "dfe.funded_childcare.universal_nursery_children_age_3",
@@ -24800,8 +24957,7 @@
         "measure_kind": "prepared_column",
         "observation_basis": "january_stock"
       },
-      "uprating_from_period": "2025-01",
-      "uprating_to_period": 2025
+      "observation_period": "2026-01"
     },
     {
       "name": "dft.bus_fare_receipts.england",
@@ -25529,8 +25685,7 @@
         "measure_kind": "prepared_column",
         "observation_basis": "fiscal_year_flow"
       },
-      "value_operation": "sum",
-      "expected_member_count": 2
+      "value_operation": "calendar_year_window"
     },
     {
       "name": "nithc.public_transport_support",

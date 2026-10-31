@@ -1,7 +1,7 @@
 {
   "version": 1,
   "country": "uk",
-  "policy": "The certified June UK national battery declared as data (microcosm#611): the two build preflights plus the terminal battery. Every gate carries its thresholds as entry parameters at exact certified or receipted values; microcosm#630 landed the weighted-integrity pair as reviewed parameter edits with receipts in the entry notes, and the weight-ratio fence keeps its exact certified June value (the #630 breach was an SPI allocation defect fixed upstream in microcosm#710). The #680 stochastic layer delivers the take-up signal gate; every gate the UK runs today is declared below.",
+  "policy": "The certified June UK national battery declared as data (microcosm#611): the two build preflights plus the terminal battery. Every gate carries its thresholds as entry parameters at exact certified or receipted values; microcosm#630 landed the weighted-integrity pair as reviewed parameter edits with receipts in the entry notes, and the weight-ratio fence keeps its exact certified June value (the #630 breach was an SPI allocation defect fixed upstream in microcosm#710). The #680 stochastic layer delivers the take-up signal gate; every gate the UK runs today is declared below. The shared macro_realism band is not declared (microcosm#757, María's ruling of 2026-10-29): the solve binds the household income components directly, and the national accounts' household disposable income differs in scope (it counts owner-occupiers' imputed rent and, in its headline series, non-profit institutions serving households), so a band against it would test the scope gap, not the file. The release contract's verifier refuses an excused (not_applicable) entry in this spec vintage, so the reason is recorded here.",
   "phases": [
     "preflight",
     "assembled",
@@ -425,7 +425,7 @@
         "maximum_parent_residual_share": 0.01,
         "required_support_band": "30+"
       },
-      "notes": "Stage-time fact check on the lcfs excise_quantities and excise_shares receipts (microcosm#1359): every policyengine-uk excise input the stage declares is recomputed from the vendored rows through the stage's own declaration, never taken from the receipt: each alcohol product's FY2024-25 HMRC clearances over the engine's strength, each tobacco product's clearances, each gambling duty base (HMRC's receipts for the duty or Machine Games Duty's liabilities for the band over the engine's rate, and General Betting Duty's base split by the Gambling Commission's gross gambling yield) and the beer and cider draught shares. The receipt's levels must equal them, the prior-weighted frame total of each input must equal its level and the factor must reproduce it from the household spending it is shared by, and an input is positive exactly where that spending is; the basis must be the declared fiscal year over the engine's 52 weeks, and each draught share written must be the published ratio. The three shares the spending comes from (tobacco of P602's off-trade lines, on-trade alcohol of P611, gambling stakes of P609) must have stayed in [0, 1] on the frame and rest on 30 or more donors each, and at most one percent of the donors, by weight, may carry a published total beside a share's diary lines (a share withheld for resting on under ten donors is under it). The levels are recomputed from the same vendored rows the stage read, so the check catches a step that did not apply the declared levels; it cannot catch an error in the rows themselves or a later stage moving the columns. A population fact check: the synthetic smoke records it without blocking."
+      "notes": "Stage-time fact check on the lcfs excise_quantities and excise_shares receipts (microcosm#1359): every policyengine-uk excise input the stage declares is recomputed from the vendored rows through the stage's own declaration, never taken from the receipt: each alcohol product's FY2024-25 HMRC clearances over the engine's strength, each tobacco product's clearances, each gambling duty base (HMRC's receipts for the duty or Machine Games Duty's liabilities for the band over the engine's rate, and General Betting Duty's base split by the Gambling Commission's gross gambling yield) and the beer and cider draught shares. The receipt's levels must equal them, the prior-weighted frame total of each input must equal its level and the factor must reproduce it from the household spending it is shared by, and an input is positive exactly where that spending is; the basis must be the declared fiscal year over the engine's 52 weeks, and each draught share written must be the published ratio. The three shares the spending comes from (tobacco of P602's off-trade lines, on-trade alcohol of P611, gambling stakes of P609) must have stayed in [0, 1] on the frame and rest on 30 or more donors each, and at most one percent of the donors, by weight, may carry a published total beside a share's diary lines (a share withheld for resting on one or two donors is under it). The levels are recomputed from the same vendored rows the stage read, so the check catches a step that did not apply the declared levels; it cannot catch an error in the rows themselves or a later stage moving the columns. A population fact check: the synthetic smoke records it without blocking."
     },
     {
       "id": "uk_stage_lcfs_consumption_gambling_participation",
@@ -445,7 +445,7 @@
         ],
         "required_support_band": "30+"
       },
-      "notes": "Stage-time fact check on the lcfs gambling_participation receipt (microcosm#1359): each key's adult participation rates (the National Lottery's products, and the betting and gaming the other gambling duties charge; past four weeks and past twelve months, by sex and age band) are recomputed from the vendored GSGB 2025 rows through the stage's own declaration, never taken from the receipt, and must equal the receipt's, and the receipt's settings (theta per key, the occasional players' stake share, the strata, the propensity classifier, the seed and the salt) must be the declared ones. Per key, each household stratum the receipt gives must sit within maximum_stratum_shortfall of its four-week target and from there of its twelve-month target, or add no household where the diary already passed a target; the national shares must reach the targets less that shortfall; no added household may lack a stake; the three classes' shares of the key's stakes must sum to one; the scale that brings the added regular players' mean stake to the seen households' must lie in amount_scale_bounds, so a broken stake draw that the anchoring would otherwise hide fails (Vahid's review, round 4; the upper bound rose from 2.0 to 2.5 on María's ruling of 2026-10-26, since full spine builds scale the National Lottery's added regular players by about 2.03); the propensity must rest on 30 or more donors; and the excise levelling must have shared the gambling bases by the topped-up keys, each key positive on its twelve-month share. The receipt withholds a stratum with a cell under ten source households, which the gate counts rather than checks; a key withheld nationally fails. The rates are recomputed from the same vendored rows the stage read, so the check catches a step that did not apply the declared rates or settings; it cannot catch an error in the rows themselves, and the stratum targets, which need the frame's adults, are the step's own (it refuses a stratum it cannot fill). A population fact check: the synthetic smoke records it without blocking."
+      "notes": "Stage-time fact check on the lcfs gambling_participation receipt (microcosm#1359): each key's adult participation rates (the National Lottery's products, and the betting and gaming the other gambling duties charge; past four weeks and past twelve months, by sex and age band) are recomputed from the vendored GSGB 2025 rows through the stage's own declaration, never taken from the receipt, and must equal the receipt's, and the receipt's settings (theta per key, the occasional players' stake share, the strata, the propensity classifier, the seed and the salt) must be the declared ones. Per key, each household stratum the receipt gives must sit within maximum_stratum_shortfall of its four-week target and from there of its twelve-month target, or add no household where the diary already passed a target; the national shares must reach the targets less that shortfall; no added household may lack a stake; the three classes' shares of the key's stakes must sum to one; the scale that brings the added regular players' mean stake to the seen households' must lie in amount_scale_bounds, so a broken stake draw that the anchoring would otherwise hide fails (Vahid's review, round 4; the upper bound rose from 2.0 to 2.5 on María's ruling of 2026-10-26, since full spine builds scale the National Lottery's added regular players by about 2.03); the propensity must rest on 30 or more donors; and the excise levelling must have shared the gambling bases by the topped-up keys, each key positive on its twelve-month share. The receipt withholds a stratum with a cell on one or two source households, which the gate counts rather than checks; a key withheld nationally fails. The rates are recomputed from the same vendored rows the stage read, so the check catches a step that did not apply the declared rates or settings; it cannot catch an error in the rows themselves, and the stratum targets, which need the frame's adults, are the step's own (it refuses a stratum it cannot fill). A population fact check: the synthetic smoke records it without blocking."
     },
     {
       "id": "uk_stage_lcfs_consumption_basis",
@@ -561,7 +561,7 @@
         ],
         "minimum_observed_pay_share": 0.7
       },
-      "notes": "Stage-time gate over the annual income descriptors' receipt: every share lies in [0, 1], no other-spell amount is negative and every full-year earner keeps the whole year, exactly; the usual-to-DV pay ratio the stage measures lies in [0.95, 1.10]; annual employee earners are between one and 1.15 times current ones (the survey's spells add part-year earners and cannot remove a current one); and, where ten or more households carry it, at least 0.7 of the pay outside the current job is observed rather than drawn from a donor."
+      "notes": "Stage-time gate over the annual income descriptors' receipt: every share lies in [0, 1], no other-spell amount is negative and every full-year earner keeps the whole year, exactly; the usual-to-DV pay ratio the stage measures lies in [0.95, 1.10]; annual employee earners are between one and 1.15 times current ones (the survey's spells add part-year earners and cannot remove a current one); and, where three or more households carry it, at least 0.7 of the pay outside the current job is observed rather than drawn from a donor."
     },
     {
       "id": "uk_stage_spi_support_channel_mass",
@@ -917,7 +917,7 @@
           "all_households"
         ]
       },
-      "notes": "Stage-time gate over the Move to UC take-up receipt (microcosm#1308, gated with the next policyengine-uk bump on María's ruling of 2026-10-17). The receipt withholds what a thin combination realizes, so the gate holds the contract it can read: the share is measured at the spine's design weights over Great Britain, every combination's rate is a probability taken from its combination or from all households, its support is a printed band, its unreachable flag is a boolean, a withheld \"<10\" or absent, and the share claiming at closure is a share or withheld."
+      "notes": "Stage-time gate over the Move to UC take-up receipt (microcosm#1308, gated with the next policyengine-uk bump on María's ruling of 2026-10-17). The receipt withholds what a thin combination realizes, so the gate holds the contract it can read: the share is measured at the spine's design weights over Great Britain, every combination's rate is a probability taken from its combination or from all households, its support is a printed band, its unreachable flag is a boolean, a withheld \"<3\" or absent, and the share claiming at closure is a share or withheld."
     },
     {
       "id": "uk_stage_frs_person_draws_apprentices",
@@ -933,7 +933,68 @@
         "maximum_relative_realization_deviation": 0.05,
         "maximum_implied_relief": 370000000.0
       },
-      "notes": "Stage-time gate over the is_apprentice receipt (microcosm#1373). The draw's target is the contract's apprentice_stock_19_to_24 for the build year (DfE's England apprentices in learning at the start of the academic year, participation less starts, per head aged 19 to 24) times the weighted population aged 21 to 24 at the stage's weights, and eligible employees aged 21 to 24 are flagged in the order of their identity-keyed uniform until their weight is nearest it, so the stage misses it by at most half one person's weight. The gate checks that the receipt carries the contract's rate under the declared key, that its target is that rate times its population, that its support is printed in bands, and, unless the eligible employees weigh no more than the target (cap-bound, every one of them flagged), that the flagged weight lies within maximum_relative_realization_deviation (5 percent) of the target. That tolerance is a declared rule set above the half-weight bound, not a fact. A figure resting on fewer than ten source households, which the receipt withholds under the UKDS disclosure rule and prints \"<10\", is named unchecked, never failed: a small-cell rule never stops a build (María's ruling of 2026-10-26). The receipt also records the relief the flags imply at the installed engine's own Class 1 schedule for the build year (on a 2024 frame, 13.8 percent between GBP 9,100 and GBP 50,270), with each flagged employee's pay standing in for NIC earnings, and the gate holds it at or below maximum_implied_relief: GBP 370m, HMRC's NIC - NS1 for 2024-25 (tax relief statistics, January 2026, Table 2), which covers every apprentice under 25, under-21s included, since the apprentice relief takes precedence (Vahid's review of microcosm#1373, S1). It is a ceiling, not a target. The stage refuses an installed engine without the s.9B threshold or without policyengine-uk#2683's split of the apprentice minimum wage from the flag. The entry is a population_fact_check, so the synthetic smoke build over the H2 fixture records its outcome without blocking; every licensed build blocks on it."
+      "notes": "Stage-time gate over the is_apprentice receipt (microcosm#1373). The draw's target is the contract's apprentice_stock_19_to_24 for the build year (DfE's England apprentices in learning at the start of the academic year, participation less starts, per head aged 19 to 24) times the weighted population aged 21 to 24 at the stage's weights, and eligible employees aged 21 to 24 are flagged in the order of their identity-keyed uniform until their weight is nearest it, so the stage misses it by at most half one person's weight. The gate checks that the receipt carries the contract's rate under the declared key, that its target is that rate times its population, that its support is printed in bands, and, unless the eligible employees weigh no more than the target (cap-bound, every one of them flagged), that the flagged weight lies within maximum_relative_realization_deviation (5 percent) of the target. That tolerance is a declared rule set above the half-weight bound, not a fact. A figure resting on fewer than three source households, which the receipt withholds under the UKDS disclosure rule and prints \"<3\", is named unchecked, never failed: a small-cell rule never stops a build (María's ruling of 2026-10-26). The receipt also records the relief the flags imply at the installed engine's own Class 1 schedule for the build year (on a 2024 frame, 13.8 percent between GBP 9,100 and GBP 50,270), with each flagged employee's pay standing in for NIC earnings, and the gate holds it at or below maximum_implied_relief: GBP 370m, HMRC's NIC - NS1 for 2024-25 (tax relief statistics, January 2026, Table 2), which covers every apprentice under 25, under-21s included, since the apprentice relief takes precedence (Vahid's review of microcosm#1373, S1). It is a ceiling, not a target. The stage refuses an installed engine without the s.9B threshold or without policyengine-uk#2683's split of the apprentice minimum wage from the flag. The entry is a population_fact_check, so the synthetic smoke build over the H2 fixture records its outcome without blocking; every licensed build blocks on it."
+    },
+    {
+      "id": "uk_stage_frs_take_up_signal",
+      "gate": "stage_health",
+      "phase": "assembled",
+      "criticality": "release_blocking",
+      "evidence_absent_blocks": true,
+      "population_fact_check": true,
+      "parameters": {
+        "stage": "frs_take_up",
+        "check": "take_up_signal",
+        "maximum_share_deviation": 0.05,
+        "under_two_usage_maximum_share_deviation": 0.1,
+        "outputs": [
+          "benunit.would_claim_tfc",
+          "benunit.would_claim_extended_childcare",
+          "benunit.would_claim_universal_childcare",
+          "benunit.would_claim_targeted_childcare",
+          "benunit.would_claim_uc_childcare",
+          "person.max_free_entitlement_hours_used"
+        ]
+      },
+      "notes": "Stage-time take-up signal gate (María's ruling of 2026-10-29, microcosm#1095): the six flags frs_take_up draws that the terminal uk_take_up_signal gate measures (Tax-Free Childcare, the extended, universal and targeted hours, the Universal Credit childcare element and the under-2 usage of the extended hours) are measured where they are drawn, at the stage's household weights before calibration, against their contract targets within the terminal gate's bounds (0.05; 0.10 for the under-2 usage, whose population is the children under 2 in units that claim the extended hours), and no benefit unit may claim the extended hours without the universal ones. Calibration's drift cannot move them here, so a failure is a draw defect. The bounds are the terminal gate's until a spine build's receipt measures the stage-time deviations. The receipt withholds a share or target whose population rests on fewer than three source households (UKDS disclosure control), and the gate fails on it; a synthetic smoke build records a failure without blocking on it (population_fact_check)."
+    },
+    {
+      "id": "uk_stage_frs_person_draws_take_up_signal",
+      "gate": "stage_health",
+      "phase": "assembled",
+      "criticality": "release_blocking",
+      "evidence_absent_blocks": true,
+      "population_fact_check": true,
+      "parameters": {
+        "stage": "frs_person_draws",
+        "check": "take_up_signal",
+        "maximum_share_deviation": 0.05,
+        "outputs": [
+          "person.would_claim_marriage_allowance",
+          "person.would_claim_scp"
+        ]
+      },
+      "notes": "Stage-time take-up signal gate (María's ruling of 2026-10-29, microcosm#1095): the Marriage Allowance and Scottish Child Payment flags frs_person_draws draws are measured where they are drawn, at the stage's household weights before calibration, against their contract targets within the terminal gate's bounds (0.05; the Scottish Child Payment target is the weighted mean of its under-6 and 6-plus rates). Calibration's drift cannot move them here, so a failure is a draw defect. The bounds are the terminal gate's until a spine build's receipt measures the stage-time deviations. The receipt withholds a share or target whose population rests on fewer than three source households (UKDS disclosure control), and the gate fails on it; a synthetic smoke build records a failure without blocking on it (population_fact_check)."
+    },
+    {
+      "id": "uk_stage_frs_household_draws_take_up_signal",
+      "gate": "stage_health",
+      "phase": "assembled",
+      "criticality": "release_blocking",
+      "evidence_absent_blocks": true,
+      "population_fact_check": true,
+      "parameters": {
+        "stage": "frs_household_draws",
+        "check": "take_up_signal",
+        "maximum_share_deviation": 0.05,
+        "outputs": [
+          "household.household_owns_tv",
+          "household.would_evade_tv_licence_fee",
+          "household.main_residential_property_purchased_is_first_home",
+          "household.property_purchased"
+        ]
+      },
+      "notes": "Stage-time take-up signal gate (María's ruling of 2026-10-29, microcosm#1095): the four flags frs_household_draws draws (TV ownership, TV licence evasion, the first-home flag and the main-residence purchase flag) are measured where they are drawn, at the stage's household weights before calibration, against their contract targets within the terminal gate's bounds (0.05). Calibration's drift cannot move them here, so a failure is a draw defect. The bounds are the terminal gate's until a spine build's receipt measures the stage-time deviations. The receipt withholds a share or target whose population rests on fewer than three source households (UKDS disclosure control), and the gate fails on it; a synthetic smoke build records a failure without blocking on it (population_fact_check)."
     },
     {
       "id": "uk_stage_isa_subscriptions_invariants",
@@ -988,26 +1049,26 @@
       "parameters": {
         "declarations": [
           {
-            "name": "june_spi_synthetic_base",
+            "name": "spi_synthetic_base",
             "selector": {
               "household_is_capital_gains_clone": false,
               "household_is_spi_synthetic": true
             },
-            "maximum_zero_weight_rows": 100000,
-            "reason": "The certified June FRS-derived artifact ships 100,000 zero-weight SPI-synthetic non-capital-gains rows."
+            "maximum_zero_weight_rows": 0,
+            "reason": "No SPI-synthetic non-capital-gains row may carry zero weight: the SPI stage gives the stacked donors their prior mass before calibration, and the national seam's calibrated control of 2026-10-28 (4374e0bf) ships none at zero."
           },
           {
-            "name": "june_spi_synthetic_capital_gains",
+            "name": "spi_synthetic_capital_gains",
             "selector": {
               "household_is_capital_gains_clone": true,
               "household_is_spi_synthetic": true
             },
-            "maximum_zero_weight_rows": 100000,
-            "reason": "The certified June FRS-derived artifact ships 100,000 zero-weight SPI-synthetic capital-gains-clone rows."
+            "maximum_zero_weight_rows": 0,
+            "reason": "No SPI-synthetic capital-gains-clone row may carry zero weight: the SPI stage gives the stacked donors their prior mass before calibration, and the national seam's calibrated control of 2026-10-28 (4374e0bf) ships none at zero."
           }
         ]
       },
-      "notes": "Zero household weight is legal only inside the two reviewed June SPI-synthetic strata, each capped at its shipped size."
+      "notes": "No household may carry zero weight (microcosm#1095, re-declared from #688). The two SPI-synthetic strata keep their selectors at a cap of 0, so a zero-weight row there is named by stratum, and one anywhere else fails as unmatched. The June caps of 100,000 each counted 10,000 SPI-synthetic households times ten output-area clones, a grain the national seam no longer builds: its calibrated control of 2026-10-28 (4374e0bf) holds 78,093 households and no zero-weight row in any of the four SPI-synthetic and capital-gains-clone strata."
     },
     {
       "id": "uk_weight_ess",
@@ -1375,12 +1436,11 @@
           "household.non_residential_property_secured_debt"
         ],
         "reviewed_exclusions": {
-          "person.incapacity_benefit_reported": "The enhanced FRS stores this legacy reported-benefit input as an all-zero layer; the candidate must drop dead zero layers.",
           "household.property_wealth": "policyengine-uk derives property_wealth from main_residence_value, other_residential_property_value and non_residential_property_value; a persisted copy overrides that sum and has no uprating index, so the candidate must drop it (microcosm#1106, the uk-data#543 defect).",
           "person.tax_free_savings_income": "policyengine-uk derives tax_free_savings_income as the sum of the ISA interest it adds (individual_savings_account_interest_income); a persisted copy overrides that sum and is never uprated, so the candidate stores ISA interest apart from non-ISA interest under the additive ISA income contract and drops it (microcosm#1360)."
         }
       },
-      "notes": "Reviewed candidate-only fields from the June UK prototype (source provenance or genuine additional model inputs, not incumbent-surface losses), with household.uses_energy_prepayment_meter added for microcosm#1110 (the LCFS prepayment-meter flag policyengine-uk reads from 2.123.3 for the Energy Price Guarantee prepayment discount; an older engine ignores it, and the incumbent does not carry it until uk-data#539), the LCFS excise step's 24 household inputs added for microcosm#1359 (alcohol litres and the beer and cider draught shares, tobacco a week and the gambling duty bases; policyengine-uk reads the alcohol and tobacco ones from 2.145.0 and the gambling ones from 2.151.0, an older engine ignores them, and the incumbent carries none) plus the reviewed reference-side exclusions (the all-zero incapacity benefit layer and the formula-owned property_wealth total, microcosm#1106; the formula-owned tax_free_savings_income total, whose ISA interest the candidate stores apart under the additive ISA income contract, microcosm#1360). The two hard-required columns that may never be waived stay a code-level guard, per the microcosm#327 rule that a parity comparison's registers are declared inputs. During the migration window the runtime merges the exclusion register with the legacy constant and the spec-pin tests hold the two equal; the register becomes solely load-bearing when the constant retires."
+      "notes": "Reviewed candidate-only fields from the June UK prototype (source provenance or genuine additional model inputs, not incumbent-surface losses), with household.uses_energy_prepayment_meter added for microcosm#1110 (the LCFS prepayment-meter flag policyengine-uk reads from 2.123.3 for the Energy Price Guarantee prepayment discount; an older engine ignores it, and the incumbent does not carry it until uk-data#539), the LCFS excise step's 24 household inputs added for microcosm#1359 (alcohol litres and the beer and cider draught shares, tobacco a week and the gambling duty bases; policyengine-uk reads the alcohol and tobacco ones from 2.145.0 and the gambling ones from 2.151.0, an older engine ignores them, and the incumbent carries none) plus the reviewed reference-side exclusions of the formula-owned property_wealth total (microcosm#1106) and the formula-owned tax_free_savings_income total, whose ISA interest the candidate stores apart under the additive ISA income contract (microcosm#1360). The all-zero incapacity benefit layer left the exclusions (microcosm#1095, from #796): the pinned reference lists it among its zero-share inputs, not on its export surface, so its exclusion never matched; the release boundary still drops the column, and this gate would refuse it as an unlisted extra. The two hard-required columns that may never be waived stay a code-level guard, per the microcosm#327 rule that a parity comparison's registers are declared inputs. During the migration window the runtime merges the exclusion register with the legacy constant and the spec-pin tests hold the two equal; the register becomes solely load-bearing when the constant retires."
     },
     {
       "id": "uk_take_up_signal",
@@ -1391,7 +1451,7 @@
         "maximum_share_deviation": 0.05,
         "under_two_usage_maximum_share_deviation": 0.1
       },
-      "notes": "Every contract-driven stochastic flag must be non-constant and have a weighted share within +/-0.05 of its contract target. would_claim_pc is measured by uk_stage_pension_credit_take_up instead (microcosm#1069 R9), would_claim_child_benefit and child_benefit_opts_out by uk_stage_child_benefit_take_up (microcosm#1063), and would_claim_uc by uk_stage_uc_take_up (microcosm#1334): frs_take_up and spi_benefit_coherence draw it at the contract rate, and uc_take_up redraws every entitled unit by award band and family type. would_claim_universal_childcare is nested under would_claim_extended_childcare, so its target is the nested marginal r_e + (1 - r_e) * r_u of the contract's conditional universal rate, and the gate fails on any benefit unit that claims the extended hours without the universal ones. max_free_entitlement_hours_used carries the under-2 usage draw: its share of persons with hours is measured over the children of DfE age 0 or 1 in units that claim the extended hours, against the weighted mean of their ages' contract rates (extended_childcare_age_0_usage, extended_childcare_age_1_usage), within +/-0.10: the DfE working-parent row at 9 to 11 months binds a thin cell of that draw's children, so the calibrated weights move the share from its rates where the spine's own weights hold it to them (ruling of 2026-10-25); tools/report_uk_childcare_realised_take_up.py records the share a file realises."
+      "notes": "Every contract-driven stochastic flag must be non-constant and have a weighted share within +/-0.05 of its contract target. would_claim_pc is measured by uk_stage_pension_credit_take_up instead (microcosm#1069 R9), would_claim_child_benefit and child_benefit_opts_out by uk_stage_child_benefit_take_up (microcosm#1063), and would_claim_uc by uk_stage_uc_take_up (microcosm#1334): frs_take_up and spi_benefit_coherence draw it at the contract rate, and uc_take_up redraws every entitled unit by award band and family type. would_claim_universal_childcare is nested under would_claim_extended_childcare, so its target is the nested marginal r_e + (1 - r_e) * r_u of the contract's conditional universal rate, and the gate fails on any benefit unit that claims the extended hours without the universal ones. max_free_entitlement_hours_used carries the under-2 usage draw: its share of persons with hours is measured over the children of DfE age 0 or 1 in units that claim the extended hours, against the weighted mean of their ages' contract rates (extended_childcare_age_0_usage, extended_childcare_age_1_usage), within +/-0.10: the DfE working-parent row at 9 to 11 months binds a thin cell of that draw's children, so the calibrated weights move the share from its rates where the spine's own weights hold it to them (ruling of 2026-10-25); tools/report_uk_childcare_realised_take_up.py records the share a file realises. María's ruling of 2026-10-29 (microcosm#1095) keeps this gate release-blocking on the calibrated shares and checks the same flags at their drawing stages too (uk_stage_frs_take_up_signal, uk_stage_frs_person_draws_take_up_signal and uk_stage_frs_household_draws_take_up_signal), at the stages' weights before calibration, so a draw defect fails at its stage apart from calibration's drift."
     },
     {
       "id": "uk_brma_enum_domain",

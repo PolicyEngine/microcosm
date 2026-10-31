@@ -21,7 +21,6 @@ from microcosm.build.uk_runtime.local_targets import (
 )
 from microcosm.build.uk_runtime.uprating_holds import (
     load_uk_uprating_holds,
-    uk_hold_is_signed,
 )
 
 FORBIDDEN_VALUE_KEYS = {"aggregation", "operation", "registry", "target_value", "value"}
@@ -71,6 +70,9 @@ NATIONAL_SELECTOR_KEYS = {
     # microcosm#1301: the high-value homes region rows select the derived
     # stock's record set, as its local cells do.
     "record_set_spec_id",
+    # microcosm#1095 R8: a selector may declare its fact's geography, which
+    # wins over the inferred pin; the devolved SLC repayment rows do.
+    "geography_id",
 }
 LOCAL_SELECTOR_KEYS = {
     "source_name",
@@ -258,8 +260,9 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
     # rates, three national rows, SPI pension income and the taxpayers with
     # it by constituency and local authority, SPI Table 3.7's other income by
     # total-income band, and SPI Table 3.10's self-employment counts and
-    # amounts by self-employment band.
-    assert len(resource["targets"]) == 456
+    # amounts by self-employment band; microcosm#1095 R4 splits SLC's
+    # devolved repayments into one row per nation, three rows for one.
+    assert len(resource["targets"]) == 458
 
     providers = resource["hierarchy"]["providers"]
     categories = resource["hierarchy"]["categories"]
@@ -273,10 +276,10 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
     target_ids = [target["target_id"] for target in resource["targets"]]
     registry_scope = resource["registry_parity"]["scope_target_ids"]
     profile_scope = resource["profile_parity"]["scope_target_ids"]
-    assert len(registry_scope) == 394
+    assert len(registry_scope) == 396
     assert len(profile_scope) == 62
-    assert target_ids[:394] == registry_scope
-    assert target_ids[394:] == profile_scope
+    assert target_ids[:396] == registry_scope
+    assert target_ids[396:] == profile_scope
 
     parity = resource["registry_parity"]
     assert parity["pinned_ref"] == "12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3"
@@ -303,8 +306,10 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
     # OBR excise rows have no uk-data metric (uk-data never measured excise
     # duty), nor microcosm#1069's two Income Tax payer by age rows, nor
     # microcosm#1418's three Income Tax on savings rows, its SPI other income
-    # row or its two Table 3.10 rows.
-    assert len(mapped_target_ids) == 183
+    # row or its two Table 3.10 rows. microcosm#1095 R4 maps the incumbent's
+    # three devolved SLC repayment metrics one to one, to three nation rows in
+    # place of one devolved row.
+    assert len(mapped_target_ids) == 185
     assert len(unmapped_declarations) == 211
     suppressed_ancestors = parity["suppressed_ancestors"]
     assert len(suppressed_ancestors) == 5
@@ -788,31 +793,36 @@ def test_dfe_rows_read_the_spring_term_measures_only() -> None:
         assert not names & {"age", "current_education"}, target["target_id"]
 
 
-def test_dfe_single_age_rows_hold_the_january_2025_census() -> None:
-    """The rows read the January 2025 census, signed in-year snapshots."""
+def test_dfe_rows_read_the_january_2026_census_without_a_hold() -> None:
+    """Model year 2025's spring term is the January 2026 census (D5).
 
-    holds = load_uk_uprating_holds()["holds"]
-    entries = [
-        entry for entry in holds if set(DFE_SINGLE_AGE_IDS) & set(entry["target_ids"])
+    Every DfE row selects its fact at January 2026, a period after the 2025
+    target period, so none is held (María's ruling of 2026-10-29,
+    microcosm#1095 D5); the January 2025 census, held as an in-year snapshot
+    before, was a year out.
+    """
+
+    dfe = [
+        target
+        for target in _load()["targets"]
+        if target["target_id"].startswith("dfe.funded_childcare.")
     ]
-    assert sorted(
-        target_id for entry in entries for target_id in entry["target_ids"]
-    ) == sorted(DFE_SINGLE_AGE_IDS)
+    assert len(dfe) == 8
+    assert {target["observation_period"] for target in dfe} == {"2026-01"}
+    assert set(DFE_SINGLE_AGE_IDS) <= {target["target_id"] for target in dfe}
+    holds = load_uk_uprating_holds()["holds"]
     assert not any(
-        set(DFE_SIGNED_OUT_AGE_4_IDS) & set(hold["target_ids"]) for hold in holds
+        target_id.startswith("dfe.")
+        for entry in holds
+        for target_id in entry["target_ids"]
     )
-    for entry in entries:
-        assert entry["scope"] == "national"
-        assert entry["kind"] == "in_year_snapshot"
-        assert uk_hold_is_signed(entry)
-    assert {entry["approved_on"] for entry in entries} == {"2026-10-21", "2026-10-22"}
 
 
 def test_uk_population_targets_have_unique_target_ids() -> None:
     resource = _load()
 
     target_ids = [target["target_id"] for target in resource["targets"]]
-    assert len(target_ids) == 456
+    assert len(target_ids) == 458
     assert len(target_ids) == len(set(target_ids))
 
 
@@ -1315,7 +1325,7 @@ def test_uc_payment_bands_share_administrative_family_but_keep_source_window() -
 
 def test_paid_joint_diagnostics_do_not_add_active_targets() -> None:
     targets = _load()["targets"]
-    assert len(targets) == 456
+    assert len(targets) == 458
     assert not any(
         f.get("variable") == "uc_calibration_child_entitlement"
         for target in targets

@@ -1,11 +1,11 @@
 {
- "compiled_count": 1403,
+ "compiled_count": 1409,
  "counts_by_kind": {
-  "calibration_drift": 557,
-  "fixture_only": 48,
+  "calibration_drift": 564,
+  "fixture_only": 42,
   "ledger_only": 814
  },
- "difference_count": 1419,
+ "difference_count": 1420,
  "differences": [
   {
    "fixture_value": 1608000.0,
@@ -125,27 +125,6 @@
    "name": "obr.capital_gains_tax",
    "period": 2025,
    "reason": "PR #889 retains the exact March 2026 OBR FY2025-26 cash forecast as diagnostic provenance outside the FY2024-25 observation fit. The frozen incumbent fixture keeps its fitted cash row, so it is fixture-only on the current surface. This scoped change does not settle the general liability-to-cash translation tracked by #875."
-  },
-  {
-   "fixture_value": 44117237614.71528,
-   "kind": "fixture_only",
-   "name": "obr.council_tax_england",
-   "period": 2025,
-   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
-  },
-  {
-   "fixture_value": 3051227494.93594,
-   "kind": "fixture_only",
-   "name": "obr.council_tax_scotland",
-   "period": 2025,
-   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
-  },
-  {
-   "fixture_value": 2400769752.36827,
-   "kind": "fixture_only",
-   "name": "obr.council_tax_wales",
-   "period": 2025,
-   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
   },
   {
    "fixture_value": 24241874775.213375,
@@ -323,27 +302,6 @@
    "reason": "microcosm#1095 (María's ruling of 2026-10-22) retires SLC's England postgraduate repayments from the targets: the student-loans stage assigns no postgraduate plan and policyengine-uk holds one plan a person, so no record carries the repayments (microcosm#757). The frozen fixture's fitted row is fixture-only on the current surface."
   },
   {
-   "fixture_value": 181700000.0,
-   "kind": "fixture_only",
-   "name": "slc/student_loan_repayment/northern_ireland",
-   "period": 2025,
-   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
-  },
-  {
-   "fixture_value": 203300000.0,
-   "kind": "fixture_only",
-   "name": "slc/student_loan_repayment/scotland",
-   "period": 2025,
-   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
-  },
-  {
-   "fixture_value": 229100000.0,
-   "kind": "fixture_only",
-   "name": "slc/student_loan_repayment/wales",
-   "period": 2025,
-   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
-  },
-  {
    "kind": "ledger_only",
    "ledger_value": 60195.0,
    "name": "dfc_ni.pension_credit.benefit_units",
@@ -366,63 +324,63 @@
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 95031.0,
+   "ledger_value": 85629.0,
    "name": "dfe.funded_childcare.early_learning_2_year_olds",
    "period": 2025,
    "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 565954.0,
+   "ledger_value": 535209.0,
    "name": "dfe.funded_childcare.universal_nursery_children_age_3",
    "period": 2025,
    "reason": "Requested by María on 2026-10-21 for the £100k childcare costing fixes (microcosm#1278, #1095): one of the five DfE funded-childcare counts by single age from the January 2025 census, England (working parent registrations at 9 to 11 months and at ages 1, 2 and 3, and universal nursery registrations at age 3), bound beside the working parent 2 to 4, early learning and universal-only rows and, with them, measured at the spring term by the age on 31 December (María's ruling of 2026-10-22). The age-4 cells are signed out, as the bound rows fix them. The incumbent binds no DfE row, so this row has no fixture counterpart."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 396965.0,
+   "ledger_value": 362581.0,
    "name": "dfe.funded_childcare.universal_only_children",
    "period": 2025,
    "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 621482.0,
+   "ledger_value": 648979.0,
    "name": "dfe.funded_childcare.working_parent_children_2_to_4",
    "period": 2025,
    "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 29155.0,
+   "ledger_value": 30679.0,
    "name": "dfe.funded_childcare.working_parent_children_9_to_11_months",
    "period": 2025,
    "reason": "Requested by María on 2026-10-21 for the £100k childcare costing fixes (microcosm#1278, #1095): one of the five DfE funded-childcare counts by single age from the January 2025 census, England (working parent registrations at 9 to 11 months and at ages 1, 2 and 3, and universal nursery registrations at age 3), bound beside the working parent 2 to 4, early learning and universal-only rows and, with them, measured at the spring term by the age on 31 December (María's ruling of 2026-10-22). The age-4 cells are signed out, as the bound rows fix them. The incumbent binds no DfE row, so this row has no fixture counterpart."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 195104.0,
+   "ledger_value": 210825.0,
    "name": "dfe.funded_childcare.working_parent_children_age_1",
    "period": 2025,
    "reason": "Requested by María on 2026-10-21 for the £100k childcare costing fixes (microcosm#1278, #1095): one of the five DfE funded-childcare counts by single age from the January 2025 census, England (working parent registrations at 9 to 11 months and at ages 1, 2 and 3, and universal nursery registrations at age 3), bound beside the working parent 2 to 4, early learning and universal-only rows and, with them, measured at the spring term by the age on 31 December (María's ruling of 2026-10-22). The age-4 cells are signed out, as the bound rows fix them. The incumbent binds no DfE row, so this row has no fixture counterpart."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 242453.0,
+   "ledger_value": 260238.0,
    "name": "dfe.funded_childcare.working_parent_children_age_2",
    "period": 2025,
    "reason": "Requested by María on 2026-10-21 for the £100k childcare costing fixes (microcosm#1278, #1095): one of the five DfE funded-childcare counts by single age from the January 2025 census, England (working parent registrations at 9 to 11 months and at ages 1, 2 and 3, and universal nursery registrations at age 3), bound beside the working parent 2 to 4, early learning and universal-only rows and, with them, measured at the spring term by the age on 31 December (María's ruling of 2026-10-22). The age-4 cells are signed out, as the bound rows fix them. The incumbent binds no DfE row, so this row has no fixture counterpart."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 278640.0,
+   "ledger_value": 278490.0,
    "name": "dfe.funded_childcare.working_parent_children_age_3",
    "period": 2025,
    "reason": "Requested by María on 2026-10-21 for the £100k childcare costing fixes (microcosm#1278, #1095): one of the five DfE funded-childcare counts by single age from the January 2025 census, England (working parent registrations at 9 to 11 months and at ages 1, 2 and 3, and universal nursery registrations at age 3), bound beside the working parent 2 to 4, early learning and universal-only rows and, with them, measured at the spring term by the age on 31 December (María's ruling of 2026-10-22). The age-4 cells are signed out, as the bound rows fix them. The incumbent binds no DfE row, so this row has no fixture counterpart."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 152500000.0,
+   "ledger_value": 151900000.0,
    "name": "dfi_ni.bus.passenger_receipts",
    "period": 2025,
    "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
@@ -5441,7 +5399,7 @@
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 599800000.0,
+   "ledger_value": 607900000.0,
    "name": "hmrc.tfc.government_top_up",
    "period": 2025,
    "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
@@ -9068,10 +9026,34 @@
   {
    "fixture_value": 50925163826.30539,
    "kind": "calibration_drift",
-   "ledger_value": 48774253146.51462,
+   "ledger_value": 47197225993.12901,
    "name": "obr.council_tax",
    "period": 2025,
    "reason": "Series and period basis (microcosm#1095, María's ruling of 2026-10-09): ours binds OBR table 4.1 row 15, the council tax receipts of England, Scotland and Wales, over Great Britain's households, at the calendar-2025 window (three twelfths of FY2024-25 and nine twelfths of FY2025-26, María's rule of 2026-09-22, PolicyEngine/chronicle#280 lane); the frozen incumbent fixture holds the FY2025-26 value of row 19 alone, which adds Northern Ireland domestic rates, the council tax accruals adjustment and the high-value council tax surcharge."
+  },
+  {
+   "fixture_value": 44117237614.71528,
+   "kind": "calibration_drift",
+   "ledger_value": 43393548211.03646,
+   "name": "obr.council_tax_england",
+   "period": 2025,
+   "reason": "Period basis (PolicyEngine/chronicle#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR March 2026 line at the calendar-2025 window, three twelfths of FY2024-25 and nine twelfths of FY2025-26, on the same series; the frozen incumbent fixture holds the FY2025-26 value alone."
+  },
+  {
+   "fixture_value": 3051227494.93594,
+   "kind": "calibration_drift",
+   "ledger_value": 3023016871.201955,
+   "name": "obr.council_tax_scotland",
+   "period": 2025,
+   "reason": "Period basis (PolicyEngine/chronicle#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR March 2026 line at the calendar-2025 window, three twelfths of FY2024-25 and nine twelfths of FY2025-26, on the same series; the frozen incumbent fixture holds the FY2025-26 value alone."
+  },
+  {
+   "fixture_value": 2400769752.36827,
+   "kind": "calibration_drift",
+   "ledger_value": 2357688064.2762027,
+   "name": "obr.council_tax_wales",
+   "period": 2025,
+   "reason": "Period basis (PolicyEngine/chronicle#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR March 2026 line at the calendar-2025 window, three twelfths of FY2024-25 and nine twelfths of FY2025-26, on the same series; the frozen incumbent fixture holds the FY2025-26 value alone."
   },
   {
    "fixture_value": 7206287181.538654,
@@ -10370,9 +10352,17 @@
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
   },
   {
+   "fixture_value": 471000000.0,
+   "kind": "calibration_drift",
+   "ledger_value": 467200000.0,
+   "name": "scotgov.scottish_child_payment_spending",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
    "fixture_value": 1852699178.55,
    "kind": "calibration_drift",
-   "ledger_value": 1604190700.89,
+   "ledger_value": 1666317820.305,
    "name": "slc.repayments.england_plan_1",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -10380,7 +10370,7 @@
   {
    "fixture_value": 2778253361.64,
    "kind": "calibration_drift",
-   "ledger_value": 3234379913.2999997,
+   "ledger_value": 3120348275.3849993,
    "name": "slc.repayments.england_plan_2",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -10388,7 +10378,7 @@
   {
    "fixture_value": 40869580.81,
    "kind": "calibration_drift",
-   "ledger_value": 73713378.39,
+   "ledger_value": 65502428.995000005,
    "name": "slc.repayments.england_plan_5",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -10396,8 +10386,32 @@
   {
    "fixture_value": 5018231834.95,
    "kind": "calibration_drift",
-   "ledger_value": 5339303976.37,
+   "ledger_value": 5259035941.014999,
    "name": "slc.repayments.england_total_higher_education",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 181700000.0,
+   "kind": "calibration_drift",
+   "ledger_value": 189185728.15345487,
+   "name": "slc.repayments.northern_ireland_total",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 203300000.0,
+   "kind": "calibration_drift",
+   "ledger_value": 211675611.08198887,
+   "name": "slc.repayments.scotland_total",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 229100000.0,
+   "kind": "calibration_drift",
+   "ledger_value": 238538526.80218223,
+   "name": "slc.repayments.wales_total",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
   },

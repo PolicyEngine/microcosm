@@ -104,7 +104,6 @@ from microcosm.build.uk_runtime.frs_council_tax import UKFRSCouncilTaxStageTrans
 from microcosm.build.uk_runtime.frs_disability import UKFRSDisabilityStageTransform
 from microcosm.build.uk_runtime.frs_education import UKFRSEducationStageTransform
 from microcosm.build.uk_runtime.frs_education_grants import (
-    FRS_EDUCATION_GRANT_REWRITES,
     UKFRSEducationGrantSplitStageTransform,
 )
 from microcosm.build.uk_runtime.frs_employment import UKFRSEmploymentStageTransform
@@ -901,6 +900,7 @@ def _build_sidecar(
             {
                 "stage": record.stage,
                 "produced": list(record.produced),
+                "rewrote": list(record.rewrote),
                 "nonzero_share": dict(record.nonzero_share),
                 "seconds": record.seconds,
             }
@@ -987,7 +987,9 @@ def _graph_stage_records(
         )
         output_receipt = manifest.nodes[output_node]
         shares: dict[str, float] = {}
-        for column in stage.outputs:
+        # A declared rewrite is an owned cell of its node, as an output is, so
+        # its share reads the node's artifact too (microcosm#721).
+        for column in (*stage.outputs, *stage.rewrites):
             matches = [
                 (coordinate, key)
                 for coordinate, key in output_receipt.artifacts.items()
@@ -999,7 +1001,8 @@ def _graph_stage_records(
             if len(matches) != 1:
                 raise RuntimeError(
                     f"graph stage {stage.stage!r} exposes {len(matches)} artifacts "
-                    f"for declared output {column!r}."
+                    f"for declared {'rewrite' if column in stage.rewrites else 'output'} "
+                    f"{column!r}."
                 )
             shares[column] = _series_nonzero_share(store.load_column(matches[0][1]))
         execution_node = "create_uk_frs" if stage.stage == "frs_spine" else stage.stage
@@ -1007,6 +1010,7 @@ def _graph_stage_records(
             StageRecord(
                 stage=stage.stage,
                 produced=stage.outputs,
+                rewrote=stage.rewrites,
                 donor_survey=stage.survey,
                 nonzero_share=shares,
                 seconds=manifest.nodes[execution_node].wall_time,
@@ -2359,8 +2363,9 @@ def _main(argv: list[str] | None = None) -> int:
         if args.emit_nonzero_shares is not None:
             final_columns = list(
                 dict.fromkeys(
-                    [column for record in records for column in record.produced]
-                    + list(FRS_EDUCATION_GRANT_REWRITES)
+                    column
+                    for record in records
+                    for column in (*record.produced, *record.rewrote)
                 )
             )
             atomic_write_json(

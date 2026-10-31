@@ -604,9 +604,11 @@ _PACKAGED_EXCLUSION_CENSUS = {
     # (María's rule of 2026-10-21), re-signed on 2026-10-23. Of the five SLC
     # rows, the postgraduate repayments row retired from the targets (the
     # stage assigns no postgraduate plan) and Plan 5's liable stock binds; the
-    # Plan 5 repayments and the two Plan 2 stocks stay.
+    # Plan 5 repayments and the two Plan 2 stocks stay. microcosm#1095 splits
+    # the devolved repayments by nation and holds Scotland's and Northern
+    # Ireland's (ruling R4: Wales only binds).
     "_1_000_000_to_inf": 10,
-    "slc.": 3,
+    "slc.": 5,
     # microcosm#1095 (2026-10-07): two bands whose few supporting awards
     # policyengine-uk 2.122.2 moves out join the uk-data#452 class.
     # microcosm#1095 U3 (2026-10-16): the sparse-band support floor drops
@@ -734,8 +736,11 @@ def test_packaged_exclusions_load():
     # electricity row again (María's ruling of 2026-10-28), and holds the ONS
     # gas row again for bottled gas (María's ruling of 2026-10-29). The
     # betting and gaming row stays held: the solve cannot yet measure its
-    # 2024 duty (microcosm#1420).
-    assert len(names) == len(set(names)) == 39
+    # 2024 duty (microcosm#1420). microcosm#1095 holds the three OBR council
+    # tax nation rows, pinned to the UK as measured diagnostics (ruling D14e),
+    # and SLC's Scottish and Northern Irish repayment rows (ruling R4: Wales
+    # only binds).
+    assert len(names) == len(set(names)) == 44
     (gas,) = [
         entry
         for entry in exclusions

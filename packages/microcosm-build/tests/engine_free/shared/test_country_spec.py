@@ -1484,6 +1484,9 @@ class TestUKGatesManifest:
             "uk_stage_property_purchases_fit",
             "uk_stage_uc_legacy_closure_take_up_contract",
             "uk_stage_frs_person_draws_apprentices",
+            "uk_stage_frs_take_up_signal",
+            "uk_stage_frs_person_draws_take_up_signal",
+            "uk_stage_frs_household_draws_take_up_signal",
             "uk_stage_isa_subscriptions_invariants",
             "uk_stage_isa_subscriptions",
             "uk_release_input_coverage",
@@ -1618,6 +1621,9 @@ class TestUKGatesManifest:
             "uk_stage_property_purchases_fit",
             "uk_stage_uc_legacy_closure_take_up_contract",
             "uk_stage_frs_person_draws_apprentices",
+            "uk_stage_frs_take_up_signal",
+            "uk_stage_frs_person_draws_take_up_signal",
+            "uk_stage_frs_household_draws_take_up_signal",
             "uk_stage_isa_subscriptions_invariants",
             "uk_stage_isa_subscriptions",
             "uk_weights_audit",
@@ -1687,7 +1693,7 @@ class TestUKGatesManifest:
         assert energy_rake["convergence_window_sweeps"] == 10
         assert energy_rake["maximum_residual_change_over_window"] == 0.001
 
-    def test_zero_weight_declarations_match_the_june_strata(self, manifest) -> None:
+    def test_zero_weight_declarations_match_the_reviewed_strata(self, manifest) -> None:
         params = {gate.id: gate.parameters for gate in manifest.gates}
         declared = params["uk_zero_weight_strata"]["declarations"]
         strata = terminal_gates.UK_DEFAULT_ZERO_WEIGHT_STRATA

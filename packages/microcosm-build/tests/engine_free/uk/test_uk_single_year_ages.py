@@ -97,18 +97,21 @@ def test_the_report_counts_weighted_persons_and_withholds_thin_cells():
     assert report["minimum_source_households"] == 2
 
 
-def test_the_default_floor_is_ten_source_households():
+def test_the_default_floor_is_three_source_households():
+    # The build's floor (María's ruling of 2026-10-29): two source households
+    # are withheld.
     person, household, weights = _file(
-        ages=[40] * 9,
-        genders=["MALE"] * 9,
-        households=list(range(1, 10)),
-        sources=list(range(1, 10)),
-        weights=[1.0] * 9,
+        ages=[40] * 2,
+        genders=["MALE"] * 2,
+        households=[1, 2],
+        sources=[1, 2],
+        weights=[1.0] * 2,
     )
 
     report = single_year_age_report(person, household, weights, ons=ONS)
 
-    assert report["sexes"]["male"]["single_years"]["40"] == {"source_households": "<10"}
+    assert report["sexes"]["male"]["single_years"]["40"] == {"source_households": "<3"}
+    assert report["minimum_source_households"] == 3
 
 
 def test_the_report_refuses_a_file_it_cannot_count_carriers_in():

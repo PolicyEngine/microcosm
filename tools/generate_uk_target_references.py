@@ -571,6 +571,13 @@ TARGET_ID_GEOGRAPHY_PINS: Mapping[str, str] = {
     # domestic_rates is zero outside Northern Ireland, so the UK total is
     # Northern Ireland's (microcosm#1095).
     "obr.domestic_rates": "uk",
+    # Table 4.1's England, Scotland and Wales council tax rows are stamped
+    # K02000001 too; the substring rule pinned them to their nations, where
+    # no fact sits. Each binding scopes the model column to its nation, and
+    # the three rows are held as measured diagnostics (microcosm#1095 D14e).
+    "obr.council_tax_england": "uk",
+    "obr.council_tax_scotland": "uk",
+    "obr.council_tax_wales": "uk",
     # OBR table 4.9's DWP lines carry the geography DWP counts them over
     # (PolicyEngine/chronicle#357 item 4, from DWP's benefit expenditure and
     # caseload tables, Spring 2026): Great Britain for these eight, England and
@@ -592,6 +599,18 @@ TARGET_ID_GEOGRAPHY_PINS: Mapping[str, str] = {
 
 def _geography_id_for_target(target: Mapping[str, Any]) -> str:
     target_id = str(target["target_id"]).lower()
+    # A geography the selector declares wins over every inferred pin
+    # (microcosm#1095 R8): a wrong inference otherwise reads as "no fact".
+    declared = (target.get("ledger_selector") or {}).get("geography_id")
+    if declared is not None:
+        pinned = TARGET_ID_GEOGRAPHY_PINS.get(target_id)
+        if pinned is not None and UK_GEOGRAPHY_IDS[pinned] != str(declared):
+            raise ValueError(
+                f"{target_id}: its selector declares geography_id "
+                f"{declared!r}, but TARGET_ID_GEOGRAPHY_PINS pins "
+                f"{UK_GEOGRAPHY_IDS[pinned]!r}; keep one declaration."
+            )
+        return str(declared)
     if target_id in TARGET_ID_GEOGRAPHY_PINS:
         return UK_GEOGRAPHY_IDS[TARGET_ID_GEOGRAPHY_PINS[target_id]]
     if target_id.startswith("dft."):

@@ -1,0 +1,1 @@
+The local generator's support-floor deferrals for the Isles of Scilly and the City of London follow each target's area scope: the nine Welsh and eight Scottish local-authority families have no cell at those English authorities and no longer list them (microcosm#796 item, via microcosm#1095).

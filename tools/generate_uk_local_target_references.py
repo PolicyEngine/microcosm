@@ -563,14 +563,14 @@ def _area_signed_deferrals(
         target_id="dwp.uc.households_by_area",
         geography_level="constituency",
         reason_id="uc_gb_only_ni_absent",
-        rationale="DWP Stat-Xplore Universal Credit local-area facts in the pinned feed cover Great Britain only: 632/650 PCON24 constituencies compile and the 18 Northern Ireland constituencies have no UC household facts.",
+        rationale="DWP Stat-Xplore Universal Credit local-area facts in the pinned feed cover Great Britain only: 632/650 PCON24 constituencies compile and the 18 Northern Ireland constituencies have no UC household facts; DfC publishes Northern Ireland's UC claimants, counting a joint claim twice (uk-data#590), not households, so they stay out (María's ruling of 2026-10-29, microcosm#1095 D18c).",
         area_ids=ni_constituencies,
     )
     add(
         target_id="dwp.uc.households_by_area",
         geography_level="local_authority",
         reason_id="uc_gb_only_ni_absent",
-        rationale="DWP Stat-Xplore Universal Credit local-authority facts in the pinned feed cover Great Britain only: 350/361 local authorities compile and the 11 Northern Ireland local authorities have no UC household facts.",
+        rationale="DWP Stat-Xplore Universal Credit local-authority facts in the pinned feed cover Great Britain only: 350/361 local authorities compile and the 11 Northern Ireland local authorities have no UC household facts; DfC publishes Northern Ireland's UC claimants, counting a joint claim twice (uk-data#590), not households, so they stay out (María's ruling of 2026-10-29, microcosm#1095 D18c).",
         area_ids=ni_local_authorities,
     )
     for target_id in (
@@ -617,8 +617,8 @@ def _area_signed_deferrals(
         add(
             target_id=target_id,
             geography_level="local_authority",
-            reason_id="msoa_mean_to_la_deferred",
-            rationale="ONS equivalised-income facts in the pinned feed are MSOA-grain mean-valued targets, with no local-authority rows; local-authority aggregation is deferred pending the signed mean-aggregation design.",
+            reason_id="frs_model_based_circularity",
+            rationale="Kept out: ONS models its small-area income estimates (MSOA means, before and after housing costs, and housing costs) from the FRS, so binding them would partly fit the FRS to itself; the feed also carries no local-authority rows (María's ruling of 2026-10-29, microcosm#1095 D18a).",
             area_ids=local_authority_ids,
         )
     add(
@@ -777,6 +777,21 @@ def _area_signed_deferrals(
             continue
         if str(target.get("family")) in support_floor_binding_families:
             continue
+        # A target scoped to other nations has no cell at these English
+        # authorities, so nothing of its own to defer (microcosm#796).
+        prefixes = tuple(
+            ((target.get("area_scope") or {}).get("local_authority") or {}).get(
+                "gss_prefixes"
+            )
+            or ()
+        )
+        in_scope = tuple(
+            area_id
+            for area_id in support_floor_excluded_area_ids
+            if not prefixes or area_id.startswith(prefixes)
+        )
+        if not in_scope:
+            continue
         add(
             target_id=str(target["target_id"]),
             geography_level="local_authority",
@@ -791,7 +806,7 @@ def _area_signed_deferrals(
                 "constituency families and the national rows (A14 amendment "
                 "to A4)."
             ),
-            area_ids=support_floor_excluded_area_ids,
+            area_ids=in_scope,
             allow_empty=True,
             defer_if_compiles=True,
             skip_declared=True,

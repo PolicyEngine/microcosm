@@ -1080,6 +1080,79 @@ def test__given_fiscal_year_facts_without_coverage__then_the_label_is_compared()
     assert "ledger_fact_period_label" not in spec.metadata
 
 
+def _agi_reference(**overrides) -> LedgerTargetReference:
+    return LedgerTargetReference(
+        **{
+            "name": "SOI AGI total",
+            "ledger_selector": {
+                "source_name": "irs_soi",
+                "source_measure_id": "adjusted_gross_income",
+                "geography_level": "country",
+                "geography_id": "0100000US",
+                "entity_name": "tax_unit",
+                "layout_groupby_value_id": "all",
+            },
+            "entity": "tax_unit",
+            "measure": "adjusted_gross_income",
+            "period": 2023,
+            "family": "irs_soi",
+            **overrides,
+        }
+    )
+
+
+def test__given_an_observation_period__then_facts_are_selected_there() -> None:
+    """A declared observation period moves fact selection, not the target.
+
+    DfE's January census for model year Y is January Y + 1 (microcosm#1095
+    D5): the reference keeps its target period and selects its fact at the
+    period the measure observes, which may follow the target period.
+    """
+
+    rows = [
+        _consumer_fact_row_for_period(2022, value=14_000_000_000_000),
+        _consumer_fact_row_for_period(2023, value=15_000_000_000_000),
+        _consumer_fact_row_for_period(2024, value=16_000_000_000_000),
+        _consumer_fact_row_for_period(2025, value=17_000_000_000_000),
+    ]
+    (plain,) = compile_ledger_target_references(
+        rows, [_agi_reference()], country="us"
+    ).specs
+    assert plain.value == 15_000_000_000_000
+    assert "ledger_observation_period" not in plain.metadata
+
+    (observed,) = compile_ledger_target_references(
+        rows, [_agi_reference(observation_period=2024)], country="us"
+    ).specs
+    assert observed.value == 16_000_000_000_000
+    assert observed.period == 2023
+    assert observed.metadata["ledger_observation_period"] == "2024"
+
+    (exact,) = compile_ledger_target_references(
+        rows,
+        [_agi_reference(observation_period=2024, period_match_policy="exact")],
+        country="us",
+    ).specs
+    assert exact.value == 16_000_000_000_000
+
+
+@pytest.mark.parametrize(
+    ("overrides", "message"),
+    [
+        ({"observation_period": "not a period"}, "not a parseable period"),
+        (
+            {"observation_period": 2024, "value_operation": "calendar_year_window"},
+            "composes periods of its own",
+        ),
+    ],
+)
+def test__given_an_observation_period_the_reference_cannot_honour__then_it_is_refused(
+    overrides, message
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        _agi_reference(**overrides)
+
+
 def test__given_exact_period_policy__then_only_the_target_period_is_used() -> None:
     registry = compile_ledger_target_references(
         [
@@ -4927,6 +5000,105 @@ def test__given_a_two_series_selector__then_calendar_year_window_sums_the_window
     assert members["outside_cap@2025"]["weight"] == "0.75"
 
 
+def test__given_several_pinned_dimension_values__then_calendar_year_window_sums_each() -> (
+    None
+):
+    # Given: one measure published per service (DfI's Translink receipts), the
+    # selector pinning two services, each with both years of the window.
+    facts = []
+    for service, values in (
+        ("ulsterbus", (38.0, 38.4)),
+        ("metro_glider", (49.6, 49.0)),
+    ):
+        for opening_year, value in zip((2024, 2025), values, strict=True):
+            fact = _cy_window_fact(
+                key=f"{service}_fy{opening_year}",
+                value=value,
+                opening_year=opening_year,
+                measure_id="passenger_receipts",
+            )
+            fact["dimensions"] = {**fact["dimensions"], "service": service}
+            facts.append(fact)
+    reference = _cy_window_reference(
+        name="bus passenger receipts, calendar 2025",
+        ledger_selector={
+            "source_name": "irs_soi",
+            "source_measure_id": "passenger_receipts",
+            "geography_level": "country",
+            "geography_id": "0100000US",
+            "dimension_values": {"service": ["ulsterbus", "metro_glider"]},
+        },
+    )
+    registry = compile_ledger_target_references(facts, [reference], country="uk")
+
+    spec = registry.specs[0]
+    assert spec.value == pytest.approx(0.25 * (38.0 + 49.6) + 0.75 * (38.4 + 49.0))
+    assert spec.metadata["ledger_calendar_year_window_series"] == "2"
+    members = json.loads(spec.metadata["ledger_calendar_year_window_members"])
+    assert set(members) == {
+        "passenger_receipts[service=metro_glider]@2024",
+        "passenger_receipts[service=metro_glider]@2025",
+        "passenger_receipts[service=ulsterbus]@2024",
+        "passenger_receipts[service=ulsterbus]@2025",
+    }
+
+
+def test__given_a_pinned_dimension_value_short_of_a_year__then_calendar_year_window_refuses() -> (
+    None
+):
+    facts = []
+    for service, years in (("ulsterbus", (2024, 2025)), ("metro_glider", (2025,))):
+        for opening_year in years:
+            fact = _cy_window_fact(
+                key=f"{service}_fy{opening_year}",
+                value=10.0,
+                opening_year=opening_year,
+                measure_id="passenger_receipts",
+            )
+            fact["dimensions"] = {**fact["dimensions"], "service": service}
+            facts.append(fact)
+    reference = _cy_window_reference(
+        ledger_selector={
+            "source_name": "irs_soi",
+            "source_measure_id": "passenger_receipts",
+            "geography_level": "country",
+            "geography_id": "0100000US",
+            "dimension_values": {"service": ["ulsterbus", "metro_glider"]},
+        },
+    )
+
+    with pytest.raises(ValueError, match="1 of 2 matched series carry both"):
+        compile_ledger_target_references(facts, [reference], country="uk")
+
+
+def test__given_a_pinned_dimension_value_with_no_facts__then_calendar_year_window_refuses() -> (
+    None
+):
+    # Given: both years for one pinned service and no fact at all for the other.
+    facts = []
+    for opening_year in (2024, 2025):
+        fact = _cy_window_fact(
+            key=f"ulsterbus_fy{opening_year}",
+            value=10.0,
+            opening_year=opening_year,
+            measure_id="passenger_receipts",
+        )
+        fact["dimensions"] = {**fact["dimensions"], "service": "ulsterbus"}
+        facts.append(fact)
+    reference = _cy_window_reference(
+        ledger_selector={
+            "source_name": "irs_soi",
+            "source_measure_id": "passenger_receipts",
+            "geography_level": "country",
+            "geography_id": "0100000US",
+            "dimension_values": {"service": ["ulsterbus", "metro_glider"]},
+        },
+    )
+
+    with pytest.raises(ValueError, match="each of 2 series .* 1 of 1 matched series"):
+        compile_ledger_target_references(facts, [reference], country="uk")
+
+
 def test__given_a_two_series_selector_short_of_a_year__then_calendar_year_window_refuses() -> (
     None
 ):
@@ -5558,6 +5730,84 @@ def test__given_a_window_and_a_pinned_quotient__then_the_window_is_translated() 
     # The window's latest year carries the identity; the operands only
     # translate it.
     assert metadata["ledger_aggregate_fact_key"] == "ledger.aggregate_fact.v2:fy2025"
+
+
+def test__given_a_complement_numerator__then_its_cells_come_off_the_universe() -> None:
+    """The share is the rest of the published universe (microcosm#1095 D14f).
+
+    England's chargeable dwellings less its second homes and empty dwellings
+    restate OBR's council tax receipts for the main residences households
+    hold.
+    """
+
+    numerator, denominator = _window_ratio_reference().value_operands[1:]
+    reference = _window_ratio_reference(
+        value_operands=(
+            {"role": "base"},
+            {**numerator, "complement": True},
+            denominator,
+        )
+    )
+    registry = compile_ledger_target_references(
+        _window_ratio_facts(numerator=20.0), [reference], country="uk"
+    )
+
+    spec = registry.specs[0]
+    window = 0.25 * 304.0 + 0.75 * 329.0
+    assert spec.value == pytest.approx(window * 60.0 / 80.0)
+    assert spec.metadata["ledger_value_numerator"] == repr(60.0)
+    assert spec.metadata["ledger_value_numerator_rule"] == (
+        "denominator less the numerator cells"
+    )
+    assert spec.metadata["ledger_value_formula"] == (
+        "(3/12 * FY2024 + 9/12 * FY2025) * (denominator - numerator) / denominator"
+    )
+    # The flag is metadata, never a selector field.
+    assert "complement" not in reference_fact_selectors(reference)[1]
+
+
+@pytest.mark.parametrize(
+    "operands",
+    [
+        (
+            {"role": "base"},
+            {
+                "role": "numerator",
+                "source_measure_id": "x",
+                "period_type": "tax_year",
+                "period_value": 2024,
+            },
+            {
+                "role": "denominator",
+                "source_measure_id": "y",
+                "period_type": "tax_year",
+                "period_value": 2024,
+                "complement": True,
+            },
+        ),
+        (
+            {"role": "base"},
+            {
+                "role": "numerator",
+                "source_measure_id": "x",
+                "period_type": "tax_year",
+                "period_value": 2024,
+                "complement": False,
+            },
+            {
+                "role": "denominator",
+                "source_measure_id": "y",
+                "period_type": "tax_year",
+                "period_value": 2024,
+            },
+        ),
+    ],
+)
+def test__given_a_complement_anywhere_but_a_true_numerator__then_it_refuses(
+    operands,
+) -> None:
+    with pytest.raises(ValueError, match="only the numerator may declare complement"):
+        _window_ratio_reference(value_operands=operands)
 
 
 def test__given_a_window_ratio__then_operand_selectors_are_complete_as_declared() -> (
