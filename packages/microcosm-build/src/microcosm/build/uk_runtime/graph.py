@@ -605,6 +605,9 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
             ("household", "stocks_and_shares_isa"),
         }
     ),
+    # The gross receipts are drawn on each person's final self-employment
+    # profit (microcosm#1428).
+    "trading_allowance_receipts": frozenset({("person", "self_employment_income")}),
     # The copies' childcare re-draw reads every household's clone path (the
     # lineage columns of each copy stage) and keeps the native units' cells:
     # an open surface, like the other take-up redraws.
@@ -1218,6 +1221,9 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
             "stocks_and_shares_isa_subscriptions",
             "lifetime_isa_payments",
         ),
+    ),
+    "trading_allowance_receipts": (
+        _Cell("person", "self_employment_gross_receipts", "float64"),
     ),
     "childcare_copy_take_up": (
         *_cells(
