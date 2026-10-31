@@ -149,6 +149,17 @@ def test_the_annual_measures_tax_each_persons_year(tmp_path) -> None:
         savings, route = resolver.compute("person", name)
         assert route.startswith("annual_income_simulation:")
         np.testing.assert_allclose(savings, 0.0)
+    # HMRC's employment income, which the SPI rows read, adds the company car
+    # benefits (PolicyEngine/uk-autumn-budget-dashboard-2026#316): nobody here
+    # has a car, so it is the year's pay.
+    with_cars, route = resolver.compute(
+        "person", "employment_income_with_benefits_in_kind_annual"
+    )
+    assert route == (
+        "annual_income_simulation:engine_components:"
+        "employment_income_with_benefits_in_kind"
+    )
+    np.testing.assert_allclose(with_cars, annual_pay, rtol=1e-6)
     receipt = resolver.receipt()["annual_income_measures"]
     assert receipt["route"] == "annual_income_simulation"
     factors = receipt["other_spells_engine_factors"]
