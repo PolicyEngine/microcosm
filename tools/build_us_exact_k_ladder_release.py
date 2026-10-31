@@ -40,12 +40,14 @@ may additionally carry the paired
 ``ssi_take_up_prior_weight_basis`` and
 ``ssi_take_up_prior_weight_basis_sha256`` fields for the house one-retry
 delivery-gate protocol. ``calibration`` may additionally carry
-``critical_target_band_penalty`` and ``critical_target_band_margin``
+``critical_target_band_penalty``, ``critical_target_band_margin``, and
+``critical_target_band_adaptive_step``
 (microcosm#1330), which pin the builder's critical-target band for this
 release; when absent, the builder's defaults apply. The exact-k incumbent
 gate scores fit loss alone, so a banded candidate spends some fit to hold its
 critical targets against an incumbent that may have been solved without a
-band.
+band. Adaptive multipliers require ``ladder.k="N"``; gated L0 selection for
+the sparse ladder refuses adaptive mode.
 """
 
 # The sibling house builder is importable only after its tools directory is
@@ -108,9 +110,10 @@ class LadderReleaseConfig:
     release_id: str
     repo_id: str
     # The critical-target band (microcosm#1330). None inherits the release
-    # builder's default; a config that sets either pins it for this release.
+    # builder's default; a config that sets one pins it for this release.
     critical_target_band_penalty: float | None = None
     critical_target_band_margin: float | None = None
+    critical_target_band_adaptive_step: float | None = None
 
 
 def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
@@ -190,7 +193,11 @@ def _read_config(path: Path) -> LadderReleaseConfig:
             "l2_lambda",
             "refit_l2_lambda",
         },
-        optional={"critical_target_band_penalty", "critical_target_band_margin"},
+        optional={
+            "critical_target_band_penalty",
+            "critical_target_band_margin",
+            "critical_target_band_adaptive_step",
+        },
         label="calibration",
     )
     release = _object(root["release"], label="release")
@@ -269,6 +276,14 @@ def _read_config(path: Path) -> LadderReleaseConfig:
             label="calibration.critical_target_band_penalty",
         )
     )
+    band_adaptive_step = (
+        None
+        if "critical_target_band_adaptive_step" not in calibration
+        else _nonnegative_number(
+            calibration["critical_target_band_adaptive_step"],
+            label="calibration.critical_target_band_adaptive_step",
+        )
+    )
     band_margin = (
         None
         if "critical_target_band_margin" not in calibration
@@ -332,6 +347,7 @@ def _read_config(path: Path) -> LadderReleaseConfig:
         repo_id=repo_id,
         critical_target_band_penalty=band_penalty,
         critical_target_band_margin=band_margin,
+        critical_target_band_adaptive_step=band_adaptive_step,
     )
 
 
@@ -484,6 +500,13 @@ def _builder_argv(
     if config.critical_target_band_margin is not None:
         argv.extend(
             ["--critical-target-band-margin", str(config.critical_target_band_margin)]
+        )
+    if config.critical_target_band_adaptive_step is not None:
+        argv.extend(
+            [
+                "--critical-target-band-adaptive-step",
+                str(config.critical_target_band_adaptive_step),
+            ]
         )
     if config.ssi_take_up_prior_weight_basis is not None:
         argv.extend(

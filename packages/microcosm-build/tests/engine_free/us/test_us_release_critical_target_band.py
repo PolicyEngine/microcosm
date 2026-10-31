@@ -305,6 +305,9 @@ def test_every_ladder_solve_forwards_the_band() -> None:
         assert forwarded.get("target_band_penalty") == "target_band_penalty", (
             call.lineno
         )
+        assert (
+            forwarded.get("target_band_adaptive_step") == "target_band_adaptive_step"
+        ), call.lineno
 
 
 _BASE_ARGV = ["--ledger-facts", "facts.jsonl", "--out", "release"]
@@ -322,8 +325,13 @@ def test_band_flags_default_to_a_penalty_of_one_at_nine_tenths(builder) -> None:
         == builder.DEFAULT_CRITICAL_TARGET_BAND_MARGIN
         == 0.9
     )
+    assert args.critical_target_band_adaptive_step == 0.0
     off = builder._parse_args([*_BASE_ARGV, "--critical-target-band-penalty", "0"])
     assert off.critical_target_band_penalty == 0.0
+    adaptive = builder._parse_args(
+        [*_BASE_ARGV, "--critical-target-band-adaptive-step", "0.25"]
+    )
+    assert adaptive.critical_target_band_adaptive_step == 0.25
 
 
 @pytest.mark.parametrize(
@@ -331,6 +339,27 @@ def test_band_flags_default_to_a_penalty_of_one_at_nine_tenths(builder) -> None:
     [
         (["--critical-target-band-penalty", "-1"], "must be finite and non-negative"),
         (["--critical-target-band-penalty", "nan"], "must be finite and non-negative"),
+        (
+            ["--critical-target-band-adaptive-step", "-1"],
+            "must be finite and non-negative",
+        ),
+        (
+            ["--critical-target-band-adaptive-step", "nan"],
+            "must be finite and non-negative",
+        ),
+        (
+            ["--critical-target-band-adaptive-step", "inf"],
+            "must be finite and non-negative",
+        ),
+        (
+            [
+                "--critical-target-band-adaptive-step",
+                "0.25",
+                "--critical-target-band-penalty",
+                "0",
+            ],
+            "requires --critical-target-band-penalty > 0",
+        ),
         (["--critical-target-band-margin", "0"], "must be in (0, 1]"),
         (["--critical-target-band-margin", "1.5"], "must be in (0, 1]"),
     ],
