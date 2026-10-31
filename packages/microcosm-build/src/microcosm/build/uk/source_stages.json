@@ -6189,7 +6189,7 @@
      "family_type": "two FRS claimant or partner roles make a couple; children are UC children or qualifying young people and other non-claimants under 20 (the calibration measure's uc_calibration_family_type)",
      "award_bands": "GBP 1,200 a year (DWP's GBP 100 a month), (1,200 i, 1,200 (i + 1)] in whole pence for i < 25, and above GBP 30,000",
      "targets": "DWP Stat-Xplore Households on Universal Credit by family type and monthly award band, mean of April to December 2025",
-     "pooling": "adjacent bands within a family type, lowest first, until the drawn units rest on minimum_pool_sources distinct household_source_id values; a short last pool joins the one before it",
+     "pooling": "adjacent bands within a family type, lowest first, until the drawn units rest on minimum_pool_sources distinct household_source_id values; a short last pool joins the one before it. Then, lowest first, a pool that cannot meet DWP's count (its undrawn entitled units' expected claims exceed the count, or the count exceeds them plus the weight of every drawn unit) joins the adjacent pool with more room for its gap, the lower on a tie, until every pool can meet its count or the family type is one pool",
      "minimum_pool_sources": 30,
      "drawn_units": "entitled, non-reporting units of the population that the engine does not move off their legacy benefits (legacy_benefits_closed) and that report none, since a legacy benefit the engine leaves in place ends once the unit claims UC",
      "undrawn_claims": "a reporter at 1, a moved unit at the claim probability uc_legacy_closure_take_up's rule gives it (dwp_move_to_uc_facts.json), a unit keeping income-related ESA at 0, any other at its stored flag",

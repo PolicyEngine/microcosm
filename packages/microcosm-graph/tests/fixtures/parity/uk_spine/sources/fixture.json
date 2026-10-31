@@ -7135,7 +7135,7 @@
           "minimum_pool_sources": 30,
           "not_drawn": "keeps its stored flag, except a unit keeping income-related ESA, which claims none",
           "output": "would_claim_uc",
-          "pooling": "adjacent bands within a family type, lowest first, until the drawn units rest on minimum_pool_sources distinct household_source_id values; a short last pool joins the one before it",
+          "pooling": "adjacent bands within a family type, lowest first, until the drawn units rest on minimum_pool_sources distinct household_source_id values; a short last pool joins the one before it. Then, lowest first, a pool that cannot meet DWP's count (its undrawn entitled units' expected claims exceed the count, or the count exceeds them plus the weight of every drawn unit) joins the adjacent pool with more room for its gap, the lower on a tie, until every pool can meet its count or the family type is one pool",
           "population": "uc_age_eligible",
           "residual_rate": "(T - F) / D, clipped to [0, 1]; T DWP's calendar-2025 mean count of the pool's bands, D the weight of the pool's drawn units and F the expected claims of its other entitled units, over Great Britain at the stage's household weights; realized by the drawn units claiming in the order of their uniform until their weight is nearest T - F, and applied at that uniform to Northern Ireland's drawn units too",
           "seed": 0,
