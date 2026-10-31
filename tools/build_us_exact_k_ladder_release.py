@@ -40,8 +40,9 @@ may additionally carry the paired
 ``ssi_take_up_prior_weight_basis`` and
 ``ssi_take_up_prior_weight_basis_sha256`` fields for the house one-retry
 delivery-gate protocol. ``calibration`` may additionally carry
-``critical_target_band_penalty``, ``critical_target_band_margin``, and
-``critical_target_band_adaptive_step``
+``critical_target_band_penalty``, ``critical_target_band_margin``,
+``critical_target_band_adaptive_step``, and
+``critical_target_band_adaptive_warmup_epochs``
 (microcosm#1330), which pin the builder's critical-target band for this
 release; when absent, the builder's defaults apply. The exact-k incumbent
 gate scores fit loss alone, so a banded candidate spends some fit to hold its
@@ -114,6 +115,7 @@ class LadderReleaseConfig:
     critical_target_band_penalty: float | None = None
     critical_target_band_margin: float | None = None
     critical_target_band_adaptive_step: float | None = None
+    critical_target_band_adaptive_warmup_epochs: int | None = None
 
 
 def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
@@ -197,6 +199,7 @@ def _read_config(path: Path) -> LadderReleaseConfig:
             "critical_target_band_penalty",
             "critical_target_band_margin",
             "critical_target_band_adaptive_step",
+            "critical_target_band_adaptive_warmup_epochs",
         },
         label="calibration",
     )
@@ -284,6 +287,14 @@ def _read_config(path: Path) -> LadderReleaseConfig:
             label="calibration.critical_target_band_adaptive_step",
         )
     )
+    band_adaptive_warmup_epochs = (
+        None
+        if "critical_target_band_adaptive_warmup_epochs" not in calibration
+        else _nonnegative_int(
+            calibration["critical_target_band_adaptive_warmup_epochs"],
+            label="calibration.critical_target_band_adaptive_warmup_epochs",
+        )
+    )
     band_margin = (
         None
         if "critical_target_band_margin" not in calibration
@@ -348,6 +359,7 @@ def _read_config(path: Path) -> LadderReleaseConfig:
         critical_target_band_penalty=band_penalty,
         critical_target_band_margin=band_margin,
         critical_target_band_adaptive_step=band_adaptive_step,
+        critical_target_band_adaptive_warmup_epochs=band_adaptive_warmup_epochs,
     )
 
 
@@ -506,6 +518,13 @@ def _builder_argv(
             [
                 "--critical-target-band-adaptive-step",
                 str(config.critical_target_band_adaptive_step),
+            ]
+        )
+    if config.critical_target_band_adaptive_warmup_epochs is not None:
+        argv.extend(
+            [
+                "--critical-target-band-adaptive-warmup-epochs",
+                str(config.critical_target_band_adaptive_warmup_epochs),
             ]
         )
     if config.ssi_take_up_prior_weight_basis is not None:

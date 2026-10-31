@@ -791,6 +791,8 @@ def _validate_target_loss_cap(target_loss_cap: float) -> float:
 # With a positive adaptive step, each row instead starts at slope zero and
 # accumulates ``step * hinge`` after each optimizer update, capped at the
 # requested penalty. A cleared row keeps its slope without further increases.
+# Warmup epochs hold every slope at zero, so a row the fit clears on its own
+# early in a solve collects no pressure while it starts far from its target.
 # The relative error is the critical-target gate's: (estimate - target) /
 # target, or estimate - target when the target is zero. It is not the loss's
 # capped, scaled miss. ``relative_error_loss`` is unchanged.
@@ -845,6 +847,7 @@ def _validate_target_band(
     penalty: float,
     shape: tuple[int, ...],
     adaptive_step: float = 0.0,
+    adaptive_warmup_epochs: int = 0,
 ) -> np.ndarray | None:
     """Validate a band request; return the tolerances, or None when no band applies.
 
@@ -868,6 +871,20 @@ def _validate_target_band(
         raise ValueError(
             "target_band_adaptive_step > 0 requires target_band_penalty > 0 "
             "and target_band_tolerances."
+        )
+    if (
+        isinstance(adaptive_warmup_epochs, bool)
+        or not isinstance(adaptive_warmup_epochs, (int, np.integer))
+        or adaptive_warmup_epochs < 0
+    ):
+        raise ValueError(
+            "target_band_adaptive_warmup_epochs must be a non-negative integer, "
+            f"got {adaptive_warmup_epochs!r}."
+        )
+    if adaptive_warmup_epochs > 0 and adaptive_step == 0.0:
+        raise ValueError(
+            "target_band_adaptive_warmup_epochs > 0 requires "
+            "target_band_adaptive_step > 0."
         )
     if tolerances is None:
         if penalty > 0.0:
@@ -901,7 +918,8 @@ class _TargetBand:
     Only the banded rows enter the term, so an unbanded row can never reach
     it (a nonzero target too small for float32 would otherwise divide 0 by 0
     in the gradient and poison the weights). In adaptive mode each multiplier
-    starts at zero; ``update`` raises it only for a positive hinge, with no decay.
+    starts at zero; ``update`` raises it only for a positive hinge once warmup
+    ends, with no decay.
     """
 
     index: torch.Tensor
@@ -909,6 +927,7 @@ class _TargetBand:
     scales: torch.Tensor
     penalty: float
     adaptive_step: float
+    adaptive_warmup_epochs: int
     multipliers: torch.Tensor
     first_violation_epoch: torch.Tensor
     last_violation_epoch: torch.Tensor
@@ -920,6 +939,7 @@ class _TargetBand:
         targets: np.ndarray,
         penalty: float,
         adaptive_step: float = 0.0,
+        adaptive_warmup_epochs: int = 0,
     ) -> _TargetBand | None:
         if tolerances is None or penalty <= 0.0:
             return None
@@ -939,6 +959,7 @@ class _TargetBand:
             scales=scales_t,
             penalty=float(penalty),
             adaptive_step=float(adaptive_step),
+            adaptive_warmup_epochs=int(adaptive_warmup_epochs),
             multipliers=torch.zeros(index.size, dtype=torch.float64),
             first_violation_epoch=torch.full((index.size,), -1, dtype=torch.long),
             last_violation_epoch=torch.full((index.size,), -1, dtype=torch.long),
@@ -963,10 +984,13 @@ class _TargetBand:
     def update(self, estimate: torch.Tensor, targets: torch.Tensor, epoch: int) -> None:
         """Accumulate this epoch's violation after its optimizer update.
 
-        ``estimate`` is recomputed after the optimizer step and its projections.
-        Epochs are zero-based; there is one update per optimizer step, including
-        the last. Multipliers use float64 so a finite cap is respected without
-        float32 rounding upward or overflowing a large finite step.
+        ``estimate`` is the one this epoch's step came from, so an adaptive solve
+        keeps the fixed band's single forward pass per epoch; the multipliers lag
+        the weights by that one step. Epochs are zero-based; there is one update
+        per optimizer step, including the last. Violations are recorded during
+        warmup, and multipliers rise only from ``adaptive_warmup_epochs`` on.
+        Multipliers use float64 so a finite cap is respected without float32
+        rounding upward or overflowing a large finite step.
         """
 
         if self.adaptive_step == 0.0:
@@ -977,7 +1001,8 @@ class _TargetBand:
             violated & (self.first_violation_epoch < 0), epoch
         )
         self.last_violation_epoch.masked_fill_(violated, epoch)
-        self.multipliers.add_(hinge * self.adaptive_step).clamp_(max=self.penalty)
+        if epoch >= self.adaptive_warmup_epochs:
+            self.multipliers.add_(hinge * self.adaptive_step).clamp_(max=self.penalty)
 
 
 def default_target_loss_scales(
@@ -1118,8 +1143,9 @@ def _target_band_options(
         **(
             {
                 "adaptive_step": target_band.adaptive_step,
+                "adaptive_warmup_epochs": target_band.adaptive_warmup_epochs,
                 "form": "sum_of_multiplier_times_hinge_abs_relative_error_over_tolerance",
-                "epoch_convention": "zero_based_optimizer_step; post_step_post_projection_estimate",
+                "epoch_convention": "zero_based_optimizer_step; estimate_the_step_came_from",
             }
             if adaptive
             else {}
@@ -1533,11 +1559,7 @@ def _optimize(
                     log_w, total0, None if upper is None else torch.log(upper)
                 )
                 if adaptive_band:
-                    target_band.update(
-                        _apply_constraint(matrix, total0 * torch.softmax(log_w, dim=0)),
-                        targets,
-                        epoch,
-                    )
+                    target_band.update(estimate, targets, epoch)
             continue
 
         # Hard projections, applied to the realized weights every step so the
@@ -1562,9 +1584,7 @@ def _optimize(
                         # hard so it can never be violated mid-run.
                         log_w.clamp_(max=torch.log(upper))
             if adaptive_band:
-                target_band.update(
-                    _apply_constraint(matrix, torch.exp(log_w)), targets, epoch
-                )
+                target_band.update(estimate, targets, epoch)
 
     if softmax_mass and selection_receipt is not None:
         selection_receipt["softmax_cap_rounds_exhausted_epochs"] = (
@@ -1763,11 +1783,7 @@ def _optimize_proximal(
             if max_weight_ratio is not None:
                 ratio.clamp_(max=max_weight_ratio)
             if target_band is not None and target_band.adaptive_step > 0.0:
-                target_band.update(
-                    _apply_constraint(matrix, torch.clamp(ratio, min=0.0) * w0_t),
-                    targets,
-                    epoch,
-                )
+                target_band.update(estimate, targets, epoch)
             # Note: mass conservation is NOT enforced per step. A uniform rescale
             # would multiply shrinking ratios back up and resurrect records the prox
             # is trying to zero, defeating selection. The run optimizes at free mass
@@ -2494,6 +2510,7 @@ def calibrate(
     target_band_tolerances: np.ndarray | None = None,
     target_band_penalty: float = 0.0,
     target_band_adaptive_step: float = 0.0,
+    target_band_adaptive_warmup_epochs: int = 0,
 ) -> CalibrationResult:
     """Calibrate ``weight_entity``'s weights to ``targets`` over ``frame``.
 
@@ -2680,10 +2697,10 @@ def calibrate(
             preserves the fixed band, including its iterate selection. A positive
             value starts one multiplier per banded row at zero and minimizes
             ``sum(multiplier * hinge)``. After each optimizer step, under
-            ``no_grad``, accumulate ``step * hinge`` up to ``target_band_penalty``;
-            recompute the hinge from the post-step weights after per-step
-            projections, so a cleared row stops increasing immediately.
-            There is no decay. Adaptive runs always return the closing state;
+            ``no_grad``, accumulate ``step * hinge`` up to ``target_band_penalty``,
+            taking the hinge from the estimate that step came from, so the solve
+            keeps one forward pass per epoch and a cleared row stops increasing
+            one epoch later. There is no decay. Adaptive runs always return the closing state;
             they support plain Adam (including L2 and conserved mass) and prox,
             and refuse L0 gates or budget search. An ungated frozen-support
             ``refit_l0_selection`` may enable adaptation independently. Requires
@@ -2692,6 +2709,11 @@ def calibrate(
             optimizer-step epochs with a positive hinge (``None`` if never violated).
             Closing mass/cap projections are reflected in final violations but
             do not constitute extra optimizer epochs or multiplier updates.
+        target_band_adaptive_warmup_epochs: Optimizer steps that hold every
+            adaptive multiplier at zero before accumulation starts, default
+            ``0``. Violations during warmup still enter the diagnostics. A
+            positive value requires ``target_band_adaptive_step > 0`` and must
+            be below ``epochs``, or the multipliers could never rise.
 
     Returns:
         A :class:`CalibrationResult` with the calibrated frame, per-target
@@ -2871,6 +2893,7 @@ def calibrate(
         target_band_penalty,
         (len(targets),),
         target_band_adaptive_step,
+        target_band_adaptive_warmup_epochs,
     )
 
     if float(target_band_adaptive_step) > 0.0 and (
@@ -2880,6 +2903,11 @@ def calibrate(
             "Adaptive target bands do not support L0 gates or budget search; "
             "use target_band_adaptive_step=0 for selection, then enable it "
             "in a separate refit_l0_selection call."
+        )
+    if 0 < target_band_adaptive_warmup_epochs >= epochs:
+        raise ValueError(
+            f"target_band_adaptive_warmup_epochs {target_band_adaptive_warmup_epochs} "
+            f"must be below epochs {epochs}, or the multipliers can never rise."
         )
 
     target_loss_weights_input = _validate_target_loss_weights(
@@ -2978,6 +3006,7 @@ def calibrate(
         problem.target_vector,
         float(target_band_penalty),
         float(target_band_adaptive_step),
+        int(target_band_adaptive_warmup_epochs),
     )
 
     iterate_selection_receipt: dict[str, object] = {}
@@ -3474,6 +3503,7 @@ def refit_l0_selection(
     target_band_tolerances: np.ndarray | None = None,
     target_band_penalty: float = 0.0,
     target_band_adaptive_step: float = 0.0,
+    target_band_adaptive_warmup_epochs: int = 0,
 ) -> L0RefitResult:
     """Refit ordinary calibration on a frozen support from an L0 solve.
 
@@ -3663,6 +3693,7 @@ def refit_l0_selection(
         target_band_tolerances=target_band_tolerances,
         target_band_penalty=target_band_penalty,
         target_band_adaptive_step=target_band_adaptive_step,
+        target_band_adaptive_warmup_epochs=target_band_adaptive_warmup_epochs,
     )
     return L0RefitResult(
         selection=selection,
@@ -3705,6 +3736,7 @@ def calibrate_l0_refit(
     target_band_tolerances: np.ndarray | None = None,
     target_band_penalty: float = 0.0,
     target_band_adaptive_step: float = 0.0,
+    target_band_adaptive_warmup_epochs: int = 0,
 ) -> L0RefitResult:
     """Select a sparse support with L0 gates, then refit ordinary calibration.
 
@@ -3806,6 +3838,7 @@ def calibrate_l0_refit(
         target_band_tolerances=target_band_tolerances,
         target_band_penalty=target_band_penalty,
         target_band_adaptive_step=target_band_adaptive_step,
+        target_band_adaptive_warmup_epochs=target_band_adaptive_warmup_epochs,
     )
     return refit_l0_selection(
         frame,
@@ -3833,4 +3866,5 @@ def calibrate_l0_refit(
         target_band_tolerances=target_band_tolerances,
         target_band_penalty=target_band_penalty,
         target_band_adaptive_step=target_band_adaptive_step,
+        target_band_adaptive_warmup_epochs=target_band_adaptive_warmup_epochs,
     )

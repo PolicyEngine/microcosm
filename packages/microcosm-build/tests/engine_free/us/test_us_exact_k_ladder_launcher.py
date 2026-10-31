@@ -418,15 +418,19 @@ def test_config_can_pin_the_critical_target_band(
     )
     assert "--critical-target-band-penalty" not in default_argv
     assert "--critical-target-band-adaptive-step" not in default_argv
+    assert "--critical-target-band-adaptive-warmup-epochs" not in default_argv
     default_args = launcher.fiscal_release._parse_args(default_argv)
     assert default_args.critical_target_band_penalty == 1.0
     assert default_args.critical_target_band_margin == 0.9
     assert default_args.critical_target_band_adaptive_step == 0.0
+    assert default_args.critical_target_band_adaptive_warmup_epochs == 0
 
     payload = _config_payload()
     payload["calibration"]["critical_target_band_penalty"] = penalty
     payload["calibration"]["critical_target_band_margin"] = 0.8
     payload["calibration"]["critical_target_band_adaptive_step"] = adaptive_step
+    warmup = 200 if adaptive_step > 0.0 else 0
+    payload["calibration"]["critical_target_band_adaptive_warmup_epochs"] = warmup
     pinned = launcher._read_config(_write_config(tmp_path, payload))
     parsed = launcher.fiscal_release._parse_args(
         launcher._builder_argv(
@@ -439,6 +443,7 @@ def test_config_can_pin_the_critical_target_band(
     assert parsed.critical_target_band_penalty == penalty
     assert parsed.critical_target_band_margin == 0.8
     assert parsed.critical_target_band_adaptive_step == adaptive_step
+    assert parsed.critical_target_band_adaptive_warmup_epochs == warmup
 
 
 @pytest.mark.parametrize(
@@ -448,6 +453,7 @@ def test_config_can_pin_the_critical_target_band(
         ("critical_target_band_adaptive_step", -1.0, "must be non-negative"),
         ("critical_target_band_adaptive_step", float("inf"), "must be a finite"),
         ("critical_target_band_adaptive_step", float("nan"), "must be a finite"),
+        ("critical_target_band_adaptive_warmup_epochs", -1, "must be"),
         ("critical_target_band_margin", 0.0, r"must be in \(0, 1\]"),
         ("critical_target_band_margin", 1.5, r"must be in \(0, 1\]"),
         (

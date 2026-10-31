@@ -308,6 +308,10 @@ def test_every_ladder_solve_forwards_the_band() -> None:
         assert (
             forwarded.get("target_band_adaptive_step") == "target_band_adaptive_step"
         ), call.lineno
+        assert (
+            forwarded.get("target_band_adaptive_warmup_epochs")
+            == "target_band_adaptive_warmup_epochs"
+        ), call.lineno
 
 
 _BASE_ARGV = ["--ledger-facts", "facts.jsonl", "--out", "release"]
@@ -326,12 +330,20 @@ def test_band_flags_default_to_a_penalty_of_one_at_nine_tenths(builder) -> None:
         == 0.9
     )
     assert args.critical_target_band_adaptive_step == 0.0
+    assert args.critical_target_band_adaptive_warmup_epochs == 0
     off = builder._parse_args([*_BASE_ARGV, "--critical-target-band-penalty", "0"])
     assert off.critical_target_band_penalty == 0.0
     adaptive = builder._parse_args(
-        [*_BASE_ARGV, "--critical-target-band-adaptive-step", "0.25"]
+        [
+            *_BASE_ARGV,
+            "--critical-target-band-adaptive-step",
+            "0.25",
+            "--critical-target-band-adaptive-warmup-epochs",
+            "200",
+        ]
     )
     assert adaptive.critical_target_band_adaptive_step == 0.25
+    assert adaptive.critical_target_band_adaptive_warmup_epochs == 200
 
 
 @pytest.mark.parametrize(
@@ -359,6 +371,14 @@ def test_band_flags_default_to_a_penalty_of_one_at_nine_tenths(builder) -> None:
                 "0",
             ],
             "requires --critical-target-band-penalty > 0",
+        ),
+        (
+            ["--critical-target-band-adaptive-warmup-epochs", "-1"],
+            "must be non-negative",
+        ),
+        (
+            ["--critical-target-band-adaptive-warmup-epochs", "200"],
+            "requires --critical-target-band-adaptive-step > 0",
         ),
         (["--critical-target-band-margin", "0"], "must be in (0, 1]"),
         (["--critical-target-band-margin", "1.5"], "must be in (0, 1]"),

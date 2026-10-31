@@ -243,8 +243,10 @@ publisher's offline `--preflight-only` check and leaves publication to Max.
 The US fiscal-refresh builder can opt into per-row adaptive critical-target
 bands with `--critical-target-band-adaptive-step`; zero preserves fixed bands.
 A positive step starts row multipliers at zero, caps them at the band penalty,
-and increases them only for post-step violations. Adaptive solves return the
-closing state because their objective changes across epochs. Plain Adam and
+and increases them for each epoch's violation, read from the estimate that
+epoch's step came from. `--critical-target-band-adaptive-warmup-epochs` holds
+them at zero for the first steps. Adaptive solves return the closing state
+because their objective changes across epochs. Plain Adam and
 proximal solves support this mode; L0 selection and budget search refuse it.
 An already frozen L0 support can enable adaptation in a separate refit. The
 exact-k launcher forwards the setting, so an adaptive ladder requesting fewer

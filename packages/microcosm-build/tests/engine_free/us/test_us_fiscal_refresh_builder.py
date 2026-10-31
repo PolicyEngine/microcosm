@@ -6902,6 +6902,11 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         ]
     band_adaptive_step = 0.25 if terminal_mode in {"telemetry", "puf_tail"} else 0.0
     argv += ["--critical-target-band-adaptive-step", str(band_adaptive_step)]
+    band_adaptive_warmup = 2 if band_adaptive_step > 0.0 else 0
+    argv += [
+        "--critical-target-band-adaptive-warmup-epochs",
+        str(band_adaptive_warmup),
+    ]
     if terminal_mode != "telemetry" and not prepared_pool:
         argv.append("--no-staging")
     argv += [
@@ -9030,6 +9035,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             "penalty": 1.0,
             "margin": 0.9,
             "adaptive_step": band_adaptive_step,
+            "adaptive_warmup_epochs": band_adaptive_warmup,
             "banded_rows": 1,
         }
         assert captured["weeks_unemployed_telemetry"] == {
@@ -9128,16 +9134,22 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
                 captured["ladder_kwargs"]["target_band_adaptive_step"]
                 == band_adaptive_step
             )
+            assert (
+                captured["ladder_kwargs"]["target_band_adaptive_warmup_epochs"]
+                == band_adaptive_warmup
+            )
             assert captured["diagnostics"]["critical_target_band"] == {
                 "penalty": 1.0,
                 "margin": 0.9,
                 "adaptive_step": band_adaptive_step,
+                "adaptive_warmup_epochs": band_adaptive_warmup,
                 "banded_rows": 1,
             }
             assert captured["diagnostics_build"]["critical_target_band"] == {
                 "penalty": 1.0,
                 "margin": 0.9,
                 "adaptive_step": band_adaptive_step,
+                "adaptive_warmup_epochs": band_adaptive_warmup,
                 "banded_rows": 1,
             }
             return
@@ -9212,10 +9224,15 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     )
     assert captured["l0_kwargs"]["target_band_penalty"] == 1.0
     assert captured["l0_kwargs"]["target_band_adaptive_step"] == band_adaptive_step
+    assert (
+        captured["l0_kwargs"]["target_band_adaptive_warmup_epochs"]
+        == band_adaptive_warmup
+    )
     assert captured["diagnostics"]["critical_target_band"] == {
         "penalty": 1.0,
         "margin": 0.9,
         "adaptive_step": band_adaptive_step,
+        "adaptive_warmup_epochs": band_adaptive_warmup,
         "banded_rows": 1,
     }
     # The build block the diagnostics writer receives carries the same record.
@@ -9223,6 +9240,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         "penalty": 1.0,
         "margin": 0.9,
         "adaptive_step": band_adaptive_step,
+        "adaptive_warmup_epochs": band_adaptive_warmup,
         "banded_rows": 1,
     }
     assert captured["target_loss_cap"] == 1.0

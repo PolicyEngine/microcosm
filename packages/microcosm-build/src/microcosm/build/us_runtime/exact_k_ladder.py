@@ -144,6 +144,7 @@ def calibrate_exact_k_ladder(
     target_band_tolerances: np.ndarray | None = None,
     target_band_penalty: float = 0.0,
     target_band_adaptive_step: float = 0.0,
+    target_band_adaptive_warmup_epochs: int = 0,
 ) -> ExactKLadderCalibration:
     """Calibrate one exact-count point from an original weighted pool.
 
@@ -213,6 +214,7 @@ def calibrate_exact_k_ladder(
             target_band_tolerances=target_band_tolerances,
             target_band_penalty=target_band_penalty,
             target_band_adaptive_step=target_band_adaptive_step,
+            target_band_adaptive_warmup_epochs=target_band_adaptive_warmup_epochs,
         )
     else:
         if not math.isfinite(l0_lambda) or l0_lambda <= 0.0:
@@ -243,6 +245,7 @@ def calibrate_exact_k_ladder(
             target_band_tolerances=target_band_tolerances,
             target_band_penalty=target_band_penalty,
             target_band_adaptive_step=target_band_adaptive_step,
+            target_band_adaptive_warmup_epochs=target_band_adaptive_warmup_epochs,
         )
         pi = selection.gate_open_probabilities
         if pi is None:  # pragma: no cover - positive-L0 solver invariant
@@ -281,6 +284,7 @@ def calibrate_exact_k_ladder(
             target_band_tolerances=target_band_tolerances,
             target_band_penalty=target_band_penalty,
             target_band_adaptive_step=target_band_adaptive_step,
+            target_band_adaptive_warmup_epochs=target_band_adaptive_warmup_epochs,
         )
 
     diagnostics = _refit_baseline_diagnostics(

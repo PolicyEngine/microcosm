@@ -242,9 +242,7 @@ def test_a_cleared_row_keeps_its_multiplier_and_stops_rising() -> None:
 
 
 @pytest.mark.parametrize("method", ["adam", "prox"])
-def test_diagnostics_record_the_observed_post_step_violation_epochs(
-    monkeypatch, method
-) -> None:
+def test_diagnostics_record_the_observed_violation_epochs(monkeypatch, method) -> None:
     frame, targets, tolerances = _problem()
     tolerances[2] = 10.0  # the second banded row never violates
     observations = []
@@ -277,14 +275,11 @@ def test_diagnostics_record_the_observed_post_step_violation_epochs(
             max(violating_epochs) if violating_epochs else None
         )
         assert row["final_multiplier"] == observations[-1][2][band_index].item()
-        assert row["final_violation"] == pytest.approx(
-            observations[-1][1][band_index].item(), abs=1e-6
-        )
 
 
 @pytest.mark.parametrize("method", ["adam", "prox"])
-def test_the_first_update_uses_the_post_step_estimate_and_zero_based_epoch(
-    method,
+def test_the_first_update_uses_the_estimate_its_step_came_from(
+    monkeypatch, method
 ) -> None:
     frame, targets, tolerances = _problem()
     # Start with the critical row outside the band. Its first gradient uses
@@ -299,6 +294,14 @@ def test_the_first_update_uses_the_post_step_estimate_and_zero_based_epoch(
     if method == "adam":
         kwargs["l2_lambda"] = 1e-6  # select the closing state on the plain solve
     plain = calibrate(frame, targets, **kwargs)
+    hinges = []
+    original_update = solve_module._TargetBand.update
+
+    def observe_update(self, estimate, target_vector, epoch):
+        hinges.append(self.hinge(estimate, target_vector).item())
+        original_update(self, estimate, target_vector, epoch)
+
+    monkeypatch.setattr(solve_module._TargetBand, "update", observe_update)
     adaptive = calibrate(
         frame,
         targets,
@@ -310,11 +313,10 @@ def test_the_first_update_uses_the_post_step_estimate_and_zero_based_epoch(
     assert adaptive.weights.tobytes() == plain.weights.tobytes()
     band = adaptive.options["target_band"]
     [row] = band["targets"]
-    final_error = abs(row["final_relative_error"])
     assert band["adaptive_step"] == 0.1
-    assert row["final_multiplier"] == pytest.approx(
-        0.1 * max(final_error - tolerances[0], 0.0), abs=1e-7
-    )
+    assert len(hinges) == 1
+    assert hinges[0] > 0.0
+    assert row["final_multiplier"] == pytest.approx(0.1 * hinges[0], abs=1e-7)
     assert row["first_violation_epoch"] == 0
     assert row["last_violation_epoch"] == 0
 
@@ -531,3 +533,128 @@ def test_adaptive_mode_requires_a_positive_cap() -> None:
             target_band_penalty=0.0,
             target_band_adaptive_step=0.1,
         )
+
+
+@pytest.mark.parametrize("method", ["adam", "prox"])
+def test_adaptive_mode_adds_no_forward_pass(monkeypatch, method) -> None:
+    frame, targets, tolerances = _problem()
+    original = solve_module._apply_constraint
+    calls = [0]
+
+    def counted(matrix, weights):
+        calls[0] += 1
+        return original(matrix, weights)
+
+    monkeypatch.setattr(solve_module, "_apply_constraint", counted)
+    kwargs = dict(
+        epochs=30,
+        method=method,
+        seed=7,
+        target_band_tolerances=tolerances,
+        target_band_penalty=1.0,
+    )
+    calibrate(frame, targets, **kwargs)
+    fixed_calls = calls[0]
+    calls[0] = 0
+    calibrate(frame, targets, target_band_adaptive_step=0.1, **kwargs)
+    # Fixed Adam may add a closing comparison that adaptive solves skip.
+    assert calls[0] <= fixed_calls
+
+
+@settings(max_examples=50, deadline=None)
+@given(
+    warmup=st.integers(min_value=0, max_value=8),
+    step=st.floats(min_value=1e-4, max_value=2.0),
+    epochs=st.integers(min_value=1, max_value=12),
+)
+def test_property_warmup_holds_multipliers_and_keeps_recording_violations(
+    warmup, step, epochs
+) -> None:
+    targets = torch.tensor([10.0])
+    band = solve_module._TargetBand.build(
+        np.array([0.05]),
+        targets.numpy(),
+        1000.0,
+        adaptive_step=step,
+        adaptive_warmup_epochs=warmup,
+    )
+    estimate = torch.tensor([12.0])
+    hinge = band.hinge(estimate, targets).to(torch.float64)
+    for epoch in range(epochs):
+        band.update(estimate, targets, epoch)
+        expected = step * hinge * max(epoch + 1 - warmup, 0)
+        torch.testing.assert_close(band.multipliers, expected, rtol=1e-12, atol=0.0)
+    assert band.first_violation_epoch.tolist() == [0]
+    assert band.last_violation_epoch.tolist() == [epochs - 1]
+
+
+@pytest.mark.parametrize("method", ["adam", "prox"])
+def test_a_warmup_covering_every_gradient_matches_the_plain_solve(method) -> None:
+    frame, targets, tolerances = _problem()
+    epochs = 40
+    # L2 makes ordinary Adam retain its closing state too.
+    kwargs = dict(epochs=epochs, method=method, seed=7)
+    if method == "adam":
+        kwargs["l2_lambda"] = 0.001
+    plain = calibrate(frame, targets, **kwargs)
+    held = calibrate(
+        frame,
+        targets,
+        **kwargs,
+        target_band_tolerances=tolerances,
+        target_band_penalty=1.0,
+        target_band_adaptive_step=0.1,
+        target_band_adaptive_warmup_epochs=epochs - 1,
+    )
+    # The update after the last step comes too late to touch any gradient.
+    assert held.weights.tobytes() == plain.weights.tobytes()
+    assert held.options["target_band"]["adaptive_warmup_epochs"] == epochs - 1
+
+
+@pytest.mark.parametrize(
+    ("step", "warmup", "message"),
+    [
+        (0.1, -1, "non-negative integer"),
+        (0.1, 1.5, "non-negative integer"),
+        (0.1, True, "non-negative integer"),
+        (0.0, 5, "requires target_band_adaptive_step > 0"),
+        (0.1, 10, "must be below epochs"),
+        (0.1, 11, "must be below epochs"),
+    ],
+)
+def test_a_malformed_warmup_is_refused(step, warmup, message) -> None:
+    frame, targets, tolerances = _problem()
+    with pytest.raises(ValueError, match=message):
+        calibrate(
+            frame,
+            targets,
+            epochs=10,
+            target_band_tolerances=tolerances,
+            target_band_penalty=1.0,
+            target_band_adaptive_step=step,
+            target_band_adaptive_warmup_epochs=warmup,
+        )
+
+
+def test_warmup_lets_a_row_the_fit_clears_alone_collect_no_pressure() -> None:
+    frame, targets, tolerances = _problem(n_minor=0)
+    # The row starts outside its band with nothing pulling against the fit.
+    kwargs = dict(
+        epochs=400,
+        seed=7,
+        warm_start_weights=np.full(24, 120.0),
+        target_band_tolerances=tolerances,
+        target_band_penalty=1.0,
+        target_band_adaptive_step=0.1,
+    )
+    eager = calibrate(frame, targets, **kwargs)
+    patient = calibrate(
+        frame, targets, target_band_adaptive_warmup_epochs=200, **kwargs
+    )
+    [eager_row] = eager.options["target_band"]["targets"]
+    [patient_row] = patient.options["target_band"]["targets"]
+    assert eager_row["first_violation_epoch"] == 0
+    assert patient_row["first_violation_epoch"] == 0
+    assert eager_row["final_multiplier"] > 0.0
+    assert patient_row["final_multiplier"] == 0.0
+    assert patient_row["final_violation"] == 0.0

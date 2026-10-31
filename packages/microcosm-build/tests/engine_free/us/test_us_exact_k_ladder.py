@@ -246,7 +246,8 @@ def test_every_ladder_solve_receives_the_critical_target_band(
 
     frame, targets = _fixture_pool()
     tolerances = np.asarray([0.045])
-    seen: list[tuple[str, object, object, object]] = []
+    warmup = 1 if adaptive_step > 0.0 else 0
+    seen: list[tuple[str, object, object, object, object]] = []
     for name in ("calibrate", "refit_l0_selection"):
         real = getattr(ladder, name)
 
@@ -257,6 +258,7 @@ def test_every_ladder_solve_receives_the_critical_target_band(
                     kwargs.get("target_band_tolerances"),
                     kwargs.get("target_band_penalty"),
                     kwargs.get("target_band_adaptive_step"),
+                    kwargs.get("target_band_adaptive_warmup_epochs"),
                 )
             )
             return _real(*args, **kwargs)
@@ -275,13 +277,15 @@ def test_every_ladder_solve_receives_the_critical_target_band(
         target_band_tolerances=tolerances,
         target_band_penalty=1.0,
         target_band_adaptive_step=adaptive_step,
+        target_band_adaptive_warmup_epochs=warmup,
     )
 
-    assert tuple(name for name, _, _, _ in seen) == phases
-    for _, seen_tolerances, seen_penalty, seen_step in seen:
+    assert tuple(name for name, _, _, _, _ in seen) == phases
+    for _, seen_tolerances, seen_penalty, seen_step, seen_warmup in seen:
         np.testing.assert_array_equal(seen_tolerances, tolerances)
         assert seen_penalty == 1.0
         assert seen_step == adaptive_step
+        assert seen_warmup == warmup
     assert outcome.result.options["target_band"]["enabled"] is True
     if adaptive_step > 0.0:
         assert outcome.result.options["iterate_selection"] == "closing_state"
