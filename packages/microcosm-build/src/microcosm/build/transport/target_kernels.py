@@ -49,10 +49,13 @@ from pathlib import Path
 import numpy as np
 
 import microcosm.build.calibration_columns as calibration_columns_module
+import microcosm.build.calibration_predicates as calibration_predicates_module
 import microcosm.build.chronicle_epoch as chronicle_epoch_module
 import microcosm.build.country_spec as country_spec_module
 import microcosm.build.ledger_artifact as ledger_artifact_module
 import microcosm.build.ledger_targets as ledger_targets_module
+import microcosm.build.reference_factors as reference_factors_module
+import microcosm.build.reference_intervals as reference_intervals_module
 import microcosm.build.reference_profiles as reference_profiles_module
 import microcosm.calibrate.artifacts as calibrate_artifacts_module
 import microcosm.calibrate.hierarchy as hierarchy_module
@@ -71,7 +74,9 @@ from microcosm.build.ledger_targets import (
     compile_ledger_target_references,
 )
 from microcosm.build.reference_profiles import (
+    ALLOWED_REFERENCE_PROFILE_RESOLVER_VERSIONS,
     REFERENCE_DOCUMENT_KEYS,
+    validate_reference_factor_evidence,
     validate_reference_resolution,
 )
 from microcosm.calibrate import TargetRegistry, TargetSpec
@@ -93,6 +98,7 @@ from microcosm.graph import (
 from microcosm.graph.canonical import canonical_json
 
 from . import artifact_types, graph_inputs
+from . import reference_selection as reference_selection_module
 from .artifact_types import (
     CALIBRATION_PREPARATION_TYPE,
     COMPARISON_TYPE,
@@ -109,6 +115,7 @@ from .graph_inputs import (
     single_source,
     string_param,
 )
+from .reference_selection import exemption_rows, validate_exemptions
 
 __all__ = [
     "TARGET_COMPILATION_KERNELS",
@@ -201,6 +208,7 @@ class TargetSurface:
     facts: Mapping[str, object]
     sha256: str
     reference_resolution: Mapping[str, object] | None = None
+    reference_selection: Mapping[str, object] | None = None
 
 
 def _trace_row(spec: TargetSpec, reference: LedgerTargetReference) -> dict[str, object]:
@@ -221,6 +229,7 @@ def encode_target_surface(
     references_sha256: str,
     facts: Mapping[str, object],
     reference_resolution: Mapping[str, object] | None = None,
+    reference_selection: Mapping[str, object] | None = None,
 ) -> bytes:
     """Encode a compiled registry with its one-to-one reference trace."""
 
@@ -251,6 +260,8 @@ def encode_target_surface(
     }
     if reference_resolution is not None:
         document["reference_resolution"] = dict(reference_resolution)
+    if reference_selection is not None:
+        document["reference_selection"] = dict(reference_selection)
     payload = canonical_json(document)
     decode_target_surface(payload)
     return payload
@@ -274,8 +285,7 @@ def _surface_resolution(document: Mapping, registry: TargetRegistry) -> Mapping 
     body = dict(resolution)
     claimed = body.pop("receipt_sha256", None)
     if (
-        body.get("resolver_version")
-        != reference_profiles_module.REFERENCE_PROFILE_RESOLVER_VERSION
+        body.get("resolver_version") not in ALLOWED_REFERENCE_PROFILE_RESOLVER_VERSIONS
         or claimed != reference_profiles_module.reference_document_sha256(body)
     ):
         raise ValueError("Surface reference resolution receipt hash mismatch.")
@@ -291,6 +301,7 @@ def _surface_resolution(document: Mapping, registry: TargetRegistry) -> Mapping 
         ) from error
     if selection != resolution.get("reference_selection_sha256"):
         raise ValueError("Surface reference selection identity mismatch.")
+    validate_reference_factor_evidence(resolution)
     for spec in resolved:
         if spec.metadata.get(
             "reference_selection_sha256"
@@ -298,7 +309,15 @@ def _surface_resolution(document: Mapping, registry: TargetRegistry) -> Mapping 
             "effective_intervals_sha256"
         ) != resolution.get("effective_intervals_sha256"):
             raise ValueError("Surface reference profile identity mismatch.")
-    if sorted(spec.name for spec in resolved) != resolution.get("transformed_names"):
+    transformed_names = resolution.get("transformed_names")
+    if "reference_selection" in document:
+        exempt_names = {
+            row["name"] for row in exemption_rows(document["reference_selection"])
+        }
+        transformed_names = [
+            name for name in transformed_names if name not in exempt_names
+        ]
+    if sorted(spec.name for spec in resolved) != transformed_names:
         raise ValueError("Surface resolution transformed names mismatch.")
     return resolution
 
@@ -314,7 +333,7 @@ def decode_target_surface(payload: bytes) -> TargetSurface:
     if (
         document.get("schema_version") != 1
         or document.get("kind") != _SURFACE_KIND
-        or set(document) - {"reference_resolution"}
+        or set(document) - {"reference_resolution", "reference_selection"}
         != {
             "schema_version",
             "kind",
@@ -342,6 +361,13 @@ def decode_target_surface(payload: bytes) -> TargetSurface:
     references = [row.get("reference") for row in trace]
     if len(set(references)) != len(references):
         raise ValueError("Target surface traces two targets to one reference.")
+    selection = document.get("reference_selection")
+    if selection is not None:
+        exemptions = exemption_rows(selection)
+        if any(row["activation_status"] in _EXECUTABLE_STATUSES for row in exemptions):
+            raise ValueError("A target surface cannot exempt an active reference.")
+        if set(references) & {row["name"] for row in exemptions}:
+            raise ValueError("An exempt reference entered the compiled target surface.")
     for spec, row in zip(registry.specs, trace, strict=True):
         if (
             row.get("target") != spec.name
@@ -361,6 +387,7 @@ def decode_target_surface(payload: bytes) -> TargetSurface:
         facts=document["facts"],
         sha256=sha256_text(payload),
         reference_resolution=_surface_resolution(document, registry),
+        reference_selection=selection,
     )
 
 
@@ -373,6 +400,7 @@ def compile_target_surface(
     expected_facts_sha256: str | None = None,
     feed_pin: Mapping[str, object] | None = None,
     reference_resolution: Mapping[str, object] | None = None,
+    reference_selection: Mapping[str, object] | None = None,
 ) -> tuple[bytes, TargetRegistry]:
     """Compile a reference document against one consumer artifact.
 
@@ -395,9 +423,42 @@ def compile_target_surface(
         reference_resolution = validate_reference_resolution(
             document, reference_resolution, references_sha256=references_sha256
         )
+    if reference_selection is not None:
+        exemptions = validate_exemptions(document, reference_selection)
+        exempt_names = {row["name"] for row in exemptions}
+        references = tuple(ref for ref in references if ref.name not in exempt_names)
     artifact = load_ledger_consumer_artifact(
-        facts_path, expected_facts_sha256=expected_facts_sha256, feed_pin=feed_pin
+        facts_path,
+        expected_facts_sha256=expected_facts_sha256,
+        feed_pin=feed_pin,
+        lexical_floats=bool(
+            reference_resolution and reference_resolution.get("selected_factors")
+        ),
     )
+    if reference_resolution is not None:
+        for entry in reference_resolution.get("selected_factors", {}).values():
+            factor_feed_identity = ledger_artifact_module.chronicle_feed_identity(
+                feed_pin
+                if feed_pin is not None
+                else entry["declaration"]["feed_identity"]
+            )
+            if feed_pin is None:
+                ledger_artifact_module.validate_chronicle_feed_pin(
+                    artifact, factor_feed_identity
+                )
+                if (artifact.manifest or {}).get(
+                    "source_commit"
+                ) != factor_feed_identity["source_commit"]:
+                    raise ValueError(
+                        "Factor source commit cannot be authenticated without a feed pin."
+                    )
+            reference_factors_module.replay_reference_factor(
+                entry["declaration"],
+                artifact.facts,
+                factor_feed_identity,
+                entry["operational_factor"],
+                entry["receipt"],
+            )
     registry = compile_ledger_target_references(
         artifact.facts, references, country=country
     )
@@ -411,6 +472,7 @@ def compile_target_surface(
             "n_facts": len(artifact.facts),
         },
         reference_resolution=reference_resolution,
+        reference_selection=reference_selection,
     )
     return payload, registry
 
@@ -422,6 +484,20 @@ def _registry_from_context(
 
     country = string_param(context, ref, "country")
     document = canonical_document_param(context, ref, "references")
+    selection = (
+        canonical_document_param(context, ref, "reference_selection")
+        if "reference_selection" in context.params
+        else None
+    )
+    if selection is not None and ref == "takeup.compare@1":
+        validate_exemptions(
+            document,
+            selection,
+            selected={
+                row["name"]: (context.node.id,)
+                for row in document.get("target_references", ())
+            },
+        )
     references_sha256 = sha256_param(context, ref, "references_sha256")
     expected = (
         sha256_param(context, ref, "facts_sha256")
@@ -445,6 +521,7 @@ def _registry_from_context(
             if "reference_resolution" in context.params
             else None
         ),
+        reference_selection=selection,
     )
     return registry, payload
 
@@ -489,10 +566,12 @@ _COMPILE_MODULES = (
     ledger_targets_module,
     ledger_artifact_module,
     chronicle_epoch_module,
+    reference_factors_module,
     reference_profiles_module,
     registry_module,
     target_module,
     hierarchy_module,
+    reference_selection_module,
 )
 _MATRIX_MODULES = (
     matrix_module,
@@ -524,6 +603,9 @@ class CalibrationPrepareKernel(KernelBase):
             graph_inputs,
             artifact_types,
             calibration_columns_module,
+            calibration_predicates_module,
+            reference_intervals_module,
+            reference_factors_module,
             reference_profiles_module,
             dependencies=self.capabilities.dependencies,
         )
@@ -552,6 +634,12 @@ class CalibrationPrepareKernel(KernelBase):
         bindings = canonical_document_param(context, self.ref, "bindings")
         document = canonical_document_param(context, self.ref, "references")
         digest = sha256_param(context, self.ref, "references_sha256")
+        # Parsed once: the receipt check and column preparation read one document.
+        intervals = (
+            canonical_document_param(context, self.ref, "intervals")
+            if "intervals" in context.params
+            else None
+        )
         resolution = None
         if "reference_resolution" in context.params:
             candidate = canonical_document_param(
@@ -559,7 +647,7 @@ class CalibrationPrepareKernel(KernelBase):
             )
             if (
                 candidate.get("effective_intervals_sha256") is not None
-                and "intervals" not in context.params
+                and intervals is None
             ):
                 raise ValueError(
                     "Calibration preparation requires its effective interval companion."
@@ -568,11 +656,7 @@ class CalibrationPrepareKernel(KernelBase):
                 document,
                 candidate,
                 references_sha256=digest,
-                interval_document=(
-                    canonical_document_param(context, self.ref, "intervals")
-                    if "intervals" in context.params
-                    else None
-                ),
+                interval_document=intervals,
             )
         elif any(
             row.get("metadata", {}).get("reference_profiles_resolved")
@@ -581,7 +665,13 @@ class CalibrationPrepareKernel(KernelBase):
             raise ValueError(
                 "Profile-resolved preparation requires a reference resolution receipt."
             )
-        tables = prepare_calibration_columns(context.tables, bindings)
+        if intervals is not None and resolution is None:
+            raise ValueError(
+                "An interval companion requires its reference resolution receipt."
+            )
+        tables = prepare_calibration_columns(
+            context.tables, bindings, intervals=intervals
+        )
         inventory = {
             (row["entity"], row["name"])
             for row in (*bindings["columns"], *bindings.get("roster_counts", ()))
@@ -619,6 +709,10 @@ class CalibrationPrepareKernel(KernelBase):
                 for entity, name in sorted(inventory)
             ],
         }
+        interval_inputs = _interval_input_evidence(context, bindings, intervals)
+        if interval_inputs:
+            evidence["effective_intervals"] = intervals
+            evidence["interval_inputs"] = interval_inputs
         payload = canonical_json(evidence)
         return KernelResult(
             columns=columns,
@@ -627,13 +721,77 @@ class CalibrationPrepareKernel(KernelBase):
         )
 
 
+def _interval_tables(bindings: Mapping, intervals: Mapping | None) -> list:
+    """The validated tables named by a binding's interval outputs, in order."""
+    named = []
+    for row in bindings.get("columns", ()):
+        if isinstance(row, Mapping) and "interval" in row:
+            if not isinstance(row["interval"], Mapping):
+                raise ValueError("An interval output names its table and band.")
+            table = row["interval"].get("table")
+            if table not in named:
+                named.append(table)
+    if not named:
+        return []
+    if intervals is None:
+        raise ValueError(
+            "Interval outputs require their effective interval evidence; it is missing."
+        )
+    tables = reference_intervals_module.validate_interval_document(intervals)
+    if set(named) - set(tables):
+        raise ValueError("Interval outputs name an undeclared interval table.")
+    return [tables[name] for name in named]
+
+
+def _interval_input_rows(context: KernelContext, tables: Sequence) -> list[dict]:
+    rows = []
+    for table in tables:
+        data = context.tables.get(table.entity)
+        if data is None or any(
+            column not in data
+            for column in (
+                f"{table.entity}_id",
+                table.income_column,
+                table.universe_column,
+            )
+        ):
+            raise ValueError(
+                f"Interval evidence for {table.id!r} is missing its "
+                f"{table.entity} income, universe or identity column."
+            )
+        fingerprint = reference_intervals_module.interval_input_fingerprint
+        rows.append(
+            {
+                "table": table.id,
+                "entity": table.entity,
+                "income_column": table.income_column,
+                "universe_column": table.universe_column,
+                "rows": len(data),
+                "entity_ids_sha256": sha256_text(
+                    canonical_json(data[f"{table.entity}_id"].tolist())
+                ),
+                "income_values_sha256": fingerprint(data[table.income_column].tolist()),
+                "universe_values_sha256": fingerprint(
+                    data[table.universe_column].tolist()
+                ),
+            }
+        )
+    return rows
+
+
+def _interval_input_evidence(
+    context: KernelContext, bindings: Mapping, intervals: Mapping | None
+) -> list[dict]:
+    return _interval_input_rows(context, _interval_tables(bindings, intervals))
+
+
 def _preparation_binding(
     context: KernelContext, surface: TargetSurface
-) -> dict[str, object]:
+) -> tuple[dict[str, object], list]:
     resolution = surface.reference_resolution
     artifact = context.artifacts.get("preparation")
     if resolution is None and artifact is None:
-        return {}
+        return {}, []
     if artifact is None or artifact.type != CALIBRATION_PREPARATION_TYPE:
         raise ValueError(
             "Resolved targets require a typed calibration preparation artifact."
@@ -687,11 +845,51 @@ def _preparation_binding(
             raise ValueError(
                 "Calibration preparation inventory differs from the problem population."
             )
+    intervals = evidence.get("effective_intervals")
+    if intervals is not None and sha256_text(canonical_json(intervals)) != evidence.get(
+        "effective_intervals_sha256"
+    ):
+        raise ValueError("Calibration preparation interval evidence hash mismatch.")
+    tables = _interval_tables(bindings, intervals)
+    if (intervals is None) != (not tables) or evidence.get(
+        "interval_inputs", []
+    ) != _interval_input_rows(context, tables):
+        raise ValueError(
+            "Calibration preparation interval inputs differ from the problem population."
+        )
     return {
         "reference_resolution": resolution,
         "preparation_sha256": sha256_text(artifact.payload),
         "preparation_artifact_key": artifact.key,
         **expected,
+    }, tables
+
+
+def _interval_diagnostics(
+    frame: Frame, tables: Sequence, entities: Sequence[str], intervals_sha256
+) -> dict[str, object]:
+    """Fixed-weight boundary diagnostics; no reference value or target changes."""
+    if not tables:
+        return {}
+    reports = []
+    for table in tables:
+        if table.entity not in entities:
+            raise ValueError(
+                f"Interval diagnostics for {table.id!r} are missing evidence: the "
+                f"problem frame has no {table.entity!r} entity."
+            )
+        reports.append(
+            reference_intervals_module.frame_boundary_diagnostics(table, frame)
+        )
+    report = {
+        "schema_version": 1,
+        "kind": "interval_boundary_diagnostics_report",
+        "effective_intervals_sha256": intervals_sha256,
+        "tables": reports,
+    }
+    return {
+        "interval_diagnostics": report,
+        "interval_diagnostics_sha256": sha256_text(canonical_json(report)),
     }
 
 
@@ -706,7 +904,12 @@ class TargetsCompileKernel(KernelBase):
     )
     _required = frozenset({"country", "references", "references_sha256"})
     _optional = frozenset(
-        {"facts_sha256", "chronicle_feed_pin", "reference_resolution"}
+        {
+            "facts_sha256",
+            "chronicle_feed_pin",
+            "reference_resolution",
+            "reference_selection",
+        }
     )
 
     def implementation_hash(self) -> str:
@@ -762,6 +965,9 @@ class TargetsProblemKernel(KernelBase):
             registry_module,
             hierarchy_module,
             calibrate_artifacts_module,
+            reference_intervals_module,
+            reference_profiles_module,
+            reference_selection_module,
             *_MATRIX_MODULES,
             dependencies=self.capabilities.dependencies,
         )
@@ -778,9 +984,15 @@ class TargetsProblemKernel(KernelBase):
                 "under the alias 'surface'."
             )
         surface = decode_target_surface(value.payload)
-        preparation = _preparation_binding(context, surface)
+        preparation, interval_tables = _preparation_binding(context, surface)
         frame = context_frame(
             context, self.ref, entities=entities, weight_entity=weight_entity
+        )
+        diagnostics = _interval_diagnostics(
+            frame,
+            interval_tables,
+            entities,
+            preparation.get("effective_intervals_sha256"),
         )
         problem = _compiled_problem(frame, surface.registry, weight_entity, self.ref)
         target_metadata = [
@@ -808,6 +1020,7 @@ class TargetsProblemKernel(KernelBase):
                 "entities": list(entities),
                 "weight_entity": weight_entity,
                 **preparation,
+                **diagnostics,
             },
         )
         return KernelResult(
@@ -820,6 +1033,7 @@ class TargetsProblemKernel(KernelBase):
                 "n_records": int(problem.n_weights),
                 "weight_kind": problem.initial_weights.kind.value,
                 **preparation,
+                **diagnostics,
             },
         )
 
@@ -838,7 +1052,12 @@ class TakeupCompareKernel(KernelBase):
         {"country", "references", "references_sha256", "entities", "weight_entity"}
     )
     _optional = frozenset(
-        {"facts_sha256", "chronicle_feed_pin", "reference_resolution"}
+        {
+            "facts_sha256",
+            "chronicle_feed_pin",
+            "reference_resolution",
+            "reference_selection",
+        }
     )
 
     def implementation_hash(self) -> str:

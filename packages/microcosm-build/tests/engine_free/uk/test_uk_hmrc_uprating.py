@@ -10,6 +10,11 @@ from test_support.microcosm_build.uk_hmrc_uprating import *
 
 
 def test_every_declared_engine_index_and_the_count_index_have_an_applier() -> None:
+    from microcosm.build.uk_runtime.hmrc_uprating import (
+        UK_OBR_SAVINGS_INCOME_GROWTH_INDEX_CONCEPT,
+        UK_SPI_SELF_EMPLOYMENT_BAND_AMOUNT_INDEX_CONCEPT,
+    )
+
     appliers = hmrc_uprating_appliers()
     assert set(appliers) == {
         *UK_ENGINE_INDEX_CONCEPTS,
@@ -21,6 +26,8 @@ def test_every_declared_engine_index_and_the_count_index_have_an_applier() -> No
         UK_HMRC_STATE_PENSION_AGE_GROWTH_INDEX_CONCEPT,
         UK_SPI_STATE_PENSION_AGE_AMOUNT_INDEX_CONCEPT,
         UK_SPI_SAVINGS_INTEREST_INDEX_CONCEPT,
+        UK_OBR_SAVINGS_INCOME_GROWTH_INDEX_CONCEPT,
+        UK_SPI_SELF_EMPLOYMENT_BAND_AMOUNT_INDEX_CONCEPT,
     }
     assert set(appliers) <= set(UK_UPRATING_APPLIERS)
     assert len(UK_ENGINE_INDEX_PARAMETERS) == 7
@@ -453,6 +460,167 @@ def test_all_band_growth_moves_an_unbanded_area_row_by_the_all_ranges_window() -
         index_concept="hmrc.itl_2026.taxpayer_count_growth_all_bands",
     )
     assert passthrough is registry
+
+
+def test_table_3_10_amounts_move_by_the_count_index_times_mixed_income() -> None:
+    """The independent review of microcosm#1420, finding 2: a Table 3.10 band's
+    amount moves as its count does, times the engine's mixed income per head,
+    so the band's mean moves as the engine moves incomes."""
+
+    from microcosm.build.uk_runtime.hmrc_uprating import (
+        UK_SPI_SELF_EMPLOYMENT_BAND_AMOUNT_INDEX_CONCEPT as INDEX,
+    )
+    from microcosm.build.uk_runtime.hmrc_uprating import (
+        UK_SPI_SELF_EMPLOYMENT_PROFIT_PARAMETER as PARAMETER,
+    )
+    from microcosm.build.uk_runtime.hmrc_uprating import (
+        align_hmrc_row_by_itl_all_band_growth,
+    )
+
+    count_index = "hmrc.itl_2026.taxpayer_count_growth_all_bands"
+    registry = TargetRegistry(
+        (
+            _spec(
+                name="hmrc/self_employment_income_self_employment_income_band@2025",
+                value=2.0e7,
+                lower_bound=1,
+            ),
+        ),
+        country="uk",
+    )
+
+    def mixed_income(path: str, instant: str) -> float:
+        assert path == PARAMETER
+        return {"2023-01-01": 100.0, "2025-01-01": 104.0}[instant]
+
+    (spec,) = align_hmrc_amount_by_recipient_growth_and_rate(
+        _reference(INDEX),
+        registry,
+        index_concept=INDEX,
+        parameter_path=PARAMETER,
+        count_index_concept=count_index,
+        parameter_value=mixed_income,
+    ).specs
+    (count,) = align_hmrc_row_by_itl_all_band_growth(
+        _reference(count_index), registry, index_concept=count_index
+    ).specs
+    count_factor = float(count.metadata["uprating_factor"])
+    assert spec.value == pytest.approx(2.0e7 * count_factor * 1.04)
+    assert spec.metadata["uprating_index"] == INDEX
+    assert float(spec.metadata["uprating_rate_factor"]) == pytest.approx(1.04)
+    applier = hmrc_uprating_appliers()[INDEX]
+    assert applier.keywords["count_index_concept"] == count_index
+    assert applier.keywords["parameter_path"] == PARAMETER
+
+
+def _savings_growth_rows(growth: dict[int, float]) -> list[dict]:
+    return [
+        {
+            "concept": "obr.self_employed_income_growth.savings_income",
+            "measure_id": "growth_rate",
+            "period": {"type": "fiscal_year", "value": year},
+            "value": rate,
+            "source_record_id": f"obr.table_4_5.savings_income.fy{year}",
+        }
+        for year, rate in growth.items()
+    ]
+
+
+def test_savings_income_growth_chains_the_obr_rates_over_the_calendar_window() -> None:
+    """The Table 3.7 interest and other income rows grow by the OBR's savings
+    income forecast: the rates chained from the fact's year, the calendar
+    year's two fiscal years weighted by their months (microcosm#1418)."""
+
+    from microcosm.build.uk_runtime.hmrc_uprating import (
+        UK_OBR_SAVINGS_INCOME_GROWTH_INDEX_CONCEPT as INDEX,
+    )
+    from microcosm.build.uk_runtime.hmrc_uprating import (
+        UK_OBR_SAVINGS_INCOME_GROWTH_RESOURCE,
+        align_hmrc_row_by_obr_savings_income_growth,
+    )
+
+    registry = TargetRegistry(
+        (
+            _spec(
+                name="hmrc/savings_interest_income_income_band_12570@2025",
+                value=1.0e9,
+                lower_bound=12_570,
+            ),
+        ),
+        country="uk",
+    )
+    rows = _savings_growth_rows({2024: 34.96, 2025: 0.65, 2026: -9.0})
+    aligned = align_hmrc_row_by_obr_savings_income_growth(
+        _reference(INDEX), registry, rows=rows
+    )
+    expected = 0.25 * 1.3496 + 0.75 * 1.3496 * 1.0065
+    (spec,) = aligned.specs
+    assert float(spec.metadata["uprating_factor"]) == pytest.approx(expected)
+    assert spec.value == pytest.approx(1.0e9 * expected)
+    assert spec.metadata["uprating_index"] == INDEX
+    assert spec.metadata["uprating_index_resource"] == (
+        UK_OBR_SAVINGS_INCOME_GROWTH_RESOURCE
+    )
+    # Only the years the window reaches are receipted.
+    assert spec.metadata["uprating_index_growth_by_year"] == "2024=34.96;2025=0.65"
+    assert spec.metadata["uprating_index_source_record_ids"] == (
+        "obr.table_4_5.savings_income.fy2024,obr.table_4_5.savings_income.fy2025"
+    )
+    assert "2026-10-29" in spec.metadata["uprating_adjudication"]
+    assert (
+        align_hmrc_row_by_obr_savings_income_growth(
+            _reference(UK_HMRC_TAXPAYER_GROWTH_INDEX_CONCEPT), registry, rows=rows
+        )
+        is registry
+    )
+    # A fact opening in the calibration year binds as published.
+    same_year = TargetRegistry(
+        (
+            _spec(
+                name="hmrc/savings_interest_income_income_band_12570@2025",
+                value=1.0e9,
+                lower_bound=12_570,
+                period="2025",
+            ),
+        ),
+        country="uk",
+    )
+    (published,) = align_hmrc_row_by_obr_savings_income_growth(
+        _reference(INDEX), same_year, rows=rows
+    ).specs
+    assert published.value == pytest.approx(1.0e9)
+
+
+def test_savings_income_growth_refuses_a_missing_or_repeated_year() -> None:
+    from microcosm.build.uk_runtime.hmrc_uprating import (
+        UK_OBR_SAVINGS_INCOME_GROWTH_INDEX_CONCEPT as INDEX,
+    )
+    from microcosm.build.uk_runtime.hmrc_uprating import (
+        align_hmrc_row_by_obr_savings_income_growth,
+    )
+
+    registry = TargetRegistry(
+        (
+            _spec(
+                name="hmrc/savings_interest_income_income_band_12570@2025",
+                value=1.0e9,
+                lower_bound=12_570,
+            ),
+        ),
+        country="uk",
+    )
+    with pytest.raises(
+        ValueError, match="no savings income growth for fiscal year 2025"
+    ):
+        align_hmrc_row_by_obr_savings_income_growth(
+            _reference(INDEX), registry, rows=_savings_growth_rows({2024: 34.96})
+        )
+    repeated = _savings_growth_rows({2024: 34.96, 2025: 0.65})
+    repeated.append(dict(repeated[0]))
+    with pytest.raises(ValueError, match="more than one"):
+        align_hmrc_row_by_obr_savings_income_growth(
+            _reference(INDEX), registry, rows=repeated
+        )
 
 
 def _band_specs(*lower_bounds: int, period: str = "2023") -> TargetRegistry:

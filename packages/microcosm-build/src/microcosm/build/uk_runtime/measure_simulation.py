@@ -80,7 +80,10 @@ from microcosm.build.uk_runtime.weighted_integrity import (
 )
 from microcosm.calibrate import TargetRegistry
 from microcosm.frame import Frame, MassChangeRecord, Weights
-from microcosm.frame.adapters.policyengine_uk import validate_uc_claimant_input
+from microcosm.frame.adapters.policyengine_uk import (
+    frame_isa_income_contract,
+    validate_uc_claimant_input,
+)
 
 _ENTITY_LINK = {"benunit": "person_benunit_id", "household": "person_household_id"}
 _ENTITY_ID = {
@@ -250,17 +253,22 @@ def household_high_value_home(frame: Any, variable: str) -> np.ndarray:
     ).astype(float)
 
 
-#: Savings interest outside ISAs, from the frame's stored columns: the frame
-#: stores savings_interest_income gross, ISA interest included, with the ISA
-#: part in tax_free_savings_income. SPI Table 3.7 counts the recipients of
-#: taxable interest, so its count rows filter on this, read at the frame as a
-#: filter's stored columns are (microcosm#1095). A reserved name: a persisted
-#: column would bypass the difference.
+#: Savings interest outside ISAs, from the frame's stored columns. SPI Table
+#: 3.7 counts the recipients of taxable interest, so its count rows filter on
+#: this, read at the frame as a filter's stored columns are (microcosm#1095).
+#: The producer's additive layout stores it as savings_interest_income; a
+#: legacy gross frame (the enhanced FRS reference) stores gross interest with
+#: the ISA part in tax_free_savings_income (microcosm#1360). A reserved name: a
+#: persisted column would bypass the frame's contract.
 UK_SAVINGS_INTEREST_OUTSIDE_ISAS = "savings_interest_income_outside_isas"
 
 
+def _legacy_gross_savings(frame: Any) -> bool:
+    return frame_isa_income_contract(frame)["representation"] == "legacy_gross"
+
+
 def savings_interest_outside_isas(frame: Any) -> np.ndarray:
-    """Each person's stored gross savings interest less its ISA part, not below zero."""
+    """Each person's stored savings interest outside ISAs, not below zero."""
 
     person = frame.table("person")
     if "savings_interest_income" not in person:
@@ -268,13 +276,10 @@ def savings_interest_outside_isas(frame: Any) -> np.ndarray:
             f"{UK_SAVINGS_INTEREST_OUTSIDE_ISAS} needs the stored person column "
             "savings_interest_income."
         )
-    gross = person["savings_interest_income"].to_numpy(dtype=float)
-    tax_free = (
-        person["tax_free_savings_income"].to_numpy(dtype=float)
-        if "tax_free_savings_income" in person
-        else np.zeros(len(person))
-    )
-    return np.maximum(gross - tax_free, 0.0)
+    interest = person["savings_interest_income"].to_numpy(dtype=float)
+    if _legacy_gross_savings(frame) and "tax_free_savings_income" in person:
+        interest = interest - person["tax_free_savings_income"].to_numpy(dtype=float)
+    return np.maximum(interest, 0.0)
 
 
 #: The named terms the resolver computes: measures declared once as
@@ -320,6 +325,9 @@ UK_ANNUAL_INCOME_MEASURES: Mapping[str, str] = {
     ),
     "private_pension_income_annual": "private_pension_income",
     "state_pension_annual": "state_pension",
+    # Private and State Pension together, the SPI area tables' pension income
+    # (microcosm#1418): the engine's sum of the two annual inputs.
+    "total_pension_income_annual": "total_pension_income",
     "total_income_after_loss_relief_annual": UK_TOTAL_INCOME_AFTER_LOSS_RELIEF,
     "income_tax_annual": "income_tax",
     # The HMRC and OBR income tax rows read the tax before the Winter Fuel
@@ -530,7 +538,9 @@ def compute_uk_measure_input(
             raise KeyError(f"{variable} is person-only: {entity}")
         return (
             savings_interest_outside_isas(frame),
-            "frame_columns:savings_interest_income_less_tax_free_savings_income",
+            "frame_columns:savings_interest_income_less_tax_free_savings_income"
+            if _legacy_gross_savings(frame)
+            else "frame_columns:savings_interest_income",
         )
 
     if variable in DFE_SPRING_TERM_MEASURES:

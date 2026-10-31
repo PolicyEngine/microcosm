@@ -35,7 +35,7 @@ __all__ = [
 # ---------------------------------------------------------------------------
 #
 # Which PolicyEngine-UK inputs each engine-neutral concept feeds
-# (microcosm.frame.concepts), reviewed against policyengine-uk 2.162.14. Every
+# (microcosm.frame.concepts), reviewed against policyengine-uk 2.164.2. Every
 # target is a pure input (in ``PolicyEngineUKEngine.variables``). The UK
 # loader also accepts some formula-owned variables as overrides
 # (``employment_income``, ``state_pension_reported``, ``is_household_head``);
@@ -364,8 +364,8 @@ UK_ENGINE_DEFAULT_INPUTS: dict[str, str] = {
         ),
         "ISA dividends and the cash interest held in non-cash ISAs "
         "(policyengine-uk 2.162.2). The FRS records ISA interest as one total, "
-        "which the frame supplies in tax_free_savings_income, so the of-which "
-        "detail stays zero. Until 2027-28 that changes nothing; from 2027-28 the "
+        "which the frame supplies in individual_savings_account_interest_income "
+        "(microcosm#1360), so the of-which detail stays zero. Until 2027-28 that changes nothing; from 2027-28 the "
         "detail sets isa_cash_interest_flat_rate_charge, the final charge on cash "
         "interest in non-cash ISAs, so projections from that year show no such "
         "charge. It records no ISA dividends "
@@ -375,18 +375,17 @@ UK_ENGINE_DEFAULT_INPUTS: dict[str, str] = {
     ),
     **dict.fromkeys(
         (
-            "lifetime_isa_payments",
             "lifetime_isa_withdrawals",
             "lifetime_isa_withdrawals_towards_first_home",
             "lifetime_isa_first_time_buyer",
             "lifetime_isa_terminally_ill",
             "lifetime_isa_months_since_first_payment",
         ),
-        "The Lifetime ISA's flows (policyengine-uk 2.162.2). Neither the FRS nor "
-        "the WAS records payments into or withdrawals from a Lifetime ISA (the "
-        "was_lisa stage draws holdings), so payments and withdrawals stay zero: "
-        "the 25% government bonus and the withdrawal charge are zero for every "
-        "account, and the bonus HM Treasury pays is not modelled "
+        "The Lifetime ISA's withdrawals and the conditions on them "
+        "(policyengine-uk 2.162.2). Neither the FRS nor the WAS records "
+        "withdrawals from a Lifetime ISA (the was_lisa stage draws holdings and "
+        "isa_subscriptions the payments, microcosm#1415), so withdrawals stay "
+        "zero and the withdrawal charge is zero for every account "
         "(microcosm#1095; for María's signature).",
     ),
     **dict.fromkeys(
@@ -435,7 +434,7 @@ def _uk_take_up(program: str, entity: str) -> InputBinding:
 
 POLICYENGINE_UK_CONCEPT_MAPPING = ConceptMapping(
     engine="policyengine-uk",
-    engine_version="2.162.14",
+    engine_version="2.164.2",
     entity_correspondence={"person": "person", "household": "household"},
     input_declaration=InputDeclaration.ENGINE_TYPED,
     bindings=(
@@ -532,15 +531,15 @@ POLICYENGINE_UK_CONCEPT_MAPPING = ConceptMapping(
             AlignmentRelation.NARROW_MATCH,
             (
                 "Engine label from 2.162.2: 'Savings interest outside tax-free "
-                "accounts'. The frame stores it gross, ISA interest included, "
-                "with the ISA part in tax_free_savings_income; it carries no "
-                "ISA income contract, so policyengine-uk reads it as legacy "
-                "gross and subtracts tax_free_savings_income when it loads the "
-                "file. Securities and National Savings interest belong to "
-                "other_investment_income, which stays uncovered. ISA interest "
-                "(individual_savings_account_interest_income) is no longer an "
-                "engine input from 2.162.2: a formula supplies it, and the "
-                "frame's tax_free_savings_income overrides it."
+                "accounts'. The frame stores it so, under the additive ISA "
+                "income contract it declares (microcosm#1360): ISA interest is "
+                "stored apart in individual_savings_account_interest_income, a "
+                "total the engine's formula takes first, and "
+                "tax_free_savings_income adds it. A legacy gross file (the "
+                "enhanced FRS) stores interest gross with the ISA part in "
+                "tax_free_savings_income, which policyengine-uk subtracts when "
+                "it loads the file. Securities and National Savings interest "
+                "belong to other_investment_income, which stays uncovered."
             ),
         ),
         bind(
@@ -796,7 +795,13 @@ POLICYENGINE_UK_CONCEPT_MAPPING = ConceptMapping(
             "describe a company the person owns, for Universal Credit's "
             "regulation 77 (owned_company_capital, owned_company_holding_value "
             "and owned_company_trade_assets); every one defaults to no such "
-            "company, and the build sets none. savings and share_like_capital are two "
+            "company, and the build sets none. Since policyengine-uk 2.164.0 "
+            "cash_isa_balance and stocks_and_shares_isa_balance hold the "
+            "person's ISAs, and the household cash_isa and "
+            "stocks_and_shares_isa sum them; the isa_subscriptions stage "
+            "splits the WAS household totals into them (microcosm#1415), a "
+            "split of one wrapper's balance, not of liquid financial assets. "
+            "savings and share_like_capital are two "
             "of Universal Credit's capital sources "
             "(gov.dwp.universal_credit.means_test.capital.sources); since "
             "policyengine-uk 2.147.0 share_like_capital is corporate_wealth unless "

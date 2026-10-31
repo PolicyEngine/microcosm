@@ -6,6 +6,7 @@ import ast
 import importlib
 from pathlib import Path
 
+from microcosm.build import ledger_artifact
 from microcosm.build import ledger_targets as shared_ledger_targets
 from microcosm.build.uk_runtime import (
     graph_national,
@@ -106,6 +107,21 @@ def test_full_target_kernels_hash_the_measure_simulation(monkeypatch):
         assert measure_simulation in _hashed_by(kernel, monkeypatch, graph_targets)
 
 
+def test_full_target_kernels_hash_the_fact_decoder(monkeypatch):
+    """full_targets loads the ledger facts inside run through
+    ledger_artifact's decoder, so an edit there alone re-keys every full-graph
+    kernel built on this hash: compilation, selection and measure share it,
+    and the problem kernel embeds it (microcosm#1382). The pin holds even if
+    no listed module imports ledger_artifact any more."""
+    for kernel in (
+        graph_targets.UKFullTargetCompilationKernel(),
+        graph_targets.UKFullTargetSelectionKernel(),
+        graph_targets.UKFullMeasureKernel(),
+        graph_targets.UKFullProblemKernel(),
+    ):
+        assert ledger_artifact in _hashed_by(kernel, monkeypatch, graph_targets)
+
+
 def test_national_target_kernel_hashes_the_same_compile_modules(monkeypatch):
     hashed = _hashed_by(
         graph_national.UKNationalTargetKernel(), monkeypatch, graph_national
@@ -122,3 +138,14 @@ def test_national_target_kernels_hash_the_measure_simulation(monkeypatch):
         graph_national.UKNationalProblemKernel(resolver_factory=None),
     ):
         assert measure_simulation in _hashed_by(kernel, monkeypatch, graph_national)
+
+
+def test_national_target_kernels_hash_the_fact_decoder(monkeypatch):
+    """The national targets load the ledger facts through full_targets and
+    ledger_artifact's decoder too, so an edit there alone re-keys both
+    kernels that share this hash (microcosm#1382)."""
+    for kernel in (
+        graph_national.UKNationalTargetKernel(),
+        graph_national.UKNationalProblemKernel(resolver_factory=None),
+    ):
+        assert ledger_artifact in _hashed_by(kernel, monkeypatch, graph_national)

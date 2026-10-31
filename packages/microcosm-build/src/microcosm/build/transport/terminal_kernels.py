@@ -203,6 +203,8 @@ class DiagnosticsCalibrationKernel(KernelBase):
             graph_inputs,
             artifact_types,
             target_kernels,
+            target_kernels.reference_profiles_module,
+            target_kernels.reference_selection_module,
             calibrate_artifacts_module,
             calibrate_diagnostics_module,
             diagnostics_schema_module,

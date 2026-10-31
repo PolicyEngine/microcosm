@@ -136,11 +136,12 @@ def test_kernel_registration_is_explicit_idempotent_and_country_neutral():
         )
 
 
-def test_aggregate_population_registration_installs_exactly_ten_kernels():
+def test_aggregate_population_registration_installs_exactly_eleven_kernels():
     registry = KernelRegistry()
     assert register_transport_population_kernels(registry) is registry
     assert register_transport_population_kernels(registry) is registry
     assert set(registry.refs()) == {
+        "money.normalize@1",
         "transport.create@1",
         "transport.boundary@1",
         "transport.currency@1",
@@ -857,3 +858,23 @@ def test_create_artifacts_pin_python_string_storage_with_pyarrow_installed(tmp_p
         frame = run.manifest.population(node)
         for entity, column in text:
             assert frame.table(entity)[column].dtype == pinned, (node, column)
+
+
+@pytest.mark.parametrize("time_period", [2024, None])
+def test_create_records_the_donor_money_period_in_metadata_and_receipt(
+    tmp_path, time_period
+):
+    sources = write_population_sources(tmp_path / "sources", time_period=time_period)
+    node = create_node(sources)
+    context = KernelContext(
+        node=node,
+        tables={},
+        weights={},
+        strata=pd.Series([], dtype=object),
+        params=node.params,
+        rng=np.random.default_rng(0),
+        sources={"donor": sources.donor, "facts": sources.facts},
+    )
+    result = TRANSPORT_CREATE.run(context)
+    assert result.frame.metadata["donor_time_period"] == time_period
+    assert result.receipt["donor_time_period"] == time_period

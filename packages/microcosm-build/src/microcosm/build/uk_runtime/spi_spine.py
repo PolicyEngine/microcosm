@@ -224,7 +224,7 @@ UK_SPI_INCOME_SPINE_REWRITE_COLUMNS = (
     EMPLOYER_PENSION_CONTRIBUTIONS_COLUMN,
     "personal_pension_contributions",
     "pension_contributions_via_salary_sacrifice",
-    "tax_free_savings_income",
+    "individual_savings_account_interest_income",
     "universal_credit_reported",
     "pension_credit_reported",
     "child_benefit_reported",

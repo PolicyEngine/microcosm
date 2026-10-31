@@ -29,6 +29,8 @@ ENGINE_VARIABLES: Mapping[str, tuple[str, type]] = {
     # Declared for the loss-relief measures, which know every component.
     "total_income": ("person", float),
     "employment_income": ("person", float),
+    # Private and State Pension together (microcosm#1418).
+    "total_pension_income": ("person", float),
     "income_tax": ("person", float),
     # The HMRC rows' taxpayer test reads the tax before the Winter Fuel
     # Payment charge (microcosm#1095).
@@ -199,6 +201,8 @@ def three_household_engine(**values: Sequence[Any]) -> StubUKEngine:
             # Losses brought forward the profit is counted after (microcosm#1095).
             "loss_relief": [0.0, 0.0, 0.0, 0.0, 0.0],
             "employment_income": [10.0, 20.0, 0.0, 30.0, 0.0],
+            # The pensioner's private and State Pension (microcosm#1418).
+            "total_pension_income": [0.0, 0.0, 90.0, 0.0, 0.0],
             "income_tax": [1.0, 0.0, 2.0, 3.0, 0.0],
             "income_tax_before_winter_fuel_payment_charge": [1.0, 0.0, 2.0, 3.0, 0.0],
             "tax_band": ["HIGHER", "HIGHER", "BASIC", "HIGHER", "NONE"],
