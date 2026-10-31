@@ -4942,11 +4942,13 @@ def _company_cars_gate(
     without a car, an unknown fuel type, a CO2 figure missing for a car that emits
     it or set for an electric car, private fuel on an electric car, contributions
     above the list price, an electric range outside 1 to 50 g/km, an SPI benefit
-    above its EPB), and on SPI-channel pay plus the benefits carved out of it
-    missing the tape's total by more than ``maximum_pay_identity_error_gbp``. How
-    far holders, fuels, CO2 bands and list prices sit from HMRC's tables after
-    calibration is a measurement, not a gate (María's ruling of 28 October 2026
-    on the ISA facts).
+    above its EPB). It also fails when, on any SPI-channel row, pay plus the car
+    and fuel benefits the engine computes again on the stage's output misses the
+    pay the row brought in by more than ``maximum_pay_identity_error_gbp``: the
+    carve-out assumes how the engine prices a car, so an engine that prices it
+    otherwise fails here. How far holders, fuels, CO2 bands and list prices sit
+    from HMRC's tables after calibration is a measurement, not a gate (María's
+    ruling of 28 October 2026 on the ISA facts).
     """
 
     check = "company_cars"
@@ -4964,13 +4966,13 @@ def _company_cars_gate(
             failures.append(f"{stage}: {count} record(s) break {name}.")
     carve = _mapping(evidence.get("spi_carve_out"), label=f"{stage}.spi_carve_out")
     error = _finite_number(
-        carve.get("max_abs_pay_plus_benefit_error_gbp"),
-        label=f"{stage}.max_abs_pay_plus_benefit_error_gbp",
+        carve.get("max_abs_pay_identity_error_gbp"),
+        label=f"{stage}.max_abs_pay_identity_error_gbp",
     )
     if error > tolerance:
         failures.append(
-            f"{stage}: SPI-channel pay plus its company car benefits misses the "
-            f"tape's total by up to {error} GBP."
+            f"{stage}: SPI-channel pay plus the engine's company car benefits "
+            f"misses the pay the stage received by up to {error} GBP."
         )
     holders = _mapping(evidence.get("holders"), label=f"{stage}.holders")
     return GateResult(

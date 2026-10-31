@@ -56,6 +56,9 @@ def _frame():
             "frs_company_car_contribution": [0.0, 1_000.0, 0.0, 0.0, 0.0],
             "person_support_channel": ["frs", "frs", "spi", "spi", "frs"],
             "hmrc_spi_employment_benefits": [0.0, 0.0, 30_000.0, 1_500.0, 0.0],
+            "employee_pension_contributions": [3_000.0, 0.0, 9_000.0, 2_000.0, 0.0],
+            "pension_contributions_via_salary_sacrifice": [0.0] * 5,
+            "pension_contributions_via_bonus_sacrifice": [0.0] * 5,
         }
     )
     household = pd.DataFrame(
@@ -135,7 +138,8 @@ def test_spi_pay_plus_the_engine_s_benefits_is_the_tape_s_total(engine, run) -> 
     )
     assert (values["benefits_in_kind"][[2, 3]] <= epb[[2, 3]] + 0.01).all()
     assert values["benefits_in_kind"][3] == pytest.approx(1_500.0, abs=0.01)
-    assert receipt["spi_carve_out"]["max_abs_pay_plus_benefit_error_gbp"] < 1e-6
+    # The stage priced its output again on the engine: within a penny.
+    assert receipt["spi_carve_out"]["max_abs_pay_identity_error_gbp"] <= 0.01
 
 
 def test_the_2030_rise_reaches_the_holders_alone(engine, run, tmp_path) -> None:

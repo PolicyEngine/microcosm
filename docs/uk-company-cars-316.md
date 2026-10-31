@@ -39,7 +39,9 @@ Every draw is keyed on the person's identity, so reordering rows moves none.
   electric car is `ELECTRIC`; a diesel is `DIESEL_RDE2`, since every new diesel has
   met RDE2 since January 2021 and company cars turn over in three to four years (the
   diesel supplement moves the baseline only, not the 2030-31 rise). An unknown fuel
-  draws at HMRC Table 2C's shares.
+  draws at HMRC Table 2C's shares. It never draws a hybrid: Table 2C counts hybrids
+  inside petrol and diesel, so a drawn petrol or diesel car enters the CO2 draw
+  below as a non-hybrid. The effect is small.
 - **List price.** WAS round 8 (April 2020 to March 2022) records company cars' list
   prices to the nearest £1,000. They are grown to the build year by the engine's CPI
   index from 2021, and each holder draws within their CARVAL band from the weighted
@@ -57,18 +59,44 @@ Every draw is keyed on the person's identity, so reordering rows moves none.
 ## SPI-channel pay
 
 On an SPI-channel row the engine's car and fuel benefits come out of
-`employment_income`, capped at EPB (María's ruling of 30 October 2026):
+`employment_income` (María's ruling of 30 October 2026). They are capped at EPB,
+and at the pay the row's pension deductions leave: `salary_sacrifice` keeps employee
+contributions and salary sacrifice within pay and bonus sacrifice within half of it,
+and the carve-out keeps them there.
 
-1. Private fuel goes first where its benefit alone exceeds EPB.
+1. Private fuel goes first where its benefit alone exceeds the cap.
 2. A car whose benefit still exceeds what is left has its list price scaled down
    until it fits, with its contributions dropped. The benefit is the price above the
    capped contributions times the appropriate percentage, so the scaling is exact.
 3. A car that would need a list price below £5,000 to fit is dropped, and its EPB
    stays in pay.
 
-Pay plus the benefits then equals the tape's total on every such row. The SPI
-employment income targets read employment income plus `benefits_in_kind`, so they
-read the same total as before.
+The stage then has the engine price its output again. On every SPI-channel row, pay
+plus the engine's benefits must equal the pay the row brought into the stage (the
+tape's PAY + EPB + TAXTERM, less any salary sacrifice). The engine computes in single
+precision, so the receipt records the largest miss rounded up to the penny, and the
+gate allows 5p. The SPI employment income targets read employment income plus
+`benefits_in_kind`, so they read the same total as before the stage.
+
+## What to expect of the 2030-31 score
+
+Budget 2026 raises every appropriate percentage by one point, the zero-emission rate
+and the maximum included. So the rise adds about 1% of each car's list price above
+its capped contributions to its taxable value, plus 1% of the fuel benefit
+multiplier for each fuel benefit holder. Electric cars count as much as any other:
+the frozen electric share moves the baseline, not the rise. The base the rise acts
+on is the build year's fleet carried forward. Fuel type and CO2 are not uprated,
+list prices and contributions grow by CPI, and the weights are not projected.
+
+Expect the static 2030-31 cost to come in well under Table 6.1's £310m, from the
+size of that base. The OBR's NICs line (£92.4m, at Class 1A's 15%) implies about
+£616m of extra taxable value, a list price base of about £60bn. HMRC's 2024-25
+taxable value implies roughly half of that, so even a file that matches Table 1's
+920,000 holders and £3,070m should fall about 30 to 45% short. Matching Table 1's
+taxable value does not pin the base, since a different electric mix and different
+prices reach the same total. So the stage's receipt records the weighted total list
+price of electric cars and of the others, for the results to read the gap as base
+size.
 
 ## Measured, not bound
 
@@ -81,5 +109,10 @@ invariant, and on SPI-channel pay off the tape's total.
 
 ## Disclosure
 
-The FRS and WAS are UK Data Service safeguarded data. The stage's receipt carries
-weighted aggregates, rounded counts and support bands only, and no record's value.
+The FRS, WAS and SPI are UK Data Service safeguarded data. The stage's receipt
+carries rounded counts, support bands and weighted aggregates only, and no record's
+value. A weighted figure reads the floor's marker when any cell it rests on has
+fewer distinct source households than the floor, so support copies count once.
+Shares that sum to one are withheld together, since one share is the others'
+complement. A count of records that break an invariant is zero exact and banded
+otherwise.

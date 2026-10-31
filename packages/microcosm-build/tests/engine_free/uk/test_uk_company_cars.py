@@ -18,6 +18,11 @@ from microcosm.build.uk_runtime.hmrc_company_car_statistics import (
     load_hmrc_company_car_statistics,
 )
 from microcosm.build.uk_runtime.national_frame import uk_national_frame
+from microcosm.build.uk_runtime.receipt_counts import (
+    rounded_count,
+    small_cell_share,
+    support_band,
+)
 from microcosm.frame import WeightKind
 from test_support.microcosm_build.uk_company_cars import (
     COMPANY_CARS_STAGE_OPERATIONS,
@@ -202,7 +207,13 @@ def test_co2_matches_table_2a_among_cars_that_emit_it(spec, statistics) -> None:
     hybrid = fuel == stage.ALTERNATIVE_FUEL
     weights = rng.uniform(1, 3, n)
     co2, electric_range, receipt = stage.draw_co2_emissions(
-        fuel, hybrid, weights, np.arange(n) + 1, statistics=statistics, spec=spec
+        fuel,
+        hybrid,
+        weights,
+        np.arange(n) + 1,
+        sources=np.arange(n),
+        statistics=statistics,
+        spec=spec,
     )
     assert (co2[fuel == stage.ELECTRIC] == 0).all()
     emits = fuel != stage.ELECTRIC
@@ -230,7 +241,7 @@ def test_the_carve_out_fits_each_benefit_inside_epb_and_pay(spec) -> None:
     carve = stage.carve_spi_benefits(
         epb=np.array([20_000.0, 3_000.0, 500.0, 9_000.0]),
         pay=np.array([90_000.0, 60_000.0, 40_000.0, 50_000.0]),
-        weights=np.ones(4),
+        retained_pay=np.zeros(4),
         list_price=price,
         contributions=np.array([0.0, 6_000.0, 0.0, 0.0]),
         private_fuel=np.array([True, False, False, True]),
@@ -259,7 +270,7 @@ def test_private_fuel_goes_first_when_its_benefit_alone_exceeds_epb(spec) -> Non
     carve = stage.carve_spi_benefits(
         epb=np.array([6_000.0]),
         pay=np.array([40_000.0]),
-        weights=np.ones(1),
+        retained_pay=np.zeros(1),
         list_price=np.array([40_000.0]),
         contributions=np.zeros(1),
         private_fuel=np.array([True]),
@@ -270,6 +281,27 @@ def test_private_fuel_goes_first_when_its_benefit_alone_exceeds_epb(spec) -> Non
     )
     assert carve.keep[0] and not carve.private_fuel[0]
     assert carve.benefit[0] == pytest.approx(4_000.0)
+
+
+def test_the_carve_out_leaves_the_pay_pension_deductions_need(spec) -> None:
+    """EPB 9,000 on pay of 40,000, of which contributions need 36,000: the car's
+    benefit of 10,000 scales to the 4,000 pay can spare, a GBP 16,000 car."""
+
+    carve = stage.carve_spi_benefits(
+        epb=np.array([9_000.0, 9_000.0]),
+        pay=np.array([40_000.0, 40_000.0]),
+        retained_pay=np.array([36_000.0, 0.0]),
+        list_price=np.array([40_000.0, 40_000.0]),
+        contributions=np.zeros(2),
+        private_fuel=np.zeros(2, dtype=bool),
+        car_benefit=np.array([10_000.0, 10_000.0]),
+        fuel_benefit=np.zeros(2),
+        contribution_cap=CAP,
+        spec=spec,
+    )
+    assert carve.benefit.tolist() == pytest.approx([4_000.0, 9_000.0])
+    assert carve.list_price[0] == pytest.approx(16_000.0)
+    assert carve.receipt["limited_by_pension_deductions"] == rounded_count(1)
 
 
 class _UKEngine:
@@ -289,9 +321,18 @@ def _benefits(frame):
     return car, fuel
 
 
-def _stage_frame(seed: int = 1, households: int = 600, order=None):
+def _stage_frame(seed: int = 1, households: int = 600, order=None, sources=None):
+    """``sources`` maps the household ids to their source households; each is its
+    own by default."""
+
     rng = np.random.default_rng(seed)
-    household = pd.DataFrame({"household_id": np.arange(households) + 1000})
+    ids = np.arange(households) + 1000
+    household = pd.DataFrame(
+        {
+            "household_id": ids,
+            "household_source_id": ids if sources is None else sources(ids),
+        }
+    )
     rows = []
     for household_id in household["household_id"]:
         spi = bool(rng.random() < 0.4)
@@ -323,6 +364,15 @@ def _stage_frame(seed: int = 1, households: int = 600, order=None):
                     )
                     if spi
                     else 0.0,
+                    "employee_pension_contributions": float(
+                        rng.choice([0.0, 2_000.0, 14_000.0])
+                    ),
+                    "pension_contributions_via_salary_sacrifice": float(
+                        rng.choice([0.0, 0.0, 9_000.0])
+                    ),
+                    "pension_contributions_via_bonus_sacrifice": float(
+                        rng.choice([0.0, 0.0, 6_000.0])
+                    ),
                 }
             )
     person = pd.DataFrame(rows)
@@ -367,8 +417,12 @@ def test_the_whole_stage_writes_its_columns_and_carves_spi_pay(statistics) -> No
     pd.testing.assert_series_equal(
         after.loc[~spi, "employment_income"], before.loc[~spi, "employment_income"]
     )
-    # An SPI-channel holder needs EPB; its pay plus its benefits is the tape's.
+    # An SPI-channel holder needs EPB; its pay plus its benefits is the tape's,
+    # and keeps what its pension deductions need.
     assert not (holder & spi & (before["hmrc_spi_employment_benefits"] <= 0)).any()
+    pay_after = after.loc[spi, "employment_income"]
+    for column, share in stage.PENSION_DEDUCTION_PAY_SHARES.items():
+        assert (before.loc[spi, column] <= share * pay_after + 1e-6).all()
     car, fuel = _benefits(result)
     benefit = pd.Series(car + fuel, index=after.index)
     gap = (
@@ -394,8 +448,74 @@ def test_the_whole_stage_writes_its_columns_and_carves_spi_pay(statistics) -> No
     assert result.mass_log[-1].reason == stage.UK_COMPANY_CARS_MASS_CONSERVATION_REASON
     receipt = transform.checkpoint_metadata()["evidence"]
     assert receipt["stage"] == "company_cars"
-    assert receipt["spi_carve_out"]["max_abs_pay_plus_benefit_error_gbp"] < 1e-6
+    assert receipt["spi_carve_out"]["max_abs_pay_identity_error_gbp"] <= 0.01
     assert set(receipt["checks"]["violations"].values()) == {0}
+    # The base of the 2030-31 rise, by fuel class.
+    totals = receipt["list_price"]["weighted_total_gbp"]
+    electric = holders[stage.FUEL_TYPE] == stage.ELECTRIC
+    assert set(totals) == {"electric", "not_electric"}
+    assert totals["electric"] == pytest.approx(
+        float(
+            (
+                holders.loc[electric, stage.LIST_PRICE]
+                * _person_weights(result).loc[holders.index[electric]]
+            ).sum()
+        )
+    )
+
+
+def _person_weights(frame) -> pd.Series:
+    person = frame.table("person")
+    weights = pd.Series(
+        np.asarray(frame.weights_for("household").values, dtype=float),
+        index=frame.table("household")["household_id"].to_numpy(),
+    )
+    return pd.Series(
+        weights.reindex(person["person_household_id"]).to_numpy(),
+        index=person["person_id"].to_numpy(),
+    )
+
+
+def test_an_engine_that_prices_a_car_otherwise_misses_the_identity(
+    statistics,
+) -> None:
+    """The second pricing reads the engine, not the carve-out's own sum: an
+    engine whose car benefit ignores the list price leaves a scaled car's
+    benefit above what came out of pay."""
+
+    def flat(frame):
+        car, fuel = _benefits(frame)
+        price = frame.table("person")[stage.LIST_PRICE].to_numpy(float)
+        return np.where(price > 0, 9_000.0, 0.0), fuel
+
+    transform = dataclasses.replace(_transform(statistics), benefits=flat)
+    transform(_stage_frame())
+    receipt = transform.checkpoint_metadata()["evidence"]
+    assert receipt["spi_carve_out"]["max_abs_pay_identity_error_gbp"] > 1_000.0
+
+
+def test_receipt_figures_on_too_few_source_households_are_withheld(
+    statistics,
+) -> None:
+    """Every household here is a copy of one of two survey households, so each
+    weighted figure rests on fewer than the floor and reads its marker."""
+
+    # The floor's markers, from the helpers that set the floor.
+    withheld = {small_cell_share(0.0, 1), small_cell_share(0.0, 2)}
+    transform = _transform(statistics)
+    transform(_stage_frame(sources=lambda ids: ids % 2))
+    receipt = transform.checkpoint_metadata()["evidence"]
+    assert all(isinstance(marker, str) for marker in withheld)
+    assert receipt["holders"]["weighted"] in withheld
+    assert receipt["holders"]["support"] in {support_band(1), support_band(2)}
+    assert set(receipt["list_price"]["weighted_total_gbp"].values()) <= withheld
+    shares = receipt["fuel"]["weighted_shares"]
+    assert set(shares.values()) <= withheld | {0.0, None}
+    carve = receipt["spi_carve_out"]
+    assert carve["weighted_benefit_carved_gbp"] in withheld
+    assert carve["weighted_epb_gbp"] in withheld
+    for name in ("hybrid_rate_into_1_50", "weighted_share_1_50"):
+        assert receipt["co2"][name] in withheld
 
 
 def test_each_invariant_counts_the_rows_that_break_it() -> None:

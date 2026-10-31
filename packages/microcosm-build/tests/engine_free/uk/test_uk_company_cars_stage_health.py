@@ -6,9 +6,10 @@ import copy
 
 import pytest
 
+from microcosm.build.uk_runtime.receipt_counts import extreme_count
 from microcosm.build.uk_runtime.stage_health import uk_stage_health_gate
 
-PARAMETERS = {"maximum_pay_identity_error_gbp": 0.01}
+PARAMETERS = {"maximum_pay_identity_error_gbp": 0.05}
 PASSING = {
     "stage": "company_cars",
     "holders": {
@@ -17,7 +18,7 @@ PASSING = {
         "spi_dropped_without_epb": 40,
         "weighted": 900_000.0,
     },
-    "spi_carve_out": {"holders": 300, "max_abs_pay_plus_benefit_error_gbp": 1e-9},
+    "spi_carve_out": {"holders": 300, "max_abs_pay_identity_error_gbp": 0.01},
     "checks": {
         "violations": {
             "non_finite_values": 0,
@@ -66,12 +67,18 @@ def test_a_receipt_that_counts_no_invariant_fails() -> None:
     assert not _gate(empty).passed
 
 
-def test_spi_pay_off_the_tape_s_total_fails() -> None:
+def test_spi_pay_off_the_engine_s_benefits_fails() -> None:
     off = copy.deepcopy(PASSING)
-    off["spi_carve_out"]["max_abs_pay_plus_benefit_error_gbp"] = 0.5
+    off["spi_carve_out"]["max_abs_pay_identity_error_gbp"] = 0.5
     result = _gate(off)
     assert not result.passed
-    assert any("tape's total" in failure for failure in result.failures)
+    assert any("the pay the stage received" in failure for failure in result.failures)
+
+
+def test_a_banded_invariant_break_fails() -> None:
+    broken = copy.deepcopy(PASSING)
+    broken["checks"]["violations"]["spi_benefit_above_epb"] = extreme_count(1)
+    assert not _gate(broken).passed
 
 
 def test_a_receipt_without_its_checks_is_refused() -> None:

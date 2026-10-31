@@ -36,17 +36,23 @@ on identity, so reordering rows moves none:
    g/km takes the declared electric range.
 5. **SPI pay.** SPI-channel pay is the tape's PAY + EPB + TAXTERM, so EPB already
    holds the car and fuel benefits. The engine's benefits on the kept cars come
-   out of ``employment_income``, capped at EPB: private fuel goes first where its
-   benefit alone exceeds EPB, and a car whose benefit still exceeds what is left
-   has its list price scaled down to fit (its contributions dropped), or is
-   dropped below the declared minimum price. Pay plus the benefits then equals
-   the tape's total on every such row (María's ruling of 30 October 2026).
+   out of ``employment_income``, capped at EPB and at the pay the row's pension
+   deductions leave (salary_sacrifice's bounds: employee contributions and salary
+   sacrifice at most the pay, bonus sacrifice at most half of it). Private fuel
+   goes first where its benefit alone exceeds that, and a car whose benefit still
+   exceeds what is left has its list price scaled down to fit (its contributions
+   dropped), or is dropped below the declared minimum price (María's ruling of 30
+   October 2026). The stage then prices the cars again on its output: pay plus
+   the engine's benefits must equal the pay the row brought in.
 
-Receipts carry weighted aggregates, rounded counts and support bands only.
+Receipts carry rounded counts, support bands and weighted aggregates only, each
+aggregate withheld when a cell it rests on has fewer source households than the
+disclosure floor.
 """
 
 from __future__ import annotations
 
+import math
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -76,7 +82,19 @@ from microcosm.build.uk_runtime.national_frame import (
     uk_time_period,
     validate_uk_national_frame,
 )
-from microcosm.build.uk_runtime.receipt_counts import rounded_count, support_band
+from microcosm.build.uk_runtime.receipt_counts import (
+    distinct_count,
+    extreme_count,
+    rounded_count,
+    small_cell_share,
+    source_household_ids,
+    support_band,
+)
+from microcosm.build.uk_runtime.salary_sacrifice import (
+    BONUS_SACRIFICE_OUTPUT,
+    SALSAC_MOVE_PAY_SHARE_CAP,
+    SALSAC_OUTPUT,
+)
 from microcosm.build.uk_runtime.spi_support import (
     SPI_HMRC_EMPLOYMENT_BENEFITS_COLUMN,
     SPI_SYNTHETIC_SUPPORT_CHANNEL,
@@ -163,6 +181,15 @@ UK_COMPANY_CARS_REWRITES = (EMPLOYMENT_INCOME,)
 #: The engine variables the SPI carve-out reads.
 COMPANY_CAR_BENEFIT = "company_car_benefit"
 CAR_FUEL_BENEFIT = "car_fuel_benefit"
+#: The pension deductions salary_sacrifice bounds by the pay that remains:
+#: employee contributions and salary sacrifice at most the pay, bonus sacrifice
+#: at most half of it. The carve-out keeps SPI-channel pay inside those bounds.
+EMPLOYEE_PENSION_CONTRIBUTIONS = "employee_pension_contributions"
+PENSION_DEDUCTION_PAY_SHARES = {
+    EMPLOYEE_PENSION_CONTRIBUTIONS: 1.0,
+    SALSAC_OUTPUT: 1.0,
+    BONUS_SACRIFICE_OUTPUT: SALSAC_MOVE_PAY_SHARE_CAP,
+}
 
 #: The FRS list price bands (CARVAL 1 to 9, GBP, the price when new): each is
 #: (above, up to); the top band is open. CARVAL 10 is "don't know".
@@ -484,7 +511,8 @@ def clean_was_company_car_donor(
 
 
 def holder_table(frame: Frame) -> pd.DataFrame:
-    """One row per person: identity, weight, channel, carriers, EPB and pay."""
+    """One row per person: identity, weight, source household, channel, carriers,
+    EPB, pay and the pay the person's pension deductions keep."""
 
     person = frame.table("person")
     household = frame.table("household")
@@ -502,6 +530,10 @@ def holder_table(frame: Frame) -> pd.DataFrame:
         np.asarray(frame.weights_for("household").values, dtype=float),
         index=household["household_id"].to_numpy(),
     )
+    sources = pd.Series(
+        source_household_ids(household, stage=UK_COMPANY_CARS_STAGE_NAME),
+        index=household["household_id"].to_numpy(),
+    )
     household_ids = person["person_household_id"].to_numpy()
     channel_column = support_channel_column("person")
     spi = (
@@ -509,35 +541,42 @@ def holder_table(frame: Frame) -> pd.DataFrame:
         if channel_column in person
         else np.zeros(len(person), dtype=bool)
     )
-    if spi.any() and SPI_HMRC_EMPLOYMENT_BENEFITS_COLUMN not in person:
-        raise CompanyCarsError(
-            f"SPI-channel rows lack {SPI_HMRC_EMPLOYMENT_BENEFITS_COLUMN!r}."
-        )
-    epb = (
-        pd.to_numeric(person[SPI_HMRC_EMPLOYMENT_BENEFITS_COLUMN], errors="coerce")
-        .fillna(0.0)
-        .to_numpy(float)
-        if SPI_HMRC_EMPLOYMENT_BENEFITS_COLUMN in person
-        else np.zeros(len(person))
-    )
+    if spi.any():
+        lacking = [
+            column
+            for column in (
+                SPI_HMRC_EMPLOYMENT_BENEFITS_COLUMN,
+                *PENSION_DEDUCTION_PAY_SHARES,
+            )
+            if column not in person
+        ]
+        if lacking:
+            raise CompanyCarsError(f"SPI-channel rows lack {lacking}.")
 
     def _number(column: str) -> np.ndarray:
+        if column not in person:
+            return np.zeros(len(person))
         return (
             pd.to_numeric(person[column], errors="coerce").fillna(0.0).to_numpy(float)
         )
 
+    retained = np.zeros(len(person))
+    for column, share in PENSION_DEDUCTION_PAY_SHARES.items():
+        retained = np.maximum(retained, np.maximum(_number(column), 0.0) / share)
     return pd.DataFrame(
         {
             "person_id": person["person_id"].to_numpy(),
             "household_id": household_ids,
+            "source_household": sources.reindex(household_ids).to_numpy(),
             "weight": weights.reindex(household_ids).to_numpy(float),
             "spi": spi,
             "price_band": _number(PRICE_BAND_CARRIER).astype(int),
             "fuel_code": _number(FUEL_CODE_CARRIER).astype(int),
             "private_fuel": person[PRIVATE_FUEL_CARRIER].astype(bool).to_numpy(),
             "contribution": np.maximum(_number(CONTRIBUTION_CARRIER), 0.0),
-            "epb": np.where(spi, epb, 0.0),
+            "epb": np.where(spi, _number(SPI_HMRC_EMPLOYMENT_BENEFITS_COLUMN), 0.0),
             "employment_income": _number(EMPLOYMENT_INCOME),
+            "retained_pay": np.where(spi, retained, 0.0),
         },
         index=person.index,
     )
@@ -547,6 +586,21 @@ def _uniforms(ids: np.ndarray, seed: int, salt: str) -> np.ndarray:
     return np.asarray(
         stable_identity_uniforms(list(ids), seed=seed, salt=salt), dtype=float
     )
+
+
+def _guarded(value: float | None, *supports: int) -> float | str | None:
+    """A weighted figure, withheld when any cell it rests on is small.
+
+    Each support counts a cell's distinct source households. An empty cell
+    discloses nothing, so the smallest non-empty one decides, by the floor
+    :func:`small_cell_share` applies. A figure built from shares that sum to one
+    names every share's cell, since one withheld share is the others' complement.
+    """
+
+    resting = [int(count) for count in supports if count > 0]
+    if value is None or not resting:
+        return value
+    return small_cell_share(value, min(resting))
 
 
 # --------------------------------------------------------------------------
@@ -719,10 +773,15 @@ def draw_co2_emissions(
     weights: np.ndarray,
     ids: np.ndarray,
     *,
+    sources: np.ndarray,
     statistics: HMRCCompanyCarStatistics,
     spec: CompanyCarsSpec,
 ) -> tuple[np.ndarray, np.ndarray, dict[str, Any]]:
-    """Each car's CO2 figure (g/km) and electric range (miles)."""
+    """Each car's CO2 figure (g/km) and electric range (miles).
+
+    ``sources`` holds each car's source household: a receipt figure is withheld
+    when a cell it rests on is small.
+    """
 
     fuel = np.asarray(fuel, dtype=object)
     hybrid = np.asarray(hybrid, dtype=bool)
@@ -768,20 +827,36 @@ def draw_co2_emissions(
     electric_range = np.where(low, spec.electric_range_miles, 0.0)
     emitting_mass = float(weights[emits].sum())
     achieved = float(weights[low].sum()) / emitting_mass if emitting_mass > 0 else None
+
+    def support(mask: np.ndarray) -> int:
+        return distinct_count(sources, mask, weights)
+
+    above_rows = np.flatnonzero(above)
     drawn_shares = {}
+    band_supports = []
     for index, band in enumerate(above_bands):
-        mass = float(weights[above][band_index == index].sum())
+        in_band = np.zeros(len(fuel), dtype=bool)
+        in_band[above_rows[band_index == index]] = True
+        mass = float(weights[in_band].sum())
         drawn_shares[band] = mass / emitting_mass if emitting_mass > 0 else None
+        band_supports.append(support(in_band))
+    # The rates rest on the hybrids' and the other cars' masses alike.
+    split = (support(emits & hybrid), support(emits & ~hybrid))
     return (
         co2,
         electric_range,
         {
-            "hybrid_rate_into_1_50": hybrid_rate,
-            "other_rate_into_1_50": other_rate,
+            "hybrid_rate_into_1_50": _guarded(hybrid_rate, *split),
+            "other_rate_into_1_50": _guarded(other_rate, *split),
             "table_2a_share_1_50": low_share,
-            "weighted_share_1_50": achieved,
-            "max_abs_band_share_gap": max(
-                abs((drawn_shares[band] or 0.0) - shares[band]) for band in above_bands
+            "weighted_share_1_50": _guarded(achieved, support(low), support(above)),
+            "max_abs_band_share_gap": _guarded(
+                max(
+                    abs((drawn_shares[band] or 0.0) - shares[band])
+                    for band in above_bands
+                ),
+                support(low),
+                *band_supports,
             ),
         },
     )
@@ -808,7 +883,7 @@ def carve_spi_benefits(
     *,
     epb: np.ndarray,
     pay: np.ndarray,
-    weights: np.ndarray,
+    retained_pay: np.ndarray,
     list_price: np.ndarray,
     contributions: np.ndarray,
     private_fuel: np.ndarray,
@@ -817,17 +892,20 @@ def carve_spi_benefits(
     contribution_cap: float,
     spec: CompanyCarsSpec,
 ) -> SPICarveOut:
-    """Fit each SPI-channel car's benefits inside its EPB and its pay.
+    """Fit each SPI-channel car's benefits inside its EPB and the pay it can spare.
 
-    Every array holds the SPI-channel holders only. The engine's car benefit is
-    the price less contributions up to the cap, times the appropriate percentage
-    (the stage leaves availability and private-use payments at their defaults), so
-    scaling the price above zero contributions scales the benefit exactly.
+    Every array holds the SPI-channel holders only. ``retained_pay`` is the pay
+    each row's pension deductions need to stay within their bounds. The engine's
+    car benefit is the price less contributions up to the cap, times the
+    appropriate percentage (the stage leaves availability and private-use
+    payments at their defaults), so scaling the price above zero contributions
+    scales the benefit exactly.
     """
 
-    epb = np.asarray(epb, dtype=float)
-    pay = np.asarray(pay, dtype=float)
-    budget = np.minimum(np.maximum(epb, 0.0), np.maximum(pay, 0.0))
+    epb = np.maximum(np.asarray(epb, dtype=float), 0.0)
+    pay = np.maximum(np.asarray(pay, dtype=float), 0.0)
+    spare = np.maximum(pay - np.asarray(retained_pay, dtype=float), 0.0)
+    budget = np.minimum(epb, spare)
     car = np.asarray(car_benefit, dtype=float)
     fuel = np.where(private_fuel, np.asarray(fuel_benefit, dtype=float), 0.0)
     fuel_dropped = fuel > budget
@@ -850,11 +928,12 @@ def carve_spi_benefits(
     benefit = np.where(keep, car + np.where(private, fuel, 0.0), 0.0)
     receipt = {
         "holders": rounded_count(int(len(epb))),
+        "limited_by_pension_deductions": rounded_count(
+            int((spare < np.minimum(epb, pay)).sum())
+        ),
         "private_fuel_dropped": rounded_count(int((fuel_dropped & keep).sum())),
         "list_price_scaled": rounded_count(int(kept_scaled.sum())),
         "dropped_below_minimum_price": rounded_count(int(dropped.sum())),
-        "weighted_benefit_carved_gbp": float((np.asarray(weights) * benefit).sum()),
-        "weighted_epb_gbp": float((np.asarray(weights) * epb).sum()),
     }
     return SPICarveOut(
         keep=keep,
@@ -928,7 +1007,13 @@ def impute_company_cars(
     )
     contributions = np.minimum(table["contribution"].to_numpy(float)[holders], prices)
     co2, electric_range, co2_receipt = draw_co2_emissions(
-        fuel, hybrid, weights[holders], ids[holders], statistics=statistics, spec=spec
+        fuel,
+        hybrid,
+        weights[holders],
+        ids[holders],
+        sources=table["source_household"].to_numpy()[holders],
+        statistics=statistics,
+        spec=spec,
     )
     private = table["private_fuel"].to_numpy(bool)[holders] & ~electric
 
@@ -954,15 +1039,24 @@ def impute_company_cars(
     new_pay = pay.copy()
     carved = np.zeros(len(pay))
     spi_holders = holders & spi
+    sources = table["source_household"].to_numpy()
+
+    def support(mask: np.ndarray) -> int:
+        return distinct_count(sources, mask, weights)
+
+    def total(values: np.ndarray, mask: np.ndarray) -> float | str | None:
+        return _guarded(float((weights * values)[mask].sum()), support(mask))
+
     carve_receipt: dict[str, Any] = {"holders": rounded_count(0)}
     identity_error = 0.0
     if spi_holders.any():
+        epb = table["epb"].to_numpy(float)
         car_benefit, fuel_benefit = benefits(_frame_with(frame, person, None))
         rows = np.flatnonzero(spi_holders)
         carve = carve_spi_benefits(
-            epb=table["epb"].to_numpy(float)[rows],
+            epb=epb[rows],
             pay=pay[rows],
-            weights=weights[rows],
+            retained_pay=table["retained_pay"].to_numpy(float)[rows],
             list_price=columns[LIST_PRICE][rows],
             contributions=columns[CAPITAL_CONTRIBUTIONS][rows],
             private_fuel=columns[PRIVATE_FUEL][rows],
@@ -982,56 +1076,92 @@ def impute_company_cars(
         columns[PRIVATE_FUEL][rows] = carve.private_fuel
         new_pay[rows] = pay[rows] - carve.benefit
         carved[rows] = carve.benefit
-        identity_error = float(
-            np.max(np.abs(new_pay[rows] + carve.benefit - pay[rows]), initial=0.0)
-        )
         holders[dropped] = False
-        carve_receipt = dict(carve.receipt)
         for name, values in columns.items():
             person[name] = values
         person[EMPLOYMENT_INCOME] = new_pay
+        # The carve-out assumes how the engine prices a car (availability and
+        # private-use payments at their defaults, contributions dropped where a
+        # price is scaled), so the engine prices the inputs as written again:
+        # on every SPI-channel row, pay plus its benefits must be the pay the
+        # row brought in.
+        car_after, fuel_after = benefits(_frame_with(frame, person, None))
+        priced = np.asarray(car_after, dtype=float) + np.asarray(
+            fuel_after, dtype=float
+        )
+        if not np.isfinite(priced[spi]).all():
+            raise CompanyCarsError(
+                "the engine priced an SPI-channel car at a non-finite benefit."
+            )
+        worst = float(np.max(np.abs(new_pay + priced - pay)[spi], initial=0.0))
+        # Rounded up to the penny: the engine computes in single precision, and
+        # a record's rounding below the penny is nothing the gate needs.
+        identity_error = math.ceil(worst * 100.0) / 100.0
+        carve_receipt = {
+            **carve.receipt,
+            "weighted_benefit_carved_gbp": total(carved, holders & spi),
+            "weighted_epb_gbp": total(epb, spi_holders),
+        }
 
-    weighted = weights[holders]
+    fuel_type = columns[FUEL_TYPE]
+    electric_holders = holders & (fuel_type == ELECTRIC)
+    other_holders = holders & ~electric_holders
+    weighted_holders = float(weights[holders].sum())
+    fuel_supports = [
+        support(holders & (fuel_type == name)) for name in ENGINE_FUEL_TYPES
+    ]
     receipt = {
         "holders": {
             "frs_channel": rounded_count(int((holders & ~spi).sum())),
             "spi_channel": rounded_count(int((holders & spi).sum())),
             "spi_dropped_without_epb": rounded_count(int(no_epb.sum())),
-            "weighted": float(weighted.sum()),
+            "support": support_band(support(holders)),
+            "weighted": total(np.ones(len(pay)), holders),
         },
         "fuel": {
             "drawn_unknown": rounded_count(int(drawn.sum())),
             "weighted_shares": {
-                name: float(
-                    weights[holders][columns[FUEL_TYPE][holders] == name].sum()
-                    / weighted.sum()
+                name: _guarded(
+                    float(weights[holders & (fuel_type == name)].sum())
+                    / weighted_holders
+                    if weighted_holders > 0
+                    else None,
+                    *fuel_supports,
                 )
-                if weighted.sum() > 0
-                else None
                 for name in ENGINE_FUEL_TYPES
             },
         },
         "list_price": {
             **price_receipt,
-            "weighted_mean_gbp": float(
-                (weighted * columns[LIST_PRICE][holders]).sum() / weighted.sum()
-            )
-            if weighted.sum() > 0
-            else None,
+            # The base a one-point rise in every appropriate percentage acts
+            # on, before contributions, by fuel class.
+            "weighted_total_gbp": {
+                "electric": total(columns[LIST_PRICE], electric_holders),
+                "not_electric": total(columns[LIST_PRICE], other_holders),
+            },
+            "support": {
+                "electric": support_band(support(electric_holders)),
+                "not_electric": support_band(support(other_holders)),
+            },
         },
         "co2": co2_receipt,
         "spi_carve_out": {
             **carve_receipt,
-            "max_abs_pay_plus_benefit_error_gbp": identity_error,
+            "max_abs_pay_identity_error_gbp": identity_error,
         },
         "checks": {
-            "violations": _violations(
-                columns,
-                holders=holders,
-                spi=spi,
-                epb=table["epb"].to_numpy(float),
-                carved=carved,
-            ),
+            # Zero exact, and a count of rows that break one banded as the
+            # other stages band theirs, so a failing build never records 1 to 9.
+            "violations": {
+                name: extreme_count(count)
+                for name, count in _violations(
+                    columns,
+                    holders=holders,
+                    spi=spi,
+                    epb=table["epb"].to_numpy(float),
+                    carved=carved,
+                ).items()
+            },
             "frs_holders_without_pay": rounded_count(
                 int((holders & ~spi & (pay <= 0)).sum())
             ),
