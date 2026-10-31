@@ -1819,6 +1819,78 @@
           "expected_row_count": 10
         }
       ]
+    },
+    {
+      "resource": "hmrc_benefits_in_kind_facts.json",
+      "purpose": "HMRC Benefits in kind statistics (July 2026 release), the 2024-25 provisional rows the company cars stage draws fuel types and CO2 bands to and the national build reports the calibrated file against (PolicyEngine/uk-autumn-budget-dashboard-2026#316): Table 1 car and car fuel benefit recipients, taxable value, income tax and Class 1A NICs liabilities, with their total; Table 2A car benefit recipients by CO2 band; Table 2C car benefit recipients by fuel type; Tables 3A and 3B car and car fuel benefit recipients and taxable value by total income range; Table 4 car benefit recipients and taxable value by country and English region. They count individuals and pounds, rounded as HMRC publishes them; a cell HMRC marks instead of printing carries no fact. None is a calibration target: the stage's reviewed fence keeps them measured only. No value is derived here.",
+      "consumers": [
+        "uk_runtime.hmrc_company_car_statistics"
+      ],
+      "planned_consumers": [],
+      "selections": [
+        {
+          "label": "table1_ty2024_car_and_fuel_benefits",
+          "selector": {
+            "source_name": "hmrc",
+            "record_set_id": [
+              "hmrc.benefits_in_kind_july_2026.table1.recipients.ty2024",
+              "hmrc.benefits_in_kind_july_2026.table1.taxable_value.ty2024",
+              "hmrc.benefits_in_kind_july_2026.table1.income_tax_liability.ty2024",
+              "hmrc.benefits_in_kind_july_2026.table1.class_1a_nic_liability.ty2024"
+            ]
+          },
+          "expected_row_count": 12
+        },
+        {
+          "label": "table2a_ty2024_car_recipients_by_co2_band",
+          "selector": {
+            "source_name": "hmrc",
+            "record_set_id": "hmrc.benefits_in_kind_july_2026.table2a.recipients.ty2024"
+          },
+          "expected_row_count": 20
+        },
+        {
+          "label": "table2c_ty2024_car_recipients_by_fuel_type",
+          "selector": {
+            "source_name": "hmrc",
+            "record_set_id": "hmrc.benefits_in_kind_july_2026.table2c.recipients.ty2024"
+          },
+          "expected_row_count": 3
+        },
+        {
+          "label": "table3a_ty2024_car_benefit_by_income_range",
+          "selector": {
+            "source_name": "hmrc",
+            "record_set_id": [
+              "hmrc.benefits_in_kind_july_2026.table3a.recipients.ty2024",
+              "hmrc.benefits_in_kind_july_2026.table3a.taxable_value.ty2024"
+            ]
+          },
+          "expected_row_count": 22
+        },
+        {
+          "label": "table3b_ty2024_fuel_benefit_by_income_range",
+          "selector": {
+            "source_name": "hmrc",
+            "record_set_id": [
+              "hmrc.benefits_in_kind_july_2026.table3b.recipients.ty2024",
+              "hmrc.benefits_in_kind_july_2026.table3b.taxable_value.ty2024"
+            ]
+          },
+          "expected_row_count": 13
+        },
+        {
+          "label": "table4_ty2024_car_benefit_by_region",
+          "selector": {
+            "source_name": "hmrc",
+            "record_set_id": [
+              "hmrc.benefits_in_kind_july_2026.table4.recipients.ty2024",
+              "hmrc.benefits_in_kind_july_2026.table4.taxable_value.ty2024"
+            ]
+          },
+          "expected_row_count": 26
+        }
+      ]
     }
   ]
 }

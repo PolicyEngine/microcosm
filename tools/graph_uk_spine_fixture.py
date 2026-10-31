@@ -63,6 +63,7 @@ from microcosm.build.uk_runtime.child_benefit_take_up import (
 from microcosm.build.uk_runtime.childcare_copy_take_up import (
     UKChildcareCopyTakeUpStageTransform,
 )
+from microcosm.build.uk_runtime.company_cars import UKCompanyCarsStageTransform
 from microcosm.build.uk_runtime.content_identity import uk_frame_content_identity
 from microcosm.build.uk_runtime.etb_services import UKETBServicesStageTransform
 from microcosm.build.uk_runtime.etb_vat import UKETBVATStageTransform
@@ -231,6 +232,7 @@ _NORMALIZED_STRING_COLUMNS: Mapping[str, tuple[str, ...]] = {
         "relationship_to_head",
         "ons_family_role",
         "capital_gains_asset_type",
+        "company_car_fuel_type",
     ),
     "benunit": ("benunit_support_channel", "uc_deduction_combination"),
     "household": (
@@ -2039,8 +2041,8 @@ def _normalize_legacy_strings(frame: Frame) -> Frame:
         for entity, columns in _NORMALIZED_STRING_COLUMNS.items()
         for column in columns
     ]
-    if observed != expected_order or len(observed) != 26:
-        raise RuntimeError("The legacy normalization audit is not exactly 26 cells.")
+    if observed != expected_order or len(observed) != 27:
+        raise RuntimeError("The legacy normalization audit is not exactly 27 cells.")
     return Frame(
         tables,
         frame.schema,
@@ -2197,6 +2199,11 @@ def _build_implementations(
             stage=stages["isa_subscriptions"],
             engine=engine,
             donor_household=was,
+            donor_person=was_person,
+        ),
+        "company_cars": UKCompanyCarsStageTransform(
+            stage=stages["company_cars"],
+            engine=engine,
             donor_person=was_person,
         ),
         "nts_bus_travel": UKNTSBusTravelStageTransform(
