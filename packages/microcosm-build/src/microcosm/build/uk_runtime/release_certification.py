@@ -157,8 +157,8 @@ def uk_release_cut_scope_exclusions() -> dict[str, str]:
             )
         elif entry.id in UK_CERTIFICATION_EXCLUDED_GATE_IDS:
             exclusions[entry.id] = (
-                "local-candidate gate; excluded from national certification "
-                "until microcosm#146."
+                "local-candidate gate; certified on the local line, not the "
+                "national one (microcosm#146 shipped the local variant)."
             )
         else:  # pragma: no cover - closed-world classification is import-enforced
             raise RuntimeError(

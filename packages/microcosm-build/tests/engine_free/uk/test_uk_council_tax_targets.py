@@ -481,17 +481,20 @@ def test_support_floor_deferrals_cover_the_two_authorities_remaining_cells() -> 
     # microcosm#1207 the three DESNZ energy rows. microcosm#1095 adds the
     # single adult discount cells, one row for both authorities.
     # microcosm#1418 adds the City of London's two SPI pension income cells
-    # (the Isles of Scilly's are signed under the SPI coverage gap).
-    assert len(rows) == 51
-    assert sum(len(row["area_ids"]) for row in rows) == 95
+    # (the Isles of Scilly's are signed under the SPI coverage gap). A target
+    # scoped to Wales or Scotland has no cell at the two English authorities,
+    # so the nine Welsh and eight Scottish families take none (microcosm#796,
+    # via #1095).
+    assert len(rows) == 34
+    assert sum(len(row["area_ids"]) for row in rows) == 61
     assert {
         area_id: sum(area_id in row["area_ids"] for row in rows)
         for area_id in ("E06000053", "E09000001")
-    } == {"E06000053": 44, "E09000001": 51}
+    } == {"E06000053": 27, "E09000001": 34}
     assert all(row["defer_if_compiles"] is True for row in rows)
     # The English band-H family is wholly deferred on spine support, so it
-    # carries no support-floor row; the Welsh and Scottish band-H targets do
-    # (the two English areas are outside their scope, so the rows are inert).
+    # carries no support-floor row, nor do the Welsh and Scottish band-H
+    # targets, which have no cell at the two English areas.
     assert "mhclg.council_tax_stock.by_area.band_h" not in {
         row["target_id"] for row in rows
     }
@@ -531,14 +534,16 @@ def test_a14_deferral_declarations_cover_only_currently_active_cells() -> None:
     # microcosm#1207's three DESNZ energy rows take it too, and so do
     # microcosm#1095's single adult discount cells and the City of London's
     # two SPI pension income cells (microcosm#1418; the Isles of Scilly's are
-    # signed under the SPI coverage gap).
-    assert len(support) == 51
-    assert sum(len(row.area_ids) for row in support) == 95
+    # signed under the SPI coverage gap). A target scoped to Wales or
+    # Scotland has no cell at the two English authorities, so the nine
+    # Welsh and eight Scottish families take none (microcosm#796, via #1095).
+    assert len(support) == 34
+    assert sum(len(row.area_ids) for row in support) == 61
     by_area = {
         area_id: sum(area_id in row.area_ids for row in support)
         for area_id in ("E06000053", "E09000001")
     }
-    assert by_area == {"E06000053": 44, "E09000001": 51}
+    assert by_area == {"E06000053": 27, "E09000001": 34}
     assert all(row.defer_if_compiles for row in support)
     assert "mhclg.council_tax_stock.by_area.band_h" not in {
         row.target_id for row in support

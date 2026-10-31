@@ -35,6 +35,11 @@ from microcosm.build.uk_runtime.high_value_homes import (
     UKHighValueHomeStockFacts,
     uk_owner_occupied_mask,
 )
+from microcosm.build.uk_runtime.receipt_counts import (
+    UK_BELOW_TEN_BAND,
+    UK_DISCLOSURE_FLOOR,
+    UK_WITHHELD,
+)
 
 __all__ = [
     "HIGH_VALUE_HOME_SCOPE",
@@ -60,7 +65,8 @@ OBR_NON_OWNER_SHARE_CONCEPT = "obr.hvcts_costing.non_owner_occupied_share"
 OBR_PERIOD_TYPE = "fiscal_year"
 _OBR_BAND_IDS = frozenset((*(band_id for _, _, band_id in HVCTS_BANDS_2026), "total"))
 SUPPORT_BANDS: tuple[tuple[str, int, int], ...] = (
-    ("<10", 0, 10),
+    (UK_WITHHELD, 0, UK_DISCLOSURE_FLOOR),
+    (UK_BELOW_TEN_BAND, UK_DISCLOSURE_FLOOR, 10),
     ("10-29", 10, 30),
     ("30+", 30, 10**9),
 )
@@ -124,7 +130,7 @@ def _weighted_counts(
 
 
 #: Shipped cells need at least this many distinct source households.
-SMALL_CELL_SOURCES = 10
+SMALL_CELL_SOURCES = UK_DISCLOSURE_FLOOR
 ENGLAND_CODE = "E92000001"
 
 

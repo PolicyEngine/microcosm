@@ -64,6 +64,7 @@ from tools.generate_uk_target_references import (
     TARGET_ID_GEOGRAPHY_PINS,
     _annual_uc_award_band_token,
     _fanout_name,
+    _geography_id_for_target,
     _geography_pins,
     _reference_metadata,
     _sum_target_ids,
@@ -121,8 +122,10 @@ _TEST_PATHS = paths_for("microcosm-build")
 # limit rows; microcosm#1301: the 30 high-value homes region cells (three
 # thresholds over England's regions and Wales), which the national line drops
 # after the compile, less the North East and Wales rows over £2m, signed out
-# below the small-cell floor
-ACTIVE_REFERENCE_COUNT = 1403
+# below the small-cell floor; microcosm#1095 (#1422): the three OBR council
+# tax nation rows, pinned to the UK, and SLC's three nation repayment rows in
+# place of the devolved total
+ACTIVE_REFERENCE_COUNT = 1409
 REGION_TIER_LEVEL = {code: level for level, code in UK_REGION_TIER}
 
 
@@ -542,6 +545,13 @@ _OUTSIDE_LONDON_FARE_FACTOR = (
 ) / (181.6 * 86 + 185.7 * 92 + 185.9 * 92 + 206.4 * 90 + 210.5 * 5)
 
 
+def _calendar_2025_window(fy_2024: float, fy_2025: float) -> float:
+    """R7's calendar-2025 window: three twelfths of FY2024-25 and nine twelfths
+    of FY2025-26 (microcosm#1095)."""
+
+    return 0.25 * fy_2024 + 0.75 * fy_2025
+
+
 def test_childcare_and_bus_references_compile_with_declared_provenance() -> None:
     root = _TEST_PATHS.repository
     feed = root / STABLE_UK_FACT_FEED_NAME
@@ -591,16 +601,18 @@ def test_childcare_and_bus_references_compile_with_declared_provenance() -> None
         == "3417388656.43538"
     )
     assert {name: spec.value for name, spec in specs.items()} == {
-        "hmrc.tfc.government_top_up": 599_800_000.0,
+        "hmrc.tfc.government_top_up": pytest.approx(
+            _calendar_2025_window(632_200_000, 599_800_000)
+        ),
         "hmrc.tfc.children_with_used_accounts": 1_151_515.0,
-        "dfe.funded_childcare.working_parent_children_2_to_4": 621_482.0,
-        "dfe.funded_childcare.early_learning_2_year_olds": 95_031.0,
-        "dfe.funded_childcare.universal_only_children": 396_965.0,
-        "dfe.funded_childcare.working_parent_children_9_to_11_months": 29_155.0,
-        "dfe.funded_childcare.working_parent_children_age_1": 195_104.0,
-        "dfe.funded_childcare.working_parent_children_age_2": 242_453.0,
-        "dfe.funded_childcare.working_parent_children_age_3": 278_640.0,
-        "dfe.funded_childcare.universal_nursery_children_age_3": 565_954.0,
+        "dfe.funded_childcare.working_parent_children_2_to_4": 648_979.0,
+        "dfe.funded_childcare.early_learning_2_year_olds": 85_629.0,
+        "dfe.funded_childcare.universal_only_children": 362_581.0,
+        "dfe.funded_childcare.working_parent_children_9_to_11_months": 30_679.0,
+        "dfe.funded_childcare.working_parent_children_age_1": 210_825.0,
+        "dfe.funded_childcare.working_parent_children_age_2": 260_238.0,
+        "dfe.funded_childcare.working_parent_children_age_3": 278_490.0,
+        "dfe.funded_childcare.universal_nursery_children_age_3": 535_209.0,
         "dft.bus_fare_receipts.england": pytest.approx(
             1_347_434_943.01459 * _LONDON_FARE_FACTOR
             + 2_069_953_713.42079 * _OUTSIDE_LONDON_FARE_FACTOR
@@ -613,7 +625,10 @@ def test_childcare_and_bus_references_compile_with_declared_provenance() -> None
         "scotgov.bus.passenger_revenue": 391_000_000.0,
         "scotgov.bus.government_support": 499_000_000.0,
         "welshgov.bus.public_support": 131_489_970.0,
-        "dfi_ni.bus.passenger_receipts": 152_500_000.0,
+        # Metro/Glider plus Ulsterbus in each year.
+        "dfi_ni.bus.passenger_receipts": pytest.approx(
+            _calendar_2025_window(49_600_000 + 100_500_000, 49_000_000 + 103_500_000)
+        ),
         "nithc.public_transport_support": 111_700_000.0,
     }
     assert {
@@ -673,8 +688,8 @@ def test_childcare_and_bus_references_compile_with_declared_provenance() -> None
     # bound working parent ages 2 and 3 plus DfE's signed-out age-4 cell, and
     # universal-only is the bound nursery age 3 plus the signed-out nursery
     # age-4 cell less the working parent ages 3 and 4 (DfE's published January
-    # 2025 headline figures).
-    working_parent_age_4, nursery_age_4 = 100_389.0, 210_040.0
+    # 2026 headline figures, the rows' observation period).
+    working_parent_age_4, nursery_age_4 = 110_251.0, 216_113.0
     value = {name: spec.value for name, spec in specs.items()}
     prefix = "dfe.funded_childcare."
     assert value[prefix + "working_parent_children_2_to_4"] == (
@@ -703,10 +718,12 @@ def test_dfe_extended_sum_refuses_the_suppressed_2024_member() -> None:
     )
     facts = [json.loads(line) for line in feed.open() if '"source_name": "dfe"' in line]
 
+    # Read at the January 2024 census, which has no working parent "2 years"
+    # cell: the row itself selects January 2026 (microcosm#1095 D5).
     with pytest.raises(ValueError, match="expected 2 members.*resolved 1"):
         compile_ledger_target_references(
             facts,
-            [replace(reference, period=2024)],
+            [replace(reference, period=2024, observation_period=None)],
             country="uk",
         )
 
@@ -834,15 +851,14 @@ DFE_SIGNED_OUT_AGE_4_IDS = (
 )
 
 
-def test_dfe_single_age_references_pin_england_at_the_january_2025_census() -> None:
+def test_dfe_single_age_references_pin_england_at_the_january_2026_census() -> None:
     """The five DfE single-age rows resolve one England fact each.
 
-    The ``dfe.`` prefix pins every DfE row to England (E92000001); each new
-    row selects one age cell of its census table, January 2025, held to the
-    2025 calibration year (María's rulings, 2026-10-21 and 2026-10-22, the
-    9 to 11 months row with its own hold). The age-4 cells are signed out, as
-    the bound rows fix them, so they have no reference and no membership
-    entry.
+    The ``dfe.`` prefix pins every DfE row to England (E92000001); each row
+    selects one age cell of its census table at January 2026, its declared
+    observation period, the spring term of model year 2025, so no uprating
+    hold applies (microcosm#1095 D5). The age-4 cells are signed out, as the
+    bound rows fix them, so they have no reference and no membership entry.
     """
 
     references = {
@@ -860,12 +876,12 @@ def test_dfe_single_age_references_pin_england_at_the_january_2025_census() -> N
         assert reference["family"] == "dfe_funded_childcare"
         assert reference["entity"] == "person"
         assert reference["period"] == 2025
-        assert reference["uprating_from_period"] == "2025-01"
-        assert reference["uprating_to_period"] == 2025
+        assert reference["observation_period"] == "2026-01"
+        assert "uprating_from_period" not in reference
         assert reference["metadata"]["observation_basis"] == "january_stock"
         assert membership["targets"][target_id]["status"] == "active"
         (candidate,) = membership["targets"][target_id]["candidates"]
-        assert candidate["resolved_fact_period"] == "2025-01"
+        assert candidate["resolved_fact_period"] == "2026-01"
     for target_id in DFE_SIGNED_OUT_AGE_4_IDS:
         assert target_id not in references
         assert target_id not in membership["targets"]
@@ -955,6 +971,37 @@ def test_uc_composition_targets_pin_paid_cells_and_explicit_month_windows() -> N
         ]
 
 
+#: SLC's devolved repayments, one row per nation (microcosm#1095 R4).
+DEVOLVED_SLC_REPAYMENT_IDS = (
+    "slc.repayments.wales_total",
+    "slc.repayments.scotland_total",
+    "slc.repayments.northern_ireland_total",
+)
+
+
+def test_a_geography_the_selector_declares_wins_over_the_inferred_pin() -> None:
+    """A wrong inferred pin reads as "no fact" (microcosm#1095 R8, R9)."""
+
+    # The "slc." rule alone would pin Great Britain, where no devolved fact sits.
+    declared = {
+        "target_id": "slc.repayments.devolved_total",
+        "geography_levels": ["country"],
+        "ledger_selector": {"source_name": "slc", "geography_id": "W92000004"},
+    }
+    assert _geography_id_for_target(declared) == "W92000004"
+    assert _geography_id_for_target({**declared, "ledger_selector": {}}) == (
+        "K03000001"
+    )
+
+    # A one-by-one pin that disagrees with the selector is two declarations.
+    clash = {
+        "target_id": "obr.council_tax",
+        "ledger_selector": {"source_name": "obr", "geography_id": "E92000001"},
+    }
+    with pytest.raises(ValueError, match="keep one declaration"):
+        _geography_id_for_target(clash)
+
+
 def test_prefix_geography_pins_carry_scotgov_and_england_scoped_slc_families() -> None:
     """Prefix pins carry the families the nation-substring rule cannot.
 
@@ -966,8 +1013,8 @@ def test_prefix_geography_pins_carry_scotgov_and_england_scoped_slc_families() -
     England-scoped too — the borrower bindings filter country == ENGLAND
     explicitly and the support model variables are England-gated by
     construction — while the GB default pin could never match.
-    slc.repayments.devolved_total keeps the GB pin and stays held: activating
-    it needs per-nation repayment rows, not a pin change. The dwp.pip
+    SLC's devolved repayments are one row per nation, each declaring its
+    nation's geography in its selector (microcosm#1095 R4). The dwp.pip
     claimant counts are no targets now: they are England-and-Wales diagnostics
     on obr.pip, pinned K04000001 in their own declarations (microcosm#1095).
     """
@@ -1007,7 +1054,14 @@ def test_prefix_geography_pins_carry_scotgov_and_england_scoped_slc_families() -
     assert {pins[target_id]["geography_id"] for target_id in england_slc_ids} == {
         "E92000001"
     }
-    assert pins["slc.repayments.devolved_total"]["geography_id"] == "K03000001"
+    assert {
+        target_id: pins[target_id]["geography_id"]
+        for target_id in DEVOLVED_SLC_REPAYMENT_IDS
+    } == {
+        "slc.repayments.wales_total": "W92000004",
+        "slc.repayments.scotland_total": "S92000003",
+        "slc.repayments.northern_ireland_total": "N92000002",
+    }
     assert not [target_id for target_id in pins if target_id.startswith("dwp.pip.")]
 
     def haystack(target: dict) -> str:
@@ -1052,10 +1106,8 @@ def test_prefix_geography_pins_carry_scotgov_and_england_scoped_slc_families() -
     for target_id in sorted(england_slc_ids):
         assert membership["geography_pins"][target_id]["geography_id"] == "E92000001"
         assert membership["targets"][target_id]["status"] == "active"
-    assert (
-        membership["targets"]["slc.repayments.devolved_total"]["status"]
-        == "no_fact_at_or_before_period"
-    )
+    for target_id in DEVOLVED_SLC_REPAYMENT_IDS:
+        assert membership["targets"][target_id]["status"] == "active"
     assert not [
         target_id
         for target_id in membership["targets"]
@@ -1063,15 +1115,26 @@ def test_prefix_geography_pins_carry_scotgov_and_england_scoped_slc_families() -
     ]
 
 
+#: microcosm#1095 D3, María's ruling of 2026-10-29.
+SCOTLAND_THREE_PLUS_RATIONALE = (
+    "Kept out: Chronicle's Scotland household-composition cut counts "
+    "couple households only, so binding it would fix part of the group and "
+    "leave lone parents free, and the current selector reaches person-level "
+    "ONS mid-year population age rows, not households with three or more "
+    "children (María's ruling of 2026-10-29, microcosm#1095 D3)."
+)
+
+
 def test_uk_target_reference_membership_report_is_packaged() -> None:
     membership = _load_uk_resource("target_reference_membership.json")
 
     assert membership["target_period"] == 2025
     assert membership["active_reference_count"] == ACTIVE_REFERENCE_COUNT
-    # obr.domestic_rates compiles once pinned to the UK (microcosm#1095).
+    # obr.domestic_rates compiles once pinned to the UK (microcosm#1095), and
+    # so do the three OBR council tax nation rows (D14e) and SLC's nation
+    # repayment rows (R4), so no row is left without a fact.
     assert membership["status_counts"] == {
         "active": ACTIVE_REFERENCE_COUNT,
-        "no_fact_at_or_before_period": 4,
         "signed_excluded": 30,
     }
     assert membership["genuine_sum_residue"]
@@ -1302,12 +1365,7 @@ def test_uk_target_reference_membership_report_is_packaged() -> None:
             "family": "ons_population",
             "target_id": "ons.population.scotland_households_3plus_children",
             "status": "signed_excluded",
-            "signed_rationale": (
-                "Signed out pending a Scotland household-composition fact: "
-                "the current selector reaches person-level ONS mid-year "
-                "population age rows, not households with three or more "
-                "children. microcosm#736 tracks the missing declaration."
-            ),
+            "signed_rationale": SCOTLAND_THREE_PLUS_RATIONALE,
         },
     ]
     assert membership["multi_fact_rationales"] == []
@@ -1413,9 +1471,15 @@ def test_uk_target_references_compile_from_real_staged_feed_rows() -> None:
         == "hmrc.spi.employment_income.amount_by_total_income_band"
     )
 
+    # The calendar-2025 window of SLC's full-time and part-time Plan 2 net
+    # repayments, FY2024-25 and FY2025-26 (microcosm#1095 R7).
     slc_plan_2 = targets["slc.repayments.england_plan_2"]
-    assert slc_plan_2.value == pytest.approx(2_778_253_361.64)
-    assert slc_plan_2.metadata["ledger_member_fact_count"] == "2"
+    assert slc_plan_2.value == pytest.approx(
+        0.25 * (2_683_104_312.0299997 + 95_149_049.60999998)
+        + 0.75 * (3_128_518_409.2699995 + 105_861_504.03)
+    )
+    assert slc_plan_2.metadata["ledger_member_fact_count"] == "4"
+    assert slc_plan_2.metadata["ledger_calendar_year_window_series"] == "2"
 
     assert targets["hmrc.cgt.gains_total"].value == 119_258_000_000
     assert targets["hmrc.cgt.taxpayers_total"].value == 551_000

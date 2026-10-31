@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from microcosm.build.gate_battery import EvidenceContext
 from microcosm.build.uk_runtime.battery_bindings import UK_GATE_REGISTRY
@@ -235,3 +236,158 @@ def test_take_up_gate_holds_under_two_usage_to_its_own_bound() -> None:
         own.details["household.property_purchased"]["maximum_share_deviation"] == 0.05
     )
     assert any("household.property_purchased" in failure for failure in own.failures)
+
+
+# María's ruling of 2026-10-29 (microcosm#1095): every flag the terminal gate
+# measures is checked at its drawing stage too, at the stage's weights.
+_SIGNAL_STAGE_GATES = {
+    "frs_take_up": "uk_stage_frs_take_up_signal",
+    "frs_person_draws": "uk_stage_frs_person_draws_take_up_signal",
+    "frs_household_draws": "uk_stage_frs_household_draws_take_up_signal",
+}
+
+
+def _stage_signal_outputs() -> dict[str, tuple[tuple[str, str, str], ...]]:
+    from microcosm.build.uk_runtime.frs_person_draws import (
+        FRS_PERSON_DRAW_OUTPUT_COLUMNS,
+    )
+    from microcosm.build.uk_runtime.frs_take_up import (
+        UKFRSTakeUpStageTransform,
+        take_up_signal_outputs,
+    )
+
+    return {
+        "frs_take_up": take_up_signal_outputs(
+            UKFRSTakeUpStageTransform.output_columns()
+        ),
+        "frs_person_draws": take_up_signal_outputs(FRS_PERSON_DRAW_OUTPUT_COLUMNS),
+        "frs_household_draws": take_up_signal_outputs(
+            FRS_HOUSEHOLD_DRAW_OUTPUT_COLUMNS
+        ),
+    }
+
+
+def _stage_gate_parameters(stage: str) -> dict[str, object]:
+    from microcosm.build import load_country_spec
+
+    entries = {entry.id: entry for entry in load_country_spec("uk").gates.gates}
+    entry = entries[_SIGNAL_STAGE_GATES[stage]]
+    assert entry.gate == "stage_health"
+    assert entry.phase == "assembled"
+    assert entry.criticality == "release_blocking"
+    assert entry.evidence_absent_blocks is True
+    return dict(entry.parameters)
+
+
+def test_each_terminal_flag_is_checked_once_at_its_drawing_stage() -> None:
+    from microcosm.build.uk_runtime.frs_take_up import UK_TAKE_UP_SIGNAL_OUTPUTS
+
+    by_stage = _stage_signal_outputs()
+    drawn = [row for rows in by_stage.values() for row in rows]
+    assert sorted(drawn) == sorted(UK_TAKE_UP_SIGNAL_OUTPUTS)
+    assert len(drawn) == len(set(drawn))
+    for stage, rows in by_stage.items():
+        parameters = _stage_gate_parameters(stage)
+        assert parameters["stage"] == stage
+        assert parameters["check"] == "take_up_signal"
+        # The gate's declared flags are the stage's, in the terminal gate's
+        # order, so a receipt that drops one fails closed.
+        assert list(parameters["outputs"]) == [
+            f"{entity}.{output}" for entity, output, _ in rows
+        ]
+        # The terminal gate's bounds until a spine receipt measures the stage.
+        assert parameters["maximum_share_deviation"] == 0.05
+    assert (
+        _stage_gate_parameters("frs_take_up")["under_two_usage_maximum_share_deviation"]
+        == 0.1
+    )
+
+
+def _receipt(frame, stage: str) -> dict[str, object]:
+    from microcosm.build.uk_runtime.frs_take_up import uk_take_up_signal_receipt
+
+    return uk_take_up_signal_receipt(
+        frame, outputs=_stage_signal_outputs()[stage], contract=_Contract()
+    )
+
+
+def _stage_gate(stage: str, receipt: dict[str, object]):
+    from microcosm.build.uk_runtime.stage_health import uk_stage_health_gate
+
+    return uk_stage_health_gate(
+        evidence={"stage": stage, "take_up_signal": receipt},
+        stage=stage,
+        check="take_up_signal",
+        parameters=_stage_gate_parameters(stage),
+    )
+
+
+def test_stage_receipt_measures_drawn_flags_and_withholds_thin_populations() -> None:
+    receipt = _receipt(_frame(), "frs_take_up")
+    rows = {row["output"]: row for row in receipt["flags"]}
+
+    tfc = rows["benunit.would_claim_tfc"]
+    # Ten benefit units in ten households carry the flag's population.
+    assert tfc["population_support"] == "10-29"
+    assert tfc["weighted_share"] == 0.5
+    assert tfc["target"] == 0.5
+    assert tfc["distinct_values"] == 2
+    assert (
+        rows["benunit.would_claim_universal_childcare"][
+            "extended_without_universal_units"
+        ]
+        == 0
+    )
+    usage = rows["person.max_free_entitlement_hours_used"]
+    # Two children in two households: below the disclosure floor, so neither
+    # the share nor the age-weighted target is given, and the gate fails.
+    assert usage["under_two_usage"] is True
+    assert usage["weighted_share"] == "<3"
+    assert usage["target"] == "<3"
+    result = _stage_gate("frs_take_up", receipt)
+    assert result.passed is False
+    assert any("max_free_entitlement_hours_used" in f for f in result.failures)
+    assert all("withheld" in f for f in result.failures)
+
+
+def test_stage_take_up_signal_gate_passes_and_names_each_defect() -> None:
+    frame = _frame()
+    passed = _stage_gate("frs_household_draws", _receipt(frame, "frs_household_draws"))
+    assert passed.passed is True
+    assert passed.details["household.property_purchased"]["absolute_deviation"] == 0
+
+    frame.table("household")["property_purchased"] = [True] * 9 + [False]
+    off = _stage_gate("frs_household_draws", _receipt(frame, "frs_household_draws"))
+    assert off.passed is False
+    assert any(
+        "household.property_purchased's weighted share 0.9000" in f
+        for f in off.failures
+    )
+
+    frame = _frame()
+    frame.table("person")["would_claim_scp"] = True
+    constant = _stage_gate("frs_person_draws", _receipt(frame, "frs_person_draws"))
+    assert constant.passed is False
+    assert any("would_claim_scp is constant" in f for f in constant.failures)
+
+    receipt = _receipt(_frame(), "frs_household_draws")
+    receipt["flags"] = receipt["flags"][1:]
+    omitted = _stage_gate("frs_household_draws", receipt)
+    assert omitted.passed is False
+    assert any("omits the declared flags" in f for f in omitted.failures)
+
+
+def test_household_draw_stage_records_its_take_up_receipt() -> None:
+    from microcosm.build.uk_runtime.frs_household_draws import (
+        UKFRSHouseholdDrawsStageTransform,
+    )
+
+    stage = UKFRSHouseholdDrawsStageTransform(contract=_Contract(), stage=None)
+    with pytest.raises(RuntimeError, match="completed stage run"):
+        stage.checkpoint_metadata()
+    stage(_frame())
+    evidence = stage.checkpoint_metadata()["evidence"]
+    assert evidence["stage"] == "frs_household_draws"
+    assert [row["output"] for row in evidence["take_up_signal"]["flags"]] == list(
+        _stage_gate_parameters("frs_household_draws")["outputs"]
+    )

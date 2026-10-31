@@ -2350,7 +2350,7 @@ def test_uc_take_up_gate_holds_each_family_type_to_dwp() -> None:
     assert _passed(gate(good))
     # A reporter not claiming, or a unit outside the draw changed, fails.
     assert not gate(good, reporters=1).passed
-    assert not gate(good, outside="<10").passed
+    assert not gate(good, outside="<3").passed
     # The reachable pools miss DWP's count by more than the tolerance.
     assert not gate(
         {**good, "SINGLE": family(3_000.0, 3_300.0, 3_020.0, 2_500.0, 2_700.0)}
@@ -2359,9 +2359,9 @@ def test_uc_take_up_gate_holds_each_family_type_to_dwp() -> None:
     assert not gate(
         {**good, "LONE_PARENT": family(2_100.0, 1_400.0, 1_100.0, 0.0, 0.0)}
     ).passed
-    # A caseload resting on fewer than ten sources cannot be checked: it is
+    # A caseload resting on fewer than three sources cannot be checked: it is
     # flagged, never failed (María's ruling of 2026-10-26); one missing fails.
-    thin = gate({**good, "SINGLE": family(3_000.0, "<10", 1.0, 0.0, 0.0)})
+    thin = gate({**good, "SINGLE": family(3_000.0, "<3", 1.0, 0.0, 0.0)})
     assert thin.passed, thin.failures
     assert thin.details["family_types_unchecked_small_cells"] == ["SINGLE"]
     assert gate(good).details["family_types_unchecked_small_cells"] == []
@@ -2764,13 +2764,13 @@ def test_property_purchases_gate_holds_each_kind_to_hmrc_within_the_contract() -
     )
 
 
-def test_property_purchases_gate_flags_a_kind_on_fewer_than_ten_buyers() -> None:
-    """A kind whose buyers rest on fewer than ten sources prints "<10": it is
+def test_property_purchases_gate_flags_a_kind_on_fewer_than_three_buyers() -> None:
+    """A kind whose buyers rest on fewer than three sources prints "<3": it is
     flagged unchecked, never failed (María's ruling of 2026-10-26)."""
     thin = _purchases_receipt()
     name = thin["kinds"][0]["property_type"]
     thin["kinds"][0].update(
-        fitted_transactions="<10", fitted_value="<10", value_shortfall_share="<10"
+        fitted_transactions="<3", fitted_value="<3", value_shortfall_share="<3"
     )
     result = _gate("uk_stage_property_purchases_fit", thin)
     assert result.passed, result.failures
@@ -2801,7 +2801,7 @@ def _home_values_receipt() -> dict:
         (lambda r: r.update(rows=40), "more rows"),
         (lambda r: r.update(sources_at_cap=1), "value cap"),
         # A band past the limit fails as plainly as the count it stands for.
-        (lambda r: r.update(sources_at_cap="<10"), "value cap"),
+        (lambda r: r.update(sources_at_cap="<3"), "value cap"),
         (lambda r: r.update(knots_basis_year=2023), "basis year"),
         (lambda r: r["ranking"].update(rank_basis="national"), "ranking basis"),
         (lambda r: r.update(weighted_value_after=0.0), "not positive"),
@@ -2818,14 +2818,14 @@ def test_regional_home_values_gate_holds_the_ranking_contract(mutate, fragment) 
     assert any(fragment in failure for failure in result.failures), result.failures
 
 
-def test_regional_home_values_gate_flags_a_region_of_fewer_than_ten_rows() -> None:
-    """A region the receipt prints "<10" rewrote one to nine rows: not empty,
+def test_regional_home_values_gate_flags_a_region_of_fewer_than_three_rows() -> None:
+    """A region the receipt prints "<3" rewrote one or two rows: not empty,
     and flagged rather than failed (María's ruling of 2026-10-26)."""
     receipt = _home_values_receipt()
-    receipt["rows_rewritten_by_region"]["W92000004"] = "<10"
+    receipt["rows_rewritten_by_region"]["W92000004"] = "<3"
     result = _gate("uk_stage_regional_home_values_ranking", receipt)
     assert result.passed, result.failures
-    assert result.details["regions_rewritten_under_ten"] == ["W92000004"]
+    assert result.details["regions_rewritten_under_floor"] == ["W92000004"]
     assert result.details["sources_at_cap_unchecked"] is False
 
 
@@ -2844,8 +2844,8 @@ def _legacy_closure_receipt() -> dict:
             "jsa_income": {
                 "rate": 0.6,
                 "rate_source": "all_households",
-                "rate_unreachable": "<10",
-                "support": "<10",
+                "rate_unreachable": "<3",
+                "support": "<3",
             },
         },
     }
@@ -2856,7 +2856,7 @@ def test_legacy_closure_gate_reads_what_the_receipt_prints() -> None:
     assert _passed(_gate(gate_id, _legacy_closure_receipt()))
     # A thin drawn cohort prints its share withheld.
     withheld = _legacy_closure_receipt()
-    withheld["great_britain_weighted_share_claiming_at_closure"] = "<10"
+    withheld["great_britain_weighted_share_claiming_at_closure"] = "<3"
     flagged = _gate(gate_id, withheld)
     assert _passed(flagged)
     # What it could not read is flagged (María's ruling of 2026-10-26).
@@ -3046,7 +3046,7 @@ def test_excise_quantities_gate_recomputes_every_level_from_the_vendored_rows(
         "volume weights",
     )
     failing(
-        lambda e, s: s[tobacco]["frame"].update(draws_outside_unit_interval="<10"),
+        lambda e, s: s[tobacco]["frame"].update(draws_outside_unit_interval="<3"),
         "left [0, 1]",
     )
     failing(
@@ -3057,9 +3057,9 @@ def test_excise_quantities_gate_recomputes_every_level_from_the_vendored_rows(
         lambda e, s: s[tobacco]["donor"].update(total_beside_lines=0.02),
         "beside",
     )
-    # A residual withheld for resting on under ten donors is under the ceiling.
+    # A residual withheld for resting on under three donors is under the ceiling.
     withheld = copy.deepcopy(shares)
-    withheld[tobacco]["donor"]["total_beside_lines"] = "<10"
+    withheld[tobacco]["donor"]["total_beside_lines"] = "<3"
     flagged = run(receipt, withheld)
     assert flagged.passed
     assert flagged.details["residuals_unchecked_small_cells"] == [tobacco]
@@ -3169,7 +3169,7 @@ def test_gambling_participation_gate_recomputes_the_rates_and_checks_the_shares(
     # A stake draw far off the seen households' mean, which the anchoring
     # would otherwise hide.
     failing(lambda r, e: lottery(r, e).update(amount_scale=3.0), "amount scale")
-    failing(lambda r, e: lottery(r, e).update(added_without_stake="<10"), "no stake")
+    failing(lambda r, e: lottery(r, e).update(added_without_stake="<3"), "no stake")
     failing(
         lambda r, e: lottery(r, e)["propensity"].update(positive_support="10-29"),
         "rest on",
@@ -3265,16 +3265,16 @@ def test_apprentice_gate_holds_the_draw_to_the_contract_rate() -> None:
 
 
 def test_apprentice_gate_flags_its_small_cells_without_failing() -> None:
-    """A "<10" figure is named unchecked, never failed (María's ruling, 10-26)."""
+    """A "<3" figure is named unchecked, never failed (María's ruling, 10-26)."""
 
     gate_id = "uk_stage_frs_person_draws_apprentices"
     thin_flags = _gate(
         gate_id,
         _apprentice_receipt(
-            flagged_support="<10",
-            realized_mass="<10",
-            realization_deviation="<10",
-            implied_relief="<10",
+            flagged_support="<3",
+            realized_mass="<3",
+            realization_deviation="<3",
+            implied_relief="<3",
         ),
     )
     assert _passed(thin_flags)
@@ -3286,10 +3286,10 @@ def test_apprentice_gate_flags_its_small_cells_without_failing() -> None:
     thin_population = _gate(
         gate_id,
         _apprentice_receipt(
-            population_support="<10",
-            population_mass="<10",
-            target="<10",
-            realization_deviation="<10",
+            population_support="<3",
+            population_mass="<3",
+            target="<3",
+            realization_deviation="<3",
         ),
     )
     assert _passed(thin_population)
@@ -3305,7 +3305,7 @@ def test_apprentice_gate_flags_its_small_cells_without_failing() -> None:
     # What the receipt still prints is checked beside a withheld figure.
     off_rate = _gate(
         gate_id,
-        _apprentice_receipt(eligible_support="<10", eligible_mass="<10", rate=0.05992),
+        _apprentice_receipt(eligible_support="<3", eligible_mass="<3", rate=0.05992),
     )
     assert not off_rate.passed
     assert any("not the contract's" in failure for failure in off_rate.failures)

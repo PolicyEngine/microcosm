@@ -220,13 +220,13 @@ def _trusted_terminal_gate_signing_key(monkeypatch) -> None:
 UK_GATE_BATTERY_PRODUCER = "microcosm.build.gate_battery"
 UK_GATE_BATTERY_SIGNING_KEY_ENV = "MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY"
 UK_GATE_BATTERY_POLICY_SHA256 = (
-    "6f4c65471fc61bd73ff4bc3de416f630ce36cc0c073651839d78734557f16896"
+    "ac2c887bd4fff756369228c43e12e8cf5cff89b372d0533d659c09c92d14a91c"
 )
 UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "fa239940047692e11ac51de17b5b754c9d9779de505459813bb88f4f420a62c0"
+    "727d6a3c7e24cee0281fa1ceb4f00468f20423a16061c29d2296bf55e0e72434"
 )
 UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "d496401beaabb105377249dd1567e0b1400667a6bf322fd4825f7f37d0cd431a"
+    "7a83ec5122525c080490910f3443c7fc93d2e507bb79a3d6063a61e52aa61fb8"
 )
 UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256 = (
     "f246388de42654dd68dbbb40c42282001b5b0a8bf48976162bcb1199085cb1d3"
@@ -370,6 +370,21 @@ UK_GATE_BATTERY_ENTRIES = {
     "uk_stage_isa_subscriptions_invariants": ("stage_health", "transferred", None),
     "uk_stage_isa_subscriptions": ("stage_health", "transferred", None),
     "uk_stage_company_cars_invariants": ("stage_health", "transferred", None),
+    "uk_stage_frs_take_up_signal": (
+        "stage_health",
+        "assembled",
+        None,
+    ),
+    "uk_stage_frs_person_draws_take_up_signal": (
+        "stage_health",
+        "assembled",
+        None,
+    ),
+    "uk_stage_frs_household_draws_take_up_signal": (
+        "stage_health",
+        "assembled",
+        None,
+    ),
     "uk_stage_hmrc_cgt_asset_type_spine_summary": (
         "stage_health",
         "transferred",
@@ -1446,6 +1461,9 @@ def _gate_battery_payload(
         "uk_stage_isa_subscriptions_invariants": "isa_subscriptions",
         "uk_stage_isa_subscriptions": "isa_subscriptions",
         "uk_stage_company_cars_invariants": "company_cars",
+        "uk_stage_frs_take_up_signal": "frs_take_up",
+        "uk_stage_frs_person_draws_take_up_signal": "frs_person_draws",
+        "uk_stage_frs_household_draws_take_up_signal": "frs_household_draws",
         "uk_stage_age_tail_targets": "age_tail",
         "uk_stage_frs_relationships_composition": "frs_relationships",
     }

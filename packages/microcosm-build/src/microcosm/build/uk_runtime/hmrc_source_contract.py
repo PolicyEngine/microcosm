@@ -329,7 +329,7 @@ def assert_uk_hmrc_income_source_contract_current(
                 failures,
                 f"frs_leaves.{column}.observed_support",
                 observed_support,
-                "structural zero in the audited 2023-24 FRS; retained so future vintages flow",
+                "structural zero in the FRS 2023-24 and 2024-25; retained so future vintages flow",
             )
         elif observed_support is not None:
             failures.append(
