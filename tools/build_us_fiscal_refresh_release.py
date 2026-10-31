@@ -10601,6 +10601,7 @@ def _build_manifests(
     scored_dataset_sha256: str | None = None,
     post_export_scoring: Mapping[str, object] | None = None,
     diagnostics_outcome: DiagnosticsWriteOutcome | None = None,
+    critical_target_band: Mapping[str, object] | None = None,
 ) -> None:
     dataset_path = artifact_root / dataset_filename
     calibration_path = artifact_root / calibration_filename
@@ -10751,6 +10752,13 @@ def _build_manifests(
             **(
                 {"target_surface_selection": dict(target_surface_selection)}
                 if target_surface_selection is not None
+                else {}
+            ),
+            # The band settings shaped these weights. The diagnostics also
+            # record them, but a release can publish without diagnostics.
+            **(
+                {"critical_target_band": dict(critical_target_band)}
+                if critical_target_band is not None
                 else {}
             ),
             "target_surface": {
@@ -10992,6 +11000,11 @@ def _build_manifests(
             **(
                 {"target_surface_selection": dict(target_surface_selection)}
                 if target_surface_selection is not None
+                else {}
+            ),
+            **(
+                {"critical_target_band": dict(critical_target_band)}
+                if critical_target_band is not None
                 else {}
             ),
             "default_dataset": default_dataset_payload,
@@ -16271,6 +16284,7 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         scored_dataset_sha256=scored_dataset_sha256,
         post_export_scoring=post_export_scoring,
         diagnostics_outcome=diagnostics_outcome,
+        critical_target_band=critical_target_band_record,
     )
     if telemetry is not None:
         telemetry.attach_artifact("build_manifest", release_dir / "build_manifest.json")

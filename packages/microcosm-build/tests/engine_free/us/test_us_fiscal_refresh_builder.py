@@ -12266,13 +12266,25 @@ def test_build_manifests_records_diagnostics_failure_without_a_file(
         error_code="validation_error",
         message="Target hierarchy is incomplete.",
     )
+    band = {
+        "penalty": 1.0,
+        "margin": 0.9,
+        "adaptive_step": 0.25,
+        "adaptive_warmup_epochs": 200,
+        "banded_rows": 22,
+    }
 
     builder._build_manifests(
         diagnostics_outcome=failure,
+        critical_target_band=band,
         **_minimal_manifest_kwargs(builder, release_id, release_dir, artifact_root),
     )
 
     manifest = json.loads((release_dir / "release_manifest.json").read_text())
+    build_manifest = json.loads((release_dir / "build_manifest.json").read_text())
+    # The settings that shaped the weights outlive the failed diagnostics.
+    assert manifest["build"]["critical_target_band"] == band
+    assert build_manifest["calibration"]["critical_target_band"] == band
     assert manifest["calibration_diagnostics"] == {
         "status": "failed",
         "expected_schema_version": 8,

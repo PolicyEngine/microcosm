@@ -53,6 +53,16 @@ def _problem(n_minor: int = 2, n: int = 24) -> tuple[Frame, TargetSet, np.ndarra
     return frame, targets, tolerances
 
 
+def _oracle_hinge(estimates, targets, tolerances) -> torch.Tensor:
+    """The band distance from its definition, computed apart from the solver."""
+    estimates = np.asarray(estimates, dtype=np.float32)
+    targets = np.asarray(targets, dtype=np.float32)
+    tolerances = np.asarray(tolerances, dtype=np.float32)
+    scales = np.where(targets == 0.0, np.float32(1.0), np.abs(targets))
+    errors = np.abs(estimates - targets) / scales
+    return torch.from_numpy(np.maximum(errors - tolerances, 0.0).astype(np.float64))
+
+
 def _legacy_term(self, estimate, targets):
     """The pre-adaptive band's original arithmetic, including operation order."""
     errors = torch.abs(estimate[self.index] - targets[self.index]) / self.scales
@@ -170,7 +180,7 @@ def test_property_multipliers_rise_only_for_violations_and_respect_the_cap(
     last = [None, None]
     for epoch, values in enumerate(estimates):
         estimate = torch.tensor(values, dtype=torch.float32, requires_grad=True)
-        hinge = band.hinge(estimate, targets).detach().to(torch.float64)
+        hinge = _oracle_hinge(values, (0.0, -1.0), (0.2, 0.1))
         previous = band.multipliers.clone()
         band.update(estimate, targets, epoch)
         current = band.multipliers
@@ -434,6 +444,41 @@ def test_adaptive_objectives_always_select_the_closing_state(l2_lambda) -> None:
     assert requested_best.options["iterate_selection"] == "closing_state"
 
 
+@pytest.mark.parametrize("l2_lambda", [0.0, 0.01])
+def test_adaptive_returns_its_last_iterate_after_an_earlier_better_epoch(
+    monkeypatch, l2_lambda
+) -> None:
+    frame, targets, tolerances = _problem()
+    epochs = 80
+    kwargs = dict(
+        seed=7,
+        l2_lambda=l2_lambda,
+        target_band_tolerances=tolerances,
+        target_band_penalty=1.0,
+        target_band_adaptive_step=0.1,
+    )
+    # A longer solve's next estimate comes from the state the shorter one closes on.
+    seen = []
+    original_update = solve_module._TargetBand.update
+
+    def observe_update(self, estimate, target_vector, epoch):
+        seen.append(estimate.detach().numpy().copy())
+        original_update(self, estimate, target_vector, epoch)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(solve_module._TargetBand, "update", observe_update)
+        calibrate(frame, targets, epochs=epochs + 1, **kwargs)
+    result = calibrate(
+        frame, targets, epochs=epochs, retain_best_objective=True, **kwargs
+    )
+    best_epoch = int(np.argmin(result.loss_trajectory))
+    assert best_epoch < epochs - 1
+    assert not np.allclose(seen[best_epoch], seen[epochs], rtol=1e-6)
+    np.testing.assert_allclose(
+        result.problem.estimates(result.weights), seen[epochs], rtol=1e-6
+    )
+
+
 def test_adaptive_solve_clears_a_critical_row_without_worsening_fixed_band_fit() -> (
     None
 ):
@@ -462,6 +507,8 @@ def test_adaptive_solve_clears_a_critical_row_without_worsening_fixed_band_fit()
     plain_error = abs(plain.problem.estimates(plain.weights)[0] / 100.0 - 1.0)
     assert plain_error > 0.15
     [row] = adaptive.options["target_band"]["targets"]
+    # Judge the returned weight itself, apart from the telemetry below.
+    assert abs(float(adaptive.weights[0]) / 100.0 - 1.0) <= 0.05
     assert abs(row["final_relative_error"]) <= row["tolerance"]
     assert row["final_violation"] == 0.0
     assert row["final_multiplier"] > 0.0
