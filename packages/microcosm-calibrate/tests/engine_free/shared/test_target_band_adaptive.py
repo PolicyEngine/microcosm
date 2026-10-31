@@ -20,7 +20,9 @@ from microcosm.calibrate import solve as solve_module
 from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
 
 
-def _problem(n_minor: int = 2, n: int = 24) -> tuple[Frame, TargetSet, np.ndarray]:
+def _problem(
+    n_minor: int = 2, n: int = 24, critical_factor: float = 1.0
+) -> tuple[Frame, TargetSet, np.ndarray]:
     """One critical total competes with individually small, higher totals."""
     x = np.linspace(1.0, 3.0, n)
     frame = Frame(
@@ -36,7 +38,12 @@ def _problem(n_minor: int = 2, n: int = 24) -> tuple[Frame, TargetSet, np.ndarra
     total = float(100.0 * x.sum())
     targets = TargetSet(
         (
-            Target(name="critical", entity="household", value=total, measure="x"),
+            Target(
+                name="critical",
+                entity="household",
+                value=critical_factor * total,
+                measure="x",
+            ),
             *(
                 Target(
                     name=f"minor_{i}",
@@ -424,6 +431,26 @@ def test_adaptive_bands_preserve_conserved_mass_and_the_ratio_cap(
     np.testing.assert_allclose(result.weights.sum(), 24 * 100.0, rtol=1e-12)
     assert bool((result.weights <= 1.1 * result.initial_weights).all())
     assert result.options["iterate_selection"] == "closing_state"
+
+
+@pytest.mark.parametrize("mass_parametrization", ["projection", "softmax"])
+def test_every_conserved_mass_path_accumulates_pressure(mass_parametrization) -> None:
+    # Each mass path updates in its own branch. The critical row starts 10% off
+    # target, so every path must record a violation and collect pressure.
+    frame, targets, tolerances = _problem(critical_factor=1.1)
+    result = calibrate(
+        frame,
+        targets,
+        epochs=80,
+        mass="conserve",
+        mass_parametrization=mass_parametrization,
+        target_band_tolerances=tolerances,
+        target_band_penalty=1.0,
+        target_band_adaptive_step=0.1,
+    )
+    [row] = result.options["target_band"]["targets"]
+    assert row["first_violation_epoch"] == 0
+    assert row["final_multiplier"] > 0.0
 
 
 @pytest.mark.parametrize("l2_lambda", [0.0, 0.01])
