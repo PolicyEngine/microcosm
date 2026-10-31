@@ -8,9 +8,11 @@ import re
 from types import SimpleNamespace
 
 import numpy as np
+import pandas as pd
 import pytest
 
-from microcosm.calibrate import TargetRegistry, TargetSpec
+from microcosm.calibrate import TargetRegistry, TargetSet, TargetSpec, calibrate
+from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
 from test_support.paths import paths_for
 
 _TEST_PATHS = paths_for("microcosm-build")
@@ -35,6 +37,7 @@ def _spec(
     family: str = "irs_soi",
     role: str | None = None,
     extra_metadata: dict[str, str] | None = None,
+    value: float = 100.0,
 ) -> TargetSpec:
     metadata = {} if role is None else {"target_role": role}
     metadata.update(extra_metadata or {})
@@ -42,7 +45,7 @@ def _spec(
         name=name,
         entity="household",
         measure="household_weight",
-        value=100.0,
+        value=value,
         period=builder.PERIOD,
         source="fixture",
         family=family,
@@ -235,6 +238,55 @@ def test_a_row_two_requirements_match_takes_the_tighter_band(builder) -> None:
         assert bool(failures) is judged, (error, failures)
 
 
+def test_a_real_adaptive_solve_clears_the_real_gate(builder) -> None:
+    # One household carries a critical row and 100 unbanded rows that pull it
+    # 20% high. The release gate judges each solver's own diagnostics: it must
+    # fail the plain solve and pass the adaptive one.
+    requirement = _requirement(builder, "social_security_benefits")
+    critical = _spec(builder, requirement.names[0].rsplit("@", 1)[0])
+    pull = tuple(
+        _spec(builder, f"not.a.critical.row.{index}", value=120.0)
+        for index in range(100)
+    )
+    registry = TargetRegistry((critical, *pull), country="us")
+    name = builder._target_row_name(critical)
+    frame = Frame(
+        {
+            "person": pd.DataFrame({"person_id": [0], "person_household_id": [0]}),
+            "household": pd.DataFrame({"household_id": [0], "household_weight": [1.0]}),
+        },
+        EntitySchema(group_entities=("household",)),
+        {"household": Weights(values=np.array([100.0]), kind=WeightKind.DESIGN)},
+    )
+    targets = TargetSet(tuple(spec.to_target() for spec in registry.specs))
+    kwargs = dict(method="prox", epochs=600, learning_rate=0.02, seed=7)
+
+    def gate_failures(result) -> list[str]:
+        return [
+            failure
+            for failure in builder._critical_target_fit_failures(
+                result, target_registry=registry
+            )
+            if f"'{name}'" in failure
+        ]
+
+    assert gate_failures(calibrate(frame, targets, **kwargs))
+    adaptive = calibrate(
+        frame,
+        targets,
+        target_band_tolerances=builder._critical_target_band_tolerances(
+            registry, margin=0.9
+        ),
+        target_band_penalty=1.0,
+        target_band_adaptive_step=0.1,
+        **kwargs,
+    )
+    assert not gate_failures(adaptive)
+    assert abs(float(adaptive.weights[0]) / 100.0 - 1.0) <= (
+        requirement.max_abs_relative_error
+    )
+
+
 def _solve_calls(function: ast.FunctionDef, names: set[str]) -> list[ast.Call]:
     return [
         node
@@ -283,6 +335,16 @@ def test_every_release_solve_receives_the_band() -> None:
         ), f"{call.func.id} at line {call.lineno} does not receive **band_kwargs"
 
 
+def test_the_manifests_receive_the_band_record() -> None:
+    # The diagnostics record the band too, but a release can publish without
+    # them, so _main must hand the manifests the same record.
+    path = _TEST_PATHS.repository / "tools" / "build_us_fiscal_refresh_release.py"
+    [call] = _solve_calls(_function(path, "_main"), {"_build_manifests"})
+    keyword = next(k for k in call.keywords if k.arg == "critical_target_band")
+    assert isinstance(keyword.value, ast.Name)
+    assert keyword.value.id == "critical_target_band_record"
+
+
 def test_every_ladder_solve_forwards_the_band() -> None:
     path = (
         _TEST_PATHS.repository
@@ -305,6 +367,13 @@ def test_every_ladder_solve_forwards_the_band() -> None:
         assert forwarded.get("target_band_penalty") == "target_band_penalty", (
             call.lineno
         )
+        assert (
+            forwarded.get("target_band_adaptive_step") == "target_band_adaptive_step"
+        ), call.lineno
+        assert (
+            forwarded.get("target_band_adaptive_warmup_epochs")
+            == "target_band_adaptive_warmup_epochs"
+        ), call.lineno
 
 
 _BASE_ARGV = ["--ledger-facts", "facts.jsonl", "--out", "release"]
@@ -322,8 +391,21 @@ def test_band_flags_default_to_a_penalty_of_one_at_nine_tenths(builder) -> None:
         == builder.DEFAULT_CRITICAL_TARGET_BAND_MARGIN
         == 0.9
     )
+    assert args.critical_target_band_adaptive_step == 0.0
+    assert args.critical_target_band_adaptive_warmup_epochs == 0
     off = builder._parse_args([*_BASE_ARGV, "--critical-target-band-penalty", "0"])
     assert off.critical_target_band_penalty == 0.0
+    adaptive = builder._parse_args(
+        [
+            *_BASE_ARGV,
+            "--critical-target-band-adaptive-step",
+            "0.25",
+            "--critical-target-band-adaptive-warmup-epochs",
+            "200",
+        ]
+    )
+    assert adaptive.critical_target_band_adaptive_step == 0.25
+    assert adaptive.critical_target_band_adaptive_warmup_epochs == 200
 
 
 @pytest.mark.parametrize(
@@ -331,6 +413,35 @@ def test_band_flags_default_to_a_penalty_of_one_at_nine_tenths(builder) -> None:
     [
         (["--critical-target-band-penalty", "-1"], "must be finite and non-negative"),
         (["--critical-target-band-penalty", "nan"], "must be finite and non-negative"),
+        (
+            ["--critical-target-band-adaptive-step", "-1"],
+            "must be finite and non-negative",
+        ),
+        (
+            ["--critical-target-band-adaptive-step", "nan"],
+            "must be finite and non-negative",
+        ),
+        (
+            ["--critical-target-band-adaptive-step", "inf"],
+            "must be finite and non-negative",
+        ),
+        (
+            [
+                "--critical-target-band-adaptive-step",
+                "0.25",
+                "--critical-target-band-penalty",
+                "0",
+            ],
+            "requires --critical-target-band-penalty > 0",
+        ),
+        (
+            ["--critical-target-band-adaptive-warmup-epochs", "-1"],
+            "must be non-negative",
+        ),
+        (
+            ["--critical-target-band-adaptive-warmup-epochs", "200"],
+            "requires --critical-target-band-adaptive-step > 0",
+        ),
         (["--critical-target-band-margin", "0"], "must be in (0, 1]"),
         (["--critical-target-band-margin", "1.5"], "must be in (0, 1]"),
     ],

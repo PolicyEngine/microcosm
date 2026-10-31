@@ -7524,6 +7524,44 @@ def _check_cross_manifest_consistency(
                     "must record the diagnostics sha256."
                 )
 
+    _check_critical_target_band_records(
+        build_manifest, release_manifest, calibration_diagnostics, failures
+    )
+
+
+def _check_critical_target_band_records(
+    build_manifest: Mapping | None,
+    release_manifest: Mapping | None,
+    calibration_diagnostics: Mapping | None,
+    failures: list[str],
+) -> None:
+    """Every file that carries the critical-target band carries the same record."""
+    records = []
+    for label, document, section in (
+        ("build_manifest.json calibration", build_manifest, "calibration"),
+        ("release_manifest.json build", release_manifest, "build"),
+        ("calibration_diagnostics.json build", calibration_diagnostics, "build"),
+    ):
+        if document is None:
+            continue
+        block = document.get(section)
+        records.append(
+            (
+                label,
+                block.get("critical_target_band")
+                if isinstance(block, Mapping)
+                else None,
+            )
+        )
+    for (label, record), (other_label, other) in zip(
+        records, records[1:], strict=False
+    ):
+        if record != other:
+            failures.append(
+                f"{label}.critical_target_band must match "
+                f"{other_label}.critical_target_band."
+            )
+
 
 def _check_default_dataset_matches_build_manifest(
     release_manifest: Mapping,
