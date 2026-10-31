@@ -9,6 +9,7 @@ import pandas as pd
 import pytest
 
 from microcosm.build.source_manifest import SourceOperationSpec
+from microcosm.build.stage_evidence import snapshot_stage_evidence
 from microcosm.build.uk_runtime import isa_subscriptions as stage
 from microcosm.build.uk_runtime.cgt_imputation import (
     UK_CGT_TAXABLE_INCOME_PROXY_COMPONENTS,
@@ -390,6 +391,17 @@ def test_the_whole_stage_writes_its_columns_within_every_invariant(statistics):
             parameters=parameters,
         )
         assert gate.passed, (gate_id, gate.failures)
+
+
+def test_the_stage_declares_no_fit_weight_records(statistics):
+    """The stage fits no model. A declared empty list read as a fitting stage
+    that recorded nothing, which failed the release-cut weights audit
+    (microcosm#1428)."""
+
+    transform = _transform(statistics)
+    transform(_stage_frame())
+    evidence = snapshot_stage_evidence("isa_subscriptions", transform)
+    assert "fit_weight_records" not in evidence
 
 
 def test_reordering_the_rows_moves_no_draw(statistics):

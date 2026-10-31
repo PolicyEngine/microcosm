@@ -1,0 +1,1 @@
+The ISA subscriptions stage no longer declares an empty list of fit-weight records (#1428). It fits no model, but the release-cut weights audit read its empty list as a fitting stage that recorded nothing, so every national certified after #1421 failed `uk_weights_audit`.
