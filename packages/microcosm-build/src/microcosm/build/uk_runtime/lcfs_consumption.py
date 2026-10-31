@@ -41,6 +41,8 @@ from microcosm.build.uk_runtime.energy_pricing import (
     PRICE_DOMESTIC_ENERGY_KIND,
     UK_DESNZ_DOMESTIC_ENERGY_RESOURCE,
     UK_NEED_ENERGY_FACTS_RESOURCE,
+    UK_ONS_HFCE_ROW_DIMENSIONS,
+    UK_ONS_HOUSEHOLD_EXPENDITURE_RESOURCE,
     UK_QEP_ENERGY_PRICES_RESOURCE,
     EnergyPrices,
     NeedMargins,
@@ -362,10 +364,10 @@ UK_LCFS_DFT_BUS_VALUE_RESOURCE = "dft_bus_value_anchors.json"
 # the register names.
 UK_LCFS_DFT_BUS_JOURNEYS_RESOURCE = UK_DFT_BUS_JOURNEYS_RESOURCE
 UK_LCFS_DEVOLVED_BUS_FINANCE_RESOURCE = "devolved_bus_finance.json"
-#: ONS Consumer Trends household spending, the road-fuel level (COICOP 07.2.2)
+#: ONS Consumer Trends household spending, ``ons_household_expenditure_facts.json``
+#: (energy_pricing defines the name once): the road-fuel level (COICOP 07.2.2)
 #: and the division totals the capture diagnostic compares against.
-UK_LCFS_ONS_EXPENDITURE_RESOURCE = "ons_household_expenditure_facts.json"
-UK_LCFS_ROAD_FUEL_LEVEL_RESOURCE = UK_LCFS_ONS_EXPENDITURE_RESOURCE
+UK_LCFS_ROAD_FUEL_LEVEL_RESOURCE = UK_ONS_HOUSEHOLD_EXPENDITURE_RESOURCE
 #: DESNZ sub-national road transport fuel consumption by vehicle and fuel (ktoe),
 #: the litres audit's per-fuel cars share.
 UK_LCFS_ROAD_FUEL_BY_VEHICLE_RESOURCE = "desnz_road_fuel_by_vehicle.json"
@@ -388,8 +390,10 @@ UK_LCFS_VENDORED_RESOURCES = (
 #: The household road-fuel columns the ``level_road_fuel`` step scales.
 UK_LCFS_ROAD_FUEL_COLUMNS = ("petrol_spending", "diesel_spending")
 #: Columns a declared rake or pricing step levels (energy in kWh to the NEED
-#: shape at the DESNZ level; bus fares as journeys times the published
-#: yield, microcosm#930; road fuel to ONS household spending, microcosm#1113);
+#: shape at each fuel's declared level, DESNZ volume or, for electricity, the
+#: kWh ONS household spending buys, microcosm#1418; bus fares as journeys
+#: times the published yield, microcosm#930; road fuel to ONS household
+#: spending, microcosm#1113);
 #: the committed support bounds leave them alone.
 UK_LCFS_RAKED_COLUMNS = frozenset(
     {
@@ -1180,13 +1184,6 @@ class DiagnosticUnavailableError(ValueError):
 
 #: ONS Consumer Trends' generic concept for the divisions and classes.
 UK_ONS_HFCE_CONCEPT = "ons.household_final_consumption_expenditure"
-#: The variant of each Consumer Trends row the diagnostic reads: annual,
-#: current prices, not seasonally adjusted.
-UK_ONS_HFCE_ROW_DIMENSIONS = {
-    "frequency": "annual",
-    "price_basis": "current_prices",
-    "seasonal_adjustment": "not_seasonally_adjusted",
-}
 #: Each LCFS division column and its COICOP division.
 UK_LCFS_DIVISION_COICOP = {
     column: f"{division:02d}"
@@ -1205,7 +1202,7 @@ def _ons_annual_value(
     coicop: str, *, source_sheet: str, consumption_concept: str, period_value: int
 ) -> tuple[float, str]:
     rows = vendored_rows(
-        UK_LCFS_ONS_EXPENDITURE_RESOURCE,
+        UK_ONS_HOUSEHOLD_EXPENDITURE_RESOURCE,
         concept=UK_ONS_HFCE_CONCEPT,
         period_type="calendar_year",
         period_value=int(period_value),
@@ -1218,12 +1215,12 @@ def _ons_annual_value(
     )
     if not rows:
         raise DiagnosticUnavailableError(
-            f"{UK_LCFS_ONS_EXPENDITURE_RESOURCE}: no {coicop} "
+            f"{UK_ONS_HOUSEHOLD_EXPENDITURE_RESOURCE}: no {coicop} "
             f"({source_sheet}, {consumption_concept}) row for {period_value}."
         )
     if len(rows) != 1:
         raise ValueError(
-            f"{UK_LCFS_ONS_EXPENDITURE_RESOURCE}: expected one {coicop} "
+            f"{UK_ONS_HOUSEHOLD_EXPENDITURE_RESOURCE}: expected one {coicop} "
             f"({source_sheet}, {consumption_concept}) row for {period_value}, "
             f"found {len(rows)}."
         )
@@ -1472,7 +1469,7 @@ def division_capture(
     if donor_weight is not None:
         total.update(beside_donor(frame_total, donor_grand_total))
     return {
-        "resource": UK_LCFS_ONS_EXPENDITURE_RESOURCE,
+        "resource": UK_ONS_HOUSEHOLD_EXPENDITURE_RESOURCE,
         "concept": UK_ONS_HFCE_CONCEPT,
         "period_type": "calendar_year",
         "period_value": int(period_value),
@@ -1507,7 +1504,7 @@ def division_capture_or_reason(
         )
     except DiagnosticUnavailableError as error:
         return {
-            "resource": UK_LCFS_ONS_EXPENDITURE_RESOURCE,
+            "resource": UK_ONS_HOUSEHOLD_EXPENDITURE_RESOURCE,
             "concept": UK_ONS_HFCE_CONCEPT,
             "period_type": "calendar_year",
             "period_value": int(period_value),
@@ -3615,7 +3612,8 @@ def rake_recipient_energy(
     gas_payers: GasPayerDraws | None = None,
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     """Price the drawn spend to kWh, impose the published gas connection, rake the
-    NEED shape at the DESNZ level, price back.
+    NEED shape at each fuel's declared level (DESNZ volume, or for electricity
+    the kWh ONS household spending buys), price back.
 
     ``identity`` (the household ids, row-aligned) keys the disconnection walk
     when the declared rule is ``identity_uniform_order``, and the connection

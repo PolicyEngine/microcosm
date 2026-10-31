@@ -111,6 +111,8 @@ def _effective_rows(profile="mar"):
         _document("target_references.json"),
         _document("reference_profiles.json"),
         {"census_residual_allocation": profile, "aging_index": "central"},
+        _document("reference_intervals.json"),
+        factor_context=_document("reference_aging.json"),
     )
     return document["target_references"]
 
@@ -202,6 +204,20 @@ def test_residual_profiles_have_exact_recipient_rosters_and_preserve_other_targe
             if "households_by_size" in row["name"]
         } == {*REGIONS, "99"}
         for before, after in zip(raw, effective, strict=True):
+            if before["family"] == "income":
+                assert (
+                    after["metadata"]["activation_status"] == "requires_prerequisites"
+                )
+                continue
+            if "families_by_type" in before["name"]:
+                assert after["ledger_selector"] == before["ledger_selector"]
+                assert after["value_operation"] == "allocated_residual_by_ratio"
+                assert (
+                    after["metadata"]["activation_status"]
+                    == "requires_census_family_nucleus_standard"
+                )
+                assert "G8-r3b" in after["metadata"]["parking_reason"]
+                continue
             if (
                 before["metadata"]["activation_status"]
                 != "requires_reference_profile_resolution"
@@ -261,8 +277,13 @@ def test_full_nz_resource_resolves_directly_to_the_strict_compiler_document(prof
         raw,
         _document("reference_profiles.json"),
         {"census_residual_allocation": profile, "aging_index": "central"},
+        _document("reference_intervals.json"),
+        factor_context=_document("reference_aging.json"),
     )
-    assert intervals is None
+    assert receipt["base_intervals_sha256"] == reference_document_sha256(
+        _document("reference_intervals.json")
+    )
+    assert ["scaling" in table for table in intervals["tables"]] == [True, False]
     assert set(effective) == set(raw) & REFERENCE_DOCUMENT_KEYS
     references = parse_reference_document(effective, country="nz")
     assert len(references) == 773
@@ -333,6 +354,91 @@ def test_v4_changes_only_the_residual_knob_and_prior_variants_keep_their_meaning
         assert knobs["census_residual_allocation"] == (
             "small_households" if scenario["id"] == "V4" else "mar"
         )
+        assert knobs["aging_index"] == {"V1": "low", "V2": "high"}.get(
+            scenario["id"], "central"
+        )
+
+
+@pytest.mark.parametrize("profile", ["low", "central", "high"])
+def test_ageing_profiles_have_237_explicit_companions_and_keep_b4_parked(profile):
+    profiles = _document("reference_profiles.json")
+    (transformation,) = profiles["dimensions"]["aging_index"]["profiles"][profile][
+        "transformations"
+    ]
+    expected_counts = [
+        f"ird_taxable_income_people_by_band__row_{row}" for row in range(8, 245)
+    ]
+    expected_money = [
+        f"ird_taxable_income_total_by_band__row_{row}" for row in range(8, 245)
+    ]
+    assert transformation["count_reference_names"] == expected_counts
+    assert transformation["reference_names"] == expected_money
+    assert transformation["interval_table_ids"] == [
+        "ird_taxable_income_national_ty2024"
+    ]
+    assert transformation["factor_id"] == f"ird_ty2024_to_ty2027_{profile}"
+    assert not any("246" in name for name in expected_counts + expected_money)
+    base = _document("target_references.json")
+    effective, intervals, receipt = resolve_reference_profiles(
+        base,
+        profiles,
+        {"census_residual_allocation": "mar", "aging_index": profile},
+        _document("reference_intervals.json"),
+        factor_context=_document("reference_aging.json"),
+    )
+    assert intervals["tables"][0]["scaling"]["factor_id"] == (
+        f"ird_ty2024_to_ty2027_{profile}"
+    )
+    before = {row["name"]: row for row in base["target_references"]}
+    after = {row["name"]: row for row in effective["target_references"]}
+    factor = {"low": 1.115056, "central": 1.117109, "high": 1.119158}[profile]
+    for count_name, money_name in zip(expected_counts, expected_money, strict=True):
+        for field in ("ledger_selector", "measure", "filter", "period"):
+            assert after[count_name][field] == before[count_name][field]
+        assert after[count_name].get("value_operation") == before[count_name].get(
+            "value_operation"
+        )
+        assert after[count_name].get("value_operands") == before[count_name].get(
+            "value_operands"
+        )
+        assert after[money_name]["value_operation"] == "linear_combination"
+        assert after[money_name]["value_operands"] == [
+            {
+                "aggregate_fact_key": before[money_name]["ledger_selector"][
+                    "aggregate_fact_key"
+                ],
+                "expected_member_count": 1,
+                "weight": factor,
+            }
+        ]
+        for name in (count_name, money_name):
+            metadata = after[name]["metadata"]
+            assert metadata["activation_status"] == "requires_prerequisites"
+            assert json.loads(metadata["reference_prerequisites_remaining"]) == [
+                "measurement:ird_taxable_income_ty2027_v1"
+            ]
+    assert receipt["selection"]["aging_index"] == profile
+
+
+def test_resolved_money_uses_the_verified_factor_once_and_count_values_are_unchanged(
+    artifact, facts_by_key
+):
+    rows = [row for row in _effective_rows() if row["family"] == "income"]
+    # This numerical operation check supplies activation only to its copies;
+    # the committed and resolved declarations remain parked on B4.
+    executable = copy.deepcopy(rows)
+    for row in executable:
+        row["metadata"]["activation_status"] = "active"
+    registry = compile_ledger_target_references(
+        artifact.facts, _parsed(executable), country="nz"
+    )
+    assert len(registry.specs) == 474
+    for row, target in zip(rows, registry.specs, strict=True):
+        source = facts_by_key[row["ledger_selector"]["aggregate_fact_key"]]["value"]
+        if row["metadata"]["reference_value_kind"] == "count":
+            assert target.value == source
+        else:
+            assert target.value == pytest.approx(source * 1.117109, rel=1e-12)
 
 
 @pytest.mark.parametrize("profile", ["mar", "small_households"])
@@ -555,7 +661,12 @@ def test_grouped_tenure_family_multiplicities_and_parked_definitions():
                 == "requires_reference_profile_resolution"
             )
         if row["family"] == "income":
-            assert row["metadata"]["activation_status"].startswith("requires_g8r2")
+            assert row["metadata"]["activation_status"] == "requires_prerequisites"
+            assert json.loads(row["metadata"]["reference_prerequisites"]) == [
+                "reference_profile:aging_index",
+                "measurement:ird_taxable_income_ty2027_v1",
+            ]
+            assert row["metadata"]["parking_reason"].startswith("B4:")
 
 
 def test_receipt_snapshots_are_split_and_stratified_inputs_stay_parked():

@@ -533,6 +533,19 @@
       "max_factor_shift": 0.02,
       "max_index_shift": 0.009,
       "reason": "The SPI Table 3.6 bands, summed over every band of the full compiled register (the measure-excluded £1m-and-over band included), are the UK total the Tables 3.14 and 3.15 area cells divide; the constituency and local-authority cells reconcile to it per grain. Both parts of the factor the cells take are gated, at each grain on its own. Source agreement: the bands' total over the cells' total before either side's uprating index must sit within 2% of one. Index gap: the bands grow band by band and the cells on the all-ranges index, which leaves a gap of 0.3% on this bridge; max_index_shift is that gap plus half a point, so a re-pinned index that widens it is refused."
+    },
+    {
+      "bridge_id": "spi_pension_amount_bands_vs_area",
+      "higher_target_ids": [
+        "hmrc.spi.state_pension.amount_by_total_income_band",
+        "hmrc.spi.private_pension_income.amount_by_total_income_band"
+      ],
+      "lower_target_id": "hmrc.pension_income.amount",
+      "geography_id": "K02000001",
+      "max_factor_shift": 0.037,
+      "min_factor_shift": 0.025,
+      "max_index_shift": 0.02,
+      "reason": "An area's pension income in SPI Tables 3.14 and 3.15 is its taxpayers' private and State Pension together, so the SPI Table 3.6 State Pension and private pension bands, summed over every band of the full compiled register (the measure-excluded GBP 1m-and-over bands included), are the UK total the area cells divide; the constituency and local-authority cells reconcile to it per grain, and both parts of the factor are gated at each grain on its own (microcosm#1418). Source agreement: on SPI 2023-24 the bands sit 3.0% above the constituency cells and 3.2% above the local-authority cells before either side's uprating index, against within 0.5% for employment: the area cells leave out the taxpayers HMRC places in no area (SPI Table 3.11 note 4), and those are more often pensioners (1.8% of the Income Tax payers of State Pension age in ITL Tables 2.1 and 2.2, against 0.8% of all). That explains about 1.8 points if their pension income is in proportion to their number; the other 1.2 to 1.4 points have no measured cause, so max_factor_shift is the larger gap plus half a point, 3.7%, as the index gaps are held (Anthony's review of microcosm#1420). The gap runs one way, so min_factor_shift holds the source factor above the smaller gap less half a point, 2.5%, and the cells the rounded-thousand floor defers (pension income counts under 5,500, local_small_cell_rule.json) still count in each grain's total, as the bands cover them too (the independent review of microcosm#1420). Index gap: the State Pension bands grow by resident State Pension age taxpayers times the new State Pension rate (x1.224, microcosm#1069's index) and the private pension bands band by band (x1.103), together x1.151 against the cells' all-ranges x1.134, a gap of 1.5%; max_index_shift is that gap plus half a point. The 0.1% this bridge first declared was measured on the State Pension index before microcosm#1069, and test_uk_fanout_sum_bridges.py now recomputes every bridge's gap from the committed registers (the independent review of microcosm#1420, finding 1)."
     }
   ],
   "sum_bridges": [
@@ -625,7 +638,7 @@
     },
     "desnz.subnational.electricity_kwh": {
       "route": "no_higher_control",
-      "reason": "DESNZ's region and country rows are the sums of their authorities, so a region control adds no information, and a gas bridge would put the three authorities DESNZ publishes no gas for (the Isles of Scilly, Orkney and Shetland) in controlled legs. The electricity cells are levelled onto the lcfs stage's Energy Trends level by their uprating index instead (desnz.energy_trends.gb_domestic_level; microcosm#1207). The constituency cells split each authority's total by DESNZ's small-area figures (microcosm#1095), so under the standing single-winner rule they parent their region's authority cells at a factor of one."
+      "reason": "DESNZ's region and country rows are the sums of their authorities, so a region control adds no information, and a gas bridge would put the three authorities DESNZ publishes no gas for (the Isles of Scilly, Orkney and Shetland) in controlled legs. The electricity cells are levelled onto the lcfs stage's level, the kWh ONS household spending buys (microcosm#1418), by their uprating index instead (desnz.energy_trends.gb_domestic_level; microcosm#1207). The constituency cells split each authority's total by DESNZ's small-area figures (microcosm#1095), so under the standing single-winner rule they parent their region's authority cells at a factor of one."
     },
     "desnz.subnational.gas_kwh": {
       "route": "no_higher_control",
@@ -634,6 +647,10 @@
     "ons.rent.private_rent_brma": {
       "route": "no_higher_control",
       "reason": "ONS PIPR publishes Scotland's rents as means over its 18 Broad Rental Market Areas, which overlap the councils, and no national private-rent total the frame binds. Each row is 12 x the BRMA mean x the BRMA's private renters, derived from the councils' reconciled tenure cells through Census 2022's council shares of each BRMA's renters (uk_private_rent_brma_mean_to_total), so the rows follow the tenure reconciliation and no BRMA cell is a parent or a leg of any other (microcosm#1090, #1262). Placed renters' rents come from their BRMA's rent-officer list of rents, scaled to their region's FRS level on the census renter mix: at design weights a region moves by the gap between that mix and where its renters land, until the tenure rows restore it (microcosm#1262). PIPR shares that evidence base, so the rows stay bound, but their pattern between areas is not independent validation. The rows bind PIPR's level, while the node holds each region at its FRS level, which sits below it; with the tenure rows bound, calibration closes the gap only by moving weight toward higher-rent renters within each area, a level miss declared under María's A3/A4 rulings rather than modelled."
+    },
+    "hmrc.pension_income.count": {
+      "route": "no_higher_control",
+      "reason": "SPI 2023-24 Tables 3.14 and 3.15 count each area's taxpayers with any pension income, State or private. No national row binds that union: the national SPI bands count State Pension and private pension recipients apart, and most taxpayers of State Pension age are both, so the cells bind at HMRC's own area level, grown by ITL Table 2.5's all-ranges taxpayer growth (María's ruling of 2026-10-28, microcosm#1418). The amounts, a sum, reconcile to the bands through their fan-out sum bridge; the tables' region and country rows are the sums of their areas, so a region control adds no information."
     }
   },
   "relations": [
@@ -919,6 +936,16 @@
     },
     {
       "targets": [
+        "hmrc.itl.taxpayers_by_total_income_band",
+        "hmrc.pension_income.count"
+      ],
+      "relation": "subset",
+      "part": "hmrc.pension_income.count",
+      "whole": "hmrc.itl.taxpayers_by_total_income_band",
+      "reason": "Taxpayers with pension income in an area (SPI Tables 3.14 and 3.15) are part of all UK income tax payers, whose projected ITL Table 2.5 bands partition the UK total; parts <= whole. The area cells bind at HMRC's own area level, since no national row counts the union of State Pension and private pension recipients (microcosm#1418)."
+    },
+    {
+      "targets": [
         "hmrc.itl.additional_rate_taxpayers",
         "hmrc.itl.taxpayers_by_total_income_band"
       ],
@@ -1044,6 +1071,13 @@
         "slc.borrowers.plan_5_liable"
       ],
       "reason": "National-only (England) borrower stocks defined by the plan and threshold filters in the binding."
+    },
+    {
+      "targets": [
+        "hmrc.spi.self_employment_income.amount_by_self_employment_income_band",
+        "hmrc.spi.self_employment_income.count_by_self_employment_income_band"
+      ],
+      "reason": "Banded by groupby on the person's own self-employment income after loss relief, SPI Table 3.10's range; the band is the fan-out dimension, not a measurement filter, and Table 3.10 counts taxpayers and non-taxpayers alike. Bound from GBP 1 to GBP 10,000 only, the bands above stay with Table 3.6's self-employment rows by total income, so the two tables do not pull against each other (microcosm#1418)."
     }
   ]
 }

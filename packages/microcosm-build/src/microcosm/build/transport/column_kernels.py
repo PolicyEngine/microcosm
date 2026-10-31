@@ -38,6 +38,7 @@ from dataclasses import replace
 import numpy as np
 import pandas as pd
 
+from microcosm.build import calibration_predicates as calibration_predicates_module
 from microcosm.calibrate import hierarchy as hierarchy_module
 from microcosm.calibrate import registry as registry_module
 from microcosm.frame import concept_mapping as mapping_module
@@ -73,12 +74,19 @@ from microcosm.graph import (
 from microcosm.graph.population import dtype_for_token
 
 from . import graph_inputs
+from . import receipt_contract as receipt_contract_module
 from .artifact_types import TARGET_SURFACE_TYPE
 from .graph_inputs import (
     canonical_document_param,
     require_params,
     sha256_param,
     string_param,
+)
+from .receipt_contract import (
+    assign_receipts_v2,
+    receipt_dispatch_tables,
+    receipt_strata,
+    validate_receipt_v2,
 )
 from .target_kernels import decode_target_surface
 
@@ -508,6 +516,8 @@ def validate_receipt_contract(
     column/reference text, distinct exclusion columns, and finite rates in
     [0, 1]. A null optional payment column remains allowed.
     """
+    if "contract_version" in contract:
+        return validate_receipt_v2(contract)
     if set(contract) != {"seed_column", "programs", "exclusion_groups"}:
         raise ValueError(
             "Receipt contract declares seed_column, programs and exclusion_groups."
@@ -582,6 +592,9 @@ def assign_receipts(
     *,
     weights: np.ndarray | None = None,
     targets: Mapping[str, float] | None = None,
+    bindings: Mapping[str, object] | None = None,
+    knobs: Mapping[str, object] | None = None,
+    tables: Mapping[str, pd.DataFrame] | None = None,
 ) -> tuple[pd.DataFrame, dict[str, object]]:
     """Apply explicit receipt priorities to determined eligible program draws.
 
@@ -590,6 +603,16 @@ def assign_receipts(
     semantics. Existing exclusions are read as booleans and never rewritten.
     The data-independent contract checks use ``validate_receipt_contract``.
     """
+    if "contract_version" in contract:
+        return assign_receipts_v2(
+            person,
+            contract,
+            weights=weights,
+            targets=targets,
+            bindings=bindings,
+            knobs=knobs,
+            tables=tables,
+        )
     seed_column, parsed, groups = validate_receipt_contract(contract)
     out = person.loc[:, ["person_id"]].copy()
     audit = {}
@@ -680,17 +703,35 @@ class TakeupAssignKernel(_ColumnKernel):
             concepts_module,
             closure_module,
             target_kernels,
+            target_kernels.reference_profiles_module,
+            target_kernels.reference_selection_module,
             registry_module,
             hierarchy_module,
+            calibration_predicates_module,
+            receipt_contract_module,
             dependencies=self.capabilities.dependencies,
         )
 
     def run(self, context: KernelContext) -> KernelResult:
+        required = frozenset({"receipt_contract", "receipt_contract_sha256"})
         require_params(
             context,
             self.ref,
-            required=frozenset({"receipt_contract", "receipt_contract_sha256"}),
+            required=required,
+            optional=frozenset(
+                {
+                    "calibration_bindings",
+                    "calibration_bindings_sha256",
+                    "profile_selection",
+                }
+            ),
         )
+        contract = _document(context, self.ref, "receipt_contract")
+        if "contract_version" in contract:
+            return self._run_v2(context, contract)
+        # v1 takes none of v2's optional parameters; they refuse as unknown,
+        # exactly as before v2 existed.
+        require_params(context, self.ref, required=required)
         tables = _whole_tables(
             context, self.ref, ("person",), artifact_aliases=frozenset({"surface"})
         )
@@ -745,6 +786,101 @@ class TakeupAssignKernel(_ColumnKernel):
         return KernelResult(
             columns=_columns(context, self.ref, {"person": table}),
             receipt={"programs": audit},
+        )
+
+    def _run_v2(self, context, contract):
+        _, programs, _ = validate_receipt_v2(contract)
+        entities = tuple(
+            dict.fromkeys(
+                row[field]
+                for row in programs
+                for field in receipt_contract_module.RECEIPT_UNIT_FIELDS
+            )
+        )
+        tables = _whole_tables(
+            context,
+            self.ref,
+            tuple(dict.fromkeys((*entities, *context.tables))),
+            artifact_aliases=frozenset({"surface"}),
+        )
+        owned = {(item.entity, item.column) for item in context.node.outputs}
+        expected = {(row["projection"], row["output"]) for row in programs}
+        unknown = owned - expected
+        if unknown:
+            raise ValueError(
+                f"{self.ref} unmodelled or unknown receipt outputs {sorted(unknown)}."
+            )
+        if owned != expected:
+            raise ValueError(
+                f"{self.ref} must own exactly the contract's receipt flags."
+            )
+        if (
+            set(context.artifacts) != {"surface"}
+            or context.artifacts["surface"].type != TARGET_SURFACE_TYPE
+        ):
+            raise ValueError(f"{self.ref} v2 reads the typed surface artifact.")
+        surface = decode_target_surface(context.artifacts["surface"].payload)
+        targets = {}
+        for row in programs:
+            for stratum in receipt_strata(row):
+                name = stratum["target"]
+                matches = [
+                    target for target in surface.registry.specs if target.name == name
+                ]
+                if len(matches) != 1:
+                    raise ValueError(
+                        f"Receipt target {name!r} must identify one surface row."
+                    )
+                (target,) = matches
+                if (
+                    target.entity != row["projection"]
+                    or target.filter != stratum["filter"]
+                    or target.measure != row["output"]
+                    or target.metadata.get("ledger_measure_unit") != "count"
+                ):
+                    raise ValueError(
+                        f"Receipt target {name!r} must be a {row['projection']} count of {row['output']!r} with declared stratum filter {stratum['filter']!r}."
+                    )
+                targets[name] = target.value
+        if ("calibration_bindings" in context.params) != (
+            "calibration_bindings_sha256" in context.params
+        ):
+            raise ValueError(
+                f"{self.ref} calibration_bindings and its sha256 must be supplied together."
+            )
+        bindings = (
+            _document(context, self.ref, "calibration_bindings")
+            if "calibration_bindings" in context.params
+            else None
+        )
+        knobs = (
+            canonical_document_param(context, self.ref, "profile_selection")
+            if "profile_selection" in context.params
+            else None
+        )
+        outputs, program_audits = {}, {}
+        # Dispatch is read from all four reserved fields; validation currently
+        # permits their person values only, so this loop runs once, over one
+        # projection entity. It passes the whole contract and keeps the last
+        # audit, which is right only for one entity; v3 replaces it.
+        for entity in dict.fromkeys(row["projection"] for row in programs):
+            entity_rows = [row for row in programs if row["projection"] == entity]
+            table = receipt_dispatch_tables(tables, entity_rows[0])["projection"]
+            assigned, audit = assign_receipts(
+                table,
+                contract,
+                weights=context.weights[entity].values
+                if entity in context.weights
+                else None,
+                targets=targets,
+                bindings=bindings,
+                knobs=knobs,
+                tables=tables,
+            )
+            outputs[entity] = assigned
+            program_audits = audit
+        return KernelResult(
+            columns=_columns(context, self.ref, outputs), receipt=program_audits
         )
 
 

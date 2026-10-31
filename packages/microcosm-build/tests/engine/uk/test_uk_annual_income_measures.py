@@ -108,6 +108,14 @@ def test_the_annual_measures_tax_each_persons_year(tmp_path) -> None:
         np.asarray(state_pension) * state_pension_annual_share(months),
         rtol=1e-6,
     )
+    # The SPI area tables' pension income: both pensions over the year
+    # (microcosm#1418).
+    annual_total_pension, _ = resolver.compute("person", "total_pension_income_annual")
+    np.testing.assert_allclose(
+        annual_total_pension,
+        np.asarray(annual_pension) + np.asarray(annual_state_pension),
+        rtol=1e-6,
+    )
     # Taxed by the engine on the year: the leaver's spell makes them a
     # taxpayer, and halving the entrant's pay lowers their tax.
     tax, _ = resolver.compute("person", "income_tax")

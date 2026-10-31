@@ -15,7 +15,9 @@ and one of the two appliers below transports its value:
   Savings interest takes two legs, since the index of its history is not the
   one policyengine-uk's dataset projection applies: ONS household interest
   income to the frame's survey year, then GDP per head to the calibration year
-  (``UK_SPI_SAVINGS_INTEREST_INDEX_CONCEPT``).
+  (``UK_SPI_SAVINGS_INTEREST_INDEX_CONCEPT``). The Table 3.7 interest and
+  other income rows grow by the OBR's forecast of savings income instead
+  (``UK_OBR_SAVINGS_INCOME_GROWTH_INDEX_CONCEPT``, microcosm#1418).
   The OBR indices are calendar-year series keyed at 1 January, so the engine's
   period 2025 is calendar 2025 for incomes; the state pension rate is the
   tax-year rate the engine pays for the whole year, so its rows move by that
@@ -153,6 +155,19 @@ UK_HMRC_ITL_ALL_BAND_GROWTH_MEASURES: Mapping[str, tuple[str, str]] = {
         "total_income_amount",
     ),
 }
+#: SPI Table 3.10's self-employment amounts by self-employment band
+#: (microcosm#1418): a band's amount is its count times its mean, so it moves
+#: by the count rows' all-ranges taxpayer growth times the OBR's mixed income
+#: per head, the index policyengine-uk grows self-employment income by. Each
+#: band's mean then moves as the engine moves incomes, where growing the two
+#: rows on unrelated indices would make calibration tilt the band (the
+#: independent review of microcosm#1420, finding 2).
+UK_SPI_SELF_EMPLOYMENT_BAND_AMOUNT_INDEX_CONCEPT = (
+    "hmrc.itl_2026.taxpayer_count_growth_all_bands_times_obr_per_capita_mixed_income"
+)
+UK_SPI_SELF_EMPLOYMENT_PROFIT_PARAMETER = (
+    "gov.economic_assumptions.indices.obr.per_capita.mixed_income"
+)
 UK_HMRC_ITL_ALL_BAND_GROWTH_BASIS = (
     "HMRC Income Tax liabilities statistics Table 2.5 {measure} over all income "
     "ranges: the calendar-year window of the two tax years overlapping the "
@@ -234,6 +249,32 @@ UK_SPI_SAVINGS_INTEREST_HISTORY_PARAMETER = (
 )
 UK_SPI_SAVINGS_INTEREST_PROJECTION_PARAMETER = (
     "gov.economic_assumptions.indices.obr.per_capita.gdp"
+)
+#: The SPI Table 3.7 interest and other income rows by band (María's ruling of
+#: 2026-10-29, microcosm#1418): the OBR's forecast growth of savings income,
+#: the path the Budget's savings costing grows its base by. The engine's own
+#: index (GDP per head, ``UK_SPI_SAVINGS_INTEREST_INDEX_CONCEPT``) grew the
+#: interest rows x1.192 to calendar 2025, where HMRC's tax on savings grows
+#: x1.52 and the OBR's savings income x1.36, so the calibration met the
+#: savings tax rows through the one savings column nothing bound
+#: (microcosm#1419). The row is the savings income line of the October 2026
+#: EFO's receipts Table 4.5, "Self-employed income streams: growth rates":
+#: growth on a year earlier, pre-measures, from 2024-25.
+UK_OBR_SAVINGS_INCOME_GROWTH_INDEX_CONCEPT = "obr.efo_2026_10.savings_income_growth"
+UK_OBR_SAVINGS_INCOME_GROWTH_RESOURCE = "obr_savings_income_growth_facts.json"
+UK_OBR_SAVINGS_INCOME_GROWTH_CONCEPT = "obr.self_employed_income_growth.savings_income"
+UK_OBR_SAVINGS_INCOME_GROWTH_MEASURE = "growth_rate"
+UK_OBR_SAVINGS_INCOME_GROWTH_BASIS = (
+    "OBR Economic and fiscal outlook, October 2026, receipts Table 4.5, the "
+    "savings income row's growth on a year earlier, chained from the SPI "
+    "fact's year to each fiscal year of the calendar-year window and weighted "
+    "by the months each contributes"
+)
+UK_OBR_SAVINGS_INCOME_GROWTH_ADJUDICATION = (
+    "María's ruling of 2026-10-29 (microcosm#1418): the Table 3.7 interest and "
+    "other income rows follow the OBR's savings income forecast, with the "
+    "engine's interest projection revisited when PolicyEngine/policyengine-uk#2638 "
+    "lands"
 )
 UK_DATASET_YEAR_RULE = "survey_year"
 UK_HISTORY_THEN_PROJECTION_BASIS = (
@@ -492,8 +533,8 @@ def assert_installed_engine_is_pinned() -> str:
     jobs and the H2 parity run them on the lock.
 
     Three things must hold. The distribution's version is the pinned one,
-    exactly, so a post-release or a local build of it (``2.162.14.post1``,
-    ``2.162.14+local``) is refused. ``policyengine_uk`` imports from that
+    exactly, so a post-release or a local build of it (``2.164.2.post1``,
+    ``2.164.2+local``) is refused. ``policyengine_uk`` imports from that
     distribution's own files, so a copy earlier on ``sys.path`` or an editable
     install is refused. And its ``__init__.py`` matches the distribution's
     RECORD, so a stale record beside other files is refused where the files
@@ -1273,7 +1314,128 @@ _RECIPIENT_COUNT_APPLIERS: Mapping[str, Callable[..., TargetRegistry]] = {
     UK_HMRC_STATE_PENSION_AGE_GROWTH_INDEX_CONCEPT: (
         align_hmrc_row_by_resident_state_pension_age_growth
     ),
+    UK_HMRC_TAXPAYER_GROWTH_ALL_BANDS_INDEX_CONCEPT: partial(
+        align_hmrc_row_by_itl_all_band_growth,
+        index_concept=UK_HMRC_TAXPAYER_GROWTH_ALL_BANDS_INDEX_CONCEPT,
+    ),
 }
+
+
+def _obr_savings_income_growth(
+    rows: list[Mapping[str, Any]],
+) -> dict[int, tuple[float, str]]:
+    """Each fiscal year's growth on a year earlier, in per cent, by opening year."""
+
+    growth: dict[int, tuple[float, str]] = {}
+    for row in rows:
+        if str(row.get("measure_id")) != UK_OBR_SAVINGS_INCOME_GROWTH_MEASURE:
+            continue
+        year = int((row.get("period") or {}).get("value", -1))
+        if year in growth:
+            raise ValueError(
+                f"{UK_OBR_SAVINGS_INCOME_GROWTH_RESOURCE}: fiscal year {year} has "
+                "more than one savings income growth row."
+            )
+        value = float(row["value"])
+        if not value > -100.0:
+            raise ValueError(
+                f"{UK_OBR_SAVINGS_INCOME_GROWTH_RESOURCE}: fiscal year {year}'s "
+                f"growth {value!r} would leave no savings income."
+            )
+        growth[year] = (value, str(row.get("source_record_id") or ""))
+    return growth
+
+
+def _savings_income_level(
+    growth: Mapping[int, tuple[float, str]],
+    *,
+    opening_year: int,
+    year: int,
+    spec_name: str,
+    used: dict[int, tuple[float, str]],
+) -> float:
+    """Savings income in fiscal ``year`` over the fact's year, the growth chained."""
+
+    value = 1.0
+    for later in range(opening_year + 1, year + 1):
+        if later not in growth:
+            raise ValueError(
+                f"UK target {spec_name!r}: {UK_OBR_SAVINGS_INCOME_GROWTH_RESOURCE} "
+                f"has no savings income growth for fiscal year {later}."
+            )
+        used[later] = growth[later]
+        value *= 1.0 + growth[later][0] / 100.0
+    return value
+
+
+def align_hmrc_row_by_obr_savings_income_growth(
+    reference: LedgerTargetReference,
+    registry: TargetRegistry,
+    *,
+    rows: list[Mapping[str, Any]] | None = None,
+) -> TargetRegistry:
+    """Move an SPI row by the OBR's forecast growth of savings income.
+
+    The level of each fiscal year over the fact's is the product of the
+    growth rates between them; the factor is the calendar-year window of the
+    two fiscal years overlapping the target year, by the months each
+    contributes (``CALENDAR_YEAR_WINDOW_WEIGHTS``). A year the resource does
+    not carry is refused.
+    """
+
+    if reference.uprating_index != UK_OBR_SAVINGS_INCOME_GROWTH_INDEX_CONCEPT:
+        return registry
+    target_year = _target_year(reference)
+    if rows is None:
+        rows = list(
+            vendored_rows(
+                UK_OBR_SAVINGS_INCOME_GROWTH_RESOURCE,
+                concept=UK_OBR_SAVINGS_INCOME_GROWTH_CONCEPT,
+                period_type="fiscal_year",
+            )
+        )
+    growth = _obr_savings_income_growth(rows)
+    aligned = []
+    for spec in registry.specs:
+        opening_year = _opening_year(spec, reference)
+        _refuse_fact_after_target(spec, opening_year, target_year)
+        if opening_year == target_year:
+            aligned.append(_identity_aligned(spec, reference, opening_year))
+            continue
+        used: dict[int, tuple[float, str]] = {}
+        factor = sum(
+            weight
+            * _savings_income_level(
+                growth,
+                opening_year=opening_year,
+                year=target_year + offset,
+                spec_name=spec.name,
+                used=used,
+            )
+            for offset, weight in CALENDAR_YEAR_WINDOW_WEIGHTS.items()
+        )
+        metadata = {
+            **spec.metadata,
+            "uprating_index": UK_OBR_SAVINGS_INCOME_GROWTH_INDEX_CONCEPT,
+            "uprating_index_basis": UK_OBR_SAVINGS_INCOME_GROWTH_BASIS,
+            "uprating_index_resource": UK_OBR_SAVINGS_INCOME_GROWTH_RESOURCE,
+            "uprating_index_measure_id": UK_OBR_SAVINGS_INCOME_GROWTH_MEASURE,
+            "uprating_index_growth_by_year": ";".join(
+                f"{year}={used[year][0]:.15g}" for year in sorted(used)
+            ),
+            "uprating_index_window_weights": ";".join(
+                f"{target_year + offset}={weight:.15g}"
+                for offset, weight in sorted(CALENDAR_YEAR_WINDOW_WEIGHTS.items())
+            ),
+            "uprating_index_source_record_ids": ",".join(
+                used[year][1] for year in sorted(used)
+            ),
+            "uprating_factor": f"{factor:.15g}",
+            "ledger_value_before_alignment": f"{spec.value:.15g}",
+            "uprating_adjudication": UK_OBR_SAVINGS_INCOME_GROWTH_ADJUDICATION,
+        }
+        aligned.append(replace(spec, value=spec.value * factor, metadata=metadata))
+    return TargetRegistry(aligned, country="uk")
 
 
 def hmrc_uprating_appliers() -> dict[str, Any]:
@@ -1302,11 +1464,20 @@ def hmrc_uprating_appliers() -> dict[str, Any]:
         parameter_path=UK_SPI_STATE_PENSION_RATE_PARAMETER,
         count_index_concept=UK_HMRC_STATE_PENSION_AGE_GROWTH_INDEX_CONCEPT,
     )
+    appliers[UK_SPI_SELF_EMPLOYMENT_BAND_AMOUNT_INDEX_CONCEPT] = partial(
+        align_hmrc_amount_by_recipient_growth_and_rate,
+        index_concept=UK_SPI_SELF_EMPLOYMENT_BAND_AMOUNT_INDEX_CONCEPT,
+        parameter_path=UK_SPI_SELF_EMPLOYMENT_PROFIT_PARAMETER,
+        count_index_concept=UK_HMRC_TAXPAYER_GROWTH_ALL_BANDS_INDEX_CONCEPT,
+    )
     appliers[UK_SPI_SAVINGS_INTEREST_INDEX_CONCEPT] = partial(
         align_hmrc_row_by_history_then_projection,
         index_concept=UK_SPI_SAVINGS_INTEREST_INDEX_CONCEPT,
         history_path=UK_SPI_SAVINGS_INTEREST_HISTORY_PARAMETER,
         projection_path=UK_SPI_SAVINGS_INTEREST_PROJECTION_PARAMETER,
+    )
+    appliers[UK_OBR_SAVINGS_INCOME_GROWTH_INDEX_CONCEPT] = (
+        align_hmrc_row_by_obr_savings_income_growth
     )
     return appliers
 
@@ -1337,7 +1508,13 @@ __all__ = [
     "UK_SPI_SAVINGS_INTEREST_HISTORY_PARAMETER",
     "UK_SPI_SAVINGS_INTEREST_INDEX_CONCEPT",
     "UK_SPI_SAVINGS_INTEREST_PROJECTION_PARAMETER",
+    "UK_SPI_SELF_EMPLOYMENT_BAND_AMOUNT_INDEX_CONCEPT",
+    "UK_SPI_SELF_EMPLOYMENT_PROFIT_PARAMETER",
+    "UK_OBR_SAVINGS_INCOME_GROWTH_CONCEPT",
+    "UK_OBR_SAVINGS_INCOME_GROWTH_INDEX_CONCEPT",
+    "UK_OBR_SAVINGS_INCOME_GROWTH_RESOURCE",
     "align_hmrc_amount_by_recipient_growth_and_rate",
+    "align_hmrc_row_by_obr_savings_income_growth",
     "align_hmrc_row_by_history_then_projection",
     "UK_ENGINE_INDEX_CONCEPTS",
     "UK_ENGINE_INDEX_PARAMETERS",

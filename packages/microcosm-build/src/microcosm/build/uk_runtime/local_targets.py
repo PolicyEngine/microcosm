@@ -69,6 +69,10 @@ ENERGY_METRICS = (
     "energy/gas_kwh",
     "energy/gas_connected_households",
 )
+#: HMRC SPI pension income by area (Tables 3.14 and 3.15; microcosm#1418):
+#: each area's taxpayers' private and State Pension income and the taxpayers
+#: with either, both grains.
+PENSION_INCOME_METRICS = ("hmrc/pension_income/amount", "hmrc/pension_income/count")
 #: England's dwellings with the single adult council tax discount by billing
 #: authority (MHCLG Council Taxbase line 8; microcosm#1095), the cells of the
 #: national single adult row. The return is England's and by billing
@@ -177,6 +181,9 @@ def metric_names(
     # authority, local authorities only, appended under the same rule.
     if area_type == "la":
         names.extend(LA_COUNCIL_TAX_DISCOUNT_METRICS)
+    # microcosm#1418: SPI pension income by area, both grains, appended after
+    # every earlier family under the same rule.
+    names.extend(PENSION_INCOME_METRICS)
     return tuple(names)
 
 

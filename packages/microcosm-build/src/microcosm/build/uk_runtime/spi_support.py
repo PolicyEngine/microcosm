@@ -165,7 +165,7 @@ FRS_ONLY_SPI_FILL_PERSON_COLUMNS = (
     "employer_pension_contributions",
     "personal_pension_contributions",
     "pension_contributions_via_salary_sacrifice",
-    "tax_free_savings_income",
+    "individual_savings_account_interest_income",
     "universal_credit_reported",
     "pension_credit_reported",
     "child_benefit_reported",

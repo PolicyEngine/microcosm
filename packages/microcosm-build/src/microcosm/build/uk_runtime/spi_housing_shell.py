@@ -102,8 +102,11 @@ NUMERIC_PREDICTORS: tuple[str, ...] = (
     "investment_income",
     "state_pension_reported",
 )
+#: Interest is ISA interest included, as gross interest held it before the
+#: additive contract (microcosm#1360).
 _INVESTMENT_COLUMNS = (
     "savings_interest_income",
+    "individual_savings_account_interest_income",
     "dividend_income",
     "property_income",
     "other_investment_income",

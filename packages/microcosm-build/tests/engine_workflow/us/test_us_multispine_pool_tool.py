@@ -106,7 +106,7 @@ def test_stacked_tool_entrypoint_fixture_e2e_emits_one_logbook_row_at_every_term
         assert published_transfer["completion"] == {
             "status": "complete",
             "group_count": 19,
-            "target_count": 70,
+            "target_count": 71,
             "residual_null_rows": 0,
         }
         calibrated = [
@@ -347,8 +347,9 @@ def test_constants_adapter_equals_live_constants_and_stays_out_of_identities(
             # microcosm#1376's puma_county_vintage draw module,
             # microcosm#1380's self-employment post-transfer contract, and
             # the source-stage citation rewrites that pin us-data at a commit.
-            # microcosm#1259's recipient-share bound in puf_support moves it.
-            "spec_sha256": "2dfef19b27c2c215fe3d866e82bc446da209b3ebb3d62bc378fac58bd299dc1b",
+            # microcosm#1251's passive partnership/S-corp leaf in puf_support moves it.
+            # microcosm#1259's recipient-share bound in puf_support moves it again.
+            "spec_sha256": "623e595678f4c4b0fa7a55504f442214ebe31efe743833ac10d6751aba8a1553",
         },
     }
 

@@ -801,6 +801,17 @@ columns:
     domain: puf_tax_itemization
     public_stability: internal
     unit_waiver: policyengine_us_unit_unavailable
+- key: person.passive_partnership_s_corp_income
+  contract:
+    entity: person
+    dtype: float64
+    unit: unit_not_declared_by_engine_metadata
+    definition_period: year
+    vintage: vintage:target_2024
+    nullable: false
+    domain: puf_tax_itemization
+    public_stability: internal
+    unit_waiver: policyengine_us_unit_unavailable
 - key: person.person_family_id
   contract:
     entity: person

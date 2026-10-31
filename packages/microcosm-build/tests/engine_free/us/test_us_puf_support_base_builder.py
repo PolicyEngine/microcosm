@@ -1323,19 +1323,35 @@ def test_puf_donor_builder_threads_explicit_source_year_agi(
         captured["processed_tax_unit_weights"] = processed_tax_unit_weights
         return adjusted_gross_income
 
+    schedule_e = {
+        "partnership_income": np.asarray([10.0, 20.0]),
+        "passive_partnership_s_corp_income": np.asarray([1.0, 0.0]),
+    }
+
+    def fake_schedule_e(actual_source_path: Path, actual_arrays, *, receipt):
+        captured["schedule_e_source_path"] = actual_source_path
+        captured["schedule_e_arrays"] = actual_arrays
+        receipt["weighted_line_32"] = 30.0
+        return schedule_e
+
     def fake_donor(
         actual_arrays,
         *,
         adjusted_gross_income,
+        schedule_e_partnership_s_corp,
         donor_build_summary,
     ):
         captured["arrays"] = actual_arrays
         captured["adjusted_gross_income"] = adjusted_gross_income
+        captured["schedule_e"] = schedule_e_partnership_s_corp
         captured["donor_build_summary"] = donor_build_summary
         donor_build_summary["mortgage_field_quarantine"] = {"screened_record_count": 2}
         return "donor"
 
     monkeypatch.setattr(builder, "_source_year_puf_adjusted_gross_income", fake_agi)
+    monkeypatch.setattr(
+        builder, "_source_year_puf_partnership_s_corp_income", fake_schedule_e
+    )
     monkeypatch.setattr(builder, "puf_tax_unit_donor_from_arrays", fake_donor)
 
     donor_build_summary: dict[str, object] = {}
@@ -1352,9 +1368,13 @@ def test_puf_donor_builder_threads_explicit_source_year_agi(
     assert captured["processed_tax_unit_weights"] is arrays["household_weight"]
     assert captured["arrays"] is arrays
     assert captured["adjusted_gross_income"] is adjusted_gross_income
+    assert captured["schedule_e_source_path"] == source_path
+    assert captured["schedule_e_arrays"] is arrays
+    assert captured["schedule_e"] is schedule_e
     assert captured["donor_build_summary"] is donor_build_summary
     assert donor_build_summary == {
-        "mortgage_field_quarantine": {"screened_record_count": 2}
+        "mortgage_field_quarantine": {"screened_record_count": 2},
+        "schedule_e_line_32": {"weighted_line_32": 30.0},
     }
 
 
