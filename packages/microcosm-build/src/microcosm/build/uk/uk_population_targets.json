@@ -836,6 +836,7 @@
       "dwp.hb.households_pension_age_social_rented": "Post-freeze fact family (DWP Stat-Xplore Housing Benefit, pension age), no uk-data metric (microcosm#1069 c10).",
       "dwp.hb.households_pension_age_private_rented": "Post-freeze fact family (DWP Stat-Xplore Housing Benefit, pension age), no uk-data metric (microcosm#1069 c10).",
       "dwp.hb.amount_pension_age": "Post-freeze fact family (DWP benefit expenditure and caseload tables, pension-age Housing Benefit spending), no uk-data metric (microcosm#1095).",
+      "dwp.jsa.amount_income_based": "Post-freeze fact family (DWP benefit expenditure and caseload tables, income-based Jobseeker's Allowance spending), no uk-data metric (microcosm#1428).",
       "ons.households.english_regions": "Post-freeze fact family (each nation's official household estimate: LFS 2025 for England's regions, NRS 2025, Welsh Government rolled to 2025, Census 2021 rolled by LPS stock for Northern Ireland), no uk-data metric (microcosm#1123, nations win).",
       "nrs.households.scotland": "Post-freeze fact family (each nation's official household estimate: LFS 2025 for England's regions, NRS 2025, Welsh Government rolled to 2025, Census 2021 rolled by LPS stock for Northern Ireland), no uk-data metric (microcosm#1123, nations win).",
       "welshgov.households.wales": "Post-freeze fact family (each nation's official household estimate: LFS 2025 for England's regions, NRS 2025, Welsh Government rolled to 2025, Census 2021 rolled by LPS stock for Northern Ireland), no uk-data metric (microcosm#1123, nations win).",
@@ -1320,6 +1321,7 @@
       "dwp.hb.households_pension_age_social_rented",
       "dwp.hb.households_pension_age_private_rented",
       "dwp.hb.amount_pension_age",
+      "dwp.jsa.amount_income_based",
       "microcosm.high_value_homes.over_1m_by_region",
       "microcosm.high_value_homes.over_1_5m_by_region",
       "microcosm.high_value_homes.over_2m_by_region",
@@ -30234,6 +30236,79 @@
       },
       "category_id": "dwp.legacy_benefits",
       "label": "Housing Benefit spending, pension age",
+      "value_operation": "calendar_year_window"
+    },
+    {
+      "target_id": "dwp.jsa.amount_income_based",
+      "family": "dwp_benefit_expenditure",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "benunit",
+        "concept": "uk.benefits.jsa_income.amount",
+        "filters": [
+          {
+            "concept": "uk.geography.country",
+            "operator": "in",
+            "value": [
+              "england",
+              "scotland",
+              "wales"
+            ]
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "dwp/jsa/amount_income_based",
+          "value_variable": "jsa_income",
+          "from_entity": "benunit",
+          "household_conditions": [
+            {
+              "variable": "region",
+              "entity": "household",
+              "reduce": "any",
+              "operator": "in",
+              "value": [
+                "NORTH_EAST",
+                "NORTH_WEST",
+                "YORKSHIRE",
+                "EAST_MIDLANDS",
+                "WEST_MIDLANDS",
+                "EAST_OF_ENGLAND",
+                "LONDON",
+                "SOUTH_EAST",
+                "SOUTH_WEST",
+                "WALES",
+                "SCOTLAND"
+              ],
+              "map_to": "benunit"
+            }
+          ],
+          "notes": "DWP benefit expenditure and caseload tables, Spring Forecast 2026: the Unemployment_benefits worksheet line 'Jobseeker's Allowance, income-based', nominal GBP, which DWP publishes for Great Britain plus residents overseas (Notes tab), so the model column sums Great Britain households only. Bound at the calendar-2025 window of the fiscal years (three twelfths of the FY2024-25 outturn, nine twelfths of the FY2025-26 forecast; calendar_year_window), as the pension-age Housing Benefit row is. Income-based JSA closes with the move to Universal Credit: GBP 144.7m in FY2023-24, GBP 91.0m in FY2024-25 and under GBP 1m forecast from FY2025-26. Without the split, the calibration met OBR's total JSA (obr.jobseekers_allowance) by scaling income-based reporters with contributory claimants, well above the window's level (microcosm#1428, María's ruling of 2026-10-31). The value is the engine's jsa_income, income-based JSA paid on the reported award."
+        },
+        "axiom": {
+          "metric_name": "dwp/jsa/amount_income_based",
+          "status": "pending",
+          "value_rule": "uk.benefits.jsa_income.amount"
+        }
+      },
+      "assertion_policy": "allow_source_projection",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": "dwp.benefit_expenditure_amount",
+        "entity_name": "government",
+        "dimension_values": {
+          "benefit_forecast_line": "unemployment_benefits__jobseekers_allowance__income_based"
+        },
+        "source_measure_id_by_opening_year": {
+          "2024": "expenditure_2024",
+          "2025": "expenditure_2025"
+        }
+      },
+      "category_id": "dwp.legacy_benefits",
+      "label": "Jobseeker's Allowance spending, income-based",
       "value_operation": "calendar_year_window"
     },
     {

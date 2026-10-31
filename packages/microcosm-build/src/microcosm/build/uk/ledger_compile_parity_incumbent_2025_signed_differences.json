@@ -1,11 +1,11 @@
 {
- "compiled_count": 1411,
+ "compiled_count": 1412,
  "counts_by_kind": {
   "calibration_drift": 557,
   "fixture_only": 48,
-  "ledger_only": 822
+  "ledger_only": 823
  },
- "difference_count": 1427,
+ "difference_count": 1428,
  "differences": [
   {
    "fixture_value": 1608000.0,
@@ -676,6 +676,13 @@
    "kind": "ledger_only",
    "ledger_value": 1381089.75,
    "name": "dwp.hb.households_social_rented",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 23377178.788788605,
+   "name": "dwp.jsa.amount_income_based",
    "period": 2025,
    "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
   },
