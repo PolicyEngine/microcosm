@@ -898,7 +898,7 @@ def _floor_employment_pay_at_minimum_wage(
         return frame, hours, pay, employee & (hours > 0.0) & (pay > 0.0)
 
     candidates, hours, pay, eligible = employee_rows(rows)
-    paid_weeks = hours / WEEKS_IN_YEAR * floor.weeks_in_year
+    paid_hours = hours / WEEKS_IN_YEAR * floor.weeks_in_year
     minimum_wage = floor.hourly_rate(candidates["age"].to_numpy(dtype=np.float64))
     twin = pd.to_numeric(twin_pay.reindex(candidates.index), errors="coerce").to_numpy(
         dtype=np.float64
@@ -907,9 +907,9 @@ def _floor_employment_pay_at_minimum_wage(
         raise ValueError("SPI pay floor needs the FRS twin's pay of every drawn row.")
     with np.errstate(divide="ignore", invalid="ignore"):
         twin_rate = np.where(
-            (twin > 0.0) & (paid_weeks > 0.0), twin / paid_weeks, np.inf
+            (twin > 0.0) & (paid_hours > 0.0), twin / paid_hours, np.inf
         )
-    minimum = paid_weeks * np.minimum(minimum_wage, twin_rate)
+    minimum = paid_hours * np.minimum(minimum_wage, twin_rate)
     floored = eligible & (pay < minimum)
     uplift = np.where(floored, minimum - pay, 0.0)
     floored_pay = np.where(floored, minimum, pay)
@@ -967,8 +967,8 @@ def _floor_employment_pay_at_minimum_wage(
         total = float(frame_weights[among].sum())
         return float(frame_weights[among & below].sum()) / total if total else 0.0
 
-    below_before = pay < paid_weeks * minimum_wage
-    below_after = floored_pay < paid_weeks * minimum_wage
+    below_before = pay < paid_hours * minimum_wage
+    below_after = floored_pay < paid_hours * minimum_wage
     # The rows the floor lifts out from under the minimum wage are the
     # difference of the two shares, so both are withheld beside a small one.
     lifted_out = eligible & below_before & ~below_after
