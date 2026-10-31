@@ -128,6 +128,7 @@ def test_puf_imputation_preserves_tax_unit_total_without_inventing_split() -> No
         tax_unit_outputs=(),
         n_estimators=4,
         seed=0,
+        tail_bound_diagnostics=[],
     )
     person = imputed.table("person")
     channel = support_channel_column("person")

@@ -79,6 +79,7 @@ def test_weighted_qrf_writes_only_puf_channel_and_allocates_by_employment(
         tax_unit_outputs=(),
         n_estimators=4,
         seed=9,
+        tail_bound_diagnostics=[],
     )
 
     person = imputed.table("person")

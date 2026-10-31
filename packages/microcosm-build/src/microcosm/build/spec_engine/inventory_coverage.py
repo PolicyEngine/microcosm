@@ -350,12 +350,12 @@ EXPECTED_HASHES = {
     "acs_person_predictors": "878c788a6f037d7aca12b3586ea034eff04f3034ffa11935a736493042551f25",
     "authority": "3b6f534db79be588396d6543a8368c6251d41ae25139153ade01bdb36ac7b1a2",
     "early_families": "4aa9f736fd76e83955477ad1667e58f48f264783f05bdc7f0102cd32d61323bd",
-    "full_checkpoint": "42a6073c6d6661321ec943536bc8fe2c9c0dd7e1507a7f238949844eed6df5c8",
+    "full_checkpoint": "d3028bbf8f9e7609cf4e7c21cff5c1d68c051b5753b31c6db770d5d96010ef21",
     "gap_fill_schedule": "1c31f9868f7884347cc19cf1ff65da43f950b9114941a715bab168246db414a7",
-    "graph_nodes": "5e5c89a0d5e00f759566b5bb025efd46f179e11faf7de4ff663ed2488c5a669b",
+    "graph_nodes": "f3e648d91ef455c3a82877ca21b3786f6734d9ccc5b770d98e4b2d3815ce847a",
     "geography_assignment": "44e7f5f6cd7ceeef85d532c3d46306d03de4f4ee811376e6d29920742746b65c",
     "late_families": "734080f8857f8637913a0e3ae81c59bf28b63dccc8d4bbf42009d0a80e9f1e48",
-    "late_resource_semantics": "4f2918584365b53b95c9a72203307ed2e2737e74108552f227437759a5875871",
+    "late_resource_semantics": "19204055c0b8a76c7c72644ef5c02921859fdefb9720b806a5f7750de90d66b9",
     "late_schedule": "6eb7556639fac5ef67bb1602c769aa01fc2070ecef42be097c6b866a05b030d0",
     "ownership": "5f64f0aac49e2313177564f71876bffc8c81b3ded4df701e70930e60e9c98356",
     "primary_tuples": "6655e37f15befe053f8de2583c216f97098e4c2bde526f315299c2858c97f055",
@@ -375,8 +375,9 @@ EXPECTED_HASHES = {
     # self-employment component step changes acs_transfer's attested bytes.
     # microcosm#1251 (#1239) moves the seed map and protocol again: puf_support
     # gains the passive partnership/S-corp leaf, so the PUF QRF targets change.
-    "seed_map": "7eb4e585cb968366a218a318b2638979421602076aadeb7c0f4d375a458a7921",
-    "seed_protocol": "281c2a54be11e3391d1129db04869277cf206d2461212ac9558c9ccf94b747b3",
+    # microcosm#1259's recipient-share bound in puf_support moves both again.
+    "seed_map": "1167e783854855b1fa0648c304aa93862ae46cfe755236e356f6afc21f99d67e",
+    "seed_protocol": "9ca1707959b409f2581880df6c08d96f6be699605c957971b36545ef155ee2c6",
     "source_manifest": "608c3621b1e4a108e57c8f83d16a184acdb3d05e16a81b895f7f72dbf5d0685c",
     "take_up": "9522ce40f7dea569312dd7a7beb474e5a5afadd2f1e10cb5876534c3ef623d35",
     "tail": "071d418bb49976f4682c320d2ad07097c177de3a645d2524f235e1ff33ac83f9",

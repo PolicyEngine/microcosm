@@ -348,7 +348,8 @@ def test_constants_adapter_equals_live_constants_and_stays_out_of_identities(
             # microcosm#1380's self-employment post-transfer contract, and
             # the source-stage citation rewrites that pin us-data at a commit.
             # microcosm#1251's passive partnership/S-corp leaf in puf_support moves it.
-            "spec_sha256": "b23dbfdb383c573d36ced7f61244d9c43e7a5600a706ef8ada9103d72136afdf",
+            # microcosm#1259's recipient-share bound in puf_support moves it again.
+            "spec_sha256": "623e595678f4c4b0fa7a55504f442214ebe31efe743833ac10d6751aba8a1553",
         },
     }
 
