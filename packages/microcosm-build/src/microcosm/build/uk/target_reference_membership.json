@@ -11527,7 +11527,7 @@
           "matched_fact_count_overall": 14,
           "matched_fact_count_at_or_before_period": 3,
           "resolved_period": 2025,
-          "resolved_value": 43393548211.03646,
+          "resolved_value": 41990496408.172676,
           "resolved_fact_period": "2025",
           "resolved_fact_key": "ledger_aggregate_fact_v2_198ca997d4ddfd2aaca01f99"
         }
@@ -11542,7 +11542,7 @@
           "matched_fact_count_overall": 14,
           "matched_fact_count_at_or_before_period": 3,
           "resolved_period": 2025,
-          "resolved_value": 3023016871.201955,
+          "resolved_value": 2925273094.855295,
           "resolved_fact_period": "2025",
           "resolved_fact_key": "ledger_aggregate_fact_v2_699522ac3c064cf3770cda90"
         }
@@ -11557,7 +11557,7 @@
           "matched_fact_count_overall": 14,
           "matched_fact_count_at_or_before_period": 3,
           "resolved_period": 2025,
-          "resolved_value": 2357688064.2762027,
+          "resolved_value": 2281456490.1010394,
           "resolved_fact_period": "2025",
           "resolved_fact_key": "ledger_aggregate_fact_v2_d5e6ed73de3f7fd5c44dd9ef"
         }

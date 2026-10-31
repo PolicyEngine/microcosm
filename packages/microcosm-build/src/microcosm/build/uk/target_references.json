@@ -1359,7 +1359,37 @@
         "measure_kind": "prepared_column"
       },
       "assertion_policy": "allow_source_projection",
-      "value_operation": "calendar_year_window"
+      "value_operation": "calendar_year_window_scaled_by_ratio",
+      "value_operands": [
+        {
+          "role": "base"
+        },
+        {
+          "role": "numerator",
+          "source_name": "mhclg",
+          "source_measure_id": "total",
+          "layout_groupby_value_id": "e92000001",
+          "period_type": "month",
+          "period_value": "2025-10",
+          "source_concept": [
+            "mhclg.council_taxbase.second_homes",
+            "mhclg.council_taxbase.empty_dwellings"
+          ],
+          "expected_member_count": 2,
+          "complement": true,
+          "label": "England's second homes and empty dwellings, Council Taxbase October 2025, taken off the chargeable stock"
+        },
+        {
+          "role": "denominator",
+          "source_name": "mhclg",
+          "source_measure_id": "total",
+          "layout_groupby_value_id": "e92000001",
+          "period_type": "month",
+          "period_value": "2025-10",
+          "source_concept": "mhclg.council_taxbase.chargeable_dwellings",
+          "label": "England's chargeable dwellings, Council Taxbase October 2025"
+        }
+      ]
     },
     {
       "name": "obr.council_tax_scotland",
@@ -1378,7 +1408,37 @@
         "measure_kind": "prepared_column"
       },
       "assertion_policy": "allow_source_projection",
-      "value_operation": "calendar_year_window"
+      "value_operation": "calendar_year_window_scaled_by_ratio",
+      "value_operands": [
+        {
+          "role": "base"
+        },
+        {
+          "role": "numerator",
+          "source_name": "mhclg",
+          "source_measure_id": "total",
+          "layout_groupby_value_id": "e92000001",
+          "period_type": "month",
+          "period_value": "2025-10",
+          "source_concept": [
+            "mhclg.council_taxbase.second_homes",
+            "mhclg.council_taxbase.empty_dwellings"
+          ],
+          "expected_member_count": 2,
+          "complement": true,
+          "label": "England's second homes and empty dwellings, Council Taxbase October 2025, taken off the chargeable stock"
+        },
+        {
+          "role": "denominator",
+          "source_name": "mhclg",
+          "source_measure_id": "total",
+          "layout_groupby_value_id": "e92000001",
+          "period_type": "month",
+          "period_value": "2025-10",
+          "source_concept": "mhclg.council_taxbase.chargeable_dwellings",
+          "label": "England's chargeable dwellings, Council Taxbase October 2025"
+        }
+      ]
     },
     {
       "name": "obr.council_tax_wales",
@@ -1397,7 +1457,37 @@
         "measure_kind": "prepared_column"
       },
       "assertion_policy": "allow_source_projection",
-      "value_operation": "calendar_year_window"
+      "value_operation": "calendar_year_window_scaled_by_ratio",
+      "value_operands": [
+        {
+          "role": "base"
+        },
+        {
+          "role": "numerator",
+          "source_name": "mhclg",
+          "source_measure_id": "total",
+          "layout_groupby_value_id": "e92000001",
+          "period_type": "month",
+          "period_value": "2025-10",
+          "source_concept": [
+            "mhclg.council_taxbase.second_homes",
+            "mhclg.council_taxbase.empty_dwellings"
+          ],
+          "expected_member_count": 2,
+          "complement": true,
+          "label": "England's second homes and empty dwellings, Council Taxbase October 2025, taken off the chargeable stock"
+        },
+        {
+          "role": "denominator",
+          "source_name": "mhclg",
+          "source_measure_id": "total",
+          "layout_groupby_value_id": "e92000001",
+          "period_type": "month",
+          "period_value": "2025-10",
+          "source_concept": "mhclg.council_taxbase.chargeable_dwellings",
+          "label": "England's chargeable dwellings, Council Taxbase October 2025"
+        }
+      ]
     },
     {
       "name": "obr.domestic_rates",

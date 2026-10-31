@@ -13,11 +13,24 @@ def test_take_up_anchor_missing_source_column_fails_loud() -> None:
 
 
 def test_take_up_anchors_or_over_persons_and_stage_writes_outputs() -> None:
+    from microcosm.build.uk_runtime.frs_take_up import take_up_signal_outputs
+
     frame = _frame()
-    transformed = UKFRSTakeUpStageTransform(
+    stage = UKFRSTakeUpStageTransform(
         contract=_Contract(), stage=_take_up_stage(), population_policy=_POLICY
-    )(frame)
+    )
+    transformed = stage(frame)
     benunit = transformed.table("benunit")
+    # The receipt carries the take-up flags the stage draws, for its stage-time
+    # signal gate (microcosm#1095).
+    evidence = stage.checkpoint_metadata()["evidence"]
+    assert evidence["stage"] == "frs_take_up"
+    assert [row["output"] for row in evidence["take_up_signal"]["flags"]] == [
+        f"{entity}.{output}"
+        for entity, output, _ in take_up_signal_outputs(
+            UKFRSTakeUpStageTransform.output_columns()
+        )
+    ]
 
     anchors = aggregate_person_reported_to_benunit(
         frame.table("person"), frame.table("benunit")

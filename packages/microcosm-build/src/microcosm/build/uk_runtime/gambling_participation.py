@@ -667,7 +667,7 @@ def top_up_gambling_participation(
         drawn = np.asarray(keys[key], dtype=float)
         donor_stakes = np.asarray(donor_keys[key], dtype=float)
         played = donor_stakes > 0
-        # Fewer than ten donor households on a side only flags: the receipt
+        # Fewer than three donor households on a side only flags: the receipt
         # bands the fits' donor support and withholds what rests on them, and
         # a small-cell rule never stops a build (María's ruling of 2026-10-26).
         # The fit itself needs two on each side.

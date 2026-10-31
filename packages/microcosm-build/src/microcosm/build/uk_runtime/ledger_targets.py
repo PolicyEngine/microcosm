@@ -29,6 +29,7 @@ from microcosm.build.ledger_targets import (
     _source_name,
     compile_ledger_target_references,
     reference_fact_selectors,
+    restamp_reference_period,
 )
 from microcosm.build.target_materialization import (
     ENGINE_PERIOD_COLUMN_PREFIX,
@@ -490,9 +491,7 @@ def compile_uk_target_registry(
     compiled = []
     unsupported: list[dict[str, str]] = []
     for reference in spec.target_references:
-        restamped = LedgerTargetReference(
-            **{**reference.__dict__, "period": target_period}
-        )
+        restamped = restamp_reference_period(reference, target_period)
         candidate_facts = _candidate_facts_for_reference(
             fact_rows, restamped, fact_indices_by_source=fact_indices_by_source
         )
@@ -1428,9 +1427,7 @@ def compile_uk_local_target_registry(
     compiled = []
     unsupported: list[dict[str, str]] = []
     for reference in spec.local_target_references:
-        restamped = LedgerTargetReference(
-            **{**reference.__dict__, "period": target_period}
-        )
+        restamped = restamp_reference_period(reference, target_period)
         _assert_local_reference_in_crosswalk(restamped, rosters)
         candidate_facts = _candidate_facts_for_reference(
             _local_candidate_fact_pool(

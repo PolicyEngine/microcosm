@@ -517,8 +517,9 @@ TARGET_PREFIX_GEOGRAPHY_PINS: tuple[tuple[str, str], ...] = (
     # construction (maintenance_loan_in_england_system,
     # parents_learning_allowance_eligible and adult_dependants_grant_eligible
     # all require country == ENGLAND). slc.repayments.* stays with the
-    # substring rule: its england_* ids name their nation, and devolved_total
-    # needs a per-nation redesign before it can activate.
+    # substring rule: its england_* ids name their nation, and the Welsh,
+    # Scottish and Northern Irish rows declare their nation's geography in
+    # their selectors (microcosm#1095 R4).
     ("slc.support.", "england"),
     ("dfe.", "england"),
     # ORR rail industry finance is Great Britain (K03000001): NI Railways sits

@@ -511,6 +511,22 @@ def test_no_spine_column_writes_an_input_signed_at_the_engine_default() -> None:
     )
     written = {column for dtypes in schema["dtypes"].values() for column in dtypes}
     assert "self_employment_income" in written
+    # A stage's declared outputs and rewrites count too: the H2 fixture holds
+    # only the root sources' columns, and a later stage may write an input
+    # (the review of microcosm#1422).
+    stages = json.loads(
+        (
+            paths_for("microcosm-build").package
+            / "src/microcosm/build/uk/source_stages.json"
+        ).read_text()
+    )["stages"]
+    written |= {
+        column
+        for stage in stages
+        for key in ("outputs", "rewrites")
+        for column in stage.get(key, ())
+    }
+    assert "would_claim_tfc" in written
     assert not written & set(UK_ENGINE_DEFAULT_INPUTS)
 
 

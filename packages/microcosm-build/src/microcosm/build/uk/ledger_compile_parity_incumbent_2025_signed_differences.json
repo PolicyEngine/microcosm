@@ -334,7 +334,7 @@
    "ledger_value": 535209.0,
    "name": "dfe.funded_childcare.universal_nursery_children_age_3",
    "period": 2025,
-   "reason": "Requested by María on 2026-10-21 for the £100k childcare costing fixes (microcosm#1278, #1095): one of the five DfE funded-childcare counts by single age from the January 2025 census, England (working parent registrations at 9 to 11 months and at ages 1, 2 and 3, and universal nursery registrations at age 3), bound beside the working parent 2 to 4, early learning and universal-only rows and, with them, measured at the spring term by the age on 31 December (María's ruling of 2026-10-22). The age-4 cells are signed out, as the bound rows fix them. The incumbent binds no DfE row, so this row has no fixture counterpart."
+   "reason": "Requested by María on 2026-10-21 for the £100k childcare costing fixes (microcosm#1278, #1095): one of the five DfE funded-childcare counts by single age from the January 2026 census, England (working parent registrations at 9 to 11 months and at ages 1, 2 and 3, and universal nursery registrations at age 3), bound beside the working parent 2 to 4, early learning and universal-only rows and, with them, measured at the spring term by the age on 31 December (María's ruling of 2026-10-22), the model year 2025's spring term being January 2026 (microcosm#1095 D5). The age-4 cells are signed out, as the bound rows fix them. The incumbent binds no DfE row, so this row has no fixture counterpart."
   },
   {
    "kind": "ledger_only",
@@ -355,28 +355,28 @@
    "ledger_value": 30679.0,
    "name": "dfe.funded_childcare.working_parent_children_9_to_11_months",
    "period": 2025,
-   "reason": "Requested by María on 2026-10-21 for the £100k childcare costing fixes (microcosm#1278, #1095): one of the five DfE funded-childcare counts by single age from the January 2025 census, England (working parent registrations at 9 to 11 months and at ages 1, 2 and 3, and universal nursery registrations at age 3), bound beside the working parent 2 to 4, early learning and universal-only rows and, with them, measured at the spring term by the age on 31 December (María's ruling of 2026-10-22). The age-4 cells are signed out, as the bound rows fix them. The incumbent binds no DfE row, so this row has no fixture counterpart."
+   "reason": "Requested by María on 2026-10-21 for the £100k childcare costing fixes (microcosm#1278, #1095): one of the five DfE funded-childcare counts by single age from the January 2026 census, England (working parent registrations at 9 to 11 months and at ages 1, 2 and 3, and universal nursery registrations at age 3), bound beside the working parent 2 to 4, early learning and universal-only rows and, with them, measured at the spring term by the age on 31 December (María's ruling of 2026-10-22), the model year 2025's spring term being January 2026 (microcosm#1095 D5). The age-4 cells are signed out, as the bound rows fix them. The incumbent binds no DfE row, so this row has no fixture counterpart."
   },
   {
    "kind": "ledger_only",
    "ledger_value": 210825.0,
    "name": "dfe.funded_childcare.working_parent_children_age_1",
    "period": 2025,
-   "reason": "Requested by María on 2026-10-21 for the £100k childcare costing fixes (microcosm#1278, #1095): one of the five DfE funded-childcare counts by single age from the January 2025 census, England (working parent registrations at 9 to 11 months and at ages 1, 2 and 3, and universal nursery registrations at age 3), bound beside the working parent 2 to 4, early learning and universal-only rows and, with them, measured at the spring term by the age on 31 December (María's ruling of 2026-10-22). The age-4 cells are signed out, as the bound rows fix them. The incumbent binds no DfE row, so this row has no fixture counterpart."
+   "reason": "Requested by María on 2026-10-21 for the £100k childcare costing fixes (microcosm#1278, #1095): one of the five DfE funded-childcare counts by single age from the January 2026 census, England (working parent registrations at 9 to 11 months and at ages 1, 2 and 3, and universal nursery registrations at age 3), bound beside the working parent 2 to 4, early learning and universal-only rows and, with them, measured at the spring term by the age on 31 December (María's ruling of 2026-10-22), the model year 2025's spring term being January 2026 (microcosm#1095 D5). The age-4 cells are signed out, as the bound rows fix them. The incumbent binds no DfE row, so this row has no fixture counterpart."
   },
   {
    "kind": "ledger_only",
    "ledger_value": 260238.0,
    "name": "dfe.funded_childcare.working_parent_children_age_2",
    "period": 2025,
-   "reason": "Requested by María on 2026-10-21 for the £100k childcare costing fixes (microcosm#1278, #1095): one of the five DfE funded-childcare counts by single age from the January 2025 census, England (working parent registrations at 9 to 11 months and at ages 1, 2 and 3, and universal nursery registrations at age 3), bound beside the working parent 2 to 4, early learning and universal-only rows and, with them, measured at the spring term by the age on 31 December (María's ruling of 2026-10-22). The age-4 cells are signed out, as the bound rows fix them. The incumbent binds no DfE row, so this row has no fixture counterpart."
+   "reason": "Requested by María on 2026-10-21 for the £100k childcare costing fixes (microcosm#1278, #1095): one of the five DfE funded-childcare counts by single age from the January 2026 census, England (working parent registrations at 9 to 11 months and at ages 1, 2 and 3, and universal nursery registrations at age 3), bound beside the working parent 2 to 4, early learning and universal-only rows and, with them, measured at the spring term by the age on 31 December (María's ruling of 2026-10-22), the model year 2025's spring term being January 2026 (microcosm#1095 D5). The age-4 cells are signed out, as the bound rows fix them. The incumbent binds no DfE row, so this row has no fixture counterpart."
   },
   {
    "kind": "ledger_only",
    "ledger_value": 278490.0,
    "name": "dfe.funded_childcare.working_parent_children_age_3",
    "period": 2025,
-   "reason": "Requested by María on 2026-10-21 for the £100k childcare costing fixes (microcosm#1278, #1095): one of the five DfE funded-childcare counts by single age from the January 2025 census, England (working parent registrations at 9 to 11 months and at ages 1, 2 and 3, and universal nursery registrations at age 3), bound beside the working parent 2 to 4, early learning and universal-only rows and, with them, measured at the spring term by the age on 31 December (María's ruling of 2026-10-22). The age-4 cells are signed out, as the bound rows fix them. The incumbent binds no DfE row, so this row has no fixture counterpart."
+   "reason": "Requested by María on 2026-10-21 for the £100k childcare costing fixes (microcosm#1278, #1095): one of the five DfE funded-childcare counts by single age from the January 2026 census, England (working parent registrations at 9 to 11 months and at ages 1, 2 and 3, and universal nursery registrations at age 3), bound beside the working parent 2 to 4, early learning and universal-only rows and, with them, measured at the spring term by the age on 31 December (María's ruling of 2026-10-22), the model year 2025's spring term being January 2026 (microcosm#1095 D5). The age-4 cells are signed out, as the bound rows fix them. The incumbent binds no DfE row, so this row has no fixture counterpart."
   },
   {
    "kind": "ledger_only",
@@ -9029,12 +9029,12 @@
    "ledger_value": 47197225993.12901,
    "name": "obr.council_tax",
    "period": 2025,
-   "reason": "Series and period basis (microcosm#1095, María's ruling of 2026-10-09): ours binds OBR table 4.1 row 15, the council tax receipts of England, Scotland and Wales, over Great Britain's households, at the calendar-2025 window (three twelfths of FY2024-25 and nine twelfths of FY2025-26, María's rule of 2026-09-22, PolicyEngine/chronicle#280 lane); the frozen incumbent fixture holds the FY2025-26 value of row 19 alone, which adds Northern Ireland domestic rates, the council tax accruals adjustment and the high-value council tax surcharge."
+   "reason": "Series and period basis (microcosm#1095, María's ruling of 2026-10-09): ours binds OBR table 4.1 row 15, the council tax receipts of England, Scotland and Wales, over Great Britain's households, at the calendar-2025 window (three twelfths of FY2024-25 and nine twelfths of FY2025-26, María's rule of 2026-09-22, PolicyEngine/chronicle#280 lane), scaled to main residences by England's chargeable dwellings less its second homes and empty dwellings, over its chargeable dwellings (MHCLG Council Taxbase, October 2025; María's ruling of 2026-10-29, microcosm#1095 D14f); the frozen incumbent fixture holds the FY2025-26 value of row 19 alone, which adds Northern Ireland domestic rates, the council tax accruals adjustment and the high-value council tax surcharge."
   },
   {
    "fixture_value": 44117237614.71528,
    "kind": "calibration_drift",
-   "ledger_value": 43393548211.03646,
+   "ledger_value": 41990496408.172676,
    "name": "obr.council_tax_england",
    "period": 2025,
    "reason": "Period basis (PolicyEngine/chronicle#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR March 2026 line at the calendar-2025 window, three twelfths of FY2024-25 and nine twelfths of FY2025-26, on the same series; the frozen incumbent fixture holds the FY2025-26 value alone."
@@ -9042,7 +9042,7 @@
   {
    "fixture_value": 3051227494.93594,
    "kind": "calibration_drift",
-   "ledger_value": 3023016871.201955,
+   "ledger_value": 2925273094.855295,
    "name": "obr.council_tax_scotland",
    "period": 2025,
    "reason": "Period basis (PolicyEngine/chronicle#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR March 2026 line at the calendar-2025 window, three twelfths of FY2024-25 and nine twelfths of FY2025-26, on the same series; the frozen incumbent fixture holds the FY2025-26 value alone."
@@ -9050,7 +9050,7 @@
   {
    "fixture_value": 2400769752.36827,
    "kind": "calibration_drift",
-   "ledger_value": 2357688064.2762027,
+   "ledger_value": 2281456490.1010394,
    "name": "obr.council_tax_wales",
    "period": 2025,
    "reason": "Period basis (PolicyEngine/chronicle#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR March 2026 line at the calendar-2025 window, three twelfths of FY2024-25 and nine twelfths of FY2025-26, on the same series; the frozen incumbent fixture holds the FY2025-26 value alone."
