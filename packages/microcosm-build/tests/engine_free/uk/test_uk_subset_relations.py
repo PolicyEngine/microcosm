@@ -224,8 +224,9 @@ def test_every_committed_subset_names_its_part_and_whole():
     # England's single adult discount within its households (microcosm#953),
     # its billing-authority cells within theirs (microcosm#1095), and ITL
     # Table 2.2's taxpayers of State Pension age and aged 65 and over within
-    # all taxpayers (microcosm#1069).
-    assert len(relations) == 21
+    # all taxpayers (microcosm#1069), and the taxpayers with pension income
+    # by area within all taxpayers (microcosm#1418).
+    assert len(relations) == 22
     for relation in relations:
         assert {relation["part"], relation["whole"]} == set(relation["targets"])
         assert 0.0 <= relation.get("max_excess", 0.0) <= 0.01

@@ -267,6 +267,35 @@ def write_toy_brma_area_layer(directory: Path) -> dict[str, Path]:
     return {BRMA_AREA_LAYER_SOURCE: path}
 
 
+#: The toy output areas in the Rural Fuel Duty Relief scheme (microcosm#1418).
+TOY_RFDR_AREAS = {
+    "uk_ew_output_area_2021": ("E00000002",),
+    "uk_scotland_output_area_2022": ("S00000001",),
+}
+
+
+def toy_rfdr_area_layer() -> dict:
+    """The microcosm#1418 RFDR area layer over the toy supports."""
+    from microcosm.build.uk_runtime import rfdr_area_layer as ral
+
+    return {
+        "schema_version": ral.SCHEMA_VERSION,
+        "kind": ral.KIND,
+        "method": ral.METHOD_VERSION,
+        "areas": {system: list(codes) for system, codes in TOY_RFDR_AREAS.items()},
+    }
+
+
+def write_toy_rfdr_area_layer(directory: Path) -> dict[str, Path]:
+    """Write the toy layer as the graph source the area-RFDR node reads."""
+    from microcosm.build.uk_runtime.rfdr_area_layer import RFDR_AREA_LAYER_SOURCE
+
+    directory.mkdir(parents=True, exist_ok=True)
+    path = directory / "toy-rfdr-area-layer.json"
+    path.write_text(json.dumps(toy_rfdr_area_layer()), encoding="utf-8")
+    return {RFDR_AREA_LAYER_SOURCE: path}
+
+
 #: Toy weekly rent levels by BRMA; each category scales its BRMA's level.
 TOY_BRMA_RENT_LEVELS = {
     "CENTRAL_LONDON": 400.0,

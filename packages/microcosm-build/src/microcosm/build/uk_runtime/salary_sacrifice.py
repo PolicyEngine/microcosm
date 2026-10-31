@@ -764,7 +764,7 @@ def impute_salary_sacrifice(
     person["employment_income"] = employment_income
     person[SALSAC_PRE_CONVERSION_PAY_COLUMN] = pre_conversion_pay
     # Weighted aggregates only, banded on distinct source households; a figure
-    # one to nine of them carry is "<10" (UKDS disclosure control).
+    # one or two of them carry is "<3" (UKDS disclosure control).
 
     def bonus_sources(mask: np.ndarray) -> int:
         return distinct_count(source_ids, mask, person_weights)

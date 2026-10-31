@@ -1266,3 +1266,25 @@ def test_a_declared_value_must_be_finite_and_non_negative() -> None:
                 area_ids=("A",),
                 declared_value=value,
             )
+
+
+def test_a_geography_pin_cannot_override_the_selector_s_declared_geography() -> None:
+    from types import SimpleNamespace
+
+    from microcosm.build.target_reference_authoring import _target_selector
+
+    config = SimpleNamespace(selector_pins_by_target_id={})
+    target = {
+        "target_id": "x.total",
+        "ledger_selector": {"source_name": "x", "geography_id": "W92000004"},
+    }
+    agreeing = {"geography_level": "country", "geography_id": "W92000004"}
+    assert _target_selector(target, agreeing, config) == {
+        "source_name": "x",
+        "geography_id": "W92000004",
+        "geography_level": "country",
+    }
+    with pytest.raises(ValueError, match="declared geography wins"):
+        _target_selector(
+            target, {"geography_level": "country", "geography_id": "K03000001"}, config
+        )

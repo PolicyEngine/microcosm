@@ -104,7 +104,6 @@ from microcosm.build.uk_runtime.frs_council_tax import UKFRSCouncilTaxStageTrans
 from microcosm.build.uk_runtime.frs_disability import UKFRSDisabilityStageTransform
 from microcosm.build.uk_runtime.frs_education import UKFRSEducationStageTransform
 from microcosm.build.uk_runtime.frs_education_grants import (
-    FRS_EDUCATION_GRANT_REWRITES,
     UKFRSEducationGrantSplitStageTransform,
 )
 from microcosm.build.uk_runtime.frs_employment import UKFRSEmploymentStageTransform
@@ -139,6 +138,9 @@ from microcosm.build.uk_runtime.graph_evidence import (
 )
 from microcosm.build.uk_runtime.high_value_home_support import (
     UKHighValueHomeSupportStageTransform,
+)
+from microcosm.build.uk_runtime.isa_subscriptions import (
+    UKISASubscriptionsStageTransform,
 )
 from microcosm.build.uk_runtime.lcfs_consumption import (
     UKLCFSConsumptionStageTransform,
@@ -358,8 +360,8 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--was-person-tab",
         type=Path,
         help=(
-            "Caller-supplied private WAS round-8 person tab for was_lisa (with "
-            "--was-tab)."
+            "Caller-supplied private WAS round-8 person tab for was_lisa and "
+            "isa_subscriptions (with --was-tab)."
         ),
     )
     parser.add_argument(
@@ -845,6 +847,15 @@ def _declared_seeds(stages) -> dict[str, dict[str, int]]:
                     stage_seeds[str(operation.parameters["salt"])] = seed
                 elif operation.kind == "top_up_to_stock":
                     stage_seeds[str(operation.parameters["salt"])] = seed
+                elif operation.kind in (
+                    "split_household_isa_balances",
+                    "allocate_isa_subscribers",
+                    "draw_isa_subscription_amounts",
+                    "draw_lifetime_isa_payments",
+                ):
+                    # Identity-keyed draws: the seed is declared under the salt
+                    # it is hashed with (microcosm#1415).
+                    stage_seeds[str(operation.parameters["salt"])] = seed
         if stage_seeds:
             declared[stage.stage] = stage_seeds
     return declared
@@ -889,6 +900,7 @@ def _build_sidecar(
             {
                 "stage": record.stage,
                 "produced": list(record.produced),
+                "rewrote": list(record.rewrote),
                 "nonzero_share": dict(record.nonzero_share),
                 "seconds": record.seconds,
             }
@@ -975,7 +987,9 @@ def _graph_stage_records(
         )
         output_receipt = manifest.nodes[output_node]
         shares: dict[str, float] = {}
-        for column in stage.outputs:
+        # A declared rewrite is an owned cell of its node, as an output is, so
+        # its share reads the node's artifact too (microcosm#721).
+        for column in (*stage.outputs, *stage.rewrites):
             matches = [
                 (coordinate, key)
                 for coordinate, key in output_receipt.artifacts.items()
@@ -987,7 +1001,8 @@ def _graph_stage_records(
             if len(matches) != 1:
                 raise RuntimeError(
                     f"graph stage {stage.stage!r} exposes {len(matches)} artifacts "
-                    f"for declared output {column!r}."
+                    f"for declared {'rewrite' if column in stage.rewrites else 'output'} "
+                    f"{column!r}."
                 )
             shares[column] = _series_nonzero_share(store.load_column(matches[0][1]))
         execution_node = "create_uk_frs" if stage.stage == "frs_spine" else stage.stage
@@ -995,6 +1010,7 @@ def _graph_stage_records(
             StageRecord(
                 stage=stage.stage,
                 produced=stage.outputs,
+                rewrote=stage.rewrites,
                 donor_survey=stage.survey,
                 nonzero_share=shares,
                 seconds=manifest.nodes[execution_node].wall_time,
@@ -1546,7 +1562,12 @@ def prepare_uk_spine_execution(
         raise ValueError(
             "--was-tab is required when the was_wealth stage is scheduled."
         )
-    if args.synthetic_fixture_dir is None and "was_lisa" in stage_names:
+    for was_person_stage in ("was_lisa", "isa_subscriptions"):
+        if (
+            args.synthetic_fixture_dir is not None
+            or was_person_stage not in stage_names
+        ):
+            continue
         missing_was = [
             flag
             for flag, value in (
@@ -1557,7 +1578,7 @@ def prepare_uk_spine_execution(
         ]
         if missing_was:
             raise ValueError(
-                "was_lisa requires caller-supplied private inputs: "
+                f"{was_person_stage} requires caller-supplied private inputs: "
                 f"{', '.join(missing_was)}."
             )
     if args.synthetic_fixture_dir is None and "nts_bus_travel" in stage_names:
@@ -1688,6 +1709,15 @@ def prepare_uk_spine_execution(
         implementations["was_lisa"] = _GraphSourceTransform(
             lambda sources: UKWASLISAStageTransform(
                 stage=stages_by_name["was_lisa"],
+                engine=engine,
+                was_tab_path=sources["was"],
+                was_person_tab_path=sources["was_person"],
+            )
+        )
+    if "isa_subscriptions" in stage_names:
+        implementations["isa_subscriptions"] = _GraphSourceTransform(
+            lambda sources: UKISASubscriptionsStageTransform(
+                stage=stages_by_name["isa_subscriptions"],
                 engine=engine,
                 was_tab_path=sources["was"],
                 was_person_tab_path=sources["was_person"],
@@ -1930,9 +1960,10 @@ def prepare_uk_spine_execution(
         graph_sources = _synthetic_graph_sources(args.synthetic_fixture_dir)
     else:
         graph_sources = {"frs": args.frs_raw_dir}
-        if "was_wealth" in stage_names or "was_lisa" in stage_names:
+        was_person_stages = {"was_lisa", "isa_subscriptions"} & set(stage_names)
+        if "was_wealth" in stage_names or was_person_stages:
             graph_sources["was"] = args.was_tab
-        if "was_lisa" in stage_names:
+        if was_person_stages:
             graph_sources["was_person"] = args.was_person_tab
         if "nts_bus_travel" in stage_names:
             graph_sources["nts_household"] = args.nts_household_tab
@@ -2332,8 +2363,9 @@ def _main(argv: list[str] | None = None) -> int:
         if args.emit_nonzero_shares is not None:
             final_columns = list(
                 dict.fromkeys(
-                    [column for record in records for column in record.produced]
-                    + list(FRS_EDUCATION_GRANT_REWRITES)
+                    column
+                    for record in records
+                    for column in (*record.produced, *record.rewrote)
                 )
             )
             atomic_write_json(

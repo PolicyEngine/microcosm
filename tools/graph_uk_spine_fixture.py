@@ -120,6 +120,9 @@ from microcosm.build.uk_runtime.hmrc_property_rental import (
     HMRCPropertyRentalBand,
     HMRCPropertyRentalFacts,
 )
+from microcosm.build.uk_runtime.isa_subscriptions import (
+    UKISASubscriptionsStageTransform,
+)
 from microcosm.build.uk_runtime.lcfs_consumption import (
     BUS_FARE_LCFS_CODES,
     UKLCFSConsumptionStageTransform,
@@ -205,7 +208,7 @@ _SPI_SAMPLE_FRACTION = _ROOT_HOUSEHOLDS / 10_000
 _SPI_DONOR_SAMPLE_SIZE = 64
 #: The packaged FRS spine roster the fixture exercises (manifest minus the
 #: certified-pair exclusions); moves whenever a spine stage is added.
-UK_FIXTURE_STAGE_COUNT = 49
+UK_FIXTURE_STAGE_COUNT = 50
 _QRF_ESTIMATORS = 4
 
 # These are the complete object-string surface observed in the unchanged
@@ -834,13 +837,28 @@ def _was_person_donor() -> pd.DataFrame:
     financial wealth, which WAS counts them in), one banded value, one
     ONS-imputed holder, one ONS-imputed non-holder, one self-employment
     sentinel and one holder in an age band the product rules exclude (recoded
-    by the stage's credibility rule).
+    by the stage's credibility rule). The household tab's cash and
+    stocks-and-shares ISA totals are split across its adults in a few patterns
+    (one holder, an even split, a lead holder), summing exactly to the
+    aggregates, for the ISA subscriptions stage (microcosm#1415).
     """
 
     rows: list[dict[str, float]] = []
     for household in range(_DONOR_ROWS):
         adults = 1 + household % 3
         children = household % 3
+        cash_total = 7.0 + household
+        stocks_total = 5.0 + household
+        cash_shares = {
+            1: (1.0,),
+            2: (0.5, 0.5) if household % 2 == 0 else (1.0, 0.0),
+            3: (0.5, 0.25, 0.25) if household % 4 == 0 else (1.0, 0.0, 0.0),
+        }[adults]
+        stocks_shares = {
+            1: (1.0,),
+            2: (0.0, 1.0) if household % 2 == 0 else (0.5, 0.5),
+            3: (0.25, 0.75, 0.0) if household % 4 == 0 else (0.0, 0.0, 1.0),
+        }[adults]
         for person in range(adults + children):
             adult = person < adults
             band = (
@@ -881,6 +899,10 @@ def _was_person_donor() -> pd.DataFrame:
                     "FLISABR8": 1.0 if banded else -9.0,
                     "flisabr8_iflag": 0.0,
                     "DVFLISAvR8": value,
+                    "DVCISAvR8": cash_total * cash_shares[person] if adult else 0.0,
+                    "DVIISAvR8": (
+                        stocks_total * stocks_shares[person] if adult else 0.0
+                    ),
                 }
             )
     return pd.DataFrame(rows)
@@ -2117,6 +2139,12 @@ def _build_implementations(
         ),
         "was_lisa": UKWASLISAStageTransform(
             stage=stages["was_lisa"],
+            engine=engine,
+            donor_household=was,
+            donor_person=was_person,
+        ),
+        "isa_subscriptions": UKISASubscriptionsStageTransform(
+            stage=stages["isa_subscriptions"],
             engine=engine,
             donor_household=was,
             donor_person=was_person,

@@ -39,6 +39,7 @@ from microcosm.build.uk_runtime.frs_hmrc_source import (
 )
 from microcosm.build.uk_runtime.frs_spine import (
     FRS_LANDLORD_CARRIER_COLUMN,
+    ISA_INTEREST_COLUMN,
     WEEKS_IN_YEAR,
     uc_gainful_self_employment,
 )
@@ -52,6 +53,8 @@ from microcosm.build.uk_runtime.pension_coherence import (
     twin_rate_employer_contributions,
 )
 from microcosm.build.uk_runtime.receipt_counts import (
+    UK_DISCLOSURE_FLOOR,
+    UK_WITHHELD,
     distinct_count,
     extreme_count,
     rounded_count,
@@ -114,6 +117,9 @@ SPI_DONOR_DOCUMENTATION_URL = (
 )
 SPI_DONOR_FIT_NAME = "uk_spi_2022_23_income"
 FRS_ONLY_FIT_NAME = "uk_frs_only_spi_fill"
+#: The stage-2 draw salts keep the name each target had under the legacy gross
+#: layout, so moving to the additive contract redraws nothing (microcosm#1360).
+_STAGE2_SALT_NAMES = {ISA_INTEREST_COLUMN: "tax_free_savings_income"}
 DEFAULT_SPI_DONOR_SAMPLE_SIZE = 100_000
 # Recipient guard matching the existing constructed SPI age support below.
 # SN 9422 Annex A labels the youngest band "Under 25"; it does not establish
@@ -196,7 +202,7 @@ SPI_RECIPIENT_UNEARNED_INCOME_FLOOR_GBP = 1_000.0
 SPI_RECIPIENT_INCOME_RULE = (
     "drawn when the twin reports pay, a trade (self-employment income or a "
     "self-employed main job) or a pension, or more than the floor of taxable "
-    "interest (savings interest less the tax-free part), dividends, property "
+    "interest (savings interest outside ISAs), dividends, property "
     "and miscellaneous income together, and always for a reserved band "
     "carrier; otherwise the twin has no tax record for the tape to condition "
     "on and the copy keeps the twin's values at stage 1 and stage 2; a twin "
@@ -212,9 +218,11 @@ SPI_DONOR_INCOME_YEAR = 2022
 #: uprating_indices.yaml``). Savings interest's own index is ONS household
 #: interest income, x2.27 from 2022 to 2024 as rates rose, where the
 #: projection's GDP per head gives x1.09. The projection's index applies from
-#: the survey year on, where the engine runs it and the SPI band targets follow
+#: the survey year on, where the engine runs it. The SPI band targets followed
 #: it (``hmrc_uprating.UK_SPI_SAVINGS_INTEREST_INDEX_CONCEPT``, uk-data#541,
-#: microcosm#1095). The engine lockstep test holds both statements.
+#: microcosm#1095) until microcosm#1418 moved them to the OBR's savings income
+#: forecast, so the calibration closes the gap between the two. The engine
+#: lockstep test holds both indices to the engine's.
 SPI_HISTORY_INDEX_DIFFERS_FROM_PROJECTION = {
     "savings_interest_income": "gov.economic_assumptions.indices.obr.per_capita.gdp",
 }
@@ -926,30 +934,36 @@ def _floor_employment_pay_at_minimum_wage(
     eligible_weight = float(weights[eligible].sum())
     floored_weight = float(weights[floored].sum())
     added = float((uplift * weights).sum())
-    # Weighted figures over one to nine source households are "<10"; a count
-    # of support is rounded (receipt_counts), and no row's value is given.
+    # Weighted figures over one or two source households are withheld ("<3");
+    # a count of support is rounded (receipt_counts), and no row's value is
+    # given.
     # The floored weight beside the eligible weight gives back the unfloored
     # side, and so do the share times the eligible weight and the amount added
     # over the mean uplift, so the floored weight, share and amount are given
-    # only where neither side rests on one to nine sources, as the Carer's
+    # only where neither side rests on one or two sources, as the Carer's
     # Allowance take-up receipt gives its share.
-    either_side_small = 0 < min(floored_sources, unfloored_sources) < 10
+    either_side_small = (
+        0 < min(floored_sources, unfloored_sources) < UK_DISCLOSURE_FLOOR
+    )
 
     def beside_eligible(value: float) -> float | str:
         if either_side_small:
-            return "<10"
+            return UK_WITHHELD
         return small_cell_share(value, floored_sources)
 
     def below_share(
         below: np.ndarray, among: np.ndarray, frame_sources, frame_weights
     ) -> float | str:
         # A share is given only where neither the rows below nor the rest rest
-        # on one to nine source households: a share of one or of nought over a
+        # on one or two source households: a share of one or of nought over a
         # few households describes each of them.
         below_count = distinct_count(frame_sources, among & below, frame_weights)
         rest_count = distinct_count(frame_sources, among & ~below, frame_weights)
-        if 0 < below_count < 10 or 0 < rest_count < 10:
-            return "<10"
+        if (
+            0 < below_count < UK_DISCLOSURE_FLOOR
+            or 0 < rest_count < UK_DISCLOSURE_FLOOR
+        ):
+            return UK_WITHHELD
         total = float(frame_weights[among].sum())
         return float(frame_weights[among & below].sum()) / total if total else 0.0
 
@@ -958,7 +972,9 @@ def _floor_employment_pay_at_minimum_wage(
     # The rows the floor lifts out from under the minimum wage are the
     # difference of the two shares, so both are withheld beside a small one.
     lifted_out = eligible & below_before & ~below_after
-    lifted_small = 0 < distinct_count(sources, lifted_out, weights) < 10
+    lifted_small = (
+        0 < distinct_count(sources, lifted_out, weights) < UK_DISCLOSURE_FLOOR
+    )
     reference, reference_hours, reference_pay, reference_eligible = employee_rows(
         reference_rows
     )
@@ -980,12 +996,12 @@ def _floor_employment_pay_at_minimum_wage(
         "spi_drawn_employees": {
             "source_households": rounded_count(eligible_sources),
             "below_minimum_wage_share_before": (
-                "<10"
+                UK_WITHHELD
                 if lifted_small
                 else below_share(below_before, eligible, sources, weights)
             ),
             "below_minimum_wage_share_after": (
-                "<10"
+                UK_WITHHELD
                 if lifted_small
                 else below_share(below_after, eligible, sources, weights)
             ),
@@ -1579,8 +1595,15 @@ def impute_uk_spi_income_support(
         guard_receipts.append(receipt)
 
     income_predictors = FRS_ONLY_SPI_FILL_INCOME_PREDICTOR_COLUMNS
+    # Training rows condition on gross interest, ISA interest included, as
+    # under the legacy layout, so the fit is unchanged by the additive
+    # contract (microcosm#1360); recipients condition on the taxable draw.
+    training_person = person.loc[training_people].copy()
+    training_person["savings_interest_income"] = pd.to_numeric(
+        training_person["savings_interest_income"], errors="coerce"
+    ) + pd.to_numeric(training_person[ISA_INTEREST_COLUMN], errors="coerce")
     train_predictors = _person_predictors(
-        person.loc[training_people],
+        training_person,
         household,
         income_predictors=income_predictors,
     )
@@ -1650,13 +1673,19 @@ def impute_uk_spi_income_support(
         encoded_target,
         quantiles={
             target: stable_identity_uniforms(
-                stage2_keys, seed=seed + 1, salt=f"{FRS_ONLY_FIT_NAME}:{target}"
+                stage2_keys,
+                seed=seed + 1,
+                salt=f"{FRS_ONLY_FIT_NAME}:{_STAGE2_SALT_NAMES.get(target, target)}",
             )
             for target in stage2_outputs
         },
         sign_uniforms={
             target: stable_identity_uniforms(
-                stage2_keys, seed=seed + 1, salt=f"{FRS_ONLY_FIT_NAME}:{target}:sign"
+                stage2_keys,
+                seed=seed + 1,
+                salt=(
+                    f"{FRS_ONLY_FIT_NAME}:{_STAGE2_SALT_NAMES.get(target, target)}:sign"
+                ),
             )
             for target in stage2_outputs
         },
@@ -1693,10 +1722,9 @@ def impute_uk_spi_income_support(
         )
         guard_receipts.append(receipt)
 
-    tax_free = person.loc[spi_people, "tax_free_savings_income"].to_numpy(
-        dtype=np.float64
-    )
-    person.loc[spi_people, "savings_interest_income"] = taxable_interest_draw + tax_free
+    # Non-ISA interest is the stage-1 taxable draw; ISA interest is the stage-2
+    # draw beside it (microcosm#1360).
+    person.loc[spi_people, "savings_interest_income"] = taxable_interest_draw
     person = derive_hmrc_income_auxiliaries(person, row_mask=spi_people)
     person = _move_losses_brought_forward_to_loss_relief(person, spi_people=spi_people)
     person = _refresh_disability_derived_inputs(person, spi_people=spi_people)
@@ -1778,17 +1806,17 @@ def _band_mean_total_income(
     """A reserved band's mean realised total income, for its receipt row.
 
     A carrier's realised total income is its drawn tape record's own, so a
-    band whose carriers drew fewer than ten distinct records, as any band with
-    fewer than ten carriers does, would give back one record's value or come
-    close to it. Its mean is "<10" (UKDS disclosure control; see
+    band whose carriers drew fewer than three distinct records, as any band
+    with fewer than three carriers does, would give back one record's value or
+    come close to it. Its mean is "<3" (UKDS disclosure control; see
     ``receipt_counts``), and a band without carriers has none. No single
     record's value, such as the band's lowest or highest, is recorded.
     """
 
     if not realized.size:
         return None
-    if np.unique(drawn).size < 10:
-        return "<10"
+    if np.unique(drawn).size < UK_DISCLOSURE_FLOOR:
+        return UK_WITHHELD
     return float(realized.mean())
 
 
@@ -2469,7 +2497,6 @@ def derive_hmrc_income_auxiliaries(
         "self_employment_income",
         "private_pension_income",
         "savings_interest_income",
-        "tax_free_savings_income",
         "dividend_income",
         "property_income",
         "other_investment_income",
@@ -2496,14 +2523,9 @@ def derive_hmrc_income_auxiliaries(
             numeric["self_employment_income"].to_numpy(dtype=float),
             relief.fillna(0.0).to_numpy(dtype=float),
         )
-    taxable_interest = (
-        numeric["savings_interest_income"] - numeric["tax_free_savings_income"]
-    )
-    if (taxable_interest < 0.0).any():
-        raise ValueError(
-            "HMRC accounting identity requires gross savings_interest_income "
-            "to be at least tax_free_savings_income on every person row."
-        )
+    # Taxable interest is the non-ISA interest the producer stores
+    # (microcosm#1360), held non-negative with the other leaves above.
+    taxable_interest = numeric["savings_interest_income"]
     employed_income = (
         np.maximum(
             numeric[SPI_HMRC_PAY_COLUMN]
@@ -2651,7 +2673,6 @@ _BRIDGE_PERSON_COLUMNS = (
 )
 _UNEARNED_INCOME_COLUMNS = (
     "savings_interest_income",
-    "tax_free_savings_income",
     "dividend_income",
     "property_income",
     "miscellaneous_income",
@@ -2709,9 +2730,7 @@ def _taxable_income_mask(person: pd.DataFrame) -> np.ndarray:
         | (values["private_pension_income"] + values["state_pension_reported"] > 0.0)
     )
     unearned = (
-        np.maximum(
-            values["savings_interest_income"] - values["tax_free_savings_income"], 0.0
-        )
+        np.maximum(values["savings_interest_income"], 0.0)
         + values["dividend_income"]
         + values["property_income"]
         + values["miscellaneous_income"]

@@ -6,8 +6,8 @@ and single year of age (0 to 89, and 90 and over) beside ONS MYE2 mid-2025,
 with their ratio, and the tail bands 80 to 84, 85 to 89, 90 and over and 80
 and over. It reads a built H5's frame tables and final household weights (no
 engine). Report-only: the estimates bind nothing. Every cell names its
-carriers as distinct source households and reads "<10" in place of its
-figures when fewer than 10 carry it; when any single year of a sex is
+carriers as distinct source households and reads "<3" in place of its
+figures when fewer than 3 carry it; when any single year of a sex is
 withheld, every cell of that sex is (UKDS disclosure control). The receipt
 belongs in the run tree.
 

@@ -839,17 +839,19 @@ def test_taxable_income_mask_applies_the_no_record_rule() -> None:
         "state_pension_reported": 0.0,
         "employment_status": "UNEMPLOYED",
         "savings_interest_income": 0.0,
-        "tax_free_savings_income": 0.0,
+        "individual_savings_account_interest_income": 0.0,
         "dividend_income": 0.0,
         "property_income": 0.0,
         "miscellaneous_income": 0.0,
     }
     rows = [
         dict(columns),  # nothing at all
+        # ISA interest is not taxable: 900 outside ISAs stays under the floor
+        # (microcosm#1360).
         {
             **columns,
-            "savings_interest_income": 1_500.0,
-            "tax_free_savings_income": 600.0,
+            "savings_interest_income": 900.0,
+            "individual_savings_account_interest_income": 600.0,
         },
         {**columns, "dividend_income": 1_200.0},
         {**columns, "employment_status": "FT_SELF_EMPLOYED"},
@@ -1195,15 +1197,18 @@ def test_spi_pay_floor_lifts_only_drawn_employee_pay_below_its_floor() -> None:
         before.drop(columns=[SPI_HMRC_PAY_COLUMN]),
     )
     pd.testing.assert_frame_equal(person, before)
-    # Five floored rows on five source households: no weighted figure.
+    # Five floored rows on five source households beside one unfloored: the
+    # floored weight, share and amount beside the eligible weight would give
+    # back that one household's, so they are withheld; the mean uplift rests
+    # on the five.
     assert receipt["floored"] == {
-        "source_households": "<10",
-        "weighted_people": "<10",
-        "weighted_share_of_eligible": "<10",
-        "weighted_mean_uplift_gbp": "<10",
-        "weighted_amount_added_gbp": "<10",
+        "source_households": "3-9",
+        "weighted_people": "<3",
+        "weighted_share_of_eligible": "<3",
+        "weighted_mean_uplift_gbp": pytest.approx(float(uplift.to_numpy()[:5].mean())),
+        "weighted_amount_added_gbp": "<3",
     }
-    assert receipt["eligible"]["source_households"] == "<10"
+    assert receipt["eligible"]["source_households"] == "3-9"
     assert receipt["rate"] == spi_income.SPI_EMPLOYMENT_PAY_FLOOR_RATE_RULE
     assert receipt["annual_income"] == spi_income.SPI_EMPLOYMENT_PAY_FLOOR_ANNUAL_RULE
     assert receipt["hourly_rate_by_age_from"] == {
@@ -1213,16 +1218,18 @@ def test_spi_pay_floor_lifts_only_drawn_employee_pay_below_its_floor() -> None:
         "23": 11.44,
         "25": 11.44,
     }
-    # Fewer than ten sources on every side: no share, and no row below its floor.
+    # Each share has a side on one source household (the unfloored row, the
+    # twin-capped row still under the minimum wage, the one FRS employee), so
+    # none is given; and no row stays below its floor.
     assert receipt["hourly_pay_check"] == {
         "spi_drawn_employees": {
-            "source_households": "<10",
-            "below_minimum_wage_share_before": "<10",
-            "below_minimum_wage_share_after": "<10",
+            "source_households": "3-9",
+            "below_minimum_wage_share_before": "<3",
+            "below_minimum_wage_share_after": "<3",
         },
         "frs_employees": {
-            "source_households": "<10",
-            "below_minimum_wage_share": "<10",
+            "source_households": "<3",
+            "below_minimum_wage_share": "<3",
         },
         "eligible_rows_below_their_floor_after": 0,
     }
@@ -1233,15 +1240,15 @@ def test_spi_pay_floor_lifts_only_drawn_employee_pay_below_its_floor() -> None:
 
 
 def test_spi_pay_floor_receipt_counts_source_households_not_copies() -> None:
-    # Twelve floored copies of three source households, then twelve floored
-    # rows of twelve households beside ten, then eight, unfloored ones.
+    # Twelve floored copies of two source households, then twelve floored
+    # rows of twelve households beside ten, then two, unfloored ones.
     copies = [
-        {"age": 40, "weekly_hours": 35, "pay": 1_000.0, "source": index % 3}
+        {"age": 40, "weekly_hours": 35, "pay": 1_000.0, "source": index % 2}
         for index in range(12)
     ]
     _, receipt, _ = _floor(*_pay_floor_frames(copies))
-    assert receipt["floored"]["source_households"] == "<10"
-    assert receipt["floored"]["weighted_mean_uplift_gbp"] == "<10"
+    assert receipt["floored"]["source_households"] == "<3"
+    assert receipt["floored"]["weighted_mean_uplift_gbp"] == "<3"
 
     def receipt_of(unfloored: int) -> dict[str, object]:
         rows_ = [
@@ -1276,23 +1283,23 @@ def test_spi_pay_floor_receipt_counts_source_households_not_copies() -> None:
     assert check["spi_drawn_employees"]["below_minimum_wage_share_after"] == 0.0
     assert check["eligible_rows_below_their_floor_after"] == 0
 
-    # Eight unfloored sources: the floored weight, share or amount beside the
+    # Two unfloored sources: the floored weight, share or amount beside the
     # eligible weight would give back their weight, so none is given; nor are
-    # the hourly-pay shares, whose rest is the same eight.
-    receipt = receipt_of(8)
-    assert receipt["eligible"] == {"source_households": 20, "weighted_people": 2_000.0}
+    # the hourly-pay shares, whose rest is the same two.
+    receipt = receipt_of(2)
+    assert receipt["eligible"] == {"source_households": 10, "weighted_people": 1_400.0}
     assert receipt["floored"] == {
         "source_households": 10,
-        "weighted_people": "<10",
-        "weighted_share_of_eligible": "<10",
+        "weighted_people": "<3",
+        "weighted_share_of_eligible": "<3",
         "weighted_mean_uplift_gbp": pytest.approx(minimum - 1_000.0),
-        "weighted_amount_added_gbp": "<10",
+        "weighted_amount_added_gbp": "<3",
     }
     assert (
         receipt["hourly_pay_check"]["spi_drawn_employees"][
             "below_minimum_wage_share_before"
         ]
-        == "<10"
+        == "<3"
     )
 
 

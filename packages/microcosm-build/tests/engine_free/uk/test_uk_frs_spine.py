@@ -1243,8 +1243,12 @@ def test_direct_person_mapping_values_are_ported(tmp_path: Path) -> None:
     assert adult["self_employment_income"] == pytest.approx(3 * WEEKS_IN_YEAR)
     assert adult["trading_loss"] == 0.0
     assert adult["private_pension_income"] == pytest.approx(15 * WEEKS_IN_YEAR)
-    assert adult["tax_free_savings_income"] == pytest.approx(1 * WEEKS_IN_YEAR)
-    assert adult["savings_interest_income"] == pytest.approx(3.5 * WEEKS_IN_YEAR)
+    # ISA interest apart from non-ISA interest (microcosm#1360).
+    assert adult["individual_savings_account_interest_income"] == pytest.approx(
+        1 * WEEKS_IN_YEAR
+    )
+    assert adult["savings_interest_income"] == pytest.approx(2.5 * WEEKS_IN_YEAR)
+    assert "tax_free_savings_income" not in adult
     # The gilt is other interest, no longer a dividend (microcosm#1418).
     assert adult["dividend_income"] == pytest.approx(3 * WEEKS_IN_YEAR)
     assert adult["other_investment_income"] == pytest.approx(7.5 * WEEKS_IN_YEAR)
@@ -1287,14 +1291,15 @@ def test_direct_person_mapping_values_are_ported(tmp_path: Path) -> None:
     assert adult["salary_sacrifice_asked"] == 1
 
 
-#: The spine's person income columns (#1320, uk-data#627).
-#: tax_free_savings_income is not one: it is the ISA part of
-#: savings_interest_income.
+#: The spine's person income columns (#1320, uk-data#627). ISA interest is one
+#: since the additive contract stores it apart from non-ISA interest
+#: (microcosm#1360).
 _PERSON_INCOME_COLUMNS = (
     "employment_income",
     "self_employment_income",
     "private_pension_income",
     "savings_interest_income",
+    "individual_savings_account_interest_income",
     "dividend_income",
     "other_investment_income",
     "property_income",

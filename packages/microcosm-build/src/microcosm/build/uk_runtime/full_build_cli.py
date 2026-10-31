@@ -154,6 +154,7 @@ from .graph_population import (
     GEOGRAPHY_ASSIGNMENTS,
     PRIVATE_RENT_LOCALISATION_MODES,
     PROPERTY_LOCALISATION_MODES,
+    RFDR_LOCALISATION_MODES,
 )
 from .graph_targets import TARGET_SELECTION_TYPE, registry_from_payload
 from .graph_terminal import (
@@ -180,6 +181,7 @@ from .local_doctrine import UK_LOCAL_L0_SEARCH_FLOOR, UK_LOCAL_ROW_METADATA_RULE
 from .national_doctrine import uk_doctrine_with_overrides
 from .national_frame import (
     load_uk_national_frame,
+    require_uk_producer_isa_income_contract,
     uk_release_export_frame,
     write_uk_national_frame,
 )
@@ -196,6 +198,8 @@ from .property_localisation import (
 from .property_localisation import (
     METHOD_VERSION as PROPERTY_LOCALISATION_METHOD,
 )
+from .rfdr_area_layer import METHOD_VERSION as RFDR_AREA_LAYER_METHOD
+from .rfdr_area_layer import RFDR_AREA_LAYER_SOURCE
 from .rowwise_cli import (
     MANIFEST_FILENAME,
     REPOSITORY,
@@ -535,6 +539,27 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument("--brma-area-layer-sha256", type=sha256_argument)
+    parser.add_argument(
+        "--rfdr-localisation",
+        choices=RFDR_LOCALISATION_MODES,
+        default=None,
+        help=(
+            "Dense role: area (the default with the atomic assignment) sets each "
+            "placed household's Rural Fuel Duty Relief flag off its assigned output "
+            "area (microcosm#1418); none (the default with the legacy assignment) "
+            "leaves the engine's default, for measurement builds only."
+        ),
+    )
+    parser.add_argument(
+        "--rfdr-area-layer",
+        type=Path,
+        default=None,
+        help=(
+            "Resource bytes for the graph source 'uk_rfdr_area_layer' (default: the "
+            "committed UK package resource)."
+        ),
+    )
+    parser.add_argument("--rfdr-area-layer-sha256", type=sha256_argument)
     parser.add_argument(
         "--private-rent-localisation",
         choices=PRIVATE_RENT_LOCALISATION_MODES,
@@ -1006,6 +1031,55 @@ def _prepare_brma_localisation(
     }
 
 
+def _prepare_rfdr_localisation(
+    args: argparse.Namespace, pins: dict, sources: dict[str, Path]
+) -> dict:
+    """Pin the Rural Fuel Duty Relief area layer and record its binding.
+
+    As with the BRMA layer, the layer enters ``pins`` under its graph source
+    name and a release candidate must build on the committed bytes
+    (microcosm#1418). ``none`` binds nothing here.
+    """
+    mode = getattr(args, "rfdr_localisation", None)
+    if mode is None:
+        # Unset, the mode follows the geography assignment, as the build config
+        # resolves it (the independent review of microcosm#1420).
+        mode = (
+            "area"
+            if getattr(args, "geography_assignment", "atomic") == "atomic"
+            else "none"
+        )
+        args.rfdr_localisation = mode
+    if mode == "none":
+        if getattr(args, "rfdr_area_layer", None) or getattr(
+            args, "rfdr_area_layer_sha256", None
+        ):
+            raise ValueError(
+                "--rfdr-area-layer and --rfdr-area-layer-sha256 need "
+                "--rfdr-localisation area: without it nothing reads the layer."
+            )
+        return {"mode": "none"}
+    committed_path = Path(
+        str(files("microcosm.build.uk").joinpath("rfdr_area_layer.json"))
+    )
+    path = getattr(args, "rfdr_area_layer", None) or committed_path
+    pin = _pin(path, getattr(args, "rfdr_area_layer_sha256", None))
+    if getattr(args, "release_candidate", False):
+        committed = _pin(committed_path)
+        if pin != committed:
+            raise ValueError(
+                "--release-candidate requires the committed RFDR area layer: "
+                f"sha256 {pin['sha256']} is not the package's {committed['sha256']}."
+            )
+    pins[RFDR_AREA_LAYER_SOURCE] = pin
+    sources[RFDR_AREA_LAYER_SOURCE] = path
+    return {
+        "mode": mode,
+        "method": RFDR_AREA_LAYER_METHOD,
+        "resource_pins": {RFDR_AREA_LAYER_SOURCE: pin},
+    }
+
+
 #: Graph source name to committed package file of the private-rent node's
 #: resources (microcosm#1262). Only the quantiles take an override.
 _PRIVATE_RENT_RESOURCE_FILES = {
@@ -1222,6 +1296,7 @@ def prepare_full_build(
             args.input_h5, pins["dataset"], pinned=args.input_sha256 is not None
         )
         frame, _ = load_uk_national_frame(args.input_h5)
+        require_uk_producer_isa_income_contract(frame, label="--input-h5")
         sidecar_path = args.input_sidecar or args.input_h5.with_suffix(".build.json")
         gates_path = args.input_spine_gates or args.input_h5.with_suffix(
             ".spine_gates.json"
@@ -1290,6 +1365,7 @@ def prepare_full_build(
     property_binding = _prepare_property_localisation(args, pins, sources)
     brma_binding = _prepare_brma_localisation(args, pins, sources)
     private_rent_binding = _prepare_private_rent_localisation(args, pins, sources)
+    rfdr_binding = _prepare_rfdr_localisation(args, pins, sources)
     stage(
         telemetry,
         "input_pinning",
@@ -1320,6 +1396,7 @@ def prepare_full_build(
         property_localisation=args.property_localisation,
         brma_localisation=args.brma_localisation,
         private_rent_localisation=args.private_rent_localisation,
+        rfdr_localisation=args.rfdr_localisation,
         calibration=UKGraphCalibrationConfig(
             epochs=args.epochs,
             learning_rate=args.learning_rate,
@@ -1450,6 +1527,7 @@ def prepare_full_build(
         "property_localisation": property_binding,
         "brma_localisation": brma_binding,
         "private_rent_localisation": private_rent_binding,
+        "rfdr_localisation": rfdr_binding,
     }
     graph = add_uk_export_preparation(
         graph,
@@ -2751,6 +2829,7 @@ def prepare_national_build(
     pins = {"dataset": _pin(input_h5, args.input_sha256)}
     inputs = {"dataset": _input_record(input_h5, pins["dataset"], pinned=True)}
     frame, _ = load_uk_national_frame(input_h5)
+    require_uk_producer_isa_income_contract(frame, label="--input-h5")
     sidecar_path = args.input_sidecar or input_h5.with_suffix(".build.json")
     gates_path = args.input_spine_gates or input_h5.with_suffix(".spine_gates.json")
     load_bound_spine_checkpoint(

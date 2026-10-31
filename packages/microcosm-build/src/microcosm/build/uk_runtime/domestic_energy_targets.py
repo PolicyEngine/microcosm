@@ -6,11 +6,14 @@ local-authority rows bind from them, each through a declared
 ``uprating_index`` the reference generators and the runtime compiles share:
 
 * consumption (``desnz.energy_trends.gb_domestic_level``): the sub-national
-  totals stand on another basis than Energy Trends, the level the LCFS stage
-  rakes every household's kWh to (meter readings allocated to the year, and
-  weather-corrected for gas). The rows bind as a distribution: one factor per
-  fuel puts Great Britain's authorities on the stage's own level, so they
-  carry only DESNZ's split between areas. Energy Trends is a United Kingdom
+  totals stand on another basis than the level the LCFS stage rakes every
+  household's kWh to (meter readings allocated to the year, and
+  weather-corrected for gas). That level is Energy Trends, or, for a fuel the
+  stage levels to ONS household spending, the kWh that spending buys at QEP
+  prices (microcosm#1418; the index keeps its name). The rows bind as a
+  distribution: one factor per fuel puts Great Britain's authorities on the
+  stage's own level, so they carry only DESNZ's split between areas. The
+  level is a United Kingdom
   total and the sub-national statistics cover Great Britain: Great Britain's
   part of the level is its share of DESNZ's sub-national domestic consumption
   with Northern Ireland's row added, so each factor is the UK level over the
@@ -45,6 +48,8 @@ read one function.
 
 from __future__ import annotations
 
+import copy
+import functools
 import math
 from collections.abc import Mapping, Sequence
 from dataclasses import replace
@@ -68,6 +73,11 @@ from microcosm.build.uk_runtime.energy_pricing import (
     FUEL_OF_COLUMN,
     GAS_FUEL,
     GAS_KWH,
+    GREAT_BRITAIN_GEOGRAPHY_ID,
+    LEVEL_BASIS_ENERGY_TRENDS,
+    LEVEL_BASIS_ONS_HOUSEHOLD_SPEND,
+    NORTHERN_IRELAND_GEOGRAPHY_ID,
+    NORTHERN_IRELAND_PERIOD_TYPES,
     SUBNATIONAL_METER_CONCEPTS,
     SUBNATIONAL_PERIOD_TYPES,
     UK_DESNZ_DOMESTIC_ENERGY_RESOURCE,
@@ -86,29 +96,28 @@ UK_ENERGY_LEVEL_INDEX_CONCEPT = "desnz.energy_trends.gb_domestic_level"
 UK_GAS_METER_SHARE_INDEX_CONCEPT = "desnz.subnational.gas_meter_share"
 UK_LOCAL_ENERGY_RESOURCE = "desnz_local_energy_facts.json"
 UK_ENERGY_STAGE = "lcfs_consumption"
-GREAT_BRITAIN_GEOGRAPHY_ID = "K03000001"
-UNITED_KINGDOM_GEOGRAPHY_ID = "K02000001"
 GREAT_BRITAIN_NATION_IDS = ("E92000001", "W92000004", "S92000003")
 SUBNATIONAL_CONSUMPTION_CONCEPTS: Mapping[str, str] = {
     ELECTRICITY_KWH: "desnz.subnational.domestic_electricity_consumption",
     GAS_KWH: "desnz.subnational.domestic_gas_consumption",
 }
-#: Northern Ireland's row of DESNZ's sub-national domestic consumption, all
-#: domestic meters: electricity on financial years from April (the publisher's
-#: opening-year label, not weather corrected) and gas on DESNZ's Northern
-#: Ireland gas years (15 May to 15 May from 2018, weather corrected). The year
-#: labelled Y pairs with Great Britain's year Y, as Great Britain's gas year
-#: pairs with its calendar-year electricity (microcosm#1278).
-NORTHERN_IRELAND_GEOGRAPHY_ID = "N92000002"
-NORTHERN_IRELAND_PERIOD_TYPES: Mapping[str, str] = {
-    ELECTRICITY_FUEL: "fiscal_year",
-    GAS_FUEL: "gas_year",
-}
 #: The meter year the gas-connected share is read for: the stage's own.
 GAS_METER_SHARE_PERIOD = 2024
+#: The stage's UK level as a cell's basis names it, by the fuel's level basis
+#: (``energy_pricing.published_energy_level``; microcosm#1418).
+UK_ENERGY_LEVEL_SOURCES: Mapping[str, str] = {
+    LEVEL_BASIS_ENERGY_TRENDS: (
+        "DESNZ Energy Trends domestic {fuel} consumption at actual temperature, "
+        "United Kingdom, calendar {year}"
+    ),
+    LEVEL_BASIS_ONS_HOUSEHOLD_SPEND: (
+        "the kWh ONS Consumer Trends household spending on {fuel} (COICOP "
+        "{coicop}), United Kingdom, calendar {year}, buys at QEP's United Kingdom "
+        "average prices over every domestic meter"
+    ),
+}
 UK_ENERGY_LEVEL_BASIS = (
-    "DESNZ Energy Trends domestic {fuel} consumption at actual temperature, "
-    "United Kingdom, calendar {year} (the level the LCFS stage rakes to), times "
+    "{source} (the level the LCFS stage rakes to), times "
     "Great Britain's share of DESNZ's sub-national domestic {fuel} consumption "
     "with Northern Ireland's row added ({year}, all domestic meters; DESNZ calls "
     "Northern Ireland's figures not directly comparable with Great Britain's), "
@@ -216,7 +225,7 @@ def northern_ireland_consumption(
 
     The Northern Ireland row (all domestic meters) for the year labelled
     ``year``, in each fuel's own period type. Great Britain's part of the
-    Energy Trends UK level is its share of the sub-national total with this
+    stage's UK level is its share of the sub-national total with this
     row added (microcosm#1278; Great Britain's share of UK households stood in
     until Chronicle carried these rows).
     """
@@ -272,9 +281,33 @@ def gb_energy_level_factors(
     consumption with Northern Ireland's row added, so the factor is the UK
     level over the UK sub-national total. ``local_rows`` stands in for the
     local energy resource's rows (tests).
+
+    The declared call reads only committed resources, so it is computed once
+    per process: every local energy reference levels through it, and the
+    ONS-spend level re-reads the QEP table, which made a local compile about
+    twenty minutes slower (the independent review of microcosm#1420, finding
+    6).
     """
 
-    parameters = declared_energy_pricing() if parameters is None else parameters
+    if parameters is None and local_rows is None:
+        factors, receipt = _declared_gb_energy_level_factors()
+        return dict(factors), copy.deepcopy(receipt)
+    return _gb_energy_level_factors(
+        declared_energy_pricing() if parameters is None else parameters,
+        local_rows=local_rows,
+    )
+
+
+@functools.lru_cache(maxsize=1)
+def _declared_gb_energy_level_factors() -> tuple[dict[str, float], dict[str, Any]]:
+    return _gb_energy_level_factors(declared_energy_pricing(), local_rows=None)
+
+
+def _gb_energy_level_factors(
+    parameters: Mapping[str, Any],
+    *,
+    local_rows: Sequence[Mapping[str, Any]] | None,
+) -> tuple[dict[str, float], dict[str, Any]]:
     if str(parameters.get("level_period_type")) != "calendar_year":
         raise ValueError(
             "The local energy rows bind calendar-year sub-national totals: the "
@@ -350,16 +383,24 @@ def align_energy_to_stage_level(
     parameters: Mapping[str, Any] | None = None,
     local_rows: Sequence[Mapping[str, Any]] | None = None,
 ) -> TargetRegistry:
-    """Put each authority's DESNZ consumption on the stage's Energy Trends level."""
+    """Put each authority's DESNZ consumption on the stage's published level.
+
+    The level is the stage's own for the fuel: Energy Trends, or the kWh ONS
+    household spending buys for a fuel the stage levels to it (microcosm#1418).
+    """
 
     if reference.uprating_index != UK_ENERGY_LEVEL_INDEX_CONCEPT:
         return registry
     column = _fuel_column(reference)
     factors, receipt = gb_energy_level_factors(parameters, local_rows=local_rows)
     factor = factors[column]
-    basis = UK_ENERGY_LEVEL_BASIS.format(
-        fuel=FUEL_OF_COLUMN[column], year=receipt["period_value"]
+    fuel = FUEL_OF_COLUMN[column]
+    year = receipt["period_value"]
+    level_block = receipt["level"]["by_fuel"][column]
+    source = UK_ENERGY_LEVEL_SOURCES[str(level_block["basis"])].format(
+        fuel=fuel, year=year, coicop=level_block.get("coicop")
     )
+    basis = UK_ENERGY_LEVEL_BASIS.format(source=source, fuel=fuel, year=year)
     aligned = []
     for spec in registry.specs:
         # The factor is the stage's level year over DESNZ's same year: a row

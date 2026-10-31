@@ -170,8 +170,9 @@ _FAMILIES: tuple[dict[str, Any], ...] = (
     {
         "family": "hmrc_income_by_area",
         "description": (
-            "SPI-frame employment and self-employment income amounts and "
-            "taxpayer counts by area."
+            "SPI-frame employment, self-employment and pension income "
+            "amounts and taxpayer counts, and higher rate taxpayer counts, by "
+            "area."
         ),
         "sources": ["hmrc_personal_incomes_constituency_la"],
         "adjudications": [
@@ -257,7 +258,7 @@ _FAMILIES: tuple[dict[str, Any], ...] = (
             "owner-occupiers' main residences only: second homes, let "
             "property and homes owned by companies or non-residents are "
             "outside it until the coverage decision (microcosm#1240 fix 6, "
-            "tracked on microcosm#1278)."
+            "tracked on microcosm#1095)."
         ),
         "sources": ["hmlr_price_paid_derived_stock"],
         "adjudications": [_HIGH_VALUE_HOME_STOCK_FENCE_ID],
@@ -268,8 +269,10 @@ _FAMILIES: tuple[dict[str, Any], ...] = (
             "Domestic electricity and gas consumption (kWh) and gas-connected "
             "households by local authority, Great Britain, from DESNZ's "
             "sub-national statistics (microcosm#1207). The kWh cells keep "
-            "DESNZ's split between authorities at the lcfs stage's Energy "
-            "Trends level (one factor per fuel); the gas-connected cells are "
+            "DESNZ's split between authorities at the lcfs stage's level, one "
+            "factor per fuel: the kWh ONS 04.5.1 household spending buys for "
+            "electricity since microcosm#1418, DESNZ Energy Trends for gas. "
+            "The gas-connected cells are "
             "each authority's census households times its gas meters over its "
             "electricity meters, a member of the census household partition. "
             "The frame reads each household's stored spend at the dataset "
@@ -924,8 +927,9 @@ _BINDING_FENCES: tuple[dict[str, Any], ...] = (
             "uk_population_targets.json declarations "
             "hmrc.employment_income.amount, hmrc.employment_income.count, "
             "hmrc.self_employment_income.amount, "
-            "hmrc.self_employment_income.count and "
-            "hmrc.higher_rate_taxpayers.count (their "
+            "hmrc.self_employment_income.count, "
+            "hmrc.higher_rate_taxpayers.count, hmrc.pension_income.amount and "
+            "hmrc.pension_income.count (their "
             "income_tax_before_winter_fuel_payment_charge_annual filter); "
             "microcosm#495 scoping."
         ),
@@ -1102,17 +1106,19 @@ _BINDING_FENCES: tuple[dict[str, Any], ...] = (
         "fenced_fact_count": None,
         "enforcement": FENCE_ENFORCEMENT_REVIEW,
         "rule": (
-            "DESNZ's sub-national consumption is not the Energy Trends level "
-            "the lcfs stage rakes every household's kWh to: it reads "
+            "DESNZ's sub-national consumption is not the level the lcfs stage "
+            "rakes every household's kWh to (Energy Trends, or for a fuel the "
+            "stage levels to ONS household spending, the kWh that spending "
+            "buys at QEP prices): it reads "
             "electricity from 31 January to 30 January on non-half-hourly "
             "meters and over the calendar year on half-hourly meters (as "
             "reported), and gas from mid-May to mid-May (weather-corrected), "
-            "and its Great Britain totals sit above Energy Trends' Great "
+            "and its Great Britain totals sit above the stage level's Great "
             "Britain part. The family binds DESNZ's split between "
             "authorities, not its level: one factor per fuel puts the cells on "
             "the stage's level (desnz.energy_trends.gb_domestic_level), and "
             "the cells keep the fact's own year (a matched-period hold). "
-            "Great Britain's part of the Energy Trends UK level is its share "
+            "Great Britain's part of the stage's UK level is its share "
             "of DESNZ's sub-national consumption with Northern Ireland's "
             "all-domestic row added, whose electricity runs on financial years "
             "and gas on Northern Ireland gas years, figures DESNZ calls not "
@@ -1127,7 +1133,8 @@ _BINDING_FENCES: tuple[dict[str, Any], ...] = (
             "stage's level); DESNZ's Northern Ireland sub-national "
             "electricity and gas statistics, with the "
             "Northern Ireland sentence re-worded in by María on 2026-10-17 "
-            "(microcosm#1306 review)."
+            "(microcosm#1306 review); electricity levelled to ONS 04.5.1 by "
+            "María's ruling of 2026-10-28 (microcosm#1418)."
         ),
     },
     {

@@ -206,7 +206,10 @@ def test_wrong_fact_count_refuses_before_either_compiler(prepared):
 def test_current_national_and_local_pins_share_one_reviewed_identity():
     # main (#904) reads one committed pin, ``uk/chronicle_feed.json``, for the
     # national feed and the local census; the full build checks they agree.
-    # The identity is the 272c987 feed re-pinned by microcosm#1359
+    # The identity is the 53815b2 merge of PolicyEngine/chronicle#394
+    # (microcosm#1418: SPI 2023-24 Table 3.10 and the OBR's October 2026
+    # EFO), on top of the 0b721a4 merge of PolicyEngine/chronicle#392
+    # (HMRC's ISA statistics) and the 272c987 feed of microcosm#1359
     # (PolicyEngine/chronicle#391: the Gambling Commission's Gambling Survey
     # for Great Britain 2025 participation tables), on top of the 200bf6d feed
     # of microcosm#1359 (PolicyEngine/chronicle#384: HMRC alcohol and tobacco clearances,
@@ -222,19 +225,19 @@ def test_current_national_and_local_pins_share_one_reviewed_identity():
     assert (
         national.facts_sha256
         == local["facts_sha256"]
-        == ("084ddf46fa34b1e03b5f0a7287617aeafaf7f614e3619d87a6565409e4adac85")
+        == ("4b0e5c1ad057946407807428a1c79c70d9b14e2f8539ea8fb93524573c026227")
     )
     assert (
         national.manifest_sha256
         == local["manifest_sha256"]
-        == ("229afc18d8201bbd59a41777453f487ad750be2802425240ac26ee54849bfafd")
+        == ("708231c77432d2838bf1ee7d8f3080e49ca0e59edccdd45c36b3405db2cb45fb")
     )
     assert (
         national.source_commit
         == local["source_commit"]
-        == "272c987af175687aca21f82851ef349521802b12"
+        == "53815b24844cb63c103209f197f9d3d9e2e424a9"
     )
-    assert national.fact_row_count == local["fact_row_count"] == 1503315
+    assert national.fact_row_count == local["fact_row_count"] == 1511063
 
 
 def test_chronicle_source_codec_validates_directory_manifest(tmp_path):

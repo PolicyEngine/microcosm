@@ -35,6 +35,11 @@ from microcosm.build.uk_runtime.high_value_homes import (
     UKHighValueHomeStockFacts,
     uk_owner_occupied_mask,
 )
+from microcosm.build.uk_runtime.receipt_counts import (
+    UK_BELOW_TEN_BAND,
+    UK_DISCLOSURE_FLOOR,
+    UK_WITHHELD,
+)
 
 __all__ = [
     "HIGH_VALUE_HOME_SCOPE",
@@ -60,7 +65,8 @@ OBR_NON_OWNER_SHARE_CONCEPT = "obr.hvcts_costing.non_owner_occupied_share"
 OBR_PERIOD_TYPE = "fiscal_year"
 _OBR_BAND_IDS = frozenset((*(band_id for _, _, band_id in HVCTS_BANDS_2026), "total"))
 SUPPORT_BANDS: tuple[tuple[str, int, int], ...] = (
-    ("<10", 0, 10),
+    (UK_WITHHELD, 0, UK_DISCLOSURE_FLOOR),
+    (UK_BELOW_TEN_BAND, UK_DISCLOSURE_FLOOR, 10),
     ("10-29", 10, 30),
     ("30+", 30, 10**9),
 )
@@ -78,9 +84,9 @@ REQUIRED_COLUMNS = (
     "source_household_id",
 )
 #: What the family and its evidence cover until the coverage decision
-#: (microcosm#1240 fix 6, tracked on microcosm#1278 since #1240 closed into
-#: it): carried in the evidence summary and both gates' details, so every
-#: reading of these figures names its scope.
+#: (microcosm#1240 fix 6, now tracked on microcosm#1095): carried in the
+#: evidence summary and both gates' details, so every reading of these
+#: figures names its scope.
 HIGH_VALUE_HOME_SCOPE: Mapping[str, str] = {
     "label": "owner_occupied_main_residences_only",
     "note": (
@@ -124,7 +130,7 @@ def _weighted_counts(
 
 
 #: Shipped cells need at least this many distinct source households.
-SMALL_CELL_SOURCES = 10
+SMALL_CELL_SOURCES = UK_DISCLOSURE_FLOOR
 ENGLAND_CODE = "E92000001"
 
 

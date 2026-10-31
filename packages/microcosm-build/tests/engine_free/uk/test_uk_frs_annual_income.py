@@ -390,7 +390,7 @@ def test_receipt_gives_bands_and_structural_zeros() -> None:
     )
     assert set(receipt["spell_sources"]) == set(fai.SPELL_SOURCES)
     # A source carried by one household gives a band, never a count.
-    assert receipt["spell_sources"][fai.SOURCE_ENTRANT] == "<10"
+    assert receipt["spell_sources"][fai.SOURCE_ENTRANT] == "<3"
     for key in (
         "full_year_rows_not_whole",
         "rows_outside_share_bounds",
@@ -400,7 +400,8 @@ def test_receipt_gives_bands_and_structural_zeros() -> None:
 
 
 @pytest.mark.parametrize(
-    ("broken", "count"), [(0, 0), (3, "<10"), (12, "10-49"), (150, 200)]
+    ("broken", "count"),
+    [(0, 0), (1, "<3"), (3, "3-9"), (12, "10-49"), (150, 200)],
 )
 def test_receipt_bands_its_structural_counts(broken: int, count: object) -> None:
     # A count of rows that break an invariant says something about the tail,
@@ -469,7 +470,7 @@ def test_gate_passes_the_stages_own_receipt() -> None:
     gate = _gate(_leaver_evidence())
     assert gate.passed, gate.failures
     # One household carries the pay outside the current job: a band, unmeasured.
-    assert gate.details["other_spells_pay_observed_share"] == "<10"
+    assert gate.details["other_spells_pay_observed_share"] == "<3"
     assert gate.details["observed_pay_share_measured"] is False
 
 
@@ -477,7 +478,7 @@ def test_gate_passes_the_stages_own_receipt() -> None:
     ("key", "value", "message"),
     [
         # The receipt bands a count of broken rows (extreme_count).
-        ("full_year_rows_not_whole", "<10", "full_year_rows_not_whole is '<10'"),
+        ("full_year_rows_not_whole", "<3", "full_year_rows_not_whole is '<3'"),
         ("rows_outside_share_bounds", 100, "rows_outside_share_bounds is 100"),
         ("rows_negative_other_spells", None, "rows_negative_other_spells is None"),
         # Weekly pay read as a monthly amount gives a ratio far above one.
@@ -502,7 +503,8 @@ def test_gate_refuses_another_stages_receipt() -> None:
 
 def test_pay_concept_ratio_measures_few_reporters_and_refuses_none() -> None:
     """Fewer than ten reporting households only flags (María's ruling of
-    2026-10-26): the ratio is measured, and the receipt prints it "<10"."""
+    2026-10-26): the ratio is measured, and the receipt prints it from three
+    households up ("<3" below, the disclosure floor of 2026-10-29)."""
     person, adult, job, interview, _ = _population({})
     ratio, support = fai.pay_concept_ratio(
         person["person_id"].to_numpy(),
@@ -548,8 +550,8 @@ def test_a_thin_pay_concept_ratio_is_held_to_its_bounds(measured, used) -> None:
 
 
 @pytest.mark.parametrize("key", ["pay_concept_ratio", "annual_over_current_earners"])
-def test_gate_flags_a_ratio_on_fewer_than_ten_households(key: str) -> None:
-    gate = _gate({**_leaver_evidence(), key: "<10"})
+def test_gate_flags_a_ratio_on_fewer_than_three_households(key: str) -> None:
+    gate = _gate({**_leaver_evidence(), key: "<3"})
     assert gate.passed, gate.failures
     assert gate.details[f"{key}_measured"] is False
 

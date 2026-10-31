@@ -121,7 +121,7 @@ class _FakeFittedQRF:
                 value = 10.0
             elif target == "charitable_investment_gifts":
                 value = 2.0
-            elif target == "tax_free_savings_income":
+            elif target == "individual_savings_account_interest_income":
                 value = 5.0
             elif target == SPI_HMRC_MISCELLANEOUS_EMPLOYMENT_INCOME_COLUMN:
                 value = -3.0
@@ -220,7 +220,9 @@ def _dead_support(
     }.items():
         if column in person_columns:
             person_columns[column] = values
-    person_columns["tax_free_savings_income"] = np.zeros(4, dtype=float)
+    person_columns["individual_savings_account_interest_income"] = np.zeros(
+        4, dtype=float
+    )
     person = pd.DataFrame(person_columns)
     benunit = pd.DataFrame({"benunit_id": np.arange(201, 205, dtype="int64")})
     dead = create_uk_spi_support_tables(

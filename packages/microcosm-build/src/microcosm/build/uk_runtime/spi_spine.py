@@ -207,12 +207,12 @@ SPI_SPINE_EMPLOYMENT_PAY_FLOOR: Mapping[str, object] = {
     "receipt": (
         "eligible and floored source households (rounded), weighted people, "
         "the weighted share floored, the weighted mean uplift and the amount "
-        "added; figures on one to nine source households are <10, and the "
+        "added; figures on one or two source households are <3, and the "
         "floored weight, share and amount are given only where neither the "
-        "floored nor the unfloored side rests on one to nine; the hourly-pay "
+        "floored nor the unfloored side rests on one or two; the hourly-pay "
         "check gives the weighted shares of the drawn employees below the "
         "minimum wage for their age before and after the floor, beside the FRS "
-        "employees' share, each withheld beside a side on one to nine, and the "
+        "employees' share, each withheld beside a side on one or two, and the "
         "eligible rows still below their floor (banded, zero exact)"
     ),
 }
@@ -278,7 +278,7 @@ UK_SPI_INCOME_SPINE_REWRITE_COLUMNS = (
     EMPLOYER_PENSION_CONTRIBUTIONS_COLUMN,
     "personal_pension_contributions",
     "pension_contributions_via_salary_sacrifice",
-    "tax_free_savings_income",
+    "individual_savings_account_interest_income",
     "universal_credit_reported",
     "pension_credit_reported",
     "child_benefit_reported",

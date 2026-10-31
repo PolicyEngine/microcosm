@@ -475,13 +475,13 @@ def test_fare_mix_lines_report_aggregates_and_withhold_thin_cells() -> None:
         "mean_fare_above_cap",
     }
     assert set(lines["under_cap"]["2023"]) == {"share_at_cap"}
-    assert lines["minimum_cell"] == {"boardings": 10, "households": 10}
-    # Above the cap on three households only: both 2022 lines are withheld,
+    assert lines["minimum_cell"] == {"boardings": 3, "households": 3}
+    # Above the cap on two households only: both 2022 lines are withheld,
     # however many boardings those households make.
     thin = stage.copy()
     few = (
         stage["HouseholdID"]
-        .isin(sorted(set(stage.loc[full, "HouseholdID"]))[:3])
+        .isin(sorted(set(stage.loc[full, "HouseholdID"]))[:2])
         .to_numpy()
     )
     thin.loc[full & few, "StageFareCost"] = 2.75

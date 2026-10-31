@@ -131,8 +131,10 @@ def test_the_mapping_notes_formula_ownership_claims_hold(engine) -> None:
 
 def test_the_liquid_asset_reason_holds(engine) -> None:
     # Financial wealth is a household input. The person-level GBP stocks are a
-    # debt, a car's list price and the Lifetime ISA balance, which the engine
-    # documents as already inside the household's financial wealth.
+    # debt, a car's list price, a company car's list price and the capital
+    # contributions towards it, the Lifetime ISA balance, which the engine
+    # documents as already inside the household's financial wealth, and the
+    # cash and stocks-and-shares ISA balances the household ISA totals sum.
     # uc_reported_capital defaults to -1 since policyengine-uk 2.136.1: set to
     # zero or more it is a unit's complete capital. benunit_reported_capital,
     # a benefit-unit input unset at -1, replaces the household financial proxy
@@ -155,7 +157,20 @@ def test_the_liquid_asset_reason_holds(engine) -> None:
         "owned_company_capital",
         "owned_company_holding_value",
         "owned_company_trade_assets",
+        # The person's ISAs (2.164.0), which the household cash_isa and
+        # stocks_and_shares_isa sum; the isa_subscriptions stage writes them
+        # (microcosm#1415).
+        "cash_isa_balance",
+        "stocks_and_shares_isa_balance",
+        # The company car (2.165.0): its list price and the employee's capital
+        # contributions towards it set the car benefit and are no one's capital;
+        # the build sets neither.
+        "company_car_capital_contributions",
+        "company_car_list_price",
     }
+    for name in ("cash_isa", "stocks_and_shares_isa"):
+        assert name not in inputs, name
+        assert engine.variable_metadata(name).entity == "household", name
     for name in ("savings", "gross_financial_wealth", "net_financial_wealth"):
         assert name in inputs, name
         assert engine.variable_metadata(name).entity == "household", name

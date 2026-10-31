@@ -45,13 +45,22 @@ from microcosm.build.stochastic_assignment import (
     stable_identity_uniforms,
 )
 from microcosm.build.uk_runtime.frs_employment import FRS_EMPSTATI_EMPLOYMENT_STATUS
+from microcosm.build.uk_runtime.frs_take_up import (
+    take_up_signal_outputs,
+    uk_take_up_signal_receipt,
+)
 from microcosm.build.uk_runtime.national_frame import (
     uk_household_weight_kind,
     uk_national_frame,
     uk_time_period,
     validate_uk_national_frame,
 )
-from microcosm.build.uk_runtime.receipt_counts import distinct_count, support_band
+from microcosm.build.uk_runtime.receipt_counts import (
+    UK_DISCLOSURE_FLOOR,
+    UK_WITHHELD,
+    distinct_count,
+    support_band,
+)
 from microcosm.build.uk_runtime.take_up_contract import UKTakeUpContract
 from microcosm.frame import Frame
 
@@ -101,12 +110,24 @@ class UKFRSPersonDrawsStageTransform:
     contract: UKTakeUpContract
     stage: SourceStageSpec
     last_receipt: Mapping[str, object] | None = field(default=None, init=False)
+    last_signal_receipt: Mapping[str, object] | None = field(default=None, init=False)
 
     def __call__(self, frame: Frame) -> Frame:
         result, receipt = add_frs_person_draws_with_receipt(
             frame, contract=self.contract
         )
         object.__setattr__(self, "last_receipt", receipt)
+        # The Marriage Allowance and Scottish Child Payment flags at the stage's
+        # weights, for the stage-time take-up signal gate (microcosm#1095).
+        object.__setattr__(
+            self,
+            "last_signal_receipt",
+            uk_take_up_signal_receipt(
+                result,
+                outputs=take_up_signal_outputs(FRS_PERSON_DRAW_OUTPUT_COLUMNS),
+                contract=self.contract,
+            ),
+        )
         return result
 
     @staticmethod
@@ -114,12 +135,13 @@ class UKFRSPersonDrawsStageTransform:
         return FRS_PERSON_DRAW_OUTPUT_COLUMNS
 
     def checkpoint_metadata(self) -> dict[str, object]:
-        if self.last_receipt is None:
+        if self.last_receipt is None or self.last_signal_receipt is None:
             raise RuntimeError("checkpoint metadata requires a completed stage run.")
         return {
             "evidence": {
                 "stage": "frs_person_draws",
                 "apprentice_receipt": dict(self.last_receipt),
+                "take_up_signal": dict(self.last_signal_receipt),
             }
         }
 
@@ -318,13 +340,17 @@ def derive_is_apprentice(
         "realized_mass": realized,
         "realization_deviation": realized - target,
     }
-    # A weighted total carried by one to nine households is withheld, with the
+    # A weighted total carried by one or two households is withheld, with the
     # figures that would give it back: the target is the rate times the
     # population, and the deviation is the flagged weight less the target.
-    if 0 < population_support < 10:
-        receipt.update(population_mass="<10", target="<10", realization_deviation="<10")
-    if 0 < eligible_support < 10:
-        receipt["eligible_mass"] = "<10"
+    if 0 < population_support < UK_DISCLOSURE_FLOOR:
+        receipt.update(
+            population_mass=UK_WITHHELD,
+            target=UK_WITHHELD,
+            realization_deviation=UK_WITHHELD,
+        )
+    if 0 < eligible_support < UK_DISCLOSURE_FLOOR:
+        receipt["eligible_mass"] = UK_WITHHELD
     if relief_schedule is not None and "employment_income" in person.columns:
         pay = pd.to_numeric(person["employment_income"], errors="coerce")
         relieved = np.clip(
@@ -340,10 +366,10 @@ def derive_is_apprentice(
         receipt["implied_relief"] = float(
             relief_schedule["rate"] * (weights[flags] * relieved[flags]).sum()
         )
-    if 0 < flagged_support < 10:
-        receipt.update(realized_mass="<10", realization_deviation="<10")
+    if 0 < flagged_support < UK_DISCLOSURE_FLOOR:
+        receipt.update(realized_mass=UK_WITHHELD, realization_deviation=UK_WITHHELD)
         if "implied_relief" in receipt:
-            receipt["implied_relief"] = "<10"
+            receipt["implied_relief"] = UK_WITHHELD
     return UKApprenticeDraw(flags=flags, receipt=receipt)
 
 

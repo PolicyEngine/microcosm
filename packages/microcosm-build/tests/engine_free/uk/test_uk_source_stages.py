@@ -120,8 +120,11 @@ E8_STAGE_NAMES = [
     # private-school attendance ranks households on net income (which counts
     # the childcare entitlements).
     "childcare_copy_take_up",
-    # microcosm#1095: the stored private-school attendance runs last.
+    # microcosm#1095: the stored private-school attendance runs after them.
     "private_school_attendance",
+    # microcosm#1415: the ISA subscriptions run last, on final incomes; nothing
+    # reads their outputs.
+    "isa_subscriptions",
 ]
 UK_SOURCE_STAGE_NAMES = [
     "frs_spine",
@@ -308,6 +311,7 @@ class TestUKSourceStagesManifest:
                     "salary_sacrifice": _identity,
                     "student_loans": _identity,
                     "private_school_attendance": _identity,
+                    "isa_subscriptions": _identity,
                     "childcare_copy_take_up": _identity,
                     "age_tail": _identity,
                     "frs_relationships": _identity,
@@ -642,9 +646,11 @@ class TestE3ManifestLockstep:
             "record_mass_conservation_receipt",
         ]
         assert [op.kind for op in stages["was_lisa"].operations] == [
+            "verify_vendored_fact_resource",
             "clean_was_lisa_donor",
             "materialize_rules_engine_predictors",
             "impute_lifetime_isa_ownership",
+            "anchor_lifetime_isa_ownership",
             "impute_lifetime_isa_balance",
             "support_clip",
             "cap_lifetime_isa_to_financial_wealth",
