@@ -107,6 +107,12 @@ def uk_stage_health_gate(
         return _legacy_closure_take_up_gate(stage, evidence, parameters)
     if check == "apprentice_draw":
         return _apprentice_draw_gate(stage, evidence, parameters)
+    if check == "isa_subscriptions":
+        return _isa_subscriptions_gate(stage, evidence, parameters)
+    if check == "isa_subscriptions_invariants":
+        return _isa_subscriptions_invariants_gate(stage, evidence, parameters)
+    if check == "was_lisa_anchor":
+        return _was_lisa_anchor_gate(stage, evidence, parameters)
     return GateResult(
         name="stage_health",
         passed=False,
@@ -268,14 +274,16 @@ def _energy_rake_gate(
     evidence: Mapping[str, object],
     parameters: Mapping[str, object],
 ) -> GateResult:
-    """The energy kWh rake fits the NEED shape at the DESNZ level, at prior weights.
+    """The energy kWh rake fits the NEED shape at the published level, at prior weights.
 
     Fact checks on the lcfs ``energy_rake`` receipt, every published value
     recomputed here from the vendored rows the stage declares (never taken
     from the receipt): each cell's ``shape_target`` must be the vendored NEED
     mean of the declared consumption year; each fuel's level block must be
-    the vendored DESNZ Energy Trends total over the stage's declared level
-    year (calendar 2024; microcosm#1113), its ``factor`` that
+    the stage's declared published level over its level year (calendar 2024;
+    microcosm#1113): the vendored DESNZ Energy Trends total, or for a fuel in
+    ``spend_level_fuels`` the kWh the vendored ONS household spending buys at
+    QEP's United Kingdom average prices (microcosm#1418); its ``factor`` that
     total over the frame's pre-level total, and the levelled frame total the
     published one; each cell's ``target`` must be shape times factor; and,
     where the stage declares the published gas-connected share, every region
@@ -300,10 +308,24 @@ def _energy_rake_gate(
     every household in it drew no kWh must be one the stage declares in
     ``zero_kwh_cells_at_need_mean`` (microcosm#1240).
 
+    The recomputation shares the stage's inputs, so it cannot see a wrong
+    input row (Anthony's review of microcosm#1420). For a fuel levelled to
+    ONS spending (electricity; gas keeps Energy Trends while ONS 04.5.2 counts
+    bottled gas), the level over Energy Trends' volume must therefore sit
+    inside ``ons_level_to_energy_trends_ratio``: 0.926 on the September 2026
+    vintage, so a wrong ONS class or vintage, or a unit error, that moves it
+    by more than about 8% fails. ONS's own revisions can move it as far: the
+    June 2026 vintage gave 0.840 (Vahid's review of microcosm#1420), so a
+    re-pin that crosses the bounds asks for the level to be re-adjudicated
+    and is not by itself a data error. Every QEP payment method's level falls
+    inside the bounds (0.882 to 0.970), so the stage's declared
+    ``payment_method`` must equal the gate's ``qep_payment_method`` instead.
+
     This is where NEED, DESNZ and the connection share are checked; the
-    calibrated frame is held to the bound ONS 04.5.1 and 04.5.2 spend rows
-    instead (María's ruling, 2026-09-15), and no gate re-checks these facts
-    after calibration.
+    calibrated frame is held to the bound ONS 04.5.1 electricity spend row
+    instead (María's ruling, 2026-09-15; the 04.5.2 gas row is measured but
+    held out while it counts bottled gas, microcosm#1095), and no gate
+    re-checks these facts after calibration.
     """
 
     from microcosm.build.country_spec import load_country_spec
@@ -311,6 +333,7 @@ def _energy_rake_gate(
         ELECTRICITY_KWH,
         GAS_CONNECTED_PUBLISHED_METER_SHARE,
         GAS_KWH,
+        LEVEL_BASIS_ONS_HOUSEHOLD_SPEND,
         PRICE_DOMESTIC_ENERGY_KIND,
         declared_household_kwh_ceilings,
         declared_zero_kwh_cells_at_need_mean,
@@ -355,6 +378,14 @@ def _energy_rake_gate(
             f"{stage}: the gate's margins_period_value {margins_period} differs from "
             f"the stage's declared {declared.get('margins_period_value')!r}."
         )
+    payment_method = parameters.get("qep_payment_method")
+    if not isinstance(payment_method, str) or not payment_method:
+        raise ValueError(f"{stage}: energy_rake declares no qep_payment_method.")
+    if str(declared.get("payment_method")) != payment_method:
+        raise ValueError(
+            f"{stage}: the gate's qep_payment_method {payment_method!r} differs from "
+            f"the stage's declared {declared.get('payment_method')!r}."
+        )
     failures: list[str] = []
     if receipt.get("unit") != "kwh":
         failures.append(
@@ -379,7 +410,7 @@ def _energy_rake_gate(
     if undeclared:
         failures.append(f"{stage}: receipt rakes undeclared margins {undeclared}.")
     published = need_margins_from_facts(period_value=margins_period).targets
-    level, _ = published_energy_level(declared)
+    level, level_receipt = published_energy_level(declared)
     factors_block = receipt.get("level_factor")
     level_block = receipt.get("level")
     factors: dict[str, float] = {}
@@ -395,7 +426,36 @@ def _energy_rake_gate(
         "worst": {},
         "cells_fact_checked": 0,
         "connected_share": {},
+        "ons_level_to_energy_trends_ratio": {},
     }
+    ratio_bounds = parameters.get("ons_level_to_energy_trends_ratio")
+    for fuel, fuel_level in sorted(level_receipt["by_fuel"].items()):
+        if fuel_level.get("basis") != LEVEL_BASIS_ONS_HOUSEHOLD_SPEND:
+            continue
+        if not isinstance(ratio_bounds, Mapping) or set(ratio_bounds) != {
+            "minimum",
+            "maximum",
+        }:
+            raise ValueError(
+                f"{stage}: energy_rake declares no ons_level_to_energy_trends_ratio "
+                "minimum and maximum for its ONS-spend levels."
+            )
+        lower = _finite_number(
+            ratio_bounds["minimum"],
+            label=f"{stage}.ons_level_to_energy_trends_ratio.minimum",
+        )
+        upper = _finite_number(
+            ratio_bounds["maximum"],
+            label=f"{stage}.ons_level_to_energy_trends_ratio.maximum",
+        )
+        ratio = float(fuel_level["total_kwh"]) / float(fuel_level["energy_trends_kwh"])
+        details["ons_level_to_energy_trends_ratio"][fuel] = ratio
+        if not lower <= ratio <= upper:
+            failures.append(
+                f"{stage}: {fuel}'s ONS-spend level is {ratio:.4f} of Energy Trends', "
+                f"outside [{ratio_bounds['minimum']}, {ratio_bounds['maximum']}]: check "
+                "the ONS class and vintage and the units."
+            )
     if not isinstance(factors_block, Mapping) or not isinstance(level_block, Mapping):
         failures.append(f"{stage}: energy_rake receipt carries no level block.")
         factors_block, level_block = {}, {}
@@ -416,7 +476,7 @@ def _energy_rake_gate(
         if not _close(block.get("published_kwh"), published_kwh, 1e-9):
             failures.append(
                 f"{stage}: {fuel} was levelled to {block.get('published_kwh')!r}, not "
-                f"the vendored DESNZ total {published_kwh}."
+                f"the declared published level {published_kwh}."
             )
         if not isinstance(before, int | float) or float(before) <= 0:
             failures.append(f"{stage}: {fuel} level block has no positive frame total.")
@@ -2945,7 +3005,7 @@ def _consumption_basis_gate(
     carry every diary spend column from the April-to-March diary year, placed
     on the calendar-year index at three quarters and one quarter, not by a
     full year's step, which would land a quarter past the calendar year. The
-    energy prices' and the DESNZ level's periods, the bus prices' re-pricing
+    energy prices' and the energy level's periods, the bus prices' re-pricing
     year and the road-fuel level's period must all be the declared calendar
     year. policyengine-uk can then project every column from the H5's year
     with no per-column bases. A step whose receipt is absent fails the check.
@@ -3050,7 +3110,7 @@ def _consumption_basis_gate(
         found["energy_level"] = period_of(level)
         for label, observed in (
             ("energy prices", found["energy_prices"]),
-            ("DESNZ energy level", found["energy_level"]),
+            ("energy level", found["energy_level"]),
         ):
             if observed != expected:
                 failures.append(
@@ -4663,3 +4723,206 @@ def _apprentice_draw_gate(
     if failures:
         return _fail(stage, check, failures, details)
     return _pass(stage, check, details)
+
+
+def _isa_subscriptions_invariants_gate(
+    stage: str,
+    evidence: Mapping[str, object],
+    parameters: Mapping[str, object],
+) -> GateResult:
+    """ISA subscriptions keep the rules any population must (microcosm#1415).
+
+    Fails on any record the receipt counts against them (non-finite values, the
+    overall and Lifetime ISA limits, ages, holding what is paid into, both parts of
+    a both-type subscription, negative amounts) and on person balances that do not
+    sum to the household draws within ``maximum_household_sum_error_gbp``. None of
+    these depends on the population, so the entry is no population fact check and
+    the synthetic smoke build blocks on it (review of microcosm#1421).
+    """
+
+    check = "isa_subscriptions_invariants"
+    sum_tolerance = _finite_number(
+        parameters["maximum_household_sum_error_gbp"],
+        label=f"{stage}.maximum_household_sum_error_gbp",
+    )
+    failures: list[str] = []
+    checks = _mapping(evidence.get("checks"), label=f"{stage}.checks")
+    violations = _mapping(checks.get("violations"), label=f"{stage}.violations")
+    for name, count in violations.items():
+        if count != 0:
+            failures.append(f"{stage}: {count} record(s) break {name}.")
+    split = _mapping(evidence.get("balance_split"), label=f"{stage}.balance_split")
+    error = _finite_number(
+        split.get("max_abs_household_sum_error_gbp"),
+        label=f"{stage}.max_abs_household_sum_error_gbp",
+    )
+    if error > sum_tolerance:
+        failures.append(
+            f"{stage}: person balances miss the household draws by up to {error} GBP."
+        )
+    return GateResult(
+        name="stage_health",
+        passed=not failures,
+        failures=tuple(failures),
+        details={"stage": stage, "check": check, "violations": dict(violations)},
+    )
+
+
+def _isa_subscriptions_gate(
+    stage: str,
+    evidence: Mapping[str, object],
+    parameters: Mapping[str, object],
+) -> GateResult:
+    """ISA subscriptions meet HMRC's Table 9.4 totals (microcosm#1415).
+
+    Fails on the 2024-25 cash and stocks-and-shares totals off Table 9.4's 2024-25
+    amounts, the Lifetime ISA total off Table 9.4's Lifetime ISA amount or the
+    both-type split's stocks-and-shares total off its residual by more than
+    ``maximum_relative_total_deviation`` (a reported saturation is named, not
+    failed). Cells short of eligible adults are named, never failed: the stage
+    invents no holders, and how far the result sits from HMRC's tables after
+    calibration is a measurement, not a gate (María's ruling of 28 October 2026).
+    These are population facts, so a synthetic smoke build records them without
+    blocking; the rules any population must keep are
+    ``_isa_subscriptions_invariants_gate``.
+    """
+
+    check = "isa_subscriptions"
+    tolerance = _finite_number(
+        parameters["maximum_relative_total_deviation"],
+        label=f"{stage}.maximum_relative_total_deviation",
+    )
+    failures: list[str] = []
+    growth = _mapping(evidence.get("growth"), label=f"{stage}.growth")
+    named: list[str] = []
+    for kind in ("cash", "stocks_and_shares"):
+        target = _finite_number(
+            growth.get(f"{kind}_target_gbp"), label=f"{stage}.{kind}_target_gbp"
+        )
+        achieved = _finite_number(
+            growth.get(f"{kind}_achieved_gbp"), label=f"{stage}.{kind}_achieved_gbp"
+        )
+        if target > 0 and abs(achieved - target) / target > tolerance:
+            failures.append(
+                f"{stage}: 2024-25 {kind} subscriptions miss Table 9.4's 2024-25 "
+                "amount."
+            )
+    both = _mapping(evidence.get("both_type_split"), label=f"{stage}.both_type_split")
+    if both.get("saturated"):
+        named.append(f"both_type_split:{both['saturated']}")
+    else:
+        target = _finite_number(
+            both.get("stocks_and_shares_target_gbp"), label=f"{stage}.both_target"
+        )
+        achieved = _finite_number(
+            both.get("stocks_and_shares_achieved_gbp"), label=f"{stage}.both_achieved"
+        )
+        if target > 0 and abs(achieved - target) / target > tolerance:
+            failures.append(f"{stage}: the both-type split misses its residual.")
+    lifetime = _mapping(evidence.get("lifetime_isa"), label=f"{stage}.lifetime_isa")
+    if lifetime.get("saturated"):
+        named.append(f"lifetime_isa:{lifetime['saturated']}")
+    else:
+        target = _finite_number(
+            lifetime.get("target_gbp"), label=f"{stage}.lisa_target"
+        )
+        achieved = _finite_number(
+            lifetime.get("achieved_gbp"), label=f"{stage}.lisa_achieved"
+        )
+        if target > 0 and abs(achieved - target) / target > tolerance:
+            failures.append(f"{stage}: Lifetime ISA payments miss Table 9.4's amount.")
+    selection = _mapping(evidence.get("selection"), label=f"{stage}.selection")
+    # Subscribers the eligible holders could not supply: the stage invents none.
+    for isa_type, steps in selection.items():
+        for step, receipt in _mapping(steps, label=f"{stage}.{isa_type}").items():
+            if not isinstance(receipt, Mapping):
+                continue
+            unmet = float(receipt.get("shortfall_weight_unmet") or 0.0)
+            if unmet > 0:
+                named.append(f"selection:{isa_type}:{step}:shortfall_weight_unmet")
+    return GateResult(
+        name="stage_health",
+        passed=not failures,
+        failures=tuple(failures),
+        details={
+            "stage": stage,
+            "check": check,
+            "saturations_named": named,
+            "selection": dict(selection),
+            # People who pay in (a positive payment), not every eligible holder:
+            # was_lisa already anchors the holders to HMRC's accounts.
+            "lifetime_isa_paying_weight": lifetime.get("paying_weight"),
+            "lifetime_isa_hmrc_accounts_subscribed": lifetime.get(
+                "hmrc_accounts_subscribed"
+            ),
+        },
+    )
+
+
+def _was_lisa_anchor_gate(
+    stage: str,
+    evidence: Mapping[str, object],
+    parameters: Mapping[str, object],
+) -> GateResult:
+    """The anchored Lifetime ISA holders reach HMRC's payers (microcosm#1415).
+
+    After the financial-wealth cap the weighted holders at the counted ages lie
+    within ``maximum_relative_deviation`` of the anchor's target, or at or above it
+    when the drawn holders already were (no shift), and a positive shift removes no
+    holder (the same keyed uniforms decide ownership). A target above what the
+    largest shift reaches is named, not failed, and so are unshifted holders above
+    the target: the anchor only adds holders, so it cannot correct the base
+    model's overshoot.
+    """
+
+    check = "was_lisa_anchor"
+    tolerance = _finite_number(
+        parameters["maximum_relative_deviation"],
+        label=f"{stage}.maximum_relative_deviation",
+    )
+    model = _mapping(evidence.get("ownership_model"), label=f"{stage}.ownership_model")
+    anchor = _mapping(model.get("anchor"), label=f"{stage}.anchor")
+    target = _finite_number(
+        anchor.get("target_holders"), label=f"{stage}.target_holders"
+    )
+    achieved = _finite_number(
+        evidence.get("anchored_holders_after_cap"),
+        label=f"{stage}.anchored_holders_after_cap",
+    )
+    shift = _finite_number(anchor.get("logit_shift"), label=f"{stage}.logit_shift")
+    saturated = anchor.get("saturated")
+    failures: list[str] = []
+    named: list[str] = [] if saturated is None else [f"anchor:{saturated}"]
+    if target <= 0:
+        failures.append(f"{stage}: the anchor's target must be positive.")
+    elif shift < 0:
+        failures.append(f"{stage}: the anchor's shift must not be negative.")
+    elif saturated is not None:
+        pass
+    elif shift == 0:
+        if achieved < target * (1.0 - tolerance):
+            failures.append(
+                f"{stage}: unshifted holders after the cap fall below the target."
+            )
+        elif achieved > target * (1.0 + tolerance):
+            # The anchor only adds holders, so it cannot bring an overshoot of the
+            # base model down: named for the build report, not failed.
+            named.append("anchor:unshifted_holders_above_target")
+    elif abs(achieved - target) / target > tolerance:
+        failures.append(
+            f"{stage}: anchored holders after the cap miss the target by more than "
+            f"{tolerance:.2%}."
+        )
+    if anchor.get("removed_holders") != 0:
+        failures.append(f"{stage}: the anchor removed holders.")
+    return GateResult(
+        name="stage_health",
+        passed=not failures,
+        failures=tuple(failures),
+        details={
+            "stage": stage,
+            "check": check,
+            "anchor": dict(anchor),
+            "saturations_named": named,
+        },
+    )

@@ -12,7 +12,10 @@ import pandas as pd
 import pytest
 
 from microcosm.build.country_spec import load_country_spec
-from microcosm.build.stochastic_assignment import stable_identity_uniforms
+from microcosm.build.stochastic_assignment import (
+    stable_identity_uniforms,
+    weight_balanced_uniforms,
+)
 from microcosm.build.uk_runtime import carers_allowance_take_up as ca
 from microcosm.build.uk_runtime.frs_take_up import UK_TAKE_UP_SIGNAL_OUTPUTS
 from microcosm.build.uk_runtime.national_frame import uk_national_frame
@@ -20,8 +23,13 @@ from microcosm.build.uk_runtime.take_up_contract import load_uk_take_up_contract
 from microcosm.frame import WeightKind
 
 _LIMIT = 151.0
+_RATE = 81.90
 _POLICY = ca.UKCarersAllowancePolicy(
-    min_hours=35.0, earnings_limit=_LIMIT, instant="2024-04-30", source="test"
+    min_hours=35.0,
+    earnings_limit=_LIMIT,
+    weekly_rate=_RATE,
+    instant="2024-04-30",
+    source="test",
 )
 _OUTPUT = ca.CARERS_ALLOWANCE_TAKE_UP_OUTPUT
 _INSIDE = ca.CARERS_ALLOWANCE_IN_HOUSEHOLD_HOURS
@@ -55,7 +63,20 @@ class _StubEngine:
         return {
             ca.CARERS_ALLOWANCE_EARNINGS_TEST: pay / 52.0 > _LIMIT,
             ca.CARERS_ALLOWANCE_DISABILITY_TEST: person[_DISABLED].to_numpy(bool),
+            ca.CARERS_ALLOWANCE_EARNINGS: pay,
         }
+
+
+def _means_tested_columns(receives) -> dict[str, np.ndarray]:
+    """The reported means-tested amounts: universal credit where ``receives``."""
+
+    receives = np.asarray(receives, dtype=bool)
+    columns = {
+        name: np.zeros(receives.size)
+        for name in ca.CARERS_ALLOWANCE_MEANS_TESTED_REPORTED
+    }
+    columns["universal_credit_reported"] = np.where(receives, 5_000.0, 0.0)
+    return columns
 
 
 def _frame(
@@ -71,6 +92,7 @@ def _frame(
     time_period: str = "2024",
     in_household_hours=None,
     member_disabled=None,
+    means_tested=None,
 ):
     """A carer and the member they may care for in each household, in a
     benefit unit each; ``source_ids`` makes support copies (each household's
@@ -80,7 +102,8 @@ def _frame(
     hours inside the household (``in_household_hours``, all of ``care_hours``
     by default), and the member is severely disabled (``member_disabled``,
     true by default), so by default every carer cares for a severely disabled
-    member (microcosm#1418)."""
+    member (microcosm#1418). ``means_tested`` gives a carer's benefit unit a
+    reported universal credit amount (none by default)."""
 
     n = len(care_hours)
     ids = np.arange(1, n + 1, dtype="int64")
@@ -100,6 +123,9 @@ def _frame(
             "employment_income": np.asarray(weekly_pay, dtype=float) * 52.0,
             _OUTPUT: reported > 0 if flag is None else np.asarray(flag, dtype=bool),
             _DISABLED: np.zeros(n, dtype=bool),
+            **_means_tested_columns(
+                np.zeros(n, dtype=bool) if means_tested is None else means_tested
+            ),
         }
     )
     member = pd.DataFrame(
@@ -116,6 +142,7 @@ def _frame(
             _DISABLED: np.ones(n, dtype=bool)
             if member_disabled is None
             else np.asarray(member_disabled, dtype=bool),
+            **_means_tested_columns(np.zeros(n, dtype=bool)),
         }
     )
     person = pd.concat([carer, member], ignore_index=True)
@@ -280,13 +307,22 @@ def test_the_draw_opens_the_flag_to_the_eligible_carers_only() -> None:
     # 20 hours do not meet the condition.
     for group in ("under_limit", "at_limit", "short_hours", "member"):
         assert not flag[labels == group].any(), group
-    # Scotland is drawn too: there the flag is Carer Support Payment's.
+    # Scotland is drawn too: there the flag is Carer Support Payment's. The
+    # uniforms are balanced within strata: GBP 200 a week is under one weekly
+    # rate over the limit and GBP 250 over one, so the two pay levels draw
+    # apart, each six tenths of its weight to within one carer (#1418), and a
+    # rerun draws the same carers.
     eligible = np.isin(labels, ["eligible", "eligible_ni", "scotland"])
-    uniforms = stable_identity_uniforms(
-        person["person_id"].to_numpy(), seed=0, salt=_OUTPUT
+    band_one = labels == "eligible_ni"
+    for stratum in (eligible & ~band_one, band_one):
+        assert abs(flag[stratum].sum() - 0.6 * stratum.sum()) <= 1
+    assert not flag[
+        ~eligible
+        & ~np.isin(labels, ["reporter", "reporter_over_limit", "scotland_reporter"])
+    ].any()
+    np.testing.assert_array_equal(
+        _run(frame).frame.table("person")[_OUTPUT].to_numpy(), flag
     )
-    np.testing.assert_array_equal(flag[eligible], uniforms[eligible] < 0.6)
-    assert 0.5 < flag[eligible].mean() < 0.7
     assert person[_OUTPUT].dtype == bool
     # A flag only: every other cell, the weights and the mass log pass through.
     before = frame.table("person").drop(columns=[_OUTPUT])
@@ -333,13 +369,14 @@ def test_the_draw_leaves_out_carers_of_no_disabled_member_and_draws_the_others()
     )
     result = _run(frame, rate=1.0)
     person = result.frame.table("person")
-    pool_draws = stable_identity_uniforms(
-        person["person_id"].to_numpy()[:n], seed=0, salt=ca.CARERS_ALLOWANCE_POOL_SALT
-    )
+    # The outside carers are one stratum (no means-tested benefit, all paid one
+    # to two weekly rates over the limit). Equal weights put their midpoints a
+    # two-hundredth apart, so the rotated half-share arc holds exactly half of
+    # them whatever the stratum's start.
     np.testing.assert_array_equal(
-        person[_OUTPUT].to_numpy()[:n],
-        np.r_[member_disabled[:n_in], pool_draws[n_in:] < 0.5],
+        person[_OUTPUT].to_numpy()[:n_in], member_disabled[:n_in]
     )
+    assert int(person[_OUTPUT].to_numpy()[n_in:n].sum()) == n_out // 2
     evidence = result.evidence()
     assert evidence["in_household_disabled_member_share"] == pytest.approx(0.5)
     assert evidence["pool_salt"] == ca.CARERS_ALLOWANCE_POOL_SALT
@@ -431,12 +468,8 @@ def test_the_share_hides_a_small_side() -> None:
         reported=np.zeros(n),
         weekly_pay=np.full(n, 300.0),
     )
-    uniforms = np.sort(
-        stable_identity_uniforms(
-            frame.table("person")["person_id"].to_numpy()[:n], seed=0, salt=_OUTPUT
-        )
-    )
-    result = _run(frame, rate=float((uniforms[2] + uniforms[3]) / 2))
+    # One stratum of equal weights: the k-th uniform sits at (k + 1/2) / 40.
+    result = _run(frame, rate=3 / n)
     assert int(result.frame.table("person")[_OUTPUT].sum()) == 3
     evidence = result.evidence()
     assert evidence["eligible_support"] == "30+"
@@ -445,11 +478,284 @@ def test_the_share_hides_a_small_side() -> None:
     assert evidence["drawn_share_of_over_limit_pool"] == "<10"
     # All but three drawn: the share would give the three undrawn carers'
     # weight back the same way.
-    result = _run(frame, rate=float((uniforms[36] + uniforms[37]) / 2))
+    result = _run(frame, rate=37 / n)
     assert int(result.frame.table("person")[_OUTPUT].sum()) == 37
     evidence = result.evidence()
     assert evidence["drawn_support"] == "30+"
     assert evidence["drawn_share_of_over_limit_pool"] == "<10"
+
+
+def test_earnings_bands_read_the_weekly_earnings_the_engine_tests() -> None:
+    weekly = np.array(
+        [
+            100.0,
+            _LIMIT,
+            _LIMIT + 0.004,
+            _LIMIT + 0.01,
+            _LIMIT + _RATE - 0.05,
+            _LIMIT + _RATE + 0.05,
+            _LIMIT + 2.5 * _RATE,
+            _LIMIT + 9 * _RATE,
+        ]
+    )
+    bands = ca.carers_allowance_earnings_band(
+        weekly * 52, earnings_limit=_LIMIT, weekly_rate=_RATE
+    )
+    # At or under the limit, a fraction of a penny over included, is -1; the
+    # last band is open.
+    assert bands.tolist() == [-1, -1, -1, 0, 0, 1, 2, 3]
+    with pytest.raises(ValueError, match="weekly rate"):
+        ca.carers_allowance_earnings_band(weekly, earnings_limit=_LIMIT, weekly_rate=0)
+
+
+def test_a_means_tested_report_marks_the_whole_benefit_unit() -> None:
+    reported = np.array([[0.0, 0.0], [10.0, 0.0], [0.0, 0.0], [0.0, 3.0]])
+    marks = ca.means_tested_benefit_unit(np.array([1, 1, 2, 3]), reported)
+    assert marks.tolist() == [True, True, False, True]
+
+
+def _strata_frame(n_per: int = 40, *, outside: bool = False):
+    """Eligible carers in eight strata of unequal weights: on and off a
+    means-tested benefit, by four pay levels a band apart."""
+
+    pays = (_LIMIT + 0.5 * _RATE, _LIMIT + 1.5 * _RATE, _LIMIT + 2.5 * _RATE, 600.0)
+    cells = list(itertools.product((False, True), pays))
+    n = n_per * len(cells)
+    rng = np.random.default_rng(5)
+    frame = _frame(
+        care_hours=np.full(n, 35.0),
+        reported=np.zeros(n),
+        weekly_pay=np.repeat([pay for _, pay in cells], n_per),
+        means_tested=np.repeat([on for on, _ in cells], n_per),
+        weights=rng.uniform(0.5, 3.0, n),
+        in_household_hours=np.zeros(n) if outside else None,
+    )
+    stratum = np.repeat(np.arange(len(cells)), n_per)
+    return frame, stratum, n
+
+
+def test_each_stratum_claims_the_rate_of_its_eligible_weight() -> None:
+    frame, stratum, n = _strata_frame()
+    result = _run(frame, rate=0.6)
+    flag = result.frame.table("person")[_OUTPUT].to_numpy()[:n]
+    weights = frame.weights_for("household").values
+    for code in np.unique(stratum):
+        members = stratum == code
+        claimed = float(weights[members & flag].sum())
+        assert abs(claimed - 0.6 * weights[members].sum()) <= weights[members].max()
+    rows = result.evidence()["take_up_strata"]
+    assert len(rows) == 8
+    assert {row["route"] for row in rows} == {"in_household"}
+    assert {row["means_tested"] for row in rows} == {False, True}
+    assert {row["earnings_band"] for row in rows} == {
+        "0 to 1 weekly rates over",
+        "1 to 2 weekly rates over",
+        "2 to 3 weekly rates over",
+        "3 or more weekly rates over",
+    }
+    for row in rows:
+        assert row["support"] == "30+"
+        assert row["target"] == 0.6
+        assert row["realised_share"] == pytest.approx(0.6, abs=0.06)
+    assert result.evidence()["pool_strata"] == []
+    # Identity-keyed, so a rerun draws the same carers.
+    rerun = _run(frame, rate=0.6).frame.table("person")[_OUTPUT].to_numpy()[:n]
+    np.testing.assert_array_equal(rerun, flag)
+
+
+def test_the_stage_refuses_a_take_up_stratum_off_its_share(monkeypatch) -> None:
+    # Anthony's reviews of microcosm#1420: the balance is enforced, not only
+    # reported. Every uniform at zero draws each stratum whole.
+    frame, _, _ = _strata_frame()
+    assert _run(frame, rate=0.6).evidence()["strata_within_one_record"] is True
+    monkeypatch.setattr(
+        ca,
+        "weight_balanced_uniforms",
+        lambda strata, draws, weights, **_: np.zeros(len(draws)),
+    )
+    with pytest.raises(ValueError, match="take-up stratum .* more than one record"):
+        _run(frame, rate=0.6)
+
+
+def test_the_stage_refuses_a_pool_stratum_off_its_share(monkeypatch) -> None:
+    # The pool's draw is placed first; leave it unbalanced (every uniform at
+    # zero joins each stratum whole) and balance the take-up draw as usual.
+    combined, _, _, _ = _outside_pool_frame()
+    balanced = ca.weight_balanced_uniforms
+    calls = []
+
+    def pool_unbalanced(strata, draws, weights, **kwargs):
+        calls.append(len(draws))
+        if len(calls) == 1:
+            return np.zeros(len(draws))
+        return balanced(strata, draws, weights, **kwargs)
+
+    monkeypatch.setattr(ca, "weight_balanced_uniforms", pool_unbalanced)
+    with pytest.raises(ValueError, match="pool stratum .* more than one record"):
+        _run(combined, rate=1.0)
+    assert len(calls) == 2
+
+
+def test_a_stratum_may_miss_its_share_by_up_to_one_record() -> None:
+    weights = np.array([1.0, 2.0, 3.0, 4.0])
+    members = np.ones(4, dtype=bool)
+    strata = np.zeros(4, dtype=np.int64)
+    # Half of 10 is 5: taking 2 + 3 + 4 misses by 4, its heaviest record, the
+    # most the rotated placement allows (half a record at each end).
+    ca.assert_strata_within_one_record(
+        members,
+        strata,
+        np.array([False, True, True, True]),
+        weights,
+        0.5,
+        label="pool",
+    )
+    # Taking every record misses by 5.
+    with pytest.raises(ValueError, match="pool stratum 0 misses its share"):
+        ca.assert_strata_within_one_record(
+            members, strata, np.ones(4, dtype=bool), weights, 0.5, label="pool"
+        )
+
+
+def test_a_one_record_stratum_claims_with_probability_equal_to_the_rate() -> None:
+    # The independent review of microcosm#1420, finding 4: at its midpoint a
+    # stratum of one record always sits at 0.5. Rotated by a start keyed on
+    # the stratum's lowest-draw member, a carer alone in a stratum claims at
+    # the rate over identities, whatever the code (its re-reviews, G and 2):
+    # keyed on the code alone, a one-record stratum's outcome was fixed per
+    # code in every build.
+    ids = np.arange(1, 4_001, dtype=np.int64)
+    for code in (0, 7):
+        starts = np.array(
+            [
+                ca.stratum_starts(
+                    np.array([code]),
+                    salt=_OUTPUT,
+                    identities=np.array([person]),
+                    draws=np.array([0.5]),
+                )[0]
+                for person in ids
+            ]
+        )
+        positions = np.mod(0.5 + starts, 1.0)
+        for rate in (0.45, 0.6, 0.75):
+            assert (positions < rate).mean() == pytest.approx(rate, abs=0.03)
+    # The same people take the same start whatever their order, and a
+    # stratum's records share one start.
+    codes = np.repeat(np.arange(4), 3)
+    members = np.arange(100, 112, dtype=np.int64)
+    draws = stable_identity_uniforms(members, seed=0, salt=_OUTPUT)
+    starts = ca.stratum_starts(codes, salt=_OUTPUT, identities=members, draws=draws)
+    order = np.random.default_rng(1).permutation(codes.size)
+    np.testing.assert_array_equal(
+        ca.stratum_starts(
+            codes[order], salt=_OUTPUT, identities=members[order], draws=draws[order]
+        ),
+        starts[order],
+    )
+    assert all(np.unique(starts[codes == code]).size == 1 for code in range(4))
+    with pytest.raises(ValueError, match="one identity and draw per record"):
+        ca.stratum_starts(
+            codes, salt=_OUTPUT, identities=members[:-1], draws=draws[:-1].copy()
+        )
+
+
+def test_a_stratum_keeps_its_start_unless_its_lowest_draw_member_changes() -> None:
+    # The re-review of microcosm#1420, 2: keyed on every member, one member
+    # leaving re-drew about half the stratum. Keyed on the lowest-draw member,
+    # the start moves only when that member leaves or a lower one joins.
+    members = np.arange(200, 220, dtype=np.int64)
+    draws = stable_identity_uniforms(members, seed=0, salt=_OUTPUT)
+    codes = np.zeros(members.size, dtype=np.int64)
+
+    def start(keep: np.ndarray) -> float:
+        return ca.stratum_starts(
+            codes[keep], salt=_OUTPUT, identities=members[keep], draws=draws[keep]
+        )[0]
+
+    everyone = np.ones(members.size, dtype=bool)
+    lowest = int(np.argmin(draws))
+    other = next(i for i in range(members.size) if i != lowest)
+    without_other = everyone.copy()
+    without_other[other] = False
+    without_lowest = everyone.copy()
+    without_lowest[lowest] = False
+    assert start(without_other) == start(everyone)
+    assert start(without_lowest) != start(everyone)
+
+
+def _outside_pool_frame():
+    """Carers who give the hours outside the household, in eight strata, beside
+    an in-household half whose disabled members set the pool's share."""
+
+    frame, stratum, n = _strata_frame(outside=True)
+    inside, _, n_in = _strata_frame(n_per=10)
+    person = pd.concat(
+        [
+            frame.table("person").iloc[:n],
+            inside.table("person")
+            .iloc[:n_in]
+            .assign(
+                person_id=lambda df: df["person_id"] + 100_000,
+                person_household_id=lambda df: df["person_household_id"] + 10_000,
+                person_benunit_id=lambda df: df["person_benunit_id"] + 10_000,
+            ),
+            frame.table("person").iloc[n:],
+            inside.table("person")
+            .iloc[n_in:]
+            .assign(
+                person_id=lambda df: df["person_id"] + 100_000,
+                person_household_id=lambda df: df["person_household_id"] + 10_000,
+                person_benunit_id=lambda df: df["person_benunit_id"] + 10_000,
+                **{_DISABLED: lambda df: np.arange(len(df)) % 2 == 0},
+            ),
+        ],
+        ignore_index=True,
+    )
+    household = pd.concat(
+        [
+            frame.table("household"),
+            inside.table("household").assign(
+                household_id=lambda df: df["household_id"] + 10_000,
+                household_source_id=lambda df: df["household_source_id"] + 10_000,
+            ),
+        ],
+        ignore_index=True,
+    )
+    weights = np.r_[
+        frame.weights_for("household").values, inside.weights_for("household").values
+    ]
+    combined = uk_national_frame(
+        person=person,
+        benunit=pd.DataFrame(
+            {"benunit_id": np.sort(person["person_benunit_id"].unique())}
+        ),
+        household=household,
+        time_period="2024",
+        weight_kind=WeightKind.DESIGN,
+        household_weights=weights,
+    )
+    return combined, frame, stratum, n
+
+
+def test_the_outside_pool_draws_its_share_within_each_stratum() -> None:
+    # Every carer gives the hours outside the household: none is in the
+    # in-household base, so the share is that of a separate in-household half.
+    combined, frame, stratum, n = _outside_pool_frame()
+    result = _run(combined, rate=1.0)
+    out = result.frame.table("person")
+    flag = out.set_index("person_id")[_OUTPUT]
+    drawn = flag.loc[frame.table("person")["person_id"].to_numpy()[:n]].to_numpy()
+    share = result.evidence()["in_household_disabled_member_share"]
+    outside_weights = frame.weights_for("household").values
+    for code in np.unique(stratum):
+        members = stratum == code
+        claimed = float(outside_weights[members & drawn].sum())
+        assert (
+            abs(claimed - share * outside_weights[members].sum())
+            <= outside_weights[members].max()
+        )
+    assert len(result.evidence()["pool_strata"]) == 8
 
 
 def test_households_are_read_through_membership_not_position() -> None:
@@ -476,6 +782,7 @@ def test_households_are_read_through_membership_not_position() -> None:
             "employment_income": pay * 52.0,
             _OUTPUT: np.zeros(48, dtype=bool),
             _DISABLED: np.r_[np.zeros(24, dtype=bool), np.ones(24, dtype=bool)],
+            **_means_tested_columns(np.zeros(48, dtype=bool)),
         }
     ).iloc[rng.permutation(48)]
     household = pd.DataFrame(
@@ -704,3 +1011,126 @@ def test_the_graph_node_reads_the_lineage_and_rewrites_the_flag_on_its_own_bound
     # The open-surface readers before it bind the incumbent flag, so the
     # rewrite runs on a boundary of its own.
     assert node.population == f"{ca.CARERS_ALLOWANCE_TAKE_UP_STAGE_NAME}.boundary"
+
+
+def test_the_stage_key_covers_the_placement_helper() -> None:
+    """The independent review of microcosm#1420, finding 5: the draws are
+    placed by the shared helper, so a change to it re-keys the stage."""
+
+    from microcosm.build import stochastic_assignment
+    from microcosm.build.uk_runtime.graph_kernels import _STAGE_HELPER_MODULES
+
+    assert stochastic_assignment in _STAGE_HELPER_MODULES["carers_allowance_take_up"]
+
+
+def _spied_run(monkeypatch, frame, *, rate: float):
+    """Run the stage, recording each balanced placement it asks for."""
+
+    calls = []
+    balanced = weight_balanced_uniforms
+
+    def spy(strata, draws, weights, **kwargs):
+        calls.append(
+            {
+                "strata": np.asarray(strata).copy(),
+                "draws": np.asarray(draws, dtype=float).copy(),
+                "weights": np.asarray(weights, dtype=float).copy(),
+                "starts": kwargs.get("starts"),
+            }
+        )
+        return balanced(strata, draws, weights, **kwargs)
+
+    monkeypatch.setattr(ca, "weight_balanced_uniforms", spy)
+    return _run(frame, rate=rate), calls
+
+
+def _identities(frame, draws: np.ndarray, salt: str) -> np.ndarray:
+    """The people whose identity-keyed uniforms are these draws, in order."""
+
+    ids = frame.table("person")["person_id"].to_numpy()
+    keyed = dict(
+        zip(
+            stable_identity_uniforms(
+                ids, seed=ca.CARERS_ALLOWANCE_TAKE_UP_SEED, salt=salt
+            ),
+            ids,
+            strict=True,
+        )
+    )
+    missing = [draw for draw in draws if draw not in keyed]
+    assert not missing, "the stage's draws are not the carers' identity-keyed uniforms"
+    return np.array([keyed[draw] for draw in draws], dtype=np.int64)
+
+
+def test_the_stage_places_each_carer_by_their_identity_and_their_strata(
+    monkeypatch,
+) -> None:
+    # The re-review of microcosm#1420, B: the flags are the balanced positions
+    # of the carers' own identity-keyed uniforms, rotated by their strata's
+    # member-keyed starts, against the pool share and then the rate. Dropping
+    # the starts, or drawing by row position, fails here.
+    combined, frame, _, n = _outside_pool_frame()
+    rate = 0.6
+    result, calls = _spied_run(monkeypatch, combined, rate=rate)
+    assert len(calls) == 2
+    pool_call, take_up_call = calls
+    flag = result.frame.table("person").set_index("person_id")[_OUTPUT]
+    positions = {}
+    for label, call, salt in (
+        ("pool", pool_call, ca.CARERS_ALLOWANCE_POOL_SALT),
+        ("take_up", take_up_call, _OUTPUT),
+    ):
+        people = _identities(combined, call["draws"], salt)
+        assert call["starts"] is not None, label
+        np.testing.assert_array_equal(
+            call["starts"],
+            ca.stratum_starts(
+                call["strata"], salt=salt, identities=people, draws=call["draws"]
+            ),
+        )
+        placed = weight_balanced_uniforms(
+            call["strata"], call["draws"], call["weights"], starts=call["starts"]
+        )
+        positions[label] = pd.Series(placed, index=people)
+    # The take-up draw opens the flag to the eligible carers it places below
+    # the rate, and to no one else who reports nothing.
+    take_up = positions["take_up"]
+    np.testing.assert_array_equal(flag.loc[take_up.index].to_numpy(), take_up < rate)
+    # The outside carers are all over the limit and report nothing, so the
+    # take-up draw reaches exactly those the pool placed below its share.
+    share = result.evidence()["in_household_disabled_member_share"]
+    pool = positions["pool"]
+    outside = frame.table("person")["person_id"].to_numpy()[:n]
+    assert set(pool.index) == set(outside)
+    assert set(take_up.index) & set(outside) == set(pool.index[pool < share])
+    # The take-up strata add the route to the pool's: no stratum mixes carers
+    # who give the hours inside the household with those who don't (the
+    # re-review of microcosm#1420, 6).
+    route = np.isin(take_up.index.to_numpy(), outside)
+    assert route.any() and not route.all()
+    for code in np.unique(take_up_call["strata"]):
+        assert np.unique(route[take_up_call["strata"] == code]).size == 1
+
+
+def test_the_stage_draws_the_same_carers_whatever_the_row_order() -> None:
+    # The re-review of microcosm#1420, B: every draw and start is keyed on the
+    # people, so permuting the person rows moves no flag.
+    combined, _, _, _ = _outside_pool_frame()
+    first = (
+        _run(combined, rate=0.6).frame.table("person").set_index("person_id")[_OUTPUT]
+    )
+    person = combined.table("person")
+    shuffled = uk_national_frame(
+        person=person.iloc[
+            np.random.default_rng(11).permutation(len(person))
+        ].reset_index(drop=True),
+        benunit=combined.table("benunit"),
+        household=combined.table("household"),
+        time_period="2024",
+        weight_kind=WeightKind.DESIGN,
+        household_weights=combined.weights_for("household").values,
+    )
+    again = (
+        _run(shuffled, rate=0.6).frame.table("person").set_index("person_id")[_OUTPUT]
+    )
+    pd.testing.assert_series_equal(again.loc[first.index], first)

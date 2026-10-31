@@ -967,7 +967,9 @@ def _add_uk_membership_accounting(
             "active_reference_count": fanout_counts.get("hmrc_spi", 0),
             "signed_rationale": (
                 "SPI income-band targets fan out by strict total-income-band "
-                "dimension pins. The 13 property-income amount rows bind the "
+                "dimension pins, and SPI Table 3.10's by self-employment band, "
+                "its bands outside GBP 1 to GBP 10,000 signed out row by row "
+                "(microcosm#1418). The 13 property-income amount rows bind the "
                 "SPI Table 3.7 net concept unscaled: landlords' profit after "
                 "allowable expenses and before residential finance costs, "
                 "which is what policyengine-uk's property_income means. The "

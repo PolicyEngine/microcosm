@@ -155,10 +155,14 @@ from typing import Any
 from urllib.parse import unquote, urlsplit
 
 import pytest
-from hypothesis import assume, given, settings
+from hypothesis import HealthCheck, assume, given, settings
 from hypothesis import strategies as st
 
+from microcosm.build.chronicle_epoch import (
+    is_accepted_consumer_artifact_schema_version,
+)
 from microcosm.build.country_spec import load_country_spec
+from microcosm.build.ledger_artifact import chronicle_feed_identity
 from microcosm.build.ledger_targets import (
     LedgerTargetReference,
     compile_ledger_target_references,
@@ -305,8 +309,9 @@ def rulespec_commit_mentions(value: object) -> set[str]:
       "rulespec" in any case);
     - the value, at any depth, of a key that contains "commit" in any case,
       unless the key's mapping is a foreign record (its repository
-      attribution lacks "rulespec") and neither the key nor an enclosing
-      key contains "rulespec".
+      attribution lacks "rulespec") or the key is one of the seven fields
+      of a complete Chronicle identity below ``feed_identity``, and neither
+      the key nor an enclosing key contains "rulespec".
 
     A foreign record cancels the context it sits in, except that its commit
     keys still count below a rulespec key. Integers count where hex strings
@@ -316,7 +321,13 @@ def rulespec_commit_mentions(value: object) -> set[str]:
 
     found: set[str] = set()
 
-    def visit(node: object, *, rulespec_context: bool, commit_value: bool) -> None:
+    def visit(
+        node: object,
+        *,
+        rulespec_context: bool,
+        commit_value: bool,
+        feed_identity_record: bool = False,
+    ) -> None:
         if isinstance(node, Mapping):
             repositories = [
                 repository
@@ -327,6 +338,14 @@ def rulespec_commit_mentions(value: object) -> set[str]:
             rulespec_record = any(
                 "rulespec" in repository.lower() for repository in repositories
             )
+            artifact_identity_fields: set[str] = set()
+            if feed_identity_record and is_accepted_consumer_artifact_schema_version(
+                node.get("artifact_schema_version")
+            ):
+                try:
+                    artifact_identity_fields = set(chronicle_feed_identity(node))
+                except ValueError:
+                    pass
             foreign = named and not rulespec_record
             if rulespec_record:
                 commit_value = True
@@ -334,16 +353,23 @@ def rulespec_commit_mentions(value: object) -> set[str]:
                 commit_value = False
             for key, child in node.items():
                 name = str(key).lower()
-                commit_key = "commit" in name and (rulespec_context or not foreign)
+                identity_field = key in artifact_identity_fields
+                field_commit_value = commit_value and (
+                    rulespec_context or not identity_field
+                )
+                commit_key = "commit" in name and (
+                    rulespec_context or (not foreign and not identity_field)
+                )
                 visit(
                     str(key),
                     rulespec_context=rulespec_context,
-                    commit_value=commit_value,
+                    commit_value=field_commit_value,
                 )
                 visit(
                     child,
                     rulespec_context=rulespec_context or "rulespec" in name,
-                    commit_value=commit_value or commit_key or "rulespec" in name,
+                    commit_value=field_commit_value or commit_key or "rulespec" in name,
+                    feed_identity_record=name == "feed_identity",
                 )
         elif isinstance(node, list):
             for child in node:
@@ -1193,7 +1219,12 @@ class TestReferenceSets:
         assert document["country"] == "nz"
         assert document["reference_set"] == reference_set
         expected_operations = (
-            ["identity", "rolled_forward_by_ratio", "allocated_residual_by_ratio"]
+            [
+                "identity",
+                "rolled_forward_by_ratio",
+                "allocated_residual_by_ratio",
+                "linear_combination",
+            ]
             if reference_set == "calibration"
             else ["identity"]
         )
@@ -1346,7 +1377,13 @@ class TestReferenceSets:
         )
         assert HELD_OUT_FAMILIES.isdisjoint(reference.family for reference in upstream)
 
-    @settings(max_examples=300, deadline=None)
+    # A stalled shared host once made one draw take 36.9 s (load1 ~300), which
+    # Hypothesis reports as too_slow; the strategy itself is cheap.
+    @settings(
+        max_examples=300,
+        deadline=None,
+        suppress_health_check=[HealthCheck.too_slow],
+    )
     @given(
         data=st.data(),
         kind=st.sampled_from(HOLDOUT_LEAK_KINDS),
@@ -1452,6 +1489,52 @@ _RULESPEC_REPOSITORIES = (
 
 
 class TestRulespecPin:
+    @pytest.mark.parametrize(
+        "case",
+        [
+            "canonical",
+            "unattributed",
+            "incomplete",
+            "explicit_commit",
+            "extra_commit",
+            "rulespec_extra_revision",
+            "prose",
+            "rulespec_context",
+            "wrong_schema",
+        ],
+    )
+    def test_chronicle_identity_scope_preserves_rulespec_mentions(self, case) -> None:
+        identity = _load("reference_aging.json")["feed_identity"]
+        commit = identity["source_commit"]
+        payload = {"feed_identity": identity}
+        expected = set()
+        if case == "unattributed":
+            payload = {"other": identity}
+            expected = {commit}
+        elif case == "incomplete":
+            identity.pop("manifest_sha256")
+            expected = {commit}
+        elif case == "explicit_commit":
+            identity["rulespec_nz_commit"] = "c0ffee1"
+            expected = {"c0ffee1"}
+        elif case == "extra_commit":
+            identity["commit"] = "deadbee"
+            expected = {"deadbee"}
+        elif case == "rulespec_extra_revision":
+            identity["revision"] = "deadbee"
+            payload = {"rulespec": payload}
+            expected = {commit, "deadbee"}
+        elif case == "prose":
+            identity["notes"] = "RuleSpec-nz deadbee"
+            expected = {"deadbee"}
+        elif case == "rulespec_context":
+            payload = {"rulespec": payload}
+            expected = {commit}
+        elif case == "wrong_schema":
+            identity["artifact_schema_version"] = "unknown"
+            expected = {commit}
+        assert rulespec_commit_mentions(payload) == expected
+
     def test_every_rulespec_commit_named_anywhere_was_reviewed_on_main(self) -> None:
         pin = _load("axiom_rules_bindings.json")["rulespec"]
         mentions = rulespec_commit_mentions(_package_payloads())
@@ -1543,7 +1626,8 @@ class TestRulespecPin:
         surface["notes"] = surface["notes"].replace(
             "git diff 6fe181fc 8dc2507", "git diff 6fe181fc c0ffee1"
         )
-        payloads["currency_bridge.json"]["source"]["rules"] = {
+        # The IRS rate's source record lives in money_normalization.json (w2a).
+        payloads["money_normalization.json"]["rate"]["citation"]["rules"] = {
             "repository": "TheAxiomFoundation/rulespec-nz.git",
             "revision": "facade9876543",
         }
@@ -3835,13 +3919,24 @@ class TestDeclaredResources:
         }
 
     def test_currency_bridge_is_one_declared_multiplication(self) -> None:
+        # The executable rate lives once, as cited decimal text, in
+        # money_normalization.json; the MC4 record points to it.
         bridge = _load("currency_bridge.json")
         assert (bridge["from_currency"], bridge["to_currency"]) == ("USD", "NZD")
         assert bridge["operation"] == "multiply"
-        assert bridge["rounding"] == {"decimal_places": 2}
-        assert isinstance(bridge["rate"], float) and bridge["rate"] > 0
-        assert bridge["source"]["url"].startswith("https://www.irs.gov/")
-        assert bridge["source"]["column"] == str(bridge["rate_year"])
+        assert bridge["rate"] == {
+            "resource": "money_normalization.json",
+            "path": ["rate"],
+        }
+        money = _load("money_normalization.json")
+        rate = money[bridge["rate"]["path"][0]]
+        assert money["quote"] == "to_per_from"
+        assert money["rounding"] == {"digits": 2, "mode": "half_even"}
+        assert rate["form"] == "decimal_text"
+        assert isinstance(rate["text"], str) and float(rate["text"]) > 0
+        assert rate["citation"]["url"].startswith("https://www.irs.gov/")
+        assert rate["citation"]["column"] == str(bridge["rate_year"])
+        assert "awaiting D1" not in bridge["status"]
 
     def test_benefit_unit_rule_declares_the_settled_dependent_child_age(self) -> None:
         rule = _load("benefit_unit_rule.json")

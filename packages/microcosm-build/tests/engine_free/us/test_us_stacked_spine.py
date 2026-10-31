@@ -484,6 +484,7 @@ def test_finalize_preserve_nulls_keeps_unowned_cells_null() -> None:
         person_outputs=("taxable_interest_income",),
         tax_unit_outputs=("health_savings_account_ald",),
         absent_cells=PUF_ABSENT_CELLS_PRESERVE_NULLS,
+        tail_bound_diagnostics=[],
     )
 
     person = finalized.table("person")
@@ -540,6 +541,7 @@ def test_finalize_preserve_nulls_materializes_registry_boolean_outputs() -> None
         person_outputs=boolean_outputs,
         tax_unit_outputs=(),
         absent_cells=PUF_ABSENT_CELLS_PRESERVE_NULLS,
+        tail_bound_diagnostics=[],
     )
 
     person = finalized.table("person")
@@ -580,6 +582,7 @@ def test_finalize_preserve_nulls_rejects_numeric_boolean_materialization() -> No
             person_outputs=(column,),
             tax_unit_outputs=(),
             absent_cells=PUF_ABSENT_CELLS_PRESERVE_NULLS,
+            tail_bound_diagnostics=[],
         )
 
 
@@ -595,6 +598,7 @@ def test_finalize_legacy_zero_fill_reproduces_the_audited_defect() -> None:
         predictions.copy(),
         person_outputs=("taxable_interest_income",),
         tax_unit_outputs=("health_savings_account_ald",),
+        tail_bound_diagnostics=[],
     )
 
     person = finalized.table("person")
@@ -620,6 +624,7 @@ def test_finalize_legacy_zero_fill_matches_run_7_protocol_5_byte_pin() -> None:
         predictions.copy(),
         person_outputs=("taxable_interest_income",),
         tax_unit_outputs=("health_savings_account_ald",),
+        tail_bound_diagnostics=[],
     )
 
     actual = (
@@ -648,6 +653,7 @@ def test_preserve_nulls_sparsification_never_rewrites_native_rows() -> None:
         person_outputs=("taxable_interest_income",),
         tax_unit_outputs=("health_savings_account_ald",),
         absent_cells=PUF_ABSENT_CELLS_PRESERVE_NULLS,
+        tail_bound_diagnostics=[],
     )
 
     person = finalized.table("person")
@@ -4111,7 +4117,7 @@ def test_late_primary_resources_bind_donor_content_and_execution_config(
         "tax_unit_outputs": "canonical_default",
     }
     execution = baseline["tax_unit.@primary_puf_execution_config"]["binding"]
-    assert execution["schema_version"] == 5
+    assert execution["schema_version"] == 6
     assert execution["clone_attachment"]["support_channels"] == [
         stacked_spine_module.BASE_ASEC_SUPPORT_CHANNEL,
         stacked_spine_module.PUF_TAX_DETAIL_SUPPORT_CHANNEL,
@@ -4122,6 +4128,12 @@ def test_late_primary_resources_bind_donor_content_and_execution_config(
     assert execution["qrf"]["tail_bound_quantiles"] == {
         "non_sch_d_capital_gains": 0.999
     }
+    assert execution["qrf"]["recipient_share_bound"] == (
+        stacked_spine_module.puf_tax_detail_recipient_share_bound_identity()
+    )
+    assert execution["qrf"]["recipient_share_bound"]["rule"] == (
+        "recipient_share_slice_mass"
+    )
     # microcosm#1258: the S-corp universe-zero doctrine is retired.
     assert execution["doctrines"] == {
         "require_complete_recipient_predictors": True,
@@ -9198,3 +9210,42 @@ def test_end_to_end_stack_gap_fill_puf_pass_gates_and_battery(tmp_path) -> None:
         ]
         assert origin_detail.notna().all()
         assert (origin_detail > 0.0).any()
+
+
+def _primary_execution_binding() -> dict[str, object]:
+    return stacked_spine_module._late_primary_execution_config_binding(
+        clone_attachment_fraction=1.0,
+        clone_attachment_seed=0,
+        seed=0,
+        n_estimators=32,
+        predictors=None,
+        person_outputs=None,
+        tax_unit_outputs=None,
+        fit_records_enabled=True,
+        tail_bound_diagnostics_enabled=True,
+    )
+
+
+def _validate_primary_execution_binding(binding: dict[str, object]) -> None:
+    stacked_spine_module._validate_late_resource_binding(
+        binding,
+        producer=stacked_spine_module.US_LATE_PRIMARY_PUF_STAGE,
+        entity="tax_unit",
+        column="@primary_puf_execution_config",
+        boundary="test boundary",
+    )
+
+
+def test_primary_execution_binding_carries_the_recipient_share_bound() -> None:
+    binding = _primary_execution_binding()
+    _validate_primary_execution_binding(binding)
+
+    changed = deepcopy(binding)
+    changed["qrf"]["recipient_share_bound"]["cap"] = "top_slice_boundary"
+    with pytest.raises(ValueError, match="recipient-share bound changed"):
+        _validate_primary_execution_binding(changed)
+
+    missing = deepcopy(binding)
+    missing["qrf"].pop("recipient_share_bound")
+    with pytest.raises(ValueError, match="late primary-QRF config is malformed"):
+        _validate_primary_execution_binding(missing)

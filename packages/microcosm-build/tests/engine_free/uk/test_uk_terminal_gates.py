@@ -429,8 +429,10 @@ def test_export_candidate_columns_strip_ids_and_carry_the_weight() -> None:
     # The boundary drops the reviewed export exclusions, the internal
     # disability carriers, the salary-sacrifice pre-conversion pay carrier,
     # the landlord carrier, the FRS bonus carrier (microcosm#1340), the
-    # in-household care hours carrier (microcosm#1418) and the value the
-    # regional home values replaced (microcosm#1112), and nothing else.
+    # in-household care hours carrier (microcosm#1418), the value the
+    # regional home values replaced (microcosm#1112) and the household ISA
+    # totals policyengine-uk sums from the person balances (microcosm#1415),
+    # and nothing else.
     from microcosm.build.uk_runtime.frs_disability import (
         UK_INTERNAL_DISABILITY_REPORTED_COLUMNS,
     )
@@ -457,6 +459,7 @@ def test_export_candidate_columns_strip_ids_and_carry_the_weight() -> None:
         | {f"person.{FRS_BONUS_CARRIER_COLUMN}"}
         | {f"person.{FRS_IN_HOUSEHOLD_CARE_HOURS_COLUMN}"}
         | {f"household.{RANK_BASIS_COLUMN}"}
+        | {"household.cash_isa", "household.stocks_and_shares_isa"}
     )
     # A frame without the column passes through untouched.
     assert uk_release_export_frame(exported) is exported

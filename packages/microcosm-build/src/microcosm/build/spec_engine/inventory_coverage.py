@@ -350,12 +350,12 @@ EXPECTED_HASHES = {
     "acs_person_predictors": "878c788a6f037d7aca12b3586ea034eff04f3034ffa11935a736493042551f25",
     "authority": "bf681aedc859fd6398ef72da68f584069b7d25b3085c549bf99f82e8324c4eef",
     "early_families": "4aa9f736fd76e83955477ad1667e58f48f264783f05bdc7f0102cd32d61323bd",
-    "full_checkpoint": "183984392a365b617e6cf42b43f12aac3dccd6d3f97341147cad0f892d302597",
+    "full_checkpoint": "69c2e4fcc8ebdf1e6257ccaf4787b736c4822beda5f4ee01a53ffa3945f4936f",
     "gap_fill_schedule": "1c31f9868f7884347cc19cf1ff65da43f950b9114941a715bab168246db414a7",
-    "graph_nodes": "b68a7e94940b67f65aa2b029278ef0f37b927880fae143d17c2a3ec118d0fe67",
+    "graph_nodes": "1b208fff4f6d878c522147fee617177544bda8963c940f98a4bfc37507cb955f",
     "geography_assignment": "44e7f5f6cd7ceeef85d532c3d46306d03de4f4ee811376e6d29920742746b65c",
     "late_families": "7857518a5327a816acae80d55a04f43e7445a5e47be822d3ccb747bcb375e199",
-    "late_resource_semantics": "0be57790c6f5474e841452448598b6a90dc3afe473df32e381d9bff4f3767490",
+    "late_resource_semantics": "6a1393f35ca9b00e2f01ae2f9ed90376be01ad9875109cb332dbda988d31b57f",
     "late_schedule": "f1fb754e6ade602be394837bc0d7d091f2fba4b4b83fb00f59a0258fe56eb5da",
     "ownership": "5f64f0aac49e2313177564f71876bffc8c81b3ded4df701e70930e60e9c98356",
     "primary_tuples": "6655e37f15befe053f8de2583c216f97098e4c2bde526f315299c2858c97f055",
@@ -377,10 +377,11 @@ EXPECTED_HASHES = {
     # self-employment component step changes acs_transfer's attested bytes.
     # microcosm#1251 (#1239) moves the seed map and protocol again: puf_support
     # gains the passive partnership/S-corp leaf, so the PUF QRF targets change.
+    # microcosm#1259's recipient-share bound in puf_support moves both again.
     # microcosm#1261 moves both again: the PUF donor carries partnership and
     # S-corp line-32 shares as separate leaves.
-    "seed_map": "516bbc4d22f7185f21d9d76d6ca8321a7e37dc7b71a91dcf7169cf9bd920240a",
-    "seed_protocol": "a1215fcc203fe07d1ee4524da90e7bc3390edd63f39d5fd70f7868fa585cf759",
+    "seed_map": "488846129a3c47e89d54538515e6bdbd7ce849e4081ab8a4ad40c9ce2a1e1391",
+    "seed_protocol": "87f44e60621c45d2fc1448fda11cd446960d6bab7cb51b346367339e2e751e1f",
     "source_manifest": "608c3621b1e4a108e57c8f83d16a184acdb3d05e16a81b895f7f72dbf5d0685c",
     "take_up": "9522ce40f7dea569312dd7a7beb474e5a5afadd2f1e10cb5876534c3ef623d35",
     "tail": "071d418bb49976f4682c320d2ad07097c177de3a645d2524f235e1ff33ac83f9",
