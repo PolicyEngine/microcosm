@@ -951,9 +951,13 @@ def test_stage1_queries_only_drawn_recipients_with_the_bridge(
         "has_trade",
         "at_or_over_spa",
         "main_source_pay",
-        spi_income.SPI_STAGE1_AGE_BAND_COLUMN,
     } <= set(stage1["columns"])
-    # The forest reads the band, never the age drawn inside it (uk-data#628).
+    # The forest reads the band, one-hot so that composites are a category of
+    # their own, never the age drawn inside it (uk-data#628; Vahid's review of
+    # #1426).
+    band = spi_income.SPI_STAGE1_AGE_BAND_COLUMN
+    assert band not in stage1["columns"]
+    assert any(column.startswith(f"{band}_") for column in stage1["columns"])
     assert "age" not in stage1["columns"]
     # The no-analogue leaf's sign uniform is the identity-keyed one for the
     # drawn recipients, in their order.
@@ -1157,4 +1161,5 @@ def test_spi_pay_floor_lifts_drawn_pay_before_employment_income_and_stage2(
     assert unfloored.employment_pay_floor is None
     receipt = floored.employment_pay_floor
     assert receipt["step"] == "spi_employment_pay_floor_before_stage2"
-    assert receipt["floored"]["source_households"] == "<10"
+    # The floored rows rest on three to nine source households: a banded count.
+    assert receipt["floored"]["source_households"] == "3-9"
