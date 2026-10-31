@@ -1,12 +1,11 @@
 {
   "source_fact_feed": "chronicle-uk-08962f1-consumer-facts",
   "target_period": 2025,
-  "candidate_count": 1437,
-  "contract_target_count": 394,
-  "active_reference_count": 1403,
+  "candidate_count": 1439,
+  "contract_target_count": 396,
+  "active_reference_count": 1409,
   "status_counts": {
-    "active": 1403,
-    "no_fact_at_or_before_period": 4,
+    "active": 1409,
     "signed_excluded": 30
   },
   "geography_pins": {
@@ -60,15 +59,15 @@
     },
     "obr.council_tax_england": {
       "geography_level": "country",
-      "geography_id": "E92000001"
+      "geography_id": "K02000001"
     },
     "obr.council_tax_scotland": {
       "geography_level": "country",
-      "geography_id": "S92000003"
+      "geography_id": "K02000001"
     },
     "obr.council_tax_wales": {
       "geography_level": "country",
-      "geography_id": "W92000004"
+      "geography_id": "K02000001"
     },
     "obr.domestic_rates": {
       "geography_level": "country",
@@ -1936,9 +1935,17 @@
       "geography_level": "country",
       "geography_id": "K02000001"
     },
-    "slc.repayments.devolved_total": {
+    "slc.repayments.wales_total": {
       "geography_level": "country",
-      "geography_id": "K03000001"
+      "geography_id": "W92000004"
+    },
+    "slc.repayments.scotland_total": {
+      "geography_level": "country",
+      "geography_id": "S92000003"
+    },
+    "slc.repayments.northern_ireland_total": {
+      "geography_level": "country",
+      "geography_id": "N92000002"
     },
     "slc.repayments.england_total_higher_education": {
       "geography_level": "country",
@@ -4643,7 +4650,6 @@
   },
   "genuine_sum_residue": [
     "dfe.funded_childcare.working_parent_children_2_to_4",
-    "dfi_ni.bus.passenger_receipts",
     "dwp.workplace_pension.employer_contributions",
     "nithc.public_transport_support",
     "obr.beer_and_cider_duties",
@@ -4817,10 +4823,6 @@
     "ons.population.scotland_children_under_16",
     "ons.population.uk_total",
     "ons.savings_interest_income",
-    "slc.repayments.england_plan_1",
-    "slc.repayments.england_plan_2",
-    "slc.repayments.england_plan_5",
-    "slc.repayments.england_total_higher_education",
     "welshgov.bus.public_support"
   ],
   "uprating_holds": [
@@ -7299,6 +7301,30 @@
       "to": "2025"
     },
     {
+      "name": "slc.repayments.wales_total",
+      "from": "2024",
+      "to": "2025",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
+      "factor": "1.04119828372843",
+      "value_before_uprating": "229100000.0"
+    },
+    {
+      "name": "slc.repayments.scotland_total",
+      "from": "2024",
+      "to": "2025",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
+      "factor": "1.04119828372843",
+      "value_before_uprating": "203300000.0"
+    },
+    {
+      "name": "slc.repayments.northern_ireland_total",
+      "from": "2024",
+      "to": "2025",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
+      "factor": "1.04119828372843",
+      "value_before_uprating": "181700000.0"
+    },
+    {
       "name": "slc.borrowers.plan_2_above_threshold",
       "from": "2024",
       "to": "2025"
@@ -7346,46 +7372,6 @@
     {
       "name": "slc.support.adult_dependants_grant_spend",
       "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "dfe.funded_childcare.working_parent_children_2_to_4",
-      "from": "2025-01",
-      "to": "2025"
-    },
-    {
-      "name": "dfe.funded_childcare.early_learning_2_year_olds",
-      "from": "2025-01",
-      "to": "2025"
-    },
-    {
-      "name": "dfe.funded_childcare.universal_only_children",
-      "from": "2025-01",
-      "to": "2025"
-    },
-    {
-      "name": "dfe.funded_childcare.working_parent_children_9_to_11_months",
-      "from": "2025-01",
-      "to": "2025"
-    },
-    {
-      "name": "dfe.funded_childcare.working_parent_children_age_1",
-      "from": "2025-01",
-      "to": "2025"
-    },
-    {
-      "name": "dfe.funded_childcare.working_parent_children_age_2",
-      "from": "2025-01",
-      "to": "2025"
-    },
-    {
-      "name": "dfe.funded_childcare.working_parent_children_age_3",
-      "from": "2025-01",
-      "to": "2025"
-    },
-    {
-      "name": "dfe.funded_childcare.universal_nursery_children_age_3",
-      "from": "2025-01",
       "to": "2025"
     },
     {
@@ -11526,45 +11512,54 @@
           "matched_fact_count_overall": 2,
           "matched_fact_count_at_or_before_period": 2,
           "resolved_period": 2025,
-          "resolved_value": 48774613798.61318,
+          "resolved_value": 47197574984.19505,
           "resolved_fact_period": "2025",
           "resolved_fact_key": "ledger_aggregate_fact_v2_3d3a988c07e4fe6ec194b125"
         }
       ]
     },
     "obr.council_tax_england": {
-      "status": "no_fact_at_or_before_period",
+      "status": "active",
       "candidates": [
         {
           "name": "obr.council_tax_england",
-          "status": "no_fact_at_or_before_period",
-          "matched_fact_count_overall": 0,
-          "matched_fact_count_at_or_before_period": 0,
-          "error": "ledger_reference_compile_status_no_fact_at_or_before_period"
+          "status": "active",
+          "matched_fact_count_overall": 2,
+          "matched_fact_count_at_or_before_period": 2,
+          "resolved_period": 2025,
+          "resolved_value": 41990323959.26737,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_ceedbb95994a8ac505f786bf"
         }
       ]
     },
     "obr.council_tax_scotland": {
-      "status": "no_fact_at_or_before_period",
+      "status": "active",
       "candidates": [
         {
           "name": "obr.council_tax_scotland",
-          "status": "no_fact_at_or_before_period",
-          "matched_fact_count_overall": 0,
-          "matched_fact_count_at_or_before_period": 0,
-          "error": "ledger_reference_compile_status_no_fact_at_or_before_period"
+          "status": "active",
+          "matched_fact_count_overall": 2,
+          "matched_fact_count_at_or_before_period": 2,
+          "resolved_period": 2025,
+          "resolved_value": 2925794534.826645,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_dfff83cd33669be0acf48236"
         }
       ]
     },
     "obr.council_tax_wales": {
-      "status": "no_fact_at_or_before_period",
+      "status": "active",
       "candidates": [
         {
           "name": "obr.council_tax_wales",
-          "status": "no_fact_at_or_before_period",
-          "matched_fact_count_overall": 0,
-          "matched_fact_count_at_or_before_period": 0,
-          "error": "ledger_reference_compile_status_no_fact_at_or_before_period"
+          "status": "active",
+          "matched_fact_count_overall": 2,
+          "matched_fact_count_at_or_before_period": 2,
+          "resolved_period": 2025,
+          "resolved_value": 2281456490.1010394,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_ecf95c2f5e00d7d1294784d4"
         }
       ]
     },
@@ -18351,7 +18346,7 @@
           "status": "signed_excluded",
           "matched_fact_count_overall": 828,
           "matched_fact_count_at_or_before_period": 828,
-          "signed_rationale": "Signed out pending a Scotland household-composition fact: the current selector reaches person-level ONS mid-year population age rows, not households with three or more children. microcosm#736 tracks the missing declaration."
+          "signed_rationale": "Kept out: Chronicle's Scotland household-composition cut counts couple households only, so binding it would fix part of the group and leave lone parents free, and the current selector reaches person-level ONS mid-year population age rows, not households with three or more children (Mar\u00eda's ruling of 2026-10-29, microcosm#1095 D3)."
         }
       ]
     },
@@ -19976,7 +19971,7 @@
           "matched_fact_count_overall": 3,
           "matched_fact_count_at_or_before_period": 2,
           "resolved_period": 2025,
-          "resolved_value": 471000000.0,
+          "resolved_value": 467200000.0,
           "resolved_fact_period": "2025",
           "resolved_fact_key": "ledger_aggregate_fact_v2_20b43b0f8f61e448f28895cf"
         }
@@ -20058,15 +20053,63 @@
         }
       ]
     },
-    "slc.repayments.devolved_total": {
-      "status": "no_fact_at_or_before_period",
+    "slc.repayments.wales_total": {
+      "status": "active",
       "candidates": [
         {
-          "name": "slc.repayments.devolved_total",
-          "status": "no_fact_at_or_before_period",
-          "matched_fact_count_overall": 0,
-          "matched_fact_count_at_or_before_period": 0,
-          "error": "ledger_reference_compile_status_no_fact_at_or_before_period"
+          "name": "slc.repayments.wales_total",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 238538526.80218223,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_902404b7cd21f97c3b21e20d",
+          "uprating": {
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
+            "factor": "1.04119828372843",
+            "value_before_uprating": "229100000.0"
+          }
+        }
+      ]
+    },
+    "slc.repayments.scotland_total": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "slc.repayments.scotland_total",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 211675611.08198887,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_4ec55a09c394534ac26767f8",
+          "uprating": {
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
+            "factor": "1.04119828372843",
+            "value_before_uprating": "203300000.0"
+          }
+        }
+      ]
+    },
+    "slc.repayments.northern_ireland_total": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "slc.repayments.northern_ireland_total",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 189185728.15345487,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_c3e545a934c9cf0ca1b03202",
+          "uprating": {
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
+            "factor": "1.04119828372843",
+            "value_before_uprating": "181700000.0"
+          }
         }
       ]
     },
@@ -20079,7 +20122,7 @@
           "matched_fact_count_overall": 2,
           "matched_fact_count_at_or_before_period": 2,
           "resolved_period": 2025,
-          "resolved_value": 5339303976.37,
+          "resolved_value": 5259035941.014999,
           "resolved_fact_period": "2025",
           "resolved_fact_key": "ledger_aggregate_fact_v2_f0246325a330628012ee76e8"
         }
@@ -20094,7 +20137,7 @@
           "matched_fact_count_overall": 2,
           "matched_fact_count_at_or_before_period": 2,
           "resolved_period": 2025,
-          "resolved_value": 1604190700.89,
+          "resolved_value": 1666317820.305,
           "resolved_fact_period": "2025",
           "resolved_fact_key": "ledger_aggregate_fact_v2_a53459aedc5b84595b83c3c8"
         }
@@ -20109,9 +20152,9 @@
           "matched_fact_count_overall": 4,
           "matched_fact_count_at_or_before_period": 4,
           "resolved_period": 2025,
-          "resolved_value": 3234379913.2999997,
+          "resolved_value": 3120348275.3849993,
           "resolved_fact_period": "2025",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_b93d57062e37c3331c56e26c"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_a2024c03e027506e656e205c"
         }
       ]
     },
@@ -20124,9 +20167,9 @@
           "matched_fact_count_overall": 4,
           "matched_fact_count_at_or_before_period": 4,
           "resolved_period": 2025,
-          "resolved_value": 73713378.39,
+          "resolved_value": 65502428.995000005,
           "resolved_fact_period": "2025",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_d9fcbf3e10321a3659d441d2"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_85bfbd8b99bbea58b076edb6"
         }
       ]
     },
@@ -20305,7 +20348,7 @@
           "matched_fact_count_overall": 9,
           "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 599800000.0,
+          "resolved_value": 607900000.0,
           "resolved_fact_period": "2025",
           "resolved_fact_key": "ledger_aggregate_fact_v2_988715985f9e98bbb332e83d"
         }
@@ -20333,11 +20376,11 @@
           "name": "dfe.funded_childcare.working_parent_children_2_to_4",
           "status": "active",
           "matched_fact_count_overall": 11,
-          "matched_fact_count_at_or_before_period": 9,
+          "matched_fact_count_at_or_before_period": 11,
           "resolved_period": 2025,
-          "resolved_value": 621482.0,
-          "resolved_fact_period": "2025-01",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_a57a0c03ac43b62dde04fabd"
+          "resolved_value": 648979.0,
+          "resolved_fact_period": "2026-01",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_af12a063a16ecde500686c6c"
         }
       ]
     },
@@ -20348,11 +20391,11 @@
           "name": "dfe.funded_childcare.early_learning_2_year_olds",
           "status": "active",
           "matched_fact_count_overall": 12,
-          "matched_fact_count_at_or_before_period": 11,
+          "matched_fact_count_at_or_before_period": 12,
           "resolved_period": 2025,
-          "resolved_value": 95031.0,
-          "resolved_fact_period": "2025-01",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_a2b30af28303935159ba0edc"
+          "resolved_value": 85629.0,
+          "resolved_fact_period": "2026-01",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_9e913211537e7c46e96c2742"
         }
       ]
     },
@@ -20363,11 +20406,11 @@
           "name": "dfe.funded_childcare.universal_only_children",
           "status": "active",
           "matched_fact_count_overall": 770,
-          "matched_fact_count_at_or_before_period": 686,
+          "matched_fact_count_at_or_before_period": 770,
           "resolved_period": 2025,
-          "resolved_value": 396965.0,
-          "resolved_fact_period": "2025-01",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_471573def13ebdc67ff1f40a"
+          "resolved_value": 362581.0,
+          "resolved_fact_period": "2026-01",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_ae45cc61b01eddce4b934a86"
         }
       ]
     },
@@ -20378,11 +20421,11 @@
           "name": "dfe.funded_childcare.working_parent_children_9_to_11_months",
           "status": "active",
           "matched_fact_count_overall": 2,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_at_or_before_period": 2,
           "resolved_period": 2025,
-          "resolved_value": 29155.0,
-          "resolved_fact_period": "2025-01",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_769651ffaa02515e5ee3098b"
+          "resolved_value": 30679.0,
+          "resolved_fact_period": "2026-01",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_5c1273ee61b11f237ed6e181"
         }
       ]
     },
@@ -20393,11 +20436,11 @@
           "name": "dfe.funded_childcare.working_parent_children_age_1",
           "status": "active",
           "matched_fact_count_overall": 2,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_at_or_before_period": 2,
           "resolved_period": 2025,
-          "resolved_value": 195104.0,
-          "resolved_fact_period": "2025-01",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_6cbcc48c50d98484b296c765"
+          "resolved_value": 210825.0,
+          "resolved_fact_period": "2026-01",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_e05ce3c6b38a635c203cdc25"
         }
       ]
     },
@@ -20408,11 +20451,11 @@
           "name": "dfe.funded_childcare.working_parent_children_age_2",
           "status": "active",
           "matched_fact_count_overall": 2,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_at_or_before_period": 2,
           "resolved_period": 2025,
-          "resolved_value": 242453.0,
-          "resolved_fact_period": "2025-01",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_a57a0c03ac43b62dde04fabd"
+          "resolved_value": 260238.0,
+          "resolved_fact_period": "2026-01",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_af12a063a16ecde500686c6c"
         }
       ]
     },
@@ -20423,11 +20466,11 @@
           "name": "dfe.funded_childcare.working_parent_children_age_3",
           "status": "active",
           "matched_fact_count_overall": 9,
-          "matched_fact_count_at_or_before_period": 8,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 278640.0,
-          "resolved_fact_period": "2025-01",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_ae89c21da190202937f75e8a"
+          "resolved_value": 278490.0,
+          "resolved_fact_period": "2026-01",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_db01df247e88d2e259f7c2d6"
         }
       ]
     },
@@ -20438,11 +20481,11 @@
           "name": "dfe.funded_childcare.universal_nursery_children_age_3",
           "status": "active",
           "matched_fact_count_overall": 9,
-          "matched_fact_count_at_or_before_period": 8,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 565954.0,
-          "resolved_fact_period": "2025-01",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_0c21c76c8195d04ceb47d2a2"
+          "resolved_value": 535209.0,
+          "resolved_fact_period": "2026-01",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_072da1462c15ac7cceab9bc9"
         }
       ]
     },
@@ -20960,7 +21003,7 @@
           "matched_fact_count_overall": 14,
           "matched_fact_count_at_or_before_period": 14,
           "resolved_period": 2025,
-          "resolved_value": 152500000.0,
+          "resolved_value": 151900000.0,
           "resolved_fact_period": "2025",
           "resolved_fact_key": "ledger_aggregate_fact_v2_fb908f8be713f90f9536e6a2"
         }
@@ -32140,7 +32183,7 @@
       "family": "ons_population",
       "target_id": "ons.population.scotland_households_3plus_children",
       "status": "signed_excluded",
-      "signed_rationale": "Signed out pending a Scotland household-composition fact: the current selector reaches person-level ONS mid-year population age rows, not households with three or more children. microcosm#736 tracks the missing declaration."
+      "signed_rationale": "Kept out: Chronicle's Scotland household-composition cut counts couple households only, so binding it would fix part of the group and leave lone parents free, and the current selector reaches person-level ONS mid-year population age rows, not households with three or more children (Mar\u00eda's ruling of 2026-10-29, microcosm#1095 D3)."
     },
     {
       "family": "dwp_state_pension",

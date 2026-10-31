@@ -1387,6 +1387,10 @@
       "ledger_selector": {
         "source_name": "obr",
         "source_concept": "obr.council_tax_england",
+        "source_table_by_opening_year": {
+          "2024": "EFO March 2026 detailed forecast tables: expenditure",
+          "2025": "EFO October 2026 detailed forecast tables: expenditure"
+        },
         "geography_level": "country",
         "geography_id": "K02000001"
       },
@@ -1436,6 +1440,10 @@
       "ledger_selector": {
         "source_name": "obr",
         "source_concept": "obr.council_tax_scotland",
+        "source_table_by_opening_year": {
+          "2024": "EFO March 2026 detailed forecast tables: expenditure",
+          "2025": "EFO October 2026 detailed forecast tables: expenditure"
+        },
         "geography_level": "country",
         "geography_id": "K02000001"
       },
@@ -1485,6 +1493,10 @@
       "ledger_selector": {
         "source_name": "obr",
         "source_concept": "obr.council_tax_wales",
+        "source_table_by_opening_year": {
+          "2024": "EFO March 2026 detailed forecast tables: expenditure",
+          "2025": "EFO October 2026 detailed forecast tables: expenditure"
+        },
         "geography_level": "country",
         "geography_id": "K02000001"
       },
