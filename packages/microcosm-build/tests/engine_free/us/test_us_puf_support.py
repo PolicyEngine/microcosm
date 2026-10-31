@@ -1684,6 +1684,7 @@ def test_finalize_places_passive_with_its_line_32_total(
         tax_unit_outputs=(),
         n_estimators=4,
         seed=0,
+        tail_bound_diagnostics=[],
     )
 
     person = imputed.table("person")
@@ -1867,6 +1868,7 @@ def test_entry_points_refuse_a_stale_line_32_basis_before_any_other_work(
             tax_unit_outputs=(),
             n_estimators=4,
             seed=0,
+            tail_bound_diagnostics=[],
         )
     with pytest.raises(ValueError, match="must come before it|same pass"):
         puf_support_module.prepare_us_puf_tax_detail_chain_inputs(
