@@ -261,6 +261,7 @@ def test_national_role_is_validated_then_built_through_the_graph(tmp_path, monke
     attempt id, the Hub pre-flight, the Logbook and the staging telemetry
     live in the driver's national envelope.
     """
+    monkeypatch.setenv(SIGNING_KEY_ENV, TEST_SIGNING_KEY)
     argv = _national_argv(tmp_path)
     national = cli.parse_args(argv)
     assert national._posture is cli.uk_rowwise_posture("national")
@@ -1941,6 +1942,7 @@ def test_national_interrupt_records_a_discarded_row_and_re_raises(
     one: the seam's terminal-disposition contract, kept by the driver (the
     failure sidecar names the interrupt, the row says ``discarded``, the
     interrupt propagates)."""
+    monkeypatch.setenv(SIGNING_KEY_ENV, TEST_SIGNING_KEY)
     argv = _national_argv(tmp_path)
     monkeypatch.setattr(cli, "preflight_staged_dataset", lambda args: None)
     monkeypatch.setattr(
@@ -2008,6 +2010,7 @@ def test_dense_validation_result_matches_emitted_run_status(
 def test_build_lifecycle_handles_returned_errors_and_exceptions(
     tmp_path, monkeypatch, fake_telemetry_emitters, role, outcome
 ):
+    monkeypatch.setenv(SIGNING_KEY_ENV, TEST_SIGNING_KEY)
     args = (
         arguments(tmp_path)
         if role == "dense"
@@ -2334,6 +2337,7 @@ def test_a_sigterm_during_the_national_build_records_a_discarded_row(
     tmp_path, monkeypatch
 ):
     """The national line routes a SIGTERM through its interrupt arm too."""
+    monkeypatch.setenv(SIGNING_KEY_ENV, TEST_SIGNING_KEY)
     argv = _national_argv(tmp_path)
     monkeypatch.setattr(cli, "preflight_staged_dataset", lambda args: None)
     monkeypatch.setattr(
