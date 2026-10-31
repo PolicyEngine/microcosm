@@ -177,10 +177,16 @@ SPI_INDICATOR_CODES = (-1, 0, 1)
 #: against the leaves both ways.
 SPI_MAIN_SOURCE_LEVELS = ("pay", "pension", "trade", "other")
 SPI_BRIDGE_PREDICTOR_COLUMNS = ("main_source", "has_pay", "has_trade", "at_or_over_spa")
-SPI_STAGE1_CATEGORICAL_PREDICTORS = ("gender", "region", "main_source")
 #: The stage-1 forests' age predictor: the SPI AGERANGE band, not an age
-#: (uk-data#628). See SPI_STAGE1_AGE_PREDICTOR_RULE.
+#: (uk-data#628). It is categorical: on an ordinal scale the composite records'
+#: code (-1) would sit next to 16-24. See SPI_STAGE1_AGE_PREDICTOR_RULE.
 SPI_STAGE1_AGE_BAND_COLUMN = "spi_age_band"
+SPI_STAGE1_CATEGORICAL_PREDICTORS = (
+    SPI_STAGE1_AGE_BAND_COLUMN,
+    "gender",
+    "region",
+    "main_source",
+)
 SPI_STAGE1_PREDICTOR_COLUMNS = (
     SPI_STAGE1_AGE_BAND_COLUMN,
     "gender",
@@ -436,9 +442,9 @@ SPI_DONOR_AGE_DRAW_METHOD = (
 #: The drawn ages stay on the donor for their other readers (the band pools'
 #: State Pension side).
 SPI_STAGE1_AGE_PREDICTOR_RULE = (
-    "the SPI 2022-23 AGERANGE band code: the tape's own code, composite "
-    "records (-1) as a band of their own, and the band of a frame person's "
-    "whole-year age"
+    "the SPI 2022-23 AGERANGE band code, one-hot encoded: the tape's own code, "
+    "composite records (-1) as a band of their own, and the band of a frame "
+    "person's whole-year age"
 )
 _SPI_REGION_MAP = {
     1: "NORTH_EAST",

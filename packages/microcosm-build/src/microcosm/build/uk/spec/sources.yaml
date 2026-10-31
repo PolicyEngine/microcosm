@@ -1655,6 +1655,7 @@ stages:
     - has_trade
     - at_or_over_spa
     categorical_predictors:
+    - spi_age_band
     - gender
     - region
     - main_source
