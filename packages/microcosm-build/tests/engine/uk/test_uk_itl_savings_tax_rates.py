@@ -3,8 +3,8 @@
 Each ``hmrc.itl.savings_tax_at_<rate>_rate`` row binds Table 2.6's tax on
 savings at one rate as that rate times the engine's savings income at it.
 These tests fail if policyengine-uk's savings rates move in either tax year of
-calendar 2025, the period the rows are measured at, or if a row names another
-rate's income.
+the calendar-2025 window the rows bind, or if a row names another rate's
+income.
 """
 
 from __future__ import annotations
@@ -47,7 +47,7 @@ def test_each_row_scales_its_rates_income_by_the_engines_rate(rate) -> None:
         "income_tax_component": f"savings_at_{rate}_rate"
     }
     parameters = CountryTaxBenefitSystem().parameters
-    # Calendar 2025's two tax years: 2024-25 and 2025-26, read as the engine
+    # The window's two tax years: 2024-25 and 2025-26, read as the engine
     # reads a year's parameters.
     for instant in ("2024-04-30", "2025-04-30"):
         savings = parameters(instant).gov.hmrc.income_tax.rates.savings
