@@ -572,6 +572,7 @@ def test_gate_reads_a_ratio_held_to_its_bounds_unmeasured(support, measured) -> 
     )
     assert gate.passed, gate.failures
     assert gate.details.get("pay_concept_ratio_measured", True) is measured
+    assert gate.details.get("pay_concept_ratio_held_to_bounds", False) is not measured
 
 
 def _stage(**overrides) -> SourceStageSpec:

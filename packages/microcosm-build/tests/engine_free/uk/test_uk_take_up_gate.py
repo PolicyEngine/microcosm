@@ -274,7 +274,10 @@ def _stage_gate_parameters(stage: str) -> dict[str, object]:
     entries = {entry.id: entry for entry in load_country_spec("uk").gates.gates}
     entry = entries[_SIGNAL_STAGE_GATES[stage]]
     assert entry.gate == "stage_health"
-    assert entry.phase == "assembled"
+    # The copy stage runs after the assembled boundary (frs_brma).
+    assert entry.phase == (
+        "transferred" if stage == "childcare_copy_take_up" else "assembled"
+    )
     assert entry.criticality == "release_blocking"
     assert entry.evidence_absent_blocks is True
     return dict(entry.parameters)

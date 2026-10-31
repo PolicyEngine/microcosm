@@ -5790,6 +5790,7 @@ def test__given_a_complement_numerator__then_its_cells_come_off_the_universe() -
     assert spec.value == pytest.approx(window * 60.0 / 80.0)
     # The recorded pieces give the value back: the numerator is the complement.
     assert spec.metadata["ledger_value_numerator"] == repr(60.0)
+    assert spec.metadata["ledger_value_denominator"] == repr(80.0)
     assert spec.metadata["ledger_value_numerator_rule"] == (
         "the denominator less the listed numerator cells"
     )
@@ -6045,7 +6046,17 @@ def test__given_a_window_ratio_list_unlike_its_count__then_it_refuses() -> None:
 
 @pytest.mark.parametrize(
     ("observation", "period", "moved"),
-    [("2026-01", 2024, "2025-01"), ("2026-01", "2027", "2028-01"), (2026, 2023, 2024)],
+    [
+        ("2026-01", 2024, "2025-01"),
+        ("2026-01", "2027", "2028-01"),
+        (2026, 2023, 2024),
+        # An annual range moves both ends; a prefixed year moves its year.
+        ("2025-26", 2024, "2024-25"),
+        ("fy2025_26", 2027, "fy2027_28"),
+        ("FY2026", 2026, "FY2027"),
+        # A restamp to the same period leaves any spelling as it is.
+        ("FY2026", 2025, "FY2026"),
+    ],
 )
 def test__given_an_observation_period__then_a_restamp_keeps_its_offset(
     observation, period, moved

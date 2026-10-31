@@ -451,13 +451,13 @@ _UK_GATE_BATTERY_SHIPPABLE_STATUSES = frozenset({"passed", "not_applicable"})
 # fingerprint derives from the manifest digest. Editing the spec moves all
 # three here in the same reviewed change.
 _UK_GATE_BATTERY_POLICY_SHA256 = (
-    "59286c15643e4654924ced1173295f9be4b22a41b8a3261c01affb680aa8aa62"
+    "f90e65767e9797db8e262f39eaedb7efd98601fd2d42f69b886d2a966304605f"
 )
 _UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "d9d11c6d2755b09d2f8f782204912cd8691cf2a033619fb9b95a104ea9aa5657"
+    "4001e8bc00df1747d375454d390cb441bd966ebb18c6ab8239a01547eab720ca"
 )
 _UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "2e6409030592edf6d1757a620ebfacfc3367f096274fee4ef1cef290327e9102"
+    "13162738d40a935248631885f41633898fda1f72611751cffbb06eaf7f383b23"
 )
 #: Spec entry id -> the legacy gate name whose observable detail checks
 #: apply unchanged (the battery re-keys the report by entry id; the gate
@@ -565,7 +565,7 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
     "uk_stage_frs_take_up_signal": ("stage_health", "assembled"),
     "uk_stage_frs_person_draws_take_up_signal": ("stage_health", "assembled"),
     "uk_stage_frs_household_draws_take_up_signal": ("stage_health", "assembled"),
-    "uk_stage_childcare_copy_take_up_signal": ("stage_health", "assembled"),
+    "uk_stage_childcare_copy_take_up_signal": ("stage_health", "transferred"),
     "uk_stage_age_tail_targets": ("stage_health", "assembled"),
     "uk_stage_frs_relationships_composition": ("stage_health", "assembled"),
     "uk_ledger_compile_parity_local_incumbent_2025": (
@@ -979,10 +979,10 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
 _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     "spine": {
         "gates_manifest_sha256": (
-            "f18d64b442d499b03bf7748d134bec99bb3741d035d98bb8170dcd530b0408ff"
+            "8ed2706e57964add29a4ccef0ae45e8cbd3ee7e4b66b642151d7f938acaff717"
         ),
         "policy_sha256": (
-            "71141d8bd5cd3c2a2d739c2f7269e1c0599a25888e40c34388abd1ad7261df48"
+            "1cb6fbbfc551afb62380a57056840dc8d4fc4298f99425f2581081571db04f42"
         ),
     },
     "calibration_seam": {

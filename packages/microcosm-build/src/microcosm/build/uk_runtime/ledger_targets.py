@@ -491,7 +491,13 @@ def compile_uk_target_registry(
     compiled = []
     unsupported: list[dict[str, str]] = []
     for reference in spec.target_references:
-        restamped = restamp_reference_period(reference, target_period)
+        try:
+            restamped = restamp_reference_period(reference, target_period)
+        except ValueError as error:
+            unsupported.append(
+                {"name": reference.name, "period": target_period, "reason": str(error)}
+            )
+            continue
         candidate_facts = _candidate_facts_for_reference(
             fact_rows, restamped, fact_indices_by_source=fact_indices_by_source
         )
@@ -1427,7 +1433,13 @@ def compile_uk_local_target_registry(
     compiled = []
     unsupported: list[dict[str, str]] = []
     for reference in spec.local_target_references:
-        restamped = restamp_reference_period(reference, target_period)
+        try:
+            restamped = restamp_reference_period(reference, target_period)
+        except ValueError as error:
+            unsupported.append(
+                {"name": reference.name, "period": target_period, "reason": str(error)}
+            )
+            continue
         _assert_local_reference_in_crosswalk(restamped, rosters)
         candidate_facts = _candidate_facts_for_reference(
             _local_candidate_fact_pool(
