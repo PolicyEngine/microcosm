@@ -144,6 +144,9 @@ def main() -> None:
 
     config = TargetReferenceAuthoringConfig(
         target_period=args.period,
+        # The DfE rows' observation periods (January 2026) are written for
+        # model year 2025 (microcosm#1095 D5).
+        observation_period_base=2025,
         geography_pins=_geography_pins(contract),
         geography_fanout_by_target_id=_geography_fanout(contract),
         geography_fanout_metadata=_geography_fanout_metadata,

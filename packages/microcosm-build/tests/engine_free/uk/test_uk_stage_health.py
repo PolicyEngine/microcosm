@@ -2799,7 +2799,7 @@ def _home_values_receipt() -> dict:
     [
         (lambda r: r["rows_rewritten_by_region"].pop("W92000004"), "rewrites regions"),
         (lambda r: r["rows_rewritten_by_region"].update(E12000007=0), "no row"),
-        (lambda r: r.update(rows=90), "more rows"),
+        (lambda r: r.update(rows=40), "more rows"),
         (lambda r: r.update(sources_at_cap=1), "value cap"),
         # A band past the limit fails as plainly as the count it stands for.
         (lambda r: r.update(sources_at_cap="<3"), "value cap"),
@@ -2832,19 +2832,28 @@ def test_regional_home_values_gate_flags_a_region_of_fewer_than_three_rows() -> 
 
 def test_regional_home_values_gate_reads_a_banded_count_at_its_bounds() -> None:
     """A region the receipt prints "3-9" rewrote three to nine rows: not empty,
-    above the floor, so not flagged, and read at three in the sum check, as the
-    stage's own banded row count is read at its upper bound."""
+    above the floor, so not flagged, and read at three in the sum check. A
+    rounded count is read at the lowest count that rounds to it, and the
+    stage's own row count at the highest."""
     gate_id = "uk_stage_regional_home_values_ranking"
     receipt = _home_values_receipt()
     receipt["rows_rewritten_by_region"]["W92000004"] = "3-9"
     result = _gate(gate_id, receipt)
     assert result.passed, result.failures
     assert result.details["regions_rewritten_under_floor"] == []
-    # Nine regions of ten and one of at least three: 93 rows at the least.
-    receipt["rows"] = 92
+    # Nine regions printed 10 (five rows at the least) and one of at least
+    # three: 48 rows at the least, against a stage of 44 rows at the most.
+    receipt["rows"] = 40
     assert "more rows" in _gate(gate_id, receipt).failures[0]
-    receipt["rows"] = 93
+    receipt["rows"] = 50
     assert _gate(gate_id, receipt).passed
+    # Ten regions of 15 rows print 20 each; a stage of 150 rows is not short.
+    rounded = _home_values_receipt()
+    rounded["rows_rewritten_by_region"] = {
+        region: 20 for region in rounded["rows_rewritten_by_region"]
+    }
+    rounded["rows"] = 150
+    assert _gate(gate_id, rounded).passed
     # A stage whose own count is banded is read at the band's top.
     small = _home_values_receipt()
     small["rows_rewritten_by_region"] = {
@@ -3373,3 +3382,25 @@ def test_apprentice_gate_is_a_population_fact_check() -> None:
     assert entry["population_fact_check"] is True
     assert entry["criticality"] == "release_blocking"
     assert entry["evidence_absent_blocks"] is True
+
+
+def test_assembled_stage_gates_read_only_stages_run_by_the_assembled_boundary() -> None:
+    """An assembled-phase stage gate reads only a stage that has run by the
+    assembled boundary; a later stage's gate belongs to the transferred phase,
+    or the boundary offers no receipt for it and the gate fails closed (the
+    re-review of microcosm#1422)."""
+    from microcosm.build import load_country_spec
+    from microcosm.build.uk_runtime.spine_build import UK_SPINE_ASSEMBLED_FINAL_STAGE
+
+    spec = load_country_spec("uk")
+    order = [stage.stage for stage in spec.sources.stages]
+    boundary = order.index(UK_SPINE_ASSEMBLED_FINAL_STAGE)
+    stage_gates = [entry for entry in spec.gates.gates if entry.gate == "stage_health"]
+    assert {str(entry.parameters["stage"]) for entry in stage_gates} <= set(order)
+    late = sorted(
+        entry.id
+        for entry in stage_gates
+        if entry.phase == "assembled"
+        and order.index(str(entry.parameters["stage"])) > boundary
+    )
+    assert late == []

@@ -1288,3 +1288,24 @@ def test_a_geography_pin_cannot_override_the_selector_s_declared_geography() -> 
         _target_selector(
             target, {"geography_level": "country", "geography_id": "K03000001"}, config
         )
+
+
+@pytest.mark.parametrize(("period", "observed"), [(2025, "2026-01"), (2026, "2027-01")])
+def test_authored_observation_period_moves_with_the_authored_period(
+    period, observed
+) -> None:
+    """A contract's observation period is written for a base period, and a row
+    authored at another period keeps the offset, as restamp_reference_period
+    does (the re-review of microcosm#1422)."""
+    from microcosm.build.target_reference_authoring import (
+        _authored_observation_period,
+    )
+
+    target = {"observation_period": "2026-01"}
+    config = TargetReferenceAuthoringConfig(
+        target_period=period, observation_period_base=2025
+    )
+    assert _authored_observation_period(target, config) == observed
+    # Without a declared base the period is copied as written.
+    plain = TargetReferenceAuthoringConfig(target_period=period)
+    assert _authored_observation_period(target, plain) == "2026-01"

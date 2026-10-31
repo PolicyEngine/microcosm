@@ -4695,12 +4695,27 @@ def _period_year(period: int | str) -> int:
 
 
 def _shift_period_years(period: int | str, years: int) -> int | str:
+    """The period ``years`` later, in its own spelling.
+
+    A year (``2026``, ``"FY2026"``) or a month (``"2026-01"``) moves its year;
+    an annual range (``"2024-25"``, ``"fy2024_25"``), whose end is the
+    following year, moves both ends. Any other spelling refuses, unless it
+    does not move.
+    """
+
+    if years == 0:
+        return period
     if isinstance(period, int):
         return period + years
-    match = re.fullmatch(r"(\d{4})(.*)", str(period).strip())
-    if match is None:
+    text = str(period).strip()
+    ranged = re.fullmatch(r"(\D*)(\d{4})([-_])(\d{2})", text)
+    if ranged and int(ranged.group(4)) == (int(ranged.group(2)) + 1) % 100:
+        start = int(ranged.group(2)) + years
+        return f"{ranged.group(1)}{start}{ranged.group(3)}{(start + 1) % 100:02d}"
+    dated = re.fullmatch(r"(\D*)(\d{4})((?:[-_]\d{2})?)", text)
+    if dated is None:
         raise ValueError(f"cannot move the period {period!r} by {years} year(s).")
-    return f"{int(match.group(1)) + years}{match.group(2)}"
+    return f"{dated.group(1)}{int(dated.group(2)) + years}{dated.group(3)}"
 
 
 def _selection_period(reference: LedgerTargetReference) -> int | str | None:

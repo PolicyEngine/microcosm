@@ -615,10 +615,10 @@ _TENURE_DRIFT_RATIONALE = (
 )
 
 _EQUIV_INCOME_FIXTURE_ONLY_RATIONALE = (
-    "Signed deferral: ONS publishes small-area income at MSOA grain only — the "
-    "feed carries no local-authority rows, and MSOA-to-LA aggregation of a "
-    "mean-valued, model-output series is ruled downstream build work behind the "
-    "frs_model_based_target_circularity and ons_bhc_ahc_noncomparable fences."
+    "Kept out: ONS models its small-area income estimates (MSOA means, before "
+    "and after housing costs, and housing costs) from the FRS, so binding them "
+    "would partly fit the FRS to itself; the feed also carries no "
+    "local-authority rows (María's ruling of 2026-10-29, microcosm#1095 D18a)."
 )
 
 _PRIVATE_RENT_FIXTURE_ONLY_RATIONALE = (
