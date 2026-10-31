@@ -221,20 +221,15 @@ def check_company_car_statistics_declaration(
 
 
 def _load_payload(verify_feed_identity: bool) -> tuple[dict[str, Any], str]:
-    resource = files("microcosm.build.uk").joinpath(
-        HMRC_COMPANY_CAR_STATISTICS_RESOURCE
-    )
-    if not resource.is_file():
-        raise HMRCCompanyCarStatisticsError(
-            f"{HMRC_COMPANY_CAR_STATISTICS_RESOURCE} is not vendored yet: the pinned "
-            "Chronicle feed must carry HMRC's Benefits in kind statistics (July 2026, "
-            "PolicyEngine/chronicle#399) before tools/vendor_uk_ledger_facts.py can "
-            "write it. Pass the facts explicitly until then."
-        )
     payload = load_vendored_resource(HMRC_COMPANY_CAR_STATISTICS_RESOURCE)
     if verify_feed_identity:
         verify_vendored_resource_feed_identity(payload)
-    return payload, hashlib.sha256(resource.read_bytes()).hexdigest()
+    digest = hashlib.sha256(
+        files("microcosm.build.uk")
+        .joinpath(HMRC_COMPANY_CAR_STATISTICS_RESOURCE)
+        .read_bytes()
+    ).hexdigest()
+    return payload, digest
 
 
 def _row_values(rows: list[Mapping[str, Any]]) -> dict[str, float]:

@@ -603,9 +603,14 @@ def test_the_stage_refuses_a_frame_without_the_carriers(statistics) -> None:
         _transform(statistics)(bare)
 
 
-def test_the_vendored_facts_are_refused_until_the_feed_carries_them() -> None:
-    with pytest.raises(HMRCCompanyCarStatisticsError, match="not vendored yet"):
-        load_hmrc_company_car_statistics()
+def test_the_vendored_facts_are_hmrc_s_2024_25_tables_on_the_pinned_feed() -> None:
+    statistics = load_hmrc_company_car_statistics()
+    assert statistics.car_recipients == 920_000.0
+    assert statistics.car_taxable_value_gbp == 3.07e9
+    assert statistics.car_class_1a_nics_gbp == 4.2e8
+    assert statistics.fuel_recipients == 40_000.0
+    assert statistics.fuel_type_shares()["fully_electric"] == pytest.approx(465 / 915)
+    assert len(statistics.evidence()["resource_sha256"]) == 64
 
 
 def test_the_loader_types_chronicle_s_2024_25_rows(statistics) -> None:

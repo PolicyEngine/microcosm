@@ -179,6 +179,10 @@ def _apply_pending_roster_transformations(
     # microcosm#1415 re-mint pending: the ISA subscriptions run last.
     assert "isa_subscriptions" not in roster
     roster.append("isa_subscriptions")
+    # PolicyEngine/uk-autumn-budget-dashboard-2026#316 re-mint pending: the
+    # company cars follow the ISA subscriptions, last.
+    assert "company_cars" not in roster
+    roster.append("company_cars")
     return tuple(roster)
 
 
