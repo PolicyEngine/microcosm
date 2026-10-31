@@ -3560,7 +3560,7 @@ def _source_year_puf_partnership_s_corp_income(
     *,
     receipt: dict[str, object] | None = None,
 ) -> dict[str, np.ndarray]:
-    """Load Schedule E line 32 through the same narrow source-year seam."""
+    """Load Schedule E line 32 by entity through the same narrow seam."""
 
     return source_year_puf_partnership_s_corp_income(
         source_puf_csv,

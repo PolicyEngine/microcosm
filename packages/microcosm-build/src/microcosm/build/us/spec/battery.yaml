@@ -423,6 +423,11 @@ metric_registry:
   metric: monetary_sign_separated
 - entity: person
   family: puf_tax_itemization
+  column: s_corp_income
+  clone_index: 0
+  metric: monetary_sign_separated
+- entity: person
+  family: puf_tax_itemization
   column: passive_partnership_s_corp_income
   clone_index: 0
   metric: monetary_sign_separated

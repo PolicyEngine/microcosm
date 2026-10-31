@@ -22,7 +22,7 @@ from microcosm.build.spec_engine.model import (
 )
 from microcosm.build.spec_engine.resolver import F0_CONTRACT_ONLY_KERNEL_IDS
 
-US_SCHEDULE_SHA256 = "6eb7556639fac5ef67bb1602c769aa01fc2070ecef42be097c6b866a05b030d0"
+US_SCHEDULE_SHA256 = "f1fb754e6ade602be394837bc0d7d091f2fba4b4b83fb00f59a0258fe56eb5da"
 
 
 @pytest.fixture(scope="module")
@@ -67,7 +67,7 @@ def test_us_compiles_exact_stage_dag_and_lossless_producer_graph(
     assert len(graph.order) == 38
     assert len(set(graph.order)) == 38
     assert len(graph.ownership_matrix) == 18
-    assert graph.compiled_output_count == 229
+    assert graph.compiled_output_count == 230
     assert graph.schedule_sha256 == US_SCHEDULE_SHA256
     assert sha256_json(graph.schedule_wire()) == US_SCHEDULE_SHA256
 

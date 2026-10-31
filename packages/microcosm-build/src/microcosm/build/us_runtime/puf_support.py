@@ -35,6 +35,15 @@ from microcosm.build.us_runtime.puf_e01000_reconciliation import (
 from microcosm.build.us_runtime.puf_interest_components import (
     split_us_puf_e19200_by_agi_band,
 )
+from microcosm.build.us_runtime.puf_source_schedule_e import (
+    PUF_PARTNERSHIP_PASSIVE_INCOME,
+    PUF_PARTNERSHIP_PASSIVE_LOSS_ALLOWED,
+    PUF_S_CORP_PASSIVE_INCOME,
+    PUF_S_CORP_PASSIVE_LOSS_ALLOWED,
+    PUF_SCHEDULE_E_PARTNERSHIP_LEGS,
+    PUF_SCHEDULE_E_S_CORP_LEGS,
+    SCHEDULE_E_DONOR_OUTPUTS,
+)
 from microcosm.build.us_runtime.qbi_inputs import (
     US_QBI_BOOLEAN_OUTPUT_COLUMNS,
     US_QBI_NONNEGATIVE_OUTPUT_COLUMNS,
@@ -75,6 +84,7 @@ __all__ = [
     "PUF_TAX_DETAIL_EARNINGS_COMPONENTS",
     "PUF_TAX_DETAIL_EARNINGS_INDICATOR_SOURCE",
     "PUF_TAX_DETAIL_INCOME_RANK_SOURCE",
+    "PUF_TAX_DETAIL_RECIPIENT_SHARE_BOUND_RULE",
     "PufTaxDetailChainInputs",
     "PUF_ABSENT_CELLS_LEGACY_ZERO_FILL",
     "PUF_ABSENT_CELLS_PRESERVE_NULLS",
@@ -97,6 +107,7 @@ __all__ = [
     "impute_us_puf_tax_detail_support",
     "puf_tax_detail_clone_mask",
     "puf_recipient_predictor_universe_receipt",
+    "puf_tax_detail_recipient_share_bound_identity",
     "puf_tax_detail_tail_bound_quantiles_identity",
     "puf_tax_unit_donor_from_arrays",
     "prepare_us_puf_tax_detail_chain_inputs",
@@ -321,9 +332,8 @@ PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS = (
     "farm_operations_income",
     "farm_rent_income",
     "miscellaneous_income",
-    # Schedule E line 32 (microcosm#1239): the combined partnership and
-    # S-corporation total is carried by partnership_income (s_corp_income is
-    # an exact-zero universe), and its section 469 passive subset follows it
+    # Schedule E line 32 by entity (microcosm#1239, #1258): each entity's
+    # share is its own leaf, and their section 469 passive subset follows both
     # in the chain so the passive draw conditions on the drawn total.
     "partnership_income",
     "s_corp_income",
@@ -392,6 +402,65 @@ def puf_tax_detail_tail_bound_quantiles_identity() -> dict[str, float]:
     """Return the exact canonical QRF-finalization tail-bound map."""
 
     return dict(sorted(_PUF_TAX_DETAIL_TAIL_BOUND_QUANTILES.items()))
+
+
+# Recipient-share bound at the same finalize seam. A PUF-clone recipient whose
+# weight is the share ``s`` of the recipient population stands for ``s`` of the
+# population, but a QRF draw hands it one donor's value. At the top of the
+# income rank a recipient stands for ~600 tax units while the donors it reaches
+# stand for a fraction of one: the PUF's synthetic Forbes-tail records carry
+# ~0.13 weight each. One such draw carried $141B of line-32 mass in the #1251
+# base, about 5,000 times what its donor represents. Weight-aware leaf draws
+# (#481) cannot fix this: the slice of the population such a donor belongs to
+# is smaller than one recipient, so whichever donor is drawn, one record
+# carries it. The bound caps each raw amount draw at the positive mass, per
+# unit of slice weight, of the donor's top slice of the recipient's own share
+# (and floors losses from the bottom slice), so no record carries more mass
+# than the most extreme slice of the population it could stand for. One
+# exception: a snapped output is bounded by the larger of that cap and its
+# smallest positive donor value, so the bound never erases a carrier. It limits
+# a record to its slice; it does not remove concentration the slice itself
+# has, and the mass it clips from passthrough columns is dropped. It is an
+# interim censor at the finalize seam, like the quantile map above: tail
+# support below pool resolution is the pool's job (DESIGN.md), and the root
+# fix is a tail stratum carrying PUF donors at their own weights (#958, #964),
+# with weight-aware draws (#481) as a complement. Each column is bounded on
+# its own, so a clipped record's links to other columns (mortgage balance and
+# interest, gains and their subsets) loosen further. Shares depend on the
+# recipient population, so a smaller sample rung, whose records stand for
+# more of it, is bounded more tightly. Discrete and boolean outputs are not
+# amounts and are left alone.
+PUF_TAX_DETAIL_RECIPIENT_SHARE_BOUND_RULE = "recipient_share_slice_mass"
+_PUF_TAX_DETAIL_RECIPIENT_SHARE_BOUND_SCHEMA_VERSION = 1
+
+
+def puf_tax_detail_recipient_share_bound_identity() -> dict[str, object]:
+    """Return the exact identity of the recipient-share finalization bound."""
+
+    return {
+        "rule": PUF_TAX_DETAIL_RECIPIENT_SHARE_BOUND_RULE,
+        "schema_version": _PUF_TAX_DETAIL_RECIPIENT_SHARE_BOUND_SCHEMA_VERSION,
+        "scope": "every_amount_output_of_the_invocation",
+        "excluded_output_classes": [
+            "boolean_person_outputs",
+            "discrete_tax_unit_outputs",
+        ],
+        "recipient_share": "household_design_weight_over_puf_recipient_total",
+        "cap": "top_slice_positive_mass_per_slice_weight",
+        "floor": "bottom_slice_negative_mass_per_slice_weight",
+        "snapped_outputs": "bounded_on_snap_grid_values_cap_lowered_onto_positive_grid",
+        "seam": "raw_tax_unit_draws_after_tail_bound_quantiles",
+    }
+
+
+def _recipient_share_bound_amount_outputs(outputs: Sequence[str]) -> tuple[str, ...]:
+    """Every amount output of an invocation, in chain order."""
+
+    excluded = (
+        _PUF_TAX_DETAIL_BOOLEAN_PERSON_OUTPUTS
+        | _PUF_TAX_DETAIL_DISCRETE_TAX_UNIT_OUTPUTS
+    )
+    return tuple(output for output in outputs if output not in excluded)
 
 
 # ASEC directly measures recipient alimony. The PUF QRF therefore sparsifies
@@ -1369,13 +1438,14 @@ def puf_tax_unit_donor_from_arrays(
         adjusted_gross_income: Explicit tax-unit-grain AGI used to select the
             published TY2015 SOI Table 2.1 component share for each record.
             Required whenever the processed PUF carries nonzero E19200.
-        schedule_e_partnership_s_corp: Tax-unit-grain Schedule E line 32
-            (``partnership_income``) and its passive subset
-            (``passive_partnership_s_corp_income``) aligned to
+        schedule_e_partnership_s_corp: Tax-unit-grain Schedule E line 32 by
+            entity (``partnership_income`` and ``s_corp_income``) and their
+            passive subset (``passive_partnership_s_corp_income``) aligned to
             ``tax_unit_id``, from
             :func:`~microcosm.build.us_runtime.puf_source_schedule_e.source_year_puf_partnership_s_corp_income`.
-            The processed artifact has no line 32, so a processed donor that
-            requests either leaf must supply it (microcosm#1239).
+            The processed artifact has neither line 32 nor its entity split,
+            so a processed donor that requests any of these leaves must supply
+            it (microcosm#1239, #1258).
         person_outputs: Person-grain PE input variables to aggregate by tax
             unit.
         tax_unit_outputs: Tax-unit-grain PE input variables to carry or derive.
@@ -1557,10 +1627,7 @@ def puf_tax_unit_donor_from_arrays(
     return tax_unit
 
 
-_SCHEDULE_E_DONOR_OUTPUTS = (
-    "partnership_income",
-    "passive_partnership_s_corp_income",
-)
+_SCHEDULE_E_DONOR_OUTPUTS = SCHEDULE_E_DONOR_OUTPUTS
 
 
 def _attach_schedule_e_partnership_s_corp(
@@ -1569,9 +1636,9 @@ def _attach_schedule_e_partnership_s_corp(
     *,
     person_outputs: Sequence[str],
 ) -> None:
-    """Carry source-year Schedule E line 32 and its passive subset.
+    """Carry source-year Schedule E line 32 by entity and its passive subset.
 
-    Both leaves must be supplied together, aligned to ``tax_unit_id`` and
+    The three leaves must be supplied together, aligned to ``tax_unit_id`` and
     finite. A leaf the arrays already derived (a stored leaf or raw Schedule E
     fields) is a second source for the same value and is refused rather than
     silently overwritten.
@@ -1758,6 +1825,7 @@ def impute_us_puf_tax_detail_support(
     raw_predictions_callback: Callable[[pd.DataFrame], None] | None = None,
     tail_bound_diagnostics: list[dict[str, object]] | None = None,
     tail_bound_quantiles: Mapping[str, float] | None = None,
+    recipient_share_bound_outputs: Sequence[str] | None = None,
     predictor_universe_receipts: list[dict[str, object]] | None = None,
     require_complete_recipient_predictors: bool = False,
     absent_cells: str = PUF_ABSENT_CELLS_LEGACY_ZERO_FILL,
@@ -1789,6 +1857,10 @@ def impute_us_puf_tax_detail_support(
         tail_bound_diagnostics: Optional output sink for the per-target tail-bound
             records produced during finalization. Build callers publish these
             records with the QRF-finalization telemetry.
+        recipient_share_bound_outputs: Test-only narrowing of the
+            recipient-share bound (see
+            :func:`finalize_us_puf_tax_detail_predictions`). Production callers
+            leave it unset, which bounds every amount output.
         predictor_universe_receipts: Optional output sink for the exact
             recipient predictor source-universe receipt. Stacked callers bind
             this receipt into the PUF-pass provenance; legacy callers omit it.
@@ -1815,6 +1887,9 @@ def impute_us_puf_tax_detail_support(
     predictors = tuple(predictors)
     person_outputs = tuple(person_outputs)
     tax_unit_outputs = tuple(tax_unit_outputs)
+    # Refuse a partial or misordered signed-subset basis before any fit, not
+    # only at finalization after the QRF has run (review of microcosm#1261).
+    _require_signed_subset_outputs_after_their_basis(person_outputs)
     outputs = (*person_outputs, *tax_unit_outputs)
     puf_mask = puf_tax_detail_clone_mask(
         frame.table("tax_unit"),
@@ -1886,6 +1961,7 @@ def impute_us_puf_tax_detail_support(
         tax_unit_outputs=tax_unit_outputs,
         tail_bound_diagnostics=tail_bound_diagnostics,
         tail_bound_quantiles=tail_bound_quantiles,
+        recipient_share_bound_outputs=recipient_share_bound_outputs,
         absent_cells=absent_cells,
     )
 
@@ -1923,6 +1999,9 @@ def prepare_us_puf_tax_detail_chain_inputs(
     predictors = tuple(predictors)
     person_outputs = tuple(person_outputs)
     tax_unit_outputs = tuple(tax_unit_outputs)
+    # Refuse a partial or misordered signed-subset basis before any fit, not
+    # only at finalization after the QRF has run (review of microcosm#1261).
+    _require_signed_subset_outputs_after_their_basis(person_outputs)
     outputs = (*person_outputs, *tax_unit_outputs)
     puf_mask = puf_tax_detail_clone_mask(
         frame.table("tax_unit"),
@@ -1985,6 +2064,7 @@ def finalize_us_puf_tax_detail_predictions(
     tax_unit_outputs: Sequence[str] = PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
     tail_bound_diagnostics: list[dict[str, object]] | None = None,
     tail_bound_quantiles: Mapping[str, float] | None = None,
+    recipient_share_bound_outputs: Sequence[str] | None = None,
     absent_cells: str = PUF_ABSENT_CELLS_LEGACY_ZERO_FILL,
 ) -> Frame:
     """Finalize a complete raw PUF QRF chain onto its support channel.
@@ -2003,6 +2083,21 @@ def finalize_us_puf_tax_detail_predictions(
     invocation's exact output surface. Diagnostics report recipient-design-
     weighted mass over the affected raw tax-unit draws before and after
     clipping; build callers must provide the sink and publish every active cap.
+
+    The recipient-share bound then applies to every amount output of the
+    invocation (see :func:`puf_tax_detail_recipient_share_bound_identity`); an
+    explicit ``recipient_share_bound_outputs`` narrows it for tests and must
+    name amount outputs of this invocation. It writes one diagnostics record
+    per bounded output, including outputs it leaves unchanged. It holds on the
+    raw tax-unit draws and, for snapped outputs, after snapping; a snapped
+    output's cap is never below its smallest positive donor value, so the
+    bound moves no draw to zero. Three later
+    steps move bounded values without adding mass. The donor-rate
+    sparsification of sparse outputs restores the column's mass after zeroing
+    carriers, and the signed-mass calibration scales each leg of its outputs;
+    both lift every kept value of the column or leg by one common factor. The
+    Social Security reconciliation re-splits the four components' bounded
+    total by the CPS shares, keeping the total.
 
     ``absent_cells`` selects the finalization policy for cells outside the PUF
     clone arm (microcosm#578 audit item 1).  The legacy default reproduces the
@@ -2065,7 +2160,20 @@ def finalize_us_puf_tax_detail_predictions(
                 "donor support."
             ) from None
         resolved_tail_bounds[output] = (quantile, bound)
-    if resolved_tail_bounds and tail_bound_diagnostics is None:
+    amount_outputs = _recipient_share_bound_amount_outputs(outputs)
+    if recipient_share_bound_outputs is None:
+        share_bound_outputs = amount_outputs
+    else:
+        share_bound_outputs = tuple(recipient_share_bound_outputs)
+        not_amounts = [
+            output for output in share_bound_outputs if output not in amount_outputs
+        ]
+        if not_amounts or len(set(share_bound_outputs)) != len(share_bound_outputs):
+            raise ValueError(
+                "PUF recipient-share bound outputs must be distinct amount "
+                f"outputs of this invocation; got {not_amounts or 'duplicates'}."
+            )
+    if (resolved_tail_bounds or share_bound_outputs) and tail_bound_diagnostics is None:
         raise ValueError(
             "PUF tax-detail tail-bound finalization requires a diagnostics sink; "
             "tail bounds must not be silent."
@@ -2083,13 +2191,35 @@ def finalize_us_puf_tax_detail_predictions(
             "PUF raw predictions changed recipient row order or index before "
             "finalization."
         )
-    if resolved_tail_bounds:
+    if resolved_tail_bounds or share_bound_outputs:
         recipient_tax_unit_ids = frame.table("tax_unit").loc[puf_mask, "tax_unit_id"]
         recipient_weights = _tax_unit_household_weights(
             frame,
             recipient_tax_unit_ids,
         )
-
+    snapped_outputs = (
+        _PUF_TAX_DETAIL_SPARSE_PERSON_OUTPUTS | _PUF_TAX_DETAIL_SPARSE_TAX_UNIT_OUTPUTS
+    )
+    resolved_share_bounds: dict[str, tuple[np.ndarray, np.ndarray]] = {}
+    for output in share_bound_outputs:
+        if not np.isfinite(predictions[output].to_numpy(dtype=np.float64)).all():
+            raise ValueError(
+                f"PUF raw predictions for bounded output {output!r} must be finite."
+            )
+        if output in snapped_outputs:
+            # A snapped output lives on its snap grid, so it is bounded on the
+            # donor's grid values: a slice inside one grid value caps at that
+            # value exactly, and the cap is then lowered onto the grid.
+            floor, cap = _recipient_share_slice_bounds(
+                _snap_grid_values(donor[output]), donor["weight"], recipient_weights
+            )
+            cap = _largest_grid_values_within(cap, _observed_snap_grid(donor[output]))
+        else:
+            floor, cap = _recipient_share_slice_bounds(
+                donor[output], donor["weight"], recipient_weights
+            )
+        resolved_share_bounds[output] = (floor, cap)
+    if resolved_tail_bounds:
         for output, (quantile, bound) in resolved_tail_bounds.items():
             values = predictions[output].to_numpy(dtype=np.float64, copy=False)
             clipped = values > bound
@@ -2106,6 +2236,7 @@ def finalize_us_puf_tax_detail_predictions(
             tail_bound_diagnostics.append(
                 {
                     "output": output,
+                    "rule": "weighted_positive_donor_quantile",
                     "quantile": quantile,
                     "bound_value": bound,
                     "clipped_row_count": int(clipped.sum()),
@@ -2113,6 +2244,37 @@ def finalize_us_puf_tax_detail_predictions(
                     "clipped_mass_after": clipped_mass_after,
                 }
             )
+    for output, (floor, cap) in resolved_share_bounds.items():
+        values = predictions[output].to_numpy(dtype=np.float64, copy=True)
+        bounded = np.minimum(np.maximum(values, floor), cap)
+        capped = values > cap
+        floored = values < floor
+        moved = capped | floored
+        weighted_before = np.abs(values * recipient_weights)
+        weighted_after = np.abs(bounded * recipient_weights)
+        predictions[output] = bounded
+        tail_bound_diagnostics.append(
+            {
+                "output": output,
+                "rule": PUF_TAX_DETAIL_RECIPIENT_SHARE_BOUND_RULE,
+                "clipped_row_count": int(moved.sum()),
+                "capped_row_count": int(capped.sum()),
+                "floored_row_count": int(floored.sum()),
+                "clipped_mass_before": float(
+                    (values[moved] * recipient_weights[moved]).sum()
+                ),
+                "clipped_mass_after": float(
+                    (bounded[moved] * recipient_weights[moved]).sum()
+                ),
+                "largest_weighted_draw_before": float(weighted_before.max(initial=0.0)),
+                "largest_weighted_draw_after": float(weighted_after.max(initial=0.0)),
+                "recipient_count": int(len(recipient_weights)),
+                "recipient_weight_total": float(recipient_weights.sum()),
+                "donor_weight_total": float(
+                    pd.to_numeric(donor["weight"], errors="coerce").fillna(0.0).sum()
+                ),
+            }
+        )
 
     for column in outputs:
         if column in _PUF_TAX_DETAIL_NONNEGATIVE_OUTPUTS:
@@ -2274,9 +2436,11 @@ def _require_signed_subset_outputs_after_their_basis(
     """Refuse a placement order that would split a subset by a stale basis.
 
     A signed-subset output is placed by its basis columns as the person table
-    holds them when its turn comes, so each basis column it is imputed with
-    must be placed first. Without one in the same pass, the placement would
-    read whatever the frame carried before the imputation.
+    holds them when its turn comes, so every basis column must be imputed in
+    the same pass and placed first. A missing one would leave the placement
+    reading whatever the frame carried before the imputation; for the passive
+    subset that is half of line 32 now that the S-corporation share is its
+    own leaf (microcosm#1258).
     """
 
     position = {column: index for index, column in enumerate(person_outputs)}
@@ -2284,12 +2448,13 @@ def _require_signed_subset_outputs_after_their_basis(
         if column not in _PERSON_OUTPUT_SIGNED_SUBSET_DISTRIBUTION_OUTPUTS:
             continue
         basis = _PERSON_OUTPUT_DISTRIBUTION_BASIS[column]
-        imputed_basis = [name for name in basis if name in position]
-        if not imputed_basis:
+        missing = [name for name in basis if name not in position]
+        if missing:
             raise ValueError(
                 f"PUF output {column!r} is a subset of {list(basis)!r}; impute "
-                "at least one of them in the same pass."
+                f"all of them in the same pass (missing {missing!r})."
             )
+        imputed_basis = list(basis)
         late = [name for name in imputed_basis if position[name] > position[column]]
         if late:
             raise ValueError(
@@ -2318,15 +2483,13 @@ def _zero_passive_partnership_s_corp_without_line_32(
     passive = "passive_partnership_s_corp_income"
     if passive not in predictions:
         return
-    totals = [
-        column
-        for column in ("partnership_income", "s_corp_income")
-        if column in predictions
-    ]
-    if not totals:
+    totals = ["partnership_income", "s_corp_income"]
+    missing = [column for column in totals if column not in predictions]
+    if missing:
         raise ValueError(
             "PUF passive partnership/S-corp draws need the line-32 total "
-            "(partnership_income) in the same chain."
+            "(partnership_income and s_corp_income) in the same chain; "
+            f"missing {missing!r}."
         )
     line_32 = predictions[totals].sum(axis=1)
     predictions.loc[line_32 == 0.0, passive] = 0.0
@@ -2823,6 +2986,128 @@ def _weighted_positive_donor_quantile(
             entity="tax_unit",
         )
     )
+
+
+def _top_slice_means(
+    values: np.ndarray,
+    weights: np.ndarray,
+    slice_weights: np.ndarray,
+) -> np.ndarray:
+    """Weighted mean of each requested top slice of a donor column.
+
+    The donors are ordered from the largest value down. A slice of donor weight
+    ``t`` takes whole donors until their weight reaches ``t`` and the needed
+    fraction of the donor at the edge, so the slice holds exactly ``t``. A
+    zero-weight slice has no mean; it reads the largest donor value, which no
+    draw can exceed, so the bound it implies is vacuous.
+    """
+
+    order = np.argsort(-values, kind="stable")
+    ordered_values = values[order]
+    ordered_weights = weights[order]
+    cumulative_weight = np.cumsum(ordered_weights)
+    cumulative_mass = np.cumsum(ordered_values * ordered_weights)
+    take = np.clip(slice_weights, 0.0, cumulative_weight[-1])
+    edge = np.minimum(
+        np.searchsorted(cumulative_weight, take, side="left"),
+        len(ordered_values) - 1,
+    )
+    previous = edge - 1
+    weight_before = np.where(
+        previous >= 0, cumulative_weight[np.maximum(previous, 0)], 0.0
+    )
+    mass_before = np.where(previous >= 0, cumulative_mass[np.maximum(previous, 0)], 0.0)
+    mass = mass_before + (take - weight_before) * ordered_values[edge]
+    with np.errstate(divide="ignore", invalid="ignore"):
+        means = np.where(take > 0.0, mass / take, ordered_values[0])
+    # The mean of a slice lies between its inner edge and the largest value.
+    # Running sums can miss that by the last bits (a slice made only of donors
+    # at one value can come out a hair below it), which would clip draws that
+    # equal the slice's own values, so the exact bounds are restored here.
+    return np.clip(means, ordered_values[edge], ordered_values[0])
+
+
+def _recipient_share_slice_bounds(
+    donor_values: Sequence[Any],
+    donor_weights: Sequence[Any],
+    recipient_weights: Sequence[Any],
+) -> tuple[np.ndarray, np.ndarray]:
+    """Return each recipient's (floor, cap) under the recipient-share bound.
+
+    A recipient whose weight is the share ``s`` of all PUF recipients stands
+    for ``s`` of the population. The most positive mass it can carry on an
+    amount column is the positive mass of the donor slice holding the same
+    share ``s`` of donor weight at the top of the column, so a positive value
+    is capped at that mass per unit of slice weight; losses are floored the
+    same way from the bottom slice. Within the positive donors the cap is the
+    slice's weighted mean, and it falls as the share grows. Only donors with
+    positive weight count. A side is infinite only when no such donor has a
+    value of that sign, and a zero-weight recipient's cap is the largest
+    weighted donor value, which binds nothing a weighted draw can reach.
+    Shares make the bound independent of either population's weight scale.
+    """
+
+    values = pd.to_numeric(pd.Series(donor_values), errors="coerce").to_numpy(
+        dtype=np.float64
+    )
+    weights = pd.to_numeric(pd.Series(donor_weights), errors="coerce").to_numpy(
+        dtype=np.float64
+    )
+    recipients = np.asarray(recipient_weights, dtype=np.float64)
+    if values.ndim != 1 or values.shape != weights.shape:
+        raise ValueError(
+            "Recipient-share bound donor values and weights must be aligned "
+            f"1-D arrays, got {values.shape} and {weights.shape}."
+        )
+    if recipients.ndim != 1:
+        raise ValueError("Recipient-share bound recipient weights must be 1-D.")
+    if len(values) == 0:
+        raise ValueError("Recipient-share bound needs at least one donor.")
+    if not (np.isfinite(values).all() and np.isfinite(weights).all()):
+        raise ValueError("Recipient-share bound donor values must be finite.")
+    if not np.isfinite(recipients).all():
+        raise ValueError("Recipient-share bound recipient weights must be finite.")
+    if (weights < 0.0).any() or (recipients < 0.0).any():
+        raise ValueError("Recipient-share bound weights must be nonnegative.")
+    donor_total = float(weights.sum())
+    recipient_total = float(recipients.sum())
+    if donor_total <= 0.0 or recipient_total <= 0.0:
+        raise ValueError("Recipient-share bound weights must have positive mass.")
+    slice_weights = recipients / recipient_total * donor_total
+    # Only donors with weight stand for anyone, and a zero-weight donor cannot
+    # be drawn (the forests resample by weight), so slices and the largest
+    # value come from the weighted donors alone.
+    weighted = weights > 0.0
+    values = values[weighted]
+    weights = weights[weighted]
+    # Ordering by the positive part orders the top slice exactly as the values
+    # do; donors at or below zero tie at zero and add no positive mass.
+    top = _top_slice_means(np.maximum(values, 0.0), weights, slice_weights)
+    bottom = -_top_slice_means(np.maximum(-values, 0.0), weights, slice_weights)
+    cap = np.where(top > 0.0, top, np.inf)
+    floor = np.where(bottom < 0.0, bottom, -np.inf)
+    return floor, cap
+
+
+def _largest_grid_values_within(caps: np.ndarray, grid: np.ndarray) -> np.ndarray:
+    """Lower each finite cap to the largest positive ``grid`` value not above it.
+
+    A capped value that is itself a grid value snaps to itself, and every value
+    at or below it snaps to a grid value at or below it, so snapping after the
+    bound cannot carry a value past it. Only positive grid values are used: a
+    cap below the smallest of them keeps that smallest value, so the bound
+    never turns a positive draw into a zero. How many records carry a sparse
+    output is the donor-rate sparsification's job, not this bound's.
+    """
+
+    lowered = np.array(caps, dtype=np.float64, copy=True)
+    positive_grid = grid[grid > 0.0]
+    finite = np.isfinite(lowered)
+    if not finite.any() or len(positive_grid) == 0:
+        return lowered
+    position = np.searchsorted(positive_grid, lowered[finite], side="right") - 1
+    lowered[finite] = positive_grid[np.maximum(position, 0)]
+    return lowered
 
 
 def _tax_unit_household_weights(
@@ -3715,6 +4000,19 @@ def _ensure_boolean_output_column(table: pd.DataFrame, column: str) -> None:
     )
 
 
+def _snap_grid_values(observed: Sequence[Any]) -> np.ndarray:
+    """Each donor value as :func:`_snap_to_observed_values` places it on its grid."""
+
+    observed_values = pd.to_numeric(pd.Series(observed), errors="coerce").fillna(0.0)
+    return np.rint(observed_values.to_numpy(dtype=np.float64)).clip(min=0.0)
+
+
+def _observed_snap_grid(observed: Sequence[Any]) -> np.ndarray:
+    """The sorted donor values :func:`_snap_to_observed_values` snaps onto."""
+
+    return np.unique(_snap_grid_values(observed))
+
+
 def _snap_to_observed_values(
     values: Sequence[Any],
     observed: Sequence[Any],
@@ -3730,10 +4028,7 @@ def _snap_to_observed_values(
     """
 
     value_array = pd.to_numeric(pd.Series(values), errors="coerce").fillna(0.0)
-    observed_values = pd.to_numeric(pd.Series(observed), errors="coerce").fillna(0.0)
-    observed_array = np.unique(
-        np.rint(observed_values.to_numpy(dtype=np.float64)).clip(min=0.0)
-    )
+    observed_array = _observed_snap_grid(observed)
     if len(observed_array) == 0:
         return value_array.to_numpy(dtype=np.float64)
 
@@ -4521,9 +4816,12 @@ def _reconcile_puf_social_security_components(
 # Booklet, annotated Schedule E Part II): (g) passive income, (j) nonpassive
 # income, (f) passive loss allowed, (h) nonpassive loss, (i) section 179.
 _RAW_SCHEDULE_E_ENTITY_LEGS: Mapping[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
-    "partnership_income": (("E25940", "E25980"), ("E25920", "E25960", "E26110")),
-    "s_corp_income": (("E26170", "E26190"), ("E26160", "E26180", "E26100")),
-    "passive_partnership_s_corp_income": (("E25940", "E26170"), ("E25920", "E26160")),
+    "partnership_income": PUF_SCHEDULE_E_PARTNERSHIP_LEGS,
+    "s_corp_income": PUF_SCHEDULE_E_S_CORP_LEGS,
+    "passive_partnership_s_corp_income": (
+        (PUF_PARTNERSHIP_PASSIVE_INCOME, PUF_S_CORP_PASSIVE_INCOME),
+        (PUF_PARTNERSHIP_PASSIVE_LOSS_ALLOWED, PUF_S_CORP_PASSIVE_LOSS_ALLOWED),
+    ),
 }
 
 
@@ -4577,12 +4875,10 @@ def _person_source_values(
     if raw_schedule_e is not None:
         return raw_schedule_e
     # The processed artifact's partnership_s_corp_income is the archived
-    # nonpassive-only sum, not Schedule E line 32, so it never stands for
-    # partnership_income; puf_tax_unit_donor_from_arrays takes line 32 from
-    # the source-year rows instead (microcosm#1239). Its presence still marks
-    # the combined-leaf convention under which s_corp_income is exactly zero.
-    if output == "s_corp_income" and "partnership_s_corp_income" in arrays:
-        return np.zeros_like(_numeric_array(arrays["partnership_s_corp_income"]))
+    # nonpassive-only sum of both entities, not Schedule E line 32, so it
+    # stands for neither partnership_income nor s_corp_income;
+    # puf_tax_unit_donor_from_arrays takes both entity shares from the
+    # source-year rows instead (microcosm#1239, #1258).
     if output == "partnership_self_employment_net_earnings" and (
         "partnership_se_income" in arrays
     ):

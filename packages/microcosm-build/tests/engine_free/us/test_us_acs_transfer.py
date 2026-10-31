@@ -751,10 +751,15 @@ def test_declared_plan_carries_the_23_stage_base_surface() -> None:
     person = declared_acs_transfer_target_families()["person"]
     itemization = set(person["puf_tax_itemization"])
     # The 23-stage base observes partnership SE earnings (buildl's exclusion
-    # is stale there) but still carries s_corp_income as an all-zero schema
-    # column, so only the SE-earnings leg returns to the plan.
+    # is stale there), and since microcosm#1258 the donor carries Schedule E
+    # line 32 by entity, so both entity shares and their passive subset
+    # travel to the ACS spine.
     assert "partnership_self_employment_net_earnings" in itemization
-    assert "s_corp_income" not in itemization
+    assert {
+        "partnership_income",
+        "s_corp_income",
+        "passive_partnership_s_corp_income",
+    } <= itemization
     # The Schedule D capital-gain-distributions memo leg is DERIVED from its
     # transferred parents (route exclusivity at the packaged share), never
     # fitted: an independent fit would break the base's accounting identity.
@@ -3128,6 +3133,55 @@ def test_passive_reconciliation_property_holds_for_random_draws() -> None:
         assert (passive[mutable & ~has_line_32.to_numpy()] == 0.0).all()
 
     check()
+
+
+@pytest.mark.parametrize("missing", ["partnership_income", "s_corp_income"])
+def test_passive_reconciliation_requires_both_line_32_components(missing: str) -> None:
+    """Line 32 is the sum of both entity leaves; one alone understates it.
+
+    Before microcosm#1258 an absent ``s_corp_income`` read as zero, which was
+    harmless only while the S-corp leaf was an exact-zero universe. Now an
+    S-corporation-only person would look line-32-free and lose a lawful
+    passive amount, so the reconciliation refuses instead.
+    """
+
+    from microcosm.build.us_runtime.acs_transfer import (
+        reconcile_acs_passive_partnership_s_corp,
+    )
+
+    person = _passive_people().drop(columns=[missing])
+
+    with pytest.raises(ValueError, match="both transferred line-32 components"):
+        reconcile_acs_passive_partnership_s_corp(
+            person, mutable_rows=np.ones(len(person), dtype=bool)
+        )
+
+
+def test_passive_reconciliation_keeps_s_corporation_only_carriers() -> None:
+    """A passive subset under an S-corporation-only line 32 is kept."""
+
+    from microcosm.build.us_runtime.acs_transfer import (
+        reconcile_acs_passive_partnership_s_corp,
+    )
+
+    person = pd.DataFrame(
+        {
+            "person_tax_unit_id": [5, 6],
+            "partnership_income": [0.0, 0.0],
+            "s_corp_income": [2_000.0, 0.0],
+            "passive_partnership_s_corp_income": [300.0, 300.0],
+        }
+    )
+
+    passive, counts = reconcile_acs_passive_partnership_s_corp(
+        person, mutable_rows=np.ones(2, dtype=bool)
+    )
+
+    assert passive.tolist() == [300.0, 0.0]
+    assert counts == {
+        "cleared_subset_without_line_32": 1,
+        "remaining_nonzero_subset_rows": 1,
+    }
 
 
 def test_passive_reconciliation_is_bound_into_transfer_execution_identity() -> None:

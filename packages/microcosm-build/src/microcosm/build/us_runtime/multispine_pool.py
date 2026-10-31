@@ -383,7 +383,7 @@ tool re-derives every engine-pinned quantity this module carries.
 """
 
 POOL_REMAINING_STAGE_INPUT_MANIFEST_SHA256 = (
-    "2503fed80e11fbea6f4be566597dbbdd32402bc6ef99de8c4d6b2b181c13f338"
+    "d4fb9de9c0b8081474a24d0abde84ebf05eb346483fc20e3852e29abc769a501"
 )
 """Pinned content digest of all 1,059 post-transfer consumer/input rows."""
 
@@ -1292,6 +1292,7 @@ def pool_remaining_stage_input_manifest(
         )
     for variable in (
         "partnership_income",
+        "s_corp_income",
         "estate_income",
         "non_qualified_dividend_income",
     ):
@@ -1304,15 +1305,6 @@ def pool_remaining_stage_input_manifest(
             provision=surface_provision(variable),
             available_by="transferred",
         )
-    register(
-        "derive",
-        "with_us_qbi_input_reconciliation",
-        "person",
-        "s_corp_income",
-        execution_scope="whole_pool",
-        provision="primary_puf_exact_zero_universe",
-        available_by="transferred",
-    )
     for variable, provision in (
         ("age", "assembled_native_person_input"),
         ("SEMP", "assembled_raw_acs_source_authority"),

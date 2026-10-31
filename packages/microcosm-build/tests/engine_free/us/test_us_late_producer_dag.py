@@ -345,7 +345,7 @@ def test_canonical_us_late_registry_has_exact_producer_surface() -> None:
 
     assert len(registry) == 38
     assert len(groups) == 19
-    assert sum(len(group.targets) for group in groups) == 71
+    assert sum(len(group.targets) for group in groups) == 72
     assert {contract.kind for contract in registry.values()} == {
         "primary_puf",
         "acs_earnings_universe",
@@ -356,9 +356,9 @@ def test_canonical_us_late_registry_has_exact_producer_surface() -> None:
     assert len(registry[US_LATE_PRIMARY_PUF_STAGE].inputs) == 120
     primary_outputs = registry[US_LATE_PRIMARY_PUF_STAGE].outputs
     assert len(primary_outputs) == 101
-    assert sum(output.coverage_scope == "puf_clone" for output in primary_outputs) == 65
+    assert sum(output.coverage_scope == "puf_clone" for output in primary_outputs) == 66
     assert (
-        sum(output.coverage_scope == "whole_pool" for output in primary_outputs) == 35
+        sum(output.coverage_scope == "whole_pool" for output in primary_outputs) == 34
     )
     assert sum(output.coverage_scope == "acs_source" for output in primary_outputs) == 1
     assert {
@@ -374,8 +374,18 @@ def test_canonical_us_late_registry_has_exact_producer_surface() -> None:
         if output.coverage_scope == "whole_pool"
     } >= {
         ("person", "person_support_clone_index", "whole_pool"),
-        ("person", "s_corp_income", "whole_pool"),
         ("frame", "@us_puf_clone_attachment_manifest", "whole_pool"),
+    }
+    # microcosm#1258: the S-corp share is a PUF-clone output like the
+    # partnership share; the late transfer, not the primary pass, fills native
+    # rows.
+    assert {
+        (output.entity, output.column): output.coverage_scope
+        for output in primary_outputs
+        if output.column in {"partnership_income", "s_corp_income"}
+    } == {
+        ("person", "partnership_income"): "puf_clone",
+        ("person", "s_corp_income"): "puf_clone",
     }
     assert all(contract.inputs for contract in registry.values())
     assert {
@@ -437,7 +447,7 @@ def test_late_overlap_ownership_exhausts_every_permitted_dual_write() -> None:
     assert len(primary) == 66
     assert len(source_writes) == 35
     assert len(source_writes & transfer) == 29
-    assert len(transfer) == 71
+    assert len(transfer) == 72
     assert len(recipient_owned) == 61
     assert (
         callback_passthroughs
@@ -808,7 +818,7 @@ def test_canonical_us_late_schedule_is_import_validated_and_byte_stable() -> Non
     assert receipt["producer_count"] == 38
     assert receipt["source_producer_count"] == 16
     assert receipt["transfer_group_count"] == 19
-    assert receipt["transfer_target_count"] == 71
+    assert receipt["transfer_target_count"] == 72
     assert receipt["order"][:2] == [
         US_LATE_ACS_EARNINGS_UNIVERSE_STAGE,
         US_LATE_PRIMARY_PUF_STAGE,
@@ -1324,7 +1334,7 @@ def test_source_numeric_input_audit_is_fully_executable() -> None:
         } == {"finite_numeric"}
 
 
-def test_late_target_dependency_kinds_partition_52_numeric_17_boolean_2_string() -> (
+def test_late_target_dependency_kinds_partition_53_numeric_17_boolean_2_string() -> (
     None
 ):
     string_targets = {"ssn_card_type", "immigration_status_str"}
@@ -1361,7 +1371,7 @@ def test_late_target_dependency_kinds_partition_52_numeric_17_boolean_2_string()
             }
     numeric_targets = set(observed) - boolean_targets - string_targets
     assert (len(numeric_targets), len(boolean_targets), len(string_targets)) == (
-        52,
+        53,
         17,
         2,
     )

@@ -26,9 +26,9 @@ from .resolver import (
 )
 from .schemas import load_schema_registry
 
-EXPECTED_AUTHORED_FIELD_COUNT = 32_506
+EXPECTED_AUTHORED_FIELD_COUNT = 32_524
 EXPECTED_RESOLVED_BINDING_FIELD_COUNT = 9_781
-EXPECTED_CONFIGURATION_FIELD_COUNT = 42_287
+EXPECTED_CONFIGURATION_FIELD_COUNT = 42_305
 
 
 class FieldUsageError(AssertionError):
@@ -341,8 +341,8 @@ def _path_inventory(rows: Sequence[tuple[str, object]]) -> tuple[int, str]:
 # wildcard broadening a source diff rather than an automatically accepted field.
 _PINS: dict[str, tuple[int, str]] = {
     "battery": (
-        802,
-        "eaf3cc45daebdba940e20e7bf2c995e7fc0bd5219935a963e7fca60c87111409",
+        807,
+        "f35844c0d404d5fc7905d8b7ecbee1d273c0bb46a7ed656d86f1b7cb0760fb33",
     ),
     "bundle_country": (
         1,
@@ -401,8 +401,8 @@ _PINS: dict[str, tuple[int, str]] = {
         "bdf40812604e7cd35d68093fe14b7cd1371cb8ab8658fd6002b254610b062781",
     ),
     "imputation_family_execution": (
-        1_781,
-        "0e8e14ad18161ef4b871ad5f2cfbb924bb39a80c334ecdc05336a8eae6731451",
+        1_787,
+        "aa733722f4442ae0ab22c5f1f2ffc1df2accfc5a1791702b242545e40abd26bf",
     ),
     "imputation_gap_fill_schedule": (
         5,
@@ -421,8 +421,8 @@ _PINS: dict[str, tuple[int, str]] = {
         "e1dd7dc5123ab0f39d08ea4939d98dd09a6fdb8e7449a7ca3125fb1ddbd5b4e9",
     ),
     "imputation_producer_graph": (
-        24_504,
-        "342cad7ff55198088d9d4dc4d57fe5601f7ded6081d64379109a72917e57f682",
+        24511,
+        "5869ddc4afa6eb0c09f290b709e75467decc6929e7f79c98341878928e6169fc",
     ),
     "imputation_transfer_execution": (
         110,

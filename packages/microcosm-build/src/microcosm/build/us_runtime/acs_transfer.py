@@ -402,17 +402,14 @@ type TargetFamilies = Mapping[str, Mapping[str, Sequence[str]]]
 # transfer, and post-transfer coverage audit all consume the exact same plan.
 _DECLARED_ACS_TRANSFER_TARGET_FAMILIES: dict[str, dict[str, tuple[str, ...]]] = {
     "person": {
-        # The buildl-era donor excluded both partnership leaves because it
-        # carried only combined partnership_income. The 23-stage base now
-        # observes partnership_self_employment_net_earnings (restored below
-        # via the default outputs), but s_corp_income remains an all-zero
-        # schema column on the certified donor — combined income still
-        # lives in partnership_income — so its exclusion stands until the
-        # base disaggregates it.
+        # Every PUF person output the ACS does not observe natively. Schedule E
+        # line 32 travels by entity: the donor carries partnership_income and
+        # s_corp_income as separate leaves (microcosm#1258), so neither is an
+        # exact-zero universe that the transfer must leave alone.
         "puf_tax_itemization": tuple(
             target
             for target in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
-            if target not in ACS_NATIVE_PERSON_INPUTS | {"s_corp_income"}
+            if target not in ACS_NATIVE_PERSON_INPUTS
         ),
         # The Schedule D capital-gain-distributions memo leg is deliberately
         # NOT a QRF target: the base derives it deterministically as a
@@ -709,10 +706,11 @@ _SCHEDULE_D_CGD_EXCLUSIVE_WITH = "non_sch_d_capital_gains"
 
 _ADULT_CARE_FLAG = "is_incapable_of_self_care"
 _ADULT_CARE_EXPENSE = "pre_subsidy_care_expenses"
-# Schedule E line 32 and its section 469 passive subset (microcosm#1239). The
-# primary PUF pass places the subset on the people who carry line 32 and zeros
-# it where the unit drew none; a person-grain transfer draw must keep the same
-# coherence, so the post-transfer step below restores it on cells it filled.
+# Schedule E line 32 by entity and its section 469 passive subset
+# (microcosm#1239, #1258). The primary PUF pass places the subset on the people
+# who carry line 32 and zeros it where the unit drew none; a person-grain
+# transfer draw must keep the same coherence, so the post-transfer step below
+# restores it on cells it filled.
 _PASSIVE_PARTNERSHIP_S_CORP = "passive_partnership_s_corp_income"
 _LINE_32_COMPONENTS = ("partnership_income", "s_corp_income")
 _ADULT_CARE_ROLE = "tax_unit_role_input"
@@ -866,10 +864,16 @@ def reconcile_acs_passive_partnership_s_corp(
     lawful when nonpassive losses offset it.
     """
 
-    if _LINE_32_COMPONENTS[0] not in person.columns:
+    missing_components = [
+        component
+        for component in _LINE_32_COMPONENTS
+        if component not in person.columns
+    ]
+    if missing_components:
         raise ValueError(
-            "Passive partnership/S-corp reconciliation requires the transferred "
-            "line-32 total (partnership_income) on the recipient."
+            "Passive partnership/S-corp reconciliation requires both "
+            "transferred line-32 components (partnership_income and "
+            f"s_corp_income) on the recipient; missing {missing_components}."
         )
     if _ADULT_CARE_UNIT not in person.columns:
         raise ValueError(
@@ -883,10 +887,9 @@ def reconcile_acs_passive_partnership_s_corp(
     raw = pd.to_numeric(person[_PASSIVE_PARTNERSHIP_S_CORP], errors="coerce")
     person_total = pd.Series(0.0, index=person.index)
     for component in _LINE_32_COMPONENTS:
-        if component in person.columns:
-            person_total = person_total + pd.to_numeric(
-                person[component], errors="coerce"
-            ).fillna(0.0)
+        person_total = person_total + pd.to_numeric(
+            person[component], errors="coerce"
+        ).fillna(0.0)
     unit_total = person_total.groupby(person[_ADULT_CARE_UNIT]).transform("sum")
     no_line_32 = ((person_total == 0.0) | (unit_total == 0.0)).to_numpy()
     clear = mutable & no_line_32 & raw.fillna(0.0).ne(0.0).to_numpy()
