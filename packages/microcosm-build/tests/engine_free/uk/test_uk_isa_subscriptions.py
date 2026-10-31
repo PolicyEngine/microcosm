@@ -550,7 +550,8 @@ def test_the_committed_declaration_carries_the_tested_operations():
     lisa = {artifact["role"]: artifact for artifact in stages["was_lisa"].artifacts}
     for role in ("was_qrf_donor", "was_person_tab"):
         assert roles[role] == lisa[role]
-    assert list(stages)[-1] == "isa_subscriptions"
+    # Only the self-employed's gross receipts run after it (microcosm#1428).
+    assert list(stages)[-2:] == ["isa_subscriptions", "trading_allowance_receipts"]
 
 
 def test_no_calibration_target_reads_an_isa_fact():
