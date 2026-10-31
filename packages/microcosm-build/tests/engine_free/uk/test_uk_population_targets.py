@@ -771,7 +771,7 @@ def test_uk_population_targets_bind_dfe_funded_childcare_by_single_age() -> None
         "measures every DfE row at the spring term",
         "by their age on the preceding 31 December",
         "No row reads current_education",
-        "one birth cohort earlier",
+        "each declares observation_period 2026-01",
         "the three age-4 cells",
         "already fix them",
         "reception at age 3",
