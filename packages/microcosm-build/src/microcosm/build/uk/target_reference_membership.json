@@ -7303,17 +7303,26 @@
     {
       "name": "slc.repayments.wales_total",
       "from": "2024",
-      "to": "2025"
+      "to": "2025",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
+      "factor": "1.04119828372843",
+      "value_before_uprating": "229100000.0"
     },
     {
       "name": "slc.repayments.scotland_total",
       "from": "2024",
-      "to": "2025"
+      "to": "2025",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
+      "factor": "1.04119828372843",
+      "value_before_uprating": "203300000.0"
     },
     {
       "name": "slc.repayments.northern_ireland_total",
       "from": "2024",
-      "to": "2025"
+      "to": "2025",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
+      "factor": "1.04119828372843",
+      "value_before_uprating": "181700000.0"
     },
     {
       "name": "slc.borrowers.plan_2_above_threshold",
@@ -20053,9 +20062,14 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 229100000.0,
+          "resolved_value": 238538526.80218223,
           "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_902404b7cd21f97c3b21e20d"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_902404b7cd21f97c3b21e20d",
+          "uprating": {
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
+            "factor": "1.04119828372843",
+            "value_before_uprating": "229100000.0"
+          }
         }
       ]
     },
@@ -20068,9 +20082,14 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 203300000.0,
+          "resolved_value": 211675611.08198887,
           "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_4ec55a09c394534ac26767f8"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_4ec55a09c394534ac26767f8",
+          "uprating": {
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
+            "factor": "1.04119828372843",
+            "value_before_uprating": "203300000.0"
+          }
         }
       ]
     },
@@ -20083,9 +20102,14 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 181700000.0,
+          "resolved_value": 189185728.15345487,
           "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_c3e545a934c9cf0ca1b03202"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_c3e545a934c9cf0ca1b03202",
+          "uprating": {
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
+            "factor": "1.04119828372843",
+            "value_before_uprating": "181700000.0"
+          }
         }
       ]
     },

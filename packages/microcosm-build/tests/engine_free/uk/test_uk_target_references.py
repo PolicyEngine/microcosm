@@ -122,8 +122,10 @@ _TEST_PATHS = paths_for("microcosm-build")
 # limit rows; microcosm#1301: the 30 high-value homes region cells (three
 # thresholds over England's regions and Wales), which the national line drops
 # after the compile, less the North East and Wales rows over £2m, signed out
-# below the small-cell floor
-ACTIVE_REFERENCE_COUNT = 1403
+# below the small-cell floor; microcosm#1095 (#1422): the three OBR council
+# tax nation rows, pinned to the UK, and SLC's three nation repayment rows in
+# place of the devolved total
+ACTIVE_REFERENCE_COUNT = 1409
 REGION_TIER_LEVEL = {code: level for level, code in UK_REGION_TIER}
 
 
@@ -1114,10 +1116,11 @@ def test_uk_target_reference_membership_report_is_packaged() -> None:
 
     assert membership["target_period"] == 2025
     assert membership["active_reference_count"] == ACTIVE_REFERENCE_COUNT
-    # obr.domestic_rates compiles once pinned to the UK (microcosm#1095).
+    # obr.domestic_rates compiles once pinned to the UK (microcosm#1095), and
+    # so do the three OBR council tax nation rows (D14e) and SLC's nation
+    # repayment rows (R4), so no row is left without a fact.
     assert membership["status_counts"] == {
         "active": ACTIVE_REFERENCE_COUNT,
-        "no_fact_at_or_before_period": 4,
         "signed_excluded": 30,
     }
     assert membership["genuine_sum_residue"]
@@ -1453,9 +1456,15 @@ def test_uk_target_references_compile_from_real_staged_feed_rows() -> None:
         == "hmrc.spi.employment_income.amount_by_total_income_band"
     )
 
+    # The calendar-2025 window of SLC's full-time and part-time Plan 2 net
+    # repayments, FY2024-25 and FY2025-26 (microcosm#1095 R7).
     slc_plan_2 = targets["slc.repayments.england_plan_2"]
-    assert slc_plan_2.value == pytest.approx(2_778_253_361.64)
-    assert slc_plan_2.metadata["ledger_member_fact_count"] == "2"
+    assert slc_plan_2.value == pytest.approx(
+        0.25 * (2_683_104_312.0299997 + 95_149_049.60999998)
+        + 0.75 * (3_128_518_409.2699995 + 105_861_504.03)
+    )
+    assert slc_plan_2.metadata["ledger_member_fact_count"] == "4"
+    assert slc_plan_2.metadata["ledger_calendar_year_window_series"] == "2"
 
     assert targets["hmrc.cgt.gains_total"].value == 119_258_000_000
     assert targets["hmrc.cgt.taxpayers_total"].value == 551_000

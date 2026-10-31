@@ -1,11 +1,11 @@
 {
  "compiled_count": 1409,
  "counts_by_kind": {
-  "calibration_drift": 561,
+  "calibration_drift": 564,
   "fixture_only": 42,
   "ledger_only": 814
  },
- "difference_count": 1417,
+ "difference_count": 1420,
  "differences": [
   {
    "fixture_value": 1608000.0,
@@ -10388,6 +10388,30 @@
    "kind": "calibration_drift",
    "ledger_value": 5259035941.014999,
    "name": "slc.repayments.england_total_higher_education",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 181700000.0,
+   "kind": "calibration_drift",
+   "ledger_value": 189185728.15345487,
+   "name": "slc.repayments.northern_ireland_total",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 203300000.0,
+   "kind": "calibration_drift",
+   "ledger_value": 211675611.08198887,
+   "name": "slc.repayments.scotland_total",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 229100000.0,
+   "kind": "calibration_drift",
+   "ledger_value": 238538526.80218223,
+   "name": "slc.repayments.wales_total",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
   },

@@ -24179,9 +24179,9 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "slc.repayments.wales_total",
-        "measure_kind": "prepared_column",
-        "measurement_period": "2024"
+        "measure_kind": "prepared_column"
       },
+      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
       "uprating_from_period": "2024",
       "uprating_to_period": 2025
     },
@@ -24200,9 +24200,9 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "slc.repayments.scotland_total",
-        "measure_kind": "prepared_column",
-        "measurement_period": "2024"
+        "measure_kind": "prepared_column"
       },
+      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
       "uprating_from_period": "2024",
       "uprating_to_period": 2025
     },
@@ -24221,9 +24221,9 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "slc.repayments.northern_ireland_total",
-        "measure_kind": "prepared_column",
-        "measurement_period": "2024"
+        "measure_kind": "prepared_column"
       },
+      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
       "uprating_from_period": "2024",
       "uprating_to_period": 2025
     },

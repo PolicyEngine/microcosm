@@ -15047,8 +15047,7 @@
           "value_variable": "student_loan_repayment",
           "from_entity": "person",
           "map_to": "household",
-          "notes": "SLC's net student loan repayments for Wales, financial year 2024-25, the latest published; the selector declares Wales's geography (W92000004), which wins over the inferred pin (microcosm#1095 R4, R8). The binding measures the frame's own year (measurement_period 2024), the fact's year, under a matched-period hold (uprating_holds.json). Split from the one devolved row, which compiled no fact at the Great Britain pin (uk-data targets/compute/other.py:116-137 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3).",
-          "measurement_period": 2024,
+          "notes": "SLC's net student loan repayments for Wales, financial year 2024-25, the latest published; the selector declares Wales's geography (W92000004), which wins over the inferred pin (microcosm#1095 R4, R8). The 2024-25 outturn is carried to 2025 by policyengine-uk's OBR average earnings index, since repayments are a share of earnings above the plan thresholds; the solve measures an engine-computed value only at the calibration year, so the frame's own year could not be declared (María's ruling of 2026-10-30). Split from the one devolved row, which compiled no fact at the Great Britain pin (uk-data targets/compute/other.py:116-137 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3).",
           "filters": [
             {
               "variable": "country",
@@ -15069,7 +15068,8 @@
         "geography_id": "W92000004"
       },
       "category_id": "slc.repayments",
-      "label": "Wales"
+      "label": "Wales",
+      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings"
     },
     {
       "target_id": "slc.repayments.scotland_total",
@@ -15094,8 +15094,7 @@
           "value_variable": "student_loan_repayment",
           "from_entity": "person",
           "map_to": "household",
-          "notes": "SLC's net student loan repayments for Scotland, financial year 2024-25, the latest published; the selector declares Scotland's geography (S92000003), which wins over the inferred pin (microcosm#1095 R4, R8). The binding measures the frame's own year (measurement_period 2024), the fact's year, under a matched-period hold (uprating_holds.json). Held as a measured diagnostic (calibration_measure_exclusions.json): its borrowers repay on their own nation's plan thresholds, which this build does not model for them (plan_4_imputation is False, and policyengine-uk#2636 closed as not planned). Split from the one devolved row, which compiled no fact at the Great Britain pin (uk-data targets/compute/other.py:116-137 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3).",
-          "measurement_period": 2024,
+          "notes": "SLC's net student loan repayments for Scotland, financial year 2024-25, the latest published; the selector declares Scotland's geography (S92000003), which wins over the inferred pin (microcosm#1095 R4, R8). The 2024-25 outturn is carried to 2025 by policyengine-uk's OBR average earnings index, since repayments are a share of earnings above the plan thresholds; the solve measures an engine-computed value only at the calibration year, so the frame's own year could not be declared (María's ruling of 2026-10-30). Held as a measured diagnostic (calibration_measure_exclusions.json): its borrowers repay on their own nation's plan thresholds, which this build does not model for them (plan_4_imputation is False, and policyengine-uk#2636 closed as not planned). Split from the one devolved row, which compiled no fact at the Great Britain pin (uk-data targets/compute/other.py:116-137 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3).",
           "filters": [
             {
               "variable": "country",
@@ -15116,7 +15115,8 @@
         "geography_id": "S92000003"
       },
       "category_id": "slc.repayments",
-      "label": "Scotland"
+      "label": "Scotland",
+      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings"
     },
     {
       "target_id": "slc.repayments.northern_ireland_total",
@@ -15141,8 +15141,7 @@
           "value_variable": "student_loan_repayment",
           "from_entity": "person",
           "map_to": "household",
-          "notes": "SLC's net student loan repayments for Northern Ireland, financial year 2024-25, the latest published; the selector declares Northern Ireland's geography (N92000002), which wins over the inferred pin (microcosm#1095 R4, R8). The binding measures the frame's own year (measurement_period 2024), the fact's year, under a matched-period hold (uprating_holds.json). Held as a measured diagnostic (calibration_measure_exclusions.json): its borrowers repay on their own nation's plan thresholds, which this build does not model for them (plan_4_imputation is False, and policyengine-uk#2636 closed as not planned). Split from the one devolved row, which compiled no fact at the Great Britain pin (uk-data targets/compute/other.py:116-137 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3).",
-          "measurement_period": 2024,
+          "notes": "SLC's net student loan repayments for Northern Ireland, financial year 2024-25, the latest published; the selector declares Northern Ireland's geography (N92000002), which wins over the inferred pin (microcosm#1095 R4, R8). The 2024-25 outturn is carried to 2025 by policyengine-uk's OBR average earnings index, since repayments are a share of earnings above the plan thresholds; the solve measures an engine-computed value only at the calibration year, so the frame's own year could not be declared (María's ruling of 2026-10-30). Held as a measured diagnostic (calibration_measure_exclusions.json): its borrowers repay on their own nation's plan thresholds, which this build does not model for them (plan_4_imputation is False, and policyengine-uk#2636 closed as not planned). Split from the one devolved row, which compiled no fact at the Great Britain pin (uk-data targets/compute/other.py:116-137 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3).",
           "filters": [
             {
               "variable": "country",
@@ -15163,7 +15162,8 @@
         "geography_id": "N92000002"
       },
       "category_id": "slc.repayments",
-      "label": "Northern Ireland"
+      "label": "Northern Ireland",
+      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings"
     },
     {
       "target_id": "slc.repayments.england_total_higher_education",
