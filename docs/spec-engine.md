@@ -32,7 +32,8 @@ Review provenance:
     machine-decidable.
 - v2 factual errors corrected here: `puf_tax_itemization` is **five**
   batches / **37** targets (19 bounded groups / 70 targets across the
-  registry), not 4/32; `wic` and `social_security` are not contract
+  registry), not 4/32 (counts as of this ruling; #1239 later added the
+  passive partnership/S-corp leaf, making them 38 and 71); `wic` and `social_security` are not contract
   programs; `takes_up_eitc`/`takes_up_dc_ptc` break the suffix naming
   rule (column mapping must come from an engine ABI projection).
 
@@ -336,7 +337,8 @@ ownership matrix**). The v3 contract:
 
 **The frozen split ledger, corrected**: at the flip, the entire current
 ordered split structure — **19 bounded groups / 70 targets overall;
-five batches / 37 targets for `puf_tax_itemization`** — is declared
+five batches / 37 targets for `puf_tax_itemization`** (71 and 38 since
+#1239) — is declared
 explicitly with a reason per split, compiled back against both greedy
 splitter implementations and every literal batch-name consumer
 (ownership constants included), after which the two splitters and
