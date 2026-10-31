@@ -145,6 +145,7 @@ UK_SPINE_GATE_SCOPE = (
     "uk_stage_frs_take_up_signal",
     "uk_stage_frs_person_draws_take_up_signal",
     "uk_stage_frs_household_draws_take_up_signal",
+    "uk_stage_childcare_copy_take_up_signal",
     "uk_stage_isa_subscriptions_invariants",
     "uk_stage_isa_subscriptions",
     # Weight-independent like the BRMA enum below, and its column exists from
