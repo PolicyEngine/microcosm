@@ -5071,6 +5071,34 @@ def test__given_a_pinned_dimension_value_short_of_a_year__then_calendar_year_win
         compile_ledger_target_references(facts, [reference], country="uk")
 
 
+def test__given_a_pinned_dimension_value_with_no_facts__then_calendar_year_window_refuses() -> (
+    None
+):
+    # Given: both years for one pinned service and no fact at all for the other.
+    facts = []
+    for opening_year in (2024, 2025):
+        fact = _cy_window_fact(
+            key=f"ulsterbus_fy{opening_year}",
+            value=10.0,
+            opening_year=opening_year,
+            measure_id="passenger_receipts",
+        )
+        fact["dimensions"] = {**fact["dimensions"], "service": "ulsterbus"}
+        facts.append(fact)
+    reference = _cy_window_reference(
+        ledger_selector={
+            "source_name": "irs_soi",
+            "source_measure_id": "passenger_receipts",
+            "geography_level": "country",
+            "geography_id": "0100000US",
+            "dimension_values": {"service": ["ulsterbus", "metro_glider"]},
+        },
+    )
+
+    with pytest.raises(ValueError, match="each of 2 series .* 1 of 1 matched series"):
+        compile_ledger_target_references(facts, [reference], country="uk")
+
+
 def test__given_a_two_series_selector_short_of_a_year__then_calendar_year_window_refuses() -> (
     None
 ):
