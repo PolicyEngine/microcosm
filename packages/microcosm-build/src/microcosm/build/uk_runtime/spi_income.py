@@ -724,6 +724,7 @@ class UKSPIIncomeImputationResult:
     state_pension_age: int | None = None
     gainful_self_employment_refresh: Mapping[str, object] | None = None
     pension_coherence: Mapping[str, object] | None = None
+    gift_anchor: Mapping[str, object] | None = None
 
 
 @dataclass(frozen=True)
@@ -1347,6 +1348,9 @@ def impute_uk_spi_income_support(
         )
         guard_receipts.append(receipt)
 
+    person, gift_anchor = _anchor_spi_gifts_to_tape(
+        person, household, donor_full, spi_people=spi_people
+    )
     # Non-ISA interest is the stage-1 taxable draw; ISA interest is the stage-2
     # draw beside it (microcosm#1360).
     person.loc[spi_people, "savings_interest_income"] = taxable_interest_draw
@@ -1402,6 +1406,7 @@ def impute_uk_spi_income_support(
         state_pension_age=int(state_pension_age),
         gainful_self_employment_refresh=gainful_self_employment,
         pension_coherence=pension_coherence,
+        gift_anchor=gift_anchor,
     )
 
 
@@ -2802,6 +2807,56 @@ def _spi_pension_coherence(
         ),
     }
     return person, receipt
+
+
+#: Gift Aid and charitable investment gifts are sparse leaves the stage-1
+#: chain draws after, and conditioned on, the income leaves, so a change to
+#: the donor savings rebase reshuffles which few donors' gifts the copies
+#: draw: rebasing on the tape's taxpayers moved the copies' charitable
+#: investment gifts far from the tape's own total (microcosm#1428). Their
+#: totals over the drawn copies, at the stage's weights, are anchored to the
+#: tape's own FACT-weighted totals (María's ruling of 2026-10-31). Both
+#: columns are nominal, as their uprating mapping (None) keeps them.
+SPI_GIFT_ANCHOR_COLUMNS = ("gift_aid", "charitable_investment_gifts")
+SPI_GIFT_ANCHOR_BASIS = (
+    "each column's total over the drawn copies at the stage's household "
+    "weights equals the prepared tape's FACT-weighted total; a column the "
+    "tape or the copies carry none of is left as drawn"
+)
+
+
+def _anchor_spi_gifts_to_tape(
+    person: pd.DataFrame,
+    household: pd.DataFrame,
+    donor: pd.DataFrame,
+    *,
+    spi_people: pd.Series,
+) -> tuple[pd.DataFrame, dict[str, object]]:
+    """Scale the copies' gift leaves to the tape's FACT-weighted totals.
+
+    The receipt records each column's factor only, never a total or a count.
+    """
+
+    weights = _person_household_weights(person, household).to_numpy(dtype=np.float64)
+    rows = spi_people.reindex(person.index).fillna(False).to_numpy(dtype=bool)
+    fact = donor["FACT"].to_numpy(dtype=np.float64)
+    factors: dict[str, float] = {}
+    for column in SPI_GIFT_ANCHOR_COLUMNS:
+        tape = float((fact * donor[column].to_numpy(dtype=np.float64)).sum())
+        values = person[column].to_numpy(dtype=np.float64, copy=True)
+        drawn = float((weights[rows] * values[rows]).sum())
+        if tape <= 0.0 or drawn <= 0.0:
+            factors[column] = 1.0
+            continue
+        factor = tape / drawn
+        values[rows] = values[rows] * factor
+        person[column] = values
+        factors[column] = factor
+    return person, {
+        "columns": list(SPI_GIFT_ANCHOR_COLUMNS),
+        "basis": SPI_GIFT_ANCHOR_BASIS,
+        "factors": factors,
+    }
 
 
 def _person_household_weights(

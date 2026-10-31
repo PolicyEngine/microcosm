@@ -219,3 +219,50 @@ def test_a_tape_that_does_not_gross_to_the_population_is_left_as_it_is() -> None
     for column in PUBLISHED:
         assert "skipped" in receipt["columns"][column]
         pd.testing.assert_series_equal(rebased[column], donor[column])
+
+
+def test_gift_leaves_are_anchored_to_the_tapes_weighted_totals() -> None:
+    # Two copies drawn, one FRS row and one undrawn copy; the tape's
+    # FACT-weighted totals are 3,000 of Gift Aid and 600 of investment gifts.
+    person = pd.DataFrame(
+        {
+            "person_id": [1, 2, 3, 4],
+            "person_household_id": [10, 20, 30, 40],
+            "gift_aid": [100.0, 300.0, 50.0, 70.0],
+            "charitable_investment_gifts": [0.0, 400.0, 0.0, 9.0],
+        }
+    )
+    household = pd.DataFrame(
+        {"household_id": [10, 20, 30, 40], "household_weight": [2.0, 3.0, 5.0, 7.0]}
+    )
+    donor = pd.DataFrame(
+        {
+            "FACT": [10.0, 20.0],
+            "gift_aid": [100.0, 100.0],
+            "charitable_investment_gifts": [0.0, 30.0],
+        }
+    )
+    drawn = pd.Series([True, True, False, False])
+    anchored, receipt = spi_income._anchor_spi_gifts_to_tape(
+        person.copy(), household, donor, spi_people=drawn
+    )
+    weights = pd.Series([2.0, 3.0])
+    # The drawn copies carried 1,100 of Gift Aid and 1,200 of investment gifts.
+    assert (weights * anchored.loc[:1, "gift_aid"]).sum() == pytest.approx(3_000.0)
+    assert (weights * anchored.loc[:1, "charitable_investment_gifts"]).sum() == (
+        pytest.approx(600.0)
+    )
+    assert receipt["factors"] == pytest.approx(
+        {"gift_aid": 3_000.0 / 1_100.0, "charitable_investment_gifts": 0.5}
+    )
+    # Rows the stage did not draw keep their values.
+    assert anchored.loc[2:, "gift_aid"].tolist() == [50.0, 70.0]
+    assert anchored.loc[2:, "charitable_investment_gifts"].tolist() == [0.0, 9.0]
+    # A column the tape carries none of is left as drawn.
+    _, receipt = spi_income._anchor_spi_gifts_to_tape(
+        person.copy(),
+        household,
+        donor.assign(charitable_investment_gifts=0.0),
+        spi_people=drawn,
+    )
+    assert receipt["factors"]["charitable_investment_gifts"] == 1.0

@@ -47,7 +47,8 @@ def test_spi_preserves_observed_children_outside_the_donor_age_domain(
     )
     assert result.spi_prediction_rows == int(person[channel].eq("spi").sum()) - 1
     adults = person[channel].eq("spi") & person.age.ge(16)
-    assert result.person.loc[adults, "gift_aid"].eq(10).all()
+    factor = result.gift_anchor["factors"]["gift_aid"]
+    assert result.person.loc[adults, "gift_aid"].eq(10.0 * factor).all()
 
 
 def test_spi_rebases_income_before_frs_fill_and_preserves_child_inputs(
@@ -411,8 +412,19 @@ def test_spi_qrf_stages_use_typed_weights_and_keep_isa_interest_apart(
         .all()
     )
     assert result.person.loc[spi_people, "other_investment_income"].eq(25.0).all()
-    assert result.person.loc[spi_people, "gift_aid"].eq(10.0).all()
-    assert result.person.loc[spi_people, "charitable_investment_gifts"].eq(2.0).all()
+    # The gift leaves are the forest's draws scaled to the tape's FACT-weighted
+    # totals, 300 of Gift Aid and 30 of investment gifts (microcosm#1428).
+    factors = result.gift_anchor["factors"]
+    weights = result.person.loc[spi_people, "person_household_id"].map(
+        support.household.set_index("household_id")["household_weight"]
+    )
+    for column, draw, tape in (
+        ("gift_aid", 10.0, 300.0),
+        ("charitable_investment_gifts", 2.0, 30.0),
+    ):
+        gifts = result.person.loc[spi_people, column]
+        assert gifts.eq(draw * factors[column]).all()
+        assert (weights * gifts).sum() == pytest.approx(tape)
     assert (
         result.person.loc[
             spi_people,
@@ -872,7 +884,8 @@ def test_undrawn_twins_keep_their_values_and_are_receipted(
         result.person.loc[copy[0], kept], person.loc[copy[0], kept], check_names=False
     )
     others = person.index[(person[channel] == "spi") & (person["age"] >= 16)].drop(copy)
-    assert result.person.loc[others, "gift_aid"].eq(10.0).all()
+    factor = result.gift_anchor["factors"]["gift_aid"]
+    assert result.person.loc[others, "gift_aid"].eq(10.0 * factor).all()
     # The stage flags the rows it drew, and only those, for the later stages
     # that tell tape-concept rows from FRS-concept ones.
     flag = result.person["person_is_spi_income_recipient"]

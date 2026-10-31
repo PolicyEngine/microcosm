@@ -405,6 +405,7 @@ class UKSPIIncomeSpineResult:
                 self.imputation.gainful_self_employment_refresh
             ),
             "pension_coherence": self.imputation.pension_coherence,
+            "gift_anchor": self.imputation.gift_anchor,
             "state_pension_age_guard": list(self.imputation.state_pension_age_guard),
             "targets": {
                 "count": len(self.source_targets.targets),
