@@ -446,8 +446,8 @@ def test_config_can_pin_the_critical_target_band(
     [
         ("critical_target_band_penalty", -1.0, "must be non-negative"),
         ("critical_target_band_adaptive_step", -1.0, "must be non-negative"),
-        ("critical_target_band_adaptive_step", float("inf"), "must be finite"),
-        ("critical_target_band_adaptive_step", float("nan"), "must be finite"),
+        ("critical_target_band_adaptive_step", float("inf"), "must be a finite"),
+        ("critical_target_band_adaptive_step", float("nan"), "must be a finite"),
         ("critical_target_band_margin", 0.0, r"must be in \(0, 1\]"),
         ("critical_target_band_margin", 1.5, r"must be in \(0, 1\]"),
         (
