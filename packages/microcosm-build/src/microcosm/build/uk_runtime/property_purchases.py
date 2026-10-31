@@ -34,15 +34,19 @@ vendored from the pinned Chronicle feed (``hmrc_stamp_tax_facts.json``):
 
 * additional dwellings: Table 6b's higher-rates (HRAD) transactions and value
   for 2024-25, which cover every buyer, allocated to households band by band.
-  At or below GBP 250,000, the residential nil-rate band for all of 2024-25,
-  a purchase owes standard-rate SDLT of nil, so other buyers' Table 8a
-  receipts there are surcharge: their HRAD transactions and value are those
-  receipts over Table 6b's gross HRAD receipts per transaction and per pound
-  of value, and households take the rest of the band. Above it, households
-  take individuals' shares of all Table 8a residential transactions and value
-  (what other buyers would take is companies'), as uk-data#573 does. The price
-  bands are Table 6b's, with the five above GBP 2m combined, as uk-data#573
-  does, at the households' counts and values;
+  At or below GBP 250,000, the residential nil-rate band for all of 2024-25, a
+  purchase owes standard-rate SDLT of nil, so other buyers' Table 8a receipts
+  there are surcharge: their HRAD transactions and value are those receipts
+  over Table 6b's gross HRAD receipts per transaction and per pound of value,
+  and households take the rest of the band. Table 8a does not split out the 2%
+  non-resident surcharge, which a non-resident buyer pays on top in the band;
+  read as HRAD surcharge, it raises other buyers' implied HRAD and lowers
+  households', so households' purchases there are, if anything, understated.
+  Above GBP 250,000, households take individuals' shares of all Table 8a
+  residential transactions and value (what other buyers would take is
+  companies'), as uk-data#573 does. The price bands are Table 6b's, with the
+  five above GBP 2m combined, as uk-data#573 does, at the households' counts
+  and values;
 * non-residential: Table 8b's individuals for 2024-25, and its six bands.
 
 Households' HRAD is not published, so the allocation is an assumption, not an
