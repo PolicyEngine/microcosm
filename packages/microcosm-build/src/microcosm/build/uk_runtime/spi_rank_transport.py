@@ -57,6 +57,7 @@ from microcosm.build.uk_runtime.frs_hmrc_source import (
     FRS_HMRC_SRP_REGULAR_CODE5_COLUMN,
     FRS_HMRC_UBISJA_COLUMN,
 )
+from microcosm.build.uk_runtime.receipt_counts import rounded_count
 from microcosm.build.uk_runtime.spi_support import (
     SPI_HMRC_EMPLOYMENT_BENEFITS_COLUMN,
     SPI_HMRC_EMPLOYMENT_EXPENSES_COLUMN,
@@ -619,11 +620,10 @@ def _uniformity(
     return {
         "rows": int(len(sign)),
         "sign": _kolmogorov(sign),
-        # A count under the group floor is not reported (CD171 5.2.1), as the
-        # by-group receipt withholds a small group.
-        "positive_rows": (
-            positive_rows if positive_rows >= SPI_TRANSPORT_GROUP_MINIMUM_ROWS else None
-        ),
+        # The count is rounded as every receipt count is (receipt_counts): one
+        # or two rows read "<3" (CD171 5.2.1). The distances need ten rows, a
+        # statistical floor, as the by-group receipt's do.
+        "positive_rows": rounded_count(positive_rows),
         "quantile": _kolmogorov(quantile[rows]) if rows.any() else None,
     }
 

@@ -105,57 +105,90 @@ def test_no_uk_output_still_withholds_at_ten() -> None:
     assert writers == []
 
 
-#: Floors of ten that are not the disclosure floor, each with the text that
-#: names it on its line: statistical floors (too few rows to measure what the
-#: figure measures), and lines that describe the old floor as history.
+#: Every ten that is not a floor of ten on survey records, each by the phrase
+#: that contains it: statistical floors (too few rows to measure what the
+#: figure measures), band and rounding edges, history, facts true at the floor
+#: of three, and tens that count something else. A phrase allows only the
+#: match it contains, never another on the same line.
 _KEPT_TENS = {
     "uk_runtime/frs_annual_income.py": (
         "PAY_CONCEPT_RATIO_MINIMUM_SUPPORT = 10",
         "support band is under ten",
     ),
-    "uk_runtime/stage_health.py": ("pay concept ratio on fewer than ten",),
+    "uk_runtime/stage_health.py": (
+        "pay concept ratio on fewer than ten households",
+        "if value >= 10:",
+    ),
+    "uk_runtime/receipt_counts.py": ("if value < 10:",),
     "uk_runtime/spi_rank_transport.py": ("SPI_TRANSPORT_GROUP_MINIMUM_ROWS = 10",),
     "uk_runtime/private_rent_localisation.py": ("MIN_SAMPLED_REGION_RENTERS = 10",),
     "uk_runtime/frs_education.py": ("AGE_LEFT_FULL_TIME_EDUCATION_MIN = 10",),
     "uk_runtime/frs_spine.py": ("fewer than ten code-6 amounts",),
-    "uk_runtime/orrery_contract.py": (
-        "no longer marks the rows resting on fewer than ten",
-    ),
+    "uk_runtime/orrery_contract.py": ("rows resting on fewer than ten",),
     "uk_runtime/support_floor.py": ("rests on fewer than ten records is no reason",),
-    "uk/spec/sources.yaml": ("over at least 10 rows",),
-    "tools/measure_uk_spi_half_coherence.py": ("MIN_CELL = 10",),
+    "uk_runtime/national_reconciliation.py": ("len(moved) > 10",),
+    "uk_runtime/size_evaluation.py": ("(values > 10)",),
+    "uk_runtime/employer_pension_contributions.py": ("8% to < 10%",),
+    "uk_runtime/spi_dependency.py": ("at least ten",),
+    "uk/spec/sources.yaml": ("over at least 10 rows (a statistical floor",),
+    "uk/calibration_measure_exclusions.json": (
+        "a cell that rests on fewer than 10 records is no reason",
+        "rows under 10 source households are withheld, as the BRMA rows' are "
+        "(under three",
+        "fewer than 10 source households carry them (fewer than three",
+        "fewer than ten source households carry Plan 5 repayments",
+    ),
+    "uk/target_reference_signed_exclusions.json": (
+        "about one household weight",
+        "expected to rest on fewer than 10 records",
+    ),
+    "uk/local_small_cell_rule.json": ("expected to rest on fewer than 10 records",),
     "tools/uk_private_rent_receipt.py": (
         "MIN_GROUP_CELLS = 10",
+        "at least ten cells",
         "fewer than ten published rows",
     ),
+    "tools/measure_uk_spi_half_coherence.py": ("MIN_CELL = 10",),
+    "tools/measure_uk_weighted_integrity_baselines.py": ("at least ten",),
 }
+#: The hand-written UK JSON files; the generated ones repeat what these say.
+_UK_HAND_WRITTEN_JSON = (
+    "gates.json",
+    "calibration_measure_exclusions.json",
+    "target_reference_signed_exclusions.json",
+    "local_small_cell_rule.json",
+    "uk_population_targets.json",
+)
 
 
 def test_no_uk_floor_of_ten_hides_outside_the_label() -> None:
     """The "<10" label is only one way to keep a floor of ten: a comparison
-    with ten, a constant or a default of ten, or prose saying "fewer than ten"
-    is another (the review of microcosm#1422). Each that is left is a
-    statistical floor or history, named in ``_KEPT_TENS``."""
+    with ten in any form, a constant, default or keyword of ten, or prose
+    saying "fewer than ten" or "at least ten" is another (the reviews of
+    microcosm#1422). Each that is left is named in ``_KEPT_TENS``."""
 
     root = paths_for("microcosm-build").repository
     build = paths_for("microcosm-build").package / "src" / "microcosm" / "build"
     floors = re.compile(
-        r"\b\w*(?:support|sources?|count|households|donors|carriers|rows|cells)"
-        r"\w*\)?\s*<\s*10\b(?!\.\d)"
-        r"|^\s*_?[A-Z0-9_]*(?:MIN|FLOOR|SDC|SMALL)[A-Z0-9_]*\s*(?::[^=\n]+)?=\s*10\b"
+        r"<\s?10(?![\d%.])"
+        r"|[<>]=?\s*10\b(?!\.\d)(?!\s*\*)"
+        r"|\b10\s*[<>]=?(?!=)"
+        r"|\bminimum\w*\s*=\s*10\b"
         r"|\bminimum_\w*\s*:\s*int\s*=\s*10\b"
-        r"|\b(?:fewer than|under|below|less than) (?:ten|10 (?:rows|records|households"
-        r"|source households|sources|donors))\b|\bone to nine\b"
-        r"|\bat least 10 (?:rows|records|households|sources|donors)\b"
-        r'|"minimum_\w*":\s*10\b',
+        r"|^\s*_?[A-Z0-9_]*(?:MIN|FLOOR|SDC|SMALL)[A-Z0-9_]*\s*(?::[^=\n]+)?=\s*10\b"
+        r'|"(?:minimum_\w*|\w*_minimum\w*)":\s*10\b'
+        r"|\b(?:fewer than|under|below|less than|at least) (?:ten|10 (?:rows|records"
+        r"|households|source households|sources|donors|cells))\b"
+        r"|\bone to nine\b",
         re.IGNORECASE | re.MULTILINE,
     )
+    uk_tool = re.compile(r"(?:^|_)uk(?:_|$)")
     paths = (
         *(build / "uk_runtime").rglob("*.py"),
         *(build / "uk").glob("*.py"),
         *(build / "uk" / "spec").glob("*.yaml"),
-        build / "uk" / "gates.json",
-        *(root / "tools").rglob("*.py"),
+        *(build / "uk" / name for name in _UK_HAND_WRITTEN_JSON),
+        *(path for path in (root / "tools").rglob("*.py") if uk_tool.search(path.stem)),
         *(paths_for("microcosm-data").package / "src").rglob("*.py"),
     )
     found = []
@@ -171,11 +204,22 @@ def test_no_uk_floor_of_ten_hides_outside_the_label() -> None:
             (),
         )
         for match in floors.finditer(text):
-            line = text[
-                text.rfind("\n", 0, match.start()) + 1 : text.find("\n", match.end())
-            ]
-            if not any(needle in line for needle in kept):
-                found.append(f"{name}: {line.strip()[:120]}")
+            covered = False
+            for needle in kept:
+                at = text.find(needle, max(0, match.end() - len(needle)))
+                while 0 <= at <= match.start():
+                    if at + len(needle) >= match.end():
+                        covered = True
+                        break
+                    at = text.find(needle, at + 1)
+                if covered:
+                    break
+            if not covered:
+                line_start = text.rfind("\n", 0, match.start()) + 1
+                found.append(
+                    f"{name}:{text.count(chr(10), 0, match.start()) + 1}: "
+                    f"{text[line_start : match.end() + 40].strip()[:120]}"
+                )
     assert found == []
 
 

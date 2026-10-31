@@ -451,13 +451,13 @@ _UK_GATE_BATTERY_SHIPPABLE_STATUSES = frozenset({"passed", "not_applicable"})
 # fingerprint derives from the manifest digest. Editing the spec moves all
 # three here in the same reviewed change.
 _UK_GATE_BATTERY_POLICY_SHA256 = (
-    "7a7af3f2a7d586268b2558e52f3ae5deb36ba9c1a47c3df77dc741db9a626a6e"
+    "cac5b2786970a1a1b0a6684be0322841a5383e675c095fad7f9a6b37e344313b"
 )
 _UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "1a6cca645c88925eda38403985626c74902043521dfa72feb84cc7926bb8b3d1"
+    "36632558e30697deaeb617f6fef21cd3e4cd2270760b5d6b6b97aaa69a3f62be"
 )
 _UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "d0d60fd0dd0f6fa39614ea02c68c7e1d2dca3563d4a961bd95f06d9e58254aba"
+    "e22311a126e6e68df90b34090f7c1ea54142ecc7845590a47bcbb36f982f880d"
 )
 #: Spec entry id -> the legacy gate name whose observable detail checks
 #: apply unchanged (the battery re-keys the report by entry id; the gate
@@ -565,7 +565,7 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
     "uk_stage_frs_take_up_signal": ("stage_health", "assembled"),
     "uk_stage_frs_person_draws_take_up_signal": ("stage_health", "assembled"),
     "uk_stage_frs_household_draws_take_up_signal": ("stage_health", "assembled"),
-    "uk_stage_childcare_copy_take_up_signal": ("stage_health", "assembled"),
+    "uk_stage_childcare_copy_take_up_signal": ("stage_health", "transferred"),
     "uk_stage_age_tail_targets": ("stage_health", "assembled"),
     "uk_stage_frs_relationships_composition": ("stage_health", "assembled"),
     "uk_ledger_compile_parity_local_incumbent_2025": (
@@ -979,10 +979,10 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
 _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     "spine": {
         "gates_manifest_sha256": (
-            "0b39d34ef01115f35f74956a1bdb56e7bb9780e426d5a52d8b51b538769b0747"
+            "d4dac9faf5889dc4cb7559aaa37363a0ea6f2e22822762603f762551bdcf4ae5"
         ),
         "policy_sha256": (
-            "33ec7b337b58f47b79efeda21d89ec46f5baaf062740a56c9f84ab96f89c5b01"
+            "33e851f78f1dc1fde7969c6d875ea2d85b9ea41a39551680ad5a59b369b60f44"
         ),
     },
     "calibration_seam": {

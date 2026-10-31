@@ -220,13 +220,13 @@ def _trusted_terminal_gate_signing_key(monkeypatch) -> None:
 UK_GATE_BATTERY_PRODUCER = "microcosm.build.gate_battery"
 UK_GATE_BATTERY_SIGNING_KEY_ENV = "MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY"
 UK_GATE_BATTERY_POLICY_SHA256 = (
-    "7a7af3f2a7d586268b2558e52f3ae5deb36ba9c1a47c3df77dc741db9a626a6e"
+    "cac5b2786970a1a1b0a6684be0322841a5383e675c095fad7f9a6b37e344313b"
 )
 UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "1a6cca645c88925eda38403985626c74902043521dfa72feb84cc7926bb8b3d1"
+    "36632558e30697deaeb617f6fef21cd3e4cd2270760b5d6b6b97aaa69a3f62be"
 )
 UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "d0d60fd0dd0f6fa39614ea02c68c7e1d2dca3563d4a961bd95f06d9e58254aba"
+    "e22311a126e6e68df90b34090f7c1ea54142ecc7845590a47bcbb36f982f880d"
 )
 UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256 = (
     "f246388de42654dd68dbbb40c42282001b5b0a8bf48976162bcb1199085cb1d3"
@@ -387,7 +387,7 @@ UK_GATE_BATTERY_ENTRIES = {
     ),
     "uk_stage_childcare_copy_take_up_signal": (
         "stage_health",
-        "assembled",
+        "transferred",
         None,
     ),
     "uk_stage_hmrc_cgt_asset_type_spine_summary": (

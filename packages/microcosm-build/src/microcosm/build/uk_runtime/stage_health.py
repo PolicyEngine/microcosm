@@ -1321,6 +1321,10 @@ def _frs_annual_income_spells_gate(
             and support is not None
             and _count_bounds(support)[1] < PAY_CONCEPT_RATIO_MINIMUM_SUPPORT
         )
+        if held:
+            # The stage held the ratio to its bounds: the value printed is the
+            # bound it was held to, not a measurement.
+            details["pay_concept_ratio_held_to_bounds"] = True
         if value == UK_WITHHELD or held:
             details[f"{key}_measured"] = False
         elif isinstance(value, bool) or not isinstance(value, int | float):
@@ -4641,14 +4645,23 @@ _SUPPORT_BAND_BOUNDS = {
 
 
 def _count_bounds(count: object) -> tuple[float, float]:
-    """The lowest and highest counts a receipt's count stands for: a band's
-    bounds, or the count itself."""
+    """The lowest and highest counts a receipt's count stands for.
+
+    A band stands for its bounds. ``receipt_counts.rounded_count`` prints a
+    count of ten or more to the nearest ten below a thousand and to the
+    nearest hundred from a thousand, halves up, so a printed count stands for
+    the counts that round to it; a smaller count is exact.
+    """
 
     if isinstance(count, str):
         if count not in _SUPPORT_BAND_BOUNDS:
             raise ValueError(f"unknown count band {count!r}.")
         return _SUPPORT_BAND_BOUNDS[count]
     value = int(count)
+    if value >= 1000:
+        return value - 50, value + 49
+    if value >= 10:
+        return value - 5, value + 4
     return value, value
 
 

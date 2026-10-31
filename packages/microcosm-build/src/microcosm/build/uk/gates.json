@@ -999,7 +999,7 @@
     {
       "id": "uk_stage_childcare_copy_take_up_signal",
       "gate": "stage_health",
-      "phase": "assembled",
+      "phase": "transferred",
       "criticality": "release_blocking",
       "evidence_absent_blocks": true,
       "population_fact_check": true,
@@ -1016,7 +1016,7 @@
           "person.max_free_entitlement_hours_used"
         ]
       },
-      "notes": "Stage-time take-up signal gate (María's ruling of 2026-10-29, microcosm#1095): childcare_copy_take_up re-draws five of the flags frs_take_up drew (Tax-Free Childcare, the extended, universal and targeted hours, and the under-2 usage of the extended hours) for the support and CGT copies on their own benefit units, so they are measured again after the re-draw, over the whole frame at the stage's household weights before calibration, against their contract targets within the terminal gate's bounds (0.05; 0.10 for the under-2 usage), and no benefit unit may claim the extended hours without the universal ones. Calibration's drift cannot move them here, so a failure is a draw defect. The bounds are the terminal gate's until a spine build's receipt measures the stage-time deviations. The receipt withholds a share or target whose population rests on fewer than three source households (UKDS disclosure control), which the gate flags unchecked rather than failing (María's ruling of 2026-10-26), as the terminal gate still measures it at the calibrated weights; a synthetic smoke build records a failure without blocking on it (population_fact_check)."
+      "notes": "Stage-time take-up signal gate (María's ruling of 2026-10-29, microcosm#1095): childcare_copy_take_up re-draws five of the flags frs_take_up drew (Tax-Free Childcare, the extended, universal and targeted hours, and the under-2 usage of the extended hours) for the support and CGT copies on their own benefit units, so they are measured again after the re-draw (at the transferred phase, as the copy stage runs after the assembled boundary), over the whole frame at the stage's household weights before calibration, against their contract targets within the terminal gate's bounds (0.05; 0.10 for the under-2 usage), and no benefit unit may claim the extended hours without the universal ones. Calibration's drift cannot move them here, so a failure is a draw defect. The bounds are the terminal gate's until a spine build's receipt measures the stage-time deviations. The receipt withholds a share or target whose population rests on fewer than three source households (UKDS disclosure control), which the gate flags unchecked rather than failing (María's ruling of 2026-10-26), as the terminal gate still measures it at the calibrated weights; a synthetic smoke build records a failure without blocking on it (population_fact_check)."
     },
     {
       "id": "uk_stage_isa_subscriptions_invariants",
