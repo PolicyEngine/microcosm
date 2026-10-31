@@ -7553,7 +7553,9 @@ def _check_critical_target_band_records(
                 else None,
             )
         )
-    for (label, record), (other_label, other) in zip(records, records[1:]):
+    for (label, record), (other_label, other) in zip(
+        records, records[1:], strict=False
+    ):
         if record != other:
             failures.append(
                 f"{label}.critical_target_band must match "
