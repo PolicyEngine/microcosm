@@ -180,6 +180,7 @@ from microcosm.build.us_runtime.puf_support import (
     bind_puf_clone_attachment_tail_descendant,
     clone_us_frame_for_puf_support,
     impute_us_puf_tax_detail_support,
+    puf_tax_detail_recipient_share_bound_identity,
     puf_tax_detail_tail_bound_quantiles_identity,
     validate_puf_clone_attachment,
 )
@@ -5402,6 +5403,12 @@ def _late_virtual_resource_kind(column: str) -> str:
         ) from exc
 
 
+#: The primary PUF execution config's payload schema. Schema 6 adds the
+#: recipient-share bound (#1259). The builder, the late-resource validator,
+#: stacked publication and the pool loader all read this one value.
+PRIMARY_PUF_EXECUTION_CONFIG_SCHEMA_VERSION = 6
+
+
 def _late_resource_binding_schema_version(
     column: str,
     *,
@@ -5414,7 +5421,7 @@ def _late_resource_binding_schema_version(
     kind = _late_virtual_resource_kind(column)
     versions = {
         "acs_pums_earnings_universe_execution_config": 2,
-        "primary_puf_execution_config": 5,
+        "primary_puf_execution_config": PRIMARY_PUF_EXECUTION_CONFIG_SCHEMA_VERSION,
         "post_clone_source_execution_config": 3,
         "source_finalizer_execution_config": 2,
         "late_transfer_model_config": 3,
@@ -5615,8 +5622,13 @@ def _validate_late_resource_binding(
             "tax_unit_outputs",
             "invocation_mode",
             "tail_bound_quantiles",
+            "recipient_share_bound",
             "worker_execution",
         }
+        if legacy_worker_authentication is not None:
+            # The attested schema-4 pool predates the recipient-share bound and
+            # truthfully records none; it is admitted for scoring only.
+            qrf_keys.discard("recipient_share_bound")
         if not isinstance(qrf, Mapping) or set(qrf) != qrf_keys:
             raise ValueError(f"{boundary}: late primary-QRF config is malformed.")
         require_nonnegative_integer(qrf.get("seed"), label="QRF seed")
@@ -5652,6 +5664,12 @@ def _validate_late_resource_binding(
             puf_tax_detail_tail_bound_quantiles_identity()
         ):
             raise ValueError(f"{boundary}: late primary-QRF tail bounds changed.")
+        if legacy_worker_authentication is None and qrf.get(
+            "recipient_share_bound"
+        ) != (puf_tax_detail_recipient_share_bound_identity()):
+            raise ValueError(
+                f"{boundary}: late primary-QRF recipient-share bound changed."
+            )
         recorded_worker = qrf.get("worker_execution")
         if legacy_worker_authentication is not None:
             if (
@@ -6118,7 +6136,7 @@ def _late_primary_execution_config_binding(
     )
     return {
         "resource_kind": "primary_puf_execution_config",
-        "schema_version": 5,
+        "schema_version": PRIMARY_PUF_EXECUTION_CONFIG_SCHEMA_VERSION,
         "clone_attachment": {
             "fraction": float(clone_attachment_fraction),
             "seed": clone_attachment_seed,
@@ -6146,6 +6164,7 @@ def _late_primary_execution_config_binding(
                 ),
             },
             "tail_bound_quantiles": (puf_tax_detail_tail_bound_quantiles_identity()),
+            "recipient_share_bound": (puf_tax_detail_recipient_share_bound_identity()),
             "worker_execution": _late_primary_qrf_worker_execution_binding(),
         },
         "doctrines": {
@@ -11925,6 +11944,13 @@ def _run_stacked_puf_pass_evaluate(
         if person_outputs is None and tax_unit_outputs is None
         else None
     )
+    # Finalization always needs a sink, because the recipient-share bound acts
+    # on every amount output. Production has supplied one (checked above); a
+    # non-production pass that asked for no diagnostics discards the records,
+    # and its execution config still records the sink as disabled.
+    finalization_diagnostics: list[dict[str, object]] = (
+        [] if tail_bound_diagnostics is None else tail_bound_diagnostics
+    )
     tail_spec, tail_agi_bands = resolve_puf_capital_gains_tail_execution_inputs()
     validate_stacked_spine_frame(frame, boundary="stacked PUF pass entry")
     person_clone = frame.table("person")[support_clone_index_column("person")]
@@ -11989,7 +12015,7 @@ def _run_stacked_puf_pass_evaluate(
             seed=seed,
             n_estimators=n_estimators,
             fit_records=fit_records,
-            tail_bound_diagnostics=tail_bound_diagnostics,
+            tail_bound_diagnostics=finalization_diagnostics,
             tail_bound_quantiles=canonical_tail_bounds,
             predictor_universe_receipts=predictor_universe_receipts,
             require_complete_recipient_predictors=True,
@@ -12132,7 +12158,7 @@ def _run_stacked_puf_pass_evaluate(
         imputed, weight_kind = finalize_primary_puf_qrf_chain(
             cloned,
             checkpoint_dir,
-            tail_bound_diagnostics=tail_bound_diagnostics,
+            tail_bound_diagnostics=finalization_diagnostics,
             tail_bound_quantiles=canonical_tail_bounds,
         )
         if fit_records is not None:

@@ -252,7 +252,8 @@ by_origin_battery
    QBI reconciliation contracts, the tail schema and support contract, and
    late-producer registry schema version 17, including execution-receipt
    contract 4, transition authority 2, and resource-semantics receipt 2. The
-   primary execution config is version 5, its portable worker identity is
+   primary execution config is version 6 (it binds the recipient-share bound,
+   #1259), its portable worker identity is
    version 1, and its checkpoint input sidecar is version 2. The companion pool
    manifest uses schema version 10.
    Older outer authority or materializer payloads are stale; primary-QRF

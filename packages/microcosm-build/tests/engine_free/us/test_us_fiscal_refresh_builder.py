@@ -12340,7 +12340,7 @@ def test_exact_k_receipt_carries_current_worker_authentication() -> None:
     inputs = _gate_failed_exact_k_inputs(builder)
     worker_authentication = {
         "manifest_schema_version": 10,
-        "execution_config_schema_version": 5,
+        "execution_config_schema_version": 6,
         "worker_execution_schema_version": 1,
         "semantic_identity_sha256": "6" * 64,
         "audit_aliases": {
