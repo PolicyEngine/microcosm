@@ -930,7 +930,7 @@
       "ons_15_19_sex_band_split": "María's ruling of 2026-10-13 (microcosm#1095, uk-data#563): the two national 15_19 sex bands are split into ages 15, 16-17 and 18-19. uk-data#563 found weights that fit the five-year band while holding too many 16-year-olds and too few 18- and 19-year-olds, and nothing in this contract bound the mix inside the band either. The six rows partition the two bands and read the same ONS mid-year estimate by single year of age, so each sex's three rows sum to the band they replace. The incumbent ons/female_15_19 and ons/male_15_19 rows move from mapped to excluded: no single contract row has their definition.",
       "ons_single_year_ages_0_2": "microcosm#1278 (the pre-Budget PR's plan, approved by María on 2026-10-20; microcosm#1095): three all-persons rows bind ages 0, 1 and 2, read from the same ONS mid-year estimate by single year of age as the 0_4 sex bands. Unlike the 15_19 split, whose pieces replaced the bands, the 0_4 sex bands keep their incumbent mapping and stay bound: the three rows cover ages 0 to 2 for both sexes together, so neither band is their sum. The three are contract-only declarations; no incumbent row moves.",
       "ons_single_year_ages_0_6": "Requested by María on 2026-10-21 for the £100k childcare costing fixes (item 6; microcosm#1278, #1095). Eleven all-persons rows extend the single years of age: the UK rows go on from age 2 to age 6, and England binds ages 0 to 6 at E92000001. Every row reads the ONS mid-2025 estimate by single year of age (Population estimates for the UK, England, Wales, Scotland and Northern Ireland: mid-2025, published 1 October 2026; on the feed since the 942a1fa re-pin, microcosm#1123), the series the 0_4 and 5_9 sex bands and the region 0_9 cells sum, so the nested rows are consistent: the UK rows for ages 0 to 4 sum to the two 0_4 sex bands, and England's rows sit inside England's nine region 0_9 cells. Every band stays bound; the eleven are contract-only declarations and no incumbent row moves. Scotland's age 0 is already bound as ons.population.scotland_babies_under_1; Wales and Northern Ireland are left to the UK rows, as each nation's single year rests on too few FRS households.",
-      "dfe_funded_childcare_single_ages": "Requested by María on 2026-10-21 for the £100k childcare costing fixes (microcosm#1278, #1095): bind every DfE funded-childcare count the model can carry, even on few records, and sign out only those with a real reason. María's ruling of 2026-10-22 (Vahid's round-2 finding A on microcosm#1338) measures every DfE row at the spring term. DfE counts the children registered in its January census by their age on the preceding 31 December, so each row counts the children funded in the term that starts on 1 January of the model year's April-to-March span, by their age on 31 December (uk_runtime/dfe_spring_term.py). policyengine-uk 2.147.2 stops the free hours when a child starts school, from its date of birth (reception the September after the fourth birthday), and starts working parent hours the term after the minimum age; the universal and 2-year-old measures count every child of the DfE age, as the term after the birthday does, where the engine still gates them on the age on 6 October. No row reads current_education. Bound, England, January 2025 census: working parent registrations at 9 to 11 months and at ages 1, 2 and 3; universal registrations in nursery at age 3; and the three earlier rows, working parent 2 to 4, early learning for 2-year-olds and universal-only (nursery ages 3 and 4 less working parent ages 3 and 4). The under-2 rows take their own take-up: a child under 2 in a family that claims working-parent hours draws whether it uses them, at its own contract rate, as DfE registers far fewer of the youngest eligible children (parental leave) than of those aged 2 to 4. The model year is 2025, so its spring term is January 2026: the January 2025 census is the same classification one birth cohort earlier, the in-year snapshot the holds record. Signed out, each for its reason: the three age-4 cells (working parent and universal in nursery: the bound 2 to 4 and universal-only rows, less the bound ages 2 and 3, already fix them on the facts and on the measures; universal in reception: the school place meets those children's entitlement, the model funds no early-years hours for them, and who is in reception follows only the date of birth, which the survey does not record); reception at age 3 (the same reason, and DfE records a handful); the 9 months to 2 years, 3 to 4 years and Total working parent cells, the nursery and reception Totals, the early learning for 2-year-olds Total and the all-entitlements Total (sums or copies of bound cells, or sums that include a signed-out cell); the universal all-provision cells at ages 3, 4 and Total (nursery plus reception, a few children off their sum in DfE's own table); the estimated eligible children, eligible nursery children and all-children estimates (DfE builds them from population and survey-based inputs, not administrative counts, and the all-children estimates restate the ONS England single years already bound at a different reference date); and the registered percentages (ratios of a bound count to one of those estimates). The FRS records no deferred school start and no council-funded independent reception place, so the model starts every child at school on the date its date of birth implies, which slightly undercounts the 4-year-olds in nursery; DfE notes that in 2025 some 2-year-olds eligible for both entitlements were recorded under working parents rather than early learning."
+      "dfe_funded_childcare_single_ages": "Requested by María on 2026-10-21 for the £100k childcare costing fixes (microcosm#1278, #1095): bind every DfE funded-childcare count the model can carry, even on few records, and sign out only those with a real reason. María's ruling of 2026-10-22 (Vahid's round-2 finding A on microcosm#1338) measures every DfE row at the spring term. DfE counts the children registered in its January census by their age on the preceding 31 December, so each row counts the children funded in the term that starts on 1 January of the model year's April-to-March span, by their age on 31 December (uk_runtime/dfe_spring_term.py). policyengine-uk 2.147.2 stops the free hours when a child starts school, from its date of birth (reception the September after the fourth birthday), and starts working parent hours the term after the minimum age; the universal and 2-year-old measures count every child of the DfE age, as the term after the birthday does, where the engine still gates them on the age on 6 October. No row reads current_education. Bound, England, January 2026 census: working parent registrations at 9 to 11 months and at ages 1, 2 and 3; universal registrations in nursery at age 3; and the three earlier rows, working parent 2 to 4, early learning for 2-year-olds and universal-only (nursery ages 3 and 4 less working parent ages 3 and 4). The under-2 rows take their own take-up: a child under 2 in a family that claims working-parent hours draws whether it uses them, at its own contract rate, as DfE registers far fewer of the youngest eligible children (parental leave) than of those aged 2 to 4. The model year is 2025, so its spring term is January 2026, the census the rows read (each declares observation_period 2026-01; microcosm#1095 D5), which retired the in-year snapshot holds that had read the January 2025 census. Signed out, each for its reason: the three age-4 cells (working parent and universal in nursery: the bound 2 to 4 and universal-only rows, less the bound ages 2 and 3, already fix them on the facts and on the measures; universal in reception: the school place meets those children's entitlement, the model funds no early-years hours for them, and who is in reception follows only the date of birth, which the survey does not record); reception at age 3 (the same reason, and DfE records a handful); the 9 months to 2 years, 3 to 4 years and Total working parent cells, the nursery and reception Totals, the early learning for 2-year-olds Total and the all-entitlements Total (sums or copies of bound cells, or sums that include a signed-out cell); the universal all-provision cells at ages 3, 4 and Total (nursery plus reception, a few children off their sum in DfE's own table); the estimated eligible children, eligible nursery children and all-children estimates (DfE builds them from population and survey-based inputs, not administrative counts, and the all-children estimates restate the ONS England single years already bound at a different reference date); and the registered percentages (ratios of a bound count to one of those estimates). The FRS records no deferred school start and no council-funded independent reception place, so the model starts every child at school on the date its date of birth implies, which slightly undercounts the 4-year-olds in nursery; DfE notes that in 2025 some 2-year-olds eligible for both entitlements were recorded under working parents rather than early learning."
     },
     "scope_target_ids": [
       "obr.income_tax",
@@ -2594,7 +2594,7 @@
               "equals": "ENGLAND"
             }
           ],
-          "notes": "OBR Table 4.1 reports net council tax receipts (net of council tax reduction), so the binding is council_tax_less_benefit, not gross council_tax (uk-data targets/compute/council_tax.py:21-43 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3). Chronicle stamps the row K02000001, as OBR's table 4.1 is UK-wide, and the selector pins it there; the binding scopes the model column to England. Held as a measured diagnostic: obr.council_tax binds the three nations' sum (row 15), so this row reports the nation's fit for the CT-C comparison without binding (calibration_measure_exclusions.json, María's ruling of 2026-10-29, microcosm#1095). Measured at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane)."
+          "notes": "OBR Table 4.1 reports net council tax receipts (net of council tax reduction), so the binding is council_tax_less_benefit, not gross council_tax (uk-data targets/compute/council_tax.py:21-43 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3). Chronicle stamps the row K02000001, as OBR's table 4.1 is UK-wide, and the selector pins it there; the binding scopes the model column to England. Held as a measured diagnostic: obr.council_tax binds the three nations' sum (row 15) scaled to main residences (D14f), and this row is scaled by the same share (England's chargeable dwellings less its second homes and empty dwellings, over its chargeable dwellings; MHCLG Council Taxbase, October 2025), so the three rows sum to the bound one and report each nation's fit on its basis for the CT-C comparison without binding (the review of microcosm#1422) (calibration_measure_exclusions.json, María's ruling of 2026-10-29, microcosm#1095). Measured at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane)."
         },
         "axiom": {
           "metric_name": "obr/council_tax_england",
@@ -2609,7 +2609,37 @@
       },
       "category_id": "obr.efo_expenditure",
       "label": "Council tax england",
-      "value_operation": "calendar_year_window"
+      "value_operation": "calendar_year_window_scaled_by_ratio",
+      "value_operands": [
+        {
+          "role": "base"
+        },
+        {
+          "role": "numerator",
+          "source_name": "mhclg",
+          "source_measure_id": "total",
+          "layout_groupby_value_id": "e92000001",
+          "period_type": "month",
+          "period_value": "2025-10",
+          "source_concept": [
+            "mhclg.council_taxbase.second_homes",
+            "mhclg.council_taxbase.empty_dwellings"
+          ],
+          "expected_member_count": 2,
+          "complement": true,
+          "label": "England's second homes and empty dwellings, Council Taxbase October 2025, taken off the chargeable stock"
+        },
+        {
+          "role": "denominator",
+          "source_name": "mhclg",
+          "source_measure_id": "total",
+          "layout_groupby_value_id": "e92000001",
+          "period_type": "month",
+          "period_value": "2025-10",
+          "source_concept": "mhclg.council_taxbase.chargeable_dwellings",
+          "label": "England's chargeable dwellings, Council Taxbase October 2025"
+        }
+      ]
     },
     {
       "target_id": "obr.council_tax_scotland",
@@ -2637,7 +2667,7 @@
               "equals": "SCOTLAND"
             }
           ],
-          "notes": "OBR Table 4.1 reports net council tax receipts (net of council tax reduction), so the binding is council_tax_less_benefit, not gross council_tax (uk-data targets/compute/council_tax.py:21-43 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3). Chronicle stamps the row K02000001, as OBR's table 4.1 is UK-wide, and the selector pins it there; the binding scopes the model column to Scotland. Held as a measured diagnostic: obr.council_tax binds the three nations' sum (row 15), so this row reports the nation's fit for the CT-C comparison without binding (calibration_measure_exclusions.json, María's ruling of 2026-10-29, microcosm#1095). Measured at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane)."
+          "notes": "OBR Table 4.1 reports net council tax receipts (net of council tax reduction), so the binding is council_tax_less_benefit, not gross council_tax (uk-data targets/compute/council_tax.py:21-43 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3). Chronicle stamps the row K02000001, as OBR's table 4.1 is UK-wide, and the selector pins it there; the binding scopes the model column to Scotland. Held as a measured diagnostic: obr.council_tax binds the three nations' sum (row 15) scaled to main residences (D14f), and this row is scaled by the same share (England's chargeable dwellings less its second homes and empty dwellings, over its chargeable dwellings; MHCLG Council Taxbase, October 2025), so the three rows sum to the bound one and report each nation's fit on its basis for the CT-C comparison without binding (the review of microcosm#1422) (calibration_measure_exclusions.json, María's ruling of 2026-10-29, microcosm#1095). Measured at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane)."
         },
         "axiom": {
           "metric_name": "obr/council_tax_scotland",
@@ -2652,7 +2682,37 @@
       },
       "category_id": "obr.efo_expenditure",
       "label": "Council tax scotland",
-      "value_operation": "calendar_year_window"
+      "value_operation": "calendar_year_window_scaled_by_ratio",
+      "value_operands": [
+        {
+          "role": "base"
+        },
+        {
+          "role": "numerator",
+          "source_name": "mhclg",
+          "source_measure_id": "total",
+          "layout_groupby_value_id": "e92000001",
+          "period_type": "month",
+          "period_value": "2025-10",
+          "source_concept": [
+            "mhclg.council_taxbase.second_homes",
+            "mhclg.council_taxbase.empty_dwellings"
+          ],
+          "expected_member_count": 2,
+          "complement": true,
+          "label": "England's second homes and empty dwellings, Council Taxbase October 2025, taken off the chargeable stock"
+        },
+        {
+          "role": "denominator",
+          "source_name": "mhclg",
+          "source_measure_id": "total",
+          "layout_groupby_value_id": "e92000001",
+          "period_type": "month",
+          "period_value": "2025-10",
+          "source_concept": "mhclg.council_taxbase.chargeable_dwellings",
+          "label": "England's chargeable dwellings, Council Taxbase October 2025"
+        }
+      ]
     },
     {
       "target_id": "obr.council_tax_wales",
@@ -2680,7 +2740,7 @@
               "equals": "WALES"
             }
           ],
-          "notes": "OBR Table 4.1 reports net council tax receipts (net of council tax reduction), so the binding is council_tax_less_benefit, not gross council_tax (uk-data targets/compute/council_tax.py:21-43 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3). Chronicle stamps the row K02000001, as OBR's table 4.1 is UK-wide, and the selector pins it there; the binding scopes the model column to Wales. Held as a measured diagnostic: obr.council_tax binds the three nations' sum (row 15), so this row reports the nation's fit for the CT-C comparison without binding (calibration_measure_exclusions.json, María's ruling of 2026-10-29, microcosm#1095). Measured at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane)."
+          "notes": "OBR Table 4.1 reports net council tax receipts (net of council tax reduction), so the binding is council_tax_less_benefit, not gross council_tax (uk-data targets/compute/council_tax.py:21-43 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3). Chronicle stamps the row K02000001, as OBR's table 4.1 is UK-wide, and the selector pins it there; the binding scopes the model column to Wales. Held as a measured diagnostic: obr.council_tax binds the three nations' sum (row 15) scaled to main residences (D14f), and this row is scaled by the same share (England's chargeable dwellings less its second homes and empty dwellings, over its chargeable dwellings; MHCLG Council Taxbase, October 2025), so the three rows sum to the bound one and report each nation's fit on its basis for the CT-C comparison without binding (the review of microcosm#1422) (calibration_measure_exclusions.json, María's ruling of 2026-10-29, microcosm#1095). Measured at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane)."
         },
         "axiom": {
           "metric_name": "obr/council_tax_wales",
@@ -2695,7 +2755,37 @@
       },
       "category_id": "obr.efo_expenditure",
       "label": "Council tax wales",
-      "value_operation": "calendar_year_window"
+      "value_operation": "calendar_year_window_scaled_by_ratio",
+      "value_operands": [
+        {
+          "role": "base"
+        },
+        {
+          "role": "numerator",
+          "source_name": "mhclg",
+          "source_measure_id": "total",
+          "layout_groupby_value_id": "e92000001",
+          "period_type": "month",
+          "period_value": "2025-10",
+          "source_concept": [
+            "mhclg.council_taxbase.second_homes",
+            "mhclg.council_taxbase.empty_dwellings"
+          ],
+          "expected_member_count": 2,
+          "complement": true,
+          "label": "England's second homes and empty dwellings, Council Taxbase October 2025, taken off the chargeable stock"
+        },
+        {
+          "role": "denominator",
+          "source_name": "mhclg",
+          "source_measure_id": "total",
+          "layout_groupby_value_id": "e92000001",
+          "period_type": "month",
+          "period_value": "2025-10",
+          "source_concept": "mhclg.council_taxbase.chargeable_dwellings",
+          "label": "England's chargeable dwellings, Council Taxbase October 2025"
+        }
+      ]
     },
     {
       "target_id": "obr.domestic_rates",
