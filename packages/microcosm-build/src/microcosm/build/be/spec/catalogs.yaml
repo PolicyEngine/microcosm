@@ -5,9 +5,22 @@ columns:
     dtype: int64
     unit: count
     definition_period: eternity
-    vintage: vintage:be_target_2023
+    vintage: vintage:be_target_2026
     nullable: false
     domain: frame_identity
+    public_stability: internal
+  docs:
+    description: Non-monetary catalog only. Monetary columns await the shared EUR unit (PLAN
+      S3); no USD or placeholder money unit is used for Belgian amounts.
+- key: household.household_weight
+  contract:
+    entity: household
+    dtype: float64
+    unit: count
+    definition_period: year
+    vintage: vintage:be_target_2026
+    nullable: false
+    domain: frame_weight
     public_stability: internal
 - key: person.person_id
   contract:
@@ -15,17 +28,137 @@ columns:
     dtype: int64
     unit: count
     definition_period: eternity
-    vintage: vintage:be_target_2023
+    vintage: vintage:be_target_2026
     nullable: false
     domain: frame_identity
     public_stability: internal
-- key: person.region_nuts1
+- key: person.person_household_id
+  contract:
+    entity: person
+    dtype: int64
+    unit: count
+    definition_period: eternity
+    vintage: vintage:be_target_2026
+    nullable: false
+    domain: frame_membership
+    public_stability: internal
+- key: person.support_stratum
+  contract:
+    entity: person
+    dtype: category
+    unit: categorical
+    definition_period: eternity
+    vintage: vintage:be_support_pool_2024_buildp
+    nullable: false
+    domain: support_provenance
+    public_stability: internal
+- key: person.donor_country_code
+  contract:
+    entity: person
+    dtype: category
+    unit: categorical
+    definition_period: eternity
+    vintage: vintage:be_support_pool_2024_buildp
+    nullable: false
+    domain: support_provenance
+    public_stability: internal
+- key: person.age
+  contract:
+    entity: person
+    dtype: int64
+    unit: count
+    definition_period: year
+    vintage: vintage:be_target_2026
+    nullable: false
+    domain: donor_demography
+    public_stability: internal
+- key: person.sex
   contract:
     entity: person
     dtype: category
     unit: categorical
     definition_period: year
-    vintage: vintage:be_target_2023
+    vintage: vintage:be_target_2026
     nullable: false
-    domain: observed_geography
+    domain: donor_demography
+    public_stability: internal
+- key: household.commune_nis
+  contract:
+    entity: household
+    dtype: string
+    unit: categorical
+    definition_period: year
+    vintage: vintage:be_nis_2025
+    nullable: false
+    domain: target_assigned_geography
+    public_stability: internal
+- key: household.province_nis
+  contract:
+    entity: household
+    dtype: string
+    unit: categorical
+    definition_period: year
+    vintage: vintage:be_province_2025
+    nullable: false
+    domain: target_assigned_geography
+    public_stability: internal
+- key: household.region_nuts1
+  contract:
+    entity: household
+    dtype: string
+    unit: categorical
+    definition_period: year
+    vintage: vintage:be_nuts1_2025
+    nullable: false
+    domain: target_assigned_geography
+    public_stability: internal
+- key: household.community_code
+  contract:
+    entity: household
+    dtype: string
+    unit: categorical
+    definition_period: year
+    vintage: vintage:be_community_2025
+    nullable: false
+    domain: target_assigned_geography
+    public_stability: internal
+- key: person.commune_nis
+  contract:
+    entity: person
+    dtype: string
+    unit: categorical
+    definition_period: year
+    vintage: vintage:be_nis_2025
+    nullable: false
+    domain: target_assigned_geography
+    public_stability: internal
+- key: person.province_nis
+  contract:
+    entity: person
+    dtype: string
+    unit: categorical
+    definition_period: year
+    vintage: vintage:be_province_2025
+    nullable: false
+    domain: target_assigned_geography
+    public_stability: internal
+- key: person.region_nuts1
+  contract:
+    entity: person
+    dtype: string
+    unit: categorical
+    definition_period: year
+    vintage: vintage:be_nuts1_2025
+    nullable: false
+    domain: target_assigned_geography
+    public_stability: internal
+- key: person.community_code
+  contract:
+    entity: person
+    dtype: string
+    unit: categorical
+    definition_period: year
+    vintage: vintage:be_community_2025
+    nullable: false
+    domain: target_assigned_geography
     public_stability: internal

@@ -516,20 +516,40 @@ class TestBelgianPackage:
             "country_package.json"
         }
 
-    def test_source_stage_declares_the_silc_contract(self, spec) -> None:
-        stage = spec.sources.stage_map()["silc_load"]
+    def test_source_stage_pins_the_us_donor_support_contract(self, spec) -> None:
+        assert tuple(spec.sources.stage_map()) == ("load_populace_us_support_pool",)
+        stage = spec.sources.stage_map()["load_populace_us_support_pool"]
         assert stage.grain == "person"
-        kinds = [operation.kind for operation in stage.operations]
-        assert "declare_income_reference_offset" in kinds
-        assert "map_columns" in kinds
-        offsets = [
-            operation.parameters["years"]
-            for operation in stage.operations
-            if operation.kind == "declare_income_reference_offset"
+        assert [operation.kind for operation in stage.operations] == ["read_tables"]
+        assert stage.operations[0].parameters["weight"] == "household_weight"
+        assert len(stage.artifacts) == 3
+        artifact = stage.artifacts[0]
+        assert artifact["kind"] == "public_microdata"
+        assert artifact["format"] == "hdf5"
+        assert artifact["vintage"] == "2024"
+        assert artifact["locator"] == "populace_us_2024.h5"
+        assert artifact["revision"] == (
+            "populace-us-2024-buildp-sparse-rmloss100-cae8640-20260728T011454Z"
+        )
+        assert artifact["sha256"] == (
+            "48b9d479fb4fd1c3537f9383ce4697d130b6f618658409d74f6233c43b994c7e"
+        )
+        assert artifact["size_bytes"] == 462915783
+        repository = artifact["repository"]
+        assert repository["provider"] == "huggingface"
+        assert repository["owner"] == "policyengine"
+        assert tuple(repository["name_parts"]) == ("populace-us",)
+        assert repository["repo_type"] == "dataset"
+        assert [(row["kind"], row["role"]) for row in stage.artifacts[1:]] == [
+            (
+                "public_aggregate_reference",
+                "destination_chronicle_consumer_artifact_unpinned",
+            ),
+            ("public_parameter_reference", "rulespec_be_tree_unpinned"),
         ]
-        assert offsets == [-1]  # SILC year N carries year N-1 incomes
-        assert "belgium_pit_article_23_worker_remuneration" in stage.outputs
-        assert "belgium_pit_article_23_worker_remuneration" in stage.nonnegative_outputs
+        assert {"donor_country_code", "support_stratum"} <= set(stage.outputs)
+        assert {"household_weight", "age"} <= set(stage.nonnegative_outputs)
+        assert {"commune_nis", "region_nuts1"}.isdisjoint(stage.outputs)
 
     def test_geography_spine_is_vintage_aware(self, spec) -> None:
         spine = spec.geography_spine.geography_spine
@@ -537,8 +557,52 @@ class TestBelgianPackage:
         assert spine.code_system == "be_nis"
         assert spine.vintage == "2025"
         assert spine.vintage_policy == "error"
+        assert spine.clones_per_record == 1
         assert spine.collision_avoidance is True
-        assert spine.constrain_to_column == "region_nuts1"
+        assert spine.constrain_to_column == ""
+        geography = spec.resolved_spec.domain("geography").to_wire()
+        assignment = geography["assignment"]
+        assert assignment["draw"]["commune"]["universe"] == "commune_nationally"
+        assert set(assignment["derive"]) == {
+            "commune_nis",
+            "province_nis",
+            "region_nuts1",
+            "community_code",
+        }
+        assert "assigned_commune_complete" in assignment["assertions"]
+        assert "source_nuts1_preserved" not in assignment["assertions"]
+
+    def test_observed_region_geography_compatibility_still_requires_preservation(
+        self, tmp_path
+    ) -> None:
+        package_dir = tmp_path / "be"
+        shutil.copytree(COUNTRY_PACKAGE_ROOT / "be", package_dir)
+        legacy_path = package_dir / "geography_spine.json"
+        legacy = json.loads(legacy_path.read_text(encoding="utf-8"))
+        legacy["geography_spine"]["constrain_to_column"] = "region_nuts1"
+        legacy_path.write_text(json.dumps(legacy), encoding="utf-8")
+        typed_path = package_dir / "spec/geography.yaml"
+        typed = typed_path.read_text(encoding="utf-8")
+        assert typed.count("universe: commune_nationally") == 1
+        assert typed.count("- assigned_commune_complete") == 1
+        observed = typed.replace(
+            "universe: commune_nationally", "universe: commune_within_nuts1"
+        ).replace("- assigned_commune_complete", "- source_nuts1_preserved")
+        typed_path.write_text(observed, encoding="utf-8")
+
+        loaded = load_country_spec(package_dir)
+        assert loaded.geography_spine.geography_spine.constrain_to_column == (
+            "region_nuts1"
+        )
+
+        typed_path.write_text(
+            observed.replace("- source_nuts1_preserved", "- source_nuts1_warning"),
+            encoding="utf-8",
+        )
+        with pytest.raises(
+            ValueError, match="assignment/assertions/source_nuts1_preserved"
+        ):
+            load_country_spec(package_dir)
 
     def test_targets_arrive_by_reference_with_no_values(self, spec) -> None:
         names = {reference.name for reference in spec.target_references}
@@ -666,8 +730,8 @@ class TestBelgianPackage:
         income_basis = profile["basis_periods"]["assessment_income_year_2022"]
         assert income_basis["period"] == 2022
         assert income_basis["fact_period_type"] == "tax_year"
-        assert income_basis["survey_year"] == 2023
-        assert income_basis["income_reference_offset_years"] == -1
+        assert "survey_year" not in income_basis
+        assert "income_reference_offset_years" not in income_basis
         assert income_basis["mismatch_policy"] == "requires_source_projection"
 
         references = {reference.name: reference for reference in spec.target_references}
@@ -763,7 +827,7 @@ class TestBelgianPackage:
         target_path = package_dir / "target_references.json"
         payload = json.loads(target_path.read_text(encoding="utf-8"))
         reference = payload["target_references"][0]
-        reference["ledger_selector"]["geography_level"] = "province"
+        reference["ledger_selector"]["geography_level"] = "district"
         target_path.write_text(json.dumps(payload), encoding="utf-8")
 
         with pytest.raises(ValueError, match="does not declare it"):
@@ -807,7 +871,9 @@ class TestBelgianPackage:
         contract = spec.release_contract
         assert contract.artifact_repo == "policyengine/populace-be-private"
         assert contract.artifact_repo_private is True
-        assert contract.licence_restricted is True
+        assert contract.licence_restricted is False
+        assert contract.public_artifacts == ()
+        assert set(contract.required_release_files) <= set(contract.private_artifacts)
         assert contract.dataset_filename_template == "populace_be_{year}.h5"
         assert "source_coverage.json" in contract.required_release_files
         assert "reform_validation.json" in contract.required_release_files
@@ -847,23 +913,27 @@ class TestCountryStagePlan:
         ]
         plan = country_stage_plan(spec, {name: (lambda frame: frame) for name in names})
         assert [stage.name for stage in plan.stages] == [
-            "silc_load",
+            "load_populace_us_support_pool",
             "clone_assign_communes",
         ]
         donors = dict(plan.donors())
-        assert donors["silc_load"].source.startswith("https://")
+        assert donors["load_populace_us_support_pool"].source == (
+            "https://huggingface.co/datasets/policyengine/populace-us"
+        )
         assert donors["clone_assign_communes"].survey.startswith("Statbel")
 
     def test_missing_stage_refuses_to_assemble(self) -> None:
         spec = load_country_spec("be")
         with pytest.raises(ValueError, match="missing \\['clone_assign_communes'\\]"):
-            country_stage_plan(spec, {"silc_load": lambda frame: frame})
+            country_stage_plan(
+                spec, {"load_populace_us_support_pool": lambda frame: frame}
+            )
 
     def test_unknown_stage_is_refused(self) -> None:
         spec = load_country_spec("be")
         names = [stage.stage for stage in spec.sources.stages] + [
             spec.geography_spine.geography_spine.stage,
-            "silc_load_fallback",
+            "load_populace_us_support_pool_fallback",
         ]
         with pytest.raises(ValueError, match="Unknown stage implementation"):
             country_stage_plan(spec, {name: (lambda frame: frame) for name in names})
@@ -872,28 +942,30 @@ class TestCountryStagePlan:
         spec = load_country_spec("be")
 
         with pytest.raises(ValueError, match="missing \\['clone_assign_communes'\\]"):
-            country_stage_plan(spec, {"silc_load": lambda frame: frame})
+            country_stage_plan(
+                spec, {"load_populace_us_support_pool": lambda frame: frame}
+            )
 
     def test_explicit_stage_subset_uses_manifest_order(self) -> None:
         spec = load_country_spec("be")
         plan = country_stage_plan(
             spec,
             {
-                "silc_load": lambda frame: frame,
+                "load_populace_us_support_pool": lambda frame: frame,
                 "clone_assign_communes": lambda frame: frame,
             },
-            stage_names=("clone_assign_communes", "silc_load"),
+            stage_names=("clone_assign_communes", "load_populace_us_support_pool"),
         )
 
         assert [stage.name for stage in plan.stages] == [
-            "silc_load",
+            "load_populace_us_support_pool",
             "clone_assign_communes",
         ]
 
     def test_explicit_stage_subset_refuses_empty_or_unknown_names(self) -> None:
         spec = load_country_spec("be")
         implementations = {
-            "silc_load": lambda frame: frame,
+            "load_populace_us_support_pool": lambda frame: frame,
             "clone_assign_communes": lambda frame: frame,
         }
 
@@ -904,7 +976,10 @@ class TestCountryStagePlan:
             country_stage_plan(
                 spec,
                 implementations,
-                stage_names=("silc_load", "silc_load_fallback"),
+                stage_names=(
+                    "load_populace_us_support_pool",
+                    "load_populace_us_support_pool_fallback",
+                ),
             )
 
 
