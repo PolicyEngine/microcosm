@@ -1636,6 +1636,7 @@ def test_finalize_places_passive_with_its_line_32_total(
         tax_unit_outputs=(),
         n_estimators=4,
         seed=0,
+        tail_bound_diagnostics=[],
     )
 
     person = imputed.table("person")
@@ -1795,6 +1796,7 @@ def test_finalize_refuses_passive_placed_before_its_line_32(
             tax_unit_outputs=(),
             n_estimators=4,
             seed=0,
+            tail_bound_diagnostics=[],
         )
 
 
