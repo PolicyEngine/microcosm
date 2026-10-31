@@ -345,22 +345,23 @@ def _patch_engine(
     return constructed
 
 
-def test_resolve_uk_default_is_the_promoted_national_line():
-    """microcosm#823: once the national line's first certified cut was
-    promoted, the line became the default UK load; the June 2023 line stays
-    addressable at its year and its own pointer (Max's #823 ruling)."""
-    assert latest_year("uk") == 2025
-    assert resolve("uk").key == ("uk", 2025, DEFAULT_VARIANT)
-    assert resolve("uk").pointer_path == "latest-national.json"
-    assert resolve("uk", 2023).pointer_path == "latest.json"
-    with pytest.raises(ValueError, match="variant 'national'"):
-        resolve("uk", 2025, variant="national")
+def test_resolve_uk_default_stays_on_2023_until_the_national_line_is_promoted():
+    """The national line is registered off the default variant until its
+    pointer exists on the Hub, so a default load never chases an absent
+    pointer (review of #966); the flip is a one-line follow-up."""
+    assert latest_year("uk") == 2023
+    assert resolve("uk").key == ("uk", 2023, DEFAULT_VARIANT)
+    assert resolve("uk", 2025, variant="national").pointer_path == (
+        "latest-national.json"
+    )
+    with pytest.raises(ValueError, match="published years"):
+        resolve("uk", 2025)
 
 
 def test_resolve_uk_national_variant_follows_the_line_pointer(
     tmp_path: Path,
 ) -> None:
-    spec = resolve("uk", 2025)
+    spec = resolve("uk", 2025, variant="national")
     manifest = _uk_release_manifest()
     hub = _line_pointer_hub(
         tmp_path,
@@ -373,7 +374,7 @@ def test_resolve_uk_national_variant_follows_the_line_pointer(
     certified = loader._resolve_certified_release(spec, hub_download=hub)
 
     manifest_path = f"releases/{UK_NATIONAL_RELEASE_ID}/release_manifest.json"
-    assert spec.key == ("uk", 2025, DEFAULT_VARIANT)
+    assert spec.key == ("uk", 2025, "national")
     assert spec.pointer_path == "latest-national.json"
     assert certified.release_id == UK_NATIONAL_RELEASE_ID
     assert certified.artifact_revision == UK_NATIONAL_CUT_TAG
@@ -448,7 +449,9 @@ def test_line_pointer_refuses_any_artifact_revision_mismatch(tmp_path: Path) -> 
         ValueError,
         match=r"artifacts not pinned to expected revision.*calibration_report",
     ):
-        loader._resolve_certified_release(resolve("uk", 2025), hub_download=hub)
+        loader._resolve_certified_release(
+            resolve("uk", 2025, variant="national"), hub_download=hub
+        )
 
 
 def test_local_area_line_selects_its_only_microdata_artifact(tmp_path: Path) -> None:
@@ -565,7 +568,9 @@ def test_loader_refuses_an_unknown_dataset_role(tmp_path: Path) -> None:
     )
 
     with pytest.raises(ValueError, match="unknown dataset_role 'research_preview'"):
-        loader._resolve_certified_release(resolve("uk", 2025), hub_download=hub)
+        loader._resolve_certified_release(
+            resolve("uk", 2025, variant="national"), hub_download=hub
+        )
 
 
 def test_download_uses_pointer_manifest_and_release_revision(
@@ -799,7 +804,7 @@ def _is_missing_pointer_error(exc: BaseException, pointer_path: str) -> bool:
     [
         ("us", 2024, DEFAULT_VARIANT),
         ("uk", 2023, DEFAULT_VARIANT),
-        ("uk", 2025, DEFAULT_VARIANT),
+        ("uk", 2025, "national"),
     ],
 )
 def test_live_latest_pointer_resolves_to_a_coherent_certified_release(
@@ -818,9 +823,6 @@ def test_live_latest_pointer_resolves_to_a_coherent_certified_release(
     which are updated atomically with each certification PR.
     """
     spec = resolve(country, year, variant=variant)
-    # The UK 2025 default follows its line's pointer since microcosm#823, so
-    # the pointer, not the variant, says how the release is named.
-    line = loader._line_from_pointer_path(spec.pointer_path)
     try:
         certified = loader._resolve_certified_release(spec)
     except Exception as exc:
@@ -832,26 +834,26 @@ def test_live_latest_pointer_resolves_to_a_coherent_certified_release(
             pytest.skip(
                 f"repo requires credentials this environment lacks (private): {exc}"
             )
-        if line is not None and _is_missing_pointer_error(exc, spec.pointer_path):
+        if variant != DEFAULT_VARIANT and _is_missing_pointer_error(
+            exc, spec.pointer_path
+        ):
             # A line pointer exists only once its first cut is promoted;
             # until then the line is registered but not yet live. Anything
             # else on a promoted line (a manifest 404, a bad pin) fails.
             pytest.skip(f"line pointer {spec.pointer_path} not yet promoted: {exc}")
         raise
 
+    assert certified.release_id.startswith(
+        # Live certified releases still carry the pre-rename id prefix; new
+        # builds may adopt the microcosm- prefix at the next versioned release.
+        (f"microcosm-{country}-{spec.year}-", f"populace-{country}-{spec.year}-")
+    )
     assert certified.artifact_repo_id == spec.hf_repo
     assert certified.artifact_path == spec.filename
-    if line is None:
-        assert certified.release_id.startswith(
-            # Live certified releases still carry the pre-rename id prefix; new
-            # builds may adopt the microcosm- prefix at the next versioned
-            # release.
-            (f"microcosm-{country}-{spec.year}-", f"populace-{country}-{spec.year}-")
-        )
+    if variant == DEFAULT_VARIANT:
         assert certified.artifact_revision == certified.release_id
     else:
         # A line pointer names the immutable cut tag of its constant id.
-        assert certified.release_id.startswith(f"microcosm-{country}-")
         assert certified.artifact_revision.startswith(f"{certified.release_id}-")
     assert re.fullmatch(r"[0-9a-f]{64}", certified.artifact_sha256)
     assert certified.model.name == spec.engine_package
@@ -860,7 +862,7 @@ def test_live_latest_pointer_resolves_to_a_coherent_certified_release(
 def test_line_pointer_refuses_a_manifest_with_another_lines_role(tmp_path: Path):
     """A line pointer carries one role: the national pointer cannot select a
     local-area manifest, nor a local-area pointer a national one."""
-    spec = resolve("uk", 2025)
+    spec = resolve("uk", 2025, variant="national")
     manifest = _uk_release_manifest()
     manifest["dataset_role"] = "non_default_local_area"
     manifest["default_datasets"] = {}
