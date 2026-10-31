@@ -545,6 +545,13 @@ _OUTSIDE_LONDON_FARE_FACTOR = (
 ) / (181.6 * 86 + 185.7 * 92 + 185.9 * 92 + 206.4 * 90 + 210.5 * 5)
 
 
+def _calendar_2025_window(fy_2024: float, fy_2025: float) -> float:
+    """R7's calendar-2025 window: three twelfths of FY2024-25 and nine twelfths
+    of FY2025-26 (microcosm#1095)."""
+
+    return 0.25 * fy_2024 + 0.75 * fy_2025
+
+
 def test_childcare_and_bus_references_compile_with_declared_provenance() -> None:
     root = _TEST_PATHS.repository
     feed = root / STABLE_UK_FACT_FEED_NAME
@@ -594,16 +601,18 @@ def test_childcare_and_bus_references_compile_with_declared_provenance() -> None
         == "3417388656.43538"
     )
     assert {name: spec.value for name, spec in specs.items()} == {
-        "hmrc.tfc.government_top_up": 599_800_000.0,
+        "hmrc.tfc.government_top_up": pytest.approx(
+            _calendar_2025_window(632_200_000, 599_800_000)
+        ),
         "hmrc.tfc.children_with_used_accounts": 1_151_515.0,
-        "dfe.funded_childcare.working_parent_children_2_to_4": 621_482.0,
-        "dfe.funded_childcare.early_learning_2_year_olds": 95_031.0,
-        "dfe.funded_childcare.universal_only_children": 396_965.0,
-        "dfe.funded_childcare.working_parent_children_9_to_11_months": 29_155.0,
-        "dfe.funded_childcare.working_parent_children_age_1": 195_104.0,
-        "dfe.funded_childcare.working_parent_children_age_2": 242_453.0,
-        "dfe.funded_childcare.working_parent_children_age_3": 278_640.0,
-        "dfe.funded_childcare.universal_nursery_children_age_3": 565_954.0,
+        "dfe.funded_childcare.working_parent_children_2_to_4": 648_979.0,
+        "dfe.funded_childcare.early_learning_2_year_olds": 85_629.0,
+        "dfe.funded_childcare.universal_only_children": 362_581.0,
+        "dfe.funded_childcare.working_parent_children_9_to_11_months": 30_679.0,
+        "dfe.funded_childcare.working_parent_children_age_1": 210_825.0,
+        "dfe.funded_childcare.working_parent_children_age_2": 260_238.0,
+        "dfe.funded_childcare.working_parent_children_age_3": 278_490.0,
+        "dfe.funded_childcare.universal_nursery_children_age_3": 535_209.0,
         "dft.bus_fare_receipts.england": pytest.approx(
             1_347_434_943.01459 * _LONDON_FARE_FACTOR
             + 2_069_953_713.42079 * _OUTSIDE_LONDON_FARE_FACTOR
@@ -616,7 +625,10 @@ def test_childcare_and_bus_references_compile_with_declared_provenance() -> None
         "scotgov.bus.passenger_revenue": 391_000_000.0,
         "scotgov.bus.government_support": 499_000_000.0,
         "welshgov.bus.public_support": 131_489_970.0,
-        "dfi_ni.bus.passenger_receipts": 152_500_000.0,
+        # Metro/Glider plus Ulsterbus in each year.
+        "dfi_ni.bus.passenger_receipts": pytest.approx(
+            _calendar_2025_window(49_600_000 + 100_500_000, 49_000_000 + 103_500_000)
+        ),
         "nithc.public_transport_support": 111_700_000.0,
     }
     assert {
@@ -676,8 +688,8 @@ def test_childcare_and_bus_references_compile_with_declared_provenance() -> None
     # bound working parent ages 2 and 3 plus DfE's signed-out age-4 cell, and
     # universal-only is the bound nursery age 3 plus the signed-out nursery
     # age-4 cell less the working parent ages 3 and 4 (DfE's published January
-    # 2025 headline figures).
-    working_parent_age_4, nursery_age_4 = 100_389.0, 210_040.0
+    # 2026 headline figures, the rows' observation period).
+    working_parent_age_4, nursery_age_4 = 110_251.0, 216_113.0
     value = {name: spec.value for name, spec in specs.items()}
     prefix = "dfe.funded_childcare."
     assert value[prefix + "working_parent_children_2_to_4"] == (
@@ -706,10 +718,12 @@ def test_dfe_extended_sum_refuses_the_suppressed_2024_member() -> None:
     )
     facts = [json.loads(line) for line in feed.open() if '"source_name": "dfe"' in line]
 
+    # Read at the January 2024 census, which has no working parent "2 years"
+    # cell: the row itself selects January 2026 (microcosm#1095 D5).
     with pytest.raises(ValueError, match="expected 2 members.*resolved 1"):
         compile_ledger_target_references(
             facts,
-            [replace(reference, period=2024)],
+            [replace(reference, period=2024, observation_period=None)],
             country="uk",
         )
 
