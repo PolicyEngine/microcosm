@@ -32515,8 +32515,10 @@
         "contract_target_id": "hmrc.itl.savings_tax_at_basic_rate",
         "measure_kind": "prepared_column"
       },
-      "assertion_policy": "allow_source_projection",
-      "value_operation": "calendar_year_window"
+      "uprating_index": "obr.efo_2026_10.savings_income_growth",
+      "value_operation": "sum",
+      "uprating_from_period": "2023",
+      "uprating_to_period": 2025
     },
     {
       "name": "hmrc.itl.savings_tax_at_higher_rate",
@@ -32540,8 +32542,10 @@
         "contract_target_id": "hmrc.itl.savings_tax_at_higher_rate",
         "measure_kind": "prepared_column"
       },
-      "assertion_policy": "allow_source_projection",
-      "value_operation": "calendar_year_window"
+      "uprating_index": "obr.efo_2026_10.savings_income_growth",
+      "value_operation": "sum",
+      "uprating_from_period": "2023",
+      "uprating_to_period": 2025
     },
     {
       "name": "hmrc.itl.savings_tax_at_additional_rate",
@@ -32565,8 +32569,10 @@
         "contract_target_id": "hmrc.itl.savings_tax_at_additional_rate",
         "measure_kind": "prepared_column"
       },
-      "assertion_policy": "allow_source_projection",
-      "value_operation": "calendar_year_window"
+      "uprating_index": "obr.efo_2026_10.savings_income_growth",
+      "value_operation": "sum",
+      "uprating_from_period": "2023",
+      "uprating_to_period": 2025
     },
     {
       "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_100000",

@@ -51,7 +51,6 @@ PROJECTION_FAMILIES = {
     "hmrc_itl",
     "hmrc_itl_marginal_rate",
     "hmrc_itl_age",
-    "hmrc_itl_savings_rate",
     "dwp_benefit_expenditure",
 }
 NATIONAL_SELECTOR_KEYS = {

@@ -4649,6 +4649,9 @@
     "dfe.funded_childcare.working_parent_children_2_to_4",
     "dfi_ni.bus.passenger_receipts",
     "dwp.workplace_pension.employer_contributions",
+    "hmrc.itl.savings_tax_at_additional_rate",
+    "hmrc.itl.savings_tax_at_basic_rate",
+    "hmrc.itl.savings_tax_at_higher_rate",
     "nithc.public_transport_support",
     "obr.beer_and_cider_duties",
     "obr.wine_duties",
@@ -8198,6 +8201,30 @@
       "name": "hmrc.cgt.gains_by_taxable_income_band.income_50000_to_99999",
       "from": "2024",
       "to": "2025"
+    },
+    {
+      "name": "hmrc.itl.savings_tax_at_basic_rate",
+      "from": "2023",
+      "to": "2025",
+      "index": "obr.efo_2026_10.savings_income_growth",
+      "factor": "1.35618703816992",
+      "value_before_uprating": "1190000000.0"
+    },
+    {
+      "name": "hmrc.itl.savings_tax_at_higher_rate",
+      "from": "2023",
+      "to": "2025",
+      "index": "obr.efo_2026_10.savings_income_growth",
+      "factor": "1.35618703816992",
+      "value_before_uprating": "1650000000.0"
+    },
+    {
+      "name": "hmrc.itl.savings_tax_at_additional_rate",
+      "from": "2023",
+      "to": "2025",
+      "index": "obr.efo_2026_10.savings_income_growth",
+      "factor": "1.35618703816992",
+      "value_before_uprating": "2700000000.0"
     },
     {
       "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_100000",
@@ -23794,11 +23821,16 @@
           "name": "hmrc.itl.savings_tax_at_basic_rate",
           "status": "active",
           "matched_fact_count_overall": 4,
-          "matched_fact_count_at_or_before_period": 3,
+          "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 1720000000.0,
-          "resolved_fact_period": "2025",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_76d65d104935eb1a9e6c4d82"
+          "resolved_value": 1613862575.4222026,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_461e08050a646d69b81e5ef5",
+          "uprating": {
+            "index": "obr.efo_2026_10.savings_income_growth",
+            "factor": "1.35618703816992",
+            "value_before_uprating": "1190000000.0"
+          }
         }
       ]
     },
@@ -23809,11 +23841,16 @@
           "name": "hmrc.itl.savings_tax_at_higher_rate",
           "status": "active",
           "matched_fact_count_overall": 4,
-          "matched_fact_count_at_or_before_period": 3,
+          "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 2587500000.0,
-          "resolved_fact_period": "2025",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_29c9717012d95e7dd50c5d9c"
+          "resolved_value": 2237708612.980365,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f83c68fe39bde903cdbad6a6",
+          "uprating": {
+            "index": "obr.efo_2026_10.savings_income_growth",
+            "factor": "1.35618703816992",
+            "value_before_uprating": "1650000000.0"
+          }
         }
       ]
     },
@@ -23824,11 +23861,16 @@
           "name": "hmrc.itl.savings_tax_at_additional_rate",
           "status": "active",
           "matched_fact_count_overall": 4,
-          "matched_fact_count_at_or_before_period": 3,
+          "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 4087500000.0,
-          "resolved_fact_period": "2025",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_f936b73617f0b0a75a5289dd"
+          "resolved_value": 3661705003.058779,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_49c077ad9857be0df3fc43cb",
+          "uprating": {
+            "index": "obr.efo_2026_10.savings_income_growth",
+            "factor": "1.35618703816992",
+            "value_before_uprating": "2700000000.0"
+          }
         }
       ]
     },

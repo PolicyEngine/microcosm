@@ -21801,7 +21801,7 @@
           "value_expression": "0.2 * basic_rate_savings_income_annual",
           "from_entity": "person",
           "map_to": "household",
-          "notes": "Income Tax on savings income at the basic rate (20%), all payers, United Kingdom, bound at the 2025 calibration period as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections (3/12 and 9/12; value_operation calendar_year_window) from Income Tax liabilities statistics Table 2.6 (July 2026), HMRC's projection of the 2023-24 SPI base. It is the base the Budget's savings income rates are costed on (Budget 2026 policy costings, savings income: all taxable savings income above the Personal Allowance, Personal Savings Allowance and starting rate, ISA returns excluded, from HMRC's Personal Tax Model on SPI 2023-24). The value is the rate times the engine's basic_rate_savings_income, the savings income the rate charges once the allowances, the starting rate and the Personal Savings Allowance are taken, which policyengine-uk draws from savings_interest_income outside ISAs and other_investment_income together (taxable_savings_interest_income); it reads each person's income over the 12 months before their interview, a proxy for the tax year, as the other Income Tax liabilities rows do (basic_rate_savings_income_annual). HMRC's savings may also hold gains on life insurance policies, which the frame holds in no input. microcosm#1418."
+          "notes": "Income Tax on savings income at the basic rate (20%), all payers, United Kingdom, bound at the 2025 calibration period as HMRC's 2023-24 outturn from Income Tax liabilities statistics Table 2.6 (July 2026), grown on the OBR's savings income path (selector_note). It is the base the Budget's savings income rates are costed on (Budget 2026 policy costings, savings income: all taxable savings income above the Personal Allowance, Personal Savings Allowance and starting rate, ISA returns excluded, from HMRC's Personal Tax Model on SPI 2023-24). The value is the rate times the engine's basic_rate_savings_income, the savings income the rate charges once the allowances, the starting rate and the Personal Savings Allowance are taken, which policyengine-uk draws from savings_interest_income outside ISAs and other_investment_income together (taxable_savings_interest_income); it reads each person's income over the 12 months before their interview, a proxy for the tax year, as the other Income Tax liabilities rows do (basic_rate_savings_income_annual). HMRC's savings may also hold gains on life insurance policies, which the frame holds in no input. microcosm#1418."
         },
         "axiom": {
           "metric_name": "hmrc/itl_savings_tax/basic_rate",
@@ -21819,10 +21819,10 @@
         },
         "entity_name": "person"
       },
-      "value_operation": "calendar_year_window",
-      "assertion_policy": "allow_source_projection",
       "category_id": "hmrc.income_tax_liabilities_statistics",
-      "label": "Income Tax on savings at the basic rate"
+      "label": "Income Tax on savings at the basic rate",
+      "uprating_index": "obr.efo_2026_10.savings_income_growth",
+      "selector_note": "Uprated from HMRC's 2023-24 outturn to the 2025 calibration period by the OBR's forecast growth of savings income (October 2026 EFO, receipts Table 4.5), chained from 2023-24 and weighted over the two fiscal years overlapping calendar 2025, about x1.36: the path the Budget's savings costing grows its 2023-24 base by, and the one SPI Table 3.7's savings rows take (María's choice of 2026-10-31, option A, microcosm#1428). Only the observed year is read. HMRC's own 2024-25 and 2025-26 projections, as a calendar-2025 window, put the tax about 12% higher (x1.52 over the outturn against x1.36 for the income): the frozen Personal Savings Allowance and thresholds take a growing share of savings into tax, a leverage this anchor leaves out."
     },
     {
       "target_id": "hmrc.itl.savings_tax_at_higher_rate",
@@ -21851,7 +21851,7 @@
           "value_expression": "0.4 * higher_rate_savings_income_annual",
           "from_entity": "person",
           "map_to": "household",
-          "notes": "Income Tax on savings income at the higher rate (40%), all payers, United Kingdom, bound at the 2025 calibration period as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections (3/12 and 9/12; value_operation calendar_year_window) from Income Tax liabilities statistics Table 2.6 (July 2026), HMRC's projection of the 2023-24 SPI base. It is the base the Budget's savings income rates are costed on (Budget 2026 policy costings, savings income: all taxable savings income above the Personal Allowance, Personal Savings Allowance and starting rate, ISA returns excluded, from HMRC's Personal Tax Model on SPI 2023-24). The value is the rate times the engine's higher_rate_savings_income, the savings income the rate charges once the allowances, the starting rate and the Personal Savings Allowance are taken, which policyengine-uk draws from savings_interest_income outside ISAs and other_investment_income together (taxable_savings_interest_income); it reads each person's income over the 12 months before their interview, a proxy for the tax year, as the other Income Tax liabilities rows do (higher_rate_savings_income_annual). HMRC's savings may also hold gains on life insurance policies, which the frame holds in no input. microcosm#1418."
+          "notes": "Income Tax on savings income at the higher rate (40%), all payers, United Kingdom, bound at the 2025 calibration period as HMRC's 2023-24 outturn from Income Tax liabilities statistics Table 2.6 (July 2026), grown on the OBR's savings income path (selector_note). It is the base the Budget's savings income rates are costed on (Budget 2026 policy costings, savings income: all taxable savings income above the Personal Allowance, Personal Savings Allowance and starting rate, ISA returns excluded, from HMRC's Personal Tax Model on SPI 2023-24). The value is the rate times the engine's higher_rate_savings_income, the savings income the rate charges once the allowances, the starting rate and the Personal Savings Allowance are taken, which policyengine-uk draws from savings_interest_income outside ISAs and other_investment_income together (taxable_savings_interest_income); it reads each person's income over the 12 months before their interview, a proxy for the tax year, as the other Income Tax liabilities rows do (higher_rate_savings_income_annual). HMRC's savings may also hold gains on life insurance policies, which the frame holds in no input. microcosm#1418."
         },
         "axiom": {
           "metric_name": "hmrc/itl_savings_tax/higher_rate",
@@ -21869,10 +21869,10 @@
         },
         "entity_name": "person"
       },
-      "value_operation": "calendar_year_window",
-      "assertion_policy": "allow_source_projection",
       "category_id": "hmrc.income_tax_liabilities_statistics",
-      "label": "Income Tax on savings at the higher rate"
+      "label": "Income Tax on savings at the higher rate",
+      "uprating_index": "obr.efo_2026_10.savings_income_growth",
+      "selector_note": "Uprated from HMRC's 2023-24 outturn to the 2025 calibration period by the OBR's forecast growth of savings income (October 2026 EFO, receipts Table 4.5), chained from 2023-24 and weighted over the two fiscal years overlapping calendar 2025, about x1.36: the path the Budget's savings costing grows its 2023-24 base by, and the one SPI Table 3.7's savings rows take (María's choice of 2026-10-31, option A, microcosm#1428). Only the observed year is read. HMRC's own 2024-25 and 2025-26 projections, as a calendar-2025 window, put the tax about 12% higher (x1.52 over the outturn against x1.36 for the income): the frozen Personal Savings Allowance and thresholds take a growing share of savings into tax, a leverage this anchor leaves out."
     },
     {
       "target_id": "hmrc.itl.savings_tax_at_additional_rate",
@@ -21901,7 +21901,7 @@
           "value_expression": "0.45 * add_rate_savings_income_annual",
           "from_entity": "person",
           "map_to": "household",
-          "notes": "Income Tax on savings income at the additional rate (45%), all payers, United Kingdom, bound at the 2025 calibration period as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections (3/12 and 9/12; value_operation calendar_year_window) from Income Tax liabilities statistics Table 2.6 (July 2026), HMRC's projection of the 2023-24 SPI base. It is the base the Budget's savings income rates are costed on (Budget 2026 policy costings, savings income: all taxable savings income above the Personal Allowance, Personal Savings Allowance and starting rate, ISA returns excluded, from HMRC's Personal Tax Model on SPI 2023-24). The value is the rate times the engine's add_rate_savings_income, the savings income the rate charges once the allowances, the starting rate and the Personal Savings Allowance are taken, which policyengine-uk draws from savings_interest_income outside ISAs and other_investment_income together (taxable_savings_interest_income); it reads each person's income over the 12 months before their interview, a proxy for the tax year, as the other Income Tax liabilities rows do (add_rate_savings_income_annual). HMRC's savings may also hold gains on life insurance policies, which the frame holds in no input. microcosm#1418."
+          "notes": "Income Tax on savings income at the additional rate (45%), all payers, United Kingdom, bound at the 2025 calibration period as HMRC's 2023-24 outturn from Income Tax liabilities statistics Table 2.6 (July 2026), grown on the OBR's savings income path (selector_note). It is the base the Budget's savings income rates are costed on (Budget 2026 policy costings, savings income: all taxable savings income above the Personal Allowance, Personal Savings Allowance and starting rate, ISA returns excluded, from HMRC's Personal Tax Model on SPI 2023-24). The value is the rate times the engine's add_rate_savings_income, the savings income the rate charges once the allowances, the starting rate and the Personal Savings Allowance are taken, which policyengine-uk draws from savings_interest_income outside ISAs and other_investment_income together (taxable_savings_interest_income); it reads each person's income over the 12 months before their interview, a proxy for the tax year, as the other Income Tax liabilities rows do (add_rate_savings_income_annual). HMRC's savings may also hold gains on life insurance policies, which the frame holds in no input. microcosm#1418."
         },
         "axiom": {
           "metric_name": "hmrc/itl_savings_tax/additional_rate",
@@ -21919,10 +21919,10 @@
         },
         "entity_name": "person"
       },
-      "value_operation": "calendar_year_window",
-      "assertion_policy": "allow_source_projection",
       "category_id": "hmrc.income_tax_liabilities_statistics",
-      "label": "Income Tax on savings at the additional rate"
+      "label": "Income Tax on savings at the additional rate",
+      "uprating_index": "obr.efo_2026_10.savings_income_growth",
+      "selector_note": "Uprated from HMRC's 2023-24 outturn to the 2025 calibration period by the OBR's forecast growth of savings income (October 2026 EFO, receipts Table 4.5), chained from 2023-24 and weighted over the two fiscal years overlapping calendar 2025, about x1.36: the path the Budget's savings costing grows its 2023-24 base by, and the one SPI Table 3.7's savings rows take (María's choice of 2026-10-31, option A, microcosm#1428). Only the observed year is read. HMRC's own 2024-25 and 2025-26 projections, as a calendar-2025 window, put the tax about 12% higher (x1.52 over the outturn against x1.36 for the income): the frozen Personal Savings Allowance and thresholds take a growing share of savings into tax, a leverage this anchor leaves out."
     },
     {
       "target_id": "hmrc.spi.savings_interest_income.amount_by_total_income_band",
