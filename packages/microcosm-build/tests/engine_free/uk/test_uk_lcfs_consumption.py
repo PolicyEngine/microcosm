@@ -1139,10 +1139,10 @@ def test_fuel_flag_evidence_withholds_every_share_beside_a_thin_group() -> None:
         recipient_weights=np.ones(32),
         ice_share_receipt={"rate": 0.9},
     )
-    # Three donors read exactly at the floor of three; each of their groups
-    # rests on one, so every share beside them is withheld.
+    # Three donors read "3-9", the band from the floor of three; each of their
+    # groups rests on one, so every share beside them is withheld.
     assert evidence["donor"] == {
-        "households": 3,
+        "households": "3-9",
         "with_vehicles_share": "<3",
         "positive_fuel_share": "<3",
         "positive_fuel_share_among_vehicle_households": "<3",

@@ -11,15 +11,17 @@ its count, and a weighted share carried by one or two records is "<3".
 
 Three is CD171's absolute floor. The build used ten, CD171's working minimum
 against secondary disclosure across outputs, until María's ruling of
-2026-10-29 moved every output to three (``UK_DISCLOSURE_FLOOR``). No study the
-build reads sets a higher one. The UK Data Service catalogue entries were read for conditions beyond
-the End User Licence (microcosm#1278): the FRS 2024-25 (SN 9563) has none
-(checked 2026-10-16), and neither have the LCFS, ETB, WAS and NTS studies
-(checked 2026-10-14). The SPI 2022-23 Public Use Tape (SN 9422, checked
-2026-10-16) adds two: no attempt may be made to attribute a record to a named
-individual, and material that includes analyses of the tape goes to HMRC at
-least ten working days before it is distributed or published. The build
-marks the outputs that rest on the tape
+2026-10-29 moved every output to three (``UK_DISCLOSURE_FLOOR``). Every count
+from three to nine reads "3-9", so a count just above the floor never narrows
+a small group by difference. No study the build reads sets a higher floor.
+The UK Data Service catalogue entries were read for conditions beyond the End
+User Licence (microcosm#1278): the FRS 2024-25 (SN 9563) has none (checked
+2026-10-16), and neither have the LCFS, ETB, WAS and NTS studies (checked
+2026-10-14). The SPI 2022-23 Public Use Tape (SN 9422, checked 2026-10-16)
+adds two: no attempt may be made to attribute a record to a named individual,
+and material that includes analyses of the tape goes to HMRC at least ten
+working days before it is distributed or published. The move to three
+changes neither. The build marks the outputs that rest on the tape
 (:mod:`microcosm.build.uk_runtime.spi_dependency`).
 """
 
@@ -86,10 +88,13 @@ def distinct_count(
 def rounded_count(count: int) -> int | str:
     """A count of donor records, rounded.
 
-    Zero exact, one or two "<3", three to nine exact, then to the nearest ten
+    Zero exact, one or two "<3", three to nine "3-9", then to the nearest ten
     below a thousand and to the nearest hundred from a thousand, so that a
     count near a survey's published sample size does not give back by
-    difference how many records a step left out. Halves round up.
+    difference how many records a step left out. Halves round up. The band
+    keeps a count just above the floor from narrowing a small group by
+    difference, as an exact one would beside another receipt (the review of
+    microcosm#1422).
     """
 
     value = int(count)
@@ -100,7 +105,7 @@ def rounded_count(count: int) -> int | str:
     if value < UK_DISCLOSURE_FLOOR:
         return UK_WITHHELD
     if value < 10:
-        return value
+        return UK_BELOW_TEN_BAND
     if value < 1000:
         return (value + 5) // 10 * 10
     return (value + 50) // 100 * 100

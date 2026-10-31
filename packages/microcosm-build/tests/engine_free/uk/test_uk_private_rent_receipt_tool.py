@@ -446,7 +446,8 @@ def test_spine_values_count_frs_channel_households_only():
     )
     frame.loc[2:, "channel"] = "spi"
     every = _summary(frame)["rents_by_cell"]["nation"]["England"]
-    assert every["source_households"] == 8
+    # All eight households carry the cell, so it reads "3-9", not "<3".
+    assert every["source_households"] == "3-9"
     frs = _summary(frame, frs_carriers=True)["rents_by_cell"]["nation"]["England"]
     assert frs == {"withheld": "<3"}
     # A cell of SPI rows only has no FRS-channel carrier: it reads "<3".

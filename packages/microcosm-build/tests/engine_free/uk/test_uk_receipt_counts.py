@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 import pytest
 
 from microcosm.build.uk_runtime.receipt_counts import (
@@ -13,6 +15,7 @@ from microcosm.build.uk_runtime.receipt_counts import (
     small_cell_share,
     support_band,
 )
+from test_support.paths import paths_for
 
 
 @pytest.mark.parametrize(
@@ -20,11 +23,12 @@ from microcosm.build.uk_runtime.receipt_counts import (
     [
         (0, 0),
         # The floor of three (María's ruling of 2026-10-29): one or two are
-        # withheld, three to nine read exactly, then the rounding starts.
+        # withheld, three to nine read "3-9" (the review of microcosm#1422),
+        # then the rounding starts.
         (1, "<3"),
         (2, "<3"),
-        (3, 3),
-        (9, 9),
+        (3, "3-9"),
+        (9, "3-9"),
         (10, 10),
         (14, 10),
         (25, 30),
@@ -75,6 +79,29 @@ def test_support_band(count, expected) -> None:
     # An empty cell reads 0, as the other counts here, never "<3" beside a
     # zero weight.
     assert support_band(count) == expected
+
+
+def test_no_uk_output_still_withholds_at_ten() -> None:
+    """Every UK receipt, gate note and tool withholds through
+    ``UK_DISCLOSURE_FLOOR``. One that still writes the old "<10" label stays on
+    the floor of ten without anyone noticing, as the SPI pay-floor receipt of
+    microcosm#1426 would if it landed second (the review of microcosm#1422)."""
+
+    root = paths_for("microcosm-build").repository
+    build = paths_for("microcosm-build").package / "src" / "microcosm" / "build"
+    label = re.compile(r"<10(?![\d%])")
+    writers = sorted(
+        path.relative_to(root).as_posix()
+        for path in (
+            *(build / "uk_runtime").rglob("*.py"),
+            *(build / "uk").glob("*.py"),
+            *(build / "uk" / "spec").glob("*.yaml"),
+            build / "uk" / "gates.json",
+            *(root / "tools").glob("*.py"),
+        )
+        if label.search(path.read_text(encoding="utf-8"))
+    )
+    assert writers == []
 
 
 def test_counts_refuse_a_negative_count() -> None:
