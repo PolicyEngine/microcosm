@@ -244,6 +244,7 @@ _SIGNAL_STAGE_GATES = {
     "frs_take_up": "uk_stage_frs_take_up_signal",
     "frs_person_draws": "uk_stage_frs_person_draws_take_up_signal",
     "frs_household_draws": "uk_stage_frs_household_draws_take_up_signal",
+    "childcare_copy_take_up": "uk_stage_childcare_copy_take_up_signal",
 }
 
 
@@ -340,14 +341,30 @@ def test_stage_receipt_measures_drawn_flags_and_withholds_thin_populations() -> 
     )
     usage = rows["person.max_free_entitlement_hours_used"]
     # Two children in two households: below the disclosure floor, so neither
-    # the share nor the age-weighted target is given, and the gate fails.
+    # the share nor the age-weighted target is given, and the gate flags the
+    # flag unchecked rather than failing (María's ruling of 2026-10-26); the
+    # terminal gate still measures it at the calibrated weights.
     assert usage["under_two_usage"] is True
     assert usage["weighted_share"] == "<3"
     assert usage["target"] == "<3"
     result = _stage_gate("frs_take_up", receipt)
-    assert result.passed is False
-    assert any("max_free_entitlement_hours_used" in f for f in result.failures)
-    assert all("withheld" in f for f in result.failures)
+    assert result.passed is True, result.failures
+    assert result.details["flags_withheld_unchecked"] == [
+        "person.max_free_entitlement_hours_used"
+    ]
+    # A share that is neither measured nor withheld still fails.
+    broken = {
+        **receipt,
+        "flags": [
+            {**row, "weighted_share": "n/a"}
+            if row["output"] == "benunit.would_claim_tfc"
+            else row
+            for row in receipt["flags"]
+        ],
+    }
+    assert any(
+        "not a measured share" in f for f in _stage_gate("frs_take_up", broken).failures
+    )
 
 
 def test_stage_take_up_signal_gate_passes_and_names_each_defect() -> None:
@@ -391,3 +408,48 @@ def test_household_draw_stage_records_its_take_up_receipt() -> None:
     assert [row["output"] for row in evidence["take_up_signal"]["flags"]] == list(
         _stage_gate_parameters("frs_household_draws")["outputs"]
     )
+
+
+def test_the_copy_stage_checks_the_childcare_flags_it_redraws() -> None:
+    """childcare_copy_take_up re-draws five of frs_take_up's flags for the
+    copies, so its own stage gate measures them again after the re-draw."""
+    from microcosm.build.uk_runtime.childcare_copy_take_up import (
+        CHILDCARE_COPY_TAKE_UP_REWRITES,
+    )
+    from microcosm.build.uk_runtime.frs_take_up import take_up_signal_outputs
+
+    redrawn = take_up_signal_outputs(CHILDCARE_COPY_TAKE_UP_REWRITES)
+    assert set(redrawn) <= set(_stage_signal_outputs()["frs_take_up"])
+    parameters = _stage_gate_parameters("childcare_copy_take_up")
+    assert parameters["stage"] == "childcare_copy_take_up"
+    assert parameters["check"] == "take_up_signal"
+    assert list(parameters["outputs"]) == [
+        f"{entity}.{output}" for entity, output, _ in redrawn
+    ]
+    assert parameters["maximum_share_deviation"] == 0.05
+    assert parameters["under_two_usage_maximum_share_deviation"] == 0.1
+
+
+def test_the_spine_battery_runs_each_take_up_stage_gate() -> None:
+    """Each stage-time take-up gate is in the spine battery's scope and runs
+    through the battery's stage_health binding on its stage's receipt."""
+    from microcosm.build.uk_runtime.calibration_run import UK_SPINE_GATE_SCOPE
+
+    frame = _frame()
+    drawing = ("frs_take_up", "frs_person_draws", "frs_household_draws")
+    evidence = {
+        stage: {"stage": stage, "take_up_signal": _receipt(frame, stage)}
+        for stage in drawing
+    }
+    binding = UK_GATE_REGISTRY["stage_health"]
+    for stage, gate_id in _SIGNAL_STAGE_GATES.items():
+        assert gate_id in UK_SPINE_GATE_SCOPE
+        parameters = _stage_gate_parameters(stage)
+        assert set(parameters) <= binding.parameter_keys
+        if stage not in evidence:
+            # The copy stage's receipt needs copies: its own test runs it.
+            continue
+        result = binding.evaluator(
+            EvidenceContext(artifacts={"stage_evidence": evidence}), parameters
+        )
+        assert result.passed, (stage, result.failures)

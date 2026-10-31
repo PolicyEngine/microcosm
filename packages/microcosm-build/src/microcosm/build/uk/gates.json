@@ -956,7 +956,7 @@
           "person.max_free_entitlement_hours_used"
         ]
       },
-      "notes": "Stage-time take-up signal gate (María's ruling of 2026-10-29, microcosm#1095): the six flags frs_take_up draws that the terminal uk_take_up_signal gate measures (Tax-Free Childcare, the extended, universal and targeted hours, the Universal Credit childcare element and the under-2 usage of the extended hours) are measured where they are drawn, at the stage's household weights before calibration, against their contract targets within the terminal gate's bounds (0.05; 0.10 for the under-2 usage, whose population is the children under 2 in units that claim the extended hours), and no benefit unit may claim the extended hours without the universal ones. Calibration's drift cannot move them here, so a failure is a draw defect. The bounds are the terminal gate's until a spine build's receipt measures the stage-time deviations. The receipt withholds a share or target whose population rests on fewer than three source households (UKDS disclosure control), and the gate fails on it; a synthetic smoke build records a failure without blocking on it (population_fact_check)."
+      "notes": "Stage-time take-up signal gate (María's ruling of 2026-10-29, microcosm#1095): the six flags frs_take_up draws that the terminal uk_take_up_signal gate measures (Tax-Free Childcare, the extended, universal and targeted hours, the Universal Credit childcare element and the under-2 usage of the extended hours) are measured where they are drawn, at the stage's household weights before calibration, against their contract targets within the terminal gate's bounds (0.05; 0.10 for the under-2 usage, whose population is the children under 2 in units that claim the extended hours), and no benefit unit may claim the extended hours without the universal ones. Calibration's drift cannot move them here, so a failure is a draw defect. The bounds are the terminal gate's until a spine build's receipt measures the stage-time deviations. The receipt withholds a share or target whose population rests on fewer than three source households (UKDS disclosure control), which the gate flags unchecked rather than failing (María's ruling of 2026-10-26), as the terminal gate still measures it at the calibrated weights; a synthetic smoke build records a failure without blocking on it (population_fact_check)."
     },
     {
       "id": "uk_stage_frs_person_draws_take_up_signal",
@@ -974,7 +974,7 @@
           "person.would_claim_scp"
         ]
       },
-      "notes": "Stage-time take-up signal gate (María's ruling of 2026-10-29, microcosm#1095): the Marriage Allowance and Scottish Child Payment flags frs_person_draws draws are measured where they are drawn, at the stage's household weights before calibration, against their contract targets within the terminal gate's bounds (0.05; the Scottish Child Payment target is the weighted mean of its under-6 and 6-plus rates). Calibration's drift cannot move them here, so a failure is a draw defect. The bounds are the terminal gate's until a spine build's receipt measures the stage-time deviations. The receipt withholds a share or target whose population rests on fewer than three source households (UKDS disclosure control), and the gate fails on it; a synthetic smoke build records a failure without blocking on it (population_fact_check)."
+      "notes": "Stage-time take-up signal gate (María's ruling of 2026-10-29, microcosm#1095): the Marriage Allowance and Scottish Child Payment flags frs_person_draws draws are measured where they are drawn, at the stage's household weights before calibration, against their contract targets within the terminal gate's bounds (0.05; the Scottish Child Payment target is the weighted mean of its under-6 and 6-plus rates). Calibration's drift cannot move them here, so a failure is a draw defect. The bounds are the terminal gate's until a spine build's receipt measures the stage-time deviations. The receipt withholds a share or target whose population rests on fewer than three source households (UKDS disclosure control), which the gate flags unchecked rather than failing (María's ruling of 2026-10-26), as the terminal gate still measures it at the calibrated weights; a synthetic smoke build records a failure without blocking on it (population_fact_check)."
     },
     {
       "id": "uk_stage_frs_household_draws_take_up_signal",
@@ -994,7 +994,29 @@
           "household.property_purchased"
         ]
       },
-      "notes": "Stage-time take-up signal gate (María's ruling of 2026-10-29, microcosm#1095): the four flags frs_household_draws draws (TV ownership, TV licence evasion, the first-home flag and the main-residence purchase flag) are measured where they are drawn, at the stage's household weights before calibration, against their contract targets within the terminal gate's bounds (0.05). Calibration's drift cannot move them here, so a failure is a draw defect. The bounds are the terminal gate's until a spine build's receipt measures the stage-time deviations. The receipt withholds a share or target whose population rests on fewer than three source households (UKDS disclosure control), and the gate fails on it; a synthetic smoke build records a failure without blocking on it (population_fact_check)."
+      "notes": "Stage-time take-up signal gate (María's ruling of 2026-10-29, microcosm#1095): the four flags frs_household_draws draws (TV ownership, TV licence evasion, the first-home flag and the main-residence purchase flag) are measured where they are drawn, at the stage's household weights before calibration, against their contract targets within the terminal gate's bounds (0.05). Calibration's drift cannot move them here, so a failure is a draw defect. The bounds are the terminal gate's until a spine build's receipt measures the stage-time deviations. The receipt withholds a share or target whose population rests on fewer than three source households (UKDS disclosure control), which the gate flags unchecked rather than failing (María's ruling of 2026-10-26), as the terminal gate still measures it at the calibrated weights; a synthetic smoke build records a failure without blocking on it (population_fact_check)."
+    },
+    {
+      "id": "uk_stage_childcare_copy_take_up_signal",
+      "gate": "stage_health",
+      "phase": "assembled",
+      "criticality": "release_blocking",
+      "evidence_absent_blocks": true,
+      "population_fact_check": true,
+      "parameters": {
+        "stage": "childcare_copy_take_up",
+        "check": "take_up_signal",
+        "maximum_share_deviation": 0.05,
+        "under_two_usage_maximum_share_deviation": 0.1,
+        "outputs": [
+          "benunit.would_claim_tfc",
+          "benunit.would_claim_extended_childcare",
+          "benunit.would_claim_universal_childcare",
+          "benunit.would_claim_targeted_childcare",
+          "person.max_free_entitlement_hours_used"
+        ]
+      },
+      "notes": "Stage-time take-up signal gate (María's ruling of 2026-10-29, microcosm#1095): childcare_copy_take_up re-draws five of the flags frs_take_up drew (Tax-Free Childcare, the extended, universal and targeted hours, and the under-2 usage of the extended hours) for the support and CGT copies on their own benefit units, so they are measured again after the re-draw, over the whole frame at the stage's household weights before calibration, against their contract targets within the terminal gate's bounds (0.05; 0.10 for the under-2 usage), and no benefit unit may claim the extended hours without the universal ones. Calibration's drift cannot move them here, so a failure is a draw defect. The bounds are the terminal gate's until a spine build's receipt measures the stage-time deviations. The receipt withholds a share or target whose population rests on fewer than three source households (UKDS disclosure control), which the gate flags unchecked rather than failing (María's ruling of 2026-10-26), as the terminal gate still measures it at the calibrated weights; a synthetic smoke build records a failure without blocking on it (population_fact_check)."
     },
     {
       "id": "uk_stage_isa_subscriptions_invariants",
@@ -1819,11 +1841,11 @@
       "phase": "terminal",
       "criticality": "diagnostic",
       "parameters": {
-        "minimum_distinct_sources": 10,
+        "minimum_distinct_sources": 3,
         "minimum_target_homes": 100.0,
         "dominance_share": 0.5
       },
-      "notes": "microcosm#1240 fix 8, report-only. For every constituency and local authority where the derived stock places at least 100 owner-occupied homes over 1.5m or over 2m, the pool must carry at least 10 distinct source households above the threshold with no source household above half of the cell (the UKDS disclosure floor the Budget-day outputs apply). The gate's details carry counts of areas by support band only; the per-area table is the candidate's high_value_home_support.csv, which stays in the run directory."
+      "notes": "microcosm#1240 fix 8, report-only. For every constituency and local authority where the derived stock places at least 100 owner-occupied homes over 1.5m or over 2m, the pool must carry at least three distinct source households above the threshold with no source household above half of the cell (UK_DISCLOSURE_FLOOR, CD171's absolute floor, to which María's ruling of 2026-10-29 moved every UK output, the Budget-day outputs included). The gate's details carry counts of areas by support band only; the per-area table is the candidate's high_value_home_support.csv, which stays in the run directory."
     }
   ]
 }

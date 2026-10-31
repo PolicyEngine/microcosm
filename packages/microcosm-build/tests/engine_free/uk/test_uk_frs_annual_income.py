@@ -490,7 +490,10 @@ def test_gate_passes_the_stages_own_receipt() -> None:
     ],
 )
 def test_gate_fails_closed(key: str, value: object, message: str) -> None:
-    gate = _gate({**_leaver_evidence(), key: value})
+    # A measured ratio rests on ten or more households.
+    gate = _gate(
+        {**_leaver_evidence(), "pay_concept_ratio_support": "10-29", key: value}
+    )
     assert not gate.passed
     assert any(message in failure for failure in gate.failures), gate.failures
 
@@ -554,6 +557,21 @@ def test_gate_flags_a_ratio_on_fewer_than_three_households(key: str) -> None:
     gate = _gate({**_leaver_evidence(), key: "<3"})
     assert gate.passed, gate.failures
     assert gate.details[f"{key}_measured"] is False
+
+
+@pytest.mark.parametrize(("support", "measured"), [("3-9", False), ("10-29", True)])
+def test_gate_reads_a_ratio_held_to_its_bounds_unmeasured(support, measured) -> None:
+    """The stage holds a ratio on fewer than ten households to its bounds, so
+    the gate cannot judge it, though the receipt prints it from three up."""
+    gate = _gate(
+        {
+            **_leaver_evidence(),
+            "pay_concept_ratio": 1.10,
+            "pay_concept_ratio_support": support,
+        }
+    )
+    assert gate.passed, gate.failures
+    assert gate.details.get("pay_concept_ratio_measured", True) is measured
 
 
 def _stage(**overrides) -> SourceStageSpec:

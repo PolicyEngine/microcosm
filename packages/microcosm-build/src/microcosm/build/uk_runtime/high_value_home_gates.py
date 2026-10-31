@@ -631,7 +631,7 @@ def _band_counts(
 def high_value_home_support_gate(
     summary: Mapping[str, Any],
     *,
-    minimum_distinct_sources: int = 10,
+    minimum_distinct_sources: int = UK_DISCLOSURE_FLOOR,
     minimum_target_homes: float = 100.0,
     dominance_share: float = 0.5,
 ) -> GateResult:

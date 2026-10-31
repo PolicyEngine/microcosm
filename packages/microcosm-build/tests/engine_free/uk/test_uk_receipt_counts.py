@@ -97,11 +97,86 @@ def test_no_uk_output_still_withholds_at_ten() -> None:
             *(build / "uk").glob("*.py"),
             *(build / "uk" / "spec").glob("*.yaml"),
             build / "uk" / "gates.json",
-            *(root / "tools").glob("*.py"),
+            *(root / "tools").rglob("*.py"),
+            *(paths_for("microcosm-data").package / "src").rglob("*.py"),
         )
         if label.search(path.read_text(encoding="utf-8"))
     )
     assert writers == []
+
+
+#: Floors of ten that are not the disclosure floor, each with the text that
+#: names it on its line: statistical floors (too few rows to measure what the
+#: figure measures), and lines that describe the old floor as history.
+_KEPT_TENS = {
+    "uk_runtime/frs_annual_income.py": (
+        "PAY_CONCEPT_RATIO_MINIMUM_SUPPORT = 10",
+        "support band is under ten",
+    ),
+    "uk_runtime/stage_health.py": ("pay concept ratio on fewer than ten",),
+    "uk_runtime/spi_rank_transport.py": ("SPI_TRANSPORT_GROUP_MINIMUM_ROWS = 10",),
+    "uk_runtime/private_rent_localisation.py": ("MIN_SAMPLED_REGION_RENTERS = 10",),
+    "uk_runtime/frs_education.py": ("AGE_LEFT_FULL_TIME_EDUCATION_MIN = 10",),
+    "uk_runtime/frs_spine.py": ("fewer than ten code-6 amounts",),
+    "uk_runtime/orrery_contract.py": (
+        "no longer marks the rows resting on fewer than ten",
+    ),
+    "uk_runtime/support_floor.py": ("rests on fewer than ten records is no reason",),
+    "uk/spec/sources.yaml": ("over at least 10 rows",),
+    "tools/measure_uk_spi_half_coherence.py": ("MIN_CELL = 10",),
+    "tools/uk_private_rent_receipt.py": (
+        "MIN_GROUP_CELLS = 10",
+        "fewer than ten published rows",
+    ),
+}
+
+
+def test_no_uk_floor_of_ten_hides_outside_the_label() -> None:
+    """The "<10" label is only one way to keep a floor of ten: a comparison
+    with ten, a constant or a default of ten, or prose saying "fewer than ten"
+    is another (the review of microcosm#1422). Each that is left is a
+    statistical floor or history, named in ``_KEPT_TENS``."""
+
+    root = paths_for("microcosm-build").repository
+    build = paths_for("microcosm-build").package / "src" / "microcosm" / "build"
+    floors = re.compile(
+        r"\b\w*(?:support|sources?|count|households|donors|carriers|rows|cells)"
+        r"\w*\)?\s*<\s*10\b(?!\.\d)"
+        r"|^\s*_?[A-Z0-9_]*(?:MIN|FLOOR|SDC|SMALL)[A-Z0-9_]*\s*(?::[^=\n]+)?=\s*10\b"
+        r"|\bminimum_\w*\s*:\s*int\s*=\s*10\b"
+        r"|\b(?:fewer than|under|below|less than) (?:ten|10 (?:rows|records|households"
+        r"|source households|sources|donors))\b|\bone to nine\b"
+        r"|\bat least 10 (?:rows|records|households|sources|donors)\b"
+        r'|"minimum_\w*":\s*10\b',
+        re.IGNORECASE | re.MULTILINE,
+    )
+    paths = (
+        *(build / "uk_runtime").rglob("*.py"),
+        *(build / "uk").glob("*.py"),
+        *(build / "uk" / "spec").glob("*.yaml"),
+        build / "uk" / "gates.json",
+        *(root / "tools").rglob("*.py"),
+        *(paths_for("microcosm-data").package / "src").rglob("*.py"),
+    )
+    found = []
+    for path in paths:
+        text = path.read_text(encoding="utf-8")
+        name = path.relative_to(root).as_posix()
+        kept = next(
+            (
+                needles
+                for suffix, needles in _KEPT_TENS.items()
+                if name.endswith(suffix)
+            ),
+            (),
+        )
+        for match in floors.finditer(text):
+            line = text[
+                text.rfind("\n", 0, match.start()) + 1 : text.find("\n", match.end())
+            ]
+            if not any(needle in line for needle in kept):
+                found.append(f"{name}: {line.strip()[:120]}")
+    assert found == []
 
 
 def test_counts_refuse_a_negative_count() -> None:

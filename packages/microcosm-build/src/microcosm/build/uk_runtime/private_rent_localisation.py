@@ -72,7 +72,8 @@ SCALE_BAND = (0.25, 4.0)
 #: Below full scale, a region whose sample holds fewer FRS renters than this
 #: ranks against, and is scaled on, Great Britain's: a handful of renters is
 #: sampling noise, and its own scale could leave ``SCALE_BAND`` and refuse
-#: (microcosm#1305 re-review). A full-scale build never falls back.
+#: (microcosm#1305 re-review). A full-scale build never falls back. A
+#: statistical floor, not the disclosure floor.
 MIN_SAMPLED_REGION_RENTERS = 10
 PRIVATE_TENURE = "RENT_PRIVATELY"
 NORTHERN_IRELAND = "NORTHERN_IRELAND"

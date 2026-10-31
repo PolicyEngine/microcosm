@@ -2784,7 +2784,8 @@ def _home_values_receipt() -> dict:
     return {
         "stage": "regional_home_values",
         "rows": 100,
-        "rows_rewritten_by_region": {region: 5 for region in regions},
+        # Counts as the receipt prints them (receipt_counts.rounded_count).
+        "rows_rewritten_by_region": {region: 10 for region in regions},
         "sources_at_cap": 0,
         "knots_basis_year": 2024,
         "ranking": {"rank_basis": "weighted_midpoint_within_frs_region"},
@@ -2798,7 +2799,7 @@ def _home_values_receipt() -> dict:
     [
         (lambda r: r["rows_rewritten_by_region"].pop("W92000004"), "rewrites regions"),
         (lambda r: r["rows_rewritten_by_region"].update(E12000007=0), "no row"),
-        (lambda r: r.update(rows=40), "more rows"),
+        (lambda r: r.update(rows=90), "more rows"),
         (lambda r: r.update(sources_at_cap=1), "value cap"),
         # A band past the limit fails as plainly as the count it stands for.
         (lambda r: r.update(sources_at_cap="<3"), "value cap"),
@@ -2827,6 +2828,32 @@ def test_regional_home_values_gate_flags_a_region_of_fewer_than_three_rows() -> 
     assert result.passed, result.failures
     assert result.details["regions_rewritten_under_floor"] == ["W92000004"]
     assert result.details["sources_at_cap_unchecked"] is False
+
+
+def test_regional_home_values_gate_reads_a_banded_count_at_its_bounds() -> None:
+    """A region the receipt prints "3-9" rewrote three to nine rows: not empty,
+    above the floor, so not flagged, and read at three in the sum check, as the
+    stage's own banded row count is read at its upper bound."""
+    gate_id = "uk_stage_regional_home_values_ranking"
+    receipt = _home_values_receipt()
+    receipt["rows_rewritten_by_region"]["W92000004"] = "3-9"
+    result = _gate(gate_id, receipt)
+    assert result.passed, result.failures
+    assert result.details["regions_rewritten_under_floor"] == []
+    # Nine regions of ten and one of at least three: 93 rows at the least.
+    receipt["rows"] = 92
+    assert "more rows" in _gate(gate_id, receipt).failures[0]
+    receipt["rows"] = 93
+    assert _gate(gate_id, receipt).passed
+    # A stage whose own count is banded is read at the band's top.
+    small = _home_values_receipt()
+    small["rows_rewritten_by_region"] = {
+        region: "<3" for region in small["rows_rewritten_by_region"]
+    }
+    small["rows"] = 20
+    assert _gate(gate_id, small).passed
+    small["rows"] = "3-9"
+    assert "more rows" in _gate(gate_id, small).failures[0]
 
 
 def _legacy_closure_receipt() -> dict:

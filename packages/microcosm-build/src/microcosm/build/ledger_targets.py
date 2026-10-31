@@ -992,8 +992,10 @@ def target_spec_from_ledger_reference(
             reference, [base, numerator, denominator]
         )
         if complement:
+            # The recorded numerator is the complement itself, so the formula
+            # reads numerator / denominator (the review of microcosm#1422).
             ratio_metadata["ledger_value_numerator_rule"] = (
-                "denominator less the numerator cells"
+                "the denominator less the listed numerator cells"
             )
         value_metadata = {
             **_calendar_year_window_metadata(reference, window),
@@ -4376,6 +4378,28 @@ def _resolve_calendar_year_window_reference_facts(
             f"needs both years opening in {sorted(wanted)} from {series_phrase}; "
             f"{len(complete)} of {len(partitions)} matched series carry both."
         )
+    if expected_series > 1:
+        # Each declared member carries exactly one series: two series of one
+        # member and none of another would pass the count alone (the review
+        # of microcosm#1422), as the ratio operands' members are checked.
+        members: dict[tuple[str, ...], int] = {}
+        for years in complete.values():
+            member = _calendar_year_window_member(
+                next(iter(years.values()))[0], reference
+            )
+            members[member] = members.get(member, 0) + 1
+        if len(members) != expected_series or any(
+            count != 1 for count in members.values()
+        ):
+            found = ", ".join(
+                f"{'/'.join(member)} x{count}"
+                for member, count in sorted(members.items())
+            )
+            raise ValueError(
+                f"Ledger target reference {reference.name!r}: calendar_year_window "
+                f"needs one series per declared selector member ({expected_series}); "
+                f"the complete series stand for {found}."
+            )
     resolved: list[object] = []
     for key in sorted(complete):
         years = complete[key]
@@ -4415,6 +4439,27 @@ def _calendar_year_window_series_count(reference: LedgerTargetReference) -> int:
     for name in _calendar_year_window_listed_dimensions(reference):
         count *= len(selector["dimension_values"][name])
     return count
+
+
+def _calendar_year_window_member(
+    fact: object, reference: LedgerTargetReference
+) -> tuple[str, ...]:
+    """The declared selector member a series stands for: its value of each
+    list-valued source key and of each dimension pinned to several values."""
+
+    selector = reference.ledger_selector or {}
+    member: list[str] = []
+    for key in _CALENDAR_YEAR_WINDOW_SERIES_KEYS:
+        declared = selector.get(key)
+        if isinstance(declared, (list, tuple)):
+            candidates = {str(value) for value in _selector_candidates(fact, key)}
+            member.append(
+                ",".join(sorted(str(v) for v in declared if str(v) in candidates))
+            )
+    dimensions = _dimensions(fact)
+    for name in _calendar_year_window_listed_dimensions(reference):
+        member.append(f"{name}={dimensions.get(name, '')}")
+    return tuple(member)
 
 
 def _calendar_year_window_listed_dimensions(
@@ -4670,6 +4715,45 @@ def _count_mean_fact_role(fact: object) -> str:
     if measure_id.endswith("_mean") or measure_id == "mean":
         return "mean"
     return ""
+
+
+def restamp_reference_period(
+    reference: LedgerTargetReference, period: int | str
+) -> LedgerTargetReference:
+    """The reference measured at another target period.
+
+    A declared ``observation_period`` keeps its offset from the target period:
+    a row that reads DfE's January census after its model year reads the
+    census after the new one. Restamping only ``period`` left every such row
+    on the census it was written for (the review of microcosm#1422).
+    """
+
+    if reference.observation_period is None:
+        return replace(reference, period=period)
+    if reference.period is None:
+        raise ValueError(
+            f"LedgerTargetReference {reference.name!r}: an observation_period "
+            "needs a target period to keep its offset from."
+        )
+    shift = _period_year(period) - _period_year(reference.period)
+    return replace(
+        reference,
+        period=period,
+        observation_period=_shift_period_years(reference.observation_period, shift),
+    )
+
+
+def _period_year(period: int | str) -> int:
+    return _period_key_from_value(period)[1] // 100
+
+
+def _shift_period_years(period: int | str, years: int) -> int | str:
+    if isinstance(period, int):
+        return period + years
+    match = re.fullmatch(r"(\d{4})(.*)", str(period).strip())
+    if match is None:
+        raise ValueError(f"cannot move the period {period!r} by {years} year(s).")
+    return f"{int(match.group(1)) + years}{match.group(2)}"
 
 
 def _selection_period(reference: LedgerTargetReference) -> int | str | None:
@@ -5212,11 +5296,7 @@ def _reference_metadata(reference: LedgerTargetReference) -> dict[str, str]:
         target_year = _calendar_year_from_reference(reference)
         metadata["ledger_value_formula"] = (
             f"(3/12 * FY{target_year - 1} + 9/12 * FY{target_year}) "
-            + (
-                "* (denominator - numerator) / denominator"
-                if _window_ratio_numerator_is_complement(reference)
-                else "* numerator / denominator"
-            )
+            "* numerator / denominator"
         )
     if reference.value_operation == "linear_combination":
         metadata["ledger_value_formula"] = _linear_combination_formula(reference)

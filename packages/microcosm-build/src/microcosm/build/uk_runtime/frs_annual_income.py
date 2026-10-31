@@ -227,6 +227,10 @@ EARNINGS_INDEX_TO = "2024-01-01"
 MAXIMUM_UPRATING_MONTHS = 24
 #: The ratio check: the job-level DV-to-usual pay ratio must lie in this range.
 PAY_CONCEPT_RATIO_BOUNDS = (0.95, 1.10)
+#: The households the ratio needs before its bounds are judged: on fewer, a
+#: ratio past them is noise, so it is held to them and its gate reads it
+#: unmeasured. A statistical floor, not the disclosure floor.
+PAY_CONCEPT_RATIO_MINIMUM_SUPPORT = 10
 
 _ADULT_COLUMNS = (
     "sernum",
@@ -808,11 +812,12 @@ def pay_concept_ratio(
         )
     ratio = float(np.nansum(job_weights * dv)) / denominator
     lower, upper = PAY_CONCEPT_RATIO_BOUNDS
-    if support < 10:
+    if support < PAY_CONCEPT_RATIO_MINIMUM_SUPPORT:
         # The bounds are a plausibility check on the two pay concepts. On one
         # to nine households a ratio past them is noise, so it is held to
-        # them rather than stopping the build, and it stays flagged as above
-        # (Vahid's second review of #1396).
+        # them rather than stopping the build (Vahid's second review of
+        # #1396), and the gate reads a ratio whose support band is under ten
+        # as unmeasured, whether or not the receipt prints it.
         return min(max(ratio, lower), upper), support
     if not lower <= ratio <= upper:
         raise ValueError(

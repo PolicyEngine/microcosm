@@ -49,6 +49,7 @@ from microcosm.build.uk_runtime.hmrc_source_contract import (
     uk_hmrc_weighted_qrf_output_columns,
 )
 from microcosm.build.uk_runtime.national_frame import load_uk_national_frame
+from microcosm.build.uk_runtime.receipt_counts import UK_DISCLOSURE_FLOOR
 from microcosm.build.uk_runtime.was_wealth import UK_WAS_WEALTH_HOUSEHOLD_OUTPUT_COLUMNS
 from microcosm.build.uk_runtime.weighted_integrity import (
     uk_input_mass_totals,
@@ -57,12 +58,11 @@ from microcosm.build.uk_runtime.weighted_integrity import (
 
 DEFAULT_TOP_K_GRID = (10, 100, 500, 1000)
 # CD171-ResearchDataHandling §5.2.1: cells based on one or two cases are never
-# reportable (minimum threshold of 3), and 10 is advised where several outputs
-# come from the same source — which is exactly this file. No study the build
-# reads sets a higher minimum (microcosm.build.uk_runtime.receipt_counts);
-# raise this with --sdc-minimum-count if a study's Special Conditions (EUL
-# clause 3) ever do.
-DEFAULT_SDC_MINIMUM_COUNT = 10
+# reportable. María's ruling of 2026-10-29 moved every UK output to that floor
+# of three (receipt_counts.UK_DISCLOSURE_FLOOR), this file's included; raise
+# it with --sdc-minimum-count if a study's Special Conditions (EUL clause 3)
+# ever set a higher one.
+DEFAULT_SDC_MINIMUM_COUNT = UK_DISCLOSURE_FLOOR
 UK_WAS_HOUSEHOLD_WEIGHTED_INTEGRITY_COLUMNS = UK_WAS_WEALTH_HOUSEHOLD_OUTPUT_COLUMNS
 
 

@@ -1169,8 +1169,11 @@ def _take_up_signal_gate(
     must carry exactly the declared ``outputs``; each must vary, sit within the
     declared share deviation of its target (the under-2 usage row within its
     own bound) and, for the nested universal hours, have no benefit unit that
-    claims the extended hours without them. A share the receipt withholds
-    under the disclosure floor cannot be measured, so it fails.
+    claims the extended hours without them. A share or target the receipt
+    withholds, its population resting on one or two source households, cannot
+    be measured here: it is flagged, never failed (María's ruling of
+    2026-10-26), and the terminal gate still measures it at the calibrated
+    weights.
     """
 
     check = "take_up_signal"
@@ -1192,6 +1195,7 @@ def _take_up_signal_gate(
     expected = [str(output) for output in declared]
     failures: list[str] = []
     details: dict[str, object] = {}
+    withheld: list[str] = []
     receipt = _mapping(evidence.get("take_up_signal"), label=f"{stage}.take_up_signal")
     rows = receipt.get("flags")
     if not isinstance(rows, list):
@@ -1214,12 +1218,21 @@ def _take_up_signal_gate(
         if "unmeasured" in row:
             failures.append(f"{stage}: {output}: {row['unmeasured']}")
             continue
+        nested = row.get("extended_without_universal_units")
+        if nested is not None and nested != 0:
+            failures.append(
+                f"{stage}: {output}: {nested} benefit unit(s) claim the extended "
+                "hours without the universal hours."
+            )
         share = row.get("weighted_share")
         target = row.get("target")
+        if UK_WITHHELD in (share, target):
+            withheld.append(output)
+            continue
         if not isinstance(share, int | float) or not isinstance(target, int | float):
             failures.append(
-                f"{stage}: {output}'s share or target is withheld ({share!r}, "
-                f"{target!r}): its population is too thin to measure at the stage."
+                f"{stage}: {output}'s share or target is not a measured share "
+                f"({share!r}, {target!r})."
             )
             continue
         share = _finite_number(share, label=f"{stage}.{output}.weighted_share")
@@ -1237,17 +1250,12 @@ def _take_up_signal_gate(
                 f"{stage}: {output} is constant; a stochastic take-up draw must "
                 "not collapse to a universal default."
             )
-        nested = row.get("extended_without_universal_units")
-        if nested is not None and nested != 0:
-            failures.append(
-                f"{stage}: {output}: {nested} benefit unit(s) claim the extended "
-                "hours without the universal hours."
-            )
         if deviation > limit:
             failures.append(
                 f"{stage}: {output}'s weighted share {share:.4f} differs from its "
                 f"contract target {target:.4f} by more than {limit}."
             )
+    details["flags_withheld_unchecked"] = withheld
     return (
         _fail(stage, check, failures, details)
         if failures
@@ -1280,8 +1288,14 @@ def _frs_annual_income_spells_gate(
     than drawn from a donor. A ratio or share carried by fewer than three
     households, which the receipt prints "<3", is flagged unmeasured, never
     failed: a small-cell rule never stops a build (María's ruling of
-    2026-10-26).
+    2026-10-26). So is a pay concept ratio on fewer than ten households, which
+    the stage holds to its bounds as noise
+    (``frs_annual_income.PAY_CONCEPT_RATIO_MINIMUM_SUPPORT``).
     """
+
+    from microcosm.build.uk_runtime.frs_annual_income import (
+        PAY_CONCEPT_RATIO_MINIMUM_SUPPORT,
+    )
 
     check = "frs_annual_income_spells"
     failures: list[str] = []
@@ -1301,7 +1315,13 @@ def _frs_annual_income_spells_gate(
         upper = _finite_number(bounds[1], label=f"{stage}.{bounds_key}[1]")
         value = evidence.get(key)
         details[key] = value
-        if value == UK_WITHHELD:
+        support = evidence.get("pay_concept_ratio_support")
+        held = (
+            key == "pay_concept_ratio"
+            and support is not None
+            and _count_bounds(support)[1] < PAY_CONCEPT_RATIO_MINIMUM_SUPPORT
+        )
+        if value == UK_WITHHELD or held:
             details[f"{key}_measured"] = False
         elif isinstance(value, bool) or not isinstance(value, int | float):
             failures.append(f"{stage}: {key} is {value!r}, not a measured ratio.")
@@ -3876,8 +3896,8 @@ def _gambling_participation_gate(
     otherwise hide fails; the propensity must rest on
     ``required_support_band`` donors; and the excise levelling must have
     shared the bases by the topped-up keys, so each key is positive on the
-    twelve-month share. The receipt withholds a stratum with a cell under ten
-    source households, which the gate counts, and a key with such a cell
+    twelve-month share. The receipt withholds a stratum with a cell on one or
+    two source households, which the gate counts, and a key with such a cell
     nationally, which the gate names as unchecked: a small-cell rule flags and
     never stops a build (María's ruling of 2026-10-26).
     """
@@ -4549,21 +4569,21 @@ def _regional_home_values_gate(
         failures.append(
             f"{stage}: the receipt rewrites regions {sorted(rewritten)}, not {regions}."
         )
-    # A region the receipt prints "<3" rewrote one or two rows: it is not
-    # empty, and it is flagged (a small-cell rule never fails a build, María's
-    # ruling of 2026-10-26). The sum check takes it at its lower bound.
+    # A count the receipt bands ("<3" for one or two rows, "3-9" for three to
+    # nine) is not empty, and the sum check takes it at its lower bound and the
+    # stage's own row count at its upper bound. A region printed "<3" is
+    # flagged (a small-cell rule never fails a build, María's ruling of
+    # 2026-10-26).
     banded = sorted(
         str(region) for region, count in rewritten.items() if count == UK_WITHHELD
     )
     counts = {
-        str(region): 1 if count == UK_WITHHELD else int(count)
-        for region, count in rewritten.items()
+        str(region): _count_bounds(count)[0] for region, count in rewritten.items()
     }
     empty = sorted(region for region, count in counts.items() if count <= 0)
     if empty:
         failures.append(f"{stage}: no row is rewritten in {empty}.")
-    rows = evidence.get("rows", 0)
-    if rows != UK_WITHHELD and sum(counts.values()) > int(rows):
+    if sum(counts.values()) > _count_bounds(evidence.get("rows", 0))[1]:
         failures.append(f"{stage}: more rows are rewritten than the stage carries.")
     at_cap = evidence.get("sources_at_cap", -1)
     maximum_at_cap = int(parameters["maximum_sources_at_cap"])
@@ -4618,6 +4638,18 @@ _SUPPORT_BAND_BOUNDS = {
     "10-29": (10, 29),
     "30+": (30, math.inf),
 }
+
+
+def _count_bounds(count: object) -> tuple[float, float]:
+    """The lowest and highest counts a receipt's count stands for: a band's
+    bounds, or the count itself."""
+
+    if isinstance(count, str):
+        if count not in _SUPPORT_BAND_BOUNDS:
+            raise ValueError(f"unknown count band {count!r}.")
+        return _SUPPORT_BAND_BOUNDS[count]
+    value = int(count)
+    return value, value
 
 
 def _legacy_closure_take_up_gate(

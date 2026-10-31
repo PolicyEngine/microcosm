@@ -497,16 +497,10 @@ def test_export_candidate_columns_strip_ids_and_carry_the_weight() -> None:
 
 
 def test_no_spine_column_writes_an_input_signed_at_the_engine_default() -> None:
-    """A signed engine default (microcosm#1095) holds only while no stage writes it.
-
-    The source tables' columns and every stage's declared outputs both count:
-    the company_cars stage writes six of the engine's company car inputs
-    (PolicyEngine/uk-autumn-budget-dashboard-2026#316).
-    """
+    """A signed engine default (microcosm#1095) holds only while no stage writes it."""
 
     import json
 
-    from microcosm.build.country_spec import load_country_spec
     from microcosm.frame.adapters.policyengine_uk_concepts import (
         UK_ENGINE_DEFAULT_INPUTS,
     )
@@ -519,12 +513,26 @@ def test_no_spine_column_writes_an_input_signed_at_the_engine_default() -> None:
         ).read_text()
     )
     written = {column for dtypes in schema["dtypes"].values() for column in dtypes}
+    assert "self_employment_income" in written
+    # A stage's declared outputs and rewrites count too: the H2 fixture holds
+    # only the root sources' columns, and a later stage may write an input
+    # (the review of microcosm#1422).
+    stages = json.loads(
+        (
+            paths_for("microcosm-build").package
+            / "src/microcosm/build/uk/source_stages.json"
+        ).read_text()
+    )["stages"]
     written |= {
         column
-        for stage in load_country_spec("uk").sources.stages
-        for column in stage.outputs
+        for stage in stages
+        for key in ("outputs", "rewrites")
+        for column in stage.get(key, ())
     }
-    assert {"self_employment_income", "company_car_list_price"} <= written
+    assert "would_claim_tfc" in written
+    # The company_cars stage writes six of the company car inputs
+    # (PolicyEngine/uk-autumn-budget-dashboard-2026#316).
+    assert "company_car_list_price" in written
     assert not written & set(UK_ENGINE_DEFAULT_INPUTS)
 
 

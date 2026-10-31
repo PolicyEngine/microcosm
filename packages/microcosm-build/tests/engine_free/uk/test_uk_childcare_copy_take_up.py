@@ -351,3 +351,33 @@ def test_copies_children_redraw_their_under_two_usage_on_their_own_draws() -> No
         contract.rate("extended_childcare_age_1_usage"), abs=0.03
     )
     assert (after.loc[~under_two, UK_UNDER_TWO_USAGE_OUTPUT] == 30.0).all()
+
+
+def test_stage_records_the_redrawn_flags_for_its_signal_gate() -> None:
+    """The copy stage measures the five flags it re-draws over the whole frame,
+    after the re-draw, for the stage-time take-up signal gate (microcosm#1095)."""
+    from microcosm.build import load_country_spec
+    from microcosm.build.uk_runtime.stage_health import uk_stage_health_gate
+
+    contract = load_uk_take_up_contract()
+    stage = UKChildcareCopyTakeUpStageTransform(contract=contract, stage=_stage())
+    with pytest.raises(RuntimeError, match="completed stage run"):
+        stage.checkpoint_metadata()
+    stage(_frame(contract))
+    evidence = stage.checkpoint_metadata()["evidence"]
+    assert evidence["stage"] == "childcare_copy_take_up"
+    gate = next(
+        entry
+        for entry in load_country_spec("uk").gates.gates
+        if entry.id == "uk_stage_childcare_copy_take_up_signal"
+    )
+    assert [row["output"] for row in evidence["take_up_signal"]["flags"]] == list(
+        gate.parameters["outputs"]
+    )
+    result = uk_stage_health_gate(
+        evidence=evidence,
+        stage="childcare_copy_take_up",
+        check="take_up_signal",
+        parameters=dict(gate.parameters),
+    )
+    assert not any("omits" in f or "undeclared" in f for f in result.failures)

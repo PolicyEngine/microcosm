@@ -451,13 +451,13 @@ _UK_GATE_BATTERY_SHIPPABLE_STATUSES = frozenset({"passed", "not_applicable"})
 # fingerprint derives from the manifest digest. Editing the spec moves all
 # three here in the same reviewed change.
 _UK_GATE_BATTERY_POLICY_SHA256 = (
-    "ac2c887bd4fff756369228c43e12e8cf5cff89b372d0533d659c09c92d14a91c"
+    "7a7af3f2a7d586268b2558e52f3ae5deb36ba9c1a47c3df77dc741db9a626a6e"
 )
 _UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "727d6a3c7e24cee0281fa1ceb4f00468f20423a16061c29d2296bf55e0e72434"
+    "1a6cca645c88925eda38403985626c74902043521dfa72feb84cc7926bb8b3d1"
 )
 _UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "7a83ec5122525c080490910f3443c7fc93d2e507bb79a3d6063a61e52aa61fb8"
+    "d0d60fd0dd0f6fa39614ea02c68c7e1d2dca3563d4a961bd95f06d9e58254aba"
 )
 #: Spec entry id -> the legacy gate name whose observable detail checks
 #: apply unchanged (the battery re-keys the report by entry id; the gate
@@ -565,6 +565,7 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
     "uk_stage_frs_take_up_signal": ("stage_health", "assembled"),
     "uk_stage_frs_person_draws_take_up_signal": ("stage_health", "assembled"),
     "uk_stage_frs_household_draws_take_up_signal": ("stage_health", "assembled"),
+    "uk_stage_childcare_copy_take_up_signal": ("stage_health", "assembled"),
     "uk_stage_age_tail_targets": ("stage_health", "assembled"),
     "uk_stage_frs_relationships_composition": ("stage_health", "assembled"),
     "uk_ledger_compile_parity_local_incumbent_2025": (
@@ -678,6 +679,7 @@ _UK_GATE_BATTERY_EVIDENCE_IDS = frozenset(
         "uk_stage_frs_take_up_signal",
         "uk_stage_frs_person_draws_take_up_signal",
         "uk_stage_frs_household_draws_take_up_signal",
+        "uk_stage_childcare_copy_take_up_signal",
         "uk_stage_age_tail_targets",
         "uk_stage_frs_relationships_composition",
         "uk_cgt_projection_entrants",
@@ -902,6 +904,7 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
             "uk_stage_frs_take_up_signal",
             "uk_stage_frs_person_draws_take_up_signal",
             "uk_stage_frs_household_draws_take_up_signal",
+            "uk_stage_childcare_copy_take_up_signal",
             "uk_stage_frs_relationships_composition",
             "uk_stage_high_value_home_support_mass",
             "uk_stage_hmrc_cgt_asset_type_spine_summary",
@@ -976,10 +979,10 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
 _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     "spine": {
         "gates_manifest_sha256": (
-            "345f883d7212a9ebbc1d28db3319d50a228b9d2d48a05591c8e4f4f5932b5a5b"
+            "0b39d34ef01115f35f74956a1bdb56e7bb9780e426d5a52d8b51b538769b0747"
         ),
         "policy_sha256": (
-            "6e19bdc97b3ade4284b205870a46d15c32d6a3162953403f84e9b0ed55074b3d"
+            "33ec7b337b58f47b79efeda21d89ec46f5baaf062740a56c9f84ab96f89c5b01"
         ),
     },
     "calibration_seam": {

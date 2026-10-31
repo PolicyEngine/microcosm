@@ -88,7 +88,9 @@ SPI_TRANSPORT_KEY_COLUMN = "person_source_id"
 #: Taxable savings interest on the twin: the FRS interest outside ISAs
 #: (microcosm#1360), the concept the tape's INCBBS leaf holds.
 TAXABLE_SAVINGS_INTEREST_ANALOGUE = "taxable_savings_interest"
-#: Per-group uniformity is reported only over at least this many rows.
+#: Per-group uniformity is reported only over at least this many rows: a
+#: statistical floor, as a uniformity distance over fewer says nothing, not the
+#: disclosure floor (receipt_counts.UK_DISCLOSURE_FLOOR).
 SPI_TRANSPORT_GROUP_MINIMUM_ROWS = 10
 #: The reference forest is cross-fitted in this many folds keyed on the
 #: predictor cell; a frame with fewer distinct cells uses one fold per cell.

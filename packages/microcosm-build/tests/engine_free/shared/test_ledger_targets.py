@@ -23,6 +23,7 @@ from microcosm.build.ledger_targets import (
     ledger_target_registry_parity_report,
     period_values_semantically_equal,
     reference_fact_selectors,
+    restamp_reference_period,
     select_ledger_targets,
     select_ledger_targets_from_jsonl,
     selector_field_is_supported,
@@ -5099,6 +5100,38 @@ def test__given_a_pinned_dimension_value_with_no_facts__then_calendar_year_windo
         compile_ledger_target_references(facts, [reference], country="uk")
 
 
+def test__given_two_series_of_one_pinned_value_and_none_of_the_other__then_calendar_year_window_refuses() -> (
+    None
+):
+    # Given: two ulsterbus series that differ only in their record set, both
+    # complete, and no metro_glider fact: two complete series, but not one per
+    # pinned service (the review of microcosm#1422).
+    facts = []
+    for record_set in ("a", "b"):
+        for opening_year in (2024, 2025):
+            fact = _cy_window_fact(
+                key=f"ulsterbus_{record_set}_fy{opening_year}",
+                value=10.0,
+                opening_year=opening_year,
+                measure_id="passenger_receipts",
+            )
+            fact["dimensions"] = {**fact["dimensions"], "service": "ulsterbus"}
+            fact["layout"] = {**fact["layout"], "record_set_id": f"set_{record_set}"}
+            facts.append(fact)
+    reference = _cy_window_reference(
+        ledger_selector={
+            "source_name": "irs_soi",
+            "source_measure_id": "passenger_receipts",
+            "geography_level": "country",
+            "geography_id": "0100000US",
+            "dimension_values": {"service": ["ulsterbus", "metro_glider"]},
+        },
+    )
+
+    with pytest.raises(ValueError, match="one series per declared selector member"):
+        compile_ledger_target_references(facts, [reference], country="uk")
+
+
 def test__given_a_two_series_selector_short_of_a_year__then_calendar_year_window_refuses() -> (
     None
 ):
@@ -5988,13 +6021,15 @@ def test__given_a_complement_numerator__then_its_cells_come_off_the_universe() -
     spec = registry.specs[0]
     window = 0.25 * 304.0 + 0.75 * 329.0
     assert spec.value == pytest.approx(window * 60.0 / 80.0)
+    # The recorded pieces give the value back: the numerator is the complement.
     assert spec.metadata["ledger_value_numerator"] == repr(60.0)
     assert spec.metadata["ledger_value_numerator_rule"] == (
-        "denominator less the numerator cells"
+        "the denominator less the listed numerator cells"
     )
     assert spec.metadata["ledger_value_formula"] == (
-        "(3/12 * FY2024 + 9/12 * FY2025) * (denominator - numerator) / denominator"
+        "(3/12 * FY2024 + 9/12 * FY2025) * numerator / denominator"
     )
+    assert float(spec.metadata["ledger_value_ratio"]) == pytest.approx(0.75)
     # The flag is metadata, never a selector field.
     assert "complement" not in reference_fact_selectors(reference)[1]
 
@@ -6239,3 +6274,26 @@ def test__given_a_window_ratio_list_unlike_its_count__then_it_refuses() -> None:
             ],
             country="uk",
         )
+
+
+@pytest.mark.parametrize(
+    ("observation", "period", "moved"),
+    [("2026-01", 2024, "2025-01"), ("2026-01", "2027", "2028-01"), (2026, 2023, 2024)],
+)
+def test__given_an_observation_period__then_a_restamp_keeps_its_offset(
+    observation, period, moved
+) -> None:
+    """A row that reads DfE's January census after its model year reads the
+    census after the new model year once restamped (the review of
+    microcosm#1422)."""
+    reference = _cy_window_reference(
+        value_operation="identity", period=2025, observation_period=observation
+    )
+    restamped = restamp_reference_period(reference, period)
+    assert restamped.period == period
+    assert restamped.observation_period == moved
+    # Without an observation period only the target period moves.
+    plain = restamp_reference_period(
+        _cy_window_reference(value_operation="identity"), 2024
+    )
+    assert plain.period == 2024 and plain.observation_period is None
