@@ -606,8 +606,11 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
         }
     ),
     # The gross receipts are drawn on each person's final self-employment
-    # profit (microcosm#1428).
-    "trading_allowance_receipts": frozenset({("person", "self_employment_income")}),
+    # profit, and the receipt counts support by source household
+    # (microcosm#1428).
+    "trading_allowance_receipts": frozenset(
+        {("person", "self_employment_income"), ("household", "household_source_id")}
+    ),
     # The copies' childcare re-draw reads every household's clone path (the
     # lineage columns of each copy stage) and keeps the native units' cells:
     # an open surface, like the other take-up redraws.
