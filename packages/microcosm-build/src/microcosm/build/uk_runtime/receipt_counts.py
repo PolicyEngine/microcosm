@@ -11,17 +11,18 @@ its count, and a weighted share carried by one or two records is "<3".
 
 Three is CD171's absolute floor. The build used ten, CD171's working minimum
 against secondary disclosure across outputs, until María's ruling of
-2026-10-29 moved every output to three (``UK_DISCLOSURE_FLOOR``). Every count
-from three to nine reads "3-9", so a count just above the floor never narrows
-a small group by difference. No study the build reads sets a higher floor.
-The UK Data Service catalogue entries were read for conditions beyond the End
-User Licence (microcosm#1278): the FRS 2024-25 (SN 9563) has none (checked
-2026-10-16), and neither have the LCFS, ETB, WAS and NTS studies (checked
-2026-10-14). The SPI 2022-23 Public Use Tape (SN 9422, checked 2026-10-16)
-adds two: no attempt may be made to attribute a record to a named individual,
-and material that includes analyses of the tape goes to HMRC at least ten
-working days before it is distributed or published. The move to three
-changes neither. The build marks the outputs that rest on the tape
+2026-10-29 moved every output to three (``UK_DISCLOSURE_FLOOR``; recorded at
+https://github.com/PolicyEngine/microcosm/issues/1095#issuecomment-6541929216).
+Every count from three to nine reads "3-9", so a count just above the floor
+never narrows a small group by difference. No study the build reads sets a
+higher floor. The UK Data Service catalogue entries were read for conditions
+beyond the End User Licence (microcosm#1278): the FRS 2024-25 (SN 9563) has
+none (checked 2026-10-16), and neither have the LCFS, ETB, WAS and NTS studies
+(checked 2026-10-14). The SPI 2022-23 Public Use Tape (SN 9422, checked
+2026-10-16) adds two: no attempt may be made to attribute a record to a named
+individual, and material that includes analyses of the tape goes to HMRC at
+least ten working days before it is distributed or published. The move to
+three changes neither. The build marks the outputs that rest on the tape
 (:mod:`microcosm.build.uk_runtime.spi_dependency`).
 """
 
