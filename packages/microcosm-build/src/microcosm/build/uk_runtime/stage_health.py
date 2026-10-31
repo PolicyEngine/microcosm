@@ -3686,7 +3686,7 @@ def _excise_quantities_gate(
     rest on ``required_support_band`` donors, and the donor share whose
     published total sits beside its diary lines must be at most
     ``maximum_parent_residual_share``. A share the receipt withholds for
-    resting on under ten donors is flagged unchecked, never failed (María's
+    resting on one or two donors is flagged unchecked, never failed (María's
     ruling of 2026-10-26).
     """
 
@@ -4695,8 +4695,8 @@ def _apprentice_draw_gate(
     ``maximum_relative_realization_deviation`` of the target. The relief the
     flags imply at the engine's own Class 1 schedule must stay at or below
     ``maximum_implied_relief``, HMRC's apprentice relief for every apprentice
-    under 25 (Vahid's review of microcosm#1373, S1). A figure resting on fewer
-    than ten source households, which the receipt prints "<3", is named
+    under 25 (Vahid's review of microcosm#1373, S1). A figure resting on one or
+    two source households, which the receipt prints "<3", is named
     unchecked, never failed: a small-cell rule never stops a build (María's
     ruling of 2026-10-26).
     """
