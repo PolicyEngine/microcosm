@@ -1476,9 +1476,12 @@ def _uc_take_up_gate(
 
     Every reporter claims and no unit outside the draw changes. Over a family
     type's pools whose target the draw can reach, the realized Great Britain
-    caseload is within ``maximum_caseload_deviation`` of DWP's count, and the
-    family type's whole caseload is no further from DWP's than before the
-    redraw, give or take that share of DWP's count. A family type whose
+    caseload is within ``maximum_reachable_pool_deviation`` of DWP's count, and
+    the family type's whole caseload is no further from DWP's than before the
+    redraw, give or take ``maximum_caseload_deviation`` of DWP's count. The two
+    are separate, so that widening the second for what a stage before the
+    redraw does to the caseload leaves the first as tight as the draw achieves.
+    A family type whose
     caseload rests on fewer than three sources, which the receipt prints "<3",
     is flagged unchecked, never failed: a small-cell rule never stops a build
     (María's ruling of 2026-10-26).
@@ -1488,6 +1491,10 @@ def _uc_take_up_gate(
     tolerance = _finite_number(
         parameters["maximum_caseload_deviation"],
         label=f"{stage}.maximum_caseload_deviation",
+    )
+    pool_tolerance = _finite_number(
+        parameters["maximum_reachable_pool_deviation"],
+        label=f"{stage}.maximum_reachable_pool_deviation",
     )
     failures: list[str] = []
     details: dict[str, object] = {}
@@ -1529,11 +1536,11 @@ def _uc_take_up_gate(
         realized = _finite_number(
             values["reachable_pools_caseload_after"], label=f"{stage}.{name}"
         )
-        if target > 0.0 and abs(realized - target) > tolerance * target:
+        if target > 0.0 and abs(realized - target) > pool_tolerance * target:
             failures.append(
                 f"{stage}: family type {name} realizes {realized:,.0f} against "
                 f"DWP's {target:,.0f} over its reachable pools (tolerance "
-                f"{tolerance})."
+                f"{pool_tolerance})."
             )
         if abs(after - dwp) > abs(before - dwp) + tolerance * dwp:
             failures.append(

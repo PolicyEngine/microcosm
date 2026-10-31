@@ -2089,6 +2089,7 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 "minimum_entitled_units",
                 # microcosm#1334 uc_take_up stage-health check.
                 "maximum_caseload_deviation",
+                "maximum_reachable_pool_deviation",
                 # frs_annual_income_spells stage-health check.
                 "pay_concept_ratio_bounds",
                 "annual_over_current_earners_bounds",
