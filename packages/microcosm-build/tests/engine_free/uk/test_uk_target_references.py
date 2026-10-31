@@ -12,7 +12,6 @@ import json
 import os
 import subprocess
 import sys
-from dataclasses import replace
 from importlib import resources as importlib_resources
 from pathlib import Path
 
@@ -29,6 +28,7 @@ from microcosm.build.ledger_artifact import load_ledger_consumer_artifact
 from microcosm.build.ledger_targets import (
     LedgerTargetReference,
     compile_ledger_target_references,
+    restamp_reference_period,
 )
 from microcosm.build.target_reference_authoring import (
     TargetReferenceAuthoringConfig,
@@ -718,14 +718,13 @@ def test_dfe_extended_sum_refuses_the_suppressed_2024_member() -> None:
     )
     facts = [json.loads(line) for line in feed.open() if '"source_name": "dfe"' in line]
 
-    # Read at the January 2024 census, which has no working parent "2 years"
-    # cell: the row itself selects January 2026 (microcosm#1095 D5).
+    # Model year 2023 reads the January 2024 census, which has no working
+    # parent "2 years" cell: restamping the row moves its observation period
+    # with it (microcosm#1095 D5; the review of microcosm#1422).
+    restamped = restamp_reference_period(reference, 2023)
+    assert restamped.observation_period == "2024-01"
     with pytest.raises(ValueError, match="expected 2 members.*resolved 1"):
-        compile_ledger_target_references(
-            facts,
-            [replace(reference, period=2024, observation_period=None)],
-            country="uk",
-        )
+        compile_ledger_target_references(facts, [restamped], country="uk")
 
 
 def test_uk_target_references_bind_the_spi_net_property_amounts_unscaled() -> None:
