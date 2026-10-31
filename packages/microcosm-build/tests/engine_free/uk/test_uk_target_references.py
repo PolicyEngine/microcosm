@@ -1385,13 +1385,14 @@ def test_uk_target_references_compile_from_real_staged_feed_rows() -> None:
     assert set(targets) == FIXTURE_REFERENCE_NAMES
 
     income_tax = targets["obr.income_tax"]
-    # The calendar-2025 window of the FY2024-25 outturn (305.905bn) and the
-    # FY2025-26 forecast (331.438bn): three twelfths and nine twelfths.
+    # The calendar-2025 window of the FY2024-25 outturn in March 2026's EFO
+    # (305.905bn) and the FY2025-26 outturn in October 2026's (329.338bn):
+    # three twelfths and nine twelfths (PolicyEngine/chronicle#397).
     assert income_tax.value == pytest.approx(
-        0.25 * 305_905_000_000 + 0.75 * 331_437_583_074.4429
+        0.25 * 305_905_000_000 + 0.75 * 329_338_000_000
     )
     assert income_tax.period == 2025
-    assert income_tax.metadata["ledger_assertion"] == "source_projection"
+    assert income_tax.metadata["ledger_assertion"] == "observation"
     assert income_tax.metadata["ledger_assertion_policy"] == ("allow_source_projection")
 
     tcl_households = targets["dwp.uc.two_child_limit.households_affected"]

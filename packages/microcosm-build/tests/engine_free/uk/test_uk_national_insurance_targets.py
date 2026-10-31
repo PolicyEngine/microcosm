@@ -17,7 +17,7 @@ CLASS_ROWS = ("obr.ni_employee", "obr.ni_employer", "obr.ni_self_employed")
 
 
 def test_the_nics_total_is_a_diagnostic_beside_the_class_rows() -> None:
-    """OBR's table 3.8 total is cash, the class rows accrued, and it carries
+    """OBR's total NICs line is cash, the class rows accrued, and it carries
     statutory-payment recoveries, Class 1A, 1B and 3 and settlements no
     household carries, so it leaves the fit (María's ruling of 2026-10-09)."""
 
@@ -42,7 +42,7 @@ def test_the_nics_total_is_a_diagnostic_beside_the_class_rows() -> None:
     assert reference["ledger_fact_key"]
 
 
-def test_the_nics_diagnostic_carries_the_fy2025_26_forecast() -> None:
+def test_the_nics_diagnostic_carries_the_fy2025_26_outturn() -> None:
     """Feed-gated: the diagnostic resolves its exact FY2025-26 fact."""
 
     from microcosm.build.uk_runtime.ledger_targets import (
@@ -64,4 +64,7 @@ def test_the_nics_diagnostic_carries_the_fy2025_26_forecast() -> None:
     prefix = "obr_ni_total_diagnostic"
     assert metadata[f"{prefix}_role"] == "diagnostic_only_not_in_fit"
     assert metadata[f"{prefix}_status"] == "available"
-    assert float(metadata[f"{prefix}_value_gbp"]) == pytest.approx(200_081_395_082.71)
+    # The October 2026 EFO's outturn: March's forecast left the feed with
+    # PolicyEngine/chronicle#397 (microcosm#1430).
+    assert float(metadata[f"{prefix}_value_gbp"]) == pytest.approx(200_829_000_000)
+    assert metadata[f"{prefix}_ledger_assertion"] == "observation"
