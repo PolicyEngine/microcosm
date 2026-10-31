@@ -1432,8 +1432,34 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
             "max(|relative error| - tolerance, 0) for each target the "
             "critical-target gate matches; zero inside the band, so the fit is "
             "left alone there. This steers the solve toward the gate; the gate "
-            "still judges the result. 0 turns the band off. Default "
+            "still judges the result. With --critical-target-band-adaptive-step, "
+            "PENALTY caps the per-target multipliers instead. "
+            "0 turns the band off. Default "
             f"{DEFAULT_CRITICAL_TARGET_BAND_PENALTY}."
+        ),
+    )
+    parser.add_argument(
+        "--critical-target-band-adaptive-step",
+        type=float,
+        default=0.0,
+        help=(
+            "Increase each critical target's band multiplier after an optimizer "
+            "step by STEP times its remaining band violation, capped at "
+            "--critical-target-band-penalty. Multipliers start at zero and "
+            "stop rising inside the band. Requires a dense or full-pool solve; "
+            "L0 selection refuses adaptive multipliers. "
+            "0 uses the fixed penalty (default)."
+        ),
+    )
+    parser.add_argument(
+        "--critical-target-band-adaptive-warmup-epochs",
+        type=int,
+        default=0,
+        help=(
+            "Hold every critical target's band multiplier at zero for this many "
+            "optimizer steps, so a target the fit clears on its own collects no "
+            "pressure while it starts far from its value. Requires a positive "
+            "--critical-target-band-adaptive-step. Default 0."
         ),
     )
     parser.add_argument(
@@ -2077,6 +2103,35 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         parser.error(
             "--critical-target-band-penalty must be finite and non-negative, got "
             f"{args.critical_target_band_penalty!r}."
+        )
+    if (
+        not math.isfinite(args.critical_target_band_adaptive_step)
+        or args.critical_target_band_adaptive_step < 0.0
+    ):
+        parser.error(
+            "--critical-target-band-adaptive-step must be finite and non-negative, got "
+            f"{args.critical_target_band_adaptive_step!r}."
+        )
+    if (
+        args.critical_target_band_adaptive_step > 0.0
+        and args.critical_target_band_penalty == 0.0
+    ):
+        parser.error(
+            "--critical-target-band-adaptive-step > 0 requires "
+            "--critical-target-band-penalty > 0 as its multiplier cap."
+        )
+    if args.critical_target_band_adaptive_warmup_epochs < 0:
+        parser.error(
+            "--critical-target-band-adaptive-warmup-epochs must be non-negative, "
+            f"got {args.critical_target_band_adaptive_warmup_epochs!r}."
+        )
+    if (
+        args.critical_target_band_adaptive_warmup_epochs > 0
+        and args.critical_target_band_adaptive_step == 0.0
+    ):
+        parser.error(
+            "--critical-target-band-adaptive-warmup-epochs > 0 requires "
+            "--critical-target-band-adaptive-step > 0."
         )
     if not (
         math.isfinite(args.critical_target_band_margin)
@@ -14790,11 +14845,17 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         else {
             "target_band_tolerances": critical_target_band,
             "target_band_penalty": float(args.critical_target_band_penalty),
+            "target_band_adaptive_step": float(args.critical_target_band_adaptive_step),
+            "target_band_adaptive_warmup_epochs": int(
+                args.critical_target_band_adaptive_warmup_epochs
+            ),
         }
     )
     critical_target_band_record = {
         "penalty": float(args.critical_target_band_penalty),
         "margin": float(args.critical_target_band_margin),
+        "adaptive_step": float(args.critical_target_band_adaptive_step),
+        "adaptive_warmup_epochs": int(args.critical_target_band_adaptive_warmup_epochs),
         "banded_rows": (
             0
             if critical_target_band is None

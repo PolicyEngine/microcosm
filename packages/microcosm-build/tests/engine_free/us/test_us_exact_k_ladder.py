@@ -227,10 +227,18 @@ def test_ladder_calibration_rejects_invalid_cardinality_before_selection() -> No
 
 
 @pytest.mark.parametrize(
-    ("k", "phases"), ((8, ("calibrate",)), (6, ("calibrate", "refit_l0_selection")))
+    ("k", "adaptive_step", "phases"),
+    (
+        (8, 0.0, ("calibrate",)),
+        (8, 0.25, ("calibrate",)),
+        (6, 0.0, ("calibrate", "refit_l0_selection")),
+    ),
 )
 def test_every_ladder_solve_receives_the_critical_target_band(
-    monkeypatch: pytest.MonkeyPatch, k: int, phases: tuple[str, ...]
+    monkeypatch: pytest.MonkeyPatch,
+    k: int,
+    adaptive_step: float,
+    phases: tuple[str, ...],
 ) -> None:
     # microcosm#1330: the full-pool solve, the Sampford selection and its
     # refit must each receive the band the release asked for.
@@ -238,7 +246,8 @@ def test_every_ladder_solve_receives_the_critical_target_band(
 
     frame, targets = _fixture_pool()
     tolerances = np.asarray([0.045])
-    seen: list[tuple[str, object, object]] = []
+    warmup = 1 if adaptive_step > 0.0 else 0
+    seen: list[tuple[str, object, object, object, object]] = []
     for name in ("calibrate", "refit_l0_selection"):
         real = getattr(ladder, name)
 
@@ -248,6 +257,8 @@ def test_every_ladder_solve_receives_the_critical_target_band(
                     _name,
                     kwargs.get("target_band_tolerances"),
                     kwargs.get("target_band_penalty"),
+                    kwargs.get("target_band_adaptive_step"),
+                    kwargs.get("target_band_adaptive_warmup_epochs"),
                 )
             )
             return _real(*args, **kwargs)
@@ -265,10 +276,33 @@ def test_every_ladder_solve_receives_the_critical_target_band(
         l0_lambda=1e-8,
         target_band_tolerances=tolerances,
         target_band_penalty=1.0,
+        target_band_adaptive_step=adaptive_step,
+        target_band_adaptive_warmup_epochs=warmup,
     )
 
-    assert tuple(name for name, _, _ in seen) == phases
-    for _, seen_tolerances, seen_penalty in seen:
+    assert tuple(name for name, _, _, _, _ in seen) == phases
+    for _, seen_tolerances, seen_penalty, seen_step, seen_warmup in seen:
         np.testing.assert_array_equal(seen_tolerances, tolerances)
         assert seen_penalty == 1.0
+        assert seen_step == adaptive_step
+        assert seen_warmup == warmup
     assert outcome.result.options["target_band"]["enabled"] is True
+    if adaptive_step > 0.0:
+        assert outcome.result.options["iterate_selection"] == "closing_state"
+
+
+def test_adaptive_ladder_refuses_gated_selection() -> None:
+    frame, targets = _fixture_pool()
+    with pytest.raises(ValueError, match="[Aa]daptive.*L0"):
+        calibrate_exact_k_ladder(
+            frame,
+            targets,
+            k=6,
+            pi_hi=1.0,
+            seed=17,
+            epochs=3,
+            l0_lambda=1e-8,
+            target_band_tolerances=np.asarray([0.045]),
+            target_band_penalty=1.0,
+            target_band_adaptive_step=0.25,
+        )
