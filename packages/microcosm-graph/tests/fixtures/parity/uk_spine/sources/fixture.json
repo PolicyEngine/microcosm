@@ -3280,7 +3280,7 @@
             "n_estimators": 4,
             "population": "uk_frs_raw_spine_base_support_channel claimants and partners (is_uc_claimant) aged 16 and over with taxable income under recipient_income_rule",
             "predictors": "the stage-1 predictors, encoded identically",
-            "receipt": "per target the analogue, the FRS regime and sign classes, the uniform source and the Kolmogorov-Smirnov distance of the sign uniforms and of the quantiles over positive rows from U[0,1), overall and by main_source over at least 10 rows; a positive-row count under 10 is withheld; the counts in the stage evidence stay with the build and are not published",
+            "receipt": "per target the analogue, the FRS regime and sign classes, the uniform source and the Kolmogorov-Smirnov distance of the sign uniforms and of the quantiles over positive rows from U[0,1), overall and by main_source over at least 10 rows (a statistical floor, as a distance over fewer says nothing); positive-row counts are rounded as every receipt count is, one or two rows reading <3; the counts in the stage evidence stay with the build and are not published",
             "seed": 45,
             "targets": "the stage-1 outputs with an FRS analogue, in stage-1 chain order",
             "weight": "household_weight",
