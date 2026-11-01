@@ -27,6 +27,7 @@ from microcosm.build.uk_runtime.high_value_homes import (
     load_uk_high_value_home_stock_facts,
 )
 from microcosm.build.uk_runtime.ledger_targets import (
+    UK_OBSERVATION_PERIOD_BASE,
     UK_TARGET_REFERENCE_PERIOD,
     UK_UPRATING_APPLIERS,
 )
@@ -147,7 +148,7 @@ def main() -> None:
 
     config = TargetReferenceAuthoringConfig(
         target_period=args.period,
-        observation_period_base=UK_TARGET_REFERENCE_PERIOD,
+        observation_period_base=UK_OBSERVATION_PERIOD_BASE,
         geography_pins=_geography_pins(contract),
         geography_fanout_by_target_id=_geography_fanout(contract),
         geography_fanout_metadata=_geography_fanout_metadata,
