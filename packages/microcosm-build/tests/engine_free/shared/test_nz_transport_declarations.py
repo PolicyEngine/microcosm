@@ -883,3 +883,39 @@ def test_nz_every_instantiated_encoder_output_declares_an_explicit_graph_dtype()
         assert row["outputs"], row["id"]
         for output in row["outputs"]:
             assert output.get("dtype") in DTYPES, (row["id"], output)
+
+
+def test_nz_export_slices_need_no_ids_because_compile_refuses_them():
+    """_check_export_contract counts projected ids; no slice may name one.
+
+    The executor projects ids and memberships for every sliced entity, so a
+    slice that names one asks for a cell that no node owns.
+    """
+    from microcosm.frame import EntitySchema
+    from microcosm.frame.unit_construction import BenefitUnitRule
+    from microcosm.graph import GraphError
+
+    spec, config = _nz_composition_spec_and_config()
+    resources = spec["resources"]
+    rule = BenefitUnitRule.from_spec(resources["benefit_unit_rule"])
+    schema = EntitySchema(group_entities=("household", rule.entity))
+    automatic = {
+        schema.person_id_column,
+        *(schema.membership_column(group) for group in schema.group_entities),
+        *(schema.id_column(group) for group in schema.group_entities),
+    }
+    for roster in resources["export_contract"]["entity_slices"].values():
+        assert not automatic & {column for names in roster.values() for column in names}
+    for role in ("export", "gates"):
+        resources["export_contract"]["entity_slices"][role]["household"].append(
+            "household_id"
+        )
+    for row in resources["transport_graph"]["nodes"]:
+        if row["id"] in {"nz.export.prepare", "nz.gates.terminal"}:
+            for item in row["inputs"]:
+                if item["entity"] == "household":
+                    item["columns"].append("household_id")
+    with pytest.raises(
+        GraphError, match=r"reads household\.household_id, which no node owns"
+    ):
+        compose.compose_transport_graph(spec, config)

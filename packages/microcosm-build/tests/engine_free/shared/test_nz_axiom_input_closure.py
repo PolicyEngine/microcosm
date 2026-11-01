@@ -265,13 +265,19 @@ def _with_state(tables, data) -> dict[str, pd.DataFrame]:
             dtype=bool,
         )
     for column in ("as_area", "as_area_alt"):
-        household[column] = np.asarray(
-            data.draw(
-                st.lists(
-                    st.integers(1, 4), min_size=len(household), max_size=len(household)
+        # The state bindings compare the declared string geography codes.
+        household[column] = pd.array(
+            [
+                str(code)
+                for code in data.draw(
+                    st.lists(
+                        st.integers(1, 4),
+                        min_size=len(household),
+                        max_size=len(household),
+                    )
                 )
-            ),
-            dtype=np.int64,
+            ],
+            dtype="string",
         )
     return {"person": person, "household": household}
 
@@ -409,7 +415,7 @@ def _golden_frame() -> dict[str, pd.DataFrame]:
             "mortgage_interest": [0.0],
             "mortgage_principal": [0.0],
             "property_tax": [0.0],
-            "as_area": np.asarray([1], dtype=np.int64),
+            "as_area": pd.array(["1"], dtype="string"),
         }
     )
     return {"person": person, "household": household}

@@ -301,8 +301,10 @@ def test_consumed_pending_money_names_its_missing_producer(toy):
         if row["id"] == "nz.encode.person"
     )
     row["inputs"].append(_slice("person", ["dividend_income"]))
+    # A pending column's gap names what it awaits, here a carrying donor.
     with pytest.raises(
-        ValueError, match="dividend_income.*pending|pending.*dividend_income"
+        ValueError,
+        match=r"money column person\.dividend_income awaits a donor that carries it",
     ):
         validate_transport_activation(spec)
 
