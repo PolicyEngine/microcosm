@@ -10,8 +10,8 @@ This document records the method basis and the checks needed before activation.
 
 The provisional stratifier is annual gross benefit-unit income for TY2026–27,
 before income tax, Accommodation Supplement, and Working for Families. It
-includes market income and paid main-benefit, New Zealand Superannuation, and
-Veterans Pension amounts. Including benefit income avoids ranking all units
+includes market income and paid main-benefit and New Zealand Superannuation
+amounts. Including benefit income avoids ranking all units
 with no market income as one zero-income tie; excluding Accommodation Supplement
 keeps the reported outcome out of its own stratifier. Equivalised disposable
 income is a defensible alternative that would change the reporting cells, so
@@ -25,9 +25,10 @@ then multiplied by 52. Entitlement does not substitute for assigned receipt.
 All components must use the same before-tax basis. A net paid amount or a gross
 maximum rate does not establish the required before-tax paid amount.
 
-The current declaration leaves unavailable before-tax main-benefit and Veterans
-Pension paid amount columns null and refuses activation. Veterans Pension
-receipt must also be present: a missing flag cannot mean no receipt. Rental
+The current declaration binds each main benefit to its
+`<program>_gross_weekly_payment` column. H4 excludes unsupported Veterans Pension
+from v0, so the classifier omits its income and its receipt predicate: a missing
+flag cannot mean no receipt. Rental
 income is after business expenses, and the before-tax interpretation of rental
 and private-pension inputs must be verified before activation.
 
@@ -93,19 +94,19 @@ includes both main-benefit and pension recipients as beneficiaries, and the
 base-rate provisions depend on the applicant; they do not establish a priority
 between partners in a mixed receipt unit. The reporting convention assigns:
 
-1. `superannuitant` if any member has assigned New Zealand Superannuation or
-   Veterans Pension receipt;
+1. `superannuitant` if any member has assigned New Zealand Superannuation receipt;
 2. otherwise `beneficiary` if any member has assigned main-benefit receipt;
 3. otherwise `other`.
 
 The current main-benefit predicates name Jobseeker Support, Sole Parent Support,
 and Supported Living Payment. The priority order, default group, membership
 columns, and receipt predicates are spec parameters. Every required assigned
-receipt flag must be present and boolean; missing Veterans Pension support must
-be reported and refused rather than assumed false. Each scenario reports the
+receipt flag must be present and boolean. H4 excludes unsupported Veterans
+Pension from the classifier and discloses the missing programme; the hub must
+review its receipt producer before extending this predicate. Each scenario reports the
 count of units satisfying multiple receipt predicates.
 
-The S0–S4 Accommodation Supplement exclusion selects the same superannuitant
+The S0–S3 Accommodation Supplement exclusion selects the same superannuitant
 predicate as the reporting classifier. Their excluded units must equal the
 `superannuitant` reporting group. That group's Accommodation Supplement cells
 are structural zeros in those scenarios and belong in the gate's declared

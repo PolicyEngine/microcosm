@@ -117,6 +117,14 @@ def _effective_rows(profile="mar"):
     return document["target_references"]
 
 
+def _diagnostic_rows(rows):
+    """Measure reviewed transformations without activating packaged fit rows."""
+    rows = copy.deepcopy(rows)
+    for row in rows:
+        row["metadata"]["activation_status"] = "active"
+    return rows
+
+
 def test_inventory_has_exact_contract_counts_and_named_parking_reasons():
     counts = Counter(row["metadata"]["contract_target_id"] for row in _rows())
     assert counts == {
@@ -132,8 +140,8 @@ def test_inventory_has_exact_contract_counts_and_named_parking_reasons():
     }
     assert len(_rows("precal_references.json")) == 318
     for filename, active in (
-        ("target_references.json", 64),
-        ("precal_references.json", 67),
+        ("target_references.json", 77),
+        ("precal_references.json", 80),
     ):
         rows = _rows(filename)
         assert (
@@ -196,7 +204,7 @@ def test_residual_profiles_have_exact_recipient_rosters_and_preserve_other_targe
         effective = _effective_rows(profile)
         assert (
             sum(row["metadata"]["activation_status"] == "active" for row in effective)
-            == 234
+            == 109
         )
         assert {
             row["ledger_selector"]["geography_id"]
@@ -218,14 +226,20 @@ def test_residual_profiles_have_exact_recipient_rosters_and_preserve_other_targe
                 )
                 assert "G8-r3b" in after["metadata"]["parking_reason"]
                 continue
-            if (
-                before["metadata"]["activation_status"]
-                != "requires_reference_profile_resolution"
-            ):
+            status = before["metadata"]["activation_status"]
+            if status not in {
+                "requires_reference_profile_resolution",
+                "requires_household_structure_release_evidence",
+                "requires_region_99_release_evidence",
+            }:
                 assert before == after
                 continue
             assert before["ledger_selector"] == after["ledger_selector"]
-            assert after["metadata"]["activation_status"] == "active"
+            assert after["metadata"]["activation_status"] == (
+                "active"
+                if status == "requires_reference_profile_resolution"
+                else status
+            )
             assert after["value_operation"] == "allocated_residual_by_ratio"
             operands = {operand["role"]: operand for operand in after["value_operands"]}
             partition = operands["partition"]
@@ -293,8 +307,8 @@ def test_full_nz_resource_resolves_directly_to_the_strict_compiler_document(prof
     parked = [
         row for row in references if row.metadata["activation_status"] != "active"
     ]
-    assert len(active) == 234
-    assert len(parked) == 539
+    assert len(active) == 109
+    assert len(parked) == 664
     assert receipt["base_references_sha256"] == reference_document_sha256(raw)
     assert receipt["effective_references_sha256"] == reference_document_sha256(
         effective
@@ -525,7 +539,7 @@ def test_real_artifact_regional_closure_shares_and_sensitivity(
         if "households_by_size" in row["name"] or row["family"] == "housing_tenure"
     ]
     registry = compile_ledger_target_references(
-        artifact.facts, _parsed(rows), country="nz"
+        artifact.facts, _parsed(_diagnostic_rows(rows)), country="nz"
     )
     actual = {}
     for row, target in zip(rows, registry.specs, strict=True):
@@ -654,11 +668,16 @@ def test_grouped_tenure_family_multiplicities_and_parked_definitions():
                 == "requires_census_family_nucleus_standard"
             )
         if "households_by_size" in row["name"]:
-            assert "d1886" in row["metadata"]["parking_reason"]
-        if "households_by_size" in row["name"] or row["family"] == "housing_tenure":
+            assert "G8-w4" in row["metadata"]["parking_reason"]
             assert (
                 row["metadata"]["activation_status"]
-                == "requires_reference_profile_resolution"
+                == "requires_household_structure_release_evidence"
+            )
+        if row["family"] == "housing_tenure":
+            assert row["metadata"]["activation_status"] == (
+                "requires_region_99_release_evidence"
+                if selector["geography_id"] == "99"
+                else "requires_reference_profile_resolution"
             )
         if row["family"] == "income":
             assert row["metadata"]["activation_status"] == "requires_prerequisites"
@@ -669,7 +688,7 @@ def test_grouped_tenure_family_multiplicities_and_parked_definitions():
             assert row["metadata"]["parking_reason"].startswith("B4:")
 
 
-def test_receipt_snapshots_are_split_and_stratified_inputs_stay_parked():
+def test_receipt_snapshots_activate_thirteen_cells_and_keep_vp_unsupported():
     source_sets = []
     for filename in ("target_references.json", "precal_references.json"):
         rows = [
@@ -694,10 +713,7 @@ def test_receipt_snapshots_are_split_and_stratified_inputs_stay_parked():
             assert row["period"] == row["ledger_selector"]["period_value"] == "2026-06"
             assert "snapshot stock" in row["metadata"]["measurement_basis"]
             if row["family"] == "main_benefits":
-                assert (
-                    row["metadata"]["activation_status"]
-                    == "requires_stratified_receipt_assignment"
-                )
+                assert row["metadata"]["activation_status"] == "active"
                 assert row["filter"].startswith("age_")
                 assert row["ledger_selector"]["dimension_values"][
                     "msd_main_benefit_type"
@@ -711,6 +727,8 @@ def test_receipt_snapshots_are_split_and_stratified_inputs_stay_parked():
                     row["metadata"]["activation_status"]
                     == "requires_unsupported_veterans_pension"
                 )
+            else:
+                assert row["metadata"]["activation_status"] == "active"
     assert source_sets[0] == source_sets[1]
     wages = [
         row for row in _rows("precal_references.json") if row["family"] == "earnings"
@@ -723,7 +741,7 @@ def test_receipt_snapshots_are_split_and_stratified_inputs_stay_parked():
         for row in wages
     )
     assert all(
-        row["metadata"]["activation_status"].startswith("requires_g8r2")
+        row["metadata"]["activation_status"] == "requires_g8r2c_wage_quantile_producer"
         for row in wages
     )
 
@@ -766,6 +784,77 @@ def test_generation_reproduces_committed_resources_with_exact_feed_identity(arti
         assert document == _document(filename), filename
     assert artifact.fact_row_count == _document("chronicle_feed.json")["fact_row_count"]
     assert artifact.fact_schema_versions == ("chronicle.consumer_fact.v4",)
+
+
+@pytest.mark.parametrize("existing_output", [False, True])
+def test_reference_generation_uses_source_templates_independent_of_outputs(
+    artifact, tmp_path, existing_output
+):
+    for filename in (
+        "chronicle_feed.json",
+        "family_reconciliation.json",
+    ):
+        (tmp_path / filename).write_text(json.dumps(_document(filename)))
+    if existing_output:
+        for filename in ("holdout_references.json", "precal_references.json"):
+            (tmp_path / filename).write_text(
+                json.dumps({"target_references": [{"name": "stale_output"}]})
+            )
+    generated = build_reference_documents(artifact, package_dir=tmp_path)
+    for filename in ("holdout_references.json", "precal_references.json"):
+        assert generated[filename] == _document(filename)
+
+
+def test_h1_count_and_h2_historical_annual_dollars_pin_distinct_source_cells(artifact):
+    rows = [
+        row
+        for row in _rows("holdout_references.json")
+        if row["metadata"]["activation_status"] == "active"
+    ]
+    assert [row["name"] for row in rows] == [
+        "msd_accommodation_supplement_recipients_national",
+        "msd_annual_report_accommodation_assistance_expenditure",
+    ]
+    h1, h2 = rows
+    assert h1["measure"] == "accommodation_supplement_positive_payment_indicator"
+    assert h1["metadata"]["indicator_input_column"] == (
+        "accommodation_supplement_rounded_weekly_payment"
+    )
+    assert h1["metadata"]["indicator_operator"] == "positive"
+    assert h1["metadata"]["indicator_threshold"] == "0"
+    assert h1["metadata"]["annualisation_factor"] == "1"
+    assert h1["ledger_selector"]["geography_level"] == "country"
+    assert h1["ledger_selector"]["geography_id"] == "NZ"
+    assert h1["period"] == "2026-06"
+    assert h2["measure"] == "accommodation_supplement_rounded_weekly_payment"
+    assert h2["metadata"]["annualisation_factor"] == "52"
+    assert h2["ledger_selector"]["record_set_id"] == "msd.benefit_expenses.fy2024"
+    assert h2["ledger_selector"]["dimension_values"] == {
+        "benefit_expense_component": "Accommodation Assistance"
+    }
+    assert h2["period"] == 2024
+    assert "Historical fiscal-year 2024/25" in h2["metadata"]["measurement_basis"]
+    registry = compile_ledger_target_references(
+        artifact.facts, _parsed(rows), country="nz"
+    )
+    assert [target.value for target in registry.specs] == [363309, 2232026000]
+
+
+def test_create_mass_pins_one_unfiltered_national_june_2025_person_count(artifact):
+    (row,) = _rows("mass_references.json")
+    assert row["name"] == "stats_nz_national_erp_june_2025"
+    assert row["entity"] == "person"
+    assert row["measure"] == "people"
+    assert "filter" not in row
+    assert row["period"] == 2025
+    assert row["ledger_selector"]["geography_id"] == "NZ"
+    assert row["ledger_selector"]["record_set_id"] == (
+        "stats_nz.cy2025.subnational_population.all_ages"
+    )
+    registry = compile_ledger_target_references(
+        artifact.facts, _parsed([row]), country="nz"
+    )
+    assert [target.value for target in registry.specs] == [5324700]
 
 
 def test_every_active_scalar_resolves_once_and_grouped_tenure_has_exact_roster(
@@ -844,7 +933,7 @@ def test_scaled_tenure_values_are_fractional_exact_bridges_and_national_diagnost
 ):
     rows = [row for row in _effective_rows() if row["family"] == "housing_tenure"]
     registry = compile_ledger_target_references(
-        artifact.facts, _parsed(rows), country="nz"
+        artifact.facts, _parsed(_diagnostic_rows(rows)), country="nz"
     )
     expected = []
     for row, spec in zip(rows, registry.specs, strict=True):
@@ -959,7 +1048,7 @@ def test_region_99_is_a_separate_national_growth_proxy_and_ta_999_has_no_erp(art
     ]
     assert len(rows) == 2
     registry = compile_ledger_target_references(
-        artifact.facts, _parsed(rows), country="nz"
+        artifact.facts, _parsed(_diagnostic_rows(rows)), country="nz"
     )
     for row, spec in zip(rows, registry.specs, strict=True):
         assert spec.hierarchy.geography.id == "99"
