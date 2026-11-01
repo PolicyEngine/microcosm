@@ -7251,3 +7251,46 @@ def test_precalibration_ancestry_malformed_extension_row_refuses(
         graph=graph,
         config=fixture.config,
     ) == (ValueError, f"Transport calibration ancestry: {message}")
+
+
+@pytest.mark.parametrize("kernel", ["money.minor_units@1", "money.annual_transfers@1"])
+@pytest.mark.parametrize("extended", [False, True], ids=["skeleton", "extended"])
+@pytest.mark.parametrize("inherited", [True, False], ids=["inherited", "new"])
+def test_composition_checks_a_money_bridge_against_its_lineage(
+    calibration_ancestry_composed, kernel, extended, inherited
+):
+    composed = calibration_ancestry_composed
+    graph = compose_transport_graph(composed.spec, composed.config)
+    create = next(
+        node for node in graph.nodes if node.structural is StructuralDelta.CREATE
+    )
+    output = next(item for item in create.outputs if item.entity == "person")
+    bridge = Node(
+        id="nz.money.bridge",
+        kernel=kernel,
+        population="nz.money" if extended else "nz.open",
+        outputs=(
+            Owned("person", output.column if inherited else "bridge_cents", "int64"),
+        ),
+    )
+    row = {
+        "id": bridge.id,
+        "kernel": kernel,
+        "population": bridge.population,
+        "params": {"declaration": "{}"},
+        "outputs": [
+            {"entity": "person", "column": bridge.outputs[0].column, "dtype": "int64"}
+        ],
+    }
+    spec = copy.deepcopy(composed.spec)
+    config = composed.config
+    if extended:
+        branch = _version_filter("nz.money", "nz.terminal")[1]
+        config = replace(config, extensions=(lambda *_: (branch, bridge),))
+    else:
+        spec["resources"]["transport_graph"]["nodes"].append(row)
+    if inherited:
+        with pytest.raises(ValueError, match="Money bridge 'nz.money.bridge' owns"):
+            compose_transport_graph(spec, config)
+    else:
+        assert compose_transport_graph(spec, config).node(bridge.id).kernel == kernel

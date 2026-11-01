@@ -82,6 +82,7 @@
     "entitled_to_supported_living_payment_caring",
     "entitled_to_supported_living_payment_restricted_or_blind",
     "family_tax_credit_prescribed_amount",
+    "individual_income_tax_before_credits",
     "jobseeker_support_gross_weekly_rate",
     "jobseeker_support_net_weekly_payment",
     "jobseeker_support_weekly_income_test_reduction",

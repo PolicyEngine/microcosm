@@ -2,7 +2,7 @@
  "format": "microcosm.axiom_input_closure.v1",
  "country": "nz",
  "content_basis": "transport",
- "description": "The input closure for every Axiom module the New Zealand v0 graph binds: each root input of each module's committed input surface is encoded (by a concept binding of the axiom:nz mapping, a state binding declared here, or another graph node), or defaulted with its reason and citation. The axiom adapter omits an input the frame lacks, and the engine fails a request that reaches an absent input, so a run feeds every entry here. The defaults are modelling content listed for the D1 method review.",
+ "description": "The input closure covers every Axiom module the New Zealand v0 graph binds. A concept binding of the axiom:nz mapping, a state binding here, or another graph node encodes each root input of each module's committed input surface; other inputs take explicit defaults with reasons and citations. The axiom adapter omits an input the frame lacks, and the engine fails a request that reaches an absent input, so a run feeds every entry here. Each default records a modelling choice with its reason and citation. The existing graph_node taxonomy represents solver-owned Schedule 1 taxable_income; the explicit solver_owned_inputs roster excludes it from data inputs and defaults.",
  "status": "awaiting D1: every default is a proposal (new_default true)",
  "work_package": "G4 (unit construction and group encode)",
  "mapping": {
@@ -20,13 +20,14 @@
  "rulespec_pin": {
   "commit": "8dc2507d5f10a0467c285fed54d018ee37246798",
   "method_card_row": "MC1",
-  "note": "The input surface was generated at 6fe181fc, an ancestor of the MC1 pin 8dc2507; git log 6fe181fc..8dc2507 lists no commit touching the four modules, and their SHA-256 values below are the same at both."
+  "note": "The input-surface generator used 6fe181fc, an ancestor of the MC1 pin 8dc2507; git log 6fe181fc..8dc2507 lists no commit touching the listed modules, and their SHA-256 values below match at both commits."
  },
  "rulespec_paths": {
   "nz/statutes/social_security/main_benefits/entitlement.yaml": "94332c778b3b5324798f67cb1b30f59c2af4131be8159455814f453bc814f8d0",
   "nz/statutes/social_security/main_benefits/rates.yaml": "7c8ebbc3e62268722529ad790e3f561bbebf807d8a4d67bba24f93cb0809ec39",
   "nz/statutes/new_zealand_superannuation/core.yaml": "d8ea0d15d97081031dcba242e66704c800bcf295e19d73bd173c56bd92d497b4",
-  "nz/statutes/social_security/accommodation_supplement/core.yaml": "f2feca3c2f1de71623ccd577cd2aed20e8822614aac0ccfc767b5faf4eaa83cc"
+  "nz/statutes/social_security/accommodation_supplement/core.yaml": "f2feca3c2f1de71623ccd577cd2aed20e8822614aac0ccfc767b5faf4eaa83cc",
+  "nz/statutes/income_tax/schedule_1/individual_income_tax.yaml": "5ff8e7bf645b85e3d59d612e3c6eb70e09090fb13b40d49c3c5f8a4202e0b82a"
  },
  "receipt_flags": {
   "columns": [
@@ -1450,6 +1451,31 @@
    "reason": "Boarders are closed at zero (method card MC8): the donor records no board paid or received between families of one household, so under the central rent allocation a non-reference family's housing costs are zero (under the per-adult-share scenario it takes a share of the rent instead), and the reference family's accommodation income from boarders and other residents is zero; this overstates the reference family's qualifying costs where it takes boarders. The Treasury IncomeExplorer reproduction harness defaults it the same way (TheAxiomFoundation ops nz-lane/emtr_reproduction/run.py, ModelEvaluator.accommodation_values).",
    "citation": "Social Security Act 2018 Schedule 4 Part 7 clause 7 definition of accommodation income (accommodation_supplement_weekly_accommodation_income)",
    "new_default": true
+  },
+  {
+   "rulespec_path": "nz/statutes/income_tax/schedule_1/individual_income_tax.yaml",
+   "entity": "Person",
+   "input": "taxable_income",
+   "class": "encoded",
+   "encoded_by": "graph_node",
+   "node": "nz.gross_up",
+   "reason": "Each simulate.solve_zero@1 gross-up owns its trial input and supplies taxable_income internally for the income_tax_schedule_1 binding. Data transport, data encoding, defaults and engine outputs exclude this trial input. The solver_owned_inputs roster identifies every solving node."
+  }
+ ],
+ "solver_owned_inputs": [
+  {
+   "binding": "income_tax_schedule_1",
+   "rulespec_path": "nz/statutes/income_tax/schedule_1/individual_income_tax.yaml",
+   "entity": "Person",
+   "input": "taxable_income",
+   "kernel": "simulate.solve_zero@1",
+   "node_ids": [
+    "nz.gross_up.jobseeker_support",
+    "nz.gross_up.sole_parent_support",
+    "nz.gross_up.supported_living_payment"
+   ],
+   "data_input": false,
+   "defaulted": false
   }
  ]
 }

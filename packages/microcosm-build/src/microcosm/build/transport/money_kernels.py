@@ -1,4 +1,4 @@
-"""Exact donor money normalization as a graph kernel.
+"""Exact donor normalization, integer money bridges and annual transfers.
 
 ``money.normalize@1`` rewrites every column a spec's money-normalization
 declaration lists, once, and adds each column's integer minor-unit companion.
@@ -15,10 +15,18 @@ CREATE records the donor's model period in the frame metadata
 (``donor_time_period``); the kernel refuses a frame whose recorded period is
 absent, null or different from the declaration's. This checks consistency
 with the declared money basis; it does not authenticate that basis.
+
+``money.minor_units@1`` converts declared money values to authoritative
+integer minor units. ``money.annual_transfers@1`` consumes those integers,
+explicit receipt flags, annualization and exposure; it never calculates tax.
 """
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+from fractions import Fraction
+
+import numpy as np
 import pandas as pd
 
 import microcosm.build.chronicle_epoch as chronicle_epoch_module
@@ -27,6 +35,7 @@ import microcosm.build.ledger_targets as ledger_targets_module
 import microcosm.build.money_normalization as money_normalization_module
 import microcosm.build.reference_factors as reference_factors_module
 import microcosm.frame.concepts as concepts_module
+import microcosm.frame.exact_money as exact_money_module
 from microcosm.build.ledger_artifact import (
     chronicle_feed_identity,
     load_ledger_consumer_artifact,
@@ -44,6 +53,7 @@ from microcosm.build.reference_factors import (
     replay_reference_factor,
     validate_factor_context,
 )
+from microcosm.frame.exact_money import _decimal_text, _exact_value, _half_even
 from microcosm.graph import (
     ROWS_ALL,
     Capabilities,
@@ -66,13 +76,22 @@ from .graph_inputs import (
 )
 
 __all__ = [
+    "MONEY_ANNUAL_TRANSFERS",
+    "MONEY_ANNUAL_TRANSFERS_REF",
+    "MONEY_MINOR_UNITS",
+    "MONEY_MINOR_UNITS_REF",
     "MONEY_NORMALIZE",
     "MONEY_NORMALIZE_REF",
     "MoneyNormalizeKernel",
+    "MoneyAnnualTransfersKernel",
+    "MoneyMinorUnitsKernel",
     "register_money_kernels",
+    "weekly_gross_cents_for_reporting",
 ]
 
 MONEY_NORMALIZE_REF = "money.normalize@1"
+MONEY_MINOR_UNITS_REF = "money.minor_units@1"
+MONEY_ANNUAL_TRANSFERS_REF = "money.annual_transfers@1"
 #: The frame-metadata key CREATE writes from the donor's ``_time_period``.
 DONOR_TIME_PERIOD = "donor_time_period"
 
@@ -173,6 +192,7 @@ class MoneyNormalizeKernel(KernelBase):
             ledger_targets_module,
             chronicle_epoch_module,
             concepts_module,
+            exact_money_module,
             dependencies=self.capabilities.dependencies,
         )
 
@@ -289,7 +309,313 @@ class MoneyNormalizeKernel(KernelBase):
 MONEY_NORMALIZE = MoneyNormalizeKernel()
 
 
+def _closed_money_document(value, required, *, optional=frozenset(), label):
+    if not isinstance(value, Mapping):
+        raise ValueError(f"{label} must be an object.")
+    row = dict(value)
+    if row.keys() - required - optional or required - row.keys():
+        raise ValueError(f"{label} requires exactly {sorted(required)} fields.")
+    return row
+
+
+def _money_text(value, label):
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"{label} must be nonempty text.")
+    return value
+
+
+def _money_int64(value, label):
+    if isinstance(value, (bool, np.bool_)) or not isinstance(value, (int, np.integer)):
+        raise ValueError(f"{label} must be integer minor units.")
+    value = int(value)
+    if not -(2**63) <= value <= 2**63 - 1:
+        raise ValueError(f"{label} exceeds int64 minor units.")
+    return value
+
+
+def _money_weeks(value):
+    if type(value) is not int or value <= 0:
+        raise ValueError(
+            "weeks_per_year must be an explicitly declared positive integer."
+        )
+    return value
+
+
+def _money_context(context, ref, *, optional=frozenset()):
+    require_params(context, ref, required=frozenset({"declaration"}), optional=optional)
+    if context.artifacts or context.node.artifact_outputs or context.sources:
+        raise ValueError(f"{ref} reads and writes no artifacts or sources.")
+    if any(item.rows != ROWS_ALL for item in context.node.inputs) or any(
+        item.rows != ROWS_ALL for item in context.node.outputs
+    ):
+        raise ValueError(f"{ref} requires whole-row slices and outputs.")
+    for name in optional:
+        if name in context.params:
+            _money_text(context.params[name], name)
+    return canonical_document_param(context, ref, "declaration")
+
+
+def _money_columns(context, ref, entity, inputs, outputs):
+    declared_inputs = {
+        (item.entity, column) for item in context.node.inputs for column in item.columns
+    }
+    declared_outputs = {
+        (item.entity, item.column, item.dtype, item.rewrite)
+        for item in context.node.outputs
+    }
+    if declared_inputs != {(entity, column) for column in inputs}:
+        raise ValueError(f"{ref} slices exactly its declared source and flag columns.")
+    if declared_outputs != {(entity, column, "int64", False) for column in outputs}:
+        raise ValueError(f"{ref} owns exactly its declared int64 minor-unit columns.")
+    if entity not in context.tables:
+        raise ValueError(f"{ref} entity {entity!r} is absent.")
+    table = context.tables[entity]
+    missing = inputs - set(table)
+    if missing:
+        raise ValueError(f"{ref} source columns are absent: {sorted(missing)}.")
+    if set(outputs) & set(table):
+        raise ValueError(f"{ref} refuses existing output columns; money has one owner.")
+    return table
+
+
+def _money_result_column(table, entity, column, values):
+    return pd.Series(
+        np.asarray(values, dtype=np.int64),
+        index=pd.Index(table[f"{entity}_id"].to_numpy(copy=True), name=f"{entity}_id"),
+        name=column,
+    )
+
+
+class MoneyMinorUnitsKernel(KernelBase):
+    """Convert declared money columns to authoritative int64 minor units.
+
+    A quantized engine bridge produces float64. ``rounding: exact`` reads a
+    float's shortest round-trip decimal and preserves integer sources exactly
+    through the shared exact-money helpers. It requires an integer multiple
+    of the declared ``quantum``. Thus the integer
+    multiple, rather than a binary64 multiplication, is authoritative. An
+    unquantized before-tax payment may declare ``rounding: half_even``.
+
+    Optional engine reference and period parameters attribute derived outputs
+    to a declared pre-calibration rules stage. Attribution needs the engine
+    reference: composition finds a stage's nodes by the prepared reference
+    they carry, so a period alone refuses there. These parameters never
+    execute an engine. No weekly reporting value is owned by this kernel.
+    """
+
+    ref = MONEY_MINOR_UNITS_REF
+    capabilities = Capabilities(
+        Determinism.DETERMINISTIC,
+        numeric=Numeric.BITWISE,
+        seed_source=SeedSource.NONE,
+        dependencies=("numpy", "pandas"),
+    )
+
+    def implementation_hash(self) -> str:
+        return source_hash(
+            type(self),
+            graph_inputs,
+            exact_money_module,
+            dependencies=self.capabilities.dependencies,
+        )
+
+    def run(self, context: KernelContext) -> KernelResult:
+        declaration = _closed_money_document(
+            _money_context(
+                context, self.ref, optional=frozenset({"engine_ref", "period"})
+            ),
+            frozenset({"entity", "columns"}),
+            label=self.ref,
+        )
+        entity = _money_text(declaration["entity"], "entity")
+        rows = declaration["columns"]
+        if not isinstance(rows, list) or not rows:
+            raise ValueError(f"{self.ref} columns must be a nonempty list.")
+        entries, inputs, outputs = [], set(), set()
+        for value in rows:
+            row = _closed_money_document(
+                value,
+                frozenset({"source_column", "output_column", "quantum", "rounding"}),
+                optional=frozenset({"source_tax_basis"}),
+                label="minor-unit column",
+            )
+            source = _money_text(row["source_column"], "source_column")
+            output = _money_text(row["output_column"], "output_column")
+            quantum = _decimal_text(row["quantum"], "quantum")
+            if row["rounding"] not in {"exact", "half_even"}:
+                raise ValueError("Minor-unit rounding must be exact or half_even.")
+            if "source_tax_basis" in row and row["source_tax_basis"] != "before_tax":
+                raise ValueError("source_tax_basis must be before_tax when declared.")
+            if source in inputs or output in outputs:
+                raise ValueError(
+                    "Minor-unit columns must have unique sources and outputs."
+                )
+            entries.append((row, source, output, quantum))
+            inputs.add(source)
+            outputs.add(output)
+        table = _money_columns(context, self.ref, entity, inputs, outputs)
+        result, receipts = {}, []
+        for row, source, output, quantum in entries:
+            units = []
+            for value in table[source].tolist():
+                exact = _exact_value(value) / quantum
+                if row["rounding"] == "exact" and exact.denominator != 1:
+                    raise ValueError(
+                        f"{entity}.{source} is not an exact multiple of quantum {row['quantum']}."
+                    )
+                units.append(_money_int64(_half_even(exact), f"{entity}.{output}"))
+            result[entity, output] = _money_result_column(table, entity, output, units)
+            receipts.append({**row, "n": len(units), "sum_minor_units": sum(units)})
+        return KernelResult(
+            columns=result, receipt={"entity": entity, "columns": receipts}
+        )
+
+
+def weekly_gross_cents_for_reporting(annual_gross_cents, weeks_per_year):
+    """Report annual cents / declared weeks, half-even; never a graph output.
+
+    Annual transfers consume annual cents directly. This reporting-only helper
+    must never feed annualization or become a persisted weekly gross column.
+    """
+    amount = _money_int64(annual_gross_cents, "annual_gross_cents")
+    return _money_int64(
+        _half_even(Fraction(amount, _money_weeks(weeks_per_year))),
+        "reporting weekly gross cents",
+    )
+
+
+class MoneyAnnualTransfersKernel(KernelBase):
+    """Form annual transfers from explicit flags, authoritative cents and exposure.
+
+    Annual gross cents are used directly. Weekly before-tax cents multiply by
+    the declared weeks per year. Both multiply by a binary receipt flag and
+    exact exposure. There is no exposure default: its central value and
+    convention must be present. Integer exposure needs no rounding;
+    non-integer exposure rounds half-even exactly once, at the end. Every
+    input and result is checked for int64 overflow and receipt sums use Python
+    integers, which cannot overflow. This kernel performs no tax calculation.
+    """
+
+    ref = MONEY_ANNUAL_TRANSFERS_REF
+    capabilities = Capabilities(
+        Determinism.DETERMINISTIC,
+        numeric=Numeric.BITWISE,
+        seed_source=SeedSource.NONE,
+        dependencies=("numpy", "pandas"),
+    )
+
+    def implementation_hash(self) -> str:
+        return source_hash(
+            type(self),
+            graph_inputs,
+            exact_money_module,
+            dependencies=self.capabilities.dependencies,
+        )
+
+    def run(self, context: KernelContext) -> KernelResult:
+        declaration = _closed_money_document(
+            _money_context(context, self.ref),
+            frozenset({"entity", "weeks_per_year", "exposure", "transfers"}),
+            label=self.ref,
+        )
+        entity = _money_text(declaration["entity"], "entity")
+        weeks = _money_weeks(declaration["weeks_per_year"])
+        exposure = _closed_money_document(
+            declaration["exposure"],
+            frozenset({"central", "convention"}),
+            label="exposure",
+        )
+        if exposure["convention"] != "full_year_stock_equivalent":
+            raise ValueError("Exposure convention must be full_year_stock_equivalent.")
+        central = exposure["central"]
+        if type(central) is int:
+            fraction = Fraction(central)
+        elif isinstance(central, str):
+            fraction = _decimal_text(central, "exposure central", allow_zero=True)
+        else:
+            raise ValueError(
+                "Exposure central must be an integer or exact decimal text."
+            )
+        if fraction < 0:
+            raise ValueError("Exposure central must be nonnegative.")
+        rows = declaration["transfers"]
+        if not isinstance(rows, list) or not rows:
+            raise ValueError("Annual transfers must be a nonempty list.")
+        entries, inputs, outputs = [], set(), set()
+        for value in rows:
+            row = _closed_money_document(
+                value,
+                frozenset(
+                    {"flag_column", "source_column", "source_basis", "output_column"}
+                ),
+                optional=frozenset({"source_tax_basis"}),
+                label="annual transfer",
+            )
+            for name in ("flag_column", "source_column", "output_column"):
+                _money_text(row[name], name)
+            basis = row["source_basis"]
+            if basis not in {"annual_gross_cents", "weekly_before_tax_cents"}:
+                raise ValueError(
+                    "Annual transfers require annual gross or weekly before-tax cents."
+                )
+            if (
+                basis == "weekly_before_tax_cents"
+                and row.get("source_tax_basis") != "before_tax"
+            ):
+                raise ValueError(
+                    "Weekly source_tax_basis must explicitly be before_tax."
+                )
+            if "source_tax_basis" in row and row["source_tax_basis"] != "before_tax":
+                raise ValueError("source_tax_basis must be before_tax when declared.")
+            if row["output_column"] in outputs:
+                raise ValueError("Annual transfers require unique output columns.")
+            inputs.update((row["flag_column"], row["source_column"]))
+            outputs.add(row["output_column"])
+            entries.append(row)
+        table = _money_columns(context, self.ref, entity, inputs, outputs)
+        result, receipts = {}, []
+        for row in entries:
+            output, values = row["output_column"], []
+            factor = weeks if row["source_basis"] == "weekly_before_tax_cents" else 1
+            for flag, amount in zip(
+                table[row["flag_column"]].tolist(),
+                table[row["source_column"]].tolist(),
+                strict=True,
+            ):
+                if not isinstance(
+                    flag, (bool, np.bool_, int, np.integer)
+                ) or flag not in (0, 1):
+                    raise ValueError(
+                        f"{entity}.{row['flag_column']} must be a finite binary flag."
+                    )
+                amount = _money_int64(amount, f"{entity}.{row['source_column']}")
+                if amount < 0:
+                    raise ValueError(
+                        "Annual gross transfer amounts must be nonnegative."
+                    )
+                exact = int(flag) * amount * factor * fraction
+                value = exact.numerator if exact.denominator == 1 else _half_even(exact)
+                values.append(_money_int64(value, f"{entity}.{output}"))
+            result[entity, output] = _money_result_column(table, entity, output, values)
+            receipts.append({**row, "n": len(values), "sum_minor_units": sum(values)})
+        return KernelResult(
+            columns=result,
+            receipt={
+                "entity": entity,
+                "weeks_per_year": weeks,
+                "exposure": exposure,
+                "transfers": receipts,
+            },
+        )
+
+
+MONEY_MINOR_UNITS = MoneyMinorUnitsKernel()
+MONEY_ANNUAL_TRANSFERS = MoneyAnnualTransfersKernel()
+
+
 def register_money_kernels(registry: KernelRegistry) -> KernelRegistry:
-    """Register the money kernel explicitly and idempotently."""
+    """Register money kernels explicitly and idempotently."""
     registry.register(MONEY_NORMALIZE)
+    registry.register(MONEY_MINOR_UNITS)
+    registry.register(MONEY_ANNUAL_TRANSFERS)
     return registry
