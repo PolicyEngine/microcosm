@@ -25,7 +25,7 @@ from microcosm.build.ledger_targets import (  # pyright: ignore[reportPrivateUsa
     _period_key_from_value,
     _period_year,
     _selection_period,
-    _shift_period_years,
+    _shift_observation_period,
     compile_ledger_target_references,
     reference_fact_selectors,
 )
@@ -138,17 +138,21 @@ def _authored_observation_period(
     config: TargetReferenceAuthoringConfig | AreaTargetReferenceAuthoringConfig,
 ) -> int | str | None:
     """The contract's observation period, moved to the authored target period
-    and read under the selector's period type, as ``restamp_reference_period``
+    and read as the row's match policy reads it, as ``restamp_reference_period``
     reads it."""
 
     observation_period = target.get("observation_period")
     if observation_period is None or config.observation_period_base is None:
         return observation_period
-    return _shift_period_years(
+    return _shift_observation_period(
         observation_period,
         _period_year(config.target_period)
         - _period_year(config.observation_period_base),
-        declared_type=str(selector.get("period_type", "")),
+        # A row without a policy takes the reference's default.
+        period_match_policy=str(
+            target.get("period_match_policy") or "latest_not_after"
+        ),
+        ledger_selector=selector,
     )
 
 
