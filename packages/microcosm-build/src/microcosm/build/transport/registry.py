@@ -389,7 +389,7 @@ def build_transport_registry(
 
 
 def register_transport_population_kernels(registry: KernelRegistry) -> KernelRegistry:
-    """Install the eleven population kernels without import-time side effects.
+    """Install the thirteen population kernels without import-time side effects.
 
     Source codecs are separately installed with ``register_transport_codecs``;
     target, solver and terminal kernels keep their own registration functions.

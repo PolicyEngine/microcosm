@@ -107,6 +107,7 @@ from microcosm.graph import (
 from microcosm.graph.canonical import canonical_json
 from microcosm.graph.keys import node_key, source_content_key
 from test_support.microcosm_build.chronicle_feed import write_pinned_artifact
+from test_support.microcosm_build.money_normalization import graph_declaration
 from test_support.microcosm_build.reference_factor_transport import (
     factor_transport_fixture,
 )
@@ -7251,3 +7252,145 @@ def test_precalibration_ancestry_malformed_extension_row_refuses(
         graph=graph,
         config=fixture.config,
     ) == (ValueError, f"Transport calibration ancestry: {message}")
+
+
+@pytest.mark.parametrize("kernel", ["money.minor_units@1", "money.annual_transfers@1"])
+@pytest.mark.parametrize("extended", [False, True], ids=["skeleton", "extended"])
+@pytest.mark.parametrize("inherited", [True, False], ids=["inherited", "new"])
+def test_composition_checks_a_money_bridge_against_its_lineage(
+    calibration_ancestry_composed, kernel, extended, inherited
+):
+    composed = calibration_ancestry_composed
+    graph = compose_transport_graph(composed.spec, composed.config)
+    create = next(
+        node for node in graph.nodes if node.structural is StructuralDelta.CREATE
+    )
+    output = next(item for item in create.outputs if item.entity == "person")
+    bridge = Node(
+        id="nz.money.bridge",
+        kernel=kernel,
+        population="nz.money" if extended else "nz.open",
+        outputs=(
+            Owned("person", output.column if inherited else "bridge_cents", "int64"),
+        ),
+    )
+    row = {
+        "id": bridge.id,
+        "kernel": kernel,
+        "population": bridge.population,
+        "params": {"declaration": "{}"},
+        "outputs": [
+            {"entity": "person", "column": bridge.outputs[0].column, "dtype": "int64"}
+        ],
+    }
+    spec = copy.deepcopy(composed.spec)
+    config = composed.config
+    if extended:
+        branch = _version_filter("nz.money", "nz.terminal")[1]
+        config = replace(config, extensions=(lambda *_: (branch, bridge),))
+    else:
+        spec["resources"]["transport_graph"]["nodes"].append(row)
+    if inherited:
+        with pytest.raises(ValueError, match="'nz.money.bridge' owns person"):
+            compose_transport_graph(spec, config)
+    else:
+        assert compose_transport_graph(spec, config).node(bridge.id).kernel == kernel
+
+
+@pytest.mark.parametrize(
+    "column,rewrite,refused",
+    [
+        ("bridge_cents", False, True),
+        ("bridge_cents", True, True),
+        ("later_cents", False, False),
+    ],
+    ids=["replaces", "rewrites", "control"],
+)
+def test_composition_refuses_a_later_owner_of_a_money_bridge_column(
+    calibration_ancestry_composed, column, rewrite, refused
+):
+    composed = calibration_ancestry_composed
+    spec = copy.deepcopy(composed.spec)
+    spec["resources"]["transport_graph"]["nodes"].append(
+        {
+            "id": "nz.money.bridge",
+            "kernel": "money.minor_units@1",
+            "population": "nz.open",
+            "params": {"declaration": "{}"},
+            "outputs": [
+                {"entity": "person", "column": "bridge_cents", "dtype": "int64"}
+            ],
+        }
+    )
+    later = Node(
+        id="nz.money.later",
+        kernel="synthetic.rules@1",
+        population="nz.money",
+        inputs=(Slice("person", ("bridge_cents",)),) if rewrite else (),
+        outputs=(
+            Owned("person", column, "int64" if rewrite else "float64", rewrite=rewrite),
+        ),
+    )
+    branch = _version_filter("nz.money", "nz.terminal")[1]
+    config = replace(composed.config, extensions=(lambda *_: (branch, later),))
+    if refused:
+        with pytest.raises(
+            ValueError,
+            match="'nz.money.later' owns person.bridge_cents, which 'nz.money.bridge'",
+        ):
+            compose_transport_graph(spec, config)
+    else:
+        assert (
+            compose_transport_graph(spec, config).node(later.id).kernel == later.kernel
+        )
+
+
+@pytest.mark.parametrize("extended", [False, True], ids=["skeleton", "extended"])
+@pytest.mark.parametrize("declared", [True, False], ids=["declared", "undeclared"])
+def test_composition_checks_a_normalized_companion_on_each_pass(
+    calibration_ancestry_composed, monkeypatch, extended, declared
+):
+    # The toy skeleton routes money through transport.currency@1, which a spec
+    # that declares normalization can't keep. This test drops that node, and
+    # only the activation report of the money it leaves unrouted steps aside,
+    # so both of composition's own money checks run.
+    monkeypatch.setattr(compose_module, "_money_producer_gaps", lambda _: [])
+    composed = calibration_ancestry_composed
+    writer = Node(
+        id="nz.money.writer",
+        kernel="money.minor_units@1",
+        population="nz.money" if extended else "nz.open",
+        outputs=(Owned("person", "interest_income_cents", "int64"),),
+    )
+    spec = copy.deepcopy(composed.spec)
+    rows = spec["resources"]["transport_graph"]["nodes"]
+    if declared:
+        spec["resources"]["money_normalization"] = graph_declaration()
+        rows[:] = [row for row in rows if row["kernel"] != "transport.currency@1"]
+    config = composed.config
+    if extended:
+        branch = _version_filter("nz.money", "nz.terminal")[1]
+        config = replace(config, extensions=(lambda *_: (branch, writer),))
+    else:
+        rows.append(
+            {
+                "id": writer.id,
+                "kernel": writer.kernel,
+                "population": writer.population,
+                "params": {"declaration": "{}"},
+                "outputs": [
+                    {
+                        "entity": "person",
+                        "column": "interest_income_cents",
+                        "dtype": "int64",
+                    }
+                ],
+            }
+        )
+    if declared:
+        with pytest.raises(ValueError, match="is a money.normalize@1 companion"):
+            compose_transport_graph(spec, config)
+    else:
+        assert compose_transport_graph(spec, config).node(writer.id).kernel == (
+            writer.kernel
+        )

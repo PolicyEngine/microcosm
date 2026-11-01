@@ -108,6 +108,11 @@
       "schema_id": "legacy_json"
     },
     {
+      "path": "msd_benefit_rates_20260401.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
       "path": "precal_references.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
@@ -154,6 +159,16 @@
     },
     {
       "path": "target_references.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "benefit_gross_up.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "precalibration_stages.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
     }

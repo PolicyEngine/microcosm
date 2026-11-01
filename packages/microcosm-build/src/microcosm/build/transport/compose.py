@@ -15,6 +15,8 @@ explicit selection:
   bytes, so the node's key moves with that one resource only).
 - ``{"prepared": "engine_refs"}`` is the canonical JSON of the prepared
   binding-id -> engine reference map that preparation built.
+- ``{"binding": name, "field": field}`` selects exactly ``engine_ref`` or
+  ``period`` from one declared, prepared rules binding.
 
 Target compilers also bind the complete ``chronicle_feed.json`` declaration
 when the spec carries it, including CREATE's inventory probe and extension
@@ -109,7 +111,11 @@ from microcosm.graph.expansion import (
 
 from .artifact_types import KERNEL_OUTPUTS
 from .column_kernels import validate_receipt_contract
-from .money_kernels import MONEY_NORMALIZE_REF
+from .money_kernels import (
+    MONEY_ANNUAL_TRANSFERS_REF,
+    MONEY_MINOR_UNITS_REF,
+    MONEY_NORMALIZE_REF,
+)
 from .reference_selection import selection_resources, validate_exemptions
 from .target_kernels import TARGET_COMPILATION_KERNELS
 
@@ -151,6 +157,9 @@ SKELETON_KERNELS = frozenset(
         "concepts.encode@1",
         "concepts.encode_groups@1",
         RULES_ROUTER,
+        "simulate.solve_zero@1",  # [BE] Non-structural pre-calibration solves.
+        "money.minor_units@1",
+        "money.annual_transfers@1",
         "takeup.assign@1",
         "targets.compile@1",
         "calibration.prepare@1",
@@ -172,6 +181,8 @@ MONEY_NORMALIZATION_RESOURCE = "money_normalization"
 #: The only kernels that may produce donor money after CREATE once a spec
 #: declares money normalization.
 _MONEY_PRODUCERS = frozenset({MONEY_NORMALIZE_REF, "transport.quantile_map@1"})
+#: Money bridges own new integer columns in their whole population lineage.
+_MONEY_BRIDGES = frozenset({MONEY_MINOR_UNITS_REF, MONEY_ANNUAL_TRANSFERS_REF})
 #: Conversion changes the basis of an existing donor column; derived money
 #: outputs and cross-population evidence artifacts do not change that basis.
 _MONEY_CONVERSIONS = frozenset({MONEY_NORMALIZE_REF, "transport.currency@1"})
@@ -908,6 +919,29 @@ def _money_producer_gaps(spec: Mapping[str, object]) -> list[str]:
     ]
 
 
+def _check_money_bridge_owners(graph: Graph, compiled: CompiledGraph) -> None:
+    """Refuse a second owner of a money bridge's column in its population lineage.
+
+    The kernels refuse an existing output, but they read a projection that
+    omits a non-rewrite incumbent, and they never see a later owner. Only the
+    compiled lineage shows either one.
+    """
+    by_id = {node.id: node for node in graph.nodes}
+    for (version, entity, column), owner in compiled.owners.items():
+        current = by_id[version].base
+        while current is not None:
+            incumbent = compiled.owners.get((current, entity, column))
+            if incumbent is not None and (
+                by_id[owner].kernel in _MONEY_BRIDGES
+                or by_id[incumbent].kernel in _MONEY_BRIDGES
+            ):
+                raise ValueError(
+                    f"{owner!r} owns {entity}.{column}, which {incumbent!r} owns "
+                    "in its lineage; a money bridge's column has one owner."
+                )
+            current = by_id[current].base
+
+
 def _check_single_money_normalization(
     spec: Mapping[str, object], graph: Graph, compiled: CompiledGraph
 ) -> None:
@@ -917,6 +951,7 @@ def _check_single_money_normalization(
     of its base version and its members. Artifact predecessors cross versions
     without changing ownership, so they never enter this structural chain.
     Newly derived money is classified separately from declared donor money.
+    Only normalization writes a normalized column's integer companion.
     """
     if not _has_resource(spec, MONEY_NORMALIZATION_RESOURCE):
         return
@@ -924,6 +959,11 @@ def _check_single_money_normalization(
         _raw_transport_resource(spec, MONEY_NORMALIZATION_RESOURCE)
     )
     rosters = money_column_rosters(declaration)
+    companions = {
+        (entity, f"{column}{declaration['cents_suffix']}")
+        for entity, names in declaration["columns"].items()
+        for column in names
+    }
     money = money_concept_columns()
     expected = {
         MONEY_NORMALIZE_REF: "normalized",
@@ -932,6 +972,11 @@ def _check_single_money_normalization(
     by_id = {node.id: node for node in graph.nodes}
     for (_, entity, column), owner in compiled.owners.items():
         node = by_id[owner]
+        if (entity, column) in companions and node.kernel != MONEY_NORMALIZE_REF:
+            raise ValueError(
+                f"Money column {entity}.{column} is a {MONEY_NORMALIZE_REF} "
+                f"companion, but {node.kernel} node {owner!r} produces it."
+            )
         if node.kernel in expected and (entity, column) in money:
             route = rosters.get((entity, column), (None, ()))[0]
             if route != expected[node.kernel]:
@@ -2550,6 +2595,20 @@ def _param(
         return tuple(_param(spec, item, engine_refs) for item in value)
     if not isinstance(value, Mapping):
         return value
+    # [BE] Admit only the S5 two-key selector; selected JSON stays literal.
+    if "binding" in value:
+        if set(value) != {"binding", "field"}:
+            raise ValueError("A binding selection names exactly binding and field.")
+        name, field = value["binding"], value["field"]
+        if not isinstance(name, str) or not name.strip():
+            raise ValueError("A binding selection needs a nonempty text binding.")
+        if not isinstance(field, str) or field not in {"engine_ref", "period"}:
+            raise ValueError("A binding selection field must be engine_ref or period.")
+        rows = transport_resource(spec, "axiom_rules_bindings")["bindings"]
+        matches = [row for row in rows if row["id"] == name]
+        if len(matches) != 1 or engine_refs is None or name not in engine_refs:
+            raise ValueError(f"Binding {name!r} needs one prepared reference.")
+        return engine_refs[name] if field == "engine_ref" else matches[0]["period"]
     if set(value) == {"prepared"}:
         if value["prepared"] in {"fingerprint", "spec_fingerprint"}:
             raise ValueError("The whole-spec fingerprint cannot enter node parameters.")
@@ -2983,6 +3042,7 @@ def compose_transport_graph(
     validate_transport_calibration_ancestry(spec, graph=skeleton, config=config)
     # Money ownership is checked after each graph pass of the ancestry guard.
     _check_single_money_normalization(spec, skeleton, compiled)
+    _check_money_bridge_owners(skeleton, compiled)
     endpoints = transport_endpoints(spec)
     named = {endpoints["geography"], endpoints["calibration"], *endpoints["terminal"]}
     if not named <= set(compiled.order):
@@ -3073,6 +3133,7 @@ def compose_transport_graph(
     validate_transport_calibration_ancestry(spec, graph=graph, config=config)
     # Money ownership is checked after each graph pass of the ancestry guard.
     _check_single_money_normalization(spec, graph, extended)
+    _check_money_bridge_owners(graph, extended)
     for node in skeleton.nodes:
         expected = (
             set(compiled.predecessors[node.id])
