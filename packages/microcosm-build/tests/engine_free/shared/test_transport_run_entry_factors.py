@@ -239,16 +239,22 @@ def test_current_money_factor_includes_valid_until_today(
     cli_module._require_current_run_factors(spec, resume="forbid")
 
 
-@pytest.mark.parametrize("with_scenarios", [False, True])
-def test_identity_money_families_need_no_factor_context(monkeypatch, with_scenarios):
+def _identity_declaration():
     declaration = graph_declaration()
     for family in declaration["index_family_factors"]:
         declaration["index_family_factors"][family] = {
             "identity": True,
             "reason": "The toy family keeps its donor basis.",
         }
+    return declaration
+
+
+@pytest.mark.parametrize("with_scenarios", [False, True])
+def test_identity_money_families_select_no_factor(
+    money_evidence, monkeypatch, with_scenarios
+):
     spec = _money_spec(
-        {},
+        money_evidence[-1],
         scenarios=[
             {"id": profile, "knobs": {DIMENSION: profile}} for profile in PROFILES
         ]
@@ -256,13 +262,8 @@ def test_identity_money_families_need_no_factor_context(monkeypatch, with_scenar
         else (),
     )
     resources = spec["resources"]
-    resources["money_normalization"] = declaration
+    resources["money_normalization"] = _identity_declaration()
     del resources["reference_profiles"]
-    resources["transport_graph"]["nodes"][0]["params"]["factor_context"] = "{}"
-    if with_scenarios:
-        resources["entitlement_graph"]["variant_nodes"][0]["params"][
-            "factor_context"
-        ] = "{}"
     captured = Mock()
     monkeypatch.setattr(cli_module, "require_current_factors", captured)
     cli_module._require_current_run_factors(spec, resume="auto")
@@ -787,6 +788,132 @@ def test_money_parameter_requires_json_object_with_node_name(
         cli_module._require_current_run_factors(spec, resume="auto")
     assert row["id"].replace("{variant}", "variant") in str(refusal.value)
     assert parameter in str(refusal.value)
+
+
+def test_every_family_factor_of_a_node_is_checked(money_evidence):
+    declaration = graph_declaration()
+    declaration["index_family_factors"]["capital_income"]["factors"]["central"] = (
+        factor_id("low")
+    )
+    spec = _money_spec(_with_expiry(money_evidence, "low", TODAY - timedelta(days=1)))
+    spec["resources"]["money_normalization"] = declaration
+    with pytest.raises(ValueError, match=factor_id("low")):
+        cli_module._require_current_run_factors(spec, resume="auto")
+
+
+def test_invalid_money_declaration_refuses_with_node_name(money_evidence):
+    spec = _money_spec(money_evidence[-1])
+    spec["resources"]["money_normalization"]["bogus"] = 1
+    with pytest.raises(ValueError, match="toy.money.normalize"):
+        cli_module._require_current_run_factors(spec, resume="auto")
+
+
+def test_unknown_money_profile_refuses_with_node_name(money_evidence):
+    spec = _money_spec(money_evidence[-1])
+    spec["resources"]["transport_graph"]["nodes"][0]["params"]["profile_selection"] = (
+        _json({DIMENSION: "nope"})
+    )
+    with pytest.raises(ValueError, match="toy.money.normalize.*profile_selection"):
+        cli_module._require_current_run_factors(spec, resume="auto")
+
+
+def test_missing_selected_factor_refuses_with_node_name(money_evidence):
+    context = copy.deepcopy(money_evidence[-1])
+    context["factors"] = [
+        row
+        for row in context["factors"]
+        if row["declaration"]["id"] != factor_id("central")
+    ]
+    with pytest.raises(
+        ValueError,
+        match="toy.money.normalize.*factor_context.*Missing selected factor",
+    ):
+        cli_module._require_current_run_factors(_money_spec(context), resume="auto")
+
+
+def test_skeleton_mapping_selection_refuses_like_composition(money_evidence):
+    spec = _money_spec(money_evidence[-1])
+    spec["resources"]["transport_graph"]["nodes"][0]["params"]["profile_selection"] = {
+        DIMENSION: "low"
+    }
+    with pytest.raises(
+        ValueError,
+        match="toy.money.normalize.*must be a resource or prepared selection",
+    ):
+        cli_module._require_current_run_factors(spec, resume="auto")
+
+
+@pytest.mark.parametrize("placement", ["skeleton", "entitlement"])
+def test_non_object_graph_row_refuses_cleanly(money_evidence, placement):
+    spec = _money_spec(money_evidence[-1], scenarios=[{"id": "variant", "knobs": {}}])
+    if placement == "skeleton":
+        spec["resources"]["transport_graph"]["nodes"].append("not a node")
+    else:
+        spec["resources"]["entitlement_graph"]["nodes"] = ["not a node"]
+    with pytest.raises(TypeError, match="graph node must be an object"):
+        cli_module._require_current_run_factors(spec, resume="auto")
+
+
+def test_identity_node_context_refuses_at_run_entry_as_the_kernel_does(money_evidence):
+    declaration = _identity_declaration()
+    spec = _money_spec(money_evidence[-1])
+    spec["resources"]["money_normalization"] = declaration
+    spec["resources"]["transport_graph"]["nodes"][0]["params"]["factor_context"] = "{}"
+    message = "Factor context requires schema_version 1"
+    with pytest.raises(ValueError, match=f"factor_context.*{message}"):
+        cli_module._require_current_run_factors(spec, resume="auto")
+
+    template = normalize_node(
+        "toy.node", "toy.population", declaration, money_evidence[-1], money_evidence[1]
+    )
+    node = compose_module._node(
+        {"country": "xx", "resources": {}},
+        {
+            "id": "toy.node",
+            "kernel": "money.normalize@1",
+            "population": "toy.population",
+            "sources": list(template.sources),
+            "inputs": [
+                {"entity": item.entity, "columns": list(item.columns)}
+                for item in template.inputs
+            ],
+            "outputs": [
+                {
+                    "entity": item.entity,
+                    "column": item.column,
+                    "dtype": item.dtype,
+                    "rewrite": item.rewrite,
+                }
+                for item in template.outputs
+            ],
+        },
+        compose_module.TransportGraphConfig(
+            engine_refs={}, create_outputs=template.outputs
+        ),
+        {},
+        resolved_params={**template.params, "factor_context": "{}"},
+    )
+    context = KernelContext(
+        node=node,
+        tables={
+            "person": pd.DataFrame(
+                {
+                    "person_id": [1],
+                    "interest_income": [3.0],
+                    "rental_income": [-2.0],
+                    "farm_self_employment_income": [1.0],
+                }
+            )
+        },
+        weights={},
+        strata=pd.Series([], dtype=object),
+        params=node.params,
+        rng=np.random.default_rng(0),
+        sources={"money_facts": money_evidence[0]},
+        frame_metadata={"donor_time_period": 2024},
+    )
+    with pytest.raises(ValueError, match=message):
+        MONEY_NORMALIZE.run(context)
 
 
 def _composed_money_case(root, evidence, *, fixture_factory=make_composed_fixture):
