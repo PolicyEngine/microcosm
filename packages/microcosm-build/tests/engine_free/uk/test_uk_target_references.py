@@ -2236,26 +2236,55 @@ def test_every_reference_and_hold_names_its_contract_targets_uprating_index() ->
     assert held_drift == []
 
 
-def test_committed_references_are_authored_at_the_reference_period() -> None:
-    """The generators author at UK_TARGET_REFERENCE_PERIOD and move the
-    contract's observation periods from it, so the committed references sit at
-    that period with the contract's observation periods as written (the third
-    review of microcosm#1422)."""
-    from microcosm.build.uk_runtime.ledger_targets import UK_TARGET_REFERENCE_PERIOD
+def test_contract_observation_periods_are_the_january_after_their_base() -> None:
+    """The contract writes each observation period for
+    UK_OBSERVATION_PERIOD_BASE: DfE's January census after that model year
+    (microcosm#1095 D5). The base belongs to the contract, so it moves only
+    with these periods, never with the period the references are authored at
+    (the fourth review of microcosm#1422)."""
+    from microcosm.build.uk_runtime.ledger_targets import UK_OBSERVATION_PERIOD_BASE
 
-    resource = _load_uk_resource("target_references.json")
     contract = _load_uk_resource("uk_population_targets.json")
-    observation_by_target = {
+    periods = {
         target["target_id"]: target["observation_period"]
         for target in contract["targets"]
         if "observation_period" in target
     }
-    assert observation_by_target
-    rows = resource["target_references"]
-    assert {row["period"] for row in rows} == {UK_TARGET_REFERENCE_PERIOD}
-    observed = {
-        row["metadata"]["contract_target_id"]: row["observation_period"]
-        for row in rows
-        if "observation_period" in row
+    assert periods
+    assert set(periods.values()) == {f"{UK_OBSERVATION_PERIOD_BASE + 1}-01"}
+
+
+@pytest.mark.parametrize("surface", ["national", "local"])
+def test_committed_references_read_the_january_after_their_period(surface) -> None:
+    """Each committed reference whose contract target declares an observation
+    period reads the January after its own period, whatever period the
+    generators authored at, and no other reference declares one. The
+    references sit at the generators' default period, so a plain regeneration
+    reproduces them (the third and fourth reviews of microcosm#1422)."""
+    from microcosm.build.uk_runtime.ledger_targets import UK_TARGET_REFERENCE_PERIOD
+
+    contract = {
+        target["target_id"]: target
+        for target in _load_uk_resource("uk_population_targets.json")["targets"]
     }
-    assert observed == observation_by_target
+    spec = load_country_spec("uk")
+    references = (
+        spec.target_references
+        if surface == "national"
+        else spec.local_target_references
+    )
+    assert {reference.period for reference in references} == {
+        UK_TARGET_REFERENCE_PERIOD
+    }, "Regenerate at the generators' default --period, or move it with them."
+    wrong = [
+        (reference.name, reference.observation_period)
+        for reference in references
+        if reference.observation_period
+        != (
+            f"{int(reference.period) + 1}-01"
+            if "observation_period"
+            in contract.get(reference.metadata.get("contract_target_id"), {})
+            else None
+        )
+    ]
+    assert wrong == []

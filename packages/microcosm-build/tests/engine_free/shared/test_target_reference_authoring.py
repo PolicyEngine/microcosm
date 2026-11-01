@@ -1305,7 +1305,26 @@ def test_authored_observation_period_moves_with_the_authored_period(
     config = TargetReferenceAuthoringConfig(
         target_period=period, observation_period_base=2025
     )
-    assert _authored_observation_period(target, config) == observed
+    assert _authored_observation_period(target, {}, config) == observed
     # Without a declared base the period is copied as written.
     plain = TargetReferenceAuthoringConfig(target_period=period)
-    assert _authored_observation_period(target, plain) == "2026-01"
+    assert _authored_observation_period(target, {}, plain) == "2026-01"
+
+
+def test_authored_observation_period_reads_the_selector_period_type() -> None:
+    """Under a fiscal-year selector "2011-12" is a fiscal year, so authoring a
+    year later moves both ends, as the restamp does (the fourth review of
+    microcosm#1422)."""
+    from microcosm.build.target_reference_authoring import (
+        _authored_observation_period,
+    )
+
+    target = {"observation_period": "2011-12"}
+    config = TargetReferenceAuthoringConfig(
+        target_period=2026, observation_period_base=2025
+    )
+    assert (
+        _authored_observation_period(target, {"period_type": "fiscal_year"}, config)
+        == "2012-13"
+    )
+    assert _authored_observation_period(target, {}, config) == "2012-12"

@@ -27,6 +27,7 @@ from microcosm.build.uk_runtime.high_value_homes import (
     load_uk_high_value_home_stock_facts,
 )
 from microcosm.build.uk_runtime.ledger_targets import (
+    UK_OBSERVATION_PERIOD_BASE,
     UK_TARGET_REFERENCE_PERIOD,
     UK_UPRATING_APPLIERS,
     uk_small_cell_rule_is_signed,
@@ -89,7 +90,7 @@ def main() -> None:
     crosswalk = json.loads(args.crosswalk.read_text(encoding="utf-8"))
     config = AreaTargetReferenceAuthoringConfig(
         target_period=args.period,
-        observation_period_base=UK_TARGET_REFERENCE_PERIOD,
+        observation_period_base=UK_OBSERVATION_PERIOD_BASE,
         areas_by_geography_level=_areas_by_geography_level(crosswalk),
         area_signed_deferrals=tuple(_area_signed_deferrals(contract, crosswalk)),
         value_operation_by_target_id=_value_operation_by_target_id(contract),

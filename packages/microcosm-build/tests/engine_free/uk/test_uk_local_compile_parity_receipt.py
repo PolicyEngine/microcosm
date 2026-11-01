@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import json
 from importlib import resources as importlib_resources
 
@@ -226,3 +227,32 @@ def test_a_receipt_without_uc_drift_rows_formats_no_uc_rationale():
     parity_tool._add_local_signed_rationale_notes(report)
     (row,) = report["differences"]
     assert row["reason"] == parity_tool._UC_NI_FIXTURE_ONLY_RATIONALE
+
+
+@pytest.mark.parametrize(
+    "spec", parity_tool.RECEIPTS, ids=lambda spec: f"{spec.surface}_receipt"
+)
+def test_each_committed_parity_receipt_gives_the_tool_s_reasons(spec):
+    """A reason changed in the tool fails here until its receipt is
+    regenerated: the national replay needs the feed, and nothing else in CI
+    compared the local receipt's reasons with the tool (the fourth review of
+    microcosm#1422)."""
+    committed = json.loads(
+        importlib_resources.files("microcosm.build.uk")
+        .joinpath(spec.output_resource)
+        .read_text(encoding="utf-8")
+    )
+    replayed = copy.deepcopy(committed)
+    parity_tool._add_signed_rationale_notes(
+        replayed, fixture_resource=spec.fixture_resource
+    )
+    if spec.surface == "local":
+        parity_tool._add_local_signed_rationale_notes(replayed)
+    stale = [
+        row["name"]
+        for row, expected in zip(
+            committed["differences"], replayed["differences"], strict=True
+        )
+        if row.get("reason") != expected.get("reason")
+    ]
+    assert stale == []

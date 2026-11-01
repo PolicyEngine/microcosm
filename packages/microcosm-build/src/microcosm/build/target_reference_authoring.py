@@ -134,9 +134,12 @@ class TargetReferenceAuthoringConfig:
 
 def _authored_observation_period(
     target: Mapping[str, Any],
+    selector: Mapping[str, Any],
     config: TargetReferenceAuthoringConfig | AreaTargetReferenceAuthoringConfig,
 ) -> int | str | None:
-    """The contract's observation period, moved to the authored target period."""
+    """The contract's observation period, moved to the authored target period
+    and read under the selector's period type, as ``restamp_reference_period``
+    reads it."""
 
     observation_period = target.get("observation_period")
     if observation_period is None or config.observation_period_base is None:
@@ -145,6 +148,7 @@ def _authored_observation_period(
         observation_period,
         _period_year(config.target_period)
         - _period_year(config.observation_period_base),
+        declared_type=str(selector.get("period_type", "")),
     )
 
 
@@ -1224,7 +1228,7 @@ def _area_reference_row(
     period_match_policy = target.get("period_match_policy")
     if period_match_policy is not None:
         row["period_match_policy"] = period_match_policy
-    observation_period = _authored_observation_period(target, config)
+    observation_period = _authored_observation_period(target, selector, config)
     if observation_period is not None:
         row["observation_period"] = observation_period
     uprating_index = target.get("uprating_index")
@@ -1451,7 +1455,7 @@ def _reference_row(
     period_match_policy = target.get("period_match_policy")
     if period_match_policy is not None:
         row["period_match_policy"] = period_match_policy
-    observation_period = _authored_observation_period(target, config)
+    observation_period = _authored_observation_period(target, selector, config)
     if observation_period is not None:
         row["observation_period"] = observation_period
     uprating_index = target.get("uprating_index")

@@ -2830,6 +2830,29 @@ def test_regional_home_values_gate_flags_a_region_of_fewer_than_three_rows() -> 
     assert result.details["sources_at_cap_unchecked"] is False
 
 
+def test_a_printed_count_stands_for_exactly_the_counts_that_print_as_it() -> None:
+    """Up to 20,000, the bounds the gates read a printed count at are the
+    lowest and highest counts that print as it, so an edge one count too wide
+    or too narrow fails: 10 stands for 10 to 14, and 1,000 for 995 to 1,049
+    (the fourth review of microcosm#1422)."""
+    from microcosm.build.uk_runtime.receipt_counts import rounded_count
+    from microcosm.build.uk_runtime.stage_health import _count_bounds
+
+    stands_for: dict[int | str, list[int]] = {}
+    # Past 20,000 so the last printed count's counts are all in.
+    for count in range(20_050):
+        stands_for.setdefault(rounded_count(count), []).append(count)
+    wrong = {
+        printed: (_count_bounds(printed), (min(counts), max(counts)))
+        for printed, counts in stands_for.items()
+        if not (isinstance(printed, int) and printed > 20_000)
+        and _count_bounds(printed) != (min(counts), max(counts))
+    }
+    assert wrong == {}
+    assert _count_bounds(10) == (10, 14)
+    assert _count_bounds(1000) == (995, 1049)
+
+
 def test_regional_home_values_gate_reads_a_banded_count_at_its_bounds() -> None:
     """A region the receipt prints "3-9" rewrote three to nine rows: not empty,
     above the floor, so not flagged, and read at three in the sum check. A
@@ -3391,7 +3414,7 @@ def test_assembled_stage_gates_read_only_stages_run_by_the_assembled_boundary() 
     or the boundary offers no receipt for it and the gate fails closed (the
     re-review of microcosm#1422)."""
     from microcosm.build import load_country_spec
-    from microcosm.build.uk_runtime.spine_build import UK_SPINE_ASSEMBLED_FINAL_STAGE
+    from microcosm.build.uk_runtime.graph import UK_SPINE_ASSEMBLED_FINAL_STAGE
 
     spec = load_country_spec("uk")
     order = [stage.stage for stage in spec.sources.stages]

@@ -4672,7 +4672,9 @@ def restamp_reference_period(
     A declared ``observation_period`` keeps its offset from the target period:
     a row that reads DfE's January census after its model year reads the
     census after the new one. Restamping only ``period`` left every such row
-    on the census it was written for (the review of microcosm#1422).
+    on the census it was written for (the review of microcosm#1422). The
+    observation period is read as the exact-match path reads it, under the
+    selector's ``period_type`` when it declares one.
     """
 
     if reference.observation_period is None:
@@ -4686,26 +4688,38 @@ def restamp_reference_period(
     return replace(
         reference,
         period=period,
-        observation_period=_shift_period_years(reference.observation_period, shift),
+        observation_period=_shift_period_years(
+            reference.observation_period,
+            shift,
+            declared_type=str(reference.ledger_selector.get("period_type", "")),
+        ),
     )
 
 
 def _period_year(period: int | str) -> int:
     parsed, ordinal, _ = _period_key_from_value(period)
-    if not parsed:
-        raise ValueError(f"cannot read a year from the period {period!r}.")
-    return ordinal // 100
+    year = ordinal // 100
+    # The parser reads "FY25" as the year 25, which would move an observation
+    # period by two millennia (the fourth review of microcosm#1422).
+    if not parsed or not 1000 <= year <= 9999:
+        raise ValueError(f"cannot read a four-digit year from the period {period!r}.")
+    return year
 
 
-def _shift_period_years(period: int | str, years: int) -> int | str:
+def _shift_period_years(
+    period: int | str, years: int, *, declared_type: str = ""
+) -> int | str:
     """The period ``years`` later, in its own spelling.
 
-    The spelling is classified as the ledger's own period parser reads it
-    (``_normalize_period_value``): an annual range (``"2024-25"``,
-    ``"2024-2025"``, ``"fy2024_25"``) moves both ends, and a year
-    (``2026``, ``"FY2026"``) or a month (``"2026-01"``, ``"2011-12"``,
-    ``"2026-1"``) moves its year. A spelling the parser does not read
-    refuses, unless it does not move (the third review of microcosm#1422).
+    The spelling is classified as the exact-match path reads it: under the
+    selector's ``period_type`` when the reference declares one, else as the
+    ledger's own period parser reads it (``_normalize_period_value``). An
+    annual range (``"2024-25"``, ``"2024-2025"``, ``"fy2024_25"``, and
+    ``"2011-12"`` under an annual type) moves both ends, and a year
+    (``2026``, ``"FY2026"``) or a month (``"2026-01"``, ``"2026-1"``, and
+    ``"2011-12"`` untyped or under ``month``) moves its year. A spelling the
+    parser does not read under that type refuses, unless it does not move
+    (the third and fourth reviews of microcosm#1422).
     """
 
     if years == 0:
@@ -4713,7 +4727,9 @@ def _shift_period_years(period: int | str, years: int) -> int | str:
     if isinstance(period, int):
         return period + years
     text = str(period).strip()
-    (parsed, _, _), _, range_end, _ = _normalize_period_value(text)
+    (parsed, _, _), _, range_end, _ = _normalize_period_value(
+        text, declared_type=declared_type
+    )
     if parsed and range_end is not None:
         ranged = re.fullmatch(r"(\D*)(\d{4})([-_])(\d{2}|\d{4})", text)
         if ranged:
