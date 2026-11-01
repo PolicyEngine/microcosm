@@ -11,6 +11,7 @@ import pytest
 from microcosm.build.country_spec import load_country_spec
 from microcosm.build.stochastic_assignment import stable_identity_uniforms
 from microcosm.build.uk_runtime.national_frame import uk_national_frame
+from microcosm.build.uk_runtime.receipt_counts import rounded_count, small_cell_share
 from microcosm.build.uk_runtime.trading_allowance_receipts import (
     TRADING_ALLOWANCE_RECEIPTS_OUTPUT,
     TRADING_ALLOWANCE_RECEIPTS_STAGE_NAME,
@@ -118,11 +119,12 @@ def test_the_receipt_rounds_counts_and_bands_shares() -> None:
     assert [band["rate"] for band in evidence["bands"]] == [0.64, 0.32, 0.0]
     assert all(band["support"] == "30+" for band in evidence["bands"])
     assert evidence["bands"][0]["weighted_traders"] == pytest.approx(100.0)
-    # Fewer than ten source households behind a band print "<10".
+    # Fewer than ten source households behind a band print the small-cell
+    # label, whatever the rounding rules make it (microcosm#1428 review).
     transform(_frame(np.asarray([500.0] * 5)))
     small = transform.checkpoint_metadata()["evidence"]
-    assert small["traders"] == "<10"
-    assert small["bands"][0]["weighted_traders"] == "<10"
+    assert small["traders"] == rounded_count(5)
+    assert small["bands"][0]["weighted_traders"] == small_cell_share(10.0, 5)
 
 
 def test_the_stage_refuses_drifted_parameters_and_a_second_writer() -> None:

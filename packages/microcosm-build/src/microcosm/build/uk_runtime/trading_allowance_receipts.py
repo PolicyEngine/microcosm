@@ -32,9 +32,19 @@ or less is now taxed where the engine used to relieve it in full.
 Until HMRC publishes claimant counts, the rates are calibrated to HMRC's
 policy paper on the Budget 2026 raise (about 400,000 taxpayers with a lower
 bill, by about GBP 380 on average) on the #1428 national b441bb5a0, at
-2028-29 prices (María's choice of 2026-10-31). The engine uprates receipts
-with profit, so a claimant's GBP 1,000 grows with the mixed income index, and
-the raise relieves slightly less than GBP 2,000 more in later years.
+2028-29 prices (María's choice of 2026-10-31).
+
+Two limits of encoding the claim in receipts (#1428 review, findings 2 and 8;
+María's ruling of 2026-11-01 keeps them, documented, until policyengine-uk#2765
+lets the stage store the claim status itself, microcosm#1439):
+
+* The engine uprates receipts with profit, so a claimant's GBP 1,000 grows with
+  the mixed income index while the allowance is nominal: the raise relieves
+  GBP 1,932 more in 2027-28, falling to GBP 1,758 by 2031-32, 3.4% to 12.1%
+  below GBP 2,000.
+* The other traders' stored GBP 3,000 grows the same way, so an allowance above
+  GBP 3,000 times that index relieves them from the stored expense, not from
+  data. Allowances above GBP 3,000 are mis-scored on this encoding.
 """
 
 from __future__ import annotations

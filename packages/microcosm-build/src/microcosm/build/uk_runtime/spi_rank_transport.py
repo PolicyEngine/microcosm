@@ -116,10 +116,11 @@ SPI_STAGE1_ANALOGUE_COLUMNS: Mapping[str, str | None] = {
     "dividend_income": "dividend_income",
     "private_pension_income": "private_pension_income",
     "property_income": "property_income",
-    # The twin's own other income locates the draw (microcosm#1428): gilts,
-    # trust income and purchased-annuity income, the FRS sources of SPI's other
-    # income, so a copy's OTHERINV draw ranks with its twin's holdings instead
-    # of an identity uniform that ignores them.
+    # The twin's own other income locates the draw (microcosm#1428): its gilt
+    # interest, so a copy's OTHERINV draw ranks with its twin's holdings
+    # instead of an identity uniform that ignores them. The twin's purchased
+    # annuity and trust payments stay in private_pension_income, whose
+    # analogue they join.
     "other_investment_income": "other_investment_income",
     "gift_aid": None,
     "charitable_investment_gifts": None,

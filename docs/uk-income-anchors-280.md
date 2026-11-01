@@ -62,8 +62,10 @@ membership carries the uprated value with its receipt.
   others take `policyengine_uk_parameter:<path>`, the ratio of the pinned
   engine's parameter between 1 January of the fact's opening year and 1
   January of the calibration year, the instants the SPI donor rebasing already
-  uses: dividends `obr.per_capita.gdp`. Savings interest takes two legs
-  (microcosm#1095): `ons.household_interest_income`, the index of its
+  uses: dividends `obr.per_capita.gdp`. Savings interest outside SPI Table
+  3.7's rows takes two legs (microcosm#1095); Table 3.7's interest and other
+  income rows take the OBR's savings income path from 2023-24 instead, as the
+  next paragraph says (microcosm#1418): `ons.household_interest_income`, the index of its
   history, to the dataset's year, then `obr.per_capita.gdp`, the index the
   engine's dataset projection applies, to the calibration year (1.1420 x
   1.0474 = 1.1961 on the pinned engine values; 1.0438 and 1.1920 before
@@ -86,9 +88,19 @@ membership carries the uprated value with its receipt.
   vendored as `uk/hmrc_spi_table_3_7_savings_rows.json`), then grows them on the
   OBR's savings income path the Table 3.7 targets take
   (`hmrc_uprating.uk_obr_savings_income_level`). Each band's factor is the
-  published amount over the tape's FACT-weighted one; a band the tape carries
-  none of is left as it is. From the frame's year on, the engine projects both
-  columns at GDP per head.
+  published amount over the FACT-weighted amount of the tape's taxpayers in
+  the band, as Table 3.7 counts taxpayers only (microcosm#1428). The tape is
+  banded on its income moved to 2023-24, each income leaf at its own factor,
+  repeating until the rebased savings move no record across a band edge, so
+  the band-edge migration the consumers re-band on uprated income is counted
+  once. A taxpayer is a record the tape flags (TAXPAYER 1) or one whose income
+  crosses the Personal Allowance by 2023-24; a flagged taxpayer below the first
+  band sits in it (note 8); any other record takes the factor of all bands. A
+  band the tape carries none of is left as it is, a band whose tape amount is
+  under a tenth of its published amount takes the factor of all bands, and a
+  column whose tape does not gross to the published amounts is left as it is
+  and grows on its engine index from 2022-23. From the frame's year on, the
+  engine projects the two columns on their own indices.
 - Count rows: `hmrc.itl_2026.taxpayer_count_growth_by_total_income_band`, HMRC's
   own projected growth in Income Tax payers for the Table 2.5 band that contains
   the SPI band (Income Tax liabilities statistics, July 2026), as the
@@ -398,8 +410,9 @@ fold differs from its twin's, and a reference whose sign classes differ from
 the tape forest's on any located target. One difference between the two
 forests remains: the reference locates a leaf given the twin's observed
 earlier analogue leaves, while the tape forest draws it given every earlier
-output, the three identity-uniform leaves (`other_investment_income`,
-`gift_aid`, `charitable_investment_gifts`) included, so a located quantile is
+output, the two identity-uniform leaves (`gift_aid`,
+`charitable_investment_gifts`) included, since `other_investment_income` has
+located at the twin's own other income from microcosm#1428, so a located quantile is
 read off a conditional those identity draws also shape; pay, which follows
 them in the chain, has the weakest rank fidelity, and moving the analogue
 targets ahead of the identity leaves is the follow-up to measure. Because the

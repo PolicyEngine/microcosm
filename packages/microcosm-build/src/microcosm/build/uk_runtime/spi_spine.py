@@ -216,8 +216,8 @@ UK_SPI_INCOME_SPINE_REWRITE_COLUMNS = (
     "self_employment_income",
     "savings_interest_income",
     "dividend_income",
-    # The tape's OTHERINV on SPI rows; FRS rows carry their own NS&I and gilt
-    # interest from frs_spine (microcosm#1418).
+    # The tape's OTHERINV on SPI rows; FRS rows carry their own gilt interest
+    # from frs_spine (microcosm#1418), NS&I being interest (microcosm#1428).
     "other_investment_income",
     "private_pension_income",
     "property_income",

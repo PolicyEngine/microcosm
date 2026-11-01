@@ -1,1 +1,1 @@
-The SPI stage-1 transport now locates each copy's other-income draw at its FRS twin's own other income (gilts, trust and purchased-annuity income), as it does for the other investment leaves, instead of an identity uniform that ignored the twin's holdings (#1428).
+The SPI stage-1 transport now locates each copy's other-income draw at its FRS twin's own other income (gilt interest), as it does for the other investment leaves, instead of an identity uniform that ignored the twin's holdings (#1428).
