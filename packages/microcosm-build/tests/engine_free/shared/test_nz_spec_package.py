@@ -3262,10 +3262,8 @@ class TestSourceCitations:
         assert TransportCreateKernel.ref == unit_declarations.CREATE_V1_REF
         parser_source = inspect.getsource(unit_declarations.create_unit_declaration)
         assert "if kernel == CREATE_V1_REF:" in parser_source
-        assert (
-            "MultiUnitRule.from_benefit_unit(BenefitUnitRule.from_spec(document))"
-            in parser_source
-        )
+        assert "rule = BenefitUnitRule.from_spec(document)" in parser_source
+        assert "return MultiUnitRule.from_benefit_unit(rule)" in parser_source
         declaration = unit_declarations.create_unit_declaration(
             TransportCreateKernel.ref, rule
         )
