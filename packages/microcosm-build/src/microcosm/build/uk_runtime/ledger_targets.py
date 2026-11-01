@@ -477,6 +477,13 @@ def _uk_local_metric_target_ids() -> dict[str, str | dict[str, str]]:
     return mapping
 
 
+#: The target period the committed UK references are authored at, and the
+#: model year their observation periods are written for: the DfE rows read
+#: January 2026, the spring term after model year 2025 (microcosm#1095 D5).
+#: The generators default to it and author observation periods from it.
+UK_TARGET_REFERENCE_PERIOD = 2025
+
+
 def compile_uk_target_registry(
     facts: Iterable[Mapping[str, Any]],
     *,
@@ -494,10 +501,13 @@ def compile_uk_target_registry(
         try:
             restamped = restamp_reference_period(reference, target_period)
         except ValueError as error:
-            unsupported.append(
-                {"name": reference.name, "period": target_period, "reason": str(error)}
-            )
-            continue
+            # An observation period that cannot move is a contract error, not
+            # a fact gap: refuse the whole compile, naming the row (the third
+            # review of microcosm#1422).
+            raise ValueError(
+                f"UK target reference {reference.name!r} cannot be restamped to "
+                f"{target_period!r}: {error}"
+            ) from error
         candidate_facts = _candidate_facts_for_reference(
             fact_rows, restamped, fact_indices_by_source=fact_indices_by_source
         )
@@ -1436,10 +1446,13 @@ def compile_uk_local_target_registry(
         try:
             restamped = restamp_reference_period(reference, target_period)
         except ValueError as error:
-            unsupported.append(
-                {"name": reference.name, "period": target_period, "reason": str(error)}
-            )
-            continue
+            # An observation period that cannot move is a contract error, not
+            # a fact gap: refuse the whole compile, naming the row (the third
+            # review of microcosm#1422).
+            raise ValueError(
+                f"UK target reference {reference.name!r} cannot be restamped to "
+                f"{target_period!r}: {error}"
+            ) from error
         _assert_local_reference_in_crosswalk(restamped, rosters)
         candidate_facts = _candidate_facts_for_reference(
             _local_candidate_fact_pool(

@@ -2791,3 +2791,17 @@ def test_brma_rent_composer_reports_no_brma_rows() -> None:
         "applied": False,
         "reason": "no Scottish BRMA private-rent rows on the surface",
     }
+
+
+def test_a_reference_that_cannot_be_restamped_stops_the_compile(monkeypatch) -> None:
+    """An observation period that cannot move to the target period is a
+    contract error: the compile refuses, naming the row, rather than record
+    it as an unsupported row (the third review of microcosm#1422)."""
+    from microcosm.build.uk_runtime import ledger_targets as uk_ledger_targets
+
+    def refuse(reference, period):
+        raise ValueError(f"cannot move the period of {reference.name!r}")
+
+    monkeypatch.setattr(uk_ledger_targets, "restamp_reference_period", refuse)
+    with pytest.raises(ValueError, match="cannot be restamped to 2026"):
+        uk_ledger_targets.compile_uk_target_registry([], target_period=2026)

@@ -79,6 +79,16 @@ class SpineGateBlockedError(ValueError):
         )
 
 
+#: The last stage of the assembled checkpoint: everything through the base
+#: FRS mapping and the stochastic draws. A name, not an index — a position
+#: standing in for a key is correct only while two independently-maintained
+#: orderings happen to agree (the uk-data#468 class). Both the graph's spine
+#: gates and the plan path read it, so an assembled-phase gate's stage is
+#: checked against the boundary the build runs (the third review of
+#: microcosm#1422).
+UK_SPINE_ASSEMBLED_FINAL_STAGE = "frs_brma"
+
+
 def require_uk_spine_gate_admission(
     context: KernelContext, *, alias: str = "spine_gate"
 ) -> None:
@@ -240,14 +250,17 @@ def add_uk_spine_gate_nodes(
     compiled = compile_graph(graph)
     endpoint = uk_spine_endpoint(graph)
     stages = endpoint.stage_names
-    if "frs_brma" not in stages:
-        raise ValueError("Spine gates require the assembled frs_brma boundary.")
-    end = stages.index("frs_brma") + 1
+    if UK_SPINE_ASSEMBLED_FINAL_STAGE not in stages:
+        raise ValueError(
+            "Spine gates require the assembled "
+            f"{UK_SPINE_ASSEMBLED_FINAL_STAGE} boundary."
+        )
+    end = stages.index(UK_SPINE_ASSEMBLED_FINAL_STAGE) + 1
     checkpoints = (
         (
             "assembled",
-            compiled.versions["frs_brma"],
-            graph.node("frs_brma.checkpoint").inputs,
+            compiled.versions[UK_SPINE_ASSEMBLED_FINAL_STAGE],
+            graph.node(f"{UK_SPINE_ASSEMBLED_FINAL_STAGE}.checkpoint").inputs,
             stages[:end],
         ),
         ("transferred", endpoint.population, endpoint.inputs, stages),

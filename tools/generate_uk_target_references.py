@@ -26,7 +26,10 @@ from microcosm.build.target_reference_authoring import (
 from microcosm.build.uk_runtime.high_value_homes import (
     load_uk_high_value_home_stock_facts,
 )
-from microcosm.build.uk_runtime.ledger_targets import UK_UPRATING_APPLIERS
+from microcosm.build.uk_runtime.ledger_targets import (
+    UK_TARGET_REFERENCE_PERIOD,
+    UK_UPRATING_APPLIERS,
+)
 from microcosm.build.uk_runtime.uc_source_periods import (
     SOURCE_MONTH_FAMILIES,
     uc_source_month_metadata,
@@ -144,9 +147,7 @@ def main() -> None:
 
     config = TargetReferenceAuthoringConfig(
         target_period=args.period,
-        # The DfE rows' observation periods (January 2026) are written for
-        # model year 2025 (microcosm#1095 D5).
-        observation_period_base=2025,
+        observation_period_base=UK_TARGET_REFERENCE_PERIOD,
         geography_pins=_geography_pins(contract),
         geography_fanout_by_target_id=_geography_fanout(contract),
         geography_fanout_metadata=_geography_fanout_metadata,
@@ -194,7 +195,7 @@ def _parser() -> argparse.ArgumentParser:
         "--source-fact-feed",
         help="Stable display name recorded in the generated membership report.",
     )
-    parser.add_argument("--period", type=int, default=2025)
+    parser.add_argument("--period", type=int, default=UK_TARGET_REFERENCE_PERIOD)
     parser.add_argument(
         "--derived-facts",
         type=Path,

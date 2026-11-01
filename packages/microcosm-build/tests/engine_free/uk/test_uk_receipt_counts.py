@@ -105,51 +105,72 @@ def test_no_uk_output_still_withholds_at_ten() -> None:
     assert writers == []
 
 
-#: Every ten that is not a floor of ten on survey records, each by the phrase
-#: that contains it: statistical floors (too few rows to measure what the
-#: figure measures), band and rounding edges, history, facts true at the floor
-#: of three, and tens that count something else. A phrase allows only the
-#: match it contains, never another on the same line.
-_KEPT_TENS = {
+#: Every ten the guard finds that is not a floor of ten on survey records:
+#: statistical floors (too few rows to measure what a figure measures), band
+#: and rounding edges, history, facts that hold at the floor of three, and
+#: tens that count something else. Each entry is the exact phrase containing a
+#: match and how many matches it covers in its file, so a new match fails even
+#: where an existing phrase would cover it, and so does an entry that matches
+#: nothing.
+_KEPT_TENS: dict[str, tuple[tuple[str, int], ...]] = {
     "uk_runtime/frs_annual_income.py": (
-        "PAY_CONCEPT_RATIO_MINIMUM_SUPPORT = 10",
-        "support band is under ten",
+        ("PAY_CONCEPT_RATIO_MINIMUM_SUPPORT = 10", 1),
+        ("holds one past them on fewer than ten households", 1),
+        ("a ratio whose support band is under ten", 1),
     ),
     "uk_runtime/stage_health.py": (
-        "pay concept ratio on fewer than ten households",
-        "if value >= 10:",
+        ("So is a pay concept ratio on fewer than ten households", 1),
+        ("a count under ten prints", 1),
+        ("if value >= 10:", 1),
     ),
-    "uk_runtime/receipt_counts.py": ("if value < 10:",),
-    "uk_runtime/spi_rank_transport.py": ("SPI_TRANSPORT_GROUP_MINIMUM_ROWS = 10",),
-    "uk_runtime/private_rent_localisation.py": ("MIN_SAMPLED_REGION_RENTERS = 10",),
-    "uk_runtime/frs_education.py": ("AGE_LEFT_FULL_TIME_EDUCATION_MIN = 10",),
-    "uk_runtime/frs_spine.py": ("fewer than ten code-6 amounts",),
-    "uk_runtime/orrery_contract.py": ("rows resting on fewer than ten",),
-    "uk_runtime/support_floor.py": ("rests on fewer than ten records is no reason",),
-    "uk_runtime/national_reconciliation.py": ("len(moved) > 10",),
-    "uk_runtime/size_evaluation.py": ("(values > 10)",),
-    "uk_runtime/employer_pension_contributions.py": ("8% to < 10%",),
-    "uk_runtime/spi_dependency.py": ("at least ten",),
-    "uk/spec/sources.yaml": ("over at least 10 rows (a statistical floor",),
+    "uk_runtime/receipt_counts.py": (("if value < 10:", 3),),
+    "uk_runtime/spi_rank_transport.py": (("SPI_TRANSPORT_GROUP_MINIMUM_ROWS = 10", 1),),
+    "uk_runtime/private_rent_localisation.py": (
+        ("MIN_SAMPLED_REGION_RENTERS = 10", 1),
+    ),
+    "uk_runtime/frs_education.py": (("AGE_LEFT_FULL_TIME_EDUCATION_MIN = 10", 1),),
+    "uk_runtime/firm_generation.py": (("if employment <= 9:", 2),),
+    "uk_runtime/frs_spine.py": (
+        ("fewer than ten code-6 amounts", 1),
+        ("fewer than 10 awards", 1),
+    ),
+    "uk_runtime/orrery_contract.py": (("rows resting on fewer than ten", 1),),
+    "uk_runtime/support_floor.py": (
+        ("rests on fewer than ten records is no reason", 1),
+    ),
+    "uk_runtime/national_reconciliation.py": (("len(moved) > 10", 1),),
+    "uk_runtime/size_evaluation.py": (("(values > 10)", 1),),
+    "uk_runtime/spi_dependency.py": (("goes to HMRC at least ten", 2),),
+    "uk/spec/sources.yaml": (("over at least 10 rows (a statistical floor", 1),),
     "uk/calibration_measure_exclusions.json": (
-        "a cell that rests on fewer than 10 records is no reason",
-        "rows under 10 source households are withheld, as the BRMA rows' are "
-        "(under three",
-        "fewer than 10 source households carry them (fewer than three",
-        "fewer than ten source households carry Plan 5 repayments",
+        ("a cell that rests on fewer than 10 records is no reason", 1),
+        (
+            "rows under 10 source households are withheld, as the BRMA rows' are "
+            "(under three",
+            1,
+        ),
+        ("fewer than 10 source households carry them (fewer than three", 1),
+        ("fewer than ten source households carry Plan 5 repayments", 1),
     ),
     "uk/target_reference_signed_exclusions.json": (
-        "about one household weight",
-        "expected to rest on fewer than 10 records",
+        ("expected to rest on fewer than 10 records", 2),
     ),
-    "uk/local_small_cell_rule.json": ("expected to rest on fewer than 10 records",),
+    "uk/local_small_cell_rule.json": (
+        ("expected to rest on fewer than 10 records", 1),
+    ),
+    "uk/uk_population_targets.json": (
+        ("Fewer than 10 FRS source households carry that difference", 2),
+    ),
     "tools/uk_private_rent_receipt.py": (
-        "MIN_GROUP_CELLS = 10",
-        "at least ten cells",
-        "fewer than ten published rows",
+        ("MIN_GROUP_CELLS = 10", 1),
+        ("summarised only over at least ten cells", 1),
+        ("A group of fewer than ten published rows", 1),
     ),
-    "tools/measure_uk_spi_half_coherence.py": ("MIN_CELL = 10",),
-    "tools/measure_uk_weighted_integrity_baselines.py": ("at least ten",),
+    "tools/measure_uk_spi_half_coherence.py": (("MIN_CELL = 10", 1),),
+    "tools/measure_uk_weighted_integrity_baselines.py": (
+        ("goes to HMRC at least ten working days", 1),
+    ),
+    "tools/graph_uk_spine_fixture.py": (("4 <= band <= 9", 1),),
 }
 #: The hand-written UK JSON files; the generated ones repeat what these say.
 _UK_HAND_WRITTEN_JSON = (
@@ -162,23 +183,34 @@ _UK_HAND_WRITTEN_JSON = (
 
 
 def test_no_uk_floor_of_ten_hides_outside_the_label() -> None:
-    """The "<10" label is only one way to keep a floor of ten: a comparison
-    with ten in any form, a constant, default or keyword of ten, or prose
-    saying "fewer than ten" or "at least ten" is another (the reviews of
-    microcosm#1422). Each that is left is named in ``_KEPT_TENS``."""
+    """The "<10" label is only one way to keep a floor of ten (the reviews of
+    microcosm#1422). Over the UK runtime, the UK spec, the hand-written UK
+    JSON, the UK tools and microcosm-data, this guard finds:
+
+    - a comparison with ten, ``<``, ``<=``, ``>`` or ``>=`` on either side, and
+      ``> 9`` or ``<= 9``, but not a format spec (``{x:<10}``), ``10_000``,
+      ``10.5``, ``10%`` or ``10 * x``;
+    - a keyword, key or default named ``min*``, ``minimum*`` or ``threshold*``
+      set to ten in Python, YAML or JSON, and a constant named ``*MIN*``,
+      ``*FLOOR*``, ``*SDC*``, ``*SMALL*`` or ``*THRESHOLD*`` set to ten;
+    - prose: "fewer than", "under", "below", "less than" or "at least" before
+      "ten" or "10", and "one to nine".
+
+    Each it finds must be named in ``_KEPT_TENS``.
+    """
 
     root = paths_for("microcosm-build").repository
     build = paths_for("microcosm-build").package / "src" / "microcosm" / "build"
     floors = re.compile(
-        r"<\s?10(?![\d%.])"
-        r"|[<>]=?\s*10\b(?!\.\d)(?!\s*\*)"
-        r"|\b10\s*[<>]=?(?!=)"
-        r"|\bminimum\w*\s*=\s*10\b"
+        r"(?<![:{])[<>]=?\s*10\b(?![\d_.%])(?!\s*\*)"
+        r"|(?<![\w.])10\s*[<>]=?(?![=\d])"
+        r"|(?:>|<=)\s*9\b(?![\d_.%])"
+        r"|\b(?:min|minimum|threshold)\w*\s*[=:]\s*10\b(?![\d_.%])"
         r"|\bminimum_\w*\s*:\s*int\s*=\s*10\b"
-        r"|^\s*_?[A-Z0-9_]*(?:MIN|FLOOR|SDC|SMALL)[A-Z0-9_]*\s*(?::[^=\n]+)?=\s*10\b"
-        r'|"(?:minimum_\w*|\w*_minimum\w*)":\s*10\b'
-        r"|\b(?:fewer than|under|below|less than|at least) (?:ten|10 (?:rows|records"
-        r"|households|source households|sources|donors|cells))\b"
+        r"|^\s*_?[A-Z0-9_]*(?:MIN|FLOOR|SDC|SMALL|THRESHOLD)[A-Z0-9_]*\s*"
+        r"(?::[^=\n]+)?=\s*10\b(?![\d_.%])"
+        r'|"(?:min\w*|\w*_min\w*|threshold\w*)":\s*10\b(?![\d_.%])'
+        r"|\b(?:fewer than|under|below|less than|at least) (?:ten|10)\b(?![\d_.%])"
         r"|\bone to nine\b",
         re.IGNORECASE | re.MULTILINE,
     )
@@ -192,35 +224,58 @@ def test_no_uk_floor_of_ten_hides_outside_the_label() -> None:
         *(paths_for("microcosm-data").package / "src").rglob("*.py"),
     )
     found = []
+    covered: dict[tuple[str, str], int] = {}
     for path in paths:
         text = path.read_text(encoding="utf-8")
         name = path.relative_to(root).as_posix()
         kept = next(
             (
-                needles
-                for suffix, needles in _KEPT_TENS.items()
+                entries
+                for suffix, entries in _KEPT_TENS.items()
                 if name.endswith(suffix)
             ),
             (),
         )
         for match in floors.finditer(text):
-            covered = False
-            for needle in kept:
-                at = text.find(needle, max(0, match.end() - len(needle)))
-                while 0 <= at <= match.start():
-                    if at + len(needle) >= match.end():
-                        covered = True
-                        break
-                    at = text.find(needle, at + 1)
-                if covered:
-                    break
-            if not covered:
+            phrase = next(
+                (
+                    phrase
+                    for phrase, _ in kept
+                    if any(
+                        at <= match.start() and at + len(phrase) >= match.end()
+                        for at in (
+                            index.start()
+                            for index in re.finditer(re.escape(phrase), text)
+                        )
+                    )
+                ),
+                None,
+            )
+            if phrase is None:
                 line_start = text.rfind("\n", 0, match.start()) + 1
+                line_end = text.find("\n", match.end())
                 found.append(
                     f"{name}:{text.count(chr(10), 0, match.start()) + 1}: "
-                    f"{text[line_start : match.end() + 40].strip()[:120]}"
+                    f"{text[line_start:line_end].strip()[:120]}"
                 )
+            else:
+                key = (name, phrase)
+                covered[key] = covered.get(key, 0) + 1
     assert found == []
+    counts = {
+        (suffix, phrase): count
+        for suffix, entries in _KEPT_TENS.items()
+        for phrase, count in entries
+    }
+    seen = {
+        (suffix, phrase): sum(
+            hits
+            for (name, kept_phrase), hits in covered.items()
+            if name.endswith(suffix) and kept_phrase == phrase
+        )
+        for suffix, phrase in counts
+    }
+    assert seen == counts
 
 
 def test_counts_refuse_a_negative_count() -> None:

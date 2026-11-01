@@ -944,6 +944,17 @@ def _receipt(
             ratio if ratio_support >= UK_DISCLOSURE_FLOOR else UK_WITHHELD
         ),
         "pay_concept_ratio_support": support_band(ratio_support),
+        # Whether the stage moved the ratio onto its bounds (pay_concept_ratio
+        # holds one past them on fewer than ten households, and holds it to a
+        # bound exactly); withheld beside a withheld ratio.
+        "pay_concept_ratio_held": (
+            UK_WITHHELD
+            if ratio_support < UK_DISCLOSURE_FLOOR
+            else bool(
+                ratio_support < PAY_CONCEPT_RATIO_MINIMUM_SUPPORT
+                and ratio in PAY_CONCEPT_RATIO_BOUNDS
+            )
+        ),
         "earnings_growth": float(earnings_growth),
         "spell_sources": sources,
         "donor_cells": dict(donor_cells),

@@ -434,6 +434,36 @@ def test_receipt_bands_its_structural_counts(broken: int, count: object) -> None
     assert receipt["rows_negative_other_spells"] == 0
 
 
+@pytest.mark.parametrize(
+    ("ratio", "support", "held"),
+    [(1.10, 5, True), (1.02, 5, False), (1.10, 12, False), (1.10, 2, "<3")],
+)
+def test_receipt_says_whether_the_stage_held_the_ratio(ratio, support, held) -> None:
+    """Held means moved onto a bound on fewer than ten households; beside a
+    ratio withheld on one or two households, the flag is withheld too."""
+    rows = 20
+    receipt = fai._receipt(
+        pd.DataFrame({"person_household_id": np.arange(rows)}),
+        weights=np.ones(rows),
+        descriptors=pd.DataFrame(
+            {column: np.ones(rows) for column in fai.ANNUAL_SHARE_COLUMNS}
+            | {column: np.zeros(rows) for column in fai.OTHER_SPELLS_COLUMNS}
+        ),
+        current=np.zeros(rows),
+        se_current=np.zeros(rows),
+        pay=np.zeros(rows, dtype=bool),
+        source=np.full(rows, fai.SOURCE_FULL_YEAR),
+        observed=np.zeros(rows, dtype=bool),
+        needs_donor=np.zeros(rows, dtype=bool),
+        donor_cells={},
+        ratio=ratio,
+        ratio_support=support,
+        earnings_growth=0.0,
+        employment_share=np.ones(rows),
+    )
+    assert receipt["pay_concept_ratio_held"] == held
+
+
 def _gate(evidence: dict):
     """The declared stage-health gate, called as the gate battery calls it."""
 
@@ -559,20 +589,33 @@ def test_gate_flags_a_ratio_on_fewer_than_three_households(key: str) -> None:
     assert gate.details[f"{key}_measured"] is False
 
 
-@pytest.mark.parametrize(("support", "measured"), [("3-9", False), ("10-29", True)])
-def test_gate_reads_a_ratio_held_to_its_bounds_unmeasured(support, measured) -> None:
+@pytest.mark.parametrize(
+    ("ratio", "support", "held", "measured"),
+    [
+        # Held onto its upper bound on five households: unjudged, and held.
+        (1.10, "3-9", True, False),
+        # In bounds on five households: unjudged, but never moved.
+        (1.02, "3-9", False, False),
+        (1.10, "10-29", False, True),
+    ],
+)
+def test_gate_reads_a_thin_ratio_unmeasured_and_says_when_it_was_held(
+    ratio, support, held, measured
+) -> None:
     """The stage holds a ratio on fewer than ten households to its bounds, so
-    the gate cannot judge it, though the receipt prints it from three up."""
+    the gate cannot judge one on fewer, though the receipt prints it from three
+    up; the receipt says whether the stage moved it (the reviews of #1422)."""
     gate = _gate(
         {
             **_leaver_evidence(),
-            "pay_concept_ratio": 1.10,
+            "pay_concept_ratio": ratio,
             "pay_concept_ratio_support": support,
+            "pay_concept_ratio_held": held,
         }
     )
     assert gate.passed, gate.failures
     assert gate.details.get("pay_concept_ratio_measured", True) is measured
-    assert gate.details.get("pay_concept_ratio_held_to_bounds", False) is not measured
+    assert gate.details.get("pay_concept_ratio_held_to_bounds", False) is held
 
 
 def _stage(**overrides) -> SourceStageSpec:
