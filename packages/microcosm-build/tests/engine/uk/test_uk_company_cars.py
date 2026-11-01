@@ -58,7 +58,7 @@ def _frame():
             "person_is_spi_income_recipient": [False, False, True, True, False],
             "hmrc_spi_employment_benefits": [0.0, 0.0, 30_000.0, 1_500.0, 0.0],
             "employee_pension_contributions": [3_000.0, 0.0, 9_000.0, 2_000.0, 0.0],
-            "employment_status": ["FT_EMPLOYEE"] * 5,
+            "employment_status": ["FT_EMPLOYED"] * 5,
             "self_employment_income": [0.0] * 5,
             "uc_is_in_gainful_self_employment": [False] * 5,
         }

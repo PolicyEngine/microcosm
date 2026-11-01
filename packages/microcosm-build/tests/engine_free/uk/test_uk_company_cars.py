@@ -528,7 +528,7 @@ def _stage_frame(seed: int = 1, households: int = 600, order=None, sources=None)
     )
     self_employed = extra.random(len(person)) < 0.05
     person["employment_status"] = np.where(
-        self_employed, "FT_SELF_EMPLOYED", "FT_EMPLOYEE"
+        self_employed, "FT_SELF_EMPLOYED", "FT_EMPLOYED"
     )
     person["self_employment_income"] = np.where(
         extra.random(len(person)) < 0.3, extra.uniform(0, 100_000, len(person)), 0.0
@@ -808,7 +808,7 @@ def test_a_carved_row_s_uc_gainful_self_employment_follows_its_carved_pay() -> N
 
     person = pd.DataFrame(
         {
-            "employment_status": ["FT_EMPLOYEE", "FT_EMPLOYEE", "FT_SELF_EMPLOYED"],
+            "employment_status": ["FT_EMPLOYED", "FT_EMPLOYED", "FT_SELF_EMPLOYED"],
             "self_employment_income": [5_000.0, 5_000.0, 0.0],
             "employment_income": [1_000.0, 1_000.0, 20_000.0],
             stage.UC_GAINFUL_SELF_EMPLOYMENT: [False, False, True],
@@ -909,7 +909,7 @@ def test_salary_sacrifice_runs_on_the_stage_s_output(
             "employee_pension_contributions": np.where(
                 spi, np.where(ids == frs + 1, 150.0, 20_000.0), 1_000.0
             ),
-            "employment_status": "FT_EMPLOYEE",
+            "employment_status": "FT_EMPLOYED",
             "self_employment_income": 0.0,
             stage.UC_GAINFUL_SELF_EMPLOYMENT: False,
             "salary_sacrifice_asked": np.where(spi, 0, 1),
