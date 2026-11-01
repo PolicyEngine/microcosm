@@ -1,19 +1,19 @@
 records:
-- id: be_silc_2023
+- id: be_support_pool_2024_buildp
   kind: survey_period_ref
   authority_ref:
     kind: source_record
-    source: source:be_silc_contract
-    authority: be_silc_2023
+    source: source:be_populace_us_support_contract
+    authority: be_support_pool_2024_buildp
   compatible_with:
-  - vintage:be_target_2023
-- id: be_target_2023
+  - vintage:be_target_2026
+- id: be_target_2026
   kind: target_period_ref
   authority_ref:
     kind: dataset_run
     pointer: /dataset_run/target_period
   compatible_with:
-  - vintage:be_silc_2023
+  - vintage:be_support_pool_2024_buildp
 - id: be_nis_2025
   kind: geography_vintage_ref
   authority_ref:
@@ -22,6 +22,8 @@ records:
     authority: be_nis_2025
   compatible_with:
   - vintage:be_nuts1_2025
+  - vintage:be_province_2025
+  - vintage:be_community_2025
 - id: be_nuts1_2025
   kind: geography_vintage_ref
   authority_ref:
@@ -30,3 +32,25 @@ records:
     authority: be_nuts1_2025
   compatible_with:
   - vintage:be_nis_2025
+  - vintage:be_province_2025
+  - vintage:be_community_2025
+- id: be_province_2025
+  kind: geography_vintage_ref
+  authority_ref:
+    kind: source_record
+    source: source:be_commune_spine_contract
+    authority: be_province_2025
+  compatible_with:
+  - vintage:be_nis_2025
+  - vintage:be_nuts1_2025
+  - vintage:be_community_2025
+- id: be_community_2025
+  kind: geography_vintage_ref
+  authority_ref:
+    kind: source_record
+    source: source:be_commune_spine_contract
+    authority: be_community_2025
+  compatible_with:
+  - vintage:be_nis_2025
+  - vintage:be_nuts1_2025
+  - vintage:be_province_2025
