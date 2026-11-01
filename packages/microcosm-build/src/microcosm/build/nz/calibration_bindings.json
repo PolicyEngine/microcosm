@@ -4491,7 +4491,7 @@
       "kind": "household_multiplicity_measure",
       "family_type_code": 1,
       "activation_status": "requires_census_family_nucleus_standard",
-      "reason": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+      "reason": "G8-r3b must implement Census-family multiplicity classification before activation. The hub records the signed d1932 reconciliation; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
       "reference_bindings": [
         {
           "reference_name": "stats_nz_census_families_by_type_region__r01__t1",
@@ -4739,7 +4739,7 @@
       "kind": "household_multiplicity_measure",
       "family_type_code": 2,
       "activation_status": "requires_census_family_nucleus_standard",
-      "reason": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+      "reason": "G8-r3b must implement Census-family multiplicity classification before activation. The hub records the signed d1932 reconciliation; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
       "reference_bindings": [
         {
           "reference_name": "stats_nz_census_families_by_type_region__r01__t2",
@@ -4987,7 +4987,7 @@
       "kind": "household_multiplicity_measure",
       "family_type_code": 3,
       "activation_status": "requires_census_family_nucleus_standard",
-      "reason": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+      "reason": "G8-r3b must implement Census-family multiplicity classification before activation. The hub records the signed d1932 reconciliation; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
       "reference_bindings": [
         {
           "reference_name": "stats_nz_census_families_by_type_region__r01__t3",
@@ -5230,19 +5230,9 @@
       ]
     },
     {
-      "name": "receives_<program>",
-      "activation_status": "requires_stratified_receipt_assignment",
-      "reason": "G8-w: age-stratified receipt assignment is not supported by the current total-only receipt kernel; preserve the source snapshot and age filters."
-    },
-    {
-      "name": "receives_nz_super",
-      "activation_status": "requires_receipt_binding",
-      "reason": "NZ Super receipt binding and prepared receipt flag are not implemented."
-    },
-    {
       "name": "receives_veterans_pension",
       "activation_status": "requires_unsupported_veterans_pension",
-      "reason": "Veterans Pension is unsupported: no veteran facts or producer; a missing flag must refuse, never default to false."
+      "reason": "G8-w3b must refuse Veterans Pension as unsupported under H4. Activation needs veteran facts and a reviewed receipt producer; G8-y owns the closing step."
     }
   ],
   "geography_inputs": "Geography stage supplies person.region_code and broadcasts the household location to household.household_region_code.",

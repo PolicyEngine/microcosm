@@ -93,19 +93,19 @@ includes both main-benefit and pension recipients as beneficiaries, and the
 base-rate provisions depend on the applicant; they do not establish a priority
 between partners in a mixed receipt unit. The reporting convention assigns:
 
-1. `superannuitant` if any member has assigned New Zealand Superannuation or
-   Veterans Pension receipt;
+1. `superannuitant` if any member has assigned New Zealand Superannuation receipt;
 2. otherwise `beneficiary` if any member has assigned main-benefit receipt;
 3. otherwise `other`.
 
 The current main-benefit predicates name Jobseeker Support, Sole Parent Support,
 and Supported Living Payment. The priority order, default group, membership
 columns, and receipt predicates are spec parameters. Every required assigned
-receipt flag must be present and boolean; missing Veterans Pension support must
-be reported and refused rather than assumed false. Each scenario reports the
+receipt flag must be present and boolean. H4 excludes unsupported Veterans
+Pension from the classifier and discloses the missing programme; the hub must
+review its receipt producer before extending this predicate. Each scenario reports the
 count of units satisfying multiple receipt predicates.
 
-The S0–S4 Accommodation Supplement exclusion selects the same superannuitant
+The S0–S3 Accommodation Supplement exclusion selects the same superannuitant
 predicate as the reporting classifier. Their excluded units must equal the
 `superannuitant` reporting group. That group's Accommodation Supplement cells
 are structural zeros in those scenarios and belong in the gate's declared

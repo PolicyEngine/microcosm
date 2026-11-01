@@ -1,0 +1,152 @@
+{
+  "version": 1,
+  "country": "nz",
+  "description": "The receipt kernel assigns June 2026 snapshot flags from the active precalibration counts, determined entitlement judgments and positive weekly payments. The calibration target rows constrain the same assigned flags separately.",
+  "receipts": {
+    "contract_version": 2,
+    "seed_column": "take_up_seed",
+    "default_assignment_profile": "central",
+    "assignment_knob": "beneficiary_assignment",
+    "assignment_profiles": {
+      "central": {
+        "draw_key_suffix": ""
+      },
+      "variant": {
+        "draw_key_suffix": "variant"
+      }
+    },
+    "programs": [
+      {
+        "program": "nz_super",
+        "output": "receives_nz_super",
+        "judgment_columns": [
+          "entitled_to_new_zealand_superannuation"
+        ],
+        "judgment_reduction": "any",
+        "payment_column": "nz_super_weekly_amount_before_tax",
+        "target": "msd_nz_super_recipients",
+        "entitlement_entity": "person",
+        "payee": "person",
+        "draw_unit": "person",
+        "projection": "person"
+      },
+      {
+        "program": "supported_living_payment",
+        "output": "receives_supported_living_payment",
+        "judgment_columns": [
+          "entitled_to_supported_living_payment_restricted_or_blind",
+          "entitled_to_supported_living_payment_caring"
+        ],
+        "judgment_reduction": "any",
+        "payment_column": "supported_living_payment_net_weekly_payment",
+        "strata": [
+          {
+            "target": "msd_supported_living_payment_recipients__age_18_24",
+            "filter": "age_18_24_indicator"
+          },
+          {
+            "target": "msd_supported_living_payment_recipients__age_25_39",
+            "filter": "age_25_39_indicator"
+          },
+          {
+            "target": "msd_supported_living_payment_recipients__age_40_54",
+            "filter": "age_40_54_indicator"
+          },
+          {
+            "target": "msd_supported_living_payment_recipients__age_55_64",
+            "filter": "age_55_64_indicator"
+          }
+        ],
+        "outside_strata": "not_assigned",
+        "entitlement_entity": "person",
+        "payee": "person",
+        "draw_unit": "person",
+        "projection": "person"
+      },
+      {
+        "program": "sole_parent_support",
+        "output": "receives_sole_parent_support",
+        "judgment_columns": [
+          "entitled_to_sole_parent_support"
+        ],
+        "judgment_reduction": "any",
+        "payment_column": "sole_parent_support_net_weekly_payment",
+        "strata": [
+          {
+            "target": "msd_sole_parent_support_recipients__age_18_24",
+            "filter": "age_18_24_indicator"
+          },
+          {
+            "target": "msd_sole_parent_support_recipients__age_25_39",
+            "filter": "age_25_39_indicator"
+          },
+          {
+            "target": "msd_sole_parent_support_recipients__age_40_54",
+            "filter": "age_40_54_indicator"
+          },
+          {
+            "target": "msd_sole_parent_support_recipients__age_55_64",
+            "filter": "age_55_64_indicator"
+          }
+        ],
+        "outside_strata": "not_assigned",
+        "entitlement_entity": "person",
+        "payee": "person",
+        "draw_unit": "person",
+        "projection": "person"
+      },
+      {
+        "program": "jobseeker_support",
+        "output": "receives_jobseeker_support",
+        "judgment_columns": [
+          "entitled_to_jobseeker_support"
+        ],
+        "judgment_reduction": "any",
+        "payment_column": "jobseeker_support_net_weekly_payment",
+        "strata": [
+          {
+            "target": "msd_jobseeker_support_recipients__age_18_24",
+            "filter": "age_18_24_indicator"
+          },
+          {
+            "target": "msd_jobseeker_support_recipients__age_25_39",
+            "filter": "age_25_39_indicator"
+          },
+          {
+            "target": "msd_jobseeker_support_recipients__age_40_54",
+            "filter": "age_40_54_indicator"
+          },
+          {
+            "target": "msd_jobseeker_support_recipients__age_55_64",
+            "filter": "age_55_64_indicator"
+          }
+        ],
+        "outside_strata": "not_assigned",
+        "entitlement_entity": "person",
+        "payee": "person",
+        "draw_unit": "person",
+        "projection": "person"
+      }
+    ],
+    "exclusion_groups": [
+      [
+        "receives_nz_super",
+        "receives_supported_living_payment",
+        "receives_sole_parent_support",
+        "receives_jobseeker_support"
+      ]
+    ],
+    "unmodelled_programs": [
+      "other_main_benefits",
+      "combined_youth_and_young_parent",
+      "veterans_pension"
+    ]
+  },
+  "disclosures": [
+    "The hub provisionally orders assignment as NZ Super, Supported Living Payment, Sole Parent Support and Jobseeker Support. Max will rule on overlapping eligibility priority after the engine pin permits the overlap measurement; this declaration does not settle that priority.",
+    "The kernel leaves eligible people outside ages 18 to 64 not_assigned for the three working-age programs. Their published non-working-age counts remain disclosure rather than targets. NZ Super uses one unstratified total.",
+    "V3 starts from the raw nz.open branch and uses its resolved beneficiary_assignment profile. The variant suffix selects a separate deterministic draw stream for all four programs while preserving their targets and eligibility definitions.",
+    "The flags represent assigned point-in-time receipt, not observed receipt or annual exposure. money_normalization.json declares annual-transfer exposure separately.",
+    "The hub refuses Veterans Pension as unsupported because v0 lacks a veteran-facts producer; the kernel never invents its receipt flag. The hub also leaves other main benefits and the combined youth and young parent category unmodelled."
+  ]
+}

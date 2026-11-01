@@ -2444,13 +2444,8 @@ def test_cli_arguments():
 # ---------------------------------------------------------------------------
 
 _GAPS = (
-    "placeholder reference precal_references.",
-    "placeholder reference target_references.",
-    "placeholder reference holdout_references.",
-    "receipt_contract.json",
     "axiom_rules_bindings.engine.commit",
     "axiom_rules_bindings.engine.wheel_sha256",
-    "scenario S4 rent_stock_factor",
     "transport_graph.json",
 )
 
@@ -2461,14 +2456,35 @@ def test_packaged_spec_refuses_with_every_activation_gap_named():
         validate_transport_activation(spec)
     for gap in _GAPS:
         assert gap in str(error.value), gap
+    assert (
+        len(
+            str(error.value)
+            .removeprefix("Transport spec is not activated: ")
+            .split("; ")
+        )
+        == 3
+    )
+    for removed in (
+        "placeholder reference precal_references.",
+        "placeholder reference target_references.",
+        "placeholder reference holdout_references.",
+        "receipt_contract.json",
+        "scenario S4 rent_stock_factor",
+    ):
+        assert removed not in str(error.value), removed
     # The dependent-child rule is settled from the Social Security Act 2018
     # Schedule 2, so it is no longer an activation gap.
     assert "benefit_unit_rule.dependent_child" not in str(error.value)
+    selections = compose_module._reference_selections(spec)
     for resource in ("precal_references", "target_references", "holdout_references"):
+        exempt = {row["name"] for row in selections[resource]["exempt"]}
         for reference in compose_module.transport_resource(spec, resource)[
             "target_references"
         ]:
-            if reference["metadata"].get("activation_status", "active") != "active":
+            if (
+                reference["metadata"].get("activation_status", "active") != "active"
+                and reference["name"] not in exempt
+            ):
                 assert f"placeholder reference {resource}.{reference['name']}" in str(
                     error.value
                 )

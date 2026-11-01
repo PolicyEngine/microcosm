@@ -288,8 +288,7 @@ def test_resolution_is_not_activation_and_no_active_row_requests_the_proxy():
     wages = [row for row in precal if row["name"].startswith("ird_wage_salary_")]
     assert len(wages) == 235
     assert all(
-        row["metadata"]["activation_status"]
-        == "requires_g8r2_source_period_wage_bridge_and_intervals"
+        row["metadata"]["activation_status"] == "requires_g8r2c_wage_quantile_producer"
         for row in wages
     )
 
