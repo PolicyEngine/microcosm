@@ -8,7 +8,10 @@ calls a production helper.
 from __future__ import annotations
 
 import copy
+import hashlib
 import math
+import random
+import struct
 from decimal import localcontext
 from fractions import Fraction
 
@@ -30,6 +33,7 @@ from microcosm.build.money_normalization import (
     validate_money_normalization,
 )
 from microcosm.build.reference_factors import FACTOR_PURPOSES
+from microcosm.graph.canonical import canonical_json
 from test_support.microcosm_build.money_normalization import (
     DIMENSION,
     NORMALIZED,
@@ -129,6 +133,57 @@ def _normalize(values, *, rate="1.25", quote="to_per_from", factor=None, column=
         factors={family: factor or _identity_factor()},
     )
     return arrays, receipts, declaration, tables
+
+
+def _legacy_normalization_values():
+    """Exercise decimal ties, signed zero, subnormals and seeded IEEE64 patterns."""
+    values = [0.0, -0.0, 5e-324, -5e-324, 0.005, -0.005, 1.015, 0.29]
+    rng = random.Random(9137)
+    while len(values) < 256:
+        value = struct.unpack("<d", rng.getrandbits(64).to_bytes(8, "little"))[0]
+        if math.isfinite(value) and abs(value) <= 1e10:
+            values.append(value)
+    return values
+
+
+@pytest.mark.parametrize(
+    "quote,expected",
+    [
+        (
+            "to_per_from",
+            (
+                "ffb124500b9bd672c164cfbe54aa79a95eceb683e487e6e8e3dcabe21d314f69",
+                "19751f7d2007728c7f5f204459ebfd0c8468954dbab02a839fabd32198914a50",
+                "3d733d430bfd18374643d11fdbcd93702c7b4eedc809b3f1d615de0e8e55f7c8",
+            ),
+        ),
+        (
+            "from_per_to",
+            (
+                "d119466071c80a6a7129357dff3b20682e1740747576089ed2965b223e009a9d",
+                "fe1c5b70c196e35e91a3a10133be707de6287f07dd0b39a3f3731740eb5fe250",
+                "4d5b0a5065e14ef39beba37dd1043e1ef03279706422f9d87f0b8e1f46e53dee",
+            ),
+        ),
+    ],
+)
+def test_legacy_normalization_keeps_array_and_receipt_bytes(quote, expected):
+    # These digests come from the independent review's saved 477221cd w2a
+    # module. Keep donor normalization's legacy float entry separate from the
+    # new integer-preserving solver and minor-unit conversion.
+    arrays, receipts, *_ = _normalize(
+        _legacy_normalization_values(),
+        rate="1.654",
+        quote=quote,
+        factor=_factor(1079073),
+    )
+    hashes = []
+    for column, dtype in (("rental_income", "<f8"), ("rental_income_cents", "<i8")):
+        array = arrays["person", column]
+        assert array.dtype == np.dtype(dtype)
+        hashes.append(hashlib.sha256(array.astype(dtype).tobytes()).hexdigest())
+    hashes.append(hashlib.sha256(canonical_json(receipts)).hexdigest())
+    assert tuple(hashes) == expected
 
 
 # ---------------------------------------------------------------------------

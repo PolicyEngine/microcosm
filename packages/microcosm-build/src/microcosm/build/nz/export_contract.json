@@ -1,5 +1,5 @@
 {
-  "_description": "Closed Frame export contract for the New Zealand v0 population dataset, which the planned CLI (package G6) is to write outside the graph after the export-prepare node. Donor records remain US support records; the dataset is never described as New Zealand microdata. The required set is the structural and household-weight columns. Encoded engine-input columns enter only when the G4 input-closure table names them and this contract lists them, so an undeclared column is to fail the export gate. formula_owned_excluded is exactly the set of variables the graph requests from the bound rulespec-nz modules (axiom_rules_bindings.json): no rule output may persist as an input.",
+  "_description": "This closed roster declares the New Zealand v0 export inputs. Donor records remain US support records. The graph must select exact entity-qualified export and gate slices from the required and optional columns. Encoded inputs enter only when axiom_input_closure.json and this roster both name them. The export kernel writes every column that its selected frame carries; this roster alone does not project or enforce those slices. formula_owned_excluded names every output that the graph requests from the bound rulespec-nz modules, and the graph must exclude those outputs from its export slices.",
   "_source": {
     "rules_bindings": "axiom_rules_bindings.json",
     "unit_rule": "benefit_unit_rule.json"
@@ -64,7 +64,11 @@
     "sex",
     "region_code",
     "support_stratum",
-    "donor_country_code"
+    "donor_country_code",
+    "receives_jobseeker_support",
+    "receives_sole_parent_support",
+    "receives_supported_living_payment",
+    "receives_nz_super"
   ],
   "formula_owned_excluded": [
     "accommodation_supplement_cash_assets_within_limit",
@@ -82,6 +86,7 @@
     "entitled_to_supported_living_payment_caring",
     "entitled_to_supported_living_payment_restricted_or_blind",
     "family_tax_credit_prescribed_amount",
+    "individual_income_tax_before_credits",
     "jobseeker_support_gross_weekly_rate",
     "jobseeker_support_net_weekly_payment",
     "jobseeker_support_weekly_income_test_reduction",
@@ -89,5 +94,12 @@
     "sole_parent_support_net_weekly_payment",
     "supported_living_payment_net_weekly_payment"
   ],
-  "closed": true
+  "closed": true,
+  "_assigned_receipt_inputs": {
+    "receives_jobseeker_support": "The receipt kernel assigns this person-level snapshot flag; the donor does not observe NZ receipt.",
+    "receives_sole_parent_support": "The receipt kernel assigns this person-level snapshot flag; the donor does not observe NZ receipt.",
+    "receives_supported_living_payment": "The receipt kernel assigns this person-level snapshot flag; the donor does not observe NZ receipt.",
+    "receives_nz_super": "The receipt kernel assigns this person-level snapshot flag; the donor does not observe NZ receipt."
+  },
+  "_slice_requirement": "G8-w3b must declare the exact entity-qualified export and terminal-gate slices. H12 still requires closed-roster enforcement for all replay-required normalized or encoded inputs. export.prepare@1 currently accepts entities, weight_entity, time_period and optional bindings, then emits a descriptor that materialize_export writes; it does not read this roster. The hub must resolve any required shared-code enforcement separately."
 }

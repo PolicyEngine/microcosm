@@ -1,23 +1,25 @@
 sources:
-- id: be_silc_contract
-  role: be_silc_source_contract
-  sha256: 64e45f48b5c3bb00a710e56f805c7c8c441ddc1050cfb61d846d45e9cbbb16b2
-  byte_size: 3532
-  loader: kernel:silc_load
+- id: be_populace_us_support_contract
+  role: be_populace_us_support_pool
+  sha256: c94df32e544b74e7e6a70ae587345c757d9773035fceafc98660f4ab52d09d2c
+  byte_size: 3747
+  loader: kernel:load_populace_us_support_pool
   vintages:
-  - vintage:be_silc_2023
+  - vintage:be_support_pool_2024_buildp
   vintage_authorities:
-  - id: be_silc_2023
+  - id: be_support_pool_2024_buildp
     kind: survey_period
-    value: 2023
+    value: '2024'
 - id: be_commune_spine_contract
   role: be_commune_spine_contract
-  sha256: 0b39217386dbc9b053a036766004f10a3a34434a293c1e956e0f4f053a08e1bf
-  byte_size: 1399
+  sha256: 090b83a4fa511e691b8f1486bc4188e4170cf9d4a1239e7418d33d5020ceca50
+  byte_size: 2092
   loader: kernel:clone_assign_communes
   vintages:
   - vintage:be_nis_2025
   - vintage:be_nuts1_2025
+  - vintage:be_province_2025
+  - vintage:be_community_2025
   vintage_authorities:
   - id: be_nis_2025
     kind: geography_vintage
@@ -25,87 +27,81 @@ sources:
   - id: be_nuts1_2025
     kind: geography_vintage
     value: 2025_nuts1
+  - id: be_province_2025
+    kind: geography_vintage
+    value: 2025_province
+  - id: be_community_2025
+    kind: geography_vintage
+    value: 2025_community
 stage_manifest:
   version: 1
   country: be
-  policy: >-
-    BE source stages are manifest-defined. The base microdata is BE-SILC under
-    Statbel/Eurostat scientific-use terms: the raw registers exist only in the
-    licensed environment, artifacts publish to the private BE repo only (see
-    release_contract.json), and executable Python belongs only in shared
-    Populace runtimes.
+  policy: Belgium transports the immutable public Microcosm US Build P support artifact into
+    a synthetic Belgian population (BE-MC2). Donor records remain US support records and retain
+    their support-stratum provenance; Belgian geography is assigned, never source-observed.
+    Destination calibration uses Belgian administrative and national-accounts targets from
+    sums of Chronicle facts; surveys are validation-only. The Chronicle consumer artifact
+    and rulespec-be tree are declared unpinned placeholders, so this package remains inactive.
+    Executable Python belongs in shared runtimes; publication remains private pending Max's
+    decision in release_contract.json.
 stages:
-- stage: silc_load
-  survey: BE-SILC (Statbel national SILC)
-  source: https://statbel.fgov.be/en/themes/households/poverty-and-living-conditions
+- stage: load_populace_us_support_pool
+  survey: Microcosm US Build P support population (US donor support records)
+  source: https://huggingface.co/datasets/policyengine/populace-us
   grain: person
   artifacts:
-  - kind: restricted_microdata
-    format: csv_or_spss
-    vintage: '2023'
-    locator: >-
-      Statbel BE-SILC scientific-use files: D (household register), R
-      (personal register), H (household data), P (personal data)
-    licence: >-
-      Statbel/Eurostat scientific-use; restricted — private artifacts only
+  - kind: public_microdata
+    format: hdf5
+    vintage: '2024'
+    locator: populace_us_2024.h5
+    revision: populace-us-2024-buildp-sparse-rmloss100-cae8640-20260728T011454Z
+    repository:
+      provider: huggingface
+      owner: policyengine
+      name_parts:
+      - populace-us
+      repo_type: dataset
+    sha256: 48b9d479fb4fd1c3537f9383ce4697d130b6f618658409d74f6233c43b994c7e
+    size_bytes: 462915783
+    integrity_note: The revision is the immutable release tag named by the public latest.json
+      pointer on 2026-08-29. Execution must verify both SHA-256 and byte size before reading;
+      main/latest fallback is forbidden.
+  - kind: public_aggregate_reference
+    role: destination_chronicle_consumer_artifact_unpinned
+    resource: chronicle_feed.json
+    format: json
+    runtime_sha256_required: true
+  - kind: public_parameter_reference
+    role: rulespec_be_tree_unpinned
+    resource: axiom_rules_bindings.json
+    format: json
   operations:
   - kind: read_tables
     tables:
-    - silc_household_register
-    - silc_personal_register
-    - silc_household_data
-    - silc_personal_data
-    weight: DB090
-  - kind: join
-    left: silc_personal_register
-    right: silc_household_register
-    linkage: eu_silc_id_arithmetic
-    notes: >-
-      EU-SILC register linkage: personal ids embed the household id (RB030
-      carries DB030 plus the person sequence); the shared runtime owns the
-      arithmetic.
-  - kind: declare_income_reference_offset
-    years: -1
-    notes: >-
-      SILC survey year N carries year N-1 incomes. The build's period
-      bookkeeping and every target profile bind to the income reference year
-      through this declaration; see PolicyEngine/ledger#71 for the
-      facts-vs-projections basis this feeds.
-  - kind: map_columns
-    mapping:
-      DB030: household_id
-      RB030: person_id
-      DB040: region_nuts1
-      RB080: birth_year
-      RB090: sex
-      PY010G: belgium_pit_article_23_worker_remuneration
-    notes: >-
-      EU-SILC names to frame/engine names. PY010G (gross employee cash or
-      near-cash income) feeds the Axiom CIR 1992 article 23
-      worker-remuneration input; further income and contribution inputs join
-      this mapping as the encoded slice grows.
-  - kind: derive
-    output: age
-    from:
-    - birth_year
-    notes: Age at the end of the income reference year.
-  - kind: derive
-    output: person_household_id
-    from:
-    - household_id
-    notes: Frame membership column per the kernel linkage convention.
+    - person
+    - household
+    weight: household_weight
   outputs:
   - person_id
   - household_id
   - person_household_id
+  - source_household_id
+  - household_weight
+  - support_stratum
+  - donor_country_code
   - age
   - sex
-  - region_nuts1
-  - belgium_pit_article_23_worker_remuneration
   nonnegative_outputs:
-  - belgium_pit_article_23_worker_remuneration
-  notes: >-
-    The base population stage (populace#262 owns the runtime). Entity posture
-    per the adapter (populace#260): person plus household; Belgian PIT is
-    individual with household-level elements, so no separate fiscal unit
-    enters until the encoded slice needs one.
+  - household_weight
+  - age
+  notes: The first artifact copies the authenticated donor pin from build/nz/source_stages.json
+    exactly. Shared transport must preserve donor entity ids, membership, typed household
+    design weights and support strata, retain US donor provenance, and bridge donor mass to
+    a Chronicle-supplied Belgian population total with a conservation receipt. The next two
+    artifacts are declared placeholders for a PolicyEngine/chronicle consumer artifact and
+    the TheAxiomFoundation/rulespec-be tree, respectively. Their referenced resources and
+    exact facts/manifest hashes and RuleSpec commit/tree hashes are not authored or pinned
+    here; neither reference permits execution or a latest/main fallback. Later work must supply
+    those pins, source materialization, unit construction, engine bindings and an executable
+    graph. Monetary conversion and quantile mapping are later declarations; monetary catalog
+    columns wait for the shared EUR unit (PLAN S3).

@@ -1,0 +1,1104 @@
+{
+  "schema_version": 1,
+  "stage": "pre_activation",
+  "status": "after_abatement_reconciliation_unavailable",
+  "purpose": "Microcosm reviews the available aggregate evidence before activating the receipt references. This report grants no release approval and runs no active graph.",
+  "feed_identity": {
+    "version": 1,
+    "country": "nz",
+    "scope": "nz_calibration",
+    "source_repo": "PolicyEngine/chronicle",
+    "source_commit": "8f4cfd573c0d6f580d9c51cd67e8f449a42ed174",
+    "build": "build-bundle --suite nz -> build-consumer-artifact",
+    "artifact_schema_version": "policyengine_ledger.consumer_artifact.v2",
+    "consumer_fact_schema_versions": [
+      "chronicle.consumer_fact.v4"
+    ],
+    "consumer_fact_schema_sha256": "d953306d6f01fbc64db4372d0262d3012ee590269f8a25b276b18dca0626c6a0",
+    "fact_row_count": 12368,
+    "facts_sha256": "03f5ea0fe60e6dc93a135ab32cd5cd6ffb56388e702a4734cdb515a956e36b18",
+    "manifest_sha256": "1ea2d1eeb122275a9ce7f861ca3e20e21dd695772c04ce9d71114168e92fe053"
+  },
+  "rates_resource": "msd_benefit_rates_20260401.json",
+  "rates_sha256": "1d03bcbe2ff34a27e6efe42e69871a71271c4e16fe9e3327f79acb8dba7d6b26",
+  "source_rows": [
+    {
+      "aggregate_fact_key": "ledger.aggregate_fact.v2:ee2fbceca03ea6cf897aeb87",
+      "record_set_id": "msd.benefit_expenses.fy2024",
+      "source_row_id": "jobseeker_support_and_emergency_benefit",
+      "dimensions": {
+        "benefit_expense_component": "Jobseeker Support and Emergency Benefit"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "basis": "fiscal",
+        "start_date": "2024-07-01",
+        "end_date": "2025-06-30",
+        "source_period_label": "2025"
+      },
+      "unit": "nzd",
+      "value": 4640562000
+    },
+    {
+      "aggregate_fact_key": "ledger.aggregate_fact.v2:0bbf770a6b0baa84853d9c18",
+      "record_set_id": "msd.benefit_expenses.fy2024",
+      "source_row_id": "new_zealand_superannuation",
+      "dimensions": {
+        "benefit_expense_component": "New Zealand Superannuation"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "basis": "fiscal",
+        "start_date": "2024-07-01",
+        "end_date": "2025-06-30",
+        "source_period_label": "2025"
+      },
+      "unit": "nzd",
+      "value": 23191199000
+    },
+    {
+      "aggregate_fact_key": "ledger.aggregate_fact.v2:c6846c99892eccdf29a4a695",
+      "record_set_id": "msd.benefit_expenses.fy2024",
+      "source_row_id": "orphans_unsupported_childs_benefit",
+      "dimensions": {
+        "benefit_expense_component": "Orphan's/Unsupported Child's Benefit"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "basis": "fiscal",
+        "start_date": "2024-07-01",
+        "end_date": "2025-06-30",
+        "source_period_label": "2025"
+      },
+      "unit": "nzd",
+      "value": 402311000
+    },
+    {
+      "aggregate_fact_key": "ledger.aggregate_fact.v2:48d697bf0900434af3924605",
+      "record_set_id": "msd.benefit_expenses.fy2024",
+      "source_row_id": "sole_parent_support",
+      "dimensions": {
+        "benefit_expense_component": "Sole Parent Support"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "basis": "fiscal",
+        "start_date": "2024-07-01",
+        "end_date": "2025-06-30",
+        "source_period_label": "2025"
+      },
+      "unit": "nzd",
+      "value": 2255092000
+    },
+    {
+      "aggregate_fact_key": "ledger.aggregate_fact.v2:7ee2e4e9979352ac3989a5b7",
+      "record_set_id": "msd.benefit_expenses.fy2024",
+      "source_row_id": "student_allowances",
+      "dimensions": {
+        "benefit_expense_component": "Student Allowances"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "basis": "fiscal",
+        "start_date": "2024-07-01",
+        "end_date": "2025-06-30",
+        "source_period_label": "2025"
+      },
+      "unit": "nzd",
+      "value": 573646000
+    },
+    {
+      "aggregate_fact_key": "ledger.aggregate_fact.v2:da9daf8ba1407b2e8a76dce6",
+      "record_set_id": "msd.benefit_expenses.fy2024",
+      "source_row_id": "supported_living_payment",
+      "dimensions": {
+        "benefit_expense_component": "Supported Living Payment"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "basis": "fiscal",
+        "start_date": "2024-07-01",
+        "end_date": "2025-06-30",
+        "source_period_label": "2025"
+      },
+      "unit": "nzd",
+      "value": 2668450000
+    },
+    {
+      "aggregate_fact_key": "ledger.aggregate_fact.v2:867e3db70e72831a0f50dcee",
+      "record_set_id": "msd_benefit_statistics.month2026_06.working_age_by_benefit_and_age",
+      "source_row_id": "18-24 years",
+      "dimensions": {
+        "msd_main_benefit_age_group_source_label": "18-24 years",
+        "msd_main_benefit_age_status": "working_age",
+        "msd_main_benefit_type": "jobseeker_support"
+      },
+      "period": {
+        "type": "month",
+        "value": "2026-06"
+      },
+      "period_coverage": {
+        "basis": "calendar",
+        "start_date": "2026-06-30",
+        "end_date": "2026-06-30",
+        "source_period_label": "Jun-26"
+      },
+      "unit": "count",
+      "value": 48045
+    },
+    {
+      "aggregate_fact_key": "ledger.aggregate_fact.v2:ae0a2a10d2c00b4312e9b01a",
+      "record_set_id": "msd_benefit_statistics.month2026_06.working_age_by_benefit_and_age",
+      "source_row_id": "18-24 years",
+      "dimensions": {
+        "msd_main_benefit_age_group_source_label": "18-24 years",
+        "msd_main_benefit_age_status": "working_age",
+        "msd_main_benefit_type": "sole_parent_support"
+      },
+      "period": {
+        "type": "month",
+        "value": "2026-06"
+      },
+      "period_coverage": {
+        "basis": "calendar",
+        "start_date": "2026-06-30",
+        "end_date": "2026-06-30",
+        "source_period_label": "Jun-26"
+      },
+      "unit": "count",
+      "value": 9327
+    },
+    {
+      "aggregate_fact_key": "ledger.aggregate_fact.v2:62047e9fd2828d732b24a4be",
+      "record_set_id": "msd_benefit_statistics.month2026_06.working_age_by_benefit_and_age",
+      "source_row_id": "18-24 years",
+      "dimensions": {
+        "msd_main_benefit_age_group_source_label": "18-24 years",
+        "msd_main_benefit_age_status": "working_age",
+        "msd_main_benefit_type": "supported_living_payment"
+      },
+      "period": {
+        "type": "month",
+        "value": "2026-06"
+      },
+      "period_coverage": {
+        "basis": "calendar",
+        "start_date": "2026-06-30",
+        "end_date": "2026-06-30",
+        "source_period_label": "Jun-26"
+      },
+      "unit": "count",
+      "value": 9420
+    },
+    {
+      "aggregate_fact_key": "ledger.aggregate_fact.v2:a58d823b0c6a5b1dff09d281",
+      "record_set_id": "msd_benefit_statistics.month2026_06.working_age_by_benefit_and_age",
+      "source_row_id": "25-39 years",
+      "dimensions": {
+        "msd_main_benefit_age_group_source_label": "25-39 years",
+        "msd_main_benefit_age_status": "working_age",
+        "msd_main_benefit_type": "jobseeker_support"
+      },
+      "period": {
+        "type": "month",
+        "value": "2026-06"
+      },
+      "period_coverage": {
+        "basis": "calendar",
+        "start_date": "2026-06-30",
+        "end_date": "2026-06-30",
+        "source_period_label": "Jun-26"
+      },
+      "unit": "count",
+      "value": 68376
+    },
+    {
+      "aggregate_fact_key": "ledger.aggregate_fact.v2:816ac1eb59450cb26b267e12",
+      "record_set_id": "msd_benefit_statistics.month2026_06.working_age_by_benefit_and_age",
+      "source_row_id": "25-39 years",
+      "dimensions": {
+        "msd_main_benefit_age_group_source_label": "25-39 years",
+        "msd_main_benefit_age_status": "working_age",
+        "msd_main_benefit_type": "sole_parent_support"
+      },
+      "period": {
+        "type": "month",
+        "value": "2026-06"
+      },
+      "period_coverage": {
+        "basis": "calendar",
+        "start_date": "2026-06-30",
+        "end_date": "2026-06-30",
+        "source_period_label": "Jun-26"
+      },
+      "unit": "count",
+      "value": 52398
+    },
+    {
+      "aggregate_fact_key": "ledger.aggregate_fact.v2:8aac70ea17cd17b00998032b",
+      "record_set_id": "msd_benefit_statistics.month2026_06.working_age_by_benefit_and_age",
+      "source_row_id": "25-39 years",
+      "dimensions": {
+        "msd_main_benefit_age_group_source_label": "25-39 years",
+        "msd_main_benefit_age_status": "working_age",
+        "msd_main_benefit_type": "supported_living_payment"
+      },
+      "period": {
+        "type": "month",
+        "value": "2026-06"
+      },
+      "period_coverage": {
+        "basis": "calendar",
+        "start_date": "2026-06-30",
+        "end_date": "2026-06-30",
+        "source_period_label": "Jun-26"
+      },
+      "unit": "count",
+      "value": 24138
+    },
+    {
+      "aggregate_fact_key": "ledger.aggregate_fact.v2:b26addc6f9f8de143650562f",
+      "record_set_id": "msd_benefit_statistics.month2026_06.working_age_by_benefit_and_age",
+      "source_row_id": "40-54 years",
+      "dimensions": {
+        "msd_main_benefit_age_group_source_label": "40-54 years",
+        "msd_main_benefit_age_status": "working_age",
+        "msd_main_benefit_type": "jobseeker_support"
+      },
+      "period": {
+        "type": "month",
+        "value": "2026-06"
+      },
+      "period_coverage": {
+        "basis": "calendar",
+        "start_date": "2026-06-30",
+        "end_date": "2026-06-30",
+        "source_period_label": "Jun-26"
+      },
+      "unit": "count",
+      "value": 57399
+    },
+    {
+      "aggregate_fact_key": "ledger.aggregate_fact.v2:9b4a9c78618f59362e4f978a",
+      "record_set_id": "msd_benefit_statistics.month2026_06.working_age_by_benefit_and_age",
+      "source_row_id": "40-54 years",
+      "dimensions": {
+        "msd_main_benefit_age_group_source_label": "40-54 years",
+        "msd_main_benefit_age_status": "working_age",
+        "msd_main_benefit_type": "sole_parent_support"
+      },
+      "period": {
+        "type": "month",
+        "value": "2026-06"
+      },
+      "period_coverage": {
+        "basis": "calendar",
+        "start_date": "2026-06-30",
+        "end_date": "2026-06-30",
+        "source_period_label": "Jun-26"
+      },
+      "unit": "count",
+      "value": 18522
+    },
+    {
+      "aggregate_fact_key": "ledger.aggregate_fact.v2:fe4ec74a68196b4f866202d7",
+      "record_set_id": "msd_benefit_statistics.month2026_06.working_age_by_benefit_and_age",
+      "source_row_id": "40-54 years",
+      "dimensions": {
+        "msd_main_benefit_age_group_source_label": "40-54 years",
+        "msd_main_benefit_age_status": "working_age",
+        "msd_main_benefit_type": "supported_living_payment"
+      },
+      "period": {
+        "type": "month",
+        "value": "2026-06"
+      },
+      "period_coverage": {
+        "basis": "calendar",
+        "start_date": "2026-06-30",
+        "end_date": "2026-06-30",
+        "source_period_label": "Jun-26"
+      },
+      "unit": "count",
+      "value": 32838
+    },
+    {
+      "aggregate_fact_key": "ledger.aggregate_fact.v2:ea61ef4c35eea39dc5bcd84f",
+      "record_set_id": "msd_benefit_statistics.month2026_06.working_age_by_benefit_and_age",
+      "source_row_id": "55-64 years",
+      "dimensions": {
+        "msd_main_benefit_age_group_source_label": "55-64 years",
+        "msd_main_benefit_age_status": "working_age",
+        "msd_main_benefit_type": "jobseeker_support"
+      },
+      "period": {
+        "type": "month",
+        "value": "2026-06"
+      },
+      "period_coverage": {
+        "basis": "calendar",
+        "start_date": "2026-06-30",
+        "end_date": "2026-06-30",
+        "source_period_label": "Jun-26"
+      },
+      "unit": "count",
+      "value": 44661
+    },
+    {
+      "aggregate_fact_key": "ledger.aggregate_fact.v2:cefeec38e73ee55c37049f10",
+      "record_set_id": "msd_benefit_statistics.month2026_06.working_age_by_benefit_and_age",
+      "source_row_id": "55-64 years",
+      "dimensions": {
+        "msd_main_benefit_age_group_source_label": "55-64 years",
+        "msd_main_benefit_age_status": "working_age",
+        "msd_main_benefit_type": "sole_parent_support"
+      },
+      "period": {
+        "type": "month",
+        "value": "2026-06"
+      },
+      "period_coverage": {
+        "basis": "calendar",
+        "start_date": "2026-06-30",
+        "end_date": "2026-06-30",
+        "source_period_label": "Jun-26"
+      },
+      "unit": "count",
+      "value": 1011
+    },
+    {
+      "aggregate_fact_key": "ledger.aggregate_fact.v2:cb997b79065997f23e35457f",
+      "record_set_id": "msd_benefit_statistics.month2026_06.working_age_by_benefit_and_age",
+      "source_row_id": "55-64 years",
+      "dimensions": {
+        "msd_main_benefit_age_group_source_label": "55-64 years",
+        "msd_main_benefit_age_status": "working_age",
+        "msd_main_benefit_type": "supported_living_payment"
+      },
+      "period": {
+        "type": "month",
+        "value": "2026-06"
+      },
+      "period_coverage": {
+        "basis": "calendar",
+        "start_date": "2026-06-30",
+        "end_date": "2026-06-30",
+        "source_period_label": "Jun-26"
+      },
+      "unit": "count",
+      "value": 43107
+    },
+    {
+      "aggregate_fact_key": "ledger.aggregate_fact.v2:215d8e4916b479cd62438c56",
+      "record_set_id": "msd_nzs_vp.june2026.recipient_total",
+      "source_row_id": "all",
+      "dimensions": {
+        "msd_nzs_vp.benefit_type": "nzs",
+        "msd_nzs_vp.recipient_total": "all"
+      },
+      "period": {
+        "type": "month",
+        "value": "2026-06"
+      },
+      "period_coverage": {
+        "basis": "calendar",
+        "start_date": "2026-06-30",
+        "end_date": "2026-06-30",
+        "source_period_label": "Jun-26"
+      },
+      "unit": "count",
+      "value": 974001
+    }
+  ],
+  "exhaustive_msd_dimension_audit": {
+    "msd.benefit_expenses.fy2024": [
+      "benefit_expense_component"
+    ],
+    "msd.supplementary.jun2026.auckland": [
+      "msd_supplementary_assistance_type"
+    ],
+    "msd.supplementary.jun2026.bay-of-plenty": [
+      "msd_supplementary_assistance_type"
+    ],
+    "msd.supplementary.jun2026.canterbury": [
+      "msd_supplementary_assistance_type"
+    ],
+    "msd.supplementary.jun2026.central": [
+      "msd_supplementary_assistance_type"
+    ],
+    "msd.supplementary.jun2026.east-coast": [
+      "msd_supplementary_assistance_type"
+    ],
+    "msd.supplementary.jun2026.nelson": [
+      "msd_supplementary_assistance_type"
+    ],
+    "msd.supplementary.jun2026.northland": [
+      "msd_supplementary_assistance_type"
+    ],
+    "msd.supplementary.jun2026.other-regions": [
+      "msd_supplementary_assistance_type"
+    ],
+    "msd.supplementary.jun2026.southern": [
+      "msd_supplementary_assistance_type"
+    ],
+    "msd.supplementary.jun2026.taranaki": [
+      "msd_supplementary_assistance_type"
+    ],
+    "msd.supplementary.jun2026.waikato": [
+      "msd_supplementary_assistance_type"
+    ],
+    "msd.supplementary.jun2026.wellington": [
+      "msd_supplementary_assistance_type"
+    ],
+    "msd_benefit_statistics.month2026_06.jobseeker_support_subgroups": [
+      "msd_main_benefit_age_status",
+      "msd_main_benefit_subgroup",
+      "msd_main_benefit_type"
+    ],
+    "msd_benefit_statistics.month2026_06.national_supplementary_assistance": [
+      "msd_supplementary_assistance_type"
+    ],
+    "msd_benefit_statistics.month2026_06.non_working_age_benefits": [
+      "msd_main_benefit_age_status",
+      "msd_main_benefit_type"
+    ],
+    "msd_benefit_statistics.month2026_06.other_working_age_benefits": [
+      "msd_main_benefit_age_status",
+      "msd_main_benefit_type"
+    ],
+    "msd_benefit_statistics.month2026_06.supported_living_payment_subgroups": [
+      "msd_main_benefit_age_status",
+      "msd_main_benefit_subgroup",
+      "msd_main_benefit_type"
+    ],
+    "msd_benefit_statistics.month2026_06.working_age_benefit_totals": [
+      "msd_main_benefit_age_status",
+      "msd_main_benefit_type"
+    ],
+    "msd_benefit_statistics.month2026_06.working_age_by_benefit_and_age": [
+      "msd_main_benefit_age_group_source_label",
+      "msd_main_benefit_age_status",
+      "msd_main_benefit_type"
+    ],
+    "msd_benefit_statistics.month2026_06.youth_payment_working_age_by_age": [
+      "msd_main_benefit_age_group_source_label",
+      "msd_main_benefit_age_status",
+      "msd_main_benefit_type"
+    ],
+    "msd_nzs_vp.june2026.additional_support": [
+      "msd_nzs_vp.additional_support",
+      "msd_nzs_vp.benefit_type"
+    ],
+    "msd_nzs_vp.june2026.age_group": [
+      "msd_nzs_vp.age_group",
+      "msd_nzs_vp.benefit_type"
+    ],
+    "msd_nzs_vp.june2026.ethnic_group": [
+      "msd_nzs_vp.benefit_type",
+      "msd_nzs_vp.ethnic_group"
+    ],
+    "msd_nzs_vp.june2026.ethnicity_reporting_status": [
+      "msd_nzs_vp.benefit_type",
+      "msd_nzs_vp.ethnicity_reporting_status"
+    ],
+    "msd_nzs_vp.june2026.gender": [
+      "msd_nzs_vp.benefit_type",
+      "msd_nzs_vp.gender"
+    ],
+    "msd_nzs_vp.june2026.recipient_total": [
+      "msd_nzs_vp.benefit_type",
+      "msd_nzs_vp.recipient_total"
+    ]
+  },
+  "method": {
+    "headline": "Microcosm multiplies each published June 2026 age-cell recipient count by 52 and each compatible published April 2026 individual gross weekly rate. Microcosm sums the lower and upper category endpoints across age cells; it assigns no category shares. NZS uses its unstratified stock and all published individual fortnightly rates divided by two, including hospital and legacy categories.",
+    "category_weighting": "The pinned feed supplies programme-by-age counts and separate subgroup, gender and ethnicity marginals. None supplies the joint payment categories for single, couple, children, home or sharing status. Microcosm reports an age-weighted headline envelope; it cannot compute the required category-weighted paid total from these inputs.",
+    "after_abatement": "Published headline rates precede income abatement. The pinned feed and rates omit recipient earnings, partner earnings and person-level paid amounts. Microcosm cannot compute an after-abatement total without person-level data; it leaves that total null and makes no abatement assumption.",
+    "exposure": "Microcosm shows mechanical exposure fractions 1/2, 3/4 and 1 to disclose sensitivity. These fractions describe scenarios, not observed durations or a fitted central estimate. Each fraction scales both headline endpoints exactly.",
+    "period_and_universe": "June 2026 stocks and April 2026 rates describe a different period from actual expenditure in the year ended 30 June 2025. Microcosm applies no uprating or period alignment. JS expenditure also includes Emergency Benefit; the modelled JS count excludes it. Working-age main-benefit counts omit persons outside 18-64. Independently rounded source cells may disagree with published totals.",
+    "arithmetic": "Microcosm uses exact rational arithmetic and decimal text. It applies no intermediate cent rounding and never applies a two-recipient couple total to one recipient."
+  },
+  "comparisons": [
+    {
+      "programme": "jobseeker_support",
+      "recipient_count": 218481,
+      "strata": [
+        {
+          "age_stratum": "18-24 years",
+          "recipient_selector": {
+            "aggregate_fact_key": "ledger.aggregate_fact.v2:867e3db70e72831a0f50dcee"
+          },
+          "recipient_count": 48045,
+          "available_individual_rate_categories": [
+            {
+              "section": "If you don't have children",
+              "category": "Single, 18 to 19 years, at home",
+              "gross_weekly_nzd": "309.65"
+            },
+            {
+              "section": "If you don't have children",
+              "category": "Single, 18 to 19 years, away from home",
+              "gross_weekly_nzd": "367.88"
+            },
+            {
+              "section": "If you don't have children",
+              "category": "Single, 20 to 24 years",
+              "gross_weekly_nzd": "367.88"
+            },
+            {
+              "section": "If you don't have children",
+              "category": "Couple (each)",
+              "gross_weekly_nzd": "358.75"
+            },
+            {
+              "section": "If you have children",
+              "category": "Sole parent",
+              "gross_weekly_nzd": "606.69"
+            },
+            {
+              "section": "If you have children",
+              "category": "Couple (each)",
+              "gross_weekly_nzd": "380.24"
+            }
+          ],
+          "annual_headline_lower_nzd": "773610981.00",
+          "annual_headline_upper_nzd": "1515717894.60"
+        },
+        {
+          "age_stratum": "25-39 years",
+          "recipient_selector": {
+            "aggregate_fact_key": "ledger.aggregate_fact.v2:a58d823b0c6a5b1dff09d281"
+          },
+          "recipient_count": 68376,
+          "available_individual_rate_categories": [
+            {
+              "section": "If you don't have children",
+              "category": "Single, 25 years or over",
+              "gross_weekly_nzd": "426.12"
+            },
+            {
+              "section": "If you don't have children",
+              "category": "Couple (each)",
+              "gross_weekly_nzd": "358.75"
+            },
+            {
+              "section": "If you have children",
+              "category": "Sole parent",
+              "gross_weekly_nzd": "606.69"
+            },
+            {
+              "section": "If you have children",
+              "category": "Couple (each)",
+              "gross_weekly_nzd": "380.24"
+            }
+          ],
+          "annual_headline_lower_nzd": "1275554280.00",
+          "annual_headline_upper_nzd": "2157117842.88"
+        },
+        {
+          "age_stratum": "40-54 years",
+          "recipient_selector": {
+            "aggregate_fact_key": "ledger.aggregate_fact.v2:b26addc6f9f8de143650562f"
+          },
+          "recipient_count": 57399,
+          "available_individual_rate_categories": [
+            {
+              "section": "If you don't have children",
+              "category": "Single, 25 years or over",
+              "gross_weekly_nzd": "426.12"
+            },
+            {
+              "section": "If you don't have children",
+              "category": "Couple (each)",
+              "gross_weekly_nzd": "358.75"
+            },
+            {
+              "section": "If you have children",
+              "category": "Sole parent",
+              "gross_weekly_nzd": "606.69"
+            },
+            {
+              "section": "If you have children",
+              "category": "Couple (each)",
+              "gross_weekly_nzd": "380.24"
+            }
+          ],
+          "annual_headline_lower_nzd": "1070778345.00",
+          "annual_headline_upper_nzd": "1810816764.12"
+        },
+        {
+          "age_stratum": "55-64 years",
+          "recipient_selector": {
+            "aggregate_fact_key": "ledger.aggregate_fact.v2:ea61ef4c35eea39dc5bcd84f"
+          },
+          "recipient_count": 44661,
+          "available_individual_rate_categories": [
+            {
+              "section": "If you don't have children",
+              "category": "Single, 25 years or over",
+              "gross_weekly_nzd": "426.12"
+            },
+            {
+              "section": "If you don't have children",
+              "category": "Couple (each)",
+              "gross_weekly_nzd": "358.75"
+            },
+            {
+              "section": "If you have children",
+              "category": "Sole parent",
+              "gross_weekly_nzd": "606.69"
+            },
+            {
+              "section": "If you have children",
+              "category": "Couple (each)",
+              "gross_weekly_nzd": "380.24"
+            }
+          ],
+          "annual_headline_lower_nzd": "833150955.00",
+          "annual_headline_upper_nzd": "1408959868.68"
+        }
+      ],
+      "headline_rate_total_nzd": null,
+      "category_weighted_after_abatement_total_nzd": null,
+      "published_expense_component": "jobseeker_support_and_emergency_benefit",
+      "published_actual_expense_nzd": "4640562000.00",
+      "exposure_sensitivity": [
+        {
+          "full_year_exposure": "1/2",
+          "headline_lower_nzd": "1976547280.50",
+          "headline_upper_nzd": "3446306185.14",
+          "lower_minus_published_nzd": "-2664014719.50",
+          "upper_minus_published_nzd": "-1194255814.86"
+        },
+        {
+          "full_year_exposure": "3/4",
+          "headline_lower_nzd": "2964820920.75",
+          "headline_upper_nzd": "5169459277.71",
+          "lower_minus_published_nzd": "-1675741079.25",
+          "upper_minus_published_nzd": "528897277.71"
+        },
+        {
+          "full_year_exposure": "1",
+          "headline_lower_nzd": "3953094561.00",
+          "headline_upper_nzd": "6892612370.28",
+          "lower_minus_published_nzd": "-687467439.00",
+          "upper_minus_published_nzd": "2252050370.28"
+        }
+      ]
+    },
+    {
+      "programme": "sole_parent_support",
+      "recipient_count": 81258,
+      "strata": [
+        {
+          "age_stratum": "18-24 years",
+          "recipient_selector": {
+            "aggregate_fact_key": "ledger.aggregate_fact.v2:ae0a2a10d2c00b4312e9b01a"
+          },
+          "recipient_count": 9327,
+          "available_individual_rate_categories": [
+            {
+              "section": "",
+              "category": "Sole parent",
+              "gross_weekly_nzd": "606.69"
+            }
+          ],
+          "annual_headline_lower_nzd": "294247076.76",
+          "annual_headline_upper_nzd": "294247076.76"
+        },
+        {
+          "age_stratum": "25-39 years",
+          "recipient_selector": {
+            "aggregate_fact_key": "ledger.aggregate_fact.v2:816ac1eb59450cb26b267e12"
+          },
+          "recipient_count": 52398,
+          "available_individual_rate_categories": [
+            {
+              "section": "",
+              "category": "Sole parent",
+              "gross_weekly_nzd": "606.69"
+            }
+          ],
+          "annual_headline_lower_nzd": "1653045816.24",
+          "annual_headline_upper_nzd": "1653045816.24"
+        },
+        {
+          "age_stratum": "40-54 years",
+          "recipient_selector": {
+            "aggregate_fact_key": "ledger.aggregate_fact.v2:9b4a9c78618f59362e4f978a"
+          },
+          "recipient_count": 18522,
+          "available_individual_rate_categories": [
+            {
+              "section": "",
+              "category": "Sole parent",
+              "gross_weekly_nzd": "606.69"
+            }
+          ],
+          "annual_headline_lower_nzd": "584329833.36",
+          "annual_headline_upper_nzd": "584329833.36"
+        },
+        {
+          "age_stratum": "55-64 years",
+          "recipient_selector": {
+            "aggregate_fact_key": "ledger.aggregate_fact.v2:cefeec38e73ee55c37049f10"
+          },
+          "recipient_count": 1011,
+          "available_individual_rate_categories": [
+            {
+              "section": "",
+              "category": "Sole parent",
+              "gross_weekly_nzd": "606.69"
+            }
+          ],
+          "annual_headline_lower_nzd": "31894906.68",
+          "annual_headline_upper_nzd": "31894906.68"
+        }
+      ],
+      "headline_rate_total_nzd": "2563517633.04",
+      "category_weighted_after_abatement_total_nzd": null,
+      "published_expense_component": "sole_parent_support",
+      "published_actual_expense_nzd": "2255092000.00",
+      "exposure_sensitivity": [
+        {
+          "full_year_exposure": "1/2",
+          "headline_lower_nzd": "1281758816.52",
+          "headline_upper_nzd": "1281758816.52",
+          "lower_minus_published_nzd": "-973333183.48",
+          "upper_minus_published_nzd": "-973333183.48"
+        },
+        {
+          "full_year_exposure": "3/4",
+          "headline_lower_nzd": "1922638224.78",
+          "headline_upper_nzd": "1922638224.78",
+          "lower_minus_published_nzd": "-332453775.22",
+          "upper_minus_published_nzd": "-332453775.22"
+        },
+        {
+          "full_year_exposure": "1",
+          "headline_lower_nzd": "2563517633.04",
+          "headline_upper_nzd": "2563517633.04",
+          "lower_minus_published_nzd": "308425633.04",
+          "upper_minus_published_nzd": "308425633.04"
+        }
+      ]
+    },
+    {
+      "programme": "supported_living_payment",
+      "recipient_count": 109503,
+      "strata": [
+        {
+          "age_stratum": "18-24 years",
+          "recipient_selector": {
+            "aggregate_fact_key": "ledger.aggregate_fact.v2:62047e9fd2828d732b24a4be"
+          },
+          "recipient_count": 9420,
+          "available_individual_rate_categories": [
+            {
+              "section": "If you don't have children",
+              "category": "Single, 18+",
+              "gross_weekly_nzd": "489.21"
+            },
+            {
+              "section": "If you don't have children",
+              "category": "Couple (each)",
+              "gross_weekly_nzd": "411.78"
+            },
+            {
+              "section": "If you have children",
+              "category": "Sole parent",
+              "gross_weekly_nzd": "679.95"
+            },
+            {
+              "section": "If you have children",
+              "category": "Couple (each)",
+              "gross_weekly_nzd": "433.30"
+            },
+            {
+              "section": "If you have children",
+              "category": "Couple with 1 partner not on benefit (total)",
+              "gross_weekly_nzd": "450.84"
+            }
+          ],
+          "annual_headline_lower_nzd": "201706315.20",
+          "annual_headline_upper_nzd": "333066708.00"
+        },
+        {
+          "age_stratum": "25-39 years",
+          "recipient_selector": {
+            "aggregate_fact_key": "ledger.aggregate_fact.v2:8aac70ea17cd17b00998032b"
+          },
+          "recipient_count": 24138,
+          "available_individual_rate_categories": [
+            {
+              "section": "If you don't have children",
+              "category": "Single, 18+",
+              "gross_weekly_nzd": "489.21"
+            },
+            {
+              "section": "If you don't have children",
+              "category": "Couple (each)",
+              "gross_weekly_nzd": "411.78"
+            },
+            {
+              "section": "If you have children",
+              "category": "Sole parent",
+              "gross_weekly_nzd": "679.95"
+            },
+            {
+              "section": "If you have children",
+              "category": "Couple (each)",
+              "gross_weekly_nzd": "433.30"
+            },
+            {
+              "section": "If you have children",
+              "category": "Couple with 1 partner not on benefit (total)",
+              "gross_weekly_nzd": "450.84"
+            }
+          ],
+          "annual_headline_lower_nzd": "516856373.28",
+          "annual_headline_upper_nzd": "853456921.20"
+        },
+        {
+          "age_stratum": "40-54 years",
+          "recipient_selector": {
+            "aggregate_fact_key": "ledger.aggregate_fact.v2:fe4ec74a68196b4f866202d7"
+          },
+          "recipient_count": 32838,
+          "available_individual_rate_categories": [
+            {
+              "section": "If you don't have children",
+              "category": "Single, 18+",
+              "gross_weekly_nzd": "489.21"
+            },
+            {
+              "section": "If you don't have children",
+              "category": "Couple (each)",
+              "gross_weekly_nzd": "411.78"
+            },
+            {
+              "section": "If you have children",
+              "category": "Sole parent",
+              "gross_weekly_nzd": "679.95"
+            },
+            {
+              "section": "If you have children",
+              "category": "Couple (each)",
+              "gross_weekly_nzd": "433.30"
+            },
+            {
+              "section": "If you have children",
+              "category": "Couple with 1 partner not on benefit (total)",
+              "gross_weekly_nzd": "450.84"
+            }
+          ],
+          "annual_headline_lower_nzd": "703145645.28",
+          "annual_headline_upper_nzd": "1161066301.20"
+        },
+        {
+          "age_stratum": "55-64 years",
+          "recipient_selector": {
+            "aggregate_fact_key": "ledger.aggregate_fact.v2:cb997b79065997f23e35457f"
+          },
+          "recipient_count": 43107,
+          "available_individual_rate_categories": [
+            {
+              "section": "If you don't have children",
+              "category": "Single, 18+",
+              "gross_weekly_nzd": "489.21"
+            },
+            {
+              "section": "If you don't have children",
+              "category": "Couple (each)",
+              "gross_weekly_nzd": "411.78"
+            },
+            {
+              "section": "If you have children",
+              "category": "Sole parent",
+              "gross_weekly_nzd": "679.95"
+            },
+            {
+              "section": "If you have children",
+              "category": "Couple (each)",
+              "gross_weekly_nzd": "433.30"
+            },
+            {
+              "section": "If you have children",
+              "category": "Couple with 1 partner not on benefit (total)",
+              "gross_weekly_nzd": "450.84"
+            }
+          ],
+          "annual_headline_lower_nzd": "923031223.92",
+          "annual_headline_upper_nzd": "1524151441.80"
+        }
+      ],
+      "headline_rate_total_nzd": null,
+      "category_weighted_after_abatement_total_nzd": null,
+      "published_expense_component": "supported_living_payment",
+      "published_actual_expense_nzd": "2668450000.00",
+      "exposure_sensitivity": [
+        {
+          "full_year_exposure": "1/2",
+          "headline_lower_nzd": "1172369778.84",
+          "headline_upper_nzd": "1935870686.10",
+          "lower_minus_published_nzd": "-1496080221.16",
+          "upper_minus_published_nzd": "-732579313.90"
+        },
+        {
+          "full_year_exposure": "3/4",
+          "headline_lower_nzd": "1758554668.26",
+          "headline_upper_nzd": "2903806029.15",
+          "lower_minus_published_nzd": "-909895331.74",
+          "upper_minus_published_nzd": "235356029.15"
+        },
+        {
+          "full_year_exposure": "1",
+          "headline_lower_nzd": "2344739557.68",
+          "headline_upper_nzd": "3871741372.20",
+          "lower_minus_published_nzd": "-323710442.32",
+          "upper_minus_published_nzd": "1203291372.20"
+        }
+      ]
+    },
+    {
+      "programme": "nz_super",
+      "recipient_count": 974001,
+      "strata": [
+        {
+          "age_stratum": "all",
+          "recipient_selector": {
+            "aggregate_fact_key": "ledger.aggregate_fact.v2:215d8e4916b479cd62438c56"
+          },
+          "recipient_count": 974001,
+          "available_individual_rate_categories": [
+            {
+              "section": "Standard rates",
+              "category": "Single, living alone",
+              "gross_weekly_nzd": "647.37"
+            },
+            {
+              "section": "Standard rates",
+              "category": "Single, sharing",
+              "gross_weekly_nzd": "595.57"
+            },
+            {
+              "section": "Standard rates",
+              "category": "Only one of you qualifies",
+              "gross_weekly_nzd": "492.14"
+            },
+            {
+              "section": "Standard rates",
+              "category": "Both you and your partner qualify (each)",
+              "gross_weekly_nzd": "492.14"
+            },
+            {
+              "section": "Standard rates",
+              "category": "Only one of you qualifies and you include your partner in your payments (each) – grandparented since November 2020",
+              "gross_weekly_nzd": "466.58"
+            },
+            {
+              "section": "Non-standard rates",
+              "category": "Couple, with non-qualified spouse included before 1 October 1991 (each)",
+              "gross_weekly_nzd": "492.14"
+            },
+            {
+              "section": "Non-standard rates",
+              "category": "Hospital rate (always taxed at 'M')",
+              "gross_weekly_nzd": "65.16"
+            }
+          ],
+          "annual_headline_lower_nzd": "3300227068.32",
+          "annual_headline_upper_nzd": "32788029423.24"
+        }
+      ],
+      "headline_rate_total_nzd": null,
+      "category_weighted_after_abatement_total_nzd": null,
+      "published_expense_component": "new_zealand_superannuation",
+      "published_actual_expense_nzd": "23191199000.00",
+      "exposure_sensitivity": [
+        {
+          "full_year_exposure": "1/2",
+          "headline_lower_nzd": "1650113534.16",
+          "headline_upper_nzd": "16394014711.62",
+          "lower_minus_published_nzd": "-21541085465.84",
+          "upper_minus_published_nzd": "-6797184288.38"
+        },
+        {
+          "full_year_exposure": "3/4",
+          "headline_lower_nzd": "2475170301.24",
+          "headline_upper_nzd": "24591022067.43",
+          "lower_minus_published_nzd": "-20716028698.76",
+          "upper_minus_published_nzd": "1399823067.43"
+        },
+        {
+          "full_year_exposure": "1",
+          "headline_lower_nzd": "3300227068.32",
+          "headline_upper_nzd": "32788029423.24",
+          "lower_minus_published_nzd": "-19890971931.68",
+          "upper_minus_published_nzd": "9596830423.24"
+        }
+      ]
+    }
+  ],
+  "published_expenses": [
+    {
+      "component": "jobseeker_support_and_emergency_benefit",
+      "aggregate_fact_key": "ledger.aggregate_fact.v2:ee2fbceca03ea6cf897aeb87",
+      "published_actual_expense_nzd": "4640562000.00",
+      "comparison_status": "headline_envelope_only"
+    },
+    {
+      "component": "new_zealand_superannuation",
+      "aggregate_fact_key": "ledger.aggregate_fact.v2:0bbf770a6b0baa84853d9c18",
+      "published_actual_expense_nzd": "23191199000.00",
+      "comparison_status": "headline_envelope_only"
+    },
+    {
+      "component": "orphans_unsupported_childs_benefit",
+      "aggregate_fact_key": "ledger.aggregate_fact.v2:c6846c99892eccdf29a4a695",
+      "published_actual_expense_nzd": "402311000.00",
+      "comparison_status": "unmodelled_programme_no_comparison"
+    },
+    {
+      "component": "sole_parent_support",
+      "aggregate_fact_key": "ledger.aggregate_fact.v2:48d697bf0900434af3924605",
+      "published_actual_expense_nzd": "2255092000.00",
+      "comparison_status": "headline_envelope_only"
+    },
+    {
+      "component": "student_allowances",
+      "aggregate_fact_key": "ledger.aggregate_fact.v2:7ee2e4e9979352ac3989a5b7",
+      "published_actual_expense_nzd": "573646000.00",
+      "comparison_status": "unmodelled_programme_no_comparison"
+    },
+    {
+      "component": "supported_living_payment",
+      "aggregate_fact_key": "ledger.aggregate_fact.v2:da9daf8ba1407b2e8a76dce6",
+      "published_actual_expense_nzd": "2668450000.00",
+      "comparison_status": "headline_envelope_only"
+    }
+  ],
+  "closure_requirements": [
+    "The hub needs person-level or published joint payment-category counts to replace the headline envelopes with category-weighted totals.",
+    "The hub needs the pinned engine, person and partner income inputs, paid gross amounts after abatement, and measured annual exposure to compute paid programme totals; G8-r2c owns the declared annual-transfer exposure sensitivity.",
+    "The hub needs a reviewed common expenditure period, rate vintage and recipient universe, including Emergency Benefit and non-working-age differences, before it can interpret the remaining published-total gap."
+  ]
+}

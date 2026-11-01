@@ -24,11 +24,24 @@ _TEST_PATHS = paths_for("microcosm-build")
         ),
         (
             "be",
-            2023,
+            2026,
             {
+                "household.commune_nis",
+                "household.community_code",
                 "household.household_id",
+                "household.household_weight",
+                "household.province_nis",
+                "household.region_nuts1",
+                "person.age",
+                "person.commune_nis",
+                "person.community_code",
+                "person.donor_country_code",
+                "person.person_household_id",
                 "person.person_id",
+                "person.province_nis",
                 "person.region_nuts1",
+                "person.sex",
+                "person.support_stratum",
             },
             {"household", "person"},
         ),
@@ -102,7 +115,7 @@ def test_country_bundles_exercise_distinct_support_and_geography_kinds() -> None
         {"id": "populace_us_donor_base", "kind": "none"}
     ]
     assert be.resource("spine")["support_roles"] == [
-        {"id": "silc_base", "kind": "none"}
+        {"id": "populace_us_donor_base", "kind": "none"}
     ]
     assert nz.resource("spine")["support_roles"] == [
         {"id": "populace_us_donor_base", "kind": "none"}
@@ -194,12 +207,15 @@ def test_be_generation_zero_views_still_come_from_the_country_spec_seam() -> Non
     spec = load_country_spec("be")
 
     assert spec.sources is not None
-    assert tuple(spec.sources.stage_map()) == ("silc_load",)
+    assert tuple(spec.sources.stage_map()) == ("load_populace_us_support_pool",)
     assert spec.geography_spine is not None
     assert spec.geography_spine.geography_spine.stage == "clone_assign_communes"
     assert spec.gates is not None
     assert spec.release_contract is not None
     assert spec.release_contract.artifact_repo_private
+    assert spec.release_contract.artifact_repo == "policyengine/populace-be-private"
+    assert not spec.release_contract.licence_restricted
+    assert spec.release_contract.public_artifacts == ()
     assert {row.path for row in spec.resource_rows if row.kind == "legacy_json"} == {
         "gates.json",
         "geography_spine.json",
@@ -225,8 +241,10 @@ def test_nz_generation_zero_views_come_from_the_country_spec_seam() -> None:
         "atomic_geography_support.json",
         "axiom_input_closure.json",
         "axiom_rules_bindings.json",
+        "benefit_gross_up.json",
         "benefit_unit_rule.json",
         "calibration_bindings.json",
+        "calibration_settings.json",
         "chronicle_feed.json",
         "currency_bridge.json",
         "export_contract.json",
@@ -234,12 +252,18 @@ def test_nz_generation_zero_views_come_from_the_country_spec_seam() -> None:
         "gates.json",
         "geography_spine.json",
         "holdout_references.json",
+        "mass_references.json",
         "money_normalization.json",
+        "msd_benefit_rates_20260401.json",
+        "msd_pre_activation_reconciliation.json",
         "precal_references.json",
+        "precalibration_stages.json",
         "reference_aging.json",
         "reference_intervals.json",
         "reference_inventory.json",
         "reference_profiles.json",
+        "reference_selection.json",
+        "receipt_contract.json",
         "release_contract.json",
         "reporting_classifiers.json",
         "scenarios.json",
@@ -251,6 +275,7 @@ def test_nz_generation_zero_views_come_from_the_country_spec_seam() -> None:
 @pytest.mark.parametrize(
     ("before", "after", "field"),
     [
+        ("phase: legacy", "phase: f3", "phase"),
         (
             "kernel:clone_assign_communes",
             "kernel:assign_uk_geography_ladder",
@@ -274,13 +299,13 @@ def test_nz_generation_zero_views_come_from_the_country_spec_seam() -> None:
             "assignment/validation/vintage_refusal",
         ),
         (
-            "universe: commune_within_nuts1",
             "universe: commune_nationally",
+            "universe: commune_within_nuts1",
             "assignment/draw/universe",
         ),
         (
+            "- assigned_commune_complete",
             "- source_nuts1_preserved",
-            "- source_nuts1_warning",
             "assignment/assertions/source_nuts1_preserved",
         ),
     ],
@@ -305,16 +330,18 @@ def test_be_typed_geography_drift_from_legacy_evidence_refuses(
     assert field in str(error.value)
 
 
-def test_be_smoke_build_refuses_without_gated_inputs_and_stage_bindings() -> None:
+def test_be_smoke_build_refuses_without_pinned_inputs_and_stage_bindings() -> None:
     """Compile succeeds, but the repository has no honest runnable BE stage map."""
 
     spec = load_country_spec("be")
     compiled = compile_spec(spec.resolved_spec)
     assert compiled.spec_binding.country == "be"
 
-    silc_stage = spec.sources.stage_map()["silc_load"]
-    assert {artifact["kind"] for artifact in silc_stage.artifacts} == {
-        "restricted_microdata"
+    donor_stage = spec.sources.stage_map()["load_populace_us_support_pool"]
+    assert {artifact["kind"] for artifact in donor_stage.artifacts} == {
+        "public_microdata",
+        "public_aggregate_reference",
+        "public_parameter_reference",
     }
     build_package = _TEST_PATHS.package / "src/microcosm/build"
     assert not (build_package / "be_runtime").exists()
@@ -322,7 +349,7 @@ def test_be_smoke_build_refuses_without_gated_inputs_and_stage_bindings() -> Non
     with pytest.raises(
         ValueError,
         match=(
-            r"missing \['silc_load', 'clone_assign_communes'\].*"
+            r"missing \['load_populace_us_support_pool', 'clone_assign_communes'\].*"
             r"There are no stubs or fallbacks"
         ),
     ):

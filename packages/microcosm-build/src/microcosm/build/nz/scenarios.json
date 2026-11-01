@@ -2,8 +2,8 @@
   "version": 1,
   "country": "nz",
   "method_card_row": "MC3",
-  "description": "The declared Accommodation Supplement scenario set (method card amendment MC3a): entitlement-tier scenarios S0-S5 branch from the shared AS version after calibration; calibration-tier variants V1-V4 branch before calibration and re-run it. Each non-central scenario changes exactly one knob from the central defaults. Bands are the minimum, S0 and the maximum of each gap table across every scenario, and each band bound names the scenario that set it.",
-  "status": "awaiting D1 (MC3a, MC8-MC12); S4's factor awaits Chronicle evidence",
+  "description": "The hub declares Accommodation Supplement entitlement scenarios S0, S1, S2, S3 and S5 after calibration, and calibration variants V1 to V4 from the raw nz.open branch. Each non-central scenario changes one central knob. Bands report the minimum, S0 and maximum gap across the declared scenarios and identify each bound-setting scenario.",
+  "status": "The hub adopts the declared scenario set under H7; C1 rent ageing and D2 publication approval remain open.",
   "tiers": {
     "entitlement": {
       "branch_point": "nz.as"
@@ -35,7 +35,7 @@
       "as_area",
       "as_area_alt"
     ],
-    "rent_stock_factor": "a positive number; null only while status says it awaits evidence",
+    "rent_stock_factor": "a positive number; the central value 1 holds Census rent levels fixed while the hub resolves C1 rent ageing",
     "superannuitant_treatment": [
       "exclude_and_count",
       "reg17_superannuitant_base_rate"
@@ -106,16 +106,6 @@
       "description": "the alternative territorial authority to Accommodation Supplement area crosswalk (as_area_crosswalk.json alternative)"
     },
     {
-      "id": "S4",
-      "tier": "entitlement",
-      "method_card_row": "MC8",
-      "knobs": {
-        "rent_stock_factor": null
-      },
-      "description": "stock adjustment to MBIE lodged-bond rents",
-      "status": "awaiting Chronicle evidence on whether MBIE bond rents describe newly lodged bonds or the active stock; G8 writes the factor, or removes S4 if the rents are active stock"
-    },
-    {
       "id": "S5",
       "tier": "entitlement",
       "method_card_row": "MC11",
@@ -149,7 +139,7 @@
       "knobs": {
         "beneficiary_assignment": "variant"
       },
-      "description": "beneficiary assignment variant for the main-benefit and NZ Super receipt layer"
+      "description": "V3 starts from the raw nz.open branch and uses the resolved beneficiary_assignment variant profile in receipt_contract.json to draw a separate deterministic receipt stream for NZ Super, SLP, SPS and JS with the same targets and eligibility definitions."
     },
     {
       "id": "V4",
@@ -176,7 +166,7 @@
     },
     "reporting_cells": {
       "entity": "family",
-      "measure": "accommodation_supplement",
+      "measure": "accommodation_supplement_rounded_weekly_payment",
       "period": "2026-27",
       "annualisation_factor": 52,
       "tables": [
@@ -229,5 +219,5 @@
       "references": "holdout_references.json, holdout_use accommodation_supplement_dollar_comparator"
     }
   },
-  "keying_note": "Charter C2 (adding a scenario re-keys only the bands and package nodes) holds only if each scenario's graph nodes carry that scenario's own resolved knobs and a digest of its own entry, not this file's SHA-256."
+  "keying_note": "Charter C2 (adding a scenario re-keys only the bands and package nodes) holds only if each scenario's graph nodes carry that scenario's own resolved knobs and a digest of its own entry, not this file's SHA-256. The hub removes the MBIE bond-stock sensitivity under H7 because central rent uses Census bands. The hub still must resolve C1 ageing from Census 2023 rent levels to 2026-27; the central rent_stock_factor of 1 declares no ageing and does not settle C1."
 }

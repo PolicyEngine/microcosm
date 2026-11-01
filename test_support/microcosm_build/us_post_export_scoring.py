@@ -3,7 +3,7 @@
 The reform-coverage smoke, reform_validation and demographics score the
 written release H5 through ``_HouseholdBatchedPostExportScorer`` instead of one
 whole-pool Microsimulation each. These tests run the shipped consumers (the
-41 smoke probes, the shipped reform-validation specs and baseline levels, and
+42 smoke probes, the shipped reform-validation specs and baseline levels, and
 the age distribution) against a fake engine on a small nested frame and pin
 the plan's contract: output identical to the unbatched path, batches that
 partition the pool, one live engine at a time, the SPM selection on every

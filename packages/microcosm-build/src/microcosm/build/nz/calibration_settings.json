@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "country": "nz",
+  "status": "The hub accepted these pre-candidate solver settings on 2026-11-01. No NZ convergence measurement supports them yet: G8-x measures convergence and peak memory, and a later change needs a reviewed edit before any candidate counts.",
+  "epochs": 3000,
+  "learning_rate": 0.15,
+  "mass": "free",
+  "max_weight_ratio": 5,
+  "weight_anchor": "design",
+  "reasons": {
+    "epochs": "Allow 3000 fixed Adam epochs, matching the existing US build budget and exceeding the UK local budget of 2000; no NZ trajectory yet establishes convergence.",
+    "learning_rate": "Start Adam at 0.15, the existing UK and US operational setting; no NZ candidate supplies evidence yet.",
+    "mass": "Let calibration fit independently published target margins after CREATE scales the design population to June 2025 ERP; free mass avoids an additional conservation constraint.",
+    "max_weight_ratio": "Limit each final household weight to five times its design weight; G8-x tests NZ feasibility.",
+    "weight_anchor": "Anchor the solver cap to design weights because calibrate.ordered_adam@1 requires that anchor whenever a cap exists."
+  },
+  "cap_disclosure": "The solver limits each row relative to its design weight. MC15 independently tests final weights after source-household aggregation and compares their maximum with their positive median; a design-weight cap of 5 does not establish MC15's ratio threshold of 5.",
+  "execution_requirements": [
+    "The operator must measure memory and capacity before a candidate and account for two CREATE executions on a cold run: the inventory probe and graph execution.",
+    "The operator must retain the local graph store and plan resume before execution. The graph, solver settings and checkpoint identities govern replay.",
+    "The graph passes only epochs, learning_rate, mass, max_weight_ratio and weight_anchor to calibrate.ordered_adam@1. The export declaration supplies its own time period."
+  ],
+  "comparison_evidence": {
+    "us": "packages/microcosm-build/src/microcosm/build/us_runtime/__init__.py BuildConfig",
+    "uk": "packages/microcosm-build/src/microcosm/build/uk_runtime/graph_calibration.py UKGraphCalibrationConfig; local_doctrine.py UK_LOCAL_SOLVE_EPOCHS",
+    "solver": "packages/microcosm-calibrate/src/microcosm/calibrate/ordered_kernels.py _PARAMS and CalibrateOrderedAdamKernel.run"
+  }
+}

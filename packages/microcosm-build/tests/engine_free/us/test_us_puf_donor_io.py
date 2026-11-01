@@ -47,15 +47,43 @@ def test_loader_threads_source_alignment_and_summary(
         return adjusted_gross_income
 
     expected = pd.DataFrame({"tax_unit_id": [10, 20]})
+    schedule_e = {
+        "partnership_income": np.asarray([1_000.0, -50.0]),
+        "passive_partnership_s_corp_income": np.asarray([200.0, 0.0]),
+    }
+    processed_nonpassive = np.asarray([900.0, -60.0])
+
+    def fake_processed_nonpassive(actual_arrays) -> np.ndarray:
+        captured["nonpassive_arrays"] = actual_arrays
+        return processed_nonpassive
+
+    def fake_schedule_e(
+        actual_source_path: Path,
+        *,
+        processed_tax_unit_ids,
+        processed_tax_unit_weights,
+        processed_nonpassive_partnership_s_corp_income,
+        receipt,
+    ) -> dict[str, np.ndarray]:
+        captured["schedule_e_source_path"] = actual_source_path
+        captured["schedule_e_ids"] = processed_tax_unit_ids
+        captured["schedule_e_weights"] = processed_tax_unit_weights
+        captured["schedule_e_nonpassive"] = (
+            processed_nonpassive_partnership_s_corp_income
+        )
+        receipt["weighted_line_32"] = 900.0
+        return schedule_e
 
     def fake_donor(
         actual_arrays,
         *,
         adjusted_gross_income,
+        schedule_e_partnership_s_corp,
         donor_build_summary,
     ) -> pd.DataFrame:
         captured["arrays"] = actual_arrays
         captured["adjusted_gross_income"] = adjusted_gross_income
+        captured["schedule_e"] = schedule_e_partnership_s_corp
         captured["donor_build_summary"] = donor_build_summary
         donor_build_summary["mortgage_field_quarantine"] = {"screened_record_count": 2}
         return expected
@@ -64,6 +92,16 @@ def test_loader_threads_source_alignment_and_summary(
         puf_donor_io,
         "source_year_puf_adjusted_gross_income",
         fake_agi,
+    )
+    monkeypatch.setattr(
+        puf_donor_io,
+        "processed_puf_tax_unit_partnership_s_corp_income",
+        fake_processed_nonpassive,
+    )
+    monkeypatch.setattr(
+        puf_donor_io,
+        "source_year_puf_partnership_s_corp_income",
+        fake_schedule_e,
     )
     monkeypatch.setattr(
         puf_donor_io,
@@ -94,8 +132,19 @@ def test_loader_threads_source_alignment_and_summary(
     for name, values in arrays.items():
         np.testing.assert_array_equal(loaded_arrays[name], values)
     assert captured["adjusted_gross_income"] is adjusted_gross_income
+    assert captured["schedule_e_source_path"] == source_path
+    np.testing.assert_array_equal(captured["schedule_e_ids"], arrays["tax_unit_id"])
+    np.testing.assert_array_equal(
+        captured["schedule_e_weights"], arrays["household_weight"]
+    )
+    assert captured["nonpassive_arrays"] is loaded_arrays
+    assert captured["schedule_e_nonpassive"] is processed_nonpassive
+    assert captured["schedule_e"] is schedule_e
     assert captured["donor_build_summary"] is summary
-    assert summary == {"mortgage_field_quarantine": {"screened_record_count": 2}}
+    assert summary == {
+        "mortgage_field_quarantine": {"screened_record_count": 2},
+        "schedule_e_line_32": {"weighted_line_32": 900.0},
+    }
 
 
 def test_loader_refuses_missing_source_year_path(tmp_path: Path) -> None:
