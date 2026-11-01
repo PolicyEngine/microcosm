@@ -22,7 +22,24 @@
           "purpose": "calibration_measure"
         }
       ],
-      "citation": "https://github.com/TheAxiomFoundation/rulespec-nz/blob/8dc2507d5f10a0467c285fed54d018ee37246798/nz/statutes/social_security/main_benefits/rates.yaml (SHA-256 7c8ebbc3e62268722529ad790e3f561bbebf807d8a4d67bba24f93cb0809ec39); https://www.workandincome.govt.nz/products/benefit-rates/benefit-rates-april-2026.html. The rates stage supplies after-tax payments after abatement."
+      "derived_outputs": [
+        {
+          "entity": "person",
+          "column": "jobseeker_support_net_weekly_payment_cents",
+          "purpose": "calibration_measure"
+        },
+        {
+          "entity": "person",
+          "column": "sole_parent_support_net_weekly_payment_cents",
+          "purpose": "calibration_measure"
+        },
+        {
+          "entity": "person",
+          "column": "supported_living_payment_net_weekly_payment_cents",
+          "purpose": "calibration_measure"
+        }
+      ],
+      "citation": "https://github.com/TheAxiomFoundation/rulespec-nz/blob/8dc2507d5f10a0467c285fed54d018ee37246798/nz/statutes/social_security/main_benefits/rates.yaml (SHA-256 7c8ebbc3e62268722529ad790e3f561bbebf807d8a4d67bba24f93cb0809ec39); https://www.workandincome.govt.nz/products/benefit-rates/benefit-rates-april-2026.html. The rates stage supplies after-tax payments after abatement, and its cents node rounds them half-even to the whole cents MSD pays."
     },
     {
       "id": "nz.precal.benefit_gross_up",

@@ -629,6 +629,23 @@ def documents():
                 artifact_inputs=support,
             ),
             node(
+                "nz.geo.person",
+                "geography.person_location@1",
+                population="nz.open",
+                inputs=[
+                    slice_("household", ["household_region_code"]),
+                    slice_("person", ["person_id", "person_household_id"]),
+                ],
+                outputs=[owned("person", "region_code", "string")],
+                params={
+                    "columns": json.dumps(
+                        {"household_region_code": "region_code"},
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    )
+                },
+            ),
+            node(
                 "nz.geo.gate",
                 "geography.gate@1",
                 population="nz.open",
@@ -840,7 +857,6 @@ def documents():
         },
         "pending_outputs": [
             "Reviewed Reg 17 and Reg 18 assembly and the S5 superannuitant alternative",
-            "A shared producer must carry assigned household region codes to persons before calibration",
             "w4 support, release-input coverage and weight audit evidence",
             "r2c income stand-in and reconciliation",
             "P1 earnings, Census rent and liquid-assets quantile producers",

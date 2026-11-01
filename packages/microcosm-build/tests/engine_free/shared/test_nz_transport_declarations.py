@@ -681,7 +681,6 @@ def _synthetic_nz_composition_spec_and_config(*, admit_unimplemented_roots):
         for column in item["columns"]
     } - produced
     unimplemented = {
-        ("person", "region_code"),
         ("family", "accommodation_supplement_base_rate_weekly_amount"),
         (
             "family",
@@ -720,12 +719,7 @@ def _synthetic_nz_composition_spec_and_config(*, admit_unimplemented_roots):
         }
     )
     if admit_unimplemented_roots:
-        inventory.update(
-            {
-                key: "string" if key == ("person", "region_code") else "float64"
-                for key in unimplemented
-            }
-        )
+        inventory.update({key: "float64" for key in unimplemented})
     else:
         needed -= unimplemented
     assert needed <= inventory.keys(), (
@@ -760,7 +754,6 @@ def test_nz_packaged_graph_names_region_and_bridge_roots_without_inventing_produ
         for column in item["columns"]
     }
     missing = {
-        ("person", "region_code"),
         ("family", "accommodation_supplement_base_rate_weekly_amount"),
         (
             "family",
@@ -769,6 +762,17 @@ def test_nz_packaged_graph_names_region_and_bridge_roots_without_inventing_produ
     }
     assert missing <= inputs
     assert missing.isdisjoint(outputs)
+    # geography.person_location@1 now owns the person region code.
+    (producer,) = [
+        row
+        for row in rows
+        if ("person", "region_code")
+        in {(item["entity"], item["column"]) for item in row.get("outputs", ())}
+    ]
+    assert (producer["id"], producer["kernel"]) == (
+        "nz.geo.person",
+        "geography.person_location@1",
+    )
     assert spec["resources"]["transport_graph"]["pending_outputs"]
 
 

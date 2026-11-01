@@ -47,6 +47,7 @@ from .gate_bindings import TRANSPORT_GATE_REGISTRY
 from .gate_kernels import register_gate_kernel
 from .geography_kernels import register_geography_kernels
 from .money_kernels import register_money_kernels
+from .person_location_kernels import register_person_location_kernels
 from .population_kernels import register_population_kernels
 from .reporting_kernels import register_reporting_kernels
 from .takeup_kernels import register_takeup_kernels
@@ -374,6 +375,7 @@ def build_transport_registry(
     register_transport_codecs(codecs)
     register_transport_population_kernels(kernels)
     register_atomic_geography_kernels(kernels)
+    register_person_location_kernels(kernels)
     register_target_kernels(kernels)
     kernels.register(CALIBRATE_ORDERED_ADAM)
     register_gate_kernel(kernels, TRANSPORT_GATE_REGISTRY)

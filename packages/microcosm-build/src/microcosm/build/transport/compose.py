@@ -170,6 +170,7 @@ SKELETON_KERNELS = frozenset(
         "geography.support_from_facts@1",
         "geography.assign_atomic@1",
         "geography.derive@1",
+        "geography.person_location@1",
         "geography.gate@1",
         "diagnostics.calibration@1",
         "gates.battery@1",
