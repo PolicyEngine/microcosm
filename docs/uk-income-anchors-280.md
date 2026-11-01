@@ -90,10 +90,11 @@ membership carries the uprated value with its receipt.
   (`hmrc_uprating.uk_obr_savings_income_level`). Each band's factor is the
   published amount over the FACT-weighted amount of the tape's taxpayers in
   the band, as Table 3.7 counts taxpayers only (microcosm#1428). The tape is
-  banded on its income moved to 2023-24, each income leaf at its own factor,
-  repeating until the rebased savings move no record across a band edge, so
-  the band-edge migration the consumers re-band on uprated income is counted
-  once. A taxpayer is a record the tape flags (TAXPAYER 1) or one whose income
+  banded once on its income moved to 2023-24, each income leaf at its own
+  factor and each rebased column at its factor over all bands, so the
+  band-edge migration the consumers re-band on uprated income is counted
+  once. A record whose band's factor differs from that of all bands can still
+  sit across an edge on its rebased income. A taxpayer is a record the tape flags (TAXPAYER 1) or one whose income
   crosses the Personal Allowance by 2023-24; a flagged taxpayer below the first
   band sits in it (note 8); any other record takes the factor of all bands. A
   band the tape carries none of is left as it is, a band whose tape amount is

@@ -1924,15 +1924,15 @@ def spi_savings_rebase_published(
     return published
 
 
-#: The rebase bands the tape on its income moved to 2023-24, the year the
+#: The rebase bands the tape once on its income moved to 2023-24, the year the
 #: published bands describe: each income leaf at its 2022-23 to 2023-24 factor,
-#: the rebased savings as they stand, and the rest of the published total held
-#: nominal, as the band donors' realised income is built. Its consumers band
-#: again on income uprated to the frame's year, so banding on 2022-23 income
-#: counted the band-edge migration twice (microcosm#1428 review, finding 6).
-#: Rebased savings move income, so the banding repeats until no record changes
-#: band, at most this many times.
-SPI_SAVINGS_REBASE_MAX_ITERATIONS = 20
+#: each rebased column at its factor over all bands, and the rest of the
+#: published total held nominal, as the band donors' realised income is built.
+#: Its consumers band again on income uprated to the frame's year, so banding
+#: on 2022-23 income counted the band-edge migration twice (microcosm#1428
+#: review, finding 6). Moving each record's savings by its own band's factor
+#: has no fixed point: the band sets the factor and the factor the band, and on
+#: the production tape records kept changing band from pass to pass.
 
 
 def _tape_income_in_rebase_year(
@@ -1969,17 +1969,19 @@ def rebase_spi_donor_savings(
     Each taxpayer donor's column is scaled by its band's factor: HMRC's
     published 2023-24 amount over the tape's FACT-weighted amount for the
     taxpayers in the same range of total income, since Table 3.7 counts
-    taxpayers only. The tape is banded on its income moved to 2023-24
-    (``income_factors``, each income leaf's 2022-23 to 2023-24 factor; none
-    holds the leaves nominal), repeating until the rebased savings move no
-    record across a band edge. A taxpayer is a record the tape flags
-    (TAXPAYER 1) or one whose income crosses the first band's lower bound,
-    the Personal Allowance, by 2023-24, so a saver who becomes a taxpayer is
-    counted once. A flagged taxpayer below the first band sits in it, as the
-    table's lowest band holds those taxpayers (note 8); a tape without the
-    flag counts every record at or above the first band. Any other donor
-    takes the factor of all bands together. The rebased tape reproduces the
-    published amounts band by band; the OBR's savings income growth then
+    taxpayers only. The tape is banded once on its income moved to 2023-24:
+    each income leaf at its 2022-23 to 2023-24 factor (``income_factors``;
+    none holds the leaves nominal) and each rebased column at its factor over
+    all bands, on the tape's 2022-23 bands. A taxpayer is a record the tape
+    flags (TAXPAYER 1) or one whose income crosses the first band's lower
+    bound, the Personal Allowance, by 2023-24, so a saver who becomes a
+    taxpayer is counted once. A flagged taxpayer below the first band sits in
+    it, as the table's lowest band holds those taxpayers (note 8); a tape
+    without the flag counts every record at or above the first band. Any
+    other donor takes the factor of all bands together. Banded so, the rebased
+    tape reproduces the published amounts band by band; a record whose band's
+    factor differs from the factor of all bands can sit across an edge when
+    banded on its rebased income. The OBR's savings income growth then
     carries both columns to the frame's year (``_spi_income_uprating_factors``).
     A band the tape carries none of has nothing to scale, and a band whose tape
     amount is under SPI_SAVINGS_REBASE_MINIMUM_GROSSING of its published amount
@@ -2020,6 +2022,7 @@ def rebase_spi_donor_savings(
     }
     original: dict[str, np.ndarray] = {}
     targets: dict[str, np.ndarray] = {}
+    banding_factors: dict[str, float] = {}
     for column, by_bound in published.items():
         values = donor[column].to_numpy(dtype=np.float64)
         target = np.asarray([float(by_bound[bound]) for bound in bounds])
@@ -2042,59 +2045,54 @@ def rebase_spi_donor_savings(
             continue
         original[column] = values
         targets[column] = target
+        banding_factors[column] = (
+            float(target[carried].sum() / tape[carried].sum()) if carried.any() else 1.0
+        )
+    if not original:
+        return rebased, receipt
 
-    band = None
-    converged = not original
-    passes = 0
-    while original and passes < SPI_SAVINGS_REBASE_MAX_ITERATIONS:
-        passes += 1
-        income = _tape_income_in_rebase_year(donor, rebased, factors_in)
-        moved_band = np.searchsorted(edges, income, side="right") - 1
-        crossed = ~tape_taxpayer & (band_2022 < 0) & (moved_band >= 0)
-        taxpayer = tape_taxpayer | crossed if flagged else (moved_band >= 0)
-        moved_band = np.where(taxpayer, np.clip(moved_band, 0, None), moved_band)
-        if band is not None and np.array_equal(moved_band, band):
-            converged = True
-            break
-        band = moved_band
-        for column, values in original.items():
-            target = targets[column]
-            tape = np.bincount(
-                band[taxpayer],
-                weights=(weights * values)[taxpayer],
-                minlength=len(bounds),
-            )
-            carried = tape > 0.0
-            thin = carried & (tape < SPI_SAVINGS_REBASE_MINIMUM_GROSSING * target)
-            usable = carried & ~thin
-            all_bands = (
-                float(target[usable].sum() / tape[usable].sum())
-                if usable.any()
-                else 1.0
-            )
-            factors = np.where(usable, target / np.where(usable, tape, 1.0), all_bands)
-            rebased[column] = values * np.where(
-                taxpayer, factors[np.clip(band, 0, None)], all_bands
-            )
-            receipt["columns"][column] = {
-                "concept": SPI_SAVINGS_REBASE_CONCEPTS[column],
-                "band_factors": {
-                    str(bound): float(factor)
-                    for bound, factor, kept in zip(bounds, factors, usable, strict=True)
-                    if kept
-                },
-                "below_first_band_factor": all_bands,
-                "bands_without_tape_amounts": [
-                    int(bound)
-                    for bound, kept in zip(bounds, carried, strict=True)
-                    if not kept
-                ],
-                "bands_too_thin_to_gross": [
-                    int(bound) for bound, kept in zip(bounds, thin, strict=True) if kept
-                ],
-            }
-    receipt["banding_passes"] = passes
-    receipt["banding_converged"] = bool(converged)
+    income = _tape_income_in_rebase_year(
+        donor, donor, {**factors_in, **banding_factors}
+    )
+    band = np.searchsorted(edges, income, side="right") - 1
+    crossed = ~tape_taxpayer & (band_2022 < 0) & (band >= 0)
+    taxpayer = tape_taxpayer | crossed if flagged else (band >= 0)
+    band = np.where(taxpayer, np.clip(band, 0, None), band)
+    for column, values in original.items():
+        target = targets[column]
+        tape = np.bincount(
+            band[taxpayer],
+            weights=(weights * values)[taxpayer],
+            minlength=len(bounds),
+        )
+        carried = tape > 0.0
+        thin = carried & (tape < SPI_SAVINGS_REBASE_MINIMUM_GROSSING * target)
+        usable = carried & ~thin
+        all_bands = (
+            float(target[usable].sum() / tape[usable].sum()) if usable.any() else 1.0
+        )
+        factors = np.where(usable, target / np.where(usable, tape, 1.0), all_bands)
+        rebased[column] = values * np.where(
+            taxpayer, factors[np.clip(band, 0, None)], all_bands
+        )
+        receipt["columns"][column] = {
+            "concept": SPI_SAVINGS_REBASE_CONCEPTS[column],
+            "banding_factor": banding_factors[column],
+            "band_factors": {
+                str(bound): float(factor)
+                for bound, factor, kept in zip(bounds, factors, usable, strict=True)
+                if kept
+            },
+            "below_first_band_factor": all_bands,
+            "bands_without_tape_amounts": [
+                int(bound)
+                for bound, kept in zip(bounds, carried, strict=True)
+                if not kept
+            ],
+            "bands_too_thin_to_gross": [
+                int(bound) for bound, kept in zip(bounds, thin, strict=True) if kept
+            ],
+        }
     return rebased, receipt
 
 

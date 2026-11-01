@@ -82,6 +82,7 @@ def test_the_rebased_tape_reproduces_the_published_bands() -> None:
     # The receipt carries factors, never a count of tape records.
     assert set(receipt["columns"]["other_investment_income"]) == {
         "concept",
+        "banding_factor",
         "band_factors",
         "below_first_band_factor",
         "bands_without_tape_amounts",
@@ -303,9 +304,9 @@ def _edge_donor() -> pd.DataFrame:
 
 def test_the_tape_is_banded_on_its_income_moved_to_2023_24() -> None:
     # Banded on its 2022-23 income, A sits in the £12,570 band. Moved to
-    # 2023-24 (dividends x1.1), it crosses the £50,000 edge, the band the
-    # consumers will find it in after uprating, so its migration is counted
-    # once (microcosm#1428 review, finding 6).
+    # 2023-24 (dividends x1.1, interest at all bands' 500 over 200), it crosses
+    # the £50,000 edge, the band the consumers will find it in after uprating,
+    # so its migration is counted once (microcosm#1428 review, finding 6).
     held, held_receipt = rebase_spi_donor_savings(_edge_donor(), INTEREST_ONLY)
     assert held["savings_interest_income"].tolist() == pytest.approx([1.0, 4.0])
     moved, receipt = rebase_spi_donor_savings(
@@ -316,7 +317,36 @@ def test_the_tape_is_banded_on_its_income_moved_to_2023_24() -> None:
         "50000": pytest.approx(2.0)
     }
     assert receipt["band_by"] == "total_income_moved_to_2023_24"
-    assert receipt["banding_converged"] is True
+    assert receipt["columns"]["savings_interest_income"][
+        "banding_factor"
+    ] == pytest.approx(2.5)
+
+
+def test_savings_move_by_their_factor_over_all_bands_for_the_banding() -> None:
+    # A's interest is a large part of its income. All bands' factor (3,000
+    # over the tape's 600) moves it from 500 to 2,500 for the banding, which
+    # takes A across the £50,000 edge; there the band's factor is 2,000 over
+    # 600 for both records, and A's rebased income stays above the edge. One
+    # pass: a record's own band's factor would set the band it is banded in
+    # (microcosm#1428 review, finding 6).
+    donor = pd.DataFrame(
+        {
+            "total_income": [49_000.0, 60_000.0],
+            "FACT": [1.0, 1.0],
+            "savings_interest_income": [500.0, 100.0],
+        }
+    )
+    rebased, receipt = rebase_spi_donor_savings(
+        donor, {"savings_interest_income": {12_570: 1_000.0, 50_000: 2_000.0}}
+    )
+    interest = receipt["columns"]["savings_interest_income"]
+    assert interest["banding_factor"] == pytest.approx(5.0)
+    assert interest["band_factors"] == {"50000": pytest.approx(2_000.0 / 600.0)}
+    assert interest["bands_without_tape_amounts"] == [12_570]
+    assert rebased["savings_interest_income"].tolist() == pytest.approx(
+        [500.0 * 2_000.0 / 600.0, 100.0 * 2_000.0 / 600.0]
+    )
+    assert 48_500.0 + rebased.loc[0, "savings_interest_income"] >= 50_000.0
 
 
 def test_a_saver_who_becomes_a_taxpayer_counts_once() -> None:
