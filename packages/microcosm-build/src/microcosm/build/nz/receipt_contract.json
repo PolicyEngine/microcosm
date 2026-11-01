@@ -146,7 +146,7 @@
     "The hub provisionally orders assignment as NZ Super, Supported Living Payment, Sole Parent Support and Jobseeker Support. Max will rule on overlapping eligibility priority after the engine pin permits the overlap measurement; this declaration does not settle that priority.",
     "The kernel leaves eligible people outside ages 18 to 64 not_assigned for the three working-age programs. Their published non-working-age counts remain disclosure rather than targets. NZ Super uses one unstratified total.",
     "V3 starts from the raw nz.open branch and uses its resolved beneficiary_assignment profile. The variant suffix selects a separate deterministic draw stream for all four programs while preserving their targets and eligibility definitions.",
-    "The flags represent assigned point-in-time receipt, not observed receipt or annual exposure. money_normalization.json declares annual-transfer exposure separately.",
+    "The flags represent assigned point-in-time receipt, not observed receipt or annual exposure. benefit_gross_up.json declares annual-transfer exposure separately.",
     "The hub refuses Veterans Pension as unsupported because v0 lacks a veteran-facts producer; the kernel never invents its receipt flag. The hub also leaves other main benefits and the combined youth and young parent category unmodelled."
   ]
 }

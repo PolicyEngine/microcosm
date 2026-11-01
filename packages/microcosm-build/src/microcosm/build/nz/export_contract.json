@@ -101,5 +101,5 @@
     "receives_supported_living_payment": "The receipt kernel assigns this person-level snapshot flag; the donor does not observe NZ receipt.",
     "receives_nz_super": "The receipt kernel assigns this person-level snapshot flag; the donor does not observe NZ receipt."
   },
-  "_slice_requirement": "G8-w3b must declare the exact entity-qualified export and terminal-gate slices. H12 still requires closed-roster enforcement for all replay-required normalized or encoded inputs. export.prepare@1 currently accepts entities, weight_entity, time_period and optional bindings, then writes the selected frame; it does not read this roster. The hub must resolve any required shared-code enforcement separately."
+  "_slice_requirement": "G8-w3b must declare the exact entity-qualified export and terminal-gate slices. H12 still requires closed-roster enforcement for all replay-required normalized or encoded inputs. export.prepare@1 currently accepts entities, weight_entity, time_period and optional bindings, then emits a descriptor that materialize_export writes; it does not read this roster. The hub must resolve any required shared-code enforcement separately."
 }

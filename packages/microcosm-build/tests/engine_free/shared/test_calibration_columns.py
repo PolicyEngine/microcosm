@@ -194,7 +194,25 @@ def test_receipt_age_indicators_retain_the_published_strata_boundaries():
 
 
 def test_all_active_calibration_bindings_enter_the_small_frame_matrix():
-    frame = _frame(prepare_calibration_columns(_tables(), _bindings()))
+    tables = _tables()
+    # An adult in the youngest receipt band, and the flags takeup.assign@1 writes.
+    youngest = {
+        "person_id": 8,
+        "person_household_id": 0,
+        "age": 20,
+        "region_code": "01",
+    }
+    tables["person"] = pd.concat(
+        [tables["person"], pd.DataFrame([youngest])], ignore_index=True
+    )
+    for program in (
+        "jobseeker_support",
+        "nz_super",
+        "sole_parent_support",
+        "supported_living_payment",
+    ):
+        tables["person"][f"receives_{program}"] = True
+    frame = _frame(prepare_calibration_columns(tables, _bindings()))
     root = paths_for("microcosm-build").package / "src/microcosm/build/nz"
     profiles = json.loads((root / "reference_profiles.json").read_text())
     effective, _, _ = resolve_reference_profiles(
@@ -226,7 +244,7 @@ def test_all_active_calibration_bindings_enter_the_small_frame_matrix():
     )
     problem = build_constraint_matrix(frame, targets, "household")
     assert not problem.skipped
-    assert len(problem.names) == len(references) == 234
+    assert len(problem.names) == len(references) == 109
 
 
 def test_household_size_indicators_partition_all_regions_and_include_nine_people():

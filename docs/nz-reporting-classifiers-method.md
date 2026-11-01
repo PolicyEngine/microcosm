@@ -10,8 +10,8 @@ This document records the method basis and the checks needed before activation.
 
 The provisional stratifier is annual gross benefit-unit income for TY2026–27,
 before income tax, Accommodation Supplement, and Working for Families. It
-includes market income and paid main-benefit, New Zealand Superannuation, and
-Veterans Pension amounts. Including benefit income avoids ranking all units
+includes market income and paid main-benefit and New Zealand Superannuation
+amounts. Including benefit income avoids ranking all units
 with no market income as one zero-income tie; excluding Accommodation Supplement
 keeps the reported outcome out of its own stratifier. Equivalised disposable
 income is a defensible alternative that would change the reporting cells, so
@@ -25,9 +25,10 @@ then multiplied by 52. Entitlement does not substitute for assigned receipt.
 All components must use the same before-tax basis. A net paid amount or a gross
 maximum rate does not establish the required before-tax paid amount.
 
-The current declaration leaves unavailable before-tax main-benefit and Veterans
-Pension paid amount columns null and refuses activation. Veterans Pension
-receipt must also be present: a missing flag cannot mean no receipt. Rental
+The current declaration binds each main benefit to its
+`<program>_gross_weekly_payment` column. H4 excludes unsupported Veterans Pension
+from v0, so the classifier omits its income and its receipt predicate: a missing
+flag cannot mean no receipt. Rental
 income is after business expenses, and the before-tax interpretation of rental
 and private-pension inputs must be verified before activation.
 

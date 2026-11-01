@@ -240,10 +240,14 @@ def test_settings_export_and_receipt_profiles_declare_the_reviewed_scope():
     resources = _spec()["resources"]
     settings = resources["calibration_settings"]
     assert set(settings["reasons"]) == _PARAMS
-    assert all(settings[key] is not None for key in _PARAMS)
+    assert {key: settings[key] for key in _PARAMS} == {
+        "epochs": 3000,
+        "learning_rate": 0.15,
+        "mass": "free",
+        "max_weight_ratio": 5,
+        "weight_anchor": "design",
+    }
     assert "time_period" not in settings
-    assert settings["max_weight_ratio"] > 0
-    assert settings["weight_anchor"] == "design"
     assert "positive median" in settings["cap_disclosure"]
     receipts = resources["receipt_contract"]["receipts"]
     assert [row["program"] for row in receipts["programs"]] == [
