@@ -1,1 +1,0 @@
-The SPI donor savings rebase now computes each band's factor over the tape's taxpayers (TAXPAYER 1), since SPI Table 3.7 counts taxpayers only, and gives non-taxpayers the all-bands factor. Over all records, non-taxpayers' savings income in the two lowest bands left the rebased taxpayers short of the published amounts there (#1428).

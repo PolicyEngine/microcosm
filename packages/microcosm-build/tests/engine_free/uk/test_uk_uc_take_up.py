@@ -11,6 +11,7 @@ import pytest
 
 from microcosm.build.country_spec import load_country_spec
 from microcosm.build.source_manifest import SourceStageSpec
+from microcosm.build.uk_runtime import uc_take_up
 from microcosm.build.uk_runtime.frs_take_up import (
     UK_TAKE_UP_SIGNAL_OUTPUTS,
     UKTakeUpPopulationPolicy,
@@ -235,9 +236,9 @@ def test_a_pool_nearer_zero_than_its_first_unit_draws_no_claimant() -> None:
 
 def test_a_family_type_that_cannot_meet_its_count_is_flagged_unreachable() -> None:
     # Band 0: reporters alone exceed DWP's count; band 2: the count exceeds
-    # every entitled unit. Neither pool can meet its count, so they join
-    # (microcosm#1428), and the joined pool still falls short: every drawn
-    # unit claims.
+    # every entitled unit. Each band keeps its own pool: the two gaps offset,
+    # the remaining shortfall takes band 0's one drawn unit, and the family
+    # type still falls short, so every drawn unit claims (microcosm#1428).
     award = np.asarray([100.0] * 4 + [3_000.0] * 4)
     reporter = np.asarray([True, True, True, False, False, False, False, False])
     would_claim, receipt = _assign(
@@ -249,9 +250,9 @@ def test_a_family_type_that_cannot_meet_its_count_is_flagged_unreachable() -> No
         minimum_pool_sources=1,
     )
     assert would_claim.all()
-    (pool,) = [pool for pool in receipt["pools"] if pool["family_type"] == "SINGLE"]
-    assert pool["bands"] == list(UC_AWARD_BAND_LABELS)
-    assert pool["target_unreachable"] == "<10"
+    pools = [pool for pool in receipt["pools"] if pool["family_type"] == "SINGLE"]
+    assert [pool["bands"][0] for pool in pools] == list(UC_AWARD_BAND_LABELS[:2])
+    assert all(pool["target_unreachable"] == "<10" for pool in pools)
     assert all("rate" not in pool for pool in receipt["pools"])
     # With ten or more sources behind a pool the flag says which side it is
     # on: the singles' reporters exceed their count, and the couples' count
@@ -277,49 +278,65 @@ def test_a_family_type_that_cannot_meet_its_count_is_flagged_unreachable() -> No
     assert receipt["families"]["SINGLE"]["reachable_pools_dwp_caseload"] == 0.0
 
 
-def test_a_pool_that_cannot_meet_its_count_joins_the_neighbour_with_more_room() -> None:
-    # Band 0: four drawn units and a count of 3 (one claim to spare); band 2:
-    # two drawn units and a count of 5 (three short); band 4: ten drawn units
-    # and a count of 5 (five to spare). Band 2's pool joins band 4's, which
-    # has more room, band 0 keeps its own, and the singles land on DWP's 13
-    # (microcosm#1428).
+def test_an_unmet_pool_passes_its_gap_to_the_neighbour_with_more_room() -> None:
+    # Band 0: four drawn units and a count of 3 (one to spare); band 2: two
+    # drawn units and a count of 5 (three short); band 4: ten drawn units and a
+    # count of 5 (five to spare). Band 2 is held at its two claims and passes
+    # its three to band 4, which has more room; band 0 keeps its own count, and
+    # the singles land on DWP's 13 (microcosm#1428 review, finding 7).
     award = np.asarray([600.0] * 4 + [3_000.0] * 2 + [5_500.0] * 10)
     would_claim, receipt = _assign(
         award=award, targets=_targets(SINGLE_0=3.0, SINGLE_2=5.0, SINGLE_4=5.0)
     )
-    assert [
-        pool["bands"] for pool in receipt["pools"] if pool["family_type"] == "SINGLE"
-    ] == [[UC_AWARD_BAND_LABELS[0]], list(UC_AWARD_BAND_LABELS[1:])]
     assert int(would_claim[:4].sum()) == 3
-    assert int(would_claim[4:].sum()) == 10
+    assert would_claim[4:6].all()
+    assert int(would_claim[6:].sum()) == 8
     single = receipt["families"]["SINGLE"]
     assert single["caseload_after"] == pytest.approx(13.0)
     assert single["reachable_pools_dwp_caseload"] == pytest.approx(13.0)
-    # On equal room the lower neighbour takes the pool.
+    # On equal room the lower neighbour takes the gap.
     award = np.asarray([600.0] * 3 + [3_000.0] + [5_500.0] * 3)
-    _, receipt = _assign(
+    would_claim, _ = _assign(
         award=award, targets=_targets(SINGLE_0=1.0, SINGLE_2=2.0, SINGLE_4=1.0)
     )
     assert [
-        pool["bands"] for pool in receipt["pools"] if pool["family_type"] == "SINGLE"
-    ] == [list(UC_AWARD_BAND_LABELS[:3]), list(UC_AWARD_BAND_LABELS[3:])]
+        int(would_claim[:3].sum()),
+        int(would_claim[3]),
+        int(would_claim[4:].sum()),
+    ] == [2, 1, 1]
 
 
-def test_a_pool_whose_reporters_overshoot_joins_one_with_drawn_claims() -> None:
+def test_an_overshooting_pool_passes_its_excess_to_one_with_drawn_claims() -> None:
     # Band 0: three reporters, one drawn unit and a count of 1 (two over);
-    # band 2: six drawn units and a count of 4. The joined pool's seven drawn
-    # units carry the two claims DWP's 5 leaves after the reporters.
+    # band 2: six drawn units and a count of 4. Band 0 is held at its
+    # reporters and its drawn unit does not claim; its two over come off band
+    # 2, whose drawn units carry the two claims DWP's 5 leaves. A joined pool
+    # had let band 0's drawn unit claim (microcosm#1428 review, finding 7).
     award = np.asarray([600.0] * 4 + [3_000.0] * 6)
     reporter = np.asarray([True] * 3 + [False] * 7)
     would_claim, receipt = _assign(
         award=award, reporter=reporter, targets=_targets(SINGLE_0=1.0, SINGLE_2=4.0)
     )
     assert would_claim[:3].all()
-    assert int(would_claim[3:].sum()) == 2
-    assert [
-        pool["bands"] for pool in receipt["pools"] if pool["family_type"] == "SINGLE"
-    ] == [list(UC_AWARD_BAND_LABELS)]
+    assert not would_claim[3]
+    assert int(would_claim[4:].sum()) == 2
     assert receipt["families"]["SINGLE"]["caseload_after"] == pytest.approx(5.0)
+
+
+def test_gaps_offset_before_they_pass() -> None:
+    # One pool overshoots by 1 and another falls short by 6: the excess
+    # offsets the shortfall, and only the remaining 5 look for room
+    # (microcosm#1428 review, finding 7).
+    counts, unplaced = uc_take_up._pass_unmet_gaps([(2.0, 3.0, 1.0), (10.0, 0.0, 4.0)])
+    assert counts == [4.0, 4.0]
+    assert unplaced == [0.0, 4.0]
+    # A feasible family type keeps its total: 3 + 5 + 5 over pools that hold
+    # 0-4, 0-2 and 0-10.
+    counts, unplaced = uc_take_up._pass_unmet_gaps(
+        [(3.0, 0.0, 4.0), (5.0, 0.0, 2.0), (5.0, 0.0, 10.0)]
+    )
+    assert counts == [3.0, 2.0, 8.0]
+    assert not any(unplaced)
 
 
 def test_undrawn_units_keep_their_flag_and_count_at_their_expected_claim() -> None:

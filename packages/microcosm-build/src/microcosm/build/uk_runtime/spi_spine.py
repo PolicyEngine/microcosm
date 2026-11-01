@@ -29,6 +29,7 @@ from microcosm.build.uk_runtime.frs_hmrc_source import (
     _raw_source_person_ids,
     _read_raw_frs_table,
 )
+from microcosm.build.uk_runtime.frs_spine import ANNUITY_AND_TRUST_INCOME_COLUMN
 from microcosm.build.uk_runtime.frs_take_up import uk_take_up_population_policy
 from microcosm.build.uk_runtime.hmrc_income import (
     HMRCIncomeTargetSet,
@@ -270,6 +271,10 @@ UK_SPI_INCOME_SPINE_REWRITE_COLUMNS = (
     # tape's income is the tax year's, so each share is 1, and the twin's
     # other spells stay only where the tape drew none of that income.
     *FRS_ANNUAL_INCOME_OUTPUT_COLUMNS,
+    # A drawn row's private pension is the tape's, which books annuity and
+    # trust payments as other income, so its descriptor of them is zero
+    # (microcosm#1428).
+    ANNUITY_AND_TRUST_INCOME_COLUMN,
 )
 
 # Reviewed constants for every load-bearing manifest parameter the spine
@@ -315,6 +320,7 @@ SPI_SPINE_STAGE2_OUTPUT_COLUMNS = tuple(
     )
     # Held to the drawn incomes by rule, not drawn by stage 2.
     and column not in FRS_ANNUAL_INCOME_OUTPUT_COLUMNS
+    and column != ANNUITY_AND_TRUST_INCOME_COLUMN
 )
 #: Both forests are queried over every SPI-channel person aged 16 and over,
 #: and the dependants' rows are discarded (uk-data#504, microcosm#1095).

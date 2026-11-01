@@ -22063,12 +22063,12 @@
       "bindings": {
         "policyengine": {
           "metric_name": "hmrc/other_investment_income_income_band",
-          "value_variable": "other_investment_income",
+          "value_variable": "other_investment_income_spi_concept",
           "from_entity": "person",
           "map_to": "household",
           "groupby_variable": "total_income_after_loss_relief_annual",
           "band_filter_dimension": "total_income",
-          "notes": "Other investment income of taxpayers by total-income band: SPI Table 3.7's 'Other income' [Note 6], the part of total investment income outside property, bank and building society interest and dividends (SPI's OTHERINV, which the SPI donors carry into other_investment_income). From microcosm#1418 the frame also holds the FRS NS&I and gilt accounts there, and the engine taxes the column as savings income beside savings_interest_income. Banded by person-level total income; band edges come from the fact dimension. No row held the column before, so the ITL Table 2.6 savings tax rows were met mostly through it: on PR A's national (microcosm#1419) it carried about GBP 9.5bn in 2024, where Table 3.7 publishes GBP 5.85bn for 2023-24 (María's ruling of 2026-10-29, microcosm#1418).",
+          "notes": "Other investment income of taxpayers by total-income band: SPI Table 3.7's 'Other income' [Note 6], the part of total investment income outside property, bank and building society interest and dividends (SPI's OTHERINV, which the SPI donors carry into other_investment_income). On FRS rows the column holds gilt interest, which the engine taxes as savings income beside savings_interest_income, and the measure (other_investment_income_spi_concept) adds the purchased-annuity and trust payments that FRS rows keep in private_pension_income, where the engine's means tests, household income and tax read them; the frame stores their part as annuity_and_trust_income (microcosm#1428). Banded by person-level total income; band edges come from the fact dimension. No row held the column before, so the ITL Table 2.6 savings tax rows were met mostly through it: on PR A's national (microcosm#1419) it carried about GBP 9.5bn in 2024, where Table 3.7 publishes GBP 5.85bn for 2023-24 (María's ruling of 2026-10-29, microcosm#1418).",
           "filters": [
             {
               "variable": "income_tax_before_winter_fuel_payment_charge_annual",

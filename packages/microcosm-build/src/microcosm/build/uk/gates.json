@@ -1252,6 +1252,7 @@
           "person.self_employment_income_annual_share",
           "person.self_employment_income_other_spells",
           "person.self_employment_gross_receipts",
+          "person.annuity_and_trust_income",
           "person.esa_health_condition_proxy",
           "person.esa_includes_support_component",
           "person.esa_support_group_proxy",

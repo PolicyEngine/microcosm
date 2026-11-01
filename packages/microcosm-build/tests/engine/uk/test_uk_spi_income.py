@@ -69,16 +69,21 @@ def test_spi_rebases_income_before_frs_fill_and_preserves_child_inputs(
     monkeypatch.setattr(
         spi_income,
         "_spi_income_uprating_factors",
-        lambda year: (factors, {"from_period": 2022, "to_period": year}),
+        lambda year, *, rebased_columns=None: (
+            factors,
+            {"from_period": 2022, "to_period": year},
+        ),
         raising=False,
     )
     # The donor savings rebase runs on the prepared tape when the stage rebases
-    # to the build year, and only then (microcosm#1418 savings follow-up).
+    # to the build year, and only then (microcosm#1418 savings follow-up),
+    # banding the tape on its income moved to 2023-24 (microcosm#1428).
     rebased = []
 
-    def rebase(donor, published):
+    def rebase(donor, published, *, income_factors=None):
         rebased.append(sorted(published))
-        return donor, {"rebased": True}
+        assert income_factors == factors
+        return donor, {"rebased": True, "columns": {}}
 
     monkeypatch.setattr(spi_income, "rebase_spi_donor_savings", rebase)
     options = dict(
@@ -119,7 +124,7 @@ def test_spi_rebases_income_before_frs_fill_and_preserves_child_inputs(
     assert result.income_uprating == {
         "from_period": 2022,
         "to_period": 2024,
-        "savings_rebase": {"rebased": True},
+        "savings_rebase": {"rebased": True, "columns": {}},
     }
 
 

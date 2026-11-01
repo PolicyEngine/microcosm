@@ -733,6 +733,10 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
                 "SERNUM": household_id,
                 "BENUNIT": 1,
                 "PERSON": 1,
+                # Every fifth household's payment is trust income (PENTYPE 5),
+                # which stays private pension with its part stored as the
+                # annuity and trust descriptor (microcosm#1428).
+                "PENTYPE": 5 if household_id % 5 == 0 else 1,
                 "PENPAY": 10.0,
                 "PTAMT": 2.0,
                 "PTINC": 2,

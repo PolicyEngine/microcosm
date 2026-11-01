@@ -220,6 +220,23 @@ OWNER_MANAGER_COLUMNS = (
     "owned_company_carries_on_property_business",
     "owned_company_income_share",
 )
+
+#: FRS PENSION.PENTYPE codes of an annuity not bought with pension funds (4)
+#: and a trust or covenant (5), the ADULT ANYPEN4 and ANYPEN5 sources. Their
+#: payments stay in private_pension_income, where policyengine-uk's means
+#: tests, household income and tax read them: trust and covenant payments
+#: are generally non-savings income (ITA 2007 s. 18), and the FRS records the
+#: whole annuity payment, of which only the income element is savings income
+#: (ITTOIA 2005 s. 717). SPI Table 3.7 counts both as other income (note 6),
+#: so the part they make of private_pension_income is stored apart, in
+#: ANNUITY_AND_TRUST_INCOME_COLUMN, a calibration-only descriptor that the
+#: Table 3.7 other-income measure adds (microcosm#1428 review, finding 1).
+FRS_ANNUITY_AND_TRUST_PENSION_TYPES = (4, 5)
+#: The descriptor: each person's annual annuity and trust payments, already
+#: inside private_pension_income. No engine input reads it.
+ANNUITY_AND_TRUST_INCOME_COLUMN = "annuity_and_trust_income"
+
+
 OUTPUT_COLUMNS = (
     "person_id",
     "person_benunit_id",
@@ -248,6 +265,7 @@ OUTPUT_COLUMNS = (
     "loss_relief",
     "ni_class_4_losses_brought_forward",
     "private_pension_income",
+    ANNUITY_AND_TRUST_INCOME_COLUMN,
     "individual_savings_account_interest_income",
     "savings_interest_income",
     "dividend_income",
@@ -612,13 +630,10 @@ def _assemble_frame(
     # tape's into both inputs (microcosm#1095).
     pe_person["loss_relief"] = 0.0
     pe_person["ni_class_4_losses_brought_forward"] = 0.0
-    pension_savings_income = _add_private_pension(pe_person, person, frs["pension"])
-    _add_accounts(pe_person, person, frs["accounts"])
-    # Income from a purchased annuity or a trust (PENTYPE 4 and 5) is savings
-    # income SPI Table 3.7 counts as other income, not pension (microcosm#1428).
-    pe_person["other_investment_income"] = (
-        pe_person["other_investment_income"] + pension_savings_income
+    pe_person[ANNUITY_AND_TRUST_INCOME_COLUMN] = _add_private_pension(
+        pe_person, person, frs["pension"]
     )
+    _add_accounts(pe_person, person, frs["accounts"])
     owner_managers = frs_owner_manager_inputs(person, frs["job"])
     for column in OWNER_MANAGER_COLUMNS:
         pe_person[column] = owner_managers[column].to_numpy()
@@ -716,23 +731,15 @@ def _assemble_frame(
     )
 
 
-#: FRS PENSION.PENTYPE codes whose income is savings income, not pension:
-#: an annuity not bought with pension funds (4) and a trust or covenant (5),
-#: the ADULT ANYPEN4 and ANYPEN5 sources. SPI Table 3.7 counts trust income
-#: and the purchased-annuity income SA101 returns as other income (note 6),
-#: so both go to other_investment_income (microcosm#1428). The FRS records
-#: the whole annuity payment, of which only the income element is taxable.
-FRS_SAVINGS_INCOME_PENSION_TYPES = (4, 5)
-
-
 def _add_private_pension(
     pe_person: pd.DataFrame, person: pd.DataFrame, pension: pd.DataFrame
 ) -> pd.Series:
-    """Write private pension income; return the PENSION rows' savings income.
+    """Write private pension income; return its annuity and trust part.
 
     Each row's gross weekly amount is the payment, any tax paid at source and
-    any deductions taken out. Rows of FRS_SAVINGS_INCOME_PENSION_TYPES are the
-    returned savings income, annual, by person; every other row is pension.
+    any deductions taken out. Every row is private pension income; the rows
+    of FRS_ANNUITY_AND_TRUST_PENSION_TYPES are also returned, annual, by
+    person, as the descriptor of that part.
     """
 
     penpay = _number(pension, "penpay")
@@ -747,14 +754,21 @@ def _add_private_pension(
             & (poamt > 0)
         )
     )
-    savings = _number(pension, "pentype").isin(FRS_SAVINGS_INCOME_PENSION_TYPES)
+    if len(pension) and "pentype" not in pension.columns:
+        raise ValueError(
+            "FRS PENSION tab needs PENTYPE to tell annuity and trust payments "
+            "from pensions."
+        )
+    annuity_or_trust = _number(pension, "pentype").isin(
+        FRS_ANNUITY_AND_TRUST_PENSION_TYPES
+    )
     person_ids = pension.get("person_id", pd.Series(dtype="float64"))
     pe_person["private_pension_income"] = (
-        _sum_to_entity(gross * ~savings, person_ids, person["person_id"])
-        * WEEKS_IN_YEAR
+        _sum_to_entity(gross, person_ids, person["person_id"]) * WEEKS_IN_YEAR
     )
     return (
-        _sum_to_entity(gross * savings, person_ids, person["person_id"]) * WEEKS_IN_YEAR
+        _sum_to_entity(gross * annuity_or_trust, person_ids, person["person_id"])
+        * WEEKS_IN_YEAR
     )
 
 

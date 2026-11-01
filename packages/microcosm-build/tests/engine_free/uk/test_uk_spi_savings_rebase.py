@@ -85,6 +85,7 @@ def test_the_rebased_tape_reproduces_the_published_bands() -> None:
         "band_factors",
         "below_first_band_factor",
         "bands_without_tape_amounts",
+        "bands_too_thin_to_gross",
     }
     assert (
         receipt["columns"]["other_investment_income"]["bands_without_tape_amounts"]
@@ -194,7 +195,7 @@ def test_the_factors_read_the_tapes_taxpayers() -> None:
     donor[spi_income.SPI_DONOR_TAXPAYER_COLUMN] = [False, True, False, True, True]
     rebased, receipt = rebase_spi_donor_savings(donor, PUBLISHED)
     interest = receipt["columns"]["savings_interest_income"]
-    assert receipt["factors_over"] == "taxpayers"
+    assert receipt["factors_over"].startswith("taxpayers")
     # The £12,570 band's taxpayers hold 5 x 40 = 200 of the tape's interest
     # there: 1,500 over 200. All bands: 6,500 over 2,200.
     assert interest["band_factors"]["12570"] == pytest.approx(7.5)
@@ -207,7 +208,7 @@ def test_the_factors_read_the_tapes_taxpayers() -> None:
     assert weighted.sum() == pytest.approx(1_500.0)
     # Without the flag every record counts, as before.
     _, plain = rebase_spi_donor_savings(_donor(), PUBLISHED)
-    assert plain["factors_over"] == "all_records"
+    assert plain["factors_over"] == "all_records_at_or_above_the_first_band"
 
 
 def test_a_tape_that_does_not_gross_to_the_population_is_left_as_it_is() -> None:
@@ -266,3 +267,172 @@ def test_gift_leaves_are_anchored_to_the_tapes_weighted_totals() -> None:
         spi_people=drawn,
     )
     assert receipt["factors"]["charitable_investment_gifts"] == 1.0
+
+
+def test_drawn_rows_drop_their_twins_annuity_and_trust_descriptor() -> None:
+    # A drawn row's private pension is the tape's, which books annuity and
+    # trust payments as other income; an undrawn copy keeps its twin's part
+    # (microcosm#1428).
+    person = pd.DataFrame({"annuity_and_trust_income": [500.0, 700.0, 0.0]})
+    drawn = pd.Series([True, False, False])
+    cleared = spi_income._clear_annuity_and_trust_descriptor(
+        person.copy(), spi_people=drawn
+    )
+    assert cleared["annuity_and_trust_income"].tolist() == [0.0, 700.0, 0.0]
+    # A frame without the descriptor is left as it is.
+    bare = pd.DataFrame({"private_pension_income": [1.0]})
+    assert spi_income._clear_annuity_and_trust_descriptor(
+        bare.copy(), spi_people=pd.Series([True])
+    ).equals(bare)
+
+
+INTEREST_ONLY = {"savings_interest_income": {12_570: 100.0, 50_000: 400.0}}
+
+
+def _edge_donor() -> pd.DataFrame:
+    # A just below the £50,000 edge in 2022-23, B well above it.
+    return pd.DataFrame(
+        {
+            "total_income": [49_950.0, 60_000.0],
+            "FACT": [100.0, 100.0],
+            "savings_interest_income": [1.0, 1.0],
+            "dividend_income": [5_000.0, 0.0],
+        }
+    )
+
+
+def test_the_tape_is_banded_on_its_income_moved_to_2023_24() -> None:
+    # Banded on its 2022-23 income, A sits in the £12,570 band. Moved to
+    # 2023-24 (dividends x1.1), it crosses the £50,000 edge, the band the
+    # consumers will find it in after uprating, so its migration is counted
+    # once (microcosm#1428 review, finding 6).
+    held, held_receipt = rebase_spi_donor_savings(_edge_donor(), INTEREST_ONLY)
+    assert held["savings_interest_income"].tolist() == pytest.approx([1.0, 4.0])
+    moved, receipt = rebase_spi_donor_savings(
+        _edge_donor(), INTEREST_ONLY, income_factors={"dividend_income": 1.1}
+    )
+    assert moved["savings_interest_income"].tolist() == pytest.approx([2.0, 2.0])
+    assert receipt["columns"]["savings_interest_income"]["band_factors"] == {
+        "50000": pytest.approx(2.0)
+    }
+    assert receipt["band_by"] == "total_income_moved_to_2023_24"
+    assert receipt["banding_converged"] is True
+
+
+def test_a_saver_who_becomes_a_taxpayer_counts_once() -> None:
+    # C pays no tax in 2022-23 and crosses the Personal Allowance by 2023-24;
+    # D is a taxpayer throughout. Both are 2023-24 taxpayers in the £12,570
+    # band, so their 2,000 meets its 4,000 at a factor of 2. Counting only D
+    # (factor 4) and giving C the all-bands factor would count C twice
+    # (microcosm#1428 review, finding 10).
+    donor = pd.DataFrame(
+        {
+            "total_income": [12_000.0, 20_000.0],
+            "FACT": [10.0, 10.0],
+            "savings_interest_income": [100.0, 100.0],
+            "dividend_income": [1_000.0, 0.0],
+            spi_income.SPI_DONOR_TAXPAYER_COLUMN: [False, True],
+        }
+    )
+    rebased, receipt = rebase_spi_donor_savings(
+        donor,
+        {"savings_interest_income": {12_570: 4_000.0, 50_000: 1.0}},
+        income_factors={"dividend_income": 1.6},
+    )
+    assert receipt["columns"]["savings_interest_income"]["band_factors"][
+        "12570"
+    ] == pytest.approx(2.0)
+    weighted = rebased["savings_interest_income"] * rebased["FACT"]
+    assert weighted.sum() == pytest.approx(4_000.0)
+
+
+def test_a_flagged_taxpayer_below_the_first_band_sits_in_it() -> None:
+    # Table 3.7's lowest band holds taxpayers below the Personal Allowance
+    # (note 8): a flagged taxpayer there shares the band's factor.
+    donor = pd.DataFrame(
+        {
+            "total_income": [8_000.0, 20_000.0],
+            "FACT": [10.0, 10.0],
+            "savings_interest_income": [100.0, 100.0],
+            spi_income.SPI_DONOR_TAXPAYER_COLUMN: [True, True],
+        }
+    )
+    rebased, _ = rebase_spi_donor_savings(
+        donor, {"savings_interest_income": {12_570: 6_000.0, 50_000: 1.0}}
+    )
+    assert rebased["savings_interest_income"].tolist() == pytest.approx([300.0, 300.0])
+
+
+def test_a_band_too_thin_to_gross_takes_the_all_bands_factor() -> None:
+    # The £50,000 band's tape holds 10 against a published 1,000, under a
+    # tenth: its factor would be 100, so it takes the all-bands factor and is
+    # named (microcosm#1428 review, finding 10).
+    donor = pd.DataFrame(
+        {
+            "total_income": [20_000.0, 60_000.0],
+            "FACT": [10.0, 1.0],
+            "savings_interest_income": [100.0, 10.0],
+        }
+    )
+    rebased, receipt = rebase_spi_donor_savings(
+        donor, {"savings_interest_income": {12_570: 2_000.0, 50_000: 1_000.0}}
+    )
+    interest = receipt["columns"]["savings_interest_income"]
+    assert interest["bands_too_thin_to_gross"] == [50_000]
+    assert "50000" not in interest["band_factors"]
+    assert rebased.loc[1, "savings_interest_income"] == pytest.approx(
+        10.0 * interest["below_first_band_factor"]
+    )
+
+
+def test_a_skipped_column_keeps_its_engine_index_from_2022_23(monkeypatch) -> None:
+    variables = {
+        name: SimpleNamespace(uprating="index")
+        for name in spi_income.SPI_INCOME_UPRATING_VARIABLES.values()
+        if name is not None
+    }
+
+    def parameters(period):
+        return SimpleNamespace(index=100.0 if period.startswith("2022") else 120.0)
+
+    monkeypatch.setitem(
+        sys.modules,
+        "policyengine_uk",
+        SimpleNamespace(
+            CountryTaxBenefitSystem=lambda: SimpleNamespace(
+                variables=variables, parameters=parameters
+            )
+        ),
+    )
+    factors, receipt = spi_income._spi_income_uprating_factors.__wrapped__(
+        2024, rebased_columns=frozenset({"other_investment_income"})
+    )
+    # Interest the rebase left as it was grows on its engine index from
+    # 2022-23, not on the OBR's path from 2023-24 (microcosm#1428 review).
+    assert receipt["columns"]["savings_interest_income"]["basis"] == "model_index"
+    assert factors["savings_interest_income"] == pytest.approx(1.2)
+    assert receipt["columns"]["other_investment_income"]["basis"] == (
+        "spi_published_bands_then_obr_savings_income"
+    )
+
+
+def test_the_tape_taxpayer_flag_is_validated(tmp_path) -> None:
+    from test_support.microcosm_build.uk_spi_income import _write_donor
+
+    path = tmp_path / "donor.tab"
+    _write_donor(path)
+    raw = pd.read_csv(path, delimiter="\t")
+    # Without the flag the prepared tape carries none.
+    assert spi_income.SPI_DONOR_TAXPAYER_COLUMN not in (
+        spi_income.prepare_spi_donor_table(raw, seed=0)
+    )
+    flagged = raw.assign(TAXPAYER=[1, 2, 1, 2])
+    prepared = spi_income.prepare_spi_donor_table(flagged, seed=0)
+    assert prepared[spi_income.SPI_DONOR_TAXPAYER_COLUMN].tolist() == [
+        True,
+        False,
+        True,
+        False,
+    ]
+    with pytest.raises(ValueError, match="TAXPAYER"):
+        spi_income.prepare_spi_donor_table(raw.assign(TAXPAYER=[1, 0, 1, 2]), seed=0)

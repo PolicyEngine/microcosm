@@ -40,6 +40,7 @@ from microcosm.build.uk_runtime.frs_annual_income import (
     SELF_EMPLOYMENT_INCOME_ANNUAL_SHARE,
     SELF_EMPLOYMENT_INCOME_OTHER_SPELLS,
 )
+from microcosm.build.uk_runtime.frs_spine import ANNUITY_AND_TRUST_INCOME_COLUMN
 from microcosm.build.uk_runtime.high_value_homes import (
     high_value_home_mask,
     uk_high_value_home_thresholds,
@@ -280,6 +281,33 @@ def savings_interest_outside_isas(frame: Any) -> np.ndarray:
     if _legacy_gross_savings(frame) and "tax_free_savings_income" in person:
         interest = interest - person["tax_free_savings_income"].to_numpy(dtype=float)
     return np.maximum(interest, 0.0)
+
+
+#: SPI Table 3.7's other income (note 6): the engine's other_investment_income
+#: plus the purchased-annuity and trust payments that FRS rows keep in
+#: private_pension_income, where the engine's means tests, household income
+#: and tax read them (microcosm#1428). The frame stores each person's annuity
+#: and trust payments at the dataset's year
+#: (frs_spine.ANNUITY_AND_TRUST_INCOME_COLUMN), and their share of the stored
+#: private pension carries them to the measurement year on the engine's own
+#: private pension path. A frame without the column (the enhanced FRS
+#: reference) reads the engine's other income alone. A reserved name.
+UK_SPI_OTHER_INVESTMENT_INCOME = "other_investment_income_spi_concept"
+
+
+def annuity_and_trust_share(frame: Any) -> np.ndarray:
+    """Each person's annuity and trust share of their stored private pension."""
+
+    person = frame.table("person")
+    if (
+        ANNUITY_AND_TRUST_INCOME_COLUMN not in person
+        or "private_pension_income" not in person
+    ):
+        return np.zeros(len(person))
+    part = person[ANNUITY_AND_TRUST_INCOME_COLUMN].to_numpy(dtype=float)
+    pension = person["private_pension_income"].to_numpy(dtype=float)
+    share = np.divide(part, pension, out=np.zeros(len(person)), where=pension > 0)
+    return np.clip(share, 0.0, 1.0)
 
 
 #: The named terms the resolver computes: measures declared once as
@@ -541,6 +569,21 @@ def compute_uk_measure_input(
             "frame_columns:savings_interest_income_less_tax_free_savings_income"
             if _legacy_gross_savings(frame)
             else "frame_columns:savings_interest_income",
+        )
+
+    if variable == UK_SPI_OTHER_INVESTMENT_INCOME:
+        if entity != "person":
+            raise KeyError(f"{variable} is person-only: {entity}")
+        other, route = compute_uk_measure_input(
+            frame, simulation, "person", "other_investment_income", year
+        )
+        pension, _ = compute_uk_measure_input(
+            frame, simulation, "person", "private_pension_income", year
+        )
+        return (
+            other + annuity_and_trust_share(frame) * pension,
+            "engine_components:other_investment_income"
+            f"+annuity_and_trust_share*private_pension_income:{route}",
         )
 
     if variable in DFE_SPRING_TERM_MEASURES:
@@ -1040,11 +1083,12 @@ class UKMeasureResolver:
                 "High-value home measures must not be persisted as source inputs: "
                 f"{persisted_high_value}"
             )
-        if UK_SAVINGS_INTEREST_OUTSIDE_ISAS in set(map(str, frame.table("person"))):
-            raise ValueError(
-                f"{UK_SAVINGS_INTEREST_OUTSIDE_ISAS} must not be persisted as a "
-                "source input."
-            )
+        for reserved in (
+            UK_SAVINGS_INTEREST_OUTSIDE_ISAS,
+            UK_SPI_OTHER_INVESTMENT_INCOME,
+        ):
+            if reserved in set(map(str, frame.table("person"))):
+                raise ValueError(f"{reserved} must not be persisted as a source input.")
         persisted_spring_term = sorted(
             set(DFE_SPRING_TERM_MEASURES) & set(map(str, frame.table("person")))
         )
@@ -1168,6 +1212,12 @@ class UKMeasureResolver:
             return entity == "person" and "savings_interest_income" in set(
                 map(str, self.frame.table("person"))
             )
+        if variable == UK_SPI_OTHER_INVESTMENT_INCOME:
+            return (
+                entity == "person"
+                and self.knows("person", "other_investment_income")
+                and self.knows("person", "private_pension_income")
+            )
         if variable in DFE_SPRING_TERM_MEASURES:
             return entity == "person" and all(
                 self.knows("person", name) for name in DFE_SPRING_TERM_ENGINE_INPUTS
@@ -1212,7 +1262,10 @@ class UKMeasureResolver:
             return "household"
         if variable == UK_CHILD_BENEFIT_CHILD_COUNT:
             return "benunit"
-        if variable == UK_SAVINGS_INTEREST_OUTSIDE_ISAS:
+        if variable in (
+            UK_SAVINGS_INTEREST_OUTSIDE_ISAS,
+            UK_SPI_OTHER_INVESTMENT_INCOME,
+        ):
             return "person"
         if _cgt_model_measure(variable, self.year) is not None:
             return "person"

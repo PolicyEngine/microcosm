@@ -401,8 +401,9 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
                 "POINC": 2,
                 "PENOTH": 0,
             },
-            # Income from a trust (PENTYPE 5) is savings income SPI counts as
-            # other income, not pension (microcosm#1428).
+            # Income from a trust (PENTYPE 5) stays private pension income,
+            # where the engine's means tests read it; its part is stored for
+            # SPI Table 3.7's other income (microcosm#1428).
             {
                 "SERNUM": 2,
                 "BENUNIT": 1,
@@ -1270,9 +1271,13 @@ def test_direct_person_mapping_values_are_ported(tmp_path: Path) -> None:
     # The gilt is other interest, no longer a dividend (microcosm#1418).
     assert adult["dividend_income"] == pytest.approx(3 * WEEKS_IN_YEAR)
     assert adult["other_investment_income"] == pytest.approx(5.0 * WEEKS_IN_YEAR)
-    # Household 2's trust income is other income, not pension (microcosm#1428).
-    assert other["other_investment_income"] == pytest.approx(6.0 * WEEKS_IN_YEAR)
-    assert other["private_pension_income"] == 0.0
+    # Household 2's trust income stays private pension, where the engine's
+    # means tests and household income read it, and its part is stored as
+    # the descriptor SPI Table 3.7's other-income measure adds (microcosm#1428).
+    assert other["other_investment_income"] == 0.0
+    assert other["private_pension_income"] == pytest.approx(6.0 * WEEKS_IN_YEAR)
+    assert other["annuity_and_trust_income"] == pytest.approx(6.0 * WEEKS_IN_YEAR)
+    assert adult["annuity_and_trust_income"] == 0.0
     # ROYYR1 2 only: CVPAY (1 a week) is rent the adult pays as a lodger
     # (rent_paid_as_lodger, pe-uk#2006), not their own income, and household 1
     # does not sub-let.
@@ -1581,6 +1586,21 @@ def test_frs_spine_refuses_an_adult_tab_without_alimony(
         row.pop(column)
     stage = _write_fixture(tmp_path, tables)
     with pytest.raises(KeyError, match=column):
+        build_uk_frs_spine_frame(tmp_path, stage=stage)
+
+
+def test_frs_spine_refuses_a_pension_tab_without_pentype(tmp_path: Path) -> None:
+    """A vintage without PENTYPE refuses; it never reads every annuity and
+    trust payment as a pension (microcosm#1428)."""
+
+    tables = _fixture_tables()
+    tables["pension"] = [
+        {key: value for key, value in row.items() if key != "PENTYPE"}
+        for row in tables["pension"]
+    ]
+    stage = _write_fixture(tmp_path, tables)
+
+    with pytest.raises(ValueError, match="PENTYPE"):
         build_uk_frs_spine_frame(tmp_path, stage=stage)
 
 

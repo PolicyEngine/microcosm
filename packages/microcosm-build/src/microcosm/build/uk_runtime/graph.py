@@ -1313,6 +1313,10 @@ _HMRC_SPI_FLOAT_COLUMNS = (
     "self_employment_income_other_spells",
     "private_pension_income_annual_share",
     "contributory_benefits_annual_share",
+    # A drawn row's private pension is the tape's, which books annuity and
+    # trust payments as other income, so its annuity and trust descriptor is
+    # zero (microcosm#1428).
+    "annuity_and_trust_income",
 )
 _HMRC_SPI_HIDDEN_STRING = (
     "aa_category",

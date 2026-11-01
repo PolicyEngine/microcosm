@@ -309,6 +309,9 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     # The self-employed's gross receipts for the trading allowance, which the
     # enhanced FRS leaves at the engine's zero (microcosm#1428).
     "person.self_employment_gross_receipts",
+    # The annuity and trust part of private_pension_income, a calibration-only
+    # descriptor no engine input reads (microcosm#1428).
+    "person.annuity_and_trust_income",
     "person.esa_health_condition_proxy",
     "person.esa_includes_support_component",
     "person.esa_support_group_proxy",
