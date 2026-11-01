@@ -76,7 +76,10 @@ _TEST_PATHS = paths_for("microcosm-build")
 # national calibration tests read it from the committed membership, or not at
 # all, so a change to the target set moves this pin alone. How it is made up:
 # microcosm#1418 PR C: + 13, SPI Table 3.7's other income by band, and + 16,
-# SPI Table 3.10's self-employment bands from GBP 1 to GBP 10,000;
+# SPI Table 3.10's self-employment bands from GBP 1 to GBP 10,000; its
+# savings follow-up (microcosm#1428): + 8, Table 3.10's individuals with
+# employment income over the same bands, and + 1, DWP's income-based
+# Jobseeker's Allowance spending;
 # microcosm#1418: + 3, HMRC's Income Tax on savings at each rate;
 # microcosm#1069: + 24, HMRC's Income Tax payers of State Pension age and aged
 # 65 and over in the twelve region-tier areas; microcosm#1095 (the bump after
@@ -122,7 +125,7 @@ _TEST_PATHS = paths_for("microcosm-build")
 # thresholds over England's regions and Wales), which the national line drops
 # after the compile, less the North East and Wales rows over £2m, signed out
 # below the small-cell floor
-ACTIVE_REFERENCE_COUNT = 1403
+ACTIVE_REFERENCE_COUNT = 1412
 REGION_TIER_LEVEL = {code: level for level, code in UK_REGION_TIER}
 
 
@@ -1072,7 +1075,7 @@ def test_uk_target_reference_membership_report_is_packaged() -> None:
     assert membership["status_counts"] == {
         "active": ACTIVE_REFERENCE_COUNT,
         "no_fact_at_or_before_period": 4,
-        "signed_excluded": 30,
+        "signed_excluded": 37,
     }
     assert membership["genuine_sum_residue"]
     assert membership["uprating_holds"]
@@ -1088,7 +1091,7 @@ def test_uk_target_reference_membership_report_is_packaged() -> None:
         {
             "family": "hmrc_spi",
             "status": "active_strict_band_pins",
-            "active_reference_count": 211,
+            "active_reference_count": 219,
             "signed_rationale": (
                 "SPI income-band targets fan out by strict total-income-band "
                 "dimension pins, and SPI Table 3.10's by self-employment band, "

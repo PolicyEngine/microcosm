@@ -13,6 +13,7 @@ from microcosm.build.uk_runtime import measure_simulation
 from microcosm.build.uk_runtime.income_tax_rate_classes import UK_RATE_CLASS_ALLOCATION
 from microcosm.build.uk_runtime.measure_simulation import (
     UK_SAVINGS_INTEREST_OUTSIDE_ISAS,
+    UK_SPI_OTHER_INVESTMENT_INCOME,
     UKMeasureResolver,
     apply_uk_calibration_measure_exclusions,
     compute_uk_measure_input,
@@ -606,6 +607,9 @@ _PACKAGED_EXCLUSION_CENSUS = {
     # stage assigns no postgraduate plan) and Plan 5's liable stock binds; the
     # Plan 5 repayments and the two Plan 2 stocks stay.
     "_1_000_000_to_inf": 10,
+    # The SPI Table 3.7 £1m-and-over interest amount row, held on the savings
+    # follow-up's measured distortion (microcosm#1428, 2026-10-30).
+    "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_1000000": 1,
     "slc.": 3,
     # microcosm#1095 (2026-10-07): two bands whose few supporting awards
     # policyengine-uk 2.122.2 moves out join the uk-data#452 class.
@@ -734,8 +738,10 @@ def test_packaged_exclusions_load():
     # electricity row again (María's ruling of 2026-10-28), and holds the ONS
     # gas row again for bottled gas (María's ruling of 2026-10-29). The
     # betting and gaming row stays held: the solve cannot yet measure its
-    # 2024 duty (microcosm#1420).
-    assert len(names) == len(set(names)) == 39
+    # 2024 duty (microcosm#1420). The savings follow-up holds the SPI £1m-and-over
+    # interest amount row on its measured distortion (microcosm#1428, María's
+    # ruling of 2026-10-30).
+    assert len(names) == len(set(names)) == 40
     (gas,) = [
         entry
         for entry in exclusions
@@ -2068,6 +2074,62 @@ def test_the_resolver_routes_interest_outside_isas_to_persons(
             year=2025,
             frame=frame,
         )
+
+
+def _annuity_frame() -> FrameStub:
+    """A pensioner with a purchased annuity inside the stored pension, a
+    gilt holder, and a person with no stored pension (microcosm#1428)."""
+
+    frame = FrameStub()
+    frame._tables["person"] = frame._tables["person"].assign(
+        private_pension_income=[4_000.0, 0.0, 0.0],
+        annuity_and_trust_income=[1_000.0, 0.0, 0.0],
+    )
+    return frame
+
+
+def test_spi_other_income_adds_the_annuity_and_trust_part_of_pensions():
+    """SPI Table 3.7's other income counts purchased-annuity and trust
+    payments, which FRS rows keep in private pension for the engine's means
+    tests: the measure adds their share of the engine's pension, so they grow
+    on its private pension path (microcosm#1428)."""
+
+    simulation = SimulationStub(
+        {
+            "other_investment_income": ("person", np.array([0.0, 500.0, 0.0])),
+            "private_pension_income": ("person", np.array([4_400.0, 0.0, 0.0])),
+        }
+    )
+    values, route = compute_uk_measure_input(
+        _annuity_frame(), simulation, "person", UK_SPI_OTHER_INVESTMENT_INCOME, 2025
+    )
+    # A quarter of the stored pension, grown by the engine's 10%.
+    np.testing.assert_allclose(values, [1_100.0, 500.0, 0.0])
+    assert route.startswith("engine_components:other_investment_income")
+    # A frame without the descriptor (the enhanced FRS reference) reads the
+    # engine's other income alone.
+    np.testing.assert_allclose(
+        compute_uk_measure_input(
+            FrameStub(), simulation, "person", UK_SPI_OTHER_INVESTMENT_INCOME, 2025
+        )[0],
+        [0.0, 500.0, 0.0],
+    )
+    with pytest.raises(KeyError, match="person-only"):
+        compute_uk_measure_input(
+            _annuity_frame(),
+            simulation,
+            "household",
+            UK_SPI_OTHER_INVESTMENT_INCOME,
+            2025,
+        )
+
+
+def test_the_spi_other_income_rows_read_the_annuity_measure():
+    targets = measure_simulation._uk_contract_targets()
+    binding = targets["hmrc.spi.other_investment_income.amount_by_total_income_band"][
+        "bindings"
+    ]["policyengine"]
+    assert binding["value_variable"] == UK_SPI_OTHER_INVESTMENT_INCOME
 
 
 def _stub_engine_term_calendar(monkeypatch) -> None:

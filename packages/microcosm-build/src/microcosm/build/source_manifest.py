@@ -58,6 +58,8 @@ ALLOWED_SOURCE_OPERATION_KINDS = frozenset(
         "assign_student_loan_plan_cohorts",
         "assign_main_asset_type",
         "assign_trips_from_band_means",
+        # microcosm#1428: the self-employed's gross receipts.
+        "assign_trading_allowance_receipts",
         "assign_uniform_draw",
         "aggregate_person_to_benunit",
         "allocate_per_capita_from_cell_table",

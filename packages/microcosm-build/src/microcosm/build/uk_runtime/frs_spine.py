@@ -220,6 +220,23 @@ OWNER_MANAGER_COLUMNS = (
     "owned_company_carries_on_property_business",
     "owned_company_income_share",
 )
+
+#: FRS PENSION.PENTYPE codes of an annuity not bought with pension funds (4)
+#: and a trust or covenant (5), the ADULT ANYPEN4 and ANYPEN5 sources. Their
+#: payments stay in private_pension_income, where policyengine-uk's means
+#: tests, household income and tax read them: trust and covenant payments
+#: are generally non-savings income (ITA 2007 s. 18), and the FRS records the
+#: whole annuity payment, of which only the income element is savings income
+#: (ITTOIA 2005 s. 717). SPI Table 3.7 counts both as other income (note 6),
+#: so the part they make of private_pension_income is stored apart, in
+#: ANNUITY_AND_TRUST_INCOME_COLUMN, a calibration-only descriptor that the
+#: Table 3.7 other-income measure adds (microcosm#1428 review, finding 1).
+FRS_ANNUITY_AND_TRUST_PENSION_TYPES = (4, 5)
+#: The descriptor: each person's annual annuity and trust payments, already
+#: inside private_pension_income. No engine input reads it.
+ANNUITY_AND_TRUST_INCOME_COLUMN = "annuity_and_trust_income"
+
+
 OUTPUT_COLUMNS = (
     "person_id",
     "person_benunit_id",
@@ -248,6 +265,7 @@ OUTPUT_COLUMNS = (
     "loss_relief",
     "ni_class_4_losses_brought_forward",
     "private_pension_income",
+    ANNUITY_AND_TRUST_INCOME_COLUMN,
     "individual_savings_account_interest_income",
     "savings_interest_income",
     "dividend_income",
@@ -612,7 +630,9 @@ def _assemble_frame(
     # tape's into both inputs (microcosm#1095).
     pe_person["loss_relief"] = 0.0
     pe_person["ni_class_4_losses_brought_forward"] = 0.0
-    _add_private_pension(pe_person, person, frs["pension"])
+    pe_person[ANNUITY_AND_TRUST_INCOME_COLUMN] = _add_private_pension(
+        pe_person, person, frs["pension"]
+    )
     _add_accounts(pe_person, person, frs["accounts"])
     owner_managers = frs_owner_manager_inputs(person, frs["job"])
     for column in OWNER_MANAGER_COLUMNS:
@@ -713,30 +733,43 @@ def _assemble_frame(
 
 def _add_private_pension(
     pe_person: pd.DataFrame, person: pd.DataFrame, pension: pd.DataFrame
-) -> None:
-    pension_payment = _sum_to_entity(
-        _number(pension, "penpay") * (_number(pension, "penpay") > 0),
-        pension.get("person_id", pd.Series(dtype="float64")),
-        person["person_id"],
-    )
-    pension_tax_paid = _sum_to_entity(
-        _number(pension, "ptamt")
-        * ((_number(pension, "ptinc") == 2) & (_number(pension, "ptamt") > 0)),
-        pension.get("person_id", pd.Series(dtype="float64")),
-        person["person_id"],
-    )
-    pension_deductions_removed = _sum_to_entity(
-        _number(pension, "poamt")
+) -> pd.Series:
+    """Write private pension income; return its annuity and trust part.
+
+    Each row's gross weekly amount is the payment, any tax paid at source and
+    any deductions taken out. Every row is private pension income; the rows
+    of FRS_ANNUITY_AND_TRUST_PENSION_TYPES are also returned, annual, by
+    person, as the descriptor of that part.
+    """
+
+    penpay = _number(pension, "penpay")
+    ptamt = _number(pension, "ptamt")
+    poamt = _number(pension, "poamt")
+    gross = (
+        penpay * (penpay > 0)
+        + ptamt * ((_number(pension, "ptinc") == 2) & (ptamt > 0))
+        + poamt
         * (
             ((_number(pension, "poinc") == 2) | (_number(pension, "penoth") == 1))
-            & (_number(pension, "poamt") > 0)
-        ),
-        pension.get("person_id", pd.Series(dtype="float64")),
-        person["person_id"],
+            & (poamt > 0)
+        )
     )
+    if len(pension) and "pentype" not in pension.columns:
+        raise ValueError(
+            "FRS PENSION tab needs PENTYPE to tell annuity and trust payments "
+            "from pensions."
+        )
+    annuity_or_trust = _number(pension, "pentype").isin(
+        FRS_ANNUITY_AND_TRUST_PENSION_TYPES
+    )
+    person_ids = pension.get("person_id", pd.Series(dtype="float64"))
     pe_person["private_pension_income"] = (
-        pension_payment + pension_tax_paid + pension_deductions_removed
-    ) * WEEKS_IN_YEAR
+        _sum_to_entity(gross, person_ids, person["person_id"]) * WEEKS_IN_YEAR
+    )
+    return (
+        _sum_to_entity(gross * annuity_or_trust, person_ids, person["person_id"])
+        * WEEKS_IN_YEAR
+    )
 
 
 #: FRS ACCOUNTS.ACCOUNT codes (FRS 2024-25 variable listing, SN 9563) by the
@@ -747,25 +780,29 @@ FRS_ISA_ACCOUNT = 21
 #: ISA interest under the producer's additive ISA income contract
 #: (microcosm#1360); policyengine-uk's tax_free_savings_income adds it.
 ISA_INTEREST_COLUMN = "individual_savings_account_interest_income"
-#: Deposit interest, savings_interest_income: current (1), NS&I investment
-#: (3), savings and investment (5), fixed-rate, guaranteed income and
-#: guaranteed growth bond (25; no interest recorded on FRS 2024-25), basic
-#: (27) and credit union (28) accounts.
-FRS_DEPOSIT_INTEREST_ACCOUNTS = (1, 3, 5, 25, 27, 28)
+#: Deposit interest, savings_interest_income: current (1), NS&I Direct Saver
+#: (2), NS&I investment (3), savings and investment (5), National Savings
+#: capital (10), Pensioners Guaranteed (13), income (16) and deposit (17)
+#: bonds, First Option (18), fixed-rate, guaranteed income and guaranteed
+#: growth (25) and guaranteed equity (26) bonds, basic (27) and credit union
+#: (28) accounts. SPI has counted all interest paid gross or net, NS&I's
+#: taxable products included, as interest from banks and building societies
+#: since 2016-17 (Table 3.7 note 4), so the NS&I products sit here, not in
+#: other income (microcosm#1428; PR A routed them to other income). On FRS
+#: 2024-25 codes 16, 25 and 26 record no interest, and 10, 13, 17 and 18 do
+#: not occur.
+FRS_DEPOSIT_INTEREST_ACCOUNTS = (1, 2, 3, 5, 10, 13, 16, 17, 18, 25, 26, 27, 28)
 #: Other interest, other_investment_income, which policyengine-uk taxes as
 #: savings income beside deposit interest (taxable_savings_interest_income):
-#: NS&I Direct Saver (2), gilts (6, booked as dividends before), National
-#: Savings capital (10), income (16) and deposit (17) bonds, Pensioners
-#: Guaranteed (13), First Option (18) and guaranteed equity (26) bonds. The
-#: tax-free products stay out: National Savings certificates (11, 12), SAYE
-#: (14), Premium Bonds (15), the Yearly Plan (19) and friendly society
-#: investments (31). On FRS 2024-25 only the NS&I Direct Saver and gilts carry
-#: interest in this group: codes 16 and 26 record none, and 10, 13, 17 and 18
-#: do not occur. Of the codes no list maps, only a share club (24) records
-#: interest on FRS 2024-25: the club's returns are on shares, so they are out
-#: of scope as interest; profit sharing (22), company share option plans (23),
-#: an endowment policy not linked (29) and informal assets (32) record none.
-FRS_OTHER_INTEREST_ACCOUNTS = (2, 6, 10, 13, 16, 17, 18, 26)
+#: gilts (6, booked as dividends before microcosm#1418), the interest on
+#: securities SPI counts as other income (Table 3.7 note 6). The tax-free
+#: products stay out: National Savings certificates (11, 12), SAYE (14),
+#: Premium Bonds (15), the Yearly Plan (19) and friendly society investments
+#: (31). Of the codes no list maps, only a share club (24) records interest on
+#: FRS 2024-25: the club's returns are on shares, so they are out of scope as
+#: interest; profit sharing (22), company share option plans (23), an
+#: endowment policy not linked (29) and informal assets (32) record none.
+FRS_OTHER_INTEREST_ACCOUNTS = (6,)
 #: Dividends: unit and investment trusts (7) and stocks, shares and bonds (8).
 FRS_DIVIDEND_ACCOUNTS = (7, 8)
 

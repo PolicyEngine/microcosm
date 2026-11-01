@@ -160,3 +160,50 @@ def test_winter_fuel_diagnostic_carries_the_published_count() -> None:
     assert metadata[f"{prefix}_status"] == "available"
     assert float(metadata[f"{prefix}_value_count"]) == 11_003_237
     assert metadata[f"{prefix}_ledger_geography_id"] == "K04000001"
+
+
+def test_income_based_jsa_spending_reads_the_dwp_calendar_window() -> None:
+    # DWP's income-based JSA line beside OBR's total JSA, so the solve meets
+    # OBR's total on contributory claimants (microcosm#1428; its review's
+    # finding 12 asked for this pin, as the Housing Benefit row has).
+    target = _targets()["dwp.jsa.amount_income_based"]
+    selector = target["ledger_selector"]
+    assert selector["source_concept"] == "dwp.benefit_expenditure_amount"
+    assert selector["dimension_values"] == {
+        "benefit_forecast_line": (
+            "unemployment_benefits__jobseekers_allowance__income_based"
+        )
+    }
+    assert target["value_operation"] == "calendar_year_window"
+    assert selector["source_measure_id_by_opening_year"] == {
+        "2024": "expenditure_2024",
+        "2025": "expenditure_2025",
+    }
+    assert target["assertion_policy"] == "allow_source_projection"
+    assert target["family"] == "dwp_benefit_expenditure"
+    binding = target["bindings"]["policyengine"]
+    assert binding["value_variable"] == "jsa_income"
+    assert binding["from_entity"] == "benunit"
+    assert "filters" not in binding
+    # Great Britain, the scope of DWP's line.
+    (condition,) = binding["household_conditions"]
+    assert condition["variable"] == "region"
+    assert "NORTHERN_IRELAND" not in condition["value"]
+
+
+def test_the_table_3_10_employment_counts_read_annual_pay_by_profit_band() -> None:
+    # Table 3.10's individuals with employment income over the self-employment
+    # bands from GBP 1 to GBP 10,000 (microcosm#1428; review finding 12).
+    target = _targets()[
+        "hmrc.spi.employment_income.count_by_self_employment_income_band"
+    ]
+    binding = target["bindings"]["policyengine"]
+    assert binding["value_variable"] == "person_count"
+    assert binding["groupby_variable"] == (
+        "self_employment_income_after_loss_relief_annual"
+    )
+    assert binding["filters"] == [
+        {"variable": "employment_income_annual", "operator": "!=", "value": 0}
+    ]
+    assert binding["band_upper_bound"] == 10_000
+    assert binding["band_upper_bound_inclusive"] is False

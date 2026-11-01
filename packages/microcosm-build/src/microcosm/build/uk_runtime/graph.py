@@ -605,6 +605,12 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
             ("household", "stocks_and_shares_isa"),
         }
     ),
+    # The gross receipts are drawn on each person's final self-employment
+    # profit, and the receipt counts support by source household
+    # (microcosm#1428).
+    "trading_allowance_receipts": frozenset(
+        {("person", "self_employment_income"), ("household", "household_source_id")}
+    ),
     # The copies' childcare re-draw reads every household's clone path (the
     # lineage columns of each copy stage) and keeps the native units' cells:
     # an open surface, like the other take-up redraws.
@@ -1219,6 +1225,9 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
             "lifetime_isa_payments",
         ),
     ),
+    "trading_allowance_receipts": (
+        _Cell("person", "self_employment_gross_receipts", "float64"),
+    ),
     "childcare_copy_take_up": (
         *_cells(
             "benunit",
@@ -1304,6 +1313,10 @@ _HMRC_SPI_FLOAT_COLUMNS = (
     "self_employment_income_other_spells",
     "private_pension_income_annual_share",
     "contributory_benefits_annual_share",
+    # A drawn row's private pension is the tape's, which books annuity and
+    # trust payments as other income, so its annuity and trust descriptor is
+    # zero (microcosm#1428).
+    "annuity_and_trust_income",
 )
 _HMRC_SPI_HIDDEN_STRING = (
     "aa_category",

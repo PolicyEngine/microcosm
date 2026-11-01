@@ -1,11 +1,11 @@
 {
- "compiled_count": 1403,
+ "compiled_count": 1412,
  "counts_by_kind": {
   "calibration_drift": 557,
   "fixture_only": 48,
-  "ledger_only": 814
+  "ledger_only": 823
  },
- "difference_count": 1419,
+ "difference_count": 1428,
  "differences": [
   {
    "fixture_value": 1608000.0,
@@ -676,6 +676,13 @@
    "kind": "ledger_only",
    "ledger_value": 1381089.75,
    "name": "dwp.hb.households_social_rented",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 23377178.788788605,
+   "name": "dwp.jsa.amount_income_based",
    "period": 2025,
    "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
   },
@@ -2524,6 +2531,62 @@
    "kind": "ledger_only",
    "ledger_value": 5500000000.0,
    "name": "hmrc.salary_sacrifice.it_relief_higher_rate",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 136689.37329700272,
+   "name": "hmrc.spi.employment_income.count_by_self_employment_income_band.band_1000_2000",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 72111.7166212534,
+   "name": "hmrc.spi.employment_income.count_by_self_employment_income_band.band_1_500",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 110858.310626703,
+   "name": "hmrc.spi.employment_income.count_by_self_employment_income_band.band_2000_3000",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 96866.48501362398,
+   "name": "hmrc.spi.employment_income.count_by_self_employment_income_band.band_3000_4000",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 82874.65940054496,
+   "name": "hmrc.spi.employment_income.count_by_self_employment_income_band.band_4000_5000",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 159291.553133515,
+   "name": "hmrc.spi.employment_income.count_by_self_employment_income_band.band_5000_7500",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 68882.83378746595,
+   "name": "hmrc.spi.employment_income.count_by_self_employment_income_band.band_500_1000",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 121621.25340599455,
+   "name": "hmrc.spi.employment_income.count_by_self_employment_income_band.band_7500_10000",
    "period": 2025,
    "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
   },

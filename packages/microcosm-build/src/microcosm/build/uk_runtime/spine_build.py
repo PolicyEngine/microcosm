@@ -203,6 +203,9 @@ from microcosm.build.uk_runtime.spi_spine import (
 from microcosm.build.uk_runtime.staging import UK_STAGING_REPOSITORY
 from microcosm.build.uk_runtime.student_loans import UKStudentLoansStageTransform
 from microcosm.build.uk_runtime.take_up_contract import load_uk_take_up_contract
+from microcosm.build.uk_runtime.trading_allowance_receipts import (
+    UKTradingAllowanceReceiptsStageTransform,
+)
 from microcosm.build.uk_runtime.uc_capital_coherence import (
     UKUCCapitalCoherenceStageTransform,
 )
@@ -1909,6 +1912,12 @@ def prepare_uk_spine_execution(
         implementations["childcare_copy_take_up"] = UKChildcareCopyTakeUpStageTransform(
             contract=stochastic_contract,
             stage=stages_by_name["childcare_copy_take_up"],
+        )
+    if "trading_allowance_receipts" in stage_names:
+        implementations["trading_allowance_receipts"] = (
+            UKTradingAllowanceReceiptsStageTransform(
+                stage=stages_by_name["trading_allowance_receipts"]
+            )
         )
     if "age_tail" in stage_names:
         implementations["age_tail"] = UKAgeTailStageTransform(

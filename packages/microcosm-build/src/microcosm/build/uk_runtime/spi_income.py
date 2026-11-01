@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import math
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass
 from functools import cache
 from importlib import import_module
@@ -37,6 +37,7 @@ from microcosm.build.uk_runtime.frs_hmrc_source import (
     FRS_HMRC_UBISJA_COLUMN,
 )
 from microcosm.build.uk_runtime.frs_spine import (
+    ANNUITY_AND_TRUST_INCOME_COLUMN,
     FRS_LANDLORD_CARRIER_COLUMN,
     ISA_INTEREST_COLUMN,
     uc_gainful_self_employment,
@@ -209,8 +210,39 @@ SPI_DONOR_INCOME_YEAR = 2022
 #: microcosm#1095) until microcosm#1418 moved them to the OBR's savings income
 #: forecast, so the calibration closes the gap between the two. The engine
 #: lockstep test holds both indices to the engine's.
+#:
+#: Since the microcosm#1418 savings follow-up, interest and other income
+#: reach the frame's year on SPI's own path instead
+#: (``rebase_spi_donor_savings``): HMRC's published 2023-24 Table 3.7 amounts
+#: by range of total income, then the OBR's savings income growth, the path
+#: the band targets take. On their engine indices the 2022-23 tape reached
+#: 2024 at about half of SPI's 2023-24 other income (GDP per head, x1.09,
+#: against x1.65 in that one year) and short of its interest, and the solve
+#: met the band targets by stretching the few households that carry them.
+#: Both columns run on the projection's index from the frame's year on, named
+#: here.
 SPI_HISTORY_INDEX_DIFFERS_FROM_PROJECTION = {
     "savings_interest_income": "gov.economic_assumptions.indices.obr.per_capita.gdp",
+    "other_investment_income": "gov.economic_assumptions.indices.obr.per_capita.gdp",
+}
+#: The published rows the donor savings rebase reads (vendored from the
+#: Chronicle feed pin), the year they describe, and each rebased column's
+#: Table 3.7 concept.
+SPI_SAVINGS_REBASE_RESOURCE = "hmrc_spi_table_3_7_savings_rows.json"
+#: The prepared tape's taxpayer flag, the records the rebase factors read.
+SPI_DONOR_TAXPAYER_COLUMN = "is_taxpayer"
+#: The tape's TAXPAYER codes: 1, a taxpayer, and 2, not.
+SPI_TAXPAYER_CODES = (1, 2)
+#: The band factors assume the tape's FACT weights gross to the taxpayer
+#: population. A column whose banded tape amount is under this share of the
+#: published amount does not (a synthetic tape, whose factors would run to
+#: millions), and is left as it is. The production tape holds about 0.37 of
+#: the published interest and 0.6 of the other income.
+SPI_SAVINGS_REBASE_MINIMUM_GROSSING = 0.1
+SPI_SAVINGS_REBASE_YEAR = 2023
+SPI_SAVINGS_REBASE_CONCEPTS = {
+    "savings_interest_income": "hmrc.spi_savings_interest_income_amount",
+    "other_investment_income": "hmrc.spi_other_income_amount",
 }
 # Use the pinned engine's variable-specific indices. None explicitly retains
 # nominal amounts where no same-scope indexed mapping has been reviewed;
@@ -695,6 +727,7 @@ class UKSPIIncomeImputationResult:
     state_pension_age: int | None = None
     gainful_self_employment_refresh: Mapping[str, object] | None = None
     pension_coherence: Mapping[str, object] | None = None
+    gift_anchor: Mapping[str, object] | None = None
 
 
 @dataclass(frozen=True)
@@ -852,6 +885,23 @@ def impute_uk_spi_income_support(
             raise TypeError("donor_table must be a pandas DataFrame.")
         raw_donor = donor_table.copy(deep=True)
     donor = _prepare_spi_donor(raw_donor, seed=seed, age_model=donor_age_model)
+    # The tape's interest and other income move to SPI's 2023-24 bands before
+    # any draw, so the forest and the band donors read the same rebased tape
+    # (microcosm#1418 savings follow-up).
+    savings_rebase = None
+    rebased_columns: frozenset[str] = frozenset()
+    if rebase_income_to_build_period and int(build_period) >= SPI_SAVINGS_REBASE_YEAR:
+        rebase_year_factors, _ = _spi_income_uprating_factors(SPI_SAVINGS_REBASE_YEAR)
+        donor, savings_rebase = rebase_spi_donor_savings(
+            donor,
+            spi_savings_rebase_published(),
+            income_factors=rebase_year_factors,
+        )
+        rebased_columns = frozenset(
+            column
+            for column, entry in savings_rebase["columns"].items()
+            if "skipped" not in entry
+        )
     donor_age_draw = {
         **donor.attrs.get("age_draw", {}),
         "stage1_query_age": SPI_STAGE1_QUERY_AGE_RULE,
@@ -967,6 +1017,13 @@ def impute_uk_spi_income_support(
             columns=initialize_frs_channel_columns,
         )
     person = _seed_frs_hmrc_auxiliary_leaves(person, spi_people=spi_people)
+    # The stage-1 transport reads each twin's analogue. A stage-1 output that is
+    # its own analogue and that the frame does not carry (other income, on a
+    # frame whose FRS rows hold none) is the stage-time zero the fill below
+    # writes, on every row, so the twins locate as non-carriers (microcosm#1428).
+    for column in SPI_INCOME_QRF_OUTPUT_COLUMNS:
+        if SPI_STAGE1_ANALOGUE_COLUMNS.get(column) == column and column not in person:
+            person[column] = 0.0
 
     base_household = household[household_channel] == BASE_FRS_SUPPORT_CHANNEL
     if "clone_index" in household:
@@ -1104,8 +1161,10 @@ def impute_uk_spi_income_support(
     uprating_factors = dict.fromkeys(SPI_INCOME_QRF_OUTPUT_COLUMNS, 1.0)
     if rebase_income_to_build_period:
         uprating_factors, income_uprating = _spi_income_uprating_factors(
-            int(build_period)
+            int(build_period), rebased_columns=rebased_columns
         )
+        if savings_rebase is not None:
+            income_uprating = {**income_uprating, "savings_rebase": savings_rebase}
         stage1_draws = stage1_draws.mul(pd.Series(uprating_factors), axis="columns")
     nonnegative_stage1 = [
         column
@@ -1301,6 +1360,9 @@ def impute_uk_spi_income_support(
         )
         guard_receipts.append(receipt)
 
+    person, gift_anchor = _anchor_spi_gifts_to_tape(
+        person, household, donor_full, spi_people=spi_people
+    )
     # Non-ISA interest is the stage-1 taxable draw; ISA interest is the stage-2
     # draw beside it (microcosm#1360).
     person.loc[spi_people, "savings_interest_income"] = taxable_interest_draw
@@ -1316,6 +1378,7 @@ def impute_uk_spi_income_support(
     )
     person = _refresh_landlord_carrier(person, spi_people=spi_people)
     person = _refresh_annual_income_descriptors(person, spi_people=spi_people)
+    person = _clear_annuity_and_trust_descriptor(person, spi_people=spi_people)
     # The flag is the stage's last new column, where the graph's typed cells
     # place it (the legacy oracle and the graph must agree on column order).
     person[SPI_INCOME_RECIPIENT_COLUMN] = (
@@ -1356,6 +1419,7 @@ def impute_uk_spi_income_support(
         state_pension_age=int(state_pension_age),
         gainful_self_employment_refresh=gainful_self_employment,
         pension_coherence=pension_coherence,
+        gift_anchor=gift_anchor,
     )
 
 
@@ -1674,9 +1738,22 @@ def _resample_band_donor_leaves(
 
 
 @cache
-def _spi_income_uprating_factors(year: int):
-    """Rebase SPI money flows before conditioning on build-year FRS incomes."""
+def _spi_income_uprating_factors(
+    year: int, *, rebased_columns: Collection[str] | None = None
+):
+    """Rebase SPI money flows before conditioning on build-year FRS incomes.
+
+    ``rebased_columns`` names the savings columns rebase_spi_donor_savings
+    moved to 2023-24, which grow on the OBR's savings path from there; a
+    savings column it left as it was (a tape that does not gross) grows on
+    its engine index from 2022-23. None takes every rebased concept.
+    """
     from policyengine_uk import CountryTaxBenefitSystem
+
+    from microcosm.build.uk_runtime.hmrc_uprating import (
+        UK_OBR_SAVINGS_INCOME_GROWTH_INDEX_CONCEPT,
+        uk_obr_savings_income_level,
+    )
 
     if year < SPI_DONOR_INCOME_YEAR:
         raise ValueError("SPI income cannot be rebased before its source year.")
@@ -1688,6 +1765,31 @@ def _spi_income_uprating_factors(year: int):
     factors = {}
     columns = {}
     for column, variable_name in SPI_INCOME_UPRATING_VARIABLES.items():
+        rebased = (
+            column in SPI_SAVINGS_REBASE_CONCEPTS
+            if rebased_columns is None
+            else column in rebased_columns
+        )
+        if rebased and year >= SPI_SAVINGS_REBASE_YEAR:
+            # rebase_spi_donor_savings has moved the column to SPI's 2023-24
+            # bands; the OBR's savings income growth carries it on.
+            factor, used = uk_obr_savings_income_level(SPI_SAVINGS_REBASE_YEAR, year)
+            factors[column] = factor
+            columns[column] = {
+                "variable": variable_name,
+                "index": UK_OBR_SAVINGS_INCOME_GROWTH_INDEX_CONCEPT,
+                "factor": factor,
+                "basis": "spi_published_bands_then_obr_savings_income",
+                "from_period": SPI_SAVINGS_REBASE_YEAR,
+                "growth_by_year": {
+                    str(fiscal_year): growth
+                    for fiscal_year, (growth, _) in used.items()
+                },
+                "dataset_projection_index": (
+                    SPI_HISTORY_INDEX_DIFFERS_FROM_PROJECTION[variable_name]
+                ),
+            }
+            continue
         path = None
         factor = 1.0
         if variable_name is not None:
@@ -1771,6 +1873,229 @@ def prepare_spi_donor_table(
     return _prepare_spi_donor(raw, seed=seed, age_model=age_model)
 
 
+def spi_savings_rebase_published(
+    rows: Sequence[Mapping[str, Any]] | None = None,
+) -> dict[str, dict[int, float]]:
+    """HMRC's 2023-24 Table 3.7 amounts by band, for each rebased column.
+
+    Read from the vendored resource (``SPI_SAVINGS_REBASE_RESOURCE``): the
+    United Kingdom interest from banks and building societies and other
+    income of taxpayers, keyed by each band's lower bound of total income.
+    Both columns must name the same bands, once each.
+    """
+
+    if rows is None:
+        from microcosm.build.uk_runtime.ledger_fact_vendoring import vendored_rows
+
+        rows = vendored_rows(SPI_SAVINGS_REBASE_RESOURCE)
+    columns = {
+        concept: column for column, concept in SPI_SAVINGS_REBASE_CONCEPTS.items()
+    }
+    published: dict[str, dict[int, float]] = {
+        column: {} for column in SPI_SAVINGS_REBASE_CONCEPTS
+    }
+    for row in rows:
+        column = columns.get(str(row.get("concept")))
+        if column is None:
+            continue
+        period = int((row.get("period") or {}).get("value", -1))
+        if period != SPI_SAVINGS_REBASE_YEAR:
+            raise ValueError(
+                f"{SPI_SAVINGS_REBASE_RESOURCE}: a {column} row describes {period}, "
+                f"not {SPI_SAVINGS_REBASE_YEAR}."
+            )
+        bound = int((row.get("dimensions") or {})["total_income_lower_bound"])
+        if bound in published[column]:
+            raise ValueError(
+                f"{SPI_SAVINGS_REBASE_RESOURCE}: {column} has two rows from {bound}."
+            )
+        value = float(row["value"])
+        if not np.isfinite(value) or value < 0.0:
+            raise ValueError(
+                f"{SPI_SAVINGS_REBASE_RESOURCE}: {column} from {bound} is {value!r}."
+            )
+        published[column][bound] = value
+    bands = {column: tuple(sorted(by_bound)) for column, by_bound in published.items()}
+    if not all(bands.values()) or len(set(bands.values())) != 1:
+        raise ValueError(
+            f"{SPI_SAVINGS_REBASE_RESOURCE} must give every rebased column the "
+            f"same total-income bands: {bands}."
+        )
+    return published
+
+
+#: The rebase bands the tape once on its income moved to 2023-24, the year the
+#: published bands describe: each income leaf at its 2022-23 to 2023-24 factor,
+#: each rebased column at its factor over all bands, and the rest of the
+#: published total held nominal, as the band donors' realised income is built.
+#: Its consumers band again on income uprated to the frame's year, so banding
+#: on 2022-23 income counted the band-edge migration twice (microcosm#1428
+#: review, finding 6). Moving each record's savings by its own band's factor
+#: has no fixed point: the band sets the factor and the factor the band, and on
+#: the production tape records kept changing band from pass to pass.
+
+
+def _tape_income_in_rebase_year(
+    donor: pd.DataFrame,
+    rebased: pd.DataFrame,
+    income_factors: Mapping[str, float],
+) -> np.ndarray:
+    """The tape's total income moved to SPI_SAVINGS_REBASE_YEAR."""
+
+    columns = [
+        column
+        for column in SPI_INCOME_QRF_OUTPUT_COLUMNS
+        if column in donor
+        and column not in (SPI_PROPERTY_FINANCE_COSTS_COLUMN, *SPI_LOSS_DRAW_COLUMNS)
+    ]
+    leaves = donor[columns].to_numpy(dtype=np.float64)
+    rest = np.maximum(
+        donor["total_income"].to_numpy(dtype=np.float64) - leaves.sum(axis=1), 0.0
+    )
+    moved = rebased[columns].to_numpy(dtype=np.float64) @ np.asarray(
+        [float(income_factors.get(column, 1.0)) for column in columns]
+    )
+    return moved + rest
+
+
+def rebase_spi_donor_savings(
+    donor: pd.DataFrame,
+    published: Mapping[str, Mapping[int, float]],
+    *,
+    income_factors: Mapping[str, float] | None = None,
+) -> tuple[pd.DataFrame, dict[str, object]]:
+    """Move the tape's interest and other income to SPI's 2023-24 bands.
+
+    Each taxpayer donor's column is scaled by its band's factor: HMRC's
+    published 2023-24 amount over the tape's FACT-weighted amount for the
+    taxpayers in the same range of total income, since Table 3.7 counts
+    taxpayers only. The tape is banded once on its income moved to 2023-24:
+    each income leaf at its 2022-23 to 2023-24 factor (``income_factors``;
+    none holds the leaves nominal) and each rebased column at its factor over
+    all bands, on the tape's 2022-23 bands. A taxpayer is a record the tape
+    flags (TAXPAYER 1) or one whose income crosses the first band's lower
+    bound, the Personal Allowance, by 2023-24, so a saver who becomes a
+    taxpayer is counted once. A flagged taxpayer below the first band sits in
+    it, as the table's lowest band holds those taxpayers (note 8); a tape
+    without the flag counts every record at or above the first band. Any
+    other donor takes the factor of all bands together. Banded so, the rebased
+    tape reproduces the published amounts band by band; a record whose band's
+    factor differs from the factor of all bands can sit across an edge when
+    banded on its rebased income. The OBR's savings income growth then
+    carries both columns to the frame's year (``_spi_income_uprating_factors``).
+    A band the tape carries none of has nothing to scale, and a band whose tape
+    amount is under SPI_SAVINGS_REBASE_MINIMUM_GROSSING of its published amount
+    takes the factor of all bands; both are named in the receipt. A column
+    whose tape does not gross to the population is left as it is, and the
+    receipt says so. The receipt carries the factors only.
+    """
+
+    bounds = sorted(next(iter(published.values())))
+    edges = np.asarray(bounds, dtype=np.float64)
+    weights = donor["FACT"].to_numpy(dtype=np.float64)
+    flagged = SPI_DONOR_TAXPAYER_COLUMN in donor
+    tape_taxpayer = (
+        donor[SPI_DONOR_TAXPAYER_COLUMN].to_numpy(dtype=bool)
+        if flagged
+        else np.zeros(len(donor), dtype=bool)
+    )
+    band_2022 = (
+        np.searchsorted(
+            edges, donor["total_income"].to_numpy(dtype=np.float64), side="right"
+        )
+        - 1
+    )
+    factors_in = dict(income_factors or {})
+    rebased = donor.copy()
+    receipt: dict[str, object] = {
+        "resource": SPI_SAVINGS_REBASE_RESOURCE,
+        "from_period": SPI_DONOR_INCOME_YEAR,
+        "to_period": SPI_SAVINGS_REBASE_YEAR,
+        "band_by": "total_income_moved_to_2023_24",
+        "factors_over": (
+            "taxpayers: TAXPAYER 1, or income crossing the first band by 2023-24"
+            if flagged
+            else "all_records_at_or_above_the_first_band"
+        ),
+        "band_lower_bounds": [int(bound) for bound in bounds],
+        "columns": {},
+    }
+    original: dict[str, np.ndarray] = {}
+    targets: dict[str, np.ndarray] = {}
+    banding_factors: dict[str, float] = {}
+    for column, by_bound in published.items():
+        values = donor[column].to_numpy(dtype=np.float64)
+        target = np.asarray([float(by_bound[bound]) for bound in bounds])
+        taxpayer = tape_taxpayer | (band_2022 >= 0)
+        tape = np.bincount(
+            np.clip(band_2022, 0, None)[taxpayer],
+            weights=(weights * values)[taxpayer],
+            minlength=len(bounds),
+        )
+        carried = tape > 0.0
+        # Over the bands the tape carries; an empty band is left as it is.
+        if (
+            tape[carried].sum()
+            < SPI_SAVINGS_REBASE_MINIMUM_GROSSING * target[carried].sum()
+        ):
+            receipt["columns"][column] = {
+                "concept": SPI_SAVINGS_REBASE_CONCEPTS[column],
+                "skipped": "the tape's weights do not gross to the published amounts",
+            }
+            continue
+        original[column] = values
+        targets[column] = target
+        banding_factors[column] = (
+            float(target[carried].sum() / tape[carried].sum()) if carried.any() else 1.0
+        )
+    if not original:
+        return rebased, receipt
+
+    income = _tape_income_in_rebase_year(
+        donor, donor, {**factors_in, **banding_factors}
+    )
+    band = np.searchsorted(edges, income, side="right") - 1
+    crossed = ~tape_taxpayer & (band_2022 < 0) & (band >= 0)
+    taxpayer = tape_taxpayer | crossed if flagged else (band >= 0)
+    band = np.where(taxpayer, np.clip(band, 0, None), band)
+    for column, values in original.items():
+        target = targets[column]
+        tape = np.bincount(
+            band[taxpayer],
+            weights=(weights * values)[taxpayer],
+            minlength=len(bounds),
+        )
+        carried = tape > 0.0
+        thin = carried & (tape < SPI_SAVINGS_REBASE_MINIMUM_GROSSING * target)
+        usable = carried & ~thin
+        all_bands = (
+            float(target[usable].sum() / tape[usable].sum()) if usable.any() else 1.0
+        )
+        factors = np.where(usable, target / np.where(usable, tape, 1.0), all_bands)
+        rebased[column] = values * np.where(
+            taxpayer, factors[np.clip(band, 0, None)], all_bands
+        )
+        receipt["columns"][column] = {
+            "concept": SPI_SAVINGS_REBASE_CONCEPTS[column],
+            "banding_factor": banding_factors[column],
+            "band_factors": {
+                str(bound): float(factor)
+                for bound, factor, kept in zip(bounds, factors, usable, strict=True)
+                if kept
+            },
+            "below_first_band_factor": all_bands,
+            "bands_without_tape_amounts": [
+                int(bound)
+                for bound, kept in zip(bounds, carried, strict=True)
+                if not kept
+            ],
+            "bands_too_thin_to_gross": [
+                int(bound) for bound, kept in zip(bounds, thin, strict=True) if kept
+            ],
+        }
+    return rebased, receipt
+
+
 def _prepare_spi_donor(
     raw: pd.DataFrame,
     *,
@@ -1848,6 +2173,19 @@ def _prepare_spi_donor(
     # on the prepared tape for the band donors' propensity and band pools;
     # they are never QRF inputs or outputs.
     donor["total_income"] = numeric["TI"].to_numpy(dtype=float)
+    # Table 3.7 counts taxpayers only, so the savings rebase reads the tape's
+    # TAXPAYER flag (SPI_TAXPAYER_CODES: 1, a taxpayer; 2, not). A tape without
+    # it carries no flag, and the rebase's receipt says it counted every record
+    # at or above the first band (microcosm#1428).
+    if "TAXPAYER" in raw.columns:
+        taxpayer = pd.to_numeric(raw["TAXPAYER"], errors="coerce")
+        unknown = sorted(set(taxpayer.dropna().unique()) - set(SPI_TAXPAYER_CODES))
+        if taxpayer.isna().any() or unknown:
+            raise ValueError(
+                "SPI TAXPAYER must be 1 (a taxpayer) or 2 (not) on every record; "
+                f"found {unknown or 'blanks'}."
+            )
+        donor[SPI_DONOR_TAXPAYER_COLUMN] = taxpayer.eq(1).to_numpy()
     donor["is_composite"] = numeric["AGERANGE"].astype(int).eq(-1).to_numpy()
     # The published age band travels with the record so band pools can match
     # a carrier's age band; composites (-1) have none and never age-match.
@@ -2589,6 +2927,56 @@ def _spi_pension_coherence(
     return person, receipt
 
 
+#: Gift Aid and charitable investment gifts are sparse leaves the stage-1
+#: chain draws after, and conditioned on, the income leaves, so a change to
+#: the donor savings rebase reshuffles which few donors' gifts the copies
+#: draw: rebasing on the tape's taxpayers moved the copies' charitable
+#: investment gifts far from the tape's own total (microcosm#1428). Their
+#: totals over the drawn copies, at the stage's weights, are anchored to the
+#: tape's own FACT-weighted totals (María's ruling of 2026-10-31). Both
+#: columns are nominal, as their uprating mapping (None) keeps them.
+SPI_GIFT_ANCHOR_COLUMNS = ("gift_aid", "charitable_investment_gifts")
+SPI_GIFT_ANCHOR_BASIS = (
+    "each column's total over the drawn copies at the stage's household "
+    "weights equals the prepared tape's FACT-weighted total; a column the "
+    "tape or the copies carry none of is left as drawn"
+)
+
+
+def _anchor_spi_gifts_to_tape(
+    person: pd.DataFrame,
+    household: pd.DataFrame,
+    donor: pd.DataFrame,
+    *,
+    spi_people: pd.Series,
+) -> tuple[pd.DataFrame, dict[str, object]]:
+    """Scale the copies' gift leaves to the tape's FACT-weighted totals.
+
+    The receipt records each column's factor only, never a total or a count.
+    """
+
+    weights = _person_household_weights(person, household).to_numpy(dtype=np.float64)
+    rows = spi_people.reindex(person.index).fillna(False).to_numpy(dtype=bool)
+    fact = donor["FACT"].to_numpy(dtype=np.float64)
+    factors: dict[str, float] = {}
+    for column in SPI_GIFT_ANCHOR_COLUMNS:
+        tape = float((fact * donor[column].to_numpy(dtype=np.float64)).sum())
+        values = person[column].to_numpy(dtype=np.float64, copy=True)
+        drawn = float((weights[rows] * values[rows]).sum())
+        if tape <= 0.0 or drawn <= 0.0:
+            factors[column] = 1.0
+            continue
+        factor = tape / drawn
+        values[rows] = values[rows] * factor
+        person[column] = values
+        factors[column] = factor
+    return person, {
+        "columns": list(SPI_GIFT_ANCHOR_COLUMNS),
+        "basis": SPI_GIFT_ANCHOR_BASIS,
+        "factors": factors,
+    }
+
+
 def _person_household_weights(
     person: pd.DataFrame,
     household: pd.DataFrame,
@@ -3008,6 +3396,29 @@ def _refresh_annual_income_descriptors(
             np.where(drew_income, 0.0, twin_spells),
             default=0.0,
         )
+    return person
+
+
+def _clear_annuity_and_trust_descriptor(
+    person: pd.DataFrame, *, spi_people: pd.Series
+) -> pd.DataFrame:
+    """Zero a drawn row's annuity and trust descriptor.
+
+    A drawn row's private pension is the tape's, which excludes purchased
+    annuity and trust income: SPI books those as other income, in the drawn
+    other_investment_income (microcosm#1428). An undrawn copy keeps its twin's
+    descriptor with its twin's pension.
+    """
+
+    if ANNUITY_AND_TRUST_INCOME_COLUMN not in person:
+        return person
+    _assign_spi_values(
+        person,
+        spi_people,
+        ANNUITY_AND_TRUST_INCOME_COLUMN,
+        np.zeros(int(spi_people.sum())),
+        default=0.0,
+    )
     return person
 
 

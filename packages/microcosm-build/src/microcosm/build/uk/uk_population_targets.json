@@ -836,6 +836,7 @@
       "dwp.hb.households_pension_age_social_rented": "Post-freeze fact family (DWP Stat-Xplore Housing Benefit, pension age), no uk-data metric (microcosm#1069 c10).",
       "dwp.hb.households_pension_age_private_rented": "Post-freeze fact family (DWP Stat-Xplore Housing Benefit, pension age), no uk-data metric (microcosm#1069 c10).",
       "dwp.hb.amount_pension_age": "Post-freeze fact family (DWP benefit expenditure and caseload tables, pension-age Housing Benefit spending), no uk-data metric (microcosm#1095).",
+      "dwp.jsa.amount_income_based": "Post-freeze fact family (DWP benefit expenditure and caseload tables, income-based Jobseeker's Allowance spending), no uk-data metric (microcosm#1428).",
       "ons.households.english_regions": "Post-freeze fact family (each nation's official household estimate: LFS 2025 for England's regions, NRS 2025, Welsh Government rolled to 2025, Census 2021 rolled by LPS stock for Northern Ireland), no uk-data metric (microcosm#1123, nations win).",
       "nrs.households.scotland": "Post-freeze fact family (each nation's official household estimate: LFS 2025 for England's regions, NRS 2025, Welsh Government rolled to 2025, Census 2021 rolled by LPS stock for Northern Ireland), no uk-data metric (microcosm#1123, nations win).",
       "welshgov.households.wales": "Post-freeze fact family (each nation's official household estimate: LFS 2025 for England's regions, NRS 2025, Welsh Government rolled to 2025, Census 2021 rolled by LPS stock for Northern Ireland), no uk-data metric (microcosm#1123, nations win).",
@@ -895,7 +896,8 @@
       "hmrc.itl.savings_tax_at_additional_rate": "Post-freeze fact family (HMRC Income Tax liabilities statistics Table 2.6, July 2026, in Chronicle: Income Tax on savings income at each rate, all payers, the calendar-2025 window of the 2024-25 and 2025-26 projections), no uk-data metric (microcosm#1418).",
       "hmrc.spi.other_investment_income.amount_by_total_income_band": "New declaration backed by SPI 2023-24 Table 3.7 other income in Chronicle (spi_income_bands_2023_24); no uk-data metric holds other investment income by band (microcosm#1418).",
       "hmrc.spi.self_employment_income.count_by_self_employment_income_band": "New declaration backed by SPI 2023-24 Table 3.10 in Chronicle (spi_income_bands_2023_24, PolicyEngine/chronicle#394); no uk-data metric holds self-employment income by self-employment band (microcosm#1418).",
-      "hmrc.spi.self_employment_income.amount_by_self_employment_income_band": "New declaration backed by SPI 2023-24 Table 3.10 in Chronicle (spi_income_bands_2023_24, PolicyEngine/chronicle#394); no uk-data metric holds self-employment income by self-employment band (microcosm#1418)."
+      "hmrc.spi.self_employment_income.amount_by_self_employment_income_band": "New declaration backed by SPI 2023-24 Table 3.10 in Chronicle (spi_income_bands_2023_24, PolicyEngine/chronicle#394); no uk-data metric holds self-employment income by self-employment band (microcosm#1418).",
+      "hmrc.spi.employment_income.count_by_self_employment_income_band": "New declaration backed by SPI 2023-24 Table 3.10 in Chronicle (spi_income_bands_2023_24, PolicyEngine/chronicle#394); no uk-data metric holds employment income by self-employment band (microcosm#1418)."
     },
     "suppressed_ancestors": {
       "hmrc/salary_sacrifice_it_relief_basic_rate": {
@@ -971,6 +973,7 @@
       "hmrc.spi.self_employment_income.count_by_total_income_band",
       "hmrc.spi.self_employment_income.count_by_self_employment_income_band",
       "hmrc.spi.self_employment_income.amount_by_self_employment_income_band",
+      "hmrc.spi.employment_income.count_by_self_employment_income_band",
       "hmrc.spi.dividend_income.amount_by_total_income_band",
       "hmrc.spi.dividend_income.count_by_total_income_band",
       "hmrc.spi.property_income.amount_by_total_income_band",
@@ -1318,6 +1321,7 @@
       "dwp.hb.households_pension_age_social_rented",
       "dwp.hb.households_pension_age_private_rented",
       "dwp.hb.amount_pension_age",
+      "dwp.jsa.amount_income_based",
       "microcosm.high_value_homes.over_1m_by_region",
       "microcosm.high_value_homes.over_1_5m_by_region",
       "microcosm.high_value_homes.over_2m_by_region",
@@ -3847,6 +3851,54 @@
       "label": "Amount by self-employment income band",
       "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_all_bands_times_obr_per_capita_mixed_income",
       "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period as recipients times the amount per recipient: the count rows' index (HMRC's projected growth of all taxpayers over all income ranges, Income Tax liabilities statistics Table 2.5) times gov.economic_assumptions.indices.obr.per_capita.mixed_income on the pinned engine, the index policyengine-uk grows self_employment_income by. Each band's mean therefore moves as the engine moves incomes; growing the counts and amounts on unrelated indices would have made calibration add people to each band and tilt them toward its bottom edge (the independent review of microcosm#1420, finding 2). The calibration binds at calendar 2025 under María's ruling of 2026-09-22 (PolicyEngine/chronicle#280 lane)."
+    },
+    {
+      "target_id": "hmrc.spi.employment_income.count_by_self_employment_income_band",
+      "family": "hmrc_spi",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "groupby_dimension": "hmrc.self_employment_income_band"
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "hmrc/employment_income_count_self_employment_income_band",
+          "value_variable": "person_count",
+          "from_entity": "person",
+          "map_to": "household",
+          "groupby_variable": "self_employment_income_after_loss_relief_annual",
+          "band_filter_dimension": "self_employment_income",
+          "band_upper_bound": 10000,
+          "band_upper_bound_inclusive": false,
+          "filters": [
+            {
+              "variable": "employment_income_annual",
+              "operator": "!=",
+              "value": 0
+            }
+          ],
+          "notes": "SPI 2023-24 Table 3.10: the individuals with a self-employment source, taxpayer or not, who also have employment income, by range of self-employment income. Bound for the eight bands from GBP 1 to GBP 10,000 beside the self-employment counts (María's rulings of 2026-10-29 and 2026-10-30, microcosm#1418): the counts alone let the solve meet each band with traders who have no pay, where more than half of Table 3.10's traders below GBP 3,000 have employment income too, and the trading allowance measures (Table 6.1 line 15) reach the ones who pay Income Tax. The target fans out over every published band and target_reference_signed_exclusions.json signs out the others. Banded by the person's own self-employment income after loss relief, half-open, with the top bound band closed at GBP 10,000 (band_upper_bound). Employment income is the year's pay, employment_income_annual, the variable Table 3.6's employment rows read."
+        },
+        "axiom": {
+          "metric_name": "hmrc/employment_income_count_self_employment_income_band",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_table_3_10_employment_income_count",
+        "groupby_dimension": "hmrc.self_employment_income_band",
+        "entity_name": "person"
+      },
+      "category_id": "hmrc.survey_of_personal_incomes",
+      "label": "Count with employment income by self-employment income band",
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_all_bands",
+      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by HMRC's projected growth of all taxpayers over all income ranges (Income Tax liabilities statistics Table 2.5), as the self-employment counts by self-employment band are. Table 3.10's employment income is income assessed under the Income Tax (Earnings and Pensions) Act 2003 and other miscellaneous income (its note 4), wider than Table 3.6's: the binding reads employment_income_annual, as Table 3.6's employment rows do, so it leaves out miscellaneous income and Incapacity Benefit, contribution-based Employment and Support Allowance and Jobseeker's Allowance. Taxable benefits in kind count on SPI rows, whose employment_income holds the tape's pay, benefits and termination pay (PAY + EPB + TAXTERM), and not on FRS rows, whose pay is the cash pay reported (the #1428 review, finding 13). The calibration binds at calendar 2025 under María's ruling of 2026-09-22 (PolicyEngine/chronicle#280 lane)."
     },
     {
       "target_id": "hmrc.spi.dividend_income.amount_by_total_income_band",
@@ -14820,7 +14872,7 @@
           "value_expression": "savings_interest_income + tax_free_savings_income + other_investment_income",
           "from_entity": "person",
           "map_to": "household",
-          "notes": "uk-data holds the last actual flat for later years - a populace-side declaration (uk-data targets/sources/ons_savings.py:39-44 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3). The row measures cash interest in and outside tax-free accounts. From policyengine-uk 2.162.2 savings_interest_income is the interest outside them, which the frame stores so under the additive ISA income contract, with ISA interest apart in individual_savings_account_interest_income; the ISA part, tax_free_savings_income, adds it back (microcosm#1095, microcosm#1360). D.41 also counts interest on gilts, National Savings bonds and other securities, which the frame holds in other_investment_income: the SPI tape's other investment income on SPI rows and, from microcosm#1418, the FRS NS&I and gilt accounts on FRS rows. The engine taxes it as savings income beside savings_interest_income."
+          "notes": "uk-data holds the last actual flat for later years - a populace-side declaration (uk-data targets/sources/ons_savings.py:39-44 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3). The row measures cash interest in and outside tax-free accounts. From policyengine-uk 2.162.2 savings_interest_income is the interest outside them, which the frame stores so under the additive ISA income contract, with ISA interest apart in individual_savings_account_interest_income; the ISA part, tax_free_savings_income, adds it back (microcosm#1095, microcosm#1360). D.41 also counts interest on gilts, National Savings bonds and other securities, which the frame holds in other_investment_income: the SPI tape's other investment income on SPI rows and, from microcosm#1418, the FRS gilt accounts on FRS rows; FRS NS&I accounts are interest in savings_interest_income (microcosm#1428). The engine taxes it as savings income beside savings_interest_income."
         },
         "axiom": {
           "metric_name": "ons/savings_interest_income",
@@ -22011,12 +22063,12 @@
       "bindings": {
         "policyengine": {
           "metric_name": "hmrc/other_investment_income_income_band",
-          "value_variable": "other_investment_income",
+          "value_variable": "other_investment_income_spi_concept",
           "from_entity": "person",
           "map_to": "household",
           "groupby_variable": "total_income_after_loss_relief_annual",
           "band_filter_dimension": "total_income",
-          "notes": "Other investment income of taxpayers by total-income band: SPI Table 3.7's 'Other income' [Note 6], the part of total investment income outside property, bank and building society interest and dividends (SPI's OTHERINV, which the SPI donors carry into other_investment_income). From microcosm#1418 the frame also holds the FRS NS&I and gilt accounts there, and the engine taxes the column as savings income beside savings_interest_income. Banded by person-level total income; band edges come from the fact dimension. No row held the column before, so the ITL Table 2.6 savings tax rows were met mostly through it: on PR A's national (microcosm#1419) it carried about GBP 9.5bn in 2024, where Table 3.7 publishes GBP 5.85bn for 2023-24 (María's ruling of 2026-10-29, microcosm#1418).",
+          "notes": "Other investment income of taxpayers by total-income band: SPI Table 3.7's 'Other income' [Note 6], the part of total investment income outside property, bank and building society interest and dividends (SPI's OTHERINV, which the SPI donors carry into other_investment_income). On FRS rows the column holds gilt interest, which the engine taxes as savings income beside savings_interest_income, and the measure (other_investment_income_spi_concept) adds the purchased-annuity and trust payments that FRS rows keep in private_pension_income, where the engine's means tests, household income and tax read them; the frame stores their part as annuity_and_trust_income (microcosm#1428). Banded by person-level total income; band edges come from the fact dimension. No row held the column before, so the ITL Table 2.6 savings tax rows were met mostly through it: on PR A's national (microcosm#1419) it carried about GBP 9.5bn in 2024, where Table 3.7 publishes GBP 5.85bn for 2023-24 (María's ruling of 2026-10-29, microcosm#1418).",
           "filters": [
             {
               "variable": "income_tax_before_winter_fuel_payment_charge_annual",
@@ -30184,6 +30236,79 @@
       },
       "category_id": "dwp.legacy_benefits",
       "label": "Housing Benefit spending, pension age",
+      "value_operation": "calendar_year_window"
+    },
+    {
+      "target_id": "dwp.jsa.amount_income_based",
+      "family": "dwp_benefit_expenditure",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "benunit",
+        "concept": "uk.benefits.jsa_income.amount",
+        "filters": [
+          {
+            "concept": "uk.geography.country",
+            "operator": "in",
+            "value": [
+              "england",
+              "scotland",
+              "wales"
+            ]
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "dwp/jsa/amount_income_based",
+          "value_variable": "jsa_income",
+          "from_entity": "benunit",
+          "household_conditions": [
+            {
+              "variable": "region",
+              "entity": "household",
+              "reduce": "any",
+              "operator": "in",
+              "value": [
+                "NORTH_EAST",
+                "NORTH_WEST",
+                "YORKSHIRE",
+                "EAST_MIDLANDS",
+                "WEST_MIDLANDS",
+                "EAST_OF_ENGLAND",
+                "LONDON",
+                "SOUTH_EAST",
+                "SOUTH_WEST",
+                "WALES",
+                "SCOTLAND"
+              ],
+              "map_to": "benunit"
+            }
+          ],
+          "notes": "DWP benefit expenditure and caseload tables, Spring Forecast 2026: the Unemployment_benefits worksheet line 'Jobseeker's Allowance, income-based', nominal GBP, which DWP publishes for Great Britain plus residents overseas (Notes tab), so the model column sums Great Britain households only. Bound at the calendar-2025 window of the fiscal years (three twelfths of the FY2024-25 outturn, nine twelfths of the FY2025-26 forecast; calendar_year_window), as the pension-age Housing Benefit row is. Income-based JSA closes with the move to Universal Credit: GBP 144.7m in FY2023-24, GBP 91.0m in FY2024-25 and under GBP 1m forecast from FY2025-26. Without the split, the calibration met OBR's total JSA (obr.jobseekers_allowance) by scaling income-based reporters with contributory claimants, well above the window's level (microcosm#1428, María's ruling of 2026-10-31). The value is the engine's jsa_income, income-based JSA paid on the reported award."
+        },
+        "axiom": {
+          "metric_name": "dwp/jsa/amount_income_based",
+          "status": "pending",
+          "value_rule": "uk.benefits.jsa_income.amount"
+        }
+      },
+      "assertion_policy": "allow_source_projection",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": "dwp.benefit_expenditure_amount",
+        "entity_name": "government",
+        "dimension_values": {
+          "benefit_forecast_line": "unemployment_benefits__jobseekers_allowance__income_based"
+        },
+        "source_measure_id_by_opening_year": {
+          "2024": "expenditure_2024",
+          "2025": "expenditure_2025"
+        }
+      },
+      "category_id": "dwp.legacy_benefits",
+      "label": "Jobseeker's Allowance spending, income-based",
       "value_operation": "calendar_year_window"
     },
     {

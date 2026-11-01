@@ -310,6 +310,7 @@
       "dwp.hb.households_pension_age_social_rented": "dwp.legacy_benefits",
       "dwp.hb.households_private_rented": "dwp.housing_benefit",
       "dwp.hb.households_social_rented": "dwp.housing_benefit",
+      "dwp.jsa.amount_income_based": "dwp.legacy_benefits",
       "dwp.jsa_claimants": "dwp.legacy_benefits",
       "dwp.pension_credit.benefit_units": "dwp.pension_credit",
       "dwp.pension_credit.benefit_units_65_69": "dwp.pension_credit",
@@ -426,6 +427,7 @@
       "hmrc.spi.dividend_income.amount_by_total_income_band": "hmrc.survey_of_personal_incomes",
       "hmrc.spi.dividend_income.count_by_total_income_band": "hmrc.survey_of_personal_incomes",
       "hmrc.spi.employment_income.amount_by_total_income_band": "hmrc.survey_of_personal_incomes",
+      "hmrc.spi.employment_income.count_by_self_employment_income_band": "hmrc.survey_of_personal_incomes",
       "hmrc.spi.employment_income.count_by_total_income_band": "hmrc.survey_of_personal_incomes",
       "hmrc.spi.other_investment_income.amount_by_total_income_band": "hmrc.survey_of_personal_incomes",
       "hmrc.spi.private_pension_income.amount_by_total_income_band": "hmrc.survey_of_personal_incomes",
@@ -695,6 +697,7 @@
       "dwp.hb.households_pension_age_social_rented": "Housing Benefit benefit units, pension age, social rented sector",
       "dwp.hb.households_private_rented": "Housing Benefit claimants, private rented",
       "dwp.hb.households_social_rented": "Housing Benefit claimants, social rented",
+      "dwp.jsa.amount_income_based": "Jobseeker's Allowance spending, income-based",
       "dwp.jsa_claimants": "Jobseeker\u2019s Allowance claimants",
       "dwp.pension_credit.benefit_units": "Pension Credit benefit units, Great Britain",
       "dwp.pension_credit.benefit_units_65_69": "Pension Credit benefit units, claimant aged 65 to 69",
@@ -811,6 +814,7 @@
       "hmrc.spi.dividend_income.amount_by_total_income_band": "Amount by total income band",
       "hmrc.spi.dividend_income.count_by_total_income_band": "Count by total income band",
       "hmrc.spi.employment_income.amount_by_total_income_band": "Amount by total income band",
+      "hmrc.spi.employment_income.count_by_self_employment_income_band": "Count with employment income by self-employment income band",
       "hmrc.spi.employment_income.count_by_total_income_band": "Count by total income band",
       "hmrc.spi.other_investment_income.amount_by_total_income_band": "Amount by total income band",
       "hmrc.spi.private_pension_income.amount_by_total_income_band": "Amount by total income band",
@@ -3308,6 +3312,206 @@
         "measure_kind": "prepared_column"
       },
       "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_all_bands_times_obr_per_capita_mixed_income",
+      "uprating_from_period": "2023",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.spi.employment_income.count_by_self_employment_income_band.band_1_500",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_table_3_10_employment_income_count",
+        "groupby_dimension": "hmrc.self_employment_income_band",
+        "entity_name": "person",
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "self_employment_income_lower_bound": 1
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc.spi.employment_income.count_by_self_employment_income_band.band_1_500",
+      "family": "hmrc_spi",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.spi.employment_income.count_by_self_employment_income_band",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_all_bands",
+      "uprating_from_period": "2023",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.spi.employment_income.count_by_self_employment_income_band.band_1000_2000",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_table_3_10_employment_income_count",
+        "groupby_dimension": "hmrc.self_employment_income_band",
+        "entity_name": "person",
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "self_employment_income_lower_bound": 1000
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc.spi.employment_income.count_by_self_employment_income_band.band_1000_2000",
+      "family": "hmrc_spi",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.spi.employment_income.count_by_self_employment_income_band",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_all_bands",
+      "uprating_from_period": "2023",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.spi.employment_income.count_by_self_employment_income_band.band_2000_3000",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_table_3_10_employment_income_count",
+        "groupby_dimension": "hmrc.self_employment_income_band",
+        "entity_name": "person",
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "self_employment_income_lower_bound": 2000
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc.spi.employment_income.count_by_self_employment_income_band.band_2000_3000",
+      "family": "hmrc_spi",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.spi.employment_income.count_by_self_employment_income_band",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_all_bands",
+      "uprating_from_period": "2023",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.spi.employment_income.count_by_self_employment_income_band.band_3000_4000",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_table_3_10_employment_income_count",
+        "groupby_dimension": "hmrc.self_employment_income_band",
+        "entity_name": "person",
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "self_employment_income_lower_bound": 3000
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc.spi.employment_income.count_by_self_employment_income_band.band_3000_4000",
+      "family": "hmrc_spi",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.spi.employment_income.count_by_self_employment_income_band",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_all_bands",
+      "uprating_from_period": "2023",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.spi.employment_income.count_by_self_employment_income_band.band_4000_5000",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_table_3_10_employment_income_count",
+        "groupby_dimension": "hmrc.self_employment_income_band",
+        "entity_name": "person",
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "self_employment_income_lower_bound": 4000
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc.spi.employment_income.count_by_self_employment_income_band.band_4000_5000",
+      "family": "hmrc_spi",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.spi.employment_income.count_by_self_employment_income_band",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_all_bands",
+      "uprating_from_period": "2023",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.spi.employment_income.count_by_self_employment_income_band.band_500_1000",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_table_3_10_employment_income_count",
+        "groupby_dimension": "hmrc.self_employment_income_band",
+        "entity_name": "person",
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "self_employment_income_lower_bound": 500
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc.spi.employment_income.count_by_self_employment_income_band.band_500_1000",
+      "family": "hmrc_spi",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.spi.employment_income.count_by_self_employment_income_band",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_all_bands",
+      "uprating_from_period": "2023",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.spi.employment_income.count_by_self_employment_income_band.band_5000_7500",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_table_3_10_employment_income_count",
+        "groupby_dimension": "hmrc.self_employment_income_band",
+        "entity_name": "person",
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "self_employment_income_lower_bound": 5000
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc.spi.employment_income.count_by_self_employment_income_band.band_5000_7500",
+      "family": "hmrc_spi",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.spi.employment_income.count_by_self_employment_income_band",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_all_bands",
+      "uprating_from_period": "2023",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.spi.employment_income.count_by_self_employment_income_band.band_7500_10000",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_table_3_10_employment_income_count",
+        "groupby_dimension": "hmrc.self_employment_income_band",
+        "entity_name": "person",
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "self_employment_income_lower_bound": 7500
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc.spi.employment_income.count_by_self_employment_income_band.band_7500_10000",
+      "family": "hmrc_spi",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.spi.employment_income.count_by_self_employment_income_band",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_all_bands",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -48631,6 +48835,33 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "dwp.hb.amount_pension_age",
+        "measure_kind": "prepared_column"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
+    },
+    {
+      "name": "dwp.jsa.amount_income_based",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": "dwp.benefit_expenditure_amount",
+        "entity_name": "government",
+        "dimension_values": {
+          "benefit_forecast_line": "unemployment_benefits__jobseekers_allowance__income_based"
+        },
+        "source_measure_id_by_opening_year": {
+          "2024": "expenditure_2024",
+          "2025": "expenditure_2025"
+        },
+        "geography_level": "country",
+        "geography_id": "K03000001"
+      },
+      "entity": "benunit",
+      "measure": "dwp/jsa/amount_income_based",
+      "family": "dwp_benefit_expenditure",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.jsa.amount_income_based",
         "measure_kind": "prepared_column"
       },
       "assertion_policy": "allow_source_projection",

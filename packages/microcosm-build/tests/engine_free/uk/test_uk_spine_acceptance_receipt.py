@@ -176,9 +176,13 @@ def _apply_pending_roster_transformations(
     # follows the copies' childcare re-draw.
     assert "private_school_attendance" not in roster
     roster.append("private_school_attendance")
-    # microcosm#1415 re-mint pending: the ISA subscriptions run last.
+    # microcosm#1415 re-mint pending: the ISA subscriptions follow it.
     assert "isa_subscriptions" not in roster
     roster.append("isa_subscriptions")
+    # microcosm#1428 re-mint pending: the self-employed's gross receipts run
+    # last.
+    assert "trading_allowance_receipts" not in roster
+    roster.append("trading_allowance_receipts")
     return tuple(roster)
 
 

@@ -2249,8 +2249,8 @@
           "locator": "pension.tab",
           "role": "frs_table",
           "runtime_sha256_required": true,
-          "sha256": "7090be19cac198c6fc4545266764d267f9e39073b83c5411d0615eda2ac47e9c",
-          "size_bytes": 3597,
+          "sha256": "79ba6767e1300e1bb5d3de808706cb4ee1d86e4694a26e9fd94958e821858f33",
+          "size_bytes": 3875,
           "table": "pension",
           "vintage": "synthetic-h2"
         }
@@ -2268,6 +2268,7 @@
         "loss_relief",
         "ni_class_4_losses_brought_forward",
         "private_pension_income",
+        "annuity_and_trust_income",
         "individual_savings_account_interest_income",
         "savings_interest_income",
         "dividend_income",
@@ -2365,6 +2366,7 @@
         "loss_relief",
         "ni_class_4_losses_brought_forward",
         "private_pension_income",
+        "annuity_and_trust_income",
         "individual_savings_account_interest_income",
         "savings_interest_income",
         "dividend_income",
@@ -3061,7 +3063,7 @@
         "hmrc_spi_total_investment_income",
         "hmrc_spi_assessable_income"
       ],
-      "notes": "Runs the SPI-trained income QRFs on the raw-spine support channel, drawing for its claimants and partners aged 16 and over so dependants aged 16 to 19 keep their FRS twin's values (uk-data#504, microcosm#1095), initializes FRS charity columns to zero, trains FRS-only stage 2 on the FRS rows' reported values, flags the rows it drew (person_is_spi_income_recipient) so later stages tell tape-concept rows from FRS-concept ones without re-deriving the recipient rule (microcosm#840), leaves every FRS-channel income as reported (no base-channel redraw of dividends; uk-data#498, microcosm#1095), and emits a sidecar-only 208-fact replay report for the spine path. Stage 2 also draws trading_loss, the year's trading loss the tape does not carry, from the FRS rows (uk-data#528), and a drawn row whose self_employment_income is positive keeps no loss, so profit and loss never both hold an amount, as on the FRS rows (microcosm#1095). The chain draws self_employment_income net of the tape's losses brought forward (LOSSBF), as the tape holds profits, and last of all, so no earlier draw moves, the year's profit before them and the losses. After the FRS-only fill and the HMRC aggregates the stage moves the losses out of the profit into loss_relief and ni_class_4_losses_brought_forward, the inputs policyengine-uk relieves them against (income tax under ITA 2007 s.83, Class 4 under SSCBA 1992 Sch 2 para 3), so Universal Credit, HBAI and market income read the year's profit; where the drawn net profit is positive the losses are its gap to the year's profit and where it is zero they are at least that profit, so the profit after the relief is the drawn net profit on every row, which the HMRC aggregates and the HMRC self-employment rows read (uk-data#528, microcosm#1095). The engine carries both losses into each projected year at their nominal value while the profit grows with its index. Stage 2 draws the six owner-manager inputs last, the five flags as 0 or 1 and then the income share, so each follows the drawn incomes; the root stage's rules then hold on the drawn rows (an owner works in the company, its other inputs need an owner, and a company carries on a trade or a property business, never both), since the tape carries no director answers (microcosm#1095). A drawn row's annual income descriptors follow its drawn incomes. The tape records the tax year's income, so its pay, profit and private pension shares are 1, and its contributory benefits, stage-2 draws on the current concept with no spell of their own, take share 1 too. It keeps its twin's other-spell pay only where it drew no pay, and its twin's ceased self-employment only where it drew no profit, since the bridge draws a record without pay for a twin who left a job in the year. An undrawn copy keeps its twin's descriptors with its twin's incomes.",
+      "notes": "Runs the SPI-trained income QRFs on the raw-spine support channel, drawing for its claimants and partners aged 16 and over so dependants aged 16 to 19 keep their FRS twin's values (uk-data#504, microcosm#1095), initializes FRS charity columns to zero, trains FRS-only stage 2 on the FRS rows' reported values, flags the rows it drew (person_is_spi_income_recipient) so later stages tell tape-concept rows from FRS-concept ones without re-deriving the recipient rule (microcosm#840), leaves every FRS-channel income as reported (no base-channel redraw of dividends; uk-data#498, microcosm#1095), and emits a sidecar-only 208-fact replay report for the spine path. Stage 2 also draws trading_loss, the year's trading loss the tape does not carry, from the FRS rows (uk-data#528), and a drawn row whose self_employment_income is positive keeps no loss, so profit and loss never both hold an amount, as on the FRS rows (microcosm#1095). The chain draws self_employment_income net of the tape's losses brought forward (LOSSBF), as the tape holds profits, and last of all, so no earlier draw moves, the year's profit before them and the losses. After the FRS-only fill and the HMRC aggregates the stage moves the losses out of the profit into loss_relief and ni_class_4_losses_brought_forward, the inputs policyengine-uk relieves them against (income tax under ITA 2007 s.83, Class 4 under SSCBA 1992 Sch 2 para 3), so Universal Credit, HBAI and market income read the year's profit; where the drawn net profit is positive the losses are its gap to the year's profit and where it is zero they are at least that profit, so the profit after the relief is the drawn net profit on every row, which the HMRC aggregates and the HMRC self-employment rows read (uk-data#528, microcosm#1095). The engine carries both losses into each projected year at their nominal value while the profit grows with its index. Stage 2 draws the six owner-manager inputs last, the five flags as 0 or 1 and then the income share, so each follows the drawn incomes; the root stage's rules then hold on the drawn rows (an owner works in the company, its other inputs need an owner, and a company carries on a trade or a property business, never both), since the tape carries no director answers (microcosm#1095). A drawn row's annual income descriptors follow its drawn incomes. The tape records the tax year's income, so its pay, profit and private pension shares are 1, and its contributory benefits, stage-2 draws on the current concept with no spell of their own, take share 1 too. It keeps its twin's other-spell pay only where it drew no pay, and its twin's ceased self-employment only where it drew no profit, since the bridge draws a record without pay for a twin who left a job in the year. An undrawn copy keeps its twin's descriptors with its twin's incomes. A drawn row's annuity and trust descriptor is zero, since the tape's private pension excludes those payments and books them as other income (microcosm#1428).",
       "operations": [
         {
           "artifact_roles": [
@@ -3264,7 +3266,7 @@
               "hmrc_spi_state_pension_income": "srp_regular_code5",
               "hmrc_spi_taxable_termination_pay": null,
               "hmrc_spi_unemployment_benefit_income": "hmrc_spi_unemployment_benefit_income",
-              "other_investment_income": null,
+              "other_investment_income": "other_investment_income",
               "private_pension_income": "private_pension_income",
               "property_finance_costs": null,
               "property_income": "property_income",
@@ -3862,7 +3864,8 @@
         "self_employment_income_annual_share",
         "self_employment_income_other_spells",
         "private_pension_income_annual_share",
-        "contributory_benefits_annual_share"
+        "contributory_benefits_annual_share",
+        "annuity_and_trust_income"
       ],
       "source": "https://assets.publishing.service.gov.uk/media/69f1f12d2fae53a03709682f/Collated_Tables_3_1_to_3_11_2324.ods",
       "stage": "hmrc_spi_income_spine",
@@ -6788,6 +6791,54 @@
       "stage": "student_loans",
       "survey": "Family Resources Survey 2024-25 and Student Loans Company borrower forecasts for England"
     },
+    "trading_allowance_receipts": {
+      "artifacts": [],
+      "grain": "person",
+      "nonnegative_outputs": [
+        "self_employment_gross_receipts"
+      ],
+      "notes": "The last spine stage (microcosm#1428). policyengine-uk applies the trading allowance against self_employment_gross_receipts, which neither the FRS nor the SPI tape records; without receipts a rise in the allowance relieves only profits up to the new allowance, in full, and misses its main base, the traders who already claim the GBP 1,000 allowance against larger receipts. Under current law a claimant's receipts are their profit plus GBP 1,000 exactly. Each trader with a positive profit is flagged a claimant at their profit band's rate, drawn on their own person_id: a claimant's receipts are their profit plus GBP 1,000, any other trader's their profit plus GBP 3,000 (expenses at the raised allowance, so the raise does not relieve them; the costing books switchers as behaviour), and a person with no positive profit keeps zero, which the engine reads as unknown. Every trader with a positive profit is treated as filing, as SPI Table 3.10's counts, which bind the frame's traders, are of filers, so a profit of GBP 1,000 or less is now taxed where the engine used to relieve it in full. The rates are calibrated to HMRC's policy paper until HMRC publishes claimant counts. The engine uprates receipts with profit, so a claimant's GBP 1,000 grows with the mixed income index while the allowance is nominal: the raise relieves GBP 1,932 more in 2027-28, falling to GBP 1,758 by 2031-32, 3.4% to 12.1% below GBP 2,000. The other traders' stored GBP 3,000 grows the same way, so an allowance above GBP 3,000 times that index relieves them from the stored expense, not from data: allowances above GBP 3,000 are mis-scored until policyengine-uk#2765 lets the stage store the claim status (microcosm#1439; Mar\u00eda's ruling of 2026-11-01).",
+      "operations": [
+        {
+          "calibration": "HMRC's policy paper on the Budget 2026 trading allowance raise: about 400,000 taxpayers with a lower bill, by about GBP 380 on average, on the microcosm#1428 national b441bb5a0's final weights at 2028-29 prices, until HMRC publishes claimant counts (Mar\u00eda's choice of 2026-10-31)",
+          "claimant_bands": [
+            {
+              "rate": 0.64,
+              "upper_inclusive": 4500
+            },
+            {
+              "rate": 0.32,
+              "upper_inclusive": 9000
+            },
+            {
+              "rate": 0
+            }
+          ],
+          "claimant_expenses": 1000,
+          "draw": "trading_allowance_claimant",
+          "kind": "assign_trading_allowance_receipts",
+          "other_expenses": 3000,
+          "output": "self_employment_gross_receipts",
+          "profit": "self_employment_income",
+          "rule": "a person with a positive self_employment_income claims the allowance where their uniform falls below their profit band's rate; a claimant's receipts are their profit plus claimant_expenses, any other trader's their profit plus other_expenses, and a person with no positive profit keeps zero",
+          "seed": 0
+        },
+        {
+          "declared_factor": 1,
+          "entity": "household",
+          "gate_coupling": "The terminal family gate requires a valid mass-conserving MassChangeRecord carrying exactly this stage-specific reason.",
+          "kind": "record_mass_conservation_receipt",
+          "reason": "Self-employed gross receipts stored on the source spine: household weights pass through unchanged and total household mass is conserved."
+        }
+      ],
+      "outputs": [
+        "self_employment_gross_receipts"
+      ],
+      "rewrites": [],
+      "source": "self_employment_income after the SPI income stage; HMRC's published gainers of the raise to GBP 3,000, about 400,000 taxpayers with a lower bill by about GBP 380 on average",
+      "stage": "trading_allowance_receipts",
+      "survey": "The self-employed's own profit on the final spine, and HMRC's policy paper on the Budget 2026 trading allowance raise (calibration)"
+    },
     "uc_capital_coherence": {
       "artifacts": [],
       "grain": "benunit",
@@ -7135,9 +7186,9 @@
           "minimum_pool_sources": 30,
           "not_drawn": "keeps its stored flag, except a unit keeping income-related ESA, which claims none",
           "output": "would_claim_uc",
-          "pooling": "adjacent bands within a family type, lowest first, until the drawn units rest on minimum_pool_sources distinct household_source_id values; a short last pool joins the one before it",
+          "pooling": "adjacent bands within a family type, lowest first, until the drawn units rest on minimum_pool_sources distinct household_source_id values; a short last pool joins the one before it. Then, lowest first, a pool that cannot meet DWP's count (its undrawn entitled units' expected claims exceed the count, or the count exceeds them plus the weight of every drawn unit) is held at the nearer of those ends and passes its gap to the other pools, nearest first, the one with more room first at equal distance and the lower on a tie, each taking what its room allows; a gap no pool can take leaves the family type unreachable",
           "population": "uc_age_eligible",
-          "residual_rate": "(T - F) / D, clipped to [0, 1]; T DWP's calendar-2025 mean count of the pool's bands, D the weight of the pool's drawn units and F the expected claims of its other entitled units, over Great Britain at the stage's household weights; realized by the drawn units claiming in the order of their uniform until their weight is nearest T - F, and applied at that uniform to Northern Ireland's drawn units too",
+          "residual_rate": "(T - F) / D, clipped to [0, 1]; T DWP's calendar-2025 mean count of the pool's bands after any gaps passed to or from it, D the weight of the pool's drawn units and F the expected claims of its other entitled units, over Great Britain at the stage's household weights; realized by the drawn units claiming in the order of their uniform until their weight is nearest T - F, and applied at that uniform to Northern Ireland's drawn units too",
           "seed": 0,
           "solve_scope": "great_britain",
           "targets": "DWP Stat-Xplore Households on Universal Credit by family type and monthly award band, mean of April to December 2025",
