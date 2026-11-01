@@ -1,0 +1,1 @@
+`tools/run_uk_cut.py` builds, signs and assembles a Microcosm UK national cut in one resumable command, fetching every input from Hugging Face by the pins the build already enforces (`tools/uk_cut_inputs.json` says only where each input lives). `tools/modal_rebuild_uk_chronicle_artifact.py` rebuilds the pinned Chronicle UK consumer artifact on Modal and hosts it privately.

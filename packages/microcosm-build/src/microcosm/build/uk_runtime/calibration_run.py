@@ -51,6 +51,7 @@ from microcosm.build.uk_runtime.national_frame import (
     uk_time_period,
 )
 from microcosm.calibrate import TargetRegistry
+from microcosm.data.gate_signing_keys import require_registered_gate_signing_key
 from microcosm.frame import Frame
 
 _REPOSITORY = Path(__file__).resolve().parents[6]
@@ -1006,6 +1007,7 @@ def resign_uk_gate_report(payload: dict[str, object]) -> None:
         raise RuntimeError(f"{env} must be valid base64.") from exc
     if len(key) != 32:
         raise RuntimeError(f"{env} must decode to exactly 32 bytes.")
+    require_registered_gate_signing_key("uk", key, purpose="sign")
     attestation.pop("signing_error", None)
     attestation["signing_key_sha256"] = hashlib.sha256(key).hexdigest()
     attestation["signature"] = None
