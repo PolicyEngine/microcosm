@@ -3,7 +3,7 @@
   "country": "nz",
   "method_card_row": "MC4",
   "description": "The declared USD to NZD bridge for donor money concepts outside the quantile-map set (MC4 quantile-maps earnings, rent and liquid assets onto New Zealand distributions instead). It is exactly one multiplication with two-decimal rounding, applied before calibration and recorded in the build receipt. Aging from the donor dollar year to tax year 2026-27 is a separate declared index (MC1, MC5), not part of this bridge.",
-  "status": "Adopted: MC4 was adopted as written under d1043 (NZ hub, method card D1 as adopted, 2026-10-10; nz-hub notes/1010/method-card-D1-adopted.md). money_normalization.json is the single source of the executable rate, its quote, rounding and citation; this record points to it rather than repeating the rate.",
+  "status": "The hub adopted MC4 unchanged under d1043 and method card D1 on 2026-10-10 (nz-hub notes/1010/method-card-D1-adopted.md). money_normalization.json supplies the executable rate, quote, rounding and citation; this record points to that declaration.",
   "from_currency": "USD",
   "to_currency": "NZD",
   "operation": "multiply",
