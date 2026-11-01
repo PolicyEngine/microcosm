@@ -1606,3 +1606,36 @@ def test_only_the_uc_award_bands_read_whole_pence() -> None:
         for target_id, binding in banded.items()
         if target_id not in whole_pence and "band_semantics" in binding
     ]
+
+
+def test_every_hmrc_employment_income_row_reads_the_benefit_in_kind_term() -> None:
+    """HMRC's employment income holds taxable benefits in kind, so every HMRC
+    employment income row, amount or count, national or local, reads pay plus
+    the company car benefits, never pay alone: a tape row carved to zero pay
+    that keeps its car still counts (microcosm#1430, and the merge with
+    microcosm#1428's Table 3.10 row in its third review)."""
+
+    term = "employment_income_with_benefits_in_kind_annual"
+    rows = {
+        target["target_id"]: target["bindings"]["policyengine"]
+        for target in _load()["targets"]
+        if target["target_id"].startswith(
+            ("hmrc.spi.employment_income.", "hmrc.employment_income.")
+        )
+    }
+    assert {
+        "hmrc.spi.employment_income.amount_by_total_income_band",
+        "hmrc.spi.employment_income.count_by_total_income_band",
+        "hmrc.employment_income.amount",
+        "hmrc.employment_income.count",
+    } <= set(rows)
+    for target_id, binding in rows.items():
+        read = [binding.get("value_variable"), binding.get("value_expression")]
+        read += [entry.get("variable") for entry in binding.get("filters", ())]
+        assert "employment_income_annual" not in read, target_id
+        if binding.get("value_variable") == "person_count":
+            assert {"variable": term, "operator": "!=", "value": 0} in binding[
+                "filters"
+            ], target_id
+        else:
+            assert binding.get("value_variable") == term, target_id

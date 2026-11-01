@@ -54,8 +54,11 @@ Every draw is keyed on the person's identity, so reordering rows moves none.
   fuels draw at HMRC Table 2C's shares together. A holder who reports private fuel,
   which an electric car cannot carry, draws among petrol and diesel alone, and the
   others draw electricity at the share that keeps Table 2C's among all of them at the
-  stage's weights (all of them, where the private fuel holders leave too few). It never
-  draws a hybrid:
+  stage's weights (all of them, where the private fuel holders leave too few). The tape
+  rows that lose their car for want of EPB draw at the holders' electric share. Matching
+  Table 2C at the stage's weights makes each drawn fuel depend on the other drawn cars'
+  private fuel and weights, as the CO2 split does: reordering rows moves none, but a
+  car's fuel can move when other rows or weights do. It never draws a hybrid:
   Table 2C counts hybrids inside petrol and diesel, so a drawn petrol or diesel car
   enters the CO2 draw below as a non-hybrid. The effect is small.
 - **List price.** WAS round 8 (April 2020 to March 2022) records company cars' list
@@ -85,7 +88,13 @@ pension contribution leaves. The SPI income stage capped that contribution at th
 it drew, and `salary_sacrifice`, which runs later on the carved pay, refuses a
 contribution above the pay that remains; it keeps the salary and bonus sacrifice within
 that pay itself. A row whose contribution takes all of its pay has no room, so it loses
-its car and keeps its pay. Employer contributions stay as the SPI income stage set
+its car and keeps its pay. The room bites only where the SPI stage's drawn contribution
+exceeds the row's cash pay, PAY + TAXTERM, since that stage capped it at a pay that
+includes EPB. The receipt measures what it costs beside a cap of EPB within pay alone:
+the cars it scales further or drops, and the list price they give up
+(`spi_carve_out.cars_the_employee_contribution_scales_or_drops` and
+`weighted_list_price_given_up_for_the_employee_contribution_gbp`). Re-capping the
+contribution at the carved pay instead would keep those cars. Employer contributions stay as the SPI income stage set
 them on the drawn PAY + EPB + TAXTERM (the FRS twin's rate times that pay, where the
 twin has one), as on every tape row that draws EPB, car or not: the carve-out leaves
 them alone.

@@ -98,6 +98,18 @@ def test_the_declaration_is_read_once_and_checked(spec) -> None:
                 )
             )
         )
+    # A declaration written for the old unknown-fuel rule, which drew the cars
+    # without private fuel at Table 2C's own shares, is refused (the third
+    # review of microcosm#1430).
+    with pytest.raises(stage.CompanyCarsError, match="together"):
+        stage.CompanyCarsSpec.from_stage(
+            company_cars_stage_spec(
+                _replaced(
+                    stage.ASSIGN_COMPANY_CAR_FUEL_TYPES_KIND,
+                    unknown_fuel="table_2c_shares_non_electric_with_private_fuel",
+                )
+            )
+        )
 
 
 def test_the_fact_fence_counts_the_vendored_rows(spec, statistics) -> None:
@@ -230,6 +242,49 @@ def test_unknown_fuels_meet_table_2c_together(spec, statistics) -> None:
     )
     assert (fuel[~fueled] == stage.ELECTRIC).all()
     assert not (fuel[fueled] == stage.ELECTRIC).any()
+
+
+def test_the_lost_cars_draw_their_fuel_at_the_holders_share(spec, statistics) -> None:
+    """The tape rows that lose their car for want of EPB draw fuel as the holders
+    do, at the holders' electric share, not at one their own private fuel sets
+    (item 2 of the third review, on its probe)."""
+
+    holders = np.array([6] * 2_000)
+    fueled = np.zeros(len(holders), dtype=bool)
+    fueled[::4] = True
+    share = stage.unknown_fuel_electric_share(
+        holders,
+        private_fuel=fueled,
+        weights=np.ones(len(holders)),
+        statistics=statistics,
+    )
+    assert share == pytest.approx(0.5 / 0.75)
+    lost = np.array([6] * 40_000)
+    ids = np.arange(len(lost)) + 1
+    unfueled = np.zeros(len(lost), dtype=bool)
+    at_holders, _ = stage.assign_fuel_types(
+        lost,
+        ids,
+        private_fuel=unfueled,
+        weights=np.ones(len(lost)),
+        statistics=statistics,
+        spec=spec,
+        unfueled_electric=share,
+    )
+    alone, _ = stage.assign_fuel_types(
+        lost,
+        ids,
+        private_fuel=unfueled,
+        weights=np.ones(len(lost)),
+        statistics=statistics,
+        spec=spec,
+    )
+    assert (at_holders == stage.ELECTRIC).mean() == pytest.approx(share, abs=0.01)
+    assert (alone == stage.ELECTRIC).mean() == pytest.approx(0.5, abs=0.01)
+    # Petrol and diesel keep Table 2C's ratio between them either way.
+    for fuel in (at_holders, alone):
+        drawn = pd.Series(fuel[fuel != stage.ELECTRIC]).value_counts(normalize=True)
+        assert drawn[stage.PETROL] == pytest.approx(0.8, abs=0.02)
 
 
 def test_list_prices_stay_in_their_band(spec, donor) -> None:
@@ -446,6 +501,15 @@ def test_the_cap_leaves_the_pay_an_employee_contribution_needs(spec) -> None:
     assert (pay - carve.benefit >= employee - 1e-9).all()
     assert carve.receipt["cap_below_epb_for_the_employee_contribution"] == (
         stage.rounded_count(2)
+    )
+    # What the room costs beside a cap of EPB within pay alone (item 3 of the
+    # third review): the first car would scale to GBP 12,000, not 11,400; the
+    # second would keep a GBP 24,000 car; the third is untouched.
+    assert carve.receipt["cars_the_employee_contribution_scales_or_drops"] == (
+        stage.rounded_count(2)
+    )
+    np.testing.assert_allclose(
+        carve.list_price_given_up_for_the_contribution, [600.0, 24_000.0, 0.0]
     )
 
 
@@ -820,6 +884,48 @@ def test_a_carved_row_s_uc_gainful_self_employment_follows_its_carved_pay() -> N
     assert flag.tolist() == [True, False, True]
     unchanged = stage.refresh_uc_gainful_self_employment(person, np.zeros(3, bool))
     assert unchanged.tolist() == [False, False, True]
+
+
+def test_the_stage_turns_on_the_flag_of_a_side_trade_between_the_two_pays(
+    statistics,
+) -> None:
+    """The stage itself refreshes the flag: a carved tape row given a side trade
+    whose profit lies between its carved and its drawn pay is flagged after the
+    stage, and the receipt counts it (item 1 of the third review). The carve
+    reads no self-employment, so the rerun carves the row as the first run did."""
+
+    frame = _stage_frame()
+    first = _transform(statistics)(frame).table("person").set_index("person_id")
+    before = frame.table("person").set_index("person_id")
+    carved = before[SPI_INCOME_RECIPIENT_COLUMN] & (
+        first["employment_income"] < before["employment_income"] - 1.0
+    )
+    row = carved[carved].index[0]
+    person = frame.table("person").copy()
+    at = person["person_id"] == row
+    person.loc[at, "employment_status"] = "FT_EMPLOYED"
+    person.loc[at, "self_employment_income"] = 0.5 * (
+        first.loc[row, "employment_income"] + before.loc[row, "employment_income"]
+    )
+    person.loc[at, stage.UC_GAINFUL_SELF_EMPLOYMENT] = False
+    side_trade = uk_national_frame(
+        person=person,
+        benunit=frame.table("benunit").copy(),
+        household=frame.table("household").copy(),
+        household_weights=np.asarray(frame.weights_for("household").values),
+        weight_kind=WeightKind.DESIGN,
+        time_period="2024",
+    )
+    transform = _transform(statistics)
+    after = transform(side_trade).table("person").set_index("person_id")
+    assert after.loc[row, "employment_income"] == pytest.approx(
+        first.loc[row, "employment_income"]
+    )
+    assert bool(after.loc[row, stage.UC_GAINFUL_SELF_EMPLOYMENT])
+    receipt = transform.checkpoint_metadata()["evidence"]["spi_carve_out"]
+    assert receipt["uc_gainful_self_employment_on_the_carved_pay"] == (
+        stage.rounded_count(1)
+    )
 
 
 def test_the_stage_declares_no_fit_weight_records(statistics) -> None:

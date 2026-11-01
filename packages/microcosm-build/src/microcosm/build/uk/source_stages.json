@@ -2728,7 +2728,7 @@
      ],
      "salt": "company_cars:fuel_type",
      "seed": 0,
-     "unknown_fuel": "table_2c_shares_non_electric_with_private_fuel"
+     "unknown_fuel": "table_2c_shares_together_non_electric_with_private_fuel"
     },
     {
      "bands": {

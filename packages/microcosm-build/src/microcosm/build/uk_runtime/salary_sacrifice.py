@@ -749,7 +749,10 @@ def impute_salary_sacrifice(
     # caps hold here only while every stage between them and this one that
     # lowers pay keeps the contribution: company_cars carves a tape row's car
     # benefits only out of the pay its contribution leaves, and a new pay
-    # rewrite must do the same or cap contributions again.
+    # rewrite must do the same or cap contributions again. A pay rewrite also
+    # moves the root's UC gainful self-employment rule, which reads pay:
+    # company_cars takes it again on the carved pay, but this stage's own
+    # conversion does not yet.
     if (employee > np.maximum(employment_income, 0.0) + 1e-6).any():
         raise ValueError(
             "Employee pension contributions must not exceed the pay that remains."

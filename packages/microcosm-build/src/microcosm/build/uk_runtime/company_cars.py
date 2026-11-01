@@ -12,10 +12,10 @@ payments for private use, the s. 139 rates of 2020-21 and 2021-22), since no
 survey records them.
 
 The stage runs right after the SPI income stage (``hmrc_spi_income_spine``), so
-every later stage reads SPI-channel pay without the car benefits in it, as the
-engine's ``employment_income`` excludes them: ``salary_sacrifice`` and its
-bounds, the take-up draws' earnings rules and the CGT stages' income proxies
-(María's ruling of 31 October 2026).
+every later stage reads the tape rows' pay without the car benefits in it, as
+the engine's ``employment_income`` excludes them: ``salary_sacrifice`` and its
+bounds, the take-up draws' earnings rules and the CGT and ISA stages' income
+proxy (María's ruling of 31 October 2026).
 
 Who has a car, its list price band, fuel and private fuel, and the employee's
 capital contributions come from the FRS job record, through the root stage's
@@ -30,10 +30,12 @@ on identity, so reordering rows moves none:
    copies and the dependants aged 16 to 19, keep their twin's pay and so keep its
    car as FRS rows do.
 2. **Fuel.** The FRS fuel codes map to the engine's fuel types (a hybrid is an
-   alternative fuel, a diesel is taken to meet RDE2, as the declaration says);
-   a car whose fuel the respondent did not know draws one at Table 2C's shares,
-   among the fuels other than electricity where the respondent reports private
-   fuel.
+   alternative fuel, a diesel is taken to meet RDE2, as the declaration says).
+   The cars whose fuel the respondent did not know draw at Table 2C's shares
+   together: where the respondent reports private fuel, among the fuels other
+   than electricity, and the others draw electricity at the share that keeps
+   Table 2C's at the stage's weights. The tape rows that lose their car for
+   want of EPB draw at the holders' shares.
 3. **List price.** Within the respondent's band, a draw from WAS round-8 company
    cars' list prices, grown to the build year by the engine's CPI index; the open
    top band and an unknown band draw from the WAS cars of the same fuel class.
@@ -46,15 +48,17 @@ on identity, so reordering rows moves none:
    g/km takes the declared electric range.
 5. **SPI pay.** A tape row's pay is the tape's PAY + EPB + TAXTERM, so EPB already
    holds the car and fuel benefits. The engine's benefits on the kept cars come
-   out of ``employment_income``, capped at EPB. Where the car and fuel benefits
-   do not fit together, private fuel goes first; a car whose benefit still
-   exceeds the cap has its list price scaled down to fit (its contributions
-   dropped), or is dropped below the declared minimum price (María's rulings of
-   30 and 31 October 2026). A scaled price is the room over the car's
-   appropriate percentage, so the CO2 draw, the declared electric range and the
-   RDE2 diesel set it, and with it the base a later rate rise acts on. The stage
-   then prices the cars again on its output: pay plus the engine's benefits must
-   equal the pay the row brought in.
+   out of ``employment_income``, capped at EPB within the pay the row's employee
+   pension contribution leaves, which ``salary_sacrifice`` requires. Where the
+   car and fuel benefits do not fit together, private fuel goes first; a car
+   whose benefit still exceeds the cap has its list price scaled down to fit
+   (its contributions dropped), or is dropped below the declared minimum price
+   (María's rulings of 30 and 31 October 2026). A scaled price is the room over
+   the car's appropriate percentage, so the CO2 draw, the declared electric
+   range and the RDE2 diesel set it, and with it the base a later rate rise acts
+   on. A carved row's UC gainful self-employment takes the root's rule again on
+   its carved pay. The stage then prices the cars again on its output: pay plus
+   the engine's benefits must equal the pay the row brought in.
 
 Receipts carry rounded counts, support bands and weighted aggregates only, each
 aggregate withheld when a cell it rests on has fewer source households than the
@@ -224,10 +228,11 @@ ELECTRIC = "ELECTRIC"
 ENGINE_FUEL_TYPES = (PETROL, DIESEL_RDE2, DIESEL_NON_RDE2, ALTERNATIVE_FUEL, ELECTRIC)
 #: The engine's default, written for people without a car.
 DEFAULT_FUEL_TYPE = PETROL
-#: The declared rule for a fuel the respondent did not know: Table 2C's shares,
-#: without electricity where the respondent reports private fuel, which an
-#: electric car cannot carry.
-UNKNOWN_FUEL_RULE = "table_2c_shares_non_electric_with_private_fuel"
+#: The declared rule for the fuels the respondents did not know: Table 2C's
+#: shares together, without electricity where the respondent reports private
+#: fuel, which an electric car cannot carry, and with the others' electric share
+#: raised to keep Table 2C's.
+UNKNOWN_FUEL_RULE = "table_2c_shares_together_non_electric_with_private_fuel"
 
 CPI_INDEX = "gov.economic_assumptions.indices.obr.consumer_price_index"
 CAPITAL_CONTRIBUTION_CAP = (
@@ -367,8 +372,9 @@ class CompanyCarsSpec:
             )
         if fuel.get("unknown_fuel") != UNKNOWN_FUEL_RULE:
             raise CompanyCarsError(
-                "an unknown fuel draws at Table 2C's shares, among the fuels other "
-                "than electricity where the respondent reports private fuel."
+                "the unknown fuels draw at Table 2C's shares together: among the "
+                "fuels other than electricity where the respondent reports private "
+                f"fuel ({UNKNOWN_FUEL_RULE!r})."
             )
         bands = {int(band): tuple(bounds) for band, bounds in prices["bands"].items()}
         expected_bands = {
@@ -643,6 +649,55 @@ def _guarded(value: float | None, *supports: int) -> float | str | None:
 # --------------------------------------------------------------------------
 
 
+#: The FRS fuel codes a car's fuel maps from; any other code is drawn.
+KNOWN_FUEL_CODES = (
+    FRS_COMPANY_CAR_FUEL_PETROL,
+    FRS_COMPANY_CAR_FUEL_DIESEL,
+    FRS_COMPANY_CAR_FUEL_HYBRID,
+    FRS_COMPANY_CAR_FUEL_ELECTRIC,
+    FRS_COMPANY_CAR_FUEL_OTHER,
+)
+
+
+def _table_2c_shares(statistics: HMRCCompanyCarStatistics) -> np.ndarray:
+    """Table 2C's electric, petrol and diesel shares, in that order."""
+
+    shares = statistics.fuel_type_shares()
+    return np.array(
+        [
+            shares["fully_electric"],
+            shares["petrol_including_hybrids"],
+            shares["diesel_including_hybrids"],
+        ],
+        dtype=float,
+    )
+
+
+def unknown_fuel_electric_share(
+    codes: np.ndarray,
+    *,
+    private_fuel: np.ndarray,
+    weights: np.ndarray,
+    statistics: HMRCCompanyCarStatistics,
+) -> float:
+    """The chance that a car whose fuel is drawn, without private fuel, draws
+    electricity.
+
+    The private-fuel holders among the drawn cars cannot draw it, so the others
+    take Table 2C's electric share over the share of the drawn cars' mass they
+    hold, at most 1: together the drawn cars then meet Table 2C at these
+    weights, so far as the others can carry it.
+    """
+
+    drawn = ~np.isin(np.asarray(codes, dtype=int), KNOWN_FUEL_CODES)
+    table_2c = _table_2c_shares(statistics)
+    electric_share = float(table_2c[0] / table_2c.sum())
+    fueled = np.asarray(private_fuel, dtype=bool)[drawn]
+    mass = np.asarray(weights, dtype=float)[drawn]
+    open_share = 1.0 - float(mass[fueled].sum() / mass.sum()) if mass.sum() > 0 else 1.0
+    return min(electric_share / open_share, 1.0) if open_share > 0 else 1.0
+
+
 def assign_fuel_types(
     codes: np.ndarray,
     ids: np.ndarray,
@@ -651,16 +706,18 @@ def assign_fuel_types(
     weights: np.ndarray,
     statistics: HMRCCompanyCarStatistics,
     spec: CompanyCarsSpec,
+    unfueled_electric: float | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """The engine fuel type of each car, and whether it was drawn.
 
-    ``codes``, ``private_fuel`` and ``weights`` hold the holders only. An
-    electric car carries no fuel benefit, so a car whose fuel is drawn and whose
-    holder reports private fuel draws among the other fuels, at their Table 2C
-    shares. The other drawn cars draw electricity at the share that keeps Table
-    2C's among all the drawn cars at the stage's weights, so far as they can
-    carry it (all of them draw it where the private-fuel holders leave too few),
-    and petrol and diesel at Table 2C's shares between them.
+    ``codes``, ``private_fuel`` and ``weights`` hold the cars only. An electric
+    car carries no fuel benefit, so a car whose fuel is drawn and whose holder
+    reports private fuel draws among the other fuels, at their Table 2C shares.
+    The other drawn cars draw electricity at ``unfueled_electric``, by default
+    the share that keeps Table 2C's among these drawn cars
+    (``unknown_fuel_electric_share``), and petrol and diesel at Table 2C's
+    shares between them. The tape rows that lose their car pass the holders'
+    share, so they draw as the holders do.
     """
 
     codes = np.asarray(codes, dtype=int)
@@ -674,27 +731,15 @@ def assign_fuel_types(
     fuel = np.array([mapped.get(int(code), "") for code in codes], dtype=object)
     drawn = fuel == ""
     if drawn.any():
-        shares = statistics.fuel_type_shares()
+        if unfueled_electric is None:
+            unfueled_electric = unknown_fuel_electric_share(
+                codes, private_fuel=private_fuel, weights=weights, statistics=statistics
+            )
         names = np.array([ELECTRIC, PETROL, spec.diesel_fuel_type], dtype=object)
-        table_2c = np.array(
-            [
-                shares["fully_electric"],
-                shares["petrol_including_hybrids"],
-                shares["diesel_including_hybrids"],
-            ],
-            dtype=float,
-        )
+        table_2c = _table_2c_shares(statistics)
         uniforms = _uniforms(ids[drawn], spec.fuel_seed, f"{spec.fuel_salt}:fuel")
         fueled = np.asarray(private_fuel, dtype=bool)[drawn]
-        mass = np.asarray(weights, dtype=float)[drawn]
         is_electric = names == ELECTRIC
-        electric_share = float(table_2c[is_electric].sum() / table_2c.sum())
-        open_share = (
-            1.0 - float(mass[fueled].sum() / mass.sum()) if mass.sum() > 0 else 1.0
-        )
-        unfueled_electric = (
-            min(electric_share / open_share, 1.0) if open_share > 0 else 1.0
-        )
         others = np.where(is_electric, 0.0, table_2c)
         unfueled = np.where(
             is_electric,
@@ -949,6 +994,54 @@ class SPICarveOut:
     contributions: np.ndarray
     benefit: np.ndarray
     receipt: Mapping[str, Any]
+    #: The list price each car gives up to the room the employee pension
+    #: contribution takes from the cap, beside a cap of EPB within pay alone.
+    list_price_given_up_for_the_contribution: np.ndarray
+
+
+def _fit_inside(
+    budget: np.ndarray,
+    *,
+    car_benefit: np.ndarray,
+    fuel_benefit: np.ndarray,
+    private_fuel: np.ndarray,
+    list_price: np.ndarray,
+    contributions: np.ndarray,
+    contribution_cap: float,
+    minimum_price: float,
+) -> dict[str, np.ndarray]:
+    """Fit each car's benefits inside ``budget``: the fuel goes first, then the
+    price is scaled, and a car below ``minimum_price`` is dropped."""
+
+    car = np.asarray(car_benefit, dtype=float)
+    fuel = np.where(private_fuel, np.asarray(fuel_benefit, dtype=float), 0.0)
+    fuel_dropped = (fuel > 0.0) & (car + fuel > budget)
+    private = np.asarray(private_fuel, dtype=bool) & ~fuel_dropped
+    fuel = np.where(fuel_dropped, 0.0, fuel)
+    room = budget - fuel
+    scaled = car > room
+    price = np.asarray(list_price, dtype=float).copy()
+    contribution = np.asarray(contributions, dtype=float).copy()
+    interim = np.maximum(price - np.minimum(contribution, contribution_cap), 0.0)
+    rate = np.divide(car, interim, out=np.zeros_like(car), where=interim > 0)
+    new_price = np.divide(room, rate, out=np.zeros_like(room), where=rate > 0)
+    dropped = scaled & (new_price < minimum_price)
+    kept_scaled = scaled & ~dropped
+    price[kept_scaled] = new_price[kept_scaled]
+    contribution[kept_scaled] = 0.0
+    car = np.where(kept_scaled, room, car)
+    keep = ~dropped
+    private &= keep
+    return {
+        "keep": keep,
+        "scaled": kept_scaled,
+        "dropped": dropped,
+        "fuel_dropped": fuel_dropped,
+        "private": private,
+        "price": price,
+        "contribution": contribution,
+        "benefit": np.where(keep, car + np.where(private, fuel, 0.0), 0.0),
+    }
 
 
 def carve_spi_benefits(
@@ -983,43 +1076,48 @@ def carve_spi_benefits(
     pay = np.maximum(np.asarray(pay, dtype=float), 0.0)
     employee = np.maximum(np.asarray(employee_contributions, dtype=float), 0.0)
     budget = np.minimum(epb, np.maximum(pay - employee, 0.0))
-    car = np.asarray(car_benefit, dtype=float)
-    fuel = np.where(private_fuel, np.asarray(fuel_benefit, dtype=float), 0.0)
-    fuel_dropped = (fuel > 0.0) & (car + fuel > budget)
-    private = np.asarray(private_fuel, dtype=bool) & ~fuel_dropped
-    fuel = np.where(fuel_dropped, 0.0, fuel)
-    room = budget - fuel
-    scaled = car > room
-    price = np.asarray(list_price, dtype=float).copy()
-    contribution = np.asarray(contributions, dtype=float).copy()
-    interim = np.maximum(price - np.minimum(contribution, contribution_cap), 0.0)
-    rate = np.divide(car, interim, out=np.zeros_like(car), where=interim > 0)
-    new_price = np.divide(room, rate, out=np.zeros_like(room), where=rate > 0)
-    dropped = scaled & (new_price < spec.minimum_scaled_list_price_gbp)
-    kept_scaled = scaled & ~dropped
-    price[kept_scaled] = new_price[kept_scaled]
-    contribution[kept_scaled] = 0.0
-    car = np.where(kept_scaled, room, car)
-    keep = ~dropped
-    private &= keep
-    benefit = np.where(keep, car + np.where(private, fuel, 0.0), 0.0)
+    cars = {
+        "car_benefit": car_benefit,
+        "fuel_benefit": fuel_benefit,
+        "private_fuel": private_fuel,
+        "list_price": list_price,
+        "contributions": contributions,
+        "contribution_cap": contribution_cap,
+        "minimum_price": spec.minimum_scaled_list_price_gbp,
+    }
+    fit = _fit_inside(budget, **cars)
+    # The same cars inside EPB within pay alone: what the contribution's room
+    # costs, measured rather than ruled on (the third review of microcosm#1430).
+    # The room bites only where the SPI stage's drawn contribution exceeds the
+    # row's cash pay, PAY + TAXTERM.
+    without_room = _fit_inside(np.minimum(epb, pay), **cars)
+    room_costs = fit["benefit"] < without_room["benefit"] - 1e-9
+    given_up = np.where(without_room["keep"], without_room["price"], 0.0) - np.where(
+        fit["keep"], fit["price"], 0.0
+    )
     receipt = {
         "holders": rounded_count(int(len(epb))),
         "cap_below_epb_for_the_employee_contribution": rounded_count(
             int((budget < np.minimum(epb, pay)).sum())
         ),
-        "private_fuel_dropped": rounded_count(int((fuel_dropped & keep).sum())),
-        "list_price_scaled": rounded_count(int(kept_scaled.sum())),
-        "dropped_below_minimum_price": rounded_count(int(dropped.sum())),
+        "cars_the_employee_contribution_scales_or_drops": rounded_count(
+            int(room_costs.sum())
+        ),
+        "private_fuel_dropped": rounded_count(
+            int((fit["fuel_dropped"] & fit["keep"]).sum())
+        ),
+        "list_price_scaled": rounded_count(int(fit["scaled"].sum())),
+        "dropped_below_minimum_price": rounded_count(int(fit["dropped"].sum())),
     }
     return SPICarveOut(
-        keep=keep,
-        scaled=kept_scaled,
-        private_fuel=private,
-        list_price=price,
-        contributions=contribution,
-        benefit=benefit,
+        keep=fit["keep"],
+        scaled=fit["scaled"],
+        private_fuel=fit["private"],
+        list_price=fit["price"],
+        contributions=fit["contribution"],
+        benefit=fit["benefit"],
         receipt=receipt,
+        list_price_given_up_for_the_contribution=np.where(room_costs, given_up, 0.0),
     )
 
 
@@ -1130,6 +1228,12 @@ def impute_company_cars(
 
     fuel_codes = table["fuel_code"].to_numpy(int)
     reported_fuel = table["private_fuel"].to_numpy(bool)
+    unfueled_electric = unknown_fuel_electric_share(
+        fuel_codes[holders],
+        private_fuel=reported_fuel[holders],
+        weights=weights[holders],
+        statistics=statistics,
+    )
     fuel, drawn = assign_fuel_types(
         fuel_codes[holders],
         ids[holders],
@@ -1137,6 +1241,7 @@ def impute_company_cars(
         weights=weights[holders],
         statistics=statistics,
         spec=spec,
+        unfueled_electric=unfueled_electric,
     )
     drawn_with_private_fuel = int((drawn & reported_fuel[holders]).sum())
     hybrid = fuel_codes[holders] == FRS_COMPANY_CAR_FUEL_HYBRID
@@ -1156,9 +1261,9 @@ def impute_company_cars(
     )
     private = reported_fuel[holders] & ~electric
     # The tape rows without EPB lose their twin's car, since EPB is drawn on
-    # uniforms the car never conditions; their prices, drawn as the holders'
-    # are, measure the base that leaves with them (María's ruling of 31
-    # October 2026: measure it first).
+    # uniforms the car never conditions; their fuels and prices, drawn as the
+    # holders' are (at the holders' electric share), measure the base that
+    # leaves with them (María's ruling of 31 October 2026: measure it first).
     lost_price = np.zeros(len(ids))
     if no_epb.any():
         lost_fuel, _ = assign_fuel_types(
@@ -1168,6 +1273,7 @@ def impute_company_cars(
             weights=weights[no_epb],
             statistics=statistics,
             spec=spec,
+            unfueled_electric=unfueled_electric,
         )
         lost_price[no_epb], _ = draw_list_prices(
             bands[no_epb], lost_fuel == ELECTRIC, ids[no_epb], donor=donor, spec=spec
@@ -1262,6 +1368,8 @@ def impute_company_cars(
         identity_error = math.ceil(worst * 100.0) / 100.0
         dropped_rows = np.zeros(len(pay), dtype=bool)
         dropped_rows[dropped] = True
+        given_up = np.zeros(len(pay))
+        given_up[rows] = carve.list_price_given_up_for_the_contribution
         carve_receipt = {
             **carve.receipt,
             "uc_gainful_self_employment_on_the_carved_pay": rounded_count(
@@ -1271,6 +1379,11 @@ def impute_company_cars(
             "weighted_epb_gbp": total(epb, tape_holders),
             "weighted_list_price_scaled_away_gbp": total(scaled_away, scaled),
             "weighted_list_price_dropped_gbp": total(scaled_away, dropped_rows),
+            # Within those, the price the employee contribution's room takes
+            # off beside a cap of EPB within pay alone.
+            "weighted_list_price_given_up_for_the_employee_contribution_gbp": total(
+                given_up, given_up > 0.0
+            ),
         }
 
     fuel_type = columns[FUEL_TYPE]
