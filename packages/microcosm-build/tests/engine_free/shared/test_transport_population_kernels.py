@@ -136,12 +136,14 @@ def test_kernel_registration_is_explicit_idempotent_and_country_neutral():
         )
 
 
-def test_aggregate_population_registration_installs_exactly_eleven_kernels():
+def test_aggregate_population_registration_installs_exactly_thirteen_kernels():
     registry = KernelRegistry()
     assert register_transport_population_kernels(registry) is registry
     assert register_transport_population_kernels(registry) is registry
     assert set(registry.refs()) == {
         "money.normalize@1",
+        "money.minor_units@1",
+        "money.annual_transfers@1",
         "transport.create@1",
         "transport.boundary@1",
         "transport.currency@1",
