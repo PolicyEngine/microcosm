@@ -1,0 +1,1223 @@
+{
+  "schema_version": 1,
+  "country": "be",
+  "generated_by": "tools/generate_be_target_references.py",
+  "feed_identity": {
+    "version": 1,
+    "country": "be",
+    "scope": "be_calibration",
+    "source_repo": "PolicyEngine/chronicle",
+    "source_commit": "2c7e8357f1dcb9af2337c10d6cf4cbd82b1e55ef",
+    "build": "build-bundle --suite be -> build-consumer-artifact",
+    "artifact_schema_version": "policyengine_ledger.consumer_artifact.v2",
+    "consumer_fact_schema_versions": [
+      "chronicle.consumer_fact.v4"
+    ],
+    "consumer_fact_schema_sha256": "d953306d6f01fbc64db4372d0262d3012ee590269f8a25b276b18dca0626c6a0",
+    "fact_row_count": 87112,
+    "facts_sha256": "e01a463065a81ba60139a24a605e52797442504478be60970e0ff66f9d3c6b95",
+    "manifest_sha256": "7839792643a6a32a1784328644df16c250e8d4ba08287c455983a6e7ceebb34c"
+  },
+  "policy_year": 2026,
+  "method_card_status": "BE-MC0, BE-MC3 to BE-MC6 proposed pending d1902; nothing publishes a number",
+  "reference_counts": {
+    "target_references.json": {
+      "total": 60,
+      "by_family": {
+        "demography": 18,
+        "fiscal_income": 18,
+        "income_tax": 19,
+        "social_security": 1,
+        "caseloads": 1,
+        "benefit_expenditure": 2,
+        "self_employment": 1
+      },
+      "by_contract": {
+        "statbel_population_by_region_sex_age": 18,
+        "statbel_a1_standin_declarations_by_band": 8,
+        "statbel_a1_standin_taxable_income_by_band": 8,
+        "statbel_b4_declarations_by_type": 2,
+        "statbel_b1_enrolled_tax_by_rank_group": 19,
+        "onss_worker_personal_contributions": 1,
+        "onem_complete_unemployment_recipients": 1,
+        "fpb_unemployment_benefit_expenditure": 1,
+        "fpb_grapa_expenditure": 1,
+        "fpb_net_mixed_income": 1
+      },
+      "by_activation_status": {
+        "active": 18,
+        "requires_prerequisites": 16,
+        "requires_declared_tax_units": 2,
+        "inactive_pending_b1_checks": 19,
+        "requires_rules_binding": 1,
+        "requires_ageing_ruling_and_receipt_binding": 1,
+        "requires_receipt_contract_and_rules_binding": 1,
+        "requires_pension_route_d1902": 1,
+        "requires_currency_bridge_b4": 1
+      }
+    },
+    "precal_references.json": {
+      "total": 565,
+      "by_family": {
+        "geography_support": 565
+      },
+      "by_contract": {
+        "statbel_population_by_commune": 565
+      },
+      "by_activation_status": {
+        "active": 565
+      }
+    },
+    "holdout_references.json": {
+      "total": 7,
+      "by_family": {
+        "income_tax": 1,
+        "national_accounts": 1,
+        "household_accounts": 5
+      },
+      "by_contract": {
+        "eurostat_d51a_c1_individual_income_tax": 1,
+        "nbb_household_gross_disposable_income": 1,
+        "eurostat_household_gross_disposable_income": 1,
+        "eurostat_household_social_benefits_received": 1,
+        "eurostat_household_social_contributions_paid": 1,
+        "eurostat_household_current_taxes_paid": 1,
+        "fpb_gross_wages_and_salaries": 1
+      },
+      "by_activation_status": {
+        "requires_holdout_measure": 7
+      }
+    }
+  },
+  "regions": [
+    "BE1",
+    "BE2",
+    "BE3"
+  ],
+  "age_bands": [
+    "0_17",
+    "18_64",
+    "65_plus"
+  ],
+  "standin_bands": [
+    {
+      "id": "under_10k",
+      "lower_eur_iy2023": 0,
+      "upper_eur_iy2023": 10000,
+      "a1_classes": [
+        "class_under_1",
+        "class_1_2",
+        "class_2_3",
+        "class_3_4",
+        "class_4_5",
+        "class_5_6",
+        "class_6_7",
+        "class_7_8",
+        "class_8_9",
+        "class_9_10"
+      ]
+    },
+    {
+      "id": "10k_20k",
+      "lower_eur_iy2023": 10000,
+      "upper_eur_iy2023": 20000,
+      "a1_classes": [
+        "class_10_11",
+        "class_11_12",
+        "class_12_13",
+        "class_13_14",
+        "class_14_15",
+        "class_15_16",
+        "class_16_17",
+        "class_17_18",
+        "class_18_19",
+        "class_19_20"
+      ]
+    },
+    {
+      "id": "20k_30k",
+      "lower_eur_iy2023": 20000,
+      "upper_eur_iy2023": 30000,
+      "a1_classes": [
+        "class_20_21",
+        "class_21_22",
+        "class_22_23",
+        "class_23_24",
+        "class_24_25",
+        "class_25_26",
+        "class_26_27",
+        "class_27_28",
+        "class_28_29",
+        "class_29_30"
+      ]
+    },
+    {
+      "id": "30k_40k",
+      "lower_eur_iy2023": 30000,
+      "upper_eur_iy2023": 40000,
+      "a1_classes": [
+        "class_30_31",
+        "class_31_32",
+        "class_32_33",
+        "class_33_34",
+        "class_34_35",
+        "class_35_36",
+        "class_36_37",
+        "class_37_38",
+        "class_38_39",
+        "class_39_40"
+      ]
+    },
+    {
+      "id": "40k_50k",
+      "lower_eur_iy2023": 40000,
+      "upper_eur_iy2023": 50000,
+      "a1_classes": [
+        "class_40_41",
+        "class_41_42",
+        "class_42_43",
+        "class_43_44",
+        "class_44_45",
+        "class_45_46",
+        "class_46_47",
+        "class_47_48",
+        "class_48_49",
+        "class_49_50"
+      ]
+    },
+    {
+      "id": "50k_75k",
+      "lower_eur_iy2023": 50000,
+      "upper_eur_iy2023": 75000,
+      "a1_classes": [
+        "class_50_51",
+        "class_51_52",
+        "class_52_53",
+        "class_53_54",
+        "class_54_55",
+        "class_55_56",
+        "class_56_57",
+        "class_57_58",
+        "class_58_59",
+        "class_59_60",
+        "class_60_61",
+        "class_61_62",
+        "class_62_63",
+        "class_63_64",
+        "class_64_65",
+        "class_65_66",
+        "class_66_67",
+        "class_67_68",
+        "class_68_69",
+        "class_69_70",
+        "class_70_71",
+        "class_71_72",
+        "class_72_73",
+        "class_73_74",
+        "class_74_75"
+      ]
+    },
+    {
+      "id": "75k_100k",
+      "lower_eur_iy2023": 75000,
+      "upper_eur_iy2023": 100000,
+      "a1_classes": [
+        "class_75_76",
+        "class_76_77",
+        "class_77_78",
+        "class_78_79",
+        "class_79_80",
+        "class_80_81",
+        "class_81_82",
+        "class_82_83",
+        "class_83_84",
+        "class_84_85",
+        "class_85_86",
+        "class_86_87",
+        "class_87_88",
+        "class_88_89",
+        "class_89_90",
+        "class_90_91",
+        "class_91_92",
+        "class_92_93",
+        "class_93_94",
+        "class_94_95",
+        "class_95_96",
+        "class_96_97",
+        "class_97_98",
+        "class_98_99",
+        "class_99_100"
+      ]
+    },
+    {
+      "id": "100k_plus",
+      "lower_eur_iy2023": 100000,
+      "upper_eur_iy2023": null,
+      "a1_classes": [
+        "class_100_plus"
+      ]
+    }
+  ],
+  "standin_band_reason": "Fixed before any candidate (d1952): EUR 10,000 steps over the dense middle, wider steps above EUR 50,000, A.1's open top class whole; every edge is an A.1 class edge; eight bands, sixteen constraints.",
+  "standin_gaps": {
+    "measure": "statbel_net_taxable_income_proxy_v1",
+    "unit": "tax declaration (S2-d tax_unit); joint declarations count once",
+    "in_measure": "net professional income, rule-computed from transported gross amounts",
+    "published_gaps": "Components of Statbel's total net taxable income left out of the stand-in, as shares of it (method card BE-MC5; d1952). Within bands they can be larger than nationally.",
+    "national": {
+      "band": "all",
+      "declarations_iy2023": 6846186.0,
+      "taxable_income_eur_iy2023": 274707991587.37,
+      "component_shares_of_taxable_income": {
+        "professional_income": 0.9804992672847079,
+        "immovable_property_income": 0.014947349534038036,
+        "capital_and_movable_property_income": 0.005510746189298706,
+        "miscellaneous_income": 0.001157214923974624,
+        "deductible_expenditures": 0.0021145779320557163
+      },
+      "omitted_share_gross": 0.023729888579367083,
+      "omitted_share_net": 0.01950073271529207,
+      "identity_residual_eur": -0.01
+    },
+    "bands": [
+      {
+        "band": "under_10k",
+        "declarations_iy2023": 937036.0,
+        "taxable_income_eur_iy2023": 3070063069.25,
+        "component_shares_of_taxable_income": {
+          "professional_income": 0.9595986159951101,
+          "immovable_property_income": 0.02519848271029131,
+          "capital_and_movable_property_income": 0.0033038102837665345,
+          "miscellaneous_income": 0.0159551657197604,
+          "deductible_expenditures": 0.004056074708928392
+        },
+        "omitted_share_gross": 0.04851353342274664,
+        "omitted_share_net": 0.040401384004889906,
+        "identity_residual_eur": 0.0
+      },
+      {
+        "band": "10k_20k",
+        "declarations_iy2023": 838884.0,
+        "taxable_income_eur_iy2023": 13708204696.7,
+        "component_shares_of_taxable_income": {
+          "professional_income": 0.9912500478513517,
+          "immovable_property_income": 0.009116430572420925,
+          "capital_and_movable_property_income": 0.0017326149270091968,
+          "miscellaneous_income": 0.0025143532623420313,
+          "deductible_expenditures": 0.004613446613123918
+        },
+        "omitted_share_gross": 0.01797684537489607,
+        "omitted_share_net": 0.008749952148648266,
+        "identity_residual_eur": 0.0
+      },
+      {
+        "band": "20k_30k",
+        "declarations_iy2023": 1634125.0,
+        "taxable_income_eur_iy2023": 40205856133.07,
+        "component_shares_of_taxable_income": {
+          "professional_income": 0.9913302376500499,
+          "immovable_property_income": 0.009227389444764247,
+          "capital_and_movable_property_income": 0.0012725470541072963,
+          "miscellaneous_income": 0.0008747289975271217,
+          "deductible_expenditures": 0.0027049031464485805
+        },
+        "omitted_share_gross": 0.014079568642847245,
+        "omitted_share_net": 0.008669762349950094,
+        "identity_residual_eur": 0.0
+      },
+      {
+        "band": "30k_40k",
+        "declarations_iy2023": 1013263.0,
+        "taxable_income_eur_iy2023": 35099727677.01,
+        "component_shares_of_taxable_income": {
+          "professional_income": 0.9857787374909764,
+          "immovable_property_income": 0.014128450381534244,
+          "capital_and_movable_property_income": 0.00203641256558287,
+          "miscellaneous_income": 0.0006833036894388543,
+          "deductible_expenditures": 0.0026269041275323777
+        },
+        "omitted_share_gross": 0.019475070764088345,
+        "omitted_share_net": 0.014221262509023558,
+        "identity_residual_eur": 0.0
+      },
+      {
+        "band": "40k_50k",
+        "declarations_iy2023": 716476.0,
+        "taxable_income_eur_iy2023": 32003198754.01,
+        "component_shares_of_taxable_income": {
+          "professional_income": 0.9836367045086585,
+          "immovable_property_income": 0.015453225158564269,
+          "capital_and_movable_property_income": 0.002444170559363191,
+          "miscellaneous_income": 0.0005523766279077016,
+          "deductible_expenditures": 0.002086476854493591
+        },
+        "omitted_share_gross": 0.020536249200328753,
+        "omitted_share_net": 0.016363295491341523,
+        "identity_residual_eur": 0.0
+      },
+      {
+        "band": "50k_75k",
+        "declarations_iy2023": 912211.0,
+        "taxable_income_eur_iy2023": 55358056929.57,
+        "component_shares_of_taxable_income": {
+          "professional_income": 0.9811309438087946,
+          "immovable_property_income": 0.01695812417394564,
+          "capital_and_movable_property_income": 0.003268815827662136,
+          "miscellaneous_income": 0.0005495389648286252,
+          "deductible_expenditures": 0.0019074227752310705
+        },
+        "omitted_share_gross": 0.022683901741667473,
+        "omitted_share_net": 0.01886905619120538,
+        "identity_residual_eur": 0.0
+      },
+      {
+        "band": "75k_100k",
+        "declarations_iy2023": 415483.0,
+        "taxable_income_eur_iy2023": 35704329792.58,
+        "component_shares_of_taxable_income": {
+          "professional_income": 0.9803493917184294,
+          "immovable_property_income": 0.016331211054161212,
+          "capital_and_movable_property_income": 0.004244718629937589,
+          "miscellaneous_income": 0.0005653042156863159,
+          "deductible_expenditures": 0.0014906256182145292
+        },
+        "omitted_share_gross": 0.022631859517999647,
+        "omitted_share_net": 0.019650608281570614,
+        "identity_residual_eur": 0.0
+      },
+      {
+        "band": "100k_plus",
+        "declarations_iy2023": 378708.0,
+        "taxable_income_eur_iy2023": 59558554535.18,
+        "component_shares_of_taxable_income": {
+          "professional_income": 0.9664960867557434,
+          "immovable_property_income": 0.017134554592442407,
+          "capital_and_movable_property_income": 0.015893255069527844,
+          "miscellaneous_income": 0.0017967110868480146,
+          "deductible_expenditures": 0.0013206075045615997
+        },
+        "omitted_share_gross": 0.036145128253379864,
+        "omitted_share_net": 0.03350391324425661,
+        "identity_residual_eur": 0.0
+      }
+    ],
+    "declarations_with_taxable_but_no_professional_income": 42007.0,
+    "zero_income_declarations_outside_a1": 523770.0,
+    "zero_handling": "The proxy's zeros (no professional income, or losses floored to zero) are not Statbel's zero-income declarations; the nil band is not fitted.",
+    "stress_test": "Declared, not executable in B3: rerun with unemployment and sickness benefits left out of the measure (d1952); a measurement variant owed by B4/W3.",
+    "pension_gap": "Legal pensions are part of net professional income but are not modelled until d1902 settles BE-MC3's pension route, so the proxy cannot yet represent pensioner declarations."
+  },
+  "ageing_pairs": [
+    {
+      "id": "fpb_t06_net_national_disposable_income",
+      "use": "holdout",
+      "fpb_row": "national_income_account.net_national_disposable_income",
+      "record_set_spec_id": "fpb.economic_outlook_2026_2031.national_income_account.net_national_disposable_income.country.v1",
+      "source_row_id": "net_national_disposable_income",
+      "row_label": "4. Revenu national net disponible",
+      "numerator_selector": {
+        "source_name": "fpb_economic_outlook",
+        "source_measure_id": "amount_meur",
+        "source_concept": "fpb.economic_outlook_2026_2031.t06.published_cell",
+        "entity_name": "institutional_sector",
+        "period_type": "calendar_year",
+        "period_value": 2026,
+        "geography_level": "country",
+        "geography_id": "BE",
+        "geography_vintage": "current",
+        "record_set_id": "fpb.economic_outlook_2026_2031.cy2026.national_income_account.net_national_disposable_income",
+        "dimensions": [],
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:63c570cc58902f2813b3bde9"
+      },
+      "denominator_selector": {
+        "source_name": "fpb_economic_outlook",
+        "source_measure_id": "amount_meur",
+        "source_concept": "fpb.economic_outlook_2026_2031.t06.published_cell",
+        "entity_name": "institutional_sector",
+        "period_type": "calendar_year",
+        "period_value": 2024,
+        "geography_level": "country",
+        "geography_id": "BE",
+        "geography_vintage": "current",
+        "record_set_id": "fpb.economic_outlook_2026_2031.cy2024.national_income_account.net_national_disposable_income",
+        "dimensions": [],
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:5148b5898c391c11ff484930"
+      },
+      "numerator": 534156000000.0,
+      "denominator": 500699000000.0,
+      "ratio": 1.0668205848224181,
+      "base_period": 2024,
+      "target_period": 2026,
+      "numerator_assertion": "source_projection",
+      "denominator_assertion": "observation",
+      "reason": "FPB publishes no household disposable income; national net disposable income is the nearest disposable-income row (a proxy).",
+      "status": "proposed (BE-MC0, pending d1902); series choice is a B3 finding",
+      "used_by": [
+        "eurostat_household_gross_disposable_income",
+        "nbb_household_gross_disposable_income"
+      ],
+      "observed_segment_to_2025": 1.036830510945698,
+      "projected_step_2025_to_2026": 1.0289247601802982
+    },
+    {
+      "id": "fpb_t07_total_population",
+      "use": "calibration",
+      "fpb_row": "labour_market.levels.total_population",
+      "record_set_spec_id": "fpb.economic_outlook_2026_2031.labour_market.levels.total_population.country.v1",
+      "source_row_id": "total_population",
+      "row_label": "I. Population totale (II+III)",
+      "numerator_selector": {
+        "source_name": "fpb_economic_outlook",
+        "source_measure_id": "level_thousand",
+        "source_concept": "fpb.economic_outlook_2026_2031.t07.published_cell",
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2026,
+        "geography_level": "country",
+        "geography_id": "BE",
+        "geography_vintage": "current",
+        "record_set_id": "fpb.economic_outlook_2026_2031.cy2026.labour_market.levels.total_population",
+        "dimensions": [],
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:d0f703b4cdbc4b51ce2a9674"
+      },
+      "denominator_selector": {
+        "source_name": "fpb_economic_outlook",
+        "source_measure_id": "level_thousand",
+        "source_concept": "fpb.economic_outlook_2026_2031.t07.published_cell",
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2023,
+        "geography_level": "country",
+        "geography_id": "BE",
+        "geography_vintage": "current",
+        "record_set_id": "fpb.economic_outlook_2026_2031.cy2023.labour_market.levels.total_population",
+        "dimensions": [],
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:216674c54ce3810c24e7434c"
+      },
+      "numerator": 11896000.0,
+      "denominator": 11730600.0,
+      "ratio": 1.0140998755391881,
+      "base_period": 2023,
+      "target_period": 2026,
+      "numerator_assertion": "source_projection",
+      "denominator_assertion": "observation",
+      "reason": "Declaration counts follow resident population (August's alignment); A.1 band counts and B.4 type counts share this pair so the bands still sum to B.4's joint plus individual total.",
+      "status": "proposed (BE-MC0, pending d1902); series choice is a B3 finding",
+      "used_by": [
+        "statbel_a1_standin_declarations__100k_plus",
+        "statbel_a1_standin_declarations__10k_20k",
+        "statbel_a1_standin_declarations__20k_30k",
+        "statbel_a1_standin_declarations__30k_40k",
+        "statbel_a1_standin_declarations__40k_50k",
+        "statbel_a1_standin_declarations__50k_75k",
+        "statbel_a1_standin_declarations__75k_100k",
+        "statbel_a1_standin_declarations__under_10k",
+        "statbel_b4_declarations__individual",
+        "statbel_b4_declarations__joint"
+      ],
+      "observed_segment_to_2025": 1.0102126063457966,
+      "projected_step_2025_to_2026": 1.0038479713764936
+    },
+    {
+      "id": "fpb_t11_actual_social_contributions",
+      "use": "calibration",
+      "fpb_row": "household_account.actual_social_contributions",
+      "record_set_spec_id": "fpb.economic_outlook_2026_2031.household_account.actual_social_contributions.country.v1",
+      "source_row_id": "actual_social_contributions",
+      "row_label": "Cotisations sociales effectives",
+      "numerator_selector": {
+        "source_name": "fpb_economic_outlook",
+        "source_measure_id": "amount_meur",
+        "source_concept": "fpb.economic_outlook_2026_2031.t11.published_cell",
+        "entity_name": "household",
+        "period_type": "calendar_year",
+        "period_value": 2026,
+        "geography_level": "country",
+        "geography_id": "BE",
+        "geography_vintage": "current",
+        "record_set_id": "fpb.economic_outlook_2026_2031.cy2026.household_account.actual_social_contributions",
+        "dimensions": [],
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:a66b02d02ed92c58e542e7ed"
+      },
+      "denominator_selector": {
+        "source_name": "fpb_economic_outlook",
+        "source_measure_id": "amount_meur",
+        "source_concept": "fpb.economic_outlook_2026_2031.t11.published_cell",
+        "entity_name": "household",
+        "period_type": "calendar_year",
+        "period_value": 2024,
+        "geography_level": "country",
+        "geography_id": "BE",
+        "geography_vintage": "current",
+        "record_set_id": "fpb.economic_outlook_2026_2031.cy2024.household_account.actual_social_contributions",
+        "dimensions": [],
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:3f953c8cbe00192899c93c3b"
+      },
+      "numerator": 101300000000.0,
+      "denominator": 94613000000.0,
+      "ratio": 1.0706773910561973,
+      "base_period": 2024,
+      "target_period": 2026,
+      "numerator_assertion": "source_projection",
+      "denominator_assertion": "observation",
+      "reason": "Employee personal contributions follow FPB's actual social contributions; gross wages stay free for the wage-headline holdout.",
+      "status": "proposed (BE-MC0, pending d1902); series choice is a B3 finding",
+      "used_by": [
+        "onss_worker_personal_contributions"
+      ],
+      "observed_segment_to_2025": 1.0400473507868897,
+      "projected_step_2025_to_2026": 1.029450620922339
+    },
+    {
+      "id": "fpb_t11_current_taxes_on_income_and_wealth",
+      "use": "holdout",
+      "fpb_row": "household_account.current_taxes_on_income_and_wealth",
+      "record_set_spec_id": "fpb.economic_outlook_2026_2031.household_account.current_taxes_on_income_and_wealth.country.v1",
+      "source_row_id": "current_taxes_on_income_and_wealth",
+      "row_label": "1. Impôts courants sur le revenu et le patrimoine",
+      "numerator_selector": {
+        "source_name": "fpb_economic_outlook",
+        "source_measure_id": "amount_meur",
+        "source_concept": "fpb.economic_outlook_2026_2031.t11.published_cell",
+        "entity_name": "household",
+        "period_type": "calendar_year",
+        "period_value": 2026,
+        "geography_level": "country",
+        "geography_id": "BE",
+        "geography_vintage": "current",
+        "record_set_id": "fpb.economic_outlook_2026_2031.cy2026.household_account.current_taxes_on_income_and_wealth",
+        "dimensions": [],
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:67bb0b178a502334a5798bfa"
+      },
+      "denominator_selector": {
+        "source_name": "fpb_economic_outlook",
+        "source_measure_id": "amount_meur",
+        "source_concept": "fpb.economic_outlook_2026_2031.t11.published_cell",
+        "entity_name": "household",
+        "period_type": "calendar_year",
+        "period_value": 2024,
+        "geography_level": "country",
+        "geography_id": "BE",
+        "geography_vintage": "current",
+        "record_set_id": "fpb.economic_outlook_2026_2031.cy2024.household_account.current_taxes_on_income_and_wealth",
+        "dimensions": [],
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:d3638106fd28d6f6d119c0d5"
+      },
+      "numerator": 83113000000.0,
+      "denominator": 77033000000.0,
+      "ratio": 1.078927213012605,
+      "base_period": 2024,
+      "target_period": 2026,
+      "numerator_assertion": "source_projection",
+      "denominator_assertion": "observation",
+      "reason": "The household account row matching Eurostat D5 paid.",
+      "status": "proposed (BE-MC0, pending d1902); series choice is a B3 finding",
+      "used_by": [
+        "eurostat_household_current_taxes_paid"
+      ],
+      "observed_segment_to_2025": 1.0290784468993808,
+      "projected_step_2025_to_2026": 1.0484402003204119
+    },
+    {
+      "id": "fpb_t11_gross_wages_and_salaries",
+      "use": "holdout",
+      "fpb_row": "household_account.gross_wages_and_salaries",
+      "record_set_spec_id": "fpb.economic_outlook_2026_2031.household_account.gross_wages_and_salaries.country.v1",
+      "source_row_id": "gross_wages_and_salaries",
+      "row_label": "Salaires et traitements bruts",
+      "numerator_selector": {
+        "source_name": "fpb_economic_outlook",
+        "source_measure_id": "amount_meur",
+        "source_concept": "fpb.economic_outlook_2026_2031.t11.published_cell",
+        "entity_name": "household",
+        "period_type": "calendar_year",
+        "period_value": 2026,
+        "geography_level": "country",
+        "geography_id": "BE",
+        "geography_vintage": "current",
+        "record_set_id": "fpb.economic_outlook_2026_2031.cy2026.household_account.gross_wages_and_salaries",
+        "dimensions": [],
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:f17958efe84e42471bf68f80"
+      },
+      "denominator_selector": {
+        "source_name": "fpb_economic_outlook",
+        "source_measure_id": "amount_meur",
+        "source_concept": "fpb.economic_outlook_2026_2031.t11.published_cell",
+        "entity_name": "household",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "country",
+        "geography_id": "BE",
+        "geography_vintage": "current",
+        "record_set_id": "fpb.economic_outlook_2026_2031.cy2025.household_account.gross_wages_and_salaries",
+        "dimensions": [],
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:1b99b4161fa76ca1069ad5e7"
+      },
+      "numerator": 247221000000.0,
+      "denominator": 240536000000.0,
+      "ratio": 1.0277920976485848,
+      "base_period": 2025,
+      "target_period": 2026,
+      "numerator_assertion": "source_projection",
+      "denominator_assertion": "observation",
+      "reason": "The card's wage-headline comparator (FPB salaires bruts), rolled by its own 2026/2025 step.",
+      "status": "proposed (BE-MC0, pending d1902); series choice is a B3 finding",
+      "used_by": [
+        "fpb_gross_wages_and_salaries"
+      ]
+    },
+    {
+      "id": "fpb_t11_net_mixed_income",
+      "use": "calibration",
+      "fpb_row": "household_account.net_mixed_income",
+      "record_set_spec_id": "fpb.economic_outlook_2026_2031.household_account.net_mixed_income.country.v1",
+      "source_row_id": "net_mixed_income",
+      "row_label": "2. Revenu mixte net",
+      "numerator_selector": {
+        "source_name": "fpb_economic_outlook",
+        "source_measure_id": "amount_meur",
+        "source_concept": "fpb.economic_outlook_2026_2031.t11.published_cell",
+        "entity_name": "household",
+        "period_type": "calendar_year",
+        "period_value": 2026,
+        "geography_level": "country",
+        "geography_id": "BE",
+        "geography_vintage": "current",
+        "record_set_id": "fpb.economic_outlook_2026_2031.cy2026.household_account.net_mixed_income",
+        "dimensions": [],
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:82a8d913db8aa3594a182492"
+      },
+      "denominator_selector": {
+        "source_name": "fpb_economic_outlook",
+        "source_measure_id": "amount_meur",
+        "source_concept": "fpb.economic_outlook_2026_2031.t11.published_cell",
+        "entity_name": "household",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "country",
+        "geography_id": "BE",
+        "geography_vintage": "current",
+        "record_set_id": "fpb.economic_outlook_2026_2031.cy2025.household_account.net_mixed_income",
+        "dimensions": [],
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:0db8ec51ab64a7f7519fc5d4"
+      },
+      "numerator": 41044000000.0,
+      "denominator": 39834000000.0,
+      "ratio": 1.0303760606517045,
+      "base_period": 2025,
+      "target_period": 2026,
+      "numerator_assertion": "source_projection",
+      "denominator_assertion": "observation",
+      "reason": "The target's own series (BE-MC3 self-employment aggregate).",
+      "status": "proposed (BE-MC0, pending d1902); series choice is a B3 finding",
+      "used_by": [
+        "fpb_net_mixed_income"
+      ]
+    },
+    {
+      "id": "fpb_t11_social_benefits",
+      "use": "holdout",
+      "fpb_row": "household_account.social_benefits",
+      "record_set_spec_id": "fpb.economic_outlook_2026_2031.household_account.social_benefits.country.v1",
+      "source_row_id": "social_benefits",
+      "row_label": "5. Prestations sociales",
+      "numerator_selector": {
+        "source_name": "fpb_economic_outlook",
+        "source_measure_id": "amount_meur",
+        "source_concept": "fpb.economic_outlook_2026_2031.t11.published_cell",
+        "entity_name": "household",
+        "period_type": "calendar_year",
+        "period_value": 2026,
+        "geography_level": "country",
+        "geography_id": "BE",
+        "geography_vintage": "current",
+        "record_set_id": "fpb.economic_outlook_2026_2031.cy2026.household_account.social_benefits",
+        "dimensions": [],
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:bf52974b05acf19d1d3ccb28"
+      },
+      "denominator_selector": {
+        "source_name": "fpb_economic_outlook",
+        "source_measure_id": "amount_meur",
+        "source_concept": "fpb.economic_outlook_2026_2031.t11.published_cell",
+        "entity_name": "household",
+        "period_type": "calendar_year",
+        "period_value": 2024,
+        "geography_level": "country",
+        "geography_id": "BE",
+        "geography_vintage": "current",
+        "record_set_id": "fpb.economic_outlook_2026_2031.cy2024.household_account.social_benefits",
+        "dimensions": [],
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:e87808ae0b585214ec608b92"
+      },
+      "numerator": 132674000000.0,
+      "denominator": 124608000000.0,
+      "ratio": 1.0647309964047251,
+      "base_period": 2024,
+      "target_period": 2026,
+      "numerator_assertion": "source_projection",
+      "denominator_assertion": "observation",
+      "reason": "The household account row matching Eurostat D62 received.",
+      "status": "proposed (BE-MC0, pending d1902); series choice is a B3 finding",
+      "used_by": [
+        "eurostat_household_social_benefits_received"
+      ],
+      "observed_segment_to_2025": 1.032509951206985,
+      "projected_step_2025_to_2026": 1.0312065226684493
+    },
+    {
+      "id": "fpb_t11_social_contributions",
+      "use": "holdout",
+      "fpb_row": "household_account.social_contributions",
+      "record_set_spec_id": "fpb.economic_outlook_2026_2031.household_account.social_contributions.country.v1",
+      "source_row_id": "social_contributions",
+      "row_label": "2. Cotisations sociales, dont:",
+      "numerator_selector": {
+        "source_name": "fpb_economic_outlook",
+        "source_measure_id": "amount_meur",
+        "source_concept": "fpb.economic_outlook_2026_2031.t11.published_cell",
+        "entity_name": "household",
+        "period_type": "calendar_year",
+        "period_value": 2026,
+        "geography_level": "country",
+        "geography_id": "BE",
+        "geography_vintage": "current",
+        "record_set_id": "fpb.economic_outlook_2026_2031.cy2026.household_account.social_contributions",
+        "dimensions": [],
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:4c597d6ad755576b4e1faf01"
+      },
+      "denominator_selector": {
+        "source_name": "fpb_economic_outlook",
+        "source_measure_id": "amount_meur",
+        "source_concept": "fpb.economic_outlook_2026_2031.t11.published_cell",
+        "entity_name": "household",
+        "period_type": "calendar_year",
+        "period_value": 2024,
+        "geography_level": "country",
+        "geography_id": "BE",
+        "geography_vintage": "current",
+        "record_set_id": "fpb.economic_outlook_2026_2031.cy2024.household_account.social_contributions",
+        "dimensions": [],
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:deed6d1fc86e5e7032cbfa5e"
+      },
+      "numerator": 120094000000.0,
+      "denominator": 112346000000.0,
+      "ratio": 1.0689655172413792,
+      "base_period": 2024,
+      "target_period": 2026,
+      "numerator_assertion": "source_projection",
+      "denominator_assertion": "observation",
+      "reason": "The household account row matching Eurostat D61 paid.",
+      "status": "proposed (BE-MC0, pending d1902); series choice is a B3 finding",
+      "used_by": [
+        "eurostat_household_social_contributions_paid"
+      ],
+      "observed_segment_to_2025": 1.0358980293023339,
+      "projected_step_2025_to_2026": 1.0319215666056591
+    },
+    {
+      "id": "fpb_t11_total_resources",
+      "use": "calibration",
+      "fpb_row": "household_account.total_resources",
+      "record_set_spec_id": "fpb.economic_outlook_2026_2031.household_account.total_resources.country.v1",
+      "source_row_id": "total_resources",
+      "row_label": "a. Ressources",
+      "numerator_selector": {
+        "source_name": "fpb_economic_outlook",
+        "source_measure_id": "amount_meur",
+        "source_concept": "fpb.economic_outlook_2026_2031.t11.published_cell",
+        "entity_name": "household",
+        "period_type": "calendar_year",
+        "period_value": 2026,
+        "geography_level": "country",
+        "geography_id": "BE",
+        "geography_vintage": "current",
+        "record_set_id": "fpb.economic_outlook_2026_2031.cy2026.household_account.total_resources",
+        "dimensions": [],
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:96551e39b8ae3a2a4d4fbba5"
+      },
+      "denominator_selector": {
+        "source_name": "fpb_economic_outlook",
+        "source_measure_id": "amount_meur",
+        "source_concept": "fpb.economic_outlook_2026_2031.t11.published_cell",
+        "entity_name": "household",
+        "period_type": "calendar_year",
+        "period_value": 2023,
+        "geography_level": "country",
+        "geography_id": "BE",
+        "geography_vintage": "current",
+        "record_set_id": "fpb.economic_outlook_2026_2031.cy2023.household_account.total_resources",
+        "dimensions": [],
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:782bd24d9f5d7ce79feadabf"
+      },
+      "numerator": 571010000000.0,
+      "denominator": 518286000000.0,
+      "ratio": 1.1017276175702218,
+      "base_period": 2023,
+      "target_period": 2026,
+      "numerator_assertion": "source_projection",
+      "denominator_assertion": "observation",
+      "reason": "Net professional income mixes wages, replacement incomes, pensions and profits; the household account's total resources is the one FPB row spanning them (August's resource alignment).",
+      "status": "proposed (BE-MC0, pending d1902); series choice is a B3 finding",
+      "used_by": [
+        "statbel_a1_standin_taxable_income__100k_plus",
+        "statbel_a1_standin_taxable_income__10k_20k",
+        "statbel_a1_standin_taxable_income__20k_30k",
+        "statbel_a1_standin_taxable_income__30k_40k",
+        "statbel_a1_standin_taxable_income__40k_50k",
+        "statbel_a1_standin_taxable_income__50k_75k",
+        "statbel_a1_standin_taxable_income__75k_100k",
+        "statbel_a1_standin_taxable_income__under_10k"
+      ],
+      "observed_segment_to_2025": 1.0691336443585202,
+      "projected_step_2025_to_2026": 1.0304863413322458
+    },
+    {
+      "id": "fpb_t17_direct_taxes_households",
+      "use": "holdout",
+      "fpb_row": "general_government_account.direct_taxes_households",
+      "record_set_spec_id": "fpb.economic_outlook_2026_2031.general_government_account.direct_taxes_households.country.v1",
+      "source_row_id": "direct_taxes_households",
+      "row_label": "- Ménages",
+      "numerator_selector": {
+        "source_name": "fpb_economic_outlook",
+        "source_measure_id": "amount_meur",
+        "source_concept": "fpb.economic_outlook_2026_2031.t17.published_cell",
+        "entity_name": "government",
+        "period_type": "calendar_year",
+        "period_value": 2026,
+        "geography_level": "country",
+        "geography_id": "BE",
+        "geography_vintage": "current",
+        "record_set_id": "fpb.economic_outlook_2026_2031.cy2026.general_government_account.direct_taxes_households",
+        "dimensions": [],
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:09dcccdb13ecc60173a18079"
+      },
+      "denominator_selector": {
+        "source_name": "fpb_economic_outlook",
+        "source_measure_id": "amount_meur",
+        "source_concept": "fpb.economic_outlook_2026_2031.t17.published_cell",
+        "entity_name": "government",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "country",
+        "geography_id": "BE",
+        "geography_vintage": "current",
+        "record_set_id": "fpb.economic_outlook_2026_2031.cy2025.general_government_account.direct_taxes_households",
+        "dimensions": [],
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:ebae7d68bab03979e30b2b5e"
+      },
+      "numerator": 81561000000.0,
+      "denominator": 77771000000.0,
+      "ratio": 1.0487328181455813,
+      "base_period": 2025,
+      "target_period": 2026,
+      "numerator_assertion": "source_projection",
+      "denominator_assertion": "observation",
+      "reason": "Government direct taxes on households, the FPB counterpart of D51A_C1.",
+      "status": "proposed (BE-MC0, pending d1902); series choice is a B3 finding",
+      "used_by": [
+        "eurostat_d51a_c1_individual_income_tax"
+      ]
+    },
+    {
+      "id": "fpb_t24_federal_cash_income_guarantee_for_older_people",
+      "use": "calibration",
+      "fpb_row": "social_benefits_detail.federal_government_cash_income_guarantee_for_older_people",
+      "record_set_spec_id": "fpb.economic_outlook_2026_2031.social_benefits_detail.federal_government_cash_income_guarantee_for_older_people.country.v1",
+      "source_row_id": "federal_government_cash_income_guarantee_for_older_people",
+      "row_label": "4. Garantie de revenus aux personnes âgées",
+      "numerator_selector": {
+        "source_name": "fpb_economic_outlook",
+        "source_measure_id": "amount_meur",
+        "source_concept": "fpb.economic_outlook_2026_2031.t24.published_cell",
+        "entity_name": "government",
+        "period_type": "calendar_year",
+        "period_value": 2026,
+        "geography_level": "country",
+        "geography_id": "BE",
+        "geography_vintage": "current",
+        "record_set_id": "fpb.economic_outlook_2026_2031.cy2026.social_benefits_detail.federal_government_cash_income_guarantee_for_older_people",
+        "dimensions": [],
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:13ee4f4b5a469ddeb487eafc"
+      },
+      "denominator_selector": {
+        "source_name": "fpb_economic_outlook",
+        "source_measure_id": "amount_meur",
+        "source_concept": "fpb.economic_outlook_2026_2031.t24.published_cell",
+        "entity_name": "government",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "country",
+        "geography_id": "BE",
+        "geography_vintage": "current",
+        "record_set_id": "fpb.economic_outlook_2026_2031.cy2025.social_benefits_detail.federal_government_cash_income_guarantee_for_older_people",
+        "dimensions": [],
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:776e68a9e93ca03151c53baf"
+      },
+      "numerator": 1034000000.0,
+      "denominator": 1025000000.0,
+      "ratio": 1.008780487804878,
+      "base_period": 2025,
+      "target_period": 2026,
+      "numerator_assertion": "source_projection",
+      "denominator_assertion": "observation",
+      "reason": "The target's own series (GRAPA).",
+      "status": "proposed (BE-MC0, pending d1902); series choice is a B3 finding",
+      "used_by": [
+        "fpb_grapa_expenditure"
+      ]
+    },
+    {
+      "id": "fpb_t24_social_security_cash_unemployment",
+      "use": "calibration",
+      "fpb_row": "social_benefits_detail.social_security_cash_unemployment",
+      "record_set_spec_id": "fpb.economic_outlook_2026_2031.social_benefits_detail.social_security_cash_unemployment.country.v1",
+      "source_row_id": "social_security_cash_unemployment",
+      "row_label": "a. Chômage",
+      "numerator_selector": {
+        "source_name": "fpb_economic_outlook",
+        "source_measure_id": "amount_meur",
+        "source_concept": "fpb.economic_outlook_2026_2031.t24.published_cell",
+        "entity_name": "government",
+        "period_type": "calendar_year",
+        "period_value": 2026,
+        "geography_level": "country",
+        "geography_id": "BE",
+        "geography_vintage": "current",
+        "record_set_id": "fpb.economic_outlook_2026_2031.cy2026.social_benefits_detail.social_security_cash_unemployment",
+        "dimensions": [],
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:61a041fd9dff09745593e4da"
+      },
+      "denominator_selector": {
+        "source_name": "fpb_economic_outlook",
+        "source_measure_id": "amount_meur",
+        "source_concept": "fpb.economic_outlook_2026_2031.t24.published_cell",
+        "entity_name": "government",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "country",
+        "geography_id": "BE",
+        "geography_vintage": "current",
+        "record_set_id": "fpb.economic_outlook_2026_2031.cy2025.social_benefits_detail.social_security_cash_unemployment",
+        "dimensions": [],
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:45ad11668f4cf559bb3c388f"
+      },
+      "numerator": 4255000000.0,
+      "denominator": 5602000000.0,
+      "ratio": 0.7595501606569083,
+      "base_period": 2025,
+      "target_period": 2026,
+      "numerator_assertion": "source_projection",
+      "denominator_assertion": "observation",
+      "reason": "The target's own series: the observed 2025 level rolled by FPB's 2026/2025 step, which carries the 2026 limit on benefit duration.",
+      "status": "proposed (BE-MC0, pending d1902); series choice is a B3 finding",
+      "used_by": [
+        "fpb_unemployment_benefit_expenditure"
+      ]
+    }
+  ],
+  "rsz_wage_cross_checks": [
+    {
+      "factor_id": "rsz_ordinary_remuneration_cy2023_to_cy2025_observed",
+      "rsz_observed_factor": 1.063921,
+      "fpb_gross_wages_observed_ratio": 1.0642338220849668,
+      "use": "diagnostic only"
+    },
+    {
+      "factor_id": "rsz_ordinary_remuneration_cy2024_to_cy2025_observed",
+      "rsz_observed_factor": 1.032192,
+      "fpb_gross_wages_observed_ratio": 1.0319934442828398,
+      "use": "diagnostic only"
+    }
+  ],
+  "b4_identity": {
+    "joint": 2215303.0,
+    "individual": 4630883.0,
+    "a1_declarations": 6846186.0,
+    "closes_exactly": true,
+    "use": "A.1 band counts and B.4 type counts share fpb_t07_total_population, so the identity survives ageing."
+  },
+  "destination_mass": {
+    "commune_sum_2025": 11825551.0,
+    "nuts1_sum_2025": 11825551.0,
+    "nuts1_sum_2026": 11867634.0,
+    "commune_minus_nuts1_2025": 0.0,
+    "create_mass_reference": "Not in B3. CREATE needs exactly one unfiltered national person count. The suite has no national Statbel population fact, and a national row composed from the 565 communes refuses: the shared composed-geography path labels only UK areas. W3 chooses between a shared Belgian geography label (NZ hub) and FPB's annual-average population."
+  },
+  "b1_checks": {
+    "verdict": "B.1 stays inactive: no check passes completely from the documents.",
+    "asserted_evidence": {
+      "b1_total_matches_spf_total": true,
+      "b1_deciles_sum_to_total": true,
+      "top_percentiles_sum_to_decile_10": true,
+      "decile_bounds_strictly_increase": true,
+      "percentile_bounds_strictly_increase": true,
+      "decile_9_bound_below_percentile_91_bound": true,
+      "b1_and_a1_taxable_income_totals_match": true,
+      "chronicle_states_zero_income_exclusion": true
+    },
+    "tax_definition": {
+      "evidence": {
+        "b1_total_enrolled_tax_eur": 62840116133.93,
+        "spf_finances_total_taxes_eur": 62840116133.99,
+        "difference_eur": -0.06,
+        "b1_deciles_sum_minus_total_eur": 0.0,
+        "top_percentiles_sum_minus_decile_10_eur": 0.0,
+        "negative_deciles": [
+          "decile_01",
+          "decile_02"
+        ]
+      },
+      "passed": [
+        "B.1's total enrolled tax equals the total taxes in SPF Finances' own Chronicle package (spf-finances-pit-2023) to EUR 0.06: one administrative total, read twice, rather than an independent corroboration.",
+        "B.1's deciles sum to its total, and percentiles 91-100 sum to decile 10, within EUR 0.10."
+      ],
+      "missing": [
+        "Statbel defines total taxes as state, municipal and agglomeration tax. rulespec-be's candidate output belgium_pit_federal_and_local_tax_before_withholding (final_tax.yaml at 530849e) adds article 134 federal tax and the articles 465-468 local additions but not regional_surcharge.yaml's regional additional tax; whether Statbel's state tax includes the regional additional tax is not established by any document in the suite.",
+        "B.1 counts declarations (joint = one); every rulespec-be PIT output is per Person, and the couple pipeline needs relation bindings (S2-d) that are not built.",
+        "That output is also the D51A_C1 holdout's measure: a B.1 producer must be a separately bound declaration-level measure, because S5 refuses a pre-calibration stage whose module produces a holdout measure."
+      ],
+      "result": "fail"
+    },
+    "income_ranking": {
+      "evidence": {
+        "decile_upper_bounds_strictly_increase": true,
+        "percentile_upper_bounds_strictly_increase": true,
+        "decile_9_bound_below_percentile_91_bound": true,
+        "b1_minus_a1_total_taxable_income_eur": 0.02,
+        "decile_taxable_income_shares_sum": 1.0,
+        "chronicle_concept_note": "B.1 excludes declarations with zero total net taxable income; Statbel reports those declarations separately in A.1 Home. B.1 total enrolled tax; low-decile cells are negative because of refundable credits."
+      },
+      "passed": [
+        "Chronicle's B.1 facts state that B.1 excludes zero-income declarations, as A.1 does; B.1's and A.1's taxable-income totals agree to EUR 0.02, and the published bounds increase."
+      ],
+      "missing": [
+        "The stand-in ranks declarations by net professional income only; 42,007 declarations with taxable but no professional income, and every pensioner while pensions are unmodelled (d1902), would rank differently from Statbel's total net taxable income.",
+        "B.1 publishes no declaration counts by decile; classifying model declarations needs either model-side ranking or the published bounds, and the bounds are income-year-2023 euros that need the same unavailable cut ageing as A.1."
+      ],
+      "result": "fail"
+    },
+    "policy_year": {
+      "evidence": {
+        "b1_legal_vintage": "income_year_2023_assessment_year_2024",
+        "model_policy_year": 2026,
+        "rulespec_be_final_tax_effective_from": "2025-01-01",
+        "negative_deciles": [
+          "decile_01",
+          "decile_02"
+        ]
+      },
+      "passed": [],
+      "missing": [
+        "B.1 is assessed under income-year-2023 law; the model applies 2026 law (BE-MC0). rulespec-be defines its PIT outputs from 2025-01-01 (its article 134 module states income year 2025 parameters), so B.1's own year cannot be reproduced, and no document bridges 2023 to 2026 tax law: ageing a 2023 tax mass by an FPB ratio would mix growth with law changes.",
+        "Deciles 1 and 2 are negative (refundable credits) and rolled_forward_by_ratio refuses a negative base, so the declared ageing route cannot carry them to 2026."
+      ],
+      "result": "fail"
+    }
+  },
+  "holdout_information_overlaps": [
+    "Separation is checked at the fact and measure level; holdouts still share information with calibration through economics, not facts:",
+    "FPB gross wages (wage-headline holdout): ONSS's calibrated worker contributions are a fixed share of gross pay.",
+    "Eurostat D62 social benefits received contain the calibrated unemployment and GRAPA aggregates.",
+    "Eurostat D61 social contributions paid contain the calibrated ONSS worker contributions.",
+    "Eurostat D51A_C1 and D5 measure the same personal income tax that B.1 would calibrate once active."
+  ],
+  "grammar_gaps": [
+    "A national row composed from commune facts refuses for Belgium: the composed-geography path labels only UK areas (ledger_targets._geography_fallback_label), so CREATE's single national mass reference cannot be the commune sum.",
+    "A schema-2 target_profile requires period_match_policy 'exact', which refuses rolled_forward_by_ratio; the documents keep B1's schema-2 hierarchy catalogs with a schema-1 target_profile (NZ's documents use the same schema-1 profile, with inline hierarchies).",
+    "No shared operation ages interval cuts by a declared annual ratio pair: scale_money_and_intervals needs a G8-r2 factor and singleton identity money rows, and G8-r2's projected_period_average_ratio cannot project an annual series past its last observation.",
+    "G8-r2's resolver needs dated period_coverage on every operand; Chronicle's FPB, Statbel NUTS1, NBB, ONSS, ONEM and most Eurostat facts carry none.",
+    "rolled_forward_by_ratio refuses a negative base, so signed targets (B.1 low deciles) cannot be aged by it.",
+    "rolled_forward_by_ratio's series key treats every FPB annex row of one table as one series (same concept, entity, geography and empty dimensions); the generator and tests enforce row identity themselves."
+  ],
+  "exclusions": [
+    {
+      "id": "jrc_euromod_be_statistics",
+      "reason": "jrc-euromod-be-baseline-statistics-2025 is outside the Chronicle be suite while d1822 (move it to the scorecard, its only consumer) is open; no reference selects JRC. August took two calibration rows from it: the unemployment recipient count, now read from ONEM/RVA's own 2024 count (a different concept, parked), and the RIS amount and recipient count, for which the suite holds no source, so no RIS reference exists."
+    },
+    {
+      "id": "ris_amount_and_recipients",
+      "reason": "August's RIS amount and count came from JRC; the suite holds no RIS administrative source, so the gap is named, not filled."
+    },
+    {
+      "id": "legal_pensions",
+      "reason": "FPB pension amounts and SFPD beneficiary counts and bands: legal pensions are not modelled until d1902 settles BE-MC3's pension route; the SFPD bands are B4's quantile-map surface."
+    },
+    {
+      "id": "family_allowances",
+      "reason": "FPB family allowances and Opgroeien/Ostbelgien caseloads: child benefits are reported as not modelled at level until indexed amounts are encoded (BE-MC0)."
+    },
+    {
+      "id": "rsz_wage_classes",
+      "reason": "RSZ daily-wage classes (B2f) are B4's wage quantile-map input under d1902, not a reference."
+    },
+    {
+      "id": "usd_eur_rate",
+      "reason": "Eurostat ert_bil_eur_a is B4's currency-bridge input (BE-MC3), not a reference."
+    },
+    {
+      "id": "regional_a1_and_b1",
+      "reason": "National bands only: the short list d1952 asks for; v0.5.1's 606 regional A.1 rows failed to fit."
+    },
+    {
+      "id": "a1_component_tables",
+      "reason": "Professional, property, movable, miscellaneous and deduction tables are gap diagnostics in this inventory, not fitted rows."
+    },
+    {
+      "id": "a1_and_b1_totals",
+      "reason": "Published totals duplicate the band and decile partitions; B.1's taxable-income masses duplicate A.1."
+    },
+    {
+      "id": "zero_income_declarations",
+      "reason": "Statbel's 523,770 zero-income declarations are a diagnostic; the proxy's zeros differ, so the nil band is not fitted."
+    },
+    {
+      "id": "b3_b5_tables",
+      "reason": "B.3 professional-category and B.5 dependant tables are outside the card's targets; v0.5.1's wage-only B.3 proxy destroyed weights."
+    },
+    {
+      "id": "b4_age_and_decile_cells",
+      "reason": "Only the all-age joint and individual totals are targets (BE-MC4); age and decile cells would multiply weak cells."
+    },
+    {
+      "id": "statbel_commune_fiscal_income",
+      "reason": "Commune fiscal income is a diagnostic surface for a later commune spine gate, not a B3 reference."
+    },
+    {
+      "id": "spf_finances_pit_total",
+      "reason": "SPF Finances' total taxes equal B.1's total; it is the independent tax-definition check, not a target."
+    },
+    {
+      "id": "spf_municipal_surcharge_rates",
+      "reason": "Communal surcharge rates are W3 rule inputs, not references."
+    },
+    {
+      "id": "statbel_population_2025_nuts1",
+      "reason": "Statbel's 1 January 2026 cells are the target-year observation; the 2025 cells would duplicate them."
+    },
+    {
+      "id": "movable_income",
+      "reason": "Movable income stays out of the stand-in (art. 313 CIR 92 withholding dispensation) and out of the targets until the investment-income match check (d1952 build item 5)."
+    },
+    {
+      "id": "eurostat_d11_wages",
+      "reason": "Eurostat D11 duplicates FPB's gross wages, the card's wage-headline comparator."
+    },
+    {
+      "id": "eurostat_b3g_mixed_income",
+      "reason": "Mixed income is a calibration aggregate (FPB net mixed income), so it cannot also be held out."
+    },
+    {
+      "id": "eurostat_survey_and_social_protection",
+      "reason": "Eurostat ilc_* survey aggregates and spr_exp_func expenditure are excluded: surveys are validation-only and outside the card's holdouts, and ESSPROS overlaps FPB's T24 rows."
+    },
+    {
+      "id": "fpb_projections_as_direct_targets",
+      "reason": "No reference takes an FPB projection as its base: every base is an observation. Where the base is an FPB row's own 2025 observation (unemployment benefits, GRAPA and net mixed income in calibration, gross wages in the holdouts), the row's own 2026/2025 step makes the target equal FPB's 2026 projection; those rows say so in ageing_target_equals."
+    },
+    {
+      "id": "german_and_french_rows",
+      "reason": "Four Eurostat members carry DE and FR rows (72 of 87,112); the generator refuses any non-Belgian fact before it can name one."
+    }
+  ]
+}

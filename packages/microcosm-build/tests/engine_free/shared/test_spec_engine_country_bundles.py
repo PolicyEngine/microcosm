@@ -36,6 +36,8 @@ _TEST_PATHS = paths_for("microcosm-build")
                 "person.commune_nis",
                 "person.community_code",
                 "person.donor_country_code",
+                "person.employment_income",
+                "person.nonfarm_self_employment_income",
                 "person.person_household_id",
                 "person.person_id",
                 "person.province_nis",
@@ -217,8 +219,15 @@ def test_be_generation_zero_views_still_come_from_the_country_spec_seam() -> Non
     assert not spec.release_contract.licence_restricted
     assert spec.release_contract.public_artifacts == ()
     assert {row.path for row in spec.resource_rows if row.kind == "legacy_json"} == {
+        "chronicle_feed.json",
         "gates.json",
         "geography_spine.json",
+        "holdout_references.json",
+        "precal_references.json",
+        "reference_aging.json",
+        "reference_intervals.json",
+        "reference_inventory.json",
+        "reference_profiles.json",
         "release_contract.json",
         "source_stages.json",
         "target_references.json",

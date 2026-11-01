@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "country": "be",
+  "scope": "be_calibration",
+  "source_repo": "PolicyEngine/chronicle",
+  "source_commit": "2c7e8357f1dcb9af2337c10d6cf4cbd82b1e55ef",
+  "build": "build-bundle --suite be -> build-consumer-artifact",
+  "artifact_schema_version": "policyengine_ledger.consumer_artifact.v2",
+  "consumer_fact_schema_versions": [
+    "chronicle.consumer_fact.v4"
+  ],
+  "consumer_fact_schema_sha256": "d953306d6f01fbc64db4372d0262d3012ee590269f8a25b276b18dca0626c6a0",
+  "fact_row_count": 87112,
+  "facts_sha256": "e01a463065a81ba60139a24a605e52797442504478be60970e0ff66f9d3c6b95",
+  "manifest_sha256": "7839792643a6a32a1784328644df16c250e8d4ba08287c455983a6e7ceebb34c"
+}

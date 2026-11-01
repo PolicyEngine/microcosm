@@ -1,8 +1,8 @@
 sources:
 - id: be_populace_us_support_contract
   role: be_populace_us_support_pool
-  sha256: c94df32e544b74e7e6a70ae587345c757d9773035fceafc98660f4ab52d09d2c
-  byte_size: 3747
+  sha256: 3d0a362345894dc6ea230ebed7fec7ff99a972879dc60c06001635c1b4a1ec47
+  byte_size: 3774
   loader: kernel:load_populace_us_support_pool
   vintages:
   - vintage:be_support_pool_2024_buildp
@@ -36,14 +36,14 @@ sources:
 stage_manifest:
   version: 1
   country: be
-  policy: Belgium transports the immutable public Microcosm US Build P support artifact into
-    a synthetic Belgian population (BE-MC2). Donor records remain US support records and retain
+  policy: Belgium transports the immutable public Microcosm US Build P support artifact into a
+    synthetic Belgian population (BE-MC2). Donor records remain US support records and retain
     their support-stratum provenance; Belgian geography is assigned, never source-observed.
     Destination calibration uses Belgian administrative and national-accounts targets from
-    sums of Chronicle facts; surveys are validation-only. The Chronicle consumer artifact
-    and rulespec-be tree are declared unpinned placeholders, so this package remains inactive.
-    Executable Python belongs in shared runtimes; publication remains private pending Max's
-    decision in release_contract.json.
+    sums of Chronicle facts; surveys are validation-only. chronicle_feed.json pins the
+    Chronicle consumer artifact (B3); the rulespec-be tree remains a declared unpinned
+    placeholder, so this package remains inactive. Executable Python belongs in shared
+    runtimes; publication remains private pending Max's decision in release_contract.json.
 stages:
 - stage: load_populace_us_support_pool
   survey: Microcosm US Build P support population (US donor support records)
@@ -67,7 +67,7 @@ stages:
       pointer on 2026-08-29. Execution must verify both SHA-256 and byte size before reading;
       main/latest fallback is forbidden.
   - kind: public_aggregate_reference
-    role: destination_chronicle_consumer_artifact_unpinned
+    role: destination_chronicle_consumer_artifact
     resource: chronicle_feed.json
     format: json
     runtime_sha256_required: true
@@ -94,14 +94,15 @@ stages:
   nonnegative_outputs:
   - household_weight
   - age
-  notes: The first artifact copies the authenticated donor pin from build/nz/source_stages.json
-    exactly. Shared transport must preserve donor entity ids, membership, typed household
-    design weights and support strata, retain US donor provenance, and bridge donor mass to
-    a Chronicle-supplied Belgian population total with a conservation receipt. The next two
-    artifacts are declared placeholders for a PolicyEngine/chronicle consumer artifact and
-    the TheAxiomFoundation/rulespec-be tree, respectively. Their referenced resources and
-    exact facts/manifest hashes and RuleSpec commit/tree hashes are not authored or pinned
-    here; neither reference permits execution or a latest/main fallback. Later work must supply
-    those pins, source materialization, unit construction, engine bindings and an executable
-    graph. Monetary conversion and quantile mapping are later declarations; monetary catalog
-    columns wait for the shared EUR unit (PLAN S3).
+  notes: The first artifact copies the authenticated donor pin from
+    build/nz/source_stages.json exactly. Shared transport must preserve donor entity ids,
+    membership, typed household design weights and support strata, retain US donor provenance,
+    and bridge donor mass to a Chronicle-supplied Belgian population total with a conservation
+    receipt. The second artifact names chronicle_feed.json, which pins the
+    PolicyEngine/chronicle consumer artifact by its facts, manifest and schema hashes (B3);
+    the third is a declared placeholder for the TheAxiomFoundation/rulespec-be tree, whose
+    RuleSpec commit and tree hashes are not authored here. Neither reference permits a
+    latest/main fallback. Later work must supply the RuleSpec pins, source materialization,
+    unit construction, engine bindings and an executable graph. Monetary conversion and
+    quantile mapping are later declarations (B4); the catalog's money columns use the shared
+    eur unit.

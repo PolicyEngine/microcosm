@@ -17,6 +17,7 @@ from importlib.resources import files
 from pathlib import Path
 
 import pytest
+import yaml
 
 from microcosm.build import (
     CountryResourceRow,
@@ -75,6 +76,18 @@ def _nested_mapping_keys(value: object) -> set[str]:
     if isinstance(value, list):
         return {key for child in value for key in _nested_mapping_keys(child)}
     return set()
+
+
+# B1's schema-2 target document, kept so the schema-2 target-profile contract
+# (typed vintage aliases, exact periods) stays exercised on Belgian geography
+# after B3 moved the packaged references to a schema-1 profile.
+BE_SCHEMA2_TARGETS = _TEST_PATHS.tests / "fixtures/be_schema2_target_references.json"
+
+
+def _be_package_with_schema2_profile(package_dir: Path) -> Path:
+    shutil.copytree(COUNTRY_PACKAGE_ROOT / "be", package_dir)
+    shutil.copyfile(BE_SCHEMA2_TARGETS, package_dir / "target_references.json")
+    return package_dir
 
 
 def _armenia_scalar_ledger_fact(
@@ -510,7 +523,14 @@ class TestBelgianPackage:
             "spec/vintages.yaml",
             "source_stages.json",
             "geography_spine.json",
+            "chronicle_feed.json",
             "target_references.json",
+            "precal_references.json",
+            "holdout_references.json",
+            "reference_aging.json",
+            "reference_intervals.json",
+            "reference_inventory.json",
+            "reference_profiles.json",
             "gates.json",
             "release_contract.json",
         }
@@ -545,7 +565,7 @@ class TestBelgianPackage:
         assert [(row["kind"], row["role"]) for row in stage.artifacts[1:]] == [
             (
                 "public_aggregate_reference",
-                "destination_chronicle_consumer_artifact_unpinned",
+                "destination_chronicle_consumer_artifact",
             ),
             ("public_parameter_reference", "rulespec_be_tree_unpinned"),
         ]
@@ -607,159 +627,200 @@ class TestBelgianPackage:
             load_country_spec(package_dir)
 
     def test_targets_arrive_by_reference_with_no_values(self, spec) -> None:
-        names = {reference.name for reference in spec.target_references}
         assert {
-            "statbel_population_by_age_sex_region",
-            "statbel_fiscal_income_by_commune",
-            "spf_finances_pit_total",
-            "onss_employee_contribution_total",
-            "onem_unemployment_caseload",
-            "nbb_household_disposable_income",
-        } <= names
-        by_name = {reference.name: reference for reference in spec.target_references}
-        commune = by_name["statbel_fiscal_income_by_commune"]
-        assert commune.metadata["nis_vintage"] == "2025"
-        assert commune.metadata["geography_vintage"] == "nis_2025"
-        assert commune.ledger_selector["geography_vintage"] == "nis_2025"
-        assert commune.metadata["criticality"] == "diagnostic"
-        assert {
-            by_name[name].metadata["activation_status"]
-            for name in {
-                "statbel_population_by_age_sex_region",
-                "statbel_fiscal_income_by_commune",
-            }
-        } == {"requires_harvested_cell_references"}
+            reference.metadata["contract_target_id"]
+            for reference in spec.target_references
+        } == {
+            "statbel_population_by_region_sex_age",
+            "statbel_a1_standin_declarations_by_band",
+            "statbel_a1_standin_taxable_income_by_band",
+            "statbel_b4_declarations_by_type",
+            "statbel_b1_enrolled_tax_by_rank_group",
+            "onss_worker_personal_contributions",
+            "onem_complete_unemployment_recipients",
+            "fpb_unemployment_benefit_expenditure",
+            "fpb_grapa_expenditure",
+            "fpb_net_mixed_income",
+        }
+        for name in (
+            "target_references.json",
+            "precal_references.json",
+            "holdout_references.json",
+            "reference_intervals.json",
+            "reference_profiles.json",
+        ):
+            payload = json.loads(
+                (COUNTRY_PACKAGE_ROOT / "be" / name).read_text(encoding="utf-8")
+            )
+            assert FORBIDDEN_TARGET_VALUE_KEYS.isdisjoint(
+                _nested_mapping_keys(payload)
+            ), name
 
+    def test_target_selectors_declare_the_intended_chronicle_vocabulary(
+        self, spec
+    ) -> None:
+        statbel = "statbel_fiscal_income_distribution"
+        rolled = "rolled_forward_by_ratio"
+        expected = {
+            "statbel_population_by_region_sex_age": (
+                "statbel_population_structure",
+                "people",
+                "calendar_year",
+                2026,
+                "nuts1",
+                "identity",
+            ),
+            "statbel_a1_standin_declarations_by_band": (
+                statbel,
+                "declarations",
+                "tax_year",
+                2023,
+                "country",
+                rolled,
+            ),
+            "statbel_a1_standin_taxable_income_by_band": (
+                statbel,
+                "taxable_income_eur",
+                "tax_year",
+                2023,
+                "country",
+                rolled,
+            ),
+            "statbel_b4_declarations_by_type": (
+                statbel,
+                "declarations",
+                "tax_year",
+                2023,
+                "country",
+                rolled,
+            ),
+            "statbel_b1_enrolled_tax_by_rank_group": (
+                statbel,
+                "total_tax_eur",
+                "tax_year",
+                2023,
+                "country",
+                "identity",
+            ),
+            "onss_worker_personal_contributions": (
+                "onss_contributions",
+                "worker_article_17_uncapped_component_contribution",
+                "calendar_year",
+                2024,
+                "country",
+                rolled,
+            ),
+            "onem_complete_unemployment_recipients": (
+                "onem_rva_unemployment",
+                "receives_unemployment_benefit",
+                "calendar_year",
+                2024,
+                "country",
+                "identity",
+            ),
+            **{
+                contract: (
+                    "fpb_economic_outlook",
+                    "amount_meur",
+                    "calendar_year",
+                    2025,
+                    "country",
+                    rolled,
+                )
+                for contract in (
+                    "fpb_unemployment_benefit_expenditure",
+                    "fpb_grapa_expenditure",
+                    "fpb_net_mixed_income",
+                )
+            },
+        }
+        for reference in spec.target_references:
+            (
+                source_name,
+                source_measure_id,
+                period_type,
+                source_period,
+                geography_level,
+                operation,
+            ) = expected[reference.metadata["contract_target_id"]]
+            selector = reference.ledger_selector
+            assert selector["source_name"] == source_name
+            assert selector["source_measure_id"] == source_measure_id
+            assert selector["period_type"] == period_type
+            assert selector["period_value"] == source_period
+            assert selector["geography_level"] == geography_level
+            assert reference.value_operation == operation
+            if operation == rolled:
+                assert reference.period == 2026
+                assert reference.period_match_policy == "latest_not_after"
+                assert reference.assertion_policy == "allow_source_projection"
+            else:
+                # Identity rows never relabel a period: the 2026 cells are
+                # 2026 observations, and parked rows keep source periods.
+                assert reference.period == source_period
+                assert reference.period_match_policy == "exact"
+                assert reference.assertion_policy == "observed_only"
+
+    def test_target_profile_is_schema_one_with_schema_two_hierarchies(
+        self, spec
+    ) -> None:
+        # A schema-2 target profile requires exact period matching, which
+        # refuses rolled_forward_by_ratio; NZ uses the same schema-1 profile.
+        assert dict(spec.target_profile) == {
+            "schema_version": 1,
+            "hierarchy_reconciliations": (),
+        }
         payload = json.loads(
             (COUNTRY_PACKAGE_ROOT / "be/target_references.json").read_text(
                 encoding="utf-8"
             )
         )
-        assert FORBIDDEN_TARGET_VALUE_KEYS.isdisjoint(
-            _nested_mapping_keys(payload["target_references"])
-        )
-
-    def test_target_selectors_declare_the_intended_chronicle_vocabulary(
-        self, spec
-    ) -> None:
-        references = {reference.name: reference for reference in spec.target_references}
-        expected = {
-            "statbel_population_by_age_sex_region": (
-                "statbel_population_structure",
-                "people",
-                "calendar_year",
-                2023,
-                "nuts1",
-                "nuts1_2025",
-            ),
-            "statbel_fiscal_income_by_commune": (
-                "statbel_fiscal_income",
-                "taxable_income",
-                "tax_year",
-                2022,
-                "commune",
-                "nis_2025",
-            ),
-            "spf_finances_pit_total": (
-                "spf_finances_pit",
-                "tax_before_withholding",
-                "tax_year",
-                2022,
-                "country",
-                None,
-            ),
-            "onss_employee_contribution_total": (
-                "onss_contributions",
-                "worker_article_17_uncapped_component_contribution",
-                "calendar_year",
-                2022,
-                "country",
-                None,
-            ),
-            "onem_unemployment_caseload": (
-                "onem_rva_unemployment",
-                "receives_unemployment_benefit",
-                "calendar_year",
-                2022,
-                "country",
-                None,
-            ),
-            "nbb_household_disposable_income": (
-                "nbb_national_accounts",
-                "household_disposable_income",
-                "calendar_year",
-                2022,
-                "country",
-                None,
-            ),
+        assert payload["schema_version"] == 2
+        assert set(payload["hierarchy"]) == {
+            "providers",
+            "categories",
+            "target_labels",
         }
-
-        for name, (
-            source_name,
-            source_measure_id,
-            period_type,
-            period,
-            geography_level,
-            geography_vintage,
-        ) in expected.items():
-            reference = references[name]
-            assert reference.ledger_selector["source_name"] == source_name
-            assert reference.ledger_selector["source_measure_id"] == source_measure_id
-            assert reference.ledger_selector["period_type"] == period_type
-            assert reference.period == period
-            assert reference.period_match_policy == "exact"
-            assert reference.assertion_policy == "allow_source_projection"
-            assert reference.ledger_selector["geography_level"] == geography_level
-            assert (
-                reference.ledger_selector.get("geography_vintage") == geography_vintage
-            )
-
-    def test_target_profile_declares_tiers_and_income_basis(self, spec) -> None:
-        profile = spec.target_profile
-        assert profile["schema_version"] == 2
-        assert tuple(profile["required_families"]) == (
-            "demography",
-            "fiscal_income",
-            "income_tax",
-            "social_security",
-            "caseloads",
-        )
-        tiers = profile["criticality_tiers"]
-        assert tiers["core_fiscal_release"]["relative_tolerance"] == 0.05
-        assert tiers["caseload_release"]["relative_tolerance"] == 0.15
-        assert tiers["validation_only"]["relative_tolerance"] is None
-
-        income_basis = profile["basis_periods"]["assessment_income_year_2022"]
-        assert income_basis["period"] == 2022
-        assert income_basis["fact_period_type"] == "tax_year"
-        assert "survey_year" not in income_basis
-        assert "income_reference_offset_years" not in income_basis
-        assert income_basis["mismatch_policy"] == "requires_source_projection"
-
-        references = {reference.name: reference for reference in spec.target_references}
-        assert (
-            references["nbb_household_disposable_income"].metadata["target_role"]
-            == "validation"
-        )
+        tolerances = {
+            reference.family: reference.metadata["fit_tolerance"]
+            for reference in spec.target_references
+        }
+        assert tolerances.pop("demography") == "0.02"
+        assert set(tolerances.values()) == {"0.05"}
         assert {
-            reference.family
-            for reference in references.values()
-            if reference.metadata["target_role"] == "calibration"
-        } >= set(profile["required_families"])
+            reference.metadata["target_role"] for reference in spec.target_references
+        } == {"calibration"}
+        assert {
+            reference.metadata["method_card_status"]
+            for reference in spec.target_references
+        } == {"proposed_pending_d1902"}
 
-    def test_target_profile_tiers_and_roles_are_declaration_only(self, spec) -> None:
+    def test_target_tolerances_and_roles_are_declaration_only(self, spec) -> None:
         assert all(reference.tolerance is None for reference in spec.target_references)
         description = json.loads(
             (COUNTRY_PACKAGE_ROOT / "be/target_references.json").read_text(
                 encoding="utf-8"
             )
         )["description"]
-        assert "validated declaration metadata only" in description
-        assert "does not yet wire them into runtime calibration" in description
-        assert "current Chronicle Belgian catalog does not satisfy" in description
-        assert "#264" in description
+        assert "Selectors only" in description
+        assert "proposed pending d1902" in description
+        assert "Belgium stays inactive" in description
         assert "Declaration-only intended Belgian gate posture" in spec.gates.policy
         assert "not implemented here" in spec.gates.policy
+
+    def test_parked_references_refuse_direct_compilation(self, spec) -> None:
+        parked = [
+            reference
+            for reference in spec.target_references
+            if reference.metadata["activation_status"] != "active"
+        ]
+        assert len(parked) == 42
+        for reference in parked:
+            with pytest.raises(
+                ValueError,
+                match="non-executable placeholder|requires reference profile",
+            ):
+                compile_ledger_target_references([], [reference], country="be")
 
     @pytest.mark.parametrize(
         ("reference_name", "aliases"),
@@ -774,12 +835,13 @@ class TestBelgianPackage:
             ),
         ],
     )
-    def test_subnational_targets_accept_only_declared_typed_vintage_aliases(
+    def test_schema2_subnational_targets_accept_only_declared_typed_vintage_aliases(
         self, tmp_path, reference_name, aliases
     ) -> None:
         for index, alias in enumerate(aliases):
-            package_dir = tmp_path / f"case-{index}" / "be"
-            shutil.copytree(COUNTRY_PACKAGE_ROOT / "be", package_dir)
+            package_dir = _be_package_with_schema2_profile(
+                tmp_path / f"case-{index}" / "be"
+            )
             target_path = package_dir / "target_references.json"
             payload = json.loads(target_path.read_text(encoding="utf-8"))
             reference = next(
@@ -804,11 +866,10 @@ class TestBelgianPackage:
             ("statbel_fiscal_income_by_commune", "nis_2024"),
         ],
     )
-    def test_subnational_targets_refuse_vintages_outside_typed_registry(
+    def test_schema2_subnational_targets_refuse_vintages_outside_typed_registry(
         self, tmp_path, reference_name, invalid_vintage
     ) -> None:
-        package_dir = tmp_path / "be"
-        shutil.copytree(COUNTRY_PACKAGE_ROOT / "be", package_dir)
+        package_dir = _be_package_with_schema2_profile(tmp_path / "be")
         target_path = package_dir / "target_references.json"
         payload = json.loads(target_path.read_text(encoding="utf-8"))
         reference = next(
@@ -821,11 +882,10 @@ class TestBelgianPackage:
         with pytest.raises(ValueError, match="not an exact typed authority alias"):
             load_country_spec(package_dir)
 
-    def test_subnational_target_requires_a_typed_geography_layer(
+    def test_schema2_subnational_target_requires_a_typed_geography_layer(
         self, tmp_path
     ) -> None:
-        package_dir = tmp_path / "be"
-        shutil.copytree(COUNTRY_PACKAGE_ROOT / "be", package_dir)
+        package_dir = _be_package_with_schema2_profile(tmp_path / "be")
         target_path = package_dir / "target_references.json"
         payload = json.loads(target_path.read_text(encoding="utf-8"))
         reference = payload["target_references"][0]
@@ -842,11 +902,12 @@ class TestBelgianPackage:
             "statbel_fiscal_income_by_commune",
         ],
     )
-    def test_multicell_be_placeholders_cannot_compile_before_fanout(
-        self, spec, reference_name
+    def test_schema2_multicell_placeholders_cannot_compile_before_fanout(
+        self, tmp_path, reference_name
     ) -> None:
+        loaded = load_country_spec(_be_package_with_schema2_profile(tmp_path / "be"))
         reference = next(
-            row for row in spec.target_references if row.name == reference_name
+            row for row in loaded.target_references if row.name == reference_name
         )
 
         with pytest.raises(ValueError, match="non-executable placeholder"):
@@ -2507,8 +2568,7 @@ def test_schema2_period_contract_preserves_valid_aliases_and_opaque_labels(
 def test_schema2_be_geography_vintage_contract_survives_identifier_resolution(
     tmp_path, identifier_field, fact_vintage
 ) -> None:
-    package_dir = tmp_path / "be"
-    shutil.copytree(COUNTRY_PACKAGE_ROOT / "be", package_dir)
+    package_dir = _be_package_with_schema2_profile(tmp_path / "be")
     target_path = package_dir / "target_references.json"
     payload = json.loads(target_path.read_text(encoding="utf-8"))
     raw_reference = next(
@@ -2588,12 +2648,20 @@ def test_catalog_carries_a_country_currency_into_the_compiled_inventory(
 
     shipped = units(load_bundle(country))
     changed = units(load_bundle(_package_with_catalog_unit(tmp_path, country, unit)))
+    # The helper edits the first authored count column; bind the compiled
+    # change to that source key, so a wrong-row edit cannot pass.
+    authored = yaml.safe_load(
+        (COUNTRY_PACKAGE_ROOT / country / "spec/catalogs.yaml").read_text(
+            encoding="utf-8"
+        )
+    )["columns"]
+    edited = next(row["key"] for row in authored if row["contract"]["unit"] == "count")
 
-    assert unit not in shipped.values()
-    assert [key for key in shipped if shipped[key] != changed[key]] == [
-        key for key in changed if changed[key] == unit
-    ]
-    assert list(changed.values()).count(unit) == 1
+    # Belgium ships euro money columns (B3); New Zealand ships none yet.
+    assert list(shipped.values()).count(unit) == {"be": 2, "nz": 0}[country]
+    assert [key for key in shipped if shipped[key] != changed[key]] == [edited]
+    assert (shipped[edited], changed[edited]) == ("count", unit)
+    assert list(changed.values()).count(unit) == list(shipped.values()).count(unit) + 1
 
 
 @pytest.mark.parametrize("unit", ["EUR", "NZD", "euro", "eur_cents"])

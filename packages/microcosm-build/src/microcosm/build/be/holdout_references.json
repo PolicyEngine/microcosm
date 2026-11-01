@@ -1,0 +1,713 @@
+{
+  "country": "be",
+  "schema_version": 2,
+  "reference_set": "holdout",
+  "description": "Belgian held-out references: compared with the model, never fitted. No calibration-side node may read this resource. Every row is parked until its measure has a producer; JRC's EUROMOD-BE statistics are deferred while d1822 is open.",
+  "allowed_value_operations": [
+    "rolled_forward_by_ratio"
+  ],
+  "hierarchy": {
+    "providers": {
+      "eurostat": {
+        "label": "Eurostat"
+      },
+      "fpb": {
+        "label": "Federal Planning Bureau"
+      },
+      "nbb": {
+        "label": "National Bank of Belgium"
+      }
+    },
+    "categories": {
+      "eurostat.household_accounts": {
+        "provider_id": "eurostat",
+        "label": "Household accounts"
+      },
+      "eurostat.income_tax": {
+        "provider_id": "eurostat",
+        "label": "Income tax revenue"
+      },
+      "fpb.household_account": {
+        "provider_id": "fpb",
+        "label": "Household account"
+      },
+      "nbb.national_accounts": {
+        "provider_id": "nbb",
+        "label": "National accounts"
+      }
+    },
+    "target_labels": {
+      "eurostat_d51a_c1_individual_income_tax": "Eurostat D51A_C1 taxes on individual or household income, 2025, rolled to 2026",
+      "eurostat_household_current_taxes_paid": "Eurostat household current taxes on income and wealth paid (D5), 2024, rolled to 2026",
+      "eurostat_household_gross_disposable_income": "Eurostat household and NPISH gross disposable income (B6G), 2024, rolled to 2026",
+      "eurostat_household_social_benefits_received": "Eurostat household social benefits received (D62), 2024, rolled to 2026",
+      "eurostat_household_social_contributions_paid": "Eurostat household social contributions paid (D61), 2024, rolled to 2026",
+      "fpb_gross_wages_and_salaries": "FPB gross wages and salaries (salaires bruts), 2025, rolled to 2026",
+      "nbb_household_gross_disposable_income": "NBB household gross disposable income (B6G), 2024, rolled to 2026"
+    }
+  },
+  "target_references": [
+    {
+      "name": "eurostat_d51a_c1_individual_income_tax",
+      "ledger_selector": {
+        "source_name": "eurostat",
+        "source_measure_id": "revenue",
+        "source_concept": "eurostat.gov_10a_taxag.value",
+        "entity_name": "government",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "country",
+        "geography_id": "BE",
+        "geography_vintage": "current",
+        "record_set_id": "eurostat.gov_10a_taxag.cy2025.income_tax_revenue_by_taxpayer.country",
+        "dimensions": [
+          "freq",
+          "geo",
+          "na_item",
+          "sector",
+          "time",
+          "unit"
+        ],
+        "dimension_values": {
+          "freq": "A",
+          "geo": "BE",
+          "na_item": "D51A_C1",
+          "sector": "S13",
+          "time": 2025,
+          "unit": "MIO_EUR"
+        },
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:e3c28f2774b8452eeb2acd91",
+        "assertion": "observation"
+      },
+      "entity": "person",
+      "measure": "belgium_pit_federal_and_local_tax_before_withholding",
+      "period": 2026,
+      "family": "income_tax",
+      "category_id": "eurostat.income_tax",
+      "assertion_policy": "allow_source_projection",
+      "metadata": {
+        "contract_target_id": "eurostat_d51a_c1_individual_income_tax",
+        "activation_status": "requires_holdout_measure",
+        "criticality": "diagnostic",
+        "measure_kind": "rules_output",
+        "publisher": "Eurostat",
+        "target_role": "validation",
+        "reference_set": "holdout",
+        "method_card_row": "BE-MC5",
+        "method_card_status": "proposed_pending_d1902",
+        "parking_reason": "Held out of calibration; compared, never fitted. Accrual national-accounts revenue held out against assessed tax (BE-MC5). W3: needs a pinned rulespec-be binding for be/statutes/income_tax/individual/final_tax.yaml on the transported frame, the S5 pre-calibration allowlist entry for it, and B4's euro conversion of the donor inputs it reads.",
+        "ageing": "rolled_forward_by_ratio",
+        "ageing_pair": "fpb_t17_direct_taxes_households",
+        "ageing_source": "FPB Economic Outlook 2026-2031, June 2026 annex",
+        "source_period": "2025",
+        "target_period": "2026",
+        "holdout_use": "validation_comparator"
+      },
+      "notes": "Held out of calibration; compared, never fitted. Accrual national-accounts revenue held out against assessed tax (BE-MC5). W3: needs a pinned rulespec-be binding for be/statutes/income_tax/individual/final_tax.yaml on the transported frame, the S5 pre-calibration allowlist entry for it, and B4's euro conversion of the donor inputs it reads.",
+      "value_operation": "rolled_forward_by_ratio",
+      "value_operands": [
+        {
+          "role": "base"
+        },
+        {
+          "role": "numerator",
+          "source_name": "fpb_economic_outlook",
+          "source_measure_id": "amount_meur",
+          "source_concept": "fpb.economic_outlook_2026_2031.t17.published_cell",
+          "entity_name": "government",
+          "period_type": "calendar_year",
+          "period_value": 2026,
+          "geography_level": "country",
+          "geography_id": "BE",
+          "geography_vintage": "current",
+          "record_set_id": "fpb.economic_outlook_2026_2031.cy2026.general_government_account.direct_taxes_households",
+          "dimensions": [],
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:09dcccdb13ecc60173a18079",
+          "assertion": "source_projection"
+        },
+        {
+          "role": "denominator",
+          "source_name": "fpb_economic_outlook",
+          "source_measure_id": "amount_meur",
+          "source_concept": "fpb.economic_outlook_2026_2031.t17.published_cell",
+          "entity_name": "government",
+          "period_type": "calendar_year",
+          "period_value": 2025,
+          "geography_level": "country",
+          "geography_id": "BE",
+          "geography_vintage": "current",
+          "record_set_id": "fpb.economic_outlook_2026_2031.cy2025.general_government_account.direct_taxes_households",
+          "dimensions": [],
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:ebae7d68bab03979e30b2b5e",
+          "assertion": "observation"
+        }
+      ],
+      "period_match_policy": "latest_not_after"
+    },
+    {
+      "name": "nbb_household_gross_disposable_income",
+      "ledger_selector": {
+        "source_name": "nbb_national_accounts",
+        "source_measure_id": "household_disposable_income",
+        "source_concept": "nbb.household_income_accounts.gross_disposable_income",
+        "entity_name": "household",
+        "period_type": "calendar_year",
+        "period_value": 2024,
+        "geography_level": "country",
+        "geography_id": "BE",
+        "geography_vintage": "current",
+        "record_set_id": "nbb.national_accounts.cy2024.household_disposable_income.country",
+        "dimensions": [],
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:5e83461cf5b9b1d0292c4c7e",
+        "assertion": "observation"
+      },
+      "entity": "household",
+      "measure": "household_gross_disposable_income_eur",
+      "period": 2026,
+      "family": "national_accounts",
+      "category_id": "nbb.national_accounts",
+      "assertion_policy": "allow_source_projection",
+      "metadata": {
+        "contract_target_id": "nbb_household_gross_disposable_income",
+        "activation_status": "requires_holdout_measure",
+        "criticality": "diagnostic",
+        "measure_kind": "prepared_column",
+        "publisher": "National Bank of Belgium",
+        "target_role": "validation",
+        "reference_set": "holdout",
+        "method_card_row": "BE-MC5",
+        "method_card_status": "proposed_pending_d1902",
+        "parking_reason": "Held out of calibration; compared, never fitted. No producer: rulespec-be's disposable-income policy is a narrow worker bridge, not integrated disposable income.",
+        "ageing": "rolled_forward_by_ratio",
+        "ageing_pair": "fpb_t06_net_national_disposable_income",
+        "ageing_source": "FPB Economic Outlook 2026-2031, June 2026 annex",
+        "source_period": "2024",
+        "target_period": "2026",
+        "holdout_use": "validation_comparator"
+      },
+      "notes": "Held out of calibration; compared, never fitted. No producer: rulespec-be's disposable-income policy is a narrow worker bridge, not integrated disposable income.",
+      "value_operation": "rolled_forward_by_ratio",
+      "value_operands": [
+        {
+          "role": "base"
+        },
+        {
+          "role": "numerator",
+          "source_name": "fpb_economic_outlook",
+          "source_measure_id": "amount_meur",
+          "source_concept": "fpb.economic_outlook_2026_2031.t06.published_cell",
+          "entity_name": "institutional_sector",
+          "period_type": "calendar_year",
+          "period_value": 2026,
+          "geography_level": "country",
+          "geography_id": "BE",
+          "geography_vintage": "current",
+          "record_set_id": "fpb.economic_outlook_2026_2031.cy2026.national_income_account.net_national_disposable_income",
+          "dimensions": [],
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:63c570cc58902f2813b3bde9",
+          "assertion": "source_projection"
+        },
+        {
+          "role": "denominator",
+          "source_name": "fpb_economic_outlook",
+          "source_measure_id": "amount_meur",
+          "source_concept": "fpb.economic_outlook_2026_2031.t06.published_cell",
+          "entity_name": "institutional_sector",
+          "period_type": "calendar_year",
+          "period_value": 2024,
+          "geography_level": "country",
+          "geography_id": "BE",
+          "geography_vintage": "current",
+          "record_set_id": "fpb.economic_outlook_2026_2031.cy2024.national_income_account.net_national_disposable_income",
+          "dimensions": [],
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:5148b5898c391c11ff484930",
+          "assertion": "observation"
+        }
+      ],
+      "period_match_policy": "latest_not_after"
+    },
+    {
+      "name": "eurostat_household_gross_disposable_income",
+      "ledger_selector": {
+        "source_name": "eurostat",
+        "source_measure_id": "amount",
+        "source_concept": "eurostat.nasa_10_nf_tr.non_financial_transaction_amount",
+        "entity_name": "household",
+        "period_type": "calendar_year",
+        "period_value": 2024,
+        "geography_level": "country",
+        "geography_id": "BE",
+        "geography_vintage": "current",
+        "record_set_id": "eurostat.nasa_10_nf_tr.cy2024.household_non_financial_transactions.received.be",
+        "dimensions": [
+          "direct",
+          "freq",
+          "geo",
+          "na_item",
+          "sector",
+          "time",
+          "unit"
+        ],
+        "dimension_values": {
+          "direct": "RECV",
+          "freq": "A",
+          "geo": "BE",
+          "na_item": "B6G",
+          "sector": "S14_S15",
+          "time": 2024,
+          "unit": "CP_MEUR"
+        },
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:1c1549bca1f666dae3f1c6fe",
+        "assertion": "observation"
+      },
+      "entity": "household",
+      "measure": "household_gross_disposable_income_eur",
+      "period": 2026,
+      "family": "household_accounts",
+      "category_id": "eurostat.household_accounts",
+      "assertion_policy": "allow_source_projection",
+      "metadata": {
+        "contract_target_id": "eurostat_household_gross_disposable_income",
+        "activation_status": "requires_holdout_measure",
+        "criticality": "diagnostic",
+        "measure_kind": "prepared_column",
+        "publisher": "Eurostat",
+        "target_role": "validation",
+        "reference_set": "holdout",
+        "method_card_row": "BE-MC5",
+        "method_card_status": "proposed_pending_d1902",
+        "parking_reason": "Held out of calibration; compared, never fitted. No producer, as for NBB's B6G. Eurostat's S14_S15 sector adds non-profit institutions to NBB's household figure.",
+        "ageing": "rolled_forward_by_ratio",
+        "ageing_pair": "fpb_t06_net_national_disposable_income",
+        "ageing_source": "FPB Economic Outlook 2026-2031, June 2026 annex",
+        "source_period": "2024",
+        "target_period": "2026",
+        "holdout_use": "validation_comparator"
+      },
+      "notes": "Held out of calibration; compared, never fitted. No producer, as for NBB's B6G. Eurostat's S14_S15 sector adds non-profit institutions to NBB's household figure.",
+      "value_operation": "rolled_forward_by_ratio",
+      "value_operands": [
+        {
+          "role": "base"
+        },
+        {
+          "role": "numerator",
+          "source_name": "fpb_economic_outlook",
+          "source_measure_id": "amount_meur",
+          "source_concept": "fpb.economic_outlook_2026_2031.t06.published_cell",
+          "entity_name": "institutional_sector",
+          "period_type": "calendar_year",
+          "period_value": 2026,
+          "geography_level": "country",
+          "geography_id": "BE",
+          "geography_vintage": "current",
+          "record_set_id": "fpb.economic_outlook_2026_2031.cy2026.national_income_account.net_national_disposable_income",
+          "dimensions": [],
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:63c570cc58902f2813b3bde9",
+          "assertion": "source_projection"
+        },
+        {
+          "role": "denominator",
+          "source_name": "fpb_economic_outlook",
+          "source_measure_id": "amount_meur",
+          "source_concept": "fpb.economic_outlook_2026_2031.t06.published_cell",
+          "entity_name": "institutional_sector",
+          "period_type": "calendar_year",
+          "period_value": 2024,
+          "geography_level": "country",
+          "geography_id": "BE",
+          "geography_vintage": "current",
+          "record_set_id": "fpb.economic_outlook_2026_2031.cy2024.national_income_account.net_national_disposable_income",
+          "dimensions": [],
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:5148b5898c391c11ff484930",
+          "assertion": "observation"
+        }
+      ],
+      "period_match_policy": "latest_not_after"
+    },
+    {
+      "name": "eurostat_household_social_benefits_received",
+      "ledger_selector": {
+        "source_name": "eurostat",
+        "source_measure_id": "amount",
+        "source_concept": "eurostat.nasa_10_nf_tr.non_financial_transaction_amount",
+        "entity_name": "household",
+        "period_type": "calendar_year",
+        "period_value": 2024,
+        "geography_level": "country",
+        "geography_id": "BE",
+        "geography_vintage": "current",
+        "record_set_id": "eurostat.nasa_10_nf_tr.cy2024.household_non_financial_transactions.received.be",
+        "dimensions": [
+          "direct",
+          "freq",
+          "geo",
+          "na_item",
+          "sector",
+          "time",
+          "unit"
+        ],
+        "dimension_values": {
+          "direct": "RECV",
+          "freq": "A",
+          "geo": "BE",
+          "na_item": "D62",
+          "sector": "S14_S15",
+          "time": 2024,
+          "unit": "CP_MEUR"
+        },
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:8c7c28463b5421308945c344",
+        "assertion": "observation"
+      },
+      "entity": "household",
+      "measure": "household_social_benefits_received_eur",
+      "period": 2026,
+      "family": "household_accounts",
+      "category_id": "eurostat.household_accounts",
+      "assertion_policy": "allow_source_projection",
+      "metadata": {
+        "contract_target_id": "eurostat_household_social_benefits_received",
+        "activation_status": "requires_holdout_measure",
+        "criticality": "diagnostic",
+        "measure_kind": "prepared_column",
+        "publisher": "Eurostat",
+        "target_role": "validation",
+        "reference_set": "holdout",
+        "method_card_row": "BE-MC5",
+        "method_card_status": "proposed_pending_d1902",
+        "parking_reason": "Held out of calibration; compared, never fitted. No producer: pensions (d1902), child benefits (not modelled at level) and unemployment receipts (W3) are missing.",
+        "ageing": "rolled_forward_by_ratio",
+        "ageing_pair": "fpb_t11_social_benefits",
+        "ageing_source": "FPB Economic Outlook 2026-2031, June 2026 annex",
+        "source_period": "2024",
+        "target_period": "2026",
+        "holdout_use": "validation_comparator"
+      },
+      "notes": "Held out of calibration; compared, never fitted. No producer: pensions (d1902), child benefits (not modelled at level) and unemployment receipts (W3) are missing.",
+      "value_operation": "rolled_forward_by_ratio",
+      "value_operands": [
+        {
+          "role": "base"
+        },
+        {
+          "role": "numerator",
+          "source_name": "fpb_economic_outlook",
+          "source_measure_id": "amount_meur",
+          "source_concept": "fpb.economic_outlook_2026_2031.t11.published_cell",
+          "entity_name": "household",
+          "period_type": "calendar_year",
+          "period_value": 2026,
+          "geography_level": "country",
+          "geography_id": "BE",
+          "geography_vintage": "current",
+          "record_set_id": "fpb.economic_outlook_2026_2031.cy2026.household_account.social_benefits",
+          "dimensions": [],
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:bf52974b05acf19d1d3ccb28",
+          "assertion": "source_projection"
+        },
+        {
+          "role": "denominator",
+          "source_name": "fpb_economic_outlook",
+          "source_measure_id": "amount_meur",
+          "source_concept": "fpb.economic_outlook_2026_2031.t11.published_cell",
+          "entity_name": "household",
+          "period_type": "calendar_year",
+          "period_value": 2024,
+          "geography_level": "country",
+          "geography_id": "BE",
+          "geography_vintage": "current",
+          "record_set_id": "fpb.economic_outlook_2026_2031.cy2024.household_account.social_benefits",
+          "dimensions": [],
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:e87808ae0b585214ec608b92",
+          "assertion": "observation"
+        }
+      ],
+      "period_match_policy": "latest_not_after"
+    },
+    {
+      "name": "eurostat_household_social_contributions_paid",
+      "ledger_selector": {
+        "source_name": "eurostat",
+        "source_measure_id": "amount",
+        "source_concept": "eurostat.nasa_10_nf_tr.non_financial_transaction_amount",
+        "entity_name": "household",
+        "period_type": "calendar_year",
+        "period_value": 2024,
+        "geography_level": "country",
+        "geography_id": "BE",
+        "geography_vintage": "current",
+        "record_set_id": "eurostat.nasa_10_nf_tr.cy2024.household_non_financial_transactions.paid.be",
+        "dimensions": [
+          "direct",
+          "freq",
+          "geo",
+          "na_item",
+          "sector",
+          "time",
+          "unit"
+        ],
+        "dimension_values": {
+          "direct": "PAID",
+          "freq": "A",
+          "geo": "BE",
+          "na_item": "D61",
+          "sector": "S14_S15",
+          "time": 2024,
+          "unit": "CP_MEUR"
+        },
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:627f1716ff45e9ac8e2ffd22",
+        "assertion": "observation"
+      },
+      "entity": "household",
+      "measure": "household_social_contributions_paid_eur",
+      "period": 2026,
+      "family": "household_accounts",
+      "category_id": "eurostat.household_accounts",
+      "assertion_policy": "allow_source_projection",
+      "metadata": {
+        "contract_target_id": "eurostat_household_social_contributions_paid",
+        "activation_status": "requires_holdout_measure",
+        "criticality": "diagnostic",
+        "measure_kind": "prepared_column",
+        "publisher": "Eurostat",
+        "target_role": "validation",
+        "reference_set": "holdout",
+        "method_card_row": "BE-MC5",
+        "method_card_status": "proposed_pending_d1902",
+        "parking_reason": "Held out of calibration; compared, never fitted. No producer: employer and self-employed contributions are not bound (W3).",
+        "ageing": "rolled_forward_by_ratio",
+        "ageing_pair": "fpb_t11_social_contributions",
+        "ageing_source": "FPB Economic Outlook 2026-2031, June 2026 annex",
+        "source_period": "2024",
+        "target_period": "2026",
+        "holdout_use": "validation_comparator"
+      },
+      "notes": "Held out of calibration; compared, never fitted. No producer: employer and self-employed contributions are not bound (W3).",
+      "value_operation": "rolled_forward_by_ratio",
+      "value_operands": [
+        {
+          "role": "base"
+        },
+        {
+          "role": "numerator",
+          "source_name": "fpb_economic_outlook",
+          "source_measure_id": "amount_meur",
+          "source_concept": "fpb.economic_outlook_2026_2031.t11.published_cell",
+          "entity_name": "household",
+          "period_type": "calendar_year",
+          "period_value": 2026,
+          "geography_level": "country",
+          "geography_id": "BE",
+          "geography_vintage": "current",
+          "record_set_id": "fpb.economic_outlook_2026_2031.cy2026.household_account.social_contributions",
+          "dimensions": [],
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:4c597d6ad755576b4e1faf01",
+          "assertion": "source_projection"
+        },
+        {
+          "role": "denominator",
+          "source_name": "fpb_economic_outlook",
+          "source_measure_id": "amount_meur",
+          "source_concept": "fpb.economic_outlook_2026_2031.t11.published_cell",
+          "entity_name": "household",
+          "period_type": "calendar_year",
+          "period_value": 2024,
+          "geography_level": "country",
+          "geography_id": "BE",
+          "geography_vintage": "current",
+          "record_set_id": "fpb.economic_outlook_2026_2031.cy2024.household_account.social_contributions",
+          "dimensions": [],
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:deed6d1fc86e5e7032cbfa5e",
+          "assertion": "observation"
+        }
+      ],
+      "period_match_policy": "latest_not_after"
+    },
+    {
+      "name": "eurostat_household_current_taxes_paid",
+      "ledger_selector": {
+        "source_name": "eurostat",
+        "source_measure_id": "amount",
+        "source_concept": "eurostat.nasa_10_nf_tr.non_financial_transaction_amount",
+        "entity_name": "household",
+        "period_type": "calendar_year",
+        "period_value": 2024,
+        "geography_level": "country",
+        "geography_id": "BE",
+        "geography_vintage": "current",
+        "record_set_id": "eurostat.nasa_10_nf_tr.cy2024.household_non_financial_transactions.paid.be",
+        "dimensions": [
+          "direct",
+          "freq",
+          "geo",
+          "na_item",
+          "sector",
+          "time",
+          "unit"
+        ],
+        "dimension_values": {
+          "direct": "PAID",
+          "freq": "A",
+          "geo": "BE",
+          "na_item": "D5",
+          "sector": "S14_S15",
+          "time": 2024,
+          "unit": "CP_MEUR"
+        },
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:05ca22b4bedd957b4d655ff6",
+        "assertion": "observation"
+      },
+      "entity": "household",
+      "measure": "household_current_taxes_on_income_paid_eur",
+      "period": 2026,
+      "family": "household_accounts",
+      "category_id": "eurostat.household_accounts",
+      "assertion_policy": "allow_source_projection",
+      "metadata": {
+        "contract_target_id": "eurostat_household_current_taxes_paid",
+        "activation_status": "requires_holdout_measure",
+        "criticality": "diagnostic",
+        "measure_kind": "prepared_column",
+        "publisher": "Eurostat",
+        "target_role": "validation",
+        "reference_set": "holdout",
+        "method_card_row": "BE-MC5",
+        "method_card_status": "proposed_pending_d1902",
+        "parking_reason": "Held out of calibration; compared, never fitted. No producer: needs the PIT binding (W3) aggregated to households.",
+        "ageing": "rolled_forward_by_ratio",
+        "ageing_pair": "fpb_t11_current_taxes_on_income_and_wealth",
+        "ageing_source": "FPB Economic Outlook 2026-2031, June 2026 annex",
+        "source_period": "2024",
+        "target_period": "2026",
+        "holdout_use": "validation_comparator"
+      },
+      "notes": "Held out of calibration; compared, never fitted. No producer: needs the PIT binding (W3) aggregated to households.",
+      "value_operation": "rolled_forward_by_ratio",
+      "value_operands": [
+        {
+          "role": "base"
+        },
+        {
+          "role": "numerator",
+          "source_name": "fpb_economic_outlook",
+          "source_measure_id": "amount_meur",
+          "source_concept": "fpb.economic_outlook_2026_2031.t11.published_cell",
+          "entity_name": "household",
+          "period_type": "calendar_year",
+          "period_value": 2026,
+          "geography_level": "country",
+          "geography_id": "BE",
+          "geography_vintage": "current",
+          "record_set_id": "fpb.economic_outlook_2026_2031.cy2026.household_account.current_taxes_on_income_and_wealth",
+          "dimensions": [],
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:67bb0b178a502334a5798bfa",
+          "assertion": "source_projection"
+        },
+        {
+          "role": "denominator",
+          "source_name": "fpb_economic_outlook",
+          "source_measure_id": "amount_meur",
+          "source_concept": "fpb.economic_outlook_2026_2031.t11.published_cell",
+          "entity_name": "household",
+          "period_type": "calendar_year",
+          "period_value": 2024,
+          "geography_level": "country",
+          "geography_id": "BE",
+          "geography_vintage": "current",
+          "record_set_id": "fpb.economic_outlook_2026_2031.cy2024.household_account.current_taxes_on_income_and_wealth",
+          "dimensions": [],
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:d3638106fd28d6f6d119c0d5",
+          "assertion": "observation"
+        }
+      ],
+      "period_match_policy": "latest_not_after"
+    },
+    {
+      "name": "fpb_gross_wages_and_salaries",
+      "ledger_selector": {
+        "source_name": "fpb_economic_outlook",
+        "source_measure_id": "amount_meur",
+        "source_concept": "fpb.economic_outlook_2026_2031.t11.published_cell",
+        "entity_name": "household",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "country",
+        "geography_id": "BE",
+        "geography_vintage": "current",
+        "record_set_id": "fpb.economic_outlook_2026_2031.cy2025.household_account.gross_wages_and_salaries",
+        "dimensions": [],
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:1b99b4161fa76ca1069ad5e7",
+        "assertion": "observation"
+      },
+      "entity": "person",
+      "measure": "employment_income",
+      "period": 2026,
+      "family": "household_accounts",
+      "category_id": "fpb.household_account",
+      "assertion_policy": "allow_source_projection",
+      "metadata": {
+        "contract_target_id": "fpb_gross_wages_and_salaries",
+        "activation_status": "requires_holdout_measure",
+        "criticality": "diagnostic",
+        "measure_kind": "prepared_column",
+        "publisher": "Federal Planning Bureau",
+        "target_role": "validation",
+        "reference_set": "holdout",
+        "method_card_row": "BE-MC5",
+        "method_card_status": "proposed_pending_d1902",
+        "parking_reason": "Held out of calibration; compared, never fitted. The card's wage-headline comparator (BE-MC5): gross wages, not compensation including employer contributions. The euro wage column has no producer until B4's currency bridge.",
+        "ageing_target_equals": "FPB's 2026 projection of the base's own row",
+        "ageing": "rolled_forward_by_ratio",
+        "ageing_pair": "fpb_t11_gross_wages_and_salaries",
+        "ageing_source": "FPB Economic Outlook 2026-2031, June 2026 annex",
+        "source_period": "2025",
+        "target_period": "2026",
+        "holdout_use": "validation_comparator"
+      },
+      "notes": "Held out of calibration; compared, never fitted. The card's wage-headline comparator (BE-MC5): gross wages, not compensation including employer contributions. The euro wage column has no producer until B4's currency bridge.",
+      "value_operation": "rolled_forward_by_ratio",
+      "value_operands": [
+        {
+          "role": "base"
+        },
+        {
+          "role": "numerator",
+          "source_name": "fpb_economic_outlook",
+          "source_measure_id": "amount_meur",
+          "source_concept": "fpb.economic_outlook_2026_2031.t11.published_cell",
+          "entity_name": "household",
+          "period_type": "calendar_year",
+          "period_value": 2026,
+          "geography_level": "country",
+          "geography_id": "BE",
+          "geography_vintage": "current",
+          "record_set_id": "fpb.economic_outlook_2026_2031.cy2026.household_account.gross_wages_and_salaries",
+          "dimensions": [],
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:f17958efe84e42471bf68f80",
+          "assertion": "source_projection"
+        },
+        {
+          "role": "denominator",
+          "source_name": "fpb_economic_outlook",
+          "source_measure_id": "amount_meur",
+          "source_concept": "fpb.economic_outlook_2026_2031.t11.published_cell",
+          "entity_name": "household",
+          "period_type": "calendar_year",
+          "period_value": 2025,
+          "geography_level": "country",
+          "geography_id": "BE",
+          "geography_vintage": "current",
+          "record_set_id": "fpb.economic_outlook_2026_2031.cy2025.household_account.gross_wages_and_salaries",
+          "dimensions": [],
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:1b99b4161fa76ca1069ad5e7",
+          "assertion": "observation"
+        }
+      ],
+      "period_match_policy": "latest_not_after"
+    }
+  ],
+  "target_profile": {
+    "schema_version": 1,
+    "hierarchy_reconciliations": []
+  }
+}
