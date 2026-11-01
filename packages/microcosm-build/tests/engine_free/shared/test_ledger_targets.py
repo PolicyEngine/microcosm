@@ -14,6 +14,7 @@ from microcosm.build.ledger_artifact import (
 from microcosm.build.ledger_targets import (
     LedgerTargetMapping,
     LedgerTargetReference,
+    _shift_period_years,
     _strict_scalar_equal,
     apply_ledger_target_profile,
     compile_ledger_target_references,
@@ -6331,16 +6332,19 @@ def test__given_a_target_period_without_a_year__then_a_restamp_refuses(
 
 
 def _typed_observation_reference(
-    period_type: str, observation: str
+    period_type: str,
+    observation: int | str,
+    period_match_policy: str = "exact",
 ) -> LedgerTargetReference:
+    selector = dict(_cy_window_reference().ledger_selector)
+    if period_type:
+        selector["period_type"] = period_type
     return _cy_window_reference(
         value_operation="identity",
         period=2025,
         observation_period=observation,
-        ledger_selector={
-            **_cy_window_reference().ledger_selector,
-            "period_type": period_type,
-        },
+        ledger_selector=selector,
+        period_match_policy=period_match_policy,
     )
 
 
@@ -6351,11 +6355,14 @@ def _typed_observation_reference(
         # ranges, so both ends move.
         ("fiscal_year", "2011-12", "2012-13"),
         ("calendar_year", "2005-06", "2006-07"),
+        ("fiscal_year", 2026, 2027),
         # Under month it reads December 2011, so only the year moves.
         ("month", "2011-12", "2012-12"),
+        # Untyped, "2026-01" can only be a month.
+        ("", "2026-01", "2027-01"),
     ],
 )
-def test__given_a_typed_selector__then_a_restamp_reads_its_period_type(
+def test__given_a_typed_exact_selector__then_a_restamp_reads_its_period_type(
     period_type, observation, moved
 ) -> None:
     """The exact-match path reads an observation period under the selector's
@@ -6365,10 +6372,77 @@ def test__given_a_typed_selector__then_a_restamp_reads_its_period_type(
     assert restamp_reference_period(reference, 2026).observation_period == moved
 
 
-def test__given_a_period_its_selector_type_cannot_read__then_a_restamp_refuses() -> (
+@pytest.mark.parametrize(
+    ("period_type", "observation", "moved"),
+    [
+        # The selector's type cannot read these, so the cutoff's reading moves.
+        ("fiscal_year", "2026-01", "2027-01"),
+        ("academic_year", "2026-01", "2027-01"),
+        ("month", "2026", "2027"),
+        # Both read this as the same range.
+        ("fiscal_year", "2025-26", "2026-27"),
+        # Without a type the cutoff's December 2011 moves.
+        ("", "2011-12", "2012-12"),
+    ],
+)
+def test__given_the_default_policy__then_a_restamp_moves_the_cutoff_it_reads(
+    period_type, observation, moved
+) -> None:
+    """The latest_not_after cutoff reads the observation period untyped, so
+    under a fiscal-year selector "2026-01" moves to "2027-01" rather than
+    refusing as no fiscal year (the fifth review of microcosm#1422)."""
+    reference = _typed_observation_reference(
+        period_type, observation, period_match_policy="latest_not_after"
+    )
+    assert restamp_reference_period(reference, 2026).observation_period == moved
+
+
+def test__given_an_exact_period_its_selector_type_cannot_read__then_it_is_refused() -> (
     None
 ):
-    # "2026-01" is no fiscal year, so a fiscal-year selector cannot move it.
-    reference = _typed_observation_reference("fiscal_year", "2026-01")
-    with pytest.raises(ValueError, match="cannot move the period '2026-01'"):
+    # "2026-01" is no fiscal year, so an exact fiscal-year match can never
+    # select it.
+    with pytest.raises(
+        ValueError, match="'2026-01' is not a parseable period under period_type"
+    ):
+        _typed_observation_reference("fiscal_year", "2026-01")
+    # A fiscal year the untyped parser cannot read stands.
+    assert (
+        _typed_observation_reference("fiscal_year", "2099-00").observation_period
+        == "2099-00"
+    )
+
+
+@pytest.mark.parametrize(
+    ("period_type", "observation", "policy", "message"),
+    [
+        # Untyped, an exact match reads "2011-12" as December 2011 against a
+        # month fact and as 2011-12 against a fiscal one.
+        ("", "2011-12", "exact", "as a month or as an annual range"),
+        # The cutoff reads December 2011, and the facts' own "2011-12" alike;
+        # a fiscal year later the fact is "2012-13", a calendar year later the
+        # cutoff is "2012-12".
+        ("fiscal_year", "2011-12", "latest_not_after", "reads it otherwise"),
+        ("calendar_year", "2011-12", "latest_not_after", "reads it otherwise"),
+        # The parser reads "FY26" as the year 26.
+        ("", "FY26", "latest_not_after", "cannot move the period 'FY26'"),
+    ],
+)
+def test__given_a_period_with_no_spelling_a_year_later__then_a_restamp_refuses(
+    period_type, observation, policy, message
+) -> None:
+    reference = _typed_observation_reference(
+        period_type, observation, period_match_policy=policy
+    )
+    with pytest.raises(ValueError, match=message):
         restamp_reference_period(reference, 2026)
+    # At its own period it stands.
+    assert restamp_reference_period(reference, 2025) == reference
+
+
+def test__given_a_year_its_type_cannot_read__then_a_shift_refuses() -> None:
+    """A month type reads no bare year, so the year is not moved as one (the
+    fifth review of microcosm#1422)."""
+    assert _shift_period_years(2026, 1, declared_type="fiscal_year") == 2027
+    with pytest.raises(ValueError, match="cannot move the period 2026"):
+        _shift_period_years(2026, 1, declared_type="month")
