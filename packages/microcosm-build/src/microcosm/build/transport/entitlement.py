@@ -28,15 +28,23 @@ import hashlib
 import json
 from collections.abc import Mapping
 from dataclasses import dataclass
+from types import SimpleNamespace
 
+from microcosm.build.money_normalization import (
+    selected_money_factors,
+    validate_money_normalization,
+)
+from microcosm.build.reference_factors import validate_factor_context
 from microcosm.graph import ArtifactInput, ArtifactOutput, Graph, Node, SourceRef
 from microcosm.graph.canonical import canonical_json
 
 from .compose import (
+    GRAPH_RESOURCE,
     SKELETON_KERNELS,
     TransportExtension,
     TransportGraphConfig,
     _artifact_outputs,
+    _has_resource,
     _literal_data,
     _mapping,
     _node,
@@ -46,6 +54,7 @@ from .compose import (
     _sequence,
     transport_resource,
 )
+from .money_kernels import MONEY_NORMALIZE_REF
 from .takeup_kernels import (
     BANDS_TYPE,
     CELL_DIAGNOSTICS_TYPE,
@@ -53,7 +62,12 @@ from .takeup_kernels import (
     reporting_cell_declarations,
 )
 
-__all__ = ["ENTITLEMENT_RESOURCE", "entitlement_extension", "transport_extensions"]
+__all__ = [
+    "ENTITLEMENT_RESOURCE",
+    "entitlement_extension",
+    "money_node_factor_entries",
+    "transport_extensions",
+]
 
 ENTITLEMENT_RESOURCE = "entitlement_graph"
 _KERNELS = SKELETON_KERNELS | frozenset(
@@ -204,6 +218,79 @@ def _rows(spec):
     if not gaps:
         raise ValueError("An entitlement graph needs at least its baseline scenario.")
     return result, gaps
+
+
+def money_node_factor_entries(spec: Mapping) -> tuple[dict, ...]:
+    """Resolve each declared money node's factors through composition's resolvers.
+
+    Skeleton and entitlement rows select their own declaration, profile and
+    context before engine preparation or CREATE. Keep contexts separate even
+    when nodes select the same factor id. A spec without money nodes selects
+    no money factors. Caller extensions contain code rather than spec rows;
+    this walk does not cover them.
+    """
+    rows = []
+    if _has_resource(spec, GRAPH_RESOURCE):
+        rows.extend(
+            (row, None, False)
+            for row in transport_resource(spec, GRAPH_RESOURCE).get("nodes", ())
+            if isinstance(row, Mapping)
+        )
+    if _has_resource(spec, ENTITLEMENT_RESOURCE) and _has_resource(spec, "scenarios"):
+        rows.extend((row, scenario, True) for row, scenario in _rows(spec)[0])
+    config = SimpleNamespace(engine_refs={})
+    entries = []
+    for row, scenario, entitlement in rows:
+        if row.get("kernel") != MONEY_NORMALIZE_REF:
+            continue
+        documents = {}
+        for name in ("declaration", "profile_selection", "factor_context"):
+            try:
+                value = _mapping(row.get("params", {}), "node params").get(name)
+                if isinstance(value, Mapping) and {"binding", "prepared"} & set(value):
+                    raise ValueError(
+                        "Money parameters need data before engine preparation."
+                    )
+                value = (
+                    _parameter(spec, config, value, scenario)
+                    if entitlement
+                    else _param(spec, value, None)
+                )
+                if not isinstance(value, str):
+                    raise ValueError("The parameter must contain a JSON object string.")
+                document = json.loads(value)
+                if not isinstance(document, dict):
+                    raise ValueError("The parameter must contain a JSON object string.")
+                documents[name] = document
+            except (ValueError, TypeError, KeyError) as error:
+                raise ValueError(
+                    f"Money node {row.get('id')!r} {name}: {error}"
+                ) from error
+        try:
+            declaration = validate_money_normalization(documents["declaration"])
+        except (ValueError, TypeError, KeyError) as error:
+            raise ValueError(
+                f"Money node {row.get('id')!r} declaration: {error}"
+            ) from error
+        try:
+            _, factors = selected_money_factors(
+                declaration, documents["profile_selection"]
+            )
+        except (ValueError, TypeError, KeyError) as error:
+            raise ValueError(
+                f"Money node {row.get('id')!r} profile_selection: {error}"
+            ) from error
+        ids = sorted({value for value in factors.values() if value is not None})
+        if ids:
+            try:
+                entries.append(
+                    validate_factor_context(documents["factor_context"], ids)
+                )
+            except (ValueError, TypeError, KeyError) as error:
+                raise ValueError(
+                    f"Money node {row.get('id')!r} factor_context: {error}"
+                ) from error
+    return tuple(entries)
 
 
 def _require_matching_cell_targets(spec, contract):
