@@ -142,6 +142,12 @@ _STAGE_MODULES = {
 # Imported modules are not traversed by ``source_hash``. Bind relationship
 # helpers and the adapter's input-retention checks into every consuming stage.
 _STAGE_HELPER_MODULES = {
+    # The three FRS draw stages' receipts measure their take-up flags through
+    # frs_take_up's signal measurement and count support by the shared
+    # disclosure rules (microcosm#1095).
+    "frs_take_up": (receipt_counts,),
+    "frs_person_draws": (frs_take_up, receipt_counts),
+    "frs_household_draws": (frs_take_up, receipt_counts),
     "frs_hmrc_spine_leaves": (frs_hmrc_source,),
     # The annual income descriptors' receipt follows the shared disclosure rules
     # (microcosm#1164).
@@ -231,8 +237,9 @@ _STAGE_HELPER_MODULES = {
         receipt_counts,
     ),
     # The copies' childcare re-draw draws through frs_take_up's childcare
-    # helper and reads each household's clone path.
-    "childcare_copy_take_up": (frs_take_up, household_lineage),
+    # helper, reads each household's clone path, and measures its flags for
+    # the stage-time signal gate by the shared disclosure rules (microcosm#1095).
+    "childcare_copy_take_up": (frs_take_up, household_lineage, receipt_counts),
 }
 
 _COMPUTE = Capabilities(

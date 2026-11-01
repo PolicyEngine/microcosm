@@ -17,7 +17,7 @@ unweighted and weighted, over:
 
 and each DfE age's under-2 usage share over the children of that age in units that
 claim the working-parent hours. Every cell names its carriers as distinct source
-households and reads "<10" in place of its shares when fewer than 10 carry it
+households and reads "<3" in place of its shares when fewer than 3 carry it
 (UKDS disclosure control). The receipt belongs in the run tree; it is never
 written into the take-up contract, a hashed build input.
 
@@ -45,12 +45,13 @@ from microcosm.build.uk_runtime.frs_take_up import (
     under_two_children,
     universal_childcare_marginal_rate,
 )
+from microcosm.build.uk_runtime.receipt_counts import UK_DISCLOSURE_FLOOR, UK_WITHHELD
 from microcosm.build.uk_runtime.take_up_contract import (
     UKTakeUpContract,
     load_uk_take_up_contract,
 )
 
-MINIMUM_CARRIERS = 10
+MINIMUM_CARRIERS = UK_DISCLOSURE_FLOOR
 HIGH_PAY_THRESHOLD = 100_000.0
 YOUNG_CHILD_AGE = 5
 _PAY_COLUMNS = ("employment_income", "self_employment_income")
@@ -70,7 +71,7 @@ def _cell(
 ) -> Mapping[str, object]:
     carriers = int(np.unique(sources[mask]).size)
     if carriers < MINIMUM_CARRIERS:
-        return {"source_households": "<10"}
+        return {"source_households": UK_WITHHELD}
     chosen = np.asarray(values, dtype=float)[mask]
     return {
         "source_households": carriers,

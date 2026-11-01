@@ -451,13 +451,13 @@ _UK_GATE_BATTERY_SHIPPABLE_STATUSES = frozenset({"passed", "not_applicable"})
 # fingerprint derives from the manifest digest. Editing the spec moves all
 # three here in the same reviewed change.
 _UK_GATE_BATTERY_POLICY_SHA256 = (
-    "29c866ba365999cfd39a5ddceb94e159396759e575a8ac99de619e3f03525653"
+    "1d7886509433be8de7e0b3be837822590d7920baddf4458fd365b4ca53e799ca"
 )
 _UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "a9e1187a619794b9e159b209a6f6476a24260791df6bb14ae72f9f9bfcaa7514"
+    "4cf11e30ceb4ccc7ffe26b14b11b3e119016b0520ca151878da7ce2a97c00ec3"
 )
 _UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "6bd701aa0257a7faad66f5ee8f80f8e4afb664298b70c7093e5b0e220677049d"
+    "17ae80fcec2ec5f86aabc3c0815ec0e390e6278ca82f0bb845173238089dbf94"
 )
 #: Spec entry id -> the legacy gate name whose observable detail checks
 #: apply unchanged (the battery re-keys the report by entry id; the gate
@@ -561,6 +561,10 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
     "uk_stage_frs_person_draws_apprentices": ("stage_health", "transferred"),
     "uk_stage_isa_subscriptions_invariants": ("stage_health", "transferred"),
     "uk_stage_isa_subscriptions": ("stage_health", "transferred"),
+    "uk_stage_frs_take_up_signal": ("stage_health", "assembled"),
+    "uk_stage_frs_person_draws_take_up_signal": ("stage_health", "assembled"),
+    "uk_stage_frs_household_draws_take_up_signal": ("stage_health", "assembled"),
+    "uk_stage_childcare_copy_take_up_signal": ("stage_health", "transferred"),
     "uk_stage_age_tail_targets": ("stage_health", "assembled"),
     "uk_stage_frs_relationships_composition": ("stage_health", "assembled"),
     "uk_ledger_compile_parity_local_incumbent_2025": (
@@ -670,6 +674,10 @@ _UK_GATE_BATTERY_EVIDENCE_IDS = frozenset(
         "uk_stage_frs_person_draws_apprentices",
         "uk_stage_isa_subscriptions_invariants",
         "uk_stage_isa_subscriptions",
+        "uk_stage_frs_take_up_signal",
+        "uk_stage_frs_person_draws_take_up_signal",
+        "uk_stage_frs_household_draws_take_up_signal",
+        "uk_stage_childcare_copy_take_up_signal",
         "uk_stage_age_tail_targets",
         "uk_stage_frs_relationships_composition",
         "uk_cgt_projection_entrants",
@@ -796,9 +804,9 @@ _UK_DENSE_GATE_ENTRY_IDS = frozenset(
 _UK_DENSE_RELEASE_BLOCKING_IDS = _UK_DENSE_GATE_ENTRY_IDS
 _UK_DENSE_GATE_PHASES = ("terminal",)
 _UK_DENSE_GATE_DIGESTS = {
-    "gates_manifest_sha256": "c15b8de06a90598732c03091ee942dfa8a4eb9e41dc1e9ea3f2bd7986e3e7e99",
+    "gates_manifest_sha256": "e5bc33678ce84ed255ba118016f99fb61e5260e00347aa78f616bf53d04de309",
     "policy_sha256": "7b97d72a15756b983ecf32a7b4155e0558533044408eb02e6a2d8be52ebe55d4",
-    "spec_fingerprint": "cc56158ad88d9c92d4b98392a9e6eb7199b69458fbf0abbe7c9e5648c4bb6ed5",
+    "spec_fingerprint": "b4d77cdd8c75dcb67e3533040f82273944e45432d9605595cdb14bf58658c955",
 }
 _UK_DENSE_SOURCE_COVERAGE_KEYS = (
     "spine",
@@ -891,6 +899,10 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
             "uk_stage_frs_hmrc_spine_leaves_signal",
             "uk_stage_frs_annual_income_spells",
             "uk_stage_frs_person_draws_apprentices",
+            "uk_stage_frs_take_up_signal",
+            "uk_stage_frs_person_draws_take_up_signal",
+            "uk_stage_frs_household_draws_take_up_signal",
+            "uk_stage_childcare_copy_take_up_signal",
             "uk_stage_frs_relationships_composition",
             "uk_stage_high_value_home_support_mass",
             "uk_stage_hmrc_cgt_asset_type_spine_summary",
@@ -964,26 +976,26 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
 _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     "spine": {
         "gates_manifest_sha256": (
-            "06f62df651d151e586d6102ed2110b3b2348bd881826d4d6d66621e4ab8abb1f"
+            "6c662ce80961f26b8aed76d9373177822353a8634162f7daf85277e355a1460a"
         ),
         "policy_sha256": (
-            "390a79297f7817def126c7805f492328c447e6a0d6d376dc8b946b98b9f96725"
+            "1ed89b85419ef5b97e871e8211b8cd36e0b049ecbec2c666f3b8a0734e121601"
         ),
     },
     "calibration_seam": {
         "gates_manifest_sha256": (
-            "fc75904db7b9574a65ec38b8542f151702f110dd09a99b823d59e86aa47f6d9d"
+            "49549ca969fda237e1782cec7882913a183529725008c37b54ba18a3d49fb4fe"
         ),
         "policy_sha256": (
-            "322c96ce9632577262861012d10cbe0bb1924f68e2595042e75ac9af808c5143"
+            "e420d4b55a803255886a32e8397a8e7f2671c68ac7e085d281b6cbf8f14008b6"
         ),
     },
     "release_cut": {
         "gates_manifest_sha256": (
-            "c44ce8629cfc9a48e6aaeb9d77012c4fad382b8ef0e232476b9bc8c8e83dbefc"
+            "3bf99e5bbfb9f7fc45545ced42f24b4e77c20691f8e7eb22d5adf210715e86d3"
         ),
         "policy_sha256": (
-            "b335bef4e20b9803b60e728bfb2f045d282d16309429b00d72bf86dd4f4bafd8"
+            "ef203e6f80fa406a78bf93d9fa8f96c2b040c5dab351ec34afc170914cef5f91"
         ),
     },
 }
@@ -6531,7 +6543,7 @@ def _check_local_area_calibration_diagnostics(
             )
         else:
             seen_names.add(name)
-        # A UK row resting on fewer than ten source households keeps its place
+        # A UK row resting on one or two source households keeps its place
         # without its model figures (microcosm#1262): its estimates are null,
         # and the payload's withheld block counts it.
         metadata = row.get("metadata")

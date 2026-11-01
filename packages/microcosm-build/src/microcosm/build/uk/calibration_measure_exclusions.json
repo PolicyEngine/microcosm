@@ -73,10 +73,10 @@
         "max_dropped_published_share": 0.1
       }
     ],
-    "reason": "Zero-support floor: a row in one of the floor's scopes (the UC payment-distribution and benefit-cap amount bands, the HMRC SPI income bands by total income and SPI Table 3.10's self-employment income bands, and the band-H council-tax rows by English region) whose compiled matrix row reaches no source household (household_source_id) with a positive prior weight cannot be fitted by any weights (the solver's initialiser refuses a nonzero target with no support), so it is dropped from the solve, not pooled. A row that some households carry stays bound however few they are; when fewer than 10 distinct source households carry it, its model figures are withheld from every written surface (the UK Data Service working floor, CD171 section 5.2.1). Each scope holds one unit, because its share ceiling sums published values. The floor's receipt reports each target's dropped published total and each scope's dropped share, and the run refuses when a scope's drops pass either of its ceilings or when a per-row exclusion names a row the floor drops.",
+    "reason": "Zero-support floor: a row in one of the floor's scopes (the UC payment-distribution and benefit-cap amount bands, the HMRC SPI income bands by total income and SPI Table 3.10's self-employment income bands, and the band-H council-tax rows by English region) whose compiled matrix row reaches no source household (household_source_id) with a positive prior weight cannot be fitted by any weights (the solver's initialiser refuses a nonzero target with no support), so it is dropped from the solve, not pooled. A row that some households carry stays bound however few they are; when one or two distinct source households carry it, its model figures are withheld from every written surface (CD171's absolute floor of three, receipt_counts.UK_DISCLOSURE_FLOOR, to which María's ruling of 2026-10-29 moved the floor of ten). Each scope holds one unit, because its share ceiling sums published values. The floor's receipt reports each target's dropped published total and each scope's dropped share, and the run refuses when a scope's drops pass either of its ceilings or when a per-row exclusion names a row the floor drops.",
     "tracking": "microcosm#1095",
     "approved_by": "juaristi22",
-    "adjudication": "microcosm#1095 U3, ruled 2026-10-16 with the fifth ports PR (floor 10) and revised 2026-10-21 with #1333: a cell that rests on fewer than 10 records is no reason to leave a row out, only a measured distortion of the calibration is. The floor drops only rows no household carries, the benefit-cap amount bands join its scope and their per-row entries retire, and the figures of rows under 10 source households are withheld, as the BRMA rows' are. The thirteen entries it retired (the eleven benefit-cap amount bands and the two HMRC £500k to £1m cells) and the A/B that retired them: experiments/1095-uk-thin-row-binding-receipts.md. Extended on 2026-10-22 (María's ruling on the next policyengine-uk bump) to the HMRC SPI income-band families and the band-H council-tax rows by region, in scopes of one unit each with their own ceilings. On #1333's policyengine-uk 2.145.0 spine every HMRC £1m-and-over cell and every band-H region cell has carriers. The three band-H region entries retire and their rows bind, with their figures withheld where fewer than 10 source households carry them; the ten HMRC £1m-and-over cells, bound on arm 1, distorted their neighbours and stay held on that measurement, so the HMRC scopes cover the bands below them. Extended on 2026-10-29 in microcosm#1420, in answer to the independent review's finding 7 and pending María's confirmation, to the SPI families microcosm#1418 binds, Table 3.7's other income by total-income band and Table 3.10's self-employment bands from GBP 1 to GBP 10,000: a row of theirs that no household carries is dropped and receipted as its siblings' rows are, not refused. The ceilings are unchanged, so the HMRC amounts scope's 2-row cap, signed for seven families, now covers nine, and the counts scope's, signed for seven, now covers eight; María confirms or re-sizes them (the re-reviews of microcosm#1420, H and 4).",
+    "adjudication": "microcosm#1095 U3, ruled 2026-10-16 with the fifth ports PR (floor 10) and revised 2026-10-21 with #1333: a cell that rests on fewer than 10 records is no reason to leave a row out, only a measured distortion of the calibration is. The floor drops only rows no household carries, the benefit-cap amount bands join its scope and their per-row entries retire, and the figures of rows under 10 source households are withheld, as the BRMA rows' are (under three since María's ruling of 2026-10-29). The thirteen entries it retired (the eleven benefit-cap amount bands and the two HMRC £500k to £1m cells) and the A/B that retired them: experiments/1095-uk-thin-row-binding-receipts.md. Extended on 2026-10-22 (María's ruling on the next policyengine-uk bump) to the HMRC SPI income-band families and the band-H council-tax rows by region, in scopes of one unit each with their own ceilings. On #1333's policyengine-uk 2.145.0 spine every HMRC £1m-and-over cell and every band-H region cell has carriers. The three band-H region entries retire and their rows bind, with their figures withheld where fewer than 10 source households carry them (fewer than three since María's ruling of 2026-10-29, receipt_counts.UK_DISCLOSURE_FLOOR); the ten HMRC £1m-and-over cells, bound on arm 1, distorted their neighbours and stay held on that measurement, so the HMRC scopes cover the bands below them. Extended on 2026-10-29 in microcosm#1420, in answer to the independent review's finding 7 and pending María's confirmation, to the SPI families microcosm#1418 binds, Table 3.7's other income by total-income band and Table 3.10's self-employment bands from GBP 1 to GBP 10,000: a row of theirs that no household carries is dropped and receipted as its siblings' rows are, not refused. The ceilings are unchanged, so the HMRC amounts scope's 2-row cap, signed for seven families, now covers nine, and the counts scope's, signed for seven, now covers eight; María confirms or re-sizes them (the re-reviews of microcosm#1420, H and 4).",
     "approved_on": "2026-10-22",
     "expires_on": "2027-01-08"
   },
@@ -397,6 +397,33 @@
       "expires_on": "2027-01-25"
     },
     {
+      "name": "obr.council_tax_england",
+      "reason": "Diagnostic by design, not a weight question: OBR's March 2026 expenditure table 4.1 gives England's council tax receipts as one of the three nation rows whose sum, row 15, obr.council_tax binds over Great Britain's households, scaled to main residences (D14f); the nation row is scaled by the same share, so the three sum to the bound row. Binding the nation row as well would only repeat that total's information by nation. Since this PR the row compiles, pinned to the UK as OBR's table is UK-wide (Chronicle stamps it K02000001, and the substring rule had pinned it to England, where no fact sits), and it is measured on every evaluation as evidence for the CT-C comparison of council tax liability with the stored bills.",
+      "tracking": "microcosm#1095",
+      "approved_by": "juaristi22",
+      "adjudication": "María's ruling of 2026-10-29 on the plan for the next #1095 PR (microcosm#1095, item D14e): pin the three OBR council tax nation rows to the UK and hold them as measured diagnostics.",
+      "approved_on": "2026-10-29",
+      "expires_on": "2027-01-29"
+    },
+    {
+      "name": "obr.council_tax_scotland",
+      "reason": "Diagnostic by design, not a weight question: OBR's March 2026 expenditure table 4.1 gives Scotland's council tax receipts as one of the three nation rows whose sum, row 15, obr.council_tax binds over Great Britain's households, scaled to main residences (D14f); the nation row is scaled by the same share, so the three sum to the bound row. Binding the nation row as well would only repeat that total's information by nation. Since this PR the row compiles, pinned to the UK as OBR's table is UK-wide (Chronicle stamps it K02000001, and the substring rule had pinned it to Scotland, where no fact sits), and it is measured on every evaluation as evidence for the CT-C comparison of council tax liability with the stored bills.",
+      "tracking": "microcosm#1095",
+      "approved_by": "juaristi22",
+      "adjudication": "María's ruling of 2026-10-29 on the plan for the next #1095 PR (microcosm#1095, item D14e): pin the three OBR council tax nation rows to the UK and hold them as measured diagnostics.",
+      "approved_on": "2026-10-29",
+      "expires_on": "2027-01-29"
+    },
+    {
+      "name": "obr.council_tax_wales",
+      "reason": "Diagnostic by design, not a weight question: OBR's March 2026 expenditure table 4.1 gives Wales's council tax receipts as one of the three nation rows whose sum, row 15, obr.council_tax binds over Great Britain's households, scaled to main residences (D14f); the nation row is scaled by the same share, so the three sum to the bound row. Binding the nation row as well would only repeat that total's information by nation. Since this PR the row compiles, pinned to the UK as OBR's table is UK-wide (Chronicle stamps it K02000001, and the substring rule had pinned it to Wales, where no fact sits), and it is measured on every evaluation as evidence for the CT-C comparison of council tax liability with the stored bills.",
+      "tracking": "microcosm#1095",
+      "approved_by": "juaristi22",
+      "adjudication": "María's ruling of 2026-10-29 on the plan for the next #1095 PR (microcosm#1095, item D14e): pin the three OBR council tax nation rows to the UK and hold them as measured diagnostics.",
+      "approved_on": "2026-10-29",
+      "expires_on": "2027-01-29"
+    },
+    {
       "name": "obr.fuel_duties_cars",
       "reason": "Scope and conversion residual once the stage sets household road fuel: OBR's cars receipts (GBP 14.4bn for FY2024-25, the April 2024 vehicle-type split) include car fuel paid by businesses, and ONS Consumer Trends 07.2.2 for CY2025 at DESNZ 2025 pump prices converts to about GBP 13.1bn of duty on the 30 September 2026 edition the feed carries, 9 percent below the OBR cars line (GBP 13.5bn and 7 percent on the June edition). With petrol plus diesel levelled to ONS 07.2.2 by the lcfs_consumption stage, the engine's 2025 fuel_duty read -9.9 percent against the row on its RAC price divisors (-8.1 percent on DESNZ's; policyengine-uk#2169 A), measured with the stage levelled to the June edition's 07.2.2 (the September edition's 2024 figure is 4.2 percent lower, GBP 35.460bn against GBP 37.025bn, so the next national re-measures it; Vahid's review of microcosm#1420). Binding it would pull weight toward fuel buyers to cover business use the household frame does not hold. Before the level step it read -34.5 percent at design weights and -17.7 percent calibrated on microcosm#1121's head, where the weights raised petrol 21 and diesel 34 percent from design to final. On the 2026-09-30 national problem the calibration with the four consumption-tax rows bound left petrol 18 and diesel 36 percent above a re-solve with the four consumption-tax rows masked together, in which the other 1,086 rows fitted no worse. Household road fuel is bound as ons.household_road_fuel_expenditure. Measured on every evaluation with tools/diagnose_uk_consumption_taxes.py; rebind if Microcosm comes to model business use of cars, which microcosm#1095 tracks.",
       "tracking": "microcosm#1095",
@@ -431,6 +458,24 @@
       "adjudication": "María's ruling of 2026-10-20 on the pre-Budget PR (microcosm#1278): hold the row out only if a national arm with it held out, run beside the calibration-period fix's arm (microcosm#1324), passes the gates and keeps the share of rows within 10 percent; otherwise keep it bound and label the distributional tables. The expiry, 2026-12-11, matches the uprating holds' renewal, after the Budget. Re-measured on 2026-10-24 on arm 2c of the policyengine-uk 2.151.0 bump: bound on table 7271 the row fails the weight-ratio gate. Her ruling of 2026-10-25 closed the basis question on table 7271 and kept the row held.",
       "approved_on": "2026-10-20",
       "expires_on": "2026-12-11"
+    },
+    {
+      "name": "slc.repayments.scotland_total",
+      "reason": "Model basis, not a weight question: Scotland's borrowers repay on Scotland's own plan thresholds (Plan 4 in Scotland, Plan 1 in Northern Ireland), but this build does not impute those plans for them (plan_4_imputation is False, and policyengine-uk#2636, the plan relabel issue, closed as not planned), so the engine reads English thresholds. Binding the row would reweight borrowers to cover a threshold gap. Measured on every evaluation as a diagnostic; rebind once the plans are modelled.",
+      "tracking": "microcosm#1095",
+      "approved_by": "juaristi22",
+      "adjudication": "María's ruling of 2026-10-29 on the plan for the next #1095 PR (microcosm#1095, item R4): bind Wales's SLC repayments, and hold Scotland's and Northern Ireland's until their plan thresholds are modelled for their borrowers.",
+      "approved_on": "2026-10-29",
+      "expires_on": "2027-01-29"
+    },
+    {
+      "name": "slc.repayments.northern_ireland_total",
+      "reason": "Model basis, not a weight question: Northern Ireland's borrowers repay on Northern Ireland's own plan thresholds (Plan 4 in Scotland, Plan 1 in Northern Ireland), but this build does not impute those plans for them (plan_4_imputation is False, and policyengine-uk#2636, the plan relabel issue, closed as not planned), so the engine reads English thresholds. Binding the row would reweight borrowers to cover a threshold gap. Measured on every evaluation as a diagnostic; rebind once the plans are modelled.",
+      "tracking": "microcosm#1095",
+      "approved_by": "juaristi22",
+      "adjudication": "María's ruling of 2026-10-29 on the plan for the next #1095 PR (microcosm#1095, item R4): bind Wales's SLC repayments, and hold Scotland's and Northern Ireland's until their plan thresholds are modelled for their borrowers.",
+      "approved_on": "2026-10-29",
+      "expires_on": "2027-01-29"
     }
   ]
 }

@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 
 import numpy as np
 import pandas as pd
@@ -11,6 +12,10 @@ from microcosm.build.source_manifest import SourceStageSpec
 from microcosm.build.stochastic_assignment import (
     assign_binary_from_rate,
     stable_identity_uniforms,
+)
+from microcosm.build.uk_runtime.frs_take_up import (
+    take_up_signal_outputs,
+    uk_take_up_signal_receipt,
 )
 from microcosm.build.uk_runtime.national_frame import (
     uk_household_weight_kind,
@@ -38,13 +43,36 @@ class UKFRSHouseholdDrawsStageTransform:
 
     contract: UKTakeUpContract
     stage: SourceStageSpec
+    last_receipt: Mapping[str, object] | None = field(default=None, init=False)
 
     def __call__(self, frame: Frame) -> Frame:
-        return add_frs_household_draws(frame, contract=self.contract)
+        result = add_frs_household_draws(frame, contract=self.contract)
+        # The four flags at the stage's weights, for the stage-time take-up
+        # signal gate (microcosm#1095).
+        object.__setattr__(
+            self,
+            "last_receipt",
+            uk_take_up_signal_receipt(
+                result,
+                outputs=take_up_signal_outputs(FRS_HOUSEHOLD_DRAW_OUTPUT_COLUMNS),
+                contract=self.contract,
+            ),
+        )
+        return result
 
     @staticmethod
     def output_columns() -> tuple[str, ...]:
         return FRS_HOUSEHOLD_DRAW_OUTPUT_COLUMNS
+
+    def checkpoint_metadata(self) -> dict[str, object]:
+        if self.last_receipt is None:
+            raise RuntimeError("checkpoint metadata requires a completed stage run.")
+        return {
+            "evidence": {
+                "stage": "frs_household_draws",
+                "take_up_signal": dict(self.last_receipt),
+            }
+        }
 
 
 def add_frs_household_draws(frame: Frame, *, contract: UKTakeUpContract) -> Frame:

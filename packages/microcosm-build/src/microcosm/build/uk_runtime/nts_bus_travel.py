@@ -59,6 +59,7 @@ from microcosm.build.uk_runtime.national_frame import (
     uk_time_period,
     validate_uk_national_frame,
 )
+from microcosm.build.uk_runtime.receipt_counts import UK_DISCLOSURE_FLOOR, UK_WITHHELD
 from microcosm.build.uk_runtime.support_clip import (
     UKSupportClipReceipt,
     support_clip_to_donor_with_receipt,
@@ -193,13 +194,14 @@ RESIDENCE_GROUPS: tuple[str, str] = (LONDON_GROUP, REST_OF_ENGLAND_GROUP)
 FREQUENCY_SOURCE_INTERVIEW = "interview_band"
 FREQUENCY_SOURCE_PUBLISHED_SHARES = "published_shares"
 #: The disclosure floor of the fare-mix receipt lines (UK Data Service End User
-#: Licence CD137 clause 8 and CD171 section 5.2.1, whose working floor is 10
-#: cases): a line, and its complement, must rest on at least this many
-#: unweighted boardings and this many distinct households, because one
-#: respondent makes many boardings; otherwise it reads ``"<10"``.
-UK_NTS_RECEIPT_MINIMUM_BOARDINGS = 10
-UK_NTS_RECEIPT_MINIMUM_HOUSEHOLDS = 10
-UK_NTS_RECEIPT_SUPPRESSED = "<10"
+#: Licence CD137 clause 8 and CD171 section 5.2.1; the build's floor of three
+#: cases, ``receipt_counts.UK_DISCLOSURE_FLOOR``): a line, and its complement,
+#: must rest on at least this many unweighted boardings and this many distinct
+#: households, because one respondent makes many boardings; otherwise it reads
+#: ``"<3"``.
+UK_NTS_RECEIPT_MINIMUM_BOARDINGS = UK_DISCLOSURE_FLOOR
+UK_NTS_RECEIPT_MINIMUM_HOUSEHOLDS = UK_DISCLOSURE_FLOOR
+UK_NTS_RECEIPT_SUPPRESSED = UK_WITHHELD
 
 
 class NTSBusTravelError(ValueError):
@@ -963,7 +965,7 @@ def _fare_mix_receipt(
     the journey), weighted as the boarding classes are. Before the cap: the
     share paid above the cap, by more than the tolerance, and their mean fare,
     at that year's prices. Under the cap: the share paid at the cap, within
-    the tolerance. A line reads ``"<10"`` unless it and its complement each
+    the tolerance. A line reads ``"<3"`` unless it and its complement each
     rest on ``UK_NTS_RECEIPT_MINIMUM_BOARDINGS`` unweighted boardings and
     ``UK_NTS_RECEIPT_MINIMUM_HOUSEHOLDS`` distinct households. Shares are
     rounded to two decimals and fares to the penny; no minimum, maximum or

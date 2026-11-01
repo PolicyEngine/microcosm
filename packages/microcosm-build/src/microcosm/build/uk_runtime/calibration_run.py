@@ -140,6 +140,12 @@ UK_SPINE_GATE_SCOPE = (
     "uk_stage_property_purchases_fit",
     "uk_stage_uc_legacy_closure_take_up_contract",
     "uk_stage_frs_person_draws_apprentices",
+    # The take-up flags at their drawing stages, before calibration (María's
+    # ruling of 2026-10-29, microcosm#1095).
+    "uk_stage_frs_take_up_signal",
+    "uk_stage_frs_person_draws_take_up_signal",
+    "uk_stage_frs_household_draws_take_up_signal",
+    "uk_stage_childcare_copy_take_up_signal",
     "uk_stage_isa_subscriptions_invariants",
     "uk_stage_isa_subscriptions",
     # Weight-independent like the BRMA enum below, and its column exists from
@@ -240,8 +246,8 @@ def _scope_exclusions() -> dict[str, str]:
         elif gate_id in local:
             reason = (
                 "local-candidate gate; owned by the rowwise candidate's "
-                "scoped battery and excluded from national certification "
-                "until microcosm#146."
+                "scoped battery and certified on the local line, not the "
+                "national one (microcosm#146 shipped the local variant)."
             )
         elif gate_id in UK_LOCAL_DIAGNOSTIC_GATE_SCOPE:
             reason = (

@@ -26,7 +26,11 @@ from microcosm.build.target_reference_authoring import (
 from microcosm.build.uk_runtime.high_value_homes import (
     load_uk_high_value_home_stock_facts,
 )
-from microcosm.build.uk_runtime.ledger_targets import UK_UPRATING_APPLIERS
+from microcosm.build.uk_runtime.ledger_targets import (
+    UK_OBSERVATION_PERIOD_BASE,
+    UK_TARGET_REFERENCE_PERIOD,
+    UK_UPRATING_APPLIERS,
+)
 from microcosm.build.uk_runtime.uc_source_periods import (
     SOURCE_MONTH_FAMILIES,
     uc_source_month_metadata,
@@ -144,6 +148,7 @@ def main() -> None:
 
     config = TargetReferenceAuthoringConfig(
         target_period=args.period,
+        observation_period_base=UK_OBSERVATION_PERIOD_BASE,
         geography_pins=_geography_pins(contract),
         geography_fanout_by_target_id=_geography_fanout(contract),
         geography_fanout_metadata=_geography_fanout_metadata,
@@ -191,7 +196,7 @@ def _parser() -> argparse.ArgumentParser:
         "--source-fact-feed",
         help="Stable display name recorded in the generated membership report.",
     )
-    parser.add_argument("--period", type=int, default=2025)
+    parser.add_argument("--period", type=int, default=UK_TARGET_REFERENCE_PERIOD)
     parser.add_argument(
         "--derived-facts",
         type=Path,
@@ -517,8 +522,9 @@ TARGET_PREFIX_GEOGRAPHY_PINS: tuple[tuple[str, str], ...] = (
     # construction (maintenance_loan_in_england_system,
     # parents_learning_allowance_eligible and adult_dependants_grant_eligible
     # all require country == ENGLAND). slc.repayments.* stays with the
-    # substring rule: its england_* ids name their nation, and devolved_total
-    # needs a per-nation redesign before it can activate.
+    # substring rule: its england_* ids name their nation, and the Welsh,
+    # Scottish and Northern Irish rows declare their nation's geography in
+    # their selectors (microcosm#1095 R4).
     ("slc.support.", "england"),
     ("dfe.", "england"),
     # ORR rail industry finance is Great Britain (K03000001): NI Railways sits
@@ -571,6 +577,13 @@ TARGET_ID_GEOGRAPHY_PINS: Mapping[str, str] = {
     # domestic_rates is zero outside Northern Ireland, so the UK total is
     # Northern Ireland's (microcosm#1095).
     "obr.domestic_rates": "uk",
+    # Table 4.1's England, Scotland and Wales council tax rows are stamped
+    # K02000001 too; the substring rule pinned them to their nations, where
+    # no fact sits. Each binding scopes the model column to its nation, and
+    # the three rows are held as measured diagnostics (microcosm#1095 D14e).
+    "obr.council_tax_england": "uk",
+    "obr.council_tax_scotland": "uk",
+    "obr.council_tax_wales": "uk",
     # OBR table 4.9's DWP lines carry the geography DWP counts them over
     # (PolicyEngine/chronicle#357 item 4, from DWP's benefit expenditure and
     # caseload tables, Spring 2026): Great Britain for these eight, England and
@@ -592,6 +605,18 @@ TARGET_ID_GEOGRAPHY_PINS: Mapping[str, str] = {
 
 def _geography_id_for_target(target: Mapping[str, Any]) -> str:
     target_id = str(target["target_id"]).lower()
+    # A geography the selector declares wins over every inferred pin
+    # (microcosm#1095 R8): a wrong inference otherwise reads as "no fact".
+    declared = (target.get("ledger_selector") or {}).get("geography_id")
+    if declared is not None:
+        pinned = TARGET_ID_GEOGRAPHY_PINS.get(target_id)
+        if pinned is not None and UK_GEOGRAPHY_IDS[pinned] != str(declared):
+            raise ValueError(
+                f"{target_id}: its selector declares geography_id "
+                f"{declared!r}, but TARGET_ID_GEOGRAPHY_PINS pins "
+                f"{UK_GEOGRAPHY_IDS[pinned]!r}; keep one declaration."
+            )
+        return str(declared)
     if target_id in TARGET_ID_GEOGRAPHY_PINS:
         return UK_GEOGRAPHY_IDS[TARGET_ID_GEOGRAPHY_PINS[target_id]]
     if target_id.startswith("dft."):

@@ -1247,7 +1247,7 @@ def weighted_top_shares(
     households lead a larger one's. The floors count the distinct sources
     that spend anything (``sources``, one per row when omitted: a frame
     stacks copies of one source household), as every receipt count is (UKDS
-    disclosure control), and a share is ``"<10"`` when one to nine of them:
+    disclosure control), and a share is ``"<3"`` when one or two of them:
     - sit in its top group;
     - sit outside it, since the receipt's total less the top group's spend
       gives back theirs;
@@ -3912,7 +3912,7 @@ def fuel_flag_evidence(
 
     The shares on one side difference into the households with and without
     a vehicle, crossed with fuel bought or not. So every share on that side
-    is "<10" when any of those groups that is not empty rests on one to nine
+    is "<3" when any of those groups that is not empty rests on one or two
     distinct positive-weight sources: the frame's source households
     (``sources``, not the copies it stacks of one), the donor's diaries.
     """
@@ -4077,7 +4077,7 @@ def donor_excise_shares(
     donors as a band, how many donors the clip at one held, and, where the
     denominator is lines under a published total, the weighted share of
     donors whose published total sits beside those lines by more than its
-    rounding ("<10" when one to nine donors do): a donor stage receipt is
+    rounding ("<3" when one or two donors do): a donor stage receipt is
     UKDS output (CD171 §5.2.1), so it gives no donor value and no small
     count. A share of the stakes an earlier share gives has no published
     total; its denominator is the stake lines it splits.
@@ -4360,8 +4360,8 @@ def donor_energy_split_receipt(household: pd.DataFrame) -> dict[str, Any]:
     (``clipping_over_fuel_light_and_power``) and what the parts, unclipped,
     differ from p537 by (``unclipped_over_fuel_light_and_power``), with the
     weighted share of donors whose unclipped parts differ from their p537 by
-    more than a penny and by more than 50p a week (``"<10"`` when fewer than
-    ten donors do). Totals over every donor, at diary prices, and the account
+    more than a penny and by more than 50p a week (``"<3"`` when fewer than
+    three donors do). Totals over every donor, at diary prices, and the account
     identity shares the split checked, floored to two decimals.
     """
 
