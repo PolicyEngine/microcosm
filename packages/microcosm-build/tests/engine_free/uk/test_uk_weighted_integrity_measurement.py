@@ -136,7 +136,7 @@ def test_minimum_count_below_the_standard_floor_is_refused(
 
 
 def test_default_minimum_count_follows_the_secondary_disclosure_advice() -> None:
-    assert MEASUREMENT.DEFAULT_SDC_MINIMUM_COUNT == 10
+    assert MEASUREMENT.DEFAULT_SDC_MINIMUM_COUNT == 3
     assert all(k >= 10 for k in MEASUREMENT.DEFAULT_TOP_K_GRID)
 
 

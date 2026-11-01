@@ -52,6 +52,7 @@ from microcosm.build.stochastic_assignment import stable_identity_uniforms
 from microcosm.build.uk_runtime.energy_pricing import _connect_walk
 from microcosm.build.uk_runtime.ledger_fact_vendoring import vendored_rows
 from microcosm.build.uk_runtime.receipt_counts import (
+    UK_DISCLOSURE_FLOOR,
     distinct_count,
     extreme_count,
     rounded_count,
@@ -83,7 +84,7 @@ UK_GAMBLING_PROPENSITY_SETTINGS = (
 )
 #: The fewest distinct source households a receipt cell may rest on (CD171
 #: section 5.2.1).
-SMALL_CELL = 10
+SMALL_CELL = UK_DISCLOSURE_FLOOR
 #: The fewest donor households on each side of a key the propensity fit
 #: needs: its held-out validation split is stratified by the key.
 _FIT_MINIMUM = 2
@@ -631,7 +632,7 @@ def top_up_gambling_participation(
     The receipt gives, per key, the targets and the shares before and after,
     nationally and per stratum, the share of the key's stakes each class
     carries and the fits' donor support as a band: shares only, and a
-    group's figures only where every cell under them rests on ten or more
+    group's figures only where every cell under them rests on three or more
     source households.
     """
 
@@ -666,7 +667,7 @@ def top_up_gambling_participation(
         drawn = np.asarray(keys[key], dtype=float)
         donor_stakes = np.asarray(donor_keys[key], dtype=float)
         played = donor_stakes > 0
-        # Fewer than ten donor households on a side only flags: the receipt
+        # Fewer than three donor households on a side only flags: the receipt
         # bands the fits' donor support and withholds what rests on them, and
         # a small-cell rule never stops a build (María's ruling of 2026-10-26).
         # The fit itself needs two on each side.

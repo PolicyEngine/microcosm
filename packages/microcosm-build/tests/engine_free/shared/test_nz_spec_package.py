@@ -1140,7 +1140,7 @@ def _as_ratio_numerator(
 
     operands = (
         {"role": "base"},
-        {"role": "numerator", **numerator},
+        {"role": "numerator", "period_type": "", "period_value": "", **numerator},
         {"role": "denominator", "source_name": "unrelated_source"},
     )
     return dataclasses.replace(
@@ -1267,7 +1267,7 @@ class TestReferenceSets:
                 compile_ledger_target_references([], [reference], country="nz")
         assert (
             sum(row.metadata["activation_status"] == "active" for row in references)
-            == {"calibration": 64, "precal": 67, "holdout": 0}[reference_set]
+            == {"calibration": 77, "precal": 80, "holdout": 2}[reference_set]
         )
 
     def test_pre_calibration_rows_are_not_weight_calibration_targets(self) -> None:
@@ -1308,7 +1308,7 @@ class TestReferenceSets:
     def test_holdout_set_is_validation_only(self) -> None:
         references = _references("holdout")
         assert {reference.name for reference in references} == {
-            "msd_accommodation_supplement_recipients_by_region",
+            "msd_accommodation_supplement_recipients_national",
             "msd_annual_report_accommodation_assistance_expenditure",
             "treasury_an24_01_accommodation_supplement_fiscal_total",
             "ird_wff_recipient_families",
@@ -1377,6 +1377,26 @@ class TestReferenceSets:
         )
         assert HELD_OUT_FAMILIES.isdisjoint(reference.family for reference in upstream)
 
+    @pytest.mark.parametrize(
+        "name",
+        [
+            "msd_accommodation_supplement_recipients_national",
+            "msd_annual_report_accommodation_assistance_expenditure",
+        ],
+    )
+    def test_source_only_ratio_plant_reaches_a_differently_pinned_holdout(
+        self, name: str
+    ) -> None:
+        held = next(row for row in _references("holdout") if row.name == name)
+        donor = _references("calibration")[0]
+        planted = _as_ratio_numerator(
+            donor, {"source_name": held.ledger_selector["source_name"]}
+        )
+        assert any(
+            ": hold-out ledger selector " in leak
+            for leak in holdout_leaks([planted], [], [held])
+        )
+
     # A stalled shared host once made one draw take 36.9 s (load1 ~300), which
     # Hypothesis reports as too_slow; the strategy itself is cheap.
     @settings(
@@ -1442,10 +1462,7 @@ class TestReferenceSets:
                 == "msd_main_benefit_recipients_by_program_age"
             ):
                 assert row["filter"]
-                assert (
-                    row["metadata"]["activation_status"]
-                    == "requires_stratified_receipt_assignment"
-                )
+                assert row["metadata"]["activation_status"] == "active"
             assert row["ledger_selector"]["period_value"] == "2026-06"
             assert row["period"] == "2026-06"
 
@@ -2278,7 +2295,6 @@ class TestScenarios:
             "S1",
             "S2",
             "S3",
-            "S4",
             "S5",
             "V1",
             "V2",
@@ -3373,7 +3389,7 @@ class TestSourceCitations:
         ]
         assert "person.receives_veterans_pension" not in binding["columns"]
         assert (
-            "must be extended"
+            "The hub must extend both together"
             in document["as_non_beneficiary_audit"]["veterans_pension"]
         )
 
@@ -4094,7 +4110,7 @@ class TestReportingClassifiers:
         assert super_income["column"] in _bindings()["nz_super"]["variables"]
         assert all("entitled" not in row["receipt_column"] for row in benefits)
 
-    def test_unavailable_before_tax_paid_amounts_refuse_activation(self) -> None:
+    def test_before_tax_paid_amounts_resolve_without_blocked_inputs(self) -> None:
         from microcosm.frame.reporting import validate_income_classifier
 
         document = _load("reporting_classifiers.json")
@@ -4104,15 +4120,21 @@ class TestReportingClassifiers:
             for row in classifier["components"]
             if row["column"] is None
         }
-        assert missing == {
-            "receives_jobseeker_support",
-            "receives_sole_parent_support",
-            "receives_supported_living_payment",
-            "receives_veterans_pension",
+        assert missing == set()
+        assert document["blocked_inputs"] == []
+        validate_income_classifier(classifier)
+        assert {
+            row["column"]
+            for row in classifier["components"]
+            if row["kind"] == "benefit" and row["receipt_column"] != "receives_nz_super"
+        } == {
+            f"{program}_gross_weekly_payment"
+            for program in (
+                "jobseeker_support",
+                "sole_parent_support",
+                "supported_living_payment",
+            )
         }
-        assert missing == {row["receipt_column"] for row in document["blocked_inputs"]}
-        with pytest.raises(ValueError, match="(?:column|before.tax)"):
-            validate_income_classifier(classifier)
         paid = _bindings()["main_benefits_rates"]["variables"]
         assert {
             "jobseeker_support_net_weekly_payment",
@@ -4168,7 +4190,7 @@ class TestReportingClassifiers:
         assert selected == classifier["predicates"]["superannuitant"]
         assert selected == {
             "entity": "person",
-            "columns": ["receives_nz_super", "receives_veterans_pension"],
+            "columns": ["receives_nz_super"],
             "reduction": "any",
         }
         assert classifier["priority"] == ["superannuitant", "beneficiary"]
@@ -4179,7 +4201,7 @@ class TestReportingClassifiers:
             "receives_supported_living_payment",
         ]
 
-    def test_unsupported_veterans_receipt_is_explicit_and_required(self) -> None:
+    def test_unsupported_veterans_receipt_is_explicit_and_excluded(self) -> None:
         document = _load("reporting_classifiers.json")
         declared = _load("axiom_input_closure.json")["receipt_flags"]["columns"]
         (unsupported,) = document["unsupported_receipt_inputs"]
@@ -4187,9 +4209,9 @@ class TestReportingClassifiers:
         assert f"person.{unsupported['column']}" not in declared
         assert (
             unsupported["column"]
-            in document["receipt_group"]["predicates"]["superannuitant"]["columns"]
+            not in document["receipt_group"]["predicates"]["superannuitant"]["columns"]
         )
-        assert "missing flag never implies false" in unsupported["required_behavior"]
+        assert "unsupported" in unsupported["required_behavior"].lower()
         assert document["mixed_unit_audit"]["per_scenario"] is True
 
     def test_as_non_beneficiary_binding_agrees_for_supported_receipt_flags(
@@ -4213,13 +4235,8 @@ class TestReportingClassifiers:
         assert binding["group_rule"] == "any_member"
         assert binding["negate"] is True
         assert "person.receives_nz_super" in binding["columns"]
-        assert expected - set(binding["columns"]) == {
-            "person.receives_veterans_pension"
-        }
-        assert (
-            "must be extended"
-            in document["as_non_beneficiary_audit"]["veterans_pension"]
-        )
+        assert expected == set(binding["columns"])
+        assert "unsupported" in document["as_non_beneficiary_audit"]["veterans_pension"]
 
     def test_baseline_cells_are_declared_for_every_scenario_and_variant(self) -> None:
         document = _load("reporting_classifiers.json")
@@ -4281,7 +4298,7 @@ class TestReportingClassifiers:
         assert units["family_id"].tolist() == [102, 201, 202]
         assert units["family_source_household_id"].tolist() == ["same_source"] * 3
 
-    def test_s0_through_s4_structural_zero_cells_are_listed_on_support_entry(
+    def test_s0_through_s3_structural_zero_cells_are_listed_on_support_entry(
         self,
     ) -> None:
         document = _load("reporting_classifiers.json")
@@ -4291,7 +4308,7 @@ class TestReportingClassifiers:
                 "scenario": f"S{index}",
                 "cell": "beneficiary_superannuitant_other/superannuitant",
             }
-            for index in range(5)
+            for index in range(4)
         ]
         support = next(
             row
@@ -4301,6 +4318,6 @@ class TestReportingClassifiers:
         for row in zeros:
             assert f"{row['scenario']}/{row['cell']}" in support["notes"]
         assert (
-            "actual structural-zero diagnostics are derived from reported amounts"
+            "reported amounts determine actual structural-zero diagnostics"
             in (support["notes"])
         )

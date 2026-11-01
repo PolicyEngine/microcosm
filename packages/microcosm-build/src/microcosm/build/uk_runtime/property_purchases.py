@@ -73,6 +73,8 @@ from microcosm.build.uk_runtime.national_frame import (
     validate_uk_national_frame,
 )
 from microcosm.build.uk_runtime.receipt_counts import (
+    UK_DISCLOSURE_FLOOR,
+    UK_WITHHELD,
     distinct_count,
     extreme_count,
     small_cell_share,
@@ -655,8 +657,8 @@ def impute_property_purchase_prices(
     def sources(mask: np.ndarray) -> int:
         return distinct_count(ids, mask, weights)
 
-    # UKDS disclosure control (receipt_counts): a weighted figure one to nine
-    # source households carry is "<10", and so is anything derived from it.
+    # UKDS disclosure control (receipt_counts): a weighted figure one or two
+    # source households carry is "<3", and so is anything derived from it.
     fitted_sources = sources(fitted)
     at_cap_sources = sources(at_cap)
     # Copies of one source can sit on both sides, so each side is counted on
@@ -667,15 +669,17 @@ def impute_property_purchase_prices(
     # The eligible owner weight less the fitted transactions is the eligible
     # owners who do not buy, and so is that weight times one less the event
     # rate: both are given only where neither the buyers nor the others rest
-    # on one to nine sources.
-    eligible_small = 0 < min(fitted_sources, sources(eligible & ~fitted)) < 10
+    # on one or two sources.
+    eligible_small = (
+        0 < min(fitted_sources, sources(eligible & ~fitted)) < UK_DISCLOSURE_FLOOR
+    )
     fitted_value = float(np.dot(prices, weights * sdlt_mask))
     at_cap_share = float(weights[at_cap].sum()) / fitted_count if fitted_count else 0.0
     # The share at the cap is withheld where the fit or either side of it
-    # rests on one to nine sources: beside the fitted weight a small side
+    # rests on one or two sources: beside the fitted weight a small side
     # would come back, and a share of one beside a small fit still describes it.
-    at_cap_small = (
-        0 < fitted_sources < 10 or 0 < min(at_cap_sources, uncapped_sources) < 10
+    at_cap_small = 0 < fitted_sources < UK_DISCLOSURE_FLOOR or (
+        0 < min(at_cap_sources, uncapped_sources) < UK_DISCLOSURE_FLOOR
     )
     receipt: dict[str, object] = {
         "property_type": target.property_type,
@@ -688,19 +692,19 @@ def impute_property_purchase_prices(
             max(0.0, 1.0 - fitted_value / target.value), fitted_sources
         ),
         "eligible_owner_weight": (
-            "<10"
+            UK_WITHHELD
             if eligible_small
             else small_cell_share(eligible_weight, eligible_sources)
         ),
         "event_rate": (
-            "<10"
+            UK_WITHHELD
             if eligible_small
             else small_cell_share(fitted_count / eligible_weight, fitted_sources)
         ),
         "price_scale": (
             None if scale is None else small_cell_share(scale, fitted_sources)
         ),
-        "weighted_share_at_stock_cap": "<10" if at_cap_small else at_cap_share,
+        "weighted_share_at_stock_cap": UK_WITHHELD if at_cap_small else at_cap_share,
         "stock_cap_support": extreme_count(at_cap_sources),
         "purchases_outside_sdlt_regions_weight": small_cell_share(
             float(weights[outside].sum()), sources(outside)

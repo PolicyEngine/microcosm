@@ -29,6 +29,7 @@ from microcosm.build.ledger_targets import (
     _source_name,
     compile_ledger_target_references,
     reference_fact_selectors,
+    restamp_reference_period,
 )
 from microcosm.build.target_materialization import (
     ENGINE_PERIOD_COLUMN_PREFIX,
@@ -476,6 +477,19 @@ def _uk_local_metric_target_ids() -> dict[str, str | dict[str, str]]:
     return mapping
 
 
+#: The target period the committed UK references are authored at: the
+#: generators' default ``--period``.
+UK_TARGET_REFERENCE_PERIOD = 2025
+
+#: The model year the contract's observation periods are written for: the DfE
+#: rows read January 2026, the spring term after model year 2025 (microcosm#1095
+#: D5). It belongs to the contract, not to the references: authoring them at
+#: another period moves their observation periods from it and leaves it alone,
+#: and it moves only with the contract's own periods (the fourth review of
+#: microcosm#1422).
+UK_OBSERVATION_PERIOD_BASE = 2025
+
+
 def compile_uk_target_registry(
     facts: Iterable[Mapping[str, Any]],
     *,
@@ -490,9 +504,16 @@ def compile_uk_target_registry(
     compiled = []
     unsupported: list[dict[str, str]] = []
     for reference in spec.target_references:
-        restamped = LedgerTargetReference(
-            **{**reference.__dict__, "period": target_period}
-        )
+        try:
+            restamped = restamp_reference_period(reference, target_period)
+        except ValueError as error:
+            # An observation period that cannot move is a contract error, not
+            # a fact gap: refuse the whole compile, naming the row (the third
+            # review of microcosm#1422).
+            raise ValueError(
+                f"UK target reference {reference.name!r} cannot be restamped to "
+                f"{target_period!r}: {error}"
+            ) from error
         candidate_facts = _candidate_facts_for_reference(
             fact_rows, restamped, fact_indices_by_source=fact_indices_by_source
         )
@@ -1428,9 +1449,16 @@ def compile_uk_local_target_registry(
     compiled = []
     unsupported: list[dict[str, str]] = []
     for reference in spec.local_target_references:
-        restamped = LedgerTargetReference(
-            **{**reference.__dict__, "period": target_period}
-        )
+        try:
+            restamped = restamp_reference_period(reference, target_period)
+        except ValueError as error:
+            # An observation period that cannot move is a contract error, not
+            # a fact gap: refuse the whole compile, naming the row (the third
+            # review of microcosm#1422).
+            raise ValueError(
+                f"UK local reference {reference.name!r} cannot be restamped to "
+                f"{target_period!r}: {error}"
+            ) from error
         _assert_local_reference_in_crosswalk(restamped, rosters)
         candidate_facts = _candidate_facts_for_reference(
             _local_candidate_fact_pool(

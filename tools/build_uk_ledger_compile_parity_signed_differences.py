@@ -118,7 +118,10 @@ _OBR_COUNCIL_TAX_GB_RECEIPTS_RATIONALE = (
     "binds OBR table 4.1 row 15, the council tax receipts of England, Scotland "
     "and Wales, over Great Britain's households, at the calendar-2025 window "
     "(three twelfths of FY2024-25 and nine twelfths of FY2025-26, María's rule "
-    "of 2026-09-22, PolicyEngine/chronicle#280 lane); the frozen incumbent "
+    "of 2026-09-22, PolicyEngine/chronicle#280 lane), scaled to main residences "
+    "by England's chargeable dwellings less its second homes and empty "
+    "dwellings, over its chargeable dwellings (MHCLG Council Taxbase, October "
+    "2025; María's ruling of 2026-10-29, microcosm#1095 D14f); the frozen incumbent "
     "fixture holds the FY2025-26 value of row 19 alone, which adds Northern "
     "Ireland domestic rates, the council tax accruals adjustment and the "
     "high-value council tax surcharge."
@@ -424,11 +427,12 @@ _ONS_SINGLE_YEAR_AGE_0_6_ROWS = frozenset(
 _DFE_SINGLE_AGE_LEDGER_ONLY_RATIONALE = (
     "Requested by María on 2026-10-21 for the £100k childcare costing fixes "
     "(microcosm#1278, #1095): one of the five DfE funded-childcare counts by "
-    "single age from the January 2025 census, England (working parent "
+    "single age from the January 2026 census, England (working parent "
     "registrations at 9 to 11 months and at ages 1, 2 and 3, and universal "
     "nursery registrations at age 3), bound beside the working parent 2 to 4, "
     "early learning and universal-only rows and, with them, measured at the "
-    "spring term by the age on 31 December (María's ruling of 2026-10-22). The "
+    "spring term by the age on 31 December (María's ruling of 2026-10-22), the "
+    "model year 2025's spring term being January 2026 (microcosm#1095 D5). The "
     "age-4 cells are signed out, as the bound rows fix them. The incumbent binds "
     "no DfE row, so this row has no fixture counterpart."
 )
@@ -611,10 +615,10 @@ _TENURE_DRIFT_RATIONALE = (
 )
 
 _EQUIV_INCOME_FIXTURE_ONLY_RATIONALE = (
-    "Signed deferral: ONS publishes small-area income at MSOA grain only — the "
-    "feed carries no local-authority rows, and MSOA-to-LA aggregation of a "
-    "mean-valued, model-output series is ruled downstream build work behind the "
-    "frs_model_based_target_circularity and ons_bhc_ahc_noncomparable fences."
+    "Kept out: ONS models its small-area income estimates (MSOA means, before "
+    "and after housing costs, and housing costs) from the FRS, so binding them "
+    "would partly fit the FRS to itself; the feed also carries no "
+    "local-authority rows (María's ruling of 2026-10-29, microcosm#1095 D18a)."
 )
 
 _PRIVATE_RENT_FIXTURE_ONLY_RATIONALE = (

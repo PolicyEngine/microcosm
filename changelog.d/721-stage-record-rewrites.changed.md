@@ -1,0 +1,1 @@
+Stage records list the columns each stage rewrote, with their nonzero share after it, so build provenance names the last writer of a column; the UK spine manifest carries them, and the final nonzero-share list reads them instead of a hard-coded carve-out (microcosm#721, via microcosm#1095).

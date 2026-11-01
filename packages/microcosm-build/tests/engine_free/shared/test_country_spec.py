@@ -26,6 +26,8 @@ from microcosm.build import (
     load_country_spec,
 )
 from microcosm.build.ledger_targets import compile_ledger_target_references
+from microcosm.build.spec_engine import SpecValidationError, load_bundle
+from microcosm.build.spec_engine.compiler_ir import compile_spec
 from microcosm.build.trace import canonical_json_bytes
 from microcosm.build.uk_runtime import terminal_gates, weighted_integrity
 from test_support.paths import paths_for
@@ -1559,6 +1561,10 @@ class TestUKGatesManifest:
             "uk_stage_property_purchases_fit",
             "uk_stage_uc_legacy_closure_take_up_contract",
             "uk_stage_frs_person_draws_apprentices",
+            "uk_stage_frs_take_up_signal",
+            "uk_stage_frs_person_draws_take_up_signal",
+            "uk_stage_frs_household_draws_take_up_signal",
+            "uk_stage_childcare_copy_take_up_signal",
             "uk_stage_isa_subscriptions_invariants",
             "uk_stage_isa_subscriptions",
             "uk_release_input_coverage",
@@ -1693,6 +1699,10 @@ class TestUKGatesManifest:
             "uk_stage_property_purchases_fit",
             "uk_stage_uc_legacy_closure_take_up_contract",
             "uk_stage_frs_person_draws_apprentices",
+            "uk_stage_frs_take_up_signal",
+            "uk_stage_frs_person_draws_take_up_signal",
+            "uk_stage_frs_household_draws_take_up_signal",
+            "uk_stage_childcare_copy_take_up_signal",
             "uk_stage_isa_subscriptions_invariants",
             "uk_stage_isa_subscriptions",
             "uk_weights_audit",
@@ -1762,7 +1772,7 @@ class TestUKGatesManifest:
         assert energy_rake["convergence_window_sweeps"] == 10
         assert energy_rake["maximum_residual_change_over_window"] == 0.001
 
-    def test_zero_weight_declarations_match_the_june_strata(self, manifest) -> None:
+    def test_zero_weight_declarations_match_the_reviewed_strata(self, manifest) -> None:
         params = {gate.id: gate.parameters for gate in manifest.gates}
         declared = params["uk_zero_weight_strata"]["declarations"]
         strata = terminal_gates.UK_DEFAULT_ZERO_WEIGHT_STRATA
@@ -2551,3 +2561,44 @@ def test_schema2_be_geography_vintage_contract_survives_identifier_resolution(
         ).specs
         assert spec.metadata["ledger_geography_vintage"] == "nis_2025"
         assert spec.value == 10.0
+
+
+def _package_with_catalog_unit(tmp_path: Path, country: str, unit: str) -> Path:
+    """Copy a typed package and give its first count column another unit."""
+    package_dir = tmp_path / country
+    shutil.copytree(COUNTRY_PACKAGE_ROOT / country, package_dir)
+    catalog_path = package_dir / "spec/catalogs.yaml"
+    authored = catalog_path.read_text(encoding="utf-8")
+    assert "unit: count" in authored
+    catalog_path.write_text(
+        authored.replace("unit: count", f"unit: {unit}", 1), encoding="utf-8"
+    )
+    return package_dir
+
+
+@pytest.mark.parametrize(("country", "unit"), [("be", "eur"), ("nz", "nzd")])
+def test_catalog_carries_a_country_currency_into_the_compiled_inventory(
+    tmp_path, country, unit
+) -> None:
+    def units(spec) -> dict[str, str]:
+        return {
+            row["key"]: row["unit"]
+            for row in compile_spec(spec).to_wire()["typed_inventory"]["columns"]
+        }
+
+    shipped = units(load_bundle(country))
+    changed = units(load_bundle(_package_with_catalog_unit(tmp_path, country, unit)))
+
+    assert unit not in shipped.values()
+    assert [key for key in shipped if shipped[key] != changed[key]] == [
+        key for key in changed if changed[key] == unit
+    ]
+    assert list(changed.values()).count(unit) == 1
+
+
+@pytest.mark.parametrize("unit", ["EUR", "NZD", "euro", "eur_cents"])
+def test_catalog_refuses_a_currency_spelling_outside_the_closed_list(
+    tmp_path, unit
+) -> None:
+    with pytest.raises(SpecValidationError, match="/contract/unit"):
+        load_bundle(_package_with_catalog_unit(tmp_path, "be", unit))

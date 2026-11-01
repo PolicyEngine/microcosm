@@ -342,11 +342,12 @@ def _london_copies_at_the_cap(monkeypatch):
 
 def test_the_cap_cell_is_banded_on_its_source_households(monkeypatch) -> None:
     # UKDS disclosure control: twelve rows past ten, but three sources, so the
-    # cell reads "<10", directly and through the production node as a graph
-    # build runs it (the node declares household_source_id).
+    # cell reads the sources' band "3-9", not the rows' "10-29", directly and
+    # through the production node as a graph build runs it (the node declares
+    # household_source_id).
     frame = _london_copies_at_the_cap(monkeypatch)
-    assert rhv.assign_regional_home_values(frame).receipt["sources_at_cap"] == "<10"
-    assert _graph_evidence(frame)["sources_at_cap"] == "<10"
+    assert rhv.assign_regional_home_values(frame).receipt["sources_at_cap"] == "3-9"
+    assert _graph_evidence(frame)["sources_at_cap"] == "3-9"
 
 
 def test_the_stage_refuses_a_frame_without_lineage() -> None:

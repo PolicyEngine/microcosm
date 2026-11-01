@@ -220,13 +220,13 @@ def _trusted_terminal_gate_signing_key(monkeypatch) -> None:
 UK_GATE_BATTERY_PRODUCER = "microcosm.build.gate_battery"
 UK_GATE_BATTERY_SIGNING_KEY_ENV = "MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY"
 UK_GATE_BATTERY_POLICY_SHA256 = (
-    "29c866ba365999cfd39a5ddceb94e159396759e575a8ac99de619e3f03525653"
+    "1d7886509433be8de7e0b3be837822590d7920baddf4458fd365b4ca53e799ca"
 )
 UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "a9e1187a619794b9e159b209a6f6476a24260791df6bb14ae72f9f9bfcaa7514"
+    "4cf11e30ceb4ccc7ffe26b14b11b3e119016b0520ca151878da7ce2a97c00ec3"
 )
 UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "6bd701aa0257a7faad66f5ee8f80f8e4afb664298b70c7093e5b0e220677049d"
+    "17ae80fcec2ec5f86aabc3c0815ec0e390e6278ca82f0bb845173238089dbf94"
 )
 UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256 = (
     "f246388de42654dd68dbbb40c42282001b5b0a8bf48976162bcb1199085cb1d3"
@@ -369,6 +369,26 @@ UK_GATE_BATTERY_ENTRIES = {
     ),
     "uk_stage_isa_subscriptions_invariants": ("stage_health", "transferred", None),
     "uk_stage_isa_subscriptions": ("stage_health", "transferred", None),
+    "uk_stage_frs_take_up_signal": (
+        "stage_health",
+        "assembled",
+        None,
+    ),
+    "uk_stage_frs_person_draws_take_up_signal": (
+        "stage_health",
+        "assembled",
+        None,
+    ),
+    "uk_stage_frs_household_draws_take_up_signal": (
+        "stage_health",
+        "assembled",
+        None,
+    ),
+    "uk_stage_childcare_copy_take_up_signal": (
+        "stage_health",
+        "transferred",
+        None,
+    ),
     "uk_stage_hmrc_cgt_asset_type_spine_summary": (
         "stage_health",
         "transferred",
@@ -1444,6 +1464,10 @@ def _gate_battery_payload(
         "uk_stage_frs_person_draws_apprentices": "frs_person_draws",
         "uk_stage_isa_subscriptions_invariants": "isa_subscriptions",
         "uk_stage_isa_subscriptions": "isa_subscriptions",
+        "uk_stage_frs_take_up_signal": "frs_take_up",
+        "uk_stage_frs_person_draws_take_up_signal": "frs_person_draws",
+        "uk_stage_frs_household_draws_take_up_signal": "frs_household_draws",
+        "uk_stage_childcare_copy_take_up_signal": "childcare_copy_take_up",
         "uk_stage_age_tail_targets": "age_tail",
         "uk_stage_frs_relationships_composition": "frs_relationships",
     }
