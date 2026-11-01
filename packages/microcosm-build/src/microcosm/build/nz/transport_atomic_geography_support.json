@@ -1,0 +1,1734 @@
+{
+  "version": 1,
+  "level": "ta_region_as_area",
+  "code_system": "stats_nz_joint_ta_regc_as",
+  "vintage": "ta2026_regc2025_au2017",
+  "columns": {
+    "area": {
+      "kind": "code",
+      "source": "Stats NZ Meshblock Higher Geographies 2026; G8-m SA1 to AS placement",
+      "vintage": "ta2026_regc2025_au2017",
+      "relation": "exact"
+    },
+    "ta_code": {
+      "kind": "code",
+      "source": "Stats NZ Meshblock Higher Geographies 2026",
+      "vintage": "ta_2026",
+      "relation": "official_tabulation"
+    },
+    "region_code": {
+      "kind": "code",
+      "source": "Stats NZ Meshblock Higher Geographies 2026",
+      "vintage": "regc_2025",
+      "relation": "official_tabulation"
+    },
+    "as_area": {
+      "kind": "code",
+      "source": "G8-m SA1 interior-point/centroid AU2017 bridge",
+      "vintage": "au_2017",
+      "relation": "best_fit"
+    },
+    "population_code": {
+      "kind": "code",
+      "source": "Stats NZ TA ERP target hierarchy",
+      "vintage": "ta_2025",
+      "relation": "exact"
+    },
+    "population": {
+      "kind": "weight",
+      "source": "Stats NZ TA ERP at 30 June 2025",
+      "basis": "TA ERP apportioned by within-TA 2023 Census SA1 usually resident population shares"
+    },
+    "as_area_alt": {
+      "kind": "code",
+      "source": "as_area_crosswalk.json modal_area",
+      "vintage": "ta_2025",
+      "relation": "best_fit"
+    }
+  },
+  "rows": [
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta001",
+      "codes": {
+        "area": "001|01|2",
+        "ta_code": "001",
+        "region_code": "01",
+        "as_area": "2",
+        "population_code": "nz-ta-001",
+        "as_area_alt": "4"
+      },
+      "population_share": 0.11744924124595402
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta001",
+      "codes": {
+        "area": "001|01|3",
+        "ta_code": "001",
+        "region_code": "01",
+        "as_area": "3",
+        "population_code": "nz-ta-001",
+        "as_area_alt": "4"
+      },
+      "population_share": 0.24364201942074068
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta001",
+      "codes": {
+        "area": "001|01|4",
+        "ta_code": "001",
+        "region_code": "01",
+        "as_area": "4",
+        "population_code": "nz-ta-001",
+        "as_area_alt": "4"
+      },
+      "population_share": 0.6389087393333053
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta002",
+      "codes": {
+        "area": "002|01|2",
+        "ta_code": "002",
+        "region_code": "01",
+        "as_area": "2",
+        "population_code": "nz-ta-002",
+        "as_area_alt": "2"
+      },
+      "population_share": 0.6245147666221545
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta002",
+      "codes": {
+        "area": "002|01|4",
+        "ta_code": "002",
+        "region_code": "01",
+        "as_area": "4",
+        "population_code": "nz-ta-002",
+        "as_area_alt": "2"
+      },
+      "population_share": 0.3754852333778454
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta003",
+      "codes": {
+        "area": "003|01|2",
+        "ta_code": "003",
+        "region_code": "01",
+        "as_area": "2",
+        "population_code": "nz-ta-003",
+        "as_area_alt": "4"
+      },
+      "population_share": 0.20433221359898066
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta003",
+      "codes": {
+        "area": "003|01|3",
+        "ta_code": "003",
+        "region_code": "01",
+        "as_area": "3",
+        "population_code": "nz-ta-003",
+        "as_area_alt": "4"
+      },
+      "population_share": 0.19390710066025715
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta003",
+      "codes": {
+        "area": "003|01|4",
+        "ta_code": "003",
+        "region_code": "01",
+        "as_area": "4",
+        "population_code": "nz-ta-003",
+        "as_area_alt": "4"
+      },
+      "population_share": 0.6017606857407622
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta011",
+      "codes": {
+        "area": "011|03|2",
+        "ta_code": "011",
+        "region_code": "03",
+        "as_area": "2",
+        "population_code": "nz-ta-011",
+        "as_area_alt": "4"
+      },
+      "population_share": 0.31483737932327305
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta011",
+      "codes": {
+        "area": "011|03|3",
+        "ta_code": "011",
+        "region_code": "03",
+        "as_area": "3",
+        "population_code": "nz-ta-011",
+        "as_area_alt": "4"
+      },
+      "population_share": 0.32533508295060454
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta011",
+      "codes": {
+        "area": "011|03|4",
+        "ta_code": "011",
+        "region_code": "03",
+        "as_area": "4",
+        "population_code": "nz-ta-011",
+        "as_area_alt": "4"
+      },
+      "population_share": 0.3598275377261224
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta012",
+      "codes": {
+        "area": "012|03|2",
+        "ta_code": "012",
+        "region_code": "03",
+        "as_area": "2",
+        "population_code": "nz-ta-012",
+        "as_area_alt": "3"
+      },
+      "population_share": 0.054350887074063645
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta012",
+      "codes": {
+        "area": "012|03|3",
+        "ta_code": "012",
+        "region_code": "03",
+        "as_area": "3",
+        "population_code": "nz-ta-012",
+        "as_area_alt": "3"
+      },
+      "population_share": 0.5385806814981695
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta012",
+      "codes": {
+        "area": "012|03|4",
+        "ta_code": "012",
+        "region_code": "03",
+        "as_area": "4",
+        "population_code": "nz-ta-012",
+        "as_area_alt": "3"
+      },
+      "population_share": 0.40706843142776683
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta013",
+      "codes": {
+        "area": "013|03|1",
+        "ta_code": "013",
+        "region_code": "03",
+        "as_area": "1",
+        "population_code": "nz-ta-013",
+        "as_area_alt": "2"
+      },
+      "population_share": 0.16983173916079033
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta013",
+      "codes": {
+        "area": "013|03|2",
+        "ta_code": "013",
+        "region_code": "03",
+        "as_area": "2",
+        "population_code": "nz-ta-013",
+        "as_area_alt": "2"
+      },
+      "population_share": 0.5660825246107659
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta013",
+      "codes": {
+        "area": "013|03|3",
+        "ta_code": "013",
+        "region_code": "03",
+        "as_area": "3",
+        "population_code": "nz-ta-013",
+        "as_area_alt": "2"
+      },
+      "population_share": 0.09578998813097815
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta013",
+      "codes": {
+        "area": "013|03|4",
+        "ta_code": "013",
+        "region_code": "03",
+        "as_area": "4",
+        "population_code": "nz-ta-013",
+        "as_area_alt": "2"
+      },
+      "population_share": 0.16829574809746561
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta015",
+      "codes": {
+        "area": "015|03|2",
+        "ta_code": "015",
+        "region_code": "03",
+        "as_area": "2",
+        "population_code": "nz-ta-015",
+        "as_area_alt": "4"
+      },
+      "population_share": 0.2387878787878788
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta015",
+      "codes": {
+        "area": "015|03|3",
+        "ta_code": "015",
+        "region_code": "03",
+        "as_area": "3",
+        "population_code": "nz-ta-015",
+        "as_area_alt": "4"
+      },
+      "population_share": 0.34715151515151516
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta015",
+      "codes": {
+        "area": "015|03|4",
+        "ta_code": "015",
+        "region_code": "03",
+        "as_area": "4",
+        "population_code": "nz-ta-015",
+        "as_area_alt": "4"
+      },
+      "population_share": 0.4140606060606061
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta016",
+      "codes": {
+        "area": "016|03|2",
+        "ta_code": "016",
+        "region_code": "03",
+        "as_area": "2",
+        "population_code": "nz-ta-016",
+        "as_area_alt": "2"
+      },
+      "population_share": 1.0
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta017",
+      "codes": {
+        "area": "017|03|2",
+        "ta_code": "017",
+        "region_code": "03",
+        "as_area": "2",
+        "population_code": "nz-ta-017",
+        "as_area_alt": "2"
+      },
+      "population_share": 0.8063081484510787
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta017",
+      "codes": {
+        "area": "017|03|4",
+        "ta_code": "017",
+        "region_code": "03",
+        "as_area": "4",
+        "population_code": "nz-ta-017",
+        "as_area_alt": "2"
+      },
+      "population_share": 0.19369185154892138
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta018",
+      "codes": {
+        "area": "018|03|3",
+        "ta_code": "018",
+        "region_code": "03",
+        "as_area": "3",
+        "population_code": "nz-ta-018",
+        "as_area_alt": "4"
+      },
+      "population_share": 0.2672811059907834
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta018",
+      "codes": {
+        "area": "018|03|4",
+        "ta_code": "018",
+        "region_code": "03",
+        "as_area": "4",
+        "population_code": "nz-ta-018",
+        "as_area_alt": "4"
+      },
+      "population_share": 0.7327188940092166
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta019",
+      "codes": {
+        "area": "019|03|4",
+        "ta_code": "019",
+        "region_code": "03",
+        "as_area": "4",
+        "population_code": "nz-ta-019",
+        "as_area_alt": "4"
+      },
+      "population_share": 1.0
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta020",
+      "codes": {
+        "area": "020|03|4",
+        "ta_code": "020",
+        "region_code": "03",
+        "as_area": "4",
+        "population_code": "nz-ta-020",
+        "as_area_alt": "4"
+      },
+      "population_share": 0.995302223614156
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta020",
+      "codes": {
+        "area": "020|08|4",
+        "ta_code": "020",
+        "region_code": "08",
+        "as_area": "4",
+        "population_code": "nz-ta-020",
+        "as_area_alt": "4"
+      },
+      "population_share": 0.004697776385844034
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta021",
+      "codes": {
+        "area": "021|03|2",
+        "ta_code": "021",
+        "region_code": "03",
+        "as_area": "2",
+        "population_code": "nz-ta-021",
+        "as_area_alt": "2"
+      },
+      "population_share": 0.6471157424637142
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta021",
+      "codes": {
+        "area": "021|03|4",
+        "ta_code": "021",
+        "region_code": "03",
+        "as_area": "4",
+        "population_code": "nz-ta-021",
+        "as_area_alt": "2"
+      },
+      "population_share": 0.34774841831038333
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta021",
+      "codes": {
+        "area": "021|04|4",
+        "ta_code": "021",
+        "region_code": "04",
+        "as_area": "4",
+        "population_code": "nz-ta-021",
+        "as_area_alt": "2"
+      },
+      "population_share": 0.0030517305545217713
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta021",
+      "codes": {
+        "area": "021|06|4",
+        "ta_code": "021",
+        "region_code": "06",
+        "as_area": "4",
+        "population_code": "nz-ta-021",
+        "as_area_alt": "2"
+      },
+      "population_share": 0.002084108671380722
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta021",
+      "codes": {
+        "area": "021|08|4",
+        "ta_code": "021",
+        "region_code": "08",
+        "as_area": "4",
+        "population_code": "nz-ta-021",
+        "as_area_alt": "2"
+      },
+      "population_share": 0.0
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta022",
+      "codes": {
+        "area": "022|04|1",
+        "ta_code": "022",
+        "region_code": "04",
+        "as_area": "1",
+        "population_code": "nz-ta-022",
+        "as_area_alt": "4"
+      },
+      "population_share": 0.16740487752814984
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta022",
+      "codes": {
+        "area": "022|04|2",
+        "ta_code": "022",
+        "region_code": "04",
+        "as_area": "2",
+        "population_code": "nz-ta-022",
+        "as_area_alt": "4"
+      },
+      "population_share": 0.29894871658039385
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta022",
+      "codes": {
+        "area": "022|04|4",
+        "ta_code": "022",
+        "region_code": "04",
+        "as_area": "4",
+        "population_code": "nz-ta-022",
+        "as_area_alt": "4"
+      },
+      "population_share": 0.5336464058914563
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta023",
+      "codes": {
+        "area": "023|04|1",
+        "ta_code": "023",
+        "region_code": "04",
+        "as_area": "1",
+        "population_code": "nz-ta-023",
+        "as_area_alt": "1"
+      },
+      "population_share": 0.997977775160011
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta023",
+      "codes": {
+        "area": "023|04|4",
+        "ta_code": "023",
+        "region_code": "04",
+        "as_area": "4",
+        "population_code": "nz-ta-023",
+        "as_area_alt": "1"
+      },
+      "population_share": 0.0020222248399890054
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta024",
+      "codes": {
+        "area": "024|03|4",
+        "ta_code": "024",
+        "region_code": "03",
+        "as_area": "4",
+        "population_code": "nz-ta-024",
+        "as_area_alt": "3"
+      },
+      "population_share": 0.05248876108703576
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta024",
+      "codes": {
+        "area": "024|04|3",
+        "ta_code": "024",
+        "region_code": "04",
+        "as_area": "3",
+        "population_code": "nz-ta-024",
+        "as_area_alt": "3"
+      },
+      "population_share": 0.8148313150540683
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta024",
+      "codes": {
+        "area": "024|04|4",
+        "ta_code": "024",
+        "region_code": "04",
+        "as_area": "4",
+        "population_code": "nz-ta-024",
+        "as_area_alt": "3"
+      },
+      "population_share": 0.13267992385889596
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta025",
+      "codes": {
+        "area": "025|04|3",
+        "ta_code": "025",
+        "region_code": "04",
+        "as_area": "3",
+        "population_code": "nz-ta-025",
+        "as_area_alt": "3"
+      },
+      "population_share": 0.5886816824089771
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta025",
+      "codes": {
+        "area": "025|04|4",
+        "ta_code": "025",
+        "region_code": "04",
+        "as_area": "4",
+        "population_code": "nz-ta-025",
+        "as_area_alt": "3"
+      },
+      "population_share": 0.41131831759102283
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta026",
+      "codes": {
+        "area": "026|04|4",
+        "ta_code": "026",
+        "region_code": "04",
+        "as_area": "4",
+        "population_code": "nz-ta-026",
+        "as_area_alt": "4"
+      },
+      "population_share": 1.0
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta027",
+      "codes": {
+        "area": "027|04|4",
+        "ta_code": "027",
+        "region_code": "04",
+        "as_area": "4",
+        "population_code": "nz-ta-027",
+        "as_area_alt": "4"
+      },
+      "population_share": 1.0
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta028",
+      "codes": {
+        "area": "028|05|3",
+        "ta_code": "028",
+        "region_code": "05",
+        "as_area": "3",
+        "population_code": "nz-ta-028",
+        "as_area_alt": "3"
+      },
+      "population_share": 0.7519216100451799
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta028",
+      "codes": {
+        "area": "028|05|4",
+        "ta_code": "028",
+        "region_code": "05",
+        "as_area": "4",
+        "population_code": "nz-ta-028",
+        "as_area_alt": "3"
+      },
+      "population_share": 0.24807838995482015
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta029",
+      "codes": {
+        "area": "029|06|4",
+        "ta_code": "029",
+        "region_code": "06",
+        "as_area": "4",
+        "population_code": "nz-ta-029",
+        "as_area_alt": "4"
+      },
+      "population_share": 1.0
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta030",
+      "codes": {
+        "area": "030|06|2",
+        "ta_code": "030",
+        "region_code": "06",
+        "as_area": "2",
+        "population_code": "nz-ta-030",
+        "as_area_alt": "2"
+      },
+      "population_share": 0.8852247347850363
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta030",
+      "codes": {
+        "area": "030|06|4",
+        "ta_code": "030",
+        "region_code": "06",
+        "as_area": "4",
+        "population_code": "nz-ta-030",
+        "as_area_alt": "2"
+      },
+      "population_share": 0.1147752652149637
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta031",
+      "codes": {
+        "area": "031|06|2",
+        "ta_code": "031",
+        "region_code": "06",
+        "as_area": "2",
+        "population_code": "nz-ta-031",
+        "as_area_alt": "2"
+      },
+      "population_share": 1.0
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta032",
+      "codes": {
+        "area": "032|06|3",
+        "ta_code": "032",
+        "region_code": "06",
+        "as_area": "3",
+        "population_code": "nz-ta-032",
+        "as_area_alt": "4"
+      },
+      "population_share": 0.1506875847375557
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta032",
+      "codes": {
+        "area": "032|06|4",
+        "ta_code": "032",
+        "region_code": "06",
+        "as_area": "4",
+        "population_code": "nz-ta-032",
+        "as_area_alt": "4"
+      },
+      "population_share": 0.8493124152624443
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta033",
+      "codes": {
+        "area": "033|07|2",
+        "ta_code": "033",
+        "region_code": "07",
+        "as_area": "2",
+        "population_code": "nz-ta-033",
+        "as_area_alt": "2"
+      },
+      "population_share": 0.7049123775355319
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta033",
+      "codes": {
+        "area": "033|07|3",
+        "ta_code": "033",
+        "region_code": "07",
+        "as_area": "3",
+        "population_code": "nz-ta-033",
+        "as_area_alt": "2"
+      },
+      "population_share": 0.12391334345246309
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta033",
+      "codes": {
+        "area": "033|07|4",
+        "ta_code": "033",
+        "region_code": "07",
+        "as_area": "4",
+        "population_code": "nz-ta-033",
+        "as_area_alt": "2"
+      },
+      "population_share": 0.17117427901200497
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta034",
+      "codes": {
+        "area": "034|07|4",
+        "ta_code": "034",
+        "region_code": "07",
+        "as_area": "4",
+        "population_code": "nz-ta-034",
+        "as_area_alt": "4"
+      },
+      "population_share": 0.9843195266272189
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta034",
+      "codes": {
+        "area": "034|08|4",
+        "ta_code": "034",
+        "region_code": "08",
+        "as_area": "4",
+        "population_code": "nz-ta-034",
+        "as_area_alt": "4"
+      },
+      "population_share": 0.015680473372781067
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta035",
+      "codes": {
+        "area": "035|07|3",
+        "ta_code": "035",
+        "region_code": "07",
+        "as_area": "3",
+        "population_code": "nz-ta-035",
+        "as_area_alt": "4"
+      },
+      "population_share": 0.44359504132231403
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta035",
+      "codes": {
+        "area": "035|07|4",
+        "ta_code": "035",
+        "region_code": "07",
+        "as_area": "4",
+        "population_code": "nz-ta-035",
+        "as_area_alt": "4"
+      },
+      "population_share": 0.5564049586776859
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta036",
+      "codes": {
+        "area": "036|08|4",
+        "ta_code": "036",
+        "region_code": "08",
+        "as_area": "4",
+        "population_code": "nz-ta-036",
+        "as_area_alt": "4"
+      },
+      "population_share": 1.0
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta037",
+      "codes": {
+        "area": "037|08|4",
+        "ta_code": "037",
+        "region_code": "08",
+        "as_area": "4",
+        "population_code": "nz-ta-037",
+        "as_area_alt": "4"
+      },
+      "population_share": 1.0
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta038",
+      "codes": {
+        "area": "038|06|4",
+        "ta_code": "038",
+        "region_code": "06",
+        "as_area": "4",
+        "population_code": "nz-ta-038",
+        "as_area_alt": "4"
+      },
+      "population_share": 0.001530221882172915
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta038",
+      "codes": {
+        "area": "038|08|4",
+        "ta_code": "038",
+        "region_code": "08",
+        "as_area": "4",
+        "population_code": "nz-ta-038",
+        "as_area_alt": "4"
+      },
+      "population_share": 0.9984697781178271
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta039",
+      "codes": {
+        "area": "039|08|3",
+        "ta_code": "039",
+        "region_code": "08",
+        "as_area": "3",
+        "population_code": "nz-ta-039",
+        "as_area_alt": "3"
+      },
+      "population_share": 0.6989824236817761
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta039",
+      "codes": {
+        "area": "039|08|4",
+        "ta_code": "039",
+        "region_code": "08",
+        "as_area": "4",
+        "population_code": "nz-ta-039",
+        "as_area_alt": "3"
+      },
+      "population_share": 0.30101757631822385
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta040",
+      "codes": {
+        "area": "040|08|3",
+        "ta_code": "040",
+        "region_code": "08",
+        "as_area": "3",
+        "population_code": "nz-ta-040",
+        "as_area_alt": "3"
+      },
+      "population_share": 0.9638516886425449
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta040",
+      "codes": {
+        "area": "040|08|4",
+        "ta_code": "040",
+        "region_code": "08",
+        "as_area": "4",
+        "population_code": "nz-ta-040",
+        "as_area_alt": "3"
+      },
+      "population_share": 0.03614831135745516
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta041",
+      "codes": {
+        "area": "041|08|4",
+        "ta_code": "041",
+        "region_code": "08",
+        "as_area": "4",
+        "population_code": "nz-ta-041",
+        "as_area_alt": "4"
+      },
+      "population_share": 0.9996785599485696
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta041",
+      "codes": {
+        "area": "041|09|4",
+        "ta_code": "041",
+        "region_code": "09",
+        "as_area": "4",
+        "population_code": "nz-ta-041",
+        "as_area_alt": "4"
+      },
+      "population_share": 0.0003214400514304082
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta042",
+      "codes": {
+        "area": "042|08|3",
+        "ta_code": "042",
+        "region_code": "08",
+        "as_area": "3",
+        "population_code": "nz-ta-042",
+        "as_area_alt": "3"
+      },
+      "population_share": 0.7093583980384144
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta042",
+      "codes": {
+        "area": "042|08|4",
+        "ta_code": "042",
+        "region_code": "08",
+        "as_area": "4",
+        "population_code": "nz-ta-042",
+        "as_area_alt": "3"
+      },
+      "population_share": 0.2906416019615856
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta043",
+      "codes": {
+        "area": "043|09|2",
+        "ta_code": "043",
+        "region_code": "09",
+        "as_area": "2",
+        "population_code": "nz-ta-043",
+        "as_area_alt": "2"
+      },
+      "population_share": 0.787906427728297
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta043",
+      "codes": {
+        "area": "043|09|3",
+        "ta_code": "043",
+        "region_code": "09",
+        "as_area": "3",
+        "population_code": "nz-ta-043",
+        "as_area_alt": "2"
+      },
+      "population_share": 0.14781628930142718
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta043",
+      "codes": {
+        "area": "043|09|4",
+        "ta_code": "043",
+        "region_code": "09",
+        "as_area": "4",
+        "population_code": "nz-ta-043",
+        "as_area_alt": "2"
+      },
+      "population_share": 0.06427728297027578
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta044",
+      "codes": {
+        "area": "044|09|2",
+        "ta_code": "044",
+        "region_code": "09",
+        "as_area": "2",
+        "population_code": "nz-ta-044",
+        "as_area_alt": "2"
+      },
+      "population_share": 0.9965660034339966
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta044",
+      "codes": {
+        "area": "044|09|3",
+        "ta_code": "044",
+        "region_code": "09",
+        "as_area": "3",
+        "population_code": "nz-ta-044",
+        "as_area_alt": "2"
+      },
+      "population_share": 0.003433996566003434
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta045",
+      "codes": {
+        "area": "045|09|2",
+        "ta_code": "045",
+        "region_code": "09",
+        "as_area": "2",
+        "population_code": "nz-ta-045",
+        "as_area_alt": "2"
+      },
+      "population_share": 0.9447977447059595
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta045",
+      "codes": {
+        "area": "045|09|3",
+        "ta_code": "045",
+        "region_code": "09",
+        "as_area": "3",
+        "population_code": "nz-ta-045",
+        "as_area_alt": "2"
+      },
+      "population_share": 0.05520225529404052
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta046",
+      "codes": {
+        "area": "046|09|2",
+        "ta_code": "046",
+        "region_code": "09",
+        "as_area": "2",
+        "population_code": "nz-ta-046",
+        "as_area_alt": "2"
+      },
+      "population_share": 0.9936126296998773
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta046",
+      "codes": {
+        "area": "046|09|3",
+        "ta_code": "046",
+        "region_code": "09",
+        "as_area": "3",
+        "population_code": "nz-ta-046",
+        "as_area_alt": "2"
+      },
+      "population_share": 0.006387370300122727
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta047",
+      "codes": {
+        "area": "047|09|2",
+        "ta_code": "047",
+        "region_code": "09",
+        "as_area": "2",
+        "population_code": "nz-ta-047",
+        "as_area_alt": "2"
+      },
+      "population_share": 1.0
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta048",
+      "codes": {
+        "area": "048|09|3",
+        "ta_code": "048",
+        "region_code": "09",
+        "as_area": "3",
+        "population_code": "nz-ta-048",
+        "as_area_alt": "3"
+      },
+      "population_share": 0.8647945354006289
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta048",
+      "codes": {
+        "area": "048|09|4",
+        "ta_code": "048",
+        "region_code": "09",
+        "as_area": "4",
+        "population_code": "nz-ta-048",
+        "as_area_alt": "3"
+      },
+      "population_share": 0.13520546459937113
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta049",
+      "codes": {
+        "area": "049|09|3",
+        "ta_code": "049",
+        "region_code": "09",
+        "as_area": "3",
+        "population_code": "nz-ta-049",
+        "as_area_alt": "3"
+      },
+      "population_share": 0.5669828097213989
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta049",
+      "codes": {
+        "area": "049|09|4",
+        "ta_code": "049",
+        "region_code": "09",
+        "as_area": "4",
+        "population_code": "nz-ta-049",
+        "as_area_alt": "3"
+      },
+      "population_share": 0.4330171902786011
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta050",
+      "codes": {
+        "area": "050|09|3",
+        "ta_code": "050",
+        "region_code": "09",
+        "as_area": "3",
+        "population_code": "nz-ta-050",
+        "as_area_alt": "4"
+      },
+      "population_share": 0.37986270022883295
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta050",
+      "codes": {
+        "area": "050|09|4",
+        "ta_code": "050",
+        "region_code": "09",
+        "as_area": "4",
+        "population_code": "nz-ta-050",
+        "as_area_alt": "4"
+      },
+      "population_share": 0.620137299771167
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta051",
+      "codes": {
+        "area": "051|16|2",
+        "ta_code": "051",
+        "region_code": "16",
+        "as_area": "2",
+        "population_code": "nz-ta-051",
+        "as_area_alt": "2"
+      },
+      "population_share": 0.6058280618064917
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta051",
+      "codes": {
+        "area": "051|16|3",
+        "ta_code": "051",
+        "region_code": "16",
+        "as_area": "3",
+        "population_code": "nz-ta-051",
+        "as_area_alt": "2"
+      },
+      "population_share": 0.02400705174738152
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta051",
+      "codes": {
+        "area": "051|16|4",
+        "ta_code": "051",
+        "region_code": "16",
+        "as_area": "4",
+        "population_code": "nz-ta-051",
+        "as_area_alt": "2"
+      },
+      "population_share": 0.3701648864461267
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta052",
+      "codes": {
+        "area": "052|17|2",
+        "ta_code": "052",
+        "region_code": "17",
+        "as_area": "2",
+        "population_code": "nz-ta-052",
+        "as_area_alt": "2"
+      },
+      "population_share": 0.9757700440025144
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta052",
+      "codes": {
+        "area": "052|17|4",
+        "ta_code": "052",
+        "region_code": "17",
+        "as_area": "4",
+        "population_code": "nz-ta-052",
+        "as_area_alt": "2"
+      },
+      "population_share": 0.02422995599748557
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta053",
+      "codes": {
+        "area": "053|18|2",
+        "ta_code": "053",
+        "region_code": "18",
+        "as_area": "2",
+        "population_code": "nz-ta-053",
+        "as_area_alt": "2"
+      },
+      "population_share": 0.6970525676086295
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta053",
+      "codes": {
+        "area": "053|18|3",
+        "ta_code": "053",
+        "region_code": "18",
+        "as_area": "3",
+        "population_code": "nz-ta-053",
+        "as_area_alt": "2"
+      },
+      "population_share": 0.0956548161652993
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta053",
+      "codes": {
+        "area": "053|18|4",
+        "ta_code": "053",
+        "region_code": "18",
+        "as_area": "4",
+        "population_code": "nz-ta-053",
+        "as_area_alt": "2"
+      },
+      "population_share": 0.2072926162260711
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta054",
+      "codes": {
+        "area": "054|13|3",
+        "ta_code": "054",
+        "region_code": "13",
+        "as_area": "3",
+        "population_code": "nz-ta-054",
+        "as_area_alt": "3"
+      },
+      "population_share": 0.5217081850533808
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta054",
+      "codes": {
+        "area": "054|13|4",
+        "ta_code": "054",
+        "region_code": "13",
+        "as_area": "4",
+        "population_code": "nz-ta-054",
+        "as_area_alt": "3"
+      },
+      "population_share": 0.4782918149466192
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta055",
+      "codes": {
+        "area": "055|12|4",
+        "ta_code": "055",
+        "region_code": "12",
+        "as_area": "4",
+        "population_code": "nz-ta-055",
+        "as_area_alt": "4"
+      },
+      "population_share": 1.0
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta056",
+      "codes": {
+        "area": "056|12|3",
+        "ta_code": "056",
+        "region_code": "12",
+        "as_area": "3",
+        "population_code": "nz-ta-056",
+        "as_area_alt": "3"
+      },
+      "population_share": 0.6768671089236037
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta056",
+      "codes": {
+        "area": "056|12|4",
+        "ta_code": "056",
+        "region_code": "12",
+        "as_area": "4",
+        "population_code": "nz-ta-056",
+        "as_area_alt": "3"
+      },
+      "population_share": 0.3231328910763963
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta057",
+      "codes": {
+        "area": "057|12|3",
+        "ta_code": "057",
+        "region_code": "12",
+        "as_area": "3",
+        "population_code": "nz-ta-057",
+        "as_area_alt": "4"
+      },
+      "population_share": 0.39979757085020245
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta057",
+      "codes": {
+        "area": "057|12|4",
+        "ta_code": "057",
+        "region_code": "12",
+        "as_area": "4",
+        "population_code": "nz-ta-057",
+        "as_area_alt": "4"
+      },
+      "population_share": 0.6002024291497976
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta058",
+      "codes": {
+        "area": "058|13|2",
+        "ta_code": "058",
+        "region_code": "13",
+        "as_area": "2",
+        "population_code": "nz-ta-058",
+        "as_area_alt": "4"
+      },
+      "population_share": 0.1786660777385159
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta058",
+      "codes": {
+        "area": "058|13|3",
+        "ta_code": "058",
+        "region_code": "13",
+        "as_area": "3",
+        "population_code": "nz-ta-058",
+        "as_area_alt": "4"
+      },
+      "population_share": 0.0706713780918728
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta058",
+      "codes": {
+        "area": "058|13|4",
+        "ta_code": "058",
+        "region_code": "13",
+        "as_area": "4",
+        "population_code": "nz-ta-058",
+        "as_area_alt": "4"
+      },
+      "population_share": 0.7506625441696113
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta059",
+      "codes": {
+        "area": "059|13|2",
+        "ta_code": "059",
+        "region_code": "13",
+        "as_area": "2",
+        "population_code": "nz-ta-059",
+        "as_area_alt": "2"
+      },
+      "population_share": 0.5989854612980661
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta059",
+      "codes": {
+        "area": "059|13|4",
+        "ta_code": "059",
+        "region_code": "13",
+        "as_area": "4",
+        "population_code": "nz-ta-059",
+        "as_area_alt": "2"
+      },
+      "population_share": 0.401014538701934
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta060",
+      "codes": {
+        "area": "060|13|2",
+        "ta_code": "060",
+        "region_code": "13",
+        "as_area": "2",
+        "population_code": "nz-ta-060",
+        "as_area_alt": "2"
+      },
+      "population_share": 0.9915452364344354
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta060",
+      "codes": {
+        "area": "060|13|4",
+        "ta_code": "060",
+        "region_code": "13",
+        "as_area": "4",
+        "population_code": "nz-ta-060",
+        "as_area_alt": "2"
+      },
+      "population_share": 0.00845476356556466
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta062",
+      "codes": {
+        "area": "062|13|2",
+        "ta_code": "062",
+        "region_code": "13",
+        "as_area": "2",
+        "population_code": "nz-ta-062",
+        "as_area_alt": "2"
+      },
+      "population_share": 0.6331554087784648
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta062",
+      "codes": {
+        "area": "062|13|4",
+        "ta_code": "062",
+        "region_code": "13",
+        "as_area": "4",
+        "population_code": "nz-ta-062",
+        "as_area_alt": "2"
+      },
+      "population_share": 0.3668445912215353
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta063",
+      "codes": {
+        "area": "063|13|2",
+        "ta_code": "063",
+        "region_code": "13",
+        "as_area": "2",
+        "population_code": "nz-ta-063",
+        "as_area_alt": "2"
+      },
+      "population_share": 0.6249352443446727
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta063",
+      "codes": {
+        "area": "063|13|3",
+        "ta_code": "063",
+        "region_code": "13",
+        "as_area": "3",
+        "population_code": "nz-ta-063",
+        "as_area_alt": "2"
+      },
+      "population_share": 0.045933344845449836
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta063",
+      "codes": {
+        "area": "063|13|4",
+        "ta_code": "063",
+        "region_code": "13",
+        "as_area": "4",
+        "population_code": "nz-ta-063",
+        "as_area_alt": "2"
+      },
+      "population_share": 0.3291314108098774
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta064",
+      "codes": {
+        "area": "064|13|3",
+        "ta_code": "064",
+        "region_code": "13",
+        "as_area": "3",
+        "population_code": "nz-ta-064",
+        "as_area_alt": "3"
+      },
+      "population_share": 0.7654554630330558
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta064",
+      "codes": {
+        "area": "064|13|4",
+        "ta_code": "064",
+        "region_code": "13",
+        "as_area": "4",
+        "population_code": "nz-ta-064",
+        "as_area_alt": "3"
+      },
+      "population_share": 0.23454453696694424
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta065",
+      "codes": {
+        "area": "065|13|3",
+        "ta_code": "065",
+        "region_code": "13",
+        "as_area": "3",
+        "population_code": "nz-ta-065",
+        "as_area_alt": "4"
+      },
+      "population_share": 0.29115407147041594
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta065",
+      "codes": {
+        "area": "065|13|4",
+        "ta_code": "065",
+        "region_code": "13",
+        "as_area": "4",
+        "population_code": "nz-ta-065",
+        "as_area_alt": "4"
+      },
+      "population_share": 0.7088459285295841
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta066",
+      "codes": {
+        "area": "066|13|4",
+        "ta_code": "066",
+        "region_code": "13",
+        "as_area": "4",
+        "population_code": "nz-ta-066",
+        "as_area_alt": "4"
+      },
+      "population_share": 1.0
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta067",
+      "codes": {
+        "area": "067|99|4",
+        "ta_code": "067",
+        "region_code": "99",
+        "as_area": "4",
+        "population_code": "nz-ta-067",
+        "as_area_alt": "4"
+      },
+      "population_share": 1.0
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta068",
+      "codes": {
+        "area": "068|13|4",
+        "ta_code": "068",
+        "region_code": "13",
+        "as_area": "4",
+        "population_code": "nz-ta-068",
+        "as_area_alt": "3"
+      },
+      "population_share": 0.08082875047960097
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta068",
+      "codes": {
+        "area": "068|14|3",
+        "ta_code": "068",
+        "region_code": "14",
+        "as_area": "3",
+        "population_code": "nz-ta-068",
+        "as_area_alt": "3"
+      },
+      "population_share": 0.6140171377413992
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta068",
+      "codes": {
+        "area": "068|14|4",
+        "ta_code": "068",
+        "region_code": "14",
+        "as_area": "4",
+        "population_code": "nz-ta-068",
+        "as_area_alt": "3"
+      },
+      "population_share": 0.30515411177899987
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta069",
+      "codes": {
+        "area": "069|14|2",
+        "ta_code": "069",
+        "region_code": "14",
+        "as_area": "2",
+        "population_code": "nz-ta-069",
+        "as_area_alt": "4"
+      },
+      "population_share": 0.2607032695866749
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta069",
+      "codes": {
+        "area": "069|14|3",
+        "ta_code": "069",
+        "region_code": "14",
+        "as_area": "3",
+        "population_code": "nz-ta-069",
+        "as_area_alt": "4"
+      },
+      "population_share": 0.23022825416409623
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta069",
+      "codes": {
+        "area": "069|14|4",
+        "ta_code": "069",
+        "region_code": "14",
+        "as_area": "4",
+        "population_code": "nz-ta-069",
+        "as_area_alt": "4"
+      },
+      "population_share": 0.5090684762492289
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta070",
+      "codes": {
+        "area": "070|14|1",
+        "ta_code": "070",
+        "region_code": "14",
+        "as_area": "1",
+        "population_code": "nz-ta-070",
+        "as_area_alt": "1"
+      },
+      "population_share": 0.5776035131744041
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta070",
+      "codes": {
+        "area": "070|14|4",
+        "ta_code": "070",
+        "region_code": "14",
+        "as_area": "4",
+        "population_code": "nz-ta-070",
+        "as_area_alt": "1"
+      },
+      "population_share": 0.422396486825596
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta071",
+      "codes": {
+        "area": "071|14|3",
+        "ta_code": "071",
+        "region_code": "14",
+        "as_area": "3",
+        "population_code": "nz-ta-071",
+        "as_area_alt": "3"
+      },
+      "population_share": 0.9364698761523419
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta071",
+      "codes": {
+        "area": "071|14|4",
+        "ta_code": "071",
+        "region_code": "14",
+        "as_area": "4",
+        "population_code": "nz-ta-071",
+        "as_area_alt": "3"
+      },
+      "population_share": 0.06353012384765806
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta072",
+      "codes": {
+        "area": "072|14|4",
+        "ta_code": "072",
+        "region_code": "14",
+        "as_area": "4",
+        "population_code": "nz-ta-072",
+        "as_area_alt": "4"
+      },
+      "population_share": 1.0
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta073",
+      "codes": {
+        "area": "073|15|3",
+        "ta_code": "073",
+        "region_code": "15",
+        "as_area": "3",
+        "population_code": "nz-ta-073",
+        "as_area_alt": "4"
+      },
+      "population_share": 0.07764062941675304
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta073",
+      "codes": {
+        "area": "073|15|4",
+        "ta_code": "073",
+        "region_code": "15",
+        "as_area": "4",
+        "population_code": "nz-ta-073",
+        "as_area_alt": "4"
+      },
+      "population_share": 0.9223593705832469
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta074",
+      "codes": {
+        "area": "074|15|4",
+        "ta_code": "074",
+        "region_code": "15",
+        "as_area": "4",
+        "population_code": "nz-ta-074",
+        "as_area_alt": "4"
+      },
+      "population_share": 1.0
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta075",
+      "codes": {
+        "area": "075|15|4",
+        "ta_code": "075",
+        "region_code": "15",
+        "as_area": "4",
+        "population_code": "nz-ta-075",
+        "as_area_alt": "4"
+      },
+      "population_share": 1.0
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta076",
+      "codes": {
+        "area": "076|02|1",
+        "ta_code": "076",
+        "region_code": "02",
+        "as_area": "1",
+        "population_code": "nz-ta-076",
+        "as_area_alt": "1"
+      },
+      "population_share": 0.9837162460784953
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta076",
+      "codes": {
+        "area": "076|02|2",
+        "ta_code": "076",
+        "region_code": "02",
+        "as_area": "2",
+        "population_code": "nz-ta-076",
+        "as_area_alt": "1"
+      },
+      "population_share": 0.015863528013852966
+    },
+    {
+      "target": "stats_nz_population_by_territorial_authority__ta076",
+      "codes": {
+        "area": "076|02|4",
+        "ta_code": "076",
+        "region_code": "02",
+        "as_area": "4",
+        "population_code": "nz-ta-076",
+        "as_area_alt": "1"
+      },
+      "population_share": 0.00042022590765173414
+    }
+  ],
+  "share_tolerance": 1e-12,
+  "population_geography_level": "local_authority",
+  "population_code_column": "population_code"
+}

@@ -1,0 +1,1 @@
+Declare NZ transport and entitlement branches with independent calibration variants and an identity-factor hold-fixed sensitivity. Add a synthetic replay fixture, exact export and gate contracts, and positive-payment comparator inputs. Keep the package inactive while engine pins, money quantile producers, person-region propagation and reviewed AS assembly remain open.

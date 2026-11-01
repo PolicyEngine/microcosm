@@ -66,7 +66,7 @@ def documents(nz=NZ):
         {
             "id": "nz.benefits.rates",
             "kernel": "simulate.rules_by_ref@1",
-            "population": "nz.open",
+            "population": "nz.central",
             "structural": "none",
             "rules_binding": "main_benefits_rates",
             "inputs": [_slice(rate_inputs)],
@@ -95,7 +95,7 @@ def documents(nz=NZ):
             {
                 "id": f"nz.gross_up.{programme}",
                 "kernel": "simulate.solve_zero@1",
-                "population": "nz.open",
+                "population": "nz.central",
                 "structural": "none",
                 "inputs": [_slice([net])],
                 "outputs": [_owned(annual)],
@@ -138,7 +138,7 @@ def documents(nz=NZ):
             {
                 "id": "nz.gross_up.annual_cents",
                 "kernel": "money.minor_units@1",
-                "population": "nz.open",
+                "population": "nz.central",
                 "structural": "none",
                 "inputs": [_slice(gross)],
                 "outputs": [_owned(column, "int64") for column in cents],
@@ -151,7 +151,7 @@ def documents(nz=NZ):
             {
                 "id": "nz.gross_up.super_cents",
                 "kernel": "money.minor_units@1",
-                "population": "nz.open",
+                "population": "nz.central",
                 "structural": "none",
                 "inputs": [_slice([nzs_source])],
                 "outputs": [_owned(nzs_cents, "int64")],
@@ -208,7 +208,7 @@ def documents(nz=NZ):
         {
             "id": "nz.benefits.annual_transfers",
             "kernel": "money.annual_transfers@1",
-            "population": "nz.open",
+            "population": "nz.central",
             "structural": "none",
             "inputs": [_slice([*flags, *cents, nzs_cents])],
             "outputs": [_owned(column, "int64") for column in transfer_columns],
@@ -219,7 +219,7 @@ def documents(nz=NZ):
         "schema_version": 1,
         "country": "nz",
         "generator": "tools/build_nz_benefit_gross_up.py",
-        "status": "reusable graph declarations; packaged transport graph wiring remains pending",
+        "status": "The central branch and each calibration variant run these reusable declarations after their own money normalization.",
         "disclosure": DISCLOSURE,
         "monotonicity": "For the pinned Schedule 1, every marginal tax rate falls below one; 52*n + T(G) - G decreases or stays constant as each person's own G increases.",
         "authoritative_value": "money.minor_units@1 recovers annual integer cents exactly from certified float64 quantum multiples and preserves the bridge's float64 output contract.",

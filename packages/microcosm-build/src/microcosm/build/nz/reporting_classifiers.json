@@ -66,26 +66,26 @@
       },
       {
         "entity": "person",
-        "column": "jobseeker_support_gross_weekly_payment",
+        "column": "jobseeker_support_annual_gross",
         "kind": "benefit",
         "tax_basis": "before_tax",
-        "annualisation_factor": 52,
+        "annualisation_factor": 1,
         "receipt_column": "receives_jobseeker_support"
       },
       {
         "entity": "person",
-        "column": "sole_parent_support_gross_weekly_payment",
+        "column": "sole_parent_support_annual_gross",
         "kind": "benefit",
         "tax_basis": "before_tax",
-        "annualisation_factor": 52,
+        "annualisation_factor": 1,
         "receipt_column": "receives_sole_parent_support"
       },
       {
         "entity": "person",
-        "column": "supported_living_payment_gross_weekly_payment",
+        "column": "supported_living_payment_annual_gross",
         "kind": "benefit",
         "tax_basis": "before_tax",
-        "annualisation_factor": 52,
+        "annualisation_factor": 1,
         "receipt_column": "receives_supported_living_payment"
       },
       {
@@ -168,7 +168,8 @@
       "V1",
       "V2",
       "V3",
-      "V4"
+      "V4",
+      "VHF"
     ],
     "join_column": "family_id",
     "variant_rule": "carry_baseline_cell_by_unit_id",

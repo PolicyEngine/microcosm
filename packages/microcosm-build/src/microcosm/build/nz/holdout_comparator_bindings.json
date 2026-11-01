@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "required_inputs": {
+    "family": [
+      "accommodation_supplement_rounded_weekly_payment"
+    ]
+  },
+  "input_domains": {
+    "family": {
+      "accommodation_supplement_rounded_weekly_payment": {
+        "kind": "nonnegative_number"
+      }
+    }
+  },
+  "columns": [
+    {
+      "entity": "family",
+      "name": "accommodation_supplement_positive_payment_indicator",
+      "predicates": [
+        {
+          "column": "accommodation_supplement_rounded_weekly_payment",
+          "operator": "gt",
+          "value": 0
+        }
+      ]
+    }
+  ]
+}

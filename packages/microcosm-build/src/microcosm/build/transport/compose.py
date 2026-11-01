@@ -86,6 +86,8 @@ from microcosm.build.money_normalization import (
 )
 from microcosm.build.reference_profiles import resolve_reference_profiles
 from microcosm.calibrate.ordered_kernels import OUTPUT_TYPES
+from microcosm.frame.materialize import _WEIGHT_COLUMN_SUFFIX
+from microcosm.frame.unit_construction import BenefitUnitRule
 from microcosm.graph import (
     ROWS_ALL,
     ArtifactInput,
@@ -198,6 +200,7 @@ _DOCUMENT_FIELDS = frozenset(
         "endpoints",
         "pending_outputs",
         "mass_partition",
+        "export_contract",
     }
 )
 _NODE_FIELDS = frozenset(
@@ -1250,6 +1253,147 @@ def transport_graph_document(spec: Mapping[str, object]) -> Mapping:
             f"{GRAPH_RESOURCE}.json must declare schema_version 1 and the spec country."
         )
     return document
+
+
+def _check_export_contract(
+    spec: Mapping[str, object], graph: Graph, compiled: CompiledGraph
+) -> None:
+    """Enforce an opt-in closed roster on export and terminal gate slices.
+
+    The declaration names the resource; its entity-qualified slices govern the
+    actual node inputs. This composition check changes no kernel implementation.
+    """
+    resource = transport_graph_document(spec).get("export_contract")
+    if resource is None:
+        return
+    if not _is_text(resource):
+        raise ValueError("Transport export_contract must name a resource.")
+    from .registry import transport_entity_schema
+
+    schema, _ = transport_entity_schema(
+        BenefitUnitRule.from_spec(transport_resource(spec, "benefit_unit_rule"))
+    )
+    automatic = {
+        entity: {schema.entity_id_column(entity)} for entity in schema.entities
+    }
+    automatic[schema.person_entity].update(
+        schema.membership_column(group) for group in schema.group_entities
+    )
+    contract = transport_resource(spec, resource)
+    if contract.get("closed") is not True:
+        raise ValueError("Transport export_contract requires a closed roster.")
+    rosters = _mapping(contract.get("entity_slices"), "export_contract.entity_slices")
+    if set(rosters) != {"export", "gates"}:
+        raise ValueError("Export contract entity_slices must name export and gates.")
+    required = set(_sequence(contract.get("required"), "export_contract.required"))
+    allowed = required | set(
+        _sequence(contract.get("optional", ()), "export_contract.optional")
+    )
+    excluded = set(
+        _sequence(contract.get("forbidden", ()), "export_contract.forbidden")
+    ) | set(
+        _sequence(
+            contract.get("formula_owned_excluded", ()),
+            "export_contract.formula_owned_excluded",
+        )
+    )
+    replay_by_version: dict[str, set[tuple[str, str]]] = {}
+    scratch = {
+        (binding["entity"], column)
+        for binding in transport_resource(spec, "axiom_rules_bindings").get(
+            "bindings", ()
+        )
+        for column in binding.get("variables", ())
+    }
+    for node in graph.nodes:
+        outputs = {(item.entity, item.column) for item in node.outputs}
+        if node.kernel in {
+            "concepts.encode@1",
+            "concepts.encode_groups@1",
+            "takeup.assign@1",
+        }:
+            replay_by_version.setdefault(compiled.versions[node.id], set()).update(
+                outputs
+            )
+        elif node.kernel == MONEY_NORMALIZE_REF:
+            replay_by_version.setdefault(compiled.versions[node.id], set()).update(
+                (item.entity, item.column) for item in node.outputs if item.rewrite
+            )
+            scratch.update(
+                (item.entity, item.column) for item in node.outputs if not item.rewrite
+            )
+        elif node.kernel in _MONEY_BRIDGES or node.kernel.startswith("reporting."):
+            scratch.update(outputs)
+    for role, kernel in (
+        ("export", "export.prepare@1"),
+        ("gates", "gates.battery@1"),
+    ):
+        nodes = [
+            node
+            for node in graph.nodes
+            if node.kernel == kernel
+            and (role != "gates" or node.params.get("phase") == "terminal")
+        ]
+        if not nodes:
+            raise ValueError(f"Export contract requires its {role} node.")
+        replay = set()
+        for node in nodes:
+            version = compiled.versions[node.id]
+            while version is not None:
+                replay.update(replay_by_version.get(version, ()))
+                version = graph.node(version).base
+        roster = _mapping(rosters[role], f"export_contract.entity_slices.{role}")
+        expected = set()
+        for entity, columns in roster.items():
+            if not _is_text(entity):
+                raise ValueError("Export contract entities must be nonempty text.")
+            names = _sequence(columns, f"export_contract {role} {entity}")
+            if (
+                not names
+                or any(not _is_text(name) for name in names)
+                or len(set(names)) != len(names)
+            ):
+                raise ValueError("Export contract columns must be distinct text.")
+            expected.update((entity, name) for name in names)
+        names = {column for _, column in expected}
+        # Export materializes typed weights; no table-column owner supplies them.
+        materialized_weights = {
+            f"{node.params['weight_entity']}{_WEIGHT_COLUMN_SUFFIX}"
+            for node in nodes
+            if _is_text(node.params.get("weight_entity"))
+        }
+        # The executor projects ids and person memberships for sliced entities.
+        automatic_names = {
+            column
+            for node in nodes
+            for item in node.inputs
+            for column in automatic.get(item.entity, ())
+        }
+        effective_names = names | materialized_weights | automatic_names
+        if (
+            effective_names - allowed
+            or effective_names & excluded
+            or expected & scratch
+        ):
+            raise ValueError(
+                f"Export contract {role} includes columns outside its closed roster "
+                "or includes scratch, reporting or formula outputs."
+            )
+        missing_required = required - names - materialized_weights - automatic_names
+        if missing_required or replay - expected:
+            raise ValueError(
+                f"Export contract {role} omits required replay inputs: "
+                f"{sorted(replay - expected)}; required columns {sorted(missing_required)}."
+            )
+        for node in nodes:
+            actual = {
+                (item.entity, column) for item in node.inputs for column in item.columns
+            }
+            if any(item.rows != ROWS_ALL for item in node.inputs) or actual != expected:
+                raise ValueError(
+                    f"Export contract {role} node {node.id!r} must select its exact "
+                    "entity-qualified whole-row slice."
+                )
 
 
 def _ancestor_closure(
@@ -3105,6 +3249,7 @@ def compose_transport_graph(
         and not gate_inputs
     ):
         _check_extension_checkpoints(spec, config, skeleton, compiled)
+        _check_export_contract(spec, skeleton, compiled)
         return skeleton
     skeleton_nodes = []
     for node in skeleton.nodes:
@@ -3134,6 +3279,7 @@ def compose_transport_graph(
     # Money ownership is checked after each graph pass of the ancestry guard.
     _check_single_money_normalization(spec, graph, extended)
     _check_money_bridge_owners(graph, extended)
+    _check_export_contract(spec, graph, extended)
     for node in skeleton.nodes:
         expected = (
             set(compiled.predecessors[node.id])

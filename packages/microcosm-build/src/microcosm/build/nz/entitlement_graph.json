@@ -1,0 +1,1224 @@
+{
+  "schema_version": 1,
+  "nodes": [],
+  "scenario_nodes": [
+    {
+      "id": "nz.scn.{scenario}",
+      "kernel": "transport.boundary@1",
+      "structural": "filter",
+      "base": "nz.as",
+      "inputs": [
+        {
+          "entity": "person",
+          "columns": [
+            "age"
+          ]
+        }
+      ],
+      "params": {}
+    },
+    {
+      "id": "nz.scn.{scenario}.bridge.evaluate.reg17_0",
+      "kernel": "simulate.counterfactual@1",
+      "structural": "none",
+      "population": "nz.scn.{scenario}",
+      "sources": [
+        "rulespec_nz"
+      ],
+      "inputs": [
+        {
+          "entity": "person",
+          "columns": [
+            "jobseeker_support_applicant_age",
+            "jobseeker_support_benefit_commenced_on_or_after_1998_07_01",
+            "jobseeker_support_dependent_children_count",
+            "jobseeker_support_living_with_parent",
+            "jobseeker_support_partner_ineligible_due_to_sanction_or_strike",
+            "jobseeker_support_partner_receives_main_benefit",
+            "jobseeker_support_partner_receives_new_zealand_superannuation_or_veterans_pension",
+            "jobseeker_support_single",
+            "jobseeker_support_total_income",
+            "jobseeker_support_transferred_2013_no_dependent_children",
+            "jobseeker_support_youngest_dependent_child_age",
+            "main_benefit_income_test_assessable_income",
+            "sole_parent_support_personal_earnings_used_for_childcare",
+            "sole_parent_support_total_income",
+            "supported_living_blind_average_weekly_earnings",
+            "supported_living_blind_beneficiary_employed",
+            "supported_living_blind_other_weekly_amounts_from_all_sources",
+            "supported_living_payment_applicant_age",
+            "supported_living_payment_beneficiary_personal_earnings",
+            "supported_living_payment_caring",
+            "supported_living_payment_dependent_children_count",
+            "supported_living_payment_partner_receives_main_benefit",
+            "supported_living_payment_partner_receives_new_zealand_superannuation_or_veterans_pension",
+            "supported_living_payment_partnered_long_term_residential_care_halving_applies",
+            "supported_living_payment_restricted_or_blind",
+            "supported_living_payment_single",
+            "supported_living_payment_total_income",
+            "supported_living_payment_totally_blind"
+          ]
+        },
+        {
+          "entity": "family",
+          "columns": [
+            "is_partnered",
+            "is_single",
+            "is_sole_parent",
+            "n_dependent_children",
+            "youngest_dependent_child_age"
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "entity": "person",
+          "column": "bridge_evaluation_reg17_0",
+          "dtype": "float64"
+        }
+      ],
+      "params": {
+        "engine_ref": {
+          "binding": "main_benefits_rates",
+          "field": "engine_ref"
+        },
+        "period": {
+          "binding": "main_benefits_rates",
+          "field": "period"
+        },
+        "variables": [
+          "jobseeker_support_net_weekly_payment"
+        ],
+        "input_overrides": [
+          {
+            "entity": "person",
+            "column": "jobseeker_support_applicant_age",
+            "value": 25
+          },
+          {
+            "entity": "person",
+            "column": "jobseeker_support_benefit_commenced_on_or_after_1998_07_01",
+            "value": false
+          },
+          {
+            "entity": "person",
+            "column": "jobseeker_support_dependent_children_count",
+            "source_entity": "family",
+            "source_column": "n_dependent_children"
+          },
+          {
+            "entity": "person",
+            "column": "jobseeker_support_living_with_parent",
+            "value": false
+          },
+          {
+            "entity": "person",
+            "column": "jobseeker_support_partner_ineligible_due_to_sanction_or_strike",
+            "value": false
+          },
+          {
+            "entity": "person",
+            "column": "jobseeker_support_partner_receives_main_benefit",
+            "source_entity": "family",
+            "source_column": "is_partnered"
+          },
+          {
+            "entity": "person",
+            "column": "jobseeker_support_partner_receives_new_zealand_superannuation_or_veterans_pension",
+            "value": false
+          },
+          {
+            "entity": "person",
+            "column": "jobseeker_support_single",
+            "source_entity": "family",
+            "source_column": "is_single"
+          },
+          {
+            "entity": "person",
+            "column": "jobseeker_support_transferred_2013_no_dependent_children",
+            "value": false
+          },
+          {
+            "entity": "person",
+            "column": "jobseeker_support_youngest_dependent_child_age",
+            "source_entity": "family",
+            "source_column": "youngest_dependent_child_age"
+          },
+          {
+            "entity": "person",
+            "column": "jobseeker_support_total_income",
+            "value": 0
+          }
+        ],
+        "output_coefficients": [
+          {
+            "variable": "jobseeker_support_net_weekly_payment",
+            "coefficient": 1,
+            "entity": "person",
+            "column": "bridge_evaluation_reg17_0"
+          }
+        ],
+        "resource_sha256": {
+          "resource": "as_rate_bridge",
+          "encoding": "sha256"
+        }
+      },
+      "description": "The engine evaluates this declared bridge component; the hub still must supply the approved final assembly."
+    },
+    {
+      "id": "nz.scn.{scenario}.bridge.evaluate.reg17_1",
+      "kernel": "simulate.counterfactual@1",
+      "structural": "none",
+      "population": "nz.scn.{scenario}",
+      "sources": [
+        "rulespec_nz"
+      ],
+      "inputs": [
+        {
+          "entity": "person",
+          "columns": [
+            "jobseeker_support_applicant_age",
+            "jobseeker_support_benefit_commenced_on_or_after_1998_07_01",
+            "jobseeker_support_dependent_children_count",
+            "jobseeker_support_living_with_parent",
+            "jobseeker_support_partner_ineligible_due_to_sanction_or_strike",
+            "jobseeker_support_partner_receives_main_benefit",
+            "jobseeker_support_partner_receives_new_zealand_superannuation_or_veterans_pension",
+            "jobseeker_support_single",
+            "jobseeker_support_total_income",
+            "jobseeker_support_transferred_2013_no_dependent_children",
+            "jobseeker_support_youngest_dependent_child_age",
+            "main_benefit_income_test_assessable_income",
+            "sole_parent_support_personal_earnings_used_for_childcare",
+            "sole_parent_support_total_income",
+            "supported_living_blind_average_weekly_earnings",
+            "supported_living_blind_beneficiary_employed",
+            "supported_living_blind_other_weekly_amounts_from_all_sources",
+            "supported_living_payment_applicant_age",
+            "supported_living_payment_beneficiary_personal_earnings",
+            "supported_living_payment_caring",
+            "supported_living_payment_dependent_children_count",
+            "supported_living_payment_partner_receives_main_benefit",
+            "supported_living_payment_partner_receives_new_zealand_superannuation_or_veterans_pension",
+            "supported_living_payment_partnered_long_term_residential_care_halving_applies",
+            "supported_living_payment_restricted_or_blind",
+            "supported_living_payment_single",
+            "supported_living_payment_total_income",
+            "supported_living_payment_totally_blind"
+          ]
+        },
+        {
+          "entity": "family",
+          "columns": [
+            "is_partnered",
+            "is_single",
+            "is_sole_parent",
+            "n_dependent_children",
+            "youngest_dependent_child_age"
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "entity": "family",
+          "column": "bridge_evaluation_reg17_1",
+          "dtype": "float64"
+        }
+      ],
+      "params": {
+        "engine_ref": {
+          "binding": "family_tax_credits",
+          "field": "engine_ref"
+        },
+        "period": {
+          "binding": "family_tax_credits",
+          "field": "period"
+        },
+        "variables": [
+          "family_tax_credit_prescribed_amount"
+        ],
+        "input_overrides": [
+          {
+            "entity": "family",
+            "column": "family_tax_credit_eldest_dependent_child_care_units",
+            "value": 1
+          },
+          {
+            "entity": "family",
+            "column": "family_tax_credit_subsequent_dependent_child_care_units",
+            "value": 0
+          }
+        ],
+        "output_coefficients": [
+          {
+            "variable": "family_tax_credit_prescribed_amount",
+            "coefficient": 1,
+            "entity": "family",
+            "column": "bridge_evaluation_reg17_1"
+          }
+        ],
+        "resource_sha256": {
+          "resource": "as_rate_bridge",
+          "encoding": "sha256"
+        }
+      },
+      "description": "The engine evaluates this declared bridge component; the hub still must supply the approved final assembly."
+    },
+    {
+      "id": "nz.scn.{scenario}.bridge.evaluate.reg18_sole_parent_gross_rate",
+      "kernel": "simulate.counterfactual@1",
+      "structural": "none",
+      "population": "nz.scn.{scenario}",
+      "sources": [
+        "rulespec_nz"
+      ],
+      "inputs": [
+        {
+          "entity": "person",
+          "columns": [
+            "jobseeker_support_applicant_age",
+            "jobseeker_support_benefit_commenced_on_or_after_1998_07_01",
+            "jobseeker_support_dependent_children_count",
+            "jobseeker_support_living_with_parent",
+            "jobseeker_support_partner_ineligible_due_to_sanction_or_strike",
+            "jobseeker_support_partner_receives_main_benefit",
+            "jobseeker_support_partner_receives_new_zealand_superannuation_or_veterans_pension",
+            "jobseeker_support_single",
+            "jobseeker_support_total_income",
+            "jobseeker_support_transferred_2013_no_dependent_children",
+            "jobseeker_support_youngest_dependent_child_age",
+            "main_benefit_income_test_assessable_income",
+            "sole_parent_support_personal_earnings_used_for_childcare",
+            "sole_parent_support_total_income",
+            "supported_living_blind_average_weekly_earnings",
+            "supported_living_blind_beneficiary_employed",
+            "supported_living_blind_other_weekly_amounts_from_all_sources",
+            "supported_living_payment_applicant_age",
+            "supported_living_payment_beneficiary_personal_earnings",
+            "supported_living_payment_caring",
+            "supported_living_payment_dependent_children_count",
+            "supported_living_payment_partner_receives_main_benefit",
+            "supported_living_payment_partner_receives_new_zealand_superannuation_or_veterans_pension",
+            "supported_living_payment_partnered_long_term_residential_care_halving_applies",
+            "supported_living_payment_restricted_or_blind",
+            "supported_living_payment_single",
+            "supported_living_payment_total_income",
+            "supported_living_payment_totally_blind"
+          ]
+        },
+        {
+          "entity": "family",
+          "columns": [
+            "is_partnered",
+            "is_single",
+            "is_sole_parent",
+            "n_dependent_children",
+            "youngest_dependent_child_age"
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "entity": "person",
+          "column": "bridge_evaluation_reg18_sole_parent_gross_rate",
+          "dtype": "float64"
+        }
+      ],
+      "params": {
+        "engine_ref": {
+          "binding": "main_benefits_rates",
+          "field": "engine_ref"
+        },
+        "period": {
+          "binding": "main_benefits_rates",
+          "field": "period"
+        },
+        "variables": [
+          "jobseeker_support_gross_weekly_rate"
+        ],
+        "input_overrides": [
+          {
+            "entity": "person",
+            "column": "jobseeker_support_single",
+            "value": true
+          },
+          {
+            "entity": "person",
+            "column": "jobseeker_support_dependent_children_count",
+            "value": 1
+          },
+          {
+            "entity": "person",
+            "column": "jobseeker_support_youngest_dependent_child_age",
+            "value": 0
+          },
+          {
+            "entity": "person",
+            "column": "jobseeker_support_total_income",
+            "value": 0
+          }
+        ],
+        "output_coefficients": [
+          {
+            "variable": "jobseeker_support_gross_weekly_rate",
+            "coefficient": 1,
+            "entity": "person",
+            "column": "bridge_evaluation_reg18_sole_parent_gross_rate"
+          }
+        ],
+        "resource_sha256": {
+          "resource": "as_rate_bridge",
+          "encoding": "sha256"
+        }
+      },
+      "description": "The engine evaluates this declared bridge component; the hub still must supply the approved final assembly."
+    },
+    {
+      "id": "nz.scn.{scenario}.bridge.evaluate.reg18_sole_parent_reduction_at_anchor",
+      "kernel": "simulate.counterfactual@1",
+      "structural": "none",
+      "population": "nz.scn.{scenario}",
+      "sources": [
+        "rulespec_nz"
+      ],
+      "inputs": [
+        {
+          "entity": "person",
+          "columns": [
+            "jobseeker_support_applicant_age",
+            "jobseeker_support_benefit_commenced_on_or_after_1998_07_01",
+            "jobseeker_support_dependent_children_count",
+            "jobseeker_support_living_with_parent",
+            "jobseeker_support_partner_ineligible_due_to_sanction_or_strike",
+            "jobseeker_support_partner_receives_main_benefit",
+            "jobseeker_support_partner_receives_new_zealand_superannuation_or_veterans_pension",
+            "jobseeker_support_single",
+            "jobseeker_support_total_income",
+            "jobseeker_support_transferred_2013_no_dependent_children",
+            "jobseeker_support_youngest_dependent_child_age",
+            "main_benefit_income_test_assessable_income",
+            "sole_parent_support_personal_earnings_used_for_childcare",
+            "sole_parent_support_total_income",
+            "supported_living_blind_average_weekly_earnings",
+            "supported_living_blind_beneficiary_employed",
+            "supported_living_blind_other_weekly_amounts_from_all_sources",
+            "supported_living_payment_applicant_age",
+            "supported_living_payment_beneficiary_personal_earnings",
+            "supported_living_payment_caring",
+            "supported_living_payment_dependent_children_count",
+            "supported_living_payment_partner_receives_main_benefit",
+            "supported_living_payment_partner_receives_new_zealand_superannuation_or_veterans_pension",
+            "supported_living_payment_partnered_long_term_residential_care_halving_applies",
+            "supported_living_payment_restricted_or_blind",
+            "supported_living_payment_single",
+            "supported_living_payment_total_income",
+            "supported_living_payment_totally_blind"
+          ]
+        },
+        {
+          "entity": "family",
+          "columns": [
+            "is_partnered",
+            "is_single",
+            "is_sole_parent",
+            "n_dependent_children",
+            "youngest_dependent_child_age"
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "entity": "person",
+          "column": "bridge_evaluation_reg18_sole_parent_reduction_at_anchor",
+          "dtype": "float64"
+        }
+      ],
+      "params": {
+        "engine_ref": {
+          "binding": "main_benefits_rates",
+          "field": "engine_ref"
+        },
+        "period": {
+          "binding": "main_benefits_rates",
+          "field": "period"
+        },
+        "variables": [
+          "jobseeker_support_weekly_income_test_reduction"
+        ],
+        "input_overrides": [
+          {
+            "entity": "person",
+            "column": "jobseeker_support_single",
+            "value": true
+          },
+          {
+            "entity": "person",
+            "column": "jobseeker_support_dependent_children_count",
+            "value": 0
+          },
+          {
+            "entity": "person",
+            "column": "jobseeker_support_transferred_2013_no_dependent_children",
+            "value": false
+          },
+          {
+            "entity": "person",
+            "column": "jobseeker_support_total_income",
+            "value": 500
+          }
+        ],
+        "output_coefficients": [
+          {
+            "variable": "jobseeker_support_weekly_income_test_reduction",
+            "coefficient": 1,
+            "entity": "person",
+            "column": "bridge_evaluation_reg18_sole_parent_reduction_at_anchor"
+          }
+        ],
+        "resource_sha256": {
+          "resource": "as_rate_bridge",
+          "encoding": "sha256"
+        }
+      },
+      "description": "The engine evaluates this declared bridge component; the hub still must supply the approved final assembly."
+    },
+    {
+      "id": "nz.scn.{scenario}.bridge.evaluate.reg18_sole_parent_reduction_after_step",
+      "kernel": "simulate.counterfactual@1",
+      "structural": "none",
+      "population": "nz.scn.{scenario}",
+      "sources": [
+        "rulespec_nz"
+      ],
+      "inputs": [
+        {
+          "entity": "person",
+          "columns": [
+            "jobseeker_support_applicant_age",
+            "jobseeker_support_benefit_commenced_on_or_after_1998_07_01",
+            "jobseeker_support_dependent_children_count",
+            "jobseeker_support_living_with_parent",
+            "jobseeker_support_partner_ineligible_due_to_sanction_or_strike",
+            "jobseeker_support_partner_receives_main_benefit",
+            "jobseeker_support_partner_receives_new_zealand_superannuation_or_veterans_pension",
+            "jobseeker_support_single",
+            "jobseeker_support_total_income",
+            "jobseeker_support_transferred_2013_no_dependent_children",
+            "jobseeker_support_youngest_dependent_child_age",
+            "main_benefit_income_test_assessable_income",
+            "sole_parent_support_personal_earnings_used_for_childcare",
+            "sole_parent_support_total_income",
+            "supported_living_blind_average_weekly_earnings",
+            "supported_living_blind_beneficiary_employed",
+            "supported_living_blind_other_weekly_amounts_from_all_sources",
+            "supported_living_payment_applicant_age",
+            "supported_living_payment_beneficiary_personal_earnings",
+            "supported_living_payment_caring",
+            "supported_living_payment_dependent_children_count",
+            "supported_living_payment_partner_receives_main_benefit",
+            "supported_living_payment_partner_receives_new_zealand_superannuation_or_veterans_pension",
+            "supported_living_payment_partnered_long_term_residential_care_halving_applies",
+            "supported_living_payment_restricted_or_blind",
+            "supported_living_payment_single",
+            "supported_living_payment_total_income",
+            "supported_living_payment_totally_blind"
+          ]
+        },
+        {
+          "entity": "family",
+          "columns": [
+            "is_partnered",
+            "is_single",
+            "is_sole_parent",
+            "n_dependent_children",
+            "youngest_dependent_child_age"
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "entity": "person",
+          "column": "bridge_evaluation_reg18_sole_parent_reduction_after_step",
+          "dtype": "float64"
+        }
+      ],
+      "params": {
+        "engine_ref": {
+          "binding": "main_benefits_rates",
+          "field": "engine_ref"
+        },
+        "period": {
+          "binding": "main_benefits_rates",
+          "field": "period"
+        },
+        "variables": [
+          "jobseeker_support_weekly_income_test_reduction"
+        ],
+        "input_overrides": [
+          {
+            "entity": "person",
+            "column": "jobseeker_support_single",
+            "value": true
+          },
+          {
+            "entity": "person",
+            "column": "jobseeker_support_dependent_children_count",
+            "value": 0
+          },
+          {
+            "entity": "person",
+            "column": "jobseeker_support_transferred_2013_no_dependent_children",
+            "value": false
+          },
+          {
+            "entity": "person",
+            "column": "jobseeker_support_total_income",
+            "value": 501
+          }
+        ],
+        "output_coefficients": [
+          {
+            "variable": "jobseeker_support_weekly_income_test_reduction",
+            "coefficient": 1,
+            "entity": "person",
+            "column": "bridge_evaluation_reg18_sole_parent_reduction_after_step"
+          }
+        ],
+        "resource_sha256": {
+          "resource": "as_rate_bridge",
+          "encoding": "sha256"
+        }
+      },
+      "description": "The engine evaluates this declared bridge component; the hub still must supply the approved final assembly."
+    },
+    {
+      "id": "nz.scn.{scenario}.bridge.evaluate.reg18_all_other_units_payment_at_anchor",
+      "kernel": "simulate.counterfactual@1",
+      "structural": "none",
+      "population": "nz.scn.{scenario}",
+      "sources": [
+        "rulespec_nz"
+      ],
+      "inputs": [
+        {
+          "entity": "person",
+          "columns": [
+            "jobseeker_support_applicant_age",
+            "jobseeker_support_benefit_commenced_on_or_after_1998_07_01",
+            "jobseeker_support_dependent_children_count",
+            "jobseeker_support_living_with_parent",
+            "jobseeker_support_partner_ineligible_due_to_sanction_or_strike",
+            "jobseeker_support_partner_receives_main_benefit",
+            "jobseeker_support_partner_receives_new_zealand_superannuation_or_veterans_pension",
+            "jobseeker_support_single",
+            "jobseeker_support_total_income",
+            "jobseeker_support_transferred_2013_no_dependent_children",
+            "jobseeker_support_youngest_dependent_child_age",
+            "main_benefit_income_test_assessable_income",
+            "sole_parent_support_personal_earnings_used_for_childcare",
+            "sole_parent_support_total_income",
+            "supported_living_blind_average_weekly_earnings",
+            "supported_living_blind_beneficiary_employed",
+            "supported_living_blind_other_weekly_amounts_from_all_sources",
+            "supported_living_payment_applicant_age",
+            "supported_living_payment_beneficiary_personal_earnings",
+            "supported_living_payment_caring",
+            "supported_living_payment_dependent_children_count",
+            "supported_living_payment_partner_receives_main_benefit",
+            "supported_living_payment_partner_receives_new_zealand_superannuation_or_veterans_pension",
+            "supported_living_payment_partnered_long_term_residential_care_halving_applies",
+            "supported_living_payment_restricted_or_blind",
+            "supported_living_payment_single",
+            "supported_living_payment_total_income",
+            "supported_living_payment_totally_blind"
+          ]
+        },
+        {
+          "entity": "family",
+          "columns": [
+            "is_partnered",
+            "is_single",
+            "is_sole_parent",
+            "n_dependent_children",
+            "youngest_dependent_child_age"
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "entity": "person",
+          "column": "bridge_evaluation_reg18_all_other_units_payment_at_anchor",
+          "dtype": "float64"
+        }
+      ],
+      "params": {
+        "engine_ref": {
+          "binding": "main_benefits_rates",
+          "field": "engine_ref"
+        },
+        "period": {
+          "binding": "main_benefits_rates",
+          "field": "period"
+        },
+        "variables": [
+          "jobseeker_support_net_weekly_payment"
+        ],
+        "input_overrides": [
+          {
+            "entity": "person",
+            "column": "jobseeker_support_applicant_age",
+            "value": 25
+          },
+          {
+            "entity": "person",
+            "column": "jobseeker_support_benefit_commenced_on_or_after_1998_07_01",
+            "value": false
+          },
+          {
+            "entity": "person",
+            "column": "jobseeker_support_dependent_children_count",
+            "source_entity": "family",
+            "source_column": "n_dependent_children"
+          },
+          {
+            "entity": "person",
+            "column": "jobseeker_support_living_with_parent",
+            "value": false
+          },
+          {
+            "entity": "person",
+            "column": "jobseeker_support_partner_ineligible_due_to_sanction_or_strike",
+            "value": false
+          },
+          {
+            "entity": "person",
+            "column": "jobseeker_support_partner_receives_main_benefit",
+            "source_entity": "family",
+            "source_column": "is_partnered"
+          },
+          {
+            "entity": "person",
+            "column": "jobseeker_support_partner_receives_new_zealand_superannuation_or_veterans_pension",
+            "value": false
+          },
+          {
+            "entity": "person",
+            "column": "jobseeker_support_single",
+            "source_entity": "family",
+            "source_column": "is_single"
+          },
+          {
+            "entity": "person",
+            "column": "jobseeker_support_transferred_2013_no_dependent_children",
+            "value": false
+          },
+          {
+            "entity": "person",
+            "column": "jobseeker_support_youngest_dependent_child_age",
+            "source_entity": "family",
+            "source_column": "youngest_dependent_child_age"
+          },
+          {
+            "entity": "person",
+            "column": "jobseeker_support_total_income",
+            "value": 500
+          }
+        ],
+        "output_coefficients": [
+          {
+            "variable": "jobseeker_support_net_weekly_payment",
+            "coefficient": 1,
+            "entity": "person",
+            "column": "bridge_evaluation_reg18_all_other_units_payment_at_anchor"
+          }
+        ],
+        "resource_sha256": {
+          "resource": "as_rate_bridge",
+          "encoding": "sha256"
+        }
+      },
+      "description": "The engine evaluates this declared bridge component; the hub still must supply the approved final assembly."
+    },
+    {
+      "id": "nz.scn.{scenario}.bridge.evaluate.reg18_all_other_units_payment_after_step",
+      "kernel": "simulate.counterfactual@1",
+      "structural": "none",
+      "population": "nz.scn.{scenario}",
+      "sources": [
+        "rulespec_nz"
+      ],
+      "inputs": [
+        {
+          "entity": "person",
+          "columns": [
+            "jobseeker_support_applicant_age",
+            "jobseeker_support_benefit_commenced_on_or_after_1998_07_01",
+            "jobseeker_support_dependent_children_count",
+            "jobseeker_support_living_with_parent",
+            "jobseeker_support_partner_ineligible_due_to_sanction_or_strike",
+            "jobseeker_support_partner_receives_main_benefit",
+            "jobseeker_support_partner_receives_new_zealand_superannuation_or_veterans_pension",
+            "jobseeker_support_single",
+            "jobseeker_support_total_income",
+            "jobseeker_support_transferred_2013_no_dependent_children",
+            "jobseeker_support_youngest_dependent_child_age",
+            "main_benefit_income_test_assessable_income",
+            "sole_parent_support_personal_earnings_used_for_childcare",
+            "sole_parent_support_total_income",
+            "supported_living_blind_average_weekly_earnings",
+            "supported_living_blind_beneficiary_employed",
+            "supported_living_blind_other_weekly_amounts_from_all_sources",
+            "supported_living_payment_applicant_age",
+            "supported_living_payment_beneficiary_personal_earnings",
+            "supported_living_payment_caring",
+            "supported_living_payment_dependent_children_count",
+            "supported_living_payment_partner_receives_main_benefit",
+            "supported_living_payment_partner_receives_new_zealand_superannuation_or_veterans_pension",
+            "supported_living_payment_partnered_long_term_residential_care_halving_applies",
+            "supported_living_payment_restricted_or_blind",
+            "supported_living_payment_single",
+            "supported_living_payment_total_income",
+            "supported_living_payment_totally_blind"
+          ]
+        },
+        {
+          "entity": "family",
+          "columns": [
+            "is_partnered",
+            "is_single",
+            "is_sole_parent",
+            "n_dependent_children",
+            "youngest_dependent_child_age"
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "entity": "person",
+          "column": "bridge_evaluation_reg18_all_other_units_payment_after_step",
+          "dtype": "float64"
+        }
+      ],
+      "params": {
+        "engine_ref": {
+          "binding": "main_benefits_rates",
+          "field": "engine_ref"
+        },
+        "period": {
+          "binding": "main_benefits_rates",
+          "field": "period"
+        },
+        "variables": [
+          "jobseeker_support_net_weekly_payment"
+        ],
+        "input_overrides": [
+          {
+            "entity": "person",
+            "column": "jobseeker_support_applicant_age",
+            "value": 25
+          },
+          {
+            "entity": "person",
+            "column": "jobseeker_support_benefit_commenced_on_or_after_1998_07_01",
+            "value": false
+          },
+          {
+            "entity": "person",
+            "column": "jobseeker_support_dependent_children_count",
+            "source_entity": "family",
+            "source_column": "n_dependent_children"
+          },
+          {
+            "entity": "person",
+            "column": "jobseeker_support_living_with_parent",
+            "value": false
+          },
+          {
+            "entity": "person",
+            "column": "jobseeker_support_partner_ineligible_due_to_sanction_or_strike",
+            "value": false
+          },
+          {
+            "entity": "person",
+            "column": "jobseeker_support_partner_receives_main_benefit",
+            "source_entity": "family",
+            "source_column": "is_partnered"
+          },
+          {
+            "entity": "person",
+            "column": "jobseeker_support_partner_receives_new_zealand_superannuation_or_veterans_pension",
+            "value": false
+          },
+          {
+            "entity": "person",
+            "column": "jobseeker_support_single",
+            "source_entity": "family",
+            "source_column": "is_single"
+          },
+          {
+            "entity": "person",
+            "column": "jobseeker_support_transferred_2013_no_dependent_children",
+            "value": false
+          },
+          {
+            "entity": "person",
+            "column": "jobseeker_support_youngest_dependent_child_age",
+            "source_entity": "family",
+            "source_column": "youngest_dependent_child_age"
+          },
+          {
+            "entity": "person",
+            "column": "jobseeker_support_total_income",
+            "value": 501
+          }
+        ],
+        "output_coefficients": [
+          {
+            "variable": "jobseeker_support_net_weekly_payment",
+            "coefficient": 1,
+            "entity": "person",
+            "column": "bridge_evaluation_reg18_all_other_units_payment_after_step"
+          }
+        ],
+        "resource_sha256": {
+          "resource": "as_rate_bridge",
+          "encoding": "sha256"
+        }
+      },
+      "description": "The engine evaluates this declared bridge component; the hub still must supply the approved final assembly."
+    },
+    {
+      "id": "nz.scn.{scenario}.as",
+      "kernel": "simulate.rules_by_ref@1",
+      "structural": "none",
+      "population": "nz.scn.{scenario}",
+      "sources": [
+        "rulespec_nz"
+      ],
+      "inputs": [
+        {
+          "entity": "person",
+          "columns": [
+            "age"
+          ]
+        },
+        {
+          "entity": "family",
+          "columns": [
+            "accommodation_supplement_additional_resident_in_social_housing",
+            "accommodation_supplement_area_let_to_nonresidents",
+            "accommodation_supplement_base_rate_weekly_amount",
+            "accommodation_supplement_boarder",
+            "accommodation_supplement_business_use_area",
+            "accommodation_supplement_cash_assets",
+            "accommodation_supplement_concessionary_mortgage_payments_to_kainga_ora_or_crown",
+            "accommodation_supplement_costs_are_homeownership",
+            "accommodation_supplement_disability_accommodation_or_care_funded_under_pae_ora_act",
+            "accommodation_supplement_has_accommodation_costs",
+            "accommodation_supplement_has_dependent_children",
+            "accommodation_supplement_has_two_or_more_dependent_children",
+            "accommodation_supplement_in_relationship",
+            "accommodation_supplement_joint_owner_with_resident",
+            "accommodation_supplement_non_beneficiary",
+            "accommodation_supplement_non_beneficiary_income_cutout_weekly_amount",
+            "accommodation_supplement_owner_weekly_payment_share",
+            "accommodation_supplement_owner_weekly_required_payments",
+            "accommodation_supplement_owns_premises_and_not_joint_owner_with_resident",
+            "accommodation_supplement_partner_receiving_accommodation_supplement",
+            "accommodation_supplement_receiving_or_eligible_for_student_allowance_grant",
+            "accommodation_supplement_relevant_weekly_income",
+            "accommodation_supplement_rent_paid_to_kainga_ora",
+            "accommodation_supplement_rent_paid_to_registered_community_housing_provider_social_housing",
+            "accommodation_supplement_residential_care_funded_under_residential_care_act",
+            "accommodation_supplement_resides_in_area_1",
+            "accommodation_supplement_resides_in_area_2",
+            "accommodation_supplement_resides_in_area_3",
+            "accommodation_supplement_section_68_joint_tenant_exception_applies",
+            "accommodation_supplement_self_contained_area_let_to_residents",
+            "accommodation_supplement_social_housing_weekly_contributions_paid",
+            "accommodation_supplement_sole_parent",
+            "accommodation_supplement_super_or_veterans_pension_income_above_schedule_5_limit",
+            "accommodation_supplement_total_premises_area",
+            "accommodation_supplement_weekly_board_and_lodgings_paid",
+            "accommodation_supplement_weekly_boarder_payments_received",
+            "accommodation_supplement_weekly_contributions_received_from_additional_residents",
+            "accommodation_supplement_weekly_rent_paid",
+            "accommodation_supplement_weekly_rent_received_from_other_residents"
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "entity": "family",
+          "column": "accommodation_supplement_rounded_weekly_payment",
+          "dtype": "float64"
+        },
+        {
+          "entity": "family",
+          "column": "accommodation_supplement_weekly_amount_before_rounding",
+          "dtype": "float64"
+        },
+        {
+          "entity": "family",
+          "column": "accommodation_supplement_non_rate_entitlement_requirements",
+          "dtype": "int64"
+        },
+        {
+          "entity": "family",
+          "column": "accommodation_supplement_cash_assets_within_limit",
+          "dtype": "int64"
+        },
+        {
+          "entity": "family",
+          "column": "accommodation_supplement_social_housing_exclusion_not_applies",
+          "dtype": "int64"
+        },
+        {
+          "entity": "family",
+          "column": "accommodation_supplement_other_funding_exclusion_not_applies",
+          "dtype": "int64"
+        },
+        {
+          "entity": "family",
+          "column": "accommodation_supplement_non_beneficiary_income_reduction",
+          "dtype": "float64"
+        },
+        {
+          "entity": "family",
+          "column": "accommodation_supplement_weekly_qualifying_accommodation_costs",
+          "dtype": "float64"
+        },
+        {
+          "entity": "family",
+          "column": "accommodation_supplement_maximum_weekly_rate",
+          "dtype": "float64"
+        }
+      ],
+      "rules_binding": "accommodation_supplement",
+      "params": {
+        "variables": [
+          "accommodation_supplement_rounded_weekly_payment",
+          "accommodation_supplement_weekly_amount_before_rounding",
+          "accommodation_supplement_non_rate_entitlement_requirements",
+          "accommodation_supplement_cash_assets_within_limit",
+          "accommodation_supplement_social_housing_exclusion_not_applies",
+          "accommodation_supplement_other_funding_exclusion_not_applies",
+          "accommodation_supplement_non_beneficiary_income_reduction",
+          "accommodation_supplement_weekly_qualifying_accommodation_costs",
+          "accommodation_supplement_maximum_weekly_rate"
+        ]
+      }
+    },
+    {
+      "id": "nz.scn.{scenario}.income_decile",
+      "kernel": "reporting.carry_income_decile@1",
+      "structural": "none",
+      "population": "nz.scn.{scenario}",
+      "inputs": [
+        {
+          "entity": "person",
+          "columns": [
+            "age"
+          ]
+        },
+        {
+          "entity": "household",
+          "columns": [
+            "source_household_id"
+          ]
+        },
+        {
+          "entity": "family",
+          "columns": [
+            "family_type"
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "entity": "family",
+          "column": "income_decile",
+          "dtype": "int64"
+        }
+      ],
+      "params": {
+        "classifier": {
+          "resource": "reporting_classifiers",
+          "encoding": "json",
+          "path": [
+            "income_decile"
+          ]
+        },
+        "classifier_sha256": {
+          "resource": "reporting_classifiers",
+          "encoding": "sha256"
+        },
+        "scenario": "{scenario}",
+        "entities": [
+          "person",
+          "household",
+          "family"
+        ]
+      },
+      "artifact_inputs": [
+        {
+          "name": "baseline_cells",
+          "producer": "nz.scn.S0.income_decile",
+          "artifact": "baseline_cells"
+        }
+      ]
+    },
+    {
+      "id": "nz.scn.{scenario}.receipt_group",
+      "kernel": "reporting.receipt_group@1",
+      "structural": "none",
+      "population": "nz.scn.{scenario}",
+      "inputs": [
+        {
+          "entity": "person",
+          "columns": [
+            "receives_jobseeker_support",
+            "receives_nz_super",
+            "receives_sole_parent_support",
+            "receives_supported_living_payment"
+          ]
+        },
+        {
+          "entity": "family",
+          "columns": [
+            "family_type"
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "entity": "family",
+          "column": "receipt_group",
+          "dtype": "string"
+        }
+      ],
+      "params": {
+        "classifier": {
+          "resource": "reporting_classifiers",
+          "encoding": "json",
+          "path": [
+            "receipt_group"
+          ]
+        },
+        "classifier_sha256": {
+          "resource": "reporting_classifiers",
+          "encoding": "sha256"
+        },
+        "scenario": "{scenario}"
+      }
+    },
+    {
+      "id": "nz.scn.{scenario}.positive_payment",
+      "kernel": "calibration.prepare@1",
+      "structural": "none",
+      "population": "nz.scn.{scenario}",
+      "inputs": [
+        {
+          "entity": "family",
+          "columns": [
+            "accommodation_supplement_rounded_weekly_payment"
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "entity": "family",
+          "column": "accommodation_supplement_positive_payment_indicator",
+          "dtype": "bool"
+        }
+      ],
+      "params": {
+        "bindings": {
+          "resource": "holdout_comparator_bindings",
+          "encoding": "json"
+        },
+        "references": {
+          "resource": "holdout_references",
+          "encoding": "json"
+        },
+        "references_sha256": {
+          "resource": "holdout_references",
+          "encoding": "sha256"
+        }
+      }
+    },
+    {
+      "id": "nz.scn.{scenario}.gap",
+      "kernel": "takeup.gap@1",
+      "structural": "none",
+      "population": "nz.scn.{scenario}",
+      "sources": [
+        "nz_holdout_facts"
+      ],
+      "inputs": [
+        {
+          "entity": "person",
+          "columns": [
+            "age"
+          ]
+        },
+        {
+          "entity": "household",
+          "columns": [
+            "source_household_id"
+          ]
+        },
+        {
+          "entity": "family",
+          "columns": [
+            "accommodation_supplement_positive_payment_indicator",
+            "accommodation_supplement_rounded_weekly_payment",
+            "family_type",
+            "income_decile",
+            "receipt_group"
+          ]
+        }
+      ],
+      "params": {
+        "country": "nz",
+        "references": {
+          "resource": "holdout_references",
+          "encoding": "json"
+        },
+        "references_sha256": {
+          "resource": "holdout_references",
+          "encoding": "sha256"
+        },
+        "entities": [
+          "person",
+          "household",
+          "family"
+        ],
+        "weight_entity": "household",
+        "annualisation_factors": {
+          "resource": "gap_annualisation",
+          "encoding": "json"
+        },
+        "annualisation_sha256": {
+          "resource": "gap_annualisation",
+          "encoding": "sha256"
+        },
+        "scenario": "{scenario}"
+      }
+    }
+  ],
+  "scenario_gap": "nz.scn.{scenario}.gap",
+  "variant_gap": "nz.v.{variant}.gap",
+  "bands": {
+    "id": "nz.as.bands",
+    "population": "nz.terminal",
+    "baseline_scenario": "S0"
+  },
+  "package": {
+    "id": "nz.package",
+    "artifact_name": "bands"
+  },
+  "checkpoints": [
+    "nz.as.bands"
+  ]
+}

@@ -81,6 +81,8 @@ def predicate_mask(
             part = values.eq(value)
         elif operator == "ge":
             part = values.ge(value)
+        elif operator == "gt":
+            part = values.gt(value)
         elif operator == "lt":
             part = values.lt(value)
         elif operator == "in" and isinstance(value, (list, tuple)) and value:
@@ -165,6 +167,8 @@ def _validate_input(values: pd.Series, domain: Mapping[str, Any], name: str) -> 
             _finite_number(value) and value >= 0 and value == int(value)
             for value in values.tolist()
         )
+    elif kind == "nonnegative_number":
+        valid = all(_finite_number(value) and value >= 0 for value in values.tolist())
     else:
         allowed = domain["values"]
         valid = all(
@@ -178,7 +182,12 @@ def _validate_input(values: pd.Series, domain: Mapping[str, Any], name: str) -> 
 def _input_domain_kind(domain: Mapping[str, Any], name: str) -> str:
     """Share domain-schema validation between activation and table validation."""
     kind = domain.get("kind")
-    if kind in ("identity", "signed_integer", "nonnegative_integer"):
+    if kind in (
+        "identity",
+        "signed_integer",
+        "nonnegative_integer",
+        "nonnegative_number",
+    ):
         return kind
     if isinstance(domain.get("values"), (list, tuple)) and domain["values"]:
         return "values"

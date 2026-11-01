@@ -12,18 +12,31 @@ import copy
 import json
 import re
 from dataclasses import replace
+from fractions import Fraction
 
+import numpy as np
+import pandas as pd
 import pytest
 
 from microcosm.build.transport.compose import (
     compose_transport_graph,
     load_transport_spec,
 )
-from microcosm.frame.adapters.axiom import axiom_concept_mapping
+from microcosm.frame import Frame, WeightKind, Weights
+from microcosm.frame.adapters.axiom import NZ_SCHEMA, axiom_concept_mapping
 from microcosm.frame.adapters.axiom_input_surface import load_axiom_input_surface
 from microcosm.frame.input_closure import ClosureClass, EncodedBy, InputClosure
+from microcosm.frame.rules_kernels import SimulateSolveZeroKernel
 from microcosm.graph import Owned, StructuralDelta
+from test_support.microcosm_build.nz_msd_gross_up import (
+    ScheduleFixtureEngine,
+    _node,
+    exact_inverse,
+    exact_tax,
+    schedule_fixture,
+)
 from test_support.microcosm_build.transport_composed import make_composed_fixture
+from test_support.microcosm_frame.kernels import _context
 from test_support.paths import paths_for
 from tools.build_nz_benefit_gross_up import DISCLOSURE, PROGRAMMES, documents
 
@@ -237,6 +250,18 @@ def composed_gross_up(tmp_path):
     spec["resources"]["axiom_rules_bindings"]["bindings"].extend(bindings)
     spec["resources"]["precalibration_stages"] = _load("precalibration_stages")
     rows = spec["resources"]["transport_graph"]["nodes"]
+    rows.append(
+        {
+            "id": "nz.central",
+            "kernel": "transport.boundary@1",
+            "structural": "filter",
+            "base": "nz.open",
+            "inputs": [{"entity": "person", "columns": ["age"]}],
+        }
+    )
+    for row in rows:
+        if row["id"] == "nz.calibrate":
+            row["base"] = "nz.central"
     rows.extend(nodes)
     produced = {output["column"] for node in nodes for output in node["outputs"]}
     required = {
@@ -264,6 +289,7 @@ def composed_gross_up(tmp_path):
         },
     )
     problem = next(row for row in rows if row["id"] == "nz.targets.problem")
+    problem["population"] = "nz.central"
     problem["inputs"].append(
         {
             "entity": "person",
@@ -314,3 +340,61 @@ def test_private_tax_output_cannot_leak_to_calibration(composed_gross_up):
     ]
     with pytest.raises(ValueError, match="undeclared pre-calibration stage output"):
         compose_transport_graph(spec, config)
+
+
+def _solve_fractional_weekly_nets(nets, ids):
+    spec = load_transport_spec("nz")
+    row = next(
+        row
+        for row in spec["resources"]["benefit_gross_up"]["nodes"]
+        if row["id"] == "nz.gross_up.jobseeker_support"
+    )
+    engine_ref = "fractional-net-schedule-fixture"
+    node = _node(row, spec, engine_ref)
+    frame = Frame(
+        {
+            "person": pd.DataFrame(
+                {
+                    "person_id": ids,
+                    "person_household_id": ids,
+                    "person_family_id": ids,
+                    "jobseeker_support_net_weekly_payment": [
+                        float(net) for net in nets
+                    ],
+                }
+            ),
+            "household": pd.DataFrame({"household_id": ids}),
+            "family": pd.DataFrame({"family_id": ids}),
+        },
+        NZ_SCHEMA,
+        {"household": Weights(np.ones(len(ids)), WeightKind.DESIGN)},
+    )
+    kernel = SimulateSolveZeroKernel({engine_ref: ScheduleFixtureEngine()})
+    return kernel.run(_context(frame, node, weighted_entities=("household",)))
+
+
+def test_fractional_cent_nets_and_after_abatement_match_exact_inverse():
+    nets = [Fraction("123.4567"), Fraction("123.4567") - Fraction("12.3456")]
+    assert all((net * 100).denominator != 1 for net in nets)
+    result = _solve_fractional_weekly_nets(nets, [801, 802])
+    actual = result.columns["person", "jobseeker_support_annual_gross"]
+    brackets = schedule_fixture()
+    for net, gross in zip(nets, actual.tolist(), strict=True):
+        oracle = Fraction(round(exact_inverse(net * 52, brackets) * 100), 100)
+        assert Fraction(str(gross)) == oracle
+        residual = net * 52 + exact_tax(oracle, brackets) - oracle
+        assert abs(residual) + Fraction("0.000001") <= Fraction("0.0050001")
+
+
+def test_fractional_cent_ties_refuse_direct_and_after_abatement_rows():
+    nets = [Fraction("0.00111875"), Fraction("0.01111875") - Fraction("0.01")]
+    boundary = Fraction("0.065")
+    brackets = schedule_fixture()
+    assert exact_tax(boundary, brackets) == Fraction("0.006825")
+    assert all(net * 52 == Fraction("0.058175") for net in nets)
+    assert all(net * 52 + exact_tax(boundary, brackets) - boundary == 0 for net in nets)
+    with pytest.raises(
+        ValueError,
+        match=r"ambiguous quantization certificate within margin.*rows \[901, 902\]",
+    ):
+        _solve_fractional_weekly_nets(nets, [901, 902])

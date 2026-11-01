@@ -227,7 +227,8 @@
           "V1",
           "V2",
           "V3",
-          "V4"
+          "V4",
+          "VHF"
         ],
         "required_cells": [
           "income_decile_by_family_type/1/single",
@@ -314,7 +315,8 @@
           "V1",
           "V2",
           "V3",
-          "V4"
+          "V4",
+          "VHF"
         ],
         "required_cells": [
           "income_decile_by_family_type/1/single",
