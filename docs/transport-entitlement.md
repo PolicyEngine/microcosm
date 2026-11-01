@@ -193,6 +193,18 @@ credit over 52 for a unit with a dependent child. The tests in
 `test_nz_as_bridge.py` reproduce golden-08's base rate and cutout with a
 labelled fixture engine; no real-engine result is claimed.
 
+rulespec-nz's rounded Accommodation Supplement payment never reads the
+module's non-rate entitlement judgment, so the NZ graph gates the payment in
+the host. Each branch's `positive_payment` node (`calibration.prepare@1`)
+holds where the payment exceeds zero and the judgment reads "holds" (code 1;
+undetermined fails), and, in every branch but S5, where the unit's receipt
+group is not superannuitant (MC11's exclude-and-count). A
+`simulate.counterfactual@1` node then writes
+`accommodation_supplement_entitled_weekly_payment`, the rounded payment
+masked on that indicator, which the dollar comparator, the reporting cells
+and the gates read. S5 instead pays superannuitant units from a reg 17 base
+rate that takes NZ Superannuation before tax.
+
 The hub can compare approved small cases and sampled-unit outputs without donor
 H5 I/O using the declared case format in
 `tools/transport_bridge_differential.py`:

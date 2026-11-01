@@ -48,7 +48,12 @@ _CUTOUT = "accommodation_supplement_non_beneficiary_income_cutout_weekly_amount"
 _HAS_CHILD = "accommodation_supplement_bridge_has_dependent_child"
 _GROSS = "accommodation_supplement_bridge_sole_parent_gross_rate"
 _YOUNGEST = "jobseeker_support_youngest_dependent_child_age"
-_JS_BINDINGS = ("main_benefits_rates", "family_tax_credits", "nz_super")
+_JS_BINDINGS = (
+    "main_benefits_rates",
+    "family_tax_credits",
+    "nz_super",
+    "accommodation_supplement",
+)
 _REFS = {name: f"fixture:{name}" for name in _JS_BINDINGS}
 _CONFIG = TransportGraphConfig(
     engine_refs=_REFS, create_outputs=(Owned("person", "age", "int64"),)
@@ -268,6 +273,70 @@ class TaxCreditEngine(_FixtureEngine):
         }
 
 
+class SuperannuationEngine(_FixtureEngine):
+    """A fixture weekly amount before tax for adults aged 65 or older."""
+
+    inputs = ("nz_super_person_age",)
+    outputs = ("nz_super_weekly_amount_before_tax",)
+    weekly = 538.0
+
+    def materialize(self, bundle, variables, period):
+        table = bundle.table("person")
+        self.received.append(table.copy())
+        age = self._batch(table)["nz_super_person_age"]
+        return {
+            "nz_super_weekly_amount_before_tax": np.where(age >= 65, self.weekly, 0.0)
+        }
+
+
+class AccommodationSupplementEngine(_FixtureEngine):
+    """Pays half the rent, rounded, and judges a fixture cash-asset limit.
+
+    As in rulespec-nz's core.yaml, the rounded payment never reads the
+    non-rate judgment: only the host's gate can withhold it.
+    """
+
+    entity = "family"
+    outputs = (
+        "accommodation_supplement_rounded_weekly_payment",
+        "accommodation_supplement_non_rate_entitlement_requirements",
+    )
+    cash_limit = 8100.0
+
+    def __init__(self, undetermined=()):
+        super().__init__()
+        self.undetermined = set(undetermined)
+
+    def variables(self):
+        return tuple(
+            entry["input"]
+            for entry in _SPEC["resources"]["axiom_input_closure"]["entries"]
+            if entry["entity"] == "Family"
+            and entry["rulespec_path"].endswith("accommodation_supplement/core.yaml")
+        )
+
+    def materialize(self, bundle, variables, period):
+        table = bundle.table("family")
+        self.received.append(table.copy())
+        payment = np.round(
+            table["accommodation_supplement_weekly_rent_paid"].to_numpy(float) / 2
+        )
+        judgment = np.where(
+            table["accommodation_supplement_cash_assets"].to_numpy(float)
+            > self.cash_limit,
+            -1,
+            1,
+        )
+        judgment = np.where(
+            table["family_id"].isin(self.undetermined).to_numpy(), 0, judgment
+        )
+        values = {
+            "accommodation_supplement_rounded_weekly_payment": payment,
+            "accommodation_supplement_non_rate_entitlement_requirements": judgment,
+        }
+        return {name: values[name] for name in variables}
+
+
 def _row(node_id):
     for row, scenario in _rows(_SPEC)[0]:
         if row["id"] == node_id:
@@ -296,49 +365,91 @@ def _node(row, scenario):
 
 @dataclass
 class Unit:
-    """One invented benefit unit: its adults' and children's ages."""
+    """One invented benefit unit; every amount is fixture data."""
 
     partnered: bool = False
     children: tuple[int, ...] = ()
     receipt_group: str = "beneficiary"
-    super_amount: float = 0.0
+    adult_age: int = 30
+    cash_assets: float = 0.0
+    rent: float = 400.0
+
+
+_RECEIPT_FLAGS = {
+    "superannuitant": "receives_nz_super",
+    "beneficiary": "receives_jobseeker_support",
+}
+
+
+def _closure_inputs(binding, entity):
+    path = next(
+        row["rulespec_path"]
+        for row in _SPEC["resources"]["axiom_rules_bindings"]["bindings"]
+        if row["id"] == binding
+    )
+    return {
+        entry["input"]: entry.get("value", 0)
+        for entry in _SPEC["resources"]["axiom_input_closure"]["entries"]
+        if entry["rulespec_path"] == path and entry["entity"] == entity
+    }
 
 
 def _frame(units):
-    closure = _SPEC["resources"]["axiom_input_closure"]
-    rate_path = next(
-        row["rulespec_path"]
-        for row in _SPEC["resources"]["axiom_rules_bindings"]["bindings"]
-        if row["id"] == "main_benefits_rates"
-    )
+    flags = {
+        flag
+        for predicate in _SPEC["resources"]["reporting_classifiers"]["receipt_group"][
+            "predicates"
+        ].values()
+        for flag in predicate["columns"]
+    }
+    person_defaults = {
+        **_closure_inputs("main_benefits_rates", "Person"),
+        **_closure_inputs("nz_super", "Person"),
+    }
+    family_defaults = _closure_inputs("accommodation_supplement", "Family")
     person, family = [], []
     next_person = 1
     for index, unit in enumerate(units):
         family_id = 100 + index
         adults = 2 if unit.partnered else 1
         for member in range(adults + len(unit.children)):
+            adult = member < adults
+            age = unit.adult_age if adult else unit.children[member - adults]
             row = {
                 "person_id": next_person,
                 "person_household_id": family_id,
                 "person_family_id": family_id,
-                "nz_super_weekly_amount_before_tax": unit.super_amount
-                if member < adults
-                else 0.0,
+                **person_defaults,
+                "age": age,
+                "nz_super_person_age": age,
+                **{
+                    flag: adult and _RECEIPT_FLAGS.get(unit.receipt_group) == flag
+                    for flag in sorted(flags)
+                },
             }
-            for entry in closure["entries"]:
-                if entry["rulespec_path"] == rate_path and entry["entity"] == "Person":
-                    row[entry["input"]] = entry.get("value", 0)
             person.append(row)
             next_person += 1
         youngest = min(unit.children) if unit.children else None
+        family_type = (
+            ("couple_with_children" if unit.children else "couple")
+            if unit.partnered
+            else ("sole_parent" if unit.children else "single")
+        )
         family.append(
             {
                 "family_id": family_id,
+                **{
+                    name: (0.0 if value == 0 else value)
+                    for name, value in family_defaults.items()
+                },
+                "accommodation_supplement_cash_assets": unit.cash_assets,
+                "accommodation_supplement_weekly_rent_paid": unit.rent,
                 "n_dependent_children": len(unit.children),
                 "is_partnered": unit.partnered,
                 "is_single": not unit.partnered,
                 "is_sole_parent": not unit.partnered and bool(unit.children),
                 "youngest_dependent_child_age": youngest,
+                "family_type": family_type,
                 "receipt_group": unit.receipt_group,
             }
         )
@@ -347,6 +458,7 @@ def _frame(units):
         "youngest_dependent_child_age"
     ].astype("Int64")
     family["receipt_group"] = family["receipt_group"].astype("string")
+    family["family_type"] = family["family_type"].astype("string")
     ids = family["family_id"].to_numpy()
     return Frame(
         {
@@ -359,10 +471,12 @@ def _frame(units):
     )
 
 
-def _engines(schedule=None):
+def _engines(schedule=None, *, undetermined=()):
     return {
         _REFS["main_benefits_rates"]: JobseekerEngine(schedule),
         _REFS["family_tax_credits"]: TaxCreditEngine(),
+        _REFS["nz_super"]: SuperannuationEngine(),
+        _REFS["accommodation_supplement"]: AccommodationSupplementEngine(undetermined),
     }
 
 
@@ -664,3 +778,178 @@ def test_every_as_population_runs_its_own_bridge_and_every_branch_its_base_rate(
             for node_id in ("masks", "sole_parent_gross_rate", "cutout"):
                 assert rows[f"{prefix}.bridge.{node_id}"]["population"] == population
         assert rows[f"{prefix}.bridge.base_rate"]["population"] == population
+
+
+# --- Entitlement gate and MC11 (H25, H26) -------------------------------------
+
+_PAYMENT = "accommodation_supplement_rounded_weekly_payment"
+_JUDGMENT = "accommodation_supplement_non_rate_entitlement_requirements"
+_POSITIVE = "accommodation_supplement_positive_payment_indicator"
+_ENTITLED = "accommodation_supplement_entitled_weekly_payment"
+_BRANCHES = (
+    *(f"nz.scn.{name}" for name in ("S0", "S1", "S2", "S3", "S5")),
+    *(f"nz.v.{name}" for name in ("V1", "V2", "V3", "V4", "VHF")),
+)
+
+
+def _as_engine_outputs(frame, engines):
+    """Write the AS engine's payment and judgment as the branch's .as node would."""
+    engine = engines[_REFS["accommodation_supplement"]]
+    values = engine.materialize(frame, engine.outputs, "2026-27")
+    for name, data in values.items():
+        frame.table("family")[name] = data
+
+
+def _entitle(units, branch, *, undetermined=(), frame=None):
+    """Run the branch's packaged positive-payment and entitled nodes."""
+    frame = _frame(units) if frame is None else frame
+    engines = _engines(undetermined=undetermined)
+    _as_engine_outputs(frame, engines)
+    for suffix in (".positive_payment", ".as.entitled"):
+        _run(frame, *_row(branch + suffix), engines)
+    family = frame.table("family")
+    return frame, dict(zip(family["family_id"], family[_ENTITLED], strict=True))
+
+
+def test_a_unit_failing_the_non_rate_judgment_reads_zero():
+    _, entitled = _entitle([Unit(), Unit(cash_assets=20000.0)], "nz.scn.S0")
+    assert entitled == {100: 200.0, 101: 0.0}
+
+
+def test_an_undetermined_judgment_reads_zero():
+    frame, entitled = _entitle([Unit(), Unit()], "nz.scn.S0", undetermined={101})
+    assert frame.table("family")[_JUDGMENT].tolist() == [1, 0]
+    assert entitled == {100: 200.0, 101: 0.0}
+
+
+def test_s1_differs_from_s0_for_a_unit_over_the_asset_limit():
+    from microcosm.frame.input_closure import InputClosure
+
+    unit = Unit(cash_assets=20000.0)
+    _, central = _entitle([unit], "nz.scn.S0")
+    # S1's encoding knob zeroes the cash-asset input the encoder supplies.
+    s1 = next(
+        row for row in _SPEC["resources"]["scenarios"]["scenarios"] if row["id"] == "S1"
+    )
+    closure = InputClosure.from_dict(_SPEC["resources"]["axiom_input_closure"])
+    zeroed = closure.group_knobs(s1["encoding_knobs"]).zeroed
+    assert zeroed == frozenset({"accommodation_supplement_cash_assets"})
+    frame = _frame([unit])
+    for column in zeroed:
+        frame.table("family")[column] = 0.0
+    _, asset_test_off = _entitle([unit], "nz.scn.S1", frame=frame)
+    assert central == {100: 0.0}
+    assert asset_test_off == {100: 200.0}
+
+
+@pytest.mark.parametrize("branch", [b for b in _BRANCHES if not b.endswith("S5")])
+def test_a_superannuitant_unit_reads_zero_outside_s5(branch):
+    _, entitled = _entitle(
+        [Unit(receipt_group="superannuitant", adult_age=70), Unit()], branch
+    )
+    assert entitled == {100: 0.0, 101: 200.0}
+
+
+def test_s5_keeps_a_superannuitant_units_payment():
+    _, entitled = _entitle(
+        [Unit(receipt_group="superannuitant", adult_age=70)], "nz.scn.S5"
+    )
+    assert entitled == {100: 200.0}
+
+
+def test_the_excluded_set_equals_the_superannuitant_receipt_group_cell():
+    from microcosm.build.transport.reporting_kernels import (
+        register_reporting_kernels,
+    )
+    from microcosm.graph import KernelRegistry
+
+    units = [
+        Unit(receipt_group="superannuitant", adult_age=70),
+        Unit(receipt_group="superannuitant", adult_age=68, partnered=True),
+        Unit(receipt_group="beneficiary"),
+        Unit(receipt_group="other", children=(3,)),
+    ]
+    frame = _frame(units)
+    frame.table("family").drop(columns="receipt_group", inplace=True)
+    registry = register_reporting_kernels(KernelRegistry())
+    row, scenario = _row("nz.scn.S0.receipt_group")
+    node = _node(row, scenario)
+    result = registry.get(node.kernel).run(
+        _context(frame, node, weighted_entities=("household",))
+    )
+    for (entity, column), values in result.columns.items():
+        frame.table(entity)[column] = values.to_numpy()
+    _, entitled = _entitle(units, "nz.scn.S0", frame=frame)
+    family = frame.table("family")
+    excluded = set(
+        family.loc[
+            (family[_PAYMENT] > 0) & (family[_JUDGMENT] == 1) & ~family[_POSITIVE],
+            "family_id",
+        ]
+    )
+    cell = set(family.loc[family["receipt_group"] == "superannuitant", "family_id"])
+    assert excluded == cell == {100, 101}
+    assert all(entitled[unit] == 0 for unit in cell)
+
+
+def _s5_base_rate(units):
+    frame = _frame(units)
+    engines = _engines()
+    for node_id in (
+        "nz.as.bridge.masks",
+        "nz.scn.S5.bridge.superannuitant_masks",
+        "nz.scn.S5.bridge.base_rate",
+    ):
+        _run(frame, *_row(node_id), engines)
+    family = frame.table("family")
+    return dict(zip(family["family_id"], family[_BASE], strict=True))
+
+
+def test_s5_pays_a_superannuitant_unit_from_its_nzs_base_rate():
+    base = _s5_base_rate(
+        [Unit(receipt_group="superannuitant", adult_age=70), Unit(adult_age=30)]
+    )
+    schedule = JobseekerShapeFixture()
+    assert base[100] == SuperannuationEngine.weekly
+    assert base[101] == schedule.single_standard
+
+
+def test_a_partnered_superannuitant_unit_takes_coefficient_two_in_s5():
+    base = _s5_base_rate(
+        [
+            Unit(receipt_group="superannuitant", adult_age=70, partnered=True),
+            Unit(receipt_group="superannuitant", adult_age=70, children=(12,)),
+        ]
+    )
+    assert base[100] == 2 * SuperannuationEngine.weekly
+    credit = TaxCreditEngine.eldest / 52
+    assert abs(base[101] - (SuperannuationEngine.weekly + credit)) <= 1e-9
+
+
+def test_the_central_base_rate_keeps_jobseeker_for_superannuitant_units():
+    _, _, base, _ = _bridge(
+        [Unit(receipt_group="superannuitant", adult_age=70, partnered=True)]
+    )
+    assert base[100] == 2 * JobseekerShapeFixture().both_main_without_children
+
+
+def test_reporting_and_gap_read_the_entitled_payment():
+    resources = _SPEC["resources"]
+    conventions = resources["scenarios"]["gap_conventions"]
+    assert conventions["reporting_cells"]["measure"] == _ENTITLED
+    rows = {
+        row["metadata"]["holdout_use"]: row
+        for row in resources["holdout_references"]["target_references"]
+        if row["metadata"].get("activation_status") == "active"
+    }
+    assert rows["accommodation_supplement_recipient_comparator"]["measure"] == _POSITIVE
+    assert rows["accommodation_supplement_dollar_comparator"]["measure"] == _ENTITLED
+    for branch in _BRANCHES:
+        (family,) = [
+            item
+            for item in _row(branch + ".gap")[0]["inputs"]
+            if item["entity"] == "family"
+        ]
+        assert _ENTITLED in family["columns"] and _PAYMENT not in family["columns"]
+    excluded = resources["export_contract"]["formula_owned_excluded"]
+    assert _ENTITLED in excluded

@@ -551,7 +551,9 @@
             {
               "entity": "family",
               "columns": [
-                "accommodation_supplement_rounded_weekly_payment"
+                "accommodation_supplement_non_rate_entitlement_requirements",
+                "accommodation_supplement_rounded_weekly_payment",
+                "receipt_group"
               ]
             }
           ],
@@ -565,7 +567,10 @@
           "params": {
             "bindings": {
               "resource": "holdout_comparator_bindings",
-              "encoding": "json"
+              "encoding": "json",
+              "path": [
+                "central"
+              ]
             },
             "references": {
               "resource": "holdout_references",
@@ -576,6 +581,103 @@
               "encoding": "sha256"
             }
           }
+        },
+        {
+          "id": "nz.scn.S0.as.entitled",
+          "kernel": "simulate.counterfactual@1",
+          "structural": "none",
+          "population": "nz.scn.S0",
+          "sources": [
+            "rulespec_nz"
+          ],
+          "inputs": [
+            {
+              "entity": "person",
+              "columns": [
+                "age"
+              ]
+            },
+            {
+              "entity": "family",
+              "columns": [
+                "accommodation_supplement_additional_resident_in_social_housing",
+                "accommodation_supplement_area_let_to_nonresidents",
+                "accommodation_supplement_base_rate_weekly_amount",
+                "accommodation_supplement_boarder",
+                "accommodation_supplement_business_use_area",
+                "accommodation_supplement_cash_assets",
+                "accommodation_supplement_concessionary_mortgage_payments_to_kainga_ora_or_crown",
+                "accommodation_supplement_costs_are_homeownership",
+                "accommodation_supplement_disability_accommodation_or_care_funded_under_pae_ora_act",
+                "accommodation_supplement_has_accommodation_costs",
+                "accommodation_supplement_has_dependent_children",
+                "accommodation_supplement_has_two_or_more_dependent_children",
+                "accommodation_supplement_in_relationship",
+                "accommodation_supplement_joint_owner_with_resident",
+                "accommodation_supplement_non_beneficiary",
+                "accommodation_supplement_non_beneficiary_income_cutout_weekly_amount",
+                "accommodation_supplement_owner_weekly_payment_share",
+                "accommodation_supplement_owner_weekly_required_payments",
+                "accommodation_supplement_owns_premises_and_not_joint_owner_with_resident",
+                "accommodation_supplement_partner_receiving_accommodation_supplement",
+                "accommodation_supplement_positive_payment_indicator",
+                "accommodation_supplement_receiving_or_eligible_for_student_allowance_grant",
+                "accommodation_supplement_relevant_weekly_income",
+                "accommodation_supplement_rent_paid_to_kainga_ora",
+                "accommodation_supplement_rent_paid_to_registered_community_housing_provider_social_housing",
+                "accommodation_supplement_residential_care_funded_under_residential_care_act",
+                "accommodation_supplement_resides_in_area_1",
+                "accommodation_supplement_resides_in_area_2",
+                "accommodation_supplement_resides_in_area_3",
+                "accommodation_supplement_section_68_joint_tenant_exception_applies",
+                "accommodation_supplement_self_contained_area_let_to_residents",
+                "accommodation_supplement_social_housing_weekly_contributions_paid",
+                "accommodation_supplement_sole_parent",
+                "accommodation_supplement_super_or_veterans_pension_income_above_schedule_5_limit",
+                "accommodation_supplement_total_premises_area",
+                "accommodation_supplement_weekly_board_and_lodgings_paid",
+                "accommodation_supplement_weekly_boarder_payments_received",
+                "accommodation_supplement_weekly_contributions_received_from_additional_residents",
+                "accommodation_supplement_weekly_rent_paid",
+                "accommodation_supplement_weekly_rent_received_from_other_residents"
+              ]
+            }
+          ],
+          "outputs": [
+            {
+              "entity": "family",
+              "column": "accommodation_supplement_entitled_weekly_payment",
+              "dtype": "float64"
+            }
+          ],
+          "params": {
+            "engine_ref": {
+              "binding": "accommodation_supplement",
+              "field": "engine_ref"
+            },
+            "period": {
+              "binding": "accommodation_supplement",
+              "field": "period"
+            },
+            "variables": [
+              "accommodation_supplement_rounded_weekly_payment"
+            ],
+            "input_overrides": [],
+            "output_coefficients": [
+              {
+                "variable": "accommodation_supplement_rounded_weekly_payment",
+                "coefficient": 1,
+                "entity": "family",
+                "column": "accommodation_supplement_entitled_weekly_payment",
+                "mask": {
+                  "entity": "family",
+                  "column": "accommodation_supplement_positive_payment_indicator",
+                  "equals": true
+                }
+              }
+            ]
+          },
+          "description": "The rounded Accommodation Supplement payment where the positive-payment conjunction holds, zero elsewhere."
         },
         {
           "id": "nz.scn.S0.gap",
@@ -601,8 +703,8 @@
             {
               "entity": "family",
               "columns": [
+                "accommodation_supplement_entitled_weekly_payment",
                 "accommodation_supplement_positive_payment_indicator",
-                "accommodation_supplement_rounded_weekly_payment",
                 "family_type",
                 "income_decile",
                 "receipt_group"
@@ -1445,7 +1547,9 @@
             {
               "entity": "family",
               "columns": [
-                "accommodation_supplement_rounded_weekly_payment"
+                "accommodation_supplement_non_rate_entitlement_requirements",
+                "accommodation_supplement_rounded_weekly_payment",
+                "receipt_group"
               ]
             }
           ],
@@ -1459,7 +1563,10 @@
           "params": {
             "bindings": {
               "resource": "holdout_comparator_bindings",
-              "encoding": "json"
+              "encoding": "json",
+              "path": [
+                "central"
+              ]
             },
             "references": {
               "resource": "holdout_references",
@@ -1470,6 +1577,103 @@
               "encoding": "sha256"
             }
           }
+        },
+        {
+          "id": "nz.scn.S1.as.entitled",
+          "kernel": "simulate.counterfactual@1",
+          "structural": "none",
+          "population": "nz.scn.S1",
+          "sources": [
+            "rulespec_nz"
+          ],
+          "inputs": [
+            {
+              "entity": "person",
+              "columns": [
+                "age"
+              ]
+            },
+            {
+              "entity": "family",
+              "columns": [
+                "accommodation_supplement_additional_resident_in_social_housing",
+                "accommodation_supplement_area_let_to_nonresidents",
+                "accommodation_supplement_base_rate_weekly_amount",
+                "accommodation_supplement_boarder",
+                "accommodation_supplement_business_use_area",
+                "accommodation_supplement_cash_assets",
+                "accommodation_supplement_concessionary_mortgage_payments_to_kainga_ora_or_crown",
+                "accommodation_supplement_costs_are_homeownership",
+                "accommodation_supplement_disability_accommodation_or_care_funded_under_pae_ora_act",
+                "accommodation_supplement_has_accommodation_costs",
+                "accommodation_supplement_has_dependent_children",
+                "accommodation_supplement_has_two_or_more_dependent_children",
+                "accommodation_supplement_in_relationship",
+                "accommodation_supplement_joint_owner_with_resident",
+                "accommodation_supplement_non_beneficiary",
+                "accommodation_supplement_non_beneficiary_income_cutout_weekly_amount",
+                "accommodation_supplement_owner_weekly_payment_share",
+                "accommodation_supplement_owner_weekly_required_payments",
+                "accommodation_supplement_owns_premises_and_not_joint_owner_with_resident",
+                "accommodation_supplement_partner_receiving_accommodation_supplement",
+                "accommodation_supplement_positive_payment_indicator",
+                "accommodation_supplement_receiving_or_eligible_for_student_allowance_grant",
+                "accommodation_supplement_relevant_weekly_income",
+                "accommodation_supplement_rent_paid_to_kainga_ora",
+                "accommodation_supplement_rent_paid_to_registered_community_housing_provider_social_housing",
+                "accommodation_supplement_residential_care_funded_under_residential_care_act",
+                "accommodation_supplement_resides_in_area_1",
+                "accommodation_supplement_resides_in_area_2",
+                "accommodation_supplement_resides_in_area_3",
+                "accommodation_supplement_section_68_joint_tenant_exception_applies",
+                "accommodation_supplement_self_contained_area_let_to_residents",
+                "accommodation_supplement_social_housing_weekly_contributions_paid",
+                "accommodation_supplement_sole_parent",
+                "accommodation_supplement_super_or_veterans_pension_income_above_schedule_5_limit",
+                "accommodation_supplement_total_premises_area",
+                "accommodation_supplement_weekly_board_and_lodgings_paid",
+                "accommodation_supplement_weekly_boarder_payments_received",
+                "accommodation_supplement_weekly_contributions_received_from_additional_residents",
+                "accommodation_supplement_weekly_rent_paid",
+                "accommodation_supplement_weekly_rent_received_from_other_residents"
+              ]
+            }
+          ],
+          "outputs": [
+            {
+              "entity": "family",
+              "column": "accommodation_supplement_entitled_weekly_payment",
+              "dtype": "float64"
+            }
+          ],
+          "params": {
+            "engine_ref": {
+              "binding": "accommodation_supplement",
+              "field": "engine_ref"
+            },
+            "period": {
+              "binding": "accommodation_supplement",
+              "field": "period"
+            },
+            "variables": [
+              "accommodation_supplement_rounded_weekly_payment"
+            ],
+            "input_overrides": [],
+            "output_coefficients": [
+              {
+                "variable": "accommodation_supplement_rounded_weekly_payment",
+                "coefficient": 1,
+                "entity": "family",
+                "column": "accommodation_supplement_entitled_weekly_payment",
+                "mask": {
+                  "entity": "family",
+                  "column": "accommodation_supplement_positive_payment_indicator",
+                  "equals": true
+                }
+              }
+            ]
+          },
+          "description": "The rounded Accommodation Supplement payment where the positive-payment conjunction holds, zero elsewhere."
         },
         {
           "id": "nz.scn.S1.gap",
@@ -1495,8 +1699,8 @@
             {
               "entity": "family",
               "columns": [
+                "accommodation_supplement_entitled_weekly_payment",
                 "accommodation_supplement_positive_payment_indicator",
-                "accommodation_supplement_rounded_weekly_payment",
                 "family_type",
                 "income_decile",
                 "receipt_group"
@@ -2333,7 +2537,9 @@
             {
               "entity": "family",
               "columns": [
-                "accommodation_supplement_rounded_weekly_payment"
+                "accommodation_supplement_non_rate_entitlement_requirements",
+                "accommodation_supplement_rounded_weekly_payment",
+                "receipt_group"
               ]
             }
           ],
@@ -2347,7 +2553,10 @@
           "params": {
             "bindings": {
               "resource": "holdout_comparator_bindings",
-              "encoding": "json"
+              "encoding": "json",
+              "path": [
+                "central"
+              ]
             },
             "references": {
               "resource": "holdout_references",
@@ -2358,6 +2567,103 @@
               "encoding": "sha256"
             }
           }
+        },
+        {
+          "id": "nz.scn.S2.as.entitled",
+          "kernel": "simulate.counterfactual@1",
+          "structural": "none",
+          "population": "nz.scn.S2",
+          "sources": [
+            "rulespec_nz"
+          ],
+          "inputs": [
+            {
+              "entity": "person",
+              "columns": [
+                "age"
+              ]
+            },
+            {
+              "entity": "family",
+              "columns": [
+                "accommodation_supplement_additional_resident_in_social_housing",
+                "accommodation_supplement_area_let_to_nonresidents",
+                "accommodation_supplement_base_rate_weekly_amount",
+                "accommodation_supplement_boarder",
+                "accommodation_supplement_business_use_area",
+                "accommodation_supplement_cash_assets",
+                "accommodation_supplement_concessionary_mortgage_payments_to_kainga_ora_or_crown",
+                "accommodation_supplement_costs_are_homeownership",
+                "accommodation_supplement_disability_accommodation_or_care_funded_under_pae_ora_act",
+                "accommodation_supplement_has_accommodation_costs",
+                "accommodation_supplement_has_dependent_children",
+                "accommodation_supplement_has_two_or_more_dependent_children",
+                "accommodation_supplement_in_relationship",
+                "accommodation_supplement_joint_owner_with_resident",
+                "accommodation_supplement_non_beneficiary",
+                "accommodation_supplement_non_beneficiary_income_cutout_weekly_amount",
+                "accommodation_supplement_owner_weekly_payment_share",
+                "accommodation_supplement_owner_weekly_required_payments",
+                "accommodation_supplement_owns_premises_and_not_joint_owner_with_resident",
+                "accommodation_supplement_partner_receiving_accommodation_supplement",
+                "accommodation_supplement_positive_payment_indicator",
+                "accommodation_supplement_receiving_or_eligible_for_student_allowance_grant",
+                "accommodation_supplement_relevant_weekly_income",
+                "accommodation_supplement_rent_paid_to_kainga_ora",
+                "accommodation_supplement_rent_paid_to_registered_community_housing_provider_social_housing",
+                "accommodation_supplement_residential_care_funded_under_residential_care_act",
+                "accommodation_supplement_resides_in_area_1",
+                "accommodation_supplement_resides_in_area_2",
+                "accommodation_supplement_resides_in_area_3",
+                "accommodation_supplement_section_68_joint_tenant_exception_applies",
+                "accommodation_supplement_self_contained_area_let_to_residents",
+                "accommodation_supplement_social_housing_weekly_contributions_paid",
+                "accommodation_supplement_sole_parent",
+                "accommodation_supplement_super_or_veterans_pension_income_above_schedule_5_limit",
+                "accommodation_supplement_total_premises_area",
+                "accommodation_supplement_weekly_board_and_lodgings_paid",
+                "accommodation_supplement_weekly_boarder_payments_received",
+                "accommodation_supplement_weekly_contributions_received_from_additional_residents",
+                "accommodation_supplement_weekly_rent_paid",
+                "accommodation_supplement_weekly_rent_received_from_other_residents"
+              ]
+            }
+          ],
+          "outputs": [
+            {
+              "entity": "family",
+              "column": "accommodation_supplement_entitled_weekly_payment",
+              "dtype": "float64"
+            }
+          ],
+          "params": {
+            "engine_ref": {
+              "binding": "accommodation_supplement",
+              "field": "engine_ref"
+            },
+            "period": {
+              "binding": "accommodation_supplement",
+              "field": "period"
+            },
+            "variables": [
+              "accommodation_supplement_rounded_weekly_payment"
+            ],
+            "input_overrides": [],
+            "output_coefficients": [
+              {
+                "variable": "accommodation_supplement_rounded_weekly_payment",
+                "coefficient": 1,
+                "entity": "family",
+                "column": "accommodation_supplement_entitled_weekly_payment",
+                "mask": {
+                  "entity": "family",
+                  "column": "accommodation_supplement_positive_payment_indicator",
+                  "equals": true
+                }
+              }
+            ]
+          },
+          "description": "The rounded Accommodation Supplement payment where the positive-payment conjunction holds, zero elsewhere."
         },
         {
           "id": "nz.scn.S2.gap",
@@ -2383,8 +2689,8 @@
             {
               "entity": "family",
               "columns": [
+                "accommodation_supplement_entitled_weekly_payment",
                 "accommodation_supplement_positive_payment_indicator",
-                "accommodation_supplement_rounded_weekly_payment",
                 "family_type",
                 "income_decile",
                 "receipt_group"
@@ -3221,7 +3527,9 @@
             {
               "entity": "family",
               "columns": [
-                "accommodation_supplement_rounded_weekly_payment"
+                "accommodation_supplement_non_rate_entitlement_requirements",
+                "accommodation_supplement_rounded_weekly_payment",
+                "receipt_group"
               ]
             }
           ],
@@ -3235,7 +3543,10 @@
           "params": {
             "bindings": {
               "resource": "holdout_comparator_bindings",
-              "encoding": "json"
+              "encoding": "json",
+              "path": [
+                "central"
+              ]
             },
             "references": {
               "resource": "holdout_references",
@@ -3246,6 +3557,103 @@
               "encoding": "sha256"
             }
           }
+        },
+        {
+          "id": "nz.scn.S3.as.entitled",
+          "kernel": "simulate.counterfactual@1",
+          "structural": "none",
+          "population": "nz.scn.S3",
+          "sources": [
+            "rulespec_nz"
+          ],
+          "inputs": [
+            {
+              "entity": "person",
+              "columns": [
+                "age"
+              ]
+            },
+            {
+              "entity": "family",
+              "columns": [
+                "accommodation_supplement_additional_resident_in_social_housing",
+                "accommodation_supplement_area_let_to_nonresidents",
+                "accommodation_supplement_base_rate_weekly_amount",
+                "accommodation_supplement_boarder",
+                "accommodation_supplement_business_use_area",
+                "accommodation_supplement_cash_assets",
+                "accommodation_supplement_concessionary_mortgage_payments_to_kainga_ora_or_crown",
+                "accommodation_supplement_costs_are_homeownership",
+                "accommodation_supplement_disability_accommodation_or_care_funded_under_pae_ora_act",
+                "accommodation_supplement_has_accommodation_costs",
+                "accommodation_supplement_has_dependent_children",
+                "accommodation_supplement_has_two_or_more_dependent_children",
+                "accommodation_supplement_in_relationship",
+                "accommodation_supplement_joint_owner_with_resident",
+                "accommodation_supplement_non_beneficiary",
+                "accommodation_supplement_non_beneficiary_income_cutout_weekly_amount",
+                "accommodation_supplement_owner_weekly_payment_share",
+                "accommodation_supplement_owner_weekly_required_payments",
+                "accommodation_supplement_owns_premises_and_not_joint_owner_with_resident",
+                "accommodation_supplement_partner_receiving_accommodation_supplement",
+                "accommodation_supplement_positive_payment_indicator",
+                "accommodation_supplement_receiving_or_eligible_for_student_allowance_grant",
+                "accommodation_supplement_relevant_weekly_income",
+                "accommodation_supplement_rent_paid_to_kainga_ora",
+                "accommodation_supplement_rent_paid_to_registered_community_housing_provider_social_housing",
+                "accommodation_supplement_residential_care_funded_under_residential_care_act",
+                "accommodation_supplement_resides_in_area_1",
+                "accommodation_supplement_resides_in_area_2",
+                "accommodation_supplement_resides_in_area_3",
+                "accommodation_supplement_section_68_joint_tenant_exception_applies",
+                "accommodation_supplement_self_contained_area_let_to_residents",
+                "accommodation_supplement_social_housing_weekly_contributions_paid",
+                "accommodation_supplement_sole_parent",
+                "accommodation_supplement_super_or_veterans_pension_income_above_schedule_5_limit",
+                "accommodation_supplement_total_premises_area",
+                "accommodation_supplement_weekly_board_and_lodgings_paid",
+                "accommodation_supplement_weekly_boarder_payments_received",
+                "accommodation_supplement_weekly_contributions_received_from_additional_residents",
+                "accommodation_supplement_weekly_rent_paid",
+                "accommodation_supplement_weekly_rent_received_from_other_residents"
+              ]
+            }
+          ],
+          "outputs": [
+            {
+              "entity": "family",
+              "column": "accommodation_supplement_entitled_weekly_payment",
+              "dtype": "float64"
+            }
+          ],
+          "params": {
+            "engine_ref": {
+              "binding": "accommodation_supplement",
+              "field": "engine_ref"
+            },
+            "period": {
+              "binding": "accommodation_supplement",
+              "field": "period"
+            },
+            "variables": [
+              "accommodation_supplement_rounded_weekly_payment"
+            ],
+            "input_overrides": [],
+            "output_coefficients": [
+              {
+                "variable": "accommodation_supplement_rounded_weekly_payment",
+                "coefficient": 1,
+                "entity": "family",
+                "column": "accommodation_supplement_entitled_weekly_payment",
+                "mask": {
+                  "entity": "family",
+                  "column": "accommodation_supplement_positive_payment_indicator",
+                  "equals": true
+                }
+              }
+            ]
+          },
+          "description": "The rounded Accommodation Supplement payment where the positive-payment conjunction holds, zero elsewhere."
         },
         {
           "id": "nz.scn.S3.gap",
@@ -3271,8 +3679,8 @@
             {
               "entity": "family",
               "columns": [
+                "accommodation_supplement_entitled_weekly_payment",
                 "accommodation_supplement_positive_payment_indicator",
-                "accommodation_supplement_rounded_weekly_payment",
                 "family_type",
                 "income_decile",
                 "receipt_group"
@@ -3334,6 +3742,61 @@
           "params": {}
         },
         {
+          "id": "nz.scn.S5.bridge.superannuitant_masks",
+          "kernel": "calibration.prepare@1",
+          "structural": "none",
+          "population": "nz.scn.S5",
+          "inputs": [
+            {
+              "entity": "family",
+              "columns": [
+                "is_partnered",
+                "receipt_group"
+              ]
+            }
+          ],
+          "outputs": [
+            {
+              "entity": "family",
+              "column": "accommodation_supplement_bridge_single_non_superannuitant",
+              "dtype": "bool"
+            },
+            {
+              "entity": "family",
+              "column": "accommodation_supplement_bridge_partnered_non_superannuitant",
+              "dtype": "bool"
+            },
+            {
+              "entity": "family",
+              "column": "accommodation_supplement_bridge_single_superannuitant",
+              "dtype": "bool"
+            },
+            {
+              "entity": "family",
+              "column": "accommodation_supplement_bridge_partnered_superannuitant",
+              "dtype": "bool"
+            }
+          ],
+          "params": {
+            "bindings": {
+              "resource": "as_rate_bridge",
+              "encoding": "json",
+              "path": [
+                "superannuitant_units",
+                "s5_mask_bindings"
+              ]
+            },
+            "references": {
+              "resource": "holdout_references",
+              "encoding": "json"
+            },
+            "references_sha256": {
+              "resource": "holdout_references",
+              "encoding": "sha256"
+            }
+          }
+        },
+        {
           "id": "nz.scn.S5.bridge.base_rate",
           "kernel": "simulate.counterfactual@1",
           "structural": "none",
@@ -3357,6 +3820,19 @@
                 "jobseeker_support_transferred_2013_no_dependent_children",
                 "jobseeker_support_youngest_dependent_child_age",
                 "main_benefit_income_test_assessable_income",
+                "nz_super_all_shared_adults_are_exempt_dependent_children_or_temporary_visitors",
+                "nz_super_birth_year",
+                "nz_super_born_on_or_before_30_june_of_birth_year",
+                "nz_super_elected_weekly_compensation_instead_of_superannuation",
+                "nz_super_ordinarily_resident_in_new_zealand_on_application",
+                "nz_super_overseas_application_residence_exception_applies",
+                "nz_super_person_age",
+                "nz_super_principal_residence_is_qualifying_accommodation",
+                "nz_super_resident_present_since_age_20_new_zealand_years",
+                "nz_super_resident_present_since_age_20_total_years",
+                "nz_super_resident_present_since_age_50_total_years",
+                "nz_super_shares_residence_with_person_at_least_adult_age",
+                "nz_super_single",
                 "sole_parent_support_personal_earnings_used_for_childcare",
                 "sole_parent_support_total_income",
                 "supported_living_blind_average_weekly_earnings",
@@ -3379,6 +3855,10 @@
               "entity": "family",
               "columns": [
                 "accommodation_supplement_bridge_has_dependent_child",
+                "accommodation_supplement_bridge_partnered_non_superannuitant",
+                "accommodation_supplement_bridge_partnered_superannuitant",
+                "accommodation_supplement_bridge_single_non_superannuitant",
+                "accommodation_supplement_bridge_single_superannuitant",
                 "accommodation_supplement_bridge_single_without_dependent_child",
                 "is_partnered",
                 "is_single",
@@ -3482,8 +3962,8 @@
                 "aggregation": "first",
                 "mask": {
                   "entity": "family",
-                  "column": "is_partnered",
-                  "equals": false
+                  "column": "accommodation_supplement_bridge_single_non_superannuitant",
+                  "equals": true
                 }
               },
               {
@@ -3494,7 +3974,39 @@
                 "aggregation": "first",
                 "mask": {
                   "entity": "family",
-                  "column": "is_partnered",
+                  "column": "accommodation_supplement_bridge_partnered_non_superannuitant",
+                  "equals": true
+                }
+              },
+              {
+                "variable": "nz_super_weekly_amount_before_tax",
+                "coefficient": 1,
+                "entity": "family",
+                "column": "accommodation_supplement_base_rate_weekly_amount",
+                "engine_ref": {
+                  "binding": "nz_super",
+                  "field": "engine_ref"
+                },
+                "aggregation": "max",
+                "mask": {
+                  "entity": "family",
+                  "column": "accommodation_supplement_bridge_single_superannuitant",
+                  "equals": true
+                }
+              },
+              {
+                "variable": "nz_super_weekly_amount_before_tax",
+                "coefficient": 2,
+                "entity": "family",
+                "column": "accommodation_supplement_base_rate_weekly_amount",
+                "engine_ref": {
+                  "binding": "nz_super",
+                  "field": "engine_ref"
+                },
+                "aggregation": "max",
+                "mask": {
+                  "entity": "family",
+                  "column": "accommodation_supplement_bridge_partnered_superannuitant",
                   "equals": true
                 }
               },
@@ -3539,6 +4051,20 @@
                     "value": 0
                   }
                 ]
+              },
+              {
+                "engine_ref": {
+                  "binding": "nz_super",
+                  "field": "engine_ref"
+                },
+                "period": {
+                  "binding": "nz_super",
+                  "field": "period"
+                },
+                "variables": [
+                  "nz_super_weekly_amount_before_tax"
+                ],
+                "input_overrides": []
               }
             ],
             "resource_sha256": {
@@ -3546,7 +4072,7 @@
               "encoding": "sha256"
             }
           },
-          "description": "The engine evaluates the reg 17 base rate from zero-income Jobseeker Support and the eldest-child family tax credit."
+          "description": "The engine evaluates the S5 reg 17 base rate, with NZ Superannuation before tax for superannuitant units."
         },
         {
           "id": "nz.scn.S5.as",
@@ -3782,6 +4308,7 @@
             {
               "entity": "family",
               "columns": [
+                "accommodation_supplement_non_rate_entitlement_requirements",
                 "accommodation_supplement_rounded_weekly_payment"
               ]
             }
@@ -3796,7 +4323,10 @@
           "params": {
             "bindings": {
               "resource": "holdout_comparator_bindings",
-              "encoding": "json"
+              "encoding": "json",
+              "path": [
+                "s5"
+              ]
             },
             "references": {
               "resource": "holdout_references",
@@ -3807,6 +4337,103 @@
               "encoding": "sha256"
             }
           }
+        },
+        {
+          "id": "nz.scn.S5.as.entitled",
+          "kernel": "simulate.counterfactual@1",
+          "structural": "none",
+          "population": "nz.scn.S5",
+          "sources": [
+            "rulespec_nz"
+          ],
+          "inputs": [
+            {
+              "entity": "person",
+              "columns": [
+                "age"
+              ]
+            },
+            {
+              "entity": "family",
+              "columns": [
+                "accommodation_supplement_additional_resident_in_social_housing",
+                "accommodation_supplement_area_let_to_nonresidents",
+                "accommodation_supplement_base_rate_weekly_amount",
+                "accommodation_supplement_boarder",
+                "accommodation_supplement_business_use_area",
+                "accommodation_supplement_cash_assets",
+                "accommodation_supplement_concessionary_mortgage_payments_to_kainga_ora_or_crown",
+                "accommodation_supplement_costs_are_homeownership",
+                "accommodation_supplement_disability_accommodation_or_care_funded_under_pae_ora_act",
+                "accommodation_supplement_has_accommodation_costs",
+                "accommodation_supplement_has_dependent_children",
+                "accommodation_supplement_has_two_or_more_dependent_children",
+                "accommodation_supplement_in_relationship",
+                "accommodation_supplement_joint_owner_with_resident",
+                "accommodation_supplement_non_beneficiary",
+                "accommodation_supplement_non_beneficiary_income_cutout_weekly_amount",
+                "accommodation_supplement_owner_weekly_payment_share",
+                "accommodation_supplement_owner_weekly_required_payments",
+                "accommodation_supplement_owns_premises_and_not_joint_owner_with_resident",
+                "accommodation_supplement_partner_receiving_accommodation_supplement",
+                "accommodation_supplement_positive_payment_indicator",
+                "accommodation_supplement_receiving_or_eligible_for_student_allowance_grant",
+                "accommodation_supplement_relevant_weekly_income",
+                "accommodation_supplement_rent_paid_to_kainga_ora",
+                "accommodation_supplement_rent_paid_to_registered_community_housing_provider_social_housing",
+                "accommodation_supplement_residential_care_funded_under_residential_care_act",
+                "accommodation_supplement_resides_in_area_1",
+                "accommodation_supplement_resides_in_area_2",
+                "accommodation_supplement_resides_in_area_3",
+                "accommodation_supplement_section_68_joint_tenant_exception_applies",
+                "accommodation_supplement_self_contained_area_let_to_residents",
+                "accommodation_supplement_social_housing_weekly_contributions_paid",
+                "accommodation_supplement_sole_parent",
+                "accommodation_supplement_super_or_veterans_pension_income_above_schedule_5_limit",
+                "accommodation_supplement_total_premises_area",
+                "accommodation_supplement_weekly_board_and_lodgings_paid",
+                "accommodation_supplement_weekly_boarder_payments_received",
+                "accommodation_supplement_weekly_contributions_received_from_additional_residents",
+                "accommodation_supplement_weekly_rent_paid",
+                "accommodation_supplement_weekly_rent_received_from_other_residents"
+              ]
+            }
+          ],
+          "outputs": [
+            {
+              "entity": "family",
+              "column": "accommodation_supplement_entitled_weekly_payment",
+              "dtype": "float64"
+            }
+          ],
+          "params": {
+            "engine_ref": {
+              "binding": "accommodation_supplement",
+              "field": "engine_ref"
+            },
+            "period": {
+              "binding": "accommodation_supplement",
+              "field": "period"
+            },
+            "variables": [
+              "accommodation_supplement_rounded_weekly_payment"
+            ],
+            "input_overrides": [],
+            "output_coefficients": [
+              {
+                "variable": "accommodation_supplement_rounded_weekly_payment",
+                "coefficient": 1,
+                "entity": "family",
+                "column": "accommodation_supplement_entitled_weekly_payment",
+                "mask": {
+                  "entity": "family",
+                  "column": "accommodation_supplement_positive_payment_indicator",
+                  "equals": true
+                }
+              }
+            ]
+          },
+          "description": "The rounded Accommodation Supplement payment where the positive-payment conjunction holds, zero elsewhere."
         },
         {
           "id": "nz.scn.S5.gap",
@@ -3832,8 +4459,8 @@
             {
               "entity": "family",
               "columns": [
+                "accommodation_supplement_entitled_weekly_payment",
                 "accommodation_supplement_positive_payment_indicator",
-                "accommodation_supplement_rounded_weekly_payment",
                 "family_type",
                 "income_decile",
                 "receipt_group"
@@ -8058,7 +8685,9 @@
             {
               "entity": "family",
               "columns": [
-                "accommodation_supplement_rounded_weekly_payment"
+                "accommodation_supplement_non_rate_entitlement_requirements",
+                "accommodation_supplement_rounded_weekly_payment",
+                "receipt_group"
               ]
             }
           ],
@@ -8072,7 +8701,10 @@
           "params": {
             "bindings": {
               "resource": "holdout_comparator_bindings",
-              "encoding": "json"
+              "encoding": "json",
+              "path": [
+                "central"
+              ]
             },
             "references": {
               "resource": "holdout_references",
@@ -8083,6 +8715,103 @@
               "encoding": "sha256"
             }
           }
+        },
+        {
+          "id": "nz.v.V1.as.entitled",
+          "kernel": "simulate.counterfactual@1",
+          "structural": "none",
+          "population": "nz.v.V1.housing",
+          "sources": [
+            "rulespec_nz"
+          ],
+          "inputs": [
+            {
+              "entity": "person",
+              "columns": [
+                "age"
+              ]
+            },
+            {
+              "entity": "family",
+              "columns": [
+                "accommodation_supplement_additional_resident_in_social_housing",
+                "accommodation_supplement_area_let_to_nonresidents",
+                "accommodation_supplement_base_rate_weekly_amount",
+                "accommodation_supplement_boarder",
+                "accommodation_supplement_business_use_area",
+                "accommodation_supplement_cash_assets",
+                "accommodation_supplement_concessionary_mortgage_payments_to_kainga_ora_or_crown",
+                "accommodation_supplement_costs_are_homeownership",
+                "accommodation_supplement_disability_accommodation_or_care_funded_under_pae_ora_act",
+                "accommodation_supplement_has_accommodation_costs",
+                "accommodation_supplement_has_dependent_children",
+                "accommodation_supplement_has_two_or_more_dependent_children",
+                "accommodation_supplement_in_relationship",
+                "accommodation_supplement_joint_owner_with_resident",
+                "accommodation_supplement_non_beneficiary",
+                "accommodation_supplement_non_beneficiary_income_cutout_weekly_amount",
+                "accommodation_supplement_owner_weekly_payment_share",
+                "accommodation_supplement_owner_weekly_required_payments",
+                "accommodation_supplement_owns_premises_and_not_joint_owner_with_resident",
+                "accommodation_supplement_partner_receiving_accommodation_supplement",
+                "accommodation_supplement_positive_payment_indicator",
+                "accommodation_supplement_receiving_or_eligible_for_student_allowance_grant",
+                "accommodation_supplement_relevant_weekly_income",
+                "accommodation_supplement_rent_paid_to_kainga_ora",
+                "accommodation_supplement_rent_paid_to_registered_community_housing_provider_social_housing",
+                "accommodation_supplement_residential_care_funded_under_residential_care_act",
+                "accommodation_supplement_resides_in_area_1",
+                "accommodation_supplement_resides_in_area_2",
+                "accommodation_supplement_resides_in_area_3",
+                "accommodation_supplement_section_68_joint_tenant_exception_applies",
+                "accommodation_supplement_self_contained_area_let_to_residents",
+                "accommodation_supplement_social_housing_weekly_contributions_paid",
+                "accommodation_supplement_sole_parent",
+                "accommodation_supplement_super_or_veterans_pension_income_above_schedule_5_limit",
+                "accommodation_supplement_total_premises_area",
+                "accommodation_supplement_weekly_board_and_lodgings_paid",
+                "accommodation_supplement_weekly_boarder_payments_received",
+                "accommodation_supplement_weekly_contributions_received_from_additional_residents",
+                "accommodation_supplement_weekly_rent_paid",
+                "accommodation_supplement_weekly_rent_received_from_other_residents"
+              ]
+            }
+          ],
+          "outputs": [
+            {
+              "entity": "family",
+              "column": "accommodation_supplement_entitled_weekly_payment",
+              "dtype": "float64"
+            }
+          ],
+          "params": {
+            "engine_ref": {
+              "binding": "accommodation_supplement",
+              "field": "engine_ref"
+            },
+            "period": {
+              "binding": "accommodation_supplement",
+              "field": "period"
+            },
+            "variables": [
+              "accommodation_supplement_rounded_weekly_payment"
+            ],
+            "input_overrides": [],
+            "output_coefficients": [
+              {
+                "variable": "accommodation_supplement_rounded_weekly_payment",
+                "coefficient": 1,
+                "entity": "family",
+                "column": "accommodation_supplement_entitled_weekly_payment",
+                "mask": {
+                  "entity": "family",
+                  "column": "accommodation_supplement_positive_payment_indicator",
+                  "equals": true
+                }
+              }
+            ]
+          },
+          "description": "The rounded Accommodation Supplement payment where the positive-payment conjunction holds, zero elsewhere."
         },
         {
           "id": "nz.v.V1.gap",
@@ -8108,8 +8837,8 @@
             {
               "entity": "family",
               "columns": [
+                "accommodation_supplement_entitled_weekly_payment",
                 "accommodation_supplement_positive_payment_indicator",
-                "accommodation_supplement_rounded_weekly_payment",
                 "family_type",
                 "income_decile",
                 "receipt_group"
@@ -12334,7 +13063,9 @@
             {
               "entity": "family",
               "columns": [
-                "accommodation_supplement_rounded_weekly_payment"
+                "accommodation_supplement_non_rate_entitlement_requirements",
+                "accommodation_supplement_rounded_weekly_payment",
+                "receipt_group"
               ]
             }
           ],
@@ -12348,7 +13079,10 @@
           "params": {
             "bindings": {
               "resource": "holdout_comparator_bindings",
-              "encoding": "json"
+              "encoding": "json",
+              "path": [
+                "central"
+              ]
             },
             "references": {
               "resource": "holdout_references",
@@ -12359,6 +13093,103 @@
               "encoding": "sha256"
             }
           }
+        },
+        {
+          "id": "nz.v.V2.as.entitled",
+          "kernel": "simulate.counterfactual@1",
+          "structural": "none",
+          "population": "nz.v.V2.housing",
+          "sources": [
+            "rulespec_nz"
+          ],
+          "inputs": [
+            {
+              "entity": "person",
+              "columns": [
+                "age"
+              ]
+            },
+            {
+              "entity": "family",
+              "columns": [
+                "accommodation_supplement_additional_resident_in_social_housing",
+                "accommodation_supplement_area_let_to_nonresidents",
+                "accommodation_supplement_base_rate_weekly_amount",
+                "accommodation_supplement_boarder",
+                "accommodation_supplement_business_use_area",
+                "accommodation_supplement_cash_assets",
+                "accommodation_supplement_concessionary_mortgage_payments_to_kainga_ora_or_crown",
+                "accommodation_supplement_costs_are_homeownership",
+                "accommodation_supplement_disability_accommodation_or_care_funded_under_pae_ora_act",
+                "accommodation_supplement_has_accommodation_costs",
+                "accommodation_supplement_has_dependent_children",
+                "accommodation_supplement_has_two_or_more_dependent_children",
+                "accommodation_supplement_in_relationship",
+                "accommodation_supplement_joint_owner_with_resident",
+                "accommodation_supplement_non_beneficiary",
+                "accommodation_supplement_non_beneficiary_income_cutout_weekly_amount",
+                "accommodation_supplement_owner_weekly_payment_share",
+                "accommodation_supplement_owner_weekly_required_payments",
+                "accommodation_supplement_owns_premises_and_not_joint_owner_with_resident",
+                "accommodation_supplement_partner_receiving_accommodation_supplement",
+                "accommodation_supplement_positive_payment_indicator",
+                "accommodation_supplement_receiving_or_eligible_for_student_allowance_grant",
+                "accommodation_supplement_relevant_weekly_income",
+                "accommodation_supplement_rent_paid_to_kainga_ora",
+                "accommodation_supplement_rent_paid_to_registered_community_housing_provider_social_housing",
+                "accommodation_supplement_residential_care_funded_under_residential_care_act",
+                "accommodation_supplement_resides_in_area_1",
+                "accommodation_supplement_resides_in_area_2",
+                "accommodation_supplement_resides_in_area_3",
+                "accommodation_supplement_section_68_joint_tenant_exception_applies",
+                "accommodation_supplement_self_contained_area_let_to_residents",
+                "accommodation_supplement_social_housing_weekly_contributions_paid",
+                "accommodation_supplement_sole_parent",
+                "accommodation_supplement_super_or_veterans_pension_income_above_schedule_5_limit",
+                "accommodation_supplement_total_premises_area",
+                "accommodation_supplement_weekly_board_and_lodgings_paid",
+                "accommodation_supplement_weekly_boarder_payments_received",
+                "accommodation_supplement_weekly_contributions_received_from_additional_residents",
+                "accommodation_supplement_weekly_rent_paid",
+                "accommodation_supplement_weekly_rent_received_from_other_residents"
+              ]
+            }
+          ],
+          "outputs": [
+            {
+              "entity": "family",
+              "column": "accommodation_supplement_entitled_weekly_payment",
+              "dtype": "float64"
+            }
+          ],
+          "params": {
+            "engine_ref": {
+              "binding": "accommodation_supplement",
+              "field": "engine_ref"
+            },
+            "period": {
+              "binding": "accommodation_supplement",
+              "field": "period"
+            },
+            "variables": [
+              "accommodation_supplement_rounded_weekly_payment"
+            ],
+            "input_overrides": [],
+            "output_coefficients": [
+              {
+                "variable": "accommodation_supplement_rounded_weekly_payment",
+                "coefficient": 1,
+                "entity": "family",
+                "column": "accommodation_supplement_entitled_weekly_payment",
+                "mask": {
+                  "entity": "family",
+                  "column": "accommodation_supplement_positive_payment_indicator",
+                  "equals": true
+                }
+              }
+            ]
+          },
+          "description": "The rounded Accommodation Supplement payment where the positive-payment conjunction holds, zero elsewhere."
         },
         {
           "id": "nz.v.V2.gap",
@@ -12384,8 +13215,8 @@
             {
               "entity": "family",
               "columns": [
+                "accommodation_supplement_entitled_weekly_payment",
                 "accommodation_supplement_positive_payment_indicator",
-                "accommodation_supplement_rounded_weekly_payment",
                 "family_type",
                 "income_decile",
                 "receipt_group"
@@ -16610,7 +17441,9 @@
             {
               "entity": "family",
               "columns": [
-                "accommodation_supplement_rounded_weekly_payment"
+                "accommodation_supplement_non_rate_entitlement_requirements",
+                "accommodation_supplement_rounded_weekly_payment",
+                "receipt_group"
               ]
             }
           ],
@@ -16624,7 +17457,10 @@
           "params": {
             "bindings": {
               "resource": "holdout_comparator_bindings",
-              "encoding": "json"
+              "encoding": "json",
+              "path": [
+                "central"
+              ]
             },
             "references": {
               "resource": "holdout_references",
@@ -16635,6 +17471,103 @@
               "encoding": "sha256"
             }
           }
+        },
+        {
+          "id": "nz.v.V3.as.entitled",
+          "kernel": "simulate.counterfactual@1",
+          "structural": "none",
+          "population": "nz.v.V3.housing",
+          "sources": [
+            "rulespec_nz"
+          ],
+          "inputs": [
+            {
+              "entity": "person",
+              "columns": [
+                "age"
+              ]
+            },
+            {
+              "entity": "family",
+              "columns": [
+                "accommodation_supplement_additional_resident_in_social_housing",
+                "accommodation_supplement_area_let_to_nonresidents",
+                "accommodation_supplement_base_rate_weekly_amount",
+                "accommodation_supplement_boarder",
+                "accommodation_supplement_business_use_area",
+                "accommodation_supplement_cash_assets",
+                "accommodation_supplement_concessionary_mortgage_payments_to_kainga_ora_or_crown",
+                "accommodation_supplement_costs_are_homeownership",
+                "accommodation_supplement_disability_accommodation_or_care_funded_under_pae_ora_act",
+                "accommodation_supplement_has_accommodation_costs",
+                "accommodation_supplement_has_dependent_children",
+                "accommodation_supplement_has_two_or_more_dependent_children",
+                "accommodation_supplement_in_relationship",
+                "accommodation_supplement_joint_owner_with_resident",
+                "accommodation_supplement_non_beneficiary",
+                "accommodation_supplement_non_beneficiary_income_cutout_weekly_amount",
+                "accommodation_supplement_owner_weekly_payment_share",
+                "accommodation_supplement_owner_weekly_required_payments",
+                "accommodation_supplement_owns_premises_and_not_joint_owner_with_resident",
+                "accommodation_supplement_partner_receiving_accommodation_supplement",
+                "accommodation_supplement_positive_payment_indicator",
+                "accommodation_supplement_receiving_or_eligible_for_student_allowance_grant",
+                "accommodation_supplement_relevant_weekly_income",
+                "accommodation_supplement_rent_paid_to_kainga_ora",
+                "accommodation_supplement_rent_paid_to_registered_community_housing_provider_social_housing",
+                "accommodation_supplement_residential_care_funded_under_residential_care_act",
+                "accommodation_supplement_resides_in_area_1",
+                "accommodation_supplement_resides_in_area_2",
+                "accommodation_supplement_resides_in_area_3",
+                "accommodation_supplement_section_68_joint_tenant_exception_applies",
+                "accommodation_supplement_self_contained_area_let_to_residents",
+                "accommodation_supplement_social_housing_weekly_contributions_paid",
+                "accommodation_supplement_sole_parent",
+                "accommodation_supplement_super_or_veterans_pension_income_above_schedule_5_limit",
+                "accommodation_supplement_total_premises_area",
+                "accommodation_supplement_weekly_board_and_lodgings_paid",
+                "accommodation_supplement_weekly_boarder_payments_received",
+                "accommodation_supplement_weekly_contributions_received_from_additional_residents",
+                "accommodation_supplement_weekly_rent_paid",
+                "accommodation_supplement_weekly_rent_received_from_other_residents"
+              ]
+            }
+          ],
+          "outputs": [
+            {
+              "entity": "family",
+              "column": "accommodation_supplement_entitled_weekly_payment",
+              "dtype": "float64"
+            }
+          ],
+          "params": {
+            "engine_ref": {
+              "binding": "accommodation_supplement",
+              "field": "engine_ref"
+            },
+            "period": {
+              "binding": "accommodation_supplement",
+              "field": "period"
+            },
+            "variables": [
+              "accommodation_supplement_rounded_weekly_payment"
+            ],
+            "input_overrides": [],
+            "output_coefficients": [
+              {
+                "variable": "accommodation_supplement_rounded_weekly_payment",
+                "coefficient": 1,
+                "entity": "family",
+                "column": "accommodation_supplement_entitled_weekly_payment",
+                "mask": {
+                  "entity": "family",
+                  "column": "accommodation_supplement_positive_payment_indicator",
+                  "equals": true
+                }
+              }
+            ]
+          },
+          "description": "The rounded Accommodation Supplement payment where the positive-payment conjunction holds, zero elsewhere."
         },
         {
           "id": "nz.v.V3.gap",
@@ -16660,8 +17593,8 @@
             {
               "entity": "family",
               "columns": [
+                "accommodation_supplement_entitled_weekly_payment",
                 "accommodation_supplement_positive_payment_indicator",
-                "accommodation_supplement_rounded_weekly_payment",
                 "family_type",
                 "income_decile",
                 "receipt_group"
@@ -20886,7 +21819,9 @@
             {
               "entity": "family",
               "columns": [
-                "accommodation_supplement_rounded_weekly_payment"
+                "accommodation_supplement_non_rate_entitlement_requirements",
+                "accommodation_supplement_rounded_weekly_payment",
+                "receipt_group"
               ]
             }
           ],
@@ -20900,7 +21835,10 @@
           "params": {
             "bindings": {
               "resource": "holdout_comparator_bindings",
-              "encoding": "json"
+              "encoding": "json",
+              "path": [
+                "central"
+              ]
             },
             "references": {
               "resource": "holdout_references",
@@ -20911,6 +21849,103 @@
               "encoding": "sha256"
             }
           }
+        },
+        {
+          "id": "nz.v.V4.as.entitled",
+          "kernel": "simulate.counterfactual@1",
+          "structural": "none",
+          "population": "nz.v.V4.housing",
+          "sources": [
+            "rulespec_nz"
+          ],
+          "inputs": [
+            {
+              "entity": "person",
+              "columns": [
+                "age"
+              ]
+            },
+            {
+              "entity": "family",
+              "columns": [
+                "accommodation_supplement_additional_resident_in_social_housing",
+                "accommodation_supplement_area_let_to_nonresidents",
+                "accommodation_supplement_base_rate_weekly_amount",
+                "accommodation_supplement_boarder",
+                "accommodation_supplement_business_use_area",
+                "accommodation_supplement_cash_assets",
+                "accommodation_supplement_concessionary_mortgage_payments_to_kainga_ora_or_crown",
+                "accommodation_supplement_costs_are_homeownership",
+                "accommodation_supplement_disability_accommodation_or_care_funded_under_pae_ora_act",
+                "accommodation_supplement_has_accommodation_costs",
+                "accommodation_supplement_has_dependent_children",
+                "accommodation_supplement_has_two_or_more_dependent_children",
+                "accommodation_supplement_in_relationship",
+                "accommodation_supplement_joint_owner_with_resident",
+                "accommodation_supplement_non_beneficiary",
+                "accommodation_supplement_non_beneficiary_income_cutout_weekly_amount",
+                "accommodation_supplement_owner_weekly_payment_share",
+                "accommodation_supplement_owner_weekly_required_payments",
+                "accommodation_supplement_owns_premises_and_not_joint_owner_with_resident",
+                "accommodation_supplement_partner_receiving_accommodation_supplement",
+                "accommodation_supplement_positive_payment_indicator",
+                "accommodation_supplement_receiving_or_eligible_for_student_allowance_grant",
+                "accommodation_supplement_relevant_weekly_income",
+                "accommodation_supplement_rent_paid_to_kainga_ora",
+                "accommodation_supplement_rent_paid_to_registered_community_housing_provider_social_housing",
+                "accommodation_supplement_residential_care_funded_under_residential_care_act",
+                "accommodation_supplement_resides_in_area_1",
+                "accommodation_supplement_resides_in_area_2",
+                "accommodation_supplement_resides_in_area_3",
+                "accommodation_supplement_section_68_joint_tenant_exception_applies",
+                "accommodation_supplement_self_contained_area_let_to_residents",
+                "accommodation_supplement_social_housing_weekly_contributions_paid",
+                "accommodation_supplement_sole_parent",
+                "accommodation_supplement_super_or_veterans_pension_income_above_schedule_5_limit",
+                "accommodation_supplement_total_premises_area",
+                "accommodation_supplement_weekly_board_and_lodgings_paid",
+                "accommodation_supplement_weekly_boarder_payments_received",
+                "accommodation_supplement_weekly_contributions_received_from_additional_residents",
+                "accommodation_supplement_weekly_rent_paid",
+                "accommodation_supplement_weekly_rent_received_from_other_residents"
+              ]
+            }
+          ],
+          "outputs": [
+            {
+              "entity": "family",
+              "column": "accommodation_supplement_entitled_weekly_payment",
+              "dtype": "float64"
+            }
+          ],
+          "params": {
+            "engine_ref": {
+              "binding": "accommodation_supplement",
+              "field": "engine_ref"
+            },
+            "period": {
+              "binding": "accommodation_supplement",
+              "field": "period"
+            },
+            "variables": [
+              "accommodation_supplement_rounded_weekly_payment"
+            ],
+            "input_overrides": [],
+            "output_coefficients": [
+              {
+                "variable": "accommodation_supplement_rounded_weekly_payment",
+                "coefficient": 1,
+                "entity": "family",
+                "column": "accommodation_supplement_entitled_weekly_payment",
+                "mask": {
+                  "entity": "family",
+                  "column": "accommodation_supplement_positive_payment_indicator",
+                  "equals": true
+                }
+              }
+            ]
+          },
+          "description": "The rounded Accommodation Supplement payment where the positive-payment conjunction holds, zero elsewhere."
         },
         {
           "id": "nz.v.V4.gap",
@@ -20936,8 +21971,8 @@
             {
               "entity": "family",
               "columns": [
+                "accommodation_supplement_entitled_weekly_payment",
                 "accommodation_supplement_positive_payment_indicator",
-                "accommodation_supplement_rounded_weekly_payment",
                 "family_type",
                 "income_decile",
                 "receipt_group"
@@ -25162,7 +26197,9 @@
             {
               "entity": "family",
               "columns": [
-                "accommodation_supplement_rounded_weekly_payment"
+                "accommodation_supplement_non_rate_entitlement_requirements",
+                "accommodation_supplement_rounded_weekly_payment",
+                "receipt_group"
               ]
             }
           ],
@@ -25176,7 +26213,10 @@
           "params": {
             "bindings": {
               "resource": "holdout_comparator_bindings",
-              "encoding": "json"
+              "encoding": "json",
+              "path": [
+                "central"
+              ]
             },
             "references": {
               "resource": "holdout_references",
@@ -25187,6 +26227,103 @@
               "encoding": "sha256"
             }
           }
+        },
+        {
+          "id": "nz.v.VHF.as.entitled",
+          "kernel": "simulate.counterfactual@1",
+          "structural": "none",
+          "population": "nz.v.VHF.housing",
+          "sources": [
+            "rulespec_nz"
+          ],
+          "inputs": [
+            {
+              "entity": "person",
+              "columns": [
+                "age"
+              ]
+            },
+            {
+              "entity": "family",
+              "columns": [
+                "accommodation_supplement_additional_resident_in_social_housing",
+                "accommodation_supplement_area_let_to_nonresidents",
+                "accommodation_supplement_base_rate_weekly_amount",
+                "accommodation_supplement_boarder",
+                "accommodation_supplement_business_use_area",
+                "accommodation_supplement_cash_assets",
+                "accommodation_supplement_concessionary_mortgage_payments_to_kainga_ora_or_crown",
+                "accommodation_supplement_costs_are_homeownership",
+                "accommodation_supplement_disability_accommodation_or_care_funded_under_pae_ora_act",
+                "accommodation_supplement_has_accommodation_costs",
+                "accommodation_supplement_has_dependent_children",
+                "accommodation_supplement_has_two_or_more_dependent_children",
+                "accommodation_supplement_in_relationship",
+                "accommodation_supplement_joint_owner_with_resident",
+                "accommodation_supplement_non_beneficiary",
+                "accommodation_supplement_non_beneficiary_income_cutout_weekly_amount",
+                "accommodation_supplement_owner_weekly_payment_share",
+                "accommodation_supplement_owner_weekly_required_payments",
+                "accommodation_supplement_owns_premises_and_not_joint_owner_with_resident",
+                "accommodation_supplement_partner_receiving_accommodation_supplement",
+                "accommodation_supplement_positive_payment_indicator",
+                "accommodation_supplement_receiving_or_eligible_for_student_allowance_grant",
+                "accommodation_supplement_relevant_weekly_income",
+                "accommodation_supplement_rent_paid_to_kainga_ora",
+                "accommodation_supplement_rent_paid_to_registered_community_housing_provider_social_housing",
+                "accommodation_supplement_residential_care_funded_under_residential_care_act",
+                "accommodation_supplement_resides_in_area_1",
+                "accommodation_supplement_resides_in_area_2",
+                "accommodation_supplement_resides_in_area_3",
+                "accommodation_supplement_section_68_joint_tenant_exception_applies",
+                "accommodation_supplement_self_contained_area_let_to_residents",
+                "accommodation_supplement_social_housing_weekly_contributions_paid",
+                "accommodation_supplement_sole_parent",
+                "accommodation_supplement_super_or_veterans_pension_income_above_schedule_5_limit",
+                "accommodation_supplement_total_premises_area",
+                "accommodation_supplement_weekly_board_and_lodgings_paid",
+                "accommodation_supplement_weekly_boarder_payments_received",
+                "accommodation_supplement_weekly_contributions_received_from_additional_residents",
+                "accommodation_supplement_weekly_rent_paid",
+                "accommodation_supplement_weekly_rent_received_from_other_residents"
+              ]
+            }
+          ],
+          "outputs": [
+            {
+              "entity": "family",
+              "column": "accommodation_supplement_entitled_weekly_payment",
+              "dtype": "float64"
+            }
+          ],
+          "params": {
+            "engine_ref": {
+              "binding": "accommodation_supplement",
+              "field": "engine_ref"
+            },
+            "period": {
+              "binding": "accommodation_supplement",
+              "field": "period"
+            },
+            "variables": [
+              "accommodation_supplement_rounded_weekly_payment"
+            ],
+            "input_overrides": [],
+            "output_coefficients": [
+              {
+                "variable": "accommodation_supplement_rounded_weekly_payment",
+                "coefficient": 1,
+                "entity": "family",
+                "column": "accommodation_supplement_entitled_weekly_payment",
+                "mask": {
+                  "entity": "family",
+                  "column": "accommodation_supplement_positive_payment_indicator",
+                  "equals": true
+                }
+              }
+            ]
+          },
+          "description": "The rounded Accommodation Supplement payment where the positive-payment conjunction holds, zero elsewhere."
         },
         {
           "id": "nz.v.VHF.gap",
@@ -25212,8 +26349,8 @@
             {
               "entity": "family",
               "columns": [
+                "accommodation_supplement_entitled_weekly_payment",
                 "accommodation_supplement_positive_payment_indicator",
-                "accommodation_supplement_rounded_weekly_payment",
                 "family_type",
                 "income_decile",
                 "receipt_group"
@@ -25265,7 +26402,7 @@
     },
     "reporting_cells": {
       "entity": "family",
-      "measure": "accommodation_supplement_rounded_weekly_payment",
+      "measure": "accommodation_supplement_entitled_weekly_payment",
       "period": "2026-27",
       "annualisation_factor": 52,
       "tables": [

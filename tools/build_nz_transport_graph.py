@@ -33,6 +33,7 @@ from microcosm.frame.unit_construction import BenefitUnitRule
 ROOT = Path(__file__).resolve().parents[1]
 NZ = ROOT / "packages/microcosm-build/src/microcosm/build/nz"
 ENTITIES = ("person", "household", "family")
+ENTITLED_PAYMENT = "accommodation_supplement_entitled_weekly_payment"
 
 
 def read(name):
@@ -754,6 +755,11 @@ def documents():
         set(export["optional"])
         | {name for names in roster.values() for name in names}
         - set(export["required"])
+    )
+    # The entitlement graph's gated payment is a formula output like the
+    # engine's own; the closed export never carries it.
+    export["formula_owned_excluded"] = sorted(
+        set(export["formula_owned_excluded"]) | {ENTITLED_PAYMENT}
     )
     export["entity_slices"] = {"export": roster, "gates": roster}
     export["_description"] = (

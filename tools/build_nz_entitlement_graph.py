@@ -26,6 +26,11 @@ NZ = ROOT / "packages/microcosm-build/src/microcosm/build/nz"
 AS_BINDING = "accommodation_supplement"
 PAYMENT = "accommodation_supplement_rounded_weekly_payment"
 POSITIVE = "accommodation_supplement_positive_payment_indicator"
+ENTITLED = "accommodation_supplement_entitled_weekly_payment"
+JUDGMENT = "accommodation_supplement_non_rate_entitlement_requirements"
+#: The code the Axiom adapter's judgment decoder gives "holds" (-1 not holds,
+#: 0 undetermined); only holds passes.
+HOLDS = 1
 ENTITIES = ["person", "household", "family"]
 #: The FILTER branch of nz.as on which the shared bridge nodes run.
 SHARED_BRIDGE = "nz.as.bridge"
@@ -133,7 +138,7 @@ def _term(row, target, primary, bindings):
     return term
 
 
-def _bridge_inputs(nz, *extra):
+def _bridge_inputs(nz, *extra, person=()):
     bindings = {row["id"]: row for row in read(nz, "axiom_rules_bindings")["bindings"]}
     closure = read(nz, "axiom_input_closure")
     rate_path = bindings["main_benefits_rates"]["rulespec_path"]
@@ -154,7 +159,7 @@ def _bridge_inputs(nz, *extra):
         ),
         *extra,
     ]
-    return [slices("person", rate_inputs), slices("family", family)]
+    return [slices("person", [*rate_inputs, *person]), slices("family", family)]
 
 
 def bridge_masks(nz, population, prefix):
@@ -254,42 +259,89 @@ def cutout_nodes(nz, population, prefix):
     ]
 
 
-def base_rate_node(nz, population, prefix):
-    """Reg 17: one counterfactual over the main-benefit and tax-credit modules."""
+def base_rate_node(nz, population, prefix, *, s5=False):
+    """Reg 17: one counterfactual over the main-benefit and tax-credit modules.
+
+    S5 replaces the Jobseeker amount for superannuitant units with the NZ
+    Superannuation amount before tax (``superannuitant_units.s5_base_rate``).
+    """
     bridge = read(nz, "as_rate_bridge")
     bindings = {row["id"]: row for row in read(nz, "axiom_rules_bindings")["bindings"]}
     reg17 = bridge["outputs"][0]
-    primary = reg17["primary_binding"]
-    target = reg17["target_input"]
+    declaration = bridge["superannuitant_units"]["s5_base_rate"] if s5 else reg17
+    primary = declaration["primary_binding"]
+    target = declaration["target_input"]
     components = []
-    for component in reg17["components"]:
+    for component in declaration["components"]:
         name = component["binding"]
         components.append(
             {
                 "engine_ref": binding(name),
                 "period": binding(name, "period"),
-                "variables": [
-                    term["variable"]
-                    for term in reg17["terms"]
-                    if term["binding"] == name
-                ],
+                "variables": list(
+                    dict.fromkeys(
+                        term["variable"]
+                        for term in declaration["terms"]
+                        if term["binding"] == name
+                    )
+                ),
                 "input_overrides": _overrides(
                     component["input_overrides"], bindings[name]["entity"]
                 ),
             }
         )
-    terms = [_term(row, target, primary, bindings) for row in reg17["terms"]]
+    terms = [_term(row, target, primary, bindings) for row in declaration["terms"]]
+    extra, person = (), ()
+    if s5:
+        masks = bridge["superannuitant_units"]["s5_mask_bindings"]["columns"]
+        extra = tuple(column["name"] for column in masks)
+        closure = read(nz, "axiom_input_closure")
+        super_path = bindings["nz_super"]["rulespec_path"]
+        person = tuple(
+            entry["input"]
+            for entry in closure["entries"]
+            if entry["rulespec_path"] == super_path and entry["entity"] == "Person"
+        )
     return node(
         f"{prefix}.bridge.base_rate",
-        reg17["kernel"],
+        declaration["kernel"],
         population,
         sources=["rulespec_nz"],
-        inputs=_bridge_inputs(nz),
+        inputs=_bridge_inputs(nz, *extra, person=person),
         outputs=[owned("family", target)],
         params=_counterfactual_params(
             primary, _overrides(reg17["input_overrides"]), terms, components
         ),
-        description="The engine evaluates the reg 17 base rate from zero-income Jobseeker Support and the eldest-child family tax credit.",
+        description=(
+            "The engine evaluates the S5 reg 17 base rate, with NZ Superannuation before tax for superannuitant units."
+            if s5
+            else "The engine evaluates the reg 17 base rate from zero-income Jobseeker Support and the eldest-child family tax credit."
+        ),
+    )
+
+
+def superannuitant_masks(nz, population, prefix):
+    """S5's single and partnered masks crossed with the superannuitant group."""
+    masks = read(nz, "as_rate_bridge")["superannuitant_units"]["s5_mask_bindings"]
+    return node(
+        f"{prefix}.bridge.superannuitant_masks",
+        "calibration.prepare@1",
+        population,
+        inputs=[
+            slices(entity, columns)
+            for entity, columns in masks["required_inputs"].items()
+        ],
+        outputs=[
+            owned(column["entity"], column["name"], "bool")
+            for column in masks["columns"]
+        ],
+        params={
+            "bindings": select(
+                "as_rate_bridge", "json", "superannuitant_units", "s5_mask_bindings"
+            ),
+            "references": select("holdout_references"),
+            "references_sha256": select("holdout_references", "sha256"),
+        },
     )
 
 
@@ -385,6 +437,7 @@ def reporting_nodes(nz, population, prefix, scenario, *, baseline=False):
 
 
 def as_nodes(nz, population, prefix, scenario, *, baseline=False):
+    s5 = scenario == "S5"
     bindings = {row["id"]: row for row in read(nz, "axiom_rules_bindings")["bindings"]}
     closure = read(nz, "axiom_input_closure")
     as_inputs = [
@@ -399,8 +452,16 @@ def as_nodes(nz, population, prefix, scenario, *, baseline=False):
         "accommodation_supplement_social_housing_exclusion_not_applies",
         "accommodation_supplement_other_funding_exclusion_not_applies",
     }
+    entitled = {
+        "variable": PAYMENT,
+        "coefficient": 1,
+        "entity": "family",
+        "column": ENTITLED,
+        "mask": {"entity": "family", "column": POSITIVE, "equals": True},
+    }
     return [
-        base_rate_node(nz, population, prefix),
+        *([superannuitant_masks(nz, population, prefix)] if s5 else []),
+        base_rate_node(nz, population, prefix, s5=s5),
         node(
             f"{prefix}.as",
             "simulate.rules_by_ref@1",
@@ -421,13 +482,39 @@ def as_nodes(nz, population, prefix, scenario, *, baseline=False):
             f"{prefix}.positive_payment",
             "calibration.prepare@1",
             population,
-            inputs=[slices("family", [PAYMENT])],
+            inputs=[
+                slices(
+                    "family",
+                    [PAYMENT, JUDGMENT, *([] if s5 else ["receipt_group"])],
+                )
+            ],
             outputs=[owned("family", POSITIVE, "bool")],
             params={
-                "bindings": select("holdout_comparator_bindings"),
+                "bindings": select(
+                    "holdout_comparator_bindings", "json", "s5" if s5 else "central"
+                ),
                 "references": select("holdout_references"),
                 "references_sha256": select("holdout_references", "sha256"),
             },
+        ),
+        node(
+            f"{prefix}.as.entitled",
+            "simulate.counterfactual@1",
+            population,
+            sources=["rulespec_nz"],
+            inputs=[
+                slices("person", ["age"]),
+                slices("family", [*as_inputs, POSITIVE]),
+            ],
+            outputs=[owned("family", ENTITLED)],
+            params={
+                "engine_ref": binding(AS_BINDING),
+                "period": binding(AS_BINDING, "period"),
+                "variables": [PAYMENT],
+                "input_overrides": [],
+                "output_coefficients": [entitled],
+            },
+            description="The rounded Accommodation Supplement payment where the positive-payment conjunction holds, zero elsewhere.",
         ),
         node(
             f"{prefix}.gap",
@@ -440,7 +527,7 @@ def as_nodes(nz, population, prefix, scenario, *, baseline=False):
                 slices(
                     "family",
                     [
-                        PAYMENT,
+                        ENTITLED,
                         POSITIVE,
                         "family_type",
                         "income_decile",
@@ -460,6 +547,37 @@ def as_nodes(nz, population, prefix, scenario, *, baseline=False):
             },
         ),
     ]
+
+
+def comparator_bindings(nz, *, exclude_superannuitants):
+    """H25's positive-payment conjunction; MC11 adds the receipt-group clause."""
+    groups = read(nz, "reporting_classifiers")["receipt_group"]
+    values = [*groups["priority"], groups["default"]]
+    required = [PAYMENT, JUDGMENT]
+    domains = {
+        PAYMENT: {"kind": "nonnegative_number"},
+        JUDGMENT: {"values": [-1, 0, 1]},
+    }
+    predicates = [
+        {"column": PAYMENT, "operator": "gt", "value": 0},
+        {"column": JUDGMENT, "operator": "eq", "value": HOLDS},
+    ]
+    if exclude_superannuitants:
+        required.append("receipt_group")
+        domains["receipt_group"] = {"values": values}
+        predicates.append(
+            {
+                "column": "receipt_group",
+                "operator": "in",
+                "value": [value for value in values if value != "superannuitant"],
+            }
+        )
+    return {
+        "schema_version": 1,
+        "required_inputs": {"family": required},
+        "input_domains": {"family": domains},
+        "columns": [{"entity": "family", "name": POSITIVE, "predicates": predicates}],
+    }
 
 
 def documents(nz=NZ):
@@ -518,6 +636,10 @@ def documents(nz=NZ):
                 ]
             )
         scenario["nodes"] = rows
+    scenarios_document = {**read(nz, "scenarios"), "scenarios": scenarios}
+    conventions = copy.deepcopy(scenarios_document["gap_conventions"])
+    conventions["reporting_cells"]["measure"] = ENTITLED
+    scenarios_document["gap_conventions"] = conventions
     return {
         "entitlement_graph": {
             "schema_version": 1,
@@ -539,17 +661,10 @@ def documents(nz=NZ):
         },
         "holdout_comparator_bindings": {
             "schema_version": 1,
-            "required_inputs": {"family": [PAYMENT]},
-            "input_domains": {"family": {PAYMENT: {"kind": "nonnegative_number"}}},
-            "columns": [
-                {
-                    "entity": "family",
-                    "name": POSITIVE,
-                    "predicates": [{"column": PAYMENT, "operator": "gt", "value": 0}],
-                }
-            ],
+            "central": comparator_bindings(nz, exclude_superannuitants=True),
+            "s5": comparator_bindings(nz, exclude_superannuitants=False),
         },
-        "scenarios": {**read(nz, "scenarios"), "scenarios": scenarios},
+        "scenarios": scenarios_document,
     }
 
 

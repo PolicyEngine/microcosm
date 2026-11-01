@@ -141,6 +141,7 @@
       "parameters": {
         "formula_owned_columns": [
           "accommodation_supplement_cash_assets_within_limit",
+          "accommodation_supplement_entitled_weekly_payment",
           "accommodation_supplement_maximum_weekly_rate",
           "accommodation_supplement_non_beneficiary_income_reduction",
           "accommodation_supplement_non_rate_entitlement_requirements",
@@ -282,7 +283,7 @@
         "target_maximum_single_donor_dollar_share": 0.05
       },
       "evidence_absent_blocks": true,
-      "notes": "MC15: missing, malformed or scenario-incomplete source-household diagnostics block. MC15 suppresses cells below ESS 100, above contribution CV 2 or donor dollar share 10% and excludes them from reported output; proper suppression does not block. The classifier lists structural-zero cells separately. Subgroup rows report entitlement, without invented subgroup payment comparators. G8 addendum A2 explicitly expects structural-zero cells: S0/beneficiary_superannuitant_other/superannuitant, S1/beneficiary_superannuitant_other/superannuitant, S2/beneficiary_superannuitant_other/superannuitant, S3/beneficiary_superannuitant_other/superannuitant. The machine-readable list is reporting_classifiers.json structural_zero_cells; reported amounts determine actual structural-zero diagnostics."
+      "notes": "MC15: missing, malformed or scenario-incomplete source-household diagnostics block. MC15 suppresses cells below ESS 100, above contribution CV 2 or donor dollar share 10% and excludes them from reported output; proper suppression does not block. The classifier lists structural-zero cells separately. Subgroup rows report entitlement, without invented subgroup payment comparators. G8 addendum A2 explicitly expects structural-zero cells, and MC11's central exclude-and-count adds every variant: S0/beneficiary_superannuitant_other/superannuitant, S1/beneficiary_superannuitant_other/superannuitant, S2/beneficiary_superannuitant_other/superannuitant, S3/beneficiary_superannuitant_other/superannuitant, V1/beneficiary_superannuitant_other/superannuitant, V2/beneficiary_superannuitant_other/superannuitant, V3/beneficiary_superannuitant_other/superannuitant, V4/beneficiary_superannuitant_other/superannuitant, VHF/beneficiary_superannuitant_other/superannuitant. S5 pays superannuitant units, so its cell is not structurally zero. The machine-readable list is reporting_classifiers.json structural_zero_cells; reported amounts determine actual structural-zero diagnostics."
     },
     {
       "id": "weight_effective_sample_size_target_a",

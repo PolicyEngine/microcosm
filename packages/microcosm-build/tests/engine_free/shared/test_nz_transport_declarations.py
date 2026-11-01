@@ -219,17 +219,17 @@ def test_h1_counts_positive_rounded_payments_and_h2_annualises_dollars():
     assert h1["measure"] != h2["measure"]
     assert h1["measure"] == "accommodation_supplement_positive_payment_indicator"
     assert h1["metadata"]["indicator_input_column"] == (
-        "accommodation_supplement_rounded_weekly_payment"
+        "accommodation_supplement_entitled_weekly_payment"
     )
     assert h1["metadata"]["indicator_operator"] == "positive"
     assert h1["metadata"]["indicator_threshold"] == "0"
-    assert h2["measure"] == "accommodation_supplement_rounded_weekly_payment"
+    assert h2["measure"] == "accommodation_supplement_entitled_weekly_payment"
     assert h2["ledger_selector"]["record_set_id"]
     assert h2["metadata"]["source_period_start"] == "2024-07-01"
     assert str(h1["metadata"]["annualisation_factor"]) == "1"
     assert str(h2["metadata"]["annualisation_factor"]) == "52"
     measure = resources["scenarios"]["gap_conventions"]["reporting_cells"]["measure"]
-    assert measure == "accommodation_supplement_rounded_weekly_payment"
+    assert measure == "accommodation_supplement_entitled_weekly_payment"
 
 
 def test_non_exempt_inactive_rows_still_name_their_activation_gap():
@@ -513,14 +513,28 @@ def test_nz_h1_has_a_positive_payment_producer_and_native_annualisation_factors(
     assert all(type(value) is int for value in factors.values())
     rows = _rows(spec)[0]
     bindings = spec["resources"]["holdout_comparator_bindings"]
-    predicate = bindings["columns"][0]
-    assert predicate["predicates"] == [
-        {
-            "column": "accommodation_supplement_rounded_weekly_payment",
-            "operator": "gt",
-            "value": 0,
-        }
-    ]
+    # H25 and H26: payment > 0, the judgment holds, and outside S5 the unit is
+    # not superannuitant.
+    payment = {
+        "column": "accommodation_supplement_rounded_weekly_payment",
+        "operator": "gt",
+        "value": 0,
+    }
+    holds = {
+        "column": "accommodation_supplement_non_rate_entitlement_requirements",
+        "operator": "eq",
+        "value": 1,
+    }
+    receipt = {
+        "column": "receipt_group",
+        "operator": "in",
+        "value": ["beneficiary", "other"],
+    }
+    (predicate,) = bindings["central"]["columns"]
+    assert predicate["predicates"] == [payment, holds, receipt]
+    (alternative,) = bindings["s5"]["columns"]
+    assert alternative["predicates"] == [payment, holds]
+    assert alternative["name"] == predicate["name"]
     for row, _ in rows:
         if row["kernel"] == "takeup.gap@1":
             assert (
@@ -535,6 +549,8 @@ def test_nz_h1_has_a_positive_payment_producer_and_native_annualisation_factors(
             )
             assert positive["kernel"] == "calibration.prepare@1"
             assert positive["population"] == row["population"]
+            branch = "s5" if row["id"] == "nz.scn.S5.gap" else "central"
+            assert positive["params"]["bindings"]["path"] == [branch]
             assert positive["outputs"] == [
                 {"entity": "family", "column": predicate["name"], "dtype": "bool"}
             ]

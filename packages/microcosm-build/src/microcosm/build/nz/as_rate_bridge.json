@@ -399,8 +399,205 @@
   "mask_note": "Kernel masks compare equality only, so one calibration.prepare@1 node per population writes these family booleans ahead of the bridge nodes.",
   "superannuitant_units": {
     "central": "exclude_and_count",
+    "central_rule": "Every branch but S5 adds receipt_group in [beneficiary, other] to the positive-payment conjunction (holdout_comparator_bindings.json central). That one predicate defines the excluded set, so the set equals the superannuitant receipt-group reporting cell by construction, and the cell diagnostics report its unit count.",
+    "schedule_5_input": "accommodation_supplement_super_or_veterans_pension_income_above_schedule_5_limit stays defaulted: the engine's payment ignores it, so it cannot serve as the exclusion switch.",
     "scenario_s5": "reg17_superannuitant_base_rate",
-    "status": "The harness has no NZ Superannuation or Veteran's Pension base-rate branch. G7 implements one from the reg 17 text if it can; otherwise the MC11 fallback stands: superannuitant units are excluded from the central run and counted. Scenario S5 carries the alternative. Awaiting D1 (MC11).",
+    "s5_rule": "S5 drops the receipt-group clause from the positive-payment conjunction (holdout_comparator_bindings.json s5) and pays superannuitant units from s5_base_rate.",
+    "s5_base_rate": {
+      "id": "reg17_superannuitant_base_rate",
+      "target_input": "accommodation_supplement_base_rate_weekly_amount",
+      "legal_basis": "Social Security Regulations 2018 reg 17(2)(b) to (e)",
+      "graph_node": "nz.scn.S5.bridge.base_rate",
+      "kernel": "simulate.counterfactual@1",
+      "primary_binding": "main_benefits_rates",
+      "input_overrides": "reg17_base_rate",
+      "components": [
+        {
+          "binding": "family_tax_credits",
+          "input_overrides": [
+            {
+              "variable": "family_tax_credit_eldest_dependent_child_care_units",
+              "value": 1,
+              "value_source": "bridge_point",
+              "reason": "one eldest-child care unit, so the prescribed amount equals family_tax_credit_eldest_child_annual_amount (the parameter the harness reads, run.py:1525-1527)"
+            },
+            {
+              "variable": "family_tax_credit_subsequent_dependent_child_care_units",
+              "value": 0,
+              "value_source": "bridge_point",
+              "reason": "no subsequent-child amount enters reg 17"
+            }
+          ]
+        },
+        {
+          "binding": "nz_super",
+          "input_overrides": []
+        }
+      ],
+      "terms": [
+        {
+          "binding": "main_benefits_rates",
+          "variable": "jobseeker_support_net_weekly_payment",
+          "engine_entity": "Person",
+          "aggregation": "first",
+          "coefficient": 1,
+          "mask": {
+            "unit_attribute": "family.accommodation_supplement_bridge_single_non_superannuitant",
+            "equals": true
+          },
+          "rule": "a single unit outside the superannuitant group takes zero-income Jobseeker Support once, as in the central base rate"
+        },
+        {
+          "binding": "main_benefits_rates",
+          "variable": "jobseeker_support_net_weekly_payment",
+          "engine_entity": "Person",
+          "aggregation": "first",
+          "coefficient": 2,
+          "mask": {
+            "unit_attribute": "family.accommodation_supplement_bridge_partnered_non_superannuitant",
+            "equals": true
+          },
+          "rule": "a partnered unit outside the superannuitant group takes it once for each partner"
+        },
+        {
+          "binding": "nz_super",
+          "variable": "nz_super_weekly_amount_before_tax",
+          "engine_entity": "Person",
+          "aggregation": "max",
+          "coefficient": 1,
+          "mask": {
+            "unit_attribute": "family.accommodation_supplement_bridge_single_superannuitant",
+            "equals": true
+          },
+          "rule": "a single superannuitant unit takes the NZ Superannuation weekly amount before tax"
+        },
+        {
+          "binding": "nz_super",
+          "variable": "nz_super_weekly_amount_before_tax",
+          "engine_entity": "Person",
+          "aggregation": "max",
+          "coefficient": 2,
+          "mask": {
+            "unit_attribute": "family.accommodation_supplement_bridge_partnered_superannuitant",
+            "equals": true
+          },
+          "rule": "reg 17(2)(e) treats a partner as if a rate were paid, so a partnered superannuitant unit takes twice the larger member amount"
+        },
+        {
+          "binding": "family_tax_credits",
+          "variable": "family_tax_credit_prescribed_amount",
+          "engine_entity": "Family",
+          "coefficient": "1/52",
+          "mask": {
+            "unit_attribute": "family.accommodation_supplement_bridge_has_dependent_child",
+            "equals": true
+          },
+          "rule": "reg 17 adds the annual eldest-child family tax credit divided by 52 for a unit with a dependent child (run.py:2556-2562); the harness's 365/7 divisor is a Treasury-host diagnostic only and is not used"
+        }
+      ],
+      "before_tax_reading": "Before tax follows reg 17's \"before any abatement or deduction\" and the Schedule 1 rate the nz_super engine holds.",
+      "mixed_couple_simplification": "A partner on a main benefit takes the NZ Superannuation amount, not their own rate: max over members picks the superannuitant's amount for both partners.",
+      "receipt_group_order": "The S5 receipt_group node runs ahead of these masks, so the superannuitant group comes from the one assigned-member receipt predicate."
+    },
+    "s5_mask_bindings": {
+      "schema_version": 1,
+      "required_inputs": {
+        "family": [
+          "is_partnered",
+          "receipt_group"
+        ]
+      },
+      "input_domains": {
+        "family": {
+          "is_partnered": {
+            "values": [
+              true,
+              false
+            ]
+          },
+          "receipt_group": {
+            "values": [
+              "superannuitant",
+              "beneficiary",
+              "other"
+            ]
+          }
+        }
+      },
+      "columns": [
+        {
+          "entity": "family",
+          "name": "accommodation_supplement_bridge_single_non_superannuitant",
+          "predicates": [
+            {
+              "column": "is_partnered",
+              "operator": "eq",
+              "value": false
+            },
+            {
+              "column": "receipt_group",
+              "operator": "in",
+              "value": [
+                "beneficiary",
+                "other"
+              ]
+            }
+          ]
+        },
+        {
+          "entity": "family",
+          "name": "accommodation_supplement_bridge_partnered_non_superannuitant",
+          "predicates": [
+            {
+              "column": "is_partnered",
+              "operator": "eq",
+              "value": true
+            },
+            {
+              "column": "receipt_group",
+              "operator": "in",
+              "value": [
+                "beneficiary",
+                "other"
+              ]
+            }
+          ]
+        },
+        {
+          "entity": "family",
+          "name": "accommodation_supplement_bridge_single_superannuitant",
+          "predicates": [
+            {
+              "column": "is_partnered",
+              "operator": "eq",
+              "value": false
+            },
+            {
+              "column": "receipt_group",
+              "operator": "eq",
+              "value": "superannuitant"
+            }
+          ]
+        },
+        {
+          "entity": "family",
+          "name": "accommodation_supplement_bridge_partnered_superannuitant",
+          "predicates": [
+            {
+              "column": "is_partnered",
+              "operator": "eq",
+              "value": true
+            },
+            {
+              "column": "receipt_group",
+              "operator": "eq",
+              "value": "superannuitant"
+            }
+          ]
+        }
+      ]
+    },
+    "status": "MC11 adopted (d1043): central runs exclude and count; S5 carries the reg 17 superannuitant base rate.",
     "predicate": {
       "resource": "reporting_classifiers",
       "path": [
@@ -415,7 +612,7 @@
     },
     "predicate_note": "MC11 exclude-and-count and reporting must select this one assigned-member receipt predicate. A bridge implementation must resolve the reference rather than infer superannuitants from entitlement or age."
   },
-  "beneficiary_note": "The harness computes the base rate from zero-income Jobseeker Support for every scenario, beneficiary or not; accommodation_supplement_non_beneficiary itself comes from the receipt layer through the group encode, not from this bridge.",
+  "beneficiary_note": "The harness computes the base rate from zero-income Jobseeker Support for every scenario, beneficiary or not; accommodation_supplement_non_beneficiary itself comes from the receipt layer through the group encode, not from this bridge. Reg 17 for non-superannuitant beneficiaries stays as built; whether reg 17 uses each adult's own age-dependent rate remains open.",
   "differential_expectations": {
     "source": {
       "repository": "TheAxiomFoundation/axiom-oracles",

@@ -250,6 +250,26 @@
     {
       "scenario": "S3",
       "cell": "beneficiary_superannuitant_other/superannuitant"
+    },
+    {
+      "scenario": "V1",
+      "cell": "beneficiary_superannuitant_other/superannuitant"
+    },
+    {
+      "scenario": "V2",
+      "cell": "beneficiary_superannuitant_other/superannuitant"
+    },
+    {
+      "scenario": "V3",
+      "cell": "beneficiary_superannuitant_other/superannuitant"
+    },
+    {
+      "scenario": "V4",
+      "cell": "beneficiary_superannuitant_other/superannuitant"
+    },
+    {
+      "scenario": "VHF",
+      "cell": "beneficiary_superannuitant_other/superannuitant"
     }
   ],
   "structural_zero_citation": {

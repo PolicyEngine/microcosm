@@ -224,6 +224,7 @@
   ],
   "formula_owned_excluded": [
     "accommodation_supplement_cash_assets_within_limit",
+    "accommodation_supplement_entitled_weekly_payment",
     "accommodation_supplement_maximum_weekly_rate",
     "accommodation_supplement_non_beneficiary_income_reduction",
     "accommodation_supplement_non_rate_entitlement_requirements",
