@@ -5104,13 +5104,14 @@ def _company_cars_gate(
     without a car, an unknown fuel type, a CO2 figure missing for a car that emits
     it or set for an electric car, private fuel on an electric car, contributions
     above the list price, an electric range on a car outside 1 to 50 g/km, an SPI
-    benefit above its EPB). It also fails when, on any SPI-channel row, pay plus the car
-    and fuel benefits the engine computes again on the stage's output misses the
-    pay the row brought in by more than ``maximum_pay_identity_error_gbp``: the
-    carve-out assumes how the engine prices a car, so an engine that prices it
-    otherwise fails here. How far holders, fuels, CO2 bands and list prices sit
-    from HMRC's tables after calibration is a measurement, not a gate (María's
-    ruling of 28 October 2026 on the ISA facts).
+    benefit above its EPB, a tape row's employee pension contribution above its
+    carved pay). It also fails when, on any tape row, pay plus the car and fuel
+    benefits the engine computes again on the stage's output misses the pay the
+    row brought in by more than ``maximum_pay_identity_error_gbp``: the carve-out
+    assumes how the engine prices a car, so an engine that prices it otherwise
+    fails here. How far holders, fuels, CO2 bands and list prices sit from HMRC's
+    tables after calibration is not a gate (María's ruling of 28 October 2026 on
+    the ISA facts), and comparing them is a manual step for now.
     """
 
     check = "company_cars"
@@ -5133,7 +5134,7 @@ def _company_cars_gate(
     )
     if error > tolerance:
         failures.append(
-            f"{stage}: SPI-channel pay plus the engine's company car benefits "
+            f"{stage}: tape-row pay plus the engine's company car benefits "
             f"misses the pay the stage received by up to {error} GBP."
         )
     holders = _mapping(evidence.get("holders"), label=f"{stage}.holders")

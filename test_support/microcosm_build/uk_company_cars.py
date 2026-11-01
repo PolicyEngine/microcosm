@@ -88,7 +88,11 @@ COMPANY_CARS_STAGE_OPERATIONS: tuple[dict[str, Any], ...] = (
     },
     {
         "kind": "carve_spi_company_car_benefits",
-        "outputs": ["employment_income", "company_car_private_fuel_provided"],
+        "outputs": [
+            "employment_income",
+            "company_car_private_fuel_provided",
+            "uc_is_in_gainful_self_employment",
+        ],
         "epb_column": "hmrc_spi_employment_benefits",
         "benefits": ["company_car_benefit", "car_fuel_benefit"],
         "minimum_scaled_list_price_gbp": 5_000.0,
@@ -139,8 +143,9 @@ def company_cars_stage_spec(
             "company_car_capital_contributions",
             "company_car_private_fuel_provided",
             "employment_income",
+            "uc_is_in_gainful_self_employment",
         ),
-        rewrites=("employment_income",),
+        rewrites=("employment_income", "uc_is_in_gainful_self_employment"),
     )
 
 

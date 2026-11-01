@@ -2,8 +2,8 @@
 
 The `isa_subscriptions` stage gives every adult of the UK spine what they paid
 into ISAs in the year, by type, and the per-person ISA balances behind them. It
-runs on final incomes, after every stage but company_cars, and nothing in
-the spine reads its outputs.
+runs on final incomes, after every other stage, and nothing in the spine
+reads its outputs.
 
 | Column | Meaning |
 |---|---|

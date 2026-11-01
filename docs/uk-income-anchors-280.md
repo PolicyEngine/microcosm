@@ -49,9 +49,11 @@ Since PolicyEngine/chronicle#397, OBR's EFO gives each year to one edition:
 Chronicle keeps one number per line and year, the latest edition's, so the
 March 2026 tables carry FY2024-25 and the October 2026 tables FY2025-26. Each
 edition's record sets are their own series, so no edition carries both years
-of the window. The 19 OBR rows windowed into calendar 2025 therefore declare
+of the window. The 23 OBR rows windowed into calendar 2025 therefore declare
 `source_table_by_opening_year`, mapping each year to the table that carries it
-(María's ruling of 2026-10-31, microcosm#1430). A fact matches only
+(María's ruling of 2026-10-31, microcosm#1430): the 19 bound when the feed moved to
+`08962f1`, the three council tax nation rows of microcosm#1422, and the fuel duties
+row, which is signed out of the references. A fact matches only
 the table its own year declares, and the record set drops out of the series
 identity, so the two tables form the window's one series. A list-valued
 `source_concept` still names several series, each read across the two tables

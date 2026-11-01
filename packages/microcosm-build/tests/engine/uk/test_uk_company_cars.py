@@ -1,7 +1,7 @@
 """Engine lockstep for the company cars stage (dashboard #316).
 
 The stage writes six of policyengine-uk 2.165.0's company car inputs and takes
-the engine's car and fuel benefits out of SPI-channel pay. These tests fail if
+the engine's car and fuel benefits out of the SPI tape rows' pay. These tests fail if
 the engine stops reading the inputs as the stage writes them (the fuel type as
 an enum name included), if its car benefit stops being linear in the list price
 above the capped contributions, on which the SPI scaling rests, or if Budget
@@ -40,8 +40,8 @@ _VARIABLES = (
 
 def _frame():
     """Five employees, one per household: two FRS company car holders (an
-    electric car, and a petrol car with private fuel), two SPI-channel holders
-    (EPB with room for the benefits, and EPB that is not), and no car."""
+    electric car, and a petrol car with private fuel), two holders on SPI tape
+    rows (EPB with room for the benefits, and EPB that is not), and no car."""
 
     person = pd.DataFrame(
         {
@@ -58,6 +58,9 @@ def _frame():
             "person_is_spi_income_recipient": [False, False, True, True, False],
             "hmrc_spi_employment_benefits": [0.0, 0.0, 30_000.0, 1_500.0, 0.0],
             "employee_pension_contributions": [3_000.0, 0.0, 9_000.0, 2_000.0, 0.0],
+            "employment_status": ["FT_EMPLOYEE"] * 5,
+            "self_employment_income": [0.0] * 5,
+            "uc_is_in_gainful_self_employment": [False] * 5,
         }
     )
     household = pd.DataFrame(
@@ -127,8 +130,8 @@ def test_spi_pay_plus_the_engine_s_benefits_is_the_tape_s_total(engine, run) -> 
     epb = before.table("person")["hmrc_spi_employment_benefits"].to_numpy()
     # FRS-channel pay is untouched.
     np.testing.assert_array_equal(pay_after[[0, 1, 4]], pay_before[[0, 1, 4]])
-    # SPI-channel pay gives up the engine's benefits, which fit in EPB: the second
-    # SPI car's price was scaled to EPB's GBP 1,500. The engine computes in single
+    # A tape row's pay gives up the engine's benefits, which fit in EPB: the second
+    # tape row's car was scaled to EPB's GBP 1,500. The engine computes in single
     # precision, so the identity holds to the penny, not to float64.
     np.testing.assert_allclose(
         pay_after[[2, 3]] + values["benefits_in_kind"][[2, 3]],

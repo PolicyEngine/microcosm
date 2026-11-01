@@ -154,9 +154,10 @@ _READER_ISOLATION_BOUNDARIES = frozenset(
         # its own version right after the root, the root cells are inherited
         # rather than owned there, so the isolation must be declared.
         "frs_education_grant_split",
-        # The company cars carve their benefits out of SPI-channel pay right
-        # after the open-surface SPI income stage, which would otherwise bind
-        # the carved cell (PolicyEngine/uk-autumn-budget-dashboard-2026#316).
+        # The company cars carve their benefits out of the tape rows' pay, and
+        # take their UC gainful self-employment again on it, right after the
+        # open-surface SPI income stage, which would otherwise bind the cells
+        # they rewrite (PolicyEngine/uk-autumn-budget-dashboard-2026#316).
         "company_cars",
     }
 )
@@ -1256,8 +1257,10 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
         _Cell("person", "company_car_electric_range", "float64"),
         _Cell("person", "company_car_capital_contributions", "float64"),
         _Cell("person", "company_car_private_fuel_provided", "bool"),
-        # A tape row's pay gives up the benefits carved out of it.
+        # A tape row's pay gives up the benefits carved out of it, and its UC
+        # gainful self-employment follows the carved pay.
         _Cell("person", "employment_income", "float64"),
+        _Cell("person", "uc_is_in_gainful_self_employment", "bool"),
     ),
     "childcare_copy_take_up": (
         *_cells(

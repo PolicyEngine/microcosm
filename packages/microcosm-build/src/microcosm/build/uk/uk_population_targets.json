@@ -2224,7 +2224,7 @@
         "policyengine": {
           "metric_name": "obr/fuel_duties",
           "value_variable": "fuel_duty",
-          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane)."
+          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). Since PolicyEngine/chronicle#397 each EFO line and year keeps only its latest edition's number, so the window reads FY2024-25 from the March 2026 EFO and FY2025-26 from the October 2026 EFO, both outturns (source_table_by_opening_year; María's ruling of 2026-10-31, microcosm#1430). The row is signed out of the references (universe_scope_all_road_users); the map keeps it readable if it returns."
         },
         "axiom": {
           "metric_name": "obr/fuel_duties",
@@ -2236,7 +2236,11 @@
       "ledger_selector": {
         "source_name": "obr",
         "source_concept": "obr.fuel_duties",
-        "entity_name": "person"
+        "entity_name": "person",
+        "source_table_by_opening_year": {
+          "2024": "EFO March 2026 detailed forecast tables: receipts",
+          "2025": "EFO October 2026 detailed forecast tables: receipts"
+        }
       },
       "category_id": "obr.efo_receipts",
       "label": "Fuel duties",

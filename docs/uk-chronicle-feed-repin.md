@@ -368,8 +368,9 @@ rebuilt beside them, carry the same rows under the new feed identity.
 After #397 no EFO edition carries both years of a calendar-2025 window: March keeps each line's
 FY2024-25 outturn and October carries FY2025-26 on. The 19 OBR rows that window the two years
 declare `source_table_by_opening_year`, which takes each year from the table that carries it
-(María's ruling of 2026-10-31; `docs/uk-income-anchors-280.md`). Their values move with October's
-outturns: fifteen by under 1%, with domestic rates +3.2%, Pension Credit +2.3%, Jobseeker's
+(María's ruling of 2026-10-31; `docs/uk-income-anchors-280.md`), as do the three council tax nation
+rows of PolicyEngine/microcosm#1422 and the fuel duties row, which is signed out of the references:
+23 in all. The 19's values move with October's outturns: fifteen by under 1%, with domestic rates +3.2%, Pension Credit +2.3%, Jobseeker's
 Allowance −2.5% and SDLT −1.2%. `obr.winter_fuel_allowance` drops its pin to March's expenditure
 table and reads October's FY2025-26 outturn (+0.02%). Three report-only diagnostics pinned March's
 FY2025-26 forecasts by fact key: `obr.capital_gains_tax`, `obr.state_pension` and the `obr.ni`
@@ -394,7 +395,7 @@ Both surfaces were regenerated from cuts of the pinned artifact, as for `200bf6d
 
 The national register version moves with the OBR values (the SPI rows already compiled at their
 new values), so the uk-candidate-eval scoring register is re-frozen before the next national
-solve. The 19 maps name
+solve. The 23 maps name
 EFO editions, so a later EFO moves them: once Chronicle keeps a newer edition's FY2025-26,
 October's number leaves the feed and the windows refuse until their maps name the new table. The
 high-value home stock still names `735820c`: its inputs are the same on `08962f1` (the feed-gated

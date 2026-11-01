@@ -8,10 +8,13 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from microcosm.build.stage_evidence import snapshot_stage_evidence
 from microcosm.build.uk_runtime import company_cars as stage
+from microcosm.build.uk_runtime import salary_sacrifice
 from microcosm.build.uk_runtime.frs_spine import (
     FRS_COMPANY_CAR_PRICE_BAND_BOUNDS,
     FRS_COMPANY_CAR_PRICE_BAND_UNKNOWN,
+    uc_gainful_self_employment,
 )
 from microcosm.build.uk_runtime.hmrc_company_car_statistics import (
     HMRC_COMPANY_CAR_RECORD_SETS,
@@ -151,6 +154,7 @@ def test_fuel_codes_map_and_an_unknown_fuel_draws_at_table_2c_shares(
         codes,
         ids,
         private_fuel=np.zeros(len(codes), dtype=bool),
+        weights=np.ones(len(codes)),
         statistics=statistics,
         spec=spec,
     )
@@ -179,21 +183,53 @@ def test_an_unknown_fuel_with_private_fuel_never_draws_electricity(
     fueled = np.zeros(len(codes), dtype=bool)
     fueled[::2] = True
     fuel, drawn = stage.assign_fuel_types(
-        codes, ids, private_fuel=fueled, statistics=statistics, spec=spec
+        codes,
+        ids,
+        private_fuel=fueled,
+        weights=np.ones(len(codes)),
+        statistics=statistics,
+        spec=spec,
     )
     assert drawn.all()
     assert not (fuel[fueled] == stage.ELECTRIC).any()
     shares = pd.Series(fuel[fueled]).value_counts(normalize=True)
     assert shares[stage.PETROL] == pytest.approx(0.8, abs=0.02)
-    # The holders without private fuel draw exactly as before.
-    plain, _ = stage.assign_fuel_types(
+
+
+def test_unknown_fuels_meet_table_2c_together(spec, statistics) -> None:
+    """The holders who report private fuel cannot draw electricity, so the
+    others draw it at the share that keeps Table 2C's among all the cars whose
+    fuel is drawn (item 7 of the second review)."""
+
+    codes = np.array([6] * 50_000)
+    ids = np.arange(len(codes)) + 1
+    fueled = np.zeros(len(codes), dtype=bool)
+    fueled[::5] = True
+    fuel, _ = stage.assign_fuel_types(
         codes,
         ids,
-        private_fuel=np.zeros(len(codes), dtype=bool),
+        private_fuel=fueled,
+        weights=np.ones(len(codes)),
         statistics=statistics,
         spec=spec,
     )
-    assert (fuel[~fueled] == plain[~fueled]).all()
+    assert not (fuel[fueled] == stage.ELECTRIC).any()
+    shares = pd.Series(fuel).value_counts(normalize=True)
+    assert shares[stage.ELECTRIC] == pytest.approx(0.5, abs=0.01)
+    assert shares[stage.PETROL] == pytest.approx(0.4, abs=0.01)
+    assert shares[stage.DIESEL_RDE2] == pytest.approx(0.1, abs=0.01)
+    # Weighted, the private-fuel holders carry 60% of the mass: the others draw
+    # electricity all, the most they can carry.
+    fuel, _ = stage.assign_fuel_types(
+        codes,
+        ids,
+        private_fuel=fueled,
+        weights=np.where(fueled, 6.0, 1.0),
+        statistics=statistics,
+        spec=spec,
+    )
+    assert (fuel[~fueled] == stage.ELECTRIC).all()
+    assert not (fuel[fueled] == stage.ELECTRIC).any()
 
 
 def test_list_prices_stay_in_their_band(spec, donor) -> None:
@@ -312,6 +348,7 @@ def test_the_carve_out_fits_each_benefit_inside_epb_and_pay(spec) -> None:
     carve = stage.carve_spi_benefits(
         epb=np.array([20_000.0, 3_000.0, 500.0, 9_000.0]),
         pay=np.array([90_000.0, 60_000.0, 40_000.0, 50_000.0]),
+        employee_contributions=np.zeros(4),
         list_price=price,
         contributions=np.array([0.0, 6_000.0, 0.0, 0.0]),
         private_fuel=np.array([True, False, False, True]),
@@ -344,6 +381,7 @@ def test_private_fuel_goes_first_when_car_and_fuel_do_not_fit_together(spec) -> 
     carve = stage.carve_spi_benefits(
         epb=np.array([6_000.0, 9_000.0]),
         pay=np.array([40_000.0, 40_000.0]),
+        employee_contributions=np.zeros(2),
         list_price=np.array([40_000.0, 35_000.0]),
         contributions=np.zeros(2),
         private_fuel=np.array([True, True]),
@@ -364,6 +402,7 @@ def test_the_cap_is_epb_within_the_pay(spec) -> None:
     carve = stage.carve_spi_benefits(
         epb=np.array([9_000.0, 9_000.0]),
         pay=np.array([40_000.0, 4_000.0]),
+        employee_contributions=np.zeros(2),
         list_price=np.array([40_000.0, 40_000.0]),
         contributions=np.zeros(2),
         private_fuel=np.zeros(2, dtype=bool),
@@ -375,6 +414,39 @@ def test_the_cap_is_epb_within_the_pay(spec) -> None:
     assert carve.benefit.tolist() == pytest.approx([9_000.0, 4_000.0])
     assert carve.scaled.all()
     assert carve.list_price.tolist() == pytest.approx([36_000.0, 16_000.0])
+
+
+def test_the_cap_leaves_the_pay_an_employee_contribution_needs(spec) -> None:
+    """The SPI income stage capped a tape row's net-pay contribution at the pay
+    it drew, and salary_sacrifice refuses one above the pay that remains, so the
+    carve-out keeps that pay (item 2 of the second review, on its two probes)."""
+
+    epb = np.array([3_000.0, 6_000.0, 9_000.0])
+    pay = np.array([3_000.0, 20_000.0, 40_000.0])
+    employee = np.array([150.0, 20_000.0, 2_000.0])
+    carve = stage.carve_spi_benefits(
+        epb=epb,
+        pay=pay,
+        employee_contributions=employee,
+        list_price=np.array([40_000.0, 40_000.0, 40_000.0]),
+        contributions=np.zeros(3),
+        private_fuel=np.zeros(3, dtype=bool),
+        car_benefit=np.array([10_000.0, 10_000.0, 10_000.0]),
+        fuel_benefit=np.zeros(3),
+        contribution_cap=CAP,
+        spec=spec,
+    )
+    # PAY 0 and EPB 3,000 with a 150 contribution: the car fits 2,850.
+    assert carve.keep[0] and carve.benefit[0] == pytest.approx(2_850.0)
+    assert carve.list_price[0] == pytest.approx(2_850.0 / 0.25)
+    # The contribution takes all the pay: no room, so the car is dropped.
+    assert not carve.keep[1] and carve.benefit[1] == 0.0
+    # Room to spare: EPB caps as before.
+    assert carve.benefit[2] == pytest.approx(9_000.0)
+    assert (pay - carve.benefit >= employee - 1e-9).all()
+    assert carve.receipt["cap_below_epb_for_the_employee_contribution"] == (
+        stage.rounded_count(2)
+    )
 
 
 class _UKEngine:
@@ -444,6 +516,26 @@ def _stage_frame(seed: int = 1, households: int = 600, order=None, sources=None)
                 }
             )
     person = pd.DataFrame(rows)
+    # The SPI income stage's pension and UC columns, on a stream of their own
+    # so the draws above stay as they were. A tenth of the tape rows contribute
+    # all their pay, which the SPI stage's cap allows.
+    extra = np.random.default_rng(seed + 7)
+    pay = person["employment_income"].to_numpy(float)
+    tape_rows = person[SPI_INCOME_RECIPIENT_COLUMN].to_numpy(bool)
+    u = extra.random(len(person))
+    person["employee_pension_contributions"] = np.where(
+        tape_rows & (u < 0.1), pay, np.where(u < 0.5, 1_500.0, 0.0)
+    )
+    self_employed = extra.random(len(person)) < 0.05
+    person["employment_status"] = np.where(
+        self_employed, "FT_SELF_EMPLOYED", "FT_EMPLOYEE"
+    )
+    person["self_employment_income"] = np.where(
+        extra.random(len(person)) < 0.3, extra.uniform(0, 100_000, len(person)), 0.0
+    )
+    person[stage.UC_GAINFUL_SELF_EMPLOYMENT] = uc_gainful_self_employment(
+        self_employed, person["self_employment_income"].to_numpy(float), pay
+    )
     if order is not None:
         person = person.iloc[order(len(person))].reset_index(drop=True)
     weights = rng.uniform(5, 30, households)
@@ -501,6 +593,24 @@ def test_the_whole_stage_writes_its_columns_and_carves_spi_pay(statistics) -> No
     assert (
         benefit[tape] <= before.loc[tape, "hmrc_spi_employment_benefits"] + 1e-6
     ).all()
+    # The carved pay keeps every net-pay contribution, including the tape rows
+    # that contribute all of it, and a carved row's UC gainful self-employment
+    # follows its carved pay; every other row keeps its flag.
+    contributions = after["employee_pension_contributions"]
+    assert (contributions[tape] <= after.loc[tape, "employment_income"] + 1e-6).all()
+    carved = tape & (benefit > 0)
+    assert carved.any()
+    assert (holder & tape & (contributions == before["employment_income"])).sum() == 0
+    gainful = after[stage.UC_GAINFUL_SELF_EMPLOYMENT]
+    expected = uc_gainful_self_employment(
+        after.loc[carved, "employment_status"].eq("FT_SELF_EMPLOYED").to_numpy(),
+        after.loc[carved, "self_employment_income"].to_numpy(float),
+        after.loc[carved, "employment_income"].to_numpy(float),
+    )
+    assert (gainful[carved].to_numpy() == expected).all()
+    pd.testing.assert_series_equal(
+        gainful[~carved], before.loc[~carved, stage.UC_GAINFUL_SELF_EMPLOYMENT]
+    )
     # Non-holders keep the engine's defaults.
     nobody = after[~holder]
     assert (nobody[stage.CO2_EMISSIONS] == 0).all()
@@ -659,6 +769,8 @@ def test_each_invariant_counts_the_rows_that_break_it() -> None:
         tape=np.zeros(9, dtype=bool),
         epb=np.zeros(9),
         carved=np.zeros(9),
+        pay=np.full(9, 30e3),
+        employee_contributions=np.zeros(9),
     )
     assert violations == {
         "non_finite_values": 0,
@@ -672,7 +784,178 @@ def test_each_invariant_counts_the_rows_that_break_it() -> None:
         "contributions_above_list_price": 1,
         "electric_range_outside_1_to_50_g_km": 1,
         "spi_benefit_above_epb": 0,
+        "employee_contribution_above_carved_pay": 0,
     }
+    # A tape row whose carved pay falls below its net-pay contribution, beside
+    # one that keeps it exactly; off the tape the stage leaves pay alone.
+    tape = np.array([True, True, False, False, False, False, False, False, False])
+    violations = stage._violations(
+        columns,
+        holders=holders,
+        tape=tape,
+        epb=np.full(9, 3_000.0),
+        carved=np.where(tape, 3_000.0, 0.0),
+        pay=np.array([0.0, 150.0, 0.0, 0, 0, 0, 0, 0, 0]),
+        employee_contributions=np.array([150.0, 150.0, 900.0, 0, 0, 0, 0, 0, 0]),
+    )
+    assert violations["employee_contribution_above_carved_pay"] == 1
+
+
+def test_a_carved_row_s_uc_gainful_self_employment_follows_its_carved_pay() -> None:
+    """The SPI income stage set the flag on the pay the row drew; a side trade
+    of GBP 5,000 beside pay carved from GBP 6,000 to GBP 1,000 becomes gainful
+    (item 10 of the second review). Rows the carve-out leaves keep their flag."""
+
+    person = pd.DataFrame(
+        {
+            "employment_status": ["FT_EMPLOYEE", "FT_EMPLOYEE", "FT_SELF_EMPLOYED"],
+            "self_employment_income": [5_000.0, 5_000.0, 0.0],
+            "employment_income": [1_000.0, 1_000.0, 20_000.0],
+            stage.UC_GAINFUL_SELF_EMPLOYMENT: [False, False, True],
+        }
+    )
+    flag = stage.refresh_uc_gainful_self_employment(
+        person, np.array([True, False, True])
+    )
+    assert flag.tolist() == [True, False, True]
+    unchanged = stage.refresh_uc_gainful_self_employment(person, np.zeros(3, bool))
+    assert unchanged.tolist() == [False, False, True]
+
+
+def test_the_stage_declares_no_fit_weight_records(statistics) -> None:
+    """The stage fits no model. A declared empty list read as a fitting stage
+    that recorded nothing, which failed the release-cut weights audit (item 1
+    of the second review; microcosm#1428 does the same for ISA)."""
+
+    transform = _transform(statistics)
+    transform(_stage_frame())
+    evidence = snapshot_stage_evidence("company_cars", transform)
+    assert "fit_weight_records" not in evidence
+
+
+def test_without_a_carve_out_the_output_co2_shares_repeat_the_draw_s(
+    statistics,
+) -> None:
+    """The carve-out alone moves the output's CO2 shares off the draw's: on a
+    frame without tape rows, co2.output repeats co2.drawn."""
+
+    frame = _stage_frame()
+    person = frame.table("person").copy()
+    person["person_support_channel"] = "frs"
+    person[SPI_INCOME_RECIPIENT_COLUMN] = False
+    person["hmrc_spi_employment_benefits"] = 0.0
+    frs_only = uk_national_frame(
+        person=person,
+        benunit=frame.table("benunit").copy(),
+        household=frame.table("household").copy(),
+        household_weights=np.asarray(frame.weights_for("household").values),
+        weight_kind=WeightKind.DESIGN,
+        time_period="2024",
+    )
+    transform = _transform(statistics)
+    transform(frs_only)
+    co2 = transform.checkpoint_metadata()["evidence"]["co2"]
+    assert co2["output"]["weighted_share_1_50"] == pytest.approx(
+        co2["drawn"]["weighted_share_1_50"]
+    )
+
+
+class _NoSacrifice:
+    def predict_from_uniforms(self, predictors, *, quantiles, sign_uniforms):
+        return pd.DataFrame(
+            {salary_sacrifice.SALSAC_OUTPUT: 0.0}, index=predictors.index
+        )
+
+
+class _NoSacrificeForest:
+    def __init__(self, *, n_estimators: int, seed: int) -> None:
+        pass
+
+    def fit(self, frame, predictors, targets, *, weights):
+        return _NoSacrifice()
+
+
+def test_salary_sacrifice_runs_on_the_stage_s_output(
+    statistics, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """salary_sacrifice refuses a net-pay contribution above the pay that
+    remains. The review's two tape rows: PAY 0 with EPB of GBP 3,000 and a
+    GBP 150 contribution, and GBP 20,000 of pay all contributed, each with a car
+    (item 2 of the second review). Without the contribution's room the stage
+    would carve both below their contributions."""
+
+    monkeypatch.setattr(salary_sacrifice, "QRF", _NoSacrificeForest)
+    frs = 24
+    ids = np.arange(frs + 2) + 1
+    spi = ids > frs
+    pay = np.concatenate([np.linspace(15_000, 90_000, frs), [3_000.0, 20_000.0]])
+    car = np.where(spi, 9, 0)
+    person = pd.DataFrame(
+        {
+            "person_id": ids,
+            "person_household_id": ids,
+            "person_benunit_id": ids,
+            "age": 40.0,
+            "employment_income": pay,
+            "frs_company_car_price_band": car,
+            "frs_company_car_fuel_code": np.where(spi, 1, 0),
+            "frs_company_car_private_fuel": False,
+            "frs_company_car_contribution": 0.0,
+            "person_support_channel": np.where(spi, "spi", "frs"),
+            SPI_INCOME_RECIPIENT_COLUMN: spi,
+            "hmrc_spi_employment_benefits": np.where(
+                spi, np.where(ids == frs + 1, 3_000.0, 6_000.0), 0.0
+            ),
+            "employee_pension_contributions": np.where(
+                spi, np.where(ids == frs + 1, 150.0, 20_000.0), 1_000.0
+            ),
+            "employment_status": "FT_EMPLOYEE",
+            "self_employment_income": 0.0,
+            stage.UC_GAINFUL_SELF_EMPLOYMENT: False,
+            "salary_sacrifice_asked": np.where(spi, 0, 1),
+            salary_sacrifice.SALSAC_OUTPUT: 0.0,
+            salary_sacrifice.BONUS_SACRIFICE_SOURCE: 0.0,
+        }
+    )
+    household = pd.DataFrame(
+        {
+            "household_id": ids,
+            "household_source_id": ids,
+            "household_support_channel": np.where(spi, "spi", "frs"),
+        }
+    )
+    frame = uk_national_frame(
+        person=person,
+        benunit=pd.DataFrame({"benunit_id": ids}),
+        household=household,
+        household_weights=np.full(len(ids), 10.0),
+        weight_kind=WeightKind.DESIGN,
+        time_period="2024",
+    )
+    carved = _transform(statistics)(frame)
+    after = carved.table("person").set_index("person_id")
+    # The first keeps a car carved down to its contribution; the second, whose
+    # contribution leaves no pay to carve, loses its car and keeps its pay.
+    assert after.loc[frs + 1, stage.LIST_PRICE] > 0
+    assert after.loc[frs + 1, "employment_income"] == pytest.approx(150.0, abs=0.01)
+    assert after.loc[frs + 2, stage.LIST_PRICE] == 0
+    assert after.loc[frs + 2, "employment_income"] == 20_000.0
+    anchor = {
+        "engine": {"package": "policyengine-uk", "version": "toy"},
+        "source": {},
+        "obr_base_above_threshold": 0.0,
+        "threshold": 2000,
+        "data_year": 2024,
+        "base_year": 2027,
+        "earnings_growth": {"factor": 1.0},
+        "weight_growth": {"factor": 1.0},
+        "upper_earnings_limit": {"weekly": 50_000 / 52, "annual": 50_000.0},
+    }
+    result = salary_sacrifice.impute_salary_sacrifice(carved, bonus_anchor=anchor)
+    out = result.frame.table("person")
+    assert (
+        out["employee_pension_contributions"] <= out["employment_income"] + 1e-6
+    ).all()
 
 
 def test_the_stage_s_draws_follow_identity_not_row_order(statistics) -> None:

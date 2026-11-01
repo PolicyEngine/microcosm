@@ -138,6 +138,25 @@ _OBR_COUNCIL_TAX_GB_RECEIPTS_RATIONALE = (
     "high-value council tax surcharge."
 )
 
+#: The nation rows sum to obr.council_tax, so they take its main-residence
+#: scaling (the review of microcosm#1422; the second review of microcosm#1430).
+_OBR_COUNCIL_TAX_NATION_ROWS = frozenset(
+    {"obr.council_tax_england", "obr.council_tax_scotland", "obr.council_tax_wales"}
+)
+
+_OBR_COUNCIL_TAX_NATION_RATIONALE = (
+    "Series and period basis (microcosm#1095): ours measures the nation's OBR "
+    "table 4.1 council tax receipts at the calendar-2025 window, three twelfths "
+    "of FY2024-25 from the March 2026 EFO and nine twelfths of FY2025-26 from "
+    "the October 2026 EFO, each year's latest edition (María's rule of "
+    "2026-09-22, PolicyEngine/chronicle#280 lane, and her ruling of 2026-10-31), "
+    "scaled to main residences by the share obr.council_tax takes, England's "
+    "chargeable dwellings less its second homes and empty dwellings, over its "
+    "chargeable dwellings (MHCLG Council Taxbase, October 2025; María's ruling "
+    "of 2026-10-29, microcosm#1095 D14f), so the three nation rows sum to the "
+    "bound one; the frozen incumbent fixture holds the FY2025-26 value alone."
+)
+
 _OBR_SDLT_HOUSEHOLDS_RATIONALE = (
     "Payer and period basis (uk-data#564, microcosm#1095): ours binds households' "
     "SDLT, the OBR line at the calendar-2025 window (three twelfths of FY2024-25 "
@@ -945,6 +964,11 @@ def _add_signed_rationale_notes(
             row["reason"] = _SPI_REGION_LEDGER_ONLY_RATIONALE
         elif name == "obr.council_tax" and row.get("kind") == "calibration_drift":
             row["reason"] = _OBR_COUNCIL_TAX_GB_RECEIPTS_RATIONALE
+        elif (
+            name in _OBR_COUNCIL_TAX_NATION_ROWS
+            and row.get("kind") == "calibration_drift"
+        ):
+            row["reason"] = _OBR_COUNCIL_TAX_NATION_RATIONALE
         elif name == "obr.sdlt" and row.get("kind") == "calibration_drift":
             row["reason"] = _OBR_SDLT_HOUSEHOLDS_RATIONALE
         elif (

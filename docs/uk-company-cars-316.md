@@ -5,15 +5,20 @@ Budget 2026 raises every company car appropriate percentage by one point in 2030
 the company car and car fuel benefits, and the Class 1A NICs on them, from nine person
 inputs that default to no car, so a file that sets none of them scores the rise at £0.
 The `company_cars` stage sets six of them. It runs right after the SPI income stage
-(`hmrc_spi_income_spine`), so every later stage reads SPI-channel pay without the car
-benefits, as the engine's `employment_income` excludes them: `salary_sacrifice` and its
-bounds, the take-up draws' earnings rules and the CGT stages' income proxies (María's
-ruling of 31 October 2026).
+(`hmrc_spi_income_spine`), so every later stage reads the tape rows' pay without the
+car benefits, as the engine's `employment_income` excludes them: `salary_sacrifice` and
+its bounds, the take-up draws' earnings rules and the CGT and ISA stages' income proxy
+(María's ruling of 31 October 2026). The proxy sums `employment_income` without
+`benefits_in_kind`, so it leaves the car benefits out on every row, as it always has on
+FRS rows. Two things the SPI income stage set from the pay before the carve are dealt
+with here: the tape rows' employee pension contributions, which the carve-out leaves
+room for, and their UC gainful self-employment, which the stage derives again on the
+carved pay (below).
 
 | Input | Where it comes from |
 |---|---|
 | `company_car_list_price` | The FRS CARVAL band, drawn within it from WAS round-8 company cars' list prices |
-| `company_car_fuel_type` | The FRS FUELTYP code; HMRC Table 2C's shares where it is unknown, without electricity where the holder reports private fuel |
+| `company_car_fuel_type` | The FRS FUELTYP code; HMRC Table 2C's shares among the unknown fuels, without electricity where the holder reports private fuel |
 | `company_car_co2_emissions` | HMRC Table 2A's shares among cars that emit CO2; zero for an electric car |
 | `company_car_electric_range` | 50 miles for a car at 1 to 50 g/km |
 | `company_car_capital_contributions` | The FRS CARAMT, where CARCON says the employee contributed |
@@ -43,10 +48,14 @@ Every draw is keyed on the person's identity, so reordering rows moves none.
 
 - **Fuel.** Petrol is `PETROL`; a hybrid or another fuel is `ALTERNATIVE_FUEL`; an
   electric car is `ELECTRIC`; a diesel is `DIESEL_RDE2`, since every new diesel has
-  met RDE2 since January 2021 and company cars turn over in three to four years (the
-  diesel supplement moves the baseline only, not the 2030-31 rise). An unknown fuel
-  draws at HMRC Table 2C's shares, and among petrol and diesel alone where the holder
-  reports private fuel, which an electric car cannot carry. It never draws a hybrid:
+  met RDE2 since January 2021 and company cars turn over in three to four years. The
+  diesel supplement sets a diesel's appropriate percentage, so it moves the baseline,
+  and through the scaled cars the base the 2030-31 rise acts on (below). The unknown
+  fuels draw at HMRC Table 2C's shares together. A holder who reports private fuel,
+  which an electric car cannot carry, draws among petrol and diesel alone, and the
+  others draw electricity at the share that keeps Table 2C's among all of them at the
+  stage's weights (all of them, where the private fuel holders leave too few). It never
+  draws a hybrid:
   Table 2C counts hybrids inside petrol and diesel, so a drawn petrol or diesel car
   enters the CO2 draw below as a non-hybrid. The effect is small.
 - **List price.** WAS round 8 (April 2020 to March 2022) records company cars' list
@@ -71,8 +80,15 @@ Every draw is keyed on the person's identity, so reordering rows moves none.
 ## The tape rows' pay
 
 On a tape row the engine's car and fuel benefits come out of `employment_income`,
-capped at EPB (María's ruling of 30 October 2026). `salary_sacrifice` runs later, on
-the carved pay, and keeps its deductions within it.
+capped at EPB (María's ruling of 30 October 2026) within the pay the row's employee
+pension contribution leaves. The SPI income stage capped that contribution at the pay
+it drew, and `salary_sacrifice`, which runs later on the carved pay, refuses a
+contribution above the pay that remains; it keeps the salary and bonus sacrifice within
+that pay itself. A row whose contribution takes all of its pay has no room, so it loses
+its car and keeps its pay. Employer contributions stay as the SPI income stage set
+them on the drawn PAY + EPB + TAXTERM (the FRS twin's rate times that pay, where the
+twin has one), as on every tape row that draws EPB, car or not: the carve-out leaves
+them alone.
 
 1. Where the car and fuel benefits do not fit together, the private fuel goes first,
    so a car that fits without its fuel is always kept (María's ruling of 31 October
@@ -100,14 +116,22 @@ largest miss rounded up to the penny, and the gate allows 5p. The SPI employment
 income targets read employment income plus `benefits_in_kind`, so they read the same
 total as before the stage.
 
+The SPI income stage set a tape row's UC gainful self-employment from the pay it drew,
+by the root's rule: a self-employed main job, or a side trade whose profit is above pay
+(uk-data#525). A carved row takes the rule again on its carved pay, so a side trade
+whose profit lies between the carved and the drawn pay becomes gainful, as the engine
+reads the carved pay. The receipt counts those rows
+(`spi_carve_out.uc_gainful_self_employment_on_the_carved_pay`).
+
 ## What to expect of the 2030-31 score
 
 Budget 2026 raises every appropriate percentage by one point, the zero-emission rate
 and the maximum included. So the rise adds about 1% of each car's list price above
 its capped contributions to its taxable value, plus 1% of the fuel benefit
-multiplier for each fuel benefit holder. Electric cars count as much as any other:
-the frozen electric share moves the baseline, not the rise. The base the rise acts
-on is the build year's fleet carried forward. Fuel type and CO2 are not uprated,
+multiplier for each fuel benefit holder. On an unscaled car an electric car counts as
+much as any other: its frozen percentage moves the baseline, not the rise. On a scaled
+car the percentage sets the price, so it moves the base too (above). The base the rise
+acts on is the build year's fleet carried forward. Fuel type and CO2 are not uprated,
 list prices and contributions grow by CPI, and the weights are not projected.
 
 Expect the static 2030-31 cost to come in well under Table 6.1's £310m, from the
@@ -137,12 +161,13 @@ calibration moves the holders. The results measure the base on the calibrated fi
 ## Measured, not bound
 
 No HMRC company car fact is a calibration target: the stage draws fuel and CO2 to
-Tables 2A and 2C, so binding them would be circular. The national build reports the
-calibrated file against HMRC's Table 1 (recipients, taxable value, income tax and
-NICs), Table 3A (by income range) and Table 4 (by region).
-`uk_stage_company_cars_invariants` blocks a release on any record that breaks an
-invariant, and on a tape row whose pay plus benefits misses the tape's total by more
-than 5p.
+Tables 2A and 2C, so binding them would be circular. No build step reads the other
+tables after calibration yet: comparing the calibrated file with HMRC's Table 1
+(recipients, taxable value, income tax and NICs), Table 3A (by income range) and Table
+4 (by region) is a manual step. `uk_stage_company_cars_invariants` blocks a release on
+any record that breaks an invariant, a tape row whose employee pension contribution
+exceeds its carved pay included, and on a tape row whose pay plus benefits misses the
+tape's total by more than 5p.
 
 ## Disclosure
 
