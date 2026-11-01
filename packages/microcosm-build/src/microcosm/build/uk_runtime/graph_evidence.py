@@ -45,6 +45,7 @@ from . import battery_bindings, energy_pricing, stage_health
 from .calibration_run import UK_SPINE_GATE_SCOPE, uk_scoped_gate_manifest
 from .cgt_asset_type import CGT_ASSET_TYPE_DOMAIN
 from .frs_relationships import CHRONICLE_ONS_HOUSEHOLD_TYPE_VALUE_IDS
+from .graph import UK_SPINE_ASSEMBLED_FINAL_STAGE
 
 #: The spine checkpoint's build state the terminal gates read as the spine
 #: frame: household weight kind, period and mass log (microcosm#1115).
@@ -77,16 +78,6 @@ class SpineGateBlockedError(ValueError):
             f"Stored {report.phase} spine gates block downstream execution: "
             + ", ".join(outcome.entry.id for outcome in blocking)
         )
-
-
-#: The last stage of the assembled checkpoint: everything through the base
-#: FRS mapping and the stochastic draws. A name, not an index — a position
-#: standing in for a key is correct only while two independently-maintained
-#: orderings happen to agree (the uk-data#468 class). Both the graph's spine
-#: gates and the plan path read it, so an assembled-phase gate's stage is
-#: checked against the boundary the build runs (the third review of
-#: microcosm#1422).
-UK_SPINE_ASSEMBLED_FINAL_STAGE = "frs_brma"
 
 
 def require_uk_spine_gate_admission(

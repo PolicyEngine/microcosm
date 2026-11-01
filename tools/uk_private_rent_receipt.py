@@ -414,8 +414,9 @@ def rent_row_fit(weighting: Weighting) -> tuple[dict[str, Any], list[dict[str, A
 
     A row rests on the distinct source households of positive weight with an
     entry in it (the build's BRMA rule, microcosm#1262). One resting on fewer
-    than ten stays out of every group of the summary, which counts it; the
-    audit keeps every row.
+    than three (``MIN_SOURCE_HOUSEHOLDS``, the build's disclosure floor) stays
+    out of every group of the summary, which counts it; the audit keeps every
+    row.
     """
 
     rows = [

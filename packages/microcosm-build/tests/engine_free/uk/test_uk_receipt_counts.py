@@ -117,13 +117,17 @@ _KEPT_TENS: dict[str, tuple[tuple[str, int], ...]] = {
         ("PAY_CONCEPT_RATIO_MINIMUM_SUPPORT = 10", 1),
         ("holds one past them on fewer than ten households", 1),
         ("a ratio whose support band is under ten", 1),
+        ("On one\n        # to nine households a ratio past them is noise", 1),
     ),
     "uk_runtime/stage_health.py": (
         ("So is a pay concept ratio on fewer than ten households", 1),
         ("a count under ten prints", 1),
         ("if value >= 10:", 1),
     ),
-    "uk_runtime/receipt_counts.py": (("if value < 10:", 3),),
+    "uk_runtime/receipt_counts.py": (
+        ("if value < 10:", 3),
+        ("goes to HMRC at\nleast ten working days", 1),
+    ),
     "uk_runtime/spi_rank_transport.py": (("SPI_TRANSPORT_GROUP_MINIMUM_ROWS = 10", 1),),
     "uk_runtime/private_rent_localisation.py": (
         ("MIN_SAMPLED_REGION_RENTERS = 10", 1),
@@ -188,30 +192,42 @@ def test_no_uk_floor_of_ten_hides_outside_the_label() -> None:
     JSON, the UK tools and microcosm-data, this guard finds:
 
     - a comparison with ten, ``<``, ``<=``, ``>`` or ``>=`` on either side, and
-      ``> 9`` or ``<= 9``, but not a format spec (``{x:<10}``), ``10_000``,
-      ``10.5``, ``10%`` or ``10 * x``;
-    - a keyword, key or default named ``min*``, ``minimum*`` or ``threshold*``
-      set to ten in Python, YAML or JSON, and a constant named ``*MIN*``,
-      ``*FLOOR*``, ``*SDC*``, ``*SMALL*`` or ``*THRESHOLD*`` set to ten;
+      ``> 9`` or ``<= 9``, but not a format spec (``{x:<10}``, ``{x:>9}``),
+      ``10_000``, ``10.5``, ``10%`` or ``10 * x``;
+    - a keyword, key or default named ``min``, ``minimum``, ``min_*``,
+      ``minimum_*`` or ``threshold*`` set to ten in Python, YAML or JSON, and
+      an upper-case constant named ``*MIN*``, ``*FLOOR*``, ``*SDC*``,
+      ``*SMALL*`` or ``*THRESHOLD*`` set to ten, but not ``minutes`` or
+      ``*MINUTES*``;
     - prose: "fewer than", "under", "below", "less than" or "at least" before
-      "ten" or "10", and "one to nine".
+      "ten" or "10", and "one to nine", also where a line break, a comment
+      marker or a string's quotes split the words.
 
-    Each it finds must be named in ``_KEPT_TENS``.
+    A ten is ``10``, ``10.`` at a sentence's end or ``10.0``. Each it finds
+    must be named in ``_KEPT_TENS``.
     """
 
     root = paths_for("microcosm-build").repository
     build = paths_for("microcosm-build").package / "src" / "microcosm" / "build"
+    # A ten ends the number: not 10_000, 10% or 10.5, but "10." at a
+    # sentence's end and 10.0 (the fourth review of microcosm#1422).
+    ten = r"10\b(?![\d_%])(?!\.\d*[1-9])"
+    nine = r"9\b(?![\d_%])(?!\.\d*[1-9])"
+    # Words a line break, a comment marker or a string's quotes split.
+    gap = r"(?:[ \t]+|[ \t]*[\"']?[ \t]*\n[ \t]*(?:#|[rbfu]{0,2}[\"'])?[ \t]*)"
+    key = r"(?:min(?:imum)?(?:_\w+)?|threshold\w*)"
     floors = re.compile(
-        r"(?<![:{])[<>]=?\s*10\b(?![\d_.%])(?!\s*\*)"
-        r"|(?<![\w.])10\s*[<>]=?(?![=\d])"
-        r"|(?:>|<=)\s*9\b(?![\d_.%])"
-        r"|\b(?:min|minimum|threshold)\w*\s*[=:]\s*10\b(?![\d_.%])"
-        r"|\bminimum_\w*\s*:\s*int\s*=\s*10\b"
-        r"|^\s*_?[A-Z0-9_]*(?:MIN|FLOOR|SDC|SMALL|THRESHOLD)[A-Z0-9_]*\s*"
-        r"(?::[^=\n]+)?=\s*10\b(?![\d_.%])"
-        r'|"(?:min\w*|\w*_min\w*|threshold\w*)":\s*10\b(?![\d_.%])'
-        r"|\b(?:fewer than|under|below|less than|at least) (?:ten|10)\b(?![\d_.%])"
-        r"|\bone to nine\b",
+        rf"(?<![:{{])[<>]=?\s*{ten}(?!\s*\*)"
+        r"|(?<![\w.])10(?:\.0+)?\s*[<>]=?(?![=\d])"
+        rf"|(?<![:{{])(?:>|<=)\s*{nine}"
+        rf"|\b{key}\s*[=:]\s*{ten}"
+        rf"|\b{key}\s*:\s*int\s*=\s*{ten}"
+        r"|^\s*(?-i:_?[A-Z0-9_]*(?:MIN(?!UTE)|FLOOR|SDC|SMALL|THRESHOLD)[A-Z0-9_]*)\s*"
+        rf"(?::[^=\n]+)?=\s*{ten}"
+        rf'|"(?:{key}|\w+_{key})":\s*{ten}'
+        rf"|\b(?:fewer{gap}than|under|below|less{gap}than|at{gap}least){gap}"
+        rf"(?:ten\b|{ten})"
+        rf"|\bone{gap}to{gap}nine\b",
         re.IGNORECASE | re.MULTILINE,
     )
     uk_tool = re.compile(r"(?:^|_)uk(?:_|$)")
@@ -256,7 +272,7 @@ def test_no_uk_floor_of_ten_hides_outside_the_label() -> None:
                 line_end = text.find("\n", match.end())
                 found.append(
                     f"{name}:{text.count(chr(10), 0, match.start()) + 1}: "
-                    f"{text[line_start:line_end].strip()[:120]}"
+                    f"{' '.join(text[line_start:line_end].split())[:120]}"
                 )
             else:
                 key = (name, phrase)

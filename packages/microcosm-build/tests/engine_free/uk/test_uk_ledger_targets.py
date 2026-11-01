@@ -2803,5 +2803,44 @@ def test_a_reference_that_cannot_be_restamped_stops_the_compile(monkeypatch) -> 
         raise ValueError(f"cannot move the period of {reference.name!r}")
 
     monkeypatch.setattr(uk_ledger_targets, "restamp_reference_period", refuse)
-    with pytest.raises(ValueError, match="cannot be restamped to 2026"):
+    with pytest.raises(
+        ValueError, match="UK target reference .* cannot be restamped to 2026"
+    ):
         uk_ledger_targets.compile_uk_target_registry([], target_period=2026)
+
+
+def test_a_local_reference_that_cannot_be_restamped_stops_the_compile(
+    monkeypatch,
+) -> None:
+    """The local compile refuses as the national one does, naming the local
+    reference (the fourth review of microcosm#1422)."""
+    reference = LedgerTargetReference(
+        name="dfe.funded_childcare.early_learning_2_year_olds@A1",
+        ledger_selector={
+            "source_name": "dfe",
+            "source_measure_id": "children",
+            "geography_level": "constituency",
+            "geography_id": "A1",
+            "period_type": "fiscal_year",
+        },
+        value_operation="identity",
+        entity="person",
+        measure="childcare/early_learning_2_year_olds",
+        period=2025,
+        # No fiscal year is spelt "2026-01", so it cannot move.
+        observation_period="2026-01",
+        family="dfe_childcare",
+        metadata={
+            "contract_target_id": "dfe.funded_childcare.early_learning_2_year_olds"
+        },
+    )
+    monkeypatch.setattr(
+        "microcosm.build.uk_runtime.ledger_targets.load_country_spec",
+        lambda country: SimpleNamespace(local_target_references=(reference,)),
+    )
+    with pytest.raises(
+        ValueError, match=r"UK local reference '.*@A1' cannot be restamped to 2026"
+    ):
+        compile_uk_local_target_registry(
+            [], target_period=2026, crosswalk=_local_crosswalk(["A1"])
+        )

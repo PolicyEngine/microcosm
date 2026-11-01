@@ -127,12 +127,12 @@ from microcosm.build.uk_runtime.frs_spine import (
 )
 from microcosm.build.uk_runtime.frs_take_up import UKFRSTakeUpStageTransform
 from microcosm.build.uk_runtime.graph import (
+    UK_SPINE_ASSEMBLED_FINAL_STAGE,
     uk_registry,
     uk_spine_graph,
     uk_spine_operation_inventory,
 )
 from microcosm.build.uk_runtime.graph_evidence import (
-    UK_SPINE_ASSEMBLED_FINAL_STAGE,
     add_uk_spine_gate_nodes,
     load_spine_stage_artifacts,
     materialize_blocked_spine_gate_report,
