@@ -1321,9 +1321,12 @@ def _frs_annual_income_spells_gate(
             and support is not None
             and _count_bounds(support)[1] < PAY_CONCEPT_RATIO_MINIMUM_SUPPORT
         )
-        if held:
-            # The stage held the ratio to its bounds: the value printed is the
-            # bound it was held to, not a measurement.
+        if (
+            key == "pay_concept_ratio"
+            and evidence.get("pay_concept_ratio_held") is True
+        ):
+            # The stage moved the ratio onto a bound: the value printed is that
+            # bound, not a measurement.
             details["pay_concept_ratio_held_to_bounds"] = True
         if value == UK_WITHHELD or held:
             details[f"{key}_measured"] = False
@@ -4658,10 +4661,12 @@ def _count_bounds(count: object) -> tuple[float, float]:
             raise ValueError(f"unknown count band {count!r}.")
         return _SUPPORT_BAND_BOUNDS[count]
     value = int(count)
+    # The lowest count that rounds to a printed one: a count under ten prints
+    # a band, and 995 to 999 print 1,000 (the third review of microcosm#1422).
     if value >= 1000:
-        return value - 50, value + 49
+        return max(value - 50, 995), value + 49
     if value >= 10:
-        return value - 5, value + 4
+        return max(value - 5, 10), value + 4
     return value, value
 
 

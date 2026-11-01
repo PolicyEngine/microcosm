@@ -2799,7 +2799,7 @@ def _home_values_receipt() -> dict:
     [
         (lambda r: r["rows_rewritten_by_region"].pop("W92000004"), "rewrites regions"),
         (lambda r: r["rows_rewritten_by_region"].update(E12000007=0), "no row"),
-        (lambda r: r.update(rows=40), "more rows"),
+        (lambda r: r.update(rows=90), "more rows"),
         (lambda r: r.update(sources_at_cap=1), "value cap"),
         # A band past the limit fails as plainly as the count it stands for.
         (lambda r: r.update(sources_at_cap="<3"), "value cap"),
@@ -2841,11 +2841,12 @@ def test_regional_home_values_gate_reads_a_banded_count_at_its_bounds() -> None:
     result = _gate(gate_id, receipt)
     assert result.passed, result.failures
     assert result.details["regions_rewritten_under_floor"] == []
-    # Nine regions printed 10 (five rows at the least) and one of at least
-    # three: 48 rows at the least, against a stage of 44 rows at the most.
-    receipt["rows"] = 40
+    # Nine regions printed 10 (ten rows at the least, as five to nine print
+    # "3-9") and one of at least three: 93 rows at the least, more than a stage
+    # printed 80 (84 at the most) carries, and no more than one printed 90.
+    receipt["rows"] = 80
     assert "more rows" in _gate(gate_id, receipt).failures[0]
-    receipt["rows"] = 50
+    receipt["rows"] = 90
     assert _gate(gate_id, receipt).passed
     # Ten regions of 15 rows print 20 each; a stage of 150 rows is not short.
     rounded = _home_values_receipt()

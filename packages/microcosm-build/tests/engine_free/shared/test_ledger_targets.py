@@ -6289,6 +6289,13 @@ def test__given_a_window_ratio_list_unlike_its_count__then_it_refuses() -> None:
         ("FY2026", 2026, "FY2027"),
         # A restamp to the same period leaves any spelling as it is.
         ("FY2026", 2025, "FY2026"),
+        # The ledger's parser reads these as months, so only the year moves.
+        ("2011-12", 2024, "2010-12"),
+        ("2005-06", 2026, "2006-06"),
+        ("2026-1", 2026, "2027-1"),
+        # And these as annual ranges, whose two ends move.
+        ("2024-2025", 2026, "2025-2026"),
+        ("2024_2025", 2024, "2023_2024"),
     ],
 )
 def test__given_an_observation_period__then_a_restamp_keeps_its_offset(
@@ -6308,3 +6315,11 @@ def test__given_an_observation_period__then_a_restamp_keeps_its_offset(
         _cy_window_reference(value_operation="identity"), 2024
     )
     assert plain.period == 2024 and plain.observation_period is None
+
+
+def test__given_a_target_period_without_a_year__then_a_restamp_refuses() -> None:
+    reference = _cy_window_reference(
+        value_operation="identity", period=2025, observation_period="2026-01"
+    )
+    with pytest.raises(ValueError, match="cannot read a year"):
+        restamp_reference_period(reference, "2025Q1")

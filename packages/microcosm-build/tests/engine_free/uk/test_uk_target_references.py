@@ -2235,3 +2235,28 @@ def test_every_reference_and_hold_names_its_contract_targets_uprating_index() ->
         != contract[names_to_target[hold["name"]]].get("uprating_index")
     )
     assert held_drift == []
+
+
+def test_committed_references_are_authored_at_the_reference_period() -> None:
+    """The generators author at UK_TARGET_REFERENCE_PERIOD and move the
+    contract's observation periods from it, so the committed references sit at
+    that period with the contract's observation periods as written (the third
+    review of microcosm#1422)."""
+    from microcosm.build.uk_runtime.ledger_targets import UK_TARGET_REFERENCE_PERIOD
+
+    resource = _load_uk_resource("target_references.json")
+    contract = _load_uk_resource("uk_population_targets.json")
+    observation_by_target = {
+        target["target_id"]: target["observation_period"]
+        for target in contract["targets"]
+        if "observation_period" in target
+    }
+    assert observation_by_target
+    rows = resource["target_references"]
+    assert {row["period"] for row in rows} == {UK_TARGET_REFERENCE_PERIOD}
+    observed = {
+        row["metadata"]["contract_target_id"]: row["observation_period"]
+        for row in rows
+        if "observation_period" in row
+    }
+    assert observed == observation_by_target

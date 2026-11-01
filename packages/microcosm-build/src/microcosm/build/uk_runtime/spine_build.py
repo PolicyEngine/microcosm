@@ -132,6 +132,7 @@ from microcosm.build.uk_runtime.graph import (
     uk_spine_operation_inventory,
 )
 from microcosm.build.uk_runtime.graph_evidence import (
+    UK_SPINE_ASSEMBLED_FINAL_STAGE,
     add_uk_spine_gate_nodes,
     load_spine_stage_artifacts,
     materialize_blocked_spine_gate_report,
@@ -238,11 +239,6 @@ _REPOSITORY = next(
 )
 _RUNG_NAMED_EDGE_SIGNATURE = "The least populated classes in y have only 1 member"
 _RUNG_ABORT_EXIT_CODE = 3
-#: The last stage of the assembled checkpoint: everything through the base
-#: FRS mapping and the stochastic draws. A name, not an index — a position
-#: standing in for a key is correct only while two independently-maintained
-#: orderings happen to agree (the uk-data#468 class).
-UK_SPINE_ASSEMBLED_FINAL_STAGE = "frs_brma"
 
 
 def _uk_spine_stage_names(spec) -> tuple[str, ...]:

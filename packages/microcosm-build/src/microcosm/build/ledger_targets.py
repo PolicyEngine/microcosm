@@ -4744,16 +4744,21 @@ def restamp_reference_period(
 
 
 def _period_year(period: int | str) -> int:
-    return _period_key_from_value(period)[1] // 100
+    parsed, ordinal, _ = _period_key_from_value(period)
+    if not parsed:
+        raise ValueError(f"cannot read a year from the period {period!r}.")
+    return ordinal // 100
 
 
 def _shift_period_years(period: int | str, years: int) -> int | str:
     """The period ``years`` later, in its own spelling.
 
-    A year (``2026``, ``"FY2026"``) or a month (``"2026-01"``) moves its year;
-    an annual range (``"2024-25"``, ``"fy2024_25"``), whose end is the
-    following year, moves both ends. Any other spelling refuses, unless it
-    does not move.
+    The spelling is classified as the ledger's own period parser reads it
+    (``_normalize_period_value``): an annual range (``"2024-25"``,
+    ``"2024-2025"``, ``"fy2024_25"``) moves both ends, and a year
+    (``2026``, ``"FY2026"``) or a month (``"2026-01"``, ``"2011-12"``,
+    ``"2026-1"``) moves its year. A spelling the parser does not read
+    refuses, unless it does not move (the third review of microcosm#1422).
     """
 
     if years == 0:
@@ -4761,14 +4766,19 @@ def _shift_period_years(period: int | str, years: int) -> int | str:
     if isinstance(period, int):
         return period + years
     text = str(period).strip()
-    ranged = re.fullmatch(r"(\D*)(\d{4})([-_])(\d{2})", text)
-    if ranged and int(ranged.group(4)) == (int(ranged.group(2)) + 1) % 100:
-        start = int(ranged.group(2)) + years
-        return f"{ranged.group(1)}{start}{ranged.group(3)}{(start + 1) % 100:02d}"
-    dated = re.fullmatch(r"(\D*)(\d{4})((?:[-_]\d{2})?)", text)
-    if dated is None:
-        raise ValueError(f"cannot move the period {period!r} by {years} year(s).")
-    return f"{dated.group(1)}{int(dated.group(2)) + years}{dated.group(3)}"
+    (parsed, _, _), _, range_end, _ = _normalize_period_value(text)
+    if parsed and range_end is not None:
+        ranged = re.fullmatch(r"(\D*)(\d{4})([-_])(\d{2}|\d{4})", text)
+        if ranged:
+            start = int(ranged.group(2)) + years
+            end = start + 1 if len(ranged.group(4)) == 4 else (start + 1) % 100
+            width = len(ranged.group(4))
+            return f"{ranged.group(1)}{start}{ranged.group(3)}{end:0{width}d}"
+    elif parsed:
+        dated = re.fullmatch(r"(\D*)(\d{4})((?:[-_]\d{1,2})?)", text)
+        if dated:
+            return f"{dated.group(1)}{int(dated.group(2)) + years}{dated.group(3)}"
+    raise ValueError(f"cannot move the period {period!r} by {years} year(s).")
 
 
 def _selection_period(reference: LedgerTargetReference) -> int | str | None:
