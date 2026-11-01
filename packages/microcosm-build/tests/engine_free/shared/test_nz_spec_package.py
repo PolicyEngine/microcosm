@@ -2352,7 +2352,10 @@ class TestScenarios:
         branch_points = {
             tier: row["branch_point"] for tier, row in document["tiers"].items()
         }
-        assert branch_points == {"entitlement": "nz.as", "calibration": "nz.open"}
+        assert branch_points == {
+            "entitlement": "nz.as.bridge",
+            "calibration": "nz.open",
+        }
         assert [s["id"] for s in document["scenarios"] if not s["knobs"]] == ["S0"]
 
     def test_input_overrides_name_real_accommodation_supplement_inputs(self) -> None:

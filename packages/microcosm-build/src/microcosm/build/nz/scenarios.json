@@ -6,7 +6,7 @@
   "status": "The hub adopts the declared scenario set under H7; C1 rent ageing and D2 publication approval remain open.",
   "tiers": {
     "entitlement": {
-      "branch_point": "nz.as"
+      "branch_point": "nz.as.bridge"
     },
     "calibration": {
       "branch_point": "nz.open"

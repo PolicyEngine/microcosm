@@ -752,6 +752,27 @@ def _nz_composition_spec_and_config():
     return spec, config
 
 
+def test_nz_terminal_filter_keeps_the_skeletons_predecessors_and_ancestry():
+    from microcosm.graph import compile_graph
+
+    spec, config = _nz_composition_spec_and_config()
+    extended = compile_graph(compose.compose_transport_graph(spec, config))
+    bare = copy.deepcopy(spec)
+    del bare["resources"]["entitlement_graph"]
+    skeleton = compile_graph(compose.compose_transport_graph(bare, config))
+    assert set(extended.predecessors["nz.terminal"]) == set(
+        skeleton.predecessors["nz.terminal"]
+    )
+    # Export and the terminal gates descend from here, so no bridge column can.
+    seen, frontier = set(), ["nz.terminal"]
+    while frontier:
+        fresh = set(extended.predecessors[frontier.pop()]) - seen
+        seen |= fresh
+        frontier += fresh
+    assert seen <= set(skeleton.order)
+    assert not {name for name in seen if ".bridge" in name}
+
+
 def test_nz_packaged_graph_produces_region_and_bridge_columns_from_named_nodes():
     spec = _spec()
     rows = _instantiated_nz_rows(spec)

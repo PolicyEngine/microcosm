@@ -82,6 +82,7 @@ UNIT_RULE = replace(
 )
 
 SCENARIOS = ("S0", "S1", "V1", "V3", "VHF")
+SHARED_BRIDGE = "nz.as.bridge"
 FLAGS = ("receives_main", "receives_other", "receives_pension")
 GROSS = ("toy_main_annual_gross", "toy_other_annual_gross")
 DEMOGRAPHY = tuple(
@@ -771,11 +772,20 @@ def make_nz_toy_fixture(root):
     ]
     entitlement = r["entitlement_graph"]
     entitlement["scenario_nodes"] = []
+    # As in the package, the shared bridge runs on its own FILTER branch.
+    shared = [
+        row for row in entitlement["nodes"] if row["id"].startswith(SHARED_BRIDGE + ".")
+    ]
+    for row in shared:
+        row["population"] = SHARED_BRIDGE
+    entitlement["nodes"].insert(
+        entitlement["nodes"].index(shared[0]), _boundary(SHARED_BRIDGE, "nz.as")
+    )
     for scenario in scenarios:
         name = scenario["id"]
         if name in ("S0", "S1"):
             pop = f"nz.scn.{name}"
-            nodes = [_boundary(pop, "nz.as")]
+            nodes = [_boundary(pop, SHARED_BRIDGE)]
             if name == "S1":
                 nodes.append(
                     _seed(pop, f"{pop}.override", scenario=True, fields=("as_assets",))

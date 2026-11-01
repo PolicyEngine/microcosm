@@ -107,6 +107,23 @@ def test_synthetic_nz_graph_exports_and_packages_every_scenario(toy):
     assert report["enforcement"]["artifact_permitted"] is True
 
 
+def test_bridge_filter_keeps_every_person_unit_and_weight(toy):
+    populations = toy[1][0].populations
+    whole, bridge = populations["nz.as"], populations["nz.as.bridge"]
+    for entity, identifiers in (
+        ("person", ["person_id", "person_household_id", "person_family_id"]),
+        ("family", ["family_id"]),
+        ("household", ["household_id"]),
+    ):
+        pd.testing.assert_frame_equal(
+            bridge.table(entity)[identifiers], whole.table(entity)[identifiers]
+        )
+        np.testing.assert_array_equal(
+            bridge.resolve_weights(entity).values, whole.resolve_weights(entity).values
+        )
+        assert bridge.resolve_weights(entity).kind == whole.resolve_weights(entity).kind
+
+
 def test_s0_deciles_carry_by_unit_id_and_each_scenario_reports_shares(toy):
     fixture, run = toy
     manifest = run[0]
