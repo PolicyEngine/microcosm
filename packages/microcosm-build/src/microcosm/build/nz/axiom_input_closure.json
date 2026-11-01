@@ -1086,8 +1086,8 @@
    "input": "accommodation_supplement_base_rate_weekly_amount",
    "class": "encoded",
    "encoded_by": "graph_node",
-   "node": "nz.as.bridge.base_rate",
-   "reason": "The reg 17 base rate, computed by the engine-calling bridge node from the main-benefit and family tax credit modules (method card MC11, amendment MC11a; the one sanctioned exception to real-Axiom-only runtime until rulespec-nz encodes reg 17, work package B13). Unit construction and group encoding never compute it."
+   "node": "nz.scn.S0.bridge.base_rate",
+   "reason": "The reg 17 base rate. Each scenario and variant branch runs its own simulate.counterfactual@1 base-rate node (nz.scn.S0.bridge.base_rate for the central run) over the main-benefit and family tax credit modules, under method card MC11, the one sanctioned exception to real-Axiom-only runtime until rulespec-nz encodes reg 17 (work package B13). Unit construction and group encoding never compute it."
   },
   {
    "rulespec_path": "nz/statutes/social_security/accommodation_supplement/core.yaml",
@@ -1211,7 +1211,7 @@
    "class": "encoded",
    "encoded_by": "graph_node",
    "node": "nz.as.bridge.cutout",
-   "reason": "The reg 18 non-beneficiary income cutout, computed by the engine-calling bridge node (method card MC11, amendment MC11a; deleted when B13 encodes reg 18). Unit construction and group encoding never compute it."
+   "reason": "The reg 18 non-beneficiary income cutout. A simulate.solve_zero@1 node finds the income that extinguishes Jobseeker Support, with Income Test 3 for sole parents under reg 18(3)(b); nz.as.bridge.cutout serves the entitlement scenarios and each variant runs its own (method card MC11; deleted when B13 encodes reg 18). Unit construction and group encoding never compute it."
   },
   {
    "rulespec_path": "nz/statutes/social_security/accommodation_supplement/core.yaml",

@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "country": "nz",
-  "description": "The NZ transport declaration retains named pending money producers and unresolved reviewed AS bridge assembly. The graph makes no estimate or publication claim.",
+  "description": "The NZ transport declaration retains named pending money producers. The graph makes no estimate or publication claim.",
   "export_contract": "export_contract",
   "sources": [
     {
@@ -4330,7 +4330,6 @@
     ]
   },
   "pending_outputs": [
-    "Reviewed Reg 17 and Reg 18 assembly and the S5 superannuitant alternative",
     "w4 support, release-input coverage and weight audit evidence",
     "r2c income stand-in and reconciliation",
     "P1 earnings, Census rent and liquid-assets quantile producers"

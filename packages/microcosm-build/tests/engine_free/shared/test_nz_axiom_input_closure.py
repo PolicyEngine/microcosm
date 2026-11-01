@@ -212,7 +212,9 @@ class TestClosure:
         assert {
             ref.name: node for ref, node in CLOSURE.graph_node_inputs().items()
         } == {
-            "accommodation_supplement_base_rate_weekly_amount": "nz.as.bridge.base_rate",
+            "accommodation_supplement_base_rate_weekly_amount": (
+                "nz.scn.S0.bridge.base_rate"
+            ),
             "accommodation_supplement_non_beneficiary_income_cutout_weekly_amount": (
                 "nz.as.bridge.cutout"
             ),

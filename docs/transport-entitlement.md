@@ -177,16 +177,21 @@ comparing it with the hold-out reference. The toy graph
 does this with its invented family-credit engine. It supplies no real WFF
 inputs or statutory claim.
 
-The committed `build/nz/as_rate_bridge.json` sole-parent declaration rules out
-a `solve_zero` recipe for golden-08: no engine input combination reproduces
-the harness's single-with-children gross rate paired with the Income Test 3
-slope. It instead declares three evaluations, `gross_rate`,
-`reduction_at_anchor` and `reduction_after_step`, whose outputs recover the
-slope and lower threshold before assembling the cutout. The resource declares
-the overrides, anchor, step, composition and refusal conditions. The driver
-executes declared kernel calls but does not assemble this nonlinear
-composition. The approved executable golden-08 case and evaluation assembly
-therefore remain unresolved; no golden-08 result is claimed.
+`build/nz/as_rate_bridge.json` declares both NZ bridge outputs as kernel
+calls, with no new kernel. On each population that runs the Accommodation
+Supplement engine, a `calibration.prepare@1` node writes the family masks the
+equality-only bridge masks compare, a `simulate.counterfactual@1` node writes
+the reg 18(3)(b) sole-parent Jobseeker Support rate, and a
+`simulate.solve_zero@1` node writes the reg 18 cutout: the zero of each
+unit's Jobseeker Support residual over weekly income on [0, 5000]. A sole
+parent's residual is the sole-parent rate minus the Income Test 3 reduction;
+every other unit's residual is its own net payment. The resource keeps the
+harness expressions as the statement of equivalence. Each branch runs its own
+reg 17 base-rate counterfactual: zero-income Jobseeker Support once for a
+single unit and twice for a partnered one, plus the eldest-child family tax
+credit over 52 for a unit with a dependent child. The tests in
+`test_nz_as_bridge.py` reproduce golden-08's base rate and cutout with a
+labelled fixture engine; no real-engine result is claimed.
 
 The hub can compare approved small cases and sampled-unit outputs without donor
 H5 I/O using the declared case format in

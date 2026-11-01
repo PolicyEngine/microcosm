@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Generate NZ transport declarations without reading donor records.
 
-The graph leaves quantile producers and the reviewed AS assembly unresolved.
-It declares the executable wiring that the current shared kernels support.
+The graph leaves the three money quantile producers unresolved and names
+them as pending. It declares the executable wiring the shared kernels support.
 """
 
 from __future__ import annotations
@@ -837,7 +837,7 @@ def documents():
     graph = {
         "schema_version": 1,
         "country": "nz",
-        "description": "The NZ transport declaration retains named pending money producers and unresolved reviewed AS bridge assembly. The graph makes no estimate or publication claim.",
+        "description": "The NZ transport declaration retains named pending money producers. The graph makes no estimate or publication claim.",
         "export_contract": "export_contract",
         "sources": [
             {"name": name, "codec": codec}
@@ -856,7 +856,6 @@ def documents():
             "terminal": ["nz.export.prepare", "nz.package"],
         },
         "pending_outputs": [
-            "Reviewed Reg 17 and Reg 18 assembly and the S5 superannuitant alternative",
             "w4 support, release-input coverage and weight audit evidence",
             "r2c income stand-in and reconciliation",
             "P1 earnings, Census rent and liquid-assets quantile producers",

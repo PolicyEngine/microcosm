@@ -1,10 +1,16 @@
 #!/usr/bin/env python3
 """Generate NZ's post-calibration entitlement branch declarations.
 
-The bridge evaluations preserve the committed reg 17/18 recipes. No kernel
-currently assembles their nonlinear expressions, so the graph deliberately
-leaves the two final bridge inputs without a producer. The hub must close
-that conflict before activation; this generator never substitutes a schedule.
+The Accommodation Supplement bridge follows ``as_rate_bridge.json``. On each
+population that runs the AS engine, a ``calibration.prepare@1`` node writes
+the family masks, a ``simulate.counterfactual@1`` node writes the reg 18(3)(b)
+sole-parent gross rate and a ``simulate.solve_zero@1`` node writes the reg 18
+cutout. The shared ``nz.as.bridge`` population, a FILTER branch of ``nz.as``,
+runs these once for every entitlement scenario, and each variant repeats them
+on its own housing population. An extension node on ``nz.as`` itself would
+re-key the skeleton's ``nz.terminal``, which composition refuses. Each
+branch runs its own reg 17 base-rate counterfactual. Every coefficient, mask
+and override comes from the resource; this generator adds no schedule.
 """
 
 from __future__ import annotations
@@ -12,18 +18,17 @@ from __future__ import annotations
 import argparse
 import copy
 import json
+from fractions import Fraction
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 NZ = ROOT / "packages/microcosm-build/src/microcosm/build/nz"
 AS_BINDING = "accommodation_supplement"
-BRIDGE_COLUMNS = (
-    "accommodation_supplement_base_rate_weekly_amount",
-    "accommodation_supplement_non_beneficiary_income_cutout_weekly_amount",
-)
 PAYMENT = "accommodation_supplement_rounded_weekly_payment"
 POSITIVE = "accommodation_supplement_positive_payment_indicator"
 ENTITIES = ["person", "household", "family"]
+#: The FILTER branch of nz.as on which the shared bridge nodes run.
+SHARED_BRIDGE = "nz.as.bridge"
 
 
 def read(nz, name):
@@ -72,82 +77,225 @@ def binding(name, field="engine_ref"):
     return {"binding": name, "field": field}
 
 
-def _overrides(rows):
+def _unit(attribute):
+    entity, _, column = attribute.partition(".")
+    return entity, column
+
+
+def _mask(row):
+    entity, column = _unit(row["unit_attribute"])
+    return {"entity": entity, "column": column, "equals": row["equals"]}
+
+
+def _overrides(rows, entity="person"):
+    """Translate the resource's override rows into kernel override records."""
     result = []
     for row in rows:
-        item = {"entity": "person", "column": row["variable"]}
+        item = {"entity": entity, "column": row["variable"]}
         if "unit_attribute" in row:
-            entity, _, column = row["unit_attribute"].partition(".")
-            item.update(source_entity=entity, source_column=column)
+            source_entity, column = _unit(row["unit_attribute"])
+            item.update(source_entity=source_entity, source_column=column)
         else:
             item["value"] = row["value"]
+        if "mask" in row:
+            item["mask"] = _mask(row["mask"])
         result.append(item)
     return result
 
 
-def bridge_evaluations(nz, population, prefix):
-    """Expose the declared engine calls while leaving final assembly pending."""
-    bridge = read(nz, "as_rate_bridge")
+def _coefficient(value):
+    return float(Fraction(value)) if isinstance(value, str) else value
+
+
+def _term(row, target, primary, bindings):
+    """One output coefficient on the family target column."""
+    if "source" in row:
+        entity, column = _unit(row["source"])
+        return {
+            "source_entity": entity,
+            "source_column": column,
+            "coefficient": _coefficient(row["coefficient"]),
+            "entity": "family",
+            "column": target,
+        }
+    term = {
+        "variable": row["variable"],
+        "coefficient": _coefficient(row["coefficient"]),
+        "entity": "family",
+        "column": target,
+    }
+    if row["binding"] != primary:
+        term["engine_ref"] = binding(row["binding"])
+    if bindings[row["binding"]]["entity"] == "person":
+        term["aggregation"] = row["aggregation"]
+    if "mask" in row:
+        term["mask"] = _mask(row["mask"])
+    return term
+
+
+def _bridge_inputs(nz, *extra):
     bindings = {row["id"]: row for row in read(nz, "axiom_rules_bindings")["bindings"]}
     closure = read(nz, "axiom_input_closure")
     rate_path = bindings["main_benefits_rates"]["rulespec_path"]
     rate_inputs = [
         entry["input"]
         for entry in closure["entries"]
-        if entry["rulespec_path"] == rate_path
+        if entry["rulespec_path"] == rate_path and entry["entity"] == "Person"
     ]
-    family_inputs = [
+    family = [
         "n_dependent_children",
         "is_partnered",
         "is_single",
         "is_sole_parent",
         "youngest_dependent_child_age",
+        *(
+            column["name"]
+            for column in read(nz, "as_rate_bridge")["mask_bindings"]["columns"]
+        ),
+        *extra,
     ]
-    result = []
-    evaluations = []
-    reg17, reg18 = bridge["outputs"]
-    for index, term in enumerate(reg17["terms"]):
-        evaluations.append((f"reg17_{index}", term))
-    for branch in reg18["branches"]:
-        for evaluation in branch["evaluations"]:
-            evaluations.append((f"reg18_{branch['id']}_{evaluation['id']}", evaluation))
-    for label, evaluation in evaluations:
-        name = evaluation["binding"]
-        entity = bindings[name]["entity"]
-        inputs = [slices("person", rate_inputs), slices("family", family_inputs)]
-        overrides = _overrides(evaluation["input_overrides"])
-        if entity == "family":
-            for override in overrides:
-                override["entity"] = "family"
-        variable = evaluation["variable"]
-        column = f"bridge_evaluation_{label}"
-        result.append(
-            node(
-                f"{prefix}.bridge.evaluate.{label}",
-                "simulate.counterfactual@1",
-                population,
-                sources=["rulespec_nz"],
-                inputs=inputs,
-                outputs=[owned(entity, column)],
-                params={
-                    "engine_ref": binding(name),
-                    "period": binding(name, "period"),
-                    "variables": [variable],
-                    "input_overrides": overrides,
-                    "output_coefficients": [
-                        {
-                            "variable": variable,
-                            "coefficient": 1,
-                            "entity": entity,
-                            "column": column,
-                        }
-                    ],
-                    "resource_sha256": select("as_rate_bridge", "sha256"),
-                },
-                description="The engine evaluates this declared bridge component; the hub still must supply the approved final assembly.",
+    return [slices("person", rate_inputs), slices("family", family)]
+
+
+def bridge_masks(nz, population, prefix):
+    """The family booleans the equality-only bridge masks compare."""
+    bridge = read(nz, "as_rate_bridge")
+    return node(
+        f"{prefix}.bridge.masks",
+        "calibration.prepare@1",
+        population,
+        inputs=[
+            slices(entity, columns)
+            for entity, columns in bridge["mask_bindings"]["required_inputs"].items()
+        ],
+        outputs=[
+            owned(column["entity"], column["name"], "bool")
+            for column in bridge["mask_bindings"]["columns"]
+        ],
+        params={
+            "bindings": select("as_rate_bridge", "json", "mask_bindings"),
+            "references": select("holdout_references"),
+            "references_sha256": select("holdout_references", "sha256"),
+        },
+    )
+
+
+def _counterfactual_params(primary, overrides, terms, components=()):
+    params = {
+        "engine_ref": binding(primary),
+        "period": binding(primary, "period"),
+        "variables": list(
+            dict.fromkeys(
+                term["variable"]
+                for term in terms
+                if "variable" in term and "engine_ref" not in term
             )
+        ),
+        "input_overrides": overrides,
+        "output_coefficients": terms,
+    }
+    if components:
+        params["components"] = list(components)
+    params["resource_sha256"] = select("as_rate_bridge", "sha256")
+    return params
+
+
+def cutout_nodes(nz, population, prefix):
+    """Reg 18: the sole-parent gross rate, then one zero-solve per population."""
+    bridge = read(nz, "as_rate_bridge")
+    bindings = {row["id"]: row for row in read(nz, "axiom_rules_bindings")["bindings"]}
+    reg18 = bridge["outputs"][1]
+    gross = reg18["gross_rate"]
+    gross_term = {
+        "variable": gross["variable"],
+        "coefficient": gross["coefficient"],
+        "entity": "family",
+        "column": gross["column"],
+        "aggregation": gross["aggregation"],
+        "mask": _mask(gross["mask"]),
+    }
+    solve = reg18["solve"]
+    target = reg18["target_input"]
+    terms = [_term(row, target, solve["binding"], bindings) for row in solve["terms"]]
+    params = _counterfactual_params(
+        solve["binding"], _overrides(solve["input_overrides"]), terms
+    )
+    resource = params.pop("resource_sha256")
+    params.update(
+        solve_input=solve["solve_input"],
+        bracket=solve["bracket"],
+        tolerance=solve["tolerance"],
+        iterations=solve["iterations"],
+        resource_sha256=resource,
+    )
+    return [
+        node(
+            f"{prefix}.bridge.{gross['id']}",
+            gross["kernel"],
+            population,
+            sources=["rulespec_nz"],
+            inputs=_bridge_inputs(nz),
+            outputs=[owned("family", gross["column"])],
+            params=_counterfactual_params(
+                gross["binding"], _overrides(gross["input_overrides"]), [gross_term]
+            ),
+            description="The engine evaluates the reg 18(3)(b) sole-parent Jobseeker Support rate for sole parents.",
+        ),
+        node(
+            f"{prefix}.bridge.cutout",
+            reg18["kernel"],
+            population,
+            sources=["rulespec_nz"],
+            inputs=_bridge_inputs(nz, gross["column"]),
+            outputs=[owned("family", target)],
+            params=params,
+            description="The engine's Jobseeker Support residual reaches zero at the reg 18 non-beneficiary income cutout.",
+        ),
+    ]
+
+
+def base_rate_node(nz, population, prefix):
+    """Reg 17: one counterfactual over the main-benefit and tax-credit modules."""
+    bridge = read(nz, "as_rate_bridge")
+    bindings = {row["id"]: row for row in read(nz, "axiom_rules_bindings")["bindings"]}
+    reg17 = bridge["outputs"][0]
+    primary = reg17["primary_binding"]
+    target = reg17["target_input"]
+    components = []
+    for component in reg17["components"]:
+        name = component["binding"]
+        components.append(
+            {
+                "engine_ref": binding(name),
+                "period": binding(name, "period"),
+                "variables": [
+                    term["variable"]
+                    for term in reg17["terms"]
+                    if term["binding"] == name
+                ],
+                "input_overrides": _overrides(
+                    component["input_overrides"], bindings[name]["entity"]
+                ),
+            }
         )
-    return result
+    terms = [_term(row, target, primary, bindings) for row in reg17["terms"]]
+    return node(
+        f"{prefix}.bridge.base_rate",
+        reg17["kernel"],
+        population,
+        sources=["rulespec_nz"],
+        inputs=_bridge_inputs(nz),
+        outputs=[owned("family", target)],
+        params=_counterfactual_params(
+            primary, _overrides(reg17["input_overrides"]), terms, components
+        ),
+        description="The engine evaluates the reg 17 base rate from zero-income Jobseeker Support and the eldest-child family tax credit.",
+    )
+
+
+def shared_bridge_nodes(nz, population, prefix):
+    """Masks, the sole-parent gross rate and the cutout, once per population."""
+    return [bridge_masks(nz, population, prefix), *cutout_nodes(nz, population, prefix)]
 
 
 def group_node(nz, population, prefix, *, rewrite=False, scenario=True):
@@ -252,7 +400,7 @@ def as_nodes(nz, population, prefix, scenario, *, baseline=False):
         "accommodation_supplement_other_funding_exclusion_not_applies",
     }
     return [
-        *bridge_evaluations(nz, population, prefix),
+        base_rate_node(nz, population, prefix),
         node(
             f"{prefix}.as",
             "simulate.rules_by_ref@1",
@@ -318,14 +466,21 @@ def documents(nz=NZ):
     from build_nz_transport_graph import calibration_nodes
 
     scenarios = read(nz, "scenarios")["scenarios"]
+    # An extension node on nz.as would re-key the skeleton's nz.terminal
+    # FILTER, so the shared bridge runs on a FILTER branch of nz.as that every
+    # entitlement scenario descends from.
+    shared = [
+        boundary(SHARED_BRIDGE, "nz.as"),
+        *shared_bridge_nodes(nz, SHARED_BRIDGE, "nz.as"),
+    ]
     entitlement = [
-        boundary("nz.scn.{scenario}", "nz.as"),
+        boundary("nz.scn.{scenario}", SHARED_BRIDGE),
         *as_nodes(nz, "nz.scn.{scenario}", "nz.scn.{scenario}", "{scenario}"),
     ]
     for scenario in scenarios:
         if scenario["tier"] == "entitlement":
             prefix = f"nz.scn.{scenario['id']}"
-            rows = [boundary(prefix, "nz.as")]
+            rows = [boundary(prefix, SHARED_BRIDGE)]
             if scenario["id"] in {"S1", "S2", "S3"}:
                 rows.append(group_node(nz, prefix, prefix, rewrite=True))
             rows.extend(
@@ -358,6 +513,7 @@ def documents(nz=NZ):
                 [
                     boundary(population, calibrated),
                     group_node(nz, population, prefix),
+                    *shared_bridge_nodes(nz, population, prefix),
                     *as_nodes(nz, population, prefix, scenario["id"]),
                 ]
             )
@@ -365,7 +521,7 @@ def documents(nz=NZ):
     return {
         "entitlement_graph": {
             "schema_version": 1,
-            "nodes": [],
+            "nodes": shared,
             "scenario_nodes": entitlement,
             "scenario_gap": "nz.scn.{scenario}.gap",
             "variant_gap": "nz.v.{variant}.gap",

@@ -359,7 +359,7 @@ def test_nz_s5_ancestry_keeps_as_holds_and_inventory_after_each_calibration():
         variant = scenario["tier"] == "calibration"
         prefix = ("nz.v." if variant else "nz.scn.") + scenario["id"]
         calibration = prefix + ".calibrate" if variant else "nz.calibrate"
-        for suffix in (".as", ".positive_payment", ".gap", ".bridge.evaluate.reg17_1"):
+        for suffix in (".as", ".positive_payment", ".gap", ".bridge.base_rate"):
             row = by_id[prefix + suffix]
             assert calibration in lineage(row["population"]), row["id"]
         for row in rows:
@@ -381,9 +381,7 @@ def test_nz_s5_ancestry_keeps_as_holds_and_inventory_after_each_calibration():
 
 @pytest.mark.parametrize("encoding", ["json", "sha256"])
 def test_nz_variant_holdout_selection_refuses_before_calibration(encoding):
-    spec, config = _synthetic_nz_composition_spec_and_config(
-        admit_unimplemented_roots=True
-    )
+    spec, config = _nz_composition_spec_and_config()
     variant = next(
         row for row in spec["resources"]["scenarios"]["scenarios"] if row["id"] == "V1"
     )
@@ -621,12 +619,21 @@ def test_nz_executable_support_keeps_region99_separate_from_ta999():
     )
 
 
-def _synthetic_nz_composition_spec_and_config(*, admit_unimplemented_roots):
-    """Supply compiler-only toy pins and an invented CREATE inventory.
+_BRIDGE_AND_REGION = {
+    ("person", "region_code"),
+    ("family", "accommodation_supplement_base_rate_weekly_amount"),
+    ("family", "accommodation_supplement_non_beneficiary_income_cutout_weekly_amount"),
+}
+
+
+def _nz_composition_spec_and_config():
+    """Supply compiler-only toy pins, the three money producers and CREATE's inventory.
 
     The synthetic quantile declarations certify no distribution or runtime
     result. They only remove the three deliberate money-producer gaps while
     the compiler checks the complete packaged node and population structure.
+    CREATE's inventory holds canonical concepts and unit outputs only: no
+    bridge or region column enters as a root.
     """
     from microcosm.graph import Owned
 
@@ -680,13 +687,7 @@ def _synthetic_nz_composition_spec_and_config(*, admit_unimplemented_roots):
         for item in row.get("inputs", ())
         for column in item["columns"]
     } - produced
-    unimplemented = {
-        ("family", "accommodation_supplement_base_rate_weekly_amount"),
-        (
-            "family",
-            "accommodation_supplement_non_beneficiary_income_cutout_weekly_amount",
-        ),
-    }
+    assert needed.isdisjoint(_BRIDGE_AND_REGION), sorted(needed & _BRIDGE_AND_REGION)
     from microcosm.frame import EntitySchema
     from microcosm.frame.concepts import CONCEPTS, TransportRule
     from microcosm.frame.unit_construction import BenefitUnitRule
@@ -718,10 +719,6 @@ def _synthetic_nz_composition_spec_and_config(*, admit_unimplemented_roots):
             (rule.entity, rule.source_household_column): "string",
         }
     )
-    if admit_unimplemented_roots:
-        inventory.update({key: "float64" for key in unimplemented})
-    else:
-        needed -= unimplemented
     assert needed <= inventory.keys(), (
         "The declaration reads donor columns outside the canonical concepts and actual CREATE/unit outputs",
         sorted(needed - inventory.keys()),
@@ -739,60 +736,34 @@ def _synthetic_nz_composition_spec_and_config(*, admit_unimplemented_roots):
     return spec, config
 
 
-def test_nz_packaged_graph_names_region_and_bridge_roots_without_inventing_producers():
+def test_nz_packaged_graph_produces_region_and_bridge_columns_from_named_nodes():
     spec = _spec()
     rows = _instantiated_nz_rows(spec)
-    outputs = {
-        (output["entity"], output["column"])
-        for row in rows
-        for output in row.get("outputs", ())
+    producers = {}
+    for row in rows:
+        for output in row.get("outputs", ()):
+            producers.setdefault((output["entity"], output["column"]), set()).add(
+                row["kernel"]
+            )
+    assert producers["person", "region_code"] == {"geography.person_location@1"}
+    assert producers["family", "accommodation_supplement_base_rate_weekly_amount"] == {
+        "simulate.counterfactual@1"
     }
-    inputs = {
-        (item["entity"], column)
-        for row in rows
-        for item in row.get("inputs", ())
-        for column in item["columns"]
-    }
-    missing = {
-        ("family", "accommodation_supplement_base_rate_weekly_amount"),
-        (
-            "family",
-            "accommodation_supplement_non_beneficiary_income_cutout_weekly_amount",
-        ),
-    }
-    assert missing <= inputs
-    assert missing.isdisjoint(outputs)
-    # geography.person_location@1 now owns the person region code.
-    (producer,) = [
-        row
-        for row in rows
-        if ("person", "region_code")
-        in {(item["entity"], item["column"]) for item in row.get("outputs", ())}
-    ]
-    assert (producer["id"], producer["kernel"]) == (
-        "nz.geo.person",
-        "geography.person_location@1",
-    )
-    assert spec["resources"]["transport_graph"]["pending_outputs"]
+    assert producers[
+        "family",
+        "accommodation_supplement_non_beneficiary_income_cutout_weekly_amount",
+    ] == {"simulate.solve_zero@1"}
+    pending = " ".join(spec["resources"]["transport_graph"]["pending_outputs"])
+    assert "region" not in pending and "Reg 17" not in pending
 
 
-def test_nz_packaged_graph_compile_refuses_unimplemented_region_and_bridge_roots():
-    from microcosm.graph import GraphError
-
-    spec, config = _synthetic_nz_composition_spec_and_config(
-        admit_unimplemented_roots=False
-    )
-    with pytest.raises(
-        GraphError, match="region_code|base_rate_weekly_amount|cutout_weekly_amount"
-    ):
-        compose.compose_transport_graph(spec, config)
-
-
-def test_nz_packaged_graph_compiles_with_explicitly_synthetic_missing_root_inventory():
+def test_nz_packaged_graph_compiles_with_only_pins_and_money_producers():
     from microcosm.graph import compile_graph
 
-    spec, config = _synthetic_nz_composition_spec_and_config(
-        admit_unimplemented_roots=True
+    spec, config = _nz_composition_spec_and_config()
+    # No bridge or region root stays synthetic: CREATE declares none of them.
+    assert _BRIDGE_AND_REGION.isdisjoint(
+        (owned.entity, owned.column) for owned in config.create_outputs
     )
     graph = compose.compose_transport_graph(spec, config)
     compiled = compile_graph(graph)
