@@ -1,6 +1,6 @@
 {
   "country": "nz",
-  "fingerprint": "b5ecdb55e7b36d157a805594e7429c423c134c06589e3ef28309006e134aaf8c",
+  "fingerprint": "fc9e3f65841862016207a1baa368e8ecf0476d194675ad8ec771811a5ea54f4f",
   "gate_ids": [
     "calibration_per_family_fit",
     "demography_per_family_fit",
@@ -77,7 +77,7 @@
     "reference_selection.json": "687ab45531b5d45a07508b9ea035a70ae1ded6dd572c8ae6b031d950450714c5",
     "release_contract.json": "6cd5e3a4a2bf30e4025e04e964c393b24040937d13db7e6a07b3966a55f3b114",
     "reporting_classifiers.json": "5ce609b1da063add6f80ce8f226de05434bae4ded3fb14055432b844ae3e1fbc",
-    "scenarios.json": "55d724310896a4f1ad3cd4224eb3c14292339310102ec687a15e478414747fc9",
+    "scenarios.json": "b312f02b8555fcc083863456b38ba1c2faf07a71e841492acd5739fef77b60fe",
     "source_stages.json": "cc82c68878ac0fc07ecbd796c1a66de6f34786ef8785125046425c37f26aff31",
     "spec/bundle.yaml": "e9716ce827e9006d4efdc392e7aaf9cbc33c16112a8fbc423e8f3e74ec506d8e",
     "spec/catalogs.yaml": "3ab2025af39cba93ead707b9463e428430a45b30696a43d0906cbcd97ed36631",
