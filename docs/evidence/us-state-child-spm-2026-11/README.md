@@ -6,11 +6,11 @@ Model figures come from real PolicyEngine US simulations at 2.90.2 (`469ad12cb95
 
 ## What we found
 
-1. **Noise drives most of the state-to-state scatter on the default file.** A state rate carries a replicate standard error of about 3.6 points, so a 90% interval runs about ±6 points. Child-weighted effective samples run from 26 units in Maine to 310 in California. Noise accounts for about 60% of the cross-state variance in the gaps.
+1. **Noise drives most of the state-to-state scatter on the default file.** A state rate carries a replicate standard error of about 3.6 points, so a 90% interval runs about ±6 points. Child-weighted effective samples run from 26 in Maine to 301 in California. Noise accounts for about 60% of the cross-state variance in the gaps.
 2. **A common upward shift of about 3 points sits underneath it.** On the dense file, which halves the noise, the mean gap stays at +3.6.
-3. **State-specific error with a standard deviation of about 3 points survives more data.** Delaware, Florida, Maryland, Massachusetts, Louisiana, Mississippi and Hawaii keep their gaps on the dense file. Tennessee, Rhode Island, Vermont, Missouri, DC and Montana lose most or all of theirs.
-4. **The rent imputation puts rent on the wrong households.** About 91% of base households carry another household's rent, in every Populace US file we checked, including the local-area file. PolicyEngine/microcosm#1444 fixes it. {{RENT_SUMMARY}}
-5. **The default file is not the state path.** `policyengine.py` routes state regions to the ACS-local file. {{ACS_SUMMARY}}
+3. **State-specific error with a standard deviation of about 3 points survives more data.** Delaware, Florida, Maryland, Massachusetts, Louisiana, Mississippi and Hawaii keep at least two-thirds of their gaps on the dense file. Tennessee, Rhode Island, Vermont, Missouri, DC and Montana lose at least half of theirs.
+4. **The rent imputation puts rent on the wrong households.** About 91% of base households carry another household's rent, in every Populace US file we checked, including the local-area file. PolicyEngine/microcosm#1444 fixes it. With published weights held fixed, the fix nearly doubles modelled housing subsidies on the dense file, from $7.3bn to $13.9bn, and lowers the 2025 child rate 0.7 points, from 18.19 to 17.49. It lifts SNAP by less than 1%, so it does not explain the benefit shortfall below.
+5. **The default file is not the state path.** `policyengine.py` routes state regions to the ACS-local file. On that file the mean gap falls to +0.88 and the mean absolute gap to 3.18, yet 29 jurisdictions still fall outside Census's margin, because 23,407 donor households hold 68% of child weight. ACS rows alone reach a mean absolute gap of 2.46 and a correlation of .69 with a median standard error of 1.06, which points to the largest available fix.
 
 ## What the comparison measures
 
@@ -19,13 +19,13 @@ Table 18 averages income years 2023 to 2025 and carries a margin of 1.0 to 3.7 p
 | Measure | Default (Build P) | Dense (`b5db384`) | ACS-local (Build O 10/17) |
 | --- | --- | --- | --- |
 | Household records | 57,240 | 352,932 | 1,586,908 |
-| Mean gap | +3.24 | +3.62 | {{ACS_MEAN}} |
-| Standard deviation of gaps | 5.11 | 4.02 | {{ACS_SD}} |
-| Mean absolute gap | 4.80 | 4.33 | {{ACS_MAD}} |
-| Correlation with Census | .52 | .65 | {{ACS_CORR}} |
-| Outside Census's margin, of 51 | 38 | 38 | {{ACS_BEYOND}} |
-| Median state standard error | 3.57 | 1.86 | {{ACS_SE}} |
-| Median child Kish sample, source households | 59 | 305 | 100 |
+| Mean gap | +3.24 | +3.62 | +0.88 |
+| Standard deviation of gaps | 5.11 | 4.02 | 4.12 |
+| Mean absolute gap | 4.80 | 4.33 | 3.18 |
+| Correlation with Census | .52 | .65 | .54 |
+| Outside Census's margin, of 51 | 38 | 38 | 29 |
+| Median state standard error | 3.57 | 1.86 | 2.86 |
+| Median child-weighted Kish sample | 59 | 425 | 100 |
 | State-specific standard deviation τ | 3.25 | 3.07 | not fitted |
 
 The default file's standard error comes from 80 replicate calibrations: a Poisson bootstrap of source households, then a full re-solve. The linearized standard error, 4.04, runs a little higher. The dense and ACS-local standard errors linearize the ratio and cluster on source household. Census's own root-mean-square standard error is 1.35.
@@ -59,13 +59,13 @@ Three readings follow from the state table:
 
 | State | Census | Default gap (SE) | Dense gap (SE) | ACS-local gap (SE) | Reading |
 | --- | --- | --- | --- | --- | --- |
-| DC | 20.3 | +14.1 (6.1) | +5.8 (3.4) | {{DC}} | Mostly noise |
-| DE | 8.7 | +13.7 (4.4) | +13.0 (3.2) | {{DE}} | Persists; donors hold 25.4, ACS rows 15.0 |
-| TN | 10.0 | +13.2 (3.9) | +5.3 (1.8) | {{TN}} | Half noise, half systematic |
-| MD | 10.7 | +12.5 (4.7) | +8.5 (2.8) | {{MD}} | Persists at a lower level |
-| FL | 18.4 | +9.8 (2.8) | +11.6 (1.7) | {{FL}} | Persists on the donors; ACS rows sit at 13.3 |
-| LA | 20.7 | -8.6 (3.3) | -7.0 (1.7) | {{LA}} | Persists; cash and SNAP run high |
-| MT | 9.3 | -6.8 (3.4) | +1.0 (1.5) | {{MT}} | Noise on the default file |
+| DC | 20.3 | +14.1 (6.1) | +5.8 (3.4) | +0.9 (4.5) | Mostly noise |
+| DE | 8.7 | +13.7 (4.4) | +13.0 (3.2) | +13.5 (5.6) | Persists; donors hold 25.4, ACS rows 15.0 |
+| TN | 10.0 | +13.2 (3.9) | +5.3 (1.8) | +6.6 (3.0) | Half noise, half systematic |
+| MD | 10.7 | +12.5 (4.7) | +8.5 (2.8) | +6.9 (4.3) | Persists at a lower level |
+| FL | 18.4 | +9.8 (2.8) | +11.6 (1.7) | +4.3 (3.2) | Persists on the donors; ACS rows sit at 13.3 |
+| LA | 20.7 | -8.6 (3.3) | -7.0 (1.7) | -9.0 (2.2) | Persists; cash and SNAP run high |
+| MT | 9.3 | -6.8 (3.4) | +1.0 (1.5) | -4.5 (1.3) | Noise on the default file |
 
 ## The common shift
 
@@ -82,7 +82,7 @@ Three readings follow from the state table:
 
 Benefit administrative targets pull poverty up, tax targets pull it down, and no target anchors a state, child and income cell. On the dense file, income targets start within 10% (AGI -4.2%) while benefit receipt starts far below target (SNAP -37.8%, Medicaid -26.2%, EITC -50.8%, ACA -43.9%). Those misses line up with the +3.3 point rise, though we ran the ablations on the default file only. A chi-square anchor to design weights lowers noise and leaves the shift alone: at λ = .03 the median standard error falls to 2.78, and the mean gap rises to 4.77.
 
-**Pooled records keep nominal income from their source year.** PolicyEngine holds every record to a 2024 threshold, while a 2022 record's market income keeps its nominal 2022 value. That accounts for 2.3 to 2.9 points of the thresholds step. Aging 2022 and 2023 ASEC records by Census's growth in 20th-percentile child resources (a real national simulation on the default file) lowers the national 2025 rate from 17.17 to 16.29, the mean gap from 3.24 to 2.45, and the mean absolute gap from 4.80 to 4.05, with 33 states outside the margin rather than 38. `outputs/cf_state.csv` holds each state.
+**Pooled records keep nominal income from their source year.** PolicyEngine holds every record to a 2024 threshold, while a 2022 record's market income keeps its nominal 2022 value. That accounts for 2.3 to 2.5 points of the thresholds step. Aging 2022 and 2023 ASEC records by Census's growth in 20th-percentile child resources (a real national simulation on the default file) lowers the national 2025 rate from 17.17 to 16.29, the mean gap from 3.24 to 2.45, and the mean absolute gap from 4.80 to 4.05, with 33 states outside the margin rather than 38. `outputs/cf_state.csv` holds each state.
 
 **The model overshoots from 2024 to 2025.** PolicyEngine rises 1.48 points while Census holds at 13.4. Reference thresholds match Census exactly for 2025, so the difference sits in resources. Census's child resources grew 4.2% to 6.1% across the 10th to 50th percentiles, and PolicyEngine's employment income grew 3.97%. The adult SSN requirement in `gov.irs.credits.ctc.adult_ssn_requirement_applies` starts in 2025 and removes refundable CTC from units holding 2.48% of child weight; 83% of that weight has no adult with an eligible SSN card. It explains only 11% of the movement into poverty.
 
@@ -101,7 +101,21 @@ Benefit administrative targets pull poverty up, tax targets pull it down, and no
 
 The second row is the test: it restores the link exactly, so the draws are right and only their destination is wrong. The default, dense and ACS-local files all carry the same draws. ACS rows inherit the problem through the gap fill: 39.6% of ACS renters carry rent, and so do 30% of ACS owners, even though the file stores native `RNTP` for every renter. The build's `positive_rent_nonrenter` receipt recorded 30,838 such heads, and `test_signal_gate_preserves_archived_qrf_rent_outside_renter_household` allowed them.
 
-The harm reaches poverty through `hud_gross_rent`. `hud_hap` takes the lesser of the maximum subsidy and gross rent less tenant payment, so a Census recipient with no rent gets nothing. On the default file, 74% of Census housing recipients among child units on ASEC rows get no model subsidy. {{RENT_TABLE}}
+The harm reaches poverty through `hud_gross_rent`. `hud_hap` takes the lesser of the maximum subsidy and gross rent less tenant payment, so a Census recipient with no rent gets nothing. On the default file, 74% of Census housing recipients among child units on ASEC rows get no model subsidy. Moving rent back onto the right households, with published weights held fixed, gives:
+
+| All 51 states | Dense, as published | Dense, corrected | Default, as published | Default, corrected |
+| --- | --- | --- | --- | --- |
+| Modelled housing subsidy, 2024 | $7.26bn | $13.88bn | $4.50bn | $7.51bn |
+| SPM units with a subsidy | 1.23M | 2.57M | 0.68M | 1.34M |
+| SNAP, 2024 | $89.43bn | $90.14bn | $99.63bn | $100.46bn |
+| SNAP at initial weights, 2024 | $57.58bn | $58.86bn | $68.00bn | $70.45bn |
+| Child SPM rate, 2024 | 16.62 | 15.88 | 15.69 | 15.20 |
+| Child SPM rate, 2025 | 18.19 | 17.49 | 17.17 | 16.81 |
+| Mean gap | +3.62 | +3.06 | +3.24 | +3.03 |
+| Mean absolute gap | 4.33 | 4.13 | 4.80 | 4.71 |
+| Outside Census's margin, of 51 | 38 | 36 | 38 | 34 |
+
+The state step runs from -2.93 to +0.40 on the dense file. The fix explains a real part of the housing shortfall and about a sixth of the dense file's mean gap. It does not explain the SNAP miss at initial weights.
 
 A second cause sits on the PUF half. `impute_us_housing_assistance_to_puf_support` thresholds a person-level QRF at 0.5, which leaves 2.05% of PUF-half units as recipients against 3.73% on the ASEC half (2.82% against 7.75% on low-income child units), and only 9.6% of ASEC recipients keep the flag on their PUF clone.
 
@@ -109,20 +123,40 @@ A second cause sits on the PUF half. `impute_us_housing_assistance_to_puf_suppor
 
 The dashboard reads ACS-local slices, not the default file. Master serves Build P's August 19 slices under policyengine-us 1.825.2. PolicyEngine/child-poverty-impact-dashboard#127, still a draft, moves it to Build O 10/17 through `policyengine.py` 6.11.1.
 
-{{DASHBOARD}}
+At 2.90.2, the 10/17 file gives a mean gap of +0.88, a mean absolute gap of 3.18, and 29 of 51 jurisdictions outside Census's margin. Its median state standard error of 2.86 means a 90% interval of about ±4.7 points on a state baseline. Census's own error would give a mean absolute gap of about 1.05, so about two points of the 3.18 come from the model.
 
-Its stored audits give a sense of the instability. The 2021 CTC reform's 2024 state effect swings between builds: Arizona from -10.3 to -3.8 points, DC from -1.3 to -8.1, North Carolina from -2.9 to -6.3.
+State reform effects hold up better, because a reform changes the same households in both runs. The 2021 CTC reform lowers the median state's 2025 child rate 2.97 points, with a median standard error of 1.28, or about ±2.1 at 90%. The largest effects carry the largest errors: West Virginia at -11.85 (4.58), Missouri at -8.96 (3.72) and DC at -8.65 (3.52).
+
+The dashboard's stored audits give a second measure of the same size. Between Build P and Build O, a state's 2025 effect moves 1.16 points on average with a standard deviation of 1.63, which implies 1.15 per build. Single states swing further at 2024: Arizona from -10.3 to -3.8, DC from -1.3 to -8.1, North Carolina from -2.9 to -6.3. Those builds also differ in model version, so this measure runs high if anything.
 
 So state baselines and state reform effects on the dashboard both need a stated uncertainty, and neither should read as a point estimate to the tenth. The legacy `backend/` and `cpid_calc/` paths read `enhanced_cps_2024`, and PR #127 says the frontend no longer calls them.
 
 ## What would fix it
 
-{{FIXES}}
+In order of evidence and reach:
+
+1. **Put rent back and rebuild.** PolicyEngine/microcosm#1444 fixes the assignment. After a rebuild, tighten `us_housing_inputs_signal_gate` so positive rent outside renter households fails the build, and re-run this note. Calibration then fits to corrected housing, which the fixed-weight runs here cannot show.
+2. **Give ACS records more of the state mass.** `--acs-share` raises the weight on real state samples. On all 51 states, against the release-like solve:
+
+   | Solve | Mean absolute gap | Correlation | Median state SE | Median reform SE |
+   | --- | --- | --- | --- | --- |
+   | Share 0.5, as released | 2.79 | .56 | 2.62 | 1.29 |
+   | Share 0.7, λ = .03 | 2.40 | .64 | 1.82 | 0.88 |
+   | Share 0.9, λ = .03 | 2.16 | .75 | 1.06 | 0.56 |
+   | Share 0.964, λ = .03 | 2.14 | .77 | 0.87 | 0.47 |
+
+   The #1078 sweep puts the cost at about 40% more held-out target error at share 0.9, mostly on SOI cells, so the share needs a methodology decision. It more than halves the error on a state's reform effect.
+3. **Age pooled incomes** (microcosm#944). A crude single-factor run removes 0.88 points nationally and 0.75 from the mean absolute gap. A real fix ages each income source and draws the pool from 2023 to 2025 to match Table 18.
+4. **Close benefit receipt before calibration.** SNAP, Medicaid, EITC and ACA start 26% to 51% below target on the dense file, and calibration closes those gaps by moving weight. Better take-up and receipt inputs should reduce the tilt. Rent does not close the SNAP gap.
+5. **Keep measured housing receipt on the PUF half.** Replace the 0.5 threshold in `impute_us_housing_assistance_to_puf_support`, or carry the ASEC flag to its clone.
+6. **Reconcile 2025 resources near the line.** The model's child rate rises 1.48 points while Census's holds. Census's child resources grew 4.2% to 6.1% and PolicyEngine's employment income grew 3.97%, so start with the uprating series for low earners.
+7. **Count partnership and S-corp income** (PolicyEngine/policyengine-us#9919; PolicyEngine/policyengine-us#10573 partly addresses it).
+8. **Report state child rates as a standing holdout** with replicate standard errors, in every release's receipts. Poverty stays a comparison and never a target.
 
 ## Limits
 
 - Corrected-rent runs keep the published weights. Calibration fit those weights to outcomes that used misplaced rent, so a rebuild can move results further.
-- The #1078 solves come from the 2026-09-23 Build O checkpoint. We applied them to outcomes from the 10/17 file, which shares its household ids.
+- The #1078 solves come from the 2026-09-23 Build O checkpoint. We applied them to outcomes from the 10/17 file, which shares its household ids, and that mismatch alone moves the mean absolute gap: 2.79 for the release-like solve against 3.18 for the 10/17 weights.
 - The aged run scales 42 income columns on 2022 and 2023 ASEC records by a single child-resource factor. PUF records stay as they are, and a real fix would age each income source separately.
 - ACS-local cuts add `spm_unit_spm_universe_status` as `INCLUDED` everywhere, because the release predates that input. The dashboard's audit found masking moves child rates by a negligible amount.
 - The ablations ran on Build P, not the dense file.
@@ -138,4 +172,5 @@ Scripts sit in `scripts/` and write beside themselves under `run/` and `asec/`. 
 4. `ablate_eval.py`, `ablate_noise.py`, `fam.py`, `chi_solve.py`, `chi_eval.py`, `dmiss.py`: calibration.
 5. `national_cf.py`, `cf_eval.py`, `ctc_ssn.py`, `part.py`: aged incomes, the CTC reform and partnership income.
 6. `rent2.py` to `rent5.py`, `rentfix.py`, `dense_rent.py`, `sparse_rent.py`, `runcuts.py`, `rent_eval.py`, `house.py`, `house_sim.py`, `puf_house.py`: rent and housing.
-7. `acs_hh.py`, `acs_more.sh`, `acs_one.py`, `acs_eval.py`, `acs_rent_cut.py`, `acs_rent.sh`, `acs_stored.py`: the ACS-local path.
+7. `acs_hh.py`, `acs_more.sh`, `acs_one.py`, `acs_eval.py`, `acs_rent_run.py`, `acs_stored.py`, `kish.py`: the ACS-local path.
+8. `dash_swing.py`: the dashboard's stored audits.

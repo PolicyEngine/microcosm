@@ -77,6 +77,16 @@ c = pd.DataFrame(json.load(open(f"{SP}/census_child_spm.json"))["rows"]).set_ind
 stored = pd.read_csv(f"{SP}/run/acs_stored.csv", index_col=0)
 fs = sorted(glob.glob(f"{SP}/run/{TAG}/*.parquet"))
 u = pd.concat([pd.read_parquet(f) for f in fs], ignore_index=True)
+rf = sorted(glob.glob(f"{SP}/run/{TAG}_r/*.parquet"))
+if rf:
+    u = u.drop(columns=[c for c in ("poor_r",) if c in u]).merge(
+        pd.concat([pd.read_parquet(f) for f in rf], ignore_index=True),
+        on="spm_unit_id",
+        how="left",
+    )
+if "poor_r" not in u:
+    u["poor_r"] = np.nan
+u["poor_r"] = u.poor_r.fillna(u.poor)  # acsrent_r covers the top-gap states only
 u = (
     u[u.kids > 0]
     .merge(uh, left_on="spm_unit_id", right_on="person_spm_unit_id")
@@ -191,6 +201,7 @@ key = pd.read_hdf(
 pos = pd.Series(np.arange(len(key)), index=key.household_id.values)
 ix = pos.reindex(u.household_id.values).values.astype(int)
 out = []
+u = u.copy()
 names = [
     "dup_release_repro",
     "proj_chi_s050_0.03",
@@ -214,9 +225,10 @@ for n in names:
     R = []
     for s, g in u.groupby("state"):
         r, se = lin(g, "w", g.poor)
+        dd, dse = lin(g, "w", g.poor_r - g.poor)
         W = g.w * g.kids
         a = W[g.household_support_channel == "acs_2024_1yr"].sum() / W.sum()
-        R.append(dict(state=s, r=r, se=se, a=a))
+        R.append(dict(state=s, r=r, se=se, a=a, dd=dd, dse=dse))
     R = pd.DataFrame(R).set_index("state")
     g_ = R.r - c.rate.reindex(R.index)
     out.append(
@@ -227,6 +239,8 @@ for n in names:
             beyond=int((g_.abs() > c.moe.reindex(R.index)).sum()),
             corr=np.corrcoef(R.r, c.rate.reindex(R.index))[0, 1],
             med_se=R.se.median(),
+            med_delta=R.dd.median(),
+            med_delta_se=R.dse.median(),
             acs_share=R.a.mean(),
             DE=R.r["DE"],
             DC=R.r["DC"],

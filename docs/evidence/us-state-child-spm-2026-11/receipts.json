@@ -1,0 +1,352 @@
+{
+  "purpose": "Receipts for the state child SPM diagnosis. Aggregates by state and national totals only; no household rows.",
+  "date": "2026-11-01",
+  "model": {
+    "policyengine_us": "2.90.2",
+    "policyengine_us_commit": "469ad12cb957",
+    "policyengine_core": "3.34.2"
+  },
+  "benchmark": "Census P60-290 Table 18, 2023 to 2025 average, under 18",
+  "data": {
+    "default": {
+      "repo": "policyengine/populace-us",
+      "revision": "9a814a3b3b53c0ecd6e1737b6ec862c31300ef6f",
+      "file": "populace_us_2024.h5",
+      "sha256": "62b51ad7f37d5fcc3a7393a0ce284eee5972033885af1c823dcef05d3d947c6e",
+      "bytes": 826917837
+    },
+    "dense": {
+      "repo": "policyengine/populace-us",
+      "revision": "15cefac484174ae0ee11a82b164f58023ad05c84",
+      "file": "populace_us_2024.h5",
+      "sha256": "a7cca5d157ac11f451629d81e2e638ac0e1dd464f59264bbdb3c8f64e6c76f31",
+      "bytes": 2509287855
+    },
+    "acs_local": {
+      "repo": "policyengine/populace-us",
+      "revision": "725d89993f6b2dc4821fd5c3620f0f3d4d630102",
+      "file": "populace_us_2024_acs_local.h5",
+      "sha256": "f6e23235d4fd233bd69bcf8875ccaa1144abfde58e769cee930658535092237a",
+      "bytes": 9819603807
+    }
+  },
+  "note": "Poverty rates stay holdouts: nothing here entered a calibration target.",
+  "files": {
+    "outputs/ablate_eval.csv": {
+      "sha256": "c577c66835b8a8c740b1507d6559ad0fbd8ec3ac672841ccefd420e3bacb7012",
+      "bytes": 10183
+    },
+    "outputs/acs_eval.csv": {
+      "sha256": "5e63003e507b7c3c39303dc2d95bbda805ef39c4b50d539cc61430dc0ac6a2bc",
+      "bytes": 12176
+    },
+    "outputs/acs_solves.csv": {
+      "sha256": "ec5de235e8542d8e1cc7757864550eff8079664e5e65205de23981eb3fe7dcca",
+      "bytes": 3421
+    },
+    "outputs/acs_stored.csv": {
+      "sha256": "f0ae96174457e002a14d0108ffa33483d7557c539ccefb467bba58a559fe9b61",
+      "bytes": 9218
+    },
+    "outputs/asec_state_raw.csv": {
+      "sha256": "5e28ec94ce143145bd3d8335d2820a90aab8ca9ecb9ebf43e996690a3eab5a5c",
+      "bytes": 8183
+    },
+    "outputs/census_child_spm.json": {
+      "sha256": "8ad84ee50d588e94b904e057b684b43e3ddbb543998ebe6988e9d9a3985632e7",
+      "bytes": 3130
+    },
+    "outputs/census_flags_by_file.csv": {
+      "sha256": "ebc854c4a6ebacc9110db0165fe8abf33ca09598d00121007513b792f19cbdac",
+      "bytes": 12847
+    },
+    "outputs/cf_state.csv": {
+      "sha256": "36d2936dd31e544fb48750fb2dfeaf7375bc1388587bd676a6d8419bd7dc9f4c",
+      "bytes": 7147
+    },
+    "outputs/chi_eval.csv": {
+      "sha256": "dbda58f521648d94b599d2315a3d84464dcfe2f32e8aa1b00e4281b0c6302ba5",
+      "bytes": 1399
+    },
+    "outputs/dash_swing.csv": {
+      "sha256": "40ba1f728b3ab518c3d636a60db34840739b08f0151370f7ab930a9ca6bd4d7d",
+      "bytes": 4135
+    },
+    "outputs/default_noise.csv": {
+      "sha256": "97aee00d5f5cae2d2012dbebffcc9f4f1af86cb6d088b642b40386a497633621",
+      "bytes": 16058
+    },
+    "outputs/default_noise_raw.csv": {
+      "sha256": "6d3fa726accad54acf10ebdc012c619f199cf1a6b9b9ea721a0b2c1f2fb421d7",
+      "bytes": 9922
+    },
+    "outputs/default_paired.csv": {
+      "sha256": "06b31f6d1b20951f7aac802202497251c0171524189de3d9c0bd17b30fc3641d",
+      "bytes": 18543
+    },
+    "outputs/default_rentfix_states.csv": {
+      "sha256": "957627507472c67fdff1d31f3592c4bec867ca57eebb41d2eac7e0d1aed0977d",
+      "bytes": 3425
+    },
+    "outputs/default_shapley.csv": {
+      "sha256": "544a35e0865f5e7e10bc1b83a0a936cb20e4bb8f19d353bbbae344c917f27262",
+      "bytes": 11951
+    },
+    "outputs/default_shapley9_all.csv": {
+      "sha256": "8a2481000413fca2a6d7237d616a278536db779594bba42dc7b1eb0a309f2d46",
+      "bytes": 11402
+    },
+    "outputs/default_shapley9_asec.csv": {
+      "sha256": "50f6b75ff018af8a26de5e47e48c8823e5e8ee743128522af64e375c29d4ae58",
+      "bytes": 11358
+    },
+    "outputs/default_steps.csv": {
+      "sha256": "7d6601ac269da3167355ec86a062491fd873207696472a4e378fe00a01d5ce0a",
+      "bytes": 14027
+    },
+    "outputs/dense_fit.csv": {
+      "sha256": "f4c45b99e13c3f6cd1f5acb2cc53d8c0934fa3fbff559dd5515e3f5e176af66c",
+      "bytes": 14125
+    },
+    "outputs/dense_rentfix_states.csv": {
+      "sha256": "1adc01ba7ba15a3828d43afa7c970a8e059e04926f8b66267fafcd36987f48da",
+      "bytes": 3470
+    },
+    "outputs/dense_shapley.csv": {
+      "sha256": "9cc6cb668d8fa8b0a1c2f8a36fd1ae9b3d82bbc7a819cf68622173c815a36981",
+      "bytes": 11976
+    },
+    "outputs/dense_shapley9_all.csv": {
+      "sha256": "5cd58e15cd6b81bf6c8dfa571592d1be519c261e1d2714a04771874d1f5d184c",
+      "bytes": 11541
+    },
+    "outputs/dense_shapley9_asec.csv": {
+      "sha256": "58b4c9e759bb63caf2f46c6d4a063d4d08e6ef1b69cbbe797cd78f803bfcc802",
+      "bytes": 11429
+    },
+    "outputs/dense_shapley9_puf_tax_detail.csv": {
+      "sha256": "f42376f6ae5aad6ba82c62119d3341c2e379b6c43254f6105720768982b90a33",
+      "bytes": 11446
+    },
+    "outputs/dense_steps.csv": {
+      "sha256": "6e1d4a6f7b8aee03362d9c023a4e35943a8f5264472e739aaf64deb0db1bafbb",
+      "bytes": 14122
+    },
+    "outputs/state_baseline.json": {
+      "sha256": "9568c0a09d19eba4a61115f37237200fb76abe960264894931722a2f45f7bf95",
+      "bytes": 9894
+    },
+    "outputs/waterfall.csv": {
+      "sha256": "75aa3c1eec097056ce342aa28e43bcd4431c726cd8eab56bc806c9f03af0cc56",
+      "bytes": 17743
+    },
+    "scripts/ablate_eval.py": {
+      "sha256": "63dde2a90127448fdf9c9f87ff62e9b86ca2367edf0c83074892c49f66f84ecd",
+      "bytes": 2893
+    },
+    "scripts/ablate_noise.py": {
+      "sha256": "fd583fa116ec7a0084707c1f5ec2cdc2b308702bd0552262584000c6268f9d32",
+      "bytes": 4093
+    },
+    "scripts/acs_eval.py": {
+      "sha256": "c4da02e2d95e757227152b599020abe38dfea0662697dfd1cfae1217136266f1",
+      "bytes": 6719
+    },
+    "scripts/acs_hh.py": {
+      "sha256": "bf827c705569556dcda37ed1e5f7902da82ae716378059396ea84618cc0978f6",
+      "bytes": 696
+    },
+    "scripts/acs_more.sh": {
+      "sha256": "a03cab963b266f9e194a87ef21d969f65b4a61ec91a5ac93e01f660ef94380ae",
+      "bytes": 1101
+    },
+    "scripts/acs_one.py": {
+      "sha256": "0c2e412601d63ece6b20c2829331501d8f127bd4e7a8043209239531776e77d7",
+      "bytes": 2484
+    },
+    "scripts/acs_rent_run.py": {
+      "sha256": "da787ccc5de771fbfa5735f16b15589e284a18fc0483726ff8ccaa3608b784bc",
+      "bytes": 5340
+    },
+    "scripts/acs_stored.py": {
+      "sha256": "08176ca7c7b701aa70419c2fc126febe742fb1f7d1984c25da358ec998043dda",
+      "bytes": 2673
+    },
+    "scripts/acs_w.py": {
+      "sha256": "e0066deb8f5a08ff8e62391e85105fb8de116612814d6a07881f5c126b7007c2",
+      "bytes": 989
+    },
+    "scripts/acsrent.py": {
+      "sha256": "43e3c6a8d02ad2f91dd352f7491304a9213ed40931defe47dc97e33383892c40",
+      "bytes": 2655
+    },
+    "scripts/asec_extract.py": {
+      "sha256": "f5889656172550ba6f8c3bfb7efc17cf6780d723a0cca0811851043155805423",
+      "bytes": 2932
+    },
+    "scripts/assemble.py": {
+      "sha256": "d47696c0bdbaaf9cdbbb807b0b40af6d6d8a0ff0c1645ae4d38acd7cdf834c23",
+      "bytes": 3824
+    },
+    "scripts/assemble_dense.py": {
+      "sha256": "68f06f83297c449de20c5ae7429b29c06f70e5ea0ba715fe749af4b207f240e9",
+      "bytes": 861
+    },
+    "scripts/cf_eval.py": {
+      "sha256": "1283c70c81115bb310e4f5d96c7f429864e6211c641ae1bb1e63bbc63b1dbda9",
+      "bytes": 3633
+    },
+    "scripts/chi_eval.py": {
+      "sha256": "25e0a8b2b1b108452c6d0f5b0e54504c943432f7e09a3f3159dc5f208eef1b39",
+      "bytes": 2536
+    },
+    "scripts/chi_solve.py": {
+      "sha256": "df4ef2190d5e60d57c409aad93d1c27a6cd901196c269350b04210737843df22",
+      "bytes": 2664
+    },
+    "scripts/cols.py": {
+      "sha256": "1a7b8260e77c6b35f93fd6953556f7e1cfb69cc3d8b9cd652cdc4d17fd067831",
+      "bytes": 1977
+    },
+    "scripts/ctc_ssn.py": {
+      "sha256": "4a7f41c62ef6d708c0492607e19b5308489c01a9434b8d2a5b2e868be8191248",
+      "bytes": 2659
+    },
+    "scripts/cutrun.py": {
+      "sha256": "ee4e16c1bd8a58f91bd5ad19c3b57b9b7e0ee1b920a2098725682b92e88e66b6",
+      "bytes": 3517
+    },
+    "scripts/dash_swing.py": {
+      "sha256": "0e1aa5ab23a673d0053e22705909237bbd953edd9dc5ce496f587c896b85a6c2",
+      "bytes": 1772
+    },
+    "scripts/decomp.py": {
+      "sha256": "4102acc5cffd7549374f16aaa6af8fe9b8a7f9d12e5316eb7965478ce704d717",
+      "bytes": 4705
+    },
+    "scripts/decomp2.py": {
+      "sha256": "014c5f3c1e1933e3bff5de68e4ed54331d09e106288dc2331827545d10475e45",
+      "bytes": 3792
+    },
+    "scripts/dense_fit.py": {
+      "sha256": "2a8295ec0827e8b028612c3d0ff14b67439b6dcf458a0d62f35c83eadb43c322",
+      "bytes": 4336
+    },
+    "scripts/dense_rent.py": {
+      "sha256": "6a349b344c2998d88918d8a80e1b8f9cf3436c35984314a918cdc338a13906fb",
+      "bytes": 1779
+    },
+    "scripts/dl.py": {
+      "sha256": "593a8cad1f7dac25b4a77e75de2716325146a1e51f54437d24ecf390c0581de6",
+      "bytes": 705
+    },
+    "scripts/dmiss.py": {
+      "sha256": "e41260102cf2341c9c16c20df7eca701d7505c82a0c908c4e95648d97ca1f290",
+      "bytes": 1284
+    },
+    "scripts/extract_state.py": {
+      "sha256": "3ef27f227d73a65c0b5a6ccadabf713671c3c474ddd7e206cc03de13251e7b5e",
+      "bytes": 4852
+    },
+    "scripts/fam.py": {
+      "sha256": "20cf8033ae5044e7ccf1fb1678679ddcd01befbfbc7b5a39fb3f4ddc07670660",
+      "bytes": 1273
+    },
+    "scripts/flip.py": {
+      "sha256": "90a35ab5c4d615a387738ebb5f6a71f7ef0d0b3c96f77f7f1ab7ea6d3f0b4ee6",
+      "bytes": 2264
+    },
+    "scripts/house.py": {
+      "sha256": "9572cbc303793e4d5851ba70d06ca622a26a8902c0a1c1a2a56aeb2cb0442f8e",
+      "bytes": 2530
+    },
+    "scripts/house_sim.py": {
+      "sha256": "d3991eae455e07329d4337d7f5f8067de7d2cb8946c638d8754f98b1b280f4dd",
+      "bytes": 2970
+    },
+    "scripts/idcheck.py": {
+      "sha256": "adf41abfc238dc4759eb93b76079f24a4232cd099c26394076392ee886667124",
+      "bytes": 1336
+    },
+    "scripts/kish.py": {
+      "sha256": "b51daf44b5b1d5b4429142cf4b61c5bd7b644242fe7f6684e5c1f8e2a530af54",
+      "bytes": 982
+    },
+    "scripts/national_cf.py": {
+      "sha256": "3512de45b6642176ce0949a2f51810903893c2a26355b13737bd937a312c2588",
+      "bytes": 3450
+    },
+    "scripts/noise.py": {
+      "sha256": "9da43627c8426549b002267d22793f1df10f805bfade5d78f037a840c31ee2d7",
+      "bytes": 2253
+    },
+    "scripts/paired.py": {
+      "sha256": "a4461b5e7b31e37386daa9c14d67dda7607e2b93ddda04e09d2c513e6bb9ca77",
+      "bytes": 3068
+    },
+    "scripts/part.py": {
+      "sha256": "fff80ba67a0b9d9cf1efe1228d9521dda26a7463c3a66bda950464965c9bbdc8",
+      "bytes": 2463
+    },
+    "scripts/puf_house.py": {
+      "sha256": "f7055e02c3dfee9d4e2654a60db0754138f76a04a127e0adcd3b6fcc184d7224",
+      "bytes": 1789
+    },
+    "scripts/rent2.py": {
+      "sha256": "4bc02b7765cd72883e1cd76b9a84c06ff913afa71b1561cf2bc9bab86d5b99e9",
+      "bytes": 1866
+    },
+    "scripts/rent3.py": {
+      "sha256": "600c2edd7db6fcc8d7d4503a33997ce50e341d0b815b8cb9925fc9b0c66b4a61",
+      "bytes": 1509
+    },
+    "scripts/rent4.py": {
+      "sha256": "b26e172b7a994a0ff978d502d3b656a310a9d487a12f1ffc7cf24043ae59974f",
+      "bytes": 2612
+    },
+    "scripts/rent5.py": {
+      "sha256": "fcf8e20954a01630c917ceac604d3fe8deaf9e5ad2e7ff26580410311735d6b8",
+      "bytes": 2149
+    },
+    "scripts/rent_eval.py": {
+      "sha256": "0dc77b80f336a9491214f607137024d8a94052d89cfd10ff36927a11c5ca05f2",
+      "bytes": 5158
+    },
+    "scripts/rentfix.py": {
+      "sha256": "4e68da53964d75f3586d2cd281113291ab76383d3f34657984f9ac9d0c00d962",
+      "bytes": 2672
+    },
+    "scripts/rep_boot.py": {
+      "sha256": "87f5956a4af4f08c3ec3e4193cc720878ebc37d81406ac7aad9a371c4160681e",
+      "bytes": 1707
+    },
+    "scripts/rep_eval.py": {
+      "sha256": "20f56043fcc618b04951b08f6e0850a73441326027a87650bae1bee033a7a603",
+      "bytes": 7266
+    },
+    "scripts/runcuts.py": {
+      "sha256": "4154018a33e122496edaf0dc74bc6947f5b1ccf3d867c7678fbb819d2a3b88d1",
+      "bytes": 725
+    },
+    "scripts/sparse_rent.py": {
+      "sha256": "b8265899609939684777d746f35cceca2bad5377fc10eb21dc87b08148476c69",
+      "bytes": 2311
+    },
+    "scripts/steps.py": {
+      "sha256": "616c0550ccc8cef2ae3235d2a555407d55ed047a22113c24d4854f6f41f227d8",
+      "bytes": 2178
+    },
+    "scripts/thr.py": {
+      "sha256": "7e5de78ec8313f2ba9cb7b10a849eb1c375944b690f33afa7cae9c963396dcf2",
+      "bytes": 795
+    },
+    "scripts/vardec.py": {
+      "sha256": "735c8c54eed72a8004657e5f6ff38269771a7d99a76ee2d14614b6bf63e802e7",
+      "bytes": 6350
+    },
+    "scripts/year.py": {
+      "sha256": "ca35dc3ba29b95abe4e07a5921a70ad4b4099cadf7ff35ca4ccca9fe67846986",
+      "bytes": 4304
+    }
+  }
+}
