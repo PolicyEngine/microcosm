@@ -50,6 +50,7 @@ from microcosm.build.uk_runtime.pension_coherence import (
     coherence_receipt,
     twin_rate_employer_contributions,
 )
+from microcosm.build.uk_runtime.receipt_counts import UK_DISCLOSURE_FLOOR, UK_WITHHELD
 from microcosm.build.uk_runtime.spi_rank_transport import (
     SPI_STAGE1_ANALOGUE_COLUMNS,
     SPI_TRANSPORT_FIT_NAME,
@@ -1383,17 +1384,17 @@ def _band_mean_total_income(
     """A reserved band's mean realised total income, for its receipt row.
 
     A carrier's realised total income is its drawn tape record's own, so a
-    band whose carriers drew fewer than ten distinct records, as any band with
-    fewer than ten carriers does, would give back one record's value or come
-    close to it. Its mean is "<10" (UKDS disclosure control; see
+    band whose carriers drew fewer than three distinct records, as any band
+    with fewer than three carriers does, would give back one record's value or
+    come close to it. Its mean is "<3" (UKDS disclosure control; see
     ``receipt_counts``), and a band without carriers has none. No single
     record's value, such as the band's lowest or highest, is recorded.
     """
 
     if not realized.size:
         return None
-    if np.unique(drawn).size < 10:
-        return "<10"
+    if np.unique(drawn).size < UK_DISCLOSURE_FLOOR:
+        return UK_WITHHELD
     return float(realized.mean())
 
 

@@ -52,7 +52,7 @@ def test_the_forest_decides_membership_and_the_twin_rate_scales_the_amount() -> 
     np.testing.assert_array_equal(bounded, [False, False, False, True, False, False])
 
 
-def test_a_receipt_withholds_amounts_resting_on_fewer_than_ten_households() -> None:
+def test_a_receipt_withholds_amounts_resting_on_fewer_than_three_households() -> None:
     receipt = coherence_receipt(
         changed=np.array([True, True, False, True]),
         before=np.array([10.0, 20.0, 30.0, 40.0]),
@@ -63,12 +63,12 @@ def test_a_receipt_withholds_amounts_resting_on_fewer_than_ten_households() -> N
 
     assert receipt == {
         "support": support_band(2),
-        "weighted_before": "<10",
-        "weighted_after": "<10",
+        "weighted_before": "<3",
+        "weighted_after": "<3",
     }
 
 
-def test_a_receipt_gives_weighted_amounts_on_ten_or_more_households() -> None:
+def test_a_receipt_gives_weighted_amounts_on_three_or_more_households() -> None:
     rows = 12
     receipt = coherence_receipt(
         changed=np.ones(rows, dtype=bool),
@@ -134,4 +134,4 @@ def test_the_spi_stage_applies_the_rule_to_its_recipients() -> None:
     }
     for rule in receipt.values():
         assert rule["support"] == support_band(1)
-        assert rule["weighted_before"] == rule["weighted_after"] == "<10"
+        assert rule["weighted_before"] == rule["weighted_after"] == "<3"

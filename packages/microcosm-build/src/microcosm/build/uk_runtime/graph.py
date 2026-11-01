@@ -37,6 +37,7 @@ from ..stage_evidence import STAGE_EVIDENCE_TYPE
 from .national_sampling import UK_SAMPLE_SEED_DEFAULT
 
 __all__ = [
+    "UK_SPINE_ASSEMBLED_FINAL_STAGE",
     "UK_SPINE_STRUCTURAL_STAGES",
     "uk_registry",
     "uk_spine_endpoint",
@@ -56,6 +57,15 @@ UK_SPINE_STRUCTURAL_STAGES = frozenset(
         "cgt_residential_split",
     }
 )
+
+#: The last stage of the assembled checkpoint: everything through the base
+#: FRS mapping and the stochastic draws. A name, not an index — a position
+#: standing in for a key is correct only while two independently-maintained
+#: orderings happen to agree (the uk-data#468 class). The graph freezes the
+#: checkpoint after it, and the graph's spine gates and the plan path read it,
+#: so an assembled-phase gate's stage is checked against the boundary the
+#: build runs (the third and fourth reviews of microcosm#1422).
+UK_SPINE_ASSEMBLED_FINAL_STAGE = "frs_brma"
 
 # The executor's mass ledger is weighted *person* mass per stratum
 # (``Frame.stratum_mass``: household weights broadcast through membership), so
@@ -1716,8 +1726,8 @@ def uk_spine_graph(
         if cells:
             shape_anchor = cells[-1].coordinate
 
-        if stage_name == "frs_brma":
-            checkpoint = "frs_brma.checkpoint"
+        if stage_name == UK_SPINE_ASSEMBLED_FINAL_STAGE:
+            checkpoint = f"{UK_SPINE_ASSEMBLED_FINAL_STAGE}.checkpoint"
             nodes.append(
                 Node(
                     id=checkpoint,
