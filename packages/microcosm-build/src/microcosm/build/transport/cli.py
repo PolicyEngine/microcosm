@@ -76,6 +76,7 @@ from .compose import (
     transport_resource,
     validate_transport_activation,
 )
+from .entitlement import money_node_factor_entries
 from .population_kernels import TRANSPORT_CREATE
 from .registry import TransportRegistry, build_transport_registry
 from .terminal_kernels import materialize_export, validate_export
@@ -235,10 +236,12 @@ def prepare_transport_build(
 ) -> PreparedTransportBuild:
     """Check factor currency and activation, then compose the prepared graph.
 
-    A new run (``auto`` or ``forbid``) first requires every factor the default
-    and scenario views select to be current on today's UTC date; ``require``
-    only verifies stored work. This is the run-entry check for every caller,
-    the CLI included. Composition and execution stay clock-free.
+    A new run (``auto`` or ``forbid``) first requires every reference-view
+    factor and every declared money node's own factors and context to be
+    current on today's UTC date; ``require`` only verifies stored work.
+    Caller extensions contain code rather than spec rows, so this check
+    does not cover their money nodes. This is the run-entry check for every
+    caller, the CLI included. Composition and execution stay clock-free.
 
     Before registry preparation, CREATE or graph source reads, activation
     checks declaration resource paths, non-null selected roots and encoding
@@ -702,18 +705,25 @@ def _today() -> date:
 def _require_current_run_factors(
     spec: Mapping[str, object], *, resume: ResumePolicy
 ) -> None:
-    """The currency check guards new runs only, including scenario selections.
+    """Check reference views and each declared money node before a new run.
 
     ``require`` only replays stored work and may verify historical factors.
-    Check every factor the default and scenario views select, through the
-    walk activation uses, against today's UTC date, before CREATE.
+    Resolve each money node's declaration, selection and context through
+    composition's resolvers, then use its kernel's validators. Check each
+    context separately against one UTC date before CREATE; caller extension
+    code falls outside the spec walk. A spec without money nodes selects no
+    money factors, even if it carries a money-normalization resource.
     """
     if resume == "require":
         return
     selected = {}
     for view in reference_profile_views(spec):
         selected.update(view[2].get("selected_factors", {}))
-    require_current_factors(selected, today=_today())
+    money_entries = money_node_factor_entries(spec)
+    today = _today()
+    require_current_factors(selected, today=today)
+    for entries in money_entries:
+        require_current_factors(entries, today=today)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
