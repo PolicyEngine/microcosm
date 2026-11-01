@@ -18,7 +18,7 @@ def test_semantic_hash_has_golden_vector_and_surface_separation(tmp_path) -> Non
     # self-employment feature in the imputation schema moves the schema-set
     # receipt, and its post-transfer step moves acs_transfer's attested bytes.
     assert first.spec_sha256 == (
-        "8654884dc7dde724af39b78d07cffb151c61680d388c05576cd34dee83fb79fb"
+        'e8ef234504dfaed9b5cc7d04355d1996ad0a2f965c06b34679ce216c4f899abe'
     )
 
     second_root = _rich_minimal(tmp_path / "xy", note="second", store="local:b")
