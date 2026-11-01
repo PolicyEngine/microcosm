@@ -122,6 +122,7 @@ __all__ = [
     "AxiomEngine",
     "AxiomEntityTableDataset",
     "AxiomPeriod",
+    "AxiomRelation",
     "BE_SCHEMA",
     "NZ_NESTING",
     "NZ_SCHEMA",
@@ -194,6 +195,135 @@ _ENGINE_REF_SCHEMA = "microcosm.frame.axiom-engine-ref/1"
 # A full git object name (SHA-1 or SHA-256 repositories), lowercase.
 _GIT_COMMIT = re.compile(r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$")
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
+
+
+@dataclass(frozen=True)
+class AxiomRelation:
+    """An explicit binary relation from a partition to its person members.
+
+    ``arguments`` records the source declaration's engine entity tuple; slots
+    and ``key`` must agree with the compiled dense program. Related columns
+    are named explicitly so they also form graph input dependencies. No rows
+    or data-derived batches are retained in this declaration.
+    """
+
+    predicate: str
+    key: str
+    current_slot: int
+    related_slot: int
+    arguments: tuple[str, str]
+    root_entity: str
+    related_entity: str
+    membership_column: str
+    related_inputs: Mapping[str, str]
+    cardinality: str
+    period: str
+    role_column: str | None = None
+    roles: tuple[str, ...] | None = None
+
+    def __post_init__(self) -> None:
+        for name in (
+            "predicate",
+            "key",
+            "root_entity",
+            "related_entity",
+            "membership_column",
+            "period",
+        ):
+            value = getattr(self, name)
+            if not isinstance(value, str) or not value:
+                raise ValueError(f"Relation {name} must be a non-empty string.")
+        if (
+            type(self.current_slot) is not int
+            or type(self.related_slot) is not int
+            or {self.current_slot, self.related_slot} != {0, 1}
+        ):
+            raise ValueError(
+                "Relation slots must be distinct binary coordinates 0 and 1."
+            )
+        if isinstance(self.arguments, str | bytes) or not isinstance(
+            self.arguments, Sequence
+        ):
+            raise ValueError(
+                "Relation arguments must be a sequence of two engine entity names."
+            )
+        arguments = tuple(self.arguments)
+        if len(arguments) != 2 or any(
+            not isinstance(x, str) or not x for x in arguments
+        ):
+            raise ValueError("Relation arguments must contain two engine entity names.")
+        object.__setattr__(self, "arguments", arguments)
+        expected = f"{self.predicate}:{self.current_slot}:{self.related_slot}"
+        if self.key != expected:
+            raise ValueError(
+                f"Relation key must agree with predicate and slots: {expected!r}."
+            )
+        if self.cardinality not in ("one", "many"):
+            raise ValueError("Relation cardinality must be 'one' or 'many'.")
+        if not isinstance(self.related_inputs, Mapping) or any(
+            not isinstance(k, str) or not k or not isinstance(v, str) or not v
+            for k, v in self.related_inputs.items()
+        ):
+            raise ValueError(
+                "Relation related_inputs must map engine names to physical columns."
+            )
+        object.__setattr__(
+            self, "related_inputs", MappingProxyType(dict(self.related_inputs))
+        )
+        if (self.role_column is None) != (self.roles is None):
+            raise ValueError(
+                "Relation role_column and roles must be supplied together."
+            )
+        if self.roles is not None:
+            if isinstance(self.roles, str | bytes) or not isinstance(
+                self.roles, Sequence
+            ):
+                raise ValueError("Relation roles must be a sequence of role names.")
+            roles = tuple(self.roles)
+            if (
+                not isinstance(self.role_column, str)
+                or not self.role_column
+                or not roles
+                or any(not isinstance(x, str) or not x for x in roles)
+                or len(set(roles)) != len(roles)
+            ):
+                raise ValueError(
+                    "Relation roles must be unique non-empty strings and name a role_column."
+                )
+            object.__setattr__(self, "roles", roles)
+
+    def to_dict(self) -> dict[str, object]:
+        """Return the JSON declaration, preserving absent role selection."""
+        result: dict[str, object] = {
+            "predicate": self.predicate,
+            "key": self.key,
+            "current_slot": self.current_slot,
+            "related_slot": self.related_slot,
+            "arguments": list(self.arguments),
+            "root_entity": self.root_entity,
+            "related_entity": self.related_entity,
+            "membership_column": self.membership_column,
+            "related_inputs": dict(sorted(self.related_inputs.items())),
+            "cardinality": self.cardinality,
+            "period": self.period,
+        }
+        if self.role_column is not None:
+            result["role_column"] = self.role_column
+            result["roles"] = list(self.roles)
+        return result
+
+    def input_dependencies(self, schema: EntitySchema) -> tuple[tuple[str, str], ...]:
+        """The physical identity, membership, selector and input columns."""
+        related = self.related_entity
+        dependencies = {
+            (self.root_entity, schema.entity_id_column(self.root_entity)),
+            (related, schema.entity_id_column(related)),
+            (related, self.membership_column),
+            *((related, column) for column in self.related_inputs.values()),
+        }
+        if self.role_column is not None:
+            dependencies.add((related, self.role_column))
+        return tuple(sorted(dependencies))
 
 
 @dataclass(frozen=True)
@@ -325,6 +455,7 @@ class AxiomEngine:
         periods: Mapping[int | str, AxiomPeriod] | None = None,
         nesting: Mapping[str, str] | None = None,
         output_dtypes: str = "native",
+        relations: Sequence[AxiomRelation] | None = None,
     ) -> None:
         if arithmetic not in ("decimal", "f64"):
             raise ValueError(
@@ -372,6 +503,39 @@ class AxiomEngine:
         self._frame_entity_by_engine = {
             engine: frame for frame, engine in self._entity_names.items()
         }
+        self._relations = None if relations is None else tuple(relations)
+        if self._relations is not None:
+            keys: set[tuple[str, str]] = set()
+            for relation in self._relations:
+                if not isinstance(relation, AxiomRelation):
+                    raise TypeError(
+                        "relations must contain AxiomRelation declarations."
+                    )
+                key = (relation.root_entity, relation.key)
+                if key in keys:
+                    raise ValueError(f"Duplicate relation declaration {key!r}.")
+                keys.add(key)
+                if (
+                    relation.root_entity not in schema.group_entities
+                    or relation.related_entity != schema.person_entity
+                    or relation.membership_column
+                    != schema.membership_column(relation.root_entity)
+                ):
+                    raise ValueError(
+                        "Relations require a declared partition's person membership column."
+                    )
+                if relation.arguments[relation.current_slot] != self._entity_names.get(
+                    relation.root_entity
+                ) or relation.arguments[
+                    relation.related_slot
+                ] != self._entity_names.get(relation.related_entity):
+                    raise ValueError(
+                        "Relation argument slots disagree with the entity mapping."
+                    )
+                if self._periods is not None and relation.period not in self._periods:
+                    raise ValueError(
+                        f"Relation period {relation.period!r} is not declared."
+                    )
         self._programs: dict[str, Any] = {}
         self._metadata: dict[str, Any] | None = None
         # Set by axiom_engine_ref: the RuleSpec tree digest this adapter's
@@ -457,8 +621,8 @@ class AxiomEngine:
     def variables(self) -> list[str]:
         """Return the input variables the engine accepts on a dataset.
 
-        The union of the dense root inputs across every mapped engine
-        entity, sorted. Computed (derived) outputs are not included.
+        The union of root and declared related inputs across every mapped
+        engine entity, sorted. Computed outputs are not included.
 
         Raises:
             ImportError: If ``axiom_rules_engine`` is not installed.
@@ -468,7 +632,164 @@ class AxiomEngine:
             program = self._program(frame_entity, missing_ok=True)
             if program is not None:
                 names.update(program.root_inputs)
+                if self._relations is not None:
+                    self.assert_declared_relations(frame_entity)
+                    for relation in self._relations:
+                        if relation.root_entity == frame_entity:
+                            names.update(relation.related_inputs)
         return sorted(names)
+
+    def relation_dependencies(self, entity: str) -> tuple[tuple[str, str], ...]:
+        """Physical columns required to construct this root's relation batches."""
+        dependencies: set[tuple[str, str]] = set()
+        for relation in self._relations or ():
+            if relation.root_entity != entity:
+                continue
+            dependencies.update(relation.input_dependencies(self._schema))
+        return tuple(sorted(dependencies))
+
+    def validate_input_override(self, entity: str, column: str) -> None:
+        """Refuse aliased related overrides until bridges can resolve them.
+
+        Bridges write physical table columns after checking logical engine
+        inputs. An aliased relation input needs both names resolved together;
+        accepting only the engine name would silently leave its source intact.
+        """
+        for relation in self._relations or ():
+            for name, physical in relation.related_inputs.items():
+                if (
+                    entity == relation.related_entity
+                    and name != physical
+                    and column in (name, physical)
+                ):
+                    raise NotImplementedError(
+                        "Input overrides of aliased related Axiom inputs are not supported."
+                    )
+
+    def assert_declared_relations(self, entity: str) -> None:
+        """Validate manifests against compiled slots, input union and source tuple."""
+        program = self._program(entity)
+        manifests = {
+            item.key: item
+            for item in self._relations or ()
+            if item.root_entity == entity
+        }
+        compiled: dict[str, set[str]] = {}
+        for item in program.relations:
+            manifest = manifests.get(item.key)
+            if manifest is None:
+                raise NotImplementedError(
+                    f"Module {self._module_label()} declares dense relations "
+                    f"{[relation.name for relation in program.relations]} on entity {entity!r}; "
+                    "an explicit relation declaration is required."
+                )
+            if (
+                item.name != manifest.predicate
+                or item.current_slot != manifest.current_slot
+                or item.related_slot != manifest.related_slot
+            ):
+                raise ValueError(
+                    f"Compiled relation slots disagree with manifest {manifest.key!r}."
+                )
+            compiled.setdefault(item.key, set()).update(item.related_inputs)
+        if set(manifests) != set(compiled):
+            raise ValueError(
+                f"Relation declarations do not match compiled keys on {entity!r}."
+            )
+        for key, inputs in compiled.items():
+            manifest = manifests[key]
+            if set(manifest.related_inputs) != inputs:
+                raise ValueError(
+                    f"Relation {key!r} related inputs disagree with compiled input union."
+                )
+            arguments = _source_relation_arguments(
+                self._module, self._rulespec_roots, manifest.predicate
+            )
+            if arguments != manifest.arguments:
+                raise ValueError(
+                    f"Relation {key!r} source arguments {arguments!r} disagree with manifest."
+                )
+
+    def _relation_batches(
+        self, bundle: Frame, entity: str, period: object
+    ) -> dict[str, Any]:
+        """Gather identity-ordered related rows following the native dense contract."""
+        from axiom_rules_engine.dense import DenseRelationBatch
+
+        batches: dict[str, Any] = {}
+        root = bundle.table(entity)
+        root_ids = root[self._schema.entity_id_column(entity)].to_numpy()
+        for relation in self._relations or ():
+            if relation.root_entity != entity:
+                continue
+            if self._materialization_period(
+                relation.period
+            ) != self._materialization_period(period):
+                raise ValueError(
+                    f"Relation {relation.key!r} does not cover the requested period."
+                )
+            table = bundle.table(relation.related_entity)
+            required = {
+                relation.membership_column,
+                self._schema.entity_id_column(relation.related_entity),
+                *relation.related_inputs.values(),
+            }
+            if relation.role_column is not None:
+                required.add(relation.role_column)
+            missing = sorted(required - set(table.columns))
+            if missing:
+                raise ValueError(
+                    f"Relation {relation.key!r} is missing related columns {missing}."
+                )
+            selected = table
+            if relation.role_column is not None:
+                selected = selected.loc[
+                    selected[relation.role_column].isin(relation.roles)
+                ]
+            if not selected[relation.membership_column].isin(root_ids).all():
+                raise ValueError(
+                    f"Relation {relation.key!r} contains dangling membership identities."
+                )
+            identity = self._schema.entity_id_column(relation.related_entity)
+            if selected[identity].isna().any() or selected[identity].duplicated().any():
+                raise ValueError(
+                    f"Relation {relation.key!r} requires unique non-null related identities."
+                )
+            # A physical person identity is the deduplication key, never its
+            # input values; equal-valued people must remain separate targets.
+            selected = selected.drop_duplicates(identity).sort_values(
+                identity, kind="stable"
+            )
+            positions_by_root: dict[object, list[int]] = {}
+            for position, root_id in enumerate(
+                selected[relation.membership_column].to_numpy()
+            ):
+                positions_by_root.setdefault(root_id, []).append(position)
+            rows: list[int] = []
+            offsets = [0]
+            for root_id in root_ids:
+                positions = positions_by_root.get(root_id, [])
+                if relation.cardinality == "one" and len(positions) != 1:
+                    raise ValueError(
+                        f"Relation {relation.key!r} requires exactly one related identity per root."
+                    )
+                rows.extend(positions)
+                offsets.append(len(rows))
+            # Mapping two engine inputs to one physical column is valid.
+            gathered = _batch_from_table(
+                selected.iloc[rows],
+                tuple(dict.fromkeys(relation.related_inputs.values())),
+            )
+            inputs = {
+                name: gathered[column]
+                for name, column in relation.related_inputs.items()
+            }
+            batches[relation.key] = DenseRelationBatch(
+                np.asarray(offsets, dtype=np.int64),
+                inputs,
+                related_row_count=len(rows),
+            )
+        return batches
 
     def entity_schema(self) -> EntitySchema:
         """Return the frame entity schema (no engine import required)."""
@@ -552,9 +873,8 @@ class AxiomEngine:
                 input, a graph-typed output is text, date, or not losslessly
                 castable, or a computed array's length does not match its
                 entity table.
-            NotImplementedError: If the compiled module declares relations
-                (cross-entity aggregation batches; not yet wired — the BE
-                pilot slice declares none).
+            NotImplementedError: If a compiled relation has no explicit
+                validated binding declaration.
         """
         self._require_schema(bundle)
         start, end, period_kind = self._materialization_period(period)
@@ -581,24 +901,27 @@ class AxiomEngine:
         results: dict[str, np.ndarray] = {}
         for frame_entity, names in by_entity.items():
             program = self._program(frame_entity)
-            if program.relations:
-                raise NotImplementedError(
-                    f"Module {self._module.name!r} declares dense relations "
-                    f"{[item.name for item in program.relations]}; relation "
-                    "batches from frame membership are not wired yet."
-                )
+            if program.relations or self._relations:
+                self.assert_declared_relations(frame_entity)
             table = bundle.table(frame_entity)
             inputs = _batch_from_table(table, program.root_inputs)
             execute = (
                 program.execute_f64 if self._arithmetic == "f64" else program.execute
             )
-            outputs = execute(
+            arguments: dict[str, Any] = dict(
                 period_kind=period_kind,
                 start=start,
                 end=end,
                 inputs=inputs,
                 outputs=list(names),
-            )["outputs"]
+            )
+            # Omit the keyword entirely for legacy bindings, preserving the
+            # existing execution call as well as its engine reference.
+            if program.relations:
+                arguments["relations"] = self._relation_batches(
+                    bundle, frame_entity, period
+                )
+            outputs = execute(**arguments)["outputs"]
             expected = bundle.n(frame_entity)
             for name in names:
                 values = np.asarray(outputs[name])
@@ -1341,7 +1664,77 @@ def axiom_engine_ref(
         "periods": periods,
         "nesting": dict(sorted(engine._nesting.items())),
     }
+    if engine._relations is not None:
+        document["relations"] = [item.to_dict() for item in engine._relations]
     return canonical_json(document).decode("utf-8")
+
+
+def _source_relation_arguments(
+    module: Path, roots: Sequence[Path], predicate: str
+) -> tuple[str, ...] | None:
+    """Read the authored data-relation tuple along the module's import graph.
+
+    PyYAML is a dependency of Axiom itself and is imported only for opt-in
+    relation bindings. Compiled slot coordinates alone cannot establish what
+    entity the author's tuple places at each coordinate.
+    """
+    import yaml
+
+    seen: set[Path] = set()
+    pending = [module]
+    found: set[tuple[str, ...]] = set()
+    canonical_roots = tuple(root.resolve() for root in roots)
+    while pending:
+        path = pending.pop().resolve()
+        if path in seen:
+            continue
+        seen.add(path)
+        if not any(path.is_relative_to(root) for root in canonical_roots):
+            raise ValueError("Relation declaration import escapes the RuleSpec roots.")
+        document = yaml.safe_load(path.read_text()) or {}
+        for rule in document.get("rules", ()):
+            declaration = rule.get("data_relation")
+            if rule.get("kind") == "data_relation" and isinstance(declaration, Mapping):
+                name = declaration.get("predicate", rule.get("name"))
+                qualified = {
+                    f"{relative.parts[0]}:{relative.with_suffix('').relative_to(relative.parts[0]).as_posix()}#relation.{rule['name']}"
+                    for root in canonical_roots
+                    if path.is_relative_to(root)
+                    for relative in (path.relative_to(root),)
+                    if len(relative.parts) > 1
+                }
+                if name == predicate or predicate in qualified:
+                    if declaration.get("arity") != 2:
+                        raise ValueError(
+                            f"Relation {predicate!r} source must be binary."
+                        )
+                    found.add(tuple(declaration.get("arguments", ())))
+        for reference in document.get("imports", ()):
+            if not isinstance(reference, str):
+                raise ValueError(
+                    "Relation declaration imports must name RuleSpec modules."
+                )
+            target = reference.split("#", 1)[0]
+            if ":" in target:
+                country, relative = target.split(":", 1)
+                candidates = [
+                    root / country / f"{relative}.yaml" for root in canonical_roots
+                ]
+            else:
+                candidates = [path.parent / target]
+                if not Path(target).suffix:
+                    candidates = [
+                        candidate.with_suffix(".yaml") for candidate in candidates
+                    ]
+            existing = [candidate for candidate in candidates if candidate.is_file()]
+            if len(existing) != 1:
+                raise ValueError(
+                    f"Relation declaration import {reference!r} is missing or ambiguous."
+                )
+            pending.extend(existing)
+    if len(found) > 1:
+        raise ValueError(f"Relation {predicate!r} has conflicting source declarations.")
+    return next(iter(found), None)
 
 
 def assert_no_relations(engine: AxiomEngine, entity: str) -> None:

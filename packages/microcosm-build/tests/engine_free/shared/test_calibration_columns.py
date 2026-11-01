@@ -836,6 +836,83 @@ def test_prepare_matches_the_frozen_legacy_on_nz_bindings():
     assert _prepared_document(live) == _prepared_document(legacy)
 
 
+@settings(
+    max_examples=8,
+    deadline=None,
+    database=None,
+    suppress_health_check=[HealthCheck.function_scoped_fixture],
+)
+@given(ages=st.lists(st.integers(0, 200), min_size=1, max_size=20))
+def test_calibration_kernel_roster_framework_matches_previous_kernel(monkeypatch, ages):
+    import microcosm.build.transport.target_kernels as kernels
+    from microcosm.build.transport.artifact_types import CALIBRATION_PREPARATION_TYPE
+    from microcosm.graph import ArtifactOutput, KernelContext, Node, Owned, Slice
+    from microcosm.graph.canonical import canonical_json
+    from test_support.microcosm_build.transport_graph import (
+        canonical_text,
+        reference_document,
+    )
+    from test_support.microcosm_build.transport_population import digest
+
+    tables, bindings = _tables(), _bindings()
+    _replace_people(tables, ages)
+    path = (
+        paths_for("microcosm-build").tests
+        / "fixtures/calibration_columns_09a2fce.py.txt"
+    )
+    scope = {}
+    exec(compile(path.read_text(), str(path), "exec"), scope)
+    previous_prepare = scope["prepare_calibration_columns"]
+    expected = previous_prepare(tables, bindings)
+    inventory = [*bindings["columns"], *bindings.get("roster_counts", ())]
+    references = reference_document([])
+    node = Node(
+        "prepare",
+        "calibration.prepare@1",
+        population="open",
+        params={
+            "bindings": canonical_text(bindings),
+            "references": canonical_text(references),
+            "references_sha256": digest(references),
+        },
+        inputs=tuple(
+            Slice(entity, tuple(names))
+            for entity, names in bindings["required_inputs"].items()
+        ),
+        outputs=tuple(
+            Owned(
+                row["entity"],
+                row["name"],
+                str(expected[row["entity"]][row["name"]].dtype),
+            )
+            for row in inventory
+        ),
+        artifact_outputs=(ArtifactOutput("preparation", CALIBRATION_PREPARATION_TYPE),),
+    )
+
+    def run():
+        return kernels.CALIBRATION_PREPARE.run(
+            KernelContext(
+                node=node,
+                tables=copy.deepcopy(tables),
+                weights={},
+                strata=pd.Series(dtype=object),
+                params=node.params,
+                rng=np.random.default_rng(0),
+            )
+        )
+
+    live = run()
+    with monkeypatch.context() as patch:
+        patch.setattr(kernels, "prepare_calibration_columns", previous_prepare)
+        previous = run()
+    assert live.artifacts["preparation"] == previous.artifacts["preparation"]
+    assert canonical_json(live.receipt) == canonical_json(previous.receipt)
+    assert live.columns.keys() == previous.columns.keys()
+    for key, values in live.columns.items():
+        pd.testing.assert_series_equal(values, previous.columns[key], check_exact=True)
+
+
 _NZ_DEFECTS = (
     "negative_age",
     "fractional_age",
