@@ -11,6 +11,7 @@ import ast
 import json
 import re
 from collections.abc import Mapping
+from datetime import date
 from decimal import Decimal, InvalidOperation
 from fractions import Fraction
 
@@ -26,6 +27,7 @@ from microcosm.build.money_normalization import (
     validate_money_normalization,
 )
 from microcosm.build.reference_factors import validate_factor_context
+from microcosm.build.transport import cli as cli_module
 from microcosm.build.transport import compose as compose_module
 from microcosm.frame.concepts import TransportRule
 from test_support.paths import paths_for
@@ -44,6 +46,19 @@ def _load(name):
 
 def _declaration():
     return validate_money_normalization(_load("money_normalization.json"))
+
+
+def test_run_entry_checks_all_scenario_donor_factors(monkeypatch):
+    spec = compose_module.load_transport_spec("nz")
+    checked = {}
+    monkeypatch.setattr(cli_module, "_today", lambda: date(2026, 11, 1))
+    monkeypatch.setattr(
+        cli_module,
+        "require_current_factors",
+        lambda selected, *, today: checked.update(selected),
+    )
+    cli_module._require_current_run_factors(spec, resume="auto")
+    assert set(checked) & _DONOR.keys() == _DONOR.keys()
 
 
 # A whole numeric token: an optional sign, digits and points, then any
