@@ -354,3 +354,31 @@ def test_release_wiring_promotes_all_five_inputs_and_probes() -> None:
     ]
     assert contract.populace_treatment == "out_of_scope"
     assert contract.rate == {"status": "not_used_measured_source"}
+
+
+def test_rent_reaches_its_own_household_when_person_order_differs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(module, "QRF", _RentQRF)
+    frame = _frame()
+    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    tables["person"] = tables["person"].iloc[::-1].reset_index(drop=True)
+    reordered = Frame(
+        tables,
+        frame.schema,
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+    )
+
+    result = with_us_housing_inputs(
+        reordered, seed=0, time_period=2024, acs_rent_donor=_donor()
+    )
+
+    person = result.table("person")
+    rent_by_household = person.set_index("person_household_id")["pre_subsidy_rent"]
+    tenure_by_household = result.table("household").set_index("household_id")[
+        "tenure_type"
+    ]
+    renters = tenure_by_household.index[tenure_by_household == "RENTED"]
+    others = tenure_by_household.index[tenure_by_household != "RENTED"]
+    assert (rent_by_household.loc[renters] == 12_000.0).all()
+    assert (rent_by_household.loc[others] == 0.0).all()
