@@ -440,6 +440,47 @@ def _lineage(kernel, column, *, normalizes=False):
     return Graph("xx", (SourceRef("donor", "fixture@1"),), tuple(nodes))
 
 
+def _later_owner(kernel, *, rewrite):
+    """A rules writer one population version above a money bridge's column."""
+    create = Node(
+        "create",
+        "toy.create@1",
+        structural=StructuralDelta.CREATE,
+        sources=("donor",),
+        outputs=(Owned("person", "major", "float64"),),
+    )
+    opened = Node(
+        "open", "toy.open@1", structural=StructuralDelta.FILTER, base="create"
+    )
+    bridge = Node(
+        "bridge",
+        kernel,
+        population="open",
+        inputs=(Slice("person", ("major",)),),
+        outputs=(Owned("person", "bridge_cents", "int64"),),
+    )
+    later = Node("next", "toy.open@1", structural=StructuralDelta.FILTER, base="open")
+    writer = Node(
+        "writer",
+        "toy.rules@1",
+        population="next",
+        inputs=(Slice("person", ("bridge_cents" if rewrite else "major",)),),
+        outputs=(
+            Owned(
+                "person",
+                "bridge_cents",
+                "int64" if rewrite else "float64",
+                rewrite=rewrite,
+            ),
+        ),
+    )
+    return Graph(
+        "xx",
+        (SourceRef("donor", "fixture@1"),),
+        (create, opened, bridge, later, writer),
+    )
+
+
 def _check(graph, *, declared=False):
     resources = {"money_normalization": graph_declaration()} if declared else {}
     compiled = compile_graph(graph)
@@ -462,9 +503,23 @@ def test_money_bridge_owns_a_new_column(kernel, declared):
     _check(_lineage(kernel, "new_cents"), declared=declared)
 
 
+@pytest.mark.parametrize("kernel", BRIDGES)
+@pytest.mark.parametrize("rewrite", [False, True])
+@pytest.mark.parametrize("declared", [False, True])
+def test_no_later_node_owns_a_money_bridge_column(kernel, rewrite, declared):
+    with pytest.raises(
+        ValueError, match="'writer' owns person.bridge_cents, which 'bridge' owns"
+    ):
+        _check(_later_owner(kernel, rewrite=rewrite), declared=declared)
+
+
+def test_two_owners_outside_money_bridges_pass_the_bridge_check():
+    _check(_lineage("toy.rules@1", "units"))
+
+
 @pytest.mark.parametrize("kernel", (*BRIDGES, "toy.rules@1"))
 def test_only_normalization_writes_a_normalized_companion(kernel):
-    with pytest.raises(ValueError, match="interest_income_cents"):
+    with pytest.raises(ValueError, match="is a money.normalize@1 companion"):
         _check(
             _lineage(kernel, "interest_income_cents", normalizes=True), declared=True
         )

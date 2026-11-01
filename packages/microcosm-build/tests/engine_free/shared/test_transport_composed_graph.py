@@ -7290,7 +7290,55 @@ def test_composition_checks_a_money_bridge_against_its_lineage(
     else:
         spec["resources"]["transport_graph"]["nodes"].append(row)
     if inherited:
-        with pytest.raises(ValueError, match="Money bridge 'nz.money.bridge' owns"):
+        with pytest.raises(ValueError, match="'nz.money.bridge' owns person"):
             compose_transport_graph(spec, config)
     else:
         assert compose_transport_graph(spec, config).node(bridge.id).kernel == kernel
+
+
+@pytest.mark.parametrize(
+    "column,rewrite,refused",
+    [
+        ("bridge_cents", False, True),
+        ("bridge_cents", True, True),
+        ("later_cents", False, False),
+    ],
+    ids=["replaces", "rewrites", "control"],
+)
+def test_composition_refuses_a_later_owner_of_a_money_bridge_column(
+    calibration_ancestry_composed, column, rewrite, refused
+):
+    composed = calibration_ancestry_composed
+    spec = copy.deepcopy(composed.spec)
+    spec["resources"]["transport_graph"]["nodes"].append(
+        {
+            "id": "nz.money.bridge",
+            "kernel": "money.minor_units@1",
+            "population": "nz.open",
+            "params": {"declaration": "{}"},
+            "outputs": [
+                {"entity": "person", "column": "bridge_cents", "dtype": "int64"}
+            ],
+        }
+    )
+    later = Node(
+        id="nz.money.later",
+        kernel="synthetic.rules@1",
+        population="nz.money",
+        inputs=(Slice("person", ("bridge_cents",)),) if rewrite else (),
+        outputs=(
+            Owned("person", column, "int64" if rewrite else "float64", rewrite=rewrite),
+        ),
+    )
+    branch = _version_filter("nz.money", "nz.terminal")[1]
+    config = replace(composed.config, extensions=(lambda *_: (branch, later),))
+    if refused:
+        with pytest.raises(
+            ValueError,
+            match="'nz.money.later' owns person.bridge_cents, which 'nz.money.bridge'",
+        ):
+            compose_transport_graph(spec, config)
+    else:
+        assert (
+            compose_transport_graph(spec, config).node(later.id).kernel == later.kernel
+        )

@@ -16,5 +16,6 @@ receipts and refusal messages except the solve-zero permitted-fields list, which
 now names the five quantization parameters; retain the counterfactual list.
 Check quantized membership lookup once before evaluation and name person rows
 whose memberships miss group ids.
-Refuse a money bridge output that its population lineage already owns, and keep
-each normalized column's integer companion with `money.normalize@1`.
+Refuse a second owner of a money bridge's column anywhere in its population
+lineage, and keep each normalized column's integer companion with
+`money.normalize@1`.

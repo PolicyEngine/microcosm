@@ -84,16 +84,17 @@ def test_skeleton_selector_matches_the_entitlement_selector(selection, rows, ref
         assert skeleton == extension
 
 
-def test_only_the_skeleton_selector_refuses_a_blank_binding_id():
-    """The one intended difference between the two selectors."""
-    selection = {"binding": " ", "field": "engine_ref"}
-    rows = ({"id": " ", "period": "test-period"},)
-    refs = {" ": "prepared-blank"}
+@pytest.mark.parametrize("binding", [" ", 5], ids=["blank", "non_text"])
+def test_only_the_skeleton_selector_needs_a_text_binding_id(binding):
+    """The text rule is the one intended difference between the two selectors."""
+    selection = {"binding": binding, "field": "engine_ref"}
+    rows = ({"id": binding, "period": "test-period"},)
+    refs = {binding: "prepared-binding"}
     with pytest.raises(ValueError, match="binding selection"):
         _param(_spec(rows), selection, refs)
     assert (
         entitlement._binding(_spec(rows), SimpleNamespace(engine_refs=refs), selection)
-        == "prepared-blank"
+        == "prepared-binding"
     )
 
 

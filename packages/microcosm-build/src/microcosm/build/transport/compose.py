@@ -920,22 +920,24 @@ def _money_producer_gaps(spec: Mapping[str, object]) -> list[str]:
 
 
 def _check_money_bridge_owners(graph: Graph, compiled: CompiledGraph) -> None:
-    """Refuse a money bridge output that its population lineage already owns.
+    """Refuse a second owner of a money bridge's column in its population lineage.
 
     The kernels refuse an existing output, but they read a projection that
-    omits a non-rewrite incumbent. Only the compiled lineage shows one.
+    omits a non-rewrite incumbent, and they never see a later owner. Only the
+    compiled lineage shows either one.
     """
     by_id = {node.id: node for node in graph.nodes}
     for (version, entity, column), owner in compiled.owners.items():
-        if by_id[owner].kernel not in _MONEY_BRIDGES:
-            continue
         current = by_id[version].base
         while current is not None:
             incumbent = compiled.owners.get((current, entity, column))
-            if incumbent is not None:
+            if incumbent is not None and (
+                by_id[owner].kernel in _MONEY_BRIDGES
+                or by_id[incumbent].kernel in _MONEY_BRIDGES
+            ):
                 raise ValueError(
-                    f"Money bridge {owner!r} owns {entity}.{column}, which "
-                    f"{incumbent!r} owns in its lineage; money has one owner."
+                    f"{owner!r} owns {entity}.{column}, which {incumbent!r} owns "
+                    "in its lineage; a money bridge's column has one owner."
                 )
             current = by_id[current].base
 

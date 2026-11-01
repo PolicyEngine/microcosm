@@ -396,11 +396,12 @@ class MoneyMinorUnitsKernel(KernelBase):
     multiple, rather than a binary64 multiplication, is authoritative. An
     unquantized before-tax payment may declare ``rounding: half_even``.
 
-    Optional engine reference and period parameters attribute derived outputs
-    to a declared pre-calibration rules stage. Attribution needs the engine
-    reference: composition finds a stage's nodes by the prepared reference
-    they carry, so a period alone refuses there. These parameters never
-    execute an engine. No weekly reporting value is owned by this kernel.
+    An optional engine reference attributes derived outputs to a declared
+    pre-calibration rules stage, and an optional period names that stage's
+    period. Composition finds a stage's nodes by the prepared reference they
+    carry, so a node with only a period can't produce a stage's derived output.
+    These parameters never execute an engine. This kernel owns no weekly
+    reporting value.
     """
 
     ref = MONEY_MINOR_UNITS_REF
