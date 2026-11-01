@@ -27,8 +27,8 @@ _REPOSITORY = paths_for("microcosm-build").repository
 NATIONAL = "ird_taxable_income_national_ty2024"
 AGE = "ird_taxable_income_age_ty2024"
 IRD_REASON = (
-    "B4: reviewed IRD-definition taxable-income measurement, annual component "
-    "closure and record universe remain required. Ageing resolution does not "
+    "B4: G8-r2c must supply reviewed IRD-definition taxable-income measurement, "
+    "annual component closure and the record universe. Ageing resolution does not "
     "establish that measurement."
 )
 
