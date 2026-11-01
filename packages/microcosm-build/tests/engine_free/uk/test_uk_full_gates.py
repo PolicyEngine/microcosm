@@ -109,6 +109,9 @@ def evidence(monkeypatch):
             "geography_id": "E14000001",
             "family": "population",
             "materialization": "uk_local_surface",
+            # A local row names its contract target (Vahid's third review of
+            # #1383, item 33); this one ties to no family.
+            "contract_target_id": "fixture.population",
         },
     )
     ordered = OrderedProblem(
@@ -124,7 +127,12 @@ def evidence(monkeypatch):
         ),
         benunit=pd.DataFrame({"benunit_id": ids}),
         household=pd.DataFrame(
-            {"household_id": ids, "source_household_id": ids, "income": [1.0, 1.0]}
+            {
+                "household_id": ids,
+                "source_household_id": ids,
+                "income": [1.0, 1.0],
+                "region": ["SOUTH_EAST", "SOUTH_EAST"],
+            }
         ),
         time_period="2024",
         weight_kind=weights.kind,
@@ -179,6 +187,20 @@ def test_gate_diagnostics_use_bound_matrix_and_row_identity(evidence):
     assert context.artifacts["local_target_diagnostics"][0]["relative_error"] == 0.0
     assert context.artifacts["national_calibration"]["matrix_target_count"] == 2
     assert context.artifacts["rules_engine"] is context.artifacts["coverage_engine"]
+
+
+def test_gate_context_carries_every_rows_figures(evidence):
+    """María's ruling of 2026-10-26 dropped the withholding: each row rests on
+    two source households here, and the gates get its figures all the same."""
+
+    context = _context(evidence)
+    assert "model_figures_withheld" not in context.artifacts
+    assert not hasattr(context.artifacts["parity_evidence"], "withheld_targets")
+    rows = context.artifacts["target_diagnostics"]
+    assert len(rows) == 2
+    for row in rows:
+        assert "model_figures_withheld" not in row
+        assert np.isfinite(row["estimate"]) and np.isfinite(row["relative_error"])
 
 
 def test_gate_context_subtracts_the_support_floor_drops(evidence):

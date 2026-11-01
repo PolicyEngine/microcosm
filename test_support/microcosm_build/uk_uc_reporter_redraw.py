@@ -17,6 +17,7 @@ from microcosm.build.uk_runtime.spi_support import (
 )
 from microcosm.build.uk_runtime.uc_capital_coherence import (
     PENSION_CREDIT_PROPERTY_CAPITAL_SOURCES,
+    PROPERTY_CAPITAL_SECURED_DEBT,
     cohere_uc_capital,
 )
 from microcosm.build.uk_runtime.uc_reporter_redraw import (
@@ -170,6 +171,8 @@ def _frame(*, child_only: bool = False):
                     "employment_income": 10_000.0 + benunit_id + member,
                     "self_employment_income": 100.0 * member,
                     "savings_interest_income": 10.0,
+                    # ISA interest apart (microcosm#1360): gross is the sum.
+                    "individual_savings_account_interest_income": 0.0,
                     "dividend_income": 20.0,
                     "property_income": 30.0,
                     "other_investment_income": 40.0,
@@ -191,6 +194,7 @@ def _frame(*, child_only: bool = False):
                     "employment_income": 0.0,
                     "self_employment_income": 0.0,
                     "savings_interest_income": 0.0,
+                    "individual_savings_account_interest_income": 0.0,
                     "dividend_income": 0.0,
                     "property_income": 0.0,
                     "other_investment_income": 0.0,
@@ -216,7 +220,10 @@ def _frame(*, child_only: bool = False):
             "household_is_capital_gains_clone": [row[4] for row in benunit_rows],
         }
     )
-    for column in PENSION_CREDIT_PROPERTY_CAPITAL_SOURCES:
+    for column in (
+        *PENSION_CREDIT_PROPERTY_CAPITAL_SOURCES,
+        *PROPERTY_CAPITAL_SECURED_DEBT.values(),
+    ):
         household[column] = 0.0
     return uk_national_frame(
         person=person,

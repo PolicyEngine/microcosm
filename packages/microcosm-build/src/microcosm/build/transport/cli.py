@@ -14,6 +14,10 @@ skeleton H5 and its descriptor, the calibration diagnostics file, the graph
 explorer page and ``build-status.json``. The status file lists the outputs
 the spec declares as still owed by a later package. There is no upload,
 staging or publication path; ``--local-only`` is the only mode.
+
+The currency check guards new runs only: ``auto`` and ``forbid`` require
+selected factors current on today's UTC date before CREATE; ``require`` only
+verifies stored work.
 """
 
 from __future__ import annotations
@@ -22,8 +26,9 @@ import argparse
 import json
 import os
 import sys
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
+from datetime import UTC, date, datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from types import MappingProxyType
@@ -32,20 +37,24 @@ import numpy as np
 import pandas as pd
 
 from microcosm.build.artifact_files import file_artifact, materialize_bytes
+from microcosm.build.reference_factors import require_current_factors
 from microcosm.frame import Frame
 from microcosm.frame.adapters.axiom import AxiomEntityTableDataset
 from microcosm.frame.materialize import put_frame_table
 from microcosm.frame.rules import RulesEngine
 from microcosm.frame.unit_construction import BenefitUnitRule
 from microcosm.graph import (
+    CompiledGraph,
     ContentStore,
     Graph,
     KernelContext,
     Node,
     Owned,
+    Population,
     ResumePolicy,
     RunManifest,
     StoreMissError,
+    StructuralDelta,
     compile_graph,
     explain_html,
     graph_to_json,
@@ -60,6 +69,7 @@ from .compose import (
     TransportGraphExtension,
     compose_transport_graph,
     load_transport_spec,
+    reference_profile_views,
     skeleton_create_declaration,
     transport_endpoints,
     transport_pending_outputs,
@@ -223,7 +233,12 @@ def prepare_transport_build(
     inventory_store: ContentStore | str | Path | None = None,
     resume: ResumePolicy = "auto",
 ) -> PreparedTransportBuild:
-    """Check activation, build the registry and CREATE inventory, then compose.
+    """Check factor currency and activation, then compose the prepared graph.
+
+    A new run (``auto`` or ``forbid``) first requires every factor the default
+    and scenario views select to be current on today's UTC date; ``require``
+    only verifies stored work. This is the run-entry check for every caller,
+    the CLI included. Composition and execution stay clock-free.
 
     Before registry preparation, CREATE or graph source reads, activation
     checks declaration resource paths, non-null selected roots and encoding
@@ -241,9 +256,10 @@ def prepare_transport_build(
     CREATE sources and reuses the stored inventory without running the probe.
     """
 
-    validate_transport_activation(spec)
     if resume not in {"auto", "require", "forbid"}:
         raise ValueError("resume must be 'auto', 'require' or 'forbid'.")
+    _require_current_run_factors(spec, resume=resume)
+    validate_transport_activation(spec)
     if resume == "require":
         root = (
             inventory_store.root
@@ -394,13 +410,54 @@ def _evidence(manifest: RunManifest, store: ContentStore, out: Path) -> dict:
 
 def _run(graph: Graph, registry, sources, store, resume) -> RunManifest:
     used = {name for node in graph.nodes for name in node.sources}
+    compiled = compile_graph(graph)
     return run_graph(
-        compile_graph(graph),
+        compiled,
         sources={name: path for name, path in sources.items() if name in used},
         store=store,
         kernels=registry.kernels,
         resume=resume,
+        _population_observer=_mass_log_unchanged(compiled),
+        # The observer keeps only record reprs and changes nothing.
+        _population_observer_detach=False,
     )
+
+
+def _mass_log_unchanged(compiled: CompiledGraph) -> Callable[[str, Population], None]:
+    """Refuse a node that changes the frame mass log it received.
+
+    A node's receipt can append records to the frame mass log
+    (``frame_mass_log_append``), and every later structural node of its
+    lineage, calibration included, receives that log without a ``Slice``. No
+    declaration names it, so the calibration ancestry guard cannot follow it:
+    a stage node could pass an undeclared value to calibration this way. No
+    transport kernel appends, so in a transport run the log is CREATE's. The
+    executor calls this for cold nodes and restored cache hits alike, before
+    it persists either, and the exception refuses the run.
+    """
+
+    logs: dict[str, tuple[str, ...]] = {}
+
+    def observe(node_id: str, population: Population) -> None:
+        node = compiled.graph.node(node_id)
+        log = tuple(map(repr, population.frame.mass_log))
+        if node.structural is StructuralDelta.NONE:
+            version = compiled.versions[node_id]
+            received = logs[version]
+        else:
+            version = node_id
+            received = (
+                log if node.structural is StructuralDelta.CREATE else logs[node.base]
+            )
+        if log != received:
+            raise ValueError(
+                f"Transport node {node_id!r} changed the frame mass log it "
+                "received; later kernels receive that log without a Slice, so "
+                "a transport run takes it from CREATE only."
+            )
+        logs[version] = log
+
+    return observe
 
 
 class _TimestampFreeHDFStore(pd.HDFStore):
@@ -466,6 +523,9 @@ def execute_transport_graph(
     later checkpoints reuse this invocation's work. The skeleton H5 is
     rewritten only when the export descriptor changed; an unchanged H5 must
     pass readback, and under ``require`` it must already exist.
+
+    Execution is clock-free. It runs a graph that :func:`prepare_transport_build`
+    checked; a caller that composes a graph itself owns the currency check.
     """
 
     if resume not in {"auto", "require", "forbid"}:
@@ -634,8 +694,34 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     return args
 
 
+def _today() -> date:
+    """Today's UTC date, so a local run and CI agree on a validity boundary."""
+    return datetime.now(UTC).date()
+
+
+def _require_current_run_factors(
+    spec: Mapping[str, object], *, resume: ResumePolicy
+) -> None:
+    """The currency check guards new runs only, including scenario selections.
+
+    ``require`` only replays stored work and may verify historical factors.
+    Check every factor the default and scenario views select, through the
+    walk activation uses, against today's UTC date, before CREATE.
+    """
+    if resume == "require":
+        return
+    selected = {}
+    for view in reference_profile_views(spec):
+        selected.update(view[2].get("selected_factors", {}))
+    require_current_factors(selected, today=_today())
+
+
 def main(argv: Sequence[str] | None = None) -> int:
-    """Run the CLI; return 0 on success and 1 on a refused build."""
+    """Run the CLI; return 0 on success and 1 on a refused build.
+
+    Preparation's currency check guards new runs only (``auto`` and
+    ``forbid``), before CREATE. ``require`` verifies existing stored work.
+    """
 
     try:
         args = parse_args(argv)

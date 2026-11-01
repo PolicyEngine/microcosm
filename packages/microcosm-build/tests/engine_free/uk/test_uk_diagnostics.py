@@ -162,6 +162,9 @@ def test_local_weakest_rollups_pin_family_area_and_country_shapes() -> None:
         "worst_target",
         "worst_abs_relative_error",
         "loss_contribution",
+        "nonzero_households",
+        "nonzero_source_households",
+        "effective_sample_size",
     }
     assert [row["country"] for row in areas["countries"]] == [
         "England",
@@ -179,8 +182,14 @@ def test_local_weakest_rollups_pin_family_area_and_country_shapes() -> None:
     assert trimmed["n_areas_scored"] == 2
     assert [row["area_code"] for row in trimmed["bottom_by_fit"]] == ["W07000041"]
 
-    # The rows ship in a release, so they carry the area's floor flag, never
-    # its rows, ESS or sources (microcosm#1301).
+    # Each row carries its area's rows, ESS and sources, and the floor flag
+    # beside them when the table has it (María's ruling of 2026-10-26).
+    wales_row = areas["bottom_by_fit"][0]
+    assert (
+        wales_row["nonzero_households"],
+        wales_row["nonzero_source_households"],
+        wales_row["effective_sample_size"],
+    ) == (80, 70, 65.0)
     flagged = uk_weakest_areas_by_fit(
         rows, support.assign(support_below_floor=[True, False])
     )
@@ -190,17 +199,9 @@ def test_local_weakest_rollups_pin_family_area_and_country_shapes() -> None:
     assert all(
         type(row["support_below_floor"]) is bool for row in flagged["bottom_by_fit"]
     )
-    for row in flagged["bottom_by_fit"]:
-        assert not {
-            "nonzero_households",
-            "nonzero_source_households",
-            "effective_sample_size",
-        } & set(row)
-    # Only the codes are required of the support table.
-    codes_only = uk_weakest_areas_by_fit(
-        rows, support.loc[:, ["geography_level", "area_code"]]
-    )
-    assert codes_only["bottom_by_fit"] == areas["bottom_by_fit"]
+    # The support figures are required of the support table.
+    with pytest.raises(ValueError, match="missing rollup column"):
+        uk_weakest_areas_by_fit(rows, support.loc[:, ["geography_level", "area_code"]])
 
 
 def test_local_fit_diagnostics_filter_national_rows_and_pin_support_shape() -> None:
@@ -241,15 +242,27 @@ def test_local_fit_diagnostics_filter_national_rows_and_pin_support_shape() -> N
         "share_failing_cells_in_bottom_ess_decile": 1.0,
         "spearman_worst_abs_relative_error_vs_ess": -1.0,
         "worst_areas": [
-            {"area_code": "E14000001", "worst_abs_relative_error": 0.3},
-            {"area_code": "E14000002", "worst_abs_relative_error": 0.05},
+            {
+                "area_code": "E14000001",
+                "worst_abs_relative_error": 0.3,
+                "rows": 2,
+                "ess": 1.0,
+                "sources": 1,
+            },
+            {
+                "area_code": "E14000002",
+                "worst_abs_relative_error": 0.05,
+                "rows": 20,
+                "ess": 20.0,
+                "sources": 20,
+            },
         ],
     }
     assert result["la"]["n_failing_cells"] == 1
     assert result["la"]["spearman_worst_abs_relative_error_vs_ess"] is None
 
-    # With the floor flag in the support table, each worst area carries it in
-    # place of its rows, ESS and sources (microcosm#1301).
+    # With the floor flag in the support table, each worst area carries it
+    # beside its rows, ESS and sources (María's ruling of 2026-10-26).
     flagged = uk_support_limited_misses(
         diagnostics,
         {
@@ -258,18 +271,10 @@ def test_local_fit_diagnostics_filter_national_rows_and_pin_support_shape() -> N
         },
         max_abs_relative_error=0.25,
     )
-    assert flagged["constituency"]["worst_areas"] == [
-        {
-            "area_code": "E14000001",
-            "worst_abs_relative_error": 0.3,
-            "support_below_floor": True,
-        },
-        {
-            "area_code": "E14000002",
-            "worst_abs_relative_error": 0.05,
-            "support_below_floor": True,
-        },
-    ]
+    assert [
+        (area["area_code"], area["rows"], area["support_below_floor"])
+        for area in flagged["constituency"]["worst_areas"]
+    ] == [("E14000001", 2, True), ("E14000002", 20, True)]
 
     rows = [
         _local_target_row(
@@ -317,12 +322,7 @@ def _consumption_columns(n: int) -> dict[str, np.ndarray]:
 
 
 def _diagnostics_case(*, with_skipped: bool = False, with_consumption: bool = False):
-    """One row per geography level, each carried by one household.
-
-    Every row rests on fewer than ten source households, so a test that is not
-    about withholding passes an empty withheld set; the withheld path has its
-    own tests (María's rule of 2026-10-21 withholds a thin row's figures).
-    """
+    """One row per geography level, each carried by one household."""
 
     levels_and_weights = (
         ("national", 11.0),
@@ -566,7 +566,6 @@ def test_payload_preserves_common_schema_and_adds_versioned_uk_evidence() -> Non
         frame,
         target_geography_levels=geography,
         target_registry=registry,
-        withheld=frozenset(),
         build={"release_id": "fixture"},
     )
 
@@ -700,6 +699,93 @@ def test_consumption_drift_compares_design_and_final_weights() -> None:
     assert "full_rate_vat_base" not in drift["totals"]
 
 
+def test_consumption_drift_carries_the_heating_fuels_where_the_frame_has_them() -> None:
+    """The liquid and solid fuels the stage draws (pe-uk#2572), read only where
+    the frame carries them, so an older spine keeps its drift block."""
+
+    from microcosm.build.uk_runtime.diagnostics import uk_consumption_drift
+
+    household = pd.DataFrame(_consumption_columns(4))
+    design = np.array([1.0, 1.0, 1.0, 1.0])
+    final = np.array([2.0, 0.0, 1.0, 1.0])
+    assert (
+        "liquid_fuel_consumption"
+        not in uk_consumption_drift(household, design, final)["totals"]
+    )
+    household["liquid_fuel_consumption"] = [100.0, 0.0, 50.0, 0.0]
+    household["solid_fuel_consumption"] = [0.0, 30.0, 0.0, 0.0]
+    totals = uk_consumption_drift(household, design, final)["totals"]
+    assert totals["liquid_fuel_consumption"]["final"] == 250.0
+    assert totals["solid_fuel_consumption"]["relative_change"] == -1.0
+
+
+def test_drift_flags_mark_totals_past_two_percent_and_shares_past_half_a_point() -> (
+    None
+):
+    """Warn-only flags at #1278's R1 thresholds; the payload keeps its shape."""
+
+    from microcosm.build.uk_runtime.diagnostics import (
+        UK_DRIFT_SHARE_FLAG,
+        UK_DRIFT_TOTAL_FLAG,
+        uk_consumption_drift_flags,
+    )
+
+    drift = {
+        "totals": {
+            "moves": {"relative_change": 0.021, "change": 21.0},
+            "edge": {"relative_change": -0.02, "change": -20.0},
+            "none": {"relative_change": None, "change": 0.0},
+        },
+        "shares": {
+            "moves": {"change": -0.0051},
+            "edge": {"change": 0.005},
+        },
+    }
+    flags = uk_consumption_drift_flags(drift)
+    assert flags["total_relative_change_above"] == UK_DRIFT_TOTAL_FLAG == 0.02
+    assert flags["share_change_above"] == UK_DRIFT_SHARE_FLAG == 0.005
+    assert flags["totals"] == ["moves"]
+    assert flags["shares"] == ["moves"]
+
+
+def test_drift_flags_reach_the_payload_as_warnings() -> None:
+    """Vahid's review of #1383, item 11: the flags are wired, not a hand run.
+
+    Each flagged total or share is one warn-only diagnostic warning, naming it
+    and the threshold, never its figures.
+    """
+
+    from microcosm.build.uk_runtime.diagnostics import (
+        UK_CONSUMPTION_DRIFT_WARNING_CODE,
+        uk_consumption_drift_warnings,
+    )
+
+    drift = {
+        "totals": {"solid_fuel_consumption": {"relative_change": -0.3, "change": -1.0}},
+        "shares": {"gas_connected_households": {"change": 0.0001}},
+    }
+    (warning,) = uk_consumption_drift_warnings(drift)
+    assert warning["code"] == UK_CONSUMPTION_DRIFT_WARNING_CODE
+    assert warning["severity"] == "warning"
+    assert "solid_fuel_consumption" in warning["message"]
+    assert "2%" in warning["message"] and "-0.3" not in warning["message"]
+    result, frame, registry, geography = _diagnostics_case(with_consumption=True)
+    payload = uk_calibration_diagnostics_payload(
+        result,
+        frame,
+        target_geography_levels=geography,
+        target_registry=registry,
+    )
+    flagged = [
+        warning
+        for warning in payload["diagnostic_warnings"]
+        if warning["code"] == UK_CONSUMPTION_DRIFT_WARNING_CODE
+    ]
+    assert flagged == uk_consumption_drift_warnings(
+        payload["uk_diagnostics"]["consumption_drift"]
+    )
+
+
 def test_consumption_drift_carries_the_full_rate_vat_base() -> None:
     """Consumption times the ETB VAT stage's full-rate share (#1207)."""
 
@@ -751,6 +837,35 @@ def test_consumption_drift_carries_the_stage_s_kwh() -> None:
     assert "electricity_kwh" not in without_region["totals"]
 
 
+def test_consumption_drift_carries_the_excise_quantities() -> None:
+    """Each excise quantity and base as stored, at both weights (#1359)."""
+
+    from microcosm.build.uk_runtime.diagnostics import uk_consumption_drift
+
+    household = pd.DataFrame(_consumption_columns(4))
+    household["beer_litres"] = [100.0, 0.0, 50.0, 10.0]
+    household["cigarettes_per_week"] = [20.0, 0.0, 0.0, 40.0]
+    household["remote_gaming_net_losses"] = [0.0, 30.0, 0.0, 0.0]
+    household["beer_draught_share"] = 0.4
+    design = np.array([1.0, 1.0, 1.0, 1.0])
+    final = np.array([2.0, 0.0, 1.0, 1.0])
+
+    totals = uk_consumption_drift(household, design, final)["totals"]
+
+    assert totals["beer_litres"]["design"] == pytest.approx(160.0)
+    assert totals["beer_litres"]["final"] == pytest.approx(260.0)
+    assert totals["cigarettes_per_week"]["final"] == pytest.approx(80.0)
+    assert totals["remote_gaming_net_losses"]["relative_change"] == -1.0
+    # A draught share is a ratio, not a quantity, and no other input is on
+    # the frame.
+    assert "beer_draught_share" not in totals
+    assert "wine_litres" not in totals
+    plain = uk_consumption_drift(pd.DataFrame(_consumption_columns(4)), design, final)[
+        "totals"
+    ]
+    assert "beer_litres" not in plain
+
+
 def test_payload_carries_the_consumption_drift_when_the_frame_has_it() -> None:
     result, frame, registry, geography = _diagnostics_case(with_consumption=True)
 
@@ -759,7 +874,6 @@ def test_payload_carries_the_consumption_drift_when_the_frame_has_it() -> None:
         frame,
         target_geography_levels=geography,
         target_registry=registry,
-        withheld=frozenset(),
     )
 
     drift = payload["uk_diagnostics"]["consumption_drift"]
@@ -789,7 +903,6 @@ def test_uk_payload_shared_layer_matches_shared_diagnostics_format() -> None:
         frame,
         target_geography_levels=geography,
         target_registry=registry,
-        withheld=frozenset(),
         build=build,
     )
 
@@ -846,7 +959,6 @@ def test_skipped_target_counts_as_a_geography_non_pass() -> None:
         frame,
         target_geography_levels=geography,
         target_registry=registry,
-        withheld=frozenset(),
     )
 
     assert len(payload["skipped"]) == 1
@@ -874,7 +986,6 @@ def test_skipped_target_counts_as_a_geography_non_pass() -> None:
             frame,
             target_geography_levels=missing_skipped,
             target_registry=registry,
-            withheld=frozenset(),
         )
 
 
@@ -947,7 +1058,6 @@ def test_writer_round_trips_strict_json(tmp_path: Path) -> None:
         frame,
         target_geography_levels=geography,
         target_registry=registry,
-        withheld=frozenset(),
     )
 
     assert isinstance(outcome, DiagnosticsWriteSuccess)
@@ -958,7 +1068,6 @@ def test_writer_round_trips_strict_json(tmp_path: Path) -> None:
             frame,
             target_geography_levels=geography,
             target_registry=registry,
-            withheld=frozenset(),
         )
     )
     invalid = write_uk_calibration_diagnostics(
@@ -967,7 +1076,6 @@ def test_writer_round_trips_strict_json(tmp_path: Path) -> None:
         frame,
         target_geography_levels=geography,
         target_registry=registry,
-        withheld=frozenset(),
         build={"not_json": object()},
     )
     assert isinstance(invalid, DiagnosticsWriteFailure)
@@ -1001,7 +1109,6 @@ def test_written_uk_diagnostics_match_the_published_json_schema(
         target_geography_levels=geography,
         target_registry=registry,
         build={"release_id": "fixture"},
-        withheld=frozenset(),
     )
 
     assert isinstance(outcome, DiagnosticsWriteSuccess)
@@ -1027,7 +1134,6 @@ def test_writer_rejects_nested_non_finite_build_provenance(
         frame,
         target_geography_levels=geography,
         target_registry=registry,
-        withheld=frozenset(),
         build={"nested": [{"value": value}]},
     )
 
@@ -1056,7 +1162,6 @@ def test_writer_reports_canonical_atomic_replace_failure(
         frame,
         target_geography_levels=geography,
         target_registry=registry,
-        withheld=frozenset(),
     )
 
     assert isinstance(outcome, DiagnosticsWriteFailure)
@@ -1097,7 +1202,6 @@ def test_writer_delegates_a_typed_payload_to_the_canonical_writer(
         frame,
         target_geography_levels=geography,
         target_registry=registry,
-        withheld=frozenset(),
     )
 
     assert isinstance(outcome, DiagnosticsWriteSuccess)
@@ -1222,13 +1326,13 @@ class TestSupportFamilyWeights:
             uk_support_family_weights(household)
 
 
-def test_a_thin_brma_row_keeps_its_place_but_not_its_model_figures() -> None:
-    """María's ruling of 2026-10-17 (#1305 review): ten source households per BRMA row.
+def test_a_thin_row_keeps_its_model_figures() -> None:
+    """María's ruling of 2026-10-26 dropped the withholding of microcosm#1262.
 
-    One BRMA row rests on three source households, the other on eleven. The
-    thin row stays in the payload with its model figures null and a note;
-    it counts as scored but never as passing, and stays out of the family
-    rollup, so nothing published can be differenced to recover it.
+    One BRMA row rests on three source households, the other on eleven. Both
+    keep their model figures and carry no withholding note or carrier
+    verdict; both count in the pass rates and the family rollup, and the
+    totals are the solve's own.
     """
 
     n = 14
@@ -1295,10 +1399,13 @@ def test_a_thin_brma_row_keeps_its_place_but_not_its_model_figures() -> None:
     )
     rows = {row["target_name"]: row for row in payload["targets"]}
     thin, wide = rows["thin_brma_target"], rows["wide_brma_target"]
-    assert thin["final_estimate"] is None and thin["relative_error"] is None
-    assert thin["within_tolerance"] is None
-    assert "model_figures_withheld" in thin["metadata"]
+    assert thin["final_estimate"] == pytest.approx(6.0)
+    assert thin["relative_error"] == pytest.approx(-0.4)
     assert wide["final_estimate"] == pytest.approx(14.0)
+    for row in (thin, wide):
+        metadata = row.get("metadata") or {}
+        assert "model_figures_withheld" not in metadata
+        assert "carrier_floor_met" not in metadata
     (brma,) = [
         row
         for row in payload["uk_diagnostics"]["target_pass_rates_by_geography_level"]
@@ -1306,785 +1413,8 @@ def test_a_thin_brma_row_keeps_its_place_but_not_its_model_figures() -> None:
     ]
     assert (brma["n_targets"], brma["n_scored"], brma["n_within_10pct"]) == (2, 2, 0)
     (family,) = payload["uk_diagnostics"]["weakest_families"]
-    assert family["n_targets"] == 1 and family["worst_target"] == wide["name"]
-
-
-def test_a_thin_national_row_keeps_its_place_but_not_its_model_figures() -> None:
-    """María's rule of 2026-10-21: a national row is bound however thin it is.
-
-    The BRMA rule now covers national rows. One national row rests on three source
-    households and stays bound, its model figures null and noted; the other,
-    on eleven, publishes. The withheld block restates the totals over the
-    published row, and no row is told it met a BRMA floor.
-    """
-
-    n = 14
-    sources = [0, 0, 1, 1, 2, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-    household = pd.DataFrame(
-        {
-            "household_id": np.arange(n, dtype=np.int64),
-            "source_household_id": np.asarray(sources, dtype=np.int64),
-            _SPI_COLUMN: [False] * n,
-            _CG_COLUMN: [False] * n,
-            "thin_measure": [1.0] * 6 + [0.0] * 8,
-            "wide_measure": [1.0] * n,
-        }
-    )
-    specs = [
-        TargetSpec(
-            name=name,
-            entity="household",
-            value=10.0,
-            measure=measure,
-            period=2023,
-            source="Synthetic UK diagnostics fixture",
-            family="dwp_universal_credit",
-            hierarchy=_fixture_hierarchy(name, "national"),
-        )
-        for name, measure in (
-            ("thin_payment_band", "thin_measure"),
-            ("wide_payment_band", "wide_measure"),
-        )
-    ]
-    geography = {f"{spec.name}@2023": "national" for spec in specs}
-    weights = np.ones(n)
-    frame = Frame(
-        {
-            "person": pd.DataFrame(
-                {
-                    "person_id": np.arange(n, dtype=np.int64),
-                    "person_household_id": np.arange(n, dtype=np.int64),
-                }
-            ),
-            "household": household,
-        },
-        EntitySchema(group_entities=("household",)),
-        {"household": Weights(weights, WeightKind.DESIGN)},
-    )
-    registry = TargetRegistry(specs, country="uk")
-    result = score_targets(frame, registry.to_target_set(), weights=weights)
-    payload = uk_calibration_diagnostics_payload(
-        result,
-        frame,
-        target_geography_levels=geography,
-        target_registry=registry,
-    )
-    rows = {row["target_name"]: row for row in payload["targets"]}
-    thin, wide = rows["thin_payment_band"], rows["wide_payment_band"]
-    assert thin["final_estimate"] is None and thin["relative_error"] is None
-    assert "model_figures_withheld" in thin["metadata"]
-    assert "carrier_floor_met" not in (thin.get("metadata") or {})
-    assert wide["final_estimate"] == pytest.approx(14.0)
-    (national,) = [
-        row
-        for row in payload["uk_diagnostics"]["target_pass_rates_by_geography_level"]
-        if row["geography_level"] == "national"
-    ]
-    assert (national["n_targets"], national["n_scored"]) == (2, 2)
-    block = payload["uk_diagnostics"]["model_figures_withheld"]
-    assert block["targets"] == 1 and block["totals_basis"] == "published_rows"
-    assert payload["loss_trajectory"] == []
-
-
-def test_a_thin_local_area_row_stays_with_the_area_support_rule() -> None:
-    """Constituency and authority rows keep the local line's area-support rule.
-
-    María's rule of 2026-10-21 on thin rows reaches national, regional and
-    BRMA rows; whether it reaches the local line is still hers to rule, and
-    the report guard matches a withheld local row by its bare area code.
-    """
-
-    from types import SimpleNamespace
-
-    from scipy import sparse
-
-    from microcosm.build.uk_runtime.diagnostics import uk_withheld_rows
-
-    n = 12
-    matrix = sparse.csr_array(
-        (np.ones(3), (np.zeros(3, dtype=int), np.arange(3))), shape=(1, n)
-    )
-    problem = SimpleNamespace(matrix=matrix, names=["thin_row@2025"])
-    frame = Frame(
-        {
-            "person": pd.DataFrame(
-                {
-                    "person_id": np.arange(n, dtype=np.int64),
-                    "person_household_id": np.arange(n, dtype=np.int64),
-                }
-            ),
-            "household": pd.DataFrame(
-                {
-                    "household_id": np.arange(n, dtype=np.int64),
-                    "source_household_id": np.arange(n, dtype=np.int64),
-                }
-            ),
-        },
-        EntitySchema(group_entities=("household",)),
-        {"household": Weights(np.ones(n), WeightKind.DESIGN)},
-    )
-    rows = [{"name": "thin_row@2025"}]
-    for level, withheld in (
-        ("national", True),
-        ("region", True),
-        ("brma", True),
-        ("statistical_scope", True),
-        ("constituency", False),
-        ("local_authority", False),
-        ("la", False),
-    ):
-        found = uk_withheld_rows(
-            problem, np.ones(n), frame, rows, {"thin_row@2025": level}
-        )
-        assert (found == {"thin_row@2025"}) is withheld, level
-
-
-def _withheld_sets(
-    rows: dict[str, list[int]], n: int, values: dict[str, float] | None = None
-) -> tuple[set[str], set[str]]:
-    """``uk_withheld_row_sets`` over rows given by the households that carry them.
-
-    Every household is its own source household and carries weight one.
-    """
-
-    from types import SimpleNamespace
-
-    from scipy import sparse
-
-    from microcosm.build.uk_runtime.diagnostics import uk_withheld_row_sets
-
-    names = list(rows)
-    dense = np.zeros((len(names), n))
-    for position, name in enumerate(names):
-        dense[position, rows[name]] = (values or {}).get(name, 1.0)
-    problem = SimpleNamespace(matrix=sparse.csr_array(dense), names=names)
-    frame = Frame(
-        {
-            "person": pd.DataFrame(
-                {
-                    "person_id": np.arange(n, dtype=np.int64),
-                    "person_household_id": np.arange(n, dtype=np.int64),
-                }
-            ),
-            "household": pd.DataFrame(
-                {
-                    "household_id": np.arange(n, dtype=np.int64),
-                    "source_household_id": np.arange(n, dtype=np.int64),
-                }
-            ),
-        },
-        EntitySchema(group_entities=("household",)),
-        {"household": Weights(np.ones(n), WeightKind.DESIGN)},
-    )
-    return uk_withheld_row_sets(
-        problem, np.ones(n), frame, [{"name": name} for name in names]
-    )
-
-
-def test_a_band_its_total_gives_back_withholds_the_next_smallest_band() -> None:
-    """Vahid's second review of #1333, item 10, and María's hard rule.
-
-    The total less the published bands gives the thin band back, so the
-    next-smallest band is withheld beside it, not the total. The two together
-    rest on fifteen source households, which the published rows may give back.
-    """
-
-    thin, beside = _withheld_sets(
-        {
-            "total": list(range(30)),
-            "band_a": [0, 1, 2],
-            "band_b": list(range(3, 15)),
-            "band_c": list(range(15, 30)),
-        },
-        30,
-    )
-    assert (thin, beside) == ({"band_a"}, {"band_b"})
-
-
-def test_a_row_given_back_two_ways_loses_a_giver_from_each() -> None:
-    """Two relations give the thin band back, so one giver of each is withheld.
-
-    While both stand, every giver has a stand-in and the smallest goes first
-    (the other total's rest); then the first total's bands are the only way
-    back, and the next-smallest of them goes.
-    """
-
-    thin, beside = _withheld_sets(
-        {
-            "total": list(range(30)),
-            "band_a": [0, 1, 2],
-            "band_b": list(range(3, 15)),
-            "band_c": list(range(15, 30)),
-            "other_total": [0, 1, 2, *range(30, 40)],
-            "other_rest": list(range(30, 40)),
-        },
-        40,
-    )
-    assert (thin, beside) == ({"band_a"}, {"other_rest", "band_b"})
-
-
-def test_proportional_thin_rows_are_no_recovery() -> None:
-    """A thin count and an amount on the same households differ by nothing.
-
-    The amount is twice the count everywhere, so their difference is zero and
-    no published row gives anything back by it; the total's relation alone
-    asks for one more band.
-    """
-
-    thin, beside = _withheld_sets(
-        {
-            "total": list(range(30)),
-            "band_a_count": [0, 1, 2],
-            "band_a_amount": [0, 1, 2],
-            "band_b": list(range(3, 15)),
-            "band_c": list(range(15, 30)),
-        },
-        30,
-        values={"band_a_amount": 2.0},
-    )
-    assert (thin, beside) == ({"band_a_count", "band_a_amount"}, {"band_b"})
-
-
-def test_a_thin_row_no_published_row_gives_back_withholds_nothing_more() -> None:
-    thin, beside = _withheld_sets(
-        {"band_a": [0, 1, 2], "band_b": list(range(3, 15))}, 15
-    )
-    assert (thin, beside) == ({"band_a"}, set())
-
-
-def test_a_row_withheld_beside_a_thin_one_says_so_and_meets_the_schema(
-    tmp_path: Path,
-) -> None:
-    """The written diagnostics tell a row withheld beside a thin one from it.
-
-    BRMA rows: the thin band fails the ten-household floor; the band withheld
-    beside it meets the floor and is flagged ``complementary_withholding``, as
-    the release contract reads it. The payload, with its null figures, its
-    notes and its restated totals, is valid against the published schema.
-    """
-
-    n = 30
-    members = {
-        "total": range(30),
-        "band_a": range(3),
-        "band_b": range(3, 15),
-        "band_c": range(15, 30),
-    }
-    household = pd.DataFrame(
-        {
-            "household_id": np.arange(n, dtype=np.int64),
-            "source_household_id": np.arange(n, dtype=np.int64),
-            _SPI_COLUMN: [False] * n,
-            _CG_COLUMN: [False] * n,
-        }
-    )
-    for name, carriers in members.items():
-        household[f"{name}_measure"] = 0.0
-        household.loc[list(carriers), f"{name}_measure"] = 1.0
-    specs = [
-        TargetSpec(
-            name=name,
-            entity="household",
-            value=float(len(carriers)),
-            measure=f"{name}_measure",
-            period=2023,
-            source="Synthetic UK diagnostics fixture",
-            family="fixture",
-            hierarchy=_fixture_hierarchy(name, "brma"),
-        )
-        for name, carriers in members.items()
-    ]
-    geography = {f"{spec.name}@2023": "brma" for spec in specs}
-    weights = np.ones(n)
-    frame = Frame(
-        {
-            "person": pd.DataFrame(
-                {
-                    "person_id": np.arange(n, dtype=np.int64),
-                    "person_household_id": np.arange(n, dtype=np.int64),
-                }
-            ),
-            "household": household,
-        },
-        EntitySchema(group_entities=("household",)),
-        {"household": Weights(weights, WeightKind.DESIGN)},
-    )
-    registry = TargetRegistry(specs, country="uk")
-    result = score_targets(frame, registry.to_target_set(), weights=weights)
-    path = tmp_path / "calibration_diagnostics.json"
-
-    outcome = write_uk_calibration_diagnostics(
-        result,
-        path,
-        frame,
-        target_geography_levels=geography,
-        target_registry=registry,
-    )
-
-    assert isinstance(outcome, DiagnosticsWriteSuccess)
-    document = load_strict_json(path.read_bytes())
-    assert published_json_schema_errors(document) == []
-    rows = {row["target_name"]: row for row in document["targets"]}
-    thin, beside = rows["band_a"]["metadata"], rows["band_b"]["metadata"]
-    assert thin["carrier_floor_met"] is False
-    assert "complementary_withholding" not in thin
-    assert beside["carrier_floor_met"] is True
-    assert beside["complementary_withholding"] is True
-    assert beside["model_figures_withheld"].startswith(
-        "model figures withheld: with the published rows"
-    )
-    assert rows["band_b"]["final_estimate"] is None
-    assert rows["total"]["final_estimate"] == pytest.approx(30.0)
-    assert document["uk_diagnostics"]["model_figures_withheld"]["targets"] == 2
-
-
-def _thin_and_wide_brma_payload(
-    thin_values=(1.0,) * 6 + (0.0,) * 8, extra_options=None, thin_target=10.0
-):
-    """The thin/wide BRMA fixture's diagnostics payload and its result.
-
-    ``extra_options`` joins the result's options, as a solve records them.
-    """
-
-    n = 14
-    sources = [0, 0, 1, 1, 2, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-    household = pd.DataFrame(
-        {
-            "household_id": np.arange(n, dtype=np.int64),
-            "source_household_id": np.asarray(sources, dtype=np.int64),
-            _SPI_COLUMN: [False] * n,
-            _CG_COLUMN: [False] * n,
-            "thin_measure": list(thin_values),
-            "wide_measure": [1.0] * n,
-            "other_measure": [0.5] * n,
-        }
-    )
-    specs = [
-        TargetSpec(
-            name=name,
-            entity="household",
-            value=value,
-            measure=measure,
-            period=2023,
-            source="Synthetic UK diagnostics fixture",
-            family="private_rent",
-            hierarchy=_fixture_hierarchy(name, "brma"),
-        )
-        for name, measure, value in (
-            ("thin_brma_target", "thin_measure", thin_target),
-            ("wide_brma_target", "wide_measure", 10.0),
-            ("other_brma_target", "other_measure", 7.5),
-        )
-    ]
-    geography = {f"{spec.name}@2023": "brma" for spec in specs}
-    weights = np.ones(n)
-    frame = Frame(
-        {
-            "person": pd.DataFrame(
-                {
-                    "person_id": np.arange(n, dtype=np.int64),
-                    "person_household_id": np.arange(n, dtype=np.int64),
-                }
-            ),
-            "household": household,
-        },
-        EntitySchema(group_entities=("household",)),
-        {"household": Weights(weights, WeightKind.DESIGN)},
-    )
-    registry = TargetRegistry(specs, country="uk")
-    result = score_targets(frame, registry.to_target_set(), weights=weights)
-    if extra_options:
-        from dataclasses import replace
-
-        result = replace(result, options={**result.options, **extra_options})
-    support = pd.DataFrame(
-        columns=[
-            "geography_level",
-            "area_code",
-            "nonzero_households",
-            "nonzero_source_households",
-            "effective_sample_size",
-        ]
-    )
-    payload = uk_calibration_diagnostics_payload(
-        result,
-        frame,
-        target_geography_levels=geography,
-        target_registry=registry,
-        local_area_support=support,
-    )
-    return payload, result
-
-
-def test_no_published_total_gives_a_withheld_row_back() -> None:
-    """María's ruling of 2026-10-18: the totals cover the published rows only.
-
-    Try to recover the withheld row from what the payload publishes: the
-    final and initial losses less the published rows' contributions leave
-    nothing, the fraction within 10% is the published rows' own, and the
-    trajectory, which no published row can be set against, is empty.
-    """
-
-    import math
-
-    payload, result = _thin_and_wide_brma_payload()
-    rows = {row["target_name"]: row for row in payload["targets"]}
-    thin = rows.pop("thin_brma_target")
-    assert thin["final_estimate"] is None
-    assert thin.get("final_loss_contribution") is None
-    published = list(rows.values())
-    assert payload["final_loss"] == math.fsum(
-        row["final_loss_contribution"] for row in published
-    )
-    # The initial loss is the published rows' too, from their own fields.
-    assert payload["initial_loss"] == pytest.approx(
-        math.fsum(
-            row["target_loss_weight_share"]
-            * min(
-                abs(row["initial_estimate"] - row["target"]) / row["target_loss_scale"],
-                payload["target_loss_basis"]["cap"],
-            )
-            for row in published
-        ),
-        rel=1e-12,
-    )
-    # Either total over every row would have left the thin row's share.
-    assert payload["final_loss"] < result.final_loss
-    assert payload["fraction_within_10pct"] == pytest.approx(
-        sum(abs(row["relative_error"]) <= 0.10 for row in published) / len(published)
-    )
-    assert payload["loss_trajectory"] == []
-    assert payload["past_cap_census"]["n_targets"] == len(published)
-    block = payload["uk_diagnostics"]["model_figures_withheld"]
-    assert block["targets"] == 1 and block["totals_basis"] == "published_rows"
-    # A build with nothing withheld keeps the solve's own totals.
-    payload, result = _thin_and_wide_brma_payload(thin_values=(1.0,) * 14)
-    assert payload["final_loss"] == pytest.approx(result.final_loss, rel=1e-12)
-    assert payload["loss_trajectory"] == pytest.approx(list(result.loss_trajectory))
+    assert family["n_targets"] == 2
     assert "model_figures_withheld" not in payload["uk_diagnostics"]
-
-
-def _numbers(value):
-    if isinstance(value, bool):
-        return
-    if isinstance(value, (int, float)):
-        yield float(value)
-    elif isinstance(value, dict):
-        for item in value.values():
-            yield from _numbers(item)
-    elif isinstance(value, list):
-        for item in value:
-            yield from _numbers(item)
-
-
-def test_a_withheld_row_inside_ten_percent_counts_nowhere() -> None:
-    """The third review of #1305: no test had a withheld row inside 10%.
-
-    The thin row now misses its target by about 3%. Of the published rows
-    one is inside 10% and one is not, so the fraction is a half; counting the
-    numerator over every row would make it one.
-    """
-
-    payload, _ = _thin_and_wide_brma_payload(thin_target=6.2)
-    rows = {row["target_name"]: row for row in payload["targets"]}
-    assert rows["thin_brma_target"]["final_estimate"] is None
-    assert payload["fraction_within_10pct"] == 0.5
-    (brma,) = [
-        row
-        for row in payload["uk_diagnostics"]["target_pass_rates_by_geography_level"]
-        if row["geography_level"] == "brma"
-    ]
-    assert brma["n_within_10pct"] == 1
-
-
-def test_every_brma_row_states_its_ten_household_verdict() -> None:
-    """María's ruling of 2026-10-19 on the fourth review of #1305.
-
-    Every BRMA row carries ``carrier_floor_met``, false exactly where its model
-    figures are withheld, so the release contract can warn about a thin row
-    the build never flagged.
-    """
-
-    payload, _ = _thin_and_wide_brma_payload()
-    verdicts = {
-        row["target_name"]: row["metadata"]["carrier_floor_met"]
-        for row in payload["targets"]
-    }
-    assert verdicts == {
-        "thin_brma_target": False,
-        "wide_brma_target": True,
-        "other_brma_target": True,
-    }
-
-
-def test_the_published_options_are_settings_only() -> None:
-    """The fourth review of #1305: an outcome key added to the allow-list
-    passed every test. Each key here is a setting the solve was given; a new
-    one is added here, after checking that it holds no outcome."""
-
-    from microcosm.diagnostics import (
-        UK_WITHHELD_PUBLISHED_ITERATE_FIELDS,
-        UK_WITHHELD_PUBLISHED_OPTIONS,
-    )
-
-    assert UK_WITHHELD_PUBLISHED_OPTIONS == {
-        "budget_basis",
-        "epochs",
-        "feasible_draw_pi_hi",
-        "gate_initialization_supplied",
-        "iterate_selection",
-        "l1_lambda",
-        "l1_penalty",
-        "l2_anchor",
-        "l2_anchor_weights_supplied",
-        "l2_basis",
-        "l2_lambda",
-        "l2_penalty",
-        "learning_rate",
-        "mass",
-        "mass_parametrization",
-        "mass_reason",
-        "matrix_format",
-        "max_weight_ratio",
-        "method",
-        "seed",
-        "target_loss_cap",
-        "target_loss_scales",
-        "target_loss_weights",
-        "target_records",
-        "warm_start_weights",
-    }
-    assert UK_WITHHELD_PUBLISHED_ITERATE_FIELDS == {
-        "rule",
-        "selected_epoch",
-        "epochs_executed",
-        "epoch_convention",
-    }
-
-
-def test_no_loss_over_every_row_survives_in_the_payload() -> None:
-    """The third review of #1305: the solve's options kept its iterate's loss.
-
-    ``iterate_selection_receipt`` held the selected iterate's loss over every
-    row, which less the restated final loss gave the withheld row back. While
-    a row is withheld the options keep their settings only, and no number in
-    the payload equals a loss over every row.
-    """
-
-    import math
-
-    receipt = {
-        "rule": "best_feasible_loss",
-        "selected_epoch": 3,
-        "epochs_executed": 5,
-        "epoch_convention": "completed_optimizer_updates; zero is start",
-        "selected_loss_float32": 0.2617,
-        "closing_iterate_loss_float32": 0.2711,
-    }
-    extra = {
-        "iterate_selection_receipt": receipt,
-        "budget_search": {"probes": [{"loss": 0.3119}]},
-        "an_outcome_nobody_listed": 0.2903,
-    }
-    payload, result = _thin_and_wide_brma_payload(extra_options=extra)
-    options = payload["options"]
-    assert options["iterate_selection_receipt"] == {
-        **receipt,
-        "selected_loss_float32": None,
-        "closing_iterate_loss_float32": None,
-    }
-    assert options["budget_search"] is None
-    assert options["an_outcome_nobody_listed"] is None
-    assert options["method"] == "score_only"
-    every_row = (result.final_loss, result.initial_loss, 0.2617, 0.2711, 0.3119)
-    for number in _numbers(payload):
-        assert not any(math.isclose(number, loss, rel_tol=1e-9) for loss in every_row)
-    # With nothing withheld the options stay as the solve wrote them.
-    payload, _ = _thin_and_wide_brma_payload(
-        thin_values=(1.0,) * 14, extra_options=extra
-    )
-    assert payload["options"]["iterate_selection_receipt"] == receipt
-    assert payload["options"]["an_outcome_nobody_listed"] == 0.2903
-
-
-def test_the_restated_totals_match_the_solve_and_drop_a_pushed_out_row() -> None:
-    """Over every row the restatement reproduces the solve's own totals.
-
-    A withheld row pushed past the cap leaves the census's listing and count.
-    """
-
-    from types import SimpleNamespace
-
-    from microcosm.build.uk_runtime.diagnostics import (
-        _restate_totals_over_published_rows,
-    )
-
-    def row(name, target, initial, final):
-        return SimpleNamespace(
-            name=name,
-            target=target,
-            initial_estimate=initial,
-            final_estimate=final,
-            relative_error=(final - target) / target,
-        )
-
-    rows = [
-        row("a@2025", 10.0, 11.0, 10.5),
-        row("b@2025", 20.0, 19.0, 21.0),
-        row("thin@2025", 10.0, 12.0, 400.0),
-    ]
-    result = SimpleNamespace(
-        diagnostics=rows,
-        target_loss_weights=np.array([1.0, 2.0, 1.0]),
-        target_loss_scales=np.array([10.0, 20.0, 10.0]),
-        target_loss_cap=10.0,
-        options={"target_loss_cap": 10.0},
-    )
-    payload: dict[str, object] = {}
-    _restate_totals_over_published_rows(payload, result, frozenset())
-    shares = np.array([0.25, 0.5, 0.25])
-    assert payload["final_loss"] == pytest.approx(
-        0.25 * 0.05 + 0.5 * 0.05 + 0.25 * min(39.0, 10.0)
-    )
-    assert payload["initial_loss"] == pytest.approx(
-        float(shares @ np.array([0.1, 0.05, 0.2]))
-    )
-    assert payload["past_cap_census"]["pushed_out"] == 1
-    _restate_totals_over_published_rows(payload, result, frozenset({"thin@2025"}))
-    assert payload["final_loss"] == pytest.approx(0.25 * 0.05 + 0.5 * 0.05)
-    assert payload["fraction_within_10pct"] == 1.0
-    census = payload["past_cap_census"]
-    assert census["n_targets"] == 2
-    assert census["pushed_out"] == 0 and census["pushed_out_rows"] == []
-
-
-def test_written_rows_flag_every_row_while_any_is_withheld() -> None:
-    from microcosm.build.uk_runtime.diagnostics import uk_withhold_brma_figures
-
-    withheld = frozenset({"thin@2025"})
-    rows = [
-        {"name": "thin@2025", "target": 10.0, "estimate": 6.0, "relative_error": -0.4},
-        {"name": "wide@2025", "target": 10.0, "estimate": 14.0, "relative_error": 0.4},
-    ]
-    thin, wide = uk_withhold_brma_figures(rows, withheld)
-    assert thin["estimate"] is None and thin["relative_error"] is None
-    assert thin["target"] == 10.0 and thin["model_figures_withheld"] is True
-    assert wide == {**rows[1], "model_figures_withheld": False}
-    assert rows[0]["estimate"] == 6.0
-    # With nothing withheld the written table keeps its old columns.
-    flagged = [{**rows[0], "model_figures_withheld": True}]
-    assert uk_withhold_brma_figures(flagged, frozenset()) == [rows[0]]
-
-
-def test_the_report_guard_refuses_any_mention_of_a_withheld_row(capsys) -> None:
-    """María's ruling of 2026-10-19: no gate output names a withheld row.
-
-    The third review of #1305 found more than fifteen shapes that slipped
-    past a guard looking for figures beside a name. The guard now refuses the
-    name, the gate key and the area code themselves, in any case, anywhere.
-    The fourth found that its message named the place, and a failed receipt
-    sends the message on: it is now constant, and the place stays on stderr.
-    """
-
-    from microcosm.build.uk_runtime.diagnostics import (
-        UK_WITHHELD_ROW_NAMED_MESSAGE,
-        UKWithheldRowNamedError,
-        uk_refuse_named_withheld_rows,
-    )
-
-    names = frozenset({"ons.rent.private_rent_brma@S33999999@2025"})
-    keys = frozenset({"private_rent/S33999999/rent/private_rent_brma"})
-    (key,) = keys
-
-    def guard(report):
-        uk_refuse_named_withheld_rows(report, names=names, keys=keys)
-
-    # Counts, published rows and other areas pass.
-    guard(
-        {
-            "outcomes": [
-                {
-                    "failures": ["private_rent/E06000001/rent/private_rent +30.0%"],
-                    "details": {
-                        "withheld_targets": 1,
-                        "family_sizes": {"private_rent": 7},
-                        "failing_targets": {
-                            "private_rent/S33999998/rent/private_rent_brma": 0.3
-                        },
-                    },
-                }
-            ]
-        }
-    )
-    for report in (
-        {"failing_targets": {key: -0.4}},
-        {"rows": [{"name": key, "relative_error": -0.4}]},
-        {"pairs": [[key, -0.4]]},
-        {key: "-41.2%"},
-        {"names": [key], "errors": [-0.4]},
-        {"failures": [f"{key} is 40 per cent out"]},
-        {"failures": [f"err=-4.0e-01 for {key.upper()}"]},
-        {"failures": ["ons.rent.private_rent_brma@S33999999 failed"]},
-        {"failures": ["S33999999 is beyond the bound"]},
-        {"dormant_exclusions": [key]},
-    ):
-        with pytest.raises(UKWithheldRowNamedError) as excinfo:
-            guard(report)
-        message = str(excinfo.value)
-        assert message == UK_WITHHELD_ROW_NAMED_MESSAGE
-        for label in (key, "S33999999", "failing_targets", "failures", "40"):
-            assert label.casefold() not in message.casefold()
-        assert "names a withheld row" in capsys.readouterr().err
-    # Nothing withheld: nothing to guard.
-    uk_refuse_named_withheld_rows(
-        {"failing_targets": {key: -0.4}}, names=frozenset(), keys=frozenset()
-    )
-
-
-def test_an_explicit_zero_in_a_brma_row_carries_nothing() -> None:
-    """A stored zero is no entry: the household does not carry the row."""
-
-    from types import SimpleNamespace
-
-    from scipy import sparse
-
-    from microcosm.build.uk_runtime.diagnostics import uk_withheld_brma_rows
-
-    n = 12
-    data = np.array([1.0] * 9 + [0.0] * 3)
-    matrix = sparse.csr_array((data, (np.zeros(n, dtype=int), np.arange(n))), (1, n))
-    assert matrix.nnz == n
-    problem = SimpleNamespace(matrix=matrix, names=["brma_row@2025"])
-    frame = Frame(
-        {
-            "person": pd.DataFrame(
-                {
-                    "person_id": np.arange(n, dtype=np.int64),
-                    "person_household_id": np.arange(n, dtype=np.int64),
-                }
-            ),
-            "household": pd.DataFrame(
-                {
-                    "household_id": np.arange(n, dtype=np.int64),
-                    "source_household_id": np.arange(n, dtype=np.int64),
-                }
-            ),
-        },
-        EntitySchema(group_entities=("household",)),
-        {"household": Weights(np.ones(n), WeightKind.DESIGN)},
-    )
-    rows = [{"name": "brma_row@2025"}]
-    levels = {"brma_row@2025": "brma"}
-    assert uk_withheld_brma_rows(problem, np.ones(n), frame, rows, levels) == {
-        "brma_row@2025"
-    }
-    data[9] = 1.0
-    matrix = sparse.csr_array((data, (np.zeros(n, dtype=int), np.arange(n))), (1, n))
-    problem = SimpleNamespace(matrix=matrix, names=["brma_row@2025"])
-    assert uk_withheld_brma_rows(problem, np.ones(n), frame, rows, levels) == set()
-    # A zero weight carries nothing either.
-    weights = np.ones(n)
-    weights[0] = 0.0
-    assert uk_withheld_brma_rows(problem, weights, frame, rows, levels) == {
-        "brma_row@2025"
-    }
+    shared = diagnostics_payload(result, target_registry=registry)
+    for field in ("initial_loss", "final_loss", "loss_trajectory", "options"):
+        assert payload[field] == shared[field]

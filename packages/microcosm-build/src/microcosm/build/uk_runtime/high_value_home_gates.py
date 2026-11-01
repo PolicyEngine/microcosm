@@ -78,9 +78,9 @@ REQUIRED_COLUMNS = (
     "source_household_id",
 )
 #: What the family and its evidence cover until the coverage decision
-#: (microcosm#1240 fix 6, tracked on microcosm#1278 since #1240 closed into
-#: it): carried in the evidence summary and both gates' details, so every
-#: reading of these figures names its scope.
+#: (microcosm#1240 fix 6, now tracked on microcosm#1095): carried in the
+#: evidence summary and both gates' details, so every reading of these
+#: figures names its scope.
 HIGH_VALUE_HOME_SCOPE: Mapping[str, str] = {
     "label": "owner_occupied_main_residences_only",
     "note": (

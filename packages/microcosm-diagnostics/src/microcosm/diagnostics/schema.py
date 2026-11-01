@@ -400,9 +400,9 @@ class UKAreaFit(DiagnosticsModel):
     worst_target: NonBlankText
     worst_abs_relative_error: NonNegativeFiniteFloat
     loss_contribution: NonNegativeFiniteFloat
-    # Per-area support figures are withheld from released diagnostics
-    # (microcosm#1301); a row carries the floor flag instead. The figure
-    # fields stay optional so earlier payloads still parse.
+    # The per-area support figures, which the releases built between
+    # microcosm#1301 and María's ruling of 2026-10-26 withheld; optional so
+    # those payloads still parse. The floor flag rides beside them.
     support_below_floor: bool | None = None
     nonzero_households: NonNegativeInt | None = None
     nonzero_source_households: NonNegativeInt | None = None

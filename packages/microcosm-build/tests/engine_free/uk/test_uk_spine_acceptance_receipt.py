@@ -99,6 +99,13 @@ def _apply_pending_roster_transformations(
     del roster[start : start + len(spi_block)]
     brma = roster.index("frs_brma")
     roster[brma + 1 : brma + 1] = spi_block
+    # Annual income re-mint pending: the descriptors of each adult's year are
+    # read from the raw FRS tabs right after the HMRC leaves, before the SPI
+    # channel clones the rows that carry them.
+    assert "frs_annual_income_spells" not in roster
+    roster.insert(
+        roster.index("frs_hmrc_spine_leaves") + 1, "frs_annual_income_spells"
+    )
     # SPI housing shell re-mint pending: the SPI households' housing is imputed
     # from their own incomes right after the SPI income chain.
     assert "spi_housing_shell" not in roster
@@ -135,6 +142,11 @@ def _apply_pending_roster_transformations(
     roster.insert(
         roster.index("uc_capital_coherence") + 1, "uc_legacy_closure_take_up"
     )
+    # microcosm#1334 re-mint pending: the Universal Credit redraw reads the
+    # post-SPI awards right after UC capital coherence, before the Move to UC
+    # claim draw reads would_claim_uc.
+    assert "uc_take_up" not in roster
+    roster.insert(roster.index("uc_capital_coherence") + 1, "uc_take_up")
     # microcosm#1063 re-mint pending: the Child Benefit redraw reads the same
     # post-SPI incomes, right after the Pension Credit redraw.
     assert "child_benefit_take_up" not in roster
@@ -160,10 +172,13 @@ def _apply_pending_roster_transformations(
     # stage, before the private-school attendance.
     assert "childcare_copy_take_up" not in roster
     roster.append("childcare_copy_take_up")
-    # microcosm#1095 re-mint pending: the stored private-school attendance is
-    # the last stage of the spine.
+    # microcosm#1095 re-mint pending: the stored private-school attendance
+    # follows the copies' childcare re-draw.
     assert "private_school_attendance" not in roster
     roster.append("private_school_attendance")
+    # microcosm#1415 re-mint pending: the ISA subscriptions run last.
+    assert "isa_subscriptions" not in roster
+    roster.append("isa_subscriptions")
     return tuple(roster)
 
 

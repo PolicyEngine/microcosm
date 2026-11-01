@@ -27,11 +27,13 @@ __all__ = [
     "EXPORT_READBACK_TYPE",
     "GATE_REPORT_TYPE",
     "PACKAGE_RECEIPT_TYPE",
+    "CALIBRATION_PREPARATION_TYPE",
     "TARGET_SURFACE_TYPE",
 ]
 
 #: A compiled target registry plus its reference trace (canonical JSON).
 TARGET_SURFACE_TYPE = ArtifactType("microcosm.targets.surface", 1)
+CALIBRATION_PREPARATION_TYPE = ArtifactType("microcosm.targets.preparation", 1)
 #: Hold-out comparators measured on a population (canonical JSON).
 COMPARISON_TYPE = ArtifactType("microcosm.targets.comparison", 1)
 #: Source-household support and donor dollar influence in each scenario cell.
@@ -63,6 +65,9 @@ KERNEL_OUTPUTS: Mapping[str, Mapping[str, ArtifactType]] = MappingProxyType(
         "reporting.carry_income_decile@1": MappingProxyType({}),
         "reporting.receipt_group@1": MappingProxyType({}),
         "targets.compile@1": MappingProxyType({"surface": TARGET_SURFACE_TYPE}),
+        "calibration.prepare@1": MappingProxyType(
+            {"preparation": CALIBRATION_PREPARATION_TYPE}
+        ),
         "targets.problem@1": MappingProxyType({"problem": PROBLEM_TYPE}),
         "takeup.compare@1": MappingProxyType({"comparison": COMPARISON_TYPE}),
         "takeup.cell_diagnostics@1": MappingProxyType(

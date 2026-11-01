@@ -17,6 +17,12 @@ from microcosm.build.target_reference_authoring import (
     author_area_target_references,
     target_references_resource,
 )
+from microcosm.build.uk_runtime.desnz_constituency_energy import (
+    FACTS_RESOURCE as DESNZ_CONSTITUENCY_ENERGY_RESOURCE,
+)
+from microcosm.build.uk_runtime.desnz_constituency_energy import (
+    load_uk_desnz_constituency_energy_facts,
+)
 from microcosm.build.uk_runtime.high_value_homes import (
     load_uk_high_value_home_stock_facts,
 )
@@ -108,17 +114,28 @@ def main() -> None:
     derived_resources: list[dict[str, Any]] = []
     if not args.no_derived_facts:
         # microcosm#1240: the high-value homes family selects Microcosm-derived
-        # facts (HM Land Registry stock counts) carried in the committed resource.
-        derived = load_uk_high_value_home_stock_facts(args.derived_facts)
-        facts.extend(dict(row) for row in derived.rows)
-        derived_resources.append(
-            {
-                "resource": "high_value_home_stock_facts.json",
-                "rows": len(derived.rows),
-                "rows_sha256": derived.rows_sha256,
-                "inputs_sha256": derived.inputs_sha256,
-            }
-        )
+        # facts (HM Land Registry stock counts) carried in the committed resource;
+        # microcosm#1095: so do the domestic energy family's constituency cells
+        # (DESNZ's authority totals split by its small-area figures).
+        for resource, derived in (
+            (
+                "high_value_home_stock_facts.json",
+                load_uk_high_value_home_stock_facts(args.derived_facts),
+            ),
+            (
+                DESNZ_CONSTITUENCY_ENERGY_RESOURCE,
+                load_uk_desnz_constituency_energy_facts(),
+            ),
+        ):
+            facts.extend(dict(row) for row in derived.rows)
+            derived_resources.append(
+                {
+                    "resource": resource,
+                    "rows": len(derived.rows),
+                    "rows_sha256": derived.rows_sha256,
+                    "inputs_sha256": derived.inputs_sha256,
+                }
+            )
     authored = author_area_target_references(contract, facts, config)
     # microcosm#1123 item 7: a second pass defers, by rule, the cells the
     # first pass found below the small-cell floor.
@@ -154,7 +171,12 @@ def _small_cell_deferrals(
     """Deferrals for every active cell a rule's floor puts out of reach.
 
     Read from the first authoring pass, so the rule names the cells by their
-    published values, never by hand; each carries the rule's expiry.
+    published values, never by hand; each carries the rule's expiry. A cell an
+    index moved is read at its value before the index, the published one the
+    rule's floor is set on (the re-review of microcosm#1420, F). A target
+    the rule's ``floor_reads`` maps to another reads the floor off that
+    target's cell for the same area: a pension income amount is HMRC's count
+    times its mean, so it carries the count's rounding (microcosm#1420).
     """
 
     register = json.loads(
@@ -166,6 +188,11 @@ def _small_cell_deferrals(
     )
     if register.get("schema_version") != 1:
         raise ValueError("UK local small-cell rule schema_version must be 1.")
+    published = {
+        str(row["name"]): float(row["value_before_uprating"])
+        for row in membership_report.get("uprating_holds", ())
+        if row.get("value_before_uprating") is not None
+    }
     deferrals: list[AreaSignedDeferral] = []
     for rule in register["rules"]:
         if not uk_small_cell_rule_is_signed(rule):
@@ -174,15 +201,52 @@ def _small_cell_deferrals(
             continue
         floor = float(rule["absolute_floor"])
         prefixes = tuple(str(prefix) for prefix in rule["target_id_prefixes"])
+        floor_reads = {
+            str(target_id): str(read)
+            for target_id, read in (rule.get("floor_reads") or {}).items()
+        }
+        stray = sorted(
+            target_id for target_id in floor_reads if not target_id.startswith(prefixes)
+        )
+        if stray:
+            raise ValueError(
+                f"Small-cell rule {rule['rule_id']}: floor_reads names {stray}, "
+                "which its prefixes do not reach."
+            )
         for target_id, target in sorted(membership_report["targets"].items()):
             if not target_id.startswith(prefixes):
                 continue
+            read_id = floor_reads.get(target_id, target_id)
+            if read_id not in membership_report["targets"]:
+                raise ValueError(
+                    f"Small-cell rule {rule['rule_id']}: {target_id} reads its "
+                    f"floor off {read_id}, which the membership does not carry."
+                )
+            read = membership_report["targets"][read_id]
             for level, payload in sorted(target["geography_levels"].items()):
-                areas = sorted(
+                floor_values = {
+                    str(candidate["geography_id"]): published.get(
+                        str(candidate.get("name")), float(candidate["resolved_value"])
+                    )
+                    for candidate in read["geography_levels"]
+                    .get(level, {})
+                    .get("candidates", ())
+                    if candidate.get("status") == "active"
+                }
+                active = [
                     str(candidate["geography_id"])
                     for candidate in payload["candidates"]
                     if candidate.get("status") == "active"
-                    and abs(float(candidate["resolved_value"])) < floor
+                ]
+                unread = sorted(set(active) - set(floor_values))
+                if unread:
+                    raise ValueError(
+                        f"Small-cell rule {rule['rule_id']}: {target_id} has "
+                        f"active {level} cells whose floor target has none: "
+                        f"{unread[:5]}."
+                    )
+                areas = sorted(
+                    area for area in active if abs(floor_values[area]) < floor
                 )
                 if not areas:
                     continue
@@ -194,7 +258,12 @@ def _small_cell_deferrals(
                         rationale=(
                             f"{rule['reason']} Rule {rule['rule_id']} in "
                             "uk/local_small_cell_rule.json: published value "
-                            f"below {floor:g}; approved by "
+                            + (
+                                f"of {floor_reads[target_id]} "
+                                if target_id in floor_reads
+                                else ""
+                            )
+                            + f"below {floor:g}; approved by "
                             f"{rule['approved_by']} on {rule['approved_on']}."
                         ),
                         area_ids=tuple(areas),
@@ -352,6 +421,7 @@ def _value_operation_by_target_id(contract: Mapping[str, Any]) -> dict[str, str]
         if target_id in {
             "hmrc.self_employment_income.amount",
             "hmrc.employment_income.amount",
+            "hmrc.pension_income.amount",
         }:
             operations[target_id] = "count_x_mean"
         if target_id == "dwp.uc.households_by_area_children_3plus" and declared is None:
@@ -446,6 +516,7 @@ def _area_signed_deferrals(
         allow_empty: bool = False,
         defer_if_compiles: bool = False,
         skip_declared: bool = False,
+        declared_value: float | None = None,
     ) -> None:
         if target_id not in target_ids:
             raise ValueError(
@@ -481,6 +552,7 @@ def _area_signed_deferrals(
                 rationale=rationale,
                 area_ids=matched_area_ids,
                 defer_if_compiles=defer_if_compiles,
+                declared_value=declared_value,
             )
         )
         declared_area_keys.update(
@@ -520,6 +592,8 @@ def _area_signed_deferrals(
         "hmrc.employment_income.amount",
         "hmrc.employment_income.count",
         "hmrc.higher_rate_taxpayers.count",
+        "hmrc.pension_income.amount",
+        "hmrc.pension_income.count",
     ):
         add(
             target_id=target_id,
@@ -552,14 +626,12 @@ def _area_signed_deferrals(
         geography_level="local_authority",
         reason_id="council_tax_band_h_spine_support_absent",
         rationale=(
-            "Spine-m carries 170 band-H households from 49 raw FRS households "
-            "(London 13, Wales 11, South East 8, Scotland 6, West Midlands 4, "
-            "South West 3, East of England 3, East Midlands 1). At the ruled "
-            "K=15, 76 of the 296 authorities draw no band-H household and the "
-            "median of the rest draws five (84 of 296 at K=10), so the family "
-            "cannot bind at local-authority grain until a spine vintage "
-            "carries broader band-H support (microcosm#762 A14; carried onto "
-            "the MHCLG taxbase basis by microcosm#929)."
+            "Spine-m carries 170 band-H households from 49 raw FRS households. "
+            "At the ruled K=15, 76 of the 296 authorities draw no band-H "
+            "household and the median of the rest draws five (84 of 296 at "
+            "K=10), so the family cannot bind at local-authority grain until a "
+            "spine vintage carries broader band-H support (microcosm#762 A14; "
+            "carried onto the MHCLG taxbase basis by microcosm#929)."
         ),
         area_ids=english_local_authorities,
         defer_if_compiles=True,
@@ -638,9 +710,13 @@ def _area_signed_deferrals(
             "DESNZ's sub-national gas statistics carry no domestic consumption "
             "for Orkney (S12000023) or Shetland (S12000027), which have no "
             "mains gas network; the cells are signed absent rather than bound "
-            "at zero (never_fabricate; microcosm#1207)."
+            "at zero (never_fabricate; microcosm#1207). Reconciliation counts "
+            "them at a declared zero, the gas they hold, so their region's "
+            "other cells keep their own share (María's ruling of 2026-10-25, "
+            "microcosm#1095)."
         ),
         area_ids=gas_network_absent_area_ids,
+        declared_value=0.0,
     )
     add(
         target_id="desnz.subnational.gas_connected_households",
@@ -652,10 +728,49 @@ def _area_signed_deferrals(
             "share puts their census households on the gas network. The "
             "census base compiles there, so the cells are deferred by this "
             "adjudication (defer_if_compiles) rather than bound at zero "
-            "(microcosm#1207)."
+            "(microcosm#1207). Reconciliation counts them at a declared zero "
+            "gas-connected households, not their census base (María's ruling "
+            "of 2026-10-25, microcosm#1095)."
         ),
         area_ids=gas_network_absent_area_ids,
         defer_if_compiles=True,
+        declared_value=0.0,
+    )
+    # microcosm#1095: the Orkney and Shetland seat is the two councils, so it
+    # has no mains gas network either and DESNZ's split gives it no gas row.
+    gas_network_absent_seat_ids = ("S14000051",)
+    add(
+        target_id="desnz.subnational.gas_kwh",
+        geography_level="constituency",
+        reason_id="desnz_gas_no_mains_network",
+        rationale=(
+            "Orkney and Shetland (S14000051) is the two councils DESNZ publishes "
+            "no domestic gas for, which have no mains gas network, so the split "
+            "of the authorities' gas onto constituencies gives the seat no row; "
+            "the cell is signed absent rather than bound at zero "
+            "(never_fabricate; microcosm#1095). Reconciliation counts it at a "
+            "declared zero, as the councils' cells, so the two grains agree "
+            "within Scotland (María's ruling of 2026-10-25)."
+        ),
+        area_ids=gas_network_absent_seat_ids,
+        declared_value=0.0,
+    )
+    add(
+        target_id="desnz.subnational.gas_connected_households",
+        geography_level="constituency",
+        reason_id="desnz_gas_no_mains_network",
+        rationale=(
+            "Orkney and Shetland (S14000051) has no mains gas network and no "
+            "gas meters in DESNZ's split, so no meter share puts its census "
+            "households on the gas network. The census base compiles there, so "
+            "the cell is deferred by this adjudication (defer_if_compiles) "
+            "rather than bound at zero (microcosm#1095). Reconciliation counts "
+            "it at a declared zero gas-connected households, not its census "
+            "base (María's ruling of 2026-10-25)."
+        ),
+        area_ids=gas_network_absent_seat_ids,
+        defer_if_compiles=True,
+        declared_value=0.0,
     )
     for target in contract.get("targets", ()):
         if "local_authority" not in target.get("geography_levels", ()):

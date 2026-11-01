@@ -439,19 +439,26 @@ class TestUKManifest:
         )
         # microcosm#1106: property_wealth is formula-owned in policyengine-uk,
         # so the release leaves it to the engine; it is an engine-derived
-        # exclusion, not parity debt, and its components stay required.
+        # exclusion, not parity debt, and its components stay required. So is
+        # tax_free_savings_income under the additive ISA income contract
+        # (microcosm#1360).
         assert manifest.required_columns == (
             frozenset(load_efrs_parity_reference().populated_layers)
-            - {"property_wealth"}
+            - {"property_wealth", "tax_free_savings_income"}
         )
-        assert set(manifest.reviewed_exclusions) == {"property_wealth"}
+        assert set(manifest.reviewed_exclusions) == {
+            "property_wealth",
+            "tax_free_savings_income",
+        }
         assert load_efrs_parity_known_gaps() == ()
         assert [gap.variable for gap in load_efrs_engine_derived_exclusions()] == [
-            "property_wealth"
+            "property_wealth",
+            "tax_free_savings_income",
         ]
         assert manifest.required_build_stages == frozenset(
             {
                 "frs_hmrc_spine_leaves",
+                "frs_annual_income_spells",
                 "spi_support_channel",
                 "spi_income_band_donors",
                 "hmrc_spi_income_spine",
@@ -466,6 +473,7 @@ class TestUKManifest:
                 "private_school_attendance",
                 "was_wealth",
                 "was_lisa",
+                "isa_subscriptions",
                 "regional_property_uprating",
                 "high_value_home_support",
                 "regional_home_values",
@@ -782,12 +790,14 @@ class TestUKManifest:
             reference["engine"]["formula_owned_persisted_overrides_included"]
         )
         assert len(overrides) == 13
-        # The one exception is declared: property_wealth, whose persisted copy
+        # The exceptions are declared: property_wealth, whose persisted copy
         # overrides the engine's component sum and is never uprated, so the
-        # release leaves it to the formula (microcosm#1106). Every other
+        # release leaves it to the formula (microcosm#1106), and
+        # tax_free_savings_income, the engine's sum of the ISA interest the
+        # additive contract stores apart (microcosm#1360). Every other
         # formula-owned override stays required.
         engine_derived = {gap.variable for gap in load_efrs_engine_derived_exclusions()}
-        assert engine_derived == {"property_wealth"}
+        assert engine_derived == {"property_wealth", "tax_free_savings_income"}
         assert engine_derived <= overrides
         assert overrides - engine_derived <= set(manifest.required_columns)
         assert engine_derived.isdisjoint(manifest.required_columns)

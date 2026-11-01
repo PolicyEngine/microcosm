@@ -10,16 +10,16 @@
       "expires_on": "2027-01-14"
     },
     "hmrc_spi_frame_model_proxy": {
-      "reason": "Accept the stated basis: the constituency and local-authority HMRC families bind on the modeled income_tax > 0 frame, the same SPI-frame proxy the national hmrc.* surface binds through (uk_population_targets.json bindings), so both grains share one frame and the standing cross-grain rule can reconcile them. The proxy's known biases (zero-liability taxpayers excluded; modeled liabilities the SPI would not observe included) are accepted for the first candidate and re-measured per family in the microcosm#762 receipts. Fence evidence: uk_local_target_census.json#/binding_fences/hmrc_spi_frame_model_proxy.",
+      "reason": "Accept the stated basis: the constituency and local-authority HMRC families bind on the modeled income_tax_annual > 0 frame (each person's income tax over the 12 months before their FRS interview, a proxy for the tax year), the same SPI-frame proxy the national hmrc.* surface binds through (uk_population_targets.json bindings), so both grains share one frame and the standing cross-grain rule can reconcile them. The proxy's known biases (zero-liability taxpayers excluded; modeled liabilities the SPI would not observe included) are accepted for the first candidate and re-measured per family in the microcosm#762 receipts. Fence evidence: uk_local_target_census.json#/binding_fences/hmrc_spi_frame_model_proxy.",
       "approved_by": "juaristi22",
-      "adjudication": "microcosm#762 (A1, rulings 2026-09-02); renewed three months on 2026-10-14 by juaristi22 (microcosm#1278): both grains still bind the HMRC area families on the modeled taxpayer frame.",
+      "adjudication": "microcosm#762 (A1, rulings 2026-09-02); renewed three months on 2026-10-14 by juaristi22 (microcosm#1278): both grains still bind the HMRC area families on the modeled taxpayer frame; re-worded 2026-10-23 by juaristi22 (microcosm#1347 review): the frame is each person's year of income (income_tax_annual > 0) at both grains, since microcosm#1344 moved the national rows and microcosm#1347 the area rows. Extended 2026-10-29 in microcosm#1420, in answer to the independent review's finding 9 and pending María's confirmation: the pension income amount and count references that her ruling of 2026-10-28 binds stand on the same income_tax_before_winter_fuel_payment_charge_annual > 0 filter, and the fence's authority names them.",
       "approved_on": "2026-10-14",
       "expires_on": "2027-01-14"
     },
     "full_frs_tei_band_unavailable": {
-      "reason": "Accept the stated basis: the hmrc_income_by_area family binds the unbanded per-area employment and self-employment amount/count references (count_x_mean over the SPI by-area record sets) and, since microcosm#1198, the higher rate taxpayer counts, which HMRC classes by the marginal rate paid rather than by a total-income band; the published by-area SPI facts carry no total-income band dimension, so no Total-Income-banded local reference exists or may be minted while the 208 national banded facts remain fenced exclusions of the HMRC replay classification. Fence evidence: uk_local_target_census.json#/binding_fences/full_frs_tei_band_unavailable; membership: local_target_reference_membership.json (no banded target ids).",
+      "reason": "Accept the stated basis: the hmrc_income_by_area family binds the unbanded per-area employment and self-employment amount/count references (count_x_mean over the SPI by-area record sets) and, since microcosm#1198, the higher rate taxpayer counts, which HMRC classes by the marginal rate paid rather than by a total-income band, and, since microcosm#1418, the unbanded per-area pension income amount and count references (count_x_mean over the SPI by-area pension income record sets); the published by-area SPI facts carry no total-income band dimension, so no Total-Income-banded local reference exists or may be minted while the 208 national banded facts remain fenced exclusions of the HMRC replay classification. Fence evidence: uk_local_target_census.json#/binding_fences/full_frs_tei_band_unavailable; membership: local_target_reference_membership.json (no banded target ids).",
       "approved_by": "juaristi22",
-      "adjudication": "microcosm#762 (A1, rulings 2026-09-02); renewed three months on 2026-10-14 by juaristi22 (microcosm#1278): the by-area SPI facts still carry no total-income band.",
+      "adjudication": "microcosm#762 (A1, rulings 2026-09-02); renewed three months on 2026-10-14 by juaristi22 (microcosm#1278): the by-area SPI facts still carry no total-income band. Extended 2026-10-29 in microcosm#1420, in answer to the independent review's finding 9 and pending María's confirmation, to name the pension income references that her ruling of 2026-10-28 binds at HMRC's level; the basis is unchanged.",
       "approved_on": "2026-10-14",
       "expires_on": "2027-01-14"
     },
@@ -52,24 +52,31 @@
       "expires_on": "2026-12-31"
     },
     "desnz_subnational_consumption_basis": {
-      "reason": "Accepted as the family's basis (microcosm#1207, plan approved 2026-10-14): the authority kWh cells bind DESNZ's split between authorities at the lcfs stage's Energy Trends level, one factor per fuel (desnz.energy_trends.gb_domestic_level); DESNZ's own level (electricity read from 31 January to 30 January on non-half-hourly meters and over the calendar year on half-hourly meters; gas mid-May to mid-May and weather-corrected) is not bound. Great Britain's part of the Energy Trends UK level is its share of DESNZ's sub-national consumption with Northern Ireland's all-domestic row added, whose electricity runs on financial years and gas on Northern Ireland gas years, figures DESNZ calls not directly comparable with Great Britain's (microcosm#1278). Renew on the first dense build's receipts: the share of authority cells within 10% and 25% per fuel. Fence: uk_local_target_census.json#/binding_fences/desnz_subnational_consumption_basis.",
+      "reason": "Accepted as the family's basis (microcosm#1207, plan approved 2026-10-14): the authority and constituency kWh cells bind DESNZ's split between areas (the constituency cells split the authorities' totals, microcosm#1095) at the lcfs stage's level, one factor per fuel (desnz.energy_trends.gb_domestic_level: Energy Trends for gas, and for electricity the kWh ONS household spending buys at QEP prices, microcosm#1418); DESNZ's own level (electricity read from 31 January to 30 January on non-half-hourly meters and over the calendar year on half-hourly meters; gas mid-May to mid-May and weather-corrected) is not bound. Great Britain's part of the stage's UK level is its share of DESNZ's sub-national consumption with Northern Ireland's all-domestic row added, whose electricity runs on financial years and gas on Northern Ireland gas years, figures DESNZ calls not directly comparable with Great Britain's (microcosm#1278). Renew on the first dense build's receipts: the share of authority cells within 10% and 25% per fuel. Fence: uk_local_target_census.json#/binding_fences/desnz_subnational_consumption_basis.",
       "approved_by": "juaristi22",
-      "adjudication": "microcosm#1207 plan approved by María on 2026-10-14; fences approved 2026-10-15; re-worded 2026-10-17 by juaristi22 (microcosm#1306 review): the Northern Ireland sentence, since the interim household share it replaced retired (microcosm#1278)",
+      "adjudication": "microcosm#1207 plan approved by María on 2026-10-14; fences approved 2026-10-15; re-worded 2026-10-17 by juaristi22 (microcosm#1306 review): the Northern Ireland sentence, since the interim household share it replaced retired (microcosm#1278); re-worded 2026-10-26 by juaristi22 (microcosm#1095): the constituency grain; re-worded 2026-10-28 by juaristi22 (microcosm#1418): electricity's level",
       "approved_on": "2026-10-15",
       "expires_on": "2026-12-15"
     },
     "desnz_meters_for_households": {
-      "reason": "Accepted (microcosm#1207, plan approved 2026-10-14): gas meters over electricity meters stand for the share of an authority's households on the gas network, the ratio the lcfs stage already imposes by region; the census households carry the level through the census partition. Renew on R1: the gas-connected share stays within 0.5 points of DESNZ's. Fence: uk_local_target_census.json#/binding_fences/desnz_meters_for_households.",
+      "reason": "Accepted (microcosm#1207, plan approved 2026-10-14): gas meters over electricity meters stand for the share of an area's households on the gas network (a constituency's meters split from its authorities'), the ratio the lcfs stage already imposes by region; the census households carry the level through the census partition. Renew on R1: the gas-connected share stays within 0.5 points of DESNZ's. Fence: uk_local_target_census.json#/binding_fences/desnz_meters_for_households.",
       "approved_by": "juaristi22",
-      "adjudication": "microcosm#1207 plan approved by María on 2026-10-14; fences approved 2026-10-15",
+      "adjudication": "microcosm#1207 plan approved by María on 2026-10-14; fences approved 2026-10-15; re-worded 2026-10-26 by juaristi22 (microcosm#1095): the constituency grain",
       "approved_on": "2026-10-15",
       "expires_on": "2026-12-15"
     },
     "desnz_regional_meter_share_in_stage": {
-      "reason": "Accepted (microcosm#1207, plan approved 2026-10-14): the authority cells constrain the quantity the stage set by region and add the split between authorities; the kWh cells sit on the level the stage raked to. Renew with the first dense build. Fence: uk_local_target_census.json#/binding_fences/desnz_regional_meter_share_in_stage.",
+      "reason": "Accepted (microcosm#1207, plan approved 2026-10-14): the authority and constituency cells constrain the quantity the stage set by region and add the split between areas; the kWh cells sit on the level the stage raked to. Renew with the first dense build. Fence: uk_local_target_census.json#/binding_fences/desnz_regional_meter_share_in_stage.",
       "approved_by": "juaristi22",
-      "adjudication": "microcosm#1207 plan approved by María on 2026-10-14; fences approved 2026-10-15",
+      "adjudication": "microcosm#1207 plan approved by María on 2026-10-14; fences approved 2026-10-15; re-worded 2026-10-26 by juaristi22 (microcosm#1095): the constituency grain",
       "approved_on": "2026-10-15",
+      "expires_on": "2026-12-15"
+    },
+    "desnz_small_area_split_for_constituencies": {
+      "reason": "Accepted as the seat cells' basis (microcosm#1095, plan approved 2026-10-25): the constituency cells bind Microcosm's split of each authority's DESNZ total by DESNZ's LSOA and data zone figures (uk/desnz_constituency_energy_facts.json), which keeps every authority's total; a census household split was measured and refused (seats' gas off by a median 4% and up to 38% against the small-area split). Renew on the first dense build that binds the seat cells: the share of seat cells within 10% and 25% per fuel. Fence: uk_local_target_census.json#/binding_fences/desnz_small_area_split_for_constituencies.",
+      "approved_by": "juaristi22",
+      "adjudication": "microcosm#1095 plan approved by María on 2026-10-25; fence approved 2026-10-26; the best-fit and gas-connected sentences added to the fence the same day after Vahid's review (microcosm#1404)",
+      "approved_on": "2026-10-26",
       "expires_on": "2026-12-15"
     }
   }

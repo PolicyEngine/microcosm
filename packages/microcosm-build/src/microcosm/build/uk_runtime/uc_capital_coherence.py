@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from types import MappingProxyType
 
 import numpy as np
 import pandas as pd
@@ -75,14 +76,14 @@ UC_CAPITAL_COARSENING = (
 _UC_CAPITAL_LEVELS = ("exact_cell", *UC_CAPITAL_COARSENING)
 #: The UC capital limits the receipt measures the redraw against.
 _UC_CAPITAL_RECEIPT_LIMITS = (6_000.0, 16_000.0)
-#: policyengine-uk 2.147.2 counts these household property values as Universal
+#: policyengine-uk 2.164.2 counts these household property values as Universal
 #: Credit capital (``property_sources`` under
 #: ``gov.dwp.universal_credit.means_test.capital``, at 90% of value less any
 #: secured debt since 2.136.1) and as Pension Credit capital (the ``sources``
 #: list under ``gov.dwp.pension_credit.income.capital``, beside ``savings`` and
-#: ``share_like_capital``, which is ``corporate_wealth`` unless the share
-#: components the build leaves unset exceed it). A recorded figure of 0 or more is a unit's complete
-#: capital: it replaces every source, property included, and the engine takes
+#: ``share_like_capital``, which is ``corporate_wealth``: the WAS stage writes
+#: its share components to sum to it). A recorded figure of 0 or more is a unit's
+#: complete capital: it replaces every source, property included, and the engine takes
 #: it as already countable, but TOTCAPB4 counts accounts and assets and no
 #: property. So the recorded figures add the household's property for the unit
 #: that holds it (uk-data#495, microcosm#1095).
@@ -123,18 +124,35 @@ PENSION_CREDIT_PROPERTY_CAPITAL_SOURCES = ("owned_land", *UC_PROPERTY_CAPITAL_SO
 PROPERTY_CAPITAL_OWNERS = "household_reference_person_unit"
 PROPERTY_CAPITAL_OWNER_COLUMN = "is_household_head"
 #: Capital counts at its market value less 10% for the costs of sale (UC Regs
-#: 2013 reg 49(1)(a); SPC Regs 2002 reg 19(a)). Debt secured on the property
-#: is not on the frame and is not netted here (pe-uk#1969).
+#: 2013 reg 49(1)(a); SPC Regs 2002 reg 19(a)).
 PROPERTY_CAPITAL_VALUATION = 0.9
+#: Then less the debt secured on it (UC Regs 2013 reg 49(1)(b); SPC Regs 2002
+#: reg 19(b)), floored at zero class by class, as policyengine-uk values
+#: ``uc_other_residential_property_capital`` and
+#: ``uc_non_residential_property_capital`` from 2.136.1. The was_wealth stage
+#: draws both debts (microcosm#1095); owned land carries none, as the engine
+#: has no input for the debt secured on it (pe-uk#1969).
+PROPERTY_CAPITAL_SECURED_DEBT: Mapping[str, str] = MappingProxyType(
+    {
+        "other_residential_property_value": "other_residential_property_secured_debt",
+        "non_residential_property_value": "non_residential_property_secured_debt",
+    }
+)
 UC_PROPERTY_CAPITAL_SHARE = "uc_property_capital_share"
 PENSION_CREDIT_PROPERTY_CAPITAL_SHARE = "pension_credit_property_capital_share"
 
 
 def _property_share_definition(sources: tuple[str, ...]) -> str:
+    terms = " + ".join(
+        f"max(0, {PROPERTY_CAPITAL_VALUATION:g} x {source} - "
+        f"{PROPERTY_CAPITAL_SECURED_DEBT[source]})"
+        if source in PROPERTY_CAPITAL_SECURED_DEBT
+        else f"{PROPERTY_CAPITAL_VALUATION:g} x {source}"
+        for source in sources
+    )
     return (
-        f"{PROPERTY_CAPITAL_VALUATION:g} x ({' + '.join(sources)}) of the household "
-        "where the unit holds the household reference person "
-        f"({PROPERTY_CAPITAL_OWNER_COLUMN}), else 0"
+        f"({terms}) of the household where the unit holds the household "
+        f"reference person ({PROPERTY_CAPITAL_OWNER_COLUMN}), else 0"
     )
 
 
@@ -277,7 +295,11 @@ def cohere_uc_capital(
     )
     _require_columns(
         household,
-        ("household_id", *PENSION_CREDIT_PROPERTY_CAPITAL_SOURCES),
+        (
+            "household_id",
+            *PENSION_CREDIT_PROPERTY_CAPITAL_SOURCES,
+            *PROPERTY_CAPITAL_SECURED_DEBT.values(),
+        ),
         label="household",
     )
 
@@ -417,8 +439,10 @@ def uc_property_capital_share(
     """The household property each unit holds for Universal Credit.
 
     The household's ``UC_PROPERTY_CAPITAL_SOURCES`` at
-    ``PROPERTY_CAPITAL_VALUATION`` for the household reference person's unit,
-    and nothing for any other unit. In benefit-unit row order.
+    ``PROPERTY_CAPITAL_VALUATION`` less the debt secured on each
+    (``PROPERTY_CAPITAL_SECURED_DEBT``, floored at zero per class) for the
+    household reference person's unit, and nothing for any other unit. In
+    benefit-unit row order.
     """
 
     return _reference_person_unit_property(
@@ -449,8 +473,10 @@ def pension_credit_property_capital_share(
     """The household property each unit holds for Pension Credit.
 
     The household's ``PENSION_CREDIT_PROPERTY_CAPITAL_SOURCES`` at
-    ``PROPERTY_CAPITAL_VALUATION`` for the household reference person's unit,
-    and nothing for any other unit. In benefit-unit row order.
+    ``PROPERTY_CAPITAL_VALUATION`` less the debt secured on each
+    (``PROPERTY_CAPITAL_SECURED_DEBT``, floored at zero per class; owned land
+    carries none) for the household reference person's unit, and nothing for
+    any other unit. In benefit-unit row order.
     """
 
     return _reference_person_unit_property(
@@ -474,12 +500,24 @@ def _reference_person_unit_property(
     *,
     sources: tuple[str, ...],
 ) -> np.ndarray:
-    values = household[list(sources)].apply(pd.to_numeric, errors="coerce")
-    property_value = values.sum(axis=1, min_count=len(sources)).to_numpy(
-        dtype=float, na_value=np.nan
-    )
-    if not np.isfinite(property_value).all() or (property_value < 0.0).any():
-        raise ValueError(f"household {list(sources)} must be finite and nonnegative.")
+    debts = [
+        PROPERTY_CAPITAL_SECURED_DEBT[source]
+        for source in sources
+        if source in PROPERTY_CAPITAL_SECURED_DEBT
+    ]
+    values = household[[*sources, *debts]].apply(pd.to_numeric, errors="coerce")
+    raw = values.to_numpy(dtype=float, na_value=np.nan)
+    if not np.isfinite(raw).all() or (raw < 0.0).any():
+        raise ValueError(
+            f"household {[*sources, *debts]} must be finite and nonnegative."
+        )
+    property_value = np.zeros(len(household), dtype=float)
+    for source in sources:
+        net = PROPERTY_CAPITAL_VALUATION * values[source].to_numpy(dtype=float)
+        if source in PROPERTY_CAPITAL_SECURED_DEBT:
+            debt = values[PROPERTY_CAPITAL_SECURED_DEBT[source]].to_numpy(dtype=float)
+            net = np.maximum(net - debt, 0.0)
+        property_value += net
     reference_person = person[PROPERTY_CAPITAL_OWNER_COLUMN]
     if not pd.api.types.is_bool_dtype(reference_person.dtype):
         raise ValueError(f"{PROPERTY_CAPITAL_OWNER_COLUMN} must be a boolean column.")
@@ -508,7 +546,7 @@ def _reference_person_unit_property(
         .isin(person.loc[reference_person, "person_benunit_id"])
         .to_numpy(dtype=bool)
     )
-    return np.where(holds, PROPERTY_CAPITAL_VALUATION * household_value, 0.0)
+    return np.where(holds, household_value, 0.0)
 
 
 def _property_share_receipt(
@@ -528,6 +566,7 @@ def _property_share_receipt(
     receipt: dict[str, object] = {
         "owners": PROPERTY_CAPITAL_OWNERS,
         "valuation": PROPERTY_CAPITAL_VALUATION,
+        "secured_debt": dict(PROPERTY_CAPITAL_SECURED_DEBT),
     }
     for programme, (share, recorded) in shares.items():
         with_share = available & (share > 0.0)

@@ -36,6 +36,66 @@ Ranked by calibration value for a dollar-level take-up estimate. **$** = enables
 | 14 | **NZ Superannuation demographics** | MSD Fact Sheets (NZS/VP) + Annual Report (941,511 recipients; $23.19B) | $ / # | Largest transfer by dollars; near-universal but needs the age×region recipient frame. [FETCH-OK] |
 | 15 | **Minimum wage series + average weekly earnings** | MBIE minimum wage ($23.95 from Apr 2026) + Stats NZ QES/LEED | $ | Anchors the bottom of the earnings distribution and the national/TA earnings margin. [FETCH-OK min wage; SNIPPET QES/LEED] |
 
+**d1886 modelling convention, 23 October 2026.** Microcosm allocates Census
+counts with unstated household size across stated size categories in proportion
+to their stated counts, assuming missing at random. Each region's allocated
+amount is its independently published household total minus its stated size
+leaves. The national calculation is 61,725 households; regional calculations sum
+to 61,713 because the independently published cells do not reconcile exactly.
+These regional differences and allocated leaves are Microcosm calculations,
+rather than Stats NZ published residual cells or allocated estimates.
+
+Tenure uses the same proportional convention for owned, including family
+trusts, and not owned. Its national difference is 426; regional differences sum
+to 429. V4 allocates the size residual only to one- and two-person households in
+their stated proportions. Fractional targets are retained. Allocation precedes
+one application of the B2 ERP bridge. Region 99 remains separate and uses the
+disclosed national-growth proxy. Raw discrepancies and national diagnostics
+remain in `reference_inventory.json` alongside computed regional profile
+receipts. Model household size counts validated usual-resident roster members,
+with sizes eight and above sharing the final category.
+
+**d1932 signed family reconciliation, 24 October 2026.** Census family-type
+counts in each region are scaled to that region's published family total. The
+published type counts and family totals are independently rounded to base 3,
+so their sums need not agree; the observed regional gaps are at most 3
+families, and the scaling is a modelling adjustment for that rounding noise,
+not an observed category (Max ruling d1932). The
+declared policy in `build/nz/family_reconciliation.json` admits an absolute
+discrepancy of at most 3 families **or** a discrepancy of at most 0.1% of the
+stated type leaves. Region 99's +3 is 2.0% of its published family total
+(2.04% of its stated leaves), so it passes the absolute bound alone.
+
+The central `family_discrepancy` profile scales all three published type
+counts by the exact regional family-total / type-leaf-sum ratio. The independent
+`family_discrepancy_positive_to_type3` sensitivity gives positive discrepancies
+entirely to one-parent families (type 3) and retains central proportional
+reconciliation for zero and negative discrepancies. Both profiles close exactly
+to the same regional family total. Each then applies one exact June 2025 /
+June 2023 ERP ratio; region 99 uses the disclosed national proxy
+5,324,700 / 5,200,000. Source geography vintage remains `unstated`.
+
+There are five +3 and five −3 discrepancies, totaling +15 and −15, net zero.
+Regional published type sums differ from the independent national type facts
+by +3, −6 and +3 respectively. Published leaves, regional family totals and
+independent national facts remain diagnostic; only the existing 51 regional
+type leaves are prospective fit rows. The exact per-region operands,
+increments, passed bounds, reconciled counts and bridged values are retained
+in `reference_inventory.json`. On the June 2025 ERP basis, central type totals
+are 549,923.187358, 556,879.098527 and 218,615.140900; the sensitivity totals
+are 549,916.657264, 556,873.115175 and 218,627.654345. Both sum to
+1,325,417.426784, subject only to the declared absolute 0.000001 check on
+these printed decimals; the underlying calculations are exact fractions.
+
+All 51 family rows remain parked and exempt until G8-r3b supplies the Census
+family multiplicity classifier. Each row pairs its type-specific household
+measure with a matching regional mask, including region 99. A household may
+contain several nuclei, so these measures retain multiplicities. The prepared
+region masks can evaluate now; `household.census_families_type_1`,
+`household.census_families_type_2` and `household.census_families_type_3`
+cannot evaluate until G8-r3b. Region-99 geography support comes from G8-m2
+(#1393, main 4e31e42e).
+
 **Dollar-level calibration design (numerator/denominator):**
 - **Denominator (full-entitlement modelled $):** our own rules × calibrated population. Treasury DistributionExplorer CSVs (#5) are TAWA-modelled; AS values assigned by TAWA's take-up model; an independent comparison, not full entitlement, for AS; TAWA assumes full take-up for the WFF credits ([TAWA methodology](https://treasury.govt.nz/sites/default/files/2024-08/tawa-model-methodology.pdf), "Modelling take-up").
 - **Numerator (actual $ paid):** MSD Annual Report expenditure schedule (#2) and AN24/01 fiscal totals (#10); IRD WfF expenditure (#4) for in-work credits.
@@ -62,6 +122,7 @@ Ranked by calibration value for a dollar-level take-up estimate. **$** = enables
 | S11 | Microdata access (CURF / IDI Data Lab / SURF) | `https://www.stats.govt.nz/integrated-data/apply-to-use-microdata-for-research/` | Unit records (HES, HLFS…). CURFs free since 2014, usable outside Data Lab; IDI = secure Data Lab | Unit record | various | — | [SNIPPET] |
 | S12 | QES average weekly/hourly earnings | Infoshare (Work income and spending) | Avg weekly earnings ($1,716 Mar 2026 q; FTE), by industry/sector | **National** | Mar 2026 q | Quarterly | [SNIPPET] |
 | S13 | LEED sub-national earnings | ADE — LEED quarterly | Filled jobs, **mean & median earnings** by **region and TA**, ethnicity | Region + TA | Mar 2025 q | Quarterly | [SNIPPET] |
+| S14 | National accounts: distribution of household income, consumption and saving (experimental, v1.0, 27 Aug 2018) | `https://www.stats.govt.nz/experimental/national-accounts-distribution-of-household-income-consumption-and-saving/` (six numbered xlsx tables, benchmarks and supplementary xlsx, and a methodology PDF under `/assets/Uploads/Experimental/National-accounts-Distribution-of-household-income-consumption-and-savings/`) | National-accounts household income, consumption and saving distributed by **equivalised income quintile**, main income source and household type; totals, shares, per household, ratio to average, and the impact of redistribution by government and NPISHs. Built from HES and the National Accounts (YE Mar 2017). **Validation and method reference only:** a worked micro-to-macro alignment for NZ, too old for 2026–27 targets | National | 2016 (also 2007, 2010, 2013) | One-off (experimental) | [FETCH-OK] |
 
 Notes: **ArcGIS hub (S1–S3) is the best machine-readable census route** (not behind the SPA wall). **Family/household *projections* are stale (2013-base)** — use census counts for structure. Census income is banded and individual — no joint income.
 
@@ -78,6 +139,46 @@ All statistical spreadsheets on the un-gated `ird.govt.nz` CDN (HTTP 200 confirm
 | I6 | KiwiSaver statistics | landing: `/about-us/tax-statistics/kiwisaver/datasets` | Members, contributions, withdrawals | monthly + annual | Monthly | [SNIPPET] |
 
 Notes: **I1, I3, I4 are the load-bearing IRD targets.** IRD income tables are **individual-level** — joint/couple income unpublished. **FamilyBoost: no public statistics dataset confirmed** — only a modelled `Value_Type` in Treasury DistributionExplorer [UNCONFIRMED — re-check].
+
+### I1 taxable-income bands: a declared convention (G8-r2b, 2026-10-24)
+
+IRD publishes no band closure or cents semantics for the I1 tables. The
+workbook introduces an "income between $0.01 and $100" band, and four label
+pairs share an endpoint ($20,000, $50,000, $80,000 and $300,000: national rows
+29/30, 59/60, 89/90 and 229/230; age rows 27/28, 57/58 and 87/88). Microcosm
+therefore applies its own declared convention, not IRD's semantics (G8-r open
+rulings 2, section 1):
+
+- t = max(0, x) in integer cents, with no dollar rounding;
+- t == 0 is the nil band, including qualifying loss records;
+- each positive band is `previous_upper < t <= upper`, and the open tail is
+  `t > its lower cut` (national top band over $1,000,000, age table over
+  $180,000);
+- the ordered right-closed cuts give each shared endpoint to the lower band.
+
+`build/nz/reference_intervals.json` holds the two tables: the national table
+(237 bands, rows 8–244, each naming its parked count and amount references)
+and the age table (183 bands, rows 6–188, no references and no fit rows).
+`tools/generate_nz_target_references.py` generates both from the row formulas
+and checks every cut against the pinned feed's own band labels. Ageing scales
+the national cuts exactly by the selected factor and keeps fractional cents:
+under the central factor 1.117109, $100 becomes 11,171.09 cents and $1,000
+becomes 111,710.9 cents. Before matrix construction the calibration problem
+reports, for every cut, the weighted mass within $1, and for every band the
+fixed-weight change under the left-closed alternative. These diagnostics never
+change a target, and publisher reclassification is unavailable, because the
+published histogram does not identify mass exactly on a cut.
+
+The shared diagnostics also report records below a table's first lower cut,
+including their weighted count and amount. Floored negative records retain
+their separate count and signed pre-floor amount, grouped by destination.
+These are fixed-weight, pre-fit measurements; reporting the later weight
+changes on these unfitted records remains G8-r2c/G8-x work.
+
+The income and universe columns (`ird_taxable_income_proxy_cents`,
+`ird_taxable_income_proxy_universe_status`) name the d1952 stand-in measure
+rather than IRD's definition. No producer exists yet (G8-r2c), no active row
+requests them, and all 474 IRD rows stay parked.
 
 ## 3. MSD
 

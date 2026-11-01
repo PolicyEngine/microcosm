@@ -96,6 +96,9 @@ from microcosm.build.uk_runtime.childcare_copy_take_up import (
 from microcosm.build.uk_runtime.content_identity import uk_frame_content_identity
 from microcosm.build.uk_runtime.etb_services import UKETBServicesStageTransform
 from microcosm.build.uk_runtime.etb_vat import UKETBVATStageTransform
+from microcosm.build.uk_runtime.frs_annual_income import (
+    UKFRSAnnualIncomeStageTransform,
+)
 from microcosm.build.uk_runtime.frs_brma import UKFRSBRMAStageTransform
 from microcosm.build.uk_runtime.frs_council_tax import UKFRSCouncilTaxStageTransform
 from microcosm.build.uk_runtime.frs_disability import UKFRSDisabilityStageTransform
@@ -136,6 +139,9 @@ from microcosm.build.uk_runtime.graph_evidence import (
 )
 from microcosm.build.uk_runtime.high_value_home_support import (
     UKHighValueHomeSupportStageTransform,
+)
+from microcosm.build.uk_runtime.isa_subscriptions import (
+    UKISASubscriptionsStageTransform,
 )
 from microcosm.build.uk_runtime.lcfs_consumption import (
     UKLCFSConsumptionStageTransform,
@@ -182,6 +188,10 @@ from microcosm.build.uk_runtime.spi_band_donors import (
 from microcosm.build.uk_runtime.spi_benefit_coherence import (
     UKSPIBenefitCoherenceStageTransform,
 )
+from microcosm.build.uk_runtime.spi_dependency import (
+    UK_SPI_PUBLIC_USE_TAPE_KEY,
+    uk_spi_public_use_tape_marker,
+)
 from microcosm.build.uk_runtime.spi_housing_shell import (
     UKSPIHousingShellStageTransform,
 )
@@ -202,6 +212,7 @@ from microcosm.build.uk_runtime.uc_deduction_attributes import (
 from microcosm.build.uk_runtime.uc_reporter_redraw import (
     UKUCReporterRedrawStageTransform,
 )
+from microcosm.build.uk_runtime.uc_take_up import UKUCTakeUpStageTransform
 from microcosm.build.uk_runtime.was_lisa import UKWASLISAStageTransform
 from microcosm.build.uk_runtime.was_wealth import UKWASWealthStageTransform
 from microcosm.frame import Frame
@@ -350,8 +361,8 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--was-person-tab",
         type=Path,
         help=(
-            "Caller-supplied private WAS round-8 person tab for was_lisa (with "
-            "--was-tab)."
+            "Caller-supplied private WAS round-8 person tab for was_lisa and "
+            "isa_subscriptions (with --was-tab)."
         ),
     )
     parser.add_argument(
@@ -717,12 +728,68 @@ def _rules_engine() -> PolicyEngineUKEngine:
     return PolicyEngineUKEngine()
 
 
-def _rules_engine_provenance() -> dict[str, str]:
+def _rules_engine_provenance() -> dict[str, object]:
     try:
         version = metadata.version("policyengine-uk")
     except metadata.PackageNotFoundError:
         return {"package": "policyengine-uk", "version": "unavailable"}
-    return {"package": "policyengine-uk", "version": version}
+    provenance: dict[str, object] = {"package": "policyengine-uk", "version": version}
+    direct_install = _direct_install("policyengine-uk")
+    if direct_install is not None:
+        # A release installed from an index writes no direct_url.json
+        # (PEP 610), so its provenance, and the engine identity hashed from
+        # it, stay as they were.
+        provenance["direct_install"] = direct_install
+    return provenance
+
+
+def _direct_install(package: str) -> dict[str, object] | None:
+    """What PEP 610's ``direct_url.json`` records of a URL install, or None.
+
+    A git install of an engine pull request carries a release's version
+    string, so only this tells the two apart: it names the commit. An archive
+    is named by every hash its record holds, whatever the algorithm, and one
+    that records no hash is refused, since nothing would tell it from another
+    archive. URLs are left out, so no local path reaches a build or release
+    record.
+    """
+    try:
+        text = metadata.distribution(package).read_text("direct_url.json")
+    except metadata.PackageNotFoundError:
+        return None
+    if not text:
+        return None
+    record = json.loads(text)
+    vcs = record.get("vcs_info")
+    if isinstance(vcs, Mapping):
+        return {
+            "kind": "vcs",
+            "vcs": str(vcs.get("vcs", "")),
+            "commit_id": str(vcs.get("commit_id", "")),
+        }
+    archive = record.get("archive_info")
+    if isinstance(archive, Mapping):
+        listed = archive.get("hashes")
+        hashes = (
+            {str(name): str(value) for name, value in listed.items()}
+            if isinstance(listed, Mapping)
+            else {}
+        )
+        legacy = archive.get("hash")
+        if isinstance(legacy, str) and "=" in legacy:
+            name, value = legacy.split("=", 1)
+            hashes.setdefault(name, value)
+        if not hashes:
+            raise ValueError(
+                f"{package} was installed from an archive whose direct_url.json "
+                "records no hash, so no engine identity can tell it from another "
+                "archive: install a release, or an archive with a recorded hash."
+            )
+        return {"kind": "archive", "hashes": dict(sorted(hashes.items()))}
+    directory = record.get("dir_info")
+    if isinstance(directory, Mapping):
+        return {"kind": "dir", "editable": bool(directory.get("editable", False))}
+    return {"kind": "unrecognised"}
 
 
 def _declared_seeds(stages) -> dict[str, dict[str, int]]:
@@ -774,9 +841,21 @@ def _declared_seeds(stages) -> dict[str, dict[str, int]]:
                     stage_seeds["within_band_draws"] = seed
                 elif operation.kind == "assign_badr_qualifying_gains":
                     stage_seeds[operation.kind] = seed
-                elif operation.kind == "convert_donors_to_target_stock":
+                elif operation.kind in (
+                    "convert_donors_to_target_stock",
+                    "convert_bonuses_to_bonus_sacrifice",
+                ):
                     stage_seeds[str(operation.parameters["salt"])] = seed
                 elif operation.kind == "top_up_to_stock":
+                    stage_seeds[str(operation.parameters["salt"])] = seed
+                elif operation.kind in (
+                    "split_household_isa_balances",
+                    "allocate_isa_subscribers",
+                    "draw_isa_subscription_amounts",
+                    "draw_lifetime_isa_payments",
+                ):
+                    # Identity-keyed draws: the seed is declared under the salt
+                    # it is hashed with (microcosm#1415).
                     stage_seeds[str(operation.parameters["salt"])] = seed
         if stage_seeds:
             declared[stage.stage] = stage_seeds
@@ -843,6 +922,9 @@ def _build_sidecar(
         "spine_gate_report": spine_gate_report,
         "stochastic_contract_sha256": stochastic_contract_sha256,
         "rules_engine": _rules_engine_provenance(),
+        # Which stages read the SPI Public Use Tape, whose Special Conditions
+        # reach every output built on them (microcosm#1095).
+        UK_SPI_PUBLIC_USE_TAPE_KEY: uk_spi_public_use_tape_marker(stages),
     }
 
 
@@ -1476,7 +1558,12 @@ def prepare_uk_spine_execution(
         raise ValueError(
             "--was-tab is required when the was_wealth stage is scheduled."
         )
-    if args.synthetic_fixture_dir is None and "was_lisa" in stage_names:
+    for was_person_stage in ("was_lisa", "isa_subscriptions"):
+        if (
+            args.synthetic_fixture_dir is not None
+            or was_person_stage not in stage_names
+        ):
+            continue
         missing_was = [
             flag
             for flag, value in (
@@ -1487,7 +1574,7 @@ def prepare_uk_spine_execution(
         ]
         if missing_was:
             raise ValueError(
-                "was_lisa requires caller-supplied private inputs: "
+                f"{was_person_stage} requires caller-supplied private inputs: "
                 f"{', '.join(missing_was)}."
             )
     if args.synthetic_fixture_dir is None and "nts_bus_travel" in stage_names:
@@ -1623,6 +1710,15 @@ def prepare_uk_spine_execution(
                 was_person_tab_path=sources["was_person"],
             )
         )
+    if "isa_subscriptions" in stage_names:
+        implementations["isa_subscriptions"] = _GraphSourceTransform(
+            lambda sources: UKISASubscriptionsStageTransform(
+                stage=stages_by_name["isa_subscriptions"],
+                engine=engine,
+                was_tab_path=sources["was"],
+                was_person_tab_path=sources["was_person"],
+            )
+        )
     if "nts_bus_travel" in stage_names:
         implementations["nts_bus_travel"] = _GraphSourceTransform(
             lambda sources: UKNTSBusTravelStageTransform(
@@ -1688,6 +1784,13 @@ def prepare_uk_spine_execution(
             sampled_rung=_is_sampled(args),
         )
     )
+    if "frs_annual_income_spells" in stage_names:
+        implementations["frs_annual_income_spells"] = _GraphSourceTransform(
+            lambda sources: UKFRSAnnualIncomeStageTransform(
+                sources["frs"],
+                stage=stages_by_name["frs_annual_income_spells"],
+            )
+        )
     implementations["spi_support_channel"] = UKSPISupportChannelStageTransform(
         stage=stages_by_name["spi_support_channel"],
         sample_fraction=args.sample_fraction,
@@ -1717,6 +1820,11 @@ def prepare_uk_spine_execution(
     if "uc_capital_coherence" in stage_names:
         implementations["uc_capital_coherence"] = UKUCCapitalCoherenceStageTransform(
             stage=stages_by_name["uc_capital_coherence"]
+        )
+    if "uc_take_up" in stage_names:
+        implementations["uc_take_up"] = UKUCTakeUpStageTransform(
+            stage=stages_by_name["uc_take_up"],
+            engine=engine,
         )
     if "uc_legacy_closure_take_up" in stage_names:
         implementations["uc_legacy_closure_take_up"] = (
@@ -1848,9 +1956,10 @@ def prepare_uk_spine_execution(
         graph_sources = _synthetic_graph_sources(args.synthetic_fixture_dir)
     else:
         graph_sources = {"frs": args.frs_raw_dir}
-        if "was_wealth" in stage_names or "was_lisa" in stage_names:
+        was_person_stages = {"was_lisa", "isa_subscriptions"} & set(stage_names)
+        if "was_wealth" in stage_names or was_person_stages:
             graph_sources["was"] = args.was_tab
-        if "was_lisa" in stage_names:
+        if was_person_stages:
             graph_sources["was_person"] = args.was_person_tab
         if "nts_bus_travel" in stage_names:
             graph_sources["nts_household"] = args.nts_household_tab

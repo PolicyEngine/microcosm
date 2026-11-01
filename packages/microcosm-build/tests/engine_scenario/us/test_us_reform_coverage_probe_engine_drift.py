@@ -36,6 +36,7 @@ _REMOVED_ITEM = {
     "workers_compensation_snap_exclusion": "workers_compensation",
     "educator_expense_ald_abolition": "educator_expense",
     "alimony_expense_ald_abolition": "alimony_expense_ald",
+    "niit_passive_pass_through_exclusion": "passive_partnership_s_corp_income",
 }
 _ADDED_ITEM = {"domestic_production_ald_reactivation": "domestic_production_ald"}
 

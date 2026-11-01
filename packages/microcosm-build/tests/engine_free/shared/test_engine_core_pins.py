@@ -33,7 +33,7 @@ US_ENGINE = {
 #: policyengine-core its own floor brings.
 UK_ENGINE = {
     "policyengine-core": "3.33.3",
-    "policyengine-uk": "2.147.2",
+    "policyengine-uk": "2.164.2",
 }
 ENGINE_PACKAGES = ("microcosm-build", "microcosm-data", "microcosm-frame")
 
@@ -71,12 +71,19 @@ def _uv_export(*args: str) -> subprocess.CompletedProcess[str]:
 
 
 def _resolved(requirements: str) -> dict[str, str]:
+    """Each exported package's version, or its URL for a direct reference."""
+
     versions = {}
     for line in requirements.splitlines():
         pin = line.split(";")[0].strip()
-        if "==" in pin and not pin.startswith(("#", "-")):
+        if pin.startswith(("#", "-")):
+            continue
+        if "==" in pin:
             name, version = pin.split("==", 1)
             versions[name.strip()] = version.strip()
+        elif " @ " in pin:
+            name, url = pin.split(" @ ", 1)
+            versions[name.strip()] = url.strip()
     return versions
 
 

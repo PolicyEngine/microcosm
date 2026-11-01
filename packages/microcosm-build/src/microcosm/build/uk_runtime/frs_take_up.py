@@ -80,7 +80,7 @@ UK_TAKE_UP_DECLARED_SEEDS = {
     for output in (*FRS_TAKE_UP_OUTPUT_COLUMNS, *FRS_TAKE_UP_PERSON_OUTPUT_COLUMNS)
 }
 # Universal Credit is claimable only by a benefit unit whose claimant or
-# partner meets its age conditions: policyengine-uk 2.147.2's ``is_uc_eligible``
+# partner meets its age conditions: policyengine-uk 2.164.2's ``is_uc_eligible``
 # (capital aside) needs a single or joint claimant, taken from
 # ``is_uc_claimant``, who meets UC's minimum age and has not reached Pension
 # Credit qualifying age. The draw's population is therefore the units with a
@@ -148,9 +148,11 @@ UK_UC_CHILDCARE_RATE_KEYS = {
 # would_claim_child_benefit and child_benefit_opts_out are redrawn by
 # ``child_benefit_take_up`` against HMRC's claim rates of eligible children and
 # opted-out share of registered families; its stage gate measures them
-# (microcosm#1063).
+# (microcosm#1063). would_claim_uc is redrawn after the SPI chain by
+# ``uc_take_up`` by award band and family type against DWP's caseloads; its
+# stage gate measures it, so it is no longer one share of the age population
+# (microcosm#1334).
 UK_TAKE_UP_SIGNAL_OUTPUTS = (
-    ("benunit", "would_claim_uc", "universal_credit"),
     ("benunit", "would_claim_tfc", "tax_free_childcare"),
     ("benunit", "would_claim_extended_childcare", "extended_childcare"),
     ("benunit", "would_claim_universal_childcare", "universal_childcare"),
@@ -614,14 +616,20 @@ def uk_take_up_signal_gate(
     *,
     contract: UKTakeUpContract | None = None,
     maximum_share_deviation: float = 0.05,
-    population_policy: UKTakeUpPopulationPolicy | None = None,
+    under_two_usage_maximum_share_deviation: float | None = None,
 ) -> GateResult:
-    """Require non-constant UK stochastic flags near contract target shares."""
+    """Require non-constant UK stochastic flags near contract target shares.
+
+    The under-2 usage share takes ``under_two_usage_maximum_share_deviation``
+    when it is given, every other flag ``maximum_share_deviation``: the DfE
+    9-to-11-month row binds a thin cell of that draw's children, so the
+    calibrated weights move the share further from its rates than they move
+    any other flag's.
+    """
 
     resolved = contract if contract is not None else load_uk_take_up_contract()
     failures: list[str] = []
     details: dict[str, object] = {}
-    policy: UKTakeUpPopulationPolicy | None = population_policy
     for entity, output, key in UK_TAKE_UP_SIGNAL_OUTPUTS:
         table = frame.table(entity)
         if output not in table.columns:
@@ -631,20 +639,6 @@ def uk_take_up_signal_gate(
         unique_count = int(pd.Series(values).nunique(dropna=False))
         weights = np.asarray(frame.resolve_weights(entity).values, dtype=np.float64)
         population = np.ones(values.shape, dtype=bool)
-        if key == "universal_credit":
-            # The contract rate is a share of the units that can claim: those
-            # with a UC claimant or partner within the engine's age bounds at
-            # the build instant. The gate measures the realized share on the
-            # same population.
-            if policy is None:
-                policy = uk_take_up_population_policy(uk_time_period(frame))
-            population = uc_age_eligible_benunits(frame.table("person"), table, policy)
-            details["universal_credit_population_policy"] = {
-                "adult_age": policy.adult_age,
-                "state_pension_age": policy.state_pension_age,
-                "instant": policy.instant,
-                "source": policy.source,
-            }
         if key == UK_UNDER_TWO_USAGE_SIGNAL_KEY:
             # The rate is a share of the children under 2 in units that claim
             # the working-parent hours; every other person keeps 30 hours.
@@ -673,10 +667,17 @@ def uk_take_up_signal_gate(
             )
         else:
             target = _target_share(table, key, resolved, weights)
+        bound = (
+            under_two_usage_maximum_share_deviation
+            if key == UK_UNDER_TWO_USAGE_SIGNAL_KEY
+            and under_two_usage_maximum_share_deviation is not None
+            else maximum_share_deviation
+        )
         details[f"{entity}.{output}"] = {
             "weighted_share": share,
             "target": target,
             "absolute_deviation": abs(share - target),
+            "maximum_share_deviation": bound,
             "unique_count": unique_count,
             "population_units": int(population.sum()),
         }
@@ -704,11 +705,10 @@ def uk_take_up_signal_gate(
                 f"{entity}.{output}: constant column; stochastic take-up "
                 "assignment must not collapse to a universal default."
             )
-        if abs(share - target) > maximum_share_deviation:
+        if abs(share - target) > bound:
             failures.append(
                 f"{entity}.{output}: weighted share {share:.3f} differs from "
-                f"contract target {target:.3f} by more than "
-                f"{maximum_share_deviation:.3f}."
+                f"contract target {target:.3f} by more than {bound:.3f}."
             )
     return GateResult(
         name="take_up_signal",

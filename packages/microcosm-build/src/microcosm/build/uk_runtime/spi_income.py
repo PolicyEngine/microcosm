@@ -19,6 +19,12 @@ from microcosm.build.stochastic_assignment import (
     integer_record_keys,
     stable_identity_uniforms,
 )
+from microcosm.build.uk_runtime.frs_annual_income import (
+    ANNUAL_SHARE_COLUMNS,
+    EMPLOYMENT_INCOME_OTHER_SPELLS,
+    FRS_ANNUAL_INCOME_OUTPUT_COLUMNS,
+    SELF_EMPLOYMENT_INCOME_OTHER_SPELLS,
+)
 from microcosm.build.uk_runtime.frs_disability import (
     UKDWPDisabilityCategoryRates,
     UKDWPDisabilityFlagRates,
@@ -32,6 +38,7 @@ from microcosm.build.uk_runtime.frs_hmrc_source import (
 )
 from microcosm.build.uk_runtime.frs_spine import (
     FRS_LANDLORD_CARRIER_COLUMN,
+    ISA_INTEREST_COLUMN,
     uc_gainful_self_employment,
 )
 from microcosm.build.uk_runtime.hmrc_income import (
@@ -99,6 +106,9 @@ SPI_DONOR_DOCUMENTATION_URL = (
 )
 SPI_DONOR_FIT_NAME = "uk_spi_2022_23_income"
 FRS_ONLY_FIT_NAME = "uk_frs_only_spi_fill"
+#: The stage-2 draw salts keep the name each target had under the legacy gross
+#: layout, so moving to the additive contract redraws nothing (microcosm#1360).
+_STAGE2_SALT_NAMES = {ISA_INTEREST_COLUMN: "tax_free_savings_income"}
 DEFAULT_SPI_DONOR_SAMPLE_SIZE = 100_000
 # Recipient guard matching the existing constructed SPI age support below.
 # SN 9422 Annex A labels the youngest band "Under 25"; it does not establish
@@ -178,7 +188,7 @@ SPI_RECIPIENT_UNEARNED_INCOME_FLOOR_GBP = 1_000.0
 SPI_RECIPIENT_INCOME_RULE = (
     "drawn when the twin reports pay, a trade (self-employment income or a "
     "self-employed main job) or a pension, or more than the floor of taxable "
-    "interest (savings interest less the tax-free part), dividends, property "
+    "interest (savings interest outside ISAs), dividends, property "
     "and miscellaneous income together, and always for a reserved band "
     "carrier; otherwise the twin has no tax record for the tape to condition "
     "on and the copy keeps the twin's values at stage 1 and stage 2; a twin "
@@ -194,9 +204,11 @@ SPI_DONOR_INCOME_YEAR = 2022
 #: uprating_indices.yaml``). Savings interest's own index is ONS household
 #: interest income, x2.27 from 2022 to 2024 as rates rose, where the
 #: projection's GDP per head gives x1.09. The projection's index applies from
-#: the survey year on, where the engine runs it and the SPI band targets follow
+#: the survey year on, where the engine runs it. The SPI band targets followed
 #: it (``hmrc_uprating.UK_SPI_SAVINGS_INTEREST_INDEX_CONCEPT``, uk-data#541,
-#: microcosm#1095). The engine lockstep test holds both statements.
+#: microcosm#1095) until microcosm#1418 moved them to the OBR's savings income
+#: forecast, so the calibration closes the gap between the two. The engine
+#: lockstep test holds both indices to the engine's.
 SPI_HISTORY_INDEX_DIFFERS_FROM_PROJECTION = {
     "savings_interest_income": "gov.economic_assumptions.indices.obr.per_capita.gdp",
 }
@@ -1162,8 +1174,15 @@ def impute_uk_spi_income_support(
         guard_receipts.append(receipt)
 
     income_predictors = FRS_ONLY_SPI_FILL_INCOME_PREDICTOR_COLUMNS
+    # Training rows condition on gross interest, ISA interest included, as
+    # under the legacy layout, so the fit is unchanged by the additive
+    # contract (microcosm#1360); recipients condition on the taxable draw.
+    training_person = person.loc[training_people].copy()
+    training_person["savings_interest_income"] = pd.to_numeric(
+        training_person["savings_interest_income"], errors="coerce"
+    ) + pd.to_numeric(training_person[ISA_INTEREST_COLUMN], errors="coerce")
     train_predictors = _person_predictors(
-        person.loc[training_people],
+        training_person,
         household,
         income_predictors=income_predictors,
     )
@@ -1233,13 +1252,19 @@ def impute_uk_spi_income_support(
         encoded_target,
         quantiles={
             target: stable_identity_uniforms(
-                stage2_keys, seed=seed + 1, salt=f"{FRS_ONLY_FIT_NAME}:{target}"
+                stage2_keys,
+                seed=seed + 1,
+                salt=f"{FRS_ONLY_FIT_NAME}:{_STAGE2_SALT_NAMES.get(target, target)}",
             )
             for target in stage2_outputs
         },
         sign_uniforms={
             target: stable_identity_uniforms(
-                stage2_keys, seed=seed + 1, salt=f"{FRS_ONLY_FIT_NAME}:{target}:sign"
+                stage2_keys,
+                seed=seed + 1,
+                salt=(
+                    f"{FRS_ONLY_FIT_NAME}:{_STAGE2_SALT_NAMES.get(target, target)}:sign"
+                ),
             )
             for target in stage2_outputs
         },
@@ -1276,10 +1301,9 @@ def impute_uk_spi_income_support(
         )
         guard_receipts.append(receipt)
 
-    tax_free = person.loc[spi_people, "tax_free_savings_income"].to_numpy(
-        dtype=np.float64
-    )
-    person.loc[spi_people, "savings_interest_income"] = taxable_interest_draw + tax_free
+    # Non-ISA interest is the stage-1 taxable draw; ISA interest is the stage-2
+    # draw beside it (microcosm#1360).
+    person.loc[spi_people, "savings_interest_income"] = taxable_interest_draw
     person = derive_hmrc_income_auxiliaries(person, row_mask=spi_people)
     person = _move_losses_brought_forward_to_loss_relief(person, spi_people=spi_people)
     person = _refresh_disability_derived_inputs(person, spi_people=spi_people)
@@ -1291,6 +1315,7 @@ def impute_uk_spi_income_support(
         person, spi_people=spi_people
     )
     person = _refresh_landlord_carrier(person, spi_people=spi_people)
+    person = _refresh_annual_income_descriptors(person, spi_people=spi_people)
     # The flag is the stage's last new column, where the graph's typed cells
     # place it (the legacy oracle and the graph must agree on column order).
     person[SPI_INCOME_RECIPIENT_COLUMN] = (
@@ -2046,7 +2071,6 @@ def derive_hmrc_income_auxiliaries(
         "self_employment_income",
         "private_pension_income",
         "savings_interest_income",
-        "tax_free_savings_income",
         "dividend_income",
         "property_income",
         "other_investment_income",
@@ -2073,14 +2097,9 @@ def derive_hmrc_income_auxiliaries(
             numeric["self_employment_income"].to_numpy(dtype=float),
             relief.fillna(0.0).to_numpy(dtype=float),
         )
-    taxable_interest = (
-        numeric["savings_interest_income"] - numeric["tax_free_savings_income"]
-    )
-    if (taxable_interest < 0.0).any():
-        raise ValueError(
-            "HMRC accounting identity requires gross savings_interest_income "
-            "to be at least tax_free_savings_income on every person row."
-        )
+    # Taxable interest is the non-ISA interest the producer stores
+    # (microcosm#1360), held non-negative with the other leaves above.
+    taxable_interest = numeric["savings_interest_income"]
     employed_income = (
         np.maximum(
             numeric[SPI_HMRC_PAY_COLUMN]
@@ -2226,7 +2245,6 @@ _BRIDGE_PERSON_COLUMNS = (
 )
 _UNEARNED_INCOME_COLUMNS = (
     "savings_interest_income",
-    "tax_free_savings_income",
     "dividend_income",
     "property_income",
     "miscellaneous_income",
@@ -2284,9 +2302,7 @@ def _taxable_income_mask(person: pd.DataFrame) -> np.ndarray:
         | (values["private_pension_income"] + values["state_pension_reported"] > 0.0)
     )
     unearned = (
-        np.maximum(
-            values["savings_interest_income"] - values["tax_free_savings_income"], 0.0
-        )
+        np.maximum(values["savings_interest_income"], 0.0)
         + values["dividend_income"]
         + values["property_income"]
         + values["miscellaneous_income"]
@@ -2940,6 +2956,58 @@ def _refresh_uc_start_up_period(
         rows["uc_is_in_startup_period"].astype(bool).to_numpy() & still_self_employed,
         default=False,
     )
+    return person
+
+
+#: The drawn income whose absence keeps a twin's other-spell amount.
+_OTHER_SPELLS_DRAWN_INCOME = {
+    EMPLOYMENT_INCOME_OTHER_SPELLS: "employment_income",
+    SELF_EMPLOYMENT_INCOME_OTHER_SPELLS: "self_employment_income",
+}
+
+
+def _refresh_annual_income_descriptors(
+    person: pd.DataFrame, *, spi_people: pd.Series
+) -> pd.DataFrame:
+    """Hold a drawn row's annual income descriptors to its drawn incomes.
+
+    The tape records income received over the tax year, so a drawn row's pay,
+    profit and private pension already cover the whole year and each share is
+    1. Its contributory benefits are stage-2 draws on the current concept with
+    no spell of their own, so their share is 1 too. A drawn row keeps its
+    twin's other-spell pay only where it drew no pay, and its twin's ceased
+    self-employment only where it drew no profit: the bridge draws a record
+    without pay for a twin who left a job in the year, and the twin's spell is
+    then the only record of that year's pay. An undrawn copy keeps every
+    descriptor of its twin, with its twin's incomes.
+    """
+
+    present = [
+        column for column in FRS_ANNUAL_INCOME_OUTPUT_COLUMNS if column in person
+    ]
+    if not present:
+        return person
+    if len(present) != len(FRS_ANNUAL_INCOME_OUTPUT_COLUMNS):
+        missing = sorted(set(FRS_ANNUAL_INCOME_OUTPUT_COLUMNS) - set(present))
+        raise ValueError(
+            f"SPI rows carry only some annual income descriptors; missing {missing}."
+        )
+    rows = person.loc[spi_people]
+    for column in ANNUAL_SHARE_COLUMNS:
+        _assign_spi_values(person, spi_people, column, np.ones(len(rows)), default=1.0)
+    for column, drawn_column in _OTHER_SPELLS_DRAWN_INCOME.items():
+        drew_income = (
+            pd.to_numeric(rows[drawn_column], errors="coerce").fillna(0.0).to_numpy()
+            != 0.0
+        )
+        twin_spells = rows[column].to_numpy(dtype=np.float64)
+        _assign_spi_values(
+            person,
+            spi_people,
+            column,
+            np.where(drew_income, 0.0, twin_spells),
+            default=0.0,
+        )
     return person
 
 

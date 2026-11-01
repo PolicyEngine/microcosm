@@ -1,0 +1,1 @@
+Reconcile regional Census family-type targets under Max ruling d1932 with exact signed proportional adjustments, an independent positive-to-one-parent sensitivity, deterministic receipts and region masks. Keep all 51 targets parked pending the G8-r3b Census family classifier.

@@ -72,7 +72,57 @@ from tools.generate_uk_target_references import (
 
 _TEST_PATHS = paths_for("microcosm-build")
 
-ACTIVE_REFERENCE_COUNT = 1338
+# The one pin of the national active reference count: the country spec and
+# national calibration tests read it from the committed membership, or not at
+# all, so a change to the target set moves this pin alone. How it is made up:
+# microcosm#1418 PR C: + 13, SPI Table 3.7's other income by band, and + 16,
+# SPI Table 3.10's self-employment bands from GBP 1 to GBP 10,000;
+# microcosm#1418: + 3, HMRC's Income Tax on savings at each rate;
+# microcosm#1069: + 24, HMRC's Income Tax payers of State Pension age and aged
+# 65 and over in the twelve region-tier areas; microcosm#1095 (the bump after
+# #1383): + 1, obr.domestic_rates compiles, pinned to the UK; + 5, HMRC's
+# Child Benefit families in payment by number of children; microcosm#1359: + 5
+# OBR excise receipts rows, measured at FY2024-25; microcosm#953: + 1,
+# England's single adult council tax discount; microcosm#1095 (the next
+# policyengine-uk bump): - 3, the OBR welfare-cap split and the England
+# postgraduate repayments retire; childcare costing fixes: + 5, DfE funded
+# childcare by single age (working parent 9-11 months and 1-3, universal
+# nursery 3; the age-4 cells are signed out); item 6: + 11, the UK's ONS
+# single years 3 to 6 and England's 0 to 6; microcosm#1278: + 3, the ONS
+# single years 0, 1 and 2 for all persons; microcosm#1095: + 4, the two
+# national 15_19 sex bands split into ages 15, 16-17 and 18-19;
+# microcosm#1106: + 13 SPI property amounts; microcosm#1113: + 1 ONS 07.2.2
+# household road fuel; PolicyEngine/chronicle#280 lane: 705 + 33 HMRC
+# liabilities rows (Table 2.5, three measures by eleven bands) + 26 SPI
+# savings-interest rows (two measures by thirteen bands) + 360 SPI Table 3.11
+# region-tier rows (three measures by ten regional bands over twelve areas);
+# microcosm#905: 424 - 18 country rows + 189 region-tier cells; microcosm#929:
+# the 81 VOA region cells become 81 composed MHCLG cells and Wales gains ten
+# country rows (bands A-I + total); microcosm#725/#467: 24 CGT age-band rows,
+# 24 region-tier cells and 24 size-of-gain rows; microcosm#1014: 16 Table 4.1
+# BADR/IR band rows and 12 Table 3 taxable-income margin rows; microcosm#1069:
+# 60 State Pension rows (4 levels, 14 age-by-sex cells, 22 area cells, 20
+# bands) less the OBR State Pension line, now a diagnostic, and the signed-out
+# empty new State Pension £40-£60 band; 14 Pension Credit caseload rows (Great
+# Britain total, six type-by-partner cells, six age bands, NI); the DWP
+# employer contribution total, less the salary-sacrifice users total (the
+# Table 3.8 rows and the DWP employee total left the fit); two Attendance
+# Allowance and three pension-age Housing Benefit rows; the income-tax relief
+# total on salary sacrifice in place of the amount row; microcosm#1095: Great
+# Britain pension-age Housing Benefit spending, less OBR's NICs total and the
+# all-rates salary-sacrifice relief, now diagnostics beside the bound rows
+# they repeat; the two England-and-Wales PIP daily-living caseload rows are
+# diagnostics too; microcosm#1123: the 12 nation household control cells and
+# the 24 ITL Table 2.2 marginal-rate cells; microcosm#1106: the 13 SPI Table
+# 3.7 net property-income amounts by total-income band, bound unscaled once
+# the x1.9 exclusion retired; microcosm#1207: the 9 DfT BUS01a bus journey
+# rows (London and the eight English regions outside London); microcosm#1095:
+# less DWP's five-or-more-children UC count, a diagnostic beside the two-child
+# limit rows; microcosm#1301: the 30 high-value homes region cells (three
+# thresholds over England's regions and Wales), which the national line drops
+# after the compile, less the North East and Wales rows over £2m, signed out
+# below the small-cell floor
+ACTIVE_REFERENCE_COUNT = 1403
 REGION_TIER_LEVEL = {code: level for level, code in UK_REGION_TIER}
 
 
@@ -483,6 +533,15 @@ def test_chronicle_household_reference_surface_is_complete() -> None:
     assert not any(name.startswith("external:") for name in names)
 
 
+#: The June 2026 BUS0415a release blended over policyengine-uk's model years,
+#: as test_uk_bus_targets.py derives it (microcosm#1331). London's fares were
+#: held, and DfT's unrounded March 2026 value lifts them a little.
+_LONDON_FARE_FACTOR = (196.1 * 270 + 196.10649454164795 * 95) / 365 / 196.1
+_OUTSIDE_LONDON_FARE_FACTOR = (
+    210.5 * 86 + 213.6 * 92 + 214.3 * 92 + 217.95569364121366 * 95
+) / (181.6 * 86 + 185.7 * 92 + 185.9 * 92 + 206.4 * 90 + 210.5 * 5)
+
+
 def test_childcare_and_bus_references_compile_with_declared_provenance() -> None:
     root = _TEST_PATHS.repository
     feed = root / STABLE_UK_FACT_FEED_NAME
@@ -543,10 +602,13 @@ def test_childcare_and_bus_references_compile_with_declared_provenance() -> None
         "dfe.funded_childcare.working_parent_children_age_3": 278_640.0,
         "dfe.funded_childcare.universal_nursery_children_age_3": 565_954.0,
         "dft.bus_fare_receipts.england": pytest.approx(
-            3_417_388_656.43538 * 204.125 / 193.125
+            1_347_434_943.01459 * _LONDON_FARE_FACTOR
+            + 2_069_953_713.42079 * _OUTSIDE_LONDON_FARE_FACTOR
         ),
         "dft.bus_net_support.england": 3_024_904_320.8399997,
-        "dft.bus_fare_receipts.london": 1_347_434_943.01459,
+        "dft.bus_fare_receipts.london": pytest.approx(
+            1_347_434_943.01459 * _LONDON_FARE_FACTOR
+        ),
         "dft.bus_net_support.london": 1_130_214_000.0,
         "scotgov.bus.passenger_revenue": 391_000_000.0,
         "scotgov.bus.government_support": 499_000_000.0,
@@ -1006,10 +1068,11 @@ def test_uk_target_reference_membership_report_is_packaged() -> None:
 
     assert membership["target_period"] == 2025
     assert membership["active_reference_count"] == ACTIVE_REFERENCE_COUNT
+    # obr.domestic_rates compiles once pinned to the UK (microcosm#1095).
     assert membership["status_counts"] == {
-        "active": 1338,
-        "no_fact_at_or_before_period": 5,
-        "signed_excluded": 17,
+        "active": ACTIVE_REFERENCE_COUNT,
+        "no_fact_at_or_before_period": 4,
+        "signed_excluded": 30,
     }
     assert membership["genuine_sum_residue"]
     assert membership["uprating_holds"]
@@ -1025,10 +1088,12 @@ def test_uk_target_reference_membership_report_is_packaged() -> None:
         {
             "family": "hmrc_spi",
             "status": "active_strict_band_pins",
-            "active_reference_count": 182,
+            "active_reference_count": 211,
             "signed_rationale": (
                 "SPI income-band targets fan out by strict total-income-band "
-                "dimension pins. The 13 property-income amount rows bind the "
+                "dimension pins, and SPI Table 3.10's by self-employment band, "
+                "its bands outside GBP 1 to GBP 10,000 signed out row by row "
+                "(microcosm#1418). The 13 property-income amount rows bind the "
                 "SPI Table 3.7 net concept unscaled: landlords' profit after "
                 "allowable expenses and before residential finance costs, "
                 "which is what policyengine-uk's property_income means. The "
@@ -1072,6 +1137,22 @@ def test_uk_target_reference_membership_report_is_packaged() -> None:
             ),
         },
         {
+            "family": "hmrc_itl_age",
+            "status": "active_region_tier_calendar_year_window",
+            "active_reference_count": 24,
+            "signed_rationale": (
+                "The two HMRC Income Tax liabilities statistics targets for "
+                "Income Tax payers of State Pension age and aged 65 and over "
+                "(Table 2.2, July 2026) fan out over the twelve-area region "
+                "tier (microcosm#905) and bind at the calendar-2025 window of "
+                "HMRC's 2024-25 and 2025-26 projections. Table 2.2 counts "
+                "residents of a nation or region, as the frame does; Table "
+                "2.1's United Kingdom row, which adds taxpayers abroad or of "
+                "unknown region, opens the SPI State Pension rows' uprating "
+                "instead of binding (microcosm#1069)."
+            ),
+        },
+        {
             "family": "hmrc_spi_region",
             "status": "active_region_tier_fanout_uprated",
             "active_reference_count": 360,
@@ -1106,7 +1187,7 @@ def test_uk_target_reference_membership_report_is_packaged() -> None:
         {
             "family": "council_tax_stock",
             "status": "active_declared_rows",
-            "active_reference_count": 100,
+            "active_reference_count": 101,
             "signed_rationale": (
                 "MHCLG council taxbase (England), Welsh Government CT1 "
                 "(Wales) and Scottish Government CTAXBASE (Scotland) "
@@ -1117,7 +1198,9 @@ def test_uk_target_reference_membership_report_is_packaged() -> None:
                 "nine English regions of the region tier (microcosm#905), each "
                 "cell composed as the linear combination of the billing-"
                 "authority facts the crosswalk places in that region "
-                "(microcosm#929)."
+                "(microcosm#929). England's single adult discount is one "
+                "national row, MHCLG Council Taxbase line 8 for all bands "
+                "(microcosm#953)."
             ),
         },
         {
@@ -1811,8 +1894,9 @@ def test_two_level_targets_fan_out_over_the_region_tier() -> None:
     ]
     # microcosm#1123 adds the LFS household estimates for England's regions
     # and ITL Table 2.2's higher and additional rate taxpayers; microcosm#1301
-    # adds the three high-value homes region rows.
-    assert len(two_level) == 58
+    # adds the three high-value homes region rows; microcosm#1069 adds Table
+    # 2.2's taxpayers of State Pension age and aged 65 and over.
+    assert len(two_level) == 60
     ons = [target_id for target_id in two_level if target_id.startswith("ons.")]
     mhclg = [target_id for target_id in two_level if target_id.startswith("mhclg.")]
     hmrc = [target_id for target_id in two_level if target_id.startswith("hmrc.cgt.")]
@@ -1823,10 +1907,10 @@ def test_two_level_targets_fan_out_over_the_region_tier() -> None:
     ]
     assert len(ons) == 10 and len(mhclg) == 9 and len(hmrc) == 2
     assert len(spi_region) == 30
-    itl_rate = [
+    itl_table_2_2 = [
         target_id for target_id in two_level if target_id.startswith("hmrc.itl.")
     ]
-    assert len(itl_rate) == 2
+    assert len(itl_table_2_2) == 4
     high_value_homes = [
         target_id
         for target_id in two_level
@@ -1859,7 +1943,7 @@ def test_two_level_targets_fan_out_over_the_region_tier() -> None:
             target_id in ons
             or target_id in hmrc
             or target_id in spi_region
-            or target_id in itl_rate
+            or target_id in itl_table_2_2
         ) and target_id != "ons.households.english_regions"
         if target_id in high_value_homes:
             # Price Paid covers England and Wales only: area_scope keeps the
@@ -1934,10 +2018,11 @@ def test_two_level_targets_fan_out_over_the_region_tier() -> None:
     # 108 ONS + 81 MHCLG + 24 CGT + 360 SPI Table 3.11 region-tier rows,
     # 18 English-region State Pension cells (microcosm#1069), the 9 LFS
     # English-region household cells and 24 ITL Table 2.2 marginal-rate
-    # cells (microcosm#1123), and 28 high-value homes cells, three thresholds
+    # cells (microcosm#1123), 28 high-value homes cells, three thresholds
     # over England's regions and Wales less the two signed out below the
-    # small-cell floor (microcosm#1301).
-    assert sum(len(by_contract[target_id]) for target_id in two_level) == 652
+    # small-cell floor (microcosm#1301), and 24 ITL Table 2.2 cells of
+    # taxpayers of State Pension age and aged 65 and over (microcosm#1069).
+    assert sum(len(by_contract[target_id]) for target_id in two_level) == 676
     # The twelve ONS cells of a band sum to the UK row of the same
     # publication (the 0-9 band: 7,364,365 at mid-2025, microcosm#1123).
     zero_to_nine = membership["targets"]["ons.population.age_0_9_by_region"]

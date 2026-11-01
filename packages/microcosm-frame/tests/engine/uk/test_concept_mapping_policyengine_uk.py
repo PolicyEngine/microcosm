@@ -22,6 +22,7 @@ from microcosm.frame.adapters.policyengine_uk import (
     PolicyEngineUKEngine,
 )
 from microcosm.frame.adapters.policyengine_uk_concepts import (
+    UK_ENGINE_DEFAULT_INPUTS,
     UK_ENGINE_DEFAULT_TAKE_UP_INPUTS,
 )
 from microcosm.frame.concept_mapping import (
@@ -92,6 +93,16 @@ def test_take_up_bindings_are_the_engines_would_claim_inputs(engine) -> None:
     assert bound | left == would_claim
 
 
+def test_signed_default_inputs_are_engine_inputs_the_mapping_leaves(engine) -> None:
+    # Each is left at the engine's default as a signed approximation, so it
+    # must be an input the engine reads and the mapping never binds.
+    inputs = set(engine.variables())
+    bound = {binding.engine_input for binding in MAPPING.bindings}
+    assert set(UK_ENGINE_DEFAULT_INPUTS) <= inputs
+    assert bound.isdisjoint(UK_ENGINE_DEFAULT_INPUTS)
+    assert all(reason.strip() for reason in UK_ENGINE_DEFAULT_INPUTS.values())
+
+
 def test_structural_inputs_are_engine_inputs(engine) -> None:
     assert set(MAPPING.structural_inputs) <= set(engine.variables())
 
@@ -120,8 +131,9 @@ def test_the_mapping_notes_formula_ownership_claims_hold(engine) -> None:
 
 def test_the_liquid_asset_reason_holds(engine) -> None:
     # Financial wealth is a household input. The person-level GBP stocks are a
-    # debt, a car's list price and the Lifetime ISA balance, which the engine
-    # documents as already inside the household's financial wealth.
+    # debt, a car's list price, the Lifetime ISA balance, which the engine
+    # documents as already inside the household's financial wealth, and the
+    # cash and stocks-and-shares ISA balances the household ISA totals sum.
     # uc_reported_capital defaults to -1 since policyengine-uk 2.136.1: set to
     # zero or more it is a unit's complete capital. benunit_reported_capital,
     # a benefit-unit input unset at -1, replaces the household financial proxy
@@ -144,7 +156,15 @@ def test_the_liquid_asset_reason_holds(engine) -> None:
         "owned_company_capital",
         "owned_company_holding_value",
         "owned_company_trade_assets",
+        # The person's ISAs (2.164.0), which the household cash_isa and
+        # stocks_and_shares_isa sum; the isa_subscriptions stage writes them
+        # (microcosm#1415).
+        "cash_isa_balance",
+        "stocks_and_shares_isa_balance",
     }
+    for name in ("cash_isa", "stocks_and_shares_isa"):
+        assert name not in inputs, name
+        assert engine.variable_metadata(name).entity == "household", name
     for name in ("savings", "gross_financial_wealth", "net_financial_wealth"):
         assert name in inputs, name
         assert engine.variable_metadata(name).entity == "household", name
@@ -174,7 +194,8 @@ def test_the_liquid_asset_reason_names_the_household_wealth_inputs(engine) -> No
     # Shares and funds sit on the household too, in corporate_wealth. Since
     # policyengine-uk 2.147.0 Universal Credit counts them, alongside savings,
     # as share_like_capital: corporate_wealth unless its two household
-    # components, which the build leaves unset, add up to more. Its one
+    # components, which the WAS stage writes to sum to it with the ISA, add up
+    # to more (microcosm#1095). Its one
     # person-level source is the Lifetime ISA at its surrender value.
     reason = MAPPING.unmapped["fact:person.liquid_financial_assets"]
     inputs = set(engine.variables())

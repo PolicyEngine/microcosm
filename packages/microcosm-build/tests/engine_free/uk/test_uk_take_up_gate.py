@@ -11,14 +11,9 @@ from microcosm.build.uk_runtime.frs_household_draws import (
 )
 from microcosm.build.uk_runtime.frs_take_up import (
     FRS_TAKE_UP_OUTPUT_COLUMNS,
-    UKTakeUpPopulationPolicy,
     uk_take_up_signal_gate,
 )
 from microcosm.build.uk_runtime.national_frame import uk_national_frame
-
-_POLICY = UKTakeUpPopulationPolicy(
-    adult_age=18, state_pension_age=66, instant="2025-01-01", source="test"
-)
 
 
 class _Contract:
@@ -96,25 +91,23 @@ def _frame(*, brma_values=("LONDON_A", "LONDON_B")):
 
 
 def test_take_up_gate_seeded_fixture_passes() -> None:
-    result = uk_take_up_signal_gate(
-        _frame(), contract=_Contract(), population_policy=_POLICY
-    )
+    result = uk_take_up_signal_gate(_frame(), contract=_Contract())
 
     assert result.passed is True
-    assert "benunit.would_claim_uc" in result.details
+    assert "benunit.would_claim_tfc" in result.details
     # The Child Benefit flags are measured by their own stage gate
-    # (microcosm#1063), like would_claim_pc (microcosm#1069).
+    # (microcosm#1063), like would_claim_pc (microcosm#1069) and
+    # would_claim_uc (microcosm#1334).
     assert "benunit.would_claim_child_benefit" not in result.details
     assert "benunit.child_benefit_opts_out" not in result.details
+    assert "benunit.would_claim_uc" not in result.details
 
 
 def test_take_up_gate_constant_column_fails() -> None:
     frame = _frame()
-    frame.table("benunit")["would_claim_uc"] = True
+    frame.table("benunit")["would_claim_tfc"] = True
 
-    result = uk_take_up_signal_gate(
-        frame, contract=_Contract(), population_policy=_POLICY
-    )
+    result = uk_take_up_signal_gate(frame, contract=_Contract())
 
     assert result.passed is False
     assert "constant column" in " ".join(result.failures)
@@ -124,9 +117,7 @@ def test_take_up_gate_out_of_band_share_fails() -> None:
     frame = _frame()
     frame.table("household")["property_purchased"] = [True] * 9 + [False]
 
-    result = uk_take_up_signal_gate(
-        frame, contract=_Contract(), population_policy=_POLICY
-    )
+    result = uk_take_up_signal_gate(frame, contract=_Contract())
 
     assert result.passed is False
     assert "property_purchased" in " ".join(result.failures)
@@ -176,45 +167,24 @@ def test_gate_registry_vocabulary_round_trip() -> None:
     assert FRS_BRMA_OUTPUT_COLUMNS == ("brma",)
 
 
-def test_take_up_gate_measures_uc_share_over_units_with_a_working_age_adult() -> None:
-    """Units with every adult at or over State Pension age are outside the draw."""
+def test_take_up_gate_leaves_universal_credit_to_its_stage_gate() -> None:
+    """would_claim_uc is set by award band and family type (microcosm#1334).
+
+    Its share of the age population is no longer a contract rate, so even a
+    constant flag is not this gate's to fail; uk_stage_uc_take_up measures it.
+    """
 
     frame = _frame()
-    person = frame.table("person")
-    # Persons 101-110 sit one per benefit unit; make the last four benefit
-    # units all-pension-age and mark them as claimants: they must not count.
-    person.loc[person["person_id"].between(107, 110), "age"] = 70
-    benunit = frame.table("benunit")
-    benunit.loc[benunit["benunit_id"] >= 207, "would_claim_uc"] = True
+    frame.table("benunit")["would_claim_uc"] = True
 
-    result = uk_take_up_signal_gate(
-        frame, contract=_Contract(), population_policy=_POLICY
-    )
+    result = uk_take_up_signal_gate(frame, contract=_Contract())
 
-    detail = result.details["benunit.would_claim_uc"]
-    assert detail["population_units"] == 6
-    assert detail["weighted_share"] == 0.5
     assert result.passed is True
-
-
-def test_take_up_gate_fails_when_the_uc_population_is_empty() -> None:
-    frame = _frame()
-    frame.table("person")["age"] = 70
-
-    result = uk_take_up_signal_gate(
-        frame, contract=_Contract(), population_policy=_POLICY
-    )
-
-    assert result.passed is False
-    assert "would_claim_uc: no unit in the draw's population" in " ".join(
-        result.failures
-    )
+    assert "benunit.would_claim_uc" not in result.details
 
 
 def test_take_up_gate_measures_under_two_usage_over_claiming_children() -> None:
-    result = uk_take_up_signal_gate(
-        _frame(), contract=_Contract(), population_policy=_POLICY
-    )
+    result = uk_take_up_signal_gate(_frame(), contract=_Contract())
 
     details = result.details["person.max_free_entitlement_hours_used"]
     # Two children under 2 in claiming units, one of whom uses the hours; the
@@ -227,8 +197,41 @@ def test_take_up_gate_measures_under_two_usage_over_claiming_children() -> None:
     frame.table("person").drop(
         columns=["max_free_entitlement_hours_used"], inplace=True
     )
-    missing = uk_take_up_signal_gate(
-        frame, contract=_Contract(), population_policy=_POLICY
-    )
+    missing = uk_take_up_signal_gate(frame, contract=_Contract())
     assert missing.passed is False
     assert "max_free_entitlement_hours_used: missing" in " ".join(missing.failures)
+
+
+class _OffRateContract(_Contract):
+    """The fixture's realised shares are 0.5; these rates sit 0.075 above them."""
+
+    def rate(self, key: str, build_year: int | None = None) -> float:
+        if key in (
+            "extended_childcare_age_0_usage",
+            "extended_childcare_age_1_usage",
+            "property_purchase_rate",
+        ):
+            return 0.575
+        return super().rate(key, build_year)
+
+
+def test_take_up_gate_holds_under_two_usage_to_its_own_bound() -> None:
+    usage = "person.max_free_entitlement_hours_used"
+
+    shared = uk_take_up_signal_gate(_frame(), contract=_OffRateContract())
+    assert any(usage in failure for failure in shared.failures)
+    assert shared.details[usage]["maximum_share_deviation"] == 0.05
+
+    own = uk_take_up_signal_gate(
+        _frame(),
+        contract=_OffRateContract(),
+        under_two_usage_maximum_share_deviation=0.1,
+    )
+    # The under-2 share is inside its own bound; every other flag keeps the
+    # shared one, so the household draw 0.075 off its rate still fails.
+    assert not any(usage in failure for failure in own.failures)
+    assert own.details[usage]["maximum_share_deviation"] == 0.1
+    assert (
+        own.details["household.property_purchased"]["maximum_share_deviation"] == 0.05
+    )
+    assert any("household.property_purchased" in failure for failure in own.failures)

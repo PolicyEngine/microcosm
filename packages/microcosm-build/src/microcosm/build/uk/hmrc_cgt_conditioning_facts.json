@@ -16,12 +16,12 @@
   },
   "source_fact_feed": {
     "source_repo": "PolicyEngine/chronicle",
-    "source_commit": "abf0921b896d29ee0745ed2aefde8d6337ed7164",
+    "source_commit": "53815b24844cb63c103209f197f9d3d9e2e424a9",
     "build": "build-bundle --suite uk -> build-consumer-artifact",
     "artifact_schema_version": "policyengine_ledger.consumer_artifact.v2",
-    "fact_row_count": 1499301,
-    "facts_sha256": "2b64fecfe746164203dac1726aae6ffdb3e5d8e478bd3d64d118ac76cb00780b",
-    "manifest_sha256": "b90fb1b8f1a910458fac41425360209d101796e6de0b134f952ad93323ca6e21"
+    "fact_row_count": 1511063,
+    "facts_sha256": "4b0e5c1ad057946407807428a1c79c70d9b14e2f8539ea8fb93524573c026227",
+    "manifest_sha256": "708231c77432d2838bf1ee7d8f3080e49ca0e59edccdd45c36b3405db2cb45fb"
   },
   "selections": [
     {

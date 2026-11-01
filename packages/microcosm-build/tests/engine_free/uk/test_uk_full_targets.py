@@ -206,8 +206,17 @@ def test_wrong_fact_count_refuses_before_either_compiler(prepared):
 def test_current_national_and_local_pins_share_one_reviewed_identity():
     # main (#904) reads one committed pin, ``uk/chronicle_feed.json``, for the
     # national feed and the local census; the full build checks they agree.
-    # The identity is the abf0921 feed re-pinned by microcosm#1300
-    # (PolicyEngine/chronicle#359: UC by payment indicator, OBR table 4.9
+    # The identity is the 53815b2 merge of PolicyEngine/chronicle#394
+    # (microcosm#1418: SPI 2023-24 Table 3.10 and the OBR's October 2026
+    # EFO), on top of the 0b721a4 merge of PolicyEngine/chronicle#392
+    # (HMRC's ISA statistics) and the 272c987 feed of microcosm#1359
+    # (PolicyEngine/chronicle#391: the Gambling Commission's Gambling Survey
+    # for Great Britain 2025 participation tables), on top of the 200bf6d feed
+    # of microcosm#1359 (PolicyEngine/chronicle#384: HMRC alcohol and tobacco clearances,
+    # betting and gaming receipts and Machine Games Duty liabilities, the
+    # Gambling Commission's industry statistics and OBR's excise lines, with
+    # the September Consumer Trends edition in place of June's), on top of the
+    # abf0921 feed of microcosm#1300 (UC by payment indicator, OBR table 4.9
     # geography, DESNZ gas years and Northern Ireland energy, UV404 by output
     # area). It holds the 735820c HVCTS inputs microcosm#1240 pinned, every
     # 942a1fa row of microcosm#1123 and the 1ee7dfe rows of microcosm#1113.
@@ -216,19 +225,19 @@ def test_current_national_and_local_pins_share_one_reviewed_identity():
     assert (
         national.facts_sha256
         == local["facts_sha256"]
-        == ("2b64fecfe746164203dac1726aae6ffdb3e5d8e478bd3d64d118ac76cb00780b")
+        == ("4b0e5c1ad057946407807428a1c79c70d9b14e2f8539ea8fb93524573c026227")
     )
     assert (
         national.manifest_sha256
         == local["manifest_sha256"]
-        == ("b90fb1b8f1a910458fac41425360209d101796e6de0b134f952ad93323ca6e21")
+        == ("708231c77432d2838bf1ee7d8f3080e49ca0e59edccdd45c36b3405db2cb45fb")
     )
     assert (
         national.source_commit
         == local["source_commit"]
-        == "abf0921b896d29ee0745ed2aefde8d6337ed7164"
+        == "53815b24844cb63c103209f197f9d3d9e2e424a9"
     )
-    assert national.fact_row_count == local["fact_row_count"] == 1499301
+    assert national.fact_row_count == local["fact_row_count"] == 1511063
 
 
 def test_chronicle_source_codec_validates_directory_manifest(tmp_path):
@@ -458,8 +467,8 @@ def test_the_national_line_drops_local_only_rows_before_reconciliation(monkeypat
     )
 
     # Every reference compiles, on the feed and the derived facts together.
-    derived = runtime.load_uk_high_value_home_stock_facts()
-    assert compiled_facts == [({"feed": True}, *derived.rows)]
+    derived = runtime.uk_derived_fact_rows()
+    assert compiled_facts == [({"feed": True}, *derived)]
     # The region rows leave before reconciliation: the national surface and
     # its version are the ones it had without them.
     (reconciled,) = reconciled_from
@@ -475,9 +484,13 @@ def test_the_national_line_drops_local_only_rows_before_reconciliation(monkeypat
         "dropped_reference_count": 2,
         "dropped_target_ids": [_REGION_ROW],
     }
-    assert result["derived_fact_provenance"]["high_value_home_stock_facts"][
-        "rows_sha256"
-    ] == (derived.rows_sha256)
+    # The receipt names every derived resource the compile read.
+    resources = runtime.load_uk_derived_facts()
+    assert sorted(result["derived_fact_provenance"]) == sorted(resources)
+    for stem, facts in resources.items():
+        assert result["derived_fact_provenance"][stem]["rows_sha256"] == (
+            facts.rows_sha256
+        )
 
 
 def test_the_full_line_binds_the_region_rows(prepared, monkeypatch):
@@ -502,8 +515,8 @@ def test_the_full_line_binds_the_region_rows(prepared, monkeypatch):
         lambda registry, exclusions, now: (registry, {}),
     )
     result = _load()
-    derived = runtime.load_uk_high_value_home_stock_facts()
-    assert all(facts == (*artifact.facts, *derived.rows) for facts in seen_facts)
+    derived = runtime.uk_derived_fact_rows()
+    assert all(facts == (*artifact.facts, *derived) for facts in seen_facts)
     # The local line binds every row: nothing leaves, the registry is the
     # compiled object itself.
     assert reconciled_from == [compiled]

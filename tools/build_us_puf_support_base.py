@@ -87,9 +87,11 @@ from microcosm.build.us_runtime import (
     load_asec_raw_stage_checkpoint,
     load_congressional_district_vintage_crosswalk,
     load_us_block_ladder,
+    processed_puf_tax_unit_partnership_s_corp_income,
     puf_tax_unit_donor_from_arrays,
     resolve_asec_spm_role_source_paths,
     source_year_puf_adjusted_gross_income,
+    source_year_puf_partnership_s_corp_income,
     support_channel_column,
     transfer_puf_capital_gains_tail,
     translate_congressional_district_facts_to_current_vintage,
@@ -105,6 +107,7 @@ from microcosm.build.us_runtime import (
     us_educator_expense_signal_gate,
     us_eligibility_inputs_signal_gate,
     us_energy_subsidy_signal_gate,
+    us_esi_premiums_signal_gate,
     us_farm_business_income_signal_gate,
     us_form_4952_election_signal_gate,
     us_geography_ladder_assignment_summary,
@@ -136,6 +139,7 @@ from microcosm.build.us_runtime import (
     with_us_education_inputs,
     with_us_eligibility_inputs,
     with_us_energy_subsidy_input,
+    with_us_esi_premium_inputs,
     with_us_housing_inputs,
     with_us_immigration_inputs,
     with_us_medicare_take_up_input,
@@ -224,6 +228,7 @@ STAGE_BOUNDARIES: tuple[tuple[str, tuple[str, ...]], ...] = (
             "with_us_energy_subsidy_input",
             "with_us_retirement_contribution_inputs",
             "with_us_retirement_distribution_inputs",
+            "with_us_esi_premium_inputs",
             "with_us_immigration_inputs",
         ),
     ),
@@ -1217,6 +1222,17 @@ def _run_all(
         seed=args.seed,
         time_period=args.target_year,
     )
+    base = with_us_esi_premium_inputs(
+        base,
+        seed=args.seed,
+        time_period=args.target_year,
+    )
+    esi_premiums_gate = us_esi_premiums_signal_gate(base)
+    if not esi_premiums_gate.passed:
+        raise SystemExit(
+            "ESI premium signal gate failed before support cloning:\n  "
+            + "\n  ".join(esi_premiums_gate.failures)
+        )
     base = with_us_immigration_inputs(
         base,
         seed=args.seed,
@@ -1515,6 +1531,14 @@ def _run_all(
             "Education-input signal gate failed:\n  "
             + "\n  ".join(education_inputs_gate.failures)
         )
+    # The ESI premium inputs ride the support clone unchanged; re-prove clone
+    # agreement and the cell multiples on the cloned frame.
+    esi_premiums_post_clone_gate = us_esi_premiums_signal_gate(imputed)
+    if not esi_premiums_post_clone_gate.passed:
+        raise SystemExit(
+            "ESI premium signal gate failed after support cloning:\n  "
+            + "\n  ".join(esi_premiums_post_clone_gate.failures)
+        )
     _observe_frame_boundary(boundary_observer, "education_inputs_post_clone", imputed)
     congressional_district_assignment = {"applied": False}
     if args.assign_congressional_districts:
@@ -1724,6 +1748,16 @@ def _run_all(
             "passed": pregnancy_gate.passed,
             "failures": list(pregnancy_gate.failures),
             "details": dict(pregnancy_gate.details),
+        },
+        "esi_premiums_signal": {
+            "passed": esi_premiums_gate.passed,
+            "failures": list(esi_premiums_gate.failures),
+            "details": dict(esi_premiums_gate.details),
+        },
+        "esi_premiums_post_clone_signal": {
+            "passed": esi_premiums_post_clone_gate.passed,
+            "failures": list(esi_premiums_post_clone_gate.failures),
+            "details": dict(esi_premiums_post_clone_gate.details),
         },
         "wic_claim_signal": {
             "passed": wic_claim_gate.passed,
@@ -2328,6 +2362,15 @@ def _pre_clone_enrichment_stage(
         seed=args.seed,
         time_period=args.target_year,
     )
+    base = with_us_esi_premium_inputs(
+        base,
+        seed=args.seed,
+        time_period=args.target_year,
+    )
+    signals["esi_premiums_signal"] = _checked_gate_payload(
+        us_esi_premiums_signal_gate(base),
+        "ESI premium signal gate failed before support cloning",
+    )
     base = with_us_immigration_inputs(
         base,
         seed=args.seed,
@@ -2874,6 +2917,10 @@ def _post_qrf_frame_stage(
             us_education_inputs_signal_gate(frame),
             "Education-input signal gate failed",
         )
+        signals["esi_premiums_post_clone_signal"] = _checked_gate_payload(
+            us_esi_premiums_signal_gate(frame),
+            "ESI premium signal gate failed after support cloning",
+        )
     elif stage == "congressional_district_assignment":
         assignment: dict[str, object] = {"applied": False}
         if args.assign_congressional_districts:
@@ -3021,6 +3068,8 @@ def _export_staged_result(
         "weeks_unemployed_signal",
         "eligibility_inputs_signal",
         "pregnancy_signal",
+        "esi_premiums_signal",
+        "esi_premiums_post_clone_signal",
         "wic_claim_signal",
         "educator_expense_signal",
         "form_4952_election_signal",
@@ -3439,11 +3488,21 @@ def _puf_tax_unit_donor_from_h5(
         processed_tax_unit_ids=arrays["tax_unit_id"],
         processed_tax_unit_weights=arrays["household_weight"],
     )
-    return puf_tax_unit_donor_from_arrays(
+    schedule_e_receipt: dict[str, object] = {}
+    schedule_e = _source_year_puf_partnership_s_corp_income(
+        source_puf_csv,
+        arrays,
+        receipt=schedule_e_receipt,
+    )
+    donor = puf_tax_unit_donor_from_arrays(
         arrays,
         adjusted_gross_income=adjusted_gross_income,
+        schedule_e_partnership_s_corp=schedule_e,
         donor_build_summary=donor_build_summary,
     )
+    if donor_build_summary is not None:
+        donor_build_summary["schedule_e_line_32"] = schedule_e_receipt
+    return donor
 
 
 def _puf_e01000_reconciliation_basis(
@@ -3492,6 +3551,25 @@ def _source_year_puf_adjusted_gross_income(
         source_puf_csv,
         processed_tax_unit_ids=processed_tax_unit_ids,
         processed_tax_unit_weights=processed_tax_unit_weights,
+    )
+
+
+def _source_year_puf_partnership_s_corp_income(
+    source_puf_csv: Path,
+    arrays: Mapping[str, Sequence[object]],
+    *,
+    receipt: dict[str, object] | None = None,
+) -> dict[str, np.ndarray]:
+    """Load Schedule E line 32 by entity through the same narrow seam."""
+
+    return source_year_puf_partnership_s_corp_income(
+        source_puf_csv,
+        processed_tax_unit_ids=arrays["tax_unit_id"],
+        processed_tax_unit_weights=arrays["household_weight"],
+        processed_nonpassive_partnership_s_corp_income=(
+            processed_puf_tax_unit_partnership_s_corp_income(arrays)
+        ),
+        receipt=receipt,
     )
 
 

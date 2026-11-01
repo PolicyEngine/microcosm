@@ -44,8 +44,15 @@ from microcosm.build.uk_runtime.weighted_integrity import (
     uk_qrf_tail_concentration_columns,
 )
 
+#: A synthetic approval window. The gates compare it with the real date when a
+#: test passes no ``now``, so a real-looking window (it was 2026-08-10 to
+#: 2027-02-10) would fail those tests once it lapsed, as the UK build
+#: fixture's did on 2026-10-04 (microcosm#1103). Expiry itself is tested with
+#: explicit dates.
+SYNTHETIC_EXPIRY = "2099-12-31"
 
-def _entry(reason: str, *, expires_on: str = "2027-02-10") -> dict[str, str]:
+
+def _entry(reason: str, *, expires_on: str = SYNTHETIC_EXPIRY) -> dict[str, str]:
     """A valid schema-2 approval receipt around the fixture's reason."""
 
     return {
@@ -476,6 +483,7 @@ def test_qrf_columns_check_every_declared_output_regardless_of_density() -> None
         "afcs_reported",
         "bsp_reported",
         "war_widows_pension_reported",
+        "widowed_parents_allowance_reported",
         "jsa_contrib_reported",
         "jsa_income_reported",
         "esa_income_reported",
@@ -549,17 +557,22 @@ def test_committed_exclusion_registers_load() -> None:
     # microcosm#1106 (signed 2026-10-11): the release leaves it to the engine,
     # so the reference carries a column the candidate no longer ships. The
     # QRF tail register went with its gate (microcosm#1276).
+    # tax_free_savings_income joins with microcosm#1360 (signed 2026-10-28):
+    # under the additive ISA income contract the candidate stores ISA interest
+    # apart, and the engine sums it into the column the reference stores.
     assert set(input_mass["efrs-post-calibration"]) == {
         "dfe_education_spending",
         "property_wealth",
+        "tax_free_savings_income",
     }
     for record in input_mass["efrs-post-calibration"].values():
         assert record.approved_by == "juaristi22"
-        assert record.approved_on in {"2026-10-02", "2026-10-11"}
-        assert record.expires_on in {"2027-04-02", "2027-04-11"}
+        assert record.approved_on in {"2026-10-02", "2026-10-11", "2026-10-28"}
+        assert record.expires_on in {"2027-04-02", "2027-04-11", "2027-04-28"}
         assert (
             "microcosm#1063" in record.adjudication
             or "microcosm#1106" in record.adjudication
+            or "microcosm#1360" in record.adjudication
         )
     assert uk_default_input_mass_reviewed_exclusions() is (
         uk_default_input_mass_reviewed_exclusions()
@@ -953,7 +966,9 @@ def test_expired_exclusion_stops_suppressing_and_names_its_receipt() -> None:
     reference = _reference({"employment_income": 10.0})
     policy = _policy(
         minimum_reference_total=1.0,
-        reviewed_exclusions={"employment_income": _entry(reason)},
+        reviewed_exclusions={
+            "employment_income": _entry(reason, expires_on="2027-02-10")
+        },
     )
     candidate = {"employment_income": 0.0}
 
