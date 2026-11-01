@@ -29,7 +29,9 @@ from microcosm.build.money_normalization import (
 from microcosm.build.reference_factors import validate_factor_context
 from microcosm.build.transport import cli as cli_module
 from microcosm.build.transport import compose as compose_module
+from microcosm.build.transport.money_kernels import MONEY_NORMALIZE_REF
 from microcosm.frame.concepts import TransportRule
+from microcosm.graph.canonical import canonical_json
 from test_support.paths import paths_for
 
 _SPEC = paths_for("microcosm-build").package / "src/microcosm/build/nz"
@@ -49,7 +51,44 @@ def _declaration():
 
 
 def test_run_entry_checks_all_scenario_donor_factors(monkeypatch):
-    spec = compose_module.load_transport_spec("nz")
+    packaged = compose_module.load_transport_spec("nz")
+    declaration = compose_module.transport_resource(packaged, "money_normalization")
+    spec = {
+        **packaged,
+        "resources": {
+            **packaged["resources"],
+            compose_module.GRAPH_RESOURCE: {
+                "nodes": [
+                    {
+                        "id": f"money.{profile}",
+                        "kernel": MONEY_NORMALIZE_REF,
+                        "params": {
+                            "declaration": {
+                                "resource": "money_normalization",
+                                "encoding": "json",
+                            },
+                            "declaration_sha256": {
+                                "resource": "money_normalization",
+                                "encoding": "sha256",
+                            },
+                            "profile_selection": canonical_json(
+                                {"aging_index": profile}
+                            ).decode("utf-8"),
+                            "factor_context": {
+                                "resource": "reference_aging",
+                                "encoding": "json",
+                            },
+                            "factor_context_sha256": {
+                                "resource": "reference_aging",
+                                "encoding": "sha256",
+                            },
+                        },
+                    }
+                    for profile in declaration["factor_profile"]["profiles"]
+                ]
+            },
+        },
+    }
     checked = {}
     monkeypatch.setattr(cli_module, "_today", lambda: date(2026, 11, 1))
     monkeypatch.setattr(

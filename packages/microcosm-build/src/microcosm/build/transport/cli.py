@@ -37,14 +37,7 @@ import numpy as np
 import pandas as pd
 
 from microcosm.build.artifact_files import file_artifact, materialize_bytes
-from microcosm.build.money_normalization import (
-    selected_money_factors,
-    validate_money_normalization,
-)
-from microcosm.build.reference_factors import (
-    require_current_factors,
-    validate_factor_context,
-)
+from microcosm.build.reference_factors import require_current_factors
 from microcosm.frame import Frame
 from microcosm.frame.adapters.axiom import AxiomEntityTableDataset
 from microcosm.frame.materialize import put_frame_table
@@ -72,12 +65,8 @@ from microcosm.graph.keys import source_content_key
 
 from .codecs import RULESPEC_SOURCE_CODEC
 from .compose import (
-    MONEY_NORMALIZATION_RESOURCE,
     TransportGraphConfig,
     TransportGraphExtension,
-    _has_resource,
-    _mapping,
-    _sequence,
     compose_transport_graph,
     load_transport_spec,
     reference_profile_views,
@@ -87,6 +76,7 @@ from .compose import (
     transport_resource,
     validate_transport_activation,
 )
+from .entitlement import money_node_factor_entries
 from .population_kernels import TRANSPORT_CREATE
 from .registry import TransportRegistry, build_transport_registry
 from .terminal_kernels import materialize_export, validate_export
@@ -246,10 +236,12 @@ def prepare_transport_build(
 ) -> PreparedTransportBuild:
     """Check factor currency and activation, then compose the prepared graph.
 
-    A new run (``auto`` or ``forbid``) first requires every factor the default
-    and scenario views select to be current on today's UTC date; ``require``
-    only verifies stored work. This is the run-entry check for every caller,
-    the CLI included. Composition and execution stay clock-free.
+    A new run (``auto`` or ``forbid``) first requires every reference-view
+    factor and every declared money node's own factors and context to be
+    current on today's UTC date; ``require`` only verifies stored work.
+    Caller extensions contain code rather than spec rows, so this check
+    does not cover their money nodes. This is the run-entry check for every
+    caller, the CLI included. Composition and execution stay clock-free.
 
     Before registry preparation, CREATE or graph source reads, activation
     checks declaration resource paths, non-null selected roots and encoding
@@ -713,43 +705,25 @@ def _today() -> date:
 def _require_current_run_factors(
     spec: Mapping[str, object], *, resume: ResumePolicy
 ) -> None:
-    """The currency check guards new runs only, including scenario selections.
+    """Check reference views and each declared money node before a new run.
 
     ``require`` only replays stored work and may verify historical factors.
-    Check reference views and money-normalization selections for the default
-    and each scenario against today's UTC date, before CREATE. Share the
-    reference walk with activation and the money selection with its kernel.
+    Resolve each money node's declaration, selection and context through
+    composition's resolvers, then use its kernel's validators. Check each
+    context separately against one UTC date before CREATE; caller extension
+    code falls outside the spec walk. A spec without money nodes selects no
+    money factors, even if it carries a money-normalization resource.
     """
     if resume == "require":
         return
     selected = {}
     for view in reference_profile_views(spec):
         selected.update(view[2].get("selected_factors", {}))
-    if _has_resource(spec, MONEY_NORMALIZATION_RESOURCE):
-        declaration = validate_money_normalization(
-            transport_resource(spec, MONEY_NORMALIZATION_RESOURCE)
-        )
-        selections = [{}]
-        if _has_resource(spec, "scenarios"):
-            selections.extend(
-                _mapping(_mapping(scenario, "scenario").get("knobs", {}), "knobs")
-                for scenario in _sequence(
-                    transport_resource(spec, "scenarios").get("scenarios"), "scenarios"
-                )
-            )
-        factor_ids = set()
-        for selection in selections:
-            _, factors = selected_money_factors(declaration, selection)
-            factor_ids.update(value for value in factors.values() if value is not None)
-        if factor_ids:
-            profiles = transport_resource(spec, "reference_profiles")
-            selected.update(
-                validate_factor_context(
-                    transport_resource(spec, profiles["factor_context_resource"]),
-                    sorted(factor_ids),
-                )
-            )
-    require_current_factors(selected, today=_today())
+    money_entries = money_node_factor_entries(spec)
+    today = _today()
+    require_current_factors(selected, today=today)
+    for entries in money_entries:
+        require_current_factors(entries, today=today)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
