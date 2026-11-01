@@ -5103,8 +5103,8 @@ def _company_cars_gate(
     negative value, a holder without a list price, an input written for someone
     without a car, an unknown fuel type, a CO2 figure missing for a car that emits
     it or set for an electric car, private fuel on an electric car, contributions
-    above the list price, an electric range outside 1 to 50 g/km, an SPI benefit
-    above its EPB). It also fails when, on any SPI-channel row, pay plus the car
+    above the list price, an electric range on a car outside 1 to 50 g/km, an SPI
+    benefit above its EPB). It also fails when, on any SPI-channel row, pay plus the car
     and fuel benefits the engine computes again on the stage's output misses the
     pay the row brought in by more than ``maximum_pay_identity_error_gbp``: the
     carve-out assumes how the engine prices a car, so an engine that prices it
