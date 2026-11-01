@@ -402,8 +402,8 @@ def test_closed_documents_reject_unknown_and_duplicate_columns():
 BRIDGES = (MONEY_MINOR_UNITS.ref, MONEY_ANNUAL_TRANSFERS.ref)
 
 
-def _lineage(kernel, column, *, normalizes=False):
-    """A writer one population version above the column's first owner."""
+def _lineage(kernel, column, *, normalizes=False, entity="person"):
+    """A writer in a descendant population, optionally after normalization."""
     owned = [Owned("person", "major", "float64"), Owned("person", "units", "int64")]
     create = Node(
         "create",
@@ -434,7 +434,7 @@ def _lineage(kernel, column, *, normalizes=False):
             kernel,
             population="next",
             inputs=(Slice("person", ("major",)),),
-            outputs=(Owned("person", column, "int64"),),
+            outputs=(Owned(entity, column, "int64"),),
         )
     )
     return Graph("xx", (SourceRef("donor", "fixture@1"),), tuple(nodes))
@@ -523,3 +523,12 @@ def test_only_normalization_writes_a_normalized_companion(kernel):
         _check(
             _lineage(kernel, "interest_income_cents", normalizes=True), declared=True
         )
+
+
+def test_a_companion_name_stays_free_on_another_entity():
+    _check(
+        _lineage(
+            "toy.rules@1", "interest_income_cents", normalizes=True, entity="household"
+        ),
+        declared=True,
+    )

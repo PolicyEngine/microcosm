@@ -107,6 +107,7 @@ from microcosm.graph import (
 from microcosm.graph.canonical import canonical_json
 from microcosm.graph.keys import node_key, source_content_key
 from test_support.microcosm_build.chronicle_feed import write_pinned_artifact
+from test_support.microcosm_build.money_normalization import graph_declaration
 from test_support.microcosm_build.reference_factor_transport import (
     factor_transport_fixture,
 )
@@ -7341,4 +7342,55 @@ def test_composition_refuses_a_later_owner_of_a_money_bridge_column(
     else:
         assert (
             compose_transport_graph(spec, config).node(later.id).kernel == later.kernel
+        )
+
+
+@pytest.mark.parametrize("extended", [False, True], ids=["skeleton", "extended"])
+@pytest.mark.parametrize("declared", [True, False], ids=["declared", "undeclared"])
+def test_composition_checks_a_normalized_companion_on_each_pass(
+    calibration_ancestry_composed, monkeypatch, extended, declared
+):
+    # The toy skeleton routes money through transport.currency@1, which a spec
+    # that declares normalization can't keep. This test drops that node, and
+    # only the activation report of the money it leaves unrouted steps aside,
+    # so both of composition's own money checks run.
+    monkeypatch.setattr(compose_module, "_money_producer_gaps", lambda _: [])
+    composed = calibration_ancestry_composed
+    writer = Node(
+        id="nz.money.writer",
+        kernel="money.minor_units@1",
+        population="nz.money" if extended else "nz.open",
+        outputs=(Owned("person", "interest_income_cents", "int64"),),
+    )
+    spec = copy.deepcopy(composed.spec)
+    rows = spec["resources"]["transport_graph"]["nodes"]
+    if declared:
+        spec["resources"]["money_normalization"] = graph_declaration()
+        rows[:] = [row for row in rows if row["kernel"] != "transport.currency@1"]
+    config = composed.config
+    if extended:
+        branch = _version_filter("nz.money", "nz.terminal")[1]
+        config = replace(config, extensions=(lambda *_: (branch, writer),))
+    else:
+        rows.append(
+            {
+                "id": writer.id,
+                "kernel": writer.kernel,
+                "population": writer.population,
+                "params": {"declaration": "{}"},
+                "outputs": [
+                    {
+                        "entity": "person",
+                        "column": "interest_income_cents",
+                        "dtype": "int64",
+                    }
+                ],
+            }
+        )
+    if declared:
+        with pytest.raises(ValueError, match="is a money.normalize@1 companion"):
+            compose_transport_graph(spec, config)
+    else:
+        assert compose_transport_graph(spec, config).node(writer.id).kernel == (
+            writer.kernel
         )
