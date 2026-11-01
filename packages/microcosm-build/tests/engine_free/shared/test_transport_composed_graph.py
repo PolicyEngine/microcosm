@@ -2199,12 +2199,13 @@ def test_closed_export_contract_enforces_exact_entity_slices(composed):
         "family_id",
     }
     assert "family_household_id" in selected
-    spec["resources"]["transport_graph"]["nodes"] = [
-        {**row, "inputs": [{"entity": "person", "columns": ["age"]}]}
-        if row["id"] == "nz.export.prepare"
-        else row
-        for row in spec["resources"]["transport_graph"]["nodes"]
-    ]
+    # Keep every sliced entity, so ids still project, and drop one roster
+    # column: only the exact-slice check can refuse.
+    for row in spec["resources"]["transport_graph"]["nodes"]:
+        if row["id"] == "nz.export.prepare":
+            for item in row["inputs"]:
+                if item["entity"] == "person":
+                    item["columns"] = item["columns"][:-1]
     with pytest.raises(ValueError, match="exact entity-qualified whole-row slice"):
         compose_transport_graph(spec, composed.config)
 
