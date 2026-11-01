@@ -10,8 +10,9 @@ columns:
     domain: frame_identity
     public_stability: internal
   docs:
-    description: Non-monetary catalog only. Monetary columns await the shared EUR unit (PLAN
-      S3); no USD or placeholder money unit is used for Belgian amounts.
+    description: Non-monetary catalog only. Monetary columns arrive with the Belgian target
+      references, in the shared eur unit; no USD or placeholder money unit is used for
+      Belgian amounts.
 - key: household.household_weight
   contract:
     entity: household
