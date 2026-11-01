@@ -6,6 +6,7 @@ import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any
 
 import numpy as np
@@ -40,6 +41,8 @@ from microcosm.build.uk_runtime.energy_pricing import (
     PRICE_DOMESTIC_ENERGY_KIND,
     UK_DESNZ_DOMESTIC_ENERGY_RESOURCE,
     UK_NEED_ENERGY_FACTS_RESOURCE,
+    UK_ONS_HFCE_ROW_DIMENSIONS,
+    UK_ONS_HOUSEHOLD_EXPENDITURE_RESOURCE,
     UK_QEP_ENERGY_PRICES_RESOURCE,
     EnergyPrices,
     NeedMargins,
@@ -56,6 +59,14 @@ from microcosm.build.uk_runtime.energy_pricing import (
     spend_to_kwh,
 )
 from microcosm.build.uk_runtime.frs_spine import read_pinned_tab
+from microcosm.build.uk_runtime.gambling_participation import (
+    TOP_UP_GAMBLING_PARTICIPATION_KIND,
+    UK_GAMBLING_PARTICIPATION_KEYS,
+    UK_GAMBLING_PARTICIPATION_RECEIPT,
+    GamblingParticipation,
+    gambling_participation_operation,
+    top_up_gambling_participation,
+)
 from microcosm.build.uk_runtime.household_income import (
     UK_HBAI_GROSS_INCOME_DEDUCTIONS,
     UK_HBAI_NET_INCOME_PREDICTOR,
@@ -76,6 +87,7 @@ from microcosm.build.uk_runtime.receipt_counts import (
     floored_share,
     rounded_count,
     small_cell_share,
+    support_band,
 )
 from microcosm.build.uk_runtime.support_clip import (
     UKSupportClipReceipt,
@@ -167,6 +179,68 @@ UK_LCFS_COICOP_DIVISION_COLUMNS = tuple(
     CONSUMPTION_VARIABLE_RENAMES[f"p6{division:02d}"] for division in range(1, 13)
 )
 BUS_FARE_LCFS_CODES = ("c73212", "c73213", "c73214")
+#: The diary lines of the excise goods inside two COICOP totals the chain
+#: draws (microcosm#1359), in the adult forms those totals sum, from the LCF
+#: 2024-25 User Guide Volume F (SN 9603,
+#: ``9603_volume_f_derived_variables_2024_25.xlsx``), sheet "Part 2". Alcohol
+#: brought home, COICOP 02.1 (rows 855-885): spirits and liqueurs, wine,
+#: fortified wine, cider and perry, alcopops, champagne and sparkling wine,
+#: beer and lager.
+UK_LCFS_OFF_TRADE_ALCOHOL_CODES = (
+    "c21111",
+    "c21211",
+    "c21212",
+    "c21213",
+    "c21214",
+    "c21221",
+    "c21311",
+)
+#: Tobacco, COICOP 02.2 (rows 890-900): cigarettes, cigars and other tobacco,
+#: whose Volume D products are hand-rolling, pipe and chewing tobacco and
+#: e-cigarette refills. P602 sums these ten lines and narcotics (c23111; sheet
+#: "Part 3", row 1099), which the end-user tab does not carry.
+UK_LCFS_TOBACCO_CODES = ("c22111", "c22121", "c22131")
+#: The same drinks away from home, and rounds of drinks: COICOP-plus
+#: 11.1.1.1.12 to 11.1.1.1.19 (rows 1749-1770), eight of the lines P611 sums
+#: (sheet "Part 3", row 1180).
+UK_LCFS_ON_TRADE_ALCOHOL_CODES = (
+    "cb111c",
+    "cb111d",
+    "cb111e",
+    "cb111f",
+    "cb111g",
+    "cb111h",
+    "cb111i",
+    "cb111j",
+)
+#: Gambling stakes, COICOP 09.4.3 games of chance (rows 1631-1649): football
+#: pools, bingo, lotteries other than the National and Irish ones, bookmaker
+#: and tote betting (with gaming machines, which Volume D files there), the
+#: Irish Lottery, and National Lottery scratchcards and draws; seven of the
+#: lines P609 sums (sheet "Part 3", row 1162). The winnings lines beside
+#: them sit in no total.
+UK_LCFS_GAMBLING_STAKE_CODES = (
+    "c94311",
+    "c94312",
+    "c94313",
+    "c94314",
+    "c94315",
+    "c94316",
+    "c94319",
+)
+#: The National Lottery's stake lines, scratchcards (row 1646) and draws (row
+#: 1649), which Lottery Duty is charged on, and the stake lines beside them.
+UK_LCFS_NATIONAL_LOTTERY_STAKE_CODES = ("c94316", "c94319")
+UK_LCFS_OTHER_GAMBLING_STAKE_CODES = tuple(
+    code
+    for code in UK_LCFS_GAMBLING_STAKE_CODES
+    if code not in UK_LCFS_NATIONAL_LOTTERY_STAKE_CODES
+)
+#: Of those, the lines that carry the other duties: football pools (Pool
+#: Betting Duty), bingo, and bookmaker, tote and other betting with the gaming
+#: machines Volume D files there (rows 1631, 1634 and 1640). Society lotteries
+#: (c94313) and the Irish Lottery (c94315) pay no UK gambling duty.
+UK_LCFS_BETTING_AND_GAMING_STAKE_CODES = ("c94311", "c94312", "c94314")
 #: LCFS fuel, light and power (p537) by fuel, from the LCF 2024-25 User Guide
 #: Volume F (SN 9603, ``9603_volume_f_derived_variables_2024_25.xlsx``):
 #: the variable labels on sheet "Part 2" (rows cited below) and the P537
@@ -201,11 +275,12 @@ UK_LCFS_COMBINED_PAYMENTS: tuple[tuple[str, str | None, tuple[str, str]], ...] =
 #: sign have moved, and the stage refuses the donor. On the 2024-25 tab the
 #: identity holds for about 98 % of each fuel's account payers.
 UK_LCFS_ACCOUNT_IDENTITY_MINIMUM = 0.95
-#: The rest of p537, which no output column carries and the housing total
-#: keeps: central-heating oil (b017, Part 2 row 211; diary c45312, with
-#: paraffin, row 1066), bottled gas (b018, row 212; diary c45222, row 1063),
-#: coal and coke (c45411, row 1069), wood and peat (c45412, row 1072), and hot
-#: water, steam and ice (c45511, row 1075).
+#: The rest of p537 beside electricity and gas: central-heating oil (b017,
+#: Part 2 row 211; diary c45312, with paraffin, row 1066), bottled gas (b018,
+#: row 212; diary c45222, row 1063), coal and coke (c45411, row 1069), wood and
+#: peat (c45412, row 1072), and hot water, steam and ice (c45511, row 1075).
+#: The liquid and solid fuels have columns of their own (below); hot water,
+#: steam and ice has no engine input and stays in the housing remainder.
 UK_LCFS_OTHER_FUEL_PARTS = (
     "b017",
     "b018",
@@ -234,6 +309,28 @@ UK_LCFS_ENERGY_CODES = tuple(
 )
 #: The donor scratch column for the other fuels, read by the split receipt.
 UK_LCFS_OTHER_FUELS_COLUMN = "lcfs_other_fuels"
+#: The two heating fuels policyengine-uk 2.149.0 reads (pe-uk#2572), parts of
+#: housing_water_and_electricity_consumption that add nothing to consumption:
+#: liquid fuels (COICOP 04.5.3), central-heating oil and paraffin with bottled
+#: gas, LPG with liquid (María's ruling of 2026-10-22); and solid fuels
+#: (COICOP 04.5.4), coal, coke, wood and peat. COICOP puts liquefied
+#: hydrocarbons under 04.5.2 (gas), and c45222 is a 04.5.2 code, so ONS's 04.5.3
+#: leaves out the bottled gas the liquid column holds; the receipt reports it
+#: apart (Vahid's review of #1383, item 8). Neither column is levelled to ONS,
+#: unlike electricity and gas: the donor's diary totals are about twice ONS's,
+#: and the frame's draws reach neither those nor ONS's. No engine formula reads
+#: them yet; a costing on either needs levelling to ONS first.
+UK_LCFS_FUEL_PARTS: Mapping[str, tuple[str, ...]] = MappingProxyType(
+    {
+        "liquid_fuel_consumption": ("b017", "c45312", "b018", "c45222"),
+        "solid_fuel_consumption": ("c45411", "c45412"),
+    }
+)
+#: The bottled gas inside the liquid fuels (b018 and its diary line c45222), and
+#: the donor scratch column the split receipt reads it from.
+UK_LCFS_BOTTLED_GAS_PARTS = ("b018", "c45222")
+UK_LCFS_BOTTLED_GAS_COLUMN = "lcfs_bottled_gas"
+UK_LCFS_FUEL_COLUMNS = tuple(UK_LCFS_FUEL_PARTS)
 #: ``donor.attrs`` key of the donor energy-split receipt.
 UK_LCFS_ENERGY_SPLIT_RECEIPT = "donor_energy_split"
 #: ``attrs`` key under which the split records the account identity shares.
@@ -248,7 +345,11 @@ UK_LCFS_DONOR_FLOORED_COLUMNS = (
 #: The spend columns a price index carries from the April-to-March diary to
 #: the calendar base year (microcosm#1113). Energy and road fuel are not here:
 #: later steps set their levels for that year.
-UK_LCFS_DIARY_PRICE_COLUMNS = (*UK_LCFS_COICOP_DIVISION_COLUMNS, "bus_fare_spending")
+UK_LCFS_DIARY_PRICE_COLUMNS = (
+    *UK_LCFS_COICOP_DIVISION_COLUMNS,
+    "bus_fare_spending",
+    *UK_LCFS_FUEL_COLUMNS,
+)
 #: Cars and vans available to the household: LCFS ``a124`` on the donor, the
 #: was_wealth QRF draw of WAS ``vcarnr8`` on the recipient (the FRS carries no
 #: vehicle variable). Both sides are rounded and clipped to this closed range so
@@ -263,13 +364,16 @@ UK_LCFS_DFT_BUS_VALUE_RESOURCE = "dft_bus_value_anchors.json"
 # the register names.
 UK_LCFS_DFT_BUS_JOURNEYS_RESOURCE = UK_DFT_BUS_JOURNEYS_RESOURCE
 UK_LCFS_DEVOLVED_BUS_FINANCE_RESOURCE = "devolved_bus_finance.json"
-#: ONS Consumer Trends household spending, the road-fuel level (COICOP 07.2.2)
+#: ONS Consumer Trends household spending, ``ons_household_expenditure_facts.json``
+#: (energy_pricing defines the name once): the road-fuel level (COICOP 07.2.2)
 #: and the division totals the capture diagnostic compares against.
-UK_LCFS_ONS_EXPENDITURE_RESOURCE = "ons_household_expenditure_facts.json"
-UK_LCFS_ROAD_FUEL_LEVEL_RESOURCE = UK_LCFS_ONS_EXPENDITURE_RESOURCE
+UK_LCFS_ROAD_FUEL_LEVEL_RESOURCE = UK_ONS_HOUSEHOLD_EXPENDITURE_RESOURCE
 #: DESNZ sub-national road transport fuel consumption by vehicle and fuel (ktoe),
 #: the litres audit's per-fuel cars share.
 UK_LCFS_ROAD_FUEL_BY_VEHICLE_RESOURCE = "desnz_road_fuel_by_vehicle.json"
+#: The excise clearances the ``level_excise_quantities`` step levels to
+#: (microcosm#1359; PolicyEngine/chronicle#381).
+UK_LCFS_EXCISE_FACTS_RESOURCE = "excise_facts.json"
 UK_LCFS_VENDORED_RESOURCES = (
     UK_LCFS_ROAD_FUEL_RESOURCE,
     UK_LCFS_LICENSED_CARS_RESOURCE,
@@ -281,12 +385,15 @@ UK_LCFS_VENDORED_RESOURCES = (
     UK_QEP_ENERGY_PRICES_RESOURCE,
     UK_LCFS_ROAD_FUEL_LEVEL_RESOURCE,
     UK_LCFS_ROAD_FUEL_BY_VEHICLE_RESOURCE,
+    UK_LCFS_EXCISE_FACTS_RESOURCE,
 )
 #: The household road-fuel columns the ``level_road_fuel`` step scales.
 UK_LCFS_ROAD_FUEL_COLUMNS = ("petrol_spending", "diesel_spending")
 #: Columns a declared rake or pricing step levels (energy in kWh to the NEED
-#: shape at the DESNZ level; bus fares as journeys times the published
-#: yield, microcosm#930; road fuel to ONS household spending, microcosm#1113);
+#: shape at each fuel's declared level, DESNZ volume or, for electricity, the
+#: kWh ONS household spending buys, microcosm#1418; bus fares as journeys
+#: times the published yield, microcosm#930; road fuel to ONS household
+#: spending, microcosm#1113);
 #: the committed support bounds leave them alone.
 UK_LCFS_RAKED_COLUMNS = frozenset(
     {
@@ -298,6 +405,175 @@ UK_LCFS_RAKED_COLUMNS = frozenset(
     }
 )
 LEVEL_ROAD_FUEL_KIND = "level_road_fuel"
+LEVEL_EXCISE_QUANTITIES_KIND = "level_excise_quantities"
+#: policyengine-uk annualises its weekly tobacco inputs over policyengine-core's
+#: 52 weeks (``WEEKS_IN_YEAR``), not the diary's 365.25 / 7.
+UK_PE_UK_WEEKS_IN_YEAR = 52
+#: The policyengine-uk household inputs the excise step can write
+#: (policyengine-uk 2.145.0, ``variables/input/consumption/alcohol`` and
+#: ``tobacco``): litres a year of each alcohol product, cigarettes a week and
+#: grams a week of the other tobacco products (microcosm#1359).
+UK_LCFS_EXCISE_ALCOHOL_OUTPUTS = (
+    "beer_litres",
+    "cider_litres",
+    "sparkling_cider_litres",
+    "wine_litres",
+    "spirits_litres",
+    "other_fermented_litres",
+)
+UK_LCFS_EXCISE_TOBACCO_OUTPUTS = (
+    "cigarettes_per_week",
+    "hand_rolling_tobacco_grams_per_week",
+    "cigars_grams_per_week",
+    "other_tobacco_grams_per_week",
+    "heated_tobacco_grams_per_week",
+)
+#: policyengine-uk's share of each alcohol product that qualifies for draught
+#: relief; HMRC publishes draught clearances for beer and cider only, so the
+#: others stay at the engine's zero.
+UK_LCFS_EXCISE_DRAUGHT_OUTPUTS = (
+    "beer_draught_share",
+    "cider_draught_share",
+)
+#: The gambling duty rates the step divides receipts and liabilities by, each
+#: the base year's value of the engine parameter the declaration names
+#: (policyengine-uk 2.151.0, PolicyEngine/policyengine-uk#2590). The casino
+#: rate is the engine's own effective-rate proxy for Gaming Duty.
+UK_LCFS_GAMBLING_RATES = (
+    "general_betting",
+    "pool_betting",
+    "remote_gaming",
+    "machine_games_lower",
+    "machine_games_standard",
+    "machine_games_higher",
+    "bingo",
+    "lottery",
+    "casino",
+)
+#: The gambling inputs each with a duty of its own: the published series its
+#: national base comes from, the series' dimension value and the rate that
+#: turns that series into the base. HMRC's receipts by duty divided by the
+#: rate give the dutiable base the duty was charged on; Machine Games Duty's
+#: declared liabilities by rate band divided by the band's rate give each
+#: band's net takings; Gaming Duty's receipts divided by the engine's
+#: effective-rate proxy give the casino gaming yield that proxy was taken from.
+UK_LCFS_GAMBLING_BASES: Mapping[str, tuple[str, str, str]] = {
+    "remote_gaming_net_losses": ("receipts", "remote_gaming_duty", "remote_gaming"),
+    "pool_betting_net_receipts": ("receipts", "pool_betting_duty", "pool_betting"),
+    "bingo_net_receipts": ("receipts", "bingo_duty", "bingo"),
+    "national_lottery_ticket_spending": ("receipts", "lottery_duty", "lottery"),
+    "land_based_casino_net_losses": ("receipts", "gaming_duty", "casino"),
+    "machine_games_lower_rate_net_takings": (
+        "machine_games_liabilities",
+        "lower_rate",
+        "machine_games_lower",
+    ),
+    "machine_games_standard_rate_net_takings": (
+        "machine_games_liabilities",
+        "standard_rate",
+        "machine_games_standard",
+    ),
+    "machine_games_higher_rate_net_takings": (
+        "machine_games_liabilities",
+        "higher_rate",
+        "machine_games_higher",
+    ),
+}
+#: The stakes each gambling base is shared out by: Lottery Duty's base by the
+#: National Lottery's stakes, every other base by the betting and gaming
+#: stakes (football pools, bingo, bookmakers and machines), so neither follows
+#: the other's players and the society and Irish lotteries carry no base.
+UK_LCFS_NATIONAL_LOTTERY_INPUT = "national_lottery_ticket_spending"
+UK_LCFS_NATIONAL_LOTTERY_KEY = "national_lottery"
+UK_LCFS_BETTING_AND_GAMING_KEY = "betting_and_gaming"
+#: General Betting Duty's base (its receipts over the fixed-odds rate, the
+#: rate of every part it is split into in the base year) is split by the
+#: Gambling Commission's gross gambling yield for Great Britain: (sector,
+#: activity, betting event) cells. Remote fixed-odds betting is split
+#: between horse racing and the rest by the horse-racing share of all remote
+#: betting yield, since the Commission publishes no activity by event; its
+#: horse racing is not only UK racing, which is the part the 2027 remote rate
+#: leaves out, and its pool betting can hold pools on other events, which pay
+#: Pool Betting Duty. On-course bets are not dutiable, and spread betting,
+#: which the Commission does not regulate, has no published base, so both
+#: inputs stay at the engine's zero.
+UK_LCFS_GENERAL_BETTING_YIELD_CELLS: Mapping[str, tuple[str, str, str]] = {
+    "over_the_counter": ("betting_non_remote", "off_course_over_the_counter", "all"),
+    "remote_fixed_odds": ("betting_remote", "betting", "all"),
+    "exchange": ("betting_remote", "betting_exchange", "all"),
+    "pools_non_remote": ("betting_non_remote", "pool_betting", "all"),
+    "pools_remote": ("betting_remote", "pool_betting", "all"),
+    "remote_horses": ("betting_remote", "all", "horses"),
+    "remote_all_events": ("betting_remote", "all", "all"),
+}
+UK_LCFS_GENERAL_BETTING_OUTPUTS = (
+    "land_based_fixed_odds_betting_net_losses",
+    "remote_uk_horseracing_betting_net_losses",
+    "remote_other_betting_net_losses",
+    "betting_exchange_commission",
+    "horse_and_dog_pool_betting_net_losses",
+)
+UK_LCFS_EXCISE_GAMBLING_OUTPUTS = (
+    *UK_LCFS_GAMBLING_BASES,
+    *UK_LCFS_GENERAL_BETTING_OUTPUTS,
+)
+UK_LCFS_EXCISE_OUTPUT_COLUMNS = (
+    *UK_LCFS_EXCISE_ALCOHOL_OUTPUTS,
+    *UK_LCFS_EXCISE_TOBACCO_OUTPUTS,
+    *UK_LCFS_EXCISE_DRAUGHT_OUTPUTS,
+    *UK_LCFS_EXCISE_GAMBLING_OUTPUTS,
+)
+#: The units Chronicle stores the clearances in (it applies the publisher's
+#: scale, so OBR's thousand hectolitres of alcohol arrive as litres and keep
+#: the published unit only as a dimension; PolicyEngine/chronicle#381), as
+#: engine units per stored unit: litres (of pure alcohol, which the declared
+#: strength turns into litres of the product, or of the product itself),
+#: cigarettes, grams. Each row's own unit must be the declared one.
+UK_LCFS_EXCISE_ALCOHOL_UNIT = "litre_of_pure_alcohol"
+UK_LCFS_EXCISE_UNITS: Mapping[str, float] = {
+    UK_LCFS_EXCISE_ALCOHOL_UNIT: 1.0,
+    "litre": 1.0,
+    "stick": 1.0,
+    "kilogram": 1.0e3,
+}
+#: The unit of the gambling series: pounds a year, the engine's own.
+UK_LCFS_EXCISE_GAMBLING_UNIT = "gbp"
+#: The units each engine input may be declared in.
+UK_LCFS_EXCISE_OUTPUT_UNITS: Mapping[str, tuple[str, ...]] = {
+    **{
+        column: (UK_LCFS_EXCISE_ALCOHOL_UNIT, "litre")
+        for column in UK_LCFS_EXCISE_ALCOHOL_OUTPUTS
+    },
+    "cigarettes_per_week": ("stick",),
+    **{
+        column: ("kilogram",)
+        for column in UK_LCFS_EXCISE_TOBACCO_OUTPUTS
+        if column != "cigarettes_per_week"
+    },
+}
+#: How alcohol's off- and on-trade spending become each household's part of
+#: the national volume: in proportion to the two together, as if a pound
+#: bought as much alcohol in a pub as in a shop, or each channel's published
+#: share of the volume to that channel's spenders.
+#:
+#: The stage declares spending (María's ruling of 2026-10-23, microcosm#1359).
+#: No on-trade share of volume can be archived: MESAS, which publishes one, is
+#: a dashboard of NielsenIQ and Circana data with no fixed file. The rule moves
+#: no total, since the clearances set each level, but it leans towards
+#: drinkers in pubs, where a unit of alcohol costs about three times what it
+#: does in a shop. On the LCFS 2024-25 diary the on-trade is about 43 % of
+#: alcohol spending, against roughly a quarter of the pure alcohol MESAS
+#: counts as sold in England and Wales in 2024. Measured against giving that
+#: quarter of the volume to on-trade spenders and the rest to off-trade
+#: spenders, a pound spent in a pub carries about 1.6 times its volume and a
+#: pound spent in a shop about 0.8 times. About a tenth of the volume, and of
+#: the duty, sits with other households; the bottom three income deciles bear
+#: about 7 % too little of it and the top decile about 7 % too much, because
+#: the on-trade's part of alcohol spending rises with income.
+UK_LCFS_ALCOHOL_VOLUME_BY_SPENDING = "spending"
+UK_LCFS_ALCOHOL_VOLUME_BY_CHANNEL = "published_on_trade_share"
+#: The excise step's receipt key in the stage evidence.
+UK_LCFS_EXCISE_QUANTITIES_RECEIPT = "excise_quantities"
 #: The LCFS diary lines inside COICOP 07.2.2 beside petrol (c72211) and diesel
 #: (c72212): other motor fuels and oils, which ONS's 07.2.2 also carries.
 UK_LCFS_OTHER_ROAD_FUEL_CODES = ("c72213",)
@@ -395,7 +671,72 @@ UK_LCFS_CONSUMPTION_TARGET_COLUMNS = (
     "domestic_energy_consumption",
     "electricity_consumption",
     "gas_consumption",
+    # Drawn last, after the totals and the levelled parts they condition on,
+    # so every earlier draw is the chain's own (pe-uk#2572).
+    "liquid_fuel_consumption",
+    "solid_fuel_consumption",
 )
+#: The shares the chain draws after its spend targets (microcosm#1359). Each
+#: splits a COICOP total the chain has drawn, so its parts sum to the drawn
+#: total and every total, the VAT base with them, keeps its draw; appended
+#: after the spend targets, they move none of those draws either. Tobacco is
+#: a share of the off-trade alcohol and tobacco that make up P602, so
+#: off-trade alcohol is the rest of that total. On-trade alcohol is a share of
+#: restaurants and hotels (P611), whose published total the 2024-25 tab stores
+#: to one decimal place, so its lines can pass it by pennies and the share is
+#: clipped at one. Gambling stakes are a share of recreation (P609), stored
+#: the same way, and are split in turn: the National Lottery's share of the
+#: stakes, then the betting and gaming share of the rest, which leaves the
+#: society and Irish lotteries no duty base. Each maps to the total it splits
+#: (a drawn total, or the stakes an earlier share gives), the diary lines over
+#: it and the diary lines (or published total) under it.
+UK_LCFS_TOBACCO_SHARE = "tobacco_share_of_alcohol_and_tobacco"
+UK_LCFS_ON_TRADE_ALCOHOL_SHARE = "on_trade_alcohol_share_of_restaurants_and_hotels"
+UK_LCFS_GAMBLING_SHARE = "gambling_stakes_share_of_recreation"
+UK_LCFS_NATIONAL_LOTTERY_SHARE = "national_lottery_share_of_gambling_stakes"
+UK_LCFS_BETTING_AND_GAMING_SHARE = "betting_and_gaming_share_of_other_gambling_stakes"
+#: The spending the shares give, scratch columns no table carries.
+UK_LCFS_TOBACCO_SPENDING = "tobacco_spending"
+UK_LCFS_OFF_TRADE_ALCOHOL_SPENDING = "off_trade_alcohol_spending"
+UK_LCFS_ON_TRADE_ALCOHOL_SPENDING = "on_trade_alcohol_spending"
+UK_LCFS_GAMBLING_SPENDING = "gambling_stakes"
+UK_LCFS_NATIONAL_LOTTERY_SPENDING = "national_lottery_stakes"
+UK_LCFS_OTHER_GAMBLING_SPENDING = "other_gambling_stakes"
+UK_LCFS_BETTING_AND_GAMING_SPENDING = "betting_and_gaming_stakes"
+#: The stakes a share can split: scratch, so the donor has no published total
+#: of them and the share's denominator is its diary lines.
+UK_LCFS_EXCISE_SPENDING_TOTALS = frozenset(
+    {UK_LCFS_GAMBLING_SPENDING, UK_LCFS_OTHER_GAMBLING_SPENDING}
+)
+UK_LCFS_EXCISE_SHARES: Mapping[str, tuple[str, tuple[str, ...], tuple[str, ...]]] = {
+    UK_LCFS_TOBACCO_SHARE: (
+        "alcohol_and_tobacco_consumption",
+        UK_LCFS_TOBACCO_CODES,
+        (*UK_LCFS_OFF_TRADE_ALCOHOL_CODES, *UK_LCFS_TOBACCO_CODES),
+    ),
+    UK_LCFS_ON_TRADE_ALCOHOL_SHARE: (
+        "restaurants_and_hotels_consumption",
+        UK_LCFS_ON_TRADE_ALCOHOL_CODES,
+        ("p611",),
+    ),
+    UK_LCFS_GAMBLING_SHARE: (
+        "recreation_consumption",
+        UK_LCFS_GAMBLING_STAKE_CODES,
+        ("p609",),
+    ),
+    UK_LCFS_NATIONAL_LOTTERY_SHARE: (
+        UK_LCFS_GAMBLING_SPENDING,
+        UK_LCFS_NATIONAL_LOTTERY_STAKE_CODES,
+        UK_LCFS_GAMBLING_STAKE_CODES,
+    ),
+    UK_LCFS_BETTING_AND_GAMING_SHARE: (
+        UK_LCFS_OTHER_GAMBLING_SPENDING,
+        UK_LCFS_BETTING_AND_GAMING_STAKE_CODES,
+        UK_LCFS_OTHER_GAMBLING_STAKE_CODES,
+    ),
+}
+#: ``UKLCFSConsumptionResult`` evidence key of the shares' report-only receipt.
+UK_LCFS_EXCISE_SHARES_RECEIPT = "excise_shares"
 RECOMPOSE_FROM_REMAINDER_KIND = "recompose_from_remainder"
 #: The COICOP totals that contain columns the stage levels (microcosm#1113):
 #: each maps to the chain draws subtracted from its own draw to leave its
@@ -404,13 +745,15 @@ RECOMPOSE_FROM_REMAINDER_KIND = "recompose_from_remainder"
 #: chain's domestic-energy draw, which is the electricity and gas
 #: ``derive_energy_from_lcfs`` makes of the diary's fuel, light and power
 #: (``p537``) by its labelled parts, so the diary's oil, bottled gas, solid
-#: fuels and heat stay in the housing remainder (microcosm#1164). Transport (p607) nets the drawn petrol and
+#: fuels and heat stay in the housing remainder (microcosm#1164); the liquid and
+#: solid fuels' own draws are netted and added back unchanged, so the total
+#: always holds them (pe-uk#2572). Transport (p607) nets the drawn petrol and
 #: diesel (c72211, c72212) and the drawn bus fares (which the pricing step
 #: replaces with journeys times yield), and keeps other motor fuels.
 UK_LCFS_RECOMPOSED_PARENTS: Mapping[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
     "housing_water_and_electricity_consumption": (
-        ("domestic_energy_consumption",),
-        ("electricity_consumption", "gas_consumption"),
+        ("domestic_energy_consumption", *UK_LCFS_FUEL_COLUMNS),
+        ("electricity_consumption", "gas_consumption", *UK_LCFS_FUEL_COLUMNS),
     ),
     "transport_consumption": (
         ("petrol_spending", "diesel_spending", "bus_fare_spending"),
@@ -423,6 +766,20 @@ UK_LCFS_RECOMPOSED_PARENTS: Mapping[str, tuple[tuple[str, ...], tuple[str, ...]]
 #: range plus levelled parts larger than the drawn ones cannot leave the range
 #: the terminal support gate holds the emitted totals to.
 UK_LCFS_RECOMPOSED_MAXIMUM_TOTAL = "donor_support"
+#: The declared levelling of the divisions' relative over-draw (María's rulings
+#: of 2026-10-23 and 2026-10-24, microcosm#1278; Vahid's review of #1383, item
+#: 9). A division's ratio is the spend the chain drew for it per frame
+#: household over the donor's mean of the same spend per donor household: a
+#: recomposed total's remainder against the donor's total less the same parts,
+#: since its levelled energy, road fuel and priced fares keep their published
+#: levels and are no over-draw, and any other division's whole draw. A
+#: division above the divisions' shared ratio, measured once before any
+#: levelling, comes down to it; no other moves. Measured again after each
+#: cut, the shared ratio would fall until every division sat at the lowest
+#: one's, close to levelling to the donor totals (María's ruling of
+#: 2026-10-24). Only the chain's own draws move.
+UK_LCFS_LEVEL_DIVISION_EXCESS = "excess_over_shared_ratio"
+UK_LCFS_LEVEL_DIVISION_BASIS = "drawn_spend_over_donor_spend_per_household"
 #: The chain draws a recomposition subtracts, kept before any step re-levels them.
 UK_LCFS_RECOMPOSED_DRAWN_COLUMNS = tuple(
     dict.fromkeys(
@@ -431,10 +788,29 @@ UK_LCFS_RECOMPOSED_DRAWN_COLUMNS = tuple(
         for column in subtracted
     )
 )
+#: The excise inputs the stage's declared ``level_excise_quantities`` step
+#: writes (microcosm#1359): litres of the five alcohol products HMRC publishes
+#: clearances of, the beer and cider draught shares, the four tobacco products
+#: and every gambling base. Sparkling cider, heated tobacco and spread betting
+#: have no published quantity of their own and keep the engine's zero.
+UK_LCFS_EXCISE_DECLARED_OUTPUTS = (
+    "beer_litres",
+    "cider_litres",
+    "wine_litres",
+    "spirits_litres",
+    "other_fermented_litres",
+    *UK_LCFS_EXCISE_DRAUGHT_OUTPUTS,
+    "cigarettes_per_week",
+    "hand_rolling_tobacco_grams_per_week",
+    "cigars_grams_per_week",
+    "other_tobacco_grams_per_week",
+    *UK_LCFS_EXCISE_GAMBLING_OUTPUTS,
+)
 UK_LCFS_CONSUMPTION_OUTPUT_COLUMNS = (
     *UK_LCFS_CONSUMPTION_TARGET_COLUMNS,
     "has_fuel_consumption",
     UK_LCFS_PREPAYMENT_METER_COLUMN,
+    *UK_LCFS_EXCISE_DECLARED_OUTPUTS,
 )
 UK_LCFS_CONSUMPTION_NONNEGATIVE_OUTPUT_COLUMNS = UK_LCFS_CONSUMPTION_OUTPUT_COLUMNS
 UK_LCFS_CONSUMPTION_FIT_NAME = "uk_lcfs_2024_25_consumption"
@@ -460,6 +836,9 @@ class UKLCFSConsumptionResult:
     road_fuel_level: Mapping[str, Any] | None = None
     recomposed_totals: Mapping[str, Any] | None = None
     division_capture: Mapping[str, Any] | None = None
+    excise_shares: Mapping[str, Any] | None = None
+    gambling_participation: Mapping[str, Any] | None = None
+    excise_quantities: Mapping[str, Any] | None = None
 
     def evidence(self) -> dict[str, object]:
         evidence: dict[str, object] = {
@@ -492,6 +871,14 @@ class UKLCFSConsumptionResult:
             evidence["recomposed_totals"] = dict(self.recomposed_totals)
         if self.division_capture is not None:
             evidence["division_capture"] = dict(self.division_capture)
+        if self.excise_shares is not None:
+            evidence[UK_LCFS_EXCISE_SHARES_RECEIPT] = dict(self.excise_shares)
+        if self.gambling_participation is not None:
+            evidence[UK_GAMBLING_PARTICIPATION_RECEIPT] = dict(
+                self.gambling_participation
+            )
+        if self.excise_quantities is not None:
+            evidence[UK_LCFS_EXCISE_QUANTITIES_RECEIPT] = dict(self.excise_quantities)
         return evidence
 
 
@@ -544,12 +931,14 @@ class UKLCFSConsumptionStageTransform:
         )
         uprating_factors, uprating_receipt = lcfs_donor_uprating(self.stage)
         energy = lcfs_energy_pricing(self.stage)
+        shares = lcfs_donor_shares(self.stage)
         donor = clean_lcfs_consumption_table(
             lcfs_person,
             lcfs_household,
             uprating=uprating_factors,
             energy=energy,
             donor_rake_iterations=_donor_energy_rake_iterations(self.stage),
+            shares=shares,
         )
         require_refused_unmapped_codes(self.stage)
         donor, donor_floor_receipt = floor_negative_donor_consumption(
@@ -579,11 +968,14 @@ class UKLCFSConsumptionStageTransform:
             seed=_operation_seed(self.stage, "fit_weighted_qrf_chain"),
             n_estimators=_qrf_n_estimators(self.stage),
             record_ids=frame.table("household")["household_id"].to_numpy(),
+            targets=lcfs_chain_targets(self.stage, shares),
         )
         clip_result = support_clip_to_donor(
             imputation.draws, donor, exempt=support_clip_exempt(self.stage)
         )
-        household_draws = clip_result.clipped
+        household_draws, shares_outside = clip_excise_shares(
+            clip_result.clipped, shares
+        )
         prepayment = lcfs_prepayment_meter(
             self.stage,
             donor=donor,
@@ -646,11 +1038,17 @@ class UKLCFSConsumptionStageTransform:
             weights=weights,
             donor_support=donor_realized_ranges(donor),
             uprating_factors=uprating_factors,
+            donor_division_means=lcfs_donor_drawn_means(donor),
         )
         energy_split = donor.attrs.get(UK_LCFS_ENERGY_SPLIT_RECEIPT)
         if recomposed_totals_receipt is not None and isinstance(energy_split, Mapping):
-            recomposed_totals_receipt["uncarried"] = uncarried_beside_donor(
-                recomposed_totals_receipt["uncarried"], energy_split
+            recomposed_totals_receipt["published_fuels"] = published_fuels_beside_draws(
+                recomposed_totals_receipt["published_fuels"],
+                energy_split,
+                {
+                    column: float(np.dot(weights, household_draws[column].to_numpy()))
+                    for column in UK_LCFS_FUEL_COLUMNS
+                },
             )
         uprating = uprating_operation(self.stage)
         capture = (
@@ -667,6 +1065,36 @@ class UKLCFSConsumptionStageTransform:
         litres_audit = fuel_litres_audit(
             household_draws, weights=weights, stage=self.stage
         )
+        excise_shares = (
+            excise_shares_receipt(
+                household_draws,
+                shares=shares,
+                weights=weights,
+                donor_receipt=donor.attrs[UK_LCFS_EXCISE_SHARES_RECEIPT],
+                outside=shares_outside,
+            )
+            if shares
+            else None
+        )
+        gambling = lcfs_gambling_participation(
+            self.stage,
+            household_draws,
+            donor=donor,
+            recipient=recipient,
+            drawn=imputation.draws,
+            person=frame.table("person"),
+            household_ids=frame.table("household")["household_id"].to_numpy(),
+            weights=weights,
+            sources=sources,
+            shares=shares,
+        )
+        quantities, excise_quantities = lcfs_excise_quantities(
+            self.stage,
+            household_draws,
+            weights=weights,
+            shares=shares,
+            participation=None if gambling is None else gambling.keys,
+        )
         household = frame.table("household").copy()
         for column in UK_LCFS_CONSUMPTION_TARGET_COLUMNS:
             household[column] = household_draws[column].to_numpy()
@@ -675,6 +1103,13 @@ class UKLCFSConsumptionStageTransform:
         )
         if prepayment is not None:
             household[UK_LCFS_PREPAYMENT_METER_COLUMN] = prepayment.flags
+        if quantities is not None:
+            # In the declared output order, which the stage's outputs and the
+            # graph's typed cells follow; an undeclared input fails here.
+            for column in sorted(
+                quantities.columns, key=UK_LCFS_EXCISE_DECLARED_OUTPUTS.index
+            ):
+                household[column] = quantities[column].to_numpy(dtype=float)
         result = uk_national_frame(
             person=frame.table("person").copy(),
             benunit=frame.table("benunit").copy(),
@@ -695,6 +1130,7 @@ class UKLCFSConsumptionStageTransform:
             *incidence.fit_weight_records,
             *(() if prepayment is None else prepayment.fit_weight_records),
             *(() if gas_payers is None else gas_payers.fit_weight_records),
+            *(() if gambling is None else gambling.fit_weight_records),
         )
         self.last_result = UKLCFSConsumptionResult(
             frame=result,
@@ -712,6 +1148,9 @@ class UKLCFSConsumptionStageTransform:
             road_fuel_level=road_fuel_level_receipt,
             recomposed_totals=recomposed_totals_receipt,
             division_capture=capture,
+            excise_shares=excise_shares,
+            gambling_participation=None if gambling is None else gambling.receipt,
+            excise_quantities=excise_quantities,
         )
         return result
 
@@ -745,13 +1184,6 @@ class DiagnosticUnavailableError(ValueError):
 
 #: ONS Consumer Trends' generic concept for the divisions and classes.
 UK_ONS_HFCE_CONCEPT = "ons.household_final_consumption_expenditure"
-#: The variant of each Consumer Trends row the diagnostic reads: annual,
-#: current prices, not seasonally adjusted.
-UK_ONS_HFCE_ROW_DIMENSIONS = {
-    "frequency": "annual",
-    "price_basis": "current_prices",
-    "seasonal_adjustment": "not_seasonally_adjusted",
-}
 #: Each LCFS division column and its COICOP division.
 UK_LCFS_DIVISION_COICOP = {
     column: f"{division:02d}"
@@ -770,7 +1202,7 @@ def _ons_annual_value(
     coicop: str, *, source_sheet: str, consumption_concept: str, period_value: int
 ) -> tuple[float, str]:
     rows = vendored_rows(
-        UK_LCFS_ONS_EXPENDITURE_RESOURCE,
+        UK_ONS_HOUSEHOLD_EXPENDITURE_RESOURCE,
         concept=UK_ONS_HFCE_CONCEPT,
         period_type="calendar_year",
         period_value=int(period_value),
@@ -783,12 +1215,12 @@ def _ons_annual_value(
     )
     if not rows:
         raise DiagnosticUnavailableError(
-            f"{UK_LCFS_ONS_EXPENDITURE_RESOURCE}: no {coicop} "
+            f"{UK_ONS_HOUSEHOLD_EXPENDITURE_RESOURCE}: no {coicop} "
             f"({source_sheet}, {consumption_concept}) row for {period_value}."
         )
     if len(rows) != 1:
         raise ValueError(
-            f"{UK_LCFS_ONS_EXPENDITURE_RESOURCE}: expected one {coicop} "
+            f"{UK_ONS_HOUSEHOLD_EXPENDITURE_RESOURCE}: expected one {coicop} "
             f"({source_sheet}, {consumption_concept}) row for {period_value}, "
             f"found {len(rows)}."
         )
@@ -1037,7 +1469,7 @@ def division_capture(
     if donor_weight is not None:
         total.update(beside_donor(frame_total, donor_grand_total))
     return {
-        "resource": UK_LCFS_ONS_EXPENDITURE_RESOURCE,
+        "resource": UK_ONS_HOUSEHOLD_EXPENDITURE_RESOURCE,
         "concept": UK_ONS_HFCE_CONCEPT,
         "period_type": "calendar_year",
         "period_value": int(period_value),
@@ -1072,7 +1504,7 @@ def division_capture_or_reason(
         )
     except DiagnosticUnavailableError as error:
         return {
-            "resource": UK_LCFS_ONS_EXPENDITURE_RESOURCE,
+            "resource": UK_ONS_HOUSEHOLD_EXPENDITURE_RESOURCE,
             "concept": UK_ONS_HFCE_CONCEPT,
             "period_type": "calendar_year",
             "period_value": int(period_value),
@@ -1740,12 +2172,11 @@ def level_road_fuel(
     columns = list(UK_LCFS_ROAD_FUEL_COLUMNS)
     weight_values = np.asarray(weights, dtype=float)
     spend = household_draws[columns].to_numpy(dtype=float)
-    before = float(np.dot(weight_values, spend.sum(axis=1)))
-    if not np.isfinite(before) or before <= 0:
-        raise ValueError("the frame draws no road-fuel spend to level.")
-    factor = level.level / before
+    scaled, before, factor = _scale_to_level(
+        spend, weight_values, level.level, what="road-fuel spend"
+    )
     result = household_draws.copy()
-    result[columns] = spend * factor
+    result[columns] = scaled
     after = result[columns].to_numpy(dtype=float)
     petrol = float(np.dot(weight_values, after[:, 0]))
     receipt = {
@@ -1774,6 +2205,753 @@ def lcfs_road_fuel_level(
         parameters, other_fuels_share=lcfs_other_road_fuel_share(lcfs_household)
     )
     return level_road_fuel(household_draws, level=level, weights=weights)
+
+
+def _scale_to_level(
+    values: np.ndarray, weights: np.ndarray, level: float, *, what: str
+) -> tuple[np.ndarray, float, float]:
+    """Scale ``values`` by the one factor that takes their weighted total to ``level``.
+
+    ``values`` is one column, or several scaled together by the same factor
+    so their mix is kept. Returns the scaled values, the weighted total before
+    and the factor; a frame with nothing to scale is refused.
+    """
+
+    before = float(np.dot(weights, values if values.ndim == 1 else values.sum(axis=1)))
+    if not np.isfinite(before) or before <= 0:
+        raise ValueError(f"the frame draws no {what} to level.")
+    factor = level / before
+    return values * factor, before, factor
+
+
+@dataclass(frozen=True)
+class ExciseQuantityLevel:
+    """One engine input's national quantity a year, from its published rows.
+
+    ``annual`` is in the engine's units a year: litres of the product, or
+    cigarettes, or grams, or pounds; the step divides the weekly tobacco
+    inputs by ``UK_PE_UK_WEEKS_IN_YEAR`` after levelling. ``key`` is the
+    household spending the quantity is shared out by: alcohol, tobacco, the
+    National Lottery's stakes or the betting and gaming stakes.
+    """
+
+    column: str
+    annual: float
+    key: str
+    receipt: Mapping[str, Any]
+
+
+@dataclass(frozen=True)
+class AlcoholVolumeWeights:
+    """How off- and on-trade alcohol spending share the national volume."""
+
+    rule: str
+    on_trade_share: float | None
+    receipt: Mapping[str, Any]
+
+
+@dataclass(frozen=True)
+class ExciseLevels:
+    """Everything the step levels to: quantities, draught shares, the volume rule."""
+
+    quantities: Mapping[str, ExciseQuantityLevel]
+    draught: Mapping[str, Mapping[str, Any]]
+    volume: AlcoholVolumeWeights
+
+
+def excise_quantities_operation(stage: SourceStageSpec) -> Mapping[str, Any] | None:
+    """The stage's declared ``level_excise_quantities`` parameters, if any."""
+
+    for operation in stage.operations:
+        if operation.kind == LEVEL_EXCISE_QUANTITIES_KIND:
+            return {"kind": operation.kind, **operation.parameters}
+    return None
+
+
+def _one_vendored_value(
+    resource: str,
+    parameters: Mapping[str, Any],
+    declared: Mapping[str, Any],
+    *,
+    what: str,
+    unit: str | None = None,
+) -> tuple[float, dict[str, Any]]:
+    """The one published value a declaration names, for the step's fiscal year.
+
+    With ``unit``, the row must be stored in it: a value read in another unit
+    would be off by the publisher's scale. A declaration may name its own
+    ``geography_id`` in place of the step's.
+    """
+
+    concept = str(declared.get("concept") or "")
+    dimensions = declared.get("dimensions") or {}
+    if not concept or not isinstance(dimensions, Mapping):
+        raise ValueError(
+            f"{LEVEL_EXCISE_QUANTITIES_KIND}: {what} must name a concept and "
+            "its dimensions."
+        )
+    geography = str(declared.get("geography_id") or parameters["geography_id"])
+    rows = vendored_rows(
+        resource,
+        fiscal_start=str(parameters["fiscal_start"]),
+        concept=concept,
+        period_type="fiscal_year",
+        period_value=int(parameters["period_value"]),
+        geography_id=geography,
+        dimensions=dict(dimensions),
+    )
+    if len(rows) != 1:
+        raise ValueError(
+            f"{resource}: expected one {concept} row {dict(dimensions)} for fiscal "
+            f"{parameters['period_value']} in {geography}, found {len(rows)}."
+        )
+    if unit is not None and rows[0].get("unit") != unit:
+        raise ValueError(
+            f"{resource}: {what}'s row is stored in {rows[0].get('unit')!r}, not the "
+            f"declared {unit!r}."
+        )
+    value = float(rows[0]["value"])
+    if not np.isfinite(value) or value < 0:
+        raise ValueError(f"{resource}: {what}'s published value must be nonnegative.")
+    receipt = {
+        "concept": concept,
+        "dimensions": dict(dimensions),
+        "geography_id": geography,
+        "source_record_id": str(rows[0].get("source_record_id", "")),
+        "published": value,
+    }
+    return value, receipt
+
+
+def _declared_rate(declared: object, *, what: str) -> tuple[float, dict[str, Any]]:
+    """A declared divisor: its value in (0, 1] and the engine parameter it mirrors."""
+
+    if not isinstance(declared, Mapping) or not declared.get("parameter_path"):
+        raise ValueError(
+            f"{LEVEL_EXCISE_QUANTITIES_KIND}: {what} must give its value and the "
+            "engine parameter it mirrors."
+        )
+    value = float(declared.get("value"))
+    if not 0.0 < value <= 1.0:
+        raise ValueError(
+            f"{LEVEL_EXCISE_QUANTITIES_KIND}: {what} {value} is outside (0, 1]."
+        )
+    return value, dict(declared)
+
+
+def excise_levels(parameters: Mapping[str, Any]) -> ExciseLevels:
+    """Resolve everything the declared step levels to from the vendored rows.
+
+    ``outputs`` are the alcohol and tobacco inputs. Each names its published
+    row (concept and dimensions, for the declared fiscal year and geography),
+    the unit the row is stored in, the share of the row it takes and, for
+    litres of pure alcohol, the strength that turns them into litres of the
+    product: the declared value, with the engine parameter it mirrors, which
+    policyengine-uk multiplies back. Outputs that share a row must take all
+    of it between them. ``draught_shares`` are published ratios the step
+    writes as they are; ``gambling`` declares the series and rates the
+    gambling bases come from (``gambling_levels``); ``alcohol_volume_weights``
+    declares how off- and on-trade spending share the alcohol volume.
+    """
+
+    resource = str(parameters.get("resource") or "")
+    if resource != UK_LCFS_EXCISE_FACTS_RESOURCE:
+        raise ValueError(
+            f"{LEVEL_EXCISE_QUANTITIES_KIND} must read "
+            f"{UK_LCFS_EXCISE_FACTS_RESOURCE!r}, not {resource!r}."
+        )
+    if str(parameters.get("period_type")) != "fiscal_year":
+        raise ValueError(
+            f"{LEVEL_EXCISE_QUANTITIES_KIND} levels to fiscal-year clearances, the "
+            "year policyengine-uk charges excise over."
+        )
+    if parameters.get("weeks_per_year") != UK_PE_UK_WEEKS_IN_YEAR:
+        raise ValueError(
+            f"{LEVEL_EXCISE_QUANTITIES_KIND} must declare weeks_per_year: "
+            f"{UK_PE_UK_WEEKS_IN_YEAR}, policyengine-uk's own."
+        )
+    for key in ("period_value", "fiscal_start", "geography_id"):
+        if parameters.get(key) in (None, ""):
+            raise ValueError(f"{LEVEL_EXCISE_QUANTITIES_KIND} must declare {key}.")
+    outputs = parameters.get("outputs")
+    if not isinstance(outputs, Mapping) or not outputs:
+        raise ValueError(f"{LEVEL_EXCISE_QUANTITIES_KIND} declares no outputs.")
+    levels: dict[str, ExciseQuantityLevel] = {}
+    taken: dict[str, float] = {}
+    for column, declared in outputs.items():
+        if column not in UK_LCFS_EXCISE_OUTPUT_UNITS:
+            raise ValueError(
+                f"{LEVEL_EXCISE_QUANTITIES_KIND} cannot write {column!r} as a "
+                "quantity; its quantities are the policyengine-uk inputs "
+                f"{tuple(UK_LCFS_EXCISE_OUTPUT_UNITS)}."
+            )
+        if not isinstance(declared, Mapping):
+            raise ValueError(
+                f"{LEVEL_EXCISE_QUANTITIES_KIND}: {column} is not a mapping."
+            )
+        unit = str(declared.get("unit") or "")
+        if unit not in UK_LCFS_EXCISE_OUTPUT_UNITS[column]:
+            raise ValueError(
+                f"{LEVEL_EXCISE_QUANTITIES_KIND}: {column} is declared in {unit!r}, "
+                f"not one of {UK_LCFS_EXCISE_OUTPUT_UNITS[column]}."
+            )
+        share = float(declared.get("share", 1.0))
+        if not 0.0 < share <= 1.0:
+            raise ValueError(
+                f"{LEVEL_EXCISE_QUANTITIES_KIND}: {column} takes a share {share} "
+                "outside (0, 1]."
+            )
+        strength = declared.get("strength")
+        if (unit == UK_LCFS_EXCISE_ALCOHOL_UNIT) != (strength is not None):
+            raise ValueError(
+                f"{LEVEL_EXCISE_QUANTITIES_KIND}: {column} needs a strength exactly "
+                "when it is declared in litres of pure alcohol."
+            )
+        divisor = 1.0
+        if strength is not None:
+            divisor, _ = _declared_rate(strength, what=f"{column}'s strength")
+        published, receipt = _one_vendored_value(
+            resource, parameters, declared, what=column, unit=unit
+        )
+        if published <= 0:
+            raise ValueError(
+                f"{resource}: {column}'s published quantity must be positive."
+            )
+        row = receipt["source_record_id"]
+        taken[row] = taken.get(row, 0.0) + share
+        annual = published * UK_LCFS_EXCISE_UNITS[unit] * share / divisor
+        levels[column] = ExciseQuantityLevel(
+            column,
+            annual,
+            "alcohol" if column in UK_LCFS_EXCISE_ALCOHOL_OUTPUTS else "tobacco",
+            {
+                **receipt,
+                "unit": unit,
+                "share": share,
+                "strength": None if strength is None else dict(strength),
+                "annual_level": annual,
+            },
+        )
+    partial = {row: total for row, total in taken.items() if abs(total - 1.0) > 1e-9}
+    if partial:
+        raise ValueError(
+            f"{LEVEL_EXCISE_QUANTITIES_KIND}: the outputs take {partial} of their "
+            "published rows, not all of each."
+        )
+    if "gambling" in parameters:
+        levels.update(gambling_levels(resource, parameters))
+    return ExciseLevels(
+        quantities=levels,
+        draught=draught_shares(resource, parameters),
+        volume=alcohol_volume_weights(resource, parameters),
+    )
+
+
+def _summed_rows(
+    resource: str,
+    parameters: Mapping[str, Any],
+    entry: Mapping[str, Any],
+    *,
+    side: str,
+    what: str,
+    unit: str,
+) -> tuple[float, list[dict[str, Any]]]:
+    """The sum of the published rows a ratio's ``side`` names, and their receipts."""
+
+    cells = entry.get(side)
+    if not isinstance(cells, list | tuple) or not cells:
+        raise ValueError(
+            f"{LEVEL_EXCISE_QUANTITIES_KIND}: {what} declares no {side} rows."
+        )
+    read = [
+        _one_vendored_value(
+            resource,
+            parameters,
+            {"concept": entry.get("concept"), "dimensions": cell},
+            what=f"{what} {side}",
+            unit=unit,
+        )
+        for cell in cells
+    ]
+    return sum(value for value, _ in read), [receipt for _, receipt in read]
+
+
+def draught_shares(
+    resource: str, parameters: Mapping[str, Any]
+) -> dict[str, dict[str, Any]]:
+    """Each declared draught share: its published numerator rows over its total.
+
+    HMRC splits beer and cider clearances by the relief they took; the
+    share is the clearances under draught relief, alone or with small
+    producer relief, over all of that product's clearances, in litres of
+    pure alcohol. policyengine-uk applies it to the household's litres, so
+    the strength the litres were divided by cancels out of it.
+    """
+
+    declared = parameters.get("draught_shares") or {}
+    if not isinstance(declared, Mapping):
+        raise ValueError(
+            f"{LEVEL_EXCISE_QUANTITIES_KIND}: draught_shares is not a mapping."
+        )
+    shares: dict[str, dict[str, Any]] = {}
+    for column, entry in declared.items():
+        if column not in UK_LCFS_EXCISE_DRAUGHT_OUTPUTS:
+            raise ValueError(
+                f"{LEVEL_EXCISE_QUANTITIES_KIND} cannot write {column!r} as a draught "
+                f"share; it writes {UK_LCFS_EXCISE_DRAUGHT_OUTPUTS}."
+            )
+        if not isinstance(entry, Mapping):
+            raise ValueError(
+                f"{LEVEL_EXCISE_QUANTITIES_KIND}: {column} is not a mapping."
+            )
+        unit = str(entry.get("unit") or "")
+        if unit != UK_LCFS_EXCISE_ALCOHOL_UNIT:
+            raise ValueError(
+                f"{LEVEL_EXCISE_QUANTITIES_KIND}: {column} must be declared in "
+                f"{UK_LCFS_EXCISE_ALCOHOL_UNIT!r}, not {unit!r}."
+            )
+
+        numerator, numerator_rows = _summed_rows(
+            resource, parameters, entry, side="numerator", what=column, unit=unit
+        )
+        denominator, denominator_rows = _summed_rows(
+            resource, parameters, entry, side="denominator", what=column, unit=unit
+        )
+        if denominator <= 0 or not 0.0 <= numerator <= denominator:
+            raise ValueError(
+                f"{resource}: {column}'s published rows do not give a share in [0, 1]."
+            )
+        shares[column] = {
+            "share": numerator / denominator,
+            "numerator": numerator_rows,
+            "denominator": denominator_rows,
+        }
+    return shares
+
+
+def gambling_levels(
+    resource: str, parameters: Mapping[str, Any]
+) -> dict[str, ExciseQuantityLevel]:
+    """Each gambling input's national base a year, in pounds (microcosm#1359).
+
+    The declaration names the published series (HMRC's betting and gaming
+    receipts by duty, Machine Games Duty liabilities by rate band and the
+    Gambling Commission's gross gambling yield, with its own geography) and
+    the rates, each the base year's value of the engine parameter it names.
+    ``UK_LCFS_GAMBLING_BASES`` turns a series into each single-duty input's
+    base; General Betting Duty's base is split over its inputs by the yield
+    cells of ``UK_LCFS_GENERAL_BETTING_YIELD_CELLS``. Charged at the engine's
+    rates, the bases give back the published receipts and liabilities, as
+    the clearances give back alcohol and tobacco duty.
+    """
+
+    declared = parameters.get("gambling")
+    if not isinstance(declared, Mapping) or set(declared) != {
+        "receipts",
+        "machine_games_liabilities",
+        "yield",
+        "rates",
+    }:
+        raise ValueError(
+            f"{LEVEL_EXCISE_QUANTITIES_KIND}: gambling must declare receipts, "
+            "machine_games_liabilities, yield and rates."
+        )
+    rates_declared = declared["rates"]
+    if not isinstance(rates_declared, Mapping) or set(rates_declared) != set(
+        UK_LCFS_GAMBLING_RATES
+    ):
+        raise ValueError(
+            f"{LEVEL_EXCISE_QUANTITIES_KIND}: gambling rates must be "
+            f"{UK_LCFS_GAMBLING_RATES}."
+        )
+    rates = {
+        name: _declared_rate(rates_declared[name], what=f"the {name} rate")
+        for name in UK_LCFS_GAMBLING_RATES
+    }
+    for name in ("receipts", "machine_games_liabilities", "yield"):
+        if not isinstance(declared[name], Mapping):
+            raise ValueError(
+                f"{LEVEL_EXCISE_QUANTITIES_KIND}: gambling {name} is not a mapping."
+            )
+    dimension = {"receipts": "gambling_duty", "machine_games_liabilities": "mgd_rate"}
+
+    def cell(name: str, dimensions: Mapping[str, str]) -> dict[str, Any]:
+        # A series may pin dimensions of its own, such as the accounting basis.
+        source = declared[name]
+        pinned = dict(source.get("dimensions") or {})
+        return {**dict(source), "dimensions": {**pinned, **dimensions}}
+
+    def series(name: str, value: str) -> tuple[float, dict[str, Any]]:
+        return _one_vendored_value(
+            resource,
+            parameters,
+            cell(name, {dimension[name]: value}),
+            what=f"{name} {value}",
+            unit=UK_LCFS_EXCISE_GAMBLING_UNIT,
+        )
+
+    levels: dict[str, ExciseQuantityLevel] = {}
+    for column, (source, value, rate_name) in UK_LCFS_GAMBLING_BASES.items():
+        published, receipt = series(source, value)
+        rate, rate_receipt = rates[rate_name]
+        annual = published / rate
+        levels[column] = ExciseQuantityLevel(
+            column,
+            annual,
+            UK_LCFS_NATIONAL_LOTTERY_KEY
+            if column == UK_LCFS_NATIONAL_LOTTERY_INPUT
+            else UK_LCFS_BETTING_AND_GAMING_KEY,
+            {
+                **receipt,
+                "unit": UK_LCFS_EXCISE_GAMBLING_UNIT,
+                "rate": rate_receipt,
+                "share": 1.0,
+                "annual_level": annual,
+            },
+        )
+    receipts, receipt = series("receipts", "general_betting_duty")
+    rate, rate_receipt = rates["general_betting"]
+    base = receipts / rate
+    cells: dict[str, tuple[float, dict[str, Any]]] = {}
+    for name, (sector, activity, event) in UK_LCFS_GENERAL_BETTING_YIELD_CELLS.items():
+        cells[name] = _one_vendored_value(
+            resource,
+            parameters,
+            cell(
+                "yield",
+                {
+                    "gambling_sector": sector,
+                    "gambling_activity": activity,
+                    "betting_event": event,
+                },
+            ),
+            what=f"the {name} yield",
+            unit=UK_LCFS_EXCISE_GAMBLING_UNIT,
+        )
+    value = {name: cell[0] for name, cell in cells.items()}
+    if value["remote_all_events"] <= 0:
+        raise ValueError(f"{resource}: remote betting has no published yield.")
+    horses = value["remote_horses"] / value["remote_all_events"]
+    parts = {
+        "land_based_fixed_odds_betting_net_losses": value["over_the_counter"],
+        "remote_uk_horseracing_betting_net_losses": value["remote_fixed_odds"] * horses,
+        "remote_other_betting_net_losses": value["remote_fixed_odds"] * (1.0 - horses),
+        "betting_exchange_commission": value["exchange"],
+        "horse_and_dog_pool_betting_net_losses": value["pools_non_remote"]
+        + value["pools_remote"],
+    }
+    whole = sum(parts.values())
+    if whole <= 0:
+        raise ValueError(f"{resource}: betting has no published yield to split.")
+    yield_rows = {name: cell[1] for name, cell in cells.items()}
+    for column in UK_LCFS_GENERAL_BETTING_OUTPUTS:
+        share = parts[column] / whole
+        annual = base * share
+        levels[column] = ExciseQuantityLevel(
+            column,
+            annual,
+            UK_LCFS_BETTING_AND_GAMING_KEY,
+            {
+                **receipt,
+                "unit": UK_LCFS_EXCISE_GAMBLING_UNIT,
+                "rate": rate_receipt,
+                "share": share,
+                "split_by": yield_rows,
+                "remote_horse_racing_share": horses,
+                "annual_level": annual,
+            },
+        )
+    return levels
+
+
+def alcohol_volume_weights(
+    resource: str, parameters: Mapping[str, Any]
+) -> AlcoholVolumeWeights:
+    """The declared rule that shares alcohol volume between the two channels."""
+
+    declared = parameters.get("alcohol_volume_weights")
+    if not isinstance(declared, Mapping):
+        raise ValueError(
+            f"{LEVEL_EXCISE_QUANTITIES_KIND} must declare alcohol_volume_weights."
+        )
+    rule = str(declared.get("rule") or "")
+    if rule == UK_LCFS_ALCOHOL_VOLUME_BY_SPENDING:
+        return AlcoholVolumeWeights(rule, None, {"rule": rule})
+    if rule != UK_LCFS_ALCOHOL_VOLUME_BY_CHANNEL:
+        raise ValueError(
+            f"unsupported {LEVEL_EXCISE_QUANTITIES_KIND} alcohol_volume_weights "
+            f"rule {rule!r}."
+        )
+    share, receipt = _one_vendored_value(
+        resource, parameters, declared, what="the on-trade share"
+    )
+    if not 0.0 < share < 1.0:
+        raise ValueError(f"{resource}: the on-trade share {share} is outside (0, 1).")
+    return AlcoholVolumeWeights(rule, share, {"rule": rule, **receipt})
+
+
+def level_excise_quantities(
+    household_draws: pd.DataFrame,
+    *,
+    levels: ExciseLevels,
+    weights: Sequence[float],
+    participation: Mapping[str, np.ndarray] | None = None,
+) -> tuple[pd.DataFrame, dict[str, Any]]:
+    """Give each household its part of each national quantity, by its spending.
+
+    Each household's alcohol inputs are the national volumes in proportion to
+    its alcohol spending, its tobacco inputs the national clearances in
+    proportion to its tobacco spending, its National Lottery ticket spending
+    the national base in proportion to its National Lottery stakes and its
+    other gambling inputs the national bases in proportion to its betting and
+    gaming stakes, all at prior weights: one factor per input, the
+    ``level_road_fuel`` scaling, so the frame's weighted total is the
+    published quantity. Under the published on-trade share each channel's
+    volume goes to that channel's spenders; by spending, a pound buys the same
+    volume in either, which leans the alcohol inputs towards drinkers in pubs
+    (``UK_LCFS_ALCOHOL_VOLUME_BY_SPENDING`` records by how much). The betting
+    and gaming bases all follow the same stakes, since the diary cannot tell
+    remote from land-based play. Weekly inputs are the annual quantity over
+    the engine's 52 weeks; a draught share is written as published. The
+    spending is the drawn shares of the drawn totals, so no total moves
+    (microcosm#1359). ``participation`` gives the two gambling keys the
+    declared ``top_up_gambling_participation`` step brought to published
+    participation, in place of the drawn stakes; the stored spending stays
+    the drawn one.
+    """
+
+    weight_values = np.asarray(weights, dtype=float)
+    mass = float(weight_values.sum())
+    spending = excise_spending(household_draws)
+    off_trade = spending[UK_LCFS_OFF_TRADE_ALCOHOL_SPENDING].to_numpy(dtype=float)
+    on_trade = spending[UK_LCFS_ON_TRADE_ALCOHOL_SPENDING].to_numpy(dtype=float)
+    tobacco = spending[UK_LCFS_TOBACCO_SPENDING].to_numpy(dtype=float)
+    stakes = spending[UK_LCFS_GAMBLING_SPENDING].to_numpy(dtype=float)
+    lottery = spending[UK_LCFS_NATIONAL_LOTTERY_SPENDING].to_numpy(dtype=float)
+    other_stakes = spending[UK_LCFS_OTHER_GAMBLING_SPENDING].to_numpy(dtype=float)
+    betting = spending[UK_LCFS_BETTING_AND_GAMING_SPENDING].to_numpy(dtype=float)
+    volume = levels.volume
+    if volume.rule == UK_LCFS_ALCOHOL_VOLUME_BY_SPENDING:
+        alcohol = off_trade + on_trade
+    else:
+        totals = (float(weight_values @ off_trade), float(weight_values @ on_trade))
+        if min(totals) <= 0:
+            raise ValueError("the frame draws no alcohol in one of the two channels.")
+        share = float(volume.on_trade_share)
+        alcohol = (1.0 - share) * off_trade / totals[0] + share * on_trade / totals[1]
+    keys = {
+        "alcohol": alcohol,
+        "tobacco": tobacco,
+        UK_LCFS_NATIONAL_LOTTERY_KEY: lottery,
+        UK_LCFS_BETTING_AND_GAMING_KEY: betting,
+    }
+    if participation is not None:
+        if set(participation) != set(UK_GAMBLING_PARTICIPATION_KEYS):
+            raise ValueError(
+                f"the topped-up gambling keys must be {UK_GAMBLING_PARTICIPATION_KEYS}, "
+                f"not {sorted(participation)}."
+            )
+        for key, values in participation.items():
+            topped = np.asarray(values, dtype=float)
+            if topped.shape != (len(household_draws),):
+                raise ValueError(f"the topped-up {key} key is not one per household.")
+            keys[key] = topped
+    quantities = pd.DataFrame(index=household_draws.index)
+    outputs: dict[str, Any] = {}
+    for column, level in levels.quantities.items():
+        annual, before, factor = _scale_to_level(
+            keys[level.key], weight_values, level.annual, what=f"{level.key} spending"
+        )
+        weekly = column in UK_LCFS_EXCISE_TOBACCO_OUTPUTS
+        quantities[column] = annual / UK_PE_UK_WEEKS_IN_YEAR if weekly else annual
+        stored = quantities[column].to_numpy(dtype=float)
+        outputs[column] = {
+            **dict(level.receipt),
+            "key": level.key,
+            "key_total": before,
+            "factor": float(factor),
+            "stored_per": "week" if weekly else "year",
+            "frame_annual_total": float(weight_values @ stored)
+            * (UK_PE_UK_WEEKS_IN_YEAR if weekly else 1.0),
+            "positive_share": float(weight_values[stored > 0].sum() / mass),
+        }
+    for column, draught in levels.draught.items():
+        quantities[column] = float(draught["share"])
+    components = {
+        name: {
+            "weighted_total": float(weight_values @ values),
+            "positive_share": float(weight_values[values > 0].sum() / mass),
+        }
+        for name, values in (
+            (UK_LCFS_TOBACCO_SPENDING, tobacco),
+            (UK_LCFS_OFF_TRADE_ALCOHOL_SPENDING, off_trade),
+            (UK_LCFS_ON_TRADE_ALCOHOL_SPENDING, on_trade),
+            (UK_LCFS_GAMBLING_SPENDING, stakes),
+            (UK_LCFS_NATIONAL_LOTTERY_SPENDING, lottery),
+            (UK_LCFS_OTHER_GAMBLING_SPENDING, other_stakes),
+            (UK_LCFS_BETTING_AND_GAMING_SPENDING, betting),
+        )
+    }
+    receipt = {
+        "operation": LEVEL_EXCISE_QUANTITIES_KIND,
+        "keys": {
+            key: {"positive_share": float(weight_values[values > 0].sum() / mass)}
+            for key, values in keys.items()
+        },
+        "components": components,
+        "alcohol_volume_weights": dict(volume.receipt),
+        "outputs": outputs,
+        "draught_shares": {
+            column: dict(draught) for column, draught in levels.draught.items()
+        },
+    }
+    return quantities, receipt
+
+
+def lcfs_excise_quantities(
+    stage: SourceStageSpec,
+    household_draws: pd.DataFrame,
+    *,
+    weights: Sequence[float],
+    shares: Mapping[str, object],
+    participation: Mapping[str, np.ndarray] | None = None,
+) -> tuple[pd.DataFrame | None, dict[str, Any] | None]:
+    """Apply the declared ``level_excise_quantities`` step (none if undeclared)."""
+
+    parameters = excise_quantities_operation(stage)
+    if parameters is None:
+        return None, None
+    if set(shares) != set(UK_LCFS_EXCISE_SHARES):
+        raise ValueError(
+            f"{stage.stage}: {LEVEL_EXCISE_QUANTITIES_KIND} needs the derive step's "
+            f"excise shares {tuple(UK_LCFS_EXCISE_SHARES)}."
+        )
+    levels = excise_levels(parameters)
+    quantities, receipt = level_excise_quantities(
+        household_draws, levels=levels, weights=weights, participation=participation
+    )
+    receipt = {
+        "operation": LEVEL_EXCISE_QUANTITIES_KIND,
+        "resource": str(parameters["resource"]),
+        "period_type": "fiscal_year",
+        "period_value": int(parameters["period_value"]),
+        "fiscal_start": str(parameters["fiscal_start"]),
+        "geography_id": str(parameters["geography_id"]),
+        "weeks_per_year": UK_PE_UK_WEEKS_IN_YEAR,
+        **receipt,
+    }
+    return quantities, receipt
+
+
+#: The gambling top-up's recreation feature: recreation less its gambling
+#: stakes, which P609 includes.
+UK_LCFS_RECREATION_NET_OF_STAKES = "recreation_net_of_gambling_stakes"
+
+
+def gambling_participation_features(
+    donor_encoded: pd.DataFrame,
+    donor_spending: pd.DataFrame,
+    recipient_encoded: pd.DataFrame,
+    drawn: pd.DataFrame,
+    *,
+    predictors: Sequence[str],
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """The donor's and the frame's features for the gambling top-up's two fits.
+
+    The chain's predictors and the spend targets the shares were drawn on:
+    the donor's diary totals, and the chain's raw draws on the frame. Recreation
+    enters net of its gambling stakes on both sides. P609 sums the stake lines,
+    so a recorded stake would otherwise raise the very feature that predicts it,
+    and the walk would favour high-recreation households for that reason alone
+    (Vahid's review of microcosm#1381, round 4).
+    """
+
+    spend = [
+        c for c in UK_LCFS_CONSUMPTION_TARGET_COLUMNS if c != "recreation_consumption"
+    ]
+    donor_features = donor_encoded[[*predictors, *spend]].reset_index(drop=True)
+    donor_features[UK_LCFS_RECREATION_NET_OF_STAKES] = donor_encoded[
+        "recreation_consumption"
+    ].to_numpy(dtype=float) - donor_spending[UK_LCFS_GAMBLING_SPENDING].to_numpy(
+        dtype=float
+    )
+    recipient_features = recipient_encoded[list(predictors)].reset_index(drop=True)
+    for column in spend:
+        recipient_features[column] = drawn[column].to_numpy(dtype=float)
+    share = np.clip(drawn[UK_LCFS_GAMBLING_SHARE].to_numpy(dtype=float), 0.0, 1.0)
+    recipient_features[UK_LCFS_RECREATION_NET_OF_STAKES] = drawn[
+        "recreation_consumption"
+    ].to_numpy(dtype=float) * (1.0 - share)
+    return donor_features, recipient_features
+
+
+def lcfs_gambling_participation(
+    stage: SourceStageSpec,
+    household_draws: pd.DataFrame,
+    *,
+    donor: pd.DataFrame,
+    recipient: pd.DataFrame,
+    drawn: pd.DataFrame,
+    person: pd.DataFrame,
+    household_ids: np.ndarray,
+    weights: Sequence[float],
+    sources: np.ndarray | None,
+    shares: Mapping[str, object],
+) -> GamblingParticipation | None:
+    """Apply the declared ``top_up_gambling_participation`` step (none if undeclared).
+
+    The keys are the drawn National Lottery and betting and gaming stakes,
+    and the donor's own. Both fits read ``gambling_participation_features``.
+    The step only re-keys ``level_excise_quantities``, so it needs that step
+    and the shares.
+    """
+
+    parameters = gambling_participation_operation(stage)
+    if parameters is None:
+        return None
+    if excise_quantities_operation(stage) is None or set(shares) != set(
+        UK_LCFS_EXCISE_SHARES
+    ):
+        raise ValueError(
+            f"{stage.stage}: {TOP_UP_GAMBLING_PARTICIPATION_KIND} re-keys "
+            f"{LEVEL_EXCISE_QUANTITIES_KIND}, so it needs that step and the "
+            f"excise shares {tuple(UK_LCFS_EXCISE_SHARES)}."
+        )
+    columns = {
+        UK_LCFS_NATIONAL_LOTTERY_KEY: UK_LCFS_NATIONAL_LOTTERY_SPENDING,
+        UK_LCFS_BETTING_AND_GAMING_KEY: UK_LCFS_BETTING_AND_GAMING_SPENDING,
+    }
+    spending = excise_spending(household_draws)
+    donor_spending = excise_spending(donor)
+    donor_encoded, recipient_encoded, predictors = _encode_consumption_predictors(
+        donor, recipient
+    )
+    donor_features, recipient_features = gambling_participation_features(
+        donor_encoded,
+        donor_spending,
+        recipient_encoded,
+        drawn,
+        predictors=predictors,
+    )
+    return top_up_gambling_participation(
+        {
+            key: spending[column].to_numpy(dtype=float)
+            for key, column in columns.items()
+        },
+        person=person,
+        household_ids=household_ids,
+        weights=weights,
+        sources=sources,
+        donor_features=donor_features,
+        donor_keys={
+            key: donor_spending[column].to_numpy(dtype=float)
+            for key, column in columns.items()
+        },
+        donor_weights=donor_encoded["household_weight"].to_numpy(dtype=float),
+        recipient_features=recipient_features,
+        parameters=parameters,
+        fit_name=UK_LCFS_CONSUMPTION_FIT_NAME,
+    )
 
 
 def recompose_from_remainder_operation(
@@ -1814,21 +2992,33 @@ def check_recomposed_parents(parameters: Mapping[str, Any]) -> None:
             f"{RECOMPOSE_FROM_REMAINDER_KIND} must declare maximum_total: "
             f"{UK_LCFS_RECOMPOSED_MAXIMUM_TOTAL}."
         )
+    levelling = parameters.get("level_division_excess")
+    if levelling is not None and dict(levelling) != {
+        "rule": UK_LCFS_LEVEL_DIVISION_EXCESS,
+        "basis": UK_LCFS_LEVEL_DIVISION_BASIS,
+        "divisions": list(UK_LCFS_COICOP_DIVISION_COLUMNS),
+    }:
+        raise ValueError(
+            f"{RECOMPOSE_FROM_REMAINDER_KIND} declares level_division_excess "
+            f"{levelling!r}, not the rule the stage applies."
+        )
 
 
-def uncarried_spend(parameters: Mapping[str, Any]) -> dict[str, Any]:
-    """The published spend inside a recomposed total that no column carries.
+def published_fuel_spend(parameters: Mapping[str, Any]) -> dict[str, Any]:
+    """The published spend on the heating fuels the stage draws.
 
     ONS Consumer Trends classes read from the vendored rows the declaration
-    names: the liquid and solid fuels of COICOP 04.5, which have no column of
-    their own and stay inside the housing remainder (the chain's draw less the
-    diary's electricity and gas; microcosm#1164), and the receipt records their
-    published spend.
+    names: the liquid and solid fuels of COICOP 04.5, each beside the column
+    that carries it (``UK_LCFS_FUEL_PARTS``). Report-only: the stage draws the
+    two from the donor without levelling them, and the receipt records how
+    much of the published spend the donor and the frame reach.
     """
 
-    spec = parameters.get("uncarried")
+    spec = parameters.get("published_fuels")
     if not isinstance(spec, Mapping):
-        raise ValueError(f"{RECOMPOSE_FROM_REMAINDER_KIND} must declare uncarried.")
+        raise ValueError(
+            f"{RECOMPOSE_FROM_REMAINDER_KIND} must declare published_fuels."
+        )
     resource = str(spec.get("resource") or "")
     if resource not in UK_LCFS_VENDORED_RESOURCES:
         raise ValueError(f"{resource!r} is not a vendored lcfs_consumption resource.")
@@ -1836,6 +3026,11 @@ def uncarried_spend(parameters: Mapping[str, Any]) -> dict[str, Any]:
     classes = []
     for entry in spec.get("classes", ()):
         coicop, concept = str(entry["coicop"]), str(entry["concept"])
+        column = str(entry["column"])
+        if column not in UK_LCFS_FUEL_COLUMNS:
+            raise ValueError(
+                f"{column!r} is not a heating-fuel column the stage draws."
+            )
         rows = vendored_rows(
             resource,
             concept=concept,
@@ -1853,12 +3048,16 @@ def uncarried_spend(parameters: Mapping[str, Any]) -> dict[str, Any]:
             {
                 "coicop": coicop,
                 "concept": concept,
+                "column": column,
                 "source_record_id": str(rows[0].get("source_record_id", "")),
                 "value": float(rows[0]["value"]),
             }
         )
-    if not classes:
-        raise ValueError(f"{RECOMPOSE_FROM_REMAINDER_KIND} declares no classes.")
+    if sorted(entry["column"] for entry in classes) != sorted(UK_LCFS_FUEL_COLUMNS):
+        raise ValueError(
+            f"{RECOMPOSE_FROM_REMAINDER_KIND} published_fuels must name "
+            f"{sorted(UK_LCFS_FUEL_COLUMNS)} once each."
+        )
     return {
         "resource": resource,
         "period_value": period_value,
@@ -1867,26 +3066,48 @@ def uncarried_spend(parameters: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
-def uncarried_beside_donor(
-    uncarried: Mapping[str, Any], energy_split: Mapping[str, Any]
+def published_fuels_beside_draws(
+    published: Mapping[str, Any],
+    energy_split: Mapping[str, Any],
+    frame_totals: Mapping[str, float],
 ) -> dict[str, Any]:
-    """The published liquid and solid fuels beside the donor's own other fuels.
+    """The published heating fuels beside the donor's and the frame's.
 
-    Report-only (microcosm#1207's liquid and solid fuels item): the donor's
-    other fuels, the diary codes the energy split leaves in the housing total
-    (``UK_LCFS_OTHER_FUEL_PARTS``), are its weighted annual diary total at
-    diary prices, before the donor is carried to the base year, so the ratio
-    reads how much of ONS 04.5.3 and 04.5.4 the survey captures, not a level
-    the stage sets.
+    Report-only: the donor's figure is its weighted annual diary total at
+    diary prices, before the donor is carried to the base year, so it reads
+    how much of ONS 04.5.3 and 04.5.4 the survey captures; the frame's is the
+    stage's draws at the stage's weights, at calendar-2024 prices. ONS's
+    04.5.3 leaves out the bottled gas the liquid column holds, so the liquid
+    fuels' donor figure is also given without it (``UK_LCFS_FUEL_PARTS``).
     """
 
-    donor_other = float(energy_split["other_fuels"])
-    published = float(uncarried["total"])
-    return {
-        **uncarried,
-        "donor_other_fuels_at_diary_prices": donor_other,
-        "donor_over_published": donor_other / published if published > 0 else None,
-    }
+    classes = []
+    for entry in published["classes"]:
+        value = float(entry["value"])
+        donor = float(energy_split[entry["column"]])
+        frame = float(frame_totals[entry["column"]])
+        row = {
+            **entry,
+            "donor_at_diary_prices": donor,
+            "donor_over_published": donor / value if value > 0 else None,
+            "frame": frame,
+            "frame_over_published": frame / value if value > 0 else None,
+        }
+        if entry["column"] == "liquid_fuel_consumption" and "bottled_gas" in (
+            energy_split
+        ):
+            bottled = float(energy_split["bottled_gas"])
+            row["donor_bottled_gas_at_diary_prices"] = bottled
+            row["donor_without_bottled_gas_over_published"] = (
+                (donor - bottled) / value if value > 0 else None
+            )
+            row["concept_note"] = (
+                "COICOP puts liquefied hydrocarbons under 04.5.2 (gas), so ONS's "
+                "04.5.3 leaves out the bottled gas this column holds (María's "
+                "ruling of 2026-10-22)."
+            )
+        classes.append(row)
+    return {**published, "classes": classes}
 
 
 def recompose_parent_totals(
@@ -1897,6 +3118,7 @@ def recompose_parent_totals(
     weights: Sequence[float],
     donor_support: Mapping[str, tuple[float, float]],
     uprating_factors: Mapping[str, float] | None = None,
+    donor_division_means: Mapping[str, float] | None = None,
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     """Write each recomposed total around the levelled parts the stage set.
 
@@ -1913,6 +3135,13 @@ def recompose_parent_totals(
     (``donor_support``, the declared ``maximum_total``; microcosm#1164), never
     below its parts: what it gives up comes out of the remainder, and the
     receipt counts the rows held and the weighted mass taken.
+
+    Where the declaration levels the divisions' relative over-draw
+    (``level_division_excess``), each division above the shared ratio of the
+    spend the chain drew is brought down to it before the hold
+    (:func:`division_excess_factors`; ``donor_division_means`` is then the
+    donor's drawn spend, :func:`lcfs_donor_drawn_means`): a recomposed total
+    by its remainder alone, any other division by its draw.
     """
 
     check_recomposed_parents(parameters)
@@ -1920,14 +3149,50 @@ def recompose_parent_totals(
     factors = dict(uprating_factors or {})
     result = household_draws.copy()
     parents: dict[str, Any] = {}
+    split: dict[str, tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]] = {}
     for parent, (subtracted, components) in UK_LCFS_RECOMPOSED_PARENTS.items():
-        if parent not in donor_support:
-            raise ValueError(f"{parent}: no donor support to hold the total to.")
-        maximum = float(donor_support[parent][1])
         drawn_total = result[parent].to_numpy(dtype=float)
         drawn_parts = sum(drawn[column].to_numpy(dtype=float) for column in subtracted)
         rest = np.maximum(drawn_total - drawn_parts, 0.0)
         parts = sum(result[column].to_numpy(dtype=float) for column in components)
+        split[parent] = (drawn_total, drawn_parts, rest, parts)
+    levelling = None
+    level_factors: dict[str, float] = {}
+    if parameters.get("level_division_excess") is not None:
+        if donor_division_means is None:
+            raise ValueError(
+                "Levelling the divisions' excess needs the donor's division means."
+            )
+        # The spend the chain drew: a recomposed total's remainder, any other
+        # division's whole draw.
+        frame_drawn = {
+            division: float(
+                np.dot(
+                    weight,
+                    split[division][2]
+                    if division in split
+                    else result[division].to_numpy(dtype=float),
+                )
+            )
+            for division in UK_LCFS_COICOP_DIVISION_COLUMNS
+        }
+        levelling = division_excess_factors(
+            frame_drawn, donor_division_means, households=float(weight.sum())
+        )
+        level_factors = {
+            division: entry["factor"]
+            for division, entry in levelling["divisions"].items()
+        }
+        for division, factor in level_factors.items():
+            if division not in split and factor != 1.0:
+                result[division] = result[division].to_numpy(dtype=float) * factor
+    for parent, (subtracted, components) in UK_LCFS_RECOMPOSED_PARENTS.items():
+        if parent not in donor_support:
+            raise ValueError(f"{parent}: no donor support to hold the total to.")
+        maximum = float(donor_support[parent][1])
+        drawn_total, drawn_parts, rest, parts = split[parent]
+        level_factor = float(level_factors.get(parent, 1.0))
+        rest = rest * level_factor
         unheld = rest + parts
         total = np.maximum(np.minimum(unheld, maximum), parts)
         result[parent] = total
@@ -1952,6 +3217,7 @@ def recompose_parent_totals(
             },
             "drawn_subtracts": list(subtracted),
             "components": list(components),
+            "levelling_factor": level_factor,
             "weighted_drawn_total": float(np.dot(weight, drawn_total)),
             "weighted_drawn_subtracts": float(np.dot(weight, drawn_parts)),
             "rows_floored": int((drawn_parts > drawn_total).sum()),
@@ -1970,9 +3236,69 @@ def recompose_parent_totals(
     receipt = {
         "operation": RECOMPOSE_FROM_REMAINDER_KIND,
         "parents": parents,
-        "uncarried": uncarried_spend(parameters),
+        "published_fuels": published_fuel_spend(parameters),
+        **({} if levelling is None else {"division_levelling": levelling}),
     }
     return result, receipt
+
+
+def division_excess_factors(
+    frame_drawn: Mapping[str, float],
+    donor_drawn_means: Mapping[str, float],
+    *,
+    households: float,
+) -> dict[str, Any]:
+    """Each division's factor bringing its relative over-draw to the shared ratio.
+
+    ``frame_drawn`` is each division's weighted frame spend the chain drew (a
+    recomposed total's remainder, any other division's whole draw), and
+    ``donor_drawn_means`` the donor's mean of the same per household
+    (:func:`lcfs_donor_drawn_means`). A division's ratio is the one over the
+    other; the shared ratio is the divisions' together, measured once. A
+    division above it comes down to it, and every other keeps its draw
+    (``UK_LCFS_LEVEL_DIVISION_EXCESS``).
+    """
+
+    expected = {
+        division: households * float(donor_drawn_means[division])
+        for division in UK_LCFS_COICOP_DIVISION_COLUMNS
+    }
+    ratios = {
+        division: (
+            float(frame_drawn[division]) / expected[division]
+            if expected[division] > 0
+            else None
+        )
+        for division in UK_LCFS_COICOP_DIVISION_COLUMNS
+    }
+    total_expected = sum(expected.values())
+    if not total_expected > 0:
+        raise ValueError("The donor's divisions hold no spend to level against.")
+    shared = sum(float(frame_drawn[division]) for division in expected) / (
+        total_expected
+    )
+    above = {
+        division
+        for division, ratio in ratios.items()
+        if ratio is not None and ratio > shared
+    }
+    divisions = {
+        division: {
+            "ratio": ratios[division],
+            "factor": (
+                shared * expected[division] / float(frame_drawn[division])
+                if division in above
+                else 1.0
+            ),
+        }
+        for division in UK_LCFS_COICOP_DIVISION_COLUMNS
+    }
+    return {
+        "rule": UK_LCFS_LEVEL_DIVISION_EXCESS,
+        "basis": UK_LCFS_LEVEL_DIVISION_BASIS,
+        "shared_ratio": shared,
+        "divisions": divisions,
+    }
 
 
 def lcfs_recompose_from_remainder(
@@ -1983,6 +3309,7 @@ def lcfs_recompose_from_remainder(
     weights: Sequence[float],
     donor_support: Mapping[str, tuple[float, float]],
     uprating_factors: Mapping[str, float] | None = None,
+    donor_division_means: Mapping[str, float] | None = None,
 ) -> tuple[pd.DataFrame, dict[str, Any] | None]:
     """Apply the declared ``recompose_from_remainder`` step (none if undeclared)."""
 
@@ -1996,7 +3323,33 @@ def lcfs_recompose_from_remainder(
         weights=weights,
         donor_support=donor_support,
         uprating_factors=uprating_factors,
+        donor_division_means=donor_division_means,
     )
+
+
+def lcfs_donor_drawn_means(donor: pd.DataFrame) -> dict[str, float]:
+    """Each division's drawn spend per donor household, at the donor's weights.
+
+    A recomposed total's is the division less the parts the stage levels,
+    floored at zero per household as the frame's remainder is; any other
+    division's is the division. The donor is the one the chain drew from.
+    """
+
+    weight = _numeric(donor["household_weight"]).to_numpy(dtype=float)
+    mass = float(weight.sum())
+    if not mass > 0:
+        raise ValueError("The LCFS donor carries no weight.")
+    means: dict[str, float] = {}
+    for division in UK_LCFS_COICOP_DIVISION_COLUMNS:
+        spend = _numeric(donor[division]).to_numpy(dtype=float)
+        if division in UK_LCFS_RECOMPOSED_PARENTS:
+            subtracted, _ = UK_LCFS_RECOMPOSED_PARENTS[division]
+            parts = sum(
+                _numeric(donor[column]).to_numpy(dtype=float) for column in subtracted
+            )
+            spend = np.maximum(spend - parts, 0.0)
+        means[division] = float(np.dot(weight, spend)) / mass
+    return means
 
 
 @dataclass(frozen=True)
@@ -2259,7 +3612,8 @@ def rake_recipient_energy(
     gas_payers: GasPayerDraws | None = None,
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     """Price the drawn spend to kWh, impose the published gas connection, rake the
-    NEED shape at the DESNZ level, price back.
+    NEED shape at each fuel's declared level (DESNZ volume, or for electricity
+    the kWh ONS household spending buys), price back.
 
     ``identity`` (the household ids, row-aligned) keys the disconnection walk
     when the declared rule is ``identity_uniform_order``, and the connection
@@ -2649,6 +4003,245 @@ def _weighted_share(mask: np.ndarray, weights: np.ndarray) -> float:
     return float(np.sum(weights[np.asarray(mask, dtype=bool)]) / total)
 
 
+#: How far a published LCFS total stored to one decimal place can sit from the
+#: lines it sums by rounding alone, pounds a week.
+UK_LCFS_TOTAL_ROUNDING = 0.05
+
+
+def lcfs_donor_shares(
+    stage: SourceStageSpec,
+) -> dict[str, tuple[str, tuple[str, ...], tuple[str, ...]]]:
+    """The excise shares the derive step declares, held to the module's.
+
+    No declaration draws no share and leaves the chain its spend targets. A
+    declaration that differs from ``UK_LCFS_EXCISE_SHARES`` in a share, its
+    total or a diary line is refused: the code computes these. The loaded
+    spec does not keep a mapping's order, so the chain's declared targets
+    (``lcfs_chain_targets``) fix the order the shares are drawn in.
+    """
+
+    declared = _operation_parameters(stage, "derive").get("shares")
+    if declared is None:
+        return {}
+    actual = (
+        {
+            name: (
+                entry.get("total"),
+                tuple(entry.get("numerator", ())),
+                tuple(entry.get("denominator", ())),
+            )
+            for name, entry in declared.items()
+            if isinstance(entry, Mapping)
+        }
+        if isinstance(declared, Mapping)
+        else None
+    )
+    if actual != dict(UK_LCFS_EXCISE_SHARES):
+        raise ValueError(
+            f"{stage.stage}: the derive operation declares shares {declared!r}, "
+            f"not the shares the stage draws: {dict(UK_LCFS_EXCISE_SHARES)!r}."
+        )
+    return dict(UK_LCFS_EXCISE_SHARES)
+
+
+def lcfs_chain_targets(
+    stage: SourceStageSpec, shares: Mapping[str, object]
+) -> tuple[str, ...]:
+    """The chain's declared targets, held to the spend targets then the shares."""
+
+    declared = tuple(
+        _operation_parameters(stage, "fit_weighted_qrf_chain").get("targets", ())
+    )
+    expected = (*UK_LCFS_CONSUMPTION_TARGET_COLUMNS, *shares)
+    if declared != expected:
+        raise ValueError(
+            f"{stage.stage}: fit_weighted_qrf_chain declares targets {declared}, "
+            f"not the spend targets followed by the declared shares: {expected}."
+        )
+    return expected
+
+
+def donor_excise_shares(
+    household: pd.DataFrame,
+    shares: Mapping[str, tuple[str, tuple[str, ...], tuple[str, ...]]],
+) -> tuple[pd.DataFrame, dict[str, Any]]:
+    """Each declared share on the donor, from its weekly diary lines, and a receipt.
+
+    Lines are read with refunds as zero, as the donor floor reads its totals,
+    and a share is its lines over its denominator, zero where that is not
+    positive and at most one. A ratio carries no price, so the uprating that
+    moves the spend columns leaves it alone. ``household`` is the donor tab
+    before the totals are renamed, annualised or uprated. The receipt gives,
+    per share, the weighted share of the denominator its lines hold, the
+    weighted share of donors with a positive line, the support of those
+    donors as a band, how many donors the clip at one held, and, where the
+    denominator is lines under a published total, the weighted share of
+    donors whose published total sits beside those lines by more than its
+    rounding ("<10" when one to nine donors do): a donor stage receipt is
+    UKDS output (CD171 §5.2.1), so it gives no donor value and no small
+    count. A share of the stakes an earlier share gives has no published
+    total; its denominator is the stake lines it splits.
+    """
+
+    weights = _numeric(household["household_weight"]).to_numpy(dtype=float)
+    mass = float(weights.sum())
+    columns: dict[str, np.ndarray] = {}
+    receipt: dict[str, Any] = {}
+    for name, (total, numerator, denominator) in shares.items():
+        source_total = (
+            None
+            if total in UK_LCFS_EXCISE_SPENDING_TOTALS
+            else next(
+                code
+                for code, column in CONSUMPTION_VARIABLE_RENAMES.items()
+                if column == total
+            )
+        )
+        for code in (
+            *numerator,
+            *denominator,
+            *([source_total] if source_total else []),
+        ):
+            if code not in household:
+                raise ValueError(f"LCFS household donor is missing {code!r}.")
+
+        def lines(codes: tuple[str, ...]) -> np.ndarray:
+            return sum(
+                _numeric(household[code]).clip(lower=0.0).to_numpy(dtype=float)
+                for code in codes
+            )
+
+        top = lines(numerator)
+        bottom = lines(denominator)
+        ratio = np.divide(top, bottom, out=np.zeros(len(household)), where=bottom > 0)
+        clipped = int((ratio > 1.0).sum())
+        columns[name] = np.clip(ratio, 0.0, 1.0)
+        positive = top > 0
+        entry: dict[str, Any] = {
+            "total": total,
+            "numerator": list(numerator),
+            "denominator": list(denominator),
+            "share_of_denominator": float(weights @ top / (weights @ bottom))
+            if weights @ bottom > 0
+            else None,
+            "positive_share": float(weights[positive].sum() / mass) if mass else None,
+            "positive_support": support_band(int(positive.sum())),
+            "clipped_at_one": extreme_count(clipped),
+        }
+        if source_total is not None and source_total not in denominator:
+            published = _numeric(household[source_total]).to_numpy(dtype=float)
+            beside = np.abs(published - bottom) > UK_LCFS_TOTAL_ROUNDING + 1e-9
+            entry["total_beside_lines"] = small_cell_share(
+                float(weights[beside].sum() / mass) if mass else 0.0,
+                int(beside.sum()),
+            )
+        receipt[name] = entry
+    return pd.DataFrame(columns, index=household.index), receipt
+
+
+def excise_spending(draws: pd.DataFrame) -> pd.DataFrame:
+    """The excise spending the drawn shares give: scratch, on no table.
+
+    Tobacco and off-trade alcohol split the drawn alcohol and tobacco total
+    between them, so together they are that total; on-trade alcohol is its
+    share of restaurants and hotels, and gambling stakes theirs of recreation.
+    The National Lottery's stakes are their share of the stakes, and the
+    betting and gaming stakes theirs of the rest.
+    """
+
+    tobacco = draws[UK_LCFS_TOBACCO_SHARE].to_numpy(dtype=float)
+    alcohol_and_tobacco = draws["alcohol_and_tobacco_consumption"].to_numpy(dtype=float)
+    on_trade = draws[UK_LCFS_ON_TRADE_ALCOHOL_SHARE].to_numpy(dtype=float)
+    stakes = draws[UK_LCFS_GAMBLING_SHARE].to_numpy(dtype=float) * draws[
+        "recreation_consumption"
+    ].to_numpy(dtype=float)
+    lottery = draws[UK_LCFS_NATIONAL_LOTTERY_SHARE].to_numpy(dtype=float)
+    other_stakes = (1.0 - lottery) * stakes
+    return pd.DataFrame(
+        {
+            UK_LCFS_TOBACCO_SPENDING: tobacco * alcohol_and_tobacco,
+            UK_LCFS_OFF_TRADE_ALCOHOL_SPENDING: (1.0 - tobacco) * alcohol_and_tobacco,
+            UK_LCFS_ON_TRADE_ALCOHOL_SPENDING: on_trade
+            * draws["restaurants_and_hotels_consumption"].to_numpy(dtype=float),
+            UK_LCFS_GAMBLING_SPENDING: stakes,
+            UK_LCFS_NATIONAL_LOTTERY_SPENDING: lottery * stakes,
+            UK_LCFS_OTHER_GAMBLING_SPENDING: other_stakes,
+            UK_LCFS_BETTING_AND_GAMING_SPENDING: draws[
+                UK_LCFS_BETTING_AND_GAMING_SHARE
+            ].to_numpy(dtype=float)
+            * other_stakes,
+        },
+        index=draws.index,
+    )
+
+
+def clip_excise_shares(
+    draws: pd.DataFrame,
+    shares: Mapping[str, tuple[str, tuple[str, ...], tuple[str, ...]]],
+) -> tuple[pd.DataFrame, dict[str, int | str]]:
+    """Hold each drawn share to [0, 1], counting the draws held.
+
+    The chain draws a share from donor values, which lie in the interval, so
+    the count is zero unless the chain stops doing so.
+    """
+
+    held = draws.copy()
+    outside: dict[str, int | str] = {}
+    for name in shares:
+        values = held[name].to_numpy(dtype=float)
+        outside[name] = extreme_count(int(((values < 0.0) | (values > 1.0)).sum()))
+        held[name] = np.clip(values, 0.0, 1.0)
+    return held, outside
+
+
+def excise_shares_receipt(
+    draws: pd.DataFrame,
+    *,
+    shares: Mapping[str, tuple[str, tuple[str, ...], tuple[str, ...]]],
+    weights: np.ndarray,
+    donor_receipt: Mapping[str, Any],
+    outside: Mapping[str, int | str],
+) -> dict[str, Any]:
+    """The shares on the frame beside the donor's: report-only (microcosm#1359).
+
+    Per share, at prior weights: the weighted share of its total the frame's
+    part holds and the weighted share of households with a positive part,
+    beside the donor's ``donor_excise_shares`` receipt and the draws the clip
+    held.
+    """
+
+    weights = np.asarray(weights, dtype=float)
+    mass = float(weights.sum())
+    spending = excise_spending(draws)
+    parts = {
+        UK_LCFS_TOBACCO_SHARE: spending[UK_LCFS_TOBACCO_SPENDING],
+        UK_LCFS_ON_TRADE_ALCOHOL_SHARE: spending[UK_LCFS_ON_TRADE_ALCOHOL_SPENDING],
+        UK_LCFS_GAMBLING_SHARE: spending[UK_LCFS_GAMBLING_SPENDING],
+        UK_LCFS_NATIONAL_LOTTERY_SHARE: spending[UK_LCFS_NATIONAL_LOTTERY_SPENDING],
+        UK_LCFS_BETTING_AND_GAMING_SHARE: spending[UK_LCFS_BETTING_AND_GAMING_SPENDING],
+    }
+    receipt: dict[str, Any] = {}
+    for name, (total, _numerator, _denominator) in shares.items():
+        part = parts[name].to_numpy(dtype=float)
+        whole = (spending if total in UK_LCFS_EXCISE_SPENDING_TOTALS else draws)[
+            total
+        ].to_numpy(dtype=float)
+        receipt[name] = {
+            "total": total,
+            "frame": {
+                "share_of_total": float(weights @ part / (weights @ whole))
+                if weights @ whole > 0
+                else None,
+                "positive_share": float(weights[part > 0].sum() / mass)
+                if mass
+                else None,
+                "draws_outside_unit_interval": outside[name],
+            },
+            "donor": dict(donor_receipt[name]),
+        }
+    return receipt
+
+
 def clean_lcfs_consumption_table(
     lcfs_person: pd.DataFrame,
     lcfs_household: pd.DataFrame,
@@ -2656,6 +4249,7 @@ def clean_lcfs_consumption_table(
     uprating: Mapping[str, float] | None = None,
     energy: LCFSEnergyPricing | None = None,
     donor_rake_iterations: int = 1,
+    shares: Mapping[str, tuple[str, tuple[str, ...], tuple[str, ...]]] | None = None,
 ) -> pd.DataFrame:
     """Return the LCFS donor table with annualized consumption variables.
 
@@ -2669,6 +4263,9 @@ def clean_lcfs_consumption_table(
     energy spend to kWh at the calendar-2024 regional average prices paid, rakes
     the income margin to the NEED means (shape only, no level) and prices back; without it the energy columns
     are the raw diary spend.
+    ``shares`` (the derive step's declared excise shares, microcosm#1359) adds
+    each share as a donor column for the chain, from the diary lines before
+    any of this, and its receipt under ``donor.attrs``.
     """
 
     person = _lowercase(lcfs_person).rename(columns=PERSON_LCFS_RENAMES)
@@ -2688,6 +4285,10 @@ def clean_lcfs_consumption_table(
     household = derive_energy_from_lcfs(household)
     energy_split = donor_energy_split_receipt(household)
     household[UK_LCFS_PREPAYMENT_METER_COLUMN] = prepayment_meter_from_lcfs(household)
+    shares = dict(shares or {})
+    share_columns, share_receipt = donor_excise_shares(household, shares)
+    for name in shares:
+        household[name] = share_columns[name]
     household = household.rename(columns=CONSUMPTION_VARIABLE_RENAMES)
     for code in BUS_FARE_LCFS_CODES:
         if code not in household:
@@ -2702,6 +4303,7 @@ def clean_lcfs_consumption_table(
         "household_gross_income",
         "electricity_consumption",
         "gas_consumption",
+        *UK_LCFS_FUEL_COLUMNS,
     ]
     for column in annualize:
         household[column] = _numeric(household[column]) * WEEKS_IN_YEAR
@@ -2731,6 +4333,7 @@ def clean_lcfs_consumption_table(
         [
             *UK_LCFS_CONSUMPTION_PREDICTORS,
             *UK_LCFS_CONSUMPTION_TARGET_COLUMNS,
+            *shares,
             UK_LCFS_PREPAYMENT_METER_COLUMN,
             "household_gross_income",
             "household_weight",
@@ -2742,6 +4345,8 @@ def clean_lcfs_consumption_table(
     if missing:
         raise ValueError(f"LCFS donor has missing values in {missing}.")
     donor.attrs[UK_LCFS_ENERGY_SPLIT_RECEIPT] = energy_split
+    if shares:
+        donor.attrs[UK_LCFS_EXCISE_SHARES_RECEIPT] = share_receipt
     return donor
 
 
@@ -2809,6 +4414,15 @@ def donor_energy_split_receipt(household: pd.DataFrame) -> dict[str, Any]:
         "electricity": electricity,
         "gas": gas,
         "other_fuels": other,
+        **{
+            column: total(_numeric(household[column]))
+            for column in UK_LCFS_FUEL_COLUMNS
+        },
+        **(
+            {"bottled_gas": total(_numeric(household[UK_LCFS_BOTTLED_GAS_COLUMN]))}
+            if UK_LCFS_BOTTLED_GAS_COLUMN in household
+            else {}
+        ),
         "fuel_light_and_power": fuel_light_power,
         "parts_over_fuel_light_and_power": over(electricity + gas + other),
         "clipping_over_fuel_light_and_power": over(total(parts - unclipped)),
@@ -3020,6 +4634,11 @@ def derive_energy_from_lcfs(household: pd.DataFrame) -> pd.DataFrame:
     result[UK_LCFS_OTHER_FUELS_COLUMN] = sum(
         part(code) for code in UK_LCFS_OTHER_FUEL_PARTS
     )
+    for column, codes in UK_LCFS_FUEL_PARTS.items():
+        result[column] = sum(part(code) for code in codes)
+    result[UK_LCFS_BOTTLED_GAS_COLUMN] = sum(
+        part(code) for code in UK_LCFS_BOTTLED_GAS_PARTS
+    )
     result.attrs[UK_LCFS_ACCOUNT_IDENTITY_RECEIPT] = {
         fuel_name: None if share_holding is None else floored_share(share_holding)
         for fuel_name, share_holding in shares.items()
@@ -3113,6 +4732,7 @@ def impute_lcfs_consumption(
     seed: int,
     n_estimators: int,
     record_ids: Sequence[object] | np.ndarray,
+    targets: Sequence[str] = UK_LCFS_CONSUMPTION_TARGET_COLUMNS,
 ) -> UKLCFSConsumptionImputationResult:
     """Chain-draw the targets in the declared order.
 
@@ -3123,7 +4743,19 @@ def impute_lcfs_consumption(
     Each draw reads uniforms keyed on the household's own id (``record_ids``,
     in recipient row order) and the target, never a positional stream, so a
     household's consumption moves only when its own predictors do.
+    ``targets`` is the spend targets, optionally followed by the declared
+    excise shares (microcosm#1359): a target appended after them leaves every
+    earlier draw as it was.
     """
+
+    targets = tuple(targets)
+    if targets[: len(UK_LCFS_CONSUMPTION_TARGET_COLUMNS)] != (
+        UK_LCFS_CONSUMPTION_TARGET_COLUMNS
+    ):
+        raise ValueError(
+            "The LCFS chain draws its spend targets first, in their declared "
+            f"order, then any excise shares; got {targets}."
+        )
 
     from microcosm.fit import RegimeGatedQRF
 
@@ -3139,13 +4771,13 @@ def impute_lcfs_consumption(
     state = model.start_chain(
         donor_encoded,
         list(predictors),
-        list(UK_LCFS_CONSUMPTION_TARGET_COLUMNS),
+        list(targets),
         weights="household_weight",
     )
     raw = pd.DataFrame(index=recipient_encoded.index)
     draws = pd.DataFrame(index=recipient_encoded.index)
     fit_records: list[FitWeightRecord] = []
-    for target in UK_LCFS_CONSUMPTION_TARGET_COLUMNS:
+    for target in targets:
         features = recipient_encoded.loc[:, list(predictors)]
         salt = f"{UK_LCFS_CONSUMPTION_FIT_NAME}:{target}"
         result = model.fit_draw_next(

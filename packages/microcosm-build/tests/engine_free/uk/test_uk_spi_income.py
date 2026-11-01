@@ -5,7 +5,7 @@ from test_support.microcosm_build.uk_spi_income import *
 
 
 def test_spi_disability_refresh_reuses_frs_derivation_for_spi_people() -> None:
-    weeks = 365.25 / 7
+    weeks = 52
     person = pd.DataFrame(
         {
             "attendance_allowance_reported": [0.0, 19 * weeks, 0.0],
@@ -839,17 +839,19 @@ def test_taxable_income_mask_applies_the_no_record_rule() -> None:
         "state_pension_reported": 0.0,
         "employment_status": "UNEMPLOYED",
         "savings_interest_income": 0.0,
-        "tax_free_savings_income": 0.0,
+        "individual_savings_account_interest_income": 0.0,
         "dividend_income": 0.0,
         "property_income": 0.0,
         "miscellaneous_income": 0.0,
     }
     rows = [
         dict(columns),  # nothing at all
+        # ISA interest is not taxable: 900 outside ISAs stays under the floor
+        # (microcosm#1360).
         {
             **columns,
-            "savings_interest_income": 1_500.0,
-            "tax_free_savings_income": 600.0,
+            "savings_interest_income": 900.0,
+            "individual_savings_account_interest_income": 600.0,
         },
         {**columns, "dividend_income": 1_200.0},
         {**columns, "employment_status": "FT_SELF_EMPLOYED"},

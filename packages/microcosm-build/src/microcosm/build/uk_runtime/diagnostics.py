@@ -16,33 +16,24 @@ from __future__ import annotations
 
 import json
 import math
-import sys
-import warnings
-from collections.abc import Collection, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from importlib import resources as importlib_resources
 from pathlib import Path
-from types import SimpleNamespace
 from typing import Any
 
 import numpy as np
 import pandas as pd
 from pydantic import ValidationError
-from scipy import linalg as scipy_linalg
-from scipy import sparse
 
 from microcosm.calibrate import (
     TargetRegistry,
     diagnostics_payload,
     effective_sample_size,
 )
-from microcosm.calibrate.diagnostics import past_cap_census
 from microcosm.calibrate.solve import CalibrationResult
 from microcosm.diagnostics import (
     UK_DIAGNOSTICS_SCHEMA_VERSION,
-    UK_MODEL_FIGURE_FIELDS,
     UK_TARGET_GEOGRAPHY_LEVELS,
-    UK_WITHHELD_PUBLISHED_ITERATE_FIELDS,
-    UK_WITHHELD_PUBLISHED_OPTIONS,
     CalibrationDiagnosticsV8,
     DiagnosticsWriteOutcome,
     failed_diagnostics_outcome,
@@ -57,6 +48,8 @@ __all__ = [
     "UK_TARGET_GEOGRAPHY_LEVELS",
     "uk_calibration_diagnostics_payload",
     "uk_consumption_drift",
+    "uk_consumption_drift_flags",
+    "uk_consumption_drift_warnings",
     "uk_fit_by_family",
     "uk_support_limited_misses",
     "uk_target_geography_levels",
@@ -74,26 +67,12 @@ _UK_DEFAULT_ZERO_WEIGHT_STRATUM_COLUMNS: tuple[str, ...] = (
 
 _TARGET_PASS_RELATIVE_ERROR = 0.10
 _AREA_FIT_LIMIT = 15
-#: A target row's model figures leave the build only when at least this many
-#: distinct source households carry them (UKDS CD137 clause 8): María's ruling
-#: of 2026-10-17 on the #1305 review for BRMA rows, extended to national and
-#: regional rows by her rule of 2026-10-21, which binds a thin row rather
-#: than leave it out (local rows keep the area-support rule).
+#: The fewest distinct source households a published cell may rest on (UKDS
+#: CD137 clause 8). The build no longer withholds model figures (María's
+#: ruling of 2026-10-26), but the report tools that publish their own tables,
+#: such as the single years of age and the council tax liability comparison,
+#: still suppress the cells below it.
 UK_DIAGNOSTIC_MIN_SOURCE_HOUSEHOLDS = 10
-#: The BRMA rows' floor, the same ten under its own ruling of 2026-10-17 (the
-#: support gate covers constituencies and authorities, not the partial BRMA
-#: grain).
-UK_BRMA_DIAGNOSTIC_MIN_SOURCE_HOUSEHOLDS = 10
-#: The fields of a target row that the model's weights produce (the shared
-#: tuple the release contract checks too).
-_MODEL_FIGURE_FIELDS = UK_MODEL_FIGURE_FIELDS
-_WITHHELD_NOTE = (
-    "model figures withheld: fewer than 10 distinct source households carry this row"
-)
-_COMPLEMENT_NOTE = (
-    "model figures withheld: with the published rows they would give back a row "
-    "or a cell that fewer than 10 distinct source households carry"
-)
 
 _COUNTRY_BY_AREA_PREFIX = {
     "E": "England",
@@ -186,14 +165,20 @@ def uk_weakest_areas_by_fit(
     """Return bottom-by-fit local areas plus country-level fit rollups.
 
     ``area_support`` must cover every scored area. A row carries the area's
-    ``support_below_floor`` flag when the table has one, never its rows, ESS
-    or distinct sources: these diagnostics ship in a release, and per-area
-    support figures stay in the build's area-support table (microcosm#1301).
+    rows, Kish ESS and distinct sources, and its ``support_below_floor`` flag
+    when the table has one: María's ruling of 2026-10-26 dropped the
+    withholding of these per-area figures (microcosm#1301).
     """
 
     if isinstance(limit, bool) or not isinstance(limit, int) or limit <= 0:
         raise ValueError("UK weakest-area limit must be a positive integer.")
-    required = {"geography_level", "area_code"}
+    required = {
+        "geography_level",
+        "area_code",
+        "nonzero_households",
+        "nonzero_source_households",
+        "effective_sample_size",
+    }
     missing = sorted(required - set(area_support.columns))
     if missing:
         raise ValueError(f"UK area support is missing rollup column(s): {missing}.")
@@ -243,6 +228,9 @@ def uk_weakest_areas_by_fit(
                 "worst_target": worst_name,
                 "worst_abs_relative_error": worst_error,
                 "loss_contribution": math.fsum(item[2] for item in rows),
+                "nonzero_households": int(support.nonzero_households),
+                "nonzero_source_households": int(support.nonzero_source_households),
+                "effective_sample_size": float(support.effective_sample_size),
                 **_support_flag(support.support_below_floor if flagged else None),
             }
         )
@@ -336,9 +324,9 @@ def uk_support_limited_misses(
 
     The per-grain rollups (failing cells, their share in the bottom ESS
     decile, the rank correlation of fit with ESS) are over many areas. The
-    worst areas are listed by code and fit, with ``support_below_floor`` when
-    the support table carries it; their rows, ESS and distinct sources stay
-    in the build's area-support table (microcosm#1301).
+    worst areas are listed by code and fit with their rows, ESS and distinct
+    sources, and ``support_below_floor`` when the support table carries it
+    (María's ruling of 2026-10-26 dropped the withholding of microcosm#1301).
     """
 
     if not math.isfinite(max_abs_relative_error) or max_abs_relative_error < 0:
@@ -351,7 +339,12 @@ def uk_support_limited_misses(
     result: dict[str, dict[str, object]] = {}
     for raw_grain, support in sorted(area_support.items()):
         grain = str(raw_grain)
-        required_support = {"area_code", "effective_sample_size"}
+        required_support = {
+            "area_code",
+            "assigned_households",
+            "effective_sample_size",
+            "nonzero_source_households",
+        }
         support_missing = sorted(required_support - set(support.columns))
         if support_missing:
             raise ValueError(
@@ -436,6 +429,9 @@ def uk_support_limited_misses(
                 {
                     "area_code": str(row["area_code"]),
                     "worst_abs_relative_error": float(row["worst_abs_relative_error"]),
+                    "rows": int(row["assigned_households"]),
+                    "ess": float(row["effective_sample_size"]),
+                    "sources": int(row["nonzero_source_households"]),
                     **_support_flag(row.get("support_below_floor")),
                 }
                 for _, row in worst.iterrows()
@@ -656,8 +652,9 @@ def _stratum_columns(columns: Sequence[str]) -> tuple[str, ...]:
     return materialized
 
 
-#: Columns whose level the lcfs_consumption stage sets (energy at DESNZ volume
-#: and QEP prices, road fuel at ONS 07.2.2) and calibration should leave alone.
+#: Columns whose level the lcfs_consumption stage sets (gas at DESNZ volume,
+#: electricity at the kWh ONS 04.5.1 household spending buys, both at QEP
+#: prices; road fuel at ONS 07.2.2) and calibration should leave alone.
 _UK_DRIFT_TOTAL_COLUMNS: tuple[str, ...] = (
     "electricity_consumption",
     "gas_consumption",
@@ -665,6 +662,18 @@ _UK_DRIFT_TOTAL_COLUMNS: tuple[str, ...] = (
     "petrol_spending",
     "diesel_spending",
 )
+#: The heating fuels the stage draws without levelling (pe-uk#2572), read
+#: where the frame carries them: a spine built before them has a drift block
+#: without them.
+_UK_DRIFT_OPTIONAL_TOTAL_COLUMNS: tuple[str, ...] = (
+    "liquid_fuel_consumption",
+    "solid_fuel_consumption",
+)
+#: Warn-only drift flags (microcosm#1278, R1): a total moving more than 2
+#: percent between the design and the final weights, or a share more than half
+#: a percentage point. Nothing is gated on them.
+UK_DRIFT_TOTAL_FLAG = 0.02
+UK_DRIFT_SHARE_FLAG = 0.005
 
 
 def _drift_value(design: float, final: float) -> dict[str, float | None]:
@@ -691,7 +700,10 @@ def uk_consumption_drift(
     (microcosm#1207: no bound row holds the VAT base, so this is where its
     drift shows). Where it carries the household's region, they also hold
     the electricity and gas kWh the stage raked, read back from the spend at
-    the stage's declared prices (microcosm#1207).
+    the stage's declared prices (microcosm#1207). Where it carries the excise
+    step's inputs, they also hold each alcohol and tobacco quantity and
+    gambling base as stored (the tobacco inputs a week), which the stage
+    levels at design weights (microcosm#1359).
     """
 
     from microcosm.build.uk_runtime.domestic_energy_targets import (
@@ -701,6 +713,8 @@ def uk_consumption_drift(
     from microcosm.build.uk_runtime.etb_vat import UK_ETB_VAT_OUTPUT_COLUMNS
     from microcosm.build.uk_runtime.lcfs_consumption import (
         UK_LCFS_COICOP_DIVISION_COLUMNS,
+        UK_LCFS_EXCISE_DRAUGHT_OUTPUTS,
+        UK_LCFS_EXCISE_OUTPUT_COLUMNS,
     )
 
     needed = {
@@ -720,7 +734,14 @@ def uk_consumption_drift(
 
     totals = {
         name: _drift_value(design @ column(name), final @ column(name))
-        for name in _UK_DRIFT_TOTAL_COLUMNS
+        for name in (
+            *_UK_DRIFT_TOTAL_COLUMNS,
+            *(
+                name
+                for name in _UK_DRIFT_OPTIONAL_TOTAL_COLUMNS
+                if name in household.columns
+            ),
+        )
     }
     consumption = sum(column(name) for name in UK_LCFS_COICOP_DIVISION_COLUMNS)
     totals["consumption"] = _drift_value(design @ consumption, final @ consumption)
@@ -737,6 +758,9 @@ def uk_consumption_drift(
         )
         for name, values in kwh.items():
             totals[name] = _drift_value(design @ values, final @ values)
+    for name in UK_LCFS_EXCISE_OUTPUT_COLUMNS:
+        if name in household.columns and name not in UK_LCFS_EXCISE_DRAUGHT_OUTPUTS:
+            totals[name] = _drift_value(design @ column(name), final @ column(name))
     road_fuel = column("petrol_spending") + column("diesel_spending")
     flagged = household["has_fuel_consumption"].to_numpy(dtype=bool)
 
@@ -754,6 +778,78 @@ def uk_consumption_drift(
         )
     }
     return {"report_only": True, "totals": totals, "shares": shares}
+
+
+def uk_consumption_drift_flags(drift: Mapping[str, object]) -> dict[str, object]:
+    """The warn-only flags over a consumption drift block (microcosm#1278, R1).
+
+    A total that moves more than ``UK_DRIFT_TOTAL_FLAG`` of its design value,
+    or a share that moves more than ``UK_DRIFT_SHARE_FLAG``, between the design
+    and the final weights. Report only: the calibration diagnostics carry them
+    as warnings (:func:`uk_consumption_drift_warnings`), nothing is gated on
+    them, and the diagnostics payload's schema stays as it is.
+    """
+
+    totals = drift.get("totals") or {}
+    shares = drift.get("shares") or {}
+    return {
+        "total_relative_change_above": UK_DRIFT_TOTAL_FLAG,
+        "share_change_above": UK_DRIFT_SHARE_FLAG,
+        "totals": sorted(
+            name
+            for name, value in totals.items()
+            if value.get("relative_change") is not None
+            and abs(float(value["relative_change"])) > UK_DRIFT_TOTAL_FLAG
+        ),
+        "shares": sorted(
+            name
+            for name, value in shares.items()
+            if abs(float(value["change"])) > UK_DRIFT_SHARE_FLAG
+        ),
+    }
+
+
+#: The ``diagnostic_warnings`` code of a consumption drift flag.
+UK_CONSUMPTION_DRIFT_WARNING_CODE = "uk_consumption_drift"
+
+
+def uk_consumption_drift_warnings(drift: Mapping[str, object]) -> list[dict[str, str]]:
+    """The drift flags as the payload's warn-only ``diagnostic_warnings``.
+
+    One warning per flagged total or share (:func:`uk_consumption_drift_flags`),
+    naming it and the threshold it passed, never its figures (Vahid's review
+    of #1383, item 11). Nothing is gated on them.
+    """
+
+    flags = uk_consumption_drift_flags(drift)
+    total = float(flags["total_relative_change_above"])
+    share = float(flags["share_change_above"])
+    return [
+        *(
+            {
+                "code": UK_CONSUMPTION_DRIFT_WARNING_CODE,
+                "severity": "warning",
+                "message": (
+                    f"Consumption drift (warn-only, microcosm#1278 R1): the total "
+                    f"{name} moves by more than {total:.0%} of its design value "
+                    "between the design and the final weights."
+                ),
+            }
+            for name in flags["totals"]
+        ),
+        *(
+            {
+                "code": UK_CONSUMPTION_DRIFT_WARNING_CODE,
+                "severity": "warning",
+                "message": (
+                    f"Consumption drift (warn-only, microcosm#1278 R1): the share "
+                    f"{name} moves by more than {share * 100:g} points between "
+                    "the design and the final weights."
+                ),
+            }
+            for name in flags["shares"]
+        ),
+    ]
 
 
 def uk_zero_weight_strata(
@@ -971,1180 +1067,10 @@ def _declared_target_partition(
     return declared, compiled, skipped_names
 
 
-#: The local area levels whose rows the area-support rule governs
-#: (``uk_local_area_support``) rather than the per-row floor below: María's
-#: rule of 2026-10-21 has not been applied to the local line, and the report
-#: guard matches a withheld local row by its bare area code, which suits a
-#: BRMA's one family but not an area that binds many.
-UK_AREA_SUPPORT_LEVELS = frozenset({"constituency", "local_authority"})
-
-
-#: How near a combination of withheld rows may come to the published rows'
-#: span and still count as given back: the squared distance of its unit-normed
-#: row, so within 0.1% in norm, which the published figures reproduce to the
-#: same precision. Exact recoveries sit near 1e-9 and the rest above 1e-3.
-_RECOVERY_TOLERANCE = 1e-6
-#: Below this share of the largest entry, an entry of a row-reduced
-#: combination, of its values or of its published coefficients is rounding
-#: (the eigenvectors carry errors near 1e-8). Treating a small entry as zero
-#: can only shrink a combination's support, so it errs toward withholding.
-_RECOVERY_ROUNDING = 1e-6
-#: How much work the exact residual search may do for one total: the share
-#: entries it adds up and the source households it counts, over the sets it
-#: tries, and at most ``_RESIDUAL_SEARCH_NODES`` sets. Counts, not a clock, so
-#: the same problem always gets the same answer. A total whose search stops
-#: there, or whose members times atoms pass ``_RESIDUAL_DENSE_LIMIT``, is
-#: checked over greedy groups instead, and a warning names it.
-_RESIDUAL_SEARCH_WORK = 200_000_000
-_RESIDUAL_SEARCH_NODES = 200_000
-_RESIDUAL_DENSE_LIMIT = 5_000_000
-
-
-def _row_level(geography_levels: Mapping[str, object] | None):
-    def level(name: str) -> str:
-        raw = (geography_levels or {}).get(name, "")
-        text = str(getattr(raw, "value", raw)).strip().lower()
-        return _GEOGRAPHY_LEVEL_ALIASES.get(text, text)
-
-    return level
-
-
-def _scoped_rows(
-    problem: Any,
-    weights: Sequence[float] | np.ndarray,
-    frame: Frame,
-    target_rows: Sequence[Mapping[str, object]],
-    geography_levels: Mapping[str, object] | None,
-) -> tuple[list[str], sparse.csr_matrix, np.ndarray, np.ndarray, np.ndarray]:
-    """The rows the per-row floor governs, sorted, over the positive-weight households.
-
-    Returns their names, their problem rows (stored zeros dropped: a household
-    with a zero entry does not carry the row), those households' source ids,
-    each row's distinct source households and each row's floor.
-    """
-
-    level = _row_level(geography_levels)
-    names = sorted(
-        {
-            str(row["name"])
-            for row in target_rows
-            if level(str(row["name"])) not in UK_AREA_SUPPORT_LEVELS
-        }
-    )
-    if not names:
-        empty = np.zeros(0)
-        return [], sparse.csr_matrix((0, 0)), empty, empty, empty
-    household = frame.table("household")
-    if "source_household_id" not in household.columns:
-        raise ValueError(
-            "UK diagnostics need household source_household_id to count each "
-            "row's carriers."
-        )
-    sources = household["source_household_id"].to_numpy()
-    positive = np.asarray(weights, dtype=float) > 0
-    if positive.shape != sources.shape:
-        raise ValueError("UK row carriers need one weight per household.")
-    index = {str(name): position for position, name in enumerate(problem.names)}
-    for name in names:
-        if name not in index:
-            raise ValueError(f"UK target diagnostic {name!r} has no problem row.")
-    matrix = sparse.csr_matrix(problem.matrix)[[index[name] for name in names]]
-    matrix = sparse.csr_matrix(matrix[:, np.flatnonzero(positive)])
-    matrix.eliminate_zeros()
-    sources = sources[positive]
-    carriers = np.array(
-        [
-            len(pd.unique(sources[matrix.indices[start:stop]]))
-            for start, stop in zip(matrix.indptr[:-1], matrix.indptr[1:], strict=True)
-        ]
-    )
-    floors = np.array(
-        [
-            UK_BRMA_DIAGNOSTIC_MIN_SOURCE_HOUSEHOLDS
-            if level(name) == "brma"
-            else UK_DIAGNOSTIC_MIN_SOURCE_HOUSEHOLDS
-            for name in names
-        ]
-    )
-    return names, matrix, sources, carriers, floors
-
-
-def uk_thin_rows(
-    problem: Any,
-    weights: Sequence[float] | np.ndarray,
-    frame: Frame,
-    target_rows: Sequence[Mapping[str, object]],
-    geography_levels: Mapping[str, object] | None = None,
-) -> set[str]:
-    """The rows whose model figures rest on fewer than ten source households.
-
-    National, regional and BRMA rows: María's rule of 2026-10-21 binds a row
-    however few households carry it, and keeps its figures in the build, as
-    BRMA rows' have been kept since her ruling of 2026-10-17. A row whose
-    level in ``geography_levels`` is a constituency or a local authority is
-    left to the area-support rule (``UK_AREA_SUPPORT_LEVELS``). ``problem`` is
-    the numerical problem the rows were scored on (its ``matrix`` and
-    ``names``) and ``weights`` the weights they were scored at. A row's
-    carriers are the distinct ``source_household_id`` values of the
-    positive-weight households with a nonzero entry in its problem row, as the
-    area support counts them.
-    """
-
-    names, _, _, carriers, floors = _scoped_rows(
-        problem, weights, frame, target_rows, geography_levels
-    )
-    return {
-        name
-        for name, count, floor in zip(names, carriers, floors, strict=True)
-        if count < floor
-    }
-
-
-def uk_withheld_row_sets(
-    problem: Any,
-    weights: Sequence[float] | np.ndarray,
-    frame: Frame,
-    target_rows: Sequence[Mapping[str, object]],
-    geography_levels: Mapping[str, object] | None = None,
-) -> tuple[set[str], set[str]]:
-    """The thin rows (:func:`uk_thin_rows`) and the published rows withheld beside them.
-
-    A published row's model figure is its problem row times the weights, so a
-    combination of withheld rows is given back exactly when its row lies in
-    the span of the published rows over the positive-weight households (a
-    family total less its published bands gives back the bands withheld).
-    María's hard rule (UKDS CD171 section 5.2.1): no difference of published
-    figures may isolate fewer than ten cases, and where a total would give a
-    withheld cell back, one more cell is withheld (Vahid's second review of
-    #1333, item 10). While the published rows give back a combination of
-    withheld rows that rests on fewer source households than its rows' floor,
-    the published row with the fewest carriers among those that give it back
-    is withheld too (the next-smallest band beside a thin one, not its total),
-    and the span is measured again. The span sees only combinations of
-    withheld rows, so a published total less some of its published parts,
-    which gives back whatever they leave out, is checked first and on every
-    pass (:class:`_ResidualCheck`; Vahid's second review of #1344, item 17):
-    the UC family total less its bound bands gives back the unbound band
-    above GBP 2,500 a month, which is no row and may rest on a handful of
-    households. What neither check sees is set out in :class:`_ResidualCheck`.
-    Constituency and authority rows stay outside, as they stay outside the
-    per-row floor: whether a local row can give back a national one is part
-    of the local-line ruling still owed.
-    """
-
-    names, matrix, sources, carriers, floors = _scoped_rows(
-        problem, weights, frame, target_rows, geography_levels
-    )
-    thin = {
-        name
-        for name, count, floor in zip(names, carriers, floors, strict=True)
-        if count < floor
-    }
-    withheld = set(thin)
-    residuals = _ResidualCheck(matrix, sources, carriers, floors, names)
-    norms = np.sqrt(np.asarray(matrix.multiply(matrix).sum(axis=1)).ravel())
-    unit = matrix
-    gram: np.ndarray | None = None
-    for _ in range(len(names) + 1):
-        # A total less some of its published parts gives back whatever they
-        # leave out, which need not be a row at all (Vahid's second review of
-        # #1344, item 17). A row the span check withholds can change the
-        # greedy groups of a total too large to search exactly, so the
-        # residuals are measured again on each pass.
-        residuals.withhold(withheld)
-        held = [i for i, name in enumerate(names) if name in withheld and norms[i]]
-        published = [
-            i for i, name in enumerate(names) if name not in withheld and norms[i]
-        ]
-        if not held or not published:
-            break
-        if gram is None:
-            scale = np.divide(1.0, norms, out=np.zeros_like(norms), where=norms > 0)
-            unit = sparse.csr_matrix(sparse.diags(scale) @ matrix)
-            gram = (unit @ unit.T).toarray()
-        recovery = _small_recovery(unit, gram, sources, held, published, floors)
-        if recovery is None:
-            break
-        coefficients, leverage = recovery
-        size = np.abs(coefficients)
-        givers = np.flatnonzero(size > _RECOVERY_ROUNDING * size.max())
-        if not len(givers):
-            raise ValueError(
-                "UK diagnostics found a thin combination the published rows give "
-                "back but no published row that gives it."
-            )
-        # A giver that no other published row can stand in for (it sits in no
-        # dependency among them) carries the same coefficient in every way of
-        # giving the combination back, so withholding it breaks them all. When
-        # every giver has a stand-in, two relations give the combination back,
-        # and withholding a giver breaks one of them.
-        essential = [j for j in givers if leverage[j] > 1 - _RECOVERY_TOLERANCE]
-        pick = min(
-            (published[j] for j in (essential or givers)),
-            key=lambda i: (carriers[i], names[i]),
-        )
-        withheld.add(names[pick])
-    return thin, withheld - thin
-
-
-class _ResidualCheck:
-    """Withholds rows until no published total less some of its parts is thin.
-
-    A total's parts are the other rows inside it: each one's households are
-    among the total's. A part's share is its entry over the total's, household
-    by household. Households whose parts all hold the same shares form an
-    atom: every combination of the total and its parts takes one value across
-    an atom, so its rest (the households where it is not nothing) is a union
-    of atoms.
-
-    That gives a test first. An atom that rests on at least the total's
-    floor of source households can lie in no thin rest, so a thin combination
-    must vanish on every such atom. When every other atom's share column lies
-    within ``_SPAN_DISTANCE`` of the span of those atoms' columns
-    (:func:`_span_covers`), a combination with weights between minus one and
-    one that vanishes on them is within that distance of the total's entry
-    everywhere, and the total is clear (a UC family total over its payment
-    bands, a regional council-tax stock total over its bands, whenever each
-    cell rests on ten households or more).
-
-    Where the test does not clear a total (amounts, whose households mostly
-    hold shares of their own), three kinds of combination are searched, each
-    the total less some of its parts:
-
-    - less any set of members whose shares, summed, stay within one on every
-      atom (:meth:`_search` tries every such set, not only the largest). A
-      part whose share is the same on all its households (a count of children
-      beside the count of their households, a monthly band under a yearly
-      total) also stands as a part of share one. A member's shares lie above
-      nothing and at most one: a UC payment band within its family total, a
-      band holding half the entry of a household whose two benefit units sit
-      in two bands, an income component within a total-income band. A part of
-      whole numbers inside a total that is not, which holds the whole of the
-      total on none of its households, is likely a count beside an amount,
-      which multiplies the sets without partitioning anything, so the search
-      runs over the other members first and then over all of them;
-    - less any part on its own;
-    - less any two parts, which gives back, among other things, two
-      overlapping parts' overlap (claimants of either of two benefits less
-      the claimants of each).
-
-    While a combination rests on one to nine source households (fewer than
-    the total's floor), the part with the fewest carriers among those it
-    subtracts is withheld, which adds that part's households to the rest, and
-    the check runs again. A total whose search passes its work or node cap,
-    or whose members times atoms pass ``_RESIDUAL_DENSE_LIMIT`` (the UK
-    population total, whose hundreds of person and household counts each
-    hold part of its entry), is searched over greedy groups of its members
-    instead, and a warning names it. Withholding a part only removes
-    combinations, so a total found clean stays clean; a greedily searched
-    total is searched again whenever one of its members is withheld.
-
-    Not checked here: a total that is no row (a sum of published regions less
-    national bands), a part that reaches a household outside its total, and,
-    on a total the exact test does not clear, combinations at other weights
-    than these (three or more overlapping parts at once, for instance).
-    """
-
-    def __init__(
-        self,
-        matrix: sparse.csr_matrix,
-        sources: np.ndarray,
-        carriers: np.ndarray,
-        floors: np.ndarray,
-        names: list[str],
-    ) -> None:
-        self.carriers = np.asarray(carriers)
-        self.floors = np.asarray(floors)
-        self.names = names
-        matrix = sparse.csr_matrix(matrix, dtype=float)
-        self.matrix = matrix
-        self.size = np.diff(matrix.indptr)
-        # A missing source id counts as one source household of its own kind.
-        codes = np.asarray(
-            pd.factorize(pd.Series(np.asarray(sources)), use_na_sentinel=False)[0]
-        )
-        self.codes = codes
-        support = sparse.csr_matrix(
-            (np.ones_like(matrix.data), matrix.indices, matrix.indptr),
-            shape=matrix.shape,
-        )
-        overlap = (support @ support.T).toarray()
-        source_count = int(codes.max()) + 1 if len(codes) else 0
-        owner = sparse.csr_matrix(
-            (np.ones(len(codes)), (np.arange(len(codes)), codes)),
-            shape=(len(codes), source_count),
-        )
-        row_sources = sparse.csr_matrix(support @ owner)
-        row_sources.data[:] = 1.0
-        #: Distinct source households two rows share.
-        self.shared_sources = (row_sources @ row_sources.T).toarray()
-        #: Per total: its parts' rows, their shares over its households (a row
-        #: may stand twice, as itself and scaled to share one), which parts
-        #: are members, and which are counts beside an amount.
-        self.parts: dict[
-            int, tuple[np.ndarray, sparse.csr_matrix, np.ndarray, np.ndarray]
-        ] = {}
-        for total in np.flatnonzero(self.size):
-            inside = np.flatnonzero(overlap[:, total] == self.size)
-            inside = inside[(inside != total) & (self.size[inside] > 0)]
-            if not len(inside):
-                continue
-            start, stop = matrix.indptr[total], matrix.indptr[total + 1]
-            columns = matrix.indices[start:stop]
-            position = np.full(matrix.shape[1], -1)
-            position[columns] = np.arange(len(columns))
-            block = sparse.csr_matrix(matrix[inside])
-            local = position[block.indices]
-            share = sparse.csr_matrix(
-                (block.data / matrix.data[start:stop][local], local, block.indptr),
-                shape=(len(inside), len(columns)),
-            )
-            starts = share.indptr[:-1]
-            low = np.minimum.reduceat(share.data, starts)
-            high = np.maximum.reduceat(share.data, starts)
-            whole_share = (
-                np.add.reduceat(
-                    (np.abs(share.data - 1) <= _RECOVERY_ROUNDING).astype(int), starts
-                )
-                > 0
-            )
-            constant = (low * high > 0) & (
-                np.abs(high - low) <= _RECOVERY_ROUNDING * np.abs(high)
-            )
-            scaled = constant & (np.abs(high - 1) > _RECOVERY_ROUNDING)
-            counts = _whole_entries(block) & ~whole_share
-            if _whole_entries(matrix[total]).all():
-                counts[:] = False
-            rows, shares = [inside], [share]
-            if scaled.any():
-                ones = sparse.csr_matrix(share[scaled])
-                ones.data = np.ones_like(ones.data)
-                rows.append(inside[scaled])
-                shares.append(ones)
-                extra = int(scaled.sum())
-                low = np.concatenate([low, np.ones(extra)])
-                high = np.concatenate([high, np.ones(extra)])
-                counts = np.concatenate([counts, np.zeros(extra, dtype=bool)])
-            member = (low > 0) & (high <= 1 + _RECOVERY_ROUNDING)
-            self.parts[int(total)] = (
-                np.concatenate(rows),
-                sparse.csr_matrix(sparse.vstack(shares)),
-                member,
-                counts,
-            )
-        self._clean: set[int] = set()
-        #: Totals searched greedily: the live members their groups were last
-        #: searched over, and whether their single and paired parts are clean.
-        self._greedy_members: dict[int, bytes] = {}
-        self._parts_clean: set[int] = set()
-        #: Totals the span test did not clear (not tried again).
-        self._uncertified: set[int] = set()
-        self.capped: set[str] = set()
-
-    def withhold(self, withheld: set[str]) -> None:
-        """Add to ``withheld`` until no published total's rest is thin."""
-
-        for _ in range(len(self.names) + 1):
-            pick = self._first_thin_rest(withheld)
-            if pick is None:
-                return
-            withheld.add(self.names[pick])
-
-    def _first_thin_rest(self, withheld: set[str]) -> int | None:
-        for total, (rows, _, member, _) in self.parts.items():
-            if total in self._clean or self.names[total] in withheld:
-                continue
-            live = np.array([self.names[row] not in withheld for row in rows])
-            if (
-                total in self._parts_clean
-                and self._greedy_members.get(total) == (live & member).tobytes()
-            ):
-                continue
-            pick = self._thin_rest(total, live)
-            if pick is not None:
-                return pick
-            if self.names[total] in self.capped:
-                self._greedy_members[total] = (live & member).tobytes()
-                self._parts_clean.add(total)
-            else:
-                self._clean.add(total)
-        return None
-
-    def _thin_rest(self, total: int, live: np.ndarray) -> int | None:
-        """The row to withhold so this total's rests stop being thin, or ``None``."""
-
-        all_rows, all_share, all_member, all_counts = self.parts[total]
-        rows = all_rows[live]
-        if not len(rows):
-            return None
-        share = sparse.csr_matrix(all_share[np.flatnonzero(live)])
-        member = all_member[live]
-        counts = all_counts[live]
-        floor = int(self.floors[total])
-        start, stop = self.matrix.indptr[total], self.matrix.indptr[total + 1]
-        _, local_codes = np.unique(
-            self.codes[self.matrix.indices[start:stop]], return_inverse=True
-        )
-        atom, first = _share_atoms(share)
-        atom_sources = sparse.csr_matrix(
-            (np.ones(len(atom)), (atom, local_codes.ravel())),
-            shape=(len(first), int(local_codes.max()) + 1),
-        )
-        atom_sources.sum_duplicates()
-        atom_sources.data[:] = 1.0
-        atom_count = np.diff(atom_sources.indptr)
-        small = atom_count < floor
-        if not small.any():
-            return None
-        atom_share = sparse.csr_matrix(share[:, first])
-        name = self.names[total]
-        if total not in self._uncertified:
-            if _span_covers(atom_share, ~small):
-                return None
-            self._uncertified.add(total)
-        spent = [0]
-
-        def carried(rest: np.ndarray) -> int:
-            """The rest's distinct source households, or ``floor`` once it has that many."""
-
-            atoms = np.flatnonzero(rest)
-            if not len(atoms):
-                return 0
-            if atom_count[atoms].max() >= floor:
-                return floor
-            # Callers only compare the count with ``floor``, so a first slice
-            # of the rest that already reaches it settles the answer.
-            for chunk in (atoms[: 4 * floor], atoms):
-                selected = atom_sources[chunk]
-                spent[0] += selected.nnz + len(chunk)
-                count = len(np.unique(selected.indices))
-                if count >= floor or len(chunk) == len(atoms):
-                    return min(count, floor)
-            return floor
-
-        def fewest(indices) -> int:
-            return min(
-                (int(rows[i]) for i in indices),
-                key=lambda row: (self.carriers[row], self.names[row]),
-            )
-
-        if name not in self.capped:
-            # The members bar the counts beside an amount first, which the
-            # search can finish where the counts would multiply its sets;
-            # then every member, with a fresh budget.
-            phases = [member & ~counts, member] if (member & counts).any() else [member]
-            for chosen in phases:
-                spent[0] = 0
-                found = self._search(
-                    atom_share, chosen, carried, floor, rows, small, spent
-                )
-                if found is _CAPPED:
-                    self._cap(name)
-                    break
-                if found is not None:
-                    return fewest(found)
-        if name in self.capped:
-            found = self._greedy(atom_share, member, carried, floor)
-            if found is not None:
-                return fewest(found)
-        if total in self._parts_clean:
-            return None
-        # One part on its own, and two parts together: shares at any value.
-        # A part (or pair) that leaves at least ``floor`` of the total's
-        # source households untouched leaves a rest of at least ``floor``.
-        uncovered = self.carriers[total] - self.carriers[rows]
-        alone = ~member | (name in self.capped)
-        for i in np.flatnonzero(alone & (uncovered < floor)):
-            row = atom_share[i].toarray().ravel()
-            count = carried(_unsettled(row))
-            if 0 < count < floor:
-                return fewest([i])
-        bound = (
-            self.carriers[total]
-            - self.carriers[rows][:, None]
-            - self.carriers[rows][None, :]
-            + self.shared_sources[np.ix_(rows, rows)]
-        )
-        for i, j in np.argwhere(np.triu(bound < floor, k=1)):
-            if rows[i] == rows[j]:
-                continue
-            pair = (atom_share[i] + atom_share[j]).toarray().ravel()
-            count = carried(_unsettled(pair))
-            if 0 < count < floor:
-                return fewest([i, j])
-        return None
-
-    def _cap(self, name: str) -> None:
-        self.capped.add(name)
-        warnings.warn(
-            f"UK diagnostics: the residual search for {name} passed its cap, "
-            "so its members are grouped greedily.",
-            stacklevel=3,
-        )
-
-    def _search(
-        self,
-        atom_share: sparse.csr_matrix,
-        member: np.ndarray,
-        carried: Any,
-        floor: int,
-        rows: np.ndarray,
-        small: np.ndarray,
-        spent: list[int],
-    ) -> object:
-        """A set of members whose total less them is thin: branch and bound.
-
-        Members join largest first while their shares, summed, stay within one
-        on every atom. Every set is tested, since a smaller set can leave a
-        thin rest that a larger one covers. A branch stops when its rest is
-        nothing, when every atom its rest could keep rests on at least
-        ``floor`` source households (a thin rest is a union of smaller
-        atoms), or when even every member it could still take leaves an atom
-        of that size uncovered. Returns the set's member indices, ``None``, or
-        ``_CAPPED`` past the work or node cap or the dense limit.
-        """
-
-        order = sorted(
-            np.flatnonzero(member).tolist(),
-            key=lambda i: (-int(self.size[rows[i]]), self.names[rows[i]]),
-        )
-        if not order:
-            return None
-        atoms = atom_share.shape[1]
-        limit = 1 + _RECOVERY_ROUNDING
-        below = 1 - _RECOVERY_ROUNDING
-        # The bound errs toward searching on: reach comes from sums that can
-        # drift by a few ulps, so an atom counts as stranded only clearly so.
-        stranded_below = below - 1e-9
-        big = ~small
-        # The root's bound, from sparse sums, before any dense block is made.
-        everything = np.asarray(atom_share[order].sum(axis=0)).ravel()
-        stranded = everything < stranded_below
-        if (stranded & big).any() or carried(stranded) >= floor:
-            return None
-        if len(order) * atoms > _RESIDUAL_DENSE_LIMIT:
-            return _CAPPED
-        dense = np.asarray(atom_share[order].todense())
-        nodes = 0
-        # Depth-first, one frame per chosen set: (chosen, summed, candidate
-        # positions into ``order``, next candidate to try, reach). ``reach``
-        # is the summed shares with every candidate from the next one on, so
-        # the atoms it leaves under one stay uncovered whatever else joins.
-        stack: list[tuple[list[int], np.ndarray, list[int], int, np.ndarray]] = [
-            ([], np.zeros(atoms), list(range(len(order))), 0, everything)
-        ]
-        while stack:
-            chosen, summed, candidates, k, reach = stack.pop()
-            if k == 0:
-                nodes += 1
-                spent[0] += (len(candidates) + 1) * atoms
-                if nodes > _RESIDUAL_SEARCH_NODES or spent[0] > _RESIDUAL_SEARCH_WORK:
-                    return _CAPPED
-                uncovered = summed < below
-                if not uncovered.any():
-                    continue
-                if not (uncovered & small).any():
-                    continue  # every rest below here keeps an atom of floor size
-                count = carried(uncovered)
-                if chosen and 0 < count < floor:
-                    return [order[i] for i in chosen]
-            if k >= len(candidates):
-                continue
-            stranded = reach < stranded_below
-            if (stranded & big).any() or carried(stranded) >= floor:
-                continue
-            head = candidates[k]
-            stack.append((chosen, summed, candidates, k + 1, reach - dense[head]))
-            joined = summed + dense[head]
-            if (joined > limit).any():
-                continue
-            tail = candidates[k + 1 :]
-            if tail:
-                spent[0] += len(tail) * atoms
-                over = (joined + dense[tail] > limit).any(axis=1)
-                tail = [c for c, bad in zip(tail, over, strict=True) if not bad]
-            reach_after = joined + dense[tail].sum(axis=0) if tail else joined.copy()
-            stack.append(([*chosen, head], joined, tail, 0, reach_after))
-        return None
-
-    def _greedy(
-        self,
-        atom_share: sparse.csr_matrix,
-        member: np.ndarray,
-        carried: Any,
-        floor: int,
-    ) -> list[int] | None:
-        """A greedy group of members whose total less them is thin, or ``None``.
-
-        For a total the exact search cannot finish. Each member seeds two
-        groups, which take the others that clash with none already in them,
-        once largest first and once those clashing with fewest others first.
-        A group's rest is wherever its shares do not sum to one, so a group
-        that passes one somewhere is still measured.
-        """
-
-        members = np.flatnonzero(member)
-        if not len(members):
-            return None
-        share = sparse.csr_matrix(atom_share[members])
-        support = share.copy()
-        support.data = np.ones_like(support.data)
-        clash = (support @ support.T).toarray() > 0
-        high = share.copy()
-        high.data = (high.data > 0.5 + _RECOVERY_ROUNDING).astype(float)
-        high.eliminate_zeros()
-        sure = (high @ high.T).toarray() > 0
-        np.fill_diagonal(clash, False)
-        csc = share.tocsc()
-        for a in range(len(members)):
-            doubt = np.flatnonzero(clash[a] & ~sure[a])
-            doubt = doubt[doubt > a]
-            if not len(doubt):
-                continue
-            # Two members clash where both hold a share and the two pass one.
-            columns = share.indices[share.indptr[a] : share.indptr[a + 1]]
-            values = share.data[share.indptr[a] : share.indptr[a + 1]]
-            block = sparse.csr_matrix(csc[:, columns][doubt])
-            hit = block.data + values[block.indices] > 1 + _RECOVERY_ROUNDING
-            row_of = np.repeat(np.arange(len(doubt)), np.diff(block.indptr))
-            over = np.zeros(len(doubt), dtype=bool)
-            over[np.unique(row_of[hit])] = True
-            clash[a, doubt] = clash[doubt, a] = over
-        size = np.diff(share.indptr)
-        orders = (
-            sorted(range(len(members)), key=lambda i: (-size[i], i)),
-            sorted(
-                range(len(members)),
-                key=lambda i: (int(clash[i].sum()), -size[i], i),
-            ),
-        )
-        tried: set[frozenset[int]] = set()
-        for order in orders:
-            for seed in order:
-                chosen = [seed]
-                blocked = clash[seed].copy()
-                for other in order:
-                    if other != seed and not blocked[other]:
-                        chosen.append(other)
-                        blocked |= clash[other]
-                key = frozenset(chosen)
-                if key in tried:
-                    continue
-                tried.add(key)
-                group = sorted(chosen)
-                summed = np.asarray(share[group].sum(axis=0)).ravel()
-                count = carried(_unsettled(summed))
-                if 0 < count < floor:
-                    return members[group].tolist()
-        return None
-
-
-#: How far a small atom's share column may lie from the span of the big
-#: atoms' columns, both as a unit column and summed over its entries as
-#: stored (where the total's share is one), for the span test to clear its
-#: total. A tenth of the rounding share, fixed: it does not grow with atoms
-#: or parts.
-_SPAN_DISTANCE = 0.1 * _RECOVERY_ROUNDING
-#: Big-atom directions weaker than this share of the strongest singular value
-#: are left out of the span, as the search counts a big atom held within the
-#: rounding share of one as covered. Leaving directions out only shrinks the
-#: span.
-_SPAN_WEAK = 10 * _RECOVERY_ROUNDING
-
-
-def _span_covers(atom_share: sparse.csr_matrix, big: np.ndarray) -> bool:
-    """Whether the big atoms' share columns, with the total's, span every atom's.
-
-    Each atom's column is the total's share (one) over the parts' shares. A
-    combination of the total and its parts that vanishes on every big atom
-    vanishes on every atom when the big columns span them all. Measured
-    directly, not through ranks: with the span taken from the big atoms' unit
-    columns by their singular vectors, every small atom's column must lie
-    within ``_SPAN_DISTANCE`` of it, as a unit column (on the shares as they
-    are, and with each row scaled to its largest share, so a part of tiny
-    shares beside one of large shares is not lost) and summed over its stored
-    entries (so a combination with weights between minus one and one, as
-    every searched one has, that vanishes on the big atoms is within that
-    distance of the total's entry on every small atom, whatever the atom's
-    largest share or the number of parts). Only all three together clear it.
-    """
-
-    if not big.any():
-        return False
-    count = atom_share.shape[1]
-    rows = sparse.vstack(
-        [sparse.csr_matrix(np.ones((1, count))), sparse.csr_matrix(atom_share)]
-    ).tocsr()
-    peak = np.maximum.reduceat(np.abs(rows.data), rows.indptr[:-1])
-    scaled = sparse.csr_matrix(sparse.diags(1.0 / peak) @ rows)
-    return _within_span(rows, big, stored=True) and _within_span(scaled, big)
-
-
-def _within_span(
-    rows: sparse.csr_matrix, big: np.ndarray, *, stored: bool = False
-) -> bool:
-    """Whether every small atom's column lies within ``_SPAN_DISTANCE`` of the
-    big atoms' span: as a unit column, and with ``stored`` also summed over its
-    entries as they are in ``rows``."""
-
-    if rows.shape[0] * int(big.sum()) > _RESIDUAL_DENSE_LIMIT:
-        return False  # too large to factor here; the search decides instead
-    norms = np.sqrt(np.asarray(rows.multiply(rows).sum(axis=0)).ravel())
-    unit = sparse.csr_matrix(rows @ sparse.diags(1.0 / norms)).tocsc()
-    block = unit[:, np.flatnonzero(big)].toarray()
-    # Singular values reveal a weak direction that pivoted QR's diagonal can
-    # miss on a graded block.
-    vectors, strength, _ = scipy_linalg.svd(block, full_matrices=False)
-    if not len(strength) or strength[0] <= 0:
-        return False
-    basis = vectors[:, strength > _SPAN_WEAK * strength[0]]
-    small = np.flatnonzero(~big)
-    for start in range(0, len(small), 4096):
-        chunk = small[start : start + 4096]
-        columns = unit[:, chunk].toarray()
-        rest = columns - basis @ (basis.T @ columns)
-        if (np.linalg.norm(rest, axis=0) > _SPAN_DISTANCE).any():
-            return False
-        if stored and (np.abs(rest).sum(axis=0) * norms[chunk] > _SPAN_DISTANCE).any():
-            return False
-    return True
-
-
-def _whole_entries(rows: sparse.csr_matrix) -> np.ndarray:
-    """Whether each row's entries are all whole numbers (a count)."""
-
-    rows = sparse.csr_matrix(rows)
-    if not rows.shape[0]:
-        return np.zeros(0, dtype=bool)
-    whole = np.abs(rows.data - np.round(rows.data)) <= _RECOVERY_ROUNDING
-    off = (
-        np.add.reduceat((~whole).astype(int), rows.indptr[:-1]) if len(rows.data) else 0
-    )
-    filled = np.diff(rows.indptr) > 0
-    return filled & (np.asarray(off) == 0)
-
-
-def _unsettled(summed: np.ndarray) -> np.ndarray:
-    """Where a total less parts summing to ``summed`` is not nothing.
-
-    One rule for every check, the search's own: a share within the rounding
-    share of one, either side, counts as covered. A convention, at the exact
-    tie: there a rest can lose a household.
-    """
-
-    return (summed < 1 - _RECOVERY_ROUNDING) | (summed > 1 + _RECOVERY_ROUNDING)
-
-
-#: What :meth:`_ResidualCheck._search` returns past its caps.
-_CAPPED = object()
-
-
-def _share_atoms(share: sparse.csr_matrix) -> tuple[np.ndarray, np.ndarray]:
-    """Group a total's households by the shares its parts hold in them.
-
-    Returns each household's atom and, per atom, one household standing for
-    it. Each household's column of shares is hashed exactly: every (part,
-    share) entry, with the share's lowest twelve mantissa bits dropped so
-    float noise does not split a column, goes through two 64-bit mixers, and
-    a column's keys are their wrapping sums with its entry count. Two
-    households share an atom only when their columns agree entry for entry
-    to within the dropped bits (about 1e-12 of each share), barring a
-    collision of both 64-bit sums; a share on the edge of the dropped bits
-    can split an atom, which only costs time.
-    """
-
-    count = share.shape[1]
-    if not count:
-        return np.zeros(0, dtype=np.int64), np.zeros(0, dtype=np.int64)
-    csc = sparse.csc_matrix(share)
-    csc.sort_indices()
-    filled = np.diff(csc.indptr)
-    column = np.repeat(np.arange(count), filled)
-    bits = np.ascontiguousarray(csc.data, dtype=np.float64).view(np.uint64)
-    bits = bits & ~np.uint64(0xFFF)
-    part = csc.indices.astype(np.uint64)
-    keys = []
-    with np.errstate(over="ignore"):
-        for salt in (np.uint64(0x9E3779B97F4A7C15), np.uint64(0xD1B54A32D192ED03)):
-            entry = _mix64(_mix64(part * salt + np.uint64(1)) ^ bits)
-            total = np.zeros(count, dtype=np.uint64)
-            np.add.at(total, column, entry)
-            keys.append(total)
-    table = np.column_stack([filled.astype(np.uint64), *keys])
-    _, first, atom = np.unique(table, axis=0, return_index=True, return_inverse=True)
-    return atom.ravel(), first
-
-
-def _mix64(values: np.ndarray) -> np.ndarray:
-    """SplitMix64's finaliser, elementwise on unsigned 64-bit integers."""
-
-    with np.errstate(over="ignore"):
-        values = values + np.uint64(0x9E3779B97F4A7C15)
-        values = (values ^ (values >> np.uint64(30))) * np.uint64(0xBF58476D1CE4E5B9)
-        values = (values ^ (values >> np.uint64(27))) * np.uint64(0x94D049BB133111EB)
-        return values ^ (values >> np.uint64(31))
-
-
-def _small_recovery(
-    unit: sparse.csr_matrix,
-    gram: np.ndarray,
-    sources: np.ndarray,
-    held: list[int],
-    published: list[int],
-    floors: np.ndarray,
-) -> tuple[np.ndarray, np.ndarray] | None:
-    """How the published rows give back a too-small combination of held rows.
-
-    ``unit`` holds the unit-normed rows and ``gram`` their inner products. A
-    combination of the held rows is given back when what is left of it off
-    the published rows' span is a negligible share of it (its squared norm
-    under ``_RECOVERY_TOLERANCE`` of the combination's own). Each held row is
-    tried alone first (a total less its published bands gives one back); then
-    the combinations, from the generalized eigenvectors of that remainder
-    against the combination's own size, so that two proportional held rows,
-    whose difference is nothing, give nothing back. The first combination
-    that rests on fewer distinct source households than the highest floor
-    among its rows returns the minimum-norm published coefficients that give
-    it back, and each published row's leverage (1 when no other published row
-    can stand in for it); ``None`` when there is none.
-    """
-
-    epsilon = np.finfo(float).eps
-    values, vectors = np.linalg.eigh(gram[np.ix_(published, published)])
-    keep = values > values.max() * len(values) * epsilon
-    values, vectors = values[keep], vectors[:, keep]
-    cross = gram[np.ix_(published, held)]
-    reach = (vectors.T @ cross) / np.sqrt(values)[:, None]
-    own = gram[np.ix_(held, held)]
-    remainder = own - reach.T @ reach
-
-    def rests_below_floor(alpha: np.ndarray) -> bool:
-        rows = np.flatnonzero(alpha)
-        combination = np.asarray(unit[[held[i] for i in rows]].T @ alpha[rows]).ravel()
-        size = np.abs(combination)
-        if not size.any():
-            return False
-        support = size > _RECOVERY_ROUNDING * size.max()
-        floor = max(int(floors[held[i]]) for i in rows)
-        return len(pd.unique(sources[support])) < floor
-
-    def found(alpha: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-        coefficients = vectors @ ((vectors.T @ (cross @ alpha)) / values)
-        return coefficients, np.sum(vectors**2, axis=1)
-
-    for row in np.flatnonzero(np.diag(remainder) < _RECOVERY_TOLERANCE):
-        alpha = np.zeros(len(held))
-        alpha[row] = 1.0
-        if rests_below_floor(alpha):
-            return found(alpha)
-    own_values, own_vectors = np.linalg.eigh(own)
-    nonzero = own_values > own_values.max() * len(own_values) * epsilon
-    lift = own_vectors[:, nonzero] / np.sqrt(own_values[nonzero])
-    share = lift.T @ remainder @ lift
-    share_values, share_vectors = np.linalg.eigh((share + share.T) / 2)
-    given_back = lift @ share_vectors[:, share_values < _RECOVERY_TOLERANCE]
-    for alpha in _reduced_basis(given_back):
-        if rests_below_floor(alpha):
-            return found(alpha)
-    return None
-
-
-def _reduced_basis(basis: np.ndarray) -> list[np.ndarray]:
-    """The reduced row echelon basis of a span given by its columns.
-
-    A vector in the span is fixed by its entries on the pivots, so separate
-    relations come out as separate vectors. Each column is scaled to a largest
-    entry of one first, so the rounding share means the same for all.
-    """
-
-    reduced = basis.T.copy()
-    largest = np.abs(reduced).max(axis=1, initial=0.0)
-    reduced = reduced[largest > 0] / largest[largest > 0, None]
-    pivot = 0
-    for column in range(reduced.shape[1]):
-        if pivot == reduced.shape[0]:
-            break
-        best = pivot + int(np.argmax(np.abs(reduced[pivot:, column])))
-        if abs(reduced[best, column]) < _RECOVERY_ROUNDING:
-            continue
-        reduced[[pivot, best]] = reduced[[best, pivot]]
-        reduced[pivot] /= reduced[pivot, column]
-        for other in range(reduced.shape[0]):
-            if other != pivot:
-                reduced[other] -= reduced[other, column] * reduced[pivot]
-        pivot += 1
-    reduced[np.abs(reduced) < _RECOVERY_ROUNDING] = 0.0
-    return [vector for vector in reduced[:pivot] if vector.any()]
-
-
-def uk_withheld_rows(
-    problem: Any,
-    weights: Sequence[float] | np.ndarray,
-    frame: Frame,
-    target_rows: Sequence[Mapping[str, object]],
-    geography_levels: Mapping[str, object] | None = None,
-) -> set[str]:
-    """Every row whose model figures stay in the build: :func:`uk_withheld_row_sets`."""
-
-    thin, complementary = uk_withheld_row_sets(
-        problem, weights, frame, target_rows, geography_levels
-    )
-    return thin | complementary
-
-
-def uk_withheld_brma_rows(
-    problem: Any,
-    weights: Sequence[float] | np.ndarray,
-    frame: Frame,
-    target_rows: Sequence[Mapping[str, object]],
-    geography_levels: Mapping[str, str],
-) -> set[str]:
-    """The BRMA rows among :func:`uk_thin_rows` (their ``carrier_floor_met`` flag)."""
-
-    brma = [
-        row for row in target_rows if geography_levels.get(str(row["name"])) == "brma"
-    ]
-    return (
-        uk_thin_rows(problem, weights, frame, brma, geography_levels) if brma else set()
-    )
-
-
-def uk_withheld_flag(value: object) -> bool:
-    """Whether a row's ``model_figures_withheld`` flag is set (a true bool)."""
-
-    return isinstance(value, (bool, np.bool_)) and bool(value)
-
-
-def uk_withheld_gate_keys(rows: object) -> frozenset[str]:
-    """The local gate keys (``family/area_code/metric``) of withheld rows."""
-
-    records = rows.to_dict(orient="records") if hasattr(rows, "to_dict") else rows
-    return frozenset(
-        f"{str(row.get('family', '')).strip()}/"
-        f"{str(row.get('area_code', '')).strip()}/"
-        f"{str(row.get('metric', '')).strip()}"
-        for row in records or ()
-        if isinstance(row, Mapping)
-        and uk_withheld_flag(row.get("model_figures_withheld"))
-    )
-
-
-def uk_withhold_brma_figures(
-    rows: Sequence[Mapping[str, object]],
-    withheld: frozenset[str],
-    *,
-    fields: Sequence[str] = ("estimate", "relative_error", "abs_relative_error"),
-) -> list[dict[str, object]]:
-    """Copies of written target rows with a withheld row's model figures blank.
-
-    While any row is withheld every row carries ``model_figures_withheld``, a
-    bool, so a reader of the written table tells a withheld row from a
-    missing figure.
-    """
-
-    out = []
-    for row in rows:
-        copy = dict(row)
-        hidden = str(copy.get("name")) in withheld
-        if hidden:
-            for field in fields:
-                if field in copy:
-                    copy[field] = None
-        if withheld:
-            copy["model_figures_withheld"] = hidden
-        else:
-            copy.pop("model_figures_withheld", None)
-        out.append(copy)
-    return out
-
-
-#: The guard's one message (the fourth review of #1305). A failed receipt
-#: keeps an exception's message and the emitter sends it on, so it names no
-#: place: a report path can carry the withheld row's key, and beside the
-#: public register, its status.
-UK_WITHHELD_ROW_NAMED_MESSAGE = (
-    "The gate report names a withheld row; the build's local stderr says where."
-)
-
-
-class UKWithheldRowNamedError(ValueError):
-    """A written gate report names a withheld row (microcosm#1262)."""
-
-    def __init__(self) -> None:
-        super().__init__(UK_WITHHELD_ROW_NAMED_MESSAGE)
-
-
-def uk_refuse_named_withheld_rows(
-    payload: object, *, names: frozenset[str], keys: frozenset[str]
-) -> None:
-    """Fail closed if a written gate report names a withheld row at all.
-
-    María's ruling of 2026-10-19 on the third review of #1305: the fit gates
-    decide on the published rows and count the withheld ones, so no gate has
-    a reason to name one, and a name beside a figure or a verdict would give
-    the row back. A withheld row's name, gate key or area code, in any case,
-    in any key or string of the report, stops the build before the report
-    leaves it. The error's message is constant; the place goes to this
-    machine's stderr only.
-
-    It matches literal text, and a bare area code: one family is bound per
-    BRMA today, and a second would stop the build on its published rows
-    until the guard matched each withheld row's own keys instead.
-    """
-
-    areas = {key.split("/")[1] for key in keys if key.count("/") >= 2}
-    labels = {label.casefold() for label in (*names, *keys, *areas) if label}
-    if not labels:
-        return
-
-    def check(text: str, path: str) -> None:
-        folded = text.casefold()
-        if any(label in folded for label in labels):
-            print(f"error: {path} names a withheld row.", file=sys.stderr)
-            raise UKWithheldRowNamedError
-
-    def walk(value: object, path: str) -> None:
-        if isinstance(value, Mapping):
-            for key, item in value.items():
-                check(str(key), f"{path}.{key}")
-                walk(item, f"{path}.{key}")
-        elif isinstance(value, (list, tuple)):
-            for position, item in enumerate(value):
-                walk(item, f"{path}[{position}]")
-        elif isinstance(value, str):
-            check(value, path)
-
-    walk(payload, "report")
-
-
-_WITHHELD_TOTALS_NOTE = (
-    "A target row resting on fewer than ten distinct source households keeps "
-    "its place without its model figures, and so does a row that, with the "
-    "published rows, would give such a row back. initial_loss, final_loss, "
-    "fraction_within_10pct and past_cap_census are restated over the published "
-    "rows, on the solve's own loss weights, scales and cap (initial_loss at the "
-    "input weights, the rows' initial estimates); loss_trajectory, the solve's "
-    "path over every row, is empty, and options keep their settings only."
-)
-
-
-def _restate_totals_over_published_rows(
-    payload: dict[str, object],
-    result: CalibrationResult,
-    withheld: frozenset[str],
-) -> dict[str, object]:
-    """Restate the payload's totals over the published rows (microcosm#1262).
-
-    María's ruling of 2026-10-18 on the #1305 re-review: a total over every
-    row would give a withheld row back by difference against the published
-    rows' contributions. The final loss becomes the published rows' summed
-    contributions (each a share of the solve's whole loss weight, as the rows
-    record them), the initial loss the same at the input weights, and the
-    fraction within 10% and the past-cap census count the published rows
-    only. The loss trajectory cannot be restated and is emptied. Returns the
-    ``uk_diagnostics`` block that labels the basis.
-    """
-
-    rows = list(result.diagnostics)
-    kept = [index for index, row in enumerate(rows) if str(row.name) not in withheld]
-
-    def published_loss(estimates: Sequence[float]) -> float | None:
-        try:
-            weights = np.asarray(result.target_loss_weights, dtype=float)
-            scales = np.asarray(result.target_loss_scales, dtype=float)
-            cap = float(result.target_loss_cap)
-        except (AttributeError, TypeError, ValueError):
-            return None
-        if (
-            weights.shape != (len(rows),)
-            or scales.shape != (len(rows),)
-            or not np.isfinite(weights).all()
-            or not np.isfinite(scales).all()
-            or (scales <= 0).any()
-            or not weights.sum() > 0
-            or not math.isfinite(cap)
-        ):
-            return None
-        shares = weights / weights.sum()
-        terms = []
-        for index in kept:
-            target, estimate = float(rows[index].target), float(estimates[index])
-            if not (math.isfinite(target) and math.isfinite(estimate)):
-                return None
-            terms.append(
-                float(shares[index])
-                * min(abs(estimate - target) / float(scales[index]), cap)
-            )
-        return math.fsum(terms)
-
-    payload["initial_loss"] = published_loss([row.initial_estimate for row in rows])
-    payload["final_loss"] = published_loss([row.final_estimate for row in rows])
-    payload["fraction_within_10pct"] = (
-        sum(abs(float(rows[index].relative_error)) <= 0.10 for index in kept)
-        / len(kept)
-        if kept
-        else None
-    )
-    payload["loss_trajectory"] = []
-    payload["options"] = uk_published_options(dict(payload.get("options") or {}))
-    payload["past_cap_census"] = past_cap_census(
-        SimpleNamespace(
-            options=getattr(result, "options", None),
-            diagnostics=[rows[index] for index in kept],
-        )
-    )
-    return {
-        "targets": len(withheld),
-        "min_source_households": UK_DIAGNOSTIC_MIN_SOURCE_HOUSEHOLDS,
-        "totals_basis": "published_rows",
-        "note": _WITHHELD_TOTALS_NOTE,
-    }
-
-
-def uk_published_row_losses(
-    result: CalibrationResult, withheld: frozenset[str]
-) -> tuple[float | None, float | None]:
-    """The initial and final loss over the published rows (microcosm#1262).
-
-    For a manifest that would otherwise carry the solve's loss over every row,
-    which against the published rows' contributions gives a withheld row back
-    (María's ruling of 2026-10-18); ``None`` where the result cannot restate.
-    """
-
-    totals: dict[str, object] = {}
-    _restate_totals_over_published_rows(totals, result, frozenset(withheld))
-    return totals["initial_loss"], totals["final_loss"]
-
-
-def uk_published_options(options: Mapping[str, object]) -> dict[str, object]:
-    """A payload's solve options while any row is withheld (microcosm#1262).
-
-    The third review of #1305: the solve keeps its best iterate's loss over
-    every row in ``iterate_selection_receipt``, and that loss less the
-    restated final loss gives the withheld rows' contribution back. Settings
-    on the allow-list stay; every other option, and the receipt's two
-    iterate losses, read null.
-    """
-
-    published: dict[str, object] = {}
-    for key, value in options.items():
-        if key in UK_WITHHELD_PUBLISHED_OPTIONS:
-            published[key] = value
-        elif key == "iterate_selection_receipt" and isinstance(value, Mapping):
-            published[key] = {
-                field: (item if field in UK_WITHHELD_PUBLISHED_ITERATE_FIELDS else None)
-                for field, item in value.items()
-            }
-        else:
-            published[key] = None
-    return published
-
-
 def _target_pass_rates(
     target_rows: list[dict[str, object]],
     skipped_names: Sequence[str],
     geography_levels: Mapping[str, str],
-    withheld: frozenset[str] = frozenset(),
 ) -> list[dict[str, object]]:
     counts = {
         level: {
@@ -2158,11 +1084,6 @@ def _target_pass_rates(
     for row in target_rows:
         name = str(row["name"])
         level = geography_levels[name]
-        if name in withheld:
-            # Scored, never counted as passing: its outcome stays unknowable.
-            counts[level]["n_targets"] += 1
-            counts[level]["n_scored"] += 1
-            continue
         raw_error = row.get("relative_error")
         if not isinstance(raw_error, (int, float)) or isinstance(raw_error, bool):
             raise ValueError(
@@ -2209,7 +1130,6 @@ def uk_calibration_diagnostics_payload(
     build: dict[str, Any] | None = None,
     local_area_support: pd.DataFrame | None = None,
     rotated_holdout: Mapping[str, object] | None = None,
-    withheld: Collection[str] | None = None,
 ) -> dict[str, object]:
     """Render shared diagnostics plus the versioned UK release evidence.
 
@@ -2217,9 +1137,9 @@ def uk_calibration_diagnostics_payload(
     names are never parsed to guess their geography, and a missing, stale, or
     unknown mapping aborts instead of silently shrinking a scoreboard level.
 
-    ``withheld`` names the rows whose model figures stay in the build
-    (:func:`uk_withheld_rows`); the gate kernel passes the set its gate
-    evidence carries, and by default it is counted here on the same rule.
+    Every row carries its model figures, however few source households carry
+    it: the diagnostics ship only to the licensed private repository (María's
+    ruling of 2026-10-26, which dropped the withholding of microcosm#1262).
     """
 
     registry = _require_uk_target_registry(target_registry)
@@ -2249,47 +1169,7 @@ def uk_calibration_diagnostics_payload(
     declared, _, skipped = _declared_target_partition(result, target_rows, registry)
     geography = _geography_mapping(declared, target_geography_levels)
     weights = uk_weight_summary(result_weights)
-    if withheld is None:
-        thin, complementary = uk_withheld_row_sets(
-            result.problem, result.weights, frame, target_rows, geography
-        )
-        withheld = frozenset(thin | complementary)
-    else:
-        withheld = frozenset(withheld)
-        # The floor's own verdict, so a row the caller withholds beside a
-        # thin one is told apart from the thin row itself.
-        thin = (
-            uk_thin_rows(result.problem, result.weights, frame, target_rows, geography)
-            if withheld
-            else set()
-        )
-    for row in target_rows:
-        name = str(row["name"])
-        if geography.get(name) == "brma":
-            # Every BRMA row states its ten-household verdict, so the release
-            # contract can see one that skipped the floor (María's ruling of
-            # 2026-10-19 on the fourth review of #1305: it warns).
-            row["metadata"] = {
-                **dict(row.get("metadata") or {}),
-                "carrier_floor_met": name not in thin,
-            }
-        if name in withheld:
-            for field in _MODEL_FIGURE_FIELDS:
-                if field in row:
-                    row[field] = None
-            row["metadata"] = {
-                **dict(row.get("metadata") or {}),
-                "model_figures_withheld": (
-                    _WITHHELD_NOTE if name in thin else _COMPLEMENT_NOTE
-                ),
-                **({} if name in thin else {"complementary_withholding": True}),
-            }
-    pass_rates = _target_pass_rates(target_rows, skipped, geography, withheld)
-    withheld_block = (
-        _restate_totals_over_published_rows(payload, result, withheld)
-        if withheld
-        else None
-    )
+    pass_rates = _target_pass_rates(target_rows, skipped, geography)
     strata = uk_zero_weight_strata(
         household,
         result_weights,
@@ -2308,13 +1188,9 @@ def uk_calibration_diagnostics_payload(
         },
     }
     if local_area_support is not None:
-        # A withheld row stays out of every rollup, so that no family or area
-        # total can be differenced against the published rows to recover it,
-        # and no rollup reads a figure the row no longer carries.
-        published = [row for row in target_rows if str(row["name"]) not in withheld]
-        uk_diagnostics["weakest_families"] = uk_weakest_families(published)
+        uk_diagnostics["weakest_families"] = uk_weakest_families(target_rows)
         uk_diagnostics["weakest_areas_by_fit"] = uk_weakest_areas_by_fit(
-            published,
+            target_rows,
             local_area_support,
         )
     if rotated_holdout is not None:
@@ -2322,8 +1198,10 @@ def uk_calibration_diagnostics_payload(
     drift = uk_consumption_drift(household, result.initial_weights, result_weights)
     if drift is not None:
         uk_diagnostics["consumption_drift"] = drift
-    if withheld_block is not None:
-        uk_diagnostics["model_figures_withheld"] = withheld_block
+        payload["diagnostic_warnings"] = [
+            *(payload.get("diagnostic_warnings") or []),
+            *uk_consumption_drift_warnings(drift),
+        ]
     payload["uk_diagnostics"] = uk_diagnostics
     return CalibrationDiagnosticsV8.model_validate(payload).model_dump(
         mode="python",
@@ -2342,13 +1220,8 @@ def write_uk_calibration_diagnostics(
     build: dict[str, Any] | None = None,
     local_area_support: pd.DataFrame | None = None,
     rotated_holdout: Mapping[str, object] | None = None,
-    withheld: Collection[str] | None = None,
 ) -> DiagnosticsWriteOutcome:
-    """Validate and write shared-plus-UK diagnostics through the canonical writer.
-
-    ``withheld`` is the payload's: the rows whose model figures stay in the
-    build, counted on the payload's rule when not given.
-    """
+    """Validate and write shared-plus-UK diagnostics through the canonical writer."""
 
     output = Path(path)
     try:
@@ -2361,7 +1234,6 @@ def write_uk_calibration_diagnostics(
             build=build,
             local_area_support=local_area_support,
             rotated_holdout=rotated_holdout,
-            withheld=withheld,
         )
         diagnostics = CalibrationDiagnosticsV8.model_validate(payload)
     except ValidationError as error:

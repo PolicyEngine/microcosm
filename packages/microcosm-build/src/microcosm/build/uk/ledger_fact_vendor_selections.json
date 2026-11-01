@@ -389,8 +389,9 @@
     },
     {
       "resource": "ons_household_expenditure_facts.json",
-      "purpose": "ONS Consumer Trends household final consumption expenditure, current prices, annual (30 June 2026 release). The seven specific series, 2020 to 2025: COICOP 04.5 and its sub-classes 04.5.1 to 04.5.4, 07.2.2 fuels and lubricants for personal transport and 07.3.2 passenger transport by road, all on the domestic concept. For 2023 to 2025: the national (NAT0) and domestic (0) totals and the twelve domestic divisions from the overview sheet, and the three classes a household diary does not record (02.3 narcotics, 04.2 imputed rentals, 12.6.1 FISIM). Consumed by the lcfs_consumption road-fuel level (07.2.2, microcosm#1113) and the division-capture diagnostic.",
+      "purpose": "ONS Consumer Trends household final consumption expenditure, current prices, annual (30 September 2026 release). The seven specific series, 2020 to 2025: COICOP 04.5 and its sub-classes 04.5.1 to 04.5.4, 07.2.2 fuels and lubricants for personal transport and 07.3.2 passenger transport by road, all on the domestic concept. For 2023 to 2025: the national (NAT0) and domestic (0) totals and the twelve domestic divisions from the overview sheet, and the three classes a household diary does not record (02.3 narcotics, 04.2 imputed rentals, 12.6.1 FISIM). Consumed by the lcfs_consumption road-fuel level (07.2.2, microcosm#1113), the energy stage's electricity level (04.5.1, microcosm#1418) and the division-capture diagnostic.",
       "consumers": [
+        "uk_runtime.energy_pricing",
         "uk_runtime.lcfs_consumption"
       ],
       "planned_consumers": [
@@ -501,8 +502,122 @@
       ]
     },
     {
+      "resource": "excise_facts.json",
+      "purpose": "HMRC FY2024-25 alcohol clearances by product, ABV band, duty point and relief (Alcohol Bulletin) and tobacco clearances by product (Tobacco Bulletin), HMRC betting and gaming duty cash receipts by duty and Machine Games Duty liabilities by rate band (Betting and Gaming statistics), the Gambling Commission's FY2024-25 gross gambling yield for Great Britain by sector, activity and betting event, and its FY2024-25 gaming machine gross gambling yield by machine category (Industry Statistics sheet 4, all venues): the national quantities and bases the LCFS level_excise_quantities step shares out to households (microcosm#1359, PolicyEngine/chronicle#381). The machine-category rows have no reader yet: they give the Category B share of the Machine Games Duty standard-rate base that moves to the higher rate from 1 April 2027, which lands in its own PR once a policyengine-uk release carries PolicyEngine/policyengine-uk#2731's input (microcosm#1418, María's ruling of 2026-10-29).",
+      "consumers": [
+        "uk_runtime.lcfs_consumption"
+      ],
+      "planned_consumers": [],
+      "selections": [
+        {
+          "label": "hmrc_alcohol_clearances_fy2024",
+          "selector": {
+            "source_name": "hmrc",
+            "source_concept": "hmrc.alcohol_clearances",
+            "geography_id": "K02000001",
+            "period_type": "fiscal_year",
+            "period_value": [
+              2024
+            ]
+          },
+          "expected_row_count": 40
+        },
+        {
+          "label": "hmrc_tobacco_clearances_fy2024",
+          "selector": {
+            "source_name": "hmrc",
+            "source_concept": "hmrc.tobacco_clearances",
+            "geography_id": "K02000001",
+            "period_type": "fiscal_year",
+            "period_value": [
+              2024
+            ]
+          },
+          "expected_row_count": 5
+        },
+        {
+          "label": "hmrc_betting_and_gaming_duty_receipts_fy2024",
+          "selector": {
+            "source_name": "hmrc",
+            "source_concept": "hmrc.betting_and_gaming_duty_receipts",
+            "geography_id": "K02000001",
+            "period_type": "fiscal_year",
+            "period_value": [
+              2024
+            ]
+          },
+          "expected_row_count": 9
+        },
+        {
+          "label": "hmrc_machine_games_duty_liabilities_fy2024",
+          "selector": {
+            "source_name": "hmrc",
+            "source_concept": "hmrc.machine_games_duty_liabilities",
+            "geography_id": "K02000001",
+            "period_type": "fiscal_year",
+            "period_value": [
+              2024
+            ]
+          },
+          "expected_row_count": 4
+        },
+        {
+          "label": "gambling_commission_gross_gambling_yield_fy2024",
+          "selector": {
+            "source_name": "gambling_commission",
+            "source_concept": "gambling_commission.gross_gambling_yield",
+            "geography_id": "K03000001",
+            "period_type": "fiscal_year",
+            "period_value": [
+              2024
+            ]
+          },
+          "expected_row_count": 40
+        },
+        {
+          "label": "gambling_commission_machine_yield_by_category_fy2024",
+          "selector": {
+            "source_name": "gambling_commission",
+            "source_concept": "gambling_commission.gaming_machine_gross_gambling_yield",
+            "geography_id": "K03000001",
+            "period_type": "fiscal_year",
+            "period_value": [
+              2024
+            ],
+            "dimension_values": {
+              "gambling_venue": "all"
+            }
+          },
+          "expected_row_count": 4
+        }
+      ]
+    },
+    {
+      "resource": "gambling_participation_facts.json",
+      "purpose": "The Gambling Commission's Gambling Survey for Great Britain 2025: the share of adults who gambled in the past four weeks and the past twelve months, any gambling and excluding lottery-draw-only players, by sex crossed with age band (tables B.1 and B.3), and past-four-week participation by activity and channel, by sex and by age band (table B.9), Great Britain, calendar 2025: the adult rates the LCFS top_up_gambling_participation step brings the National Lottery and the betting and gaming keys to (microcosm#1359, PolicyEngine/chronicle#391).",
+      "consumers": [
+        "uk_runtime.gambling_participation"
+      ],
+      "planned_consumers": [],
+      "selections": [
+        {
+          "label": "gambling_commission_gsgb_participation_2025",
+          "selector": {
+            "source_name": "gambling_commission",
+            "source_concept": "gambling_commission.gsgb.participation",
+            "geography_id": "K03000001",
+            "period_type": "calendar_year",
+            "period_value": [
+              2025
+            ]
+          },
+          "expected_row_count": 426
+        }
+      ]
+    },
+    {
       "resource": "desnz_domestic_energy_facts.json",
-      "purpose": "DESNZ domestic energy volumes: Energy Trends domestic electricity (table 5.5) and gas (table 4.1) consumption at actual temperature, annual and quarterly, United Kingdom, 2022 to the latest quarter (the published level the LCFS kWh rake scales to, summed over the four quarters of calendar 2024; microcosm#1113), and the subnational electricity and gas statistics' domestic consumption and meter counts for Great Britain, England and Wales, the countries and the English regions, 2023 and 2024 (the published gas-connected share by region: gas meters over electricity meters; and the Great Britain totals that level the local-authority energy rows, microcosm#1207).",
+      "purpose": "DESNZ domestic energy volumes: Energy Trends domestic electricity (table 5.5) and gas (table 4.1) consumption at actual temperature, annual and quarterly, United Kingdom, 2022 to the latest quarter (the published level the LCFS kWh rake scales to, summed over the four quarters of calendar 2024; microcosm#1113), and the subnational electricity and gas statistics' domestic consumption and meter counts for Great Britain, England and Wales, the countries and the English regions, 2023 and 2024 (the published gas-connected share by region: gas meters over electricity meters; and the Great Britain totals that level the local-authority energy rows, microcosm#1207); and Northern Ireland's domestic electricity and gas meter counts, 2024 (with Great Britain's, every UK domestic meter whose standing charges come off ONS household spending in the electricity level, microcosm#1418).",
       "consumers": [
         "uk_runtime.energy_pricing"
       ],
@@ -536,6 +651,27 @@
             "geography_vintage": "publication_2025_nspl"
           },
           "expected_row_count": 112
+        },
+        {
+          "label": "subnational_domestic_meters_northern_ireland_2024",
+          "selector": {
+            "source_name": "desnz",
+            "source_concept": [
+              "desnz.subnational.domestic_electricity_meter_count",
+              "desnz.subnational.domestic_gas_meter_count"
+            ],
+            "geography_id": "N92000002",
+            "period_type": [
+              "fiscal_year",
+              "gas_year"
+            ],
+            "period_value": "2024",
+            "dimension_values": {
+              "domestic_scope": "all_domestic",
+              "metric": "meter_count"
+            }
+          },
+          "expected_row_count": 2
         }
       ]
     },
@@ -914,7 +1050,7 @@
     },
     {
       "resource": "hmrc_itl_taxpayer_counts.json",
-      "purpose": "HMRC Income Tax liabilities statistics (15 July 2026) Table 2.5 by range of total income: Income Tax payers, total income and Income Tax liabilities for the 2023-24 outturn and HMRC's 2024-25, 2025-26 and 2026-27 projections, the eleven published bands and the all-ranges total. Consumed by the Table 2.5 growth appliers (hmrc.itl_2026.{taxpayer_count,total_income,total_tax}_growth_by_total_income_band), which move a 2023-24 SPI band row by the calendar-2025 window of the two overlapping projections over 2023-24 in the Table 2.5 band(s) the SPI band spans.",
+      "purpose": "HMRC Income Tax liabilities statistics (15 July 2026) for the 2023-24 outturn and HMRC's 2024-25, 2025-26 and 2026-27 projections. Table 2.5 by range of total income: Income Tax payers, total income and Income Tax liabilities, the eleven published bands and the all-ranges total, consumed by the Table 2.5 growth appliers (hmrc.itl_2026.{taxpayer_count,total_income,total_tax}_growth_by_total_income_band), which move a 2023-24 SPI band row by the calendar-2025 window of the two overlapping projections over 2023-24 in the Table 2.5 band(s) the SPI band spans. Tables 2.1 (United Kingdom) and 2.2 (England, its nine regions, Wales, Scotland and Northern Ireland): Income Tax payers of State Pension age, consumed by the State Pension age applier (hmrc.itl_2026.resident_state_pension_age_taxpayer_growth), which moves the SPI State Pension band rows by the calendar-2025 window of the twelve region-tier areas' State Pension age taxpayers over Table 2.1's 2023-24 United Kingdom count; and Income Tax payers aged 65 and over, which no applier reads and the tests hold against the areas and the State Pension age rows (microcosm#1069).",
       "consumers": [
         "uk_runtime.hmrc_uprating"
       ],
@@ -955,6 +1091,34 @@
             "period_type": "tax_year"
           },
           "expected_row_count": 48
+        },
+        {
+          "label": "itl_2026_tables_2_1_2_2_state_pension_age_taxpayer_count",
+          "selector": {
+            "source_name": "hmrc",
+            "source_concept": "hmrc.spi_taxpayer_count",
+            "source_measure_id": "state_pension_age",
+            "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+            "dimension_values": {
+              "age_band": "state_pension_age"
+            },
+            "period_type": "tax_year"
+          },
+          "expected_row_count": 56
+        },
+        {
+          "label": "itl_2026_tables_2_1_2_2_age_65_and_over_taxpayer_count",
+          "selector": {
+            "source_name": "hmrc",
+            "source_concept": "hmrc.spi_taxpayer_count",
+            "source_measure_id": "age_65_and_over",
+            "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+            "dimension_values": {
+              "age_band": "65_and_over"
+            },
+            "period_type": "tax_year"
+          },
+          "expected_row_count": 56
         }
       ]
     },
@@ -975,6 +1139,33 @@
             "period_type": "calendar_year",
             "period_value": [
               "2023"
+            ],
+            "dimensions": [
+              "age",
+              "sex"
+            ]
+          },
+          "expected_row_count": 182
+        }
+      ]
+    },
+    {
+      "resource": "ons_mid2025_single_year_age_by_sex.json",
+      "purpose": "ONS mid-2025 UK resident population by single year of age (0 to 89 and 90 and over) and sex (MYE2, the edition of 1 October 2026), usual residents including communal establishments. Report-only (microcosm#1095, uk-data#600's age check): uk_runtime.single_year_ages reports a built file's persons by single year of age against it; no stage draws from it and no target binds it. The SPI stage's mid-2023 ages stay in ons_single_year_age_populations.json.",
+      "consumers": [
+        "uk_runtime.single_year_ages"
+      ],
+      "planned_consumers": [],
+      "selections": [
+        {
+          "label": "mye2_uk_single_year_of_age_by_sex_mid2025",
+          "selector": {
+            "source_name": "ons",
+            "source_concept": "ons.mid_year_population_estimate",
+            "geography_id": "K02000001",
+            "period_type": "calendar_year",
+            "period_value": [
+              "2025"
             ],
             "dimensions": [
               "age",
@@ -1442,7 +1633,7 @@
     },
     {
       "resource": "desnz_local_energy_facts.json",
-      "purpose": "The DESNZ sub-national domestic electricity and gas meter counts for every Great Britain local authority, 2024 (gas meters over electricity meters give the share of each authority's census households bound as gas-connected), and Northern Ireland's sub-national domestic electricity and gas consumption, 2024 (the N92000002 row, all domestic meters: Great Britain's part of the Energy Trends UK level the authority kWh rows are levelled to is its share of the sub-national total with this row added, microcosm#1278). Consumed by the local energy appliers (uk_runtime.domestic_energy_targets, microcosm#1207).",
+      "purpose": "The DESNZ sub-national domestic electricity and gas meter counts for every Great Britain local authority, 2024 (gas meters over electricity meters give the share of each authority's census households bound as gas-connected), and Northern Ireland's sub-national domestic electricity and gas consumption, 2024 (the N92000002 row, all domestic meters: Great Britain's part of the stage's UK level the authority kWh rows are levelled to, Energy Trends or for electricity the kWh ONS household spending buys (microcosm#1418), is its share of the sub-national total with this row added, microcosm#1278). Consumed by the local energy appliers (uk_runtime.domestic_energy_targets, microcosm#1207).",
       "consumers": [
         "uk_runtime.domestic_energy_targets"
       ],
@@ -1497,6 +1688,137 @@
           "Contains public sector information licensed under the Open Government Licence v3.0 (Department for Energy Security and Net Zero, sub-national electricity and gas consumption statistics, Great Britain and Northern Ireland)."
         ]
       }
+    },
+    {
+      "resource": "obr_salary_sacrifice_costing_facts.json",
+      "purpose": "OBR supplementary forecast information on salary sacrifice pension contributions (5 February 2026), Table 1.1: the tax base above the GBP 2,000 annual threshold by sacrifice route (salary and bonus) for 2027-28 to 2030-31. The bonus-sacrifice anchor reads 2027-28's bonus line, which the salary_sacrifice stage's bonus conversion meets through the engine's projection (microcosm#1340).",
+      "consumers": [
+        "uk_runtime.salary_sacrifice"
+      ],
+      "planned_consumers": [],
+      "selections": [
+        {
+          "label": "salary_sacrifice_costing_tax_base",
+          "selector": {
+            "source_name": "obr",
+            "source_concept": "obr.salary_sacrifice_costing.tax_base",
+            "period_type": "fiscal_year"
+          },
+          "expected_row_count": 8
+        }
+      ]
+    },
+    {
+      "resource": "obr_savings_income_growth_facts.json",
+      "purpose": "OBR Economic and fiscal outlook, October 2026, receipts Table 4.5 (\"Self-employed income streams: growth rates\"): the savings income row's growth on a year earlier, pre-measures, from 2024-25 to 2031-32. The SPI Table 3.7 interest and other income rows by band grow by it from 2023-24 to the calibration year's window, the path the Budget's savings costing grows its base by (María's ruling of 2026-10-29, microcosm#1418). Scope: the row is the savings income of self assessment filers, the line the OBR forecasts self assessment receipts on, where the Table 3.7 rows count every taxpayer, most of whom do not file, so part of its +35.0% in 2024-25 may be savers entering self assessment as interest passed the Personal Savings Allowance, a change in who files. ONS households' interest received (D.41, HAXV, 30 September 2026) grows x1.048 from FY2023-24 to calendar 2025 (GBP 91.1bn to GBP 95.5bn) against x1.356 on this path; HAXV is after the FISIM adjustment and counts ISA interest and non-taxpayers, so it is not like for like (Vahid's review of microcosm#1420). The engine projects interest at GDP per head until PolicyEngine/policyengine-uk#2638 lands, so the solve reaches this level only by moving weight toward savers, which the next national's weight check on the records that carry interest measures.",
+      "consumers": [
+        "uk_runtime.hmrc_uprating"
+      ],
+      "planned_consumers": [],
+      "selections": [
+        {
+          "label": "obr_october_2026_savings_income_growth",
+          "selector": {
+            "source_name": "obr",
+            "source_concept": "obr.self_employed_income_growth.savings_income",
+            "period_type": "fiscal_year"
+          },
+          "expected_row_count": 8
+        }
+      ]
+    },
+    {
+      "resource": "hmrc_isa_statistics_facts.json",
+      "purpose": "HMRC Annual savings statistics (September 2026 release), the rows the ISA subscriptions stage draws subscribers and amounts from and the Lifetime ISA anchor counts payers against (microcosm#1415): Table 9.7 2023-24 subscribers by total income and size of subscription, and the holders who made no further subscription, for all subscribers and each type paid into; Table 9.8 subscribers by age and sex; Table 9.9 subscribers by region; Table 9.4 accounts and amounts subscribed by component for 2023-24 and 2024-25 (the latest year provisional); Table 9.6 market values at 5 April 2025; the cash ISA limit reduction impact note's shares of under-65 cash subscribers either side of GBP 12,000 in 2022-23; and Lifetime ISA Table 1a withdrawals for 2024-25 and 2025-26. Tables 9.7 to 9.9 count individuals and Table 9.4 accounts. None is a calibration target: the stage's reviewed fence keeps them measured only. No value is derived here.",
+      "consumers": [
+        "uk_runtime.hmrc_isa_statistics"
+      ],
+      "planned_consumers": [],
+      "selections": [
+        {
+          "label": "table9_7_ty2023_subscribers_and_holders_by_income_and_subscription",
+          "selector": {
+            "source_name": "hmrc",
+            "record_set_id": [
+              "hmrc.isa_statistics_2026.table9_7.ty2023.all.subscribers",
+              "hmrc.isa_statistics_2026.table9_7.ty2023.all.holders",
+              "hmrc.isa_statistics_2026.table9_7.ty2023.cash_only.subscribers",
+              "hmrc.isa_statistics_2026.table9_7.ty2023.cash_only.holders",
+              "hmrc.isa_statistics_2026.table9_7.ty2023.stocks_and_shares_only.subscribers",
+              "hmrc.isa_statistics_2026.table9_7.ty2023.stocks_and_shares_only.holders",
+              "hmrc.isa_statistics_2026.table9_7.ty2023.cash_and_stocks_and_shares.subscribers",
+              "hmrc.isa_statistics_2026.table9_7.ty2023.cash_and_stocks_and_shares.holders"
+            ]
+          },
+          "expected_row_count": 624
+        },
+        {
+          "label": "table9_8_ty2023_subscribers_and_holders_by_age_and_sex",
+          "selector": {
+            "source_name": "hmrc",
+            "record_set_id": [
+              "hmrc.isa_statistics_2026.table9_8.ty2023.male.subscribers",
+              "hmrc.isa_statistics_2026.table9_8.ty2023.male.holders",
+              "hmrc.isa_statistics_2026.table9_8.ty2023.female.subscribers",
+              "hmrc.isa_statistics_2026.table9_8.ty2023.female.holders",
+              "hmrc.isa_statistics_2026.table9_8.ty2023.all.subscribers",
+              "hmrc.isa_statistics_2026.table9_8.ty2023.all.holders"
+            ]
+          },
+          "expected_row_count": 325
+        },
+        {
+          "label": "table9_9_ty2023_subscribers_and_holders_by_region",
+          "selector": {
+            "source_name": "hmrc",
+            "record_set_id": [
+              "hmrc.isa_statistics_2026.table9_9.ty2023.subscribers",
+              "hmrc.isa_statistics_2026.table9_9.ty2023.holders"
+            ]
+          },
+          "expected_row_count": 70
+        },
+        {
+          "label": "table9_4_ty2023_ty2024_accounts_and_amounts_subscribed",
+          "selector": {
+            "source_name": "hmrc",
+            "record_set_id": [
+              "hmrc.isa_statistics_2026.table9_4.accounts.ty2023",
+              "hmrc.isa_statistics_2026.table9_4.amounts.ty2023",
+              "hmrc.isa_statistics_2026.table9_4.accounts.ty2024",
+              "hmrc.isa_statistics_2026.table9_4.amounts.ty2024"
+            ]
+          },
+          "expected_row_count": 24
+        },
+        {
+          "label": "table9_6_ty2024_market_value",
+          "selector": {
+            "source_name": "hmrc",
+            "record_set_id": "hmrc.isa_statistics_2026.table9_6.ty2024"
+          },
+          "expected_row_count": 19
+        },
+        {
+          "label": "impact_note_ty2022_cash_subscribers_under_65_by_band",
+          "selector": {
+            "source_name": "hmrc",
+            "record_set_id": "hmrc.cash_isa_limit_reduction_2026.cash_subscribers_under_65.ty2022"
+          },
+          "expected_row_count": 2
+        },
+        {
+          "label": "lisa_table1a_ty2024_ty2025_withdrawals",
+          "selector": {
+            "source_name": "hmrc",
+            "record_set_id": [
+              "hmrc.lisa_statistics_2026.table1a.ty2024",
+              "hmrc.lisa_statistics_2026.table1a.ty2025"
+            ]
+          },
+          "expected_row_count": 10
+        }
+      ]
     }
   ]
 }

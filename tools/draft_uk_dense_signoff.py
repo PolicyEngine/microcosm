@@ -67,10 +67,8 @@ Verify, after build 2::
 It checks that build 2 stood on every in-line entry of the three registers at
 this checkout and that none was stale, dormant, premature, expired or unknown.
 It checks that no release-blocking gate failed and that the signed local report
-passes the dense release contract (the signing key must be exported). Like the
-contract, it warns, without failing, when the disclosure walk finds a per-area
-support figure in that report. It fails once the assembly deadline has passed
-and warns from two days before it. With
+passes the dense release contract (the signing key must be exported). It fails
+once the assembly deadline has passed and warns from two days before it. With
 ``--build-1`` it also reports whether build 2 reused build 1's solve and
 reproduced its per-row errors. With ``--draft-receipt`` it checks that the
 sign-off committed what was drafted: every added or renewed entry, no retired
@@ -509,6 +507,10 @@ class BuildEvidence:
     #: local fit gate decides on the other rows and counts them (María's
     #: ruling of 2026-10-19). Nothing signs a withheld cell.
     local_withheld: frozenset[str] = frozenset()
+    #: National rows whose model figures the build withholds, which her rule
+    #: of 2026-10-21 extends the withholding to: ``national_errors`` lacks
+    #: them, and the national fit gate counts them as the local one does.
+    national_withheld: frozenset[str] = frozenset()
 
     def details(self, gate_id: str) -> Mapping[str, Any]:
         return self.outcomes.get(gate_id, {}).get("details") or {}
@@ -725,31 +727,32 @@ def _check_support(frame: pd.DataFrame, embedded: object) -> None:
 
 def _split_errors(
     frame: pd.DataFrame,
-) -> tuple[dict[str, float], dict[str, float], frozenset[str]]:
-    """National and local errors by gate key, and the withheld local keys."""
+) -> tuple[dict[str, float], dict[str, float], frozenset[str], frozenset[str]]:
+    """National and local errors by gate key, and the withheld national and
+    local keys (a thin national row is withheld too, by María's rule of
+    2026-10-21)."""
 
     national: dict[str, float] = {}
     local: dict[str, float] = {}
-    withheld: set[str] = set()
+    national_withheld: set[str] = set()
+    local_withheld: set[str] = set()
     for row in frame.itertuples(index=False):
         if row.geography_level in LOCAL_LEVELS:
             key = f"{row.family.strip()}/{row.area_code.strip()}/{row.metric.strip()}"
-            target = local
+            target, withheld = local, local_withheld
         else:
             key = row.name
-            target = national
+            target, withheld = national, national_withheld
         if key in target or key in withheld:
             raise InputError(f"targets.csv repeats the gate key {key!r}.")
         if row.model_figures_withheld:
-            if target is national:
-                raise InputError("targets.csv withholds a national row.")
             withheld.add(key)
             continue
         error = float(row.relative_error)
         if not math.isfinite(error):
             raise InputError("targets.csv carries a non-finite relative error.")
         target[key] = error
-    return national, local, frozenset(withheld)
+    return national, local, frozenset(national_withheld), frozenset(local_withheld)
 
 
 def _check_fit_details(
@@ -862,9 +865,11 @@ def load_build(run_dir: Path, *, allow_dev_build: bool = False) -> BuildEvidence
     missing = sorted(SIGNABLE_GATES - set(parameters))
     if missing:
         raise InputError(f"the terminal report has no outcome for {missing}.")
-    national, local, withheld = _split_errors(targets)
+    national, local, national_withheld, withheld = _split_errors(targets)
+    # The national fit gate counts every row the build withholds (its parity
+    # evidence carries the surface's whole set), the local one its own cells.
     for gate_id, errors, hidden in (
-        ("uk_target_fit", national, frozenset()),
+        ("uk_target_fit", national, national_withheld | withheld),
         ("uk_local_target_fit", local, withheld),
     ):
         outcome = outcomes[gate_id]
@@ -906,6 +911,7 @@ def load_build(run_dir: Path, *, allow_dev_build: bool = False) -> BuildEvidence
         measure_exclusions=measure_exclusions,
         measure_exclusions_from=measure_exclusions_from,
         local_withheld=withheld,
+        national_withheld=national_withheld,
     )
     below = area_support_below_floor(support, **evidence.area_floors)
     if "support_below_floor" in support and not np.array_equal(
@@ -1862,13 +1868,13 @@ def national_review_invariant(national_block: Mapping[str, Any]) -> str | None:
 
 
 def drafted_disclosure_failures(drafts: Mapping[str, RegisterDraft]) -> list[str]:
-    """The dense contract's disclosure walk over the drafted entries.
+    """The contract's disclosure walk over the drafted entries.
 
-    Build 2's signed local report, which a release ships, carries every entry
-    its gates stand on, so a drafted reason (a ``--class-note`` included)
-    gets the walk the release directory gets (microcosm#1301). A finding
-    refuses the draft, where the release contract only warns: re-drafting
-    costs nothing, and the entries go into the sign-off PR on a public repo.
+    The entries go into the sign-off PR on a public repo, so a drafted reason
+    (a ``--class-note`` included) must carry no per-area support figure
+    (microcosm#1301), although a release itself ships them since María's
+    ruling of 2026-10-26. A finding refuses the draft: re-drafting costs
+    nothing.
     """
 
     from microcosm.data.contract import _uk_dense_disclosure_findings
@@ -2823,15 +2829,10 @@ def verify(
 
     It also fails once the assembly deadline (:func:`assembly_deadline`, on
     build 2's measure exclusions and this checkout's registers) has passed,
-    and warns from :data:`DEADLINE_WARNING_DAYS` days before it. A per-area
-    support figure in the signed local report is a warning, as in the
-    release contract (microcosm#1301).
+    and warns from :data:`DEADLINE_WARNING_DAYS` days before it.
     """
 
-    from microcosm.data.contract import (
-        _check_uk_dense_gate_report,
-        _uk_dense_disclosure_findings,
-    )
+    from microcosm.data.contract import _check_uk_dense_gate_report
 
     today = _today() if today is None else today
     failures: list[str] = []
@@ -2913,15 +2914,6 @@ def verify(
         build_2.local_report, failures=contract_failures, attempt_id=build_2.attempt_id
     )
     failures.extend(f"contract: {line}" for line in contract_failures)
-    # The signed local report ships in the release, so it gets the release
-    # directory's disclosure walk (microcosm#1301) here, before assembly,
-    # and warns as the release contract does.
-    warnings.extend(
-        f"contract: {line}"
-        for line in _uk_dense_disclosure_findings(
-            "the signed local gate report", build_2.local_report
-        )
-    )
 
     comparison: dict[str, Any] = {}
     if build_1 is not None:
@@ -2959,6 +2951,10 @@ def verify(
             | {
                 ("local", key)
                 for key in build_1.local_withheld ^ build_2.local_withheld
+            }
+            | {
+                ("national", key)
+                for key in build_1.national_withheld ^ build_2.national_withheld
             }
         )
         if differing:

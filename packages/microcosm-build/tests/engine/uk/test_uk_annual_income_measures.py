@@ -108,6 +108,14 @@ def test_the_annual_measures_tax_each_persons_year(tmp_path) -> None:
         np.asarray(state_pension) * state_pension_annual_share(months),
         rtol=1e-6,
     )
+    # The SPI area tables' pension income: both pensions over the year
+    # (microcosm#1418).
+    annual_total_pension, _ = resolver.compute("person", "total_pension_income_annual")
+    np.testing.assert_allclose(
+        annual_total_pension,
+        np.asarray(annual_pension) + np.asarray(annual_state_pension),
+        rtol=1e-6,
+    )
     # Taxed by the engine on the year: the leaver's spell makes them a
     # taxpayer, and halving the entrant's pay lowers their tax.
     tax, _ = resolver.compute("person", "income_tax")
@@ -116,6 +124,12 @@ def test_the_annual_measures_tax_each_persons_year(tmp_path) -> None:
     assert tax[1] == 0.0 and annual_tax[1] > 0.0
     assert annual_tax[2] < tax[2]
     assert annual_tax[0] == tax[0] and annual_tax[4] == tax[4]
+    # Nobody here passes the Winter Fuel Payment charge's income test, so
+    # the tax before the charge is the tax.
+    pre_charge, _ = resolver.compute(
+        "person", "income_tax_before_winter_fuel_payment_charge_annual"
+    )
+    np.testing.assert_allclose(pre_charge, annual_tax)
     total, _ = resolver.compute("person", "total_income_after_loss_relief_annual")
     assert np.asarray(total, dtype=float)[1] > 15_000.0 * factor
     profit, route = resolver.compute(
@@ -125,11 +139,49 @@ def test_the_annual_measures_tax_each_persons_year(tmp_path) -> None:
     assert route.startswith("annual_income_simulation:engine_components:")
     band, _ = resolver.compute("person", "tax_band_annual")
     assert len(band) == 5
+    # The savings income each rate charges, on the same year (microcosm#1418):
+    # nobody here has any.
+    for name in (
+        "basic_rate_savings_income_annual",
+        "higher_rate_savings_income_annual",
+        "add_rate_savings_income_annual",
+    ):
+        savings, route = resolver.compute("person", name)
+        assert route.startswith("annual_income_simulation:")
+        np.testing.assert_allclose(savings, 0.0)
     receipt = resolver.receipt()["annual_income_measures"]
     assert receipt["route"] == "annual_income_simulation"
     factors = receipt["other_spells_engine_factors"]
     assert factors["employment_income_before_lsr"] == pytest.approx(factor, rel=1e-6)
     assert set(receipt["computed_measures"]) == set(UK_ANNUAL_INCOME_MEASURES)
+
+
+def test_the_income_tax_rows_read_the_tax_before_the_winter_fuel_charge(
+    tmp_path,
+) -> None:
+    """policyengine-uk adds the Winter Fuel Payment charge to income_tax from
+    2.157.0. HMRC's statistics predate it, and the OBR window's receipts hold
+    almost none of 2025's recovery, so those rows read the tax before it
+    (María's ruling of 2026-10-25, microcosm#1095)."""
+
+    frame = _frame(**_DESCRIPTORS)
+    # The 75-year-old's pension takes their income past the charge's
+    # GBP 35,000 test.
+    frame.table("person").loc[4, "private_pension_income"] = 40_000.0
+    resolver = UKMeasureResolver(
+        simulation_source=None, frame=frame, scratch_dir=tmp_path, year=2025
+    )
+
+    annual_tax, _ = resolver.compute("person", "income_tax_annual")
+    pre_charge, route = resolver.compute(
+        "person", "income_tax_before_winter_fuel_payment_charge_annual"
+    )
+
+    annual_tax = np.asarray(annual_tax, dtype=float)
+    pre_charge = np.asarray(pre_charge, dtype=float)
+    assert route.startswith("annual_income_simulation:")
+    assert pre_charge[4] < annual_tax[4]
+    np.testing.assert_allclose(pre_charge[:4], annual_tax[:4])
 
 
 def test_the_local_hmrc_rows_count_each_persons_year(tmp_path) -> None:

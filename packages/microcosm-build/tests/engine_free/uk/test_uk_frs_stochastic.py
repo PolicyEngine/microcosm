@@ -79,7 +79,9 @@ def test_under_two_usage_draws_children_in_claiming_units_only() -> None:
 def test_person_draws_pin_scp_age_six_boundary_and_uniform_draw() -> None:
     person = _frame().table("person")
 
-    derived = derive_frs_person_draws(person, contract=_Contract())
+    derived = derive_frs_person_draws(
+        person, contract=_Contract(), person_weights=np.ones(len(person))
+    )
 
     draws = stable_identity_uniforms(
         person["person_id"].to_numpy(), seed=0, salt="would_claim_scp"
@@ -219,7 +221,7 @@ def test_uc_take_up_population_excludes_units_without_a_working_age_adult() -> N
 def test_uc_take_up_population_needs_a_claimant_or_partner_of_working_age() -> None:
     """A working-age dependant does not bring a unit into the UC population.
 
-    policyengine-uk 2.147.2's is_uc_eligible reads the age of the unit's UC
+    policyengine-uk 2.164.2's is_uc_eligible reads the age of the unit's UC
     claimant or partner (is_uc_claimant), not of any adult: a pensioner unit
     with an 18-year-old dependant cannot claim Universal Credit.
     """

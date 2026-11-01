@@ -4,15 +4,35 @@
   "required_inputs": {
     "person": [
       "age",
-      "region_code"
+      "region_code",
+      "person_id",
+      "person_household_id"
     ],
     "household": [
       "household_region_code",
-      "tenure"
+      "tenure",
+      "household_id"
     ]
   },
+  "roster_counts": [
+    {
+      "entity": "household",
+      "name": "household_size",
+      "member_entity": "person",
+      "entity_id": "household_id",
+      "member_id": "person_id",
+      "membership": "person_household_id",
+      "representation": "Model roster represents usual-resident household membership."
+    }
+  ],
   "input_domains": {
     "person": {
+      "person_id": {
+        "kind": "identity"
+      },
+      "person_household_id": {
+        "kind": "identity"
+      },
       "age": {
         "kind": "nonnegative_integer"
       },
@@ -39,6 +59,9 @@
       }
     },
     "household": {
+      "household_id": {
+        "kind": "identity"
+      },
       "household_region_code": {
         "values": [
           "01",
@@ -1349,6 +1372,145 @@
     },
     {
       "entity": "household",
+      "name": "region_01_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "01"
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_01_size_1_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "01"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 1
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_01_size_2_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "01"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 2
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_01_size_3_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "01"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 3
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_01_size_4_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "01"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 4
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_01_size_5_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "01"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 5
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_01_size_6_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "01"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 6
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_01_size_7_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "01"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 7
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_01_size_8_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "01"
+        },
+        {
+          "column": "household_size",
+          "operator": "ge",
+          "value": 8
+        }
+      ]
+    },
+    {
+      "entity": "household",
       "name": "household_region_01_owned_indicator",
       "predicates": [
         {
@@ -1384,6 +1546,145 @@
             "rented_private",
             "rent_free"
           ]
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "region_02_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "02"
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_02_size_1_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "02"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 1
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_02_size_2_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "02"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 2
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_02_size_3_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "02"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 3
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_02_size_4_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "02"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 4
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_02_size_5_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "02"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 5
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_02_size_6_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "02"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 6
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_02_size_7_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "02"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 7
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_02_size_8_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "02"
+        },
+        {
+          "column": "household_size",
+          "operator": "ge",
+          "value": 8
         }
       ]
     },
@@ -1429,6 +1730,145 @@
     },
     {
       "entity": "household",
+      "name": "region_03_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "03"
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_03_size_1_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "03"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 1
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_03_size_2_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "03"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 2
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_03_size_3_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "03"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 3
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_03_size_4_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "03"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 4
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_03_size_5_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "03"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 5
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_03_size_6_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "03"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 6
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_03_size_7_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "03"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 7
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_03_size_8_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "03"
+        },
+        {
+          "column": "household_size",
+          "operator": "ge",
+          "value": 8
+        }
+      ]
+    },
+    {
+      "entity": "household",
       "name": "household_region_03_owned_indicator",
       "predicates": [
         {
@@ -1464,6 +1904,145 @@
             "rented_private",
             "rent_free"
           ]
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "region_04_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "04"
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_04_size_1_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "04"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 1
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_04_size_2_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "04"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 2
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_04_size_3_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "04"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 3
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_04_size_4_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "04"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 4
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_04_size_5_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "04"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 5
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_04_size_6_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "04"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 6
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_04_size_7_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "04"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 7
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_04_size_8_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "04"
+        },
+        {
+          "column": "household_size",
+          "operator": "ge",
+          "value": 8
         }
       ]
     },
@@ -1509,6 +2088,145 @@
     },
     {
       "entity": "household",
+      "name": "region_05_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "05"
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_05_size_1_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "05"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 1
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_05_size_2_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "05"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 2
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_05_size_3_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "05"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 3
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_05_size_4_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "05"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 4
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_05_size_5_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "05"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 5
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_05_size_6_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "05"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 6
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_05_size_7_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "05"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 7
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_05_size_8_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "05"
+        },
+        {
+          "column": "household_size",
+          "operator": "ge",
+          "value": 8
+        }
+      ]
+    },
+    {
+      "entity": "household",
       "name": "household_region_05_owned_indicator",
       "predicates": [
         {
@@ -1544,6 +2262,145 @@
             "rented_private",
             "rent_free"
           ]
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "region_06_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "06"
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_06_size_1_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "06"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 1
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_06_size_2_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "06"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 2
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_06_size_3_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "06"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 3
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_06_size_4_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "06"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 4
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_06_size_5_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "06"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 5
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_06_size_6_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "06"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 6
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_06_size_7_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "06"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 7
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_06_size_8_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "06"
+        },
+        {
+          "column": "household_size",
+          "operator": "ge",
+          "value": 8
         }
       ]
     },
@@ -1589,6 +2446,145 @@
     },
     {
       "entity": "household",
+      "name": "region_07_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "07"
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_07_size_1_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "07"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 1
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_07_size_2_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "07"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 2
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_07_size_3_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "07"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 3
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_07_size_4_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "07"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 4
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_07_size_5_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "07"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 5
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_07_size_6_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "07"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 6
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_07_size_7_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "07"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 7
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_07_size_8_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "07"
+        },
+        {
+          "column": "household_size",
+          "operator": "ge",
+          "value": 8
+        }
+      ]
+    },
+    {
+      "entity": "household",
       "name": "household_region_07_owned_indicator",
       "predicates": [
         {
@@ -1624,6 +2620,145 @@
             "rented_private",
             "rent_free"
           ]
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "region_08_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "08"
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_08_size_1_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "08"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 1
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_08_size_2_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "08"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 2
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_08_size_3_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "08"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 3
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_08_size_4_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "08"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 4
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_08_size_5_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "08"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 5
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_08_size_6_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "08"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 6
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_08_size_7_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "08"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 7
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_08_size_8_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "08"
+        },
+        {
+          "column": "household_size",
+          "operator": "ge",
+          "value": 8
         }
       ]
     },
@@ -1669,6 +2804,145 @@
     },
     {
       "entity": "household",
+      "name": "region_09_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "09"
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_09_size_1_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "09"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 1
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_09_size_2_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "09"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 2
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_09_size_3_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "09"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 3
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_09_size_4_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "09"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 4
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_09_size_5_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "09"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 5
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_09_size_6_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "09"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 6
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_09_size_7_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "09"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 7
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_09_size_8_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "09"
+        },
+        {
+          "column": "household_size",
+          "operator": "ge",
+          "value": 8
+        }
+      ]
+    },
+    {
+      "entity": "household",
       "name": "household_region_09_owned_indicator",
       "predicates": [
         {
@@ -1704,6 +2978,145 @@
             "rented_private",
             "rent_free"
           ]
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "region_12_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "12"
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_12_size_1_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "12"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 1
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_12_size_2_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "12"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 2
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_12_size_3_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "12"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 3
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_12_size_4_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "12"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 4
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_12_size_5_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "12"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 5
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_12_size_6_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "12"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 6
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_12_size_7_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "12"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 7
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_12_size_8_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "12"
+        },
+        {
+          "column": "household_size",
+          "operator": "ge",
+          "value": 8
         }
       ]
     },
@@ -1749,6 +3162,145 @@
     },
     {
       "entity": "household",
+      "name": "region_13_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "13"
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_13_size_1_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "13"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 1
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_13_size_2_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "13"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 2
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_13_size_3_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "13"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 3
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_13_size_4_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "13"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 4
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_13_size_5_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "13"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 5
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_13_size_6_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "13"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 6
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_13_size_7_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "13"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 7
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_13_size_8_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "13"
+        },
+        {
+          "column": "household_size",
+          "operator": "ge",
+          "value": 8
+        }
+      ]
+    },
+    {
+      "entity": "household",
       "name": "household_region_13_owned_indicator",
       "predicates": [
         {
@@ -1784,6 +3336,145 @@
             "rented_private",
             "rent_free"
           ]
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "region_14_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "14"
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_14_size_1_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "14"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 1
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_14_size_2_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "14"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 2
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_14_size_3_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "14"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 3
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_14_size_4_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "14"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 4
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_14_size_5_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "14"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 5
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_14_size_6_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "14"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 6
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_14_size_7_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "14"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 7
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_14_size_8_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "14"
+        },
+        {
+          "column": "household_size",
+          "operator": "ge",
+          "value": 8
         }
       ]
     },
@@ -1829,6 +3520,145 @@
     },
     {
       "entity": "household",
+      "name": "region_15_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "15"
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_15_size_1_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "15"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 1
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_15_size_2_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "15"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 2
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_15_size_3_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "15"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 3
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_15_size_4_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "15"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 4
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_15_size_5_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "15"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 5
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_15_size_6_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "15"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 6
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_15_size_7_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "15"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 7
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_15_size_8_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "15"
+        },
+        {
+          "column": "household_size",
+          "operator": "ge",
+          "value": 8
+        }
+      ]
+    },
+    {
+      "entity": "household",
       "name": "household_region_15_owned_indicator",
       "predicates": [
         {
@@ -1864,6 +3694,145 @@
             "rented_private",
             "rent_free"
           ]
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "region_16_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "16"
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_16_size_1_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "16"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 1
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_16_size_2_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "16"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 2
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_16_size_3_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "16"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 3
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_16_size_4_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "16"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 4
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_16_size_5_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "16"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 5
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_16_size_6_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "16"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 6
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_16_size_7_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "16"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 7
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_16_size_8_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "16"
+        },
+        {
+          "column": "household_size",
+          "operator": "ge",
+          "value": 8
         }
       ]
     },
@@ -1909,6 +3878,145 @@
     },
     {
       "entity": "household",
+      "name": "region_17_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "17"
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_17_size_1_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "17"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 1
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_17_size_2_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "17"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 2
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_17_size_3_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "17"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 3
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_17_size_4_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "17"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 4
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_17_size_5_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "17"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 5
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_17_size_6_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "17"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 6
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_17_size_7_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "17"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 7
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_17_size_8_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "17"
+        },
+        {
+          "column": "household_size",
+          "operator": "ge",
+          "value": 8
+        }
+      ]
+    },
+    {
+      "entity": "household",
       "name": "household_region_17_owned_indicator",
       "predicates": [
         {
@@ -1949,6 +4057,145 @@
     },
     {
       "entity": "household",
+      "name": "region_18_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "18"
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_18_size_1_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "18"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 1
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_18_size_2_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "18"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 2
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_18_size_3_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "18"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 3
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_18_size_4_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "18"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 4
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_18_size_5_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "18"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 5
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_18_size_6_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "18"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 6
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_18_size_7_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "18"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 7
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_18_size_8_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "18"
+        },
+        {
+          "column": "household_size",
+          "operator": "ge",
+          "value": 8
+        }
+      ]
+    },
+    {
+      "entity": "household",
       "name": "household_region_18_owned_indicator",
       "predicates": [
         {
@@ -1984,6 +4231,145 @@
             "rented_private",
             "rent_free"
           ]
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "region_99_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "99"
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_99_size_1_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "99"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 1
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_99_size_2_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "99"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 2
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_99_size_3_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "99"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 3
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_99_size_4_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "99"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 4
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_99_size_5_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "99"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 5
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_99_size_6_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "99"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 6
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_99_size_7_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "99"
+        },
+        {
+          "column": "household_size",
+          "operator": "eq",
+          "value": 7
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "household_region_99_size_8_indicator",
+      "predicates": [
+        {
+          "column": "household_region_code",
+          "operator": "eq",
+          "value": "99"
+        },
+        {
+          "column": "household_size",
+          "operator": "ge",
+          "value": 8
         }
       ]
     },
@@ -2100,10 +4486,748 @@
   ],
   "parked_columns": [
     {
-      "name": "census_families_type_<integer>",
+      "entity": "household",
+      "name": "census_families_type_1",
       "kind": "household_multiplicity_measure",
+      "family_type_code": 1,
       "activation_status": "requires_census_family_nucleus_standard",
-      "reason": "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities."
+      "reason": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+      "reference_bindings": [
+        {
+          "reference_name": "stats_nz_census_families_by_type_region__r01__t1",
+          "filter": "region_01_indicator",
+          "region_predicate": {
+            "column": "household_region_code",
+            "operator": "eq",
+            "value": "01"
+          },
+          "type_predicate": {
+            "classification": "family_type",
+            "operator": "eq",
+            "value": 1
+          }
+        },
+        {
+          "reference_name": "stats_nz_census_families_by_type_region__r02__t1",
+          "filter": "region_02_indicator",
+          "region_predicate": {
+            "column": "household_region_code",
+            "operator": "eq",
+            "value": "02"
+          },
+          "type_predicate": {
+            "classification": "family_type",
+            "operator": "eq",
+            "value": 1
+          }
+        },
+        {
+          "reference_name": "stats_nz_census_families_by_type_region__r03__t1",
+          "filter": "region_03_indicator",
+          "region_predicate": {
+            "column": "household_region_code",
+            "operator": "eq",
+            "value": "03"
+          },
+          "type_predicate": {
+            "classification": "family_type",
+            "operator": "eq",
+            "value": 1
+          }
+        },
+        {
+          "reference_name": "stats_nz_census_families_by_type_region__r04__t1",
+          "filter": "region_04_indicator",
+          "region_predicate": {
+            "column": "household_region_code",
+            "operator": "eq",
+            "value": "04"
+          },
+          "type_predicate": {
+            "classification": "family_type",
+            "operator": "eq",
+            "value": 1
+          }
+        },
+        {
+          "reference_name": "stats_nz_census_families_by_type_region__r05__t1",
+          "filter": "region_05_indicator",
+          "region_predicate": {
+            "column": "household_region_code",
+            "operator": "eq",
+            "value": "05"
+          },
+          "type_predicate": {
+            "classification": "family_type",
+            "operator": "eq",
+            "value": 1
+          }
+        },
+        {
+          "reference_name": "stats_nz_census_families_by_type_region__r06__t1",
+          "filter": "region_06_indicator",
+          "region_predicate": {
+            "column": "household_region_code",
+            "operator": "eq",
+            "value": "06"
+          },
+          "type_predicate": {
+            "classification": "family_type",
+            "operator": "eq",
+            "value": 1
+          }
+        },
+        {
+          "reference_name": "stats_nz_census_families_by_type_region__r07__t1",
+          "filter": "region_07_indicator",
+          "region_predicate": {
+            "column": "household_region_code",
+            "operator": "eq",
+            "value": "07"
+          },
+          "type_predicate": {
+            "classification": "family_type",
+            "operator": "eq",
+            "value": 1
+          }
+        },
+        {
+          "reference_name": "stats_nz_census_families_by_type_region__r08__t1",
+          "filter": "region_08_indicator",
+          "region_predicate": {
+            "column": "household_region_code",
+            "operator": "eq",
+            "value": "08"
+          },
+          "type_predicate": {
+            "classification": "family_type",
+            "operator": "eq",
+            "value": 1
+          }
+        },
+        {
+          "reference_name": "stats_nz_census_families_by_type_region__r09__t1",
+          "filter": "region_09_indicator",
+          "region_predicate": {
+            "column": "household_region_code",
+            "operator": "eq",
+            "value": "09"
+          },
+          "type_predicate": {
+            "classification": "family_type",
+            "operator": "eq",
+            "value": 1
+          }
+        },
+        {
+          "reference_name": "stats_nz_census_families_by_type_region__r12__t1",
+          "filter": "region_12_indicator",
+          "region_predicate": {
+            "column": "household_region_code",
+            "operator": "eq",
+            "value": "12"
+          },
+          "type_predicate": {
+            "classification": "family_type",
+            "operator": "eq",
+            "value": 1
+          }
+        },
+        {
+          "reference_name": "stats_nz_census_families_by_type_region__r13__t1",
+          "filter": "region_13_indicator",
+          "region_predicate": {
+            "column": "household_region_code",
+            "operator": "eq",
+            "value": "13"
+          },
+          "type_predicate": {
+            "classification": "family_type",
+            "operator": "eq",
+            "value": 1
+          }
+        },
+        {
+          "reference_name": "stats_nz_census_families_by_type_region__r14__t1",
+          "filter": "region_14_indicator",
+          "region_predicate": {
+            "column": "household_region_code",
+            "operator": "eq",
+            "value": "14"
+          },
+          "type_predicate": {
+            "classification": "family_type",
+            "operator": "eq",
+            "value": 1
+          }
+        },
+        {
+          "reference_name": "stats_nz_census_families_by_type_region__r15__t1",
+          "filter": "region_15_indicator",
+          "region_predicate": {
+            "column": "household_region_code",
+            "operator": "eq",
+            "value": "15"
+          },
+          "type_predicate": {
+            "classification": "family_type",
+            "operator": "eq",
+            "value": 1
+          }
+        },
+        {
+          "reference_name": "stats_nz_census_families_by_type_region__r16__t1",
+          "filter": "region_16_indicator",
+          "region_predicate": {
+            "column": "household_region_code",
+            "operator": "eq",
+            "value": "16"
+          },
+          "type_predicate": {
+            "classification": "family_type",
+            "operator": "eq",
+            "value": 1
+          }
+        },
+        {
+          "reference_name": "stats_nz_census_families_by_type_region__r17__t1",
+          "filter": "region_17_indicator",
+          "region_predicate": {
+            "column": "household_region_code",
+            "operator": "eq",
+            "value": "17"
+          },
+          "type_predicate": {
+            "classification": "family_type",
+            "operator": "eq",
+            "value": 1
+          }
+        },
+        {
+          "reference_name": "stats_nz_census_families_by_type_region__r18__t1",
+          "filter": "region_18_indicator",
+          "region_predicate": {
+            "column": "household_region_code",
+            "operator": "eq",
+            "value": "18"
+          },
+          "type_predicate": {
+            "classification": "family_type",
+            "operator": "eq",
+            "value": 1
+          }
+        },
+        {
+          "reference_name": "stats_nz_census_families_by_type_region__r99__t1",
+          "filter": "region_99_indicator",
+          "region_predicate": {
+            "column": "household_region_code",
+            "operator": "eq",
+            "value": "99"
+          },
+          "type_predicate": {
+            "classification": "family_type",
+            "operator": "eq",
+            "value": 1
+          }
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "census_families_type_2",
+      "kind": "household_multiplicity_measure",
+      "family_type_code": 2,
+      "activation_status": "requires_census_family_nucleus_standard",
+      "reason": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+      "reference_bindings": [
+        {
+          "reference_name": "stats_nz_census_families_by_type_region__r01__t2",
+          "filter": "region_01_indicator",
+          "region_predicate": {
+            "column": "household_region_code",
+            "operator": "eq",
+            "value": "01"
+          },
+          "type_predicate": {
+            "classification": "family_type",
+            "operator": "eq",
+            "value": 2
+          }
+        },
+        {
+          "reference_name": "stats_nz_census_families_by_type_region__r02__t2",
+          "filter": "region_02_indicator",
+          "region_predicate": {
+            "column": "household_region_code",
+            "operator": "eq",
+            "value": "02"
+          },
+          "type_predicate": {
+            "classification": "family_type",
+            "operator": "eq",
+            "value": 2
+          }
+        },
+        {
+          "reference_name": "stats_nz_census_families_by_type_region__r03__t2",
+          "filter": "region_03_indicator",
+          "region_predicate": {
+            "column": "household_region_code",
+            "operator": "eq",
+            "value": "03"
+          },
+          "type_predicate": {
+            "classification": "family_type",
+            "operator": "eq",
+            "value": 2
+          }
+        },
+        {
+          "reference_name": "stats_nz_census_families_by_type_region__r04__t2",
+          "filter": "region_04_indicator",
+          "region_predicate": {
+            "column": "household_region_code",
+            "operator": "eq",
+            "value": "04"
+          },
+          "type_predicate": {
+            "classification": "family_type",
+            "operator": "eq",
+            "value": 2
+          }
+        },
+        {
+          "reference_name": "stats_nz_census_families_by_type_region__r05__t2",
+          "filter": "region_05_indicator",
+          "region_predicate": {
+            "column": "household_region_code",
+            "operator": "eq",
+            "value": "05"
+          },
+          "type_predicate": {
+            "classification": "family_type",
+            "operator": "eq",
+            "value": 2
+          }
+        },
+        {
+          "reference_name": "stats_nz_census_families_by_type_region__r06__t2",
+          "filter": "region_06_indicator",
+          "region_predicate": {
+            "column": "household_region_code",
+            "operator": "eq",
+            "value": "06"
+          },
+          "type_predicate": {
+            "classification": "family_type",
+            "operator": "eq",
+            "value": 2
+          }
+        },
+        {
+          "reference_name": "stats_nz_census_families_by_type_region__r07__t2",
+          "filter": "region_07_indicator",
+          "region_predicate": {
+            "column": "household_region_code",
+            "operator": "eq",
+            "value": "07"
+          },
+          "type_predicate": {
+            "classification": "family_type",
+            "operator": "eq",
+            "value": 2
+          }
+        },
+        {
+          "reference_name": "stats_nz_census_families_by_type_region__r08__t2",
+          "filter": "region_08_indicator",
+          "region_predicate": {
+            "column": "household_region_code",
+            "operator": "eq",
+            "value": "08"
+          },
+          "type_predicate": {
+            "classification": "family_type",
+            "operator": "eq",
+            "value": 2
+          }
+        },
+        {
+          "reference_name": "stats_nz_census_families_by_type_region__r09__t2",
+          "filter": "region_09_indicator",
+          "region_predicate": {
+            "column": "household_region_code",
+            "operator": "eq",
+            "value": "09"
+          },
+          "type_predicate": {
+            "classification": "family_type",
+            "operator": "eq",
+            "value": 2
+          }
+        },
+        {
+          "reference_name": "stats_nz_census_families_by_type_region__r12__t2",
+          "filter": "region_12_indicator",
+          "region_predicate": {
+            "column": "household_region_code",
+            "operator": "eq",
+            "value": "12"
+          },
+          "type_predicate": {
+            "classification": "family_type",
+            "operator": "eq",
+            "value": 2
+          }
+        },
+        {
+          "reference_name": "stats_nz_census_families_by_type_region__r13__t2",
+          "filter": "region_13_indicator",
+          "region_predicate": {
+            "column": "household_region_code",
+            "operator": "eq",
+            "value": "13"
+          },
+          "type_predicate": {
+            "classification": "family_type",
+            "operator": "eq",
+            "value": 2
+          }
+        },
+        {
+          "reference_name": "stats_nz_census_families_by_type_region__r14__t2",
+          "filter": "region_14_indicator",
+          "region_predicate": {
+            "column": "household_region_code",
+            "operator": "eq",
+            "value": "14"
+          },
+          "type_predicate": {
+            "classification": "family_type",
+            "operator": "eq",
+            "value": 2
+          }
+        },
+        {
+          "reference_name": "stats_nz_census_families_by_type_region__r15__t2",
+          "filter": "region_15_indicator",
+          "region_predicate": {
+            "column": "household_region_code",
+            "operator": "eq",
+            "value": "15"
+          },
+          "type_predicate": {
+            "classification": "family_type",
+            "operator": "eq",
+            "value": 2
+          }
+        },
+        {
+          "reference_name": "stats_nz_census_families_by_type_region__r16__t2",
+          "filter": "region_16_indicator",
+          "region_predicate": {
+            "column": "household_region_code",
+            "operator": "eq",
+            "value": "16"
+          },
+          "type_predicate": {
+            "classification": "family_type",
+            "operator": "eq",
+            "value": 2
+          }
+        },
+        {
+          "reference_name": "stats_nz_census_families_by_type_region__r17__t2",
+          "filter": "region_17_indicator",
+          "region_predicate": {
+            "column": "household_region_code",
+            "operator": "eq",
+            "value": "17"
+          },
+          "type_predicate": {
+            "classification": "family_type",
+            "operator": "eq",
+            "value": 2
+          }
+        },
+        {
+          "reference_name": "stats_nz_census_families_by_type_region__r18__t2",
+          "filter": "region_18_indicator",
+          "region_predicate": {
+            "column": "household_region_code",
+            "operator": "eq",
+            "value": "18"
+          },
+          "type_predicate": {
+            "classification": "family_type",
+            "operator": "eq",
+            "value": 2
+          }
+        },
+        {
+          "reference_name": "stats_nz_census_families_by_type_region__r99__t2",
+          "filter": "region_99_indicator",
+          "region_predicate": {
+            "column": "household_region_code",
+            "operator": "eq",
+            "value": "99"
+          },
+          "type_predicate": {
+            "classification": "family_type",
+            "operator": "eq",
+            "value": 2
+          }
+        }
+      ]
+    },
+    {
+      "entity": "household",
+      "name": "census_families_type_3",
+      "kind": "household_multiplicity_measure",
+      "family_type_code": 3,
+      "activation_status": "requires_census_family_nucleus_standard",
+      "reason": "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+      "reference_bindings": [
+        {
+          "reference_name": "stats_nz_census_families_by_type_region__r01__t3",
+          "filter": "region_01_indicator",
+          "region_predicate": {
+            "column": "household_region_code",
+            "operator": "eq",
+            "value": "01"
+          },
+          "type_predicate": {
+            "classification": "family_type",
+            "operator": "eq",
+            "value": 3
+          }
+        },
+        {
+          "reference_name": "stats_nz_census_families_by_type_region__r02__t3",
+          "filter": "region_02_indicator",
+          "region_predicate": {
+            "column": "household_region_code",
+            "operator": "eq",
+            "value": "02"
+          },
+          "type_predicate": {
+            "classification": "family_type",
+            "operator": "eq",
+            "value": 3
+          }
+        },
+        {
+          "reference_name": "stats_nz_census_families_by_type_region__r03__t3",
+          "filter": "region_03_indicator",
+          "region_predicate": {
+            "column": "household_region_code",
+            "operator": "eq",
+            "value": "03"
+          },
+          "type_predicate": {
+            "classification": "family_type",
+            "operator": "eq",
+            "value": 3
+          }
+        },
+        {
+          "reference_name": "stats_nz_census_families_by_type_region__r04__t3",
+          "filter": "region_04_indicator",
+          "region_predicate": {
+            "column": "household_region_code",
+            "operator": "eq",
+            "value": "04"
+          },
+          "type_predicate": {
+            "classification": "family_type",
+            "operator": "eq",
+            "value": 3
+          }
+        },
+        {
+          "reference_name": "stats_nz_census_families_by_type_region__r05__t3",
+          "filter": "region_05_indicator",
+          "region_predicate": {
+            "column": "household_region_code",
+            "operator": "eq",
+            "value": "05"
+          },
+          "type_predicate": {
+            "classification": "family_type",
+            "operator": "eq",
+            "value": 3
+          }
+        },
+        {
+          "reference_name": "stats_nz_census_families_by_type_region__r06__t3",
+          "filter": "region_06_indicator",
+          "region_predicate": {
+            "column": "household_region_code",
+            "operator": "eq",
+            "value": "06"
+          },
+          "type_predicate": {
+            "classification": "family_type",
+            "operator": "eq",
+            "value": 3
+          }
+        },
+        {
+          "reference_name": "stats_nz_census_families_by_type_region__r07__t3",
+          "filter": "region_07_indicator",
+          "region_predicate": {
+            "column": "household_region_code",
+            "operator": "eq",
+            "value": "07"
+          },
+          "type_predicate": {
+            "classification": "family_type",
+            "operator": "eq",
+            "value": 3
+          }
+        },
+        {
+          "reference_name": "stats_nz_census_families_by_type_region__r08__t3",
+          "filter": "region_08_indicator",
+          "region_predicate": {
+            "column": "household_region_code",
+            "operator": "eq",
+            "value": "08"
+          },
+          "type_predicate": {
+            "classification": "family_type",
+            "operator": "eq",
+            "value": 3
+          }
+        },
+        {
+          "reference_name": "stats_nz_census_families_by_type_region__r09__t3",
+          "filter": "region_09_indicator",
+          "region_predicate": {
+            "column": "household_region_code",
+            "operator": "eq",
+            "value": "09"
+          },
+          "type_predicate": {
+            "classification": "family_type",
+            "operator": "eq",
+            "value": 3
+          }
+        },
+        {
+          "reference_name": "stats_nz_census_families_by_type_region__r12__t3",
+          "filter": "region_12_indicator",
+          "region_predicate": {
+            "column": "household_region_code",
+            "operator": "eq",
+            "value": "12"
+          },
+          "type_predicate": {
+            "classification": "family_type",
+            "operator": "eq",
+            "value": 3
+          }
+        },
+        {
+          "reference_name": "stats_nz_census_families_by_type_region__r13__t3",
+          "filter": "region_13_indicator",
+          "region_predicate": {
+            "column": "household_region_code",
+            "operator": "eq",
+            "value": "13"
+          },
+          "type_predicate": {
+            "classification": "family_type",
+            "operator": "eq",
+            "value": 3
+          }
+        },
+        {
+          "reference_name": "stats_nz_census_families_by_type_region__r14__t3",
+          "filter": "region_14_indicator",
+          "region_predicate": {
+            "column": "household_region_code",
+            "operator": "eq",
+            "value": "14"
+          },
+          "type_predicate": {
+            "classification": "family_type",
+            "operator": "eq",
+            "value": 3
+          }
+        },
+        {
+          "reference_name": "stats_nz_census_families_by_type_region__r15__t3",
+          "filter": "region_15_indicator",
+          "region_predicate": {
+            "column": "household_region_code",
+            "operator": "eq",
+            "value": "15"
+          },
+          "type_predicate": {
+            "classification": "family_type",
+            "operator": "eq",
+            "value": 3
+          }
+        },
+        {
+          "reference_name": "stats_nz_census_families_by_type_region__r16__t3",
+          "filter": "region_16_indicator",
+          "region_predicate": {
+            "column": "household_region_code",
+            "operator": "eq",
+            "value": "16"
+          },
+          "type_predicate": {
+            "classification": "family_type",
+            "operator": "eq",
+            "value": 3
+          }
+        },
+        {
+          "reference_name": "stats_nz_census_families_by_type_region__r17__t3",
+          "filter": "region_17_indicator",
+          "region_predicate": {
+            "column": "household_region_code",
+            "operator": "eq",
+            "value": "17"
+          },
+          "type_predicate": {
+            "classification": "family_type",
+            "operator": "eq",
+            "value": 3
+          }
+        },
+        {
+          "reference_name": "stats_nz_census_families_by_type_region__r18__t3",
+          "filter": "region_18_indicator",
+          "region_predicate": {
+            "column": "household_region_code",
+            "operator": "eq",
+            "value": "18"
+          },
+          "type_predicate": {
+            "classification": "family_type",
+            "operator": "eq",
+            "value": 3
+          }
+        },
+        {
+          "reference_name": "stats_nz_census_families_by_type_region__r99__t3",
+          "filter": "region_99_indicator",
+          "region_predicate": {
+            "column": "household_region_code",
+            "operator": "eq",
+            "value": "99"
+          },
+          "type_predicate": {
+            "classification": "family_type",
+            "operator": "eq",
+            "value": 3
+          }
+        }
+      ]
     },
     {
       "name": "receives_<program>",
@@ -2125,6 +5249,6 @@
   "region_99_support": {
     "calibration": "national-growth proxy",
     "geography": "99 remains separate from every region and from TA 999",
-    "support": "No ERP series for region 99 and no TA 999 ERP; geography-stage assignment support remains an explicit G8-w prerequisite."
+    "support": "G8-m2 supplies region-99 geography support (#1393, main 4e31e42e). No ERP series exists for region 99 or TA 999. G8-r3b still supplies Census-family multiplicities."
   }
 }

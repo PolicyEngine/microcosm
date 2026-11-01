@@ -8,6 +8,7 @@ are current employees in their first two years and report usual pay.
 from __future__ import annotations
 
 import json
+import math
 from importlib.resources import files
 
 import numpy as np
@@ -483,7 +484,6 @@ def test_gate_passes_the_stages_own_receipt() -> None:
         ("pay_concept_ratio", 3.58, "pay_concept_ratio 3.5800 lies outside"),
         # Spells add part-year earners; they cannot remove a current one.
         ("annual_over_current_earners", 0.98, "annual_over_current_earners 0.9800"),
-        ("annual_over_current_earners", "<10", "not a measured ratio"),
         ("other_spells_pay_observed_share", 0.5, "only 0.5000 of the pay"),
         ("other_spells_pay_observed_share", None, "observed_share is None"),
     ],
@@ -500,16 +500,58 @@ def test_gate_refuses_another_stages_receipt() -> None:
     assert "does not match" in gate.failures[0]
 
 
-def test_pay_concept_ratio_refuses_too_few_reporters() -> None:
+def test_pay_concept_ratio_measures_few_reporters_and_refuses_none() -> None:
+    """Fewer than ten reporting households only flags (María's ruling of
+    2026-10-26): the ratio is measured, and the receipt prints it "<10"."""
     person, adult, job, interview, _ = _population({})
-    job = job.iloc[:5]
-    with pytest.raises(ValueError, match="fewer than ten households"):
+    ratio, support = fai.pay_concept_ratio(
+        person["person_id"].to_numpy(),
+        np.ones(len(person)),
+        job.iloc[:5],
+        np.ones(len(person), dtype=bool),
+    )
+    assert 0 < support < 10 and math.isfinite(ratio)
+    with pytest.raises(ValueError, match="no household reports both"):
         fai.pay_concept_ratio(
             person["person_id"].to_numpy(),
             np.ones(len(person)),
-            job,
+            job.iloc[:0],
             np.ones(len(person), dtype=bool),
         )
+
+
+def _reporting_jobs(households: int, ratio: float) -> tuple:
+    """One current employee main job a household, at one DV-to-usual ratio."""
+    person_ids = np.arange(1, households + 1)
+    job = pd.DataFrame(
+        {
+            "person_id": person_ids,
+            "household_id": person_ids,
+            "jobtype": 1,
+            "etype": fai.ETYPE_EMPLOYEE_CODE,
+            "ugross": 500.0,
+            "ugrspay": 500.0 * ratio,
+        }
+    )
+    return person_ids, np.ones(households), job, np.ones(households, dtype=bool)
+
+
+@pytest.mark.parametrize("measured, used", [(1.5, 1.10), (0.5, 0.95), (1.02, 1.02)])
+def test_a_thin_pay_concept_ratio_is_held_to_its_bounds(measured, used) -> None:
+    """On fewer than ten households a ratio past the plausibility bounds is
+    noise: it is held to them, and the build goes on (Vahid's second review
+    of #1396). On ten or more it still refuses."""
+    ratio, support = fai.pay_concept_ratio(*_reporting_jobs(5, measured))
+    assert support == 5 and ratio == pytest.approx(used)
+    with pytest.raises(ValueError, match="lies outside"):
+        fai.pay_concept_ratio(*_reporting_jobs(10, 1.5))
+
+
+@pytest.mark.parametrize("key", ["pay_concept_ratio", "annual_over_current_earners"])
+def test_gate_flags_a_ratio_on_fewer_than_ten_households(key: str) -> None:
+    gate = _gate({**_leaver_evidence(), key: "<10"})
+    assert gate.passed, gate.failures
+    assert gate.details[f"{key}_measured"] is False
 
 
 def _stage(**overrides) -> SourceStageSpec:

@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "engine": {
+    "package": "policyengine-uk",
+    "version": "2.164.2"
+  },
+  "written_by": "tools/pin_uk_bonus_sacrifice_anchor.py",
+  "source": {
+    "resource": "obr_salary_sacrifice_costing_facts.json",
+    "record_set_id": "obr.salary_sacrifice_costing_2026_02.tax_base.fy2027",
+    "groupby_value_id": "bonus_sacrifice__above_2000"
+  },
+  "obr_base_above_threshold": 13000000000.0,
+  "threshold": 2000,
+  "data_year": 2024,
+  "base_year": 2027,
+  "earnings_growth": {
+    "parameter": "gov.economic_assumptions.yoy_growth.obr.average_earnings",
+    "years": [
+      2025,
+      2026,
+      2027
+    ],
+    "rates": [
+      0.0412,
+      0.0373,
+      0.0299
+    ],
+    "factor": 1.112329859124
+  },
+  "weight_growth": {
+    "parameter": "gov.economic_assumptions.yoy_growth.ons.population",
+    "years": [
+      2025,
+      2026,
+      2027
+    ],
+    "rates": [
+      0.0033,
+      0.002,
+      0.0013
+    ],
+    "factor": 1.0066134985800002
+  },
+  "upper_earnings_limit": {
+    "parameter": "gov.hmrc.national_insurance.class_1.thresholds.upper_earnings_limit",
+    "instant": "2024-04-30",
+    "weekly": 966.73,
+    "annual": 50269.96
+  }
+}

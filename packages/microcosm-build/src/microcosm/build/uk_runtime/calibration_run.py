@@ -99,6 +99,7 @@ UK_SPINE_GATE_SCOPE = (
     "uk_stage_was_wealth_support",
     "uk_stage_was_wealth_coherence",
     "uk_stage_was_lisa_support",
+    "uk_stage_was_lisa_anchor",
     "uk_stage_high_value_home_support_mass",
     "uk_stage_property_components",
     "uk_stage_nts_bus_travel_support",
@@ -110,6 +111,8 @@ UK_SPINE_GATE_SCOPE = (
     "uk_stage_lcfs_consumption_road_fuel_incidence",
     "uk_stage_lcfs_consumption_road_fuel_level",
     "uk_stage_lcfs_consumption_recomposed_totals",
+    "uk_stage_lcfs_consumption_excise_quantities",
+    "uk_stage_lcfs_consumption_gambling_participation",
     "uk_stage_lcfs_consumption_basis",
     "uk_stage_etb_vat_support",
     "uk_stage_etb_services_support",
@@ -133,6 +136,12 @@ UK_SPINE_GATE_SCOPE = (
     "uk_stage_student_loans_realization",
     "uk_stage_age_tail_targets",
     "uk_stage_frs_relationships_composition",
+    "uk_stage_regional_home_values_ranking",
+    "uk_stage_property_purchases_fit",
+    "uk_stage_uc_legacy_closure_take_up_contract",
+    "uk_stage_frs_person_draws_apprentices",
+    "uk_stage_isa_subscriptions_invariants",
+    "uk_stage_isa_subscriptions",
     # Weight-independent like the BRMA enum below, and its column exists from
     # frs_relationships onward (#791).
     "uk_ons_household_type_enum_domain",
@@ -613,6 +622,9 @@ def spine_provenance_from_sidecar(
         "rules_engine": dict(sidecar.get("rules_engine", {})),
         "source_vintages": dict(sidecar.get("source_vintages", {})),
         "stochastic_contract_sha256": sidecar.get("stochastic_contract_sha256"),
+        # Empty for a spine built before the marker; the release assemblers
+        # rederive it from the stages either way (microcosm#1095).
+        "spi_public_use_tape": dict(sidecar.get("spi_public_use_tape") or {}),
     }
 
 

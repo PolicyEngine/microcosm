@@ -78,6 +78,17 @@ compares it with the fingerprint recorded there for the feed the provenance
 names. A stock rebuilt on a new feed records that feed's fingerprint beside it;
 the test reports it.
 
+The constituency domestic energy resource (`uk/desnz_constituency_energy_facts.json`,
+microcosm#1095) is built from feed facts too: DESNZ's authority and LSOA / data
+zone consumption and meter counts. Its loader refuses a resource built on
+another feed than the pin, as the vendored resources' readers do, so rebuild
+it on every re-pin beside step 5, before anything compiles, with
+`tools/build_uk_desnz_constituency_energy_facts.py` on the new artifact and
+the committed atomic supports (`tools/build_uk_atomic_area_supports.py`
+rebuilds those byte for byte from its cached publisher files; pass it a
+scratch `--provenance-json` so the committed provenance is left alone). The
+build streams the feed and takes well under a minute.
+
 Verify the complete compiled target diff on both surfaces, including targets
 outside the intended policy area, and record the value moves in the changelog
 fragment. A national reference whose metadata moves (a fact key or a
@@ -255,3 +266,88 @@ surface was not recompiled for this entry. The twelve restamped OBR lines move t
 national register version with no value moved, so the uk-candidate-eval scoring register is
 re-frozen before the next national solve. The high-value home stock still names `735820c`: its
 TS054 tenure, OBR share and HPSSA facts are the same on `abf0921`, so it was not rebuilt.
+
+The `200bf6d` re-pin (microcosm#1359, PolicyEngine/chronicle#381 via #384, on top of `abf0921`)
+brought the UK excise facts: HMRC's Alcohol Bulletin clearances by product, ABV band, duty point
+and relief, the Tobacco Bulletin clearances, HMRC's betting and gaming duty receipts and Machine
+Games Duty liabilities and both bulletins' duty receipts, the Gambling Commission's industry
+statistics for Great Britain (gross gambling yield by sector, activity and betting event, turnover,
+gaming machines and lottery sales), and the OBR March 2026 receipts lines for alcohol, tobacco and
+betting and gaming duties beside its alcohol and tobacco clearances. It also replaced the June 2026
+Consumer Trends edition with September's (chronicle `a8c4a6c4`), whose revisions move every
+Consumer Trends row the feed carries (1,502,291 rows, up 2,990; the schema digest is unchanged).
+
+A new vendored resource, `excise_facts.json`, carries the 98 FY2024-25 rows the LCFS excise step
+reads. The other vendored resources carry the same rows under the new feed identity, except
+`ons_household_expenditure_facts.json`, whose 93 rows take the September values. Compiled values
+move only for the three Consumer Trends rows the contract reads:
+
+- the bound calendar-2024 household road fuel (07.2.2), from GBP 37.025bn to GBP 35.460bn
+  (−4.2%);
+- the measured calendar-2025 electricity (04.5.1), from GBP 26.522bn to GBP 28.840bn;
+- the measured calendar-2025 gas (04.5.2), from GBP 15.339bn to GBP 18.958bn.
+
+The national surface also gains the five OBR excise rows, measured at FY2024-25 and held out of
+the objective; the national receipt lists them as ledger-only.
+
+On the local surface, the reference files and the compile-parity receipt are byte-identical, and
+the membership moves only its feed label.
+
+Both surfaces were regenerated from cuts of the pinned artifact:
+
+- national generator and parity: the constituency, MSOA and county rows dropped (931,024 rows);
+- local generator and parity: the constituency and local-authority rows, plus the
+  statistical-scope rows other than small areas (884,729 rows). The latter carry the Scottish BRMA
+  rents microcosm#1262 binds; a cut without them fails the local generator on those rows.
+
+The regeneration diffs above are the check on both cuts.
+
+The national register version moves with the five new references, so the uk-candidate-eval scoring
+register is re-frozen before the next national solve. The high-value home stock still names
+`735820c`: its inputs are the same on `200bf6d` (the feed-gated fingerprint check passes), so it
+was not rebuilt.
+
+The `272c987` re-pin (microcosm#1359, PolicyEngine/chronicle#391, on top of `200bf6d`) brought the
+Gambling Commission's Gambling Survey for Great Britain 2025 tables: the share of adults who gambled
+in the past four weeks and the past twelve months by sex, age band, country and English region, by
+activity and channel, and the number of activities, with each table's unweighted bases (1,024
+facts; 1,503,315 rows). The merge commit's tree is the pull request head's (`6269a88`), merged onto
+an unmoved base, so the artifact was built from that head's bundle and carries the merge commit's
+digests.
+
+A new vendored resource, `gambling_participation_facts.json`, carries the 426 Great Britain
+participation rows the LCFS `top_up_gambling_participation` step reads. The other vendored resources
+carry the same rows under the new feed identity. No compiled value moves on either surface: the
+national and local reference files are byte-identical, the membership moves only its feed label,
+and both compile-parity receipts are unchanged. Both surfaces were regenerated from the national
+and local cuts, as for `200bf6d`. No reference moves, so the national register version does not
+either. The high-value home stock still names `735820c`: the addition touches none of its inputs.
+
+The `53815b2` re-pin (microcosm#1418 PR C, the merge of PolicyEngine/chronicle#394, on top of the
+`0b721a4` merge of PolicyEngine/chronicle#392) brought SPI 2023-24 Table 3.10 and the OBR's October
+2026 EFO beside March's, with #392's HMRC ISA statistics (1,511,063 rows; the schema digest is
+unchanged). The merge commit's tree is the pull request head's (`2ba21f3`), merged onto an unmoved
+base, so the artifact was built from that head's bundle and carries the merge commit's identity.
+
+A new vendored resource, `obr_savings_income_growth_facts.json`, carries the eight October 2026 EFO
+Table 4.5 savings income growth rates the SPI Table 3.7 interest and other-income rows now grow by.
+The other vendored resources, and the constituency energy resource rebuilt beside them, carry the
+same rows under the new feed identity. On the national surface only the intended values move: the
+13 interest rows (up 13.4%), 13 other-income rows and 16 Table 3.10 rows, whose zero band and bands
+from £10,000 are signed out row by row. October's edition starts the OBR lines at FY2025-26, so the
+targets that window FY2024-25 and FY2025-26 into calendar 2025 still resolve to March's facts;
+`obr.winter_fuel_allowance`, which reads FY2025-26 alone, matched both editions and is pinned to
+March's expenditure table (`source_table`). On the local surface the statuses and the reference
+file are unchanged, and the membership moves its feed label and the DESNZ gas cells, which return
+to the Energy Trends level in the same PR.
+
+The national register version moves with the new references, so the uk-candidate-eval scoring
+register is re-frozen before the next national solve. The high-value home stock still names
+`735820c`: its inputs are the same on `53815b2` (the feed-gated fingerprint check passes), so it
+was not rebuilt.
+
+The ISA subscriptions (microcosm#1415, PolicyEngine/microcosm#1421) then vendored a new resource
+from the same `53815b2` artifact: `hmrc_isa_statistics_facts.json`, the 1,074 rows of #392's ISA
+statistics the ISA subscriptions stage and the Lifetime ISA anchor read. None is a calibration
+target, so no reference moves for it. That pull request first pinned #392's head (`e56af9a`) and
+then its merge (`0b721a4`), and took `53815b2` when PR C merged first.

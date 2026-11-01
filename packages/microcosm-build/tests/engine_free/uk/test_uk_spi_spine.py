@@ -188,11 +188,9 @@ def test_spine_leaves_align_by_raw_person_id_not_position(tmp_path: Path) -> Non
     person = result.table("person")
 
     assert person["person_id"].tolist() == [2001, 1001]
-    assert person["hmrc_spi_pay"].tolist() == pytest.approx(
-        [5.0 * 365.25 / 7.0, 4.0 * 365.25 / 7.0]
-    )
+    assert person["hmrc_spi_pay"].tolist() == pytest.approx([5.0 * 52.0, 4.0 * 52.0])
     assert person["hmrc_spi_incapacity_benefit_income"].tolist() == pytest.approx(
-        [2.0 * 365.25 / 7.0, 0.0]
+        [2.0 * 52.0, 0.0]
     )
     # Employer contributions come from an ASHE rate draw on pay (microcosm#1069
     # c9): person 2001 has no employer scheme; person 1001's public-sector
@@ -231,9 +229,7 @@ def test_spine_leaves_sampled_rung_restricts_to_surviving_people(
     person = result.table("person")
 
     assert person["person_id"].tolist() == [2001, 1001]
-    assert person["hmrc_spi_pay"].tolist() == pytest.approx(
-        [5.0 * 365.25 / 7.0, 4.0 * 365.25 / 7.0]
-    )
+    assert person["hmrc_spi_pay"].tolist() == pytest.approx([5.0 * 52.0, 4.0 * 52.0])
 
 
 def _support_stage() -> SourceStageSpec:

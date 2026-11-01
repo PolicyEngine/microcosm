@@ -8,7 +8,8 @@ weight is stored, and the person and benefit-unit weights are formulas of it).
 
 The UK release is stamped with the survey year and its weights are solved at
 the calibration year. Written as solved, they read high at the calibration
-year by the growth between the two: 0.72% from 2024 to 2025. uk-data#538 is the
+year by the growth between the two: 0.3% from 2024 to 2025 on the vendored
+pins (``dataset_projection`` below). uk-data#538 is the
 incumbent's version of the same mechanism, with the opposite sign.
 
 So the release writes the solved weights divided by the engine's own factor,

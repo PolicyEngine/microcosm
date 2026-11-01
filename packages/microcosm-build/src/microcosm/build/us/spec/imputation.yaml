@@ -206,11 +206,11 @@ chaining:
     reason: Declared production memory boundary preserving the canonical five-batch late PUF itemization
       partition.
   - family: late/person/puf_tax_itemization__batch_3
-    after_target: farm_operations_income_would_be_qualified
+    after_target: partnership_self_employment_net_earnings
     reason: Declared production memory boundary preserving the canonical five-batch late PUF itemization
       partition.
   - family: late/person/puf_tax_itemization__batch_4
-    after_target: qualified_reit_and_ptp_income
+    after_target: business_is_sstb
     reason: Declared production memory boundary preserving the canonical five-batch late PUF itemization
       partition.
   memory_policy: release_after_draw
@@ -475,6 +475,18 @@ transfer_execution:
             note: 'residual = SOCA all-route CGD minus Pub 1304 Table 1.4 direct-1040 CGD; share = residual
               / (LT net gains minus the direct route, which is not on Schedule D). CGD is entirely long-term
               (s. 852(b)(3): capital gain dividends).'
+    passive_partnership_s_corp:
+      activation:
+        all_targets:
+        - passive_partnership_s_corp_income
+      contract:
+        subset: passive_partnership_s_corp_income
+        line_32:
+        - partnership_income
+        - s_corp_income
+        tax_unit_link: person_tax_unit_id
+        rule: zero_subset_where_person_or_tax_unit_line_32_is_zero
+        mutable_rows: newly_imputed_subset_cells_only
     self_employment_components:
       activation:
         all_targets: []
@@ -1659,7 +1671,14 @@ families:
     dtype: float
     period: year
     requires_concepts: []
-    output_coverage_scope: whole_pool
+    output_coverage_scope: puf_clone
+  - name: passive_partnership_s_corp_income
+    entity: person
+    value_kind: amount
+    dtype: float
+    period: year
+    requires_concepts: []
+    output_coverage_scope: puf_clone
   - name: partnership_self_employment_net_earnings
     entity: person
     value_kind: amount
@@ -2123,24 +2142,24 @@ families:
     period: year
     requires_concepts: []
     output_coverage_scope: whole_pool
-  - name: partnership_self_employment_net_earnings
+  - name: s_corp_income
     entity: person
     value_kind: amount
     dtype: float
     period: year
     requires_concepts: []
     output_coverage_scope: whole_pool
-  - name: estate_income_would_be_qualified
+  - name: passive_partnership_s_corp_income
     entity: person
-    value_kind: flag
-    dtype: bool
+    value_kind: amount
+    dtype: float
     period: year
     requires_concepts: []
     output_coverage_scope: whole_pool
-  - name: farm_operations_income_would_be_qualified
+  - name: partnership_self_employment_net_earnings
     entity: person
-    value_kind: flag
-    dtype: bool
+    value_kind: amount
+    dtype: float
     period: year
     requires_concepts: []
     output_coverage_scope: whole_pool
@@ -2168,6 +2187,20 @@ families:
   max_targets_per_fit: 8
   execution_contract: acs_transfer_default
   targets:
+  - name: estate_income_would_be_qualified
+    entity: person
+    value_kind: flag
+    dtype: bool
+    period: year
+    requires_concepts: []
+    output_coverage_scope: whole_pool
+  - name: farm_operations_income_would_be_qualified
+    entity: person
+    value_kind: flag
+    dtype: bool
+    period: year
+    requires_concepts: []
+    output_coverage_scope: whole_pool
   - name: farm_rent_income_would_be_qualified
     entity: person
     value_kind: flag
@@ -2210,20 +2243,6 @@ families:
     period: year
     requires_concepts: []
     output_coverage_scope: whole_pool
-  - name: qualified_bdc_income
-    entity: person
-    value_kind: amount
-    dtype: float
-    period: year
-    requires_concepts: []
-    output_coverage_scope: whole_pool
-  - name: qualified_reit_and_ptp_income
-    entity: person
-    value_kind: amount
-    dtype: float
-    period: year
-    requires_concepts: []
-    output_coverage_scope: whole_pool
 - id: late/person/puf_tax_itemization__batch_5
   stage: late_producer_dag
   entities:
@@ -2248,6 +2267,20 @@ families:
   max_targets_per_fit: 8
   execution_contract: acs_transfer_default
   targets:
+  - name: qualified_bdc_income
+    entity: person
+    value_kind: amount
+    dtype: float
+    period: year
+    requires_concepts: []
+    output_coverage_scope: whole_pool
+  - name: qualified_reit_and_ptp_income
+    entity: person
+    value_kind: amount
+    dtype: float
+    period: year
+    requires_concepts: []
+    output_coverage_scope: whole_pool
   - name: sstb_self_employment_income_before_lsr
     entity: person
     value_kind: amount
@@ -3533,6 +3566,16 @@ producer_graph:
       tolerated_absence_receipts:
       - optional_input:primary_puf_qrf:person_output_allocation_basis:partnership_self_employment_net_earnings
     - alternatives:
+      - - column: passive_partnership_s_corp_income
+          entity: person
+          value_kind: finite_numeric
+      column: '@effective:person_output_allocation_basis:passive_partnership_s_corp_income'
+      entity: person
+      producing_stage: post_clone_input_surface
+      required_scope: whole_pool
+      tolerated_absence_receipts:
+      - optional_input:primary_puf_qrf:person_output_allocation_basis:passive_partnership_s_corp_income
+    - alternatives:
       - - column: qualified_bdc_income
           entity: person
           value_kind: finite_numeric
@@ -4408,7 +4451,7 @@ producer_graph:
       resolution: static_exact
       binding:
         resource_kind: primary_puf_execution_config
-        schema_version: 5
+        schema_version: 6
         qrf:
           invocation_mode:
             predictors: canonical_default
@@ -4416,6 +4459,18 @@ producer_graph:
             tax_unit_outputs: canonical_default
           tail_bound_quantiles:
             non_sch_d_capital_gains: 0.999
+          recipient_share_bound:
+            rule: recipient_share_slice_mass
+            schema_version: 1
+            scope: every_amount_output_of_the_invocation
+            excluded_output_classes:
+            - boolean_person_outputs
+            - discrete_tax_unit_outputs
+            recipient_share: household_design_weight_over_puf_recipient_total
+            cap: top_slice_positive_mass_per_slice_weight
+            floor: bottom_slice_negative_mass_per_slice_weight
+            snapped_outputs: bounded_on_snap_grid_values_cap_lowered_onto_positive_grid
+            seam: raw_tax_unit_draws_after_tail_bound_quantiles
           worker_execution:
             surface: execution_profile
             resolve_as: worker_execution
@@ -4430,19 +4485,6 @@ producer_graph:
         doctrines:
           require_complete_recipient_predictors: true
           absent_cells: preserve_nulls
-          whole_pool_output_universes:
-            person.s_corp_income:
-              rule_id: puf_tax_detail_s_corp_income_universe_zero_v1
-              schema_version: 1
-              entity: person
-              column: s_corp_income
-              coverage_scope: whole_pool
-              materialized_value: 0.0
-              source_semantics: puf_combined_partnership_s_corp_carried_by_partnership_income
-              donor_precondition: finite_exact_zero
-              puf_clone_precondition: finite_exact_zero
-              native_precondition: all_null
-              assignment: explicit_array_assignment
         capital_gains_tail:
           enabled: true
           spec:
@@ -19217,28 +19259,10 @@ producer_graph:
       required_scope: puf_clone
       tolerated_absence_receipts: []
     - alternatives:
-      - - column: estate_income_would_be_qualified
-          entity: person
-          value_kind: non_null
-      column: estate_income_would_be_qualified
-      entity: person
-      producing_stage: primary_puf_qrf
-      required_scope: puf_clone
-      tolerated_absence_receipts: []
-    - alternatives:
       - - column: farm_income
           entity: person
           value_kind: finite_numeric
       column: farm_income
-      entity: person
-      producing_stage: primary_puf_qrf
-      required_scope: puf_clone
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: farm_operations_income_would_be_qualified
-          entity: person
-          value_kind: non_null
-      column: farm_operations_income_would_be_qualified
       entity: person
       producing_stage: primary_puf_qrf
       required_scope: puf_clone
@@ -19275,6 +19299,15 @@ producer_graph:
           entity: person
           value_kind: finite_numeric
       column: partnership_self_employment_net_earnings
+      entity: person
+      producing_stage: primary_puf_qrf
+      required_scope: puf_clone
+      tolerated_absence_receipts: []
+    - alternatives:
+      - - column: passive_partnership_s_corp_income
+          entity: person
+          value_kind: finite_numeric
+      column: passive_partnership_s_corp_income
       entity: person
       producing_stage: primary_puf_qrf
       required_scope: puf_clone
@@ -19383,6 +19416,15 @@ producer_graph:
           entity: person
           value_kind: finite_numeric
       column: rental_income
+      entity: person
+      producing_stage: primary_puf_qrf
+      required_scope: puf_clone
+      tolerated_absence_receipts: []
+    - alternatives:
+      - - column: s_corp_income
+          entity: person
+          value_kind: finite_numeric
+      column: s_corp_income
       entity: person
       producing_stage: primary_puf_qrf
       required_scope: puf_clone
@@ -19623,9 +19665,9 @@ producer_graph:
             - farm_income
             - farm_rent_income
             - partnership_income
+            - s_corp_income
+            - passive_partnership_s_corp_income
             - partnership_self_employment_net_earnings
-            - estate_income_would_be_qualified
-            - farm_operations_income_would_be_qualified
   - id: transfer:person/puf_tax_itemization__batch_4
     name: transfer:person/puf_tax_itemization__batch_4
     kind: late_transfer
@@ -20254,6 +20296,24 @@ producer_graph:
       required_scope: puf_clone
       tolerated_absence_receipts: []
     - alternatives:
+      - - column: estate_income_would_be_qualified
+          entity: person
+          value_kind: non_null
+      column: estate_income_would_be_qualified
+      entity: person
+      producing_stage: primary_puf_qrf
+      required_scope: puf_clone
+      tolerated_absence_receipts: []
+    - alternatives:
+      - - column: farm_operations_income_would_be_qualified
+          entity: person
+          value_kind: non_null
+      column: farm_operations_income_would_be_qualified
+      entity: person
+      producing_stage: primary_puf_qrf
+      required_scope: puf_clone
+      tolerated_absence_receipts: []
+    - alternatives:
       - - column: farm_rent_income_would_be_qualified
           entity: person
           value_kind: non_null
@@ -20371,28 +20431,10 @@ producer_graph:
       required_scope: whole_pool
       tolerated_absence_receipts: []
     - alternatives:
-      - - column: qualified_bdc_income
-          entity: person
-          value_kind: finite_numeric
-      column: qualified_bdc_income
-      entity: person
-      producing_stage: primary_puf_qrf
-      required_scope: puf_clone
-      tolerated_absence_receipts: []
-    - alternatives:
       - - column: qualified_dividend_income
           entity: person
           value_kind: finite_numeric
       column: qualified_dividend_income
-      entity: person
-      producing_stage: primary_puf_qrf
-      required_scope: puf_clone
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: qualified_reit_and_ptp_income
-          entity: person
-          value_kind: finite_numeric
-      column: qualified_reit_and_ptp_income
       entity: person
       producing_stage: primary_puf_qrf
       required_scope: puf_clone
@@ -20646,14 +20688,14 @@ producer_graph:
             entity: person
             family: puf_tax_itemization__batch_4
             ordered_targets:
+            - estate_income_would_be_qualified
+            - farm_operations_income_would_be_qualified
             - farm_rent_income_would_be_qualified
             - partnership_s_corp_income_would_be_qualified
             - rental_income_would_be_qualified
             - self_employment_income_would_be_qualified
             - sstb_self_employment_income_would_be_qualified
             - business_is_sstb
-            - qualified_bdc_income
-            - qualified_reit_and_ptp_income
   - id: transfer:person/puf_tax_itemization__batch_5
     name: transfer:person/puf_tax_itemization__batch_5
     kind: late_transfer
@@ -21372,10 +21414,28 @@ producer_graph:
       required_scope: whole_pool
       tolerated_absence_receipts: []
     - alternatives:
+      - - column: qualified_bdc_income
+          entity: person
+          value_kind: finite_numeric
+      column: qualified_bdc_income
+      entity: person
+      producing_stage: primary_puf_qrf
+      required_scope: puf_clone
+      tolerated_absence_receipts: []
+    - alternatives:
       - - column: qualified_dividend_income
           entity: person
           value_kind: finite_numeric
       column: qualified_dividend_income
+      entity: person
+      producing_stage: primary_puf_qrf
+      required_scope: puf_clone
+      tolerated_absence_receipts: []
+    - alternatives:
+      - - column: qualified_reit_and_ptp_income
+          entity: person
+          value_kind: finite_numeric
+      column: qualified_reit_and_ptp_income
       entity: person
       producing_stage: primary_puf_qrf
       required_scope: puf_clone
@@ -21647,6 +21707,8 @@ producer_graph:
             entity: person
             family: puf_tax_itemization__batch_5
             ordered_targets:
+            - qualified_bdc_income
+            - qualified_reit_and_ptp_income
             - sstb_self_employment_income_before_lsr
             - sstb_unadjusted_basis_qualified_property
             - sstb_w2_wages_from_qualified_business

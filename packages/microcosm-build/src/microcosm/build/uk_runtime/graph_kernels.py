@@ -44,13 +44,17 @@ from microcosm.graph import (
 )
 from microcosm.graph.population import dtype_for_token
 
-from .. import stage_evidence
+from .. import stage_evidence, stochastic_assignment
 from . import (
     bus_use_incidence,
+    cgt_imputation,
+    energy_pricing,
     frs_disability,
     frs_education,
     frs_hmrc_source,
     frs_take_up,
+    hmrc_income,
+    hmrc_isa_statistics,
     hmrc_property_rental,
     household_lineage,
     ledger_fact_vendoring,
@@ -130,6 +134,7 @@ _STAGE_MODULES = {
     "salary_sacrifice": "salary_sacrifice",
     "student_loans": "student_loans",
     "private_school_attendance": "private_school_attendance",
+    "isa_subscriptions": "isa_subscriptions",
     "childcare_copy_take_up": "childcare_copy_take_up",
     "age_tail": "age_tail",
 }
@@ -150,8 +155,9 @@ _STAGE_HELPER_MODULES = {
     "frs_brma": (uk_engine_adapter,),
     "was_wealth": (uk_engine_adapter,),
     # The LISA stage reads its household donor through the WAS cleaning and its
-    # household predictors through the WAS recipient surface.
-    "was_lisa": (uk_engine_adapter, was_wealth),
+    # household predictors through the WAS recipient surface; the anchor counts
+    # HMRC's payers through the typed ISA facts (microcosm#1415).
+    "was_lisa": (uk_engine_adapter, was_wealth, hmrc_isa_statistics),
     # Landlords' receipts read the vendored PRIS rows through their typed
     # loader, the tape through the income stage's preparation and uprating,
     # and the support channel's names (microcosm#1106).
@@ -163,7 +169,10 @@ _STAGE_HELPER_MODULES = {
     # reader and mark SDLT's regions from the FRS region map (microcosm#1095).
     "property_purchases": (ledger_fact_vendoring, rowwise_geography),
     "nts_bus_travel": (uk_engine_adapter, bus_use_incidence),
-    "lcfs_consumption": (uk_engine_adapter,),
+    # The energy level and prices are energy_pricing's (microcosm#1418): a
+    # code-only change to them must re-key the stage (the independent review
+    # of microcosm#1420, finding 5).
+    "lcfs_consumption": (uk_engine_adapter, energy_pricing),
     "etb_vat": (uk_engine_adapter,),
     "etb_services": (uk_engine_adapter,),
     "uc_reporter_redraw": (uc_relationships, uk_engine_adapter),
@@ -203,10 +212,24 @@ _STAGE_HELPER_MODULES = {
     "child_benefit_take_up": (uc_capital_coherence, uk_engine_adapter),
     # The Carer's Allowance draw reads the earnings test through the adapter's
     # engine materialization and counts its receipt's support on the source
-    # lineage (microcosm#1319).
-    "carers_allowance_take_up": (uk_engine_adapter, receipt_counts),
+    # lineage (microcosm#1319), and balances its draws through the shared
+    # placement helper (microcosm#1418).
+    "carers_allowance_take_up": (
+        uk_engine_adapter,
+        receipt_counts,
+        stochastic_assignment,
+    ),
     # The stored attendance is one engine materialization (microcosm#1095).
     "private_school_attendance": (uk_engine_adapter,),
+    # The subscriptions walk the CGT bands on its income proxy (with the
+    # proxy's loss relief), read HMRC's ISA tables through their typed loader
+    # and round their receipts' support (microcosm#1415).
+    "isa_subscriptions": (
+        cgt_imputation,
+        hmrc_income,
+        hmrc_isa_statistics,
+        receipt_counts,
+    ),
     # The copies' childcare re-draw draws through frs_take_up's childcare
     # helper and reads each household's clone path.
     "childcare_copy_take_up": (frs_take_up, household_lineage),
@@ -535,6 +558,7 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
     from .frs_relationships import UKFRSRelationshipsStageTransform
     from .frs_take_up import UKFRSTakeUpStageTransform
     from .high_value_home_support import UKHighValueHomeSupportStageTransform
+    from .isa_subscriptions import UKISASubscriptionsStageTransform
     from .lcfs_consumption import UKLCFSConsumptionStageTransform
     from .legacy_closure_take_up import UKLegacyClosureTakeUpStageTransform
     from .nts_bus_travel import UKNTSBusTravelStageTransform
@@ -816,6 +840,12 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
                 stage=stages["private_school_attendance"],
                 engine=engine,
                 calibration_year=calibration_year,
+            ),
+            "isa_subscriptions": UKISASubscriptionsStageTransform(
+                stage=stages["isa_subscriptions"],
+                engine=engine,
+                donor_household=was,
+                donor_person=was_person,
             ),
             "childcare_copy_take_up": UKChildcareCopyTakeUpStageTransform(
                 contract=contract, stage=stages["childcare_copy_take_up"]

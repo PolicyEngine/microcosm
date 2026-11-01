@@ -451,13 +451,13 @@ _UK_GATE_BATTERY_SHIPPABLE_STATUSES = frozenset({"passed", "not_applicable"})
 # fingerprint derives from the manifest digest. Editing the spec moves all
 # three here in the same reviewed change.
 _UK_GATE_BATTERY_POLICY_SHA256 = (
-    "cf7df0ce75fcb6b66cdba6f706ed777aca9550a966f364cef6c3c2c5f7780813"
+    "29c866ba365999cfd39a5ddceb94e159396759e575a8ac99de619e3f03525653"
 )
 _UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "cb12e74aed6397667b17d5cf770161cf01df721f796ddc244ae9b6945dcf3605"
+    "a9e1187a619794b9e159b209a6f6476a24260791df6bb14ae72f9f9bfcaa7514"
 )
 _UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "fcebd763a4e9c427615ca935b019de43bc49e7dffbcece54181c21576bdcc372"
+    "6bd701aa0257a7faad66f5ee8f80f8e4afb664298b70c7093e5b0e220677049d"
 )
 #: Spec entry id -> the legacy gate name whose observable detail checks
 #: apply unchanged (the battery re-keys the report by entry id; the gate
@@ -501,6 +501,7 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
     ),
     "uk_stage_was_wealth_support": ("stage_health", "transferred"),
     "uk_stage_was_lisa_support": ("stage_health", "transferred"),
+    "uk_stage_was_lisa_anchor": ("stage_health", "transferred"),
     "uk_stage_property_components": ("stage_health", "transferred"),
     "uk_stage_was_wealth_coherence": ("stage_health", "transferred"),
     "uk_stage_nts_bus_travel_support": ("stage_health", "transferred"),
@@ -512,6 +513,8 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
     "uk_stage_lcfs_consumption_road_fuel_incidence": ("stage_health", "transferred"),
     "uk_stage_lcfs_consumption_road_fuel_level": ("stage_health", "transferred"),
     "uk_stage_lcfs_consumption_recomposed_totals": ("stage_health", "transferred"),
+    "uk_stage_lcfs_consumption_excise_quantities": ("stage_health", "transferred"),
+    "uk_stage_lcfs_consumption_gambling_participation": ("stage_health", "transferred"),
     "uk_stage_lcfs_consumption_basis": ("stage_health", "transferred"),
     "uk_stage_etb_vat_support": ("stage_health", "transferred"),
     "uk_stage_etb_services_support": ("stage_health", "transferred"),
@@ -552,6 +555,12 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
         "transferred",
     ),
     "uk_stage_student_loans_realization": ("stage_health", "transferred"),
+    "uk_stage_regional_home_values_ranking": ("stage_health", "transferred"),
+    "uk_stage_property_purchases_fit": ("stage_health", "transferred"),
+    "uk_stage_uc_legacy_closure_take_up_contract": ("stage_health", "transferred"),
+    "uk_stage_frs_person_draws_apprentices": ("stage_health", "transferred"),
+    "uk_stage_isa_subscriptions_invariants": ("stage_health", "transferred"),
+    "uk_stage_isa_subscriptions": ("stage_health", "transferred"),
     "uk_stage_age_tail_targets": ("stage_health", "assembled"),
     "uk_stage_frs_relationships_composition": ("stage_health", "assembled"),
     "uk_ledger_compile_parity_local_incumbent_2025": (
@@ -619,6 +628,7 @@ _UK_GATE_BATTERY_EVIDENCE_IDS = frozenset(
         "uk_input_mass_parity",
         "uk_stage_was_wealth_support",
         "uk_stage_was_lisa_support",
+        "uk_stage_was_lisa_anchor",
         "uk_stage_property_components",
         "uk_stage_was_wealth_coherence",
         "uk_stage_nts_bus_travel_support",
@@ -630,6 +640,8 @@ _UK_GATE_BATTERY_EVIDENCE_IDS = frozenset(
         "uk_stage_lcfs_consumption_road_fuel_incidence",
         "uk_stage_lcfs_consumption_road_fuel_level",
         "uk_stage_lcfs_consumption_recomposed_totals",
+        "uk_stage_lcfs_consumption_excise_quantities",
+        "uk_stage_lcfs_consumption_gambling_participation",
         "uk_stage_lcfs_consumption_basis",
         "uk_stage_etb_vat_support",
         "uk_stage_etb_services_support",
@@ -652,6 +664,12 @@ _UK_GATE_BATTERY_EVIDENCE_IDS = frozenset(
         "uk_stage_cgt_incidence_anchor_composition",
         "uk_stage_salary_sacrifice_realization",
         "uk_stage_student_loans_realization",
+        "uk_stage_regional_home_values_ranking",
+        "uk_stage_property_purchases_fit",
+        "uk_stage_uc_legacy_closure_take_up_contract",
+        "uk_stage_frs_person_draws_apprentices",
+        "uk_stage_isa_subscriptions_invariants",
+        "uk_stage_isa_subscriptions",
         "uk_stage_age_tail_targets",
         "uk_stage_frs_relationships_composition",
         "uk_cgt_projection_entrants",
@@ -662,14 +680,14 @@ _UK_GATE_BATTERY_EVIDENCE_IDS = frozenset(
 # canonical hash; this pins the wrapped digest so the entry's evidence line
 # still binds the enhanced-FRS incumbent totals.
 _UK_GATE_BATTERY_INPUT_MASS_EVIDENCE_SHA256 = (
-    "82a5fa0c7dec5ac5c169f0b8b2f4acc6b302e80637dc698d3247e75a6d133933"
+    "24bb96f93de3bda45425b797a2f5069df7477bf3a56616080cc04376beab56e5"
 )
 # The degenerate binding's evidence payload digests the resolved exclusion
 # records; for a release that must be the committed register, so its digest
 # is a vintage pin that moves with every reviewed register edit (the same
 # tripwire as the policy digest).
 _UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256 = (
-    "6a179222c6b6058ad9caacfd347f7bdb8cb98a62237b50d1fc1136df09337251"
+    "f246388de42654dd68dbbb40c42282001b5b0a8bf48976162bcb1199085cb1d3"
 )
 
 
@@ -872,14 +890,19 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
             "uk_stage_etb_vat_support",
             "uk_stage_frs_hmrc_spine_leaves_signal",
             "uk_stage_frs_annual_income_spells",
+            "uk_stage_frs_person_draws_apprentices",
             "uk_stage_frs_relationships_composition",
             "uk_stage_high_value_home_support_mass",
             "uk_stage_hmrc_cgt_asset_type_spine_summary",
             "uk_stage_hmrc_cgt_gains_spine_summary",
             "uk_stage_hmrc_spi_income_spine_identity",
+            "uk_stage_isa_subscriptions",
+            "uk_stage_isa_subscriptions_invariants",
             "uk_stage_lcfs_consumption_basis",
             "uk_stage_lcfs_consumption_bus_pricing",
             "uk_stage_lcfs_consumption_energy_rake",
+            "uk_stage_lcfs_consumption_excise_quantities",
+            "uk_stage_lcfs_consumption_gambling_participation",
             "uk_stage_lcfs_consumption_recomposed_totals",
             "uk_stage_lcfs_consumption_road_fuel_incidence",
             "uk_stage_lcfs_consumption_road_fuel_level",
@@ -888,12 +911,16 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
             "uk_stage_nts_bus_travel_support",
             "uk_stage_pension_credit_take_up",
             "uk_stage_property_components",
+            "uk_stage_property_purchases_fit",
+            "uk_stage_regional_home_values_ranking",
             "uk_stage_salary_sacrifice_realization",
             "uk_stage_spi_benefit_coherence",
             "uk_stage_spi_support_channel_mass",
             "uk_stage_student_loans_realization",
             "uk_stage_uc_deduction_attributes",
+            "uk_stage_uc_legacy_closure_take_up_contract",
             "uk_stage_uc_take_up",
+            "uk_stage_was_lisa_anchor",
             "uk_stage_was_lisa_support",
             "uk_stage_was_wealth_coherence",
             "uk_stage_was_wealth_support",
@@ -937,26 +964,26 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
 _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     "spine": {
         "gates_manifest_sha256": (
-            "985f54966ef25bfd7f778cb33ad501fd2e7d4c036f00245518bd1fd448ef9c7d"
+            "06f62df651d151e586d6102ed2110b3b2348bd881826d4d6d66621e4ab8abb1f"
         ),
         "policy_sha256": (
-            "2b4995c6389870fd54ffd815f40d269facb593f1131c4e3fa3c5fa55e2869d24"
+            "390a79297f7817def126c7805f492328c447e6a0d6d376dc8b946b98b9f96725"
         ),
     },
     "calibration_seam": {
         "gates_manifest_sha256": (
-            "763df9874b4655caea7f6a54bb301fea0b02ba47dedde13f5fa65dd9428afad0"
+            "fc75904db7b9574a65ec38b8542f151702f110dd09a99b823d59e86aa47f6d9d"
         ),
         "policy_sha256": (
-            "5a78ad115f958eb20247534ff9fd52e5d5d4f277b608d55ad4251d48a7232049"
+            "322c96ce9632577262861012d10cbe0bb1924f68e2595042e75ac9af808c5143"
         ),
     },
     "release_cut": {
         "gates_manifest_sha256": (
-            "85aaa1f2a7a9d295c12db01698c4ba0e2c3724ab6051d68966f49e5d8a3427f5"
+            "c44ce8629cfc9a48e6aaeb9d77012c4fad382b8ef0e232476b9bc8c8e83dbefc"
         ),
         "policy_sha256": (
-            "d7bda5f6771845ffc5bf591ae45f2618885f51ebeb48fcb96538a2a3b0ef6a11"
+            "b335bef4e20b9803b60e728bfb2f045d282d16309429b00d72bf86dd4f4bafd8"
         ),
     },
 }
@@ -4536,8 +4563,8 @@ def _validate_uk_dense_release_dir(release_dir: Path, release_id: str) -> list[s
     the incumbent files ship all together or not at all, and the manifest's
     reviewed limitations must say what the release does not claim.
     Artifacts pin to the release id or to one of its immutable per-cut tags.
-    A shipped JSON document carrying a per-area support figure is a warning,
-    returned rather than refused (microcosm#1301).
+    Per-area support figures ship (María's ruling of 2026-10-26 dropped their
+    withholding, microcosm#1301), so the line returns no warnings.
     """
 
     failures: list[str] = []
@@ -4597,7 +4624,6 @@ def _validate_uk_dense_release_dir(release_dir: Path, release_id: str) -> list[s
         if gate_summary is not None:
             _check_local_area_gates(gate_summary, failures)
     diagnostics_path = release_dir / "calibration_diagnostics.json"
-    floor_warnings: list[str] = []
     if diagnostics_path.is_file():
         diagnostics = _load_json(diagnostics_path, failures)
         if diagnostics is not None:
@@ -4606,7 +4632,6 @@ def _validate_uk_dense_release_dir(release_dir: Path, release_id: str) -> list[s
             ):
                 _check_calibration_diagnostics(diagnostics, failures)
             _check_local_area_calibration_diagnostics(diagnostics, failures)
-            floor_warnings = _uk_brma_floor_verdict_warnings(diagnostics)
     report: Mapping | None = None
     report_path = release_dir / _UK_DENSE_GATE_REPORT_FILE
     if report_path.is_file():
@@ -4632,9 +4657,6 @@ def _validate_uk_dense_release_dir(release_dir: Path, release_id: str) -> list[s
                 coverage, failures, incumbent_attached=incumbent_attached
             )
             _check_uk_measure_exclusions(coverage.get("measure_exclusions"), failures)
-    # Warned, not refused: the walk runs only after both builds, so a finding
-    # is weighed rather than paid for with a rebuild (microcosm#1301).
-    disclosure_warnings = _uk_dense_disclosure_warnings(release_dir) + floor_warnings
     # The core joins run whether or not the incumbent comparison is attached.
     candidate_identity = _check_uk_dense_surface_files(
         release_dir, release_manifest or {}, failures
@@ -4667,7 +4689,7 @@ def _validate_uk_dense_release_dir(release_dir: Path, release_id: str) -> list[s
     _check_local_artifact_hashes(release_dir, release_manifest, failures)
     if failures:
         raise ReleaseContractError(release_dir, failures)
-    return disclosure_warnings
+    return []
 
 
 def _check_uk_dense_gate_report(
@@ -5081,12 +5103,13 @@ def _check_area_support_block(
         )
 
 
-# Per-area support figures a dense release withholds (microcosm#1301): an
-# area's rows, Kish ESS and distinct source households, under each name the
-# support table, the support gate, the diagnostics and the size evaluation
-# have used for them, and the plain synonyms a converted table would carry.
-# Weights and per-cell estimates are not support figures and ship as they are.
-# Names match whatever their case.
+# Per-area support figures (microcosm#1301): an area's rows, Kish ESS and
+# distinct source households, under each name the support table, the support
+# gate, the diagnostics and the size evaluation have used for them, and the
+# plain synonyms a converted table would carry. A release ships them since
+# María's ruling of 2026-10-26; the sign-off drafter still walks the entries
+# it drafts for them, since those go into a public pull request. Weights and
+# per-cell estimates are not support figures. Names match whatever their case.
 _UK_AREA_SUPPORT_FIGURE_KEYS = frozenset(
     {
         "rows",
@@ -5218,7 +5241,11 @@ def _uk_names_only_regions(value: object) -> bool:
 
 
 def _uk_dense_disclosure_findings(name: str, payload: object) -> list[str]:
-    """Per-area support figures in one shipped JSON document (microcosm#1301).
+    """Per-area support figures in one JSON document (microcosm#1301).
+
+    The sign-off drafter walks the entries it drafts with it, since they go
+    into a public pull request; a release no longer withholds these figures
+    (María's ruling of 2026-10-26).
 
     An area's rows, Kish ESS or distinct sources (a number, or a number
     written as text with or without thousands separators, under its name in
@@ -5345,46 +5372,11 @@ def _uk_dense_disclosure_findings(name: str, payload: object) -> list[str]:
         "text": "string(s) stating an area's measured support",
     }
     return [
-        f"{name} carries {len(paths)} {wording[kind]}, which a dense release "
-        "should withhold (microcosm#1301); first at "
+        f"{name} carries {len(paths)} {wording[kind]} (microcosm#1301); first at "
         f"{paths[:_UK_DISCLOSURE_PATHS_SHOWN]}."
         for kind, paths in found.items()
         if paths
     ]
-
-
-def _uk_dense_disclosure_file_warnings(path: Path) -> list[str]:
-    """The disclosure walk's warnings for one JSON file (microcosm#1301).
-
-    The file is read as the contract reads JSON, refusing NaN and the
-    infinities. A file the walk cannot read, parse or walk to the bottom of
-    (a nesting too deep to recurse) is reported, since a figure in it could
-    not be ruled out. The release pre-flight walks a run's files with it too.
-    """
-
-    try:
-        payload = json.loads(path.read_bytes(), parse_constant=_reject_json_constant)
-        return _uk_dense_disclosure_findings(path.name, payload)
-    except (OSError, ValueError, RecursionError):
-        return [
-            f"{path.name} cannot be read and walked as JSON, so the disclosure "
-            "walk cannot rule out a per-area support figure in it "
-            "(microcosm#1301)."
-        ]
-
-
-def _uk_dense_disclosure_warnings(release_dir: Path) -> list[str]:
-    """Shipped JSON documents carrying a per-area support figure (microcosm#1301).
-
-    Every ``*.json`` in the release directory is walked, the signed gate
-    report and the release manifest's strings included. A document the walk
-    cannot read is reported too, since a figure in it could not be ruled out.
-    """
-
-    warnings: list[str] = []
-    for path in sorted(release_dir.glob("*.json")):
-        warnings.extend(_uk_dense_disclosure_file_warnings(path))
-    return warnings
 
 
 def _check_local_area_release_manifest(
@@ -6429,54 +6421,6 @@ def _uk_census_over(rows: list[Mapping], census: object) -> dict[str, object] | 
     return counts
 
 
-def _uk_brma_floor_verdict_warnings(diagnostics: Mapping) -> list[str]:
-    """BRMA rows whose ten-household verdict is missing or disagrees.
-
-    microcosm#1262: every BRMA row carries ``metadata.carrier_floor_met``, and
-    a row withholds its model figures exactly when the verdict is false or the
-    row is withheld beside a thin one (``metadata.complementary_withholding``,
-    Vahid's second review of #1333), so the contract can see a thin row the
-    build never flagged. María's ruling of 2026-10-19 on the fourth review of
-    #1305: this is warned, not refused. The warnings give counts only, never a
-    row.
-    """
-
-    missing = disagreeing = 0
-    for row in diagnostics.get("targets") or ():
-        metadata = row.get("metadata") if isinstance(row, Mapping) else None
-        if not isinstance(metadata, Mapping) or not _uk_brma_row(metadata):
-            continue
-        verdict = metadata.get("carrier_floor_met")
-        withheld = bool(metadata.get("model_figures_withheld"))
-        complementary = metadata.get("complementary_withholding") is True
-        if not isinstance(verdict, bool):
-            missing += 1
-        elif (not verdict and (complementary or not withheld)) or (
-            verdict and withheld != complementary
-        ):
-            disagreeing += 1
-    warnings = []
-    if missing:
-        warnings.append(
-            f"calibration_diagnostics.json has {missing} BRMA row(s) without a "
-            "ten-household carrier verdict (metadata.carrier_floor_met), so the "
-            "contract cannot see whether their model figures may be published "
-            "(microcosm#1262)."
-        )
-    if disagreeing:
-        warnings.append(
-            f"calibration_diagnostics.json has {disagreeing} BRMA row(s) whose "
-            "carrier verdict disagrees with their withheld flag (microcosm#1262)."
-        )
-    return warnings
-
-
-def _uk_brma_row(metadata: Mapping) -> bool:
-    level = str(metadata.get("geography_level") or "").strip().lower()
-    area_type = str(metadata.get("area_type") or "").strip().lower()
-    return area_type == "brma" or level in {"brma", "statistical_scope"}
-
-
 def _check_uk_candidate_restated_losses(
     candidate: Mapping, diagnostics: Mapping, failures: list[str]
 ) -> None:
@@ -6717,10 +6661,9 @@ def validate_release_dir(
 
     Returns:
         The contract's warnings, each a sentence naming the file, for the
-        caller to print. Only the dense UK line has any: its disclosure walk
-        reports per-area support figures (microcosm#1301), and a BRMA row
-        without its ten-household carrier verdict, or with one its withheld
-        flag contradicts, is reported (microcosm#1262), without refusing.
+        caller to print; they never refuse a release. No line returns any
+        since María's ruling of 2026-10-26 dropped the dense line's
+        disclosure walk (microcosm#1301).
 
     Raises:
         ReleaseContractError: Naming every violation found — missing files,

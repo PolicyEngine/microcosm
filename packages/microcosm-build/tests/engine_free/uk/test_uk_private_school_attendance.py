@@ -107,12 +107,20 @@ def test_the_stage_needs_the_stored_draw_and_writes_attendance_once():
         store_private_school_attendance(stored, engine=engine, calibration_year=2025)
 
 
-def test_the_stage_is_the_last_of_the_spine():
+def test_only_the_isa_subscriptions_follow_the_stage():
     """No later stage copies or re-keys a person, so the stored flags reach
-    the release as the engine set them."""
+    the release as the engine set them. Only the ISA subscriptions follow it,
+    writing person ISA columns on the rows they are given (microcosm#1415)."""
 
-    stages = [stage.stage for stage in load_country_spec("uk").sources.stages]
-    assert stages[-1] == "private_school_attendance"
+    stages = load_country_spec("uk").sources.stages
+    names = [stage.stage for stage in stages]
+    later = stages[names.index("private_school_attendance") + 1 :]
+    assert [stage.stage for stage in later] == ["isa_subscriptions"]
+    for stage in later:
+        assert PRIVATE_SCHOOL_ATTENDANCE_OUTPUT not in {
+            *stage.outputs,
+            *stage.rewrites,
+        }
 
 
 def test_the_stage_refuses_drifted_parameters():

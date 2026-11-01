@@ -6,10 +6,10 @@ year, banded by what they received. They cover individuals liable to UK
 income tax, so a person who left a job counts only where the year's income
 makes them liable. The spine's income columns are current, annualised
 incomes, the concept HBAI and policyengine-uk use: the usual weekly pay of
-the job held at interview times 365.25 / 7. A person who started a job during
-the year, left one, changed jobs or had a gap sits in another HMRC band than
-their current pay puts them in, or in none, and a recent leaver who paid tax
-in the year is no taxpayer at all.
+the job held at interview times 52 (``frs_spine.WEEKS_IN_YEAR``, uk-data#531).
+A person who started a job during the year, left one, changed jobs or had a
+gap sits in another HMRC band than their current pay puts them in, or in
+none, and a recent leaver who paid tax in the year is no taxpayer at all.
 
 This stage writes what the FRS records about the 12 months before the
 interview, for every adult, as descriptors beside the current columns, which
@@ -796,13 +796,22 @@ def pay_concept_ratio(
     dv = _numeric(jobs, "ugrspay")
     support = distinct_carriers(jobs["household_id"].to_numpy(), job_weights)
     denominator = float(np.nansum(job_weights * usual))
-    if support < 10 or denominator <= 0:
+    # Fewer than ten reporting households only flags: the receipt prints the
+    # ratio "<10" and the gate reads it unmeasured, since a small-cell rule
+    # never stops a build (María's ruling of 2026-10-26).
+    if support == 0 or denominator <= 0:
         raise ValueError(
             f"{FRS_ANNUAL_INCOME_STAGE_NAME} cannot measure the usual-to-DV pay "
-            "ratio: fewer than ten households report both."
+            "ratio: no household reports both."
         )
     ratio = float(np.nansum(job_weights * dv)) / denominator
     lower, upper = PAY_CONCEPT_RATIO_BOUNDS
+    if support < 10:
+        # The bounds are a plausibility check on the two pay concepts. On one
+        # to nine households a ratio past them is noise, so it is held to
+        # them rather than stopping the build, and it stays flagged as above
+        # (Vahid's second review of #1396).
+        return min(max(ratio, lower), upper), support
     if not lower <= ratio <= upper:
         raise ValueError(
             f"{FRS_ANNUAL_INCOME_STAGE_NAME}: the DV-to-usual pay ratio {ratio:.4f} "
@@ -924,7 +933,7 @@ def _receipt(
     return {
         "window_months": WINDOW_MONTHS,
         "weights": "household weights at the stage, carried by each person",
-        "pay_concept_ratio": ratio,
+        "pay_concept_ratio": ratio if ratio_support >= 10 else "<10",
         "pay_concept_ratio_support": support_band(ratio_support),
         "earnings_growth": float(earnings_growth),
         "spell_sources": sources,

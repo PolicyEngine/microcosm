@@ -50,6 +50,8 @@ PROJECTION_FAMILIES = {
     "scotgov_social_security",
     "hmrc_itl",
     "hmrc_itl_marginal_rate",
+    "hmrc_itl_age",
+    "hmrc_itl_savings_rate",
     "dwp_benefit_expenditure",
 }
 NATIONAL_SELECTOR_KEYS = {
@@ -244,8 +246,20 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
     # to 6 and England's 0 to 6, and the DfE single-age rows five more
     # funded-childcare counts (working parent 9 to 11 months and ages 1-3,
     # nursery age 3; the age-4 cells are signed out, as the bound rows fix
-    # them).
-    assert len(resource["targets"]) == 437
+    # them). The next policyengine-uk bump retires the OBR welfare-cap split
+    # and the England postgraduate repayments to registry_parity.excluded
+    # (microcosm#1095), adds England's single adult discount cells by
+    # billing authority and HMRC's Child Benefit families in payment by
+    # number of children, five national rows (microcosm#1095); microcosm#1359
+    # adds five OBR excise receipts rows, measured at FY2024-25 and held out
+    # of the objective; microcosm#1069 adds HMRC's Income Tax payers of State
+    # Pension age and aged 65 and over by region and nation; microcosm#1418
+    # adds HMRC's Income Tax on savings at the basic, higher and additional
+    # rates, three national rows, SPI pension income and the taxpayers with
+    # it by constituency and local authority, SPI Table 3.7's other income by
+    # total-income band, and SPI Table 3.10's self-employment counts and
+    # amounts by self-employment band.
+    assert len(resource["targets"]) == 456
 
     providers = resource["hierarchy"]["providers"]
     categories = resource["hierarchy"]["categories"]
@@ -259,10 +273,10 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
     target_ids = [target["target_id"] for target in resource["targets"]]
     registry_scope = resource["registry_parity"]["scope_target_ids"]
     profile_scope = resource["profile_parity"]["scope_target_ids"]
-    assert len(registry_scope) == 378
-    assert len(profile_scope) == 59
-    assert target_ids[:378] == registry_scope
-    assert target_ids[378:] == profile_scope
+    assert len(registry_scope) == 394
+    assert len(profile_scope) == 62
+    assert target_ids[:394] == registry_scope
+    assert target_ids[394:] == profile_scope
 
     parity = resource["registry_parity"]
     assert parity["pinned_ref"] == "12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3"
@@ -282,9 +296,16 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
     # microcosm#1301's three high-value homes region rows have no uk-data
     # metric, nor do microcosm#1278's three single years of age or the eleven
     # the childcare costing fixes add (UK 3 to 6, England 0 to 6), nor the
-    # five DfE funded-childcare single-age rows.
-    assert len(mapped_target_ids) == 186
-    assert len(unmapped_declarations) == 192
+    # five DfE funded-childcare single-age rows. The next policyengine-uk bump
+    # retires the OBR welfare-cap split and the England postgraduate
+    # repayments to the excluded rows (microcosm#1095), and HMRC's five Child
+    # Benefit family rows have no uk-data metric either. microcosm#1359's five
+    # OBR excise rows have no uk-data metric (uk-data never measured excise
+    # duty), nor microcosm#1069's two Income Tax payer by age rows, nor
+    # microcosm#1418's three Income Tax on savings rows, its SPI other income
+    # row or its two Table 3.10 rows.
+    assert len(mapped_target_ids) == 183
+    assert len(unmapped_declarations) == 211
     suppressed_ancestors = parity["suppressed_ancestors"]
     assert len(suppressed_ancestors) == 5
     assert set(suppressed_ancestors).isdisjoint(parity["mapped"])
@@ -303,9 +324,9 @@ def test_uk_population_targets_profile_accounting_and_local_renames() -> None:
     parity = resource["profile_parity"]
     assert parity["source_profile_id"] == "uk_local_geography"
     assert parity["source_target_count"] == 25
-    assert parity["contract_target_count"] == 59
+    assert parity["contract_target_count"] == 62
     assert parity["corrected_rows"] == len(parity["corrected"]) == 25
-    assert parity["activation_added_rows"] == len(parity["activation_additions"]) == 34
+    assert parity["activation_added_rows"] == len(parity["activation_additions"]) == 37
 
     targets = {target["target_id"]: target for target in resource["targets"]}
     corrected_ids = {entry["target_id"] for entry in parity["corrected"]}
@@ -791,7 +812,7 @@ def test_uk_population_targets_have_unique_target_ids() -> None:
     resource = _load()
 
     target_ids = [target["target_id"] for target in resource["targets"]]
-    assert len(target_ids) == 437
+    assert len(target_ids) == 456
     assert len(target_ids) == len(set(target_ids))
 
 
@@ -1084,8 +1105,8 @@ def test_uk_population_targets_preserve_local_metric_ordering_contract() -> None
         "constituency"
     )
     assert metric_names_from_target_profile(resource, "la") == metric_names("la")
-    assert len(metric_names_from_target_profile(resource, "constituency")) == 22
-    assert len(metric_names_from_target_profile(resource, "la")) == 38
+    assert len(metric_names_from_target_profile(resource, "constituency")) == 27
+    assert len(metric_names_from_target_profile(resource, "la")) == 41
 
 
 def test_uk_population_uc_households_target_counts_benunits() -> None:
@@ -1294,7 +1315,7 @@ def test_uc_payment_bands_share_administrative_family_but_keep_source_window() -
 
 def test_paid_joint_diagnostics_do_not_add_active_targets() -> None:
     targets = _load()["targets"]
-    assert len(targets) == 437
+    assert len(targets) == 456
     assert not any(
         f.get("variable") == "uc_calibration_child_entitlement"
         for target in targets
@@ -1544,7 +1565,7 @@ def test_household_composition_cells_do_not_share_the_household_total_signature(
 
 def test_only_the_uc_award_bands_read_whole_pence() -> None:
     """microcosm#1095: the four UC payment families opt in to whole-pence,
-    upper-closed bands; the other 28 banded bindings keep the half-open
+    upper-closed bands; the other 31 banded bindings keep the half-open
     reading."""
 
     banded = {
@@ -1557,7 +1578,7 @@ def test_only_the_uc_award_bands_read_whole_pence() -> None:
         for target_id, binding in banded.items()
         if binding.get("band_semantics") == "whole_pence_upper_closed"
     }
-    assert len(banded) == 32
+    assert len(banded) == 35
     assert whole_pence == {
         f"dwp.uc.payment_distribution_{family}"
         for family in (

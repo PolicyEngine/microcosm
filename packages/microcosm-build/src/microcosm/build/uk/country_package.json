@@ -103,6 +103,11 @@
       "schema_id": "legacy_json"
     },
     {
+      "path": "hmrc_isa_statistics_facts.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
       "path": "dwp_move_to_uc_facts.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
@@ -134,6 +139,21 @@
     },
     {
       "path": "salary_sacrifice_anchor.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "bonus_sacrifice_anchor.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "obr_salary_sacrifice_costing_facts.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "obr_savings_income_growth_facts.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
     },
@@ -189,6 +209,11 @@
     },
     {
       "path": "ons_single_year_age_populations.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "ons_mid2025_single_year_age_by_sex.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
     },
@@ -254,6 +279,16 @@
     },
     {
       "path": "scotland_brma_la_overlap.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "rfdr_area_layer.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "rfdr_area_layer.provenance.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
     },
@@ -488,6 +523,16 @@
       "schema_id": "legacy_json"
     },
     {
+      "path": "excise_facts.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "gambling_participation_facts.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
       "path": "dft_bus_journeys.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
@@ -519,6 +564,11 @@
     },
     {
       "path": "desnz_local_energy_facts.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "desnz_constituency_energy_facts.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
     },

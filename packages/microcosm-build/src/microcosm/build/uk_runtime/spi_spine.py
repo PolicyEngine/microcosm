@@ -183,7 +183,6 @@ UK_SPI_SUPPORT_CHANNEL_OUTPUT_COLUMNS = (
     "source_household_key",
 )
 UK_SPI_INCOME_SPINE_OUTPUT_COLUMNS = (
-    "other_investment_income",
     "gift_aid",
     "charitable_investment_gifts",
     # Restricted residential finance costs: the SPI channel's tape draw; the
@@ -216,13 +215,16 @@ UK_SPI_INCOME_SPINE_REWRITE_COLUMNS = (
     "self_employment_income",
     "savings_interest_income",
     "dividend_income",
+    # The tape's OTHERINV on SPI rows; FRS rows carry their own NS&I and gilt
+    # interest from frs_spine (microcosm#1418).
+    "other_investment_income",
     "private_pension_income",
     "property_income",
     "employee_pension_contributions",
     EMPLOYER_PENSION_CONTRIBUTIONS_COLUMN,
     "personal_pension_contributions",
     "pension_contributions_via_salary_sacrifice",
-    "tax_free_savings_income",
+    "individual_savings_account_interest_income",
     "universal_credit_reported",
     "pension_credit_reported",
     "child_benefit_reported",
@@ -242,6 +244,7 @@ UK_SPI_INCOME_SPINE_REWRITE_COLUMNS = (
     "afcs_reported",
     "bsp_reported",
     "war_widows_pension_reported",
+    "widowed_parents_allowance_reported",
     "winter_fuel_allowance_reported",
     "council_tax_benefit_reported",
     "jsa_contrib_reported",
@@ -307,6 +310,8 @@ SPI_SPINE_STAGE2_OUTPUT_COLUMNS = tuple(
         # Written from the stage-1 loss draws, not drawn by stage 2.
         "loss_relief",
         "ni_class_4_losses_brought_forward",
+        # A stage-1 tape draw, not drawn by stage 2 (microcosm#1418).
+        "other_investment_income",
     )
     # Held to the drawn incomes by rule, not drawn by stage 2.
     and column not in FRS_ANNUAL_INCOME_OUTPUT_COLUMNS

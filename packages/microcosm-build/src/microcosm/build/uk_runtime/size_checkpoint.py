@@ -154,6 +154,16 @@ def uk_size_checkpoint_identity(
                 BRMA_AREA_LAYER_SOURCE: dict(pins[BRMA_AREA_LAYER_SOURCE])
             },
         }
+    # microcosm#1418: an area-RFDR run also binds its layer.
+    if getattr(args, "rfdr_localisation", "none") == "area":
+        from .rfdr_area_layer import RFDR_AREA_LAYER_SOURCE
+
+        identity["rfdr_localisation"] = {
+            "mode": "area",
+            "resource_pins": {
+                RFDR_AREA_LAYER_SOURCE: dict(pins[RFDR_AREA_LAYER_SOURCE])
+            },
+        }
     if getattr(args, "private_rent_localisation", "none") == "brma_list":
         from .private_rent_localisation import COUNTS_SOURCE, QUANTILES_SOURCE
 

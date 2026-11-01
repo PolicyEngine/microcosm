@@ -319,17 +319,18 @@ def test_manifest_entry_and_bound_are_the_reviewed_ones() -> None:
         "horizon_year": 2030,
         "gains_growth_parameter": UK_CGT_GAINS_GROWTH_PARAMETER,
         "exempt_amount_parameter": UK_CGT_EXEMPT_AMOUNT_PARAMETER,
-        # The OBR per-capita path as the engine carries it; 2030 is its last
-        # published year and later years repeat the 2030 rate.
+        # The OBR per-capita path as the engine carries it, from the October
+        # 2026 outlook since policyengine-uk 2.164.1 (microcosm#1415); the
+        # path runs to 2031 and later years repeat the 2031 rate.
         "expected_yoy_growth_by_year": {
-            "2023": 0.0532,
-            "2024": 0.0372,
-            "2025": 0.0438,
-            "2026": 0.0292,
-            "2027": 0.0323,
-            "2028": 0.031,
-            "2029": 0.0296,
-            "2030": 0.0315,
+            "2023": 0.0522,
+            "2024": 0.0401,
+            "2025": 0.0462,
+            "2026": 0.04,
+            "2027": 0.031,
+            "2028": 0.0344,
+            "2029": 0.036,
+            "2030": 0.0343,
         },
         # 6,000 in 2023-24, 3,000 from 2024-25: a 2023-period frame's base
         # year reads the older amount.
@@ -366,7 +367,7 @@ def test_projection_from_pins_is_the_engine_free_statement_of_the_path() -> None
     assert pinned.engine == UK_CGT_PROJECTION_PINS_ENGINE
     assert pinned.exempt_amount_by_year["2023"] == 6_000.0
     assert pinned.exempt_amount_by_year["2024"] == 3_000.0
-    assert pinned.yoy_growth_by_year["2024"] == pytest.approx(0.0372)
+    assert pinned.yoy_growth_by_year["2024"] == pytest.approx(0.0401)
     with pytest.raises(ValueError, match="no .* value for 2031"):
         uk_cgt_projection_from_pins(
             2024,

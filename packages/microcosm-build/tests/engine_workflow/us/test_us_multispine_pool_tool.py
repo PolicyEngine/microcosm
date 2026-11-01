@@ -106,7 +106,7 @@ def test_stacked_tool_entrypoint_fixture_e2e_emits_one_logbook_row_at_every_term
         assert published_transfer["completion"] == {
             "status": "complete",
             "group_count": 19,
-            "target_count": 70,
+            "target_count": 72,
             "residual_null_rows": 0,
         }
         calibrated = [
@@ -344,9 +344,13 @@ def test_constants_adapter_equals_live_constants_and_stays_out_of_identities(
             # move it. It covers microcosm.fit.qrf's attested bytes too, so
             # fit_draw_next's caller-owned uniforms (microcosm#1332) move it,
             # and so do microcosm#454's meps_esi_premiums stage and
-            # microcosm#1376's puma_county_vintage draw module, and
-            # microcosm#1380's self-employment post-transfer contract.
-            "spec_sha256": "c677d50bd0bbcd76c8c141c2c281a7bd49145369f08da8d5db324f2febbada5f",
+            # microcosm#1376's puma_county_vintage draw module,
+            # microcosm#1380's self-employment post-transfer contract, and
+            # the source-stage citation rewrites that pin us-data at a commit.
+            # microcosm#1251's passive partnership/S-corp leaf in puf_support moves it.
+            # microcosm#1259's recipient-share bound in puf_support moves it again.
+            # microcosm#1261's entity split of line 32 moves it too.
+            "spec_sha256": "9b4b3260c20c30ba71a0947f8d78e322c8d2a3e6cb94e87a3729be950a9e90f2",
         },
     }
 

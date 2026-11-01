@@ -159,6 +159,9 @@ _SPLIT_STAGE_SOURCES: Mapping[str, tuple[str, ...]] = {
     "frs_legacy_proxies": ("frs",),
     "was_wealth": ("was",),
     "was_lisa": ("was", "was_person"),
+    # The ISA subscriptions split household ISA balances by a WAS donor
+    # household's holding pattern (microcosm#1415).
+    "isa_subscriptions": ("was", "was_person"),
     # The finance-cost model trains on the SPI tape (microcosm#1106).
     "property_components": ("spi",),
     "nts_bus_travel": (
@@ -253,7 +256,13 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
         )
     )
     | frozenset({("benunit", "is_married")}),
-    "frs_person_draws": frozenset({("person", "age")}),
+    # is_apprentice draws employees aged 21 to 24 at a rate set by the
+    # frame's weights (microcosm#1372), and its receipt reads their pay for
+    # the relief the flags imply (microcosm#1373).
+    "frs_person_draws": frozenset(
+        ("person", column)
+        for column in ("age", "employment_status", "employment_income")
+    ),
     "frs_household_draws": frozenset(),
     "frs_brma": None,
     "was_wealth": None,
@@ -350,6 +359,7 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
             ("person", "self_employment_income"),
             ("person", "private_pension_income"),
             ("person", "savings_interest_income"),
+            ("person", "individual_savings_account_interest_income"),
             ("person", "dividend_income"),
             ("person", "property_income"),
             ("person", "other_investment_income"),
@@ -395,6 +405,7 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
                     "afcs_reported",
                     "bsp_reported",
                     "war_widows_pension_reported",
+                    "widowed_parents_allowance_reported",
                     "universal_credit_reported",
                     "esa_contrib_reported",
                     "esa_income_reported",
@@ -429,6 +440,7 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
             ("person", "universal_credit_reported"),
             # The capital cells' financial investment income (microcosm#1095).
             ("person", "savings_interest_income"),
+            ("person", "individual_savings_account_interest_income"),
             ("person", "dividend_income"),
             ("person", "other_investment_income"),
             # The recorded capitals' property: the household reference
@@ -437,6 +449,9 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
             ("household", "owned_land"),
             ("household", "other_residential_property_value"),
             ("household", "non_residential_property_value"),
+            # Netted off the property each is secured on (microcosm#1095).
+            ("household", "other_residential_property_secured_debt"),
+            ("household", "non_residential_property_secured_debt"),
             ("benunit", "benunit_support_channel"),
             ("benunit", "dependent_children"),
             ("benunit", "frs_benunit_capital"),
@@ -445,11 +460,12 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
         }
     ),
     # The Move to UC claim draw reads each unit's legacy and Universal Credit
-    # receipts and its would_claim_uc, after their last writers, and the source
-    # household its receipt counts distinct support by (uk-data#534,
-    # microcosm#1095).
+    # receipts and its would_claim_uc, after their last writers, the claimant
+    # and partner whose reports count (pe-uk#2549), and the source household
+    # its receipt counts distinct support by (uk-data#534, microcosm#1095).
     "uc_legacy_closure_take_up": frozenset(
         {
+            ("person", "is_claimant_or_partner"),
             ("person", "child_tax_credit_reported"),
             ("person", "working_tax_credit_reported"),
             ("person", "housing_benefit_reported"),
@@ -490,7 +506,7 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
                     "private_pension_income",
                     "property_income",
                     "state_pension_reported",
-                    "tax_free_savings_income",
+                    "individual_savings_account_interest_income",
                     "age",
                 )
             ),
@@ -548,6 +564,7 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
                     "private_pension_income",
                     "property_income",
                     "savings_interest_income",
+                    "individual_savings_account_interest_income",
                     "dividend_income",
                     "miscellaneous_income",
                 )
@@ -559,6 +576,35 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
     # One engine materialization of private-school attendance over the whole
     # frame at its weights: an open surface (microcosm#1095).
     "private_school_attendance": None,
+    # Subscribers are cells of age, sex, region and the CGT income proxy; the
+    # balance split reads the household ISA totals and the payments the LISA
+    # holding (microcosm#1415).
+    "isa_subscriptions": frozenset(
+        {
+            *(
+                ("person", column)
+                for column in (
+                    "age",
+                    "gender",
+                    "has_lifetime_isa",
+                    "lifetime_isa_balance",
+                    "employment_income",
+                    "self_employment_income",
+                    "state_pension_reported",
+                    "private_pension_income",
+                    "property_income",
+                    "savings_interest_income",
+                    "individual_savings_account_interest_income",
+                    "dividend_income",
+                    "miscellaneous_income",
+                    "loss_relief",
+                )
+            ),
+            ("household", "region"),
+            ("household", "cash_isa"),
+            ("household", "stocks_and_shares_isa"),
+        }
+    ),
     # The copies' childcare re-draw reads every household's clone path (the
     # lineage columns of each copy stage) and keeps the native units' cells:
     # an open surface, like the other take-up redraws.
@@ -801,6 +847,7 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
         _Cell("person", "would_claim_scp", "bool"),
         _Cell("person", "attends_private_school_random_draw", "float64"),
         _Cell("person", "tax_free_childcare_spend_routed_share", "float64"),
+        _Cell("person", "is_apprentice", "bool"),
     ),
     "frs_household_draws": _cells(
         "household",
@@ -833,6 +880,16 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
         *_cells("household", ("cash_isa", "stocks_and_shares_isa")),
         *_cells("household", ("mortgage_debt", "consumer_debt")),
         _Cell("person", "student_loan_balance", "float64"),
+        # The share split and the secured debts (microcosm#1095).
+        *_cells(
+            "household",
+            (
+                "directly_held_shares",
+                "unit_and_investment_trusts",
+                "other_residential_property_secured_debt",
+                "non_residential_property_secured_debt",
+            ),
+        ),
     ),
     "was_lisa": (
         _Cell("person", "has_lifetime_isa", "bool"),
@@ -905,10 +962,43 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
                 "domestic_energy_consumption",
                 "electricity_consumption",
                 "gas_consumption",
+                # The heating fuels policyengine-uk 2.149.0 reads (pe-uk#2572).
+                "liquid_fuel_consumption",
+                "solid_fuel_consumption",
             ),
         ),
         _Cell("household", "has_fuel_consumption", "bool"),
         _Cell("household", "uses_energy_prepayment_meter", "bool"),
+        # The excise step's policyengine-uk inputs (microcosm#1359).
+        *_cells(
+            "household",
+            (
+                "beer_litres",
+                "cider_litres",
+                "wine_litres",
+                "spirits_litres",
+                "other_fermented_litres",
+                "beer_draught_share",
+                "cider_draught_share",
+                "cigarettes_per_week",
+                "hand_rolling_tobacco_grams_per_week",
+                "cigars_grams_per_week",
+                "other_tobacco_grams_per_week",
+                "remote_gaming_net_losses",
+                "pool_betting_net_receipts",
+                "bingo_net_receipts",
+                "national_lottery_ticket_spending",
+                "land_based_casino_net_losses",
+                "machine_games_lower_rate_net_takings",
+                "machine_games_standard_rate_net_takings",
+                "machine_games_higher_rate_net_takings",
+                "land_based_fixed_odds_betting_net_losses",
+                "remote_uk_horseracing_betting_net_losses",
+                "remote_other_betting_net_losses",
+                "betting_exchange_commission",
+                "horse_and_dog_pool_betting_net_losses",
+            ),
+        ),
     ),
     "etb_vat": (_Cell("household", "full_rate_vat_expenditure_rate", "float64"),),
     "etb_services": (
@@ -1030,6 +1120,7 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
                 "afcs_reported",
                 "bsp_reported",
                 "war_widows_pension_reported",
+                "widowed_parents_allowance_reported",
             ),
         ),
         *_cells(
@@ -1106,6 +1197,8 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
         "person",
         (
             "pension_contributions_via_salary_sacrifice",
+            # Bonuses converted to bonus sacrifice (microcosm#1340).
+            "pension_contributions_via_bonus_sacrifice",
             "employee_pension_contributions",
             # Converted records' pay drops by the sacrificed amount (microcosm#1069).
             "employment_income",
@@ -1116,6 +1209,16 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
     ),
     "student_loans": (_Cell("person", "student_loan_plan", "string"),),
     "private_school_attendance": (_Cell("person", "attends_private_school", "bool"),),
+    "isa_subscriptions": _cells(
+        "person",
+        (
+            "cash_isa_balance",
+            "stocks_and_shares_isa_balance",
+            "cash_isa_subscriptions",
+            "stocks_and_shares_isa_subscriptions",
+            "lifetime_isa_payments",
+        ),
+    ),
     "childcare_copy_take_up": (
         *_cells(
             "benunit",
@@ -1160,7 +1263,7 @@ _HMRC_SPI_FLOAT_COLUMNS = (
     "employer_pension_contributions",
     "personal_pension_contributions",
     "pension_contributions_via_salary_sacrifice",
-    "tax_free_savings_income",
+    "individual_savings_account_interest_income",
     "universal_credit_reported",
     "pension_credit_reported",
     "child_benefit_reported",
@@ -1180,6 +1283,7 @@ _HMRC_SPI_FLOAT_COLUMNS = (
     "afcs_reported",
     "bsp_reported",
     "war_widows_pension_reported",
+    "widowed_parents_allowance_reported",
     "winter_fuel_allowance_reported",
     "council_tax_benefit_reported",
     "jsa_contrib_reported",
@@ -1707,7 +1811,7 @@ def uk_spine_operation_inventory(
                 "artifact_outputs": [output.name for output in node.artifact_outputs],
                 "randomness": "Existing literal/child seeds and draw order are preserved inside the registered transform.",
                 "coupling": (
-                    "Donor and recipient region and tenure encoding, seven segmented fit/draw chains with their child seeds, the tenure strata and the totals derived from drawn components remain coupled."
+                    "Donor and recipient region and tenure encoding, eleven segmented fit/draw chains with their child seeds, the tenure and holder strata and the totals derived from drawn components remain coupled."
                     if stage.stage == "was_wealth"
                     else "Source assembly, declared household sample selection and same-kind mass normalization execute once in CREATE."
                     if stage.stage == "frs_spine"
