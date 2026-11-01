@@ -11422,7 +11422,7 @@
         {
           "name": "obr.fuel_duties",
           "status": "signed_excluded",
-          "matched_fact_count_overall": 8,
+          "matched_fact_count_overall": 2,
           "matched_fact_count_at_or_before_period": 2,
           "signed_rationale": "The OBR fuel duties fact is all-road-users receipts (freight, vans, business mileage) against a household frame. obr.fuel_duties_cars, the cars receipts from the OBR vehicle-type release, was bound in its place (ruling 2026-09-10) until microcosm#1113 moved it to the measure-exclusion register (Mar\u00eda's ruling of 2026-10-08, D2); household road-fuel spend is bound on ons.household_road_fuel_expenditure, and no fuel-duty row is fitted. The all-road-users row is retained in the contract for registry parity and signed out here rather than carried as a calibration measure exclusion."
         }

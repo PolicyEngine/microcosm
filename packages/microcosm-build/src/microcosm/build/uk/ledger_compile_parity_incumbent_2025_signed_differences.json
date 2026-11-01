@@ -9037,7 +9037,7 @@
    "ledger_value": 41990323959.26737,
    "name": "obr.council_tax_england",
    "period": 2025,
-   "reason": "Period basis (PolicyEngine/chronicle#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR line at the calendar-2025 window, three twelfths of FY2024-25 from the March 2026 EFO and nine twelfths of FY2025-26 from the October 2026 EFO, each year's latest edition (PolicyEngine/chronicle#397, María's ruling of 2026-10-31); the frozen incumbent fixture holds the FY2025-26 value alone."
+   "reason": "Series and period basis (microcosm#1095): ours measures the nation's OBR table 4.1 council tax receipts at the calendar-2025 window, three twelfths of FY2024-25 from the March 2026 EFO and nine twelfths of FY2025-26 from the October 2026 EFO, each year's latest edition (María's rule of 2026-09-22, PolicyEngine/chronicle#280 lane, and her ruling of 2026-10-31), scaled to main residences by the share obr.council_tax takes, England's chargeable dwellings less its second homes and empty dwellings, over its chargeable dwellings (MHCLG Council Taxbase, October 2025; María's ruling of 2026-10-29, microcosm#1095 D14f), so the three nation rows sum to the bound one; the frozen incumbent fixture holds the FY2025-26 value alone."
   },
   {
    "fixture_value": 3051227494.93594,
@@ -9045,7 +9045,7 @@
    "ledger_value": 2925794534.826645,
    "name": "obr.council_tax_scotland",
    "period": 2025,
-   "reason": "Period basis (PolicyEngine/chronicle#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR line at the calendar-2025 window, three twelfths of FY2024-25 from the March 2026 EFO and nine twelfths of FY2025-26 from the October 2026 EFO, each year's latest edition (PolicyEngine/chronicle#397, María's ruling of 2026-10-31); the frozen incumbent fixture holds the FY2025-26 value alone."
+   "reason": "Series and period basis (microcosm#1095): ours measures the nation's OBR table 4.1 council tax receipts at the calendar-2025 window, three twelfths of FY2024-25 from the March 2026 EFO and nine twelfths of FY2025-26 from the October 2026 EFO, each year's latest edition (María's rule of 2026-09-22, PolicyEngine/chronicle#280 lane, and her ruling of 2026-10-31), scaled to main residences by the share obr.council_tax takes, England's chargeable dwellings less its second homes and empty dwellings, over its chargeable dwellings (MHCLG Council Taxbase, October 2025; María's ruling of 2026-10-29, microcosm#1095 D14f), so the three nation rows sum to the bound one; the frozen incumbent fixture holds the FY2025-26 value alone."
   },
   {
    "fixture_value": 2400769752.36827,
@@ -9053,7 +9053,7 @@
    "ledger_value": 2281456490.1010394,
    "name": "obr.council_tax_wales",
    "period": 2025,
-   "reason": "Period basis (PolicyEngine/chronicle#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR line at the calendar-2025 window, three twelfths of FY2024-25 from the March 2026 EFO and nine twelfths of FY2025-26 from the October 2026 EFO, each year's latest edition (PolicyEngine/chronicle#397, María's ruling of 2026-10-31); the frozen incumbent fixture holds the FY2025-26 value alone."
+   "reason": "Series and period basis (microcosm#1095): ours measures the nation's OBR table 4.1 council tax receipts at the calendar-2025 window, three twelfths of FY2024-25 from the March 2026 EFO and nine twelfths of FY2025-26 from the October 2026 EFO, each year's latest edition (María's rule of 2026-09-22, PolicyEngine/chronicle#280 lane, and her ruling of 2026-10-31), scaled to main residences by the share obr.council_tax takes, England's chargeable dwellings less its second homes and empty dwellings, over its chargeable dwellings (MHCLG Council Taxbase, October 2025; María's ruling of 2026-10-29, microcosm#1095 D14f), so the three nation rows sum to the bound one; the frozen incumbent fixture holds the FY2025-26 value alone."
   },
   {
    "fixture_value": 494000000.0,
