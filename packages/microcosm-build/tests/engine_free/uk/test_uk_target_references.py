@@ -2276,6 +2276,10 @@ def test_committed_references_read_the_january_after_their_period(surface) -> No
     assert {reference.period for reference in references} == {
         UK_TARGET_REFERENCE_PERIOD
     }, "Regenerate at the generators' default --period, or move it with them."
+    # D5's periods are untyped Januaries after an integer model year. A
+    # fiscal or prefixed observation period, or a target period spelt as a
+    # range ("2025-26"), needs its own expectation here (the fifth review of
+    # microcosm#1422).
     wrong = [
         (reference.name, reference.observation_period)
         for reference in references

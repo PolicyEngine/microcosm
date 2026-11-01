@@ -108,16 +108,16 @@ def test_no_uk_output_still_withholds_at_ten() -> None:
 #: Every ten the guard finds that is not a floor of ten on survey records:
 #: statistical floors (too few rows to measure what a figure measures), band
 #: and rounding edges, history, facts that hold at the floor of three, and
-#: tens that count something else. Each entry is the exact phrase containing a
-#: match and how many matches it covers in its file, so a new match fails even
-#: where an existing phrase would cover it, and so does an entry that matches
-#: nothing.
+#: tens that count something else. Each entry is the phrase containing a match,
+#: its words separated by any whitespace, and how many matches it covers in its
+#: file, so a new match fails even where an existing phrase would cover it, and
+#: so does an entry that matches nothing.
 _KEPT_TENS: dict[str, tuple[tuple[str, int], ...]] = {
     "uk_runtime/frs_annual_income.py": (
         ("PAY_CONCEPT_RATIO_MINIMUM_SUPPORT = 10", 1),
         ("holds one past them on fewer than ten households", 1),
         ("a ratio whose support band is under ten", 1),
-        ("On one\n        # to nine households a ratio past them is noise", 1),
+        ("On one # to nine households a ratio past them is noise", 1),
     ),
     "uk_runtime/stage_health.py": (
         ("So is a pay concept ratio on fewer than ten households", 1),
@@ -126,8 +126,9 @@ _KEPT_TENS: dict[str, tuple[tuple[str, int], ...]] = {
     ),
     "uk_runtime/receipt_counts.py": (
         ("if value < 10:", 3),
-        ("goes to HMRC at\nleast ten working days", 1),
+        ("goes to HMRC at least ten working days", 1),
     ),
+    "uk_runtime/target_weights.py": (("seats under #: ten homes over 2 million", 1),),
     "uk_runtime/spi_rank_transport.py": (("SPI_TRANSPORT_GROUP_MINIMUM_ROWS = 10", 1),),
     "uk_runtime/private_rent_localisation.py": (
         ("MIN_SAMPLED_REGION_RENTERS = 10", 1),
@@ -192,16 +193,17 @@ def test_no_uk_floor_of_ten_hides_outside_the_label() -> None:
     JSON, the UK tools and microcosm-data, this guard finds:
 
     - a comparison with ten, ``<``, ``<=``, ``>`` or ``>=`` on either side, and
-      ``> 9`` or ``<= 9``, but not a format spec (``{x:<10}``, ``{x:>9}``),
-      ``10_000``, ``10.5``, ``10%`` or ``10 * x``;
-    - a keyword, key or default named ``min``, ``minimum``, ``min_*``,
-      ``minimum_*`` or ``threshold*`` set to ten in Python, YAML or JSON, and
-      an upper-case constant named ``*MIN*``, ``*FLOOR*``, ``*SDC*``,
-      ``*SMALL*`` or ``*THRESHOLD*`` set to ten, but not ``minutes`` or
-      ``*MINUTES*``;
+      ``> 9`` or ``<= 9``, but not a format spec (``{x:<10}``, ``{x:>9}``,
+      ``{x:0>9}``), ``10_000``, ``10.5``, ``10%`` or ``10 * x``;
+    - a name with ``min``, ``minimum``, ``floor``, ``sdc``, ``small`` or
+      ``threshold`` as one of its snake-case words, in any case, set to ten:
+      a keyword, a YAML key, a single- or double-quoted key, or an assignment
+      or default, annotated or not (``support_floor=10``, ``MIN_CELL = 10``,
+      ``disclosure_floor: Final[int] = 10``), but not ``admin_count`` or
+      ``minutes``;
     - prose: "fewer than", "under", "below", "less than" or "at least" before
       "ten" or "10", and "one to nine", also where a line break, a comment
-      marker or a string's quotes split the words.
+      marker (``#`` or ``#:``) or a string's quotes split the words.
 
     A ten is ``10``, ``10.`` at a sentence's end or ``10.0``. Each it finds
     must be named in ``_KEPT_TENS``.
@@ -213,18 +215,23 @@ def test_no_uk_floor_of_ten_hides_outside_the_label() -> None:
     # sentence's end and 10.0 (the fourth review of microcosm#1422).
     ten = r"10\b(?![\d_%])(?!\.\d*[1-9])"
     nine = r"9\b(?![\d_%])(?!\.\d*[1-9])"
+    # Not a format spec's width, with or without a fill: {x:<10}, {x:0>9}.
+    spec = r"(?<![:{])(?<!:\S)"
     # Words a line break, a comment marker or a string's quotes split.
-    gap = r"(?:[ \t]+|[ \t]*[\"']?[ \t]*\n[ \t]*(?:#|[rbfu]{0,2}[\"'])?[ \t]*)"
-    key = r"(?:min(?:imum)?(?:_\w+)?|threshold\w*)"
+    gap = r"(?:[ \t]+|[ \t]*[\"']?[ \t]*\n[ \t]*(?:#:?|[rbfu]{0,2}[\"'])?[ \t]*)"
+    # The floor words as snake-case words of a name, so support_floor and
+    # MIN_CELL but not admin_count or minutes (the fifth review of
+    # microcosm#1422).
+    name = r"\b(?:\w*_)?(?:min|minimum|floors?|sdc|small|thresholds?)(?:_\w*)?\b"
+    # An annotation without a comma outside its brackets: int, Final[int].
+    annotation = r"(?:[\w.| \t]|\[[^\]\n]*\])+"
     floors = re.compile(
-        rf"(?<![:{{])[<>]=?\s*{ten}(?!\s*\*)"
+        rf"{spec}[<>]=?\s*{ten}(?!\s*\*)"
         r"|(?<![\w.])10(?:\.0+)?\s*[<>]=?(?![=\d])"
-        rf"|(?<![:{{])(?:>|<=)\s*{nine}"
-        rf"|\b{key}\s*[=:]\s*{ten}"
-        rf"|\b{key}\s*:\s*int\s*=\s*{ten}"
-        r"|^\s*(?-i:_?[A-Z0-9_]*(?:MIN(?!UTE)|FLOOR|SDC|SMALL|THRESHOLD)[A-Z0-9_]*)\s*"
-        rf"(?::[^=\n]+)?=\s*{ten}"
-        rf'|"(?:{key}|\w+_{key})":\s*{ten}'
+        rf"|{spec}(?:>|<=)\s*{nine}"
+        rf"|{name}\s*[=:]\s*{ten}"
+        rf"|{name}\s*:{annotation}=\s*{ten}"
+        rf"|[\"']{name}[\"']\s*:\s*{ten}"
         rf"|\b(?:fewer{gap}than|under|below|less{gap}than|at{gap}least){gap}"
         rf"(?:ten\b|{ten})"
         rf"|\bone{gap}to{gap}nine\b",
@@ -258,10 +265,11 @@ def test_no_uk_floor_of_ten_hides_outside_the_label() -> None:
                     phrase
                     for phrase, _ in kept
                     if any(
-                        at <= match.start() and at + len(phrase) >= match.end()
-                        for at in (
-                            index.start()
-                            for index in re.finditer(re.escape(phrase), text)
+                        at.start() <= match.start() and at.end() >= match.end()
+                        # Any whitespace between the words, so re-indenting
+                        # the code keeps the phrase.
+                        for at in re.finditer(
+                            r"\s+".join(map(re.escape, phrase.split())), text
                         )
                     )
                 ),

@@ -1311,20 +1311,29 @@ def test_authored_observation_period_moves_with_the_authored_period(
     assert _authored_observation_period(target, {}, plain) == "2026-01"
 
 
-def test_authored_observation_period_reads_the_selector_period_type() -> None:
-    """Under a fiscal-year selector "2011-12" is a fiscal year, so authoring a
-    year later moves both ends, as the restamp does (the fourth review of
-    microcosm#1422)."""
+def test_authored_observation_period_reads_it_as_the_row_s_policy_does() -> None:
+    """Under an exact fiscal-year match "2011-12" is a fiscal year, so authoring
+    a year later moves both ends, as the restamp does (the fourth review of
+    microcosm#1422). The default latest_not_after cutoff reads it untyped, as
+    December 2011, so without a selector type it moves as a month, and under
+    a fiscal-year one, which reads it otherwise, it refuses. So does an
+    untyped exact match, which reads it either way (the fifth review)."""
     from microcosm.build.target_reference_authoring import (
         _authored_observation_period,
     )
 
-    target = {"observation_period": "2011-12"}
     config = TargetReferenceAuthoringConfig(
         target_period=2026, observation_period_base=2025
     )
-    assert (
-        _authored_observation_period(target, {"period_type": "fiscal_year"}, config)
-        == "2012-13"
-    )
-    assert _authored_observation_period(target, {}, config) == "2012-12"
+    fiscal = {"period_type": "fiscal_year"}
+    exact = {"observation_period": "2011-12", "period_match_policy": "exact"}
+    assert _authored_observation_period(exact, fiscal, config) == "2012-13"
+    default = {"observation_period": "2011-12"}
+    assert _authored_observation_period(default, {}, config) == "2012-12"
+    with pytest.raises(ValueError, match="reads it otherwise"):
+        _authored_observation_period(default, fiscal, config)
+    with pytest.raises(ValueError, match="as a month or as an annual range"):
+        _authored_observation_period(exact, {}, config)
+    # Under the default policy a fiscal-year selector's January cutoff moves.
+    january = {"observation_period": "2026-01"}
+    assert _authored_observation_period(january, fiscal, config) == "2027-01"

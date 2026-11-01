@@ -10,6 +10,7 @@ import pytest
 
 from microcosm.build.country_spec import load_country_spec
 from microcosm.build.gate_battery import EvidenceContext
+from microcosm.build.gates import PARITY_DIFFERENCE_REASONS
 from microcosm.build.uk_runtime.battery_bindings import (
     _LEDGER_COMPILE_PARITY_UNSUPPORTED_ARTIFACTS,
     UK_GATE_REGISTRY,
@@ -236,13 +237,17 @@ def test_each_committed_parity_receipt_gives_the_tool_s_reasons(spec):
     """A reason changed in the tool fails here until its receipt is
     regenerated: the national replay needs the feed, and nothing else in CI
     compared the local receipt's reasons with the tool (the fourth review of
-    microcosm#1422)."""
+    microcosm#1422). Each row starts from the classifier's reason for its
+    kind, so a changed classifier text and a removed rule fail too (the fifth
+    review)."""
     committed = json.loads(
         importlib_resources.files("microcosm.build.uk")
         .joinpath(spec.output_resource)
         .read_text(encoding="utf-8")
     )
     replayed = copy.deepcopy(committed)
+    for row in replayed["differences"]:
+        row["reason"] = PARITY_DIFFERENCE_REASONS[row["kind"]]
     parity_tool._add_signed_rationale_notes(
         replayed, fixture_resource=spec.fixture_resource
     )

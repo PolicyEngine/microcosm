@@ -247,6 +247,26 @@ def ledger_compile_parity_gate(
     )
 
 
+#: The classifier's reason for each kind of compile-parity difference. The UK
+#: parity tool replaces it with a ruled rationale where one applies, and its
+#: receipt test replays both, so either text changing marks the receipt stale.
+PARITY_DIFFERENCE_REASONS = {
+    "ledger_absent": (
+        "Packaged Ledger reference did not resolve for this comparison period."
+    ),
+    "fixture_only": (
+        "Fixture row has no Ledger-compiled counterpart at this comparison period."
+    ),
+    "ledger_only": (
+        "Ledger-compiled row has no fixture counterpart at this comparison period."
+    ),
+    "calibration_drift": (
+        "Ledger-compiled value differs from the fixture value at this comparison "
+        "period."
+    ),
+}
+
+
 def ledger_compile_parity_signed_differences(
     compiled_registry: TargetRegistry | Mapping[str, object],
     fixture: TargetRegistry | Mapping[str, object],
@@ -282,7 +302,7 @@ def ledger_compile_parity_signed_differences(
             "kind": "ledger_absent",
             "name": name,
             "period": period,
-            "reason": "Packaged Ledger reference did not resolve for this comparison period.",
+            "reason": PARITY_DIFFERENCE_REASONS["ledger_absent"],
         }
         if fixture_spec is not None:
             row["fixture_value"] = fixture_spec.value
@@ -298,10 +318,7 @@ def ledger_compile_parity_signed_differences(
                 "kind": "fixture_only",
                 "name": spec.name,
                 "period": spec.period,
-                "reason": (
-                    "Fixture row has no Ledger-compiled counterpart at this "
-                    "comparison period."
-                ),
+                "reason": PARITY_DIFFERENCE_REASONS["fixture_only"],
             }
         )
 
@@ -313,10 +330,7 @@ def ledger_compile_parity_signed_differences(
                 "ledger_value": spec.value,
                 "name": spec.name,
                 "period": spec.period,
-                "reason": (
-                    "Ledger-compiled row has no fixture counterpart at this "
-                    "comparison period."
-                ),
+                "reason": PARITY_DIFFERENCE_REASONS["ledger_only"],
             }
         )
 
@@ -332,10 +346,7 @@ def ledger_compile_parity_signed_differences(
                 "ledger_value": actual_spec.value,
                 "name": actual_spec.name,
                 "period": actual_spec.period,
-                "reason": (
-                    "Ledger-compiled value differs from the fixture value at "
-                    "this comparison period."
-                ),
+                "reason": PARITY_DIFFERENCE_REASONS["calibration_drift"],
             }
         )
 

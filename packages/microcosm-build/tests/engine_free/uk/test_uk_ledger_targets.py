@@ -2821,14 +2821,13 @@ def test_a_local_reference_that_cannot_be_restamped_stops_the_compile(
             "source_measure_id": "children",
             "geography_level": "constituency",
             "geography_id": "A1",
-            "period_type": "fiscal_year",
         },
         value_operation="identity",
         entity="person",
         measure="childcare/early_learning_2_year_olds",
         period=2025,
-        # No fiscal year is spelt "2026-01", so it cannot move.
-        observation_period="2026-01",
+        # The parser reads "FY26" as the year 26, so it cannot move.
+        observation_period="FY26",
         family="dfe_childcare",
         metadata={
             "contract_target_id": "dfe.funded_childcare.early_learning_2_year_olds"

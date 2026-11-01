@@ -354,10 +354,16 @@ class LedgerTargetReference:
             MONTHLY_WINDOW_COUNT_X_MEAN,
         }
         if self.observation_period is not None:
-            if not _period_key_from_value(self.observation_period)[0]:
+            period_type = _observation_period_type(
+                self.period_match_policy, self.ledger_selector
+            )
+            if not _normalize_period_value(
+                self.observation_period, declared_type=period_type
+            )[0][0]:
+                under = f" under period_type {period_type!r}" if period_type else ""
                 raise ValueError(
                     f"LedgerTargetReference {self.name!r}: observation_period "
-                    f"{self.observation_period!r} is not a parseable period."
+                    f"{self.observation_period!r} is not a parseable period{under}."
                 )
             if is_window or self.value_operation in PERIOD_COMPOSING_OPERATIONS:
                 raise ValueError(
@@ -4673,8 +4679,8 @@ def restamp_reference_period(
     a row that reads DfE's January census after its model year reads the
     census after the new one. Restamping only ``period`` left every such row
     on the census it was written for (the review of microcosm#1422). The
-    observation period is read as the exact-match path reads it, under the
-    selector's ``period_type`` when it declares one.
+    observation period is read as the reference's match policy reads it
+    (``_shift_observation_period``).
     """
 
     if reference.observation_period is None:
@@ -4688,12 +4694,84 @@ def restamp_reference_period(
     return replace(
         reference,
         period=period,
-        observation_period=_shift_period_years(
+        observation_period=_shift_observation_period(
             reference.observation_period,
             shift,
-            declared_type=str(reference.ledger_selector.get("period_type", "")),
+            period_match_policy=reference.period_match_policy,
+            ledger_selector=reference.ledger_selector,
         ),
     )
+
+
+def _observation_period_type(
+    period_match_policy: str, ledger_selector: Mapping[str, Any]
+) -> str:
+    """The period type a match policy reads an observation period under.
+
+    The exact-match path reads it under the selector's ``period_type``. The
+    ``latest_not_after`` cutoff reads it untyped (``_period_key_from_value``),
+    so under a fiscal-year selector "2026-01" is the January 2026 cutoff, not
+    a malformed fiscal year (the fifth review of microcosm#1422).
+    """
+
+    if period_match_policy == "exact":
+        return str(ledger_selector.get("period_type", ""))
+    return ""
+
+
+def _shift_observation_period(
+    observation_period: int | str,
+    years: int,
+    *,
+    period_match_policy: str,
+    ledger_selector: Mapping[str, Any],
+) -> int | str:
+    """``observation_period`` moved ``years``, read as its match policy reads it
+    (``_observation_period_type``).
+
+    A spelling read two ways has no one spelling a year later, so it refuses
+    (the fifth review of microcosm#1422):
+
+    - an exact match without a selector ``period_type`` reads the period under
+      each fact's own type, so "2011-12" is December 2011 to a month fact and
+      2011-12 to a fiscal-year one;
+    - the ``latest_not_after`` cutoff reads it untyped, as December 2011, and
+      compares facts' own spellings untyped. Under a fiscal-year selector it
+      must move to "2012-13" to keep selecting the year's own fact, and under
+      a calendar-year one to "2012-12".
+
+    A spelling the selector's type cannot read ("2026-01" under a fiscal
+    year) is the cutoff's alone.
+    """
+
+    period_type = _observation_period_type(period_match_policy, ledger_selector)
+    if period_match_policy == "exact":
+        readings = () if period_type else ("month", "fiscal_year")
+        why = (
+            "an exact match without a selector period_type reads it as a "
+            "month or as an annual range, by each fact's own type"
+        )
+    else:
+        selector_type = str(ledger_selector.get("period_type", ""))
+        readings = ("", selector_type) if selector_type else ()
+        why = (
+            f"the {period_match_policy} cutoff reads it untyped and the "
+            f"selector's period_type {selector_type!r} reads it otherwise"
+        )
+    parsed = {
+        (key[1], range_end)
+        for (key, _, range_end, _) in (
+            _normalize_period_value(observation_period, declared_type=reading)
+            for reading in readings
+        )
+        if key[0]
+    }
+    if years and len(parsed) > 1:
+        raise ValueError(
+            f"cannot move the period {observation_period!r} by {years} year(s): "
+            f"{why}. A prefixed or four-digit spelling reads one way."
+        )
+    return _shift_period_years(observation_period, years, declared_type=period_type)
 
 
 def _period_year(period: int | str) -> int:
@@ -4711,25 +4789,24 @@ def _shift_period_years(
 ) -> int | str:
     """The period ``years`` later, in its own spelling.
 
-    The spelling is classified as the exact-match path reads it: under the
-    selector's ``period_type`` when the reference declares one, else as the
-    ledger's own period parser reads it (``_normalize_period_value``). An
+    The spelling is classified as the ledger's period parser reads it under
+    ``declared_type`` (``_normalize_period_value``; untyped when empty). An
     annual range (``"2024-25"``, ``"2024-2025"``, ``"fy2024_25"``, and
     ``"2011-12"`` under an annual type) moves both ends, and a year
     (``2026``, ``"FY2026"``) or a month (``"2026-01"``, ``"2026-1"``, and
-    ``"2011-12"`` untyped or under ``month``) moves its year. A spelling the
-    parser does not read under that type refuses, unless it does not move
-    (the third and fourth reviews of microcosm#1422).
+    ``"2011-12"`` untyped or under ``month``) moves its year. A spelling or
+    year the parser does not read under that type refuses, unless it does
+    not move (the third, fourth and fifth reviews of microcosm#1422).
     """
 
     if years == 0:
         return period
-    if isinstance(period, int):
-        return period + years
     text = str(period).strip()
     (parsed, _, _), _, range_end, _ = _normalize_period_value(
         text, declared_type=declared_type
     )
+    if parsed and isinstance(period, int):
+        return period + years
     if parsed and range_end is not None:
         ranged = re.fullmatch(r"(\D*)(\d{4})([-_])(\d{2}|\d{4})", text)
         if ranged:
