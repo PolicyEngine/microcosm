@@ -130,3 +130,44 @@ def fake_telemetry_emitters(monkeypatch, tmp_path):
     yield emitters
     for emitter in emitters:
         emitter.close()
+
+
+@pytest.fixture(autouse=True)
+def _admit_test_gate_signing_keys(request, monkeypatch):
+    """Let tests sign with their own UK gate keys.
+
+    Production verifies only keys registered in
+    ``microcosm.data.gate_signing_keys``. Tests sign with throwaway keys, so
+    every unregistered key counts as an active test key here, while the
+    committed entries keep their real status. A test marked
+    ``committed_gate_key_registry`` sees the committed registry unchanged.
+    """
+
+    if request.node.get_closest_marker("committed_gate_key_registry"):
+        return
+    try:
+        from microcosm.data import gate_signing_keys
+    except ImportError:
+        return
+    committed = gate_signing_keys._registry
+
+    class _AdmitTestKeys(dict):
+        def __missing__(self, key_sha256):
+            return gate_signing_keys.GateSigningKey(
+                key_sha256=key_sha256,
+                label="test-key",
+                status="active",
+                custodian="the test suite",
+                held_in="the test",
+                registered="test",
+                evidence="admitted by the root conftest",
+            )
+
+        def get(self, key_sha256, default=None):
+            return self[key_sha256]
+
+    def registry(country):
+        entries = committed(country)
+        return None if entries is None else _AdmitTestKeys(entries)
+
+    monkeypatch.setattr(gate_signing_keys, "_registry", registry)
