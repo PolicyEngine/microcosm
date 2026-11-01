@@ -241,6 +241,30 @@ def test_create_parser_rejects_an_unregistered_version():
         create_unit_declaration("transport.create@99", {})
 
 
+def test_legacy_create_keeps_its_family_only_domain(tmp_path):
+    """create@1 refuses what it always refused; create@2 carries the wider domain."""
+    sources = write_population_sources(tmp_path / "sources", mass=1000)
+    document = {**UNIT_RULE.to_dict(), "entity": "assessment"}
+    legacy = create_node(sources)
+    legacy = replace(
+        legacy,
+        params={
+            **legacy.params,
+            "unit_rule": canonical_text(document),
+            "unit_rule_sha256": digest(document),
+        },
+    )
+    with pytest.raises(ValueError, match="requires family benefit units"):
+        create_unit_declaration(TRANSPORT_CREATE.ref, document)
+    with pytest.raises(ValueError, match="requires family benefit units"):
+        _run_create(sources, legacy, TRANSPORT_CREATE)
+    declared = _versioned(
+        legacy, MultiUnitRule.from_benefit_unit(BenefitUnitRule.from_spec(document))
+    )
+    result = _run_create(sources, declared, TRANSPORT_CREATE_DECLARED)
+    assert "assessment" in result.frame.schema.group_entities
+
+
 def test_multiple_unit_attributes_produce_explicit_person_role_columns(tmp_path):
     def edit(tables):
         tables["person"]["is_disabled"] = True
@@ -318,9 +342,6 @@ def test_multiple_unit_attributes_produce_explicit_person_role_columns(tmp_path)
 @given(
     omitted=st.sampled_from(
         [
-            ("family", "family_id"),
-            ("person", "person_id"),
-            ("person", "person_family_id"),
             ("person", "age"),
             ("person", "family_role"),
         ]
@@ -351,13 +372,7 @@ def test_relation_inputs_must_be_explicit_graph_dependencies(tmp_path, omitted):
             "roles": ["head", "partner"],
         }
     ]
-    dependencies = {
-        ("family", "family_id"),
-        ("person", "person_id"),
-        ("person", "person_family_id"),
-        ("person", "age"),
-        ("person", "family_role"),
-    }
+    dependencies = {("person", "age"), ("person", "family_role")}
     node = Node(
         "relations",
         "simulate.rules_by_ref@1",

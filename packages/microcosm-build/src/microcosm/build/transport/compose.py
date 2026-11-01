@@ -86,6 +86,7 @@ from microcosm.build.money_normalization import (
 )
 from microcosm.build.reference_profiles import resolve_reference_profiles
 from microcosm.calibrate.ordered_kernels import OUTPUT_TYPES
+from microcosm.frame.kernels import missing_relation_inputs
 from microcosm.graph import (
     ROWS_ALL,
     ArtifactInput,
@@ -2830,16 +2831,10 @@ def _require_relation_inputs(spec, binding_id, inputs) -> None:
     dependencies = binding_relation_dependencies(
         bindings[0], schema=schema, entity_names=document["entity_names"]
     )
-    declared = {
-        (item.entity, column)
-        for item in inputs
-        if item.rows == ROWS_ALL
-        for column in item.columns
-    }
-    missing = set(dependencies) - declared
+    missing = missing_relation_inputs(dependencies, inputs, schema)
     if missing:
         raise ValueError(
-            f"Rules binding {binding_id!r} needs whole-table relation inputs {sorted(missing)}."
+            f"Rules binding {binding_id!r} needs whole-table relation inputs {missing}."
         )
 
 

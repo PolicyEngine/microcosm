@@ -24,8 +24,34 @@ from microcosm.frame.adapters.axiom import (
     _source_relation_arguments,
     axiom_engine_ref,
 )
-from microcosm.frame.rules_kernels import SimulateCounterfactualKernel
+from microcosm.frame.kernels import SimulateRulesKernel, missing_relation_inputs
+from microcosm.frame.rules_kernels import (
+    SimulateCounterfactualKernel,
+    SimulateRulesByRefKernel,
+    SimulateSolveZeroKernel,
+)
 from microcosm.frame.schema import EntitySchema
+from microcosm.graph import (
+    Capabilities,
+    ContentStore,
+    Determinism,
+    Graph,
+    GraphError,
+    KernelBase,
+    KernelContext,
+    KernelRegistry,
+    KernelResult,
+    Node,
+    NodeRejected,
+    Numeric,
+    Owned,
+    SeedSource,
+    Slice,
+    SourceRef,
+    StructuralDelta,
+    compile_graph,
+    run_graph,
+)
 from test_support.paths import paths_for
 
 ROOT = paths_for("microcosm-frame").tests / "fixtures/rulespec-zz"
@@ -404,6 +430,255 @@ def test_bridge_unaliased_related_input_override_reaches_native_batch(
     kernel._evaluate(frame, [component], [], **options)
     batch = program.calls[-1]["relations"]["toy_member:0:1"]
     assert batch.inputs["toy_income"].tolist() == expected
+
+
+def _bridge_options(mode, entity, column):
+    component = {
+        "engine_ref": "fixture",
+        "variables": ["toy_total"],
+        "period": "2025",
+        "input_overrides": [],
+    }
+    if mode == "override":
+        component["input_overrides"] = [
+            {"entity": entity, "column": column, "value": 100}
+        ]
+        return component, {}
+    return component, {
+        "trial": ("tax_unit", np.asarray([100.0, 200.0])),
+        "solve_input": {"engine_ref": "fixture", "entity": entity, "column": column},
+    }
+
+
+@pytest.mark.parametrize("mode", ("override", "solve"))
+@pytest.mark.parametrize(
+    ("related_inputs", "entity", "column"),
+    (
+        ({"toy_income": "income"}, "tax_unit", "toy_income"),
+        ({"toy_income": "income"}, "household", "toy_income"),
+        ({"toy_income": "toy_income"}, "tax_unit", "toy_income"),
+    ),
+)
+def test_bridge_override_on_another_entity_refused(
+    monkeypatch, mode, related_inputs, entity, column
+):
+    """An override on a table no batch reads would change nothing, silently."""
+    adapter = _adapter(_relation(related_inputs=related_inputs))
+    program = _wire(adapter, monkeypatch)
+    component, options = _bridge_options(mode, entity, column)
+    kernel = SimulateCounterfactualKernel({"fixture": adapter})
+    with pytest.raises(ValueError, match="belongs to 'person'"):
+        kernel._evaluate(_frame(), [component], [], **options)
+    assert program.calls == []
+
+
+@pytest.mark.parametrize("mode", ("override", "solve"))
+def test_bridge_root_input_sharing_a_related_name_stays_overridable(monkeypatch, mode):
+    adapter = _adapter()
+    program = _wire(adapter, monkeypatch)
+    program.root_inputs = ["scale", "toy_income"]
+    frame = _frame()
+    frame._tables["tax_unit"]["toy_income"] = 1.0
+    component, options = _bridge_options(mode, "tax_unit", "toy_income")
+    kernel = SimulateCounterfactualKernel({"fixture": adapter})
+    kernel._evaluate(frame, [component], [], **options)
+    assert set(program.calls[-1]["inputs"]["toy_income"].tolist()) != {1.0}
+    batch = program.calls[-1]["relations"]["toy_member:0:1"]
+    assert batch.inputs["toy_income"].tolist() == [1.0, 1.0, 1.0]
+
+
+class _RelationPopulation(KernelBase):
+    """Three people, two units, and a mask that keeps one member of the couple."""
+
+    ref = "test.relation_population@1"
+    capabilities = Capabilities(
+        determinism=Determinism.DETERMINISTIC,
+        numeric=Numeric.BITWISE,
+        seed_source=SeedSource.NONE,
+        structural=StructuralDelta.CREATE,
+        consumes_se=False,
+    )
+
+    def run(self, context):
+        frame = _frame(ids=(1, 2, 3), groups=(10, 10, 11), income=(10.0, 20.0, 30.0))
+        frame.table("person").drop(columns="role", inplace=True)
+        frame.table("person")["selected"] = np.array([True, False, True])
+        return KernelResult(frame=frame)
+
+
+_STRUCTURAL = (
+    ("person", "person_id"),
+    ("person", "person_tax_unit_id"),
+    ("tax_unit", "tax_unit_id"),
+)
+
+
+def _relation_node(*, rows="all", omitted=(), kernel=SimulateRulesByRefKernel.ref):
+    person = ["selected"] if ("person", "income") in omitted else ["income", "selected"]
+    return Node(
+        "relations",
+        kernel,
+        population="create",
+        inputs=(
+            Slice("person", tuple(person), rows=rows),
+            Slice("tax_unit", ("scale",)),
+        ),
+        outputs=(Owned("tax_unit", "toy_total", "float64"),),
+        params={"engine_ref": "fixture", "variables": ("toy_total",), "period": "2025"},
+    )
+
+
+def _relation_graph(node):
+    create = Node(
+        "create",
+        _RelationPopulation.ref,
+        sources=("raw",),
+        structural=StructuralDelta.CREATE,
+        outputs=(
+            Owned("person", "income", "float64"),
+            Owned("person", "selected", "bool"),
+            Owned("tax_unit", "scale", "float64"),
+        ),
+    )
+    return Graph("relations", (SourceRef("raw", "raw-bytes-v1"),), (create, node))
+
+
+def _graph_with_identity_slice():
+    node = _relation_node()
+    return _relation_graph(
+        replace(node, inputs=(Slice("person", ("person_id",)), *node.inputs[1:]))
+    )
+
+
+def _run_relation_graph(tmp_path, adapter, node):
+    registry = KernelRegistry()
+    registry.register(_RelationPopulation())
+    registry.register(SimulateRulesByRefKernel({"fixture": adapter}))
+    raw = tmp_path / "raw.txt"
+    raw.write_text("source")
+    return run_graph(
+        compile_graph(_relation_graph(node)),
+        sources={"raw": raw},
+        store=ContentStore(tmp_path / "store"),
+        kernels=registry,
+        resume="forbid",
+        decisions=(),
+    )
+
+
+def test_graph_refuses_a_row_mask_that_drops_a_relation_member(monkeypatch, tmp_path):
+    """Both units keep a member here, so only the declared mask shows the loss."""
+    adapter = _adapter()
+    program = _wire(adapter, monkeypatch)
+    with pytest.raises((NodeRejected, ValueError), match="whole-table relation inputs"):
+        _run_relation_graph(tmp_path, adapter, _relation_node(rows="selected"))
+    assert program.calls == []
+
+
+def test_graph_gives_the_engine_every_member_of_a_whole_slice(monkeypatch, tmp_path):
+    adapter = _adapter()
+    program = _wire(adapter, monkeypatch)
+    _run_relation_graph(tmp_path, adapter, _relation_node())
+    batch = program.calls[-1]["relations"]["toy_member:0:1"]
+    assert batch.offsets.tolist() == [0, 2, 3]
+    assert batch.inputs["toy_income"].tolist() == [10.0, 20.0, 30.0]
+
+
+def _entry_points(adapter):
+    bridge = {
+        "input_overrides": "[]",
+        "output_coefficients": "[]",
+    }
+    solve = {
+        **bridge,
+        "solve_input": "{}",
+        "bracket": (0.0, 1.0),
+        "tolerance": 1.0,
+        "iterations": 1,
+    }
+    return {
+        "rules": (SimulateRulesKernel("fixture", adapter), {}),
+        "by_ref": (SimulateRulesByRefKernel({"fixture": adapter}), {}),
+        "counterfactual": (SimulateCounterfactualKernel({"fixture": adapter}), bridge),
+        "solve": (SimulateSolveZeroKernel({"fixture": adapter}), solve),
+    }
+
+
+@pytest.mark.parametrize("entry", ("rules", "by_ref", "counterfactual", "solve"))
+@pytest.mark.parametrize(
+    "problem",
+    ({"rows": "selected"}, {"omitted": (("person", "income"),)}),
+    ids=("masked", "undeclared"),
+)
+def test_every_rules_entry_point_refuses_a_partial_relation(
+    monkeypatch, entry, problem
+):
+    adapter = _adapter()
+    program = _wire(adapter, monkeypatch)
+    kernel, params = _entry_points(adapter)[entry]
+    node = _relation_node(**problem)
+    node = replace(node, params={**node.params, **params})
+    frame = _frame(ids=(1, 3), groups=(10, 11))
+    context = KernelContext(
+        node=node,
+        tables={entity: frame.table(entity) for entity in frame.entities},
+        weights={},
+        strata=pd.Series(dtype=object),
+        params=node.params,
+        rng=np.random.default_rng(0),
+        sources={},
+    )
+    with pytest.raises(ValueError, match="whole-table relation inputs"):
+        kernel.run(context)
+    assert program.calls == []
+
+
+@settings(max_examples=40, deadline=None, database=None)
+@given(
+    entity=st.sampled_from(("person", "tax_unit", "household")),
+    masked=st.booleans(),
+    declared=st.booleans(),
+)
+def test_a_node_passes_only_with_every_relation_dependency_whole(
+    entity, masked, declared
+):
+    """Any mask on a dependency's entity or an undeclared data column refuses."""
+    adapter = _adapter()
+    inputs = [
+        Slice("person", ("income",) if declared else ("selected",)),
+        Slice("tax_unit", ("scale",)),
+        Slice("household", ("region",)),
+    ]
+    if masked:
+        inputs = [
+            replace(item, columns=(*item.columns, "keep"), rows="keep")
+            if item.entity == entity
+            else item
+            for item in inputs
+        ]
+    node = replace(_relation_node(), inputs=tuple(inputs))
+    if not declared or (masked and entity != "household"):
+        with pytest.raises(ValueError, match="whole-table relation inputs"):
+            SimulateRulesKernel._require_relation_inputs(node, adapter)
+    else:
+        SimulateRulesKernel._require_relation_inputs(node, adapter)
+
+
+def test_structural_columns_need_no_slice_because_no_graph_can_declare_them():
+    """A table carries its id and memberships; compile refuses a slice of them."""
+    assert missing_relation_inputs(_STRUCTURAL, (), SCHEMA) == []
+    assert missing_relation_inputs(
+        _STRUCTURAL, (Slice("person", ("income",), rows="selected"),), SCHEMA
+    ) == [("person", "person_id"), ("person", "person_tax_unit_id")]
+    graph = _graph_with_identity_slice()
+    with pytest.raises(GraphError, match="which no node owns"):
+        compile_graph(graph)
+
+
+def test_absent_relation_declaration_needs_no_extra_slice():
+    adapter = _adapter(relations=None)
+    node = _relation_node(rows="selected", omitted=(("person", "income"),))
+    SimulateRulesKernel._require_relation_inputs(node, adapter)
 
 
 @settings(max_examples=40, deadline=None, database=None)

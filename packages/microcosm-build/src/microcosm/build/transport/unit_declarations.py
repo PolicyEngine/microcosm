@@ -24,7 +24,10 @@ CREATE_REFS = frozenset({CREATE_V1_REF, CREATE_V2_REF})
 def create_unit_declaration(kernel: str, document: Mapping) -> MultiUnitRule:
     """Lift legacy benefit declarations or read the versioned declaration list."""
     if kernel == CREATE_V1_REF:
-        return MultiUnitRule.from_benefit_unit(BenefitUnitRule.from_spec(document))
+        rule = BenefitUnitRule.from_spec(document)
+        if rule.entity != "family":
+            raise ValueError("CREATE's declared schema requires family benefit units.")
+        return MultiUnitRule.from_benefit_unit(rule)
     if kernel == CREATE_V2_REF:
         return MultiUnitRule.from_spec(document)
     raise ValueError(f"Unknown transport CREATE kernel {kernel!r}.")

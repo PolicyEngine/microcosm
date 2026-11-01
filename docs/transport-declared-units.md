@@ -83,9 +83,11 @@ root; `many` permits zero. A role selector requires both its column and distinct
 role values. This interface supports person members of genuine group partitions;
 binding-local views and arbitrary links remain separate work.
 
-Rules nodes declare whole-table slices for related physical IDs, partition
-membership, selector columns and every mapped related input; composition refuses
-a missing dependency. The adapter gathers per-root offsets and input arrays,
+Rules nodes declare whole-table slices for selector columns and every mapped
+related input. Tables always carry their IDs and memberships, and no slice can
+declare those, but a row mask on any dependency's entity still fails, because it
+can drop a member and leave every unit populated. Composition and every rules
+kernel apply this one check. The adapter gathers per-root offsets and input arrays,
 ordering people by physical identity and retaining distinct equal-valued people.
 Data-derived batches are built at execution and never enter prepared adapter
 configuration. Relation-enabled execution requires the native dense API with

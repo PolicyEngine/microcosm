@@ -649,19 +649,28 @@ class AxiomEngine:
         return tuple(sorted(dependencies))
 
     def validate_input_override(self, entity: str, column: str) -> None:
-        """Refuse aliased related overrides until bridges can resolve them.
+        """Refuse related overrides a bridge cannot apply to their source.
 
         Bridges write physical table columns after checking logical engine
-        inputs. An aliased relation input needs both names resolved together;
-        accepting only the engine name would silently leave its source intact.
+        inputs. An aliased relation input needs both names resolved together,
+        and only the related entity's table feeds a batch. Accepting either
+        override would silently leave the source intact.
         """
-        for relation in self._relations or ():
+        if not self._relations:
+            return
+        program = self._program(entity, missing_ok=True)
+        root_inputs = () if program is None else program.root_inputs
+        for relation in self._relations:
             for name, physical in relation.related_inputs.items():
-                if (
-                    entity == relation.related_entity
-                    and name != physical
-                    and column in (name, physical)
-                ):
+                if column not in (name, physical):
+                    continue
+                if entity != relation.related_entity:
+                    if column not in root_inputs:
+                        raise ValueError(
+                            f"Related Axiom input {column!r} belongs to "
+                            f"{relation.related_entity!r}, not {entity!r}."
+                        )
+                elif name != physical:
                     raise NotImplementedError(
                         "Input overrides of aliased related Axiom inputs are not supported."
                     )
@@ -755,11 +764,9 @@ class AxiomEngine:
                 raise ValueError(
                     f"Relation {relation.key!r} requires unique non-null related identities."
                 )
-            # A physical person identity is the deduplication key, never its
-            # input values; equal-valued people must remain separate targets.
-            selected = selected.drop_duplicates(identity).sort_values(
-                identity, kind="stable"
-            )
+            # Physical identity orders the rows, never input values, so
+            # equal-valued people remain separate targets.
+            selected = selected.sort_values(identity, kind="stable")
             positions_by_root: dict[object, list[int]] = {}
             for position, root_id in enumerate(
                 selected[relation.membership_column].to_numpy()

@@ -330,6 +330,9 @@ class SimulateCounterfactualKernel(SimulateRulesByRefKernel):
             if schema is not None and schema != engine_schema:
                 raise ValueError("Bridge components must share an entity schema.")
             schema = engine_schema
+            SimulateRulesKernel._require_relation_inputs(
+                context.node, self._delegates[ref]._engine
+            )
         tables = SimulateRulesKernel._tables(context, schema)
         frame = Frame(
             tables=tables,
