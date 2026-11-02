@@ -2070,32 +2070,44 @@ DESIGN = np.array([2.0, 3.0, 5.0])
 CALIBRATED = np.array([2.2, 2.7, 5.0])
 
 
-def _units_frame(stored: dict | None = None, *, calibrated=CALIBRATED) -> Frame:
+def _units_frame(
+    stored: dict | None = None,
+    *,
+    calibrated=CALIBRATED,
+    households=HOUSEHOLD_IDS,
+    person_household=PERSON_HOUSEHOLD,
+    person_tax_unit=PERSON_TAX_UNIT,
+    person_family=PERSON_FAMILY,
+    sources=("s1", "s1", "s2"),
+) -> Frame:
+    count = len(person_household)
     person = pd.DataFrame(
         {
-            "person_id": np.arange(1, 7, dtype=np.int64),
-            "person_household_id": np.array(PERSON_HOUSEHOLD, dtype=np.int64),
-            "person_tax_unit_id": np.array(PERSON_TAX_UNIT, dtype=np.int64),
-            "person_family_id": np.array(PERSON_FAMILY, dtype=np.int64),
-            "age": np.arange(30, 36, dtype=np.int64),
+            "person_id": np.arange(1, count + 1, dtype=np.int64),
+            "person_household_id": np.array(person_household, dtype=np.int64),
+            "person_tax_unit_id": np.array(person_tax_unit, dtype=np.int64),
+            "person_family_id": np.array(person_family, dtype=np.int64),
+            "age": np.arange(30, 30 + count, dtype=np.int64),
         }
     )
     household = pd.DataFrame(
         {
-            "household_id": np.array(HOUSEHOLD_IDS, dtype=np.int64),
-            "source_household_id": pd.array(["s1", "s1", "s2"], dtype="string"),
+            "household_id": np.array(households, dtype=np.int64),
+            "source_household_id": pd.array(list(sources), dtype="string"),
         }
     )
+    tax_units = sorted(set(person_tax_unit))
+    families = sorted(set(person_family))
     tax_unit = pd.DataFrame(
         {
-            "tax_unit_id": np.array([1, 2, 3, 4], dtype=np.int64),
-            "tax_unit_flag": [1, 0, 1, 0],
+            "tax_unit_id": np.array(tax_units, dtype=np.int64),
+            "tax_unit_flag": [index % 2 for index in range(len(tax_units))],
         }
     )
     family = pd.DataFrame(
         {
-            "family_id": np.array([100, 101, 102, 103], dtype=np.int64),
-            "family_flag": [0, 1, 0, 1],
+            "family_id": np.array(families, dtype=np.int64),
+            "family_flag": [(index + 1) % 2 for index in range(len(families))],
         }
     )
     weights = {"household": Weights(np.asarray(calibrated), WeightKind.CALIBRATED)}
@@ -2115,23 +2127,25 @@ def _units_frame(stored: dict | None = None, *, calibrated=CALIBRATED) -> Frame:
     )
 
 
-def _calibration(design=DESIGN, calibrated=CALIBRATED) -> dict[str, bytes]:
+def _calibration(
+    design=DESIGN, calibrated=CALIBRATED, households=HOUSEHOLD_IDS
+) -> dict[str, bytes]:
     target = Target(
         "count",
         "household",
-        lambda f: np.ones(len(HOUSEHOLD_IDS)),
+        lambda f: np.ones(len(households)),
         value=10,
         period=2026,
     )
     problem = CalibrationProblem(
-        sparse.csr_array([[1.0] * len(HOUSEHOLD_IDS)]),
+        sparse.csr_array([[1.0] * len(households)]),
         np.array([10.0]),
         (target.row_name,),
         Weights(np.asarray(design, dtype=np.float64), WeightKind.DESIGN),
         "household",
         (target,),
     )
-    problem_payload = encode_problem(problem, entity_ids=HOUSEHOLD_IDS)
+    problem_payload = encode_problem(problem, entity_ids=households)
     sha = decode_problem(problem_payload).sha256
     result = SimpleNamespace(
         weights=np.asarray(calibrated, dtype=np.float64),
@@ -2139,7 +2153,7 @@ def _calibration(design=DESIGN, calibrated=CALIBRATED) -> dict[str, bytes]:
         options={},
         gate_open_probabilities=None,
         l0_lambda=0.0,
-        n_nonzero=len(HOUSEHOLD_IDS),
+        n_nonzero=len(households),
         target_loss_cap=1.0,
         final_loss=0.0,
         loss_trajectory=np.zeros(1),
@@ -2149,10 +2163,10 @@ def _calibration(design=DESIGN, calibrated=CALIBRATED) -> dict[str, bytes]:
     return {
         "problem": problem_payload,
         "solution": encode_solution(
-            calibrated, entity_ids=HOUSEHOLD_IDS, problem_sha256=sha
+            calibrated, entity_ids=households, problem_sha256=sha
         ),
         "result": encode_calibration_result(
-            result, entity_ids=HOUSEHOLD_IDS, problem_sha256=sha
+            result, entity_ids=households, problem_sha256=sha
         ),
     }
 
@@ -2284,8 +2298,8 @@ def _weights_outcome(
     return outcome
 
 
-def _broadcast(values, membership=PERSON_HOUSEHOLD):
-    lookup = dict(zip(HOUSEHOLD_IDS, values, strict=True))
+def _broadcast(values, membership=PERSON_HOUSEHOLD, households=HOUSEHOLD_IDS):
+    lookup = dict(zip(households, values, strict=True))
     return np.array([lookup[h] for h in membership])
 
 
@@ -2360,27 +2374,90 @@ class TestWeightsAudit:
             _run_weights(_units_frame(calibrated=np.array([1.0, 2.0, 3.0])))
 
     @PROPERTY
-    @given(
-        design=st.lists(st.floats(0.5, 50.0), min_size=3, max_size=3),
-        scale=st.lists(st.floats(0.5, 1.5), min_size=3, max_size=3),
-        limit=st.floats(0.0, 0.5),
-    )
+    @given(data=st.data(), limit=st.floats(0.0, 0.5))
     def test_property_the_gate_passes_iff_the_mass_change_is_within_the_limit(
-        self, design, scale, limit
+        self, data, limit
     ) -> None:
-        design = np.asarray(design)
-        calibrated = design * np.asarray(scale)
+        # Draws the membership (households, the tax units and families over
+        # them, source households split across them), zero design and
+        # calibrated weights, and a stored second partition vector.
+        sizes = data.draw(st.lists(st.integers(1, 3), min_size=1, max_size=4))
+        households = [10 * (index + 1) for index in range(len(sizes))]
+        person_household, person_tax_unit, person_family = [], [], []
+        for household, size in zip(households, sizes, strict=True):
+            units = data.draw(st.lists(st.integers(0, 2), min_size=size, max_size=size))
+            families = data.draw(
+                st.lists(st.integers(0, 2), min_size=size, max_size=size)
+            )
+            person_household += [household] * size
+            person_tax_unit += [household + unit for unit in units]
+            person_family += [100 * household + family for family in families]
+        sources = data.draw(
+            st.lists(
+                st.sampled_from(("s1", "s2", "s3")),
+                min_size=len(households),
+                max_size=len(households),
+            )
+        )
+        weight = st.one_of(st.just(0.0), st.floats(0.5, 50.0))
+        design = np.asarray(
+            data.draw(
+                st.lists(weight, min_size=len(households), max_size=len(households))
+            )
+        )
+        calibrated = np.asarray(
+            data.draw(
+                st.lists(weight, min_size=len(households), max_size=len(households))
+            )
+        )
+        # Weights refuses an all-zero vector.
+        if not (design > 0).any():
+            design[0] = 1.0
+        if not (calibrated > 0).any():
+            calibrated[-1] = 1.0
+        stored = data.draw(st.booleans(), label="stored tax_unit vector")
+        membership = {
+            "households": households,
+            "person_household": person_household,
+            "person_tax_unit": person_tax_unit,
+            "person_family": person_family,
+            "sources": sources,
+        }
+        frame = _units_frame(
+            {"tax_unit": np.ones(len(set(person_tax_unit)))} if stored else None,
+            calibrated=calibrated,
+            **membership,
+        )
+        payloads = _calibration(design, calibrated, households)
+        audit = _run_weights(frame, payloads)
+        mass = decode_weights_audit(audit).document["mass"]
+        destination = math.fsum(
+            _broadcast(design, person_household, households).tolist()
+        )
+        assert mass["destination_person_mass"] == destination
+        change = (
+            math.fsum(_broadcast(calibrated, person_household, households).tolist())
+            - destination
+        ) / destination
+        outcome = _weights_outcome(audit, payloads, frame, limit=limit)
+        passes = abs(change) <= limit and not stored
+        assert (outcome.status is GateStatus.PASSED) is passes, outcome.result.failures
+        if stored:
+            assert any(
+                "second weight vector" in line for line in outcome.result.failures
+            )
+
+    def test_zero_weights_fail_on_the_mass_line_only(self) -> None:
+        design, calibrated = np.array([2.0, 0.0, 5.0]), np.array([0.0, 0.0, 5.5])
         payloads = _calibration(design, calibrated)
         frame = _units_frame(calibrated=calibrated)
         audit = _run_weights(frame, payloads)
         mass = decode_weights_audit(audit).document["mass"]
-        destination = math.fsum(_broadcast(design).tolist())
-        assert mass["destination_person_mass"] == destination
-        change = (
-            math.fsum(_broadcast(calibrated).tolist()) - destination
-        ) / destination
-        outcome = _weights_outcome(audit, payloads, frame, limit=limit)
-        assert (outcome.status is GateStatus.PASSED) is (abs(change) <= limit)
+        assert mass["relative_change"] == pytest.approx(-0.5)
+        outcome = _weights_outcome(audit, payloads, frame)
+        assert outcome.status is GateStatus.FAILED
+        (line,) = outcome.result.failures
+        assert "declared limit" in line or "mass" in line
 
     def test_source_household_concentration_equals_the_weight_gates(self) -> None:
         from microcosm.build.transport.gate_bindings import weight_summary
