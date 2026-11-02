@@ -898,9 +898,11 @@ def _attempt_stage(
     # 4d. Telemetry, before anything is pulled or staged: unless the plan
     #     sets MICROCOSM_TELEMETRY_REQUIRED=0, the collector token from the
     #     launch's secret must be complete, come from the collector the
-    #     image's emitter sends to, and outlast the latest stop of the tool
-    #     plus the emitter's drain. A preemption restart too long after the
-    #     launch is refused here too; the operator launches again.
+    #     image's emitter sends to, and stay usable as long as the emitter may
+    #     send it: past the budget's SIGKILL of the tool (its SIGTERM plus
+    #     STOP_GRACE_SECONDS) and the emitter's drain (token_needed_until). A
+    #     preemption restart too long after the launch is refused here too;
+    #     the operator launches again.
     telemetry, telemetry_problem = plan_lib.telemetry_check(
         plan, os.environ, _emitter_version(), container_started=attempt.started
     )

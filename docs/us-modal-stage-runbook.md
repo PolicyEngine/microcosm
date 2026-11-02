@@ -54,7 +54,9 @@ release directory onto the runs volume. Publication stays the human step in
    to `0` (see item 6), and none of the collector-token variables
    (`MICROCOSM_COLLECTOR_TOKEN`, `MICROCOSM_COLLECTOR_TOKEN_EXPIRES_AT`,
    `MICROCOSM_COLLECTOR_ORIGIN`) or the runner's own names for them
-   (`MICROCOSM_MODAL_TELEMETRY_*`). The runner sets the flags for input paths,
+   (`MICROCOSM_MODAL_TELEMETRY_*`). Nor may it set
+   `MICROCOSM_EMITTER_COMMAND`: the build always starts the image's emitter,
+   whose version and collector origin the check and the run verify. The runner sets the flags for input paths,
    checkpoints and outputs, and a plan cannot pass them. It also cannot pass
    `--allow-dirty`: every run builds from a clean clone. A registered
    option's flag must be a plain long flag with no `=` in it that is neither
@@ -191,7 +193,12 @@ release directory onto the runs volume. Publication stays the human step in
      `MICROCOSM_MODAL_TELEMETRY_TOKEN_EXPIRES_AT` and
      `MICROCOSM_MODAL_TELEMETRY_ORIGIN`. It is attached with
      `with_options(secrets=…)`, which replaces the function's secrets, so
-     the Hub secret named by `MICROCOSM_MODAL_HF_SECRET` goes with it. The
+     the Hub secret named by `MICROCOSM_MODAL_HF_SECRET` goes with it. That
+     behaviour, and that `with_options` keeps the function's volumes,
+     timeout and placement and that the secret is created as owned by the
+     app, were read from the Modal client's source at 1.6.2 and 1.6.3, which
+     agree. Microcosm pins no Modal client: the launch uses the operator's
+     `modal`. The
      token is never in the plan, so the plan digest and its attempt budget
      stay the same and no receipt copies it. The launch prints the token's
      expiry and origin, never its value.
@@ -207,19 +214,35 @@ release directory onto the runs volume. Publication stays the human step in
      so they send nothing yet.
    - **Before staging.** The container refuses the attempt (`refused`,
      finished, nothing charged) when the token is missing or incomplete,
-     when its origin is not the collector origin the image's emitter
-     reports from `microcosm-emitter version` (which needs emitter 0.11.0
-     or later in the image), or when it expires before the latest moment
-     the runner stops the tool (the class timeout less the stage's runner
-     reserve, counted from the container's start) plus the emitter's 15 s
-     of delivery after the build exits and the 30 s before expiry at which
-     it stops sending the token. A container that starts more than about an
-     hour after its launch, after a queue or a preemption restart, is
-     refused that way; launch again for a new token.
+     when the image's emitter does not answer `microcosm-emitter version` or
+     reports no collector origin (which needs emitter 0.11.0 or later in the
+     image), when the token's origin is not that collector origin, or when
+     the token expires before the emitter may stop sending it. That moment
+     (`token_needed_until`) is counted from the start of the stage function
+     (`_run_stage`): the class timeout less the stage's runner reserve, when
+     the runner sends the tool SIGTERM; 60 s more (`STOP_GRACE_SECONDS`),
+     when it sends SIGKILL; then the emitter's 0.5 s to notice the build
+     exited, its 15 s of delivery, and the 30 s before expiry at which it
+     stops sending the token. A build that closes its emitter in the grace
+     after SIGTERM starts the 15 s only then. So a container whose stage
+     function starts more than about an hour plus the stage's runner reserve
+     (15 or 30 minutes), less about 106 s, after the token was obtained,
+     after a queue or a preemption restart, is refused; launch again for a
+     new token. Every refusal, at launch and here, names the
+     `MICROCOSM_TELEMETRY_REQUIRED=0` opt-out.
+   - **An image built before emitter 0.11.0.** The image installs the
+     newest emitter release when Modal builds it, and Modal reuses the image
+     it built for a commit. So a commit whose image was built before 0.11.0
+     (released 2026-10-29) is refused at every launch, with a message that
+     says so, until the image is built again: launch with
+     `MODAL_FORCE_BUILD=1` set, which rebuilds every layer, or wait for
+     #1455, whose new install command (`microcosm-emitter>=0.11.9`) changes
+     that build step and so rebuilds it.
    - **The check** (without `--run`) asks for no token. It reports the
      collector origin the image's emitter would send to, and the lifetime a
-     launch would ask for, and fails when the image's emitter reports no
-     origin.
+     launch would ask for. It fails when the image's emitter reports no
+     origin; an emitter that does not run is reported once, as "does not
+     run".
    - **Opting out.** A plan whose `env` sets `MICROCOSM_TELEMETRY_REQUIRED`
      to `0` asks for no token, and its build runs without telemetry: the
      emitter, if one starts, keeps its events in the container, and they
