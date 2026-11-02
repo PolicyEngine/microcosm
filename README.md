@@ -47,8 +47,9 @@ until you restart the kernel, load it by path with
 ## Build progress and staging run files
 
 UK build completion automatically exports Orrery execution graphs, attempts
-immutable publication before Hugging Face artifact staging, and preserves
-durable retry jobs and receipt snapshots. No upload is published today; see
+immutable publication before Hugging Face artifact staging when
+`--publish-orrery` asks for it, and preserves durable retry jobs and receipt
+snapshots. No upload is published today; see
 [the status of graph publication](docs/orrery-publication.md#status). See
 [graph publication](docs/orrery-publication.md) for configuration and retry.
 

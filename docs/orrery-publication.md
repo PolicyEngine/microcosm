@@ -44,7 +44,8 @@ aggregate summaries can be published publicly.
 No upload is published today. The runs application accepts an upload only
 after the collector authorizes it, and the collector has no authorization
 endpoint: PolicyEngine/calibration-diagnostics#208, which would have added
-one, was closed unmerged. Builds still queue uploads as described above. A
+one, was closed unmerged. A build run with `--publish-orrery` still queues an
+upload as described above; without it, the default, a build queues none. A
 queued job stays pending in the emitter's local queue, its files stay in the
 preserved directory, and no retry can succeed.
 
@@ -59,11 +60,10 @@ used licensed microdata, as UK builds do, private; it becomes public only
 after output clearance. The direct upload to the runs application will then
 be removed.
 
-By default, a build queues an upload only when remote staging is enabled, and
-after queuing it stages its artifact bundle to Hugging Face under
-`staged/<run_id>/`. That bundle holds every file of the queued upload, plus
-`graph.execution.json` when execution was recorded, so the Orrery graph files
-can be rebuilt from it later. This does not hold for an interrupted build, a
+When a build queues an upload with remote staging enabled, it then stages its
+artifact bundle to Hugging Face under `staged/<run_id>/`. That bundle holds
+every file of the queued upload, plus `graph.execution.json` when execution
+was recorded, so the Orrery graph files can be rebuilt from it later. This does not hold for an interrupted build, a
 build run with `--publish-orrery` while staging is local-only or disabled, or a
 build whose Hugging Face staging failed or did not complete.
 
