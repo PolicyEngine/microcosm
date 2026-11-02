@@ -258,3 +258,9 @@ def test_a_gates_json_entry_naming_the_gate_loads():
     assert loaded.criticality == "release_blocking"
     # The loader freezes lists into tuples; the values are the entry's.
     assert json.loads(json.dumps(dict(loaded.parameters))) == entry["parameters"]
+
+
+@pytest.mark.parametrize("bounds", [[], [0.75], [0.75, 1, 1.25], "ab", [1.25, 0.75]])
+def test_ratio_bounds_must_be_an_ordered_pair(bounds):
+    with pytest.raises((TypeError, ValueError), match="roster_total_bounds"):
+        _run(_case(), roster_total_bounds=bounds)

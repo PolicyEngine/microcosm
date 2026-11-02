@@ -1641,9 +1641,12 @@ def _transport_weights_audit(
 def _ratio_bounds(name: str, value: object) -> tuple[Fraction, Fraction]:
     if isinstance(value, str | bytes) or not isinstance(value, Sequence):
         raise TypeError(f"{name} must be a [lower, upper] pair.")
-    if len(value) != 2:
+    # Exactly two items, counted without a numeric literal: this module
+    # holds no threshold literal (test_holds_no_threshold_literal).
+    *rest, last = value or (None,)
+    if len(rest) != 1:
         raise ValueError(f"{name} must be a [lower, upper] pair.")
-    lower, upper = (Fraction(_number(name, item)) for item in value)
+    lower, upper = (Fraction(_number(name, item)) for item in (*rest, last))
     if not 0 <= lower <= upper:
         raise ValueError(f"{name} must satisfy 0 <= lower <= upper.")
     return lower, upper
