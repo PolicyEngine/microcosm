@@ -17,7 +17,6 @@ import hashlib
 import json
 import os
 import subprocess
-import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -25,19 +24,21 @@ from typing import Any
 import pytest
 from microcosm_emitter_interface import EmitterClient, launcher
 from microcosm_emitter_interface import client as emitter_interface_client
-from microcosm_emitter_interface.bundles import DatasetBundleReceipt
 
 from microcosm.build import telemetry_emitter
 from microcosm.build.staging_dataset import (
     SHA256SUMS_FILENAME,
     STAGED_MANIFEST_FILENAME,
     StagedDatasetBundle,
-    bundle_request,
+    resume_hand_over,
     stage_bundle,
     write_access_problem,
     write_sidecars,
 )
-from microcosm.build.telemetry_emitter import start_bundle_emitter
+from microcosm.build.telemetry_emitter import (
+    OutdatedEmitterClient,
+    start_bundle_emitter,
+)
 from test_support.microcosm_build.stand_in_hub import StandInHub
 
 REPOSITORY = "microcosm-tests/staged-bundles"
@@ -120,20 +121,6 @@ def _local_digests(bundle: StagedDatasetBundle) -> dict[str, str]:
         f"{PREFIX}/{name}": _sha256((bundle.run_dir / name).read_bytes())
         for name in BUNDLE_NAMES
     }
-
-
-def _settled_receipt(
-    client: EmitterClient, handover_id: str, *, timeout: float
-) -> DatasetBundleReceipt | None:
-    """The hand-over's receipt once it is no longer pending, or the last one."""
-    deadline = time.monotonic() + timeout
-    while True:
-        receipt = client.dataset_bundle_receipt(handover_id)
-        if receipt is None or receipt["status"] != "pending":
-            return receipt
-        if time.monotonic() >= deadline:
-            return receipt
-        time.sleep(0.2)
 
 
 @dataclass
@@ -263,13 +250,17 @@ def test_an_emitter_older_than_the_minimum_is_never_started(
     )
 
     client = installed_emitter.start()
+    problem = write_access_problem(client, REPOSITORY)
 
+    assert isinstance(client, OutdatedEmitterClient)
     assert not client.available
     assert installed_emitter.processes == []
     assert stand_in_hub.requests == []
     warning = capsys.readouterr().err
     assert f"reports version {installed_emitter.version}" in warning
     assert f"needs {required} or later" in warning
+    assert problem is not None
+    assert f"reports version {installed_emitter.version}" in problem
 
 
 def test_the_installed_emitter_uploads_the_bundle_in_one_commit(
@@ -390,17 +381,32 @@ def test_a_hub_that_never_answers_leaves_the_upload_pending(
 
     assert handover.delivery["status"] == "failed"
     assert handover.delivery["error_code"] == "UPLOAD_PENDING"
+    assert handover.delivery["revision"] is None
     assert handover.handed_over == BUNDLE_NAMES
+    assert handover.handover_id is not None
     assert stand_in_hub.wait_for_stalled("commit", timeout=UPLOAD_WAIT_SECONDS)
     assert stand_in_hub.commits(REPOSITORY) == []
 
-    # The emitter keeps the bundle queued and finishes once the Hub answers.
+    # The emitter keeps the bundle queued and finishes once the Hub answers;
+    # a re-stage then records the outcome of the build's own hand-over.
     stand_in_hub.release()
-    handover_id = bundle_request(bundle, repository=REPOSITORY).handover_id()
-    receipt = _settled_receipt(client, handover_id, timeout=UPLOAD_WAIT_SECONDS)
+    resumed = resume_hand_over(
+        bundle,
+        emitter=client,
+        handover_id=handover.handover_id,
+        repository=REPOSITORY,
+        wait_seconds=UPLOAD_WAIT_SECONDS,
+    )
 
     commits = stand_in_hub.commits(REPOSITORY)
     assert len(commits) == 1
-    assert receipt is not None
-    assert receipt["status"] == "uploaded"
-    assert receipt["revision"] == commits[0].oid
+    assert {path: _sha256(content) for path, content in commits[0].added.items()} == (
+        _local_digests(bundle)
+    )
+    assert resumed is not None
+    assert resumed.delivery == {
+        **handover.delivery,
+        "status": "already_staged",
+        "revision": commits[0].oid,
+        "error_code": None,
+    }

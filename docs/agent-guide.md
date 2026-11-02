@@ -41,7 +41,7 @@ or `uv sync --all-packages --all-extras`. To keep both countries set up, point
 `UV_PROJECT_ENVIRONMENT` at a separate directory outside the checkout for each.
 
 PR CI (`.github/workflows/test.yml`) has `lint`, `engine-free`, `engine-us`,
-`engine-uk`, `integration-uk`, and `wheels` jobs, plus the
+`engine-uk`, `integration-uk`, `wheels`, and `installed-emitter` jobs, plus the
 `select-countries` orchestration job.
 `tools/ci_test_plan.py` is the only authority for test-directory ownership, CI
 job assignment, country ownership, US timing-report categories, and
@@ -116,6 +116,23 @@ stopped). Emitter process, persistence and
 HTTP-delivery tests belong in microcosm-emitter; do not copy them into
 Microcosm.
 
+The `installed-emitter` job is the one place that starts the real emitter.
+`tools/run_installed_emitter_tests.sh` installs `microcosm-emitter` at
+`MINIMUM_EMITTER_VERSION` and at the newest release pinned in
+`tools/installed-emitter/requirements.txt`, each into its own uv tool
+directory, and runs `installed_emitter/shared/` once for each. Those tests start
+the installed command with `start_bundle_emitter()` and send its Hugging Face
+Hub requests through `HF_ENDPOINT` to a loopback stand-in server
+(`test_support/microcosm_build/stand_in_hub.py`), so the job needs no secret.
+They check what builds rely on in the hand-over (one commit per bundle,
+`copied_files`, `already_staged`, the recorded error codes and the version
+check), not the emitter's own queue or delivery. Raise the pinned release in a
+pull request when the emitter publishes one.
+`tools/installed-emitter/constraints.txt` pins the `huggingface_hub` release
+whose requests the stand-in answers; change it only together with the
+stand-in. Run the job's tests locally with
+`bash tools/run_installed_emitter_tests.sh <directory for the tool installs>`.
+
 The UK full-build caller sets `close_service_on_finish=False`: reporting an outcome
 leaves the emitter running for graph and staging hand-overs, and that caller's
 existing `finally` cleanup closes it. Other callers close automatically when they
@@ -156,6 +173,9 @@ of these directories below its package's `tests/` directory:
 - `engine/uk/`: imports or executes the UK engine.
 - `integration/uk/`: runs serially through the `integration-uk` job with the
   explicit `--run-integration` option.
+- `installed_emitter/shared/`: starts the separately installed
+  `microcosm-emitter`; runs through the `installed-emitter` job, once per
+  installed release, with the explicit `--run-integration` option.
 
 Classify a mixed US module by its most resource-intensive test, or split it when
 the tests already have cleanly separable helpers. The directory is the execution
