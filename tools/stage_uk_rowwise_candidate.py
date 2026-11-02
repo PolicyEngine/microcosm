@@ -1,13 +1,16 @@
 """Stage a finished UK rowwise candidate run on the private dataset repository.
 
 The build driver stages its bundle at the end of every run; this command
-covers the two other cases: a run whose upload failed (recorded as
-``staged_dataset.status == "failed"`` in its manifest) and a run built before
-the staged-dataset lane existed. It uploads exactly what the driver would have
-uploaded: every file the manifest registers as an output, the manifest itself,
-``staged_manifest.json`` and ``sha256sums.txt``, in one commit under
-``staged/<run_id>/``. Re-running on an already staged directory is a no-op;
-a directory whose bytes differ from the remote bundle is refused.
+covers the other cases: a run whose upload failed or was still queued
+(recorded as ``staged_dataset.status == "failed"`` in its manifest), a run
+that kept its bundle local, and a run built before the staged-dataset lane
+existed. It hands over exactly what the driver would have: every file the
+manifest registers as an output, the manifest itself, ``staged_manifest.json``
+and ``sha256sums.txt``, which the emitter commits in one commit under
+``staged/<run_id>/``. The command starts a short-lived emitter of its own,
+with only its Hugging Face module, and waits for its first upload attempt as
+a build does. Re-running on an already staged directory is a no-op; a
+directory whose bytes differ from the remote bundle is refused.
 
 Staging is not publication: ``releases/`` and ``latest.json`` are untouched.
 """
@@ -22,15 +25,19 @@ import sys
 from pathlib import Path
 
 from microcosm.build.staging_dataset import (
+    SHA256SUMS_FILENAME,
+    StagedBundleHandOver,
     StagedDatasetBundle,
     delivery_covers_bundle,
+    hub_offline,
     local_only_staged_dataset,
     refresh_sha256sums_entry,
     stage_bundle,
     validate_staged_dataset_delivery,
+    write_access_problem,
     write_sidecars,
 )
-from microcosm.build.staging_storage import HuggingFaceDatasetStorage
+from microcosm.build.telemetry_emitter import start_bundle_emitter
 from microcosm.build.uk_runtime.staging import (
     UK_STAGED_DATASET_PREFIX,
     UK_STAGED_DATASET_REPOSITORY,
@@ -39,10 +46,10 @@ from microcosm.build.uk_runtime.staging import (
 MANIFEST_FILENAME = "rowwise_candidate_manifest.json"
 
 
-def _hub_api():
-    from huggingface_hub import HfApi
+def _start_bundle_emitter():
+    """This command's own emitter (test seam)."""
 
-    return HfApi()
+    return start_bundle_emitter()
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -152,32 +159,48 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     if repository is None:
-        delivery = local_only_staged_dataset(bundle, prefix=UK_STAGED_DATASET_PREFIX)
+        staged = StagedBundleHandOver(
+            local_only_staged_dataset(bundle, prefix=UK_STAGED_DATASET_PREFIX)
+        )
     else:
+        if hub_offline():
+            raise SystemExit(
+                "error: HF_HUB_OFFLINE is set, so the emitter cannot upload the "
+                "bundle; unset it, or pass --local-only."
+            )
         print(
             f"staging {run_dir} to {repository} under "
             f"{bundle.remote_prefix(UK_STAGED_DATASET_PREFIX)}...",
             file=sys.stderr,
             flush=True,
         )
-        storage = HuggingFaceDatasetStorage(repository, api=_hub_api())
+        emitter = _start_bundle_emitter()
         try:
-            can_write = storage.credential_can_write()
-        except Exception:
-            can_write = None
-        if can_write is False:
-            raise SystemExit(
-                f"error: the ambient Hugging Face token cannot write {repository}: "
-                "it is read-only or not scoped to this repository or its owner "
-                "(a fine-grained token needs repo.write on the repository or on "
-                f"{repository.split('/', 1)[0]}); set HF_TOKEN or `hf auth login`."
+            problem = write_access_problem(emitter, repository)
+            if problem is not None:
+                raise SystemExit(f"error: {problem}.")
+            staged = stage_bundle(
+                bundle,
+                emitter=emitter,
+                repository=repository,
+                prefix=UK_STAGED_DATASET_PREFIX,
             )
-        delivery = stage_bundle(
-            bundle, storage=storage, prefix=UK_STAGED_DATASET_PREFIX
-        )
+        finally:
+            emitter.close()
+    delivery = staged.delivery
     manifest["staged_dataset"] = validate_staged_dataset_delivery(delivery)
-    _rewrite_manifest(manifest_path, manifest)
-    refresh_sha256sums_entry(run_dir, MANIFEST_FILENAME)
+    # The emitter uploads an uncopied file from disk later; it keeps its bytes.
+    if staged.may_rewrite(MANIFEST_FILENAME):
+        _rewrite_manifest(manifest_path, manifest)
+        if staged.may_rewrite(SHA256SUMS_FILENAME):
+            refresh_sha256sums_entry(run_dir, MANIFEST_FILENAME)
+    else:
+        print(
+            f"warning: {MANIFEST_FILENAME} stays as handed over: the emitter "
+            "uploads it from disk; the delivery record is printed below.",
+            file=sys.stderr,
+            flush=True,
+        )
     print(json.dumps(delivery, indent=2, sort_keys=True))
     return 0 if delivery["status"] != "failed" else 1
 

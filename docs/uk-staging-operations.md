@@ -62,7 +62,8 @@ its `failure_class`.
 The implementation separates versioned file serialization from country
 configuration. `microcosm.build.staging_storage` owns the hand-over of run
 files to the build's emitter and its repeated-failure policy, used by both
-version 1 and version 2, and the repository access the staged dataset uses.
+version 1 and version 2, and the read access that fetches a staged dataset;
+`microcosm.build.staging_dataset` hands the staged dataset to the emitter.
 The emitter commits every pending run file of a repository in one commit per
 upload interval, with the build's own credential, and reads a run back on
 request.
@@ -219,10 +220,17 @@ and the registry), the manifest as built, `staged_manifest.json` (inventory
 with digests, summary fields and the telemetry run reference) and
 `sha256sums.txt`. Nothing else in the run directory is eligible: logs, the
 Logbook spool, checkpoints and evaluation trees stay local. The bundle is
-verified from disk against the manifest's own digests and written in one
-commit; the commit is recorded as the bundle's revision. `releases/` and
-`latest.json` are never touched, no tag is created, and the release contract is
-not consulted: a staged bundle is not a release and cannot be loaded as one.
+verified from disk against the manifest's own digests, then handed to the
+build's emitter (`stage_dataset_bundle`): every file by path, with its SHA-256,
+its size and its role. An output's role is its `outputs` key as a role name
+(`dataset` for the H5, `calibration_diagnostics`, `local_registry`, ...; digests
+in a key are left out), and the manifest, `staged_manifest.json` and
+`sha256sums.txt` are `build_manifest`, `staged_manifest` and `checksums`. The
+emitter writes the bundle in one commit with the build's own credential, and
+its receipt becomes the bundle's `staged_dataset` record, with the commit as
+its revision. `releases/` and `latest.json` are never touched, no tag is
+created, and the release contract is not consulted: a staged bundle is not a
+release and cannot be loaded as one.
 
 Modes follow the staging switch. The default uploads telemetry and the bundle;
 `--staging-local-only` keeps both on disk (the sidecars are still written);
@@ -230,23 +238,52 @@ Modes follow the staging switch. The default uploads telemetry and the bundle;
 runs telemetry alone, with the bundle neither inventoried nor uploaded. The
 repository is `--staged-dataset-repo-id` (environment
 `POPULACE_UK_STAGED_DATASET_REPO_ID`). Because the upload closes a multi-hour
-run, the command refuses to start a remote dataset stage without an ambient
-Hub credential (`HF_TOKEN`) that can see the repository **and** write it: a
-read token, or a fine-grained token scoped to another owner, is refused up
-front rather than by the Hub's 403 hours later (a fine-grained token needs
-`repo.write` on the repository or on the `policyengine` organisation). The
+run, the command asks its emitter to check the repository before it reads the
+spine (`check_write_access`), and refuses to start a remote dataset stage
+without a running emitter, or without an ambient Hub credential (`HF_TOKEN`)
+that can see the repository **and** write it: a read token, or a fine-grained
+token scoped to another owner, is refused up front rather than by the Hub's
+403 hours later (a fine-grained token needs `repo.write` on the repository or
+on the `policyengine` organisation). With `HF_HUB_OFFLINE` set, as the Modal
+runner sets it for every build, the emitter could never upload, so a remote
+stage stays local instead: the bundle is verified, its sidecars are written,
+and it is recorded as `local_only`, to be staged from the workstation once
+the outputs are copied back. The
 telemetry stays best-effort with no pre-flight. Forwarded epochs are thinned to
 at most 2,400 rows per run, whatever `--epochs` says, so the telemetry files
 stay under the contract's 5 MiB cap; a content refusal from the telemetry is
 reported once and stops the forwarding without touching the solve.
 
+The build waits for the emitter's first upload attempt after the hand-over,
+for at most 30 minutes (`STAGED_DATASET_WAIT_SECONDS` in
+`microcosm.build.staging_dataset`); a healthy upload of the largest bundle
+recorded (about 2.4 GB) takes about 16 minutes at 20 Mbit/s. The emitter
+retries a failed attempt from its durable queue, but the build does not wait
+for the retries: it records the bundle as `failed` with the attempt's error
+code, or with `UPLOAD_PENDING` when the first attempt had not finished after
+30 minutes. The emitter keeps such a bundle queued, and it or the next emitter
+started on the machine (the re-stage command's included) uploads it. Leave the
+run directory unchanged until then, and re-stage it to record the outcome.
+
 The manifest gains two evidence blocks after the bundle is on disk:
 `staging_delivery`, the validated version 2 telemetry receipt, and
 `staged_dataset` (`mode`, `repository`, `prefix`, `run_id`, `revision`,
 `status` in `uploaded`, `already_staged`, `failed`, `skipped`, a reviewed
-`error_code`, and the `files` inventory as a mapping). A failed upload is
-recorded with its code, warned on stderr, and never changes the build's exit
-code or Logbook disposition. The telemetry run declares two reviewed
+`error_code`, and the `files` inventory as a mapping). The error codes are the
+emitter's (`REMOTE_DIFFERS` and `PRESERVED_BYTES_CHANGED`, which are final;
+`REPOSITORY_UNAVAILABLE`, `UPLOAD_FAILED`, `CREDENTIAL_MISSING` and
+`PRESERVED_FILES_MISSING` for a bundle it keeps retrying) and three of
+Microcosm's: `UPLOAD_PENDING`, `HANDOVER_REFUSED` for a hand-over the emitter
+refused to queue, and `EMITTER_UNAVAILABLE` when no emitter took it. A failed
+upload is recorded with its code, warned on stderr, and never changes the
+build's exit code or Logbook disposition. The emitter copies the bundle's small
+files (each up to 32 MiB, up to 64 MiB in all, smallest first) before it
+answers, and uploads every other file from disk. So after staging the build
+rewrites the manifest, `sha256sums.txt` and the national build record only when
+the receipt lists them in `copied_files`, as it does for today's bundles; a
+file it does not list keeps its handed-over bytes, with a warning, and the
+records it would have gained are in the staging run's artifacts and in the
+manifest the command prints. The telemetry run declares two reviewed
 artifacts, `artifacts/staged_dataset.json` (the same block) and
 `artifacts/fit_summary.json` (loss, fit by family, gate verdicts, the size
 receipt without its per-row arrays), so a run in the dashboard points at its
@@ -258,14 +295,17 @@ materialize pruned from both arms and listed; the manifest's `evaluation`
 block records its verdict, and the release-cut certifier requires that
 verdict to be `passed`.
 
-Re-stage a finished directory, including runs built before this lane existed
-or whose upload failed, with:
+Re-stage a finished directory, including runs built before this lane existed,
+runs that kept their bundle local, and runs whose upload failed or was still
+queued, with:
 
 ```bash
 uv run python tools/stage_uk_rowwise_candidate.py --run-dir <run directory>
 ```
 
-It is idempotent on the outputs' digests: a directory whose manifest already
+It starts a short-lived emitter of its own, with only its Hugging Face module,
+checks write access as a build does, hands the bundle over and waits for the
+first upload attempt the same way. It is idempotent on the outputs' digests: a directory whose manifest already
 records the same outputs as uploaded is left untouched (the driver's revision
 stands); an identical remote bundle the manifest does not know about is
 recorded as `already_staged` with the bundle's own commit; a different bundle

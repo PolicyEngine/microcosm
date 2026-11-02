@@ -8,10 +8,10 @@ build must never abort on its own progress report.
 
 These helpers were moved from ``tools/build_uk_rowwise_candidate.py`` so the
 graph full-build driver and the rowwise tool stage identically; the tool
-imports them back. The run files go to the build's emitter, which commits
-them with the build's own credential; the staged dataset is still uploaded
-here. ``_hub_api`` and ``_hub_token`` are the test seams the drivers' tests
-patch on this module for the staged dataset.
+imports them back. The run files and the staged dataset bundle both go to the
+build's emitter, which commits them with the build's own credential; this
+module makes no Hugging Face call. A build whose environment switches the Hub
+off (``HF_HUB_OFFLINE``, as on Modal) keeps its bundle local.
 """
 
 from __future__ import annotations
@@ -35,13 +35,15 @@ from microcosm.build.run_outcome import (
     classify_failure,
 )
 from microcosm.build.staging_dataset import (
+    StagedBundleHandOver,
     StagedDatasetBundle,
     disabled_staged_dataset,
+    hub_offline,
     local_only_staged_dataset,
     stage_bundle,
+    write_access_problem,
     write_sidecars,
 )
-from microcosm.build.staging_storage import HuggingFaceDatasetStorage
 from microcosm.build.staging_v2 import (
     StagingContractError,
     StagingRunBundleWriterV2,
@@ -65,6 +67,7 @@ __all__ = [
     "STAGING_UPLOAD_INTERVAL_SECONDS",
     "add_staging_artifact",
     "block_staging_run_bundle",
+    "bundle_emitter",
     "create_staging_run_bundle",
     "emit_calibration_progress",
     "fail_staging_run_bundle",
@@ -113,23 +116,16 @@ def _run_file_emitter() -> Any:
     return None if _ACTIVE_EMITTER is None else _ACTIVE_EMITTER.client
 
 
-def _hub_api() -> Any:
-    """The Hub client used for the staged dataset (test seam)."""
+def bundle_emitter() -> Any:
+    """The client of this build attempt's running emitter, which takes its
+    staged bundles, or None."""
 
-    from huggingface_hub import HfApi
-
-    return HfApi()
-
-
-def _hub_token() -> str | None:
-    """The ambient Hub credential, if any (test seam)."""
-
-    from huggingface_hub import get_token
-
-    return get_token()
+    if _ACTIVE_EMITTER is None or not _ACTIVE_EMITTER.available:
+        return None
+    return _ACTIVE_EMITTER.client
 
 
-def staged_dataset_mode(args: argparse.Namespace) -> str:
+def _requested_staged_dataset_mode(args: argparse.Namespace) -> str:
     if args.no_staging or args.no_staged_dataset:
         return "disabled"
     if args.staging_local_only:
@@ -137,69 +133,60 @@ def staged_dataset_mode(args: argparse.Namespace) -> str:
     return "local_and_remote"
 
 
+def staged_dataset_mode(args: argparse.Namespace) -> str:
+    """The staged dataset's mode: the switches', made local with the Hub off.
+
+    With ``HF_HUB_OFFLINE`` set, as the Modal runner sets it, the emitter
+    could never upload the bundle, so it is verified and kept local, to be
+    staged from the workstation once the outputs are copied back.
+    """
+
+    mode = _requested_staged_dataset_mode(args)
+    if mode == "local_and_remote" and hub_offline():
+        return "local_only"
+    return mode
+
+
 _staged_dataset_mode = staged_dataset_mode
+
+
+def _warn_hub_offline(args: argparse.Namespace) -> None:
+    """Say why a requested remote stage stays local."""
+
+    if _requested_staged_dataset_mode(args) == "local_and_remote" and hub_offline():
+        print(
+            "warning: HF_HUB_OFFLINE is set, as on Modal, so the dataset bundle "
+            "stays local: it is not handed to the emitter. Stage it from a "
+            "workstation once the outputs are copied there.",
+            file=sys.stderr,
+            flush=True,
+        )
 
 
 def preflight_staged_dataset(args: argparse.Namespace) -> None:
     """Refuse a remote dataset stage the run could not complete.
 
-    The bundle upload is the last step of a multi-hour run, so the credential
-    and the repository are checked before the spine is read. Telemetry stays
-    best-effort with no pre-flight, as on the national command.
+    The bundle upload is the last step of a multi-hour run, so the build's
+    emitter checks the credential, the repository and the credential's write
+    scope before the spine is read (``check_write_access``). A read token, or
+    a fine-grained token scoped to another owner, would otherwise be refused
+    by the Hub with 403 only when the upload starts, hours later. Telemetry
+    stays best-effort with no pre-flight, as on the national command.
     """
 
-    if args.dry_run or staged_dataset_mode(args) != "local_and_remote":
+    if args.dry_run:
+        return
+    _warn_hub_offline(args)
+    if staged_dataset_mode(args) != "local_and_remote":
         return
     repo_id = str(args.staged_dataset_repo_id).strip()
     hint = "pass --staging-local-only or --no-staged-dataset to keep the bundle local"
-    if not _hub_token():
-        raise ValueError(
-            f"remote dataset staging to {repo_id} needs a Hugging Face write "
-            f"credential (HF_TOKEN or `hf auth login`); {hint}."
-        )
-    storage = HuggingFaceDatasetStorage(repo_id, api=_hub_api())
-    try:
-        storage.head_revision()
-    except Exception as error:
-        # The transport's own message is not chained: it can carry request
-        # URLs and identifiers, and the type name is enough to act on.
-        raise ValueError(
-            f"remote dataset staging cannot reach {repo_id} "
-            f"({type(error).__name__}); {hint}."
-        ) from None
-    _require_write_credential(storage, hint=hint)
+    problem = write_access_problem(bundle_emitter(), repo_id)
+    if problem is not None:
+        raise ValueError(f"{problem}; {hint}.")
 
 
 _preflight_staged_dataset = preflight_staged_dataset
-
-
-def _require_write_credential(storage: HuggingFaceDatasetStorage, *, hint: str) -> None:
-    """Refuse a credential that can see the repository but cannot write it.
-
-    A read token, or a fine-grained token scoped to another owner, passes the
-    reachability check and is refused by the Hub with 403 only when the upload
-    starts, hours later. The scope is read from the Hub's own description of
-    the token; when it cannot be read the upload itself is the proof.
-    """
-
-    try:
-        can_write = storage.credential_can_write()
-    except Exception:
-        can_write = None
-    if can_write is False:
-        raise ValueError(
-            f"remote dataset staging to {storage.repo_id} needs a write credential: "
-            "the ambient Hugging Face token is read-only or is not scoped to this "
-            "repository or its owner (a fine-grained token needs repo.write on "
-            f"{storage.repo_id} or on {storage.repo_id.split('/', 1)[0]}); {hint}."
-        )
-    if can_write is None:
-        print(
-            "warning: the Hugging Face credential's write scope could not be read; "
-            "the upload at the end of the run will prove it.",
-            file=sys.stderr,
-            flush=True,
-        )
 
 
 def create_staging_run_bundle(
@@ -622,19 +609,24 @@ def stage_dataset(
     output_paths: Mapping[str, Path],
     run_id: str,
     staging_bundle: StagingRunBundleWriterV2 | None,
-) -> dict[str, Any]:
+) -> StagedBundleHandOver:
     """Stage the published bundle under ``staged/<run_id>/``; record, never raise.
 
     The bundle is every file the manifest registers as an output plus the
     manifest and two sidecars, verified from disk against the manifest's own
-    digests. Nothing else in the run directory is eligible.
+    digests. Nothing else in the run directory is eligible. The build's
+    emitter uploads it; the result says which bundle files the build may
+    rewrite afterwards.
     """
 
     mode = staged_dataset_mode(args)
     if mode == "disabled":
-        return disabled_staged_dataset(
-            "--no-staging" if args.no_staging else "--no-staged-dataset"
+        return StagedBundleHandOver(
+            disabled_staged_dataset(
+                "--no-staging" if args.no_staging else "--no-staged-dataset"
+            )
         )
+    _warn_hub_offline(args)
     repository = (
         None if mode == "local_only" else str(args.staged_dataset_repo_id).strip()
     )
@@ -675,18 +667,24 @@ def stage_dataset(
         telemetry=telemetry_reference,
     )
     if mode == "local_only":
-        delivery = local_only_staged_dataset(bundle, prefix=UK_STAGED_DATASET_PREFIX)
+        handover = StagedBundleHandOver(
+            local_only_staged_dataset(bundle, prefix=UK_STAGED_DATASET_PREFIX)
+        )
     else:
+        assert repository is not None, "Remote staging requires a repository."
         print(
             f"staging the dataset bundle to {repository} under "
             f"{bundle.remote_prefix(UK_STAGED_DATASET_PREFIX)}...",
             file=sys.stderr,
             flush=True,
         )
-        storage = HuggingFaceDatasetStorage(repository, api=_hub_api())
-        delivery = stage_bundle(
-            bundle, storage=storage, prefix=UK_STAGED_DATASET_PREFIX
+        handover = stage_bundle(
+            bundle,
+            emitter=bundle_emitter(),
+            repository=repository,
+            prefix=UK_STAGED_DATASET_PREFIX,
         )
+    delivery = handover.delivery
     print(_staged_dataset_line(delivery), file=sys.stderr, flush=True)
     stage(
         staging_bundle,
@@ -717,7 +715,7 @@ def stage_dataset(
         artifact_kind="aggregate_diagnostics",
         classification="aggregate",
     )
-    return delivery
+    return handover
 
 
 _stage_dataset = stage_dataset

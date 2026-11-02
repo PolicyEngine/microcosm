@@ -20,7 +20,8 @@ separately installed `microcosm-emitter` command as the build's child process
 through `microcosm-emitter-interface`, with independent telemetry, graph
 publication and Hugging Face hand-over modules. The emitter owns sockets,
 authentication, persistence, retries and resource sampling. Microcosm retains
-graph generation, public-file selection and the staged dataset upload.
+graph generation and public-file selection; the staged dataset bundle, including
+a failed build's graph evidence, goes to the same emitter's Hugging Face module.
 Slow uploads cannot delay socket acknowledgement or telemetry delivery. A
 command that started no emitter of its own starts a short-lived one with only
 the graph module to measure and queue the files.

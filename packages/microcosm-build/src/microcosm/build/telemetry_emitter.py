@@ -4,8 +4,8 @@ A build imports only ``microcosm-emitter-interface``. Starting the adapter
 starts the ``microcosm-emitter`` command, installed on its own (for example
 ``uv tool install microcosm-emitter``), as this build's child process, with
 three modules: telemetry, Orrery graph publication, and the Hugging Face
-hand-over of staging run files. The interface finds the command through
-``MICROCOSM_EMITTER_COMMAND``, then ``PATH``.
+hand-over of staging run files and staged dataset bundles. The interface
+finds the command through ``MICROCOSM_EMITTER_COMMAND``, then ``PATH``.
 
 The child inherits the build's environment variables and runs as the same
 user, so it finds the build's Hugging Face credential (``HF_TOKEN``, then
@@ -63,6 +63,7 @@ __all__ = [
     "TelemetryRun",
     "publication_inventory",
     "publish_graph",
+    "start_bundle_emitter",
     "start_local_telemetry_emitter_service",
 ]
 
@@ -74,9 +75,11 @@ SETUP_WARNING = (
 STARTUP_TIMEOUT_SECONDS = 15.0
 #: The first emitter release with everything a build hands over: the Hugging
 #: Face module (``stage_run_files``, ``run_files_receipt`` and
-#: ``read_back_run_files``) and its queue in ``events.handovers.sqlite3``.
-#: Releases 0.4.0 to 0.5.1 accept the same protocol version but start without
-#: that module; 0.7.0 added only release publication, which builds do not use.
+#: ``read_back_run_files`` for staging run files; ``stage_dataset_bundle``,
+#: ``dataset_bundle_receipt`` and ``check_write_access`` for staged dataset
+#: bundles) and its queue in ``events.handovers.sqlite3``. Releases 0.4.0 to
+#: 0.5.1 accept the same protocol version but start without that module;
+#: 0.7.0 added only release publication, which builds do not use.
 MINIMUM_EMITTER_VERSION = "0.6.0"
 OUTDATED_EMITTER_WARNING = (
     "The installed microcosm-emitter {reported}; this build needs {required} "
@@ -383,6 +386,19 @@ def _orrery_emitter() -> EmitterClient:
     """A short-lived emitter that runs only the Orrery module."""
     return _start_emitter(
         orrery=OrrerySettings(), startup_timeout=STARTUP_TIMEOUT_SECONDS
+    )
+
+
+def start_bundle_emitter() -> EmitterClient:
+    """A short-lived emitter with only the Hugging Face module.
+
+    A command that stages a finished run's bundle, outside any build, uses
+    it; the caller closes it. Its hand-over queue is the one builds on this
+    machine share (``events.handovers.sqlite3``), so it also resumes their
+    queued hand-overs.
+    """
+    return _start_emitter(
+        hugging_face=HuggingFaceSettings(), startup_timeout=STARTUP_TIMEOUT_SECONDS
     )
 
 

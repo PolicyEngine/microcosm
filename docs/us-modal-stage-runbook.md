@@ -76,6 +76,9 @@ release directory onto the runs volume. Publication stays the human step in
    built with. The tool's environment withholds credentials and sets
    `HF_HUB_OFFLINE=1`, so an emitter started there keeps its events and
    hand-overs local.
+   A build that sees `HF_HUB_OFFLINE` hands no staged dataset bundle to its
+   emitter at all: it records the bundle as local, and the bundle is staged
+   from the workstation once the outputs are copied back.
    A commit that is not on GitHub fails the build. `checkout -B` would put
    any branch name on any commit, so each container also proves the name
    before it runs anything: it fetches the plan's branch from the remote

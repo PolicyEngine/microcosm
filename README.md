@@ -68,12 +68,14 @@ The build finds the `microcosm-emitter` command through
 environment variables and user, so it uses the build's Hugging Face
 credential (`HF_TOKEN`, then `HUGGINGFACE_TOKEN`, then the `hf auth login`
 token). Without the command the build continues with no hosted telemetry and
-no remote staging. Before it starts the emitter, the build reads its
+no remote staging; a UK build asked to stage its dataset bundle remotely is
+refused before it starts, since the emitter uploads the bundle. Before it starts the emitter, the build reads its
 version from `microcosm-emitter version` and does not start one older than
 0.6.0, the first release that takes staging run files; it prints the
 installed and required versions and the upgrade command, and continues as
-it does without the command. Microcosm supplies build metadata, graph files and staging
-run files; the emitter owns authentication, durable queues and delivery.
+it does without the command. Microcosm supplies build metadata, graph files, staging
+run files and staged dataset bundles; the emitter owns authentication, durable
+queues and delivery.
 The telemetry module reports live progress to the hosted collector when the
 operator's Hugging Face login is accepted; otherwise it retains the events
 locally and the build continues. This live event path is independent of the
@@ -114,7 +116,7 @@ version 2 staging run files to `policyengine/populace-uk-staging` under the
 same switch. The build command also **stages the finished dataset bundle** it built,
 national, dense or exact-count, under `staged/<run_id>/` in the
 private `policyengine/populace-uk-private` repository so the team can inspect
-it without publishing it: `releases/` and `latest.json` are untouched, the
+it without publishing it (the build's emitter uploads it): `releases/` and `latest.json` are untouched, the
 release contract is not consulted, and a `releasable: false` size run stages
 like any other. Fetch a bundle with `tools/fetch_uk_staged_dataset.py`;
 re-stage a finished run directory with `tools/stage_uk_rowwise_candidate.py`.
