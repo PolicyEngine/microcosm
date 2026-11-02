@@ -54,9 +54,11 @@ from microcosm.frame.input_closure import (
     resolve_judgments,
 )
 from microcosm.frame.unit_construction import (
+    MULTI_UNIT_RULE_FORMAT,
     BenefitUnitRule,
-    benefit_unit_attributes,
+    MultiUnitRule,
     benefit_unit_membership,
+    declared_unit_attributes,
     units_per_household,
 )
 from microcosm.graph import (
@@ -138,8 +140,11 @@ def _document(context: KernelContext, ref: str, name: str):
     return canonical_document_param(context, ref, name)
 
 
-def _rule(context: KernelContext, ref: str) -> BenefitUnitRule:
-    return BenefitUnitRule.from_spec(_document(context, ref, "unit_rule"))
+def _unit_declaration(context: KernelContext, ref: str) -> MultiUnitRule:
+    document = _document(context, ref, "unit_rule")
+    if document.get("format") == MULTI_UNIT_RULE_FORMAT:
+        return MultiUnitRule.from_dict(document)
+    return MultiUnitRule.from_benefit_unit(BenefitUnitRule.from_spec(document))
 
 
 def _paths(context: KernelContext, ref: str) -> tuple[str, ...] | None:
@@ -314,31 +319,35 @@ class UnitAttributesKernel(_ColumnKernel):
         require_params(
             context, self.ref, required=frozenset({"unit_rule", "unit_rule_sha256"})
         )
-        rule = _rule(context, self.ref)
-        tables = _whole_tables(context, self.ref, ("person", "household", rule.entity))
-        person, household, units = (
-            tables["person"],
-            tables["household"],
-            tables[rule.entity],
-        )
-        attributes = benefit_unit_attributes(
-            person, units, person[rule.membership_column], rule
-        )
-        # These are aliases used by input-bridge declarations, with the same
-        # adult composition as the wrapped function's is_couple attribute.
-        attributes["is_partnered"] = attributes["is_couple"]
-        attributes["is_single"] = ~attributes["is_couple"]
+        declaration = _unit_declaration(context, self.ref)
+        entities = tuple(item.entity for item in declaration.units)
+        tables = _whole_tables(context, self.ref, ("person", "household", *entities))
+        person, household = tables["person"], tables["household"]
         household_attributes = household.loc[:, ["household_id"]].copy()
-        household_attributes[f"n_{rule.entity}_units"] = units_per_household(
-            household, units, rule
-        )
+        person_attributes = person.loc[:, ["person_id"]].copy()
+        outputs = {"household": household_attributes, "person": person_attributes}
+        counts = {}
+        for item in declaration.units:
+            rule, units = item.rule, tables[item.entity]
+            attributes = declared_unit_attributes(
+                person, units, person[rule.membership_column], item
+            )
+            attributes["is_partnered"] = attributes["is_couple"]
+            attributes["is_single"] = ~attributes["is_couple"]
+            household_attributes[f"n_{rule.entity}_units"] = units_per_household(
+                household, units, rule
+            )
+            outputs[item.entity] = attributes
+            membership = benefit_unit_membership(
+                person, units, person[rule.membership_column], rule
+            )
+            person_attributes[f"{item.entity}_role"] = membership.person_role
+            counts[item.entity] = len(units)
         return KernelResult(
-            columns=_columns(
-                context,
-                self.ref,
-                {rule.entity: attributes, "household": household_attributes},
-            ),
-            receipt={"entity": rule.entity, "n_units": len(units)},
+            columns=_columns(context, self.ref, outputs),
+            receipt={"entity": entities[0], "n_units": counts[entities[0]]}
+            if len(entities) == 1
+            else {"units": counts},
         )
 
 
@@ -411,15 +420,31 @@ class ConceptsEncodeKernel(_ColumnKernel):
 _GROUP_REQUIRED = _ENCODE_REQUIRED | frozenset(
     {"unit_rule", "unit_rule_sha256", "engine_entity"}
 )
-_GROUP_OPTIONAL = _ENCODE_OPTIONAL | frozenset({"knobs", "scenario_sha256"})
+_GROUP_OPTIONAL = _ENCODE_OPTIONAL | frozenset(
+    {"knobs", "scenario_sha256", "unit_entity"}
+)
 
 
 def _group_inputs(context: KernelContext, ref: str):
-    rule = _rule(context, ref)
-    tables = _whole_tables(context, ref, ("person", "household", rule.entity))
     # The whole mapping: encode_groups selects modules itself and checks
     # state bindings against every concept binding's input name.
     mapping = _full_mapping(context, ref)
+    entity = string_param(context, ref, "engine_entity")
+    declaration = _unit_declaration(context, ref)
+    physical = context.params.get("unit_entity")
+    if physical is None:
+        if len(declaration.units) != 1:
+            raise ValueError(
+                f"{ref} requires unit_entity when several units are declared."
+            )
+        matches = list(declaration.units)
+    else:
+        physical = string_param(context, ref, "unit_entity")
+        matches = [item for item in declaration.units if item.entity == physical]
+    if len(matches) != 1:
+        raise ValueError(f"{ref} needs exactly one declared unit for {physical!r}.")
+    rule = matches[0].rule
+    tables = _whole_tables(context, ref, ("person", "household", rule.entity))
     closure = _closure(context, ref)
     knobs = _optional_document(context, ref, "knobs")
     if knobs and closure is None:
@@ -428,7 +453,6 @@ def _group_inputs(context: KernelContext, ref: str):
         sha256_param(context, ref, "scenario_sha256")
     elif "scenario_sha256" in context.params:
         sha256_param(context, ref, "scenario_sha256")
-    entity = string_param(context, ref, "engine_entity")
     membership = benefit_unit_membership(
         tables["person"],
         tables[rule.entity],

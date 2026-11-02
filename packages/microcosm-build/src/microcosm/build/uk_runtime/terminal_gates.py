@@ -336,6 +336,14 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "person.stocks_and_shares_isa_balance",
     "person.cash_isa_subscriptions",
     "person.stocks_and_shares_isa_subscriptions",
+    # policyengine-uk 2.165.0's company car inputs, which the company_cars stage
+    # writes (PolicyEngine/uk-autumn-budget-dashboard-2026#316).
+    "person.company_car_list_price",
+    "person.company_car_co2_emissions",
+    "person.company_car_fuel_type",
+    "person.company_car_electric_range",
+    "person.company_car_capital_contributions",
+    "person.company_car_private_fuel_provided",
     "person.individual_savings_account_interest_income",
     "person.local_bus_single_fare_share",
     "person.local_bus_trips",

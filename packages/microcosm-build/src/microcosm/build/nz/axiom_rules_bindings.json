@@ -128,6 +128,22 @@
       "imports_declared": false,
       "root_input_count": 21,
       "notes": "Used only for the eldest-child family tax credit amount in the reg 17 base rate. The module also declares 4 rules on an engine Child entity that the NZ schema does not map; the bridge requests none of them, and G1/G7 must show the adapter compiles the module under that condition or stop."
+    },
+    {
+      "id": "income_tax_schedule_1",
+      "rulespec_path": "nz/statutes/income_tax/schedule_1/individual_income_tax.yaml",
+      "sha256": "5ff8e7bf645b85e3d59d612e3c6eb70e09090fb13b40d49c3c5f8a4202e0b82a",
+      "entity": "person",
+      "engine_entity": "Person",
+      "period": "2026-27",
+      "role": "benefit_gross_up_tax_schedule",
+      "variables": [
+        "individual_income_tax_before_credits"
+      ],
+      "relations_declared": false,
+      "imports_declared": false,
+      "root_input_count": 1,
+      "notes": "https://github.com/TheAxiomFoundation/rulespec-nz/blob/8dc2507d5f10a0467c285fed54d018ee37246798/nz/statutes/income_tax/schedule_1/individual_income_tax.yaml (SHA-256 5ff8e7bf645b85e3d59d612e3c6eb70e09090fb13b40d49c3c5f8a4202e0b82a); https://www.workandincome.govt.nz/products/benefit-rates/benefit-rates-april-2026.html. Each gross-up inverts annualised Schedule 1 before credits over 52 weeks independently of other income, with solver-owned taxable_income and no ACC earners levy. NZ Super supplies before-tax amounts directly; the gross-up never inverts it."
     }
   ],
   "keying_note": "Each Axiom-bound node is to carry its own binding entry, the rulespec and engine pin blocks, the entity names and its period, plus a digest of exactly those values, never this file's SHA-256. Otherwise an Accommodation Supplement edit would re-key the main-benefit and NZ Super nodes, which sit upstream of calibration. Which graph nodes consume which binding is the composer's business, not this resource's."

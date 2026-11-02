@@ -26,7 +26,7 @@ import argparse
 import json
 import os
 import sys
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime
 from pathlib import Path
@@ -42,16 +42,18 @@ from microcosm.frame import Frame
 from microcosm.frame.adapters.axiom import AxiomEntityTableDataset
 from microcosm.frame.materialize import put_frame_table
 from microcosm.frame.rules import RulesEngine
-from microcosm.frame.unit_construction import BenefitUnitRule
 from microcosm.graph import (
+    CompiledGraph,
     ContentStore,
     Graph,
     KernelContext,
     Node,
     Owned,
+    Population,
     ResumePolicy,
     RunManifest,
     StoreMissError,
+    StructuralDelta,
     compile_graph,
     explain_html,
     graph_to_json,
@@ -73,9 +75,14 @@ from .compose import (
     transport_resource,
     validate_transport_activation,
 )
-from .population_kernels import TRANSPORT_CREATE
+from .entitlement import money_node_factor_entries
+from .population_kernels import (
+    TRANSPORT_CREATE,
+    TRANSPORT_CREATE_DECLARED,
+)
 from .registry import TransportRegistry, build_transport_registry
 from .terminal_kernels import materialize_export, validate_export
+from .unit_declarations import CREATE_V1_REF, create_unit_declaration
 
 __all__ = [
     "EXPORT_FILENAME",
@@ -135,6 +142,11 @@ def prepare_create_outputs(
     if resume == "require" and inventory_store is None:
         raise StoreMissError("--resume require needs a CREATE inventory store.")
     declaration = skeleton_create_declaration(spec)
+    kernel = (
+        TRANSPORT_CREATE
+        if declaration.kernel == CREATE_V1_REF
+        else TRANSPORT_CREATE_DECLARED
+    )
     missing = sorted(set(declaration.sources) - set(sources))
     if missing:
         raise ValueError(f"CREATE needs local paths for sources {missing}.")
@@ -145,7 +157,7 @@ def prepare_create_outputs(
             canonical_json(
                 {
                     "kernel": declaration.kernel,
-                    "implementation_hash": TRANSPORT_CREATE.implementation_hash(),
+                    "implementation_hash": kernel.implementation_hash(),
                     "params": declaration.params,
                     "sources": {
                         name: source_content_key(name, sources[name])
@@ -178,7 +190,7 @@ def prepare_create_outputs(
         rng=np.random.default_rng(0),
         sources={name: Path(sources[name]).resolve() for name in probe.sources},
     )
-    frame = TRANSPORT_CREATE.run(context).frame
+    frame = kernel.run(context).frame
     schema = frame.schema
     structural = {
         schema.person_entity: {
@@ -232,10 +244,12 @@ def prepare_transport_build(
 ) -> PreparedTransportBuild:
     """Check factor currency and activation, then compose the prepared graph.
 
-    A new run (``auto`` or ``forbid``) first requires every factor the default
-    and scenario views select to be current on today's UTC date; ``require``
-    only verifies stored work. This is the run-entry check for every caller,
-    the CLI included. Composition and execution stay clock-free.
+    A new run (``auto`` or ``forbid``) first requires every reference-view
+    factor and every declared money node's own factors and context to be
+    current on today's UTC date; ``require`` only verifies stored work.
+    Caller extensions contain code rather than spec rows, so this check
+    does not cover their money nodes. This is the run-entry check for every
+    caller, the CLI included. Composition and execution stay clock-free.
 
     Before registry preparation, CREATE or graph source reads, activation
     checks declaration resource paths, non-null selected roots and encoding
@@ -276,7 +290,9 @@ def prepare_transport_build(
     if rules_source not in paths:
         raise ValueError(f"Source {rules_source!r} (the RuleSpec tree) needs a path.")
     create = skeleton_create_declaration(spec)
-    rule = BenefitUnitRule.from_spec(json.loads(create.params["unit_rule"]))
+    rule = create_unit_declaration(
+        create.kernel, json.loads(create.params["unit_rule"])
+    )
     registry = build_transport_registry(
         transport_resource(spec, "axiom_rules_bindings"),
         paths[rules_source],
@@ -407,13 +423,54 @@ def _evidence(manifest: RunManifest, store: ContentStore, out: Path) -> dict:
 
 def _run(graph: Graph, registry, sources, store, resume) -> RunManifest:
     used = {name for node in graph.nodes for name in node.sources}
+    compiled = compile_graph(graph)
     return run_graph(
-        compile_graph(graph),
+        compiled,
         sources={name: path for name, path in sources.items() if name in used},
         store=store,
         kernels=registry.kernels,
         resume=resume,
+        _population_observer=_mass_log_unchanged(compiled),
+        # The observer keeps only record reprs and changes nothing.
+        _population_observer_detach=False,
     )
+
+
+def _mass_log_unchanged(compiled: CompiledGraph) -> Callable[[str, Population], None]:
+    """Refuse a node that changes the frame mass log it received.
+
+    A node's receipt can append records to the frame mass log
+    (``frame_mass_log_append``), and every later structural node of its
+    lineage, calibration included, receives that log without a ``Slice``. No
+    declaration names it, so the calibration ancestry guard cannot follow it:
+    a stage node could pass an undeclared value to calibration this way. No
+    transport kernel appends, so in a transport run the log is CREATE's. The
+    executor calls this for cold nodes and restored cache hits alike, before
+    it persists either, and the exception refuses the run.
+    """
+
+    logs: dict[str, tuple[str, ...]] = {}
+
+    def observe(node_id: str, population: Population) -> None:
+        node = compiled.graph.node(node_id)
+        log = tuple(map(repr, population.frame.mass_log))
+        if node.structural is StructuralDelta.NONE:
+            version = compiled.versions[node_id]
+            received = logs[version]
+        else:
+            version = node_id
+            received = (
+                log if node.structural is StructuralDelta.CREATE else logs[node.base]
+            )
+        if log != received:
+            raise ValueError(
+                f"Transport node {node_id!r} changed the frame mass log it "
+                "received; later kernels receive that log without a Slice, so "
+                "a transport run takes it from CREATE only."
+            )
+        logs[version] = log
+
+    return observe
 
 
 class _TimestampFreeHDFStore(pd.HDFStore):
@@ -658,18 +715,25 @@ def _today() -> date:
 def _require_current_run_factors(
     spec: Mapping[str, object], *, resume: ResumePolicy
 ) -> None:
-    """The currency check guards new runs only, including scenario selections.
+    """Check reference views and each declared money node before a new run.
 
     ``require`` only replays stored work and may verify historical factors.
-    Check every factor the default and scenario views select, through the
-    walk activation uses, against today's UTC date, before CREATE.
+    Resolve each money node's declaration, selection and context through
+    composition's resolvers, then use its kernel's validators. Check each
+    context separately against one UTC date before CREATE; caller extension
+    code falls outside the spec walk. A spec without money nodes selects no
+    money factors, even if it carries a money-normalization resource.
     """
     if resume == "require":
         return
     selected = {}
     for view in reference_profile_views(spec):
         selected.update(view[2].get("selected_factors", {}))
-    require_current_factors(selected, today=_today())
+    money_entries = money_node_factor_entries(spec)
+    today = _today()
+    require_current_factors(selected, today=today)
+    for entries in money_entries:
+        require_current_factors(entries, today=today)
 
 
 def main(argv: Sequence[str] | None = None) -> int:

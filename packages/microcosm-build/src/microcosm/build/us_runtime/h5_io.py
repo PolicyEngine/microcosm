@@ -1050,10 +1050,14 @@ def _current_worker_execution_authentication(
 ) -> dict[str, object]:
     """Derive current authentication evidence from the signed nested worker."""
 
+    from microcosm.build.us_runtime.stacked_spine import (
+        PRIMARY_PUF_EXECUTION_CONFIG_SCHEMA_VERSION,
+    )
+
     config, worker = _stacked_primary_execution_config(
         manifest, manifest_path=manifest_path
     )
-    if config.get("schema_version") != 5:
+    if config.get("schema_version") != PRIMARY_PUF_EXECUTION_CONFIG_SCHEMA_VERSION:
         raise ValueError(
             f"US stacked pool manifest {manifest_path} primary execution-config "
             "version changed."
@@ -1061,7 +1065,7 @@ def _current_worker_execution_authentication(
     return worker_identity_runtime.current_worker_execution_authentication_receipt(
         worker,
         manifest_schema_version=US_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION,
-        execution_config_schema_version=5,
+        execution_config_schema_version=PRIMARY_PUF_EXECUTION_CONFIG_SCHEMA_VERSION,
         boundary=f"US stacked pool manifest {manifest_path} primary-QRF worker",
     )
 

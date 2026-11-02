@@ -148,6 +148,7 @@ import re
 import subprocess
 import unicodedata
 from collections.abc import Callable, Iterator, Mapping, Sequence
+from fractions import Fraction
 from functools import cache
 from pathlib import PurePosixPath
 from types import SimpleNamespace
@@ -170,6 +171,7 @@ from microcosm.build.ledger_targets import (
 )
 from microcosm.build.spec_engine import load_yaml12
 from microcosm.frame import concepts as frame_concepts
+from microcosm.frame.concept_mapping import MAPPING_FORMAT
 from microcosm.frame.input_closure import INPUT_CLOSURE_FORMAT
 from test_support.paths import paths_for
 
@@ -992,7 +994,7 @@ def dotted_symbol_citations(value: object) -> set[str]:
             for key, child in value.items()
             for nested in (
                 [str(key)]
-                if key == "format" and child == INPUT_CLOSURE_FORMAT
+                if key == "format" and child in {INPUT_CLOSURE_FORMAT, MAPPING_FORMAT}
                 else [str(key), child]
             )
             for dotted in dotted_symbol_citations(nested)
@@ -1140,7 +1142,7 @@ def _as_ratio_numerator(
 
     operands = (
         {"role": "base"},
-        {"role": "numerator", **numerator},
+        {"role": "numerator", "period_type": "", "period_value": "", **numerator},
         {"role": "denominator", "source_name": "unrelated_source"},
     )
     return dataclasses.replace(
@@ -1267,7 +1269,7 @@ class TestReferenceSets:
                 compile_ledger_target_references([], [reference], country="nz")
         assert (
             sum(row.metadata["activation_status"] == "active" for row in references)
-            == {"calibration": 64, "precal": 67, "holdout": 0}[reference_set]
+            == {"calibration": 77, "precal": 80, "holdout": 2}[reference_set]
         )
 
     def test_pre_calibration_rows_are_not_weight_calibration_targets(self) -> None:
@@ -1308,7 +1310,7 @@ class TestReferenceSets:
     def test_holdout_set_is_validation_only(self) -> None:
         references = _references("holdout")
         assert {reference.name for reference in references} == {
-            "msd_accommodation_supplement_recipients_by_region",
+            "msd_accommodation_supplement_recipients_national",
             "msd_annual_report_accommodation_assistance_expenditure",
             "treasury_an24_01_accommodation_supplement_fiscal_total",
             "ird_wff_recipient_families",
@@ -1377,6 +1379,26 @@ class TestReferenceSets:
         )
         assert HELD_OUT_FAMILIES.isdisjoint(reference.family for reference in upstream)
 
+    @pytest.mark.parametrize(
+        "name",
+        [
+            "msd_accommodation_supplement_recipients_national",
+            "msd_annual_report_accommodation_assistance_expenditure",
+        ],
+    )
+    def test_source_only_ratio_plant_reaches_a_differently_pinned_holdout(
+        self, name: str
+    ) -> None:
+        held = next(row for row in _references("holdout") if row.name == name)
+        donor = _references("calibration")[0]
+        planted = _as_ratio_numerator(
+            donor, {"source_name": held.ledger_selector["source_name"]}
+        )
+        assert any(
+            ": hold-out ledger selector " in leak
+            for leak in holdout_leaks([planted], [], [held])
+        )
+
     # A stalled shared host once made one draw take 36.9 s (load1 ~300), which
     # Hypothesis reports as too_slow; the strategy itself is cheap.
     @settings(
@@ -1442,10 +1464,7 @@ class TestReferenceSets:
                 == "msd_main_benefit_recipients_by_program_age"
             ):
                 assert row["filter"]
-                assert (
-                    row["metadata"]["activation_status"]
-                    == "requires_stratified_receipt_assignment"
-                )
+                assert row["metadata"]["activation_status"] == "active"
             assert row["ledger_selector"]["period_value"] == "2026-06"
             assert row["period"] == "2026-06"
 
@@ -1848,7 +1867,9 @@ class TestRulesBindings:
         # Differential: the export gate's formula-owned list and the bindings.
         contract = _load("export_contract.json")
         bound = {v for binding in _bindings().values() for v in binding["variables"]}
-        assert set(contract["formula_owned_excluded"]) == bound
+        # H25: the gated entitlement payment is a formula output too.
+        entitled = "accommodation_supplement_entitled_weekly_payment"
+        assert set(contract["formula_owned_excluded"]) == bound | {entitled}
         assert contract["closed"] is True
         assert set(contract["forbidden"]) == {"person_weight", "family_weight"}
         assert (
@@ -1861,21 +1882,44 @@ class TestRulesBindings:
         bindings = _bindings()
         surface = _input_surface()
         assert set(bridge["rate_bindings"]) <= set(bindings)
-        evaluations = []
-        for output in bridge["outputs"]:
-            evaluations += output.get("terms", [])
-            for branch in output.get("branches", []):
-                evaluations += branch["evaluations"]
+        reg17, reg18 = bridge["outputs"]
+        s5 = bridge["superannuitant_units"]["s5_base_rate"]
+        # Each declaration's overrides apply to its primary binding; component
+        # overrides apply to their own binding.
+        override_sets = [
+            (reg17["primary_binding"], reg17["input_overrides"]),
+            (reg18["gross_rate"]["binding"], reg18["gross_rate"]["input_overrides"]),
+            (reg18["solve"]["binding"], reg18["solve"]["input_overrides"]),
+            *(
+                (component["binding"], component["input_overrides"])
+                for declaration in (reg17, s5)
+                for component in declaration["components"]
+            ),
+        ]
+        evaluations = [
+            *reg17["terms"],
+            reg18["gross_rate"],
+            *(term for term in reg18["solve"]["terms"] if "variable" in term),
+            *s5["terms"],
+        ]
         assert evaluations
+        allowed = set(bridge["rate_bindings"]) | {"nz_super"}
         for evaluation in evaluations:
             binding = bindings[evaluation["binding"]]
-            assert evaluation["binding"] in bridge["rate_bindings"]
+            assert evaluation["binding"] in allowed
             assert evaluation["variable"] in binding["variables"]
             assert evaluation["engine_entity"] == binding["engine_entity"]
-            inputs = set(surface[binding["rulespec_path"]]["canonical_inputs"])
-            overrides = [row["variable"] for row in evaluation["input_overrides"]]
+        for name, rows in override_sets:
+            inputs = set(surface[bindings[name]["rulespec_path"]]["canonical_inputs"])
+            overrides = [row["variable"] for row in rows]
             assert len(set(overrides)) == len(overrides)
             assert set(overrides) <= inputs
+        solve_input = reg18["solve"]["solve_input"]["column"]
+        assert solve_input in set(
+            surface[bindings["main_benefits_rates"]["rulespec_path"]][
+                "canonical_inputs"
+            ]
+        )
 
     def test_bridge_targets_are_the_two_as_inputs_the_module_leaves_open(self) -> None:
         bridge = _load("as_rate_bridge.json")
@@ -1897,12 +1941,28 @@ class TestRulesBindings:
 
     def test_bridge_reads_only_unit_attributes_the_unit_rule_declares(self) -> None:
         declared = set(_load("benefit_unit_rule.json")["unit_attributes"]["columns"])
-        bridge_text = json.dumps(_load("as_rate_bridge.json"))
+        bridge = _load("as_rate_bridge.json")
+        bridge_text = json.dumps(bridge)
         used = {
             f"family.{name}" for name in re.findall(r"family\.([a-z_]+)", bridge_text)
         }
+        # The bridge's own mask node derives these columns from unit attributes.
+        derived = {
+            f"family.{column['name']}"
+            for bindings in (
+                bridge["mask_bindings"],
+                bridge["superannuitant_units"]["s5_mask_bindings"],
+            )
+            for column in bindings["columns"]
+        } | {f"family.{bridge['outputs'][1]['gross_rate']['column']}"}
         assert used
-        assert used <= declared
+        assert used - derived <= declared
+        for bindings in (
+            bridge["mask_bindings"],
+            bridge["superannuitant_units"]["s5_mask_bindings"],
+        ):
+            for column in bindings["required_inputs"]["family"]:
+                assert f"family.{column}" in declared or column == "receipt_group"
 
     def test_reg17_family_tax_credit_term_uses_the_statutory_divisor(self) -> None:
         (base_rate,) = [
@@ -1910,8 +1970,12 @@ class TestRulesBindings:
             for output in _load("as_rate_bridge.json")["outputs"]
             if output["id"] == "reg17_base_rate"
         ]
-        (ftc,) = [term for term in base_rate["terms"] if "divisor" in term]
-        assert ftc["divisor"] == 52
+        (ftc,) = [
+            term
+            for term in base_rate["terms"]
+            if term["variable"] == "family_tax_credit_prescribed_amount"
+        ]
+        assert Fraction(ftc["coefficient"]) == Fraction(1, 52)
 
 
 # ---------------------------------------------------------------------------
@@ -2278,17 +2342,20 @@ class TestScenarios:
             "S1",
             "S2",
             "S3",
-            "S4",
             "S5",
             "V1",
             "V2",
             "V3",
             "V4",
+            "VHF",
         ]
         branch_points = {
             tier: row["branch_point"] for tier, row in document["tiers"].items()
         }
-        assert branch_points == {"entitlement": "nz.as", "calibration": "nz.open"}
+        assert branch_points == {
+            "entitlement": "nz.as.bridge",
+            "calibration": "nz.open",
+        }
         assert [s["id"] for s in document["scenarios"] if not s["knobs"]] == ["S0"]
 
     def test_input_overrides_name_real_accommodation_supplement_inputs(self) -> None:
@@ -3225,7 +3292,9 @@ class TestSourceCitations:
         assert selected["item"] == "A1"
 
     def test_create_and_donor_reader_citations_still_describe_unit_inputs(self) -> None:
+        from microcosm.build.transport import population_kernels, unit_declarations
         from microcosm.build.transport.population_kernels import TransportCreateKernel
+        from microcosm.frame import unit_construction
         from microcosm.frame.transport import read_populace_us_donor
         from microcosm.graph.decl import StructuralDelta
 
@@ -3243,14 +3312,48 @@ class TestSourceCitations:
         )
         assert TransportCreateKernel.capabilities.structural is StructuralDelta.CREATE
         # Differential source evidence: CREATE reads the verified concept donor,
-        # then builds family units using the declared benefit-unit rule.
+        # then delegates its unchanged NZ rule through the canonical parser and
+        # the registered benefit-unit membership constructor.
         create_source = inspect.getsource(TransportCreateKernel)
-        assert create_source.index("read_populace_us_donor(") < create_source.index(
-            "build_benefit_units("
+        assert (
+            create_source.index("read_populace_us_donor(")
+            < create_source.index("create_unit_declaration(")
+            < create_source.index("build_declared_units(")
         )
         assert "tables, dropped = split_for_transport(donor.tables)" in create_source
-        assert "BenefitUnitRule.from_spec(" in create_source
-        assert 'tables["person"], tables["household"], rule' in create_source
+        assert 'tables["person"], tables["household"], declaration' in create_source
+        assert (
+            population_kernels.create_unit_declaration
+            is unit_declarations.create_unit_declaration
+        )
+        assert TransportCreateKernel.ref == unit_declarations.CREATE_V1_REF
+        parser_source = inspect.getsource(unit_declarations.create_unit_declaration)
+        assert "if kernel == CREATE_V1_REF:" in parser_source
+        assert "rule = BenefitUnitRule.from_spec(document)" in parser_source
+        assert "return MultiUnitRule.from_benefit_unit(rule)" in parser_source
+        declaration = unit_declarations.create_unit_declaration(
+            TransportCreateKernel.ref, rule
+        )
+        (unit,) = declaration.units
+        assert unit.kind == "benefit_unit"
+        assert (
+            unit.rule.to_dict()
+            == unit_construction.BenefitUnitRule.from_spec(rule).to_dict()
+        )
+        rule_type, constructor = unit_construction._UNIT_KINDS[unit.kind]
+        assert rule_type is unit_construction.BenefitUnitRule
+        constructor_source = inspect.getsource(constructor)
+        assert "_heads(rows, _dependents(rows, rule), rule)" in constructor_source
+        framework_source = inspect.getsource(unit_construction.build_declared_units)
+        assert "_UNIT_KINDS[item.kind][1](rows, person, item.rule)" in framework_source
+        assert (
+            "_build_partition(person, household, item.rule, rows, head)"
+            in framework_source
+        )
+        legacy_source = inspect.getsource(unit_construction.build_benefit_units)
+        assert "_dependents(rows, rule)" in legacy_source
+        assert "_heads(rows, dependent, rule)" in legacy_source
+        assert "_build_partition(person, household, rule, rows, head)" in legacy_source
         donor_source = inspect.getsource(read_populace_us_donor)
         assert "tables = POLICYENGINE_US_CONCEPT_MAPPING.decode(raw)" in donor_source
         assert 'tables["person"][name] = values' in donor_source
@@ -3337,7 +3440,7 @@ class TestSourceCitations:
         ]
         assert "person.receives_veterans_pension" not in binding["columns"]
         assert (
-            "must be extended"
+            "The hub must extend both together"
             in document["as_non_beneficiary_audit"]["veterans_pension"]
         )
 
@@ -4049,7 +4152,12 @@ class TestReportingClassifiers:
         }
         assert all(row["annualisation_factor"] == 1 for row in market)
         benefits = [row for row in classifier["components"] if row["kind"] == "benefit"]
-        assert all(row["annualisation_factor"] == 52 for row in benefits)
+        # Main benefits read the gross-up's annual gross; NZ Super stays weekly.
+        assert all(
+            row["annualisation_factor"]
+            == (52 if row["receipt_column"] == "receives_nz_super" else 1)
+            for row in benefits
+        )
         assert all(row["tax_basis"] == "before_tax" for row in classifier["components"])
         super_income = next(
             row for row in benefits if row["receipt_column"] == "receives_nz_super"
@@ -4058,7 +4166,7 @@ class TestReportingClassifiers:
         assert super_income["column"] in _bindings()["nz_super"]["variables"]
         assert all("entitled" not in row["receipt_column"] for row in benefits)
 
-    def test_unavailable_before_tax_paid_amounts_refuse_activation(self) -> None:
+    def test_before_tax_paid_amounts_resolve_without_blocked_inputs(self) -> None:
         from microcosm.frame.reporting import validate_income_classifier
 
         document = _load("reporting_classifiers.json")
@@ -4068,15 +4176,21 @@ class TestReportingClassifiers:
             for row in classifier["components"]
             if row["column"] is None
         }
-        assert missing == {
-            "receives_jobseeker_support",
-            "receives_sole_parent_support",
-            "receives_supported_living_payment",
-            "receives_veterans_pension",
+        assert missing == set()
+        assert document["blocked_inputs"] == []
+        validate_income_classifier(classifier)
+        assert {
+            row["column"]
+            for row in classifier["components"]
+            if row["kind"] == "benefit" and row["receipt_column"] != "receives_nz_super"
+        } == {
+            f"{program}_annual_gross"
+            for program in (
+                "jobseeker_support",
+                "sole_parent_support",
+                "supported_living_payment",
+            )
         }
-        assert missing == {row["receipt_column"] for row in document["blocked_inputs"]}
-        with pytest.raises(ValueError, match="(?:column|before.tax)"):
-            validate_income_classifier(classifier)
         paid = _bindings()["main_benefits_rates"]["variables"]
         assert {
             "jobseeker_support_net_weekly_payment",
@@ -4132,7 +4246,7 @@ class TestReportingClassifiers:
         assert selected == classifier["predicates"]["superannuitant"]
         assert selected == {
             "entity": "person",
-            "columns": ["receives_nz_super", "receives_veterans_pension"],
+            "columns": ["receives_nz_super"],
             "reduction": "any",
         }
         assert classifier["priority"] == ["superannuitant", "beneficiary"]
@@ -4143,7 +4257,7 @@ class TestReportingClassifiers:
             "receives_supported_living_payment",
         ]
 
-    def test_unsupported_veterans_receipt_is_explicit_and_required(self) -> None:
+    def test_unsupported_veterans_receipt_is_explicit_and_excluded(self) -> None:
         document = _load("reporting_classifiers.json")
         declared = _load("axiom_input_closure.json")["receipt_flags"]["columns"]
         (unsupported,) = document["unsupported_receipt_inputs"]
@@ -4151,9 +4265,9 @@ class TestReportingClassifiers:
         assert f"person.{unsupported['column']}" not in declared
         assert (
             unsupported["column"]
-            in document["receipt_group"]["predicates"]["superannuitant"]["columns"]
+            not in document["receipt_group"]["predicates"]["superannuitant"]["columns"]
         )
-        assert "missing flag never implies false" in unsupported["required_behavior"]
+        assert "unsupported" in unsupported["required_behavior"].lower()
         assert document["mixed_unit_audit"]["per_scenario"] is True
 
     def test_as_non_beneficiary_binding_agrees_for_supported_receipt_flags(
@@ -4177,13 +4291,8 @@ class TestReportingClassifiers:
         assert binding["group_rule"] == "any_member"
         assert binding["negate"] is True
         assert "person.receives_nz_super" in binding["columns"]
-        assert expected - set(binding["columns"]) == {
-            "person.receives_veterans_pension"
-        }
-        assert (
-            "must be extended"
-            in document["as_non_beneficiary_audit"]["veterans_pension"]
-        )
+        assert expected == set(binding["columns"])
+        assert "unsupported" in document["as_non_beneficiary_audit"]["veterans_pension"]
 
     def test_baseline_cells_are_declared_for_every_scenario_and_variant(self) -> None:
         document = _load("reporting_classifiers.json")
@@ -4245,17 +4354,18 @@ class TestReportingClassifiers:
         assert units["family_id"].tolist() == [102, 201, 202]
         assert units["family_source_household_id"].tolist() == ["same_source"] * 3
 
-    def test_s0_through_s4_structural_zero_cells_are_listed_on_support_entry(
+    def test_every_scenario_but_s5_lists_the_superannuitant_structural_zero(
         self,
     ) -> None:
         document = _load("reporting_classifiers.json")
         zeros = document["structural_zero_cells"]
+        # H26: MC11 excludes superannuitants everywhere but S5.
         assert zeros == [
             {
-                "scenario": f"S{index}",
+                "scenario": scenario,
                 "cell": "beneficiary_superannuitant_other/superannuitant",
             }
-            for index in range(5)
+            for scenario in ("S0", "S1", "S2", "S3", "V1", "V2", "V3", "V4", "VHF")
         ]
         support = next(
             row
@@ -4265,6 +4375,6 @@ class TestReportingClassifiers:
         for row in zeros:
             assert f"{row['scenario']}/{row['cell']}" in support["notes"]
         assert (
-            "actual structural-zero diagnostics are derived from reported amounts"
+            "reported amounts determine actual structural-zero diagnostics"
             in (support["notes"])
         )

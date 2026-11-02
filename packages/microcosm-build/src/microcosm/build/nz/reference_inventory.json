@@ -33,12 +33,12 @@
         "msd_veterans_pension_recipients": 1
       },
       "by_activation_status": {
-        "active": 64,
-        "requires_reference_profile_resolution": 170,
+        "active": 77,
+        "requires_household_structure_release_evidence": 136,
         "requires_census_family_nucleus_standard": 51,
+        "requires_reference_profile_resolution": 32,
+        "requires_region_99_release_evidence": 2,
         "requires_prerequisites": 474,
-        "requires_stratified_receipt_assignment": 12,
-        "requires_receipt_binding": 1,
         "requires_unsupported_veterans_pension": 1
       }
     },
@@ -54,13 +54,37 @@
         "msd_veterans_pension_recipients": 1
       },
       "by_activation_status": {
-        "requires_g8r2_source_period_wage_bridge_and_intervals": 235,
+        "requires_g8r2c_wage_quantile_producer": 235,
         "requires_rent_band_frequencies": 1,
         "requires_all_household_liquid_asset_histogram": 1,
-        "active": 67,
-        "requires_stratified_receipt_assignment": 12,
-        "requires_receipt_binding": 1,
+        "active": 80,
         "requires_unsupported_veterans_pension": 1
+      }
+    },
+    "holdout_references.json": {
+      "total": 6,
+      "by_contract": {
+        "msd_accommodation_supplement_recipients_national": 1,
+        "msd_annual_report_accommodation_assistance_expenditure": 1,
+        "treasury_an24_01_accommodation_supplement_fiscal_total": 1,
+        "ird_wff_recipient_families": 1,
+        "ird_iwtc_recipient_families": 1,
+        "ird_wff_recipient_families_by_family_income_band": 1
+      },
+      "by_activation_status": {
+        "active": 2,
+        "requires_harvested_fact_reference": 1,
+        "requires_receipt_assignment_wff_bindings_and_2026_basis": 2,
+        "requires_harvested_cell_references_wff_bindings_and_2026_basis": 1
+      }
+    },
+    "mass_references.json": {
+      "total": 1,
+      "by_contract": {
+        "national_erp": 1
+      },
+      "by_activation_status": {
+        "active": 1
       }
     }
   },
@@ -1024,7 +1048,7 @@
       "published_national_leaf_sum": 1294503.0,
       "deficit": 0.0,
       "handling": "Preserve published leaves and totals as diagnostics. Apply the declared d1932 signed reconciliation to each regional family total before one ERP bridge; this is a disclosed modelling adjustment, not an observed category.",
-      "activation": "parked: G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities.",
+      "activation": "parked: G8-r3b must implement Census-family multiplicity classification before activation. The hub records the signed d1932 reconciliation; MC7 benefit units and family labels cannot substitute for Census multiplicities.",
       "regional_type_sums": {
         "1": 537489,
         "2": 543477,
@@ -21237,7 +21261,7 @@
     },
     {
       "id": "national_erp",
-      "reason": "Bridge operand or diagnostic only; national and regional ERP totals are independently published."
+      "reason": "CREATE uses the national June 2025 ERP as mass; bridge operands and diagnostics retain independent national and regional source totals. Never fit this total alongside regional age leaves."
     },
     {
       "id": "sex_specific_regional_erp",
@@ -21257,7 +21281,7 @@
     },
     {
       "id": "other_main_benefits",
-      "reason": "Unsupported aggregate of other programs; outside the three declared receipt programs."
+      "reason": "Unsupported aggregate of other programs; outside the three declared working-age receipt programs and NZ Super."
     },
     {
       "id": "all_main_benefits",

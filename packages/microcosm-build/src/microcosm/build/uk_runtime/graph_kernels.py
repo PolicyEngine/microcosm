@@ -52,10 +52,13 @@ from . import (
     frs_disability,
     frs_education,
     frs_hmrc_source,
+    frs_spine,
     frs_take_up,
+    hmrc_company_car_statistics,
     hmrc_income,
     hmrc_isa_statistics,
     hmrc_property_rental,
+    hmrc_uprating,
     household_lineage,
     ledger_fact_vendoring,
     legacy_closure_take_up,
@@ -135,6 +138,7 @@ _STAGE_MODULES = {
     "student_loans": "student_loans",
     "private_school_attendance": "private_school_attendance",
     "isa_subscriptions": "isa_subscriptions",
+    "company_cars": "company_cars",
     "childcare_copy_take_up": "childcare_copy_take_up",
     "age_tail": "age_tail",
 }
@@ -235,6 +239,22 @@ _STAGE_HELPER_MODULES = {
         hmrc_income,
         hmrc_isa_statistics,
         receipt_counts,
+    ),
+    # The company cars read their carriers' names and codes from frs_spine,
+    # HMRC's company car tables through their typed loader, the engine's CPI
+    # index and contribution cap, the SPI channel's EPB and tape-row flag, and
+    # price the cars twice through the engine adapter; their draws are keyed on
+    # identity, and their receipts' support is rounded
+    # (PolicyEngine/uk-autumn-budget-dashboard-2026#316).
+    "company_cars": (
+        frs_spine,
+        hmrc_company_car_statistics,
+        hmrc_uprating,
+        receipt_counts,
+        spi_income,
+        spi_support,
+        stochastic_assignment,
+        uk_engine_adapter,
     ),
     # The copies' childcare re-draw draws through frs_take_up's childcare
     # helper, reads each household's clone path, and measures its flags for
@@ -550,6 +570,7 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
     from .cgt_support import UKCGTSupportSplitStageTransform
     from .child_benefit_take_up import UKChildBenefitTakeUpStageTransform
     from .childcare_copy_take_up import UKChildcareCopyTakeUpStageTransform
+    from .company_cars import UKCompanyCarsStageTransform
     from .etb_services import UKETBServicesStageTransform
     from .etb_vat import UKETBVATStageTransform
     from .frs_annual_income import UKFRSAnnualIncomeStageTransform
@@ -852,6 +873,11 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
                 stage=stages["isa_subscriptions"],
                 engine=engine,
                 donor_household=was,
+                donor_person=was_person,
+            ),
+            "company_cars": UKCompanyCarsStageTransform(
+                stage=stages["company_cars"],
+                engine=engine,
                 donor_person=was_person,
             ),
             "childcare_copy_take_up": UKChildcareCopyTakeUpStageTransform(

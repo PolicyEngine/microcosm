@@ -320,6 +320,7 @@ def test_implementation_hash_binds_the_pure_module_and_factor_replay(monkeypatch
         "microcosm.build.ledger_artifact",
         "microcosm.build.ledger_targets",
         "microcosm.frame.concepts",
+        "microcosm.frame.exact_money",
     } <= names
     monkeypatch.undo()
     assert (

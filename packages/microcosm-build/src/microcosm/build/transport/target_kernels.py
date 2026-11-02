@@ -65,6 +65,7 @@ import microcosm.calibrate.registry as registry_module
 import microcosm.calibrate.target as target_module
 import microcosm.frame.bundle as frame_bundle_module
 import microcosm.frame.schema as frame_schema_module
+import microcosm.frame.unit_construction as units_module
 import microcosm.frame.weights as frame_weights_module
 from microcosm.build.calibration_columns import prepare_calibration_columns
 from microcosm.build.country_spec import _validate_target_references
@@ -116,6 +117,7 @@ from .graph_inputs import (
     string_param,
 )
 from .reference_selection import exemption_rows, validate_exemptions
+from .unit_declarations import CREATE_REFS
 
 __all__ = [
     "TARGET_COMPILATION_KERNELS",
@@ -138,8 +140,12 @@ __all__ = [
 ]
 
 #: Every transport kernel that resolves references against consumer facts.
-TARGET_COMPILATION_KERNELS = frozenset(
-    {"transport.create@1", "targets.compile@1", "takeup.compare@1", "takeup.gap@1"}
+TARGET_COMPILATION_KERNELS = CREATE_REFS | frozenset(
+    {
+        "targets.compile@1",
+        "takeup.compare@1",
+        "takeup.gap@1",
+    }
 )
 
 _SURFACE_KIND = "transport_target_surface"
@@ -603,6 +609,7 @@ class CalibrationPrepareKernel(KernelBase):
             graph_inputs,
             artifact_types,
             calibration_columns_module,
+            units_module,
             calibration_predicates_module,
             reference_intervals_module,
             reference_factors_module,

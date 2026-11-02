@@ -109,8 +109,9 @@ def test_the_stage_needs_the_stored_draw_and_writes_attendance_once():
 
 def test_only_the_isa_subscriptions_follow_the_stage():
     """No later stage copies or re-keys a person, so the stored flags reach
-    the release as the engine set them. Only the ISA subscriptions follow it,
-    writing person ISA columns on the rows they are given (microcosm#1415)."""
+    the release as the engine set them. Only the ISA subscriptions
+    (microcosm#1415) follow it, writing person columns on the rows they are
+    given."""
 
     stages = load_country_spec("uk").sources.stages
     names = [stage.stage for stage in stages]

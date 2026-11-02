@@ -16,7 +16,6 @@ import pandas as pd
 
 from microcosm.build.calibration_predicates import (
     _finite_number,
-    _identity,
     predicate_mask,
     validate_calibration_inputs,
 )
@@ -24,6 +23,7 @@ from microcosm.build.reference_intervals import (
     interval_indicators,
     validate_interval_document,
 )
+from microcosm.frame.unit_construction import prepare_roster_counts
 
 
 def prepare_calibration_columns(
@@ -44,7 +44,7 @@ def prepare_calibration_columns(
     required, columns = validate_calibration_inputs(tables, bindings)
     interval_columns = _interval_columns(tables, columns, required, intervals)
     out = {entity: table.copy(deep=True) for entity, table in tables.items()}
-    derived = _prepare_roster_counts(out, bindings.get("roster_counts", ()), required)
+    derived = prepare_roster_counts(out, bindings.get("roster_counts", ()), required)
     prepared: dict[str, dict[str, object]] = {}
     seen: set[tuple[str, str]] = set()
     for entry in columns:
@@ -164,58 +164,3 @@ def _interval_columns(
         for entity, name, _ in outputs:
             result[entity, name] = computed[table_id][name]
     return result
-
-
-def _prepare_roster_counts(
-    tables: dict[str, pd.DataFrame], entries: object, required: Mapping[str, Any]
-) -> dict[str, set[str]]:
-    if not isinstance(entries, (list, tuple)):
-        raise ValueError("Calibration roster_counts must be a list.")
-    derived: dict[str, set[str]] = {}
-    for entry in entries:
-        if not isinstance(entry, Mapping):
-            raise ValueError("Calibration roster count must be an object.")
-        entity, members, name = (
-            entry.get("entity"),
-            entry.get("member_entity"),
-            entry.get("name"),
-        )
-        group_id, member_id, membership = (
-            entry.get("entity_id"),
-            entry.get("member_id"),
-            entry.get("membership"),
-        )
-        if (
-            entity not in required
-            or members not in required
-            or not isinstance(name, str)
-            or not name
-            or name.endswith("_id")
-            or name in required[entity]
-            or name in derived.get(entity, ())
-            or group_id not in required[entity]
-            or member_id not in required[members]
-            or membership not in required[members]
-            or not isinstance(entry.get("representation"), str)
-            or not entry["representation"]
-        ):
-            raise ValueError(
-                "Calibration roster count needs declared identities and representation."
-            )
-        groups = [_identity(value) for value in tables[entity][group_id].tolist()]
-        identities = [_identity(value) for value in tables[members][member_id].tolist()]
-        if len(set(groups)) != len(groups) or len(set(identities)) != len(identities):
-            raise ValueError(
-                "Calibration roster contains duplicate membership identities."
-            )
-        counts = dict.fromkeys(groups, 0)
-        for value in tables[members][membership].tolist():
-            key = _identity(value)
-            if key not in counts:
-                raise ValueError("Calibration roster contains orphan membership.")
-            counts[key] += 1
-        if any(count == 0 for count in counts.values()):
-            raise ValueError("Calibration roster contains empty households or groups.")
-        tables[entity][name] = [counts[key] for key in groups]
-        derived.setdefault(entity, set()).add(name)
-    return derived
