@@ -131,6 +131,7 @@ from .evidence_contract import (
     SUPPORT_BOUNDS_TYPE,
     WEIGHTS_AUDIT_REF,
     WEIGHTS_AUDIT_TYPE,
+    binding_relation_inputs,
 )
 from .money_kernels import (
     MONEY_ANNUAL_TRANSFERS_REF,
@@ -1912,6 +1913,64 @@ def _support_roster(spec: Mapping[str, object]) -> dict[str, object]:
     return {"columns": columns}
 
 
+def _person_entity(spec: Mapping[str, object]) -> str:
+    declaration = _versioned_create_units(spec)
+    if declaration is None:
+        declaration = create_unit_declaration(
+            CREATE_V1_REF, transport_resource(spec, "benefit_unit_rule")
+        )
+    return declaration.entity_schema()[0].person_entity
+
+
+def _check_closure_relation_slices(spec: Mapping[str, object], graph: Graph) -> None:
+    """A closure producer's person slice carries every declared relation column.
+
+    A ``Slice`` delivers only the columns it names, and
+    ``transport.input_closure@1`` reads each relation input's physical
+    ``column`` and declared ``role_column`` on the person entity. A slice that
+    omits one would report a ``gap`` the frame does not have, so composition
+    refuses it by name.
+    """
+
+    nodes = [node for node in graph.nodes if node.kernel == INPUT_CLOSURE_REF]
+    if not nodes:
+        return
+    problems = []
+    person = None
+    for node in nodes:
+        bindings = _json_value(node.params.get("bindings"))
+        if not isinstance(bindings, Mapping):
+            continue
+        rows = bindings.get("bindings")
+        required = sorted(
+            {
+                column
+                for row in (rows if isinstance(rows, list) else ())
+                if isinstance(row, Mapping)
+                for item in binding_relation_inputs(row)
+                for column in (item.column, item.role_column)
+                if column is not None
+            }
+        )
+        if not required:
+            continue
+        person = person or _person_entity(spec)
+        sliced = {
+            column
+            for item in node.inputs
+            if item.entity == person
+            for column in item.columns
+        }
+        missing = [column for column in required if column not in sliced]
+        if missing:
+            problems.append(
+                f"Closure node {node.id!r} reads relation columns {missing} on "
+                f"{person!r}, which its {person!r} slice omits."
+            )
+    if problems:
+        raise ValueError(" ".join(problems))
+
+
 def _binding_modules(spec: Mapping[str, object]) -> dict[str, Mapping]:
     if not _has_resource(spec, _BINDINGS_RESOURCE):
         return {}
@@ -2029,33 +2088,56 @@ def _check_graph_node_entries(
         raise ValueError("Closure graph_node entries are wrong: " + " ".join(problems))
 
 
-def _requests(value: object, binding: str) -> list[str]:
-    """Every variable a declaration requests from ``binding``, nested included."""
+def _selects(ref: object, binding: str, literal: str | None) -> bool:
+    """Whether an ``engine_ref`` selects ``binding``, in either spelling.
+
+    A declaration writes ``{"binding": ...}`` or the prepared engine reference
+    itself; the literal matches in any JSON spelling, and a string too deeply
+    escaped to decode counts as a match, so the check fails closed.
+    """
+
+    if isinstance(ref, Mapping):
+        return ref.get("binding") == binding
+    if literal is None or not isinstance(ref, str):
+        return False
+    embedded = _embedded_engine_refs(ref, {literal})
+    return embedded is None or literal in embedded
+
+
+def _requests(value: object, binding: str, literal: str | None = None) -> list[str]:
+    """Every variable a declaration requests from ``binding``, nested included.
+
+    ``literal`` is the binding's prepared engine reference, so a component
+    that writes it in place of ``{"binding": ...}`` counts too.
+    """
 
     found: list[str] = []
     value = _json_value(value)
     if isinstance(value, Mapping):
-        ref = value.get("engine_ref")
-        if isinstance(ref, Mapping) and ref.get("binding") == binding:
+        ref = _json_value(value.get("engine_ref"))
+        if _selects(ref, binding, literal):
             variables = _json_value(value.get("variables", ()))
             if isinstance(variables, list | tuple):
                 found += [str(item) for item in variables]
             if isinstance(value.get("variable"), str):
                 found.append(value["variable"])
         for item in value.values():
-            found += _requests(item, binding)
+            found += _requests(item, binding, literal)
     elif isinstance(value, list | tuple):
         for item in value:
-            found += _requests(item, binding)
+            found += _requests(item, binding, literal)
     return found
 
 
-def _check_unreached_requests(spec: Mapping[str, object]) -> None:
+def _check_unreached_requests(
+    spec: Mapping[str, object], engine_refs: Mapping[str, str] | None = None
+) -> None:
     """No declared row requests a variable outside a binding's verified outputs.
 
     A binding's ``unreached_roots`` holds only for the ``outputs`` its review
     verified; every request through that binding, a nested bridge component
-    included, must stay inside them.
+    included, must stay inside them. ``engine_refs`` holds the prepared
+    references, so a request that spells the reference literally counts too.
     """
 
     guarded = {
@@ -2069,7 +2151,9 @@ def _check_unreached_requests(spec: Mapping[str, object]) -> None:
     for row in _declared_rows(spec):
         for binding, declaration in guarded.items():
             outputs = set(declaration.get("outputs", ()))
-            requested = _requests(row.get("params", {}), binding)
+            requested = _requests(
+                row.get("params", {}), binding, (engine_refs or {}).get(binding)
+            )
             if row.get("rules_binding") == binding:
                 requested += [
                     str(item) for item in row.get("params", {}).get("variables", ())
@@ -3814,7 +3898,7 @@ def compose_transport_graph(
     if not isinstance(config, TransportGraphConfig):
         raise TypeError("config must be a TransportGraphConfig.")
     validate_transport_activation(spec)
-    _check_unreached_requests(spec)
+    _check_unreached_requests(spec, config.engine_refs)
     _check_structural_columns(spec)
     from .entitlement import transport_extensions
 
@@ -3910,6 +3994,7 @@ def compose_transport_graph(
         _check_extension_checkpoints(spec, config, skeleton, compiled)
         _check_export_contract(spec, skeleton, compiled)
         _check_donor_receipts(skeleton)
+        _check_closure_relation_slices(spec, skeleton)
         _check_graph_node_entries(spec, config, skeleton, extended=False)
         _check_weights_audit_entity(spec, skeleton)
         return skeleton
@@ -3943,6 +4028,7 @@ def compose_transport_graph(
     _check_money_bridge_owners(graph, extended)
     _check_export_contract(spec, graph, extended)
     _check_donor_receipts(graph)
+    _check_closure_relation_slices(spec, graph)
     _check_graph_node_entries(spec, config, graph, extended=True)
     _check_weights_audit_entity(spec, graph)
     for node in skeleton.nodes:

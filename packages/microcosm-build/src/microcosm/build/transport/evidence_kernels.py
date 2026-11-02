@@ -84,6 +84,7 @@ from .evidence_contract import (
     INPUT_CLOSURE_REF,
     SUPPORT_BOUNDS_REF,
     WEIGHTS_AUDIT_REF,
+    binding_relation_inputs,
     closure_partition,
     decode_donor_ranges,
     evidence_header,
@@ -317,17 +318,28 @@ def engine_root_inputs(
     program per mapped frame entity; each program's ``root_inputs`` feed that
     entity's engine name, so a module that reads several entities keeps every
     input on its own entity. ``variables()`` would merge them into one flat
-    list. An injected adapter (engine-free fixtures) reports one flat list,
-    which this places on the binding's declared engine entity.
+    list. The engine keeps relation inputs apart from ``root_inputs``, and
+    ``variables()`` adds them on the manifest's ``root_entity``, so each of
+    the binding's declared relation inputs joins that entity's roots here.
+    An injected adapter (engine-free fixtures) reports one flat list, which
+    this places on the binding's declared engine entity.
     """
 
     if isinstance(engine, AxiomEngine):
-        roots: dict[str, tuple[str, ...]] = {}
+        found: dict[str, set[str]] = {}
         for frame_entity, engine_entity in entity_names.items():
             program = engine._program(frame_entity, missing_ok=True)
             if program is not None:
-                roots[engine_entity] = tuple(sorted(program.root_inputs))
-        return roots
+                found.setdefault(engine_entity, set()).update(program.root_inputs)
+        for relation in binding_relation_inputs(binding):
+            engine_entity = entity_names.get(str(relation.root_entity))
+            if engine_entity is None:
+                raise ValueError(
+                    f"rules binding {binding.get('id')!r} relates {relation.input!r} "
+                    f"on {relation.root_entity!r}, which entity_names does not map."
+                )
+            found.setdefault(engine_entity, set()).add(relation.input)
+        return {entity: tuple(sorted(names)) for entity, names in found.items()}
     return {str(binding["engine_entity"]): tuple(sorted(engine.variables()))}
 
 
