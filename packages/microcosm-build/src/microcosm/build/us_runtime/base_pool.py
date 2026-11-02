@@ -13,6 +13,10 @@ from microcosm.build.us_runtime.county_vintage import (
     COUNTY_FIPS_2023_COLUMN,
     county_fips_2023_from_tracts,
 )
+from microcosm.build.us_runtime.local_jurisdictions import (
+    PUMA_GEOGRAPHY_RUNGS,
+    apply_us_local_jurisdiction_flags,
+)
 from microcosm.build.us_runtime.puf_support import (
     support_channel_column,
     support_clone_index_column,
@@ -106,6 +110,13 @@ def with_optional_acs_spine(
     :class:`~microcosm.frame.Frame` construction, avoiding a second copy of
     every entity table.
 
+    A block-line base carries local-jurisdiction flags that the ACS rows lack.
+    With ``puma_ladder`` the county-rule flags are re-derived for every row
+    from the final county and the place-rule flags are removed (ACS rows have
+    no place); without it every flag is removed, since ACS rows then have no
+    county either. A flag column is never left half-null for the engine
+    default to fill.
+
     ``max_peak_bytes`` is a fail-fast bound on estimated frame-resident peak
     memory. Pass ``None`` to disable the preflight. The estimate includes both
     inputs and the defensive copies made by :class:`~microcosm.frame.Frame`; it
@@ -189,6 +200,12 @@ def with_optional_acs_spine(
                 expected_congressional_district_vintage
             ),
         )
+    tables.update(
+        apply_us_local_jurisdiction_flags(
+            tables,
+            rungs=PUMA_GEOGRAPHY_RUNGS if puma_ladder is not None else (),
+        )[0]
+    )
     if household_order is not None:
         reordered = household_weights.values[household_order]
         household_weights = Weights(reordered, household_weights.kind)

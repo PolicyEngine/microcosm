@@ -208,9 +208,7 @@ def _registry_from_bytes(
         raise ValueError(
             f"US local-jurisdiction registry repeats a geography: {geoids}."
         )
-    metadata = {
-        key: value for key, value in document.items() if key != "jurisdictions"
-    }
+    metadata = {key: value for key, value in document.items() if key != "jurisdictions"}
     return UsLocalJurisdictionRegistry(
         jurisdictions=jurisdictions, sha256=digest, metadata=metadata
     )
@@ -298,31 +296,41 @@ def _normalized_rungs(rungs: Collection[str]) -> tuple[str, ...]:
     return tuple(rung for rung in JURISDICTION_RUNGS if rung in set(rungs))
 
 
-def _text_codes(values: pd.Series, *, column: str, widths: tuple[int, ...]) -> np.ndarray:
-    """Return ``values`` as text codes, refusing nulls, non-text and bad widths."""
+def _text_codes(
+    values: pd.Series, *, column: str, widths: tuple[int, ...]
+) -> pd.Series:
+    """Return ``values`` as text codes, refusing nulls, non-text and bad widths.
 
-    out = np.empty(len(values), dtype=object)
-    bad: list[object] = []
-    for position, value in enumerate(values.tolist()):
-        if isinstance(value, bytes):
-            value = value.decode("ascii")
-        if (
-            not isinstance(value, str)
-            or len(value) not in widths
-            or (value and not value.isdigit())
-        ):
-            if len(bad) < 5:
-                bad.append(value)
-            out[position] = None
-            continue
-        out[position] = value
-    if bad:
-        allowed = " or ".join("empty" if width == 0 else f"{width}-digit" for width in widths)
+    An integer code is refused rather than zero-filled: the geography lines
+    write text, and a numeric column here means something upstream changed.
+    """
+
+    series = pd.Series(values.to_numpy(dtype=object), dtype=object)
+    if series.empty:
+        return series
+    kind = pd.api.types.infer_dtype(series, skipna=False)
+    if kind == "bytes":
+        series = series.str.decode("ascii")
+        kind = pd.api.types.infer_dtype(series, skipna=False)
+    allowed = " or ".join(
+        "empty" if width == 0 else f"{width}-digit" for width in widths
+    )
+    if kind != "string":
+        examples = (
+            series[~series.map(lambda value: isinstance(value, str))].head(5).tolist()
+        )
         raise ValueError(
             f"{column} must hold {allowed} text codes on every row to derive local "
-            f"jurisdiction flags; invalid value(s) {bad}."
+            f"jurisdiction flags; it holds {kind} values, e.g. {examples}."
         )
-    return out
+    pattern = "|".join(rf"\d{{{width}}}" if width else "" for width in widths)
+    valid = series.str.fullmatch(f"(?:{pattern})").astype(bool)
+    if not valid.all():
+        raise ValueError(
+            f"{column} must hold {allowed} text codes on every row to derive local "
+            f"jurisdiction flags; invalid value(s) {series[~valid].head(5).tolist()}."
+        )
+    return series
 
 
 def us_local_jurisdiction_flag_values(
@@ -346,14 +354,16 @@ def us_local_jurisdiction_flag_values(
     needed = {item.rule for item in resolved.jurisdictions} & set(supplied)
     if not needed:
         return {}
-    for column in ("county_fips", *(("place_fips",) if JURISDICTION_RUNG_PLACE in needed else ())):
+    for column in (
+        "county_fips",
+        *(("place_fips",) if JURISDICTION_RUNG_PLACE in needed else ()),
+    ):
         if column not in household:
             raise ValueError(
                 f"household table has no {column!r}; it cannot supply the "
                 f"local-jurisdiction rung(s) {sorted(needed)}."
             )
     county = _text_codes(household["county_fips"], column="county_fips", widths=(5,))
-    state = np.array([value[:2] for value in county.tolist()], dtype=object)
     place = (
         _text_codes(household["place_fips"], column="place_fips", widths=(0, 5))
         if JURISDICTION_RUNG_PLACE in needed
@@ -364,11 +374,11 @@ def us_local_jurisdiction_flag_values(
         if item.rule not in needed:
             continue
         if item.rule == JURISDICTION_RUNG_COUNTY:
-            flags[item.flag] = county == item.county_fips
+            mask = county.eq(item.county_fips)
         else:
             assert place is not None
-            flags[item.flag] = (state == item.state_fips) & (place == item.place_fips)
-        flags[item.flag] = np.asarray(flags[item.flag], dtype=bool)
+            mask = county.str[:2].eq(item.state_fips) & place.eq(item.place_fips)
+        flags[item.flag] = mask.to_numpy(dtype=bool)
     return flags
 
 
@@ -379,7 +389,7 @@ def apply_us_local_jurisdiction_flags(
     registry: UsLocalJurisdictionRegistry | None = None,
     household_weights: np.ndarray | None = None,
 ) -> tuple[dict[str, pd.DataFrame], dict[str, Any]]:
-    """Write every derivable flag into copies of ``tables`` and return a receipt.
+    """Write every derivable flag and return the tables with a receipt.
 
     Household flags go on the household table; person flags on the person
     table, each person taking its household's value through
@@ -387,6 +397,10 @@ def apply_us_local_jurisdiction_flags(
     its table if a stale or partially populated column is present, and the
     receipt records it as unavailable: the engine default then applies to
     every row, and the receipt says so, instead of a written ``False``.
+
+    The household and person tables are returned as new (shallow-copied)
+    frames; the input tables are never modified, and the other tables are
+    passed through as-is.
     """
 
     resolved = registry or packaged_us_local_jurisdiction_registry()
@@ -395,9 +409,14 @@ def apply_us_local_jurisdiction_flags(
     values = us_local_jurisdiction_flag_values(
         household, rungs=supplied, registry=resolved
     )
-    out = {name: table.copy() for name, table in tables.items()}
+    out = dict(tables)
+    for entity in {item.entity for item in resolved.jurisdictions}:
+        out[entity] = tables[entity].copy(deep=False)
     person_rows: np.ndarray | None = None
-    if any(item.entity == "person" and item.flag in values for item in resolved.jurisdictions):
+    if any(
+        item.entity == "person" and item.flag in values
+        for item in resolved.jurisdictions
+    ):
         person_rows = _person_household_positions(out["household"], out["person"])
     for item in resolved.jurisdictions:
         table = out[item.entity]
@@ -491,7 +510,9 @@ def us_local_jurisdiction_flag_receipt(
     resolved = registry or packaged_us_local_jurisdiction_registry()
     supplied = _normalized_rungs(rungs)
     weights = (
-        None if household_weights is None else np.asarray(household_weights, dtype=np.float64)
+        None
+        if household_weights is None
+        else np.asarray(household_weights, dtype=np.float64)
     )
     flags: dict[str, Any] = {}
     for item in resolved.jurisdictions:
@@ -509,7 +530,9 @@ def us_local_jurisdiction_flag_receipt(
                     raise ValueError(
                         "household_weights must align with the household table."
                     )
-                entry["weighted_households_in_jurisdiction"] = float(weights[mask].sum())
+                entry["weighted_households_in_jurisdiction"] = float(
+                    weights[mask].sum()
+                )
         else:
             entry["status"] = JURISDICTION_FLAG_UNAVAILABLE
             entry["reason"] = (
@@ -555,6 +578,12 @@ def us_local_jurisdiction_flag_failures(
         observed = household[item.flag]
         if observed.isna().any():
             failures.append(f"{item.flag}: {int(observed.isna().sum())} null row(s)")
+            continue
+        if (
+            not pd.api.types.is_bool_dtype(observed)
+            and not observed.isin([True, False]).all()
+        ):
+            failures.append(f"{item.flag}: holds non-boolean values")
             continue
         disagree = observed.astype(bool).to_numpy() != expected
         if disagree.any():
@@ -616,7 +645,9 @@ def check_us_local_jurisdictions_against_block_ladder(
         blocks_in = int(mask.sum())
         population_in = float(pop[mask].sum())
         if blocks_in == 0:
-            raise ValueError(f"{item.flag}: no block in the ladder matches {item.geoid}.")
+            raise ValueError(
+                f"{item.flag}: no block in the ladder matches {item.geoid}."
+            )
         if population_in != float(item.population_2020):
             raise ValueError(
                 f"{item.flag}: ladder population {population_in:,.0f} differs from "

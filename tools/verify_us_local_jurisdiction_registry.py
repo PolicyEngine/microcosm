@@ -77,20 +77,28 @@ def check_gazetteer(
 
     failures: list[str] = []
     sources = document["sources"]
-    for label, path in (("gazetteer_place", place_zip), ("gazetteer_county", county_zip)):
+    for label, path in (
+        ("gazetteer_place", place_zip),
+        ("gazetteer_county", county_zip),
+    ):
         observed = _sha256(path)
         if observed != sources[label]["sha256"]:
             failures.append(
                 f"{label}: zip SHA-256 {observed} differs from the registry's "
                 f"{sources[label]['sha256']}"
             )
-    tables = {"place": _gazetteer_rows(place_zip), "county": _gazetteer_rows(county_zip)}
+    tables = {
+        "place": _gazetteer_rows(place_zip),
+        "county": _gazetteer_rows(county_zip),
+    }
     for item in document["jurisdictions"]:
         records = item["gazetteer"]
         for level, record in records.items():
             row = tables[level].get(record["geoid"])
             if row is None:
-                failures.append(f"{item['flag']}: {level} {record['geoid']} not in gazetteer")
+                failures.append(
+                    f"{item['flag']}: {level} {record['geoid']} not in gazetteer"
+                )
                 continue
             for key, column in (
                 ("ansicode", "ANSICODE"),
@@ -111,7 +119,9 @@ def check_gazetteer(
             if place.get("geoid") != item["state_fips"] + str(
                 item["coextensive_place_fips"]
             ):
-                failures.append(f"{item['flag']}: gazetteer place is not the coextensive city")
+                failures.append(
+                    f"{item['flag']}: gazetteer place is not the coextensive city"
+                )
             if (county.get("aland"), county.get("awater")) != (
                 place.get("aland"),
                 place.get("awater"),
@@ -120,8 +130,13 @@ def check_gazetteer(
                     f"{item['flag']}: county and city land/water areas differ, so "
                     "they are not the same area"
                 )
-        elif records.get("place", {}).get("geoid") != item["state_fips"] + item["place_fips"]:
-            failures.append(f"{item['flag']}: gazetteer place is not state_fips+place_fips")
+        elif (
+            records.get("place", {}).get("geoid")
+            != item["state_fips"] + item["place_fips"]
+        ):
+            failures.append(
+                f"{item['flag']}: gazetteer place is not state_fips+place_fips"
+            )
     return failures
 
 
@@ -136,7 +151,9 @@ def check_pl_populations(document: Mapping[str, Any], *, path: Path) -> list[str
         for row in rows:
             record = dict(zip(header, row, strict=True))
             if "place" in record:
-                counts[("place", record["state"] + record["place"])] = int(record["P1_001N"])
+                counts[("place", record["state"] + record["place"])] = int(
+                    record["P1_001N"]
+                )
             elif "county" in record:
                 counts[("county", record["state"] + record["county"])] = int(
                     record["P1_001N"]
@@ -146,7 +163,9 @@ def check_pl_populations(document: Mapping[str, Any], *, path: Path) -> list[str
     failures: list[str] = []
     national = document["sources"]["population"]["national_total_2020"]
     if counts.get(("us", "1")) not in (None, national):
-        failures.append(f"US total {counts[('us', '1')]} differs from the registry's {national}")
+        failures.append(
+            f"US total {counts[('us', '1')]} differs from the registry's {national}"
+        )
     for item in document["jurisdictions"]:
         if item["rule"] == JURISDICTION_RUNG_COUNTY:
             keys = [

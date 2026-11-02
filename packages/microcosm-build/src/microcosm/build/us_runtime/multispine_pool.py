@@ -62,6 +62,10 @@ from microcosm.build.us_runtime.housing_inputs import (
     with_us_housing_inputs,
 )
 from microcosm.build.us_runtime.immigration import with_us_immigration_inputs
+from microcosm.build.us_runtime.local_jurisdictions import (
+    PUMA_GEOGRAPHY_RUNGS,
+    packaged_us_local_jurisdiction_registry,
+)
 from microcosm.build.us_runtime.medicare_take_up import (
     with_us_medicare_take_up_input,
 )
@@ -367,13 +371,15 @@ is asserted.
 
 POOL_PROJECTION_INPUT_PROVISION_COUNTS: tuple[tuple[str, int], ...] = (
     ("assembled_native_engine_input", 5),
-    ("declared_absent_engine_input", 762),
+    ("declared_absent_engine_input", 756),
     ("declared_deferred_null_input", 3),
     ("derived_schedule_d_input", 1),
     ("frame_structural_engine_input", 10),
+    ("geography_derived_jurisdiction_input", 2),
     ("materialized_pool_input_surface", 123),
-    ("preserved_stacked_engine_input", 4),
+    ("preserved_stacked_engine_input", 6),
     ("seed_stage_program_contract", 17),
+    ("unavailable_place_jurisdiction_input", 2),
     ("unprovisioned_source_input", 1),
 )
 """How every installed engine input is provisioned, by count.
@@ -383,7 +389,7 @@ tool re-derives every engine-pinned quantity this module carries.
 """
 
 POOL_REMAINING_STAGE_INPUT_MANIFEST_SHA256 = (
-    "d4fb9de9c0b8081474a24d0abde84ebf05eb346483fc20e3852e29abc769a501"
+    "6e70bc749ab7fd34d6bb902423a3240029d14533819cb5c6f1f75457875cf956"
 )
 """Pinned content digest of all 1,059 post-transfer consumer/input rows."""
 
@@ -694,6 +700,10 @@ _POOL_SIMULATION_PRESERVED_ENGINE_INPUTS: Mapping[
     tuple[str, str], tuple[str, str | None]
 ] = {
     ("person", "is_related_to_head_or_spouse"): ("assembled", None),
+    # The stacked post-assembly PUMA-ladder operator writes both on every
+    # household (``_assign_stacked_household_geography``).
+    ("household", "congressional_district_geoid"): ("assembled", None),
+    ("household", "county_fips"): ("assembled", None),
     ("household", "puma"): (
         "assembled",
         "ephemeral_simulation_projection_engine_default_for_null",
@@ -1556,6 +1566,13 @@ def pool_remaining_stage_input_manifest(
         for entity, variables in _POOL_NATIVE_COMPLETE_OUTPUTS.items()
         for variable in variables
     }
+    # The stacked pool's geography comes from the PUMA ladder, which draws a
+    # county but no place: county-rule jurisdiction flags are derived with
+    # it, place-rule flags are never written (local_jurisdictions).
+    local_jurisdiction_inputs = {
+        (item.entity, item.flag): item.rule in PUMA_GEOGRAPHY_RUNGS
+        for item in packaged_us_local_jurisdiction_registry().jurisdictions
+    }
     projection_provisions: dict[str, int] = {}
     for entity, variable in _pool_engine_input_projection(
         resolved_metadata_index,
@@ -1584,6 +1601,14 @@ def pool_remaining_stage_input_manifest(
         elif (entity, variable) in engine_structural_inputs:
             provision = "frame_structural_engine_input"
             available_by = "assembled"
+        elif (entity, variable) in local_jurisdiction_inputs:
+            if local_jurisdiction_inputs[(entity, variable)]:
+                provision = "geography_derived_jurisdiction_input"
+                available_by = "assembled"
+            else:
+                provision = "unavailable_place_jurisdiction_input"
+                available_by = "simulate"
+                fallback = "policyengine_default_no_place_rung"
         elif (entity, variable) in _POOL_SIMULATION_PRESERVED_ENGINE_INPUTS:
             provision = "preserved_stacked_engine_input"
             available_by, preserved_fallback = _POOL_SIMULATION_PRESERVED_ENGINE_INPUTS[

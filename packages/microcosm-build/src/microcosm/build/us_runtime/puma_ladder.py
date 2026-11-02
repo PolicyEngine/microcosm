@@ -41,7 +41,12 @@ Column names follow the policyengine-us household input surface
 input, exactly as the UK ladder carries ``*_code`` columns policyengine-uk has
 no input for). The exported artifact carries engine inputs, never formula
 outputs, so ``in_nyc``/``nyc_income_tax`` recompute from the county rung
-instead of being persisted (the #34 regression).
+instead of being persisted (the #34 regression). Of the local flags the engine
+declares as plain inputs, the county-rule ones (``in_denver``,
+``pa_philadelphia_wage_tax_resident``) are derived from the drawn county. The
+ladder has no place rung, so the place-rule flags (``in_yonkers``,
+``in_wilmington``) are unavailable: they are never written, and the summary
+records why (:mod:`.local_jurisdictions`).
 """
 
 from __future__ import annotations
@@ -66,6 +71,13 @@ from microcosm.build.us_runtime.county_vintage import (
 from microcosm.build.us_runtime.geography_ladder import (
     US_NYC_COUNTY_FIPS,
     non_text_county_fips_failure,
+)
+from microcosm.build.us_runtime.local_jurisdictions import (
+    PUMA_GEOGRAPHY_RUNGS,
+    apply_us_local_jurisdiction_flags,
+    us_local_jurisdiction_flag_failures,
+    us_local_jurisdiction_flag_receipt,
+    us_local_jurisdiction_flag_values,
 )
 from microcosm.build.us_runtime.puma_county_vintage import (
     county_fips_2023_for_puma_assignment,
@@ -413,7 +425,12 @@ def with_household_us_puma_ladder(
     assign_tract: bool = False,
     expected_congressional_district_vintage: str | None = None,
 ) -> Frame:
-    """Return ``frame`` with the household PUMA ladder assigned."""
+    """Return ``frame`` with the household PUMA ladder assigned.
+
+    The county-rule local-jurisdiction flags are derived from the drawn county
+    and written as engine inputs; the place-rule flags are left unwritten
+    (any stale column is removed) because the ladder assigns no place.
+    """
 
     tables = {entity: frame.table(entity).copy() for entity in frame.entities}
     tables["household"] = assign_us_puma_ladder(
@@ -425,6 +442,7 @@ def with_household_us_puma_ladder(
             expected_congressional_district_vintage
         ),
     )
+    tables, _ = apply_us_local_jurisdiction_flags(tables, rungs=PUMA_GEOGRAPHY_RUNGS)
     for link_name in frame.links:
         tables[link_name] = frame.link(link_name).copy()
     weights = {entity: frame.weights_for(entity) for entity in frame.weighted_entities}
@@ -484,6 +502,11 @@ def us_puma_ladder_assignment_summary(
     nyc = np.isin(county, US_NYC_COUNTY_FIPS)
     summary["nyc_weighted_household_share"] = (
         float(weights[nyc].sum() / total) if total > 0 else 0.0
+    )
+    summary["local_jurisdiction_flags"] = us_local_jurisdiction_flag_receipt(
+        us_local_jurisdiction_flag_values(household, rungs=PUMA_GEOGRAPHY_RUNGS),
+        rungs=PUMA_GEOGRAPHY_RUNGS,
+        household_weights=weights,
     )
     return summary
 
@@ -594,6 +617,9 @@ def us_puma_ladder_gate(
                 f"{label}: {int(mismatched.sum())}/{len(values)} row(s) "
                 "disagree with the expected state/county prefix"
             )
+    # A present flag must match its rule; a place-rule flag fails here unless
+    # the table carries a complete place rung to decide it.
+    failures.extend(us_local_jurisdiction_flag_failures(household))
 
     total = float(weights.sum())
     if total <= 0:
