@@ -300,12 +300,14 @@ def _validate_summed_rows(money: list, counts: list, by_name: Mapping) -> None:
         )
         if members is None and count_members is None:
             continue
-        summed.update({name, count_name})
-        if members != count_members or count_name is None:
+        # The companion key holds the canonical member lists, so a count row
+        # pairs with this money row only over the same member set.
+        if count_name is None:
             raise ValueError(
-                f"Summed references {name!r} and {count_name!r} select "
-                "different member sets."
+                f"Summed money reference {name!r} and its count companion "
+                "select different member sets: no count row sums its members."
             )
+        summed.update({name, count_name})
         count_row = by_name[count_name]
         if count_row.get("value_operation") != "sum" or count_row.get(
             "value_operands", []
