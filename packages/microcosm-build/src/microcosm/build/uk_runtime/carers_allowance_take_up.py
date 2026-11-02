@@ -9,11 +9,11 @@ whose earnings are above the limit cannot report the allowance, so no reform
 that widens it, such as the April 2025 rise of the limit from £151 to £196 a
 week, reached a carer who would claim once entitled.
 
-This stage runs after the SPI income chain and the other take-up redraws. It
-opens the flag to the carers the earnings limit alone keeps from the
-allowance at the survey year: a person whose ``care_hours`` reach the engine's
-``gov.dwp.carers_allowance.min_hours``, who cares for a severely disabled
-person, who reports no Carer's Allowance, and whom
+This stage runs after the SPI income chain, the other take-up redraws and
+``salary_sacrifice`` (below). It opens the flag to the carers the earnings
+limit alone keeps from the allowance at the survey year: a person whose
+``care_hours`` reach the engine's ``gov.dwp.carers_allowance.min_hours``, who
+cares for a severely disabled person, who reports no Carer's Allowance, and whom
 ``is_gainfully_employed_for_carers_allowance`` holds gainfully employed at the
 survey year (the 2024-25 limit of £151 a week; the engine reads a year's
 parameters at 30 April). Such a person claims at the take-up contract's
@@ -64,13 +64,15 @@ earnings limit, so a drawn Scottish carer is paid only where its rules allow.
 The receipt reports Scotland apart. The incoming flag must still follow
 reported receipt, since the stage rebuilds it from that anchor.
 
-The earnings test is read where the stage runs, before ``salary_sacrifice``
-moves some contributors' pension amounts out of their pay, which lowers the
-earnings the engine tests by about half the amount moved. A drawn carer whom
-that conversion takes under the survey year's limit keeps the flag, although
-the released file then shows them entitled and not reporting. Reading the
-converted pay would need the stage after ``salary_sacrifice``, with a draw
-keyed on lineage so that the CGT clones keep their source's draw.
+The stage runs after ``salary_sacrifice``, which moves some contributors'
+pension amounts out of their pay and so lowers the earnings the engine tests
+by about half the amount moved: the earnings test reads the converted pay
+(microcosm#1095 B5). That puts it after the CGT stages too, which copy
+households, so each draw is keyed on lineage (``lineage_roots``): a CGT copy
+draws as the member it copies, and the balanced placement takes a source and
+its copies in one stratum as one record of their joint weight
+(``lineage_balanced_positions``), so they claim together, as when the stage
+ran before the CGT clones.
 
 The receipt is aggregate-only (UKDS disclosure control): support as bands of
 distinct source households, a weighted total only where three or more carry
@@ -93,6 +95,7 @@ from microcosm.build.stochastic_assignment import (
     weight_balanced_uniforms,
 )
 from microcosm.build.uk_runtime.frs_release import resolve_uk_year_rule
+from microcosm.build.uk_runtime.household_lineage import uk_household_clone_paths
 from microcosm.build.uk_runtime.national_frame import (
     uk_household_weight_kind,
     uk_national_frame,
@@ -115,6 +118,7 @@ from microcosm.frame import Frame
 from microcosm.frame.rules import assert_rules_engine_country
 
 __all__ = [
+    "CGT_LINEAGE_BRANCHES",
     "CARERS_ALLOWANCE_DISABILITY_TEST",
     "CARERS_ALLOWANCE_ENGINE_VARIABLES",
     "CARERS_ALLOWANCE_NEWLY_ENTITLED_RATE_KEY",
@@ -129,6 +133,8 @@ __all__ = [
     "carers_allowance_eligible",
     "carers_allowance_pool",
     "carers_allowance_take_up_operation_parameters",
+    "lineage_balanced_positions",
+    "lineage_roots",
     "means_tested_benefit_unit",
     "other_member_severely_disabled",
     "redraw_carers_allowance_take_up",
@@ -219,8 +225,24 @@ CARERS_ALLOWANCE_RATE_DERIVATION = (
     f"({CARERS_ALLOWANCE_STRATA}) and rotated by a start drawn per stratum, so "
     "that every stratum claims the rate of its eligible weight to within one "
     "record and every eligible carer claims with probability equal to the rate; "
-    "would_claim = reported OR (eligible "
-    "AND position < rate), so a reporter stays true and every other person false"
+    "a CGT copy draws as the member it copies, placed with it as one record of "
+    "their joint weight, so the two claim together; would_claim = reported OR "
+    "(eligible AND position < rate), so a reporter stays true and every other "
+    "person false"
+)
+#: The CGT stages' branches of a household's clone path: a support copy, an
+#: incidence clone and a residential arm each copy their source household's
+#: members in ``person_id`` order (microcosm#1095 B5).
+CGT_LINEAGE_BRANCHES = frozenset(
+    {"cgt_support_split", "cgt_incidence_clone", "cgt_residential_split"}
+)
+#: The household columns that mark a frame the CGT stages have copied.
+_CGT_LINEAGE_COLUMNS = (
+    "household_is_cgt_support_copy",
+    "cgt_support_copy_index",
+    "household_is_capital_gains_clone",
+    "household_is_cgt_residential_clone",
+    "cgt_residential_clone_index",
 )
 
 
@@ -332,17 +354,12 @@ def carers_allowance_pool(
         # eligible part, so the balance is struck over them.
         drawable = other & ~np.asarray(reported, dtype=bool)
         draws = draws.copy()
-        drawable_strata = np.asarray(pool_strata)[drawable]
-        draws[drawable] = weight_balanced_uniforms(
-            drawable_strata,
+        draws[drawable] = lineage_balanced_positions(
+            np.asarray(pool_strata)[drawable],
             draws[drawable],
             weights[drawable],
-            starts=stratum_starts(
-                drawable_strata,
-                salt=CARERS_ALLOWANCE_POOL_SALT,
-                identities=np.asarray(pool_identities)[drawable],
-                draws=draws[drawable],
-            ),
+            identities=np.asarray(pool_identities)[drawable],
+            salt=CARERS_ALLOWANCE_POOL_SALT,
         )
     drawn = draws < (share or 0.0)
     pool = (in_household & disabled_member) | (other & drawn)
@@ -386,6 +403,100 @@ def stratum_starts(
     return starts[np.searchsorted(unique, codes)]
 
 
+def lineage_roots(person: pd.DataFrame, household: pd.DataFrame) -> np.ndarray:
+    """Each person's lineage root: the ``person_id`` the draws key them on.
+
+    A CGT support copy, incidence clone or residential arm copies its source
+    household's members in ``person_id`` order, so a member's root is the
+    member at the same rank of the household with the same source id and clone
+    path without the CGT branches (``CGT_LINEAGE_BRANCHES``). Every other
+    person, an SPI or high-value support copy's included, is their own root,
+    as is everyone in a frame the CGT stages have not copied.
+    """
+
+    ids = pd.to_numeric(person["person_id"], errors="raise").astype("int64")
+    if not any(column in household.columns for column in _CGT_LINEAGE_COLUMNS):
+        return ids.to_numpy()
+    source_ids, paths = uk_household_clone_paths(household)
+    stripped = [
+        tuple(branch for branch in path if branch[0] not in CGT_LINEAGE_BRANCHES)
+        for path in paths
+    ]
+    household_ids = household["household_id"].to_numpy()
+    keys = pd.Series(
+        [
+            str((source, path))
+            for source, path in zip(source_ids, stripped, strict=True)
+        ],
+        index=household_ids,
+    )
+    is_root = pd.Series(
+        [path == bare for path, bare in zip(paths, stripped, strict=True)],
+        index=household_ids,
+    )
+    members = person["person_household_id"]
+    household_keys = members.map(keys)
+    if household_keys.isna().any():
+        raise ValueError("Every Carer's Allowance person must map to a household.")
+    rank = ids.groupby(members.to_numpy()).rank(method="first").astype("int64")
+    lineage = household_keys.astype(str) + "#" + rank.astype(str)
+    root_rows = members.map(is_root).to_numpy(dtype=bool)
+    roots = pd.Series(ids.to_numpy()[root_rows], index=lineage.to_numpy()[root_rows])
+    if roots.index.has_duplicates:
+        raise ValueError("Two source members share one Carer's Allowance lineage.")
+    mapped = lineage.map(roots)
+    if mapped.isna().any():
+        raise ValueError(
+            "A CGT copy's member has no member at its rank in the household it copies."
+        )
+    return mapped.astype("int64").to_numpy()
+
+
+def lineage_balanced_positions(
+    strata: np.ndarray,
+    draws: np.ndarray,
+    weights: np.ndarray,
+    *,
+    identities: np.ndarray,
+    salt: str,
+) -> np.ndarray:
+    """Weight-balanced positions, the rows of one identity in a stratum as one record.
+
+    A source and its CGT copies share an identity (``lineage_roots``) and so a
+    draw. Placed as one record of their joint weight they take one position
+    and claim together, as when the stage ran before the CGT clones split the
+    source's weight (microcosm#1095 B5). Rows of distinct identities are placed
+    exactly as ``weight_balanced_uniforms`` places them.
+    """
+
+    strata = np.asarray(strata)
+    identities = np.asarray(identities)
+    draws = np.asarray(draws, dtype=np.float64)
+    weights = np.asarray(weights, dtype=np.float64)
+    if not strata.shape == identities.shape == draws.shape == weights.shape:
+        raise ValueError(
+            "Balanced positions need one stratum, identity and draw per row."
+        )
+    if not len(strata):
+        return draws.copy()
+    record, unique = pd.factorize(pd.MultiIndex.from_arrays([strata, identities]))
+    low = pd.Series(draws).groupby(record).min().sort_index().to_numpy()
+    high = pd.Series(draws).groupby(record).max().sort_index().to_numpy()
+    if (low != high).any():
+        raise ValueError("Rows of one lineage must share their draw.")
+    record_strata = unique.get_level_values(0).to_numpy()
+    record_identities = unique.get_level_values(1).to_numpy()
+    positions = weight_balanced_uniforms(
+        record_strata,
+        low,
+        np.bincount(record, weights=weights, minlength=len(unique)),
+        starts=stratum_starts(
+            record_strata, salt=salt, identities=record_identities, draws=low
+        ),
+    )
+    return np.asarray(positions, dtype=np.float64)[record]
+
+
 def assert_strata_within_one_record(
     members: np.ndarray,
     strata: np.ndarray,
@@ -394,13 +505,15 @@ def assert_strata_within_one_record(
     share: float,
     *,
     label: str,
+    identities: np.ndarray | None = None,
 ) -> None:
     """Refuse a stratum whose taken weight misses ``share`` of its weight by
     more than its heaviest record.
 
     The rotated placement takes each stratum's share to within half a record
     at each end of the stratum's arc, one record in all, by construction. A
-    larger miss means the draw was not balanced.
+    larger miss means the draw was not balanced. With ``identities``, a record
+    is the rows of one lineage, as ``lineage_balanced_positions`` places them.
     """
 
     weights = np.maximum(np.asarray(weights, dtype=np.float64), 0.0)
@@ -408,11 +521,21 @@ def assert_strata_within_one_record(
     for code in np.unique(strata[members]):
         stratum = members & (strata == code)
         stratum_weights = weights[stratum]
+        heaviest = (
+            float(stratum_weights.max())
+            if identities is None
+            else float(
+                pd.Series(stratum_weights)
+                .groupby(np.asarray(identities)[stratum])
+                .sum()
+                .max()
+            )
+        )
         miss = abs(
             float(weights[stratum & taken].sum())
             - float(share) * float(stratum_weights.sum())
         )
-        if miss > float(stratum_weights.max()) * (1.0 + 1e-9) + 1e-9:
+        if miss > heaviest * (1.0 + 1e-9) + 1e-9:
             raise ValueError(
                 f"Carer's Allowance {label} stratum {int(code)} misses its share by "
                 "more than one record: the draw was not balanced by weight."
@@ -662,6 +785,8 @@ def redraw_carers_allowance_take_up(
         .to_numpy(dtype=np.float64)
     )
     weights = np.asarray(frame.resolve_weights("person").values, dtype=np.float64)
+    # Every draw is keyed on lineage: a CGT copy draws as the member it copies.
+    roots = lineage_roots(person, household)
     pool = carers_allowance_pool(
         care_hours=care_hours,
         in_household_hours=in_household_hours,
@@ -671,13 +796,11 @@ def redraw_carers_allowance_take_up(
         reported=reported,
         weights=weights,
         pool_draws=stable_identity_uniforms(
-            person["person_id"].to_numpy(),
-            seed=CARERS_ALLOWANCE_TAKE_UP_SEED,
-            salt=CARERS_ALLOWANCE_POOL_SALT,
+            roots, seed=CARERS_ALLOWANCE_TAKE_UP_SEED, salt=CARERS_ALLOWANCE_POOL_SALT
         ),
         min_hours=resolved.min_hours,
         pool_strata=pool_strata,
-        pool_identities=person["person_id"].to_numpy(),
+        pool_identities=roots,
     )
     eligible = carers_allowance_eligible(
         pool=pool.pool,
@@ -685,31 +808,37 @@ def redraw_carers_allowance_take_up(
         gainfully_employed=gainfully_employed,
     )
     draws = stable_identity_uniforms(
-        person["person_id"].to_numpy(),
-        seed=CARERS_ALLOWANCE_TAKE_UP_SEED,
-        salt=CARERS_ALLOWANCE_TAKE_UP_OUTPUT,
+        roots, seed=CARERS_ALLOWANCE_TAKE_UP_SEED, salt=CARERS_ALLOWANCE_TAKE_UP_OUTPUT
     )
     # The take-up strata add the route to the pool's.
     take_up_strata = pool.other.astype(np.int64) * 2 * _BAND_COUNT + pool_strata
     positions = draws.copy()
-    positions[eligible] = weight_balanced_uniforms(
+    positions[eligible] = lineage_balanced_positions(
         take_up_strata[eligible],
         draws[eligible],
         weights[eligible],
-        starts=stratum_starts(
-            take_up_strata[eligible],
-            salt=CARERS_ALLOWANCE_TAKE_UP_OUTPUT,
-            identities=person["person_id"].to_numpy()[eligible],
-            draws=draws[eligible],
-        ),
+        identities=roots[eligible],
+        salt=CARERS_ALLOWANCE_TAKE_UP_OUTPUT,
     )
     drawn = eligible & (positions < rate)
     drawable_other = pool.other & ~reported
     assert_strata_within_one_record(
-        eligible, take_up_strata, drawn, weights, rate, label="take-up"
+        eligible,
+        take_up_strata,
+        drawn,
+        weights,
+        rate,
+        label="take-up",
+        identities=roots,
     )
     assert_strata_within_one_record(
-        drawable_other, pool_strata, pool.pool, weights, pool.share or 0.0, label="pool"
+        drawable_other,
+        pool_strata,
+        pool.pool,
+        weights,
+        pool.share or 0.0,
+        label="pool",
+        identities=roots,
     )
     would_claim = reported | drawn
     person[CARERS_ALLOWANCE_TAKE_UP_OUTPUT] = would_claim

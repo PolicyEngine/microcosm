@@ -941,12 +941,13 @@ def test_the_packaged_stage_carries_the_reviewed_operations_in_order() -> None:
     assert assign.parameters["seed"] == 0
     order = [stage.stage for stage in load_country_spec("uk").sources.stages]
     position = order.index(ca.CARERS_ALLOWANCE_TAKE_UP_STAGE_NAME)
-    # After the SPI income chain and the other take-up redraws, before the
-    # deduction attributes and every CGT clone.
-    assert order[position - 1] == "child_benefit_take_up"
-    assert order[position + 1] == "uc_deduction_attributes"
-    assert position > order.index("hmrc_spi_income_spine")
-    assert position < order.index("cgt_support_split")
+    # After the SPI income chain, the other take-up redraws and
+    # salary_sacrifice, whose converted pay the earnings test reads, so after
+    # every CGT copy too, which draws as the member it copies (microcosm#1095
+    # B5).
+    assert order[position - 1] == "salary_sacrifice"
+    assert position > order.index("child_benefit_take_up")
+    assert position > order.index("cgt_residential_split")
 
 
 def test_a_drifted_manifest_is_refused() -> None:
@@ -1138,3 +1139,143 @@ def test_the_stage_draws_the_same_carers_whatever_the_row_order() -> None:
         _run(shuffled, rate=0.6).frame.table("person").set_index("person_id")[_OUTPUT]
     )
     pd.testing.assert_series_equal(again.loc[first.index], first)
+
+
+def _cgt_lineage(household: pd.DataFrame) -> pd.DataFrame:
+    """``household`` with every CGT lineage column, each row an original."""
+
+    household = household.copy()
+    n = len(household)
+    household["source_household_id"] = household["household_id"].astype("int64")
+    household["household_support_channel"] = "frs"
+    household["household_support_clone_index"] = np.zeros(n, dtype="int64")
+    household["household_is_cgt_support_copy"] = np.zeros(n, dtype=bool)
+    household["cgt_support_copy_index"] = np.zeros(n, dtype="int64")
+    household["household_is_capital_gains_clone"] = np.zeros(n, dtype=bool)
+    household["household_is_cgt_residential_clone"] = np.zeros(n, dtype=bool)
+    household["cgt_residential_clone_index"] = np.zeros(n, dtype="int64")
+    return household
+
+
+def test_a_cgt_copy_draws_as_the_member_it_copies() -> None:
+    """Since the stage runs after salary_sacrifice it sees the CGT stages'
+    copies; a member of a copy is keyed on the member at the same rank of the
+    household it copies, and an SPI support copy on itself (microcosm#1095
+    B5)."""
+
+    household = _cgt_lineage(pd.DataFrame({"household_id": [1, 2, 3, 4]}))
+    household["source_household_id"] = np.array([7, 7, 7, 7], dtype="int64")
+    # 2 is the incidence clone of 1, 3 its support copy, 4 an SPI copy.
+    household.loc[1, "household_is_capital_gains_clone"] = True
+    household.loc[2, "household_is_cgt_support_copy"] = True
+    household.loc[2, "cgt_support_copy_index"] = 1
+    household.loc[3, "household_support_channel"] = "spi"
+    household.loc[3, "household_support_clone_index"] = 1
+    person = pd.DataFrame(
+        {
+            "person_id": [12, 11, 1011, 1012, 2012, 2011, 41],
+            "person_household_id": [1, 1, 2, 2, 3, 3, 4],
+        }
+    )
+    roots = ca.lineage_roots(person, household)
+    np.testing.assert_array_equal(roots, [12, 11, 11, 12, 12, 11, 41])
+    # Without CGT lineage everyone is their own root.
+    np.testing.assert_array_equal(
+        ca.lineage_roots(person, household[["household_id"]]), person["person_id"]
+    )
+    # A copy whose source is not in the frame cannot be keyed.
+    with pytest.raises(ValueError, match="no member at its rank"):
+        ca.lineage_roots(person.iloc[2:], household.iloc[1:])
+
+
+def test_a_source_and_its_copies_take_one_position() -> None:
+    """A source and its copies, sharing a draw, are placed as one record of
+    their joint weight, so they claim together, and every other record keeps
+    the position it took before the copy split the source's weight."""
+
+    strata = np.array([1, 1, 1, 1, 2])
+    identities = np.array([11, 11, 21, 31, 41], dtype="int64")
+    draws = stable_identity_uniforms(identities, seed=0, salt="test")
+    split = ca.lineage_balanced_positions(
+        strata,
+        draws,
+        np.array([0.5, 0.5, 1.0, 1.0, 1.0]),
+        identities=identities,
+        salt="test",
+    )
+    whole = ca.lineage_balanced_positions(
+        strata[1:],
+        draws[1:],
+        np.array([1.0, 1.0, 1.0, 1.0]),
+        identities=identities[1:],
+        salt="test",
+    )
+    assert split[0] == split[1]
+    np.testing.assert_array_equal(split[1:], whole)
+    # Distinct identities are placed as the balanced uniforms place them.
+    np.testing.assert_array_equal(
+        whole,
+        weight_balanced_uniforms(
+            strata[1:],
+            draws[1:],
+            np.ones(4),
+            starts=ca.stratum_starts(
+                strata[1:], salt="test", identities=identities[1:], draws=draws[1:]
+            ),
+        ),
+    )
+    with pytest.raises(ValueError, match="share their draw"):
+        ca.lineage_balanced_positions(
+            strata[:2],
+            np.array([0.1, 0.2]),
+            np.ones(2),
+            identities=identities[:2],
+            salt="test",
+        )
+
+
+def test_the_stage_draws_a_cgt_clone_with_the_carer_it_copies() -> None:
+    """Every carer and their CGT clone, each at half the carer's weight,
+    claim as the carer alone did at the whole weight (microcosm#1095 B5): a
+    clone drawn on its own identity would match its carer only by chance."""
+
+    n = 12
+    weights = np.random.default_rng(5).uniform(0.5, 2.0, n)
+    base = _frame(
+        care_hours=[40.0] * n,
+        reported=[0.0] * n,
+        weekly_pay=[200.0] * n,
+        weights=weights,
+    )
+    before = _run(base).frame.table("person").set_index("person_id")[_OUTPUT]
+    person = base.table("person")
+    benunit = base.table("benunit")
+    household = _cgt_lineage(base.table("household"))
+    for source in range(1, n + 1):
+        clone = household[household["household_id"] == source].copy()
+        clone["household_id"] = source + 100
+        clone["household_is_capital_gains_clone"] = True
+        members = person[person["person_household_id"] == source].copy()
+        members["person_id"] += 10_000
+        members["person_household_id"] = source + 100
+        members["person_benunit_id"] += 1_000
+        person = pd.concat([person, members], ignore_index=True)
+        benunit = pd.concat(
+            [benunit, pd.DataFrame({"benunit_id": members["person_benunit_id"]})],
+            ignore_index=True,
+        )
+        household = pd.concat([household, clone], ignore_index=True)
+    halved = np.r_[weights, weights] / 2.0
+    cloned = uk_national_frame(
+        person=person,
+        benunit=benunit.sort_values("benunit_id", ignore_index=True),
+        household=household,
+        time_period="2024",
+        weight_kind=WeightKind.DESIGN,
+        household_weights=halved,
+    )
+    after = _run(cloned).frame.table("person").set_index("person_id")[_OUTPUT]
+    pd.testing.assert_series_equal(after.loc[before.index], before)
+    clones = after.loc[before.index + 10_000]
+    np.testing.assert_array_equal(clones.to_numpy(), before.to_numpy())
+    assert 0 < before.sum() < n

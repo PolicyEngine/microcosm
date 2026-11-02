@@ -101,11 +101,6 @@ PENSION_CREDIT_TAKE_UP_STAGE_NAMES = [
 CHILD_BENEFIT_TAKE_UP_STAGE_NAMES = [
     "child_benefit_take_up",
 ]
-# microcosm#1319: the Carer's Allowance draw reads the post-SPI earnings and
-# the anchor the SPI income chain refreshes.
-CARERS_ALLOWANCE_TAKE_UP_STAGE_NAMES = [
-    "carers_allowance_take_up",
-]
 E9_STAGE_NAMES = [
     "uc_deduction_attributes",
 ]
@@ -119,6 +114,10 @@ E8_STAGE_NAMES = [
     "cgt_residential_split",
     "hmrc_cgt_asset_type_spine",
     "salary_sacrifice",
+    # microcosm#1095 B5: the Carer's Allowance draw reads the earnings test on
+    # the pay salary sacrifice converts, each draw keyed on lineage so that a
+    # CGT copy claims with the member it copies (microcosm#1319).
+    "carers_allowance_take_up",
     "student_loans",
     # The copies' childcare re-draw runs after every copy stage, before the
     # private-school attendance ranks households on net income (which counts
@@ -151,7 +150,6 @@ UK_SOURCE_STAGE_NAMES = [
     *UC_LEGACY_CLOSURE_TAKE_UP_STAGE_NAMES,
     *PENSION_CREDIT_TAKE_UP_STAGE_NAMES,
     *CHILD_BENEFIT_TAKE_UP_STAGE_NAMES,
-    *CARERS_ALLOWANCE_TAKE_UP_STAGE_NAMES,
     *E9_STAGE_NAMES,
     *E8_STAGE_NAMES,
 ]
@@ -225,7 +223,6 @@ class TestUKSourceStagesManifest:
             *UC_LEGACY_CLOSURE_TAKE_UP_STAGE_NAMES,
             *PENSION_CREDIT_TAKE_UP_STAGE_NAMES,
             *CHILD_BENEFIT_TAKE_UP_STAGE_NAMES,
-            *CARERS_ALLOWANCE_TAKE_UP_STAGE_NAMES,
             *E9_STAGE_NAMES,
         ]
 

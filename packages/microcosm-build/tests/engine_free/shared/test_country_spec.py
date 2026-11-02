@@ -1129,8 +1129,8 @@ class TestUKCountryPackage:
         # microcosm#1240 high_value_home_support between them, microcosm#1112
         # regional_home_values after it, and microcosm#1095 property_purchases
         # after property_components and uc_legacy_closure_take_up after
-        # uc_capital_coherence; microcosm#1319 carers_allowance_take_up after
-        # child_benefit_take_up; childcare_copy_take_up last, after every copy
+        # uc_capital_coherence; microcosm#1319 carers_allowance_take_up, after
+        # salary_sacrifice since microcosm#1095 B5; childcare_copy_take_up last, after every copy
         # stage; microcosm#1334 uc_take_up after uc_capital_coherence and
         # frs_annual_income_spells after frs_hmrc_spine_leaves; microcosm#1428
         # trading_allowance_receipts last; company_cars right after
