@@ -32,6 +32,7 @@
       "access_fund": "float64",
       "afcs_reported": "float64",
       "age": "int64",
+      "annuity_and_trust_income": "float64",
       "attendance_allowance_reported": "float64",
       "bsp_reported": "float64",
       "care_hours": "float64",

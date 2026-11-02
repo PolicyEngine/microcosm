@@ -360,10 +360,12 @@ def test_the_packaged_floor_drops_only_unsupported_bands_and_binds_thin_ones():
         },
         # Extended on María's ruling of 2026-10-22 (the next policyengine-uk
         # bump), then to the SPI families microcosm#1418 binds: Table 3.7's
-        # other income and Table 3.10's self-employment bands.
+        # other income and Table 3.10's self-employment bands, and to the
+        # employment counts over those bands microcosm#1428 binds.
         "hmrc_spi_income_band_counts": {
             *(f"hmrc.spi.{family}.count_by_total_income_band" for family in spi),
             "hmrc.spi.self_employment_income.count_by_self_employment_income_band",
+            "hmrc.spi.employment_income.count_by_self_employment_income_band",
         },
         "hmrc_spi_income_band_amounts": {
             *(f"hmrc.spi.{family}.amount_by_total_income_band" for family in spi),

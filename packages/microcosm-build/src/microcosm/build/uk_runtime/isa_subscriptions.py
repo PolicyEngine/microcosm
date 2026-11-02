@@ -60,7 +60,6 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from microcosm.build.gates import FitWeightRecord
 from microcosm.build.source_manifest import SourceStageSpec
 from microcosm.build.stochastic_assignment import stable_identity_uniforms
 from microcosm.build.uk_runtime.cgt_imputation import (
@@ -1642,10 +1641,6 @@ class UKISASubscriptionsStageTransform:
     #: Supplied facts (tests and the synthetic fixture); else the vendored resource.
     statistics: HMRCISAStatistics | None = None
     last_receipt: Mapping[str, Any] | None = field(default=None, init=False)
-
-    @property
-    def fit_weight_records(self) -> tuple[FitWeightRecord, ...]:
-        return ()
 
     def _table(
         self,
