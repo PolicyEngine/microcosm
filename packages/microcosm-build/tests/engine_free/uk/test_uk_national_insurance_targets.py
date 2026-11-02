@@ -17,9 +17,10 @@ CLASS_ROWS = ("obr.ni_employee", "obr.ni_employer", "obr.ni_self_employed")
 
 
 def test_the_nics_total_is_a_diagnostic_beside_the_class_rows() -> None:
-    """OBR's table 3.8 total is cash, the class rows accrued, and it carries
-    statutory-payment recoveries, Class 1A, 1B and 3 and settlements no
-    household carries, so it leaves the fit (María's ruling of 2026-10-09)."""
+    """OBR's total NICs line is cash, the class rows accrued, and it carries
+    statutory-payment recoveries, Class 1B and 3, settlements, and Class 1A on
+    every benefit in kind, of which households carry only the company cars and
+    fuel, so it leaves the fit (María's ruling of 2026-10-09)."""
 
     from microcosm.build.uk_runtime.ledger_targets import (
         UK_REQUIRED_TARGET_DIAGNOSTICS,
@@ -42,7 +43,34 @@ def test_the_nics_total_is_a_diagnostic_beside_the_class_rows() -> None:
     assert reference["ledger_fact_key"]
 
 
-def test_the_nics_diagnostic_carries_the_fy2025_26_forecast() -> None:
+def test_the_employer_row_binds_class_1_alone() -> None:
+    """OBR's employer line is table 4.4 row 18, Class 1 alone; Class 1A sits in
+    row 21 ('Other NIC'). policyengine-uk's ni_employer adds ni_class_1a since
+    2.165.0, so the row binds ni_class_1_employer, and the exclusion that holds
+    it out names that measure in its rebind condition (microcosm#1430)."""
+
+    contract = load_uk_population_contract()
+    row = next(t for t in contract["targets"] if t["target_id"] == "obr.ni_employer")
+    binding = row["bindings"]["policyengine"]
+    assert binding["value_variable"] == "ni_class_1_employer"
+    assert "value_expression" not in binding
+    register = json.loads(
+        (
+            _TEST_PATHS.package
+            / "src/microcosm/build/uk/calibration_measure_exclusions.json"
+        ).read_text(encoding="utf-8")
+    )
+    exclusion = next(
+        entry for entry in register["exclusions"] if entry["name"] == "obr.ni_employer"
+    )
+    assert "binds policyengine-uk's ni_class_1_employer" in exclusion["reason"]
+    assert (
+        "nets the allowance out of the measure the row binds, ni_class_1_employer"
+        in exclusion["reason"]
+    )
+
+
+def test_the_nics_diagnostic_carries_the_fy2025_26_outturn() -> None:
     """Feed-gated: the diagnostic resolves its exact FY2025-26 fact."""
 
     from microcosm.build.uk_runtime.ledger_targets import (
@@ -64,4 +92,7 @@ def test_the_nics_diagnostic_carries_the_fy2025_26_forecast() -> None:
     prefix = "obr_ni_total_diagnostic"
     assert metadata[f"{prefix}_role"] == "diagnostic_only_not_in_fit"
     assert metadata[f"{prefix}_status"] == "available"
-    assert float(metadata[f"{prefix}_value_gbp"]) == pytest.approx(200_081_395_082.71)
+    # The October 2026 EFO's outturn: March's forecast left the feed with
+    # PolicyEngine/chronicle#397 (microcosm#1430).
+    assert float(metadata[f"{prefix}_value_gbp"]) == pytest.approx(200_829_000_000)
+    assert metadata[f"{prefix}_ledger_assertion"] == "observation"

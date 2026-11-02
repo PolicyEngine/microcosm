@@ -86,6 +86,13 @@ ALLOWED_SOURCE_OPERATION_KINDS = frozenset(
         "grow_isa_subscriptions",
         "split_both_type_subscriptions",
         "split_household_isa_balances",
+        # PolicyEngine/uk-autumn-budget-dashboard-2026#316: company cars.
+        "assign_company_car_fuel_types",
+        "carve_spi_company_car_benefits",
+        "classify_company_car_facts_with_reviewed_fence",
+        "clean_was_company_car_donor",
+        "draw_company_car_co2_emissions",
+        "draw_company_car_list_prices",
         "convert_bonuses_to_bonus_sacrifice",
         "convert_donors_to_target_stock",
         "convert_interest_to_structural_mortgage_inputs",

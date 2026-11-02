@@ -3241,7 +3241,9 @@ class TestSourceCitations:
         assert selected["item"] == "A1"
 
     def test_create_and_donor_reader_citations_still_describe_unit_inputs(self) -> None:
+        from microcosm.build.transport import population_kernels, unit_declarations
         from microcosm.build.transport.population_kernels import TransportCreateKernel
+        from microcosm.frame import unit_construction
         from microcosm.frame.transport import read_populace_us_donor
         from microcosm.graph.decl import StructuralDelta
 
@@ -3259,14 +3261,48 @@ class TestSourceCitations:
         )
         assert TransportCreateKernel.capabilities.structural is StructuralDelta.CREATE
         # Differential source evidence: CREATE reads the verified concept donor,
-        # then builds family units using the declared benefit-unit rule.
+        # then delegates its unchanged NZ rule through the canonical parser and
+        # the registered benefit-unit membership constructor.
         create_source = inspect.getsource(TransportCreateKernel)
-        assert create_source.index("read_populace_us_donor(") < create_source.index(
-            "build_benefit_units("
+        assert (
+            create_source.index("read_populace_us_donor(")
+            < create_source.index("create_unit_declaration(")
+            < create_source.index("build_declared_units(")
         )
         assert "tables, dropped = split_for_transport(donor.tables)" in create_source
-        assert "BenefitUnitRule.from_spec(" in create_source
-        assert 'tables["person"], tables["household"], rule' in create_source
+        assert 'tables["person"], tables["household"], declaration' in create_source
+        assert (
+            population_kernels.create_unit_declaration
+            is unit_declarations.create_unit_declaration
+        )
+        assert TransportCreateKernel.ref == unit_declarations.CREATE_V1_REF
+        parser_source = inspect.getsource(unit_declarations.create_unit_declaration)
+        assert "if kernel == CREATE_V1_REF:" in parser_source
+        assert "rule = BenefitUnitRule.from_spec(document)" in parser_source
+        assert "return MultiUnitRule.from_benefit_unit(rule)" in parser_source
+        declaration = unit_declarations.create_unit_declaration(
+            TransportCreateKernel.ref, rule
+        )
+        (unit,) = declaration.units
+        assert unit.kind == "benefit_unit"
+        assert (
+            unit.rule.to_dict()
+            == unit_construction.BenefitUnitRule.from_spec(rule).to_dict()
+        )
+        rule_type, constructor = unit_construction._UNIT_KINDS[unit.kind]
+        assert rule_type is unit_construction.BenefitUnitRule
+        constructor_source = inspect.getsource(constructor)
+        assert "_heads(rows, _dependents(rows, rule), rule)" in constructor_source
+        framework_source = inspect.getsource(unit_construction.build_declared_units)
+        assert "_UNIT_KINDS[item.kind][1](rows, person, item.rule)" in framework_source
+        assert (
+            "_build_partition(person, household, item.rule, rows, head)"
+            in framework_source
+        )
+        legacy_source = inspect.getsource(unit_construction.build_benefit_units)
+        assert "_dependents(rows, rule)" in legacy_source
+        assert "_heads(rows, dependent, rule)" in legacy_source
+        assert "_build_partition(person, household, rule, rows, head)" in legacy_source
         donor_source = inspect.getsource(read_populace_us_donor)
         assert "tables = POLICYENGINE_US_CONCEPT_MAPPING.decode(raw)" in donor_source
         assert 'tables["person"][name] = values' in donor_source

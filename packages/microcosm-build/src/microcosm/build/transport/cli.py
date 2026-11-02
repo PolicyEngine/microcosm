@@ -42,7 +42,6 @@ from microcosm.frame import Frame
 from microcosm.frame.adapters.axiom import AxiomEntityTableDataset
 from microcosm.frame.materialize import put_frame_table
 from microcosm.frame.rules import RulesEngine
-from microcosm.frame.unit_construction import BenefitUnitRule
 from microcosm.graph import (
     CompiledGraph,
     ContentStore,
@@ -77,9 +76,13 @@ from .compose import (
     validate_transport_activation,
 )
 from .entitlement import money_node_factor_entries
-from .population_kernels import TRANSPORT_CREATE
+from .population_kernels import (
+    TRANSPORT_CREATE,
+    TRANSPORT_CREATE_DECLARED,
+)
 from .registry import TransportRegistry, build_transport_registry
 from .terminal_kernels import materialize_export, validate_export
+from .unit_declarations import CREATE_V1_REF, create_unit_declaration
 
 __all__ = [
     "EXPORT_FILENAME",
@@ -139,6 +142,11 @@ def prepare_create_outputs(
     if resume == "require" and inventory_store is None:
         raise StoreMissError("--resume require needs a CREATE inventory store.")
     declaration = skeleton_create_declaration(spec)
+    kernel = (
+        TRANSPORT_CREATE
+        if declaration.kernel == CREATE_V1_REF
+        else TRANSPORT_CREATE_DECLARED
+    )
     missing = sorted(set(declaration.sources) - set(sources))
     if missing:
         raise ValueError(f"CREATE needs local paths for sources {missing}.")
@@ -149,7 +157,7 @@ def prepare_create_outputs(
             canonical_json(
                 {
                     "kernel": declaration.kernel,
-                    "implementation_hash": TRANSPORT_CREATE.implementation_hash(),
+                    "implementation_hash": kernel.implementation_hash(),
                     "params": declaration.params,
                     "sources": {
                         name: source_content_key(name, sources[name])
@@ -182,7 +190,7 @@ def prepare_create_outputs(
         rng=np.random.default_rng(0),
         sources={name: Path(sources[name]).resolve() for name in probe.sources},
     )
-    frame = TRANSPORT_CREATE.run(context).frame
+    frame = kernel.run(context).frame
     schema = frame.schema
     structural = {
         schema.person_entity: {
@@ -282,7 +290,9 @@ def prepare_transport_build(
     if rules_source not in paths:
         raise ValueError(f"Source {rules_source!r} (the RuleSpec tree) needs a path.")
     create = skeleton_create_declaration(spec)
-    rule = BenefitUnitRule.from_spec(json.loads(create.params["unit_rule"]))
+    rule = create_unit_declaration(
+        create.kernel, json.loads(create.params["unit_rule"])
+    )
     registry = build_transport_registry(
         transport_resource(spec, "axiom_rules_bindings"),
         paths[rules_source],

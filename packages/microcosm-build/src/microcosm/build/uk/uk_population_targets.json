@@ -674,7 +674,7 @@
       "obr/capital_gains_tax": "Observed FY2024-25 treatment (#875): the incumbent OBR cash forecast is retained only as diagnostic provenance. It has no same-basis liability mapping and is removed from fitting; no source value is adjusted.",
       "obr/state_pension": "Resident treatment (microcosm#1069 R4): the incumbent OBR FY State Pension forecast counts Great Britain plus pensioners paid abroad and leaves out Northern Ireland. The DWP Stat-Xplore and DfC resident level is bound instead and the exact OBR FY2025-26 figure is retained only as diagnostic provenance on dwp.state_pension.amount; no source value is adjusted.",
       "obr/salary_sacrifice_users_total": "R10 (microcosm#1069 c9): the salary-sacrifice users total contradicts the staged support and the two headcounts either side of £2,000 already bind it; it leaves the fit.",
-      "obr/ni": "Diagnostic only (María's ruling of 2026-10-09, microcosm#1095; uk-data#537 drops the row): OBR's total NICs receipts (table 3.8 row 12) is a cash total, while the three bound class rows are accrued, and it carries statutory-payment recoveries, Class 1A, 1B and 3 and settlements, which no household carries; at the calendar-2025 window it sits about 1.8% above the class rows. The exact OBR FY2025-26 figure is retained only as diagnostic provenance on obr.ni_employee; no source value is adjusted.",
+      "obr/ni": "Diagnostic only (María's ruling of 2026-10-09, microcosm#1095; uk-data#537 drops the row): OBR's total NICs receipts (October 2026 EFO table 4.8 row 12) is a cash total, while the three bound class rows are accrued, and it carries statutory-payment recoveries, Class 1A on benefits other than the company cars and fuel the build carries, Class 1B and 3, and settlements, which no household carries; at the calendar-2025 window it sits about 2.1% above the class rows. The exact OBR FY2025-26 figure is retained only as diagnostic provenance on obr.ni_employee; no source value is adjusted.",
       "dwp/pip_dl_standard_claimants": "Diagnostic only (María's ruling of 2026-10-10, microcosm#1095): DWP's England-and-Wales PIP daily living caseload (FOI2025/24990, end of January 2025) resolves at K04000001 and fits within 0.1%, but fitting the two rows takes the calibration over the uk_weight_ratio fence. The exact figure is retained only as diagnostic provenance on obr.pip; no source value is adjusted.",
       "dwp/pip_dl_enhanced_claimants": "Diagnostic only (María's ruling of 2026-10-10, microcosm#1095): DWP's England-and-Wales PIP daily living caseload (FOI2025/24990, end of January 2025) resolves at K04000001 and fits within 0.1%, but fitting the two rows takes the calibration over the uk_weight_ratio fence. The exact figure is retained only as diagnostic provenance on obr.pip; no source value is adjusted.",
       "ons/female_15_19": "Split, not dropped (María's ruling of 2026-10-13 (microcosm#1095, uk-data#563)): a fit to the five-year band leaves the ages inside it free to drift, so the contract binds ages 15, 16-17 and 18-19 instead (ons.population.female_15, female_16_17 and female_18_19). The three rows partition this row's population and read the same ONS mid-year estimate by single year of age, so they sum to it. No single contract row has this row's definition.",
@@ -2035,7 +2035,7 @@
           "value_variable": "income_tax_before_winter_fuel_payment_charge_annual",
           "from_entity": "person",
           "map_to": "household",
-          "notes": "Income tax before the Winter Fuel Payment charge, which policyengine-uk adds to income_tax from 2.157.0 (María's ruling of 2026-10-25, microcosm#1095): HMRC recovers 2025's payments through 2026-27 tax codes and self assessment, so the FY2025-26 receipts in the window hold almost none of the recovery. Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane)."
+          "notes": "Income tax before the Winter Fuel Payment charge, which policyengine-uk adds to income_tax from 2.157.0 (María's ruling of 2026-10-25, microcosm#1095): HMRC recovers 2025's payments through 2026-27 tax codes and self assessment, so the FY2025-26 receipts in the window hold almost none of the recovery. Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). Since PolicyEngine/chronicle#397 each EFO line and year keeps only its latest edition's number, so the window reads FY2024-25 from the March 2026 EFO and FY2025-26 from the October 2026 EFO, both outturns (source_table_by_opening_year; María's ruling of 2026-10-31, microcosm#1430)."
         },
         "axiom": {
           "metric_name": "obr/income_tax",
@@ -2047,7 +2047,11 @@
       "ledger_selector": {
         "source_name": "obr",
         "source_concept": "obr.income_tax",
-        "entity_name": "person"
+        "entity_name": "person",
+        "source_table_by_opening_year": {
+          "2024": "EFO March 2026 detailed forecast tables: receipts",
+          "2025": "EFO October 2026 detailed forecast tables: receipts"
+        }
       },
       "category_id": "obr.efo_receipts",
       "label": "Income tax",
@@ -2070,7 +2074,7 @@
           "value_variable": "ni_employee",
           "from_entity": "person",
           "map_to": "household",
-          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane)."
+          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). Since PolicyEngine/chronicle#397 each EFO line and year keeps only its latest edition's number, so the window reads FY2024-25 from the March 2026 EFO and FY2025-26 from the October 2026 EFO, both outturns (source_table_by_opening_year; María's ruling of 2026-10-31, microcosm#1430)."
         },
         "axiom": {
           "metric_name": "obr/ni_employee",
@@ -2082,7 +2086,11 @@
       "ledger_selector": {
         "source_name": "obr",
         "source_concept": "obr.ni_employee",
-        "entity_name": "person"
+        "entity_name": "person",
+        "source_table_by_opening_year": {
+          "2024": "EFO March 2026 detailed forecast tables: receipts",
+          "2025": "EFO October 2026 detailed forecast tables: receipts"
+        }
       },
       "category_id": "obr.efo_receipts",
       "label": "Employee National Insurance contributions",
@@ -2102,10 +2110,10 @@
       "bindings": {
         "policyengine": {
           "metric_name": "obr/ni_employer",
-          "value_variable": "ni_employer",
+          "value_variable": "ni_class_1_employer",
           "from_entity": "person",
           "map_to": "household",
-          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane)."
+          "notes": "Class 1 employer NICs (ni_class_1_employer): OBR's line is table 4.4 row 18, and Class 1A sits in row 21 ('Other NIC', footnote 2), so the engine's Class 1A on the company cars and fuel the build carries (ni_class_1a, which ni_employer adds since policyengine-uk 2.165.0) stays out of the row (microcosm#1430). Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). Since PolicyEngine/chronicle#397 each EFO line and year keeps only its latest edition's number, so the window reads FY2024-25 from the March 2026 EFO and FY2025-26 from the October 2026 EFO, both outturns (source_table_by_opening_year; María's ruling of 2026-10-31, microcosm#1430)."
         },
         "axiom": {
           "metric_name": "obr/ni_employer",
@@ -2117,7 +2125,11 @@
       "ledger_selector": {
         "source_name": "obr",
         "source_concept": "obr.ni_employer",
-        "entity_name": "person"
+        "entity_name": "person",
+        "source_table_by_opening_year": {
+          "2024": "EFO March 2026 detailed forecast tables: receipts",
+          "2025": "EFO October 2026 detailed forecast tables: receipts"
+        }
       },
       "category_id": "obr.efo_receipts",
       "label": "Employer National Insurance contributions",
@@ -2140,7 +2152,7 @@
           "value_variable": "ni_self_employed",
           "from_entity": "person",
           "map_to": "household",
-          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane)."
+          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). Since PolicyEngine/chronicle#397 each EFO line and year keeps only its latest edition's number, so the window reads FY2024-25 from the March 2026 EFO and FY2025-26 from the October 2026 EFO, both outturns (source_table_by_opening_year; María's ruling of 2026-10-31, microcosm#1430)."
         },
         "axiom": {
           "metric_name": "obr/ni_self_employed",
@@ -2152,7 +2164,11 @@
       "ledger_selector": {
         "source_name": "obr",
         "source_concept": "obr.ni_self_employed",
-        "entity_name": "person"
+        "entity_name": "person",
+        "source_table_by_opening_year": {
+          "2024": "EFO March 2026 detailed forecast tables: receipts",
+          "2025": "EFO October 2026 detailed forecast tables: receipts"
+        }
       },
       "category_id": "obr.efo_receipts",
       "label": "Self-employed National Insurance contributions",
@@ -2172,7 +2188,7 @@
         "policyengine": {
           "metric_name": "obr/vat",
           "value_expression": "vat + private_school_vat",
-          "notes": "Measured at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). OBR's receipts include VAT on private school fees, charged from 1 January 2025, which policyengine-uk charges from 2.157.1 (policyengine-uk#2319) as private_school_vat beside its general vat, so the row measures both, as the obr.esa and obr.pip rows sum their parts (microcosm#1095). Held as a measured diagnostic (calibration_measure_exclusions.json, María's ruling of 2026-10-24): the engine's survey coverage factor (policyengine-uk#2187) was derived on a certified Microcosm release, so binding the row would pull the consumption weights back toward that release."
+          "notes": "Measured at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). OBR's receipts include VAT on private school fees, charged from 1 January 2025, which policyengine-uk charges from 2.157.1 (policyengine-uk#2319) as private_school_vat beside its general vat, so the row measures both, as the obr.esa and obr.pip rows sum their parts (microcosm#1095). Held as a measured diagnostic (calibration_measure_exclusions.json, María's ruling of 2026-10-24): the engine's survey coverage factor (policyengine-uk#2187) was derived on a certified Microcosm release, so binding the row would pull the consumption weights back toward that release. Since PolicyEngine/chronicle#397 each EFO line and year keeps only its latest edition's number, so the window reads FY2024-25 from the March 2026 EFO and FY2025-26 from the October 2026 EFO, both outturns (source_table_by_opening_year; María's ruling of 2026-10-31, microcosm#1430)."
         },
         "axiom": {
           "metric_name": "obr/vat",
@@ -2184,7 +2200,11 @@
       "ledger_selector": {
         "source_name": "obr",
         "source_concept": "obr.vat",
-        "entity_name": "person"
+        "entity_name": "person",
+        "source_table_by_opening_year": {
+          "2024": "EFO March 2026 detailed forecast tables: receipts",
+          "2025": "EFO October 2026 detailed forecast tables: receipts"
+        }
       },
       "category_id": "obr.efo_receipts",
       "label": "VAT",
@@ -2204,7 +2224,7 @@
         "policyengine": {
           "metric_name": "obr/fuel_duties",
           "value_variable": "fuel_duty",
-          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane)."
+          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). Since PolicyEngine/chronicle#397 each EFO line and year keeps only its latest edition's number, so the window reads FY2024-25 from the March 2026 EFO and FY2025-26 from the October 2026 EFO, both outturns (source_table_by_opening_year; María's ruling of 2026-10-31, microcosm#1430). The row is signed out of the references (universe_scope_all_road_users); the map keeps it readable if it returns."
         },
         "axiom": {
           "metric_name": "obr/fuel_duties",
@@ -2216,7 +2236,11 @@
       "ledger_selector": {
         "source_name": "obr",
         "source_concept": "obr.fuel_duties",
-        "entity_name": "person"
+        "entity_name": "person",
+        "source_table_by_opening_year": {
+          "2024": "EFO March 2026 detailed forecast tables: receipts",
+          "2025": "EFO October 2026 detailed forecast tables: receipts"
+        }
       },
       "category_id": "obr.efo_receipts",
       "label": "Fuel duties",
@@ -2276,7 +2300,7 @@
         "policyengine": {
           "metric_name": "obr/sdlt",
           "value_variable": "stamp_duty_land_tax",
-          "notes": "Households' SDLT: the OBR's SDLT line at the calendar-2025 window of its fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane), times individuals' share of HMRC's 2024-25 SDLT receipts, residential (Table 8a) and non-residential (Table 8b) together. The OBR line covers every buyer, and HMRC's other buyers (companies, partnerships and collective investment schemes) pay about a third of it; policyengine-uk charges households' stamp_duty_land_tax and adds corporate_sdlt beside it, so binding the whole line pushed households' SDLT up by the companies' share (uk-data#564, microcosm#1095). uk-data#569 subtracts policyengine-uk's corporate SDLT statistic instead. pe-uk#2322 has merged (in the lock since microcosm#1400): it projects each buyer type's 2024-25 share of each property type's receipts with the OBR's forecast for the type, so the two routes differ only in applying the share per property type rather than to the whole line. The receipts share here is HMRC's own outturn split, and the window's 2025-26 months take 2024-25's. Three gaps are declared, not corrected: non-resident individuals' SDLT, surcharge included, stays inside the individuals' share, though no FRS household is non-resident; Table 6b counts the higher rates before refunds on replacement main homes, and policyengine-uk charges them with no refund, while Tables 8a and 8b and the OBR line are net of refunds; and the main-home purchase rate policyengine-uk applies also counts the higher-rates transactions, so those purchases are partly counted twice (review of #1308)."
+          "notes": "Households' SDLT: the OBR's SDLT line at the calendar-2025 window of its fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane), times individuals' share of HMRC's 2024-25 SDLT receipts, residential (Table 8a) and non-residential (Table 8b) together. The OBR line covers every buyer, and HMRC's other buyers (companies, partnerships and collective investment schemes) pay about a third of it; policyengine-uk charges households' stamp_duty_land_tax and adds corporate_sdlt beside it, so binding the whole line pushed households' SDLT up by the companies' share (uk-data#564, microcosm#1095). uk-data#569 subtracts policyengine-uk's corporate SDLT statistic instead. pe-uk#2322 has merged (in the lock since microcosm#1400): it projects each buyer type's 2024-25 share of each property type's receipts with the OBR's forecast for the type, so the two routes differ only in applying the share per property type rather than to the whole line. The receipts share here is HMRC's own outturn split, and the window's 2025-26 months take 2024-25's. Three gaps are declared, not corrected: non-resident individuals' SDLT, surcharge included, stays inside the individuals' share, though no FRS household is non-resident; Table 6b counts the higher rates before refunds on replacement main homes, and policyengine-uk charges them with no refund, while Tables 8a and 8b and the OBR line are net of refunds; and the main-home purchase rate policyengine-uk applies also counts the higher-rates transactions, so those purchases are partly counted twice (review of #1308). Since PolicyEngine/chronicle#397 each EFO line and year keeps only its latest edition's number, so the window reads FY2024-25 from the March 2026 EFO and FY2025-26 from the October 2026 EFO, both outturns (source_table_by_opening_year; María's ruling of 2026-10-31, microcosm#1430)."
         },
         "axiom": {
           "metric_name": "obr/sdlt",
@@ -2288,7 +2312,11 @@
       "ledger_selector": {
         "source_name": "obr",
         "source_concept": "obr.sdlt",
-        "entity_name": "person"
+        "entity_name": "person",
+        "source_table_by_opening_year": {
+          "2024": "EFO March 2026 detailed forecast tables: receipts",
+          "2025": "EFO October 2026 detailed forecast tables: receipts"
+        }
       },
       "category_id": "obr.efo_receipts",
       "label": "Stamp Duty Land Tax",
@@ -2363,7 +2391,7 @@
               "map_to": "person"
             }
           ],
-          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). Scoped to England and Wales (microcosm#1095, uk-data#490): DWP reports this benefit for England and Wales only since executive competence moved to the Scottish Government (Attendance Allowance from 1 April 2020; DWP benefit expenditure and caseload tables, Spring 2026, Notes), and OBR table 4.9 carries DWP's line. FRS code 12 also holds Scotland's Pension Age Disability Payment, which the Scottish Government funds, so the model column sums English and Welsh households only. Since the abf0921 re-pin the Chronicle fact carries the England and Wales code K04000001 (microcosm#1300)."
+          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). Scoped to England and Wales (microcosm#1095, uk-data#490): DWP reports this benefit for England and Wales only since executive competence moved to the Scottish Government (Attendance Allowance from 1 April 2020; DWP benefit expenditure and caseload tables, Spring 2026, Notes), and OBR table 4.9 carries DWP's line. FRS code 12 also holds Scotland's Pension Age Disability Payment, which the Scottish Government funds, so the model column sums English and Welsh households only. Since the abf0921 re-pin the Chronicle fact carries the England and Wales code K04000001 (microcosm#1300). Since PolicyEngine/chronicle#397 each EFO line and year keeps only its latest edition's number, so the window reads FY2024-25 from the March 2026 EFO and FY2025-26 from the October 2026 EFO, both outturns (source_table_by_opening_year; María's ruling of 2026-10-31, microcosm#1430)."
         },
         "axiom": {
           "metric_name": "obr/attendance_allowance",
@@ -2375,7 +2403,11 @@
       "ledger_selector": {
         "source_name": "obr",
         "source_concept": "obr.attendance_allowance",
-        "entity_name": "person"
+        "entity_name": "person",
+        "source_table_by_opening_year": {
+          "2024": "EFO March 2026 detailed forecast tables: expenditure",
+          "2025": "EFO October 2026 detailed forecast tables: expenditure"
+        }
       },
       "category_id": "obr.efo_expenditure",
       "label": "Attendance allowance",
@@ -2421,7 +2453,7 @@
               "map_to": "person"
             }
           ],
-          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). Scoped to England and Wales (microcosm#1095, uk-data#490): DWP reports this benefit for England and Wales only since executive competence moved to the Scottish Government (Carer's Allowance from 3 September 2018; DWP benefit expenditure and caseload tables, Spring 2026, Notes), and OBR table 4.9 carries DWP's line. FRS code 13 also holds Scotland's Carer Support Payment, which the Scottish Government funds, so the model column sums English and Welsh households only. Since the abf0921 re-pin the Chronicle fact carries the England and Wales code K04000001 (microcosm#1300)."
+          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). Scoped to England and Wales (microcosm#1095, uk-data#490): DWP reports this benefit for England and Wales only since executive competence moved to the Scottish Government (Carer's Allowance from 3 September 2018; DWP benefit expenditure and caseload tables, Spring 2026, Notes), and OBR table 4.9 carries DWP's line. FRS code 13 also holds Scotland's Carer Support Payment, which the Scottish Government funds, so the model column sums English and Welsh households only. Since the abf0921 re-pin the Chronicle fact carries the England and Wales code K04000001 (microcosm#1300). Since PolicyEngine/chronicle#397 each EFO line and year keeps only its latest edition's number, so the window reads FY2024-25 from the March 2026 EFO and FY2025-26 from the October 2026 EFO, both outturns (source_table_by_opening_year; María's ruling of 2026-10-31, microcosm#1430)."
         },
         "axiom": {
           "metric_name": "obr/carers_allowance",
@@ -2433,7 +2465,11 @@
       "ledger_selector": {
         "source_name": "obr",
         "source_concept": "obr.carers_allowance",
-        "entity_name": "person"
+        "entity_name": "person",
+        "source_table_by_opening_year": {
+          "2024": "EFO March 2026 detailed forecast tables: expenditure",
+          "2025": "EFO October 2026 detailed forecast tables: expenditure"
+        }
       },
       "category_id": "obr.efo_expenditure",
       "label": "Carers allowance",
@@ -2456,7 +2492,7 @@
           "value_variable": "child_benefit",
           "from_entity": "benunit",
           "map_to": "household",
-          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane)."
+          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). Since PolicyEngine/chronicle#397 each EFO line and year keeps only its latest edition's number, so the window reads FY2024-25 from the March 2026 EFO and FY2025-26 from the October 2026 EFO, both outturns (source_table_by_opening_year; María's ruling of 2026-10-31, microcosm#1430)."
         },
         "axiom": {
           "metric_name": "obr/child_benefit",
@@ -2468,7 +2504,11 @@
       "ledger_selector": {
         "source_name": "obr",
         "source_concept": "obr.child_benefit",
-        "entity_name": "person"
+        "entity_name": "person",
+        "source_table_by_opening_year": {
+          "2024": "EFO March 2026 detailed forecast tables: expenditure",
+          "2025": "EFO October 2026 detailed forecast tables: expenditure"
+        }
       },
       "category_id": "obr.efo_expenditure",
       "label": "Child benefit",
@@ -2521,7 +2561,7 @@
               "map_to": "household"
             }
           ],
-          "notes": "OBR Table 4.1 reports net council tax receipts (net of council tax reduction), so the binding is council_tax_less_benefit, not gross council_tax (uk-data targets/compute/council_tax.py:21-43 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3). It binds row 15 ('Total council tax receipts'), the sum of the England, Scotland and Wales rows, over Great Britain's households (microcosm#1095). Row 19 ('Total net council tax receipts', obr.council_tax_total, bound before) adds Northern Ireland domestic rates, the council tax accruals adjustment and the high-value council tax surcharge: GBP 1.34bn, 2.7% of the calendar-2025 window, which no household's council tax carries (domestic rates are obr.domestic_rates, held). Chronicle stamps the row K02000001, as OBR's table is UK-wide, and the selector pins it there. Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). Restated for main residences (María's ruling of 2026-10-29, microcosm#1095 D14f): OBR's receipts include council tax on second homes and empty dwellings, which households do pay on property they own, but the frame's council_tax is each household's main-residence bill only, and the engine has no input for council tax on other property, so binding the whole line pushed main-residence bills up. The window is scaled by England's chargeable dwellings less its second homes and empty dwellings, over its chargeable dwellings (MHCLG Council Taxbase, October 2025; calendar_year_window_scaled_by_ratio with a complement numerator). Two approximations are stated, not corrected: the share counts dwellings, so premiums on second homes and long-term empty homes make the true tax share a little smaller; and England's share stands for Scotland's and Wales's. An issue tracks carrying households' council tax on other property."
+          "notes": "OBR Table 4.1 reports net council tax receipts (net of council tax reduction), so the binding is council_tax_less_benefit, not gross council_tax (uk-data targets/compute/council_tax.py:21-43 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3). It binds row 15 ('Total council tax receipts'), the sum of the England, Scotland and Wales rows, over Great Britain's households (microcosm#1095). Row 19 ('Total net council tax receipts', obr.council_tax_total, bound before) adds Northern Ireland domestic rates, the council tax accruals adjustment and the high-value council tax surcharge: GBP 1.34bn, 2.7% of the calendar-2025 window, which no household's council tax carries (domestic rates are obr.domestic_rates, held). Chronicle stamps the row K02000001, as OBR's table is UK-wide, and the selector pins it there. Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). Restated for main residences (María's ruling of 2026-10-29, microcosm#1095 D14f): OBR's receipts include council tax on second homes and empty dwellings, which households do pay on property they own, but the frame's council_tax is each household's main-residence bill only, and the engine has no input for council tax on other property, so binding the whole line pushed main-residence bills up. The window is scaled by England's chargeable dwellings less its second homes and empty dwellings, over its chargeable dwellings (MHCLG Council Taxbase, October 2025; calendar_year_window_scaled_by_ratio with a complement numerator). Two approximations are stated, not corrected: the share counts dwellings, so premiums on second homes and long-term empty homes make the true tax share a little smaller; and England's share stands for Scotland's and Wales's. An issue tracks carrying households' council tax on other property. Since PolicyEngine/chronicle#397 each EFO line and year keeps only its latest edition's number, so the window reads FY2024-25 from the March 2026 EFO and FY2025-26 from the October 2026 EFO, both outturns (source_table_by_opening_year; María's ruling of 2026-10-31, microcosm#1430)."
         },
         "axiom": {
           "metric_name": "obr/council_tax",
@@ -2532,7 +2572,11 @@
       "assertion_policy": "allow_source_projection",
       "ledger_selector": {
         "source_name": "obr",
-        "source_concept": "obr.council_tax_receipts_england_scotland_wales"
+        "source_concept": "obr.council_tax_receipts_england_scotland_wales",
+        "source_table_by_opening_year": {
+          "2024": "EFO March 2026 detailed forecast tables: expenditure",
+          "2025": "EFO October 2026 detailed forecast tables: expenditure"
+        }
       },
       "category_id": "obr.efo_expenditure",
       "label": "Council tax",
@@ -2594,7 +2638,7 @@
               "equals": "ENGLAND"
             }
           ],
-          "notes": "OBR Table 4.1 reports net council tax receipts (net of council tax reduction), so the binding is council_tax_less_benefit, not gross council_tax (uk-data targets/compute/council_tax.py:21-43 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3). Chronicle stamps the row K02000001, as OBR's table 4.1 is UK-wide, and the selector pins it there; the binding scopes the model column to England. Held as a measured diagnostic: obr.council_tax binds the three nations' sum (row 15) scaled to main residences (D14f), and this row is scaled by the same share (England's chargeable dwellings less its second homes and empty dwellings, over its chargeable dwellings; MHCLG Council Taxbase, October 2025), so the three rows sum to the bound one and report each nation's fit on its basis for the CT-C comparison without binding (the review of microcosm#1422) (calibration_measure_exclusions.json, María's ruling of 2026-10-29, microcosm#1095). Measured at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane)."
+          "notes": "OBR Table 4.1 reports net council tax receipts (net of council tax reduction), so the binding is council_tax_less_benefit, not gross council_tax (uk-data targets/compute/council_tax.py:21-43 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3). Chronicle stamps the row K02000001, as OBR's table 4.1 is UK-wide, and the selector pins it there; the binding scopes the model column to England. Held as a measured diagnostic: obr.council_tax binds the three nations' sum (row 15) scaled to main residences (D14f), and this row is scaled by the same share (England's chargeable dwellings less its second homes and empty dwellings, over its chargeable dwellings; MHCLG Council Taxbase, October 2025), so the three rows sum to the bound one and report each nation's fit on its basis for the CT-C comparison without binding (the review of microcosm#1422) (calibration_measure_exclusions.json, María's ruling of 2026-10-29, microcosm#1095). Measured at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). Since PolicyEngine/chronicle#397 each EFO line and year keeps only its latest edition's number, so the window reads FY2024-25 from the March 2026 EFO and FY2025-26 from the October 2026 EFO, both outturns (source_table_by_opening_year; María's ruling of 2026-10-31, microcosm#1430)."
         },
         "axiom": {
           "metric_name": "obr/council_tax_england",
@@ -2605,7 +2649,11 @@
       "assertion_policy": "allow_source_projection",
       "ledger_selector": {
         "source_name": "obr",
-        "source_concept": "obr.council_tax_england"
+        "source_concept": "obr.council_tax_england",
+        "source_table_by_opening_year": {
+          "2024": "EFO March 2026 detailed forecast tables: expenditure",
+          "2025": "EFO October 2026 detailed forecast tables: expenditure"
+        }
       },
       "category_id": "obr.efo_expenditure",
       "label": "Council tax england",
@@ -2667,7 +2715,7 @@
               "equals": "SCOTLAND"
             }
           ],
-          "notes": "OBR Table 4.1 reports net council tax receipts (net of council tax reduction), so the binding is council_tax_less_benefit, not gross council_tax (uk-data targets/compute/council_tax.py:21-43 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3). Chronicle stamps the row K02000001, as OBR's table 4.1 is UK-wide, and the selector pins it there; the binding scopes the model column to Scotland. Held as a measured diagnostic: obr.council_tax binds the three nations' sum (row 15) scaled to main residences (D14f), and this row is scaled by the same share (England's chargeable dwellings less its second homes and empty dwellings, over its chargeable dwellings; MHCLG Council Taxbase, October 2025), so the three rows sum to the bound one and report each nation's fit on its basis for the CT-C comparison without binding (the review of microcosm#1422) (calibration_measure_exclusions.json, María's ruling of 2026-10-29, microcosm#1095). Measured at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane)."
+          "notes": "OBR Table 4.1 reports net council tax receipts (net of council tax reduction), so the binding is council_tax_less_benefit, not gross council_tax (uk-data targets/compute/council_tax.py:21-43 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3). Chronicle stamps the row K02000001, as OBR's table 4.1 is UK-wide, and the selector pins it there; the binding scopes the model column to Scotland. Held as a measured diagnostic: obr.council_tax binds the three nations' sum (row 15) scaled to main residences (D14f), and this row is scaled by the same share (England's chargeable dwellings less its second homes and empty dwellings, over its chargeable dwellings; MHCLG Council Taxbase, October 2025), so the three rows sum to the bound one and report each nation's fit on its basis for the CT-C comparison without binding (the review of microcosm#1422) (calibration_measure_exclusions.json, María's ruling of 2026-10-29, microcosm#1095). Measured at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). Since PolicyEngine/chronicle#397 each EFO line and year keeps only its latest edition's number, so the window reads FY2024-25 from the March 2026 EFO and FY2025-26 from the October 2026 EFO, both outturns (source_table_by_opening_year; María's ruling of 2026-10-31, microcosm#1430)."
         },
         "axiom": {
           "metric_name": "obr/council_tax_scotland",
@@ -2678,7 +2726,11 @@
       "assertion_policy": "allow_source_projection",
       "ledger_selector": {
         "source_name": "obr",
-        "source_concept": "obr.council_tax_scotland"
+        "source_concept": "obr.council_tax_scotland",
+        "source_table_by_opening_year": {
+          "2024": "EFO March 2026 detailed forecast tables: expenditure",
+          "2025": "EFO October 2026 detailed forecast tables: expenditure"
+        }
       },
       "category_id": "obr.efo_expenditure",
       "label": "Council tax scotland",
@@ -2740,7 +2792,7 @@
               "equals": "WALES"
             }
           ],
-          "notes": "OBR Table 4.1 reports net council tax receipts (net of council tax reduction), so the binding is council_tax_less_benefit, not gross council_tax (uk-data targets/compute/council_tax.py:21-43 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3). Chronicle stamps the row K02000001, as OBR's table 4.1 is UK-wide, and the selector pins it there; the binding scopes the model column to Wales. Held as a measured diagnostic: obr.council_tax binds the three nations' sum (row 15) scaled to main residences (D14f), and this row is scaled by the same share (England's chargeable dwellings less its second homes and empty dwellings, over its chargeable dwellings; MHCLG Council Taxbase, October 2025), so the three rows sum to the bound one and report each nation's fit on its basis for the CT-C comparison without binding (the review of microcosm#1422) (calibration_measure_exclusions.json, María's ruling of 2026-10-29, microcosm#1095). Measured at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane)."
+          "notes": "OBR Table 4.1 reports net council tax receipts (net of council tax reduction), so the binding is council_tax_less_benefit, not gross council_tax (uk-data targets/compute/council_tax.py:21-43 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3). Chronicle stamps the row K02000001, as OBR's table 4.1 is UK-wide, and the selector pins it there; the binding scopes the model column to Wales. Held as a measured diagnostic: obr.council_tax binds the three nations' sum (row 15) scaled to main residences (D14f), and this row is scaled by the same share (England's chargeable dwellings less its second homes and empty dwellings, over its chargeable dwellings; MHCLG Council Taxbase, October 2025), so the three rows sum to the bound one and report each nation's fit on its basis for the CT-C comparison without binding (the review of microcosm#1422) (calibration_measure_exclusions.json, María's ruling of 2026-10-29, microcosm#1095). Measured at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). Since PolicyEngine/chronicle#397 each EFO line and year keeps only its latest edition's number, so the window reads FY2024-25 from the March 2026 EFO and FY2025-26 from the October 2026 EFO, both outturns (source_table_by_opening_year; María's ruling of 2026-10-31, microcosm#1430)."
         },
         "axiom": {
           "metric_name": "obr/council_tax_wales",
@@ -2751,7 +2803,11 @@
       "assertion_policy": "allow_source_projection",
       "ledger_selector": {
         "source_name": "obr",
-        "source_concept": "obr.council_tax_wales"
+        "source_concept": "obr.council_tax_wales",
+        "source_table_by_opening_year": {
+          "2024": "EFO March 2026 detailed forecast tables: expenditure",
+          "2025": "EFO October 2026 detailed forecast tables: expenditure"
+        }
       },
       "category_id": "obr.efo_expenditure",
       "label": "Council tax wales",
@@ -2801,7 +2857,7 @@
         "policyengine": {
           "metric_name": "obr/domestic_rates",
           "value_variable": "domestic_rates",
-          "notes": "Chronicle stamps the row K02000001, as OBR's table 4.1 is UK-wide, and the selector pins it there; domestic_rates is zero outside Northern Ireland, so the UK total is Northern Ireland's. Held as a diagnostic: the row looks like the district rate only, and domestic_rates is the whole bill (calibration_measure_exclusions.json, microcosm#1095). Measured at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane)."
+          "notes": "Chronicle stamps the row K02000001, as OBR's table 4.1 is UK-wide, and the selector pins it there; domestic_rates is zero outside Northern Ireland, so the UK total is Northern Ireland's. Held as a diagnostic: the row looks like the district rate only, and domestic_rates is the whole bill (calibration_measure_exclusions.json, microcosm#1095). Measured at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). Since PolicyEngine/chronicle#397 each EFO line and year keeps only its latest edition's number, so the window reads FY2024-25 from the March 2026 EFO and FY2025-26 from the October 2026 EFO, both outturns (source_table_by_opening_year; María's ruling of 2026-10-31, microcosm#1430)."
         },
         "axiom": {
           "metric_name": "obr/domestic_rates",
@@ -2813,7 +2869,11 @@
       "ledger_selector": {
         "source_name": "obr",
         "source_concept": "obr.domestic_rates",
-        "entity_name": "person"
+        "entity_name": "person",
+        "source_table_by_opening_year": {
+          "2024": "EFO March 2026 detailed forecast tables: expenditure",
+          "2025": "EFO October 2026 detailed forecast tables: expenditure"
+        }
       },
       "category_id": "obr.efo_expenditure",
       "label": "Domestic rates",
@@ -2867,7 +2927,7 @@
               "map_to": "household"
             }
           ],
-          "notes": "EFO incapacity-benefits line. OBR table 4.9 footnote 2: the line includes incapacity benefit, employment and support allowance, severe disablement allowance and the incapacity part of income support, and excludes the health element of universal credit. The model column sums benunit-level esa_income and person-level esa_contrib, incapacity_benefit and sda to household; uk-data sums the first two (uk-data targets/compute/income.py:98-102 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3), and adding the other two follows uk-data#582 (microcosm#1095). Incapacity Benefit has been closed to new claims since ESA began in October 2008, so its term carries only what the FRS still reports. Income Support has no incapacity part in the engine, which pays it as one benefit; that part stays a residual of the row, with no declared difference (María's ruling of 2026-10-16). Severe Disablement Allowance is a small part of the line: DWP reports GBP 53.8m for England and Wales in 2024-25 and GBP 46.8m in 2025-26, against OBR's GBP 12.41bn and GBP 7.21bn. The Scottish Government pays SDA in Scotland (GBP 5.0m in 2024-25, GBP 4.4m in 2025-26 in the Scottish Budget), outside DWP's line; at well under 0.1 percent of the row it stays inside the Great Britain scope below rather than a per-term mask. Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). Scoped to Great Britain (microcosm#1095, uk-data#490): OBR table 4.9 reports this line inside 'DWP social security', whose figures cover Great Britain and residents overseas (DWP benefit expenditure and caseload tables, Spring 2026, Notes 3), and lists Northern Ireland social security on rows of its own, so the model column sums Great Britain households only. Since the abf0921 re-pin the Chronicle fact carries the Great Britain code K03000001 (microcosm#1300)."
+          "notes": "EFO incapacity-benefits line. OBR table 4.9 footnote 2: the line includes incapacity benefit, employment and support allowance, severe disablement allowance and the incapacity part of income support, and excludes the health element of universal credit. The model column sums benunit-level esa_income and person-level esa_contrib, incapacity_benefit and sda to household; uk-data sums the first two (uk-data targets/compute/income.py:98-102 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3), and adding the other two follows uk-data#582 (microcosm#1095). Incapacity Benefit has been closed to new claims since ESA began in October 2008, so its term carries only what the FRS still reports. Income Support has no incapacity part in the engine, which pays it as one benefit; that part stays a residual of the row, with no declared difference (María's ruling of 2026-10-16). Severe Disablement Allowance is a small part of the line: DWP reports GBP 53.8m for England and Wales in 2024-25 and GBP 46.8m in 2025-26, against OBR's GBP 12.41bn and GBP 7.21bn. The Scottish Government pays SDA in Scotland (GBP 5.0m in 2024-25, GBP 4.4m in 2025-26 in the Scottish Budget), outside DWP's line; at well under 0.1 percent of the row it stays inside the Great Britain scope below rather than a per-term mask. Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). Scoped to Great Britain (microcosm#1095, uk-data#490): OBR table 4.9 reports this line inside 'DWP social security', whose figures cover Great Britain and residents overseas (DWP benefit expenditure and caseload tables, Spring 2026, Notes 3), and lists Northern Ireland social security on rows of its own, so the model column sums Great Britain households only. Since the abf0921 re-pin the Chronicle fact carries the Great Britain code K03000001 (microcosm#1300). Since PolicyEngine/chronicle#397 each EFO line and year keeps only its latest edition's number, so the window reads FY2024-25 from the March 2026 EFO and FY2025-26 from the October 2026 EFO, both outturns (source_table_by_opening_year; María's ruling of 2026-10-31, microcosm#1430)."
         },
         "axiom": {
           "metric_name": "obr/esa",
@@ -2879,7 +2939,11 @@
       "ledger_selector": {
         "source_name": "obr",
         "source_concept": "obr.incapacity_benefits",
-        "entity_name": "person"
+        "entity_name": "person",
+        "source_table_by_opening_year": {
+          "2024": "EFO March 2026 detailed forecast tables: expenditure",
+          "2025": "EFO October 2026 detailed forecast tables: expenditure"
+        }
       },
       "category_id": "obr.efo_expenditure",
       "label": "Employment and Support Allowance",
@@ -2935,7 +2999,7 @@
               "map_to": "benunit"
             }
           ],
-          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). Scoped to Great Britain (microcosm#1095, uk-data#490): OBR table 4.9 reports this line inside 'DWP social security', whose figures cover Great Britain and residents overseas (DWP benefit expenditure and caseload tables, Spring 2026, Notes 3), and lists Northern Ireland social security on rows of its own, so the model column sums Great Britain households only. Since the abf0921 re-pin the Chronicle fact carries the Great Britain code K03000001 (microcosm#1300)."
+          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). Scoped to Great Britain (microcosm#1095, uk-data#490): OBR table 4.9 reports this line inside 'DWP social security', whose figures cover Great Britain and residents overseas (DWP benefit expenditure and caseload tables, Spring 2026, Notes 3), and lists Northern Ireland social security on rows of its own, so the model column sums Great Britain households only. Since the abf0921 re-pin the Chronicle fact carries the Great Britain code K03000001 (microcosm#1300). Since PolicyEngine/chronicle#397 each EFO line and year keeps only its latest edition's number, so the window reads FY2024-25 from the March 2026 EFO and FY2025-26 from the October 2026 EFO, both outturns (source_table_by_opening_year; María's ruling of 2026-10-31, microcosm#1430)."
         },
         "axiom": {
           "metric_name": "obr/housing_benefit",
@@ -2947,7 +3011,11 @@
       "ledger_selector": {
         "source_name": "obr",
         "source_concept": "obr.housing_benefit",
-        "entity_name": "person"
+        "entity_name": "person",
+        "source_table_by_opening_year": {
+          "2024": "EFO March 2026 detailed forecast tables: expenditure",
+          "2025": "EFO October 2026 detailed forecast tables: expenditure"
+        }
       },
       "category_id": "obr.efo_expenditure",
       "label": "Housing benefit",
@@ -3003,7 +3071,7 @@
               "map_to": "benunit"
             }
           ],
-          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). Scoped to Great Britain (microcosm#1095, uk-data#490): OBR table 4.9 reports this line inside 'DWP social security', whose figures cover Great Britain and residents overseas (DWP benefit expenditure and caseload tables, Spring 2026, Notes 3), and lists Northern Ireland social security on rows of its own, so the model column sums Great Britain households only. Since the abf0921 re-pin the Chronicle fact carries the Great Britain code K03000001 (microcosm#1300)."
+          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). Scoped to Great Britain (microcosm#1095, uk-data#490): OBR table 4.9 reports this line inside 'DWP social security', whose figures cover Great Britain and residents overseas (DWP benefit expenditure and caseload tables, Spring 2026, Notes 3), and lists Northern Ireland social security on rows of its own, so the model column sums Great Britain households only. Since the abf0921 re-pin the Chronicle fact carries the Great Britain code K03000001 (microcosm#1300). Since PolicyEngine/chronicle#397 each EFO line and year keeps only its latest edition's number, so the window reads FY2024-25 from the March 2026 EFO and FY2025-26 from the October 2026 EFO, both outturns (source_table_by_opening_year; María's ruling of 2026-10-31, microcosm#1430)."
         },
         "axiom": {
           "metric_name": "obr/jobseekers_allowance",
@@ -3015,7 +3083,11 @@
       "ledger_selector": {
         "source_name": "obr",
         "source_concept": "obr.jobseekers_allowance",
-        "entity_name": "person"
+        "entity_name": "person",
+        "source_table_by_opening_year": {
+          "2024": "EFO March 2026 detailed forecast tables: expenditure",
+          "2025": "EFO October 2026 detailed forecast tables: expenditure"
+        }
       },
       "category_id": "obr.efo_expenditure",
       "label": "Jobseekers allowance",
@@ -3071,7 +3143,7 @@
               "map_to": "benunit"
             }
           ],
-          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). Scoped to Great Britain (microcosm#1095, uk-data#490): OBR table 4.9 reports this line inside 'DWP social security', whose figures cover Great Britain and residents overseas (DWP benefit expenditure and caseload tables, Spring 2026, Notes 3), and lists Northern Ireland social security on rows of its own, so the model column sums Great Britain households only. Since the abf0921 re-pin the Chronicle fact carries the Great Britain code K03000001 (microcosm#1300)."
+          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). Scoped to Great Britain (microcosm#1095, uk-data#490): OBR table 4.9 reports this line inside 'DWP social security', whose figures cover Great Britain and residents overseas (DWP benefit expenditure and caseload tables, Spring 2026, Notes 3), and lists Northern Ireland social security on rows of its own, so the model column sums Great Britain households only. Since the abf0921 re-pin the Chronicle fact carries the Great Britain code K03000001 (microcosm#1300). Since PolicyEngine/chronicle#397 each EFO line and year keeps only its latest edition's number, so the window reads FY2024-25 from the March 2026 EFO and FY2025-26 from the October 2026 EFO, both outturns (source_table_by_opening_year; María's ruling of 2026-10-31, microcosm#1430)."
         },
         "axiom": {
           "metric_name": "obr/pension_credit",
@@ -3083,7 +3155,11 @@
       "ledger_selector": {
         "source_name": "obr",
         "source_concept": "obr.pension_credit",
-        "entity_name": "person"
+        "entity_name": "person",
+        "source_table_by_opening_year": {
+          "2024": "EFO March 2026 detailed forecast tables: expenditure",
+          "2025": "EFO October 2026 detailed forecast tables: expenditure"
+        }
       },
       "category_id": "obr.efo_expenditure",
       "label": "Pension credit",
@@ -3129,7 +3205,7 @@
               "map_to": "person"
             }
           ],
-          "notes": "The EFO line is \"Disability living allowance and personal independence payments\", so the row binds the engine's pip + dla (María's ruling of 2026-10-02, microcosm#1095); uk-data binds pip alone and microcosm#622 closed without adjudicating it. Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). Scoped to England and Wales (microcosm#1095, uk-data#490): DWP reports this benefit for England and Wales only since executive competence moved to the Scottish Government (Disability Living Allowance and Personal Independence Payment from 1 April 2020; DWP benefit expenditure and caseload tables, Spring 2026, Notes), and OBR table 4.9 carries DWP's line. Scotland's Adult and Child Disability Payments are Scottish Government spending, so the model column sums English and Welsh households only. Since the abf0921 re-pin the Chronicle fact carries the England and Wales code K04000001 (microcosm#1300)."
+          "notes": "The EFO line is \"Disability living allowance and personal independence payments\", so the row binds the engine's pip + dla (María's ruling of 2026-10-02, microcosm#1095); uk-data binds pip alone and microcosm#622 closed without adjudicating it. Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). Scoped to England and Wales (microcosm#1095, uk-data#490): DWP reports this benefit for England and Wales only since executive competence moved to the Scottish Government (Disability Living Allowance and Personal Independence Payment from 1 April 2020; DWP benefit expenditure and caseload tables, Spring 2026, Notes), and OBR table 4.9 carries DWP's line. Scotland's Adult and Child Disability Payments are Scottish Government spending, so the model column sums English and Welsh households only. Since the abf0921 re-pin the Chronicle fact carries the England and Wales code K04000001 (microcosm#1300). Since PolicyEngine/chronicle#397 each EFO line and year keeps only its latest edition's number, so the window reads FY2024-25 from the March 2026 EFO and FY2025-26 from the October 2026 EFO, both outturns (source_table_by_opening_year; María's ruling of 2026-10-31, microcosm#1430)."
         },
         "axiom": {
           "metric_name": "obr/pip",
@@ -3141,7 +3217,11 @@
       "ledger_selector": {
         "source_name": "obr",
         "source_concept": "obr.dla_and_pip",
-        "entity_name": "person"
+        "entity_name": "person",
+        "source_table_by_opening_year": {
+          "2024": "EFO March 2026 detailed forecast tables: expenditure",
+          "2025": "EFO October 2026 detailed forecast tables: expenditure"
+        }
       },
       "category_id": "obr.efo_expenditure",
       "label": "Personal Independence Payment",
@@ -3197,7 +3277,7 @@
               "map_to": "person"
             }
           ],
-          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). Scoped to Great Britain (microcosm#1095, uk-data#490): OBR table 4.9 reports this line inside 'DWP social security', whose figures cover Great Britain and residents overseas (DWP benefit expenditure and caseload tables, Spring 2026, Notes 3), and lists Northern Ireland social security on rows of its own, so the model column sums Great Britain households only. Since the abf0921 re-pin the Chronicle fact carries the Great Britain code K03000001 (microcosm#1300)."
+          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). Scoped to Great Britain (microcosm#1095, uk-data#490): OBR table 4.9 reports this line inside 'DWP social security', whose figures cover Great Britain and residents overseas (DWP benefit expenditure and caseload tables, Spring 2026, Notes 3), and lists Northern Ireland social security on rows of its own, so the model column sums Great Britain households only. Since the abf0921 re-pin the Chronicle fact carries the Great Britain code K03000001 (microcosm#1300). Since PolicyEngine/chronicle#397 each EFO line and year keeps only its latest edition's number, so the window reads FY2024-25 from the March 2026 EFO and FY2025-26 from the October 2026 EFO, both outturns (source_table_by_opening_year; María's ruling of 2026-10-31, microcosm#1430)."
         },
         "axiom": {
           "metric_name": "obr/statutory_maternity_pay",
@@ -3209,7 +3289,11 @@
       "ledger_selector": {
         "source_name": "obr",
         "source_concept": "obr.statutory_maternity_pay",
-        "entity_name": "person"
+        "entity_name": "person",
+        "source_table_by_opening_year": {
+          "2024": "EFO March 2026 detailed forecast tables: expenditure",
+          "2025": "EFO October 2026 detailed forecast tables: expenditure"
+        }
       },
       "category_id": "obr.efo_expenditure",
       "label": "Statutory maternity pay",
@@ -3229,7 +3313,7 @@
         "policyengine": {
           "metric_name": "obr/tv_licence_fee",
           "value_variable": "tv_licence",
-          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane)."
+          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). Since PolicyEngine/chronicle#397 each EFO line and year keeps only its latest edition's number, so the window reads FY2024-25 from the March 2026 EFO and FY2025-26 from the October 2026 EFO, both outturns (source_table_by_opening_year; María's ruling of 2026-10-31, microcosm#1430)."
         },
         "axiom": {
           "metric_name": "obr/tv_licence_fee",
@@ -3241,7 +3325,11 @@
       "ledger_selector": {
         "source_name": "obr",
         "source_concept": "obr.tv_licence_fee",
-        "entity_name": "person"
+        "entity_name": "person",
+        "source_table_by_opening_year": {
+          "2024": "EFO March 2026 detailed forecast tables: expenditure",
+          "2025": "EFO October 2026 detailed forecast tables: expenditure"
+        }
       },
       "category_id": "obr.efo_expenditure",
       "label": "TV licence fee",
@@ -3296,14 +3384,13 @@
       "ledger_selector": {
         "source_name": "obr",
         "source_concept": "obr.winter_fuel_payment",
-        "source_table": "EFO March 2026 detailed forecast tables: expenditure",
         "entity_name": "person",
         "period_type": "fiscal_year",
         "period_value": 2025
       },
       "category_id": "obr.efo_expenditure",
       "label": "Winter fuel allowance",
-      "selector_note": "OBR EFO March 2026, table 4.9, winter fuel payments: period_value 2025 is the OBR April-start label for FY2025-26, the winter whose payments fall in calendar 2025 (no window). Pinned to the March edition's table (source_table): PolicyEngine/chronicle#394 adds the October 2026 EFO, whose table 5.9 gives FY2025-26 as outturn, 0.02% above March's projection, and the two would otherwise be refused as matching two facts (microcosm#1418). The OBR targets that window FY2024-25 and FY2025-26 into calendar 2025 stay on March without a pin, since only March's edition carries FY2024-25; moving them to October is a separate ruling."
+      "selector_note": "OBR EFO, winter fuel payments: period_value 2025 is the OBR April-start label for FY2025-26, the winter whose payments fall in calendar 2025 (no window). The fact is the October 2026 EFO's table 5.9 outturn, 0.02% above the March 2026 projection this target read until PolicyEngine/chronicle#399. Chronicle now keeps one OBR EFO number per line and year, the later edition's (PolicyEngine/chronicle#397, María's rule of 30 October 2026), so the March pin of microcosm#1418 is gone and the selector matches one fact. The OBR targets that window FY2024-25 and FY2025-26 into calendar 2025 read March's FY2024-25, the only edition that carries it, and October's FY2025-26."
     },
     {
       "target_id": "isc.private_school_students",
@@ -3682,12 +3769,12 @@
       "bindings": {
         "policyengine": {
           "metric_name": "hmrc/employment_income_income_band",
-          "value_variable": "employment_income_annual",
+          "value_variable": "employment_income_with_benefits_in_kind_annual",
           "from_entity": "person",
           "map_to": "household",
           "groupby_variable": "total_income_after_loss_relief_annual",
           "band_filter_dimension": "total_income",
-          "notes": "Banded by person-level total income; band edges come from the fact dimension (uk-data targets/compute/income.py:8-20 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3).",
+          "notes": "Banded by person-level total income; band edges come from the fact dimension (uk-data targets/compute/income.py:8-20 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3). The amount is pay plus the company car and car fuel benefits (benefits_in_kind, policyengine-uk 2.165.0), which HMRC's employment income counts: on the SPI channel's tape rows that is the tape's PAY + EPB + TAXTERM, as before the company_cars stage carved the car benefits out of pay; on FRS rows, payslip pay plus the car benefits, while HMRC also counts the other benefits in kind (María's ruling of 30 October 2026, PolicyEngine/uk-autumn-budget-dashboard-2026#316).",
           "filters": [
             {
               "variable": "income_tax_before_winter_fuel_payment_charge_annual",
@@ -3744,7 +3831,7 @@
           "band_filter_dimension": "total_income",
           "filters": [
             {
-              "variable": "employment_income_annual",
+              "variable": "employment_income_with_benefits_in_kind_annual",
               "operator": "!=",
               "value": 0
             },
@@ -3756,7 +3843,8 @@
           ],
           "value_variable": "person_count",
           "from_entity": "person",
-          "map_to": "household"
+          "map_to": "household",
+          "notes": "Counts taxpayers with employment income as HMRC's counts read it, pay plus the company car and car fuel benefits (employment_income_with_benefits_in_kind_annual), the term the amount rows bind: a tape row whose pay the company_cars stage carves to nothing keeps its car, and stays in the count as it stays in the amount (microcosm#1430)."
         },
         "axiom": {
           "metric_name": "hmrc/employment_income_count_income_band",
@@ -19177,7 +19265,7 @@
               "map_to": "benunit"
             }
           ],
-          "notes": "Total UC expenditure: the sum of the OBR EFO welfare-cap cells (universal_credit_in_cap + universal_credit_outside_cap), bound at the calendar-2025 window of the two cells' fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window over the two-concept selector, one series per concept) so the total and its two components share one basis (Vahid's review of microcosm#1006, item 3) against the model's annual award after the benefit cap and deductions at policy year 2025, over Great Britain (below). The split rows are retired (registry_parity.excluded): the model cannot attribute spend to the welfare-cap concept (microcosm#757, #1095). Cash advances and third-party payments are not modelled (microcosm#1095, from #882). Scoped to Great Britain (microcosm#1095, uk-data#490): OBR table 4.9 reports this line inside 'DWP social security', whose figures cover Great Britain and residents overseas (DWP benefit expenditure and caseload tables, Spring 2026, Notes 3), and lists Northern Ireland social security on rows of its own, so the model column sums Great Britain households only. Since the abf0921 re-pin the Chronicle fact carries the Great Britain code K03000001 (microcosm#1300)."
+          "notes": "Total UC expenditure: the sum of the OBR EFO welfare-cap cells (universal_credit_in_cap + universal_credit_outside_cap), bound at the calendar-2025 window of the two cells' fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window over the two-concept selector, one series per concept) so the total and its two components share one basis (Vahid's review of microcosm#1006, item 3) against the model's annual award after the benefit cap and deductions at policy year 2025, over Great Britain (below). The split rows are retired (registry_parity.excluded): the model cannot attribute spend to the welfare-cap concept (microcosm#757, #1095). Cash advances and third-party payments are not modelled (microcosm#1095, from #882). Scoped to Great Britain (microcosm#1095, uk-data#490): OBR table 4.9 reports this line inside 'DWP social security', whose figures cover Great Britain and residents overseas (DWP benefit expenditure and caseload tables, Spring 2026, Notes 3), and lists Northern Ireland social security on rows of its own, so the model column sums Great Britain households only. Since the abf0921 re-pin the Chronicle fact carries the Great Britain code K03000001 (microcosm#1300). Since PolicyEngine/chronicle#397 each EFO line and year keeps only its latest edition's number, so the window reads FY2024-25 from the March 2026 EFO and FY2025-26 from the October 2026 EFO, both outturns (source_table_by_opening_year; María's ruling of 2026-10-31, microcosm#1430)."
         },
         "axiom": {
           "metric_name": "obr/universal_credit",
@@ -19192,7 +19280,11 @@
           "obr.universal_credit_in_cap",
           "obr.universal_credit_outside_cap"
         ],
-        "entity_name": "person"
+        "entity_name": "person",
+        "source_table_by_opening_year": {
+          "2024": "EFO March 2026 detailed forecast tables: expenditure",
+          "2025": "EFO October 2026 detailed forecast tables: expenditure"
+        }
       },
       "value_operation": "calendar_year_window",
       "expected_member_count": 2,
@@ -31119,7 +31211,7 @@
       "bindings": {
         "policyengine": {
           "metric_name": "hmrc/employment_income/amount",
-          "value_variable": "employment_income_annual",
+          "value_variable": "employment_income_with_benefits_in_kind_annual",
           "from_entity": "person",
           "map_to": "household",
           "filters": [
@@ -31147,7 +31239,7 @@
           "uk.local_geography.spi_income.by_local_authority.v1"
         ]
       },
-      "selector_note": "The area amount is the published count times the published mean (count_x_mean). SPI 2023-24 area Tables 3.15 (constituency) and 3.14 (local authority), the latest edition (2024-25 due early 2027). Projected to calendar 2025 by HMRC's own all-ranges growth in Income Tax Liabilities Table 2.5 (total income, calendar-2025 window over tax year 2023-24), the index the national band rows use band by band, and then reconciled to the national SPI band partition summed over every band (fan-out sum bridge). The bridge is gated on source agreement at each grain: the bands over the area cells before either side's index, within 2% (microcosm#1123). HMRC's employment income also includes taxable benefits in kind and Incapacity Benefit, contribution-based Employment and Support Allowance and Jobseeker's Allowance, which employment_income_annual leaves out.",
+      "selector_note": "The area amount is the published count times the published mean (count_x_mean). SPI 2023-24 area Tables 3.15 (constituency) and 3.14 (local authority), the latest edition (2024-25 due early 2027). Projected to calendar 2025 by HMRC's own all-ranges growth in Income Tax Liabilities Table 2.5 (total income, calendar-2025 window over tax year 2023-24), the index the national band rows use band by band, and then reconciled to the national SPI band partition summed over every band (fan-out sum bridge). The bridge is gated on source agreement at each grain: the bands over the area cells before either side's index, within 2% (microcosm#1123). The amount counts pay plus the company car and car fuel benefits (benefits_in_kind, policyengine-uk 2.165.0), which HMRC's employment income counts (María's ruling of 30 October 2026, PolicyEngine/uk-autumn-budget-dashboard-2026#316); HMRC's figure also includes the other taxable benefits in kind and Incapacity Benefit, contribution-based Employment and Support Allowance and Jobseeker's Allowance, which the measure leaves out.",
       "category_id": "hmrc.tax_statistics",
       "label": "Amount",
       "uprating_index": "hmrc.itl_2026.total_income_growth_all_bands"
@@ -31184,7 +31276,7 @@
           "map_to": "household",
           "filters": [
             {
-              "variable": "employment_income_annual",
+              "variable": "employment_income_with_benefits_in_kind_annual",
               "operator": "!=",
               "value": 0
             },
@@ -34770,7 +34862,7 @@
         "cgt_cash_reconciliation_status": "unresolved"
       },
       "required_period_type": "fiscal_year",
-      "required_assertion": "source_projection",
+      "required_assertion": "observation",
       "reference": {
         "name": "obr.capital_gains_tax",
         "ledger_selector": {
@@ -34785,20 +34877,20 @@
         "family": "obr",
         "period": 2025,
         "metadata": {
-          "diagnostic_role": "cash_receipts_forecast_unreconciled"
+          "diagnostic_role": "cash_receipts_unreconciled"
         },
-        "assertion_policy": "allow_source_projection",
+        "assertion_policy": "observed_only",
         "period_match_policy": "exact",
-        "ledger_fact_key": "ledger.aggregate_fact.v2:93699bb9caa7ec0d6833f420"
+        "ledger_fact_key": "ledger.aggregate_fact.v2:81ca86a5fa9d42cfa0eff5e3"
       },
-      "notes": "Original March 2026 OBR FY2025-26 cash forecast retained unchanged as diagnostic provenance only. No liability-to-cash payment bridge is identified; never insert this diagnostic into the fitting registry."
+      "notes": "OBR's FY2025-26 capital gains tax cash receipts, the October 2026 EFO's outturn, as diagnostic provenance only. It replaced the March 2026 forecast this diagnostic first carried, which Chronicle no longer publishes: each EFO line and year keeps only its latest edition's number (PolicyEngine/chronicle#397; María's ruling of 2026-10-31, microcosm#1430). No liability-to-cash payment bridge is identified; never insert this diagnostic into the fitting registry."
     },
     "obr.state_pension": {
       "attach_to_target": "dwp.state_pension.amount",
       "metadata_prefix": "obr_state_pension_diagnostic",
       "value_unit": "gbp",
       "required_period_type": "fiscal_year",
-      "required_assertion": "source_projection",
+      "required_assertion": "observation",
       "reference": {
         "name": "obr.state_pension",
         "ledger_selector": {
@@ -34813,13 +34905,13 @@
         "family": "obr",
         "period": 2025,
         "metadata": {
-          "diagnostic_role": "efo_forecast_definition_differs"
+          "diagnostic_role": "efo_definition_differs"
         },
-        "assertion_policy": "allow_source_projection",
+        "assertion_policy": "observed_only",
         "period_match_policy": "exact",
-        "ledger_fact_key": "ledger.aggregate_fact.v2:f686ddf63af027d5b1a76842"
+        "ledger_fact_key": "ledger.aggregate_fact.v2:3d7f086d71f6e9323b50ce09"
       },
-      "notes": "March 2026 OBR FY2025-26 State Pension forecast retained unchanged as diagnostic provenance (microcosm#1069 R4). It matches DWP's Great Britain total including pensioners paid outside the UK and, on that evidence, leaves out Northern Ireland, so it measures a different quantity from the bound resident level; never insert it into the fitting registry."
+      "notes": "OBR's FY2025-26 State Pension spending, the October 2026 EFO's outturn, as diagnostic provenance (microcosm#1069 R4). It replaced the March 2026 forecast this diagnostic first carried, which Chronicle no longer publishes: each EFO line and year keeps only its latest edition's number (PolicyEngine/chronicle#397; María's ruling of 2026-10-31, microcosm#1430). Like that forecast, it matches DWP's Great Britain total including pensioners paid outside the UK (0.1% above DWP's Spring 2026 forecast for the year) and, on that evidence, leaves out Northern Ireland, so it measures a different quantity from the bound resident level; never insert it into the fitting registry."
     },
     "dwp.state_pension.forecast_expenditure": {
       "attach_to_target": "dwp.state_pension.amount",
@@ -34978,7 +35070,7 @@
       "metadata_prefix": "obr_ni_total_diagnostic",
       "value_unit": "gbp",
       "required_period_type": "fiscal_year",
-      "required_assertion": "source_projection",
+      "required_assertion": "observation",
       "reference": {
         "name": "obr.ni",
         "ledger_selector": {
@@ -34995,11 +35087,11 @@
         "metadata": {
           "diagnostic_role": "cash_total_beside_accrued_class_rows"
         },
-        "assertion_policy": "allow_source_projection",
+        "assertion_policy": "observed_only",
         "period_match_policy": "exact",
-        "ledger_fact_key": "ledger.aggregate_fact.v2:eccab3ee763d68bb782276a7"
+        "ledger_fact_key": "ledger.aggregate_fact.v2:15666112c805ca76ee67ecde"
       },
-      "notes": "March 2026 OBR FY2025-26 total National Insurance contributions forecast (table 3.8 row 12), retained as diagnostic provenance beside the bound class rows obr.ni_employee, obr.ni_employer and obr.ni_self_employed (María's ruling of 2026-10-09, microcosm#1095; uk-data#537 drops it). The engine's total_national_insurance is the sum of its class columns, and at the calendar-2025 window OBR's total sits about 1.8% above the three class rows: it is a cash total against accrued class rows, and it carries statutory-payment recoveries, Class 1A, 1B and 3 and settlements, which no household carries. Never insert it into the fitting registry."
+      "notes": "OBR's FY2025-26 total National Insurance contributions, the October 2026 EFO's outturn (table 4.8 row 12), retained as diagnostic provenance beside the bound class rows obr.ni_employee, obr.ni_employer and obr.ni_self_employed (María's ruling of 2026-10-09, microcosm#1095; uk-data#537 drops it). It replaced the March 2026 forecast (table 3.8 row 12) this diagnostic first carried, which Chronicle no longer publishes: each EFO line and year keeps only its latest edition's number (PolicyEngine/chronicle#397; María's ruling of 2026-10-31, microcosm#1430). The engine's total_national_insurance is the sum of its class columns, and at the calendar-2025 window OBR's total sits about 2.1% above the three class rows: it is a cash total against accrued class rows, and it carries statutory-payment recoveries, Class 1A on benefits other than the company cars and fuel the build carries, Class 1B and 3, and settlements, which no household carries. Never insert it into the fitting registry."
     },
     "hmrc.salary_sacrifice.it_relief_total": {
       "attach_to_target": "hmrc.salary_sacrifice.it_relief_higher_rate",
