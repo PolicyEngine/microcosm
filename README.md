@@ -69,13 +69,18 @@ The build finds the `microcosm-emitter` command through
 environment variables and user, so it uses the build's Hugging Face
 credential (`HF_TOKEN`, then `HUGGINGFACE_TOKEN`, then the `hf auth login`
 token). Without the command the build continues with no hosted telemetry and
-no remote staging. Before it starts the emitter, the build reads its
-version from `microcosm-emitter version` and does not start one older than
-0.11.9. Releases before 0.10.0 send telemetry to the collector's Cloud Run
-address, which changes when the collector moves to another Google Cloud
-project; from 0.10.0 on, releases send to the collector's hostname, which
-stays the same. The build prints the installed and required versions and
-the upgrade command, `uv tool install --upgrade 'microcosm-emitter>=0.11.9'`,
+no remote staging, and queues no Orrery graph publication; a UK build given
+`--staging-read-back` fails at the read-back. Before it starts the emitter,
+the build reads its version from `microcosm-emitter version` and does not
+start one older than 0.11.9. Releases before 0.10.0 send telemetry to the
+collector's Cloud Run address, which changes when the collector moves to
+another Google Cloud project; from 0.10.0 on, releases send to the
+collector's hostname, which stays the same. 0.10.0 would be enough for that;
+0.11.9 was the newest release when practically no machine ran the emitter
+yet, so requiring it cost nothing (see
+[graph publication](docs/orrery-publication.md#emitter-dependency)). The
+build prints the installed and required versions, what it loses and the
+upgrade command, `uv tool install --upgrade 'microcosm-emitter>=0.11.9'`,
 and continues as it does without the command. `uv tool upgrade` keeps any
 version constraint given at install time, such as `==0.7.0`; that
 `uv tool install --upgrade` command replaces it. Microcosm supplies build metadata, graph files and staging

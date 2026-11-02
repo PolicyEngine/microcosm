@@ -76,10 +76,15 @@ release directory onto the runs volume. Publication stays the human step in
    `MICROCOSM_EMITTER_COMMAND` to that command, so a build that starts its
    emitter finds it; the check reports the version and the receipt's runner
    identity records it. An image built for a commit keeps the emitter it was
-   built with. A plan pinned to an older commit gets that commit's install
-   step and minimum, so only a plan pinned to a commit with the 0.11.9 floor
-   is sure to run 0.11.9 or later. The tool's environment withholds
-   credentials and sets
+   built with. The install step and its `>=0.11.9` floor come from the
+   checkout that launches the app (`image_build_commands`), while the
+   minimum the build enforces comes from the commit the plan pins
+   (`MINIMUM_EMITTER_VERSION`), so a launch can combine an older checkout's
+   floor with a newer commit's minimum, or the reverse. Neither floor has an
+   upper bound, so an image built now installs the newest release, which
+   every commit's minimum so far accepts. The test that requires the floor to
+   equal the minimum compares the two values of one checkout only. The
+   tool's environment withholds credentials and sets
    `HF_HUB_OFFLINE=1`, so an emitter started there keeps its events and
    hand-overs local.
    A commit that is not on GitHub fails the build. `checkout -B` would put

@@ -81,8 +81,10 @@ RUNNER_HF_HUB_VERSION = "1.18.0"
 # 0.11.9; releases before 0.10.0 send telemetry to the collector's Cloud Run
 # address, which changes when the collector moves to another Google Cloud
 # project. This module imports nothing from the workspace, so the floor
-# repeats that release, and a test checks that the two agree. The stage's
-# runner records the version.
+# repeats that release, and a test checks that the two agree in one
+# checkout. At launch the two can differ: the image's install step comes from
+# this module in the checkout that launches the app, and the minimum from the
+# commit the plan pins. The stage's runner records the version.
 IMAGE_EMITTER_REQUIREMENT = "microcosm-emitter>=0.11.9"
 IMAGE_EMITTER_BIN_DIR = "/usr/local/bin"
 IMAGE_EMITTER_COMMAND = f"{IMAGE_EMITTER_BIN_DIR}/microcosm-emitter"

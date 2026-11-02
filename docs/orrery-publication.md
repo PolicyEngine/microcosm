@@ -122,14 +122,32 @@ asks for starts without it.
 A build does not start an emitter older than `MINIMUM_EMITTER_VERSION` in
 `microcosm.build.telemetry_emitter`, now 0.11.9, and the Modal image installs
 at least the same release (`IMAGE_EMITTER_REQUIREMENT` in
-`tools/modal_us_stage_plan.py`, `microcosm-emitter>=0.11.9`); a test checks
-that the two agree. Releases before 0.10.0 send telemetry to the collector's
-Cloud Run address, which changes when the collector moves to another Google
-Cloud project. From 0.10.0 on, the emitter's default collector address is the
-collector's hostname, which stays the same. Microcosm passes the emitter no
-collector address: the adapter's `development_collector_url` parameter, which
-no build command sets, accepts only a loopback address. Raise both values
-together, and only when builds must stop starting older releases.
+`tools/modal_us_stage_plan.py`, `microcosm-emitter>=0.11.9`). A test checks
+that the two agree in one checkout; at a Modal launch the install step comes
+from the launching checkout and the minimum from the commit the plan pins
+(see the [US Modal stage runbook](us-modal-stage-runbook.md)). Releases
+before 0.10.0 send telemetry to the collector's Cloud Run address, which
+changes when the collector moves to another Google Cloud project. From 0.10.0
+on, the emitter's default collector address is the collector's hostname,
+which stays the same. Microcosm passes the emitter no collector address: the
+adapter's `development_collector_url` parameter, which no build command sets,
+accepts only a loopback address.
+
+0.10.0 would be enough for the hostname. The minimum is 0.11.9, the newest
+release on 2026-11-02, because practically no machine ran the separately
+installed emitter then, so refusing 0.10.0 to 0.11.8 cost nothing. A refused
+emitter does cost the build:
+
+- no hosted telemetry, and no staging hand-overs (the staging run files are
+  still written locally);
+- the UK graph step records a failed receipt (`local_service_unavailable`)
+  and queues no Orrery job, so the emitter's retry command has nothing to
+  deliver later;
+- a UK build given `--staging-read-back` fails at the read-back.
+
+The build's warning says so. Raise the minimum and the image's floor
+together, and before raising them while machines still run older emitters,
+weigh these losses against having each such machine upgrade first.
 
 To adopt a new interface release, regenerate `uv.lock`, update
 `APPROVED_UV_LOCK_SHA256` in `microcosm.build.us_runtime.worker_identity` to
