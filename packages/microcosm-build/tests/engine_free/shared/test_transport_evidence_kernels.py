@@ -16,6 +16,7 @@ import ast
 import copy
 import hashlib
 import json
+import re
 import subprocess
 import sys
 from dataclasses import replace
@@ -408,6 +409,8 @@ class TestImplementationHashes:
                 "microcosm.frame.concepts",
                 "microcosm.frame.adapters.axiom_input_surface",
                 "microcosm.frame.adapters.axiom",
+                # S2: the producer calls schema.entity_id_column.
+                "microcosm.frame.schema",
                 "microcosm.graph.canonical",
                 "microcosm.build.transport.evidence_contract",
             ),
@@ -418,6 +421,10 @@ class TestImplementationHashes:
                 "microcosm.calibrate.matrix",
                 "microcosm.calibrate.registry",
                 "microcosm.calibrate.solve",
+                # S2: the trace finds these in run(); the list missed them.
+                "microcosm.calibrate.target",
+                "microcosm.frame.schema",
+                "microcosm.frame.weights",
                 "microcosm.graph.canonical",
                 "microcosm.build.transport.evidence_contract",
             ),
@@ -438,6 +445,8 @@ class TestImplementationHashes:
                 "microcosm.frame.concepts",
                 "microcosm.frame.exact_money",
                 "microcosm.frame.transport",
+                # S2: the trace finds it in run(); the list missed it.
+                "microcosm.frame.scaling",
                 "microcosm.graph.canonical",
                 "microcosm.build.transport.evidence_contract",
             ),
@@ -529,6 +538,169 @@ class TestImplementationHashes:
         )
         assert "microcosm.build.transport.registry" not in modules
         assert "microcosm.build.transport.evidence_kernels" not in modules
+
+
+# ---------------------------------------------------------------------------
+# Module-list completeness, traced (S2)
+# ---------------------------------------------------------------------------
+
+
+#: Framework modules a kernel's run() executes that its list may leave out,
+#: each with its reason. Only code the executor hands every kernel fits here,
+#: and ``test_no_registered_kernel_lists_an_excluded_module`` checks that no
+#: registered kernel's ``source_hash`` reads any of them.
+TRACE_EXCLUSIONS: dict[str, dict[str, str]] = {
+    ref: {
+        "microcosm.graph.kernel": (
+            "KernelContext and KernelResult, the executor's interface to every "
+            "kernel; an edit there re-keys every node through the executor."
+        ),
+    }
+    # Every evidence kernel the leaf lists, so a new kernel needs a trace.
+    for ref in EVIDENCE_KERNEL_MODULES
+}
+
+
+def _microcosm_module_files() -> dict[str, str]:
+    files = {}
+    for name, module in list(sys.modules.items()):
+        path = getattr(module, "__file__", None)
+        if name.startswith("microcosm.") and path:
+            files[str(Path(path).resolve())] = name
+    return files
+
+
+def _traced(run) -> set[str]:
+    """Every ``microcosm.*`` module whose Python functions ``run()`` calls."""
+
+    called: set[str] = set()
+
+    def profile(frame, event, arg):
+        if event == "call":
+            called.add(frame.f_code.co_filename)
+
+    sys.setprofile(profile)
+    try:
+        run()
+    finally:
+        sys.setprofile(None)
+    files = _microcosm_module_files()
+    return {
+        files[path]
+        for path in (str(Path(name).resolve()) for name in called if name[:1] != "<")
+        if path in files
+    }
+
+
+def _unlisted(ref: str, traced: set[str], modules=None) -> set[str]:
+    listed = set((modules or EVIDENCE_KERNEL_MODULES)[ref])
+    return traced - listed - set(TRACE_EXCLUSIONS.get(ref, {}))
+
+
+@pytest.fixture(scope="module")
+def kernel_traces(toy, donor, tmp_path_factory):
+    """Each evidence kernel's run() on the fixtures these tests already use."""
+
+    frame = _frame(toy.spec["resources"]["axiom_input_closure"])
+    payload = donor.read_bytes()
+    receipt = _context(
+        frame,
+        _receipt_node(_sha(payload), len(payload)),
+        sources={"donor_pool": donor},
+    )
+    traces = {DONOR_RECEIPT_REF: _traced(lambda: TRANSPORT_DONOR_RECEIPT.run(receipt))}
+    toy_closure = _context(frame, _closure_node(toy))
+    kernel = _closure_kernel(toy)
+    closure = _traced(lambda: kernel.run(toy_closure))
+    # The closure kernel's AxiomEngine branch, with a relation input.
+    node, kernel = _relation_world(tmp_path_factory.mktemp("trace"), _TOY_RELATION)
+    context = _relation_context(_relation_frame({"member_income": np.ones(3)}), node)
+    closure |= _traced(lambda: kernel.run(context))
+    traces[INPUT_CLOSURE_REF] = closure
+    weights = _project_context(
+        _weights_node(),
+        Population.from_frame(_units_frame(), "toy.terminal"),
+        key="0" * 64,
+        sources={},
+        tolerances={},
+        numerics={},
+        artifacts=_artifact_values(_calibration()),
+    )
+    traces[WEIGHTS_AUDIT_REF] = _traced(lambda: TRANSPORT_WEIGHTS_AUDIT.run(weights))
+    # The support producers: trace only their run() while the existing
+    # support tests drive them (copied, quantile, component, currency,
+    # structural, and normalized rows through the money helpers).
+    support_traces = {DONOR_RANGES_REF: set(), SUPPORT_BOUNDS_REF: set()}
+    with pytest.MonkeyPatch.context() as patch:
+        for kernel in (TRANSPORT_DONOR_RANGES, TRANSPORT_SUPPORT_BOUNDS):
+            real = type(kernel).run
+
+            def run(self, context, real=real):
+                result = []
+                support_traces[self.ref].update(
+                    _traced(lambda: result.append(real(self, context)))
+                )
+                return result[0]
+
+            patch.setattr(type(kernel), "run", run)
+        donor_frame, terminal = _donor_and_terminal()
+        _run_support(_toy_roster(), donor_frame, terminal)
+        TestComponentSupport()._run(
+            (5.0, 7.0, 0.0, 120.0, 0.0, 150.0), ["a", "a", "a", "b", "b", "b"]
+        )
+        TestNormalizedSupport().test_differential_bounds_equal_money_normalize_outputs(
+            tmp_path_factory.mktemp("money")
+        )
+    traces.update(support_traces)
+    return traces
+
+
+class TestModuleListsAreComplete:
+    @pytest.mark.parametrize("ref", sorted(EVIDENCE_KERNEL_MODULES))
+    def test_every_module_a_kernel_runs_is_listed(self, kernel_traces, ref) -> None:
+        # Under-listing serves stale results: an edit to an unlisted module
+        # leaves implementation_hash() unchanged.
+        assert ref in kernel_traces
+        assert _unlisted(ref, kernel_traces[ref]) == set()
+
+    def test_the_closure_kernel_runs_the_schema_module(self, kernel_traces) -> None:
+        # Mutant: the closure kernel's list loses microcosm.frame.schema,
+        # whose entity_id_column the producer calls.
+        assert "microcosm.frame.schema" in kernel_traces[INPUT_CLOSURE_REF]
+        shortened = dict(EVIDENCE_KERNEL_MODULES)
+        shortened[INPUT_CLOSURE_REF] = tuple(
+            name
+            for name in shortened[INPUT_CLOSURE_REF]
+            if name != "microcosm.frame.schema"
+        )
+        assert _unlisted(
+            INPUT_CLOSURE_REF, kernel_traces[INPUT_CLOSURE_REF], shortened
+        ) == {"microcosm.frame.schema"}
+
+    def test_no_registered_kernel_lists_an_excluded_module(self, toy) -> None:
+        # Record every source file source_hash reads while each registered
+        # kernel computes its implementation hash.
+        from microcosm.graph import kernel as kernel_module
+
+        read: set[str] = set()
+        real = kernel_module.Path
+
+        def recording(*args, **kwargs):
+            path = real(*args, **kwargs)
+            read.add(str(path.resolve()))
+            return path
+
+        registry = toy.registry.kernels
+        refs = list(registry.refs()) if hasattr(registry, "refs") else list(registry)
+        with pytest.MonkeyPatch.context() as patch:
+            patch.setattr(kernel_module, "Path", recording)
+            for ref in refs:
+                registry.get(ref).implementation_hash()
+        files = _microcosm_module_files()
+        hashed = {files[path] for path in read if path in files}
+        assert evidence_contract.__name__ in hashed
+        excluded = {name for rows in TRACE_EXCLUSIONS.values() for name in rows}
+        assert not excluded & hashed, excluded & hashed
 
 
 # ---------------------------------------------------------------------------
@@ -856,13 +1028,26 @@ class TestClosurePartition:
     @PROPERTY
     @given(data=st.data())
     def test_property_every_live_root_lands_in_exactly_one_class(self, data) -> None:
+        # Draws subsets of the committed NZ roots, roots on a second mapped
+        # entity, and relation inputs whose columns the frame carries or
+        # lacks, and reads the roots through engine_root_inputs on a fake
+        # AxiomEngine, as the producer does.
+        from types import SimpleNamespace
+
         closure, bindings, surface, mapping = _nz()
-        rows = bindings["bindings"]
-        roots = {}
+        entity_names = bindings["entity_names"]
+        to_frame = {engine: frame for frame, engine in entity_names.items()}
+        rows = copy.deepcopy(bindings["bindings"])
+        engines = {}
+        person_columns: set[str] = set()
+        expected_relation: dict[str, set[str]] = {}
+        expected_gap: dict[str, set[str]] = {}
         for row in rows:
             module = surface.modules[row["rulespec_path"]]
-            roots[row["id"]] = {}
+            programs: dict[str, set[str]] = {}
             for entity, names in module.inputs.items():
+                if entity not in to_frame:
+                    continue
                 keep = data.draw(
                     st.lists(st.sampled_from(names), unique=True), label=row["id"]
                 )
@@ -873,9 +1058,64 @@ class TestClosurePartition:
                         max_size=3,
                     )
                 )
-                roots[row["id"]][entity] = tuple(keep) + tuple(extra)
+                programs.setdefault(to_frame[entity], set()).update(keep, extra)
+            # A module whose roots sit on two mapped entities.
+            second = data.draw(
+                st.sampled_from(sorted(set(to_frame.values()))), label="second"
+            )
+            programs.setdefault(second, set()).update(
+                data.draw(
+                    st.lists(
+                        st.from_regex(r"y_[a-z]{1,6}", fullmatch=True),
+                        unique=True,
+                        max_size=2,
+                    )
+                )
+            )
+            relations = []
+            for index in range(data.draw(st.integers(0, 2), label="relations")):
+                name = f"r_{row['id']}_{index}"
+                root = data.draw(st.sampled_from(("household", "family")))
+                present = data.draw(st.booleans(), label="column present")
+                column = f"c_{row['id']}_{index}"
+                if present:
+                    person_columns.add(column)
+                    expected_relation.setdefault(row["id"], set()).add(
+                        f"{entity_names[root]}.{name}"
+                    )
+                else:
+                    expected_gap.setdefault(row["id"], set()).add(
+                        f"{entity_names[root]}.{name}"
+                    )
+                relations.append(
+                    {
+                        **_TOY_RELATION,
+                        "predicate": f"p{index}",
+                        "key": f"p{index}:0:1",
+                        "root_entity": root,
+                        "membership_column": f"person_{root}_id",
+                        "related_inputs": {name: column},
+                    }
+                )
+            if relations:
+                row["relations"] = relations
+            engine = _fake_axiom(Path(row["rulespec_path"]))
+            engine._programs = {
+                frame: (
+                    SimpleNamespace(root_inputs=tuple(sorted(programs[frame])))
+                    if frame in programs
+                    else None
+                )
+                for frame in SCHEMA.entities
+            }
+            engines[row["id"]] = engine
+        roots = {
+            row["id"]: evidence_kernels.engine_root_inputs(
+                engines[row["id"]], row, entity_names
+            )
+            for row in rows
+        }
         # Unreached declarations only hold over their live roots.
-        rows = copy.deepcopy(rows)
         for row in rows:
             declaration = row.get("unreached_roots")
             if declaration:
@@ -894,7 +1134,9 @@ class TestClosurePartition:
                 r["id"]: surface.modules[r["rulespec_path"]].sha256 for r in rows
             },
             module_imports={},
-            mapped_entities=bindings["entity_names"].values(),
+            mapped_entities=entity_names.values(),
+            frame_columns={"person": frozenset(person_columns)},
+            entity_names=entity_names,
         )
         for row in result["modules"]:
             placed = [
@@ -907,7 +1149,13 @@ class TestClosurePartition:
                 *row["gap"],
             ]
             assert sorted(placed) == row["roots"]
+            assert len(set(placed)) == len(placed)
             assert sum(partition_counts(row).values()) == len(row["roots"])
+            relation = {item["input"] for item in row["relation"]}
+            assert relation == expected_relation.get(row["binding"], set())
+            assert expected_gap.get(row["binding"], set()) <= set(row["gap"])
+        # No relation input, present or absent, reaches the closure check.
+        assert not [line for line in result["check"] if ".r_" in line]
 
 
 def _empty_mapping() -> ConceptMapping:
@@ -976,7 +1224,7 @@ class TestRelations:
             for item in binding_relation_inputs(row)
         ] == expected
 
-    def _partition(self, frame_columns):
+    def _partition(self, frame_columns, *, relations=None, whole=False):
         rows = [
             {
                 "id": "toy_relation",
@@ -984,7 +1232,7 @@ class TestRelations:
                 "sha256": "a" * 64,
                 "engine_entity": "Family",
                 "variables": ["x"],
-                "relations": [_TOY_RELATION],
+                "relations": relations or [_TOY_RELATION],
             }
         ]
         closure = InputClosure(
@@ -1001,7 +1249,7 @@ class TestRelations:
             knobs=(),
             entries=(),
         )
-        return closure_partition(
+        result = closure_partition(
             closure,
             _empty_mapping(),
             rows,
@@ -1015,7 +1263,8 @@ class TestRelations:
                 "household": "Household",
                 "family": "Family",
             },
-        )["modules"][0]
+        )
+        return result if whole else result["modules"][0]
 
     def test_a_relation_input_with_its_physical_column_is_a_relation(self) -> None:
         row = self._partition({"person": frozenset({"member_income"})})
@@ -1032,6 +1281,224 @@ class TestRelations:
         row = self._partition({"person": frozenset({"other"})})
         assert row["relation"] == []
         assert row["gap"] == ["Family.toy_member_income"]
+
+    def test_a_declared_role_column_the_frame_lacks_is_a_gap(self) -> None:
+        # S4: the relation branch also requires a declared role column.
+        relation = {**_TOY_RELATION, "role_column": "role", "roles": ["head"]}
+        row = self._partition(
+            {"person": frozenset({"member_income"})}, relations=[relation]
+        )
+        assert row["relation"] == []
+        assert row["gap"] == ["Family.toy_member_income"]
+        assert row["relation_missing"] == ["Family.toy_member_income: person.role"]
+        both = self._partition(
+            {"person": frozenset({"member_income", "role"})}, relations=[relation]
+        )
+        assert both["gap"] == []
+        assert [item["role_column"] for item in both["relation"]] == ["role"]
+
+    def test_a_valid_relation_input_is_no_check_problem(self) -> None:
+        # S3: a relation input has no closure entry, so the checker's surface
+        # leaves it out; the partition still classes it.
+        result = self._partition({"person": frozenset({"member_income"})}, whole=True)
+        assert result["check"] == []
+        assert [item["input"] for item in result["modules"][0]["relation"]] == [
+            "Family.toy_member_income"
+        ]
+        absent = self._partition({"person": frozenset()}, whole=True)
+        assert absent["check"] == []
+        assert absent["modules"][0]["gap"] == ["Family.toy_member_income"]
+
+
+# ---------------------------------------------------------------------------
+# Relation inputs on a real AxiomEngine (S1, S3, S4)
+# ---------------------------------------------------------------------------
+
+
+_ENTITY_NAMES = {"person": "Person", "household": "Household", "family": "Family"}
+
+
+def _fake_axiom(module: Path, root_inputs=()):
+    """An ``AxiomEngine`` whose family program reads ``root_inputs`` only.
+
+    The engine keeps relation inputs out of ``root_inputs``; ``variables()``
+    adds them from the declared manifests.
+    """
+
+    from types import SimpleNamespace
+
+    from microcosm.frame.adapters.axiom import AxiomEngine
+
+    engine = object.__new__(AxiomEngine)
+    engine._schema = SCHEMA
+    engine._entity_names = dict(_ENTITY_NAMES)
+    engine._module = module
+    engine._programs = {
+        "person": None,
+        "household": None,
+        "family": SimpleNamespace(root_inputs=tuple(root_inputs)),
+    }
+    assert isinstance(engine, AxiomEngine)
+    return engine
+
+
+def _relation_world(tmp_path: Path, relation: dict, *, root_inputs=()):
+    module = tmp_path / "toy" / "relation.yaml"
+    module.parent.mkdir(parents=True, exist_ok=True)
+    module.write_bytes(b"format: rulespec\nrules: []\n")
+    sha = _sha(module.read_bytes())
+    closure = InputClosure(
+        country="xx",
+        content_basis="transport",
+        mapping_engine="none",
+        mapping_engine_version="none",
+        surface_rulespec_commit="r",
+        surface_engine_repository="engine",
+        surface_engine_commit="e",
+        modules={"toy/relation.yaml": sha},
+        engine_optional_evidence="Synthetic.",
+        undetermined=_nz()[0].undetermined,
+        knobs=(),
+        entries=(),
+    ).to_dict()
+    bindings = {
+        "entity_names": dict(_ENTITY_NAMES),
+        "engine": {"commit": "e"},
+        "rulespec": {"commit": "r"},
+        "bindings": [
+            {
+                "id": "toy_relation",
+                "rulespec_path": "toy/relation.yaml",
+                "sha256": sha,
+                "engine_entity": "Family",
+                "variables": ["x"],
+                "relations": [relation],
+            }
+        ],
+    }
+    mapping = _empty_mapping().to_dict()
+    refs = {"engine_refs": {"toy_relation": "axiom:toy_relation"}}
+    node = Node(
+        "toy.evidence.input_closure",
+        INPUT_CLOSURE_REF,
+        inputs=(Slice("person", ("member_income", "role")),),
+        params={
+            "closure": _text(closure),
+            "closure_sha256": _sha(canonical_json(closure)),
+            "mapping": _text(mapping),
+            "mapping_sha256": _sha(canonical_json(mapping)),
+            "bindings": _text(bindings),
+            "bindings_sha256": _sha(canonical_json(bindings)),
+            "engine_refs": _text(refs),
+        },
+        artifact_outputs=(ArtifactOutput(AXIOM_INPUT_CLOSURE, INPUT_CLOSURE_TYPE),),
+    )
+    engine = _fake_axiom(module, root_inputs)
+    return node, TransportInputClosureKernel({"axiom:toy_relation": engine})
+
+
+def _relation_frame(columns: dict) -> Frame:
+    person = pd.DataFrame(
+        {
+            "person_id": np.array([1, 2, 3], dtype=np.int64),
+            "person_household_id": np.array([10, 10, 20], dtype=np.int64),
+            "person_family_id": np.array([100, 100, 200], dtype=np.int64),
+            **columns,
+        }
+    )
+    return Frame(
+        {
+            "person": person,
+            "household": pd.DataFrame({"household_id": np.array([10, 20])}),
+            "family": pd.DataFrame({"family_id": np.array([100, 200])}),
+        },
+        SCHEMA,
+        {"household": Weights(np.ones(2), WeightKind.DESIGN)},
+        metadata={"content_basis": "transport", "donor_time_period": 2024},
+    )
+
+
+def _relation_context(frame: Frame, node: Node) -> KernelContext:
+    tables = {}
+    for item in node.inputs:
+        table = frame.table(item.entity)
+        wanted = [
+            SCHEMA.entity_id_column(item.entity),
+            *(SCHEMA.membership_column(g) for g in SCHEMA.group_entities),
+            *item.columns,
+        ]
+        tables[item.entity] = table.loc[:, [c for c in wanted if c in table.columns]]
+    return KernelContext(
+        node=node,
+        tables=tables,
+        weights={},
+        strata=frame.strata,
+        params=node.params,
+        rng=np.random.default_rng(0),
+        sources={},
+        artifacts={},
+        frame_metadata=frame.metadata,
+    )
+
+
+class TestRelationInputsOnAnAxiomEngine:
+    def _run(self, tmp_path, relation, columns, **kwargs):
+        node, kernel = _relation_world(tmp_path, relation, **kwargs)
+        payload = kernel.run(_relation_context(_relation_frame(columns), node))
+        return decode_input_closure(payload.artifacts[AXIOM_INPUT_CLOSURE]).document
+
+    def test_the_engine_partition_adds_each_declared_relation_input(
+        self, tmp_path
+    ) -> None:
+        # S1: the program reads no root input; the relation input reaches the
+        # partition on the manifest's root entity, as variables() lists it.
+        engine = _fake_axiom(tmp_path / "m.yaml")
+        row = {"id": "b", "relations": [_TOY_RELATION]}
+        assert evidence_kernels.engine_root_inputs(engine, row, _ENTITY_NAMES) == {
+            "Family": ("toy_member_income",)
+        }
+
+    def test_a_present_column_is_one_relation_row(self, tmp_path) -> None:
+        document = self._run(tmp_path, _TOY_RELATION, {"member_income": np.ones(3)})
+        (row,) = document["modules"]
+        assert row["relation"] == [
+            {
+                "input": "Family.toy_member_income",
+                "column": "member_income",
+                "role_column": None,
+            }
+        ]
+        assert row["gap"] == []
+        assert document["check"] == []
+        from microcosm.build.transport.gate_bindings import _closure_rows
+
+        failures, _ = _closure_rows(document, allow_engine_optional=False)
+        assert failures == []
+
+    def test_an_absent_column_is_a_gap_and_the_gate_fails(self, tmp_path) -> None:
+        document = self._run(tmp_path, _TOY_RELATION, {})
+        (row,) = document["modules"]
+        assert row["relation"] == []
+        assert row["gap"] == ["Family.toy_member_income"]
+        from microcosm.build.transport.gate_bindings import _closure_rows
+
+        failures, _ = _closure_rows(document, allow_engine_optional=False)
+        assert any("gap Family.toy_member_income" in line for line in failures)
+        assert any("person.member_income" in line for line in failures)
+
+    def test_an_absent_role_column_is_a_gap_naming_it(self, tmp_path) -> None:
+        # S4 through the producer.
+        relation = {**_TOY_RELATION, "role_column": "role", "roles": ["head"]}
+        document = self._run(tmp_path, relation, {"member_income": np.ones(3)})
+        (row,) = document["modules"]
+        assert row["gap"] == ["Family.toy_member_income"]
+        assert row["relation_missing"] == ["Family.toy_member_income: person.role"]
+        present = self._run(
+            tmp_path,
+            relation,
+            {"member_income": np.ones(3), "role": np.ones(3)},
+        )
+        assert present["modules"][0]["gap"] == []
 
 
 # ---------------------------------------------------------------------------
@@ -1439,6 +1906,102 @@ class TestCompositionChecks:
         with pytest.raises(ValueError, match="in_work_tax_credit_before_abatement"):
             compose._check_unreached_requests(mutant)
 
+    def test_a_literal_engine_reference_is_refused_too(self) -> None:
+        # C2: the component writes the prepared engine reference itself
+        # instead of {"binding": ...}; the check matches that spelling too.
+        refs = {"family_tax_credits": "synthetic:family_tax_credits"}
+        spec = compose.load_transport_spec("nz")
+        compose._check_unreached_requests(spec, refs)
+        mutant = copy.deepcopy(spec)
+        component = next(
+            component
+            for item in mutant["resources"]["scenarios"]["scenarios"]
+            for node in item.get("nodes", ())
+            for component in node.get("params", {}).get("components", ())
+            if component["engine_ref"]["binding"] == "family_tax_credits"
+        )
+        component["engine_ref"] = refs["family_tax_credits"]
+        compose._check_unreached_requests(mutant, refs)
+        component["variables"] = [
+            *component["variables"],
+            "in_work_tax_credit_before_abatement",
+        ]
+        with pytest.raises(ValueError, match="in_work_tax_credit_before_abatement"):
+            compose._check_unreached_requests(mutant, refs)
+        # A JSON-escaped spelling of the literal is the same request.
+        component["engine_ref"] = json.dumps(refs["family_tax_credits"])
+        with pytest.raises(ValueError, match="in_work_tax_credit_before_abatement"):
+            compose._check_unreached_requests(mutant, refs)
+
+    def test_composition_refuses_the_literal_spelling(self) -> None:
+        # C2 through compose_transport_graph, which runs the check before it
+        # composes anything.
+        import importlib.util
+
+        path = _BUILD.tests / "engine_free/shared/test_nz_transport_declarations.py"
+        module_spec = importlib.util.spec_from_file_location("_nz_decl_c2", path)
+        module = importlib.util.module_from_spec(module_spec)
+        module_spec.loader.exec_module(module)
+        spec, config = module._nz_composition_spec_and_config()
+        mutant = copy.deepcopy(spec)
+        literal = config.engine_refs["family_tax_credits"]
+        for item in mutant["resources"]["scenarios"]["scenarios"]:
+            for node in item.get("nodes", ()):
+                for component in node.get("params", {}).get("components", ()):
+                    if component["engine_ref"] == {
+                        **component["engine_ref"],
+                        "binding": "family_tax_credits",
+                    }:
+                        component["engine_ref"] = literal
+                        component["variables"] = [
+                            *component["variables"],
+                            "in_work_tax_credit_before_abatement",
+                        ]
+        with pytest.raises(ValueError, match="in_work_tax_credit_before_abatement"):
+            compose.compose_transport_graph(mutant, config)
+
+    def _closure_graph(self, slices, relation):
+        bindings = {
+            "entity_names": dict(_ENTITY_NAMES),
+            "bindings": [{"id": "toy_relation", "relations": [relation]}],
+        }
+        return _Graph(
+            [
+                Node(
+                    "toy.evidence.input_closure",
+                    INPUT_CLOSURE_REF,
+                    inputs=tuple(Slice(e, tuple(c)) for e, c in slices),
+                    params={"bindings": _text(bindings)},
+                )
+            ]
+        )
+
+    def test_a_closure_slice_without_its_relation_columns_is_refused(self, toy) -> None:
+        # S5: a Slice delivers only the columns it names, so composition
+        # refuses a closure node whose person slice omits a relation column.
+        relation = {**_TOY_RELATION, "role_column": "role", "roles": ["head"]}
+        compose._check_closure_relation_slices(
+            toy.spec,
+            self._closure_graph(
+                [("person", ("age", "member_income", "role"))], relation
+            ),
+        )
+        for columns, missing in (
+            (("age",), "['member_income', 'role']"),
+            (("age", "member_income"), "['role']"),
+            (("age", "role"), "['member_income']"),
+        ):
+            with pytest.raises(ValueError, match=re.escape(missing)):
+                compose._check_closure_relation_slices(
+                    toy.spec, self._closure_graph([("person", columns)], relation)
+                )
+        # The columns must sit on the person slice, not another entity's.
+        with pytest.raises(ValueError, match="toy.evidence.input_closure"):
+            compose._check_closure_relation_slices(
+                toy.spec,
+                self._closure_graph([("family", ("member_income", "role"))], relation),
+            )
+
 
 @pytest.fixture(scope="module")
 def nz_composed():
@@ -1572,32 +2135,44 @@ DESIGN = np.array([2.0, 3.0, 5.0])
 CALIBRATED = np.array([2.2, 2.7, 5.0])
 
 
-def _units_frame(stored: dict | None = None, *, calibrated=CALIBRATED) -> Frame:
+def _units_frame(
+    stored: dict | None = None,
+    *,
+    calibrated=CALIBRATED,
+    households=HOUSEHOLD_IDS,
+    person_household=PERSON_HOUSEHOLD,
+    person_tax_unit=PERSON_TAX_UNIT,
+    person_family=PERSON_FAMILY,
+    sources=("s1", "s1", "s2"),
+) -> Frame:
+    count = len(person_household)
     person = pd.DataFrame(
         {
-            "person_id": np.arange(1, 7, dtype=np.int64),
-            "person_household_id": np.array(PERSON_HOUSEHOLD, dtype=np.int64),
-            "person_tax_unit_id": np.array(PERSON_TAX_UNIT, dtype=np.int64),
-            "person_family_id": np.array(PERSON_FAMILY, dtype=np.int64),
-            "age": np.arange(30, 36, dtype=np.int64),
+            "person_id": np.arange(1, count + 1, dtype=np.int64),
+            "person_household_id": np.array(person_household, dtype=np.int64),
+            "person_tax_unit_id": np.array(person_tax_unit, dtype=np.int64),
+            "person_family_id": np.array(person_family, dtype=np.int64),
+            "age": np.arange(30, 30 + count, dtype=np.int64),
         }
     )
     household = pd.DataFrame(
         {
-            "household_id": np.array(HOUSEHOLD_IDS, dtype=np.int64),
-            "source_household_id": pd.array(["s1", "s1", "s2"], dtype="string"),
+            "household_id": np.array(households, dtype=np.int64),
+            "source_household_id": pd.array(list(sources), dtype="string"),
         }
     )
+    tax_units = sorted(set(person_tax_unit))
+    families = sorted(set(person_family))
     tax_unit = pd.DataFrame(
         {
-            "tax_unit_id": np.array([1, 2, 3, 4], dtype=np.int64),
-            "tax_unit_flag": [1, 0, 1, 0],
+            "tax_unit_id": np.array(tax_units, dtype=np.int64),
+            "tax_unit_flag": [index % 2 for index in range(len(tax_units))],
         }
     )
     family = pd.DataFrame(
         {
-            "family_id": np.array([100, 101, 102, 103], dtype=np.int64),
-            "family_flag": [0, 1, 0, 1],
+            "family_id": np.array(families, dtype=np.int64),
+            "family_flag": [(index + 1) % 2 for index in range(len(families))],
         }
     )
     weights = {"household": Weights(np.asarray(calibrated), WeightKind.CALIBRATED)}
@@ -1617,23 +2192,25 @@ def _units_frame(stored: dict | None = None, *, calibrated=CALIBRATED) -> Frame:
     )
 
 
-def _calibration(design=DESIGN, calibrated=CALIBRATED) -> dict[str, bytes]:
+def _calibration(
+    design=DESIGN, calibrated=CALIBRATED, households=HOUSEHOLD_IDS
+) -> dict[str, bytes]:
     target = Target(
         "count",
         "household",
-        lambda f: np.ones(len(HOUSEHOLD_IDS)),
+        lambda f: np.ones(len(households)),
         value=10,
         period=2026,
     )
     problem = CalibrationProblem(
-        sparse.csr_array([[1.0] * len(HOUSEHOLD_IDS)]),
+        sparse.csr_array([[1.0] * len(households)]),
         np.array([10.0]),
         (target.row_name,),
         Weights(np.asarray(design, dtype=np.float64), WeightKind.DESIGN),
         "household",
         (target,),
     )
-    problem_payload = encode_problem(problem, entity_ids=HOUSEHOLD_IDS)
+    problem_payload = encode_problem(problem, entity_ids=households)
     sha = decode_problem(problem_payload).sha256
     result = SimpleNamespace(
         weights=np.asarray(calibrated, dtype=np.float64),
@@ -1641,7 +2218,7 @@ def _calibration(design=DESIGN, calibrated=CALIBRATED) -> dict[str, bytes]:
         options={},
         gate_open_probabilities=None,
         l0_lambda=0.0,
-        n_nonzero=len(HOUSEHOLD_IDS),
+        n_nonzero=len(households),
         target_loss_cap=1.0,
         final_loss=0.0,
         loss_trajectory=np.zeros(1),
@@ -1651,10 +2228,10 @@ def _calibration(design=DESIGN, calibrated=CALIBRATED) -> dict[str, bytes]:
     return {
         "problem": problem_payload,
         "solution": encode_solution(
-            calibrated, entity_ids=HOUSEHOLD_IDS, problem_sha256=sha
+            calibrated, entity_ids=households, problem_sha256=sha
         ),
         "result": encode_calibration_result(
-            result, entity_ids=HOUSEHOLD_IDS, problem_sha256=sha
+            result, entity_ids=households, problem_sha256=sha
         ),
     }
 
@@ -1786,8 +2363,8 @@ def _weights_outcome(
     return outcome
 
 
-def _broadcast(values, membership=PERSON_HOUSEHOLD):
-    lookup = dict(zip(HOUSEHOLD_IDS, values, strict=True))
+def _broadcast(values, membership=PERSON_HOUSEHOLD, households=HOUSEHOLD_IDS):
+    lookup = dict(zip(households, values, strict=True))
     return np.array([lookup[h] for h in membership])
 
 
@@ -1862,27 +2439,90 @@ class TestWeightsAudit:
             _run_weights(_units_frame(calibrated=np.array([1.0, 2.0, 3.0])))
 
     @PROPERTY
-    @given(
-        design=st.lists(st.floats(0.5, 50.0), min_size=3, max_size=3),
-        scale=st.lists(st.floats(0.5, 1.5), min_size=3, max_size=3),
-        limit=st.floats(0.0, 0.5),
-    )
+    @given(data=st.data(), limit=st.floats(0.0, 0.5))
     def test_property_the_gate_passes_iff_the_mass_change_is_within_the_limit(
-        self, design, scale, limit
+        self, data, limit
     ) -> None:
-        design = np.asarray(design)
-        calibrated = design * np.asarray(scale)
+        # Draws the membership (households, the tax units and families over
+        # them, source households split across them), zero design and
+        # calibrated weights, and a stored second partition vector.
+        sizes = data.draw(st.lists(st.integers(1, 3), min_size=1, max_size=4))
+        households = [10 * (index + 1) for index in range(len(sizes))]
+        person_household, person_tax_unit, person_family = [], [], []
+        for household, size in zip(households, sizes, strict=True):
+            units = data.draw(st.lists(st.integers(0, 2), min_size=size, max_size=size))
+            families = data.draw(
+                st.lists(st.integers(0, 2), min_size=size, max_size=size)
+            )
+            person_household += [household] * size
+            person_tax_unit += [household + unit for unit in units]
+            person_family += [100 * household + family for family in families]
+        sources = data.draw(
+            st.lists(
+                st.sampled_from(("s1", "s2", "s3")),
+                min_size=len(households),
+                max_size=len(households),
+            )
+        )
+        weight = st.one_of(st.just(0.0), st.floats(0.5, 50.0))
+        design = np.asarray(
+            data.draw(
+                st.lists(weight, min_size=len(households), max_size=len(households))
+            )
+        )
+        calibrated = np.asarray(
+            data.draw(
+                st.lists(weight, min_size=len(households), max_size=len(households))
+            )
+        )
+        # Weights refuses an all-zero vector.
+        if not (design > 0).any():
+            design[0] = 1.0
+        if not (calibrated > 0).any():
+            calibrated[-1] = 1.0
+        stored = data.draw(st.booleans(), label="stored tax_unit vector")
+        membership = {
+            "households": households,
+            "person_household": person_household,
+            "person_tax_unit": person_tax_unit,
+            "person_family": person_family,
+            "sources": sources,
+        }
+        frame = _units_frame(
+            {"tax_unit": np.ones(len(set(person_tax_unit)))} if stored else None,
+            calibrated=calibrated,
+            **membership,
+        )
+        payloads = _calibration(design, calibrated, households)
+        audit = _run_weights(frame, payloads)
+        mass = decode_weights_audit(audit).document["mass"]
+        destination = math.fsum(
+            _broadcast(design, person_household, households).tolist()
+        )
+        assert mass["destination_person_mass"] == destination
+        change = (
+            math.fsum(_broadcast(calibrated, person_household, households).tolist())
+            - destination
+        ) / destination
+        outcome = _weights_outcome(audit, payloads, frame, limit=limit)
+        passes = abs(change) <= limit and not stored
+        assert (outcome.status is GateStatus.PASSED) is passes, outcome.result.failures
+        if stored:
+            assert any(
+                "second weight vector" in line for line in outcome.result.failures
+            )
+
+    def test_zero_weights_fail_on_the_mass_line_only(self) -> None:
+        design, calibrated = np.array([2.0, 0.0, 5.0]), np.array([0.0, 0.0, 5.5])
         payloads = _calibration(design, calibrated)
         frame = _units_frame(calibrated=calibrated)
         audit = _run_weights(frame, payloads)
         mass = decode_weights_audit(audit).document["mass"]
-        destination = math.fsum(_broadcast(design).tolist())
-        assert mass["destination_person_mass"] == destination
-        change = (
-            math.fsum(_broadcast(calibrated).tolist()) - destination
-        ) / destination
-        outcome = _weights_outcome(audit, payloads, frame, limit=limit)
-        assert (outcome.status is GateStatus.PASSED) is (abs(change) <= limit)
+        assert mass["relative_change"] == pytest.approx(-0.5)
+        outcome = _weights_outcome(audit, payloads, frame)
+        assert outcome.status is GateStatus.FAILED
+        (line,) = outcome.result.failures
+        assert "declared limit" in line or "mass" in line
 
     def test_source_household_concentration_equals_the_weight_gates(self) -> None:
         from microcosm.build.transport.gate_bindings import weight_summary
@@ -2144,6 +2784,134 @@ class TestSupportRoster:
             compose._support_roster(spec)
 
 
+def _impute_spec(*, inputs, sources=("external_wage_table",)):
+    """C1's toy: CREATE, an imputation reading an external table, a battery."""
+
+    return {
+        "country": "xx",
+        "resources": {
+            "transport_graph": {
+                "schema_version": 1,
+                "country": "xx",
+                "sources": [
+                    {"name": "external_wage_table", "codec": "toy-wage-table-v1"},
+                    {"name": "rulespec_toy", "codec": "rulespec-tree-v1"},
+                ],
+                "nodes": [
+                    {
+                        "id": "x.open",
+                        "kernel": "transport.create@1",
+                        "structural": "create",
+                    },
+                    {
+                        "id": "x.impute",
+                        "kernel": "toy.impute@1",
+                        "sources": list(sources),
+                        "inputs": [
+                            {"entity": "person", "columns": list(columns)}
+                            for columns in [inputs]
+                            if columns
+                        ],
+                        "outputs": [
+                            {
+                                "entity": "person",
+                                "column": "imputed_wage",
+                                "dtype": "float64",
+                            }
+                        ],
+                    },
+                    {
+                        "id": "x.gates",
+                        "kernel": "gates.battery@1",
+                        "inputs": [{"entity": "person", "columns": ["imputed_wage"]}],
+                    },
+                ],
+            }
+        },
+    }
+
+
+class TestExternalSources:
+    @pytest.mark.parametrize("inputs", (["age"], []), ids=("with_inputs", "no_inputs"))
+    def test_an_imputation_from_an_external_source_is_uncovered(self, inputs) -> None:
+        # C1: the owner reads an external table, so its row has no support.
+        roster = compose._support_roster(_impute_spec(inputs=inputs))
+        (row,) = [r for r in roster["columns"] if r["column"] == "imputed_wage"]
+        if inputs:
+            assert row["class"] == "derived"
+            external = [
+                s for s in row["sources"] if s["column"] == "external_wage_table"
+            ]
+            assert external and external[0]["class"] == "uncovered"
+            assert "toy-wage-table-v1" in external[0]["reason"]
+        else:
+            assert row["class"] == "derived"
+        donor, _ = _donor_and_terminal()
+        terminal = _support_frame({("person", "imputed_wage"): [1e9] * 6})
+        ranges, bounds, rn, bn = _run_support(roster, donor, terminal)
+        outcome = _support_outcome(ranges, bounds, rn, bn, terminal)
+        assert outcome.status is GateStatus.FAILED
+        assert any("external_wage_table" in line for line in outcome.result.failures)
+
+    def test_a_derived_row_with_no_walked_source_is_uncovered(self) -> None:
+        roster = compose._support_roster(_impute_spec(inputs=[], sources=()))
+        (row,) = [r for r in roster["columns"] if r["column"] == "imputed_wage"]
+        assert row["class"] == "uncovered"
+        donor, _ = _donor_and_terminal()
+        terminal = _support_frame({("person", "imputed_wage"): [1e9] * 6})
+        ranges, bounds, rn, bn = _run_support(roster, donor, terminal)
+        outcome = _support_outcome(ranges, bounds, rn, bn, terminal)
+        assert outcome.status is GateStatus.FAILED
+
+    def test_the_rulespec_tree_is_no_external_source(self) -> None:
+        # Matched on the codec, not the name.
+        roster = compose._support_roster(
+            _impute_spec(inputs=["age"], sources=("rulespec_toy",))
+        )
+        (row,) = [r for r in roster["columns"] if r["column"] == "imputed_wage"]
+        assert row["class"] == "derived"
+        assert [s["column"] for s in row["sources"]] == ["age"]
+
+
+class TestDeclaredStructuralRows:
+    def test_a_row_no_node_writes_is_refused(self, nz_composed) -> None:
+        # H46: household.employment_income is a stale, misspelled row.
+        spec, _, graph = nz_composed
+        compose._check_structural_rows_written(spec, graph)
+        mutant = _with_structural(
+            spec, [*H34_STRUCTURAL, ("household", "employment_income")]
+        )
+        with pytest.raises(ValueError, match=r"household\.employment_income"):
+            compose._check_structural_rows_written(mutant, graph)
+
+    def test_a_declared_unreached_row_is_listed_and_does_not_fail(self) -> None:
+        donor, terminal = _donor_and_terminal()
+        ranges, bounds, rn, bn = _run_support(_toy_roster(), donor, terminal)
+        base = _support_outcome(
+            ranges,
+            bounds,
+            rn,
+            bn,
+            terminal,
+            structural=[("household", "source_household_id")],
+        )
+        extra = _support_outcome(
+            ranges,
+            bounds,
+            rn,
+            bn,
+            terminal,
+            structural=[
+                ("household", "source_household_id"),
+                ("person", "never_reached"),
+            ],
+        )
+        assert extra.result.details["declared_unreached"] == ["person.never_reached"]
+        assert base.result.details["declared_unreached"] == []
+        assert extra.status is base.status is GateStatus.PASSED
+        assert extra.result.failures == base.result.failures
+
+
 # --- the producers on hand-built contexts ---------------------------------
 
 
@@ -2193,7 +2961,14 @@ def _support_context(frame, node, artifacts=None, sources=None):
 
 
 def _run_support(
-    roster, donor_frame, terminal_frame, *, params=None, sources=None, feed_source=()
+    roster,
+    donor_frame,
+    terminal_frame,
+    *,
+    params=None,
+    sources=None,
+    feed_source=(),
+    extra_columns=(),
 ):
     ranged = [
         (row["entity"], row["column"])
@@ -2210,7 +2985,7 @@ def _run_support(
         (row["entity"], row["column"])
         for row in roster["columns"]
         if row["class"] in {"copied", "normalized", "currency", "quantile_mapped"}
-    ]
+    ] + list(extra_columns)
     node = _support_node(
         SUPPORT_BOUNDS_REF,
         DONOR_SUPPORT_BOUNDS,
@@ -2548,9 +3323,12 @@ class TestQuantileSupport:
             {"lower": 0.0, "upper": 100.0, "reference": "a"},
             {"lower": 100.0, "upper": None, "reference": "b"},
         ]
-        positive, negative = quantile_support(bands, {"method": "pareto", "alpha": 2.0})
-        assert quantile_bounds(positive, negative) == (0.0, None)
+        support = quantile_support(bands, {"method": "pareto", "alpha": 2.0})
+        positive, negative = support.positive, support.negative
+        # A bare list feeds both signs, so the open top is open below too.
+        assert quantile_bounds(positive, negative) == (None, None)
         assert inside_quantile_support(1e12, positive, negative)
+        assert inside_quantile_support(-1e12, positive, negative)
 
     def test_an_open_negative_top_records_a_null_lower_bound(self) -> None:
         bands = {
@@ -2560,7 +3338,8 @@ class TestQuantileSupport:
                 {"lower": 5.0, "upper": None, "reference": "n2"},
             ],
         }
-        positive, negative = quantile_support(bands, {"method": "pareto", "alpha": 1.5})
+        support = quantile_support(bands, {"method": "pareto", "alpha": 1.5})
+        positive, negative = support.positive, support.negative
         assert quantile_bounds(positive, negative) == (None, 10.0)
         # Belgium's probe reached -22.36 past every finite bound.
         assert inside_quantile_support(-22.36, positive, negative)
@@ -2571,42 +3350,235 @@ class TestQuantileSupport:
         ):
             quantile_support(_BANDS, {"method": "donor_tail"})
 
+    def test_a_bare_band_list_reads_on_both_signs(self) -> None:
+        # E1, Belgium's case: uniform bands [0, 10] and [10, 50] over donor
+        # values -5 to 3. quantile_map applies a bare list to both signs.
+        rows = [
+            {"lower": 0.0, "upper": 10.0, "reference": "a"},
+            {"lower": 10.0, "upper": 50.0, "reference": "b"},
+        ]
+        values = np.arange(-5.0, 4.0)
+        mapped = quantile_map(
+            values,
+            np.ones(len(values)),
+            [
+                {"lower": row["lower"], "upper": row["upper"], "share": 0.5}
+                for row in rows
+            ],
+            interpolation="uniform",
+        )
+        assert (mapped < 0).sum() == 5
+        uniform = {"method": "uniform"}
+        for declared in (rows, {"bands": rows}):
+            support = quantile_support(declared, uniform)
+            assert quantile_bounds(support.positive, support.negative) == (-50.0, 50.0)
+            assert all(
+                inside_quantile_support(float(v), support.positive, support.negative)
+                for v in mapped
+            )
+        signed = quantile_support({"positive": rows, "negative": rows}, uniform)
+        assert quantile_bounds(signed.positive, signed.negative) == (-50.0, 50.0)
+
+    def test_every_declared_shape_is_read(self) -> None:
+        # C3: {bands}, {positive, negative} and the component list.
+        uniform = {"method": "uniform"}
+        support = quantile_support({"bands": _BANDS}, uniform)
+        assert inside_quantile_support(150.0, support.positive, support.negative)
+        components = quantile_support(
+            {
+                "components": [
+                    {"value": "a", "bands": _BANDS},
+                    {"value": 2, "bands": {"bands": _BANDS}},
+                ]
+            },
+            uniform,
+        )
+        assert set(components.components) == {"a", 2}
+        assert components.intervals("missing") is None
+        with pytest.raises(ValueError, match="band list, bands, positive"):
+            quantile_support({"positive": _BANDS}, uniform)
+
+    def test_a_value_is_checked_against_its_own_component_only(self) -> None:
+        # E2: component a on [0, 10], b on [100, 200]; 150 in a is outside.
+        bands = {
+            "components": [
+                {
+                    "value": "a",
+                    "bands": [{"lower": 0.0, "upper": 10.0, "reference": "x"}],
+                },
+                {
+                    "value": "b",
+                    "bands": [{"lower": 100.0, "upper": 200.0, "reference": "y"}],
+                },
+            ]
+        }
+        support = quantile_support(bands, {"method": "uniform"})
+        assert not inside_quantile_support(150.0, *support.intervals("a"))
+        assert inside_quantile_support(150.0, *support.intervals("b"))
+        assert quantile_bounds(support.positive, support.negative) == (-200.0, 200.0)
+
     @PROPERTY
     @given(
         values=st.lists(
-            st.one_of(st.just(0.0), st.floats(0.01, 1e6)), min_size=4, max_size=40
+            st.one_of(st.just(0.0), st.floats(-1e6, -0.01), st.floats(0.01, 1e6)),
+            min_size=4,
+            max_size=40,
         ),
         cuts=st.lists(st.floats(1.0, 1e5), min_size=2, max_size=4, unique=True),
+        negative_cuts=st.lists(
+            st.floats(1.0, 1e5), min_size=2, max_size=4, unique=True
+        ),
         pareto=st.booleans(),
+        shape=st.sampled_from(("bare", "bands", "signed", "components")),
+        codes=st.lists(st.sampled_from(("a", "b")), min_size=40, max_size=40),
     )
     def test_property_every_quantile_mapped_value_lies_inside_its_bands(
-        self, values, cuts, pareto
+        self, values, cuts, negative_cuts, pareto, shape, codes
     ) -> None:
+        # Differential: the real quantile_map writes the values; every one
+        # must lie inside quantile_support's intervals for its own component.
         values = np.asarray(values)
-        if not (values > 0).any():
+        if not (values != 0).any():
             values[0] = 1.0
-        edges = sorted(cuts)
-        rows = [
-            {"lower": low, "upper": high, "share": 1 / (len(edges) - 1)}
-            for low, high in zip(edges[:-1], edges[1:], strict=True)
+        interpolation = (
+            {"method": "pareto", "alpha": 2.0} if pareto else {"method": "uniform"}
+        )
+
+        def band_rows(edges, tag):
+            edges = sorted(edges)
+            rows = [
+                {"lower": low, "upper": high, "reference": f"{tag}{index}"}
+                for index, (low, high) in enumerate(
+                    zip(edges[:-1], edges[1:], strict=True)
+                )
+            ]
+            if pareto:
+                rows[-1]["upper"] = None
+            return rows
+
+        def shares(rows):
+            return [
+                {"lower": r["lower"], "upper": r["upper"], "share": 1 / len(rows)}
+                for r in rows
+            ]
+
+        def mapped_for(selected, document):
+            if isinstance(document, dict) and set(document) == {"bands"}:
+                document = document["bands"]
+            target = (
+                {sign: shares(rows) for sign, rows in document.items()}
+                if isinstance(document, dict)
+                else shares(document)
+            )
+            method = interpolation if pareto else "uniform"
+            return quantile_map(
+                selected, np.ones(len(selected)), target, interpolation=method
+            )
+
+        positive = band_rows(cuts, "p")
+        negative = band_rows(negative_cuts, "n")
+        component = np.asarray(codes[: len(values)], dtype=object)
+        if shape == "bare":
+            declared = positive
+        elif shape == "bands":
+            declared = {"bands": positive}
+        elif shape == "signed":
+            declared = {"positive": positive, "negative": negative}
+        else:
+            declared = {
+                "components": [
+                    {"value": "a", "bands": positive},
+                    {"value": "b", "bands": negative},
+                ]
+            }
+        support = quantile_support(declared, interpolation)
+        if shape == "components":
+            by_code = {"a": positive, "b": negative}
+            for code in ("a", "b"):
+                selected = values[component == code]
+                if not len(selected) or not (selected != 0).any():
+                    continue
+                mapped = mapped_for(selected, by_code[code])
+                intervals = support.intervals(code)
+                assert all(
+                    inside_quantile_support(float(v), *intervals) for v in mapped
+                )
+                assert all(mapped[selected == 0] == 0)
+        else:
+            mapped = mapped_for(values, declared)
+            assert all(
+                inside_quantile_support(float(v), support.positive, support.negative)
+                for v in mapped
+            )
+            assert all(mapped[values == 0] == 0)
+
+
+class TestComponentSupport:
+    _bands = {
+        "components": [
+            {"value": "a", "bands": [{"lower": 0.0, "upper": 10.0, "reference": "x"}]},
+            {
+                "value": "b",
+                "bands": [{"lower": 100.0, "upper": 200.0, "reference": "y"}],
+            },
         ]
-        interpolation = "uniform"
-        if pareto:
-            rows[-1]["upper"] = None
-            interpolation = {"method": "pareto", "alpha": 2.0}
-        mapped = quantile_map(
-            values, np.ones(len(values)), rows, interpolation=interpolation
+    }
+
+    def _roster(self, component_column="wage_code"):
+        params = {"bands": self._bands, "interpolation": {"method": "uniform"}}
+        if component_column is not None:
+            params["component_column"] = component_column
+        return {
+            "columns": [
+                {
+                    "entity": "person",
+                    "column": "wage",
+                    "class": "quantile_mapped",
+                    "producer_params": params,
+                }
+            ]
+        }
+
+    def _run(self, wage, codes, *, roster=None, sliced=True):
+        donor, _ = _donor_and_terminal()
+        terminal = _support_frame(
+            {
+                ("person", "wage"): list(wage),
+                ("person", "wage_code"): pd.array(codes, dtype="string"),
+            }
         )
-        declared = [
-            {"lower": r["lower"], "upper": r["upper"], "reference": "x"} for r in rows
-        ]
-        positive, negative = quantile_support(
-            declared, interpolation if pareto else {"method": "uniform"}
+        _, bounds, _, _ = _run_support(
+            roster or self._roster(),
+            donor,
+            terminal,
+            extra_columns=[("person", "wage_code")] if sliced else (),
         )
-        assert all(
-            inside_quantile_support(float(v), positive, negative) for v in mapped
+        (row,) = decode_support_bounds(bounds).document["columns"]
+        return row
+
+    def test_a_value_inside_another_components_bands_is_outside(self) -> None:
+        # E2: 150 in component a passes only on b's bands.
+        row = self._run(
+            (5.0, 150.0, 0.0, 120.0, 0.0, 9.0), ["a", "a", "a", "b", "b", "b"]
         )
-        assert all(mapped[values == 0] == 0)
+        assert row["records_outside"] == 2  # 150 in a, 9 in b
+        assert (row["expected_min"], row["expected_max"]) == (-200.0, 200.0)
+        inside = self._run(
+            (5.0, 7.0, 0.0, 120.0, 0.0, 150.0), ["a", "a", "a", "b", "b", "b"]
+        )
+        assert inside["records_outside"] == 0
+
+    def test_a_code_without_bands_is_outside(self) -> None:
+        row = self._run(
+            (5.0, 7.0, 0.0, 120.0, 0.0, 150.0), ["a", "a", "a", "b", "b", "c"]
+        )
+        assert row["records_outside"] == 1
+
+    def test_a_missing_component_column_is_refused_by_name(self) -> None:
+        with pytest.raises(ValueError, match=r"component column person\.wage_code"):
+            self._run((5.0,) * 6, ["a"] * 6, sliced=False)
+        with pytest.raises(ValueError, match=r"component column person\.None"):
+            self._run((5.0,) * 6, ["a"] * 6, roster=self._roster(None))
 
 
 class TestNormalizedSupport:
