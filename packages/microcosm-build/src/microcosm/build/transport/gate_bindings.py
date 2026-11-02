@@ -1275,6 +1275,11 @@ def _closure_rows(
             )
         failures += [f"{label}: gap {name}." for name in row["gap"]]
         failures += [
+            f"{label}: relation input {item} is missing from the producer's "
+            "frame slice."
+            for item in row["relation_missing"]
+        ]
+        failures += [
             f"{label}: {name} is closed but is not a live root."
             for name in row["unexpected"]
         ]

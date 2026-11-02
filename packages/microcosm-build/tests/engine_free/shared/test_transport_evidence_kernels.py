@@ -16,6 +16,7 @@ import ast
 import copy
 import hashlib
 import json
+import re
 import subprocess
 import sys
 from dataclasses import replace
@@ -384,6 +385,8 @@ class TestImplementationHashes:
                 "microcosm.frame.concepts",
                 "microcosm.frame.adapters.axiom_input_surface",
                 "microcosm.frame.adapters.axiom",
+                # S2: the producer calls schema.entity_id_column.
+                "microcosm.frame.schema",
                 "microcosm.graph.canonical",
                 "microcosm.build.transport.evidence_contract",
             ),
@@ -485,6 +488,133 @@ class TestImplementationHashes:
         # bindings did not already reach.
         assert len(without | (leaf & without)) <= 197
         assert len(modules) == len(without) + len(leaf - without) + len(leaf & without)
+
+
+# ---------------------------------------------------------------------------
+# Module-list completeness, traced (S2)
+# ---------------------------------------------------------------------------
+
+
+#: Framework modules a kernel's run() executes that its list may leave out,
+#: each with its reason. Only code the executor hands every kernel fits here,
+#: and ``test_no_registered_kernel_lists_an_excluded_module`` checks that no
+#: registered kernel's ``source_hash`` reads any of them.
+TRACE_EXCLUSIONS: dict[str, dict[str, str]] = {
+    ref: {
+        "microcosm.graph.kernel": (
+            "KernelContext and KernelResult, the executor's interface to every "
+            "kernel; an edit there re-keys every node through the executor."
+        ),
+    }
+    for ref in (DONOR_RECEIPT_REF, INPUT_CLOSURE_REF)
+}
+
+
+def _microcosm_module_files() -> dict[str, str]:
+    files = {}
+    for name, module in list(sys.modules.items()):
+        path = getattr(module, "__file__", None)
+        if name.startswith("microcosm.") and path:
+            files[str(Path(path).resolve())] = name
+    return files
+
+
+def _traced(run) -> set[str]:
+    """Every ``microcosm.*`` module whose Python functions ``run()`` calls."""
+
+    called: set[str] = set()
+
+    def profile(frame, event, arg):
+        if event == "call":
+            called.add(frame.f_code.co_filename)
+
+    sys.setprofile(profile)
+    try:
+        run()
+    finally:
+        sys.setprofile(None)
+    files = _microcosm_module_files()
+    return {
+        files[path]
+        for path in (str(Path(name).resolve()) for name in called if name[:1] != "<")
+        if path in files
+    }
+
+
+def _unlisted(ref: str, traced: set[str], modules=None) -> set[str]:
+    listed = set((modules or EVIDENCE_KERNEL_MODULES)[ref])
+    return traced - listed - set(TRACE_EXCLUSIONS.get(ref, {}))
+
+
+@pytest.fixture(scope="module")
+def kernel_traces(toy, donor, tmp_path_factory):
+    """Each evidence kernel's run() on the fixtures these tests already use."""
+
+    frame = _frame(toy.spec["resources"]["axiom_input_closure"])
+    payload = donor.read_bytes()
+    receipt = _context(
+        frame,
+        _receipt_node(_sha(payload), len(payload)),
+        sources={"donor_pool": donor},
+    )
+    traces = {DONOR_RECEIPT_REF: _traced(lambda: TRANSPORT_DONOR_RECEIPT.run(receipt))}
+    toy_closure = _context(frame, _closure_node(toy))
+    kernel = _closure_kernel(toy)
+    closure = _traced(lambda: kernel.run(toy_closure))
+    # The closure kernel's AxiomEngine branch, with a relation input.
+    node, kernel = _relation_world(tmp_path_factory.mktemp("trace"), _TOY_RELATION)
+    context = _relation_context(_relation_frame({"member_income": np.ones(3)}), node)
+    closure |= _traced(lambda: kernel.run(context))
+    traces[INPUT_CLOSURE_REF] = closure
+    return traces
+
+
+class TestModuleListsAreComplete:
+    @pytest.mark.parametrize("ref", (DONOR_RECEIPT_REF, INPUT_CLOSURE_REF))
+    def test_every_module_a_kernel_runs_is_listed(self, kernel_traces, ref) -> None:
+        # Under-listing serves stale results: an edit to an unlisted module
+        # leaves implementation_hash() unchanged.
+        assert ref in kernel_traces
+        assert _unlisted(ref, kernel_traces[ref]) == set()
+
+    def test_the_closure_kernel_runs_the_schema_module(self, kernel_traces) -> None:
+        # Mutant: the closure kernel's list loses microcosm.frame.schema,
+        # whose entity_id_column the producer calls.
+        assert "microcosm.frame.schema" in kernel_traces[INPUT_CLOSURE_REF]
+        shortened = dict(EVIDENCE_KERNEL_MODULES)
+        shortened[INPUT_CLOSURE_REF] = tuple(
+            name
+            for name in shortened[INPUT_CLOSURE_REF]
+            if name != "microcosm.frame.schema"
+        )
+        assert _unlisted(
+            INPUT_CLOSURE_REF, kernel_traces[INPUT_CLOSURE_REF], shortened
+        ) == {"microcosm.frame.schema"}
+
+    def test_no_registered_kernel_lists_an_excluded_module(self, toy) -> None:
+        # Record every source file source_hash reads while each registered
+        # kernel computes its implementation hash.
+        from microcosm.graph import kernel as kernel_module
+
+        read: set[str] = set()
+        real = kernel_module.Path
+
+        def recording(*args, **kwargs):
+            path = real(*args, **kwargs)
+            read.add(str(path.resolve()))
+            return path
+
+        registry = toy.registry.kernels
+        refs = list(registry.refs()) if hasattr(registry, "refs") else list(registry)
+        with pytest.MonkeyPatch.context() as patch:
+            patch.setattr(kernel_module, "Path", recording)
+            for ref in refs:
+                registry.get(ref).implementation_hash()
+        files = _microcosm_module_files()
+        hashed = {files[path] for path in read if path in files}
+        assert evidence_contract.__name__ in hashed
+        excluded = {name for rows in TRACE_EXCLUSIONS.values() for name in rows}
+        assert not excluded & hashed, excluded & hashed
 
 
 # ---------------------------------------------------------------------------
@@ -812,13 +942,26 @@ class TestClosurePartition:
     @PROPERTY
     @given(data=st.data())
     def test_property_every_live_root_lands_in_exactly_one_class(self, data) -> None:
+        # Draws subsets of the committed NZ roots, roots on a second mapped
+        # entity, and relation inputs whose columns the frame carries or
+        # lacks, and reads the roots through engine_root_inputs on a fake
+        # AxiomEngine, as the producer does.
+        from types import SimpleNamespace
+
         closure, bindings, surface, mapping = _nz()
-        rows = bindings["bindings"]
-        roots = {}
+        entity_names = bindings["entity_names"]
+        to_frame = {engine: frame for frame, engine in entity_names.items()}
+        rows = copy.deepcopy(bindings["bindings"])
+        engines = {}
+        person_columns: set[str] = set()
+        expected_relation: dict[str, set[str]] = {}
+        expected_gap: dict[str, set[str]] = {}
         for row in rows:
             module = surface.modules[row["rulespec_path"]]
-            roots[row["id"]] = {}
+            programs: dict[str, set[str]] = {}
             for entity, names in module.inputs.items():
+                if entity not in to_frame:
+                    continue
                 keep = data.draw(
                     st.lists(st.sampled_from(names), unique=True), label=row["id"]
                 )
@@ -829,9 +972,64 @@ class TestClosurePartition:
                         max_size=3,
                     )
                 )
-                roots[row["id"]][entity] = tuple(keep) + tuple(extra)
+                programs.setdefault(to_frame[entity], set()).update(keep, extra)
+            # A module whose roots sit on two mapped entities.
+            second = data.draw(
+                st.sampled_from(sorted(set(to_frame.values()))), label="second"
+            )
+            programs.setdefault(second, set()).update(
+                data.draw(
+                    st.lists(
+                        st.from_regex(r"y_[a-z]{1,6}", fullmatch=True),
+                        unique=True,
+                        max_size=2,
+                    )
+                )
+            )
+            relations = []
+            for index in range(data.draw(st.integers(0, 2), label="relations")):
+                name = f"r_{row['id']}_{index}"
+                root = data.draw(st.sampled_from(("household", "family")))
+                present = data.draw(st.booleans(), label="column present")
+                column = f"c_{row['id']}_{index}"
+                if present:
+                    person_columns.add(column)
+                    expected_relation.setdefault(row["id"], set()).add(
+                        f"{entity_names[root]}.{name}"
+                    )
+                else:
+                    expected_gap.setdefault(row["id"], set()).add(
+                        f"{entity_names[root]}.{name}"
+                    )
+                relations.append(
+                    {
+                        **_TOY_RELATION,
+                        "predicate": f"p{index}",
+                        "key": f"p{index}:0:1",
+                        "root_entity": root,
+                        "membership_column": f"person_{root}_id",
+                        "related_inputs": {name: column},
+                    }
+                )
+            if relations:
+                row["relations"] = relations
+            engine = _fake_axiom(Path(row["rulespec_path"]))
+            engine._programs = {
+                frame: (
+                    SimpleNamespace(root_inputs=tuple(sorted(programs[frame])))
+                    if frame in programs
+                    else None
+                )
+                for frame in SCHEMA.entities
+            }
+            engines[row["id"]] = engine
+        roots = {
+            row["id"]: evidence_kernels.engine_root_inputs(
+                engines[row["id"]], row, entity_names
+            )
+            for row in rows
+        }
         # Unreached declarations only hold over their live roots.
-        rows = copy.deepcopy(rows)
         for row in rows:
             declaration = row.get("unreached_roots")
             if declaration:
@@ -850,7 +1048,9 @@ class TestClosurePartition:
                 r["id"]: surface.modules[r["rulespec_path"]].sha256 for r in rows
             },
             module_imports={},
-            mapped_entities=bindings["entity_names"].values(),
+            mapped_entities=entity_names.values(),
+            frame_columns={"person": frozenset(person_columns)},
+            entity_names=entity_names,
         )
         for row in result["modules"]:
             placed = [
@@ -863,7 +1063,13 @@ class TestClosurePartition:
                 *row["gap"],
             ]
             assert sorted(placed) == row["roots"]
+            assert len(set(placed)) == len(placed)
             assert sum(partition_counts(row).values()) == len(row["roots"])
+            relation = {item["input"] for item in row["relation"]}
+            assert relation == expected_relation.get(row["binding"], set())
+            assert expected_gap.get(row["binding"], set()) <= set(row["gap"])
+        # No relation input, present or absent, reaches the closure check.
+        assert not [line for line in result["check"] if ".r_" in line]
 
 
 def _empty_mapping() -> ConceptMapping:
@@ -932,7 +1138,7 @@ class TestRelations:
             for item in binding_relation_inputs(row)
         ] == expected
 
-    def _partition(self, frame_columns):
+    def _partition(self, frame_columns, *, relations=None, whole=False):
         rows = [
             {
                 "id": "toy_relation",
@@ -940,7 +1146,7 @@ class TestRelations:
                 "sha256": "a" * 64,
                 "engine_entity": "Family",
                 "variables": ["x"],
-                "relations": [_TOY_RELATION],
+                "relations": relations or [_TOY_RELATION],
             }
         ]
         closure = InputClosure(
@@ -957,7 +1163,7 @@ class TestRelations:
             knobs=(),
             entries=(),
         )
-        return closure_partition(
+        result = closure_partition(
             closure,
             _empty_mapping(),
             rows,
@@ -971,7 +1177,8 @@ class TestRelations:
                 "household": "Household",
                 "family": "Family",
             },
-        )["modules"][0]
+        )
+        return result if whole else result["modules"][0]
 
     def test_a_relation_input_with_its_physical_column_is_a_relation(self) -> None:
         row = self._partition({"person": frozenset({"member_income"})})
@@ -988,6 +1195,224 @@ class TestRelations:
         row = self._partition({"person": frozenset({"other"})})
         assert row["relation"] == []
         assert row["gap"] == ["Family.toy_member_income"]
+
+    def test_a_declared_role_column_the_frame_lacks_is_a_gap(self) -> None:
+        # S4: the relation branch also requires a declared role column.
+        relation = {**_TOY_RELATION, "role_column": "role", "roles": ["head"]}
+        row = self._partition(
+            {"person": frozenset({"member_income"})}, relations=[relation]
+        )
+        assert row["relation"] == []
+        assert row["gap"] == ["Family.toy_member_income"]
+        assert row["relation_missing"] == ["Family.toy_member_income: person.role"]
+        both = self._partition(
+            {"person": frozenset({"member_income", "role"})}, relations=[relation]
+        )
+        assert both["gap"] == []
+        assert [item["role_column"] for item in both["relation"]] == ["role"]
+
+    def test_a_valid_relation_input_is_no_check_problem(self) -> None:
+        # S3: a relation input has no closure entry, so the checker's surface
+        # leaves it out; the partition still classes it.
+        result = self._partition({"person": frozenset({"member_income"})}, whole=True)
+        assert result["check"] == []
+        assert [item["input"] for item in result["modules"][0]["relation"]] == [
+            "Family.toy_member_income"
+        ]
+        absent = self._partition({"person": frozenset()}, whole=True)
+        assert absent["check"] == []
+        assert absent["modules"][0]["gap"] == ["Family.toy_member_income"]
+
+
+# ---------------------------------------------------------------------------
+# Relation inputs on a real AxiomEngine (S1, S3, S4)
+# ---------------------------------------------------------------------------
+
+
+_ENTITY_NAMES = {"person": "Person", "household": "Household", "family": "Family"}
+
+
+def _fake_axiom(module: Path, root_inputs=()):
+    """An ``AxiomEngine`` whose family program reads ``root_inputs`` only.
+
+    The engine keeps relation inputs out of ``root_inputs``; ``variables()``
+    adds them from the declared manifests.
+    """
+
+    from types import SimpleNamespace
+
+    from microcosm.frame.adapters.axiom import AxiomEngine
+
+    engine = object.__new__(AxiomEngine)
+    engine._schema = SCHEMA
+    engine._entity_names = dict(_ENTITY_NAMES)
+    engine._module = module
+    engine._programs = {
+        "person": None,
+        "household": None,
+        "family": SimpleNamespace(root_inputs=tuple(root_inputs)),
+    }
+    assert isinstance(engine, AxiomEngine)
+    return engine
+
+
+def _relation_world(tmp_path: Path, relation: dict, *, root_inputs=()):
+    module = tmp_path / "toy" / "relation.yaml"
+    module.parent.mkdir(parents=True, exist_ok=True)
+    module.write_bytes(b"format: rulespec\nrules: []\n")
+    sha = _sha(module.read_bytes())
+    closure = InputClosure(
+        country="xx",
+        content_basis="transport",
+        mapping_engine="none",
+        mapping_engine_version="none",
+        surface_rulespec_commit="r",
+        surface_engine_repository="engine",
+        surface_engine_commit="e",
+        modules={"toy/relation.yaml": sha},
+        engine_optional_evidence="Synthetic.",
+        undetermined=_nz()[0].undetermined,
+        knobs=(),
+        entries=(),
+    ).to_dict()
+    bindings = {
+        "entity_names": dict(_ENTITY_NAMES),
+        "engine": {"commit": "e"},
+        "rulespec": {"commit": "r"},
+        "bindings": [
+            {
+                "id": "toy_relation",
+                "rulespec_path": "toy/relation.yaml",
+                "sha256": sha,
+                "engine_entity": "Family",
+                "variables": ["x"],
+                "relations": [relation],
+            }
+        ],
+    }
+    mapping = _empty_mapping().to_dict()
+    refs = {"engine_refs": {"toy_relation": "axiom:toy_relation"}}
+    node = Node(
+        "toy.evidence.input_closure",
+        INPUT_CLOSURE_REF,
+        inputs=(Slice("person", ("member_income", "role")),),
+        params={
+            "closure": _text(closure),
+            "closure_sha256": _sha(canonical_json(closure)),
+            "mapping": _text(mapping),
+            "mapping_sha256": _sha(canonical_json(mapping)),
+            "bindings": _text(bindings),
+            "bindings_sha256": _sha(canonical_json(bindings)),
+            "engine_refs": _text(refs),
+        },
+        artifact_outputs=(ArtifactOutput(AXIOM_INPUT_CLOSURE, INPUT_CLOSURE_TYPE),),
+    )
+    engine = _fake_axiom(module, root_inputs)
+    return node, TransportInputClosureKernel({"axiom:toy_relation": engine})
+
+
+def _relation_frame(columns: dict) -> Frame:
+    person = pd.DataFrame(
+        {
+            "person_id": np.array([1, 2, 3], dtype=np.int64),
+            "person_household_id": np.array([10, 10, 20], dtype=np.int64),
+            "person_family_id": np.array([100, 100, 200], dtype=np.int64),
+            **columns,
+        }
+    )
+    return Frame(
+        {
+            "person": person,
+            "household": pd.DataFrame({"household_id": np.array([10, 20])}),
+            "family": pd.DataFrame({"family_id": np.array([100, 200])}),
+        },
+        SCHEMA,
+        {"household": Weights(np.ones(2), WeightKind.DESIGN)},
+        metadata={"content_basis": "transport", "donor_time_period": 2024},
+    )
+
+
+def _relation_context(frame: Frame, node: Node) -> KernelContext:
+    tables = {}
+    for item in node.inputs:
+        table = frame.table(item.entity)
+        wanted = [
+            SCHEMA.entity_id_column(item.entity),
+            *(SCHEMA.membership_column(g) for g in SCHEMA.group_entities),
+            *item.columns,
+        ]
+        tables[item.entity] = table.loc[:, [c for c in wanted if c in table.columns]]
+    return KernelContext(
+        node=node,
+        tables=tables,
+        weights={},
+        strata=frame.strata,
+        params=node.params,
+        rng=np.random.default_rng(0),
+        sources={},
+        artifacts={},
+        frame_metadata=frame.metadata,
+    )
+
+
+class TestRelationInputsOnAnAxiomEngine:
+    def _run(self, tmp_path, relation, columns, **kwargs):
+        node, kernel = _relation_world(tmp_path, relation, **kwargs)
+        payload = kernel.run(_relation_context(_relation_frame(columns), node))
+        return decode_input_closure(payload.artifacts[AXIOM_INPUT_CLOSURE]).document
+
+    def test_the_engine_partition_adds_each_declared_relation_input(
+        self, tmp_path
+    ) -> None:
+        # S1: the program reads no root input; the relation input reaches the
+        # partition on the manifest's root entity, as variables() lists it.
+        engine = _fake_axiom(tmp_path / "m.yaml")
+        row = {"id": "b", "relations": [_TOY_RELATION]}
+        assert evidence_kernels.engine_root_inputs(engine, row, _ENTITY_NAMES) == {
+            "Family": ("toy_member_income",)
+        }
+
+    def test_a_present_column_is_one_relation_row(self, tmp_path) -> None:
+        document = self._run(tmp_path, _TOY_RELATION, {"member_income": np.ones(3)})
+        (row,) = document["modules"]
+        assert row["relation"] == [
+            {
+                "input": "Family.toy_member_income",
+                "column": "member_income",
+                "role_column": None,
+            }
+        ]
+        assert row["gap"] == []
+        assert document["check"] == []
+        from microcosm.build.transport.gate_bindings import _closure_rows
+
+        failures, _ = _closure_rows(document, allow_engine_optional=False)
+        assert failures == []
+
+    def test_an_absent_column_is_a_gap_and_the_gate_fails(self, tmp_path) -> None:
+        document = self._run(tmp_path, _TOY_RELATION, {})
+        (row,) = document["modules"]
+        assert row["relation"] == []
+        assert row["gap"] == ["Family.toy_member_income"]
+        from microcosm.build.transport.gate_bindings import _closure_rows
+
+        failures, _ = _closure_rows(document, allow_engine_optional=False)
+        assert any("gap Family.toy_member_income" in line for line in failures)
+        assert any("person.member_income" in line for line in failures)
+
+    def test_an_absent_role_column_is_a_gap_naming_it(self, tmp_path) -> None:
+        # S4 through the producer.
+        relation = {**_TOY_RELATION, "role_column": "role", "roles": ["head"]}
+        document = self._run(tmp_path, relation, {"member_income": np.ones(3)})
+        (row,) = document["modules"]
+        assert row["gap"] == ["Family.toy_member_income"]
+        assert row["relation_missing"] == ["Family.toy_member_income: person.role"]
+        present = self._run(
+            tmp_path,
+            relation,
+            {"member_income": np.ones(3), "role": np.ones(3)},
+        )
+        assert present["modules"][0]["gap"] == []
 
 
 # ---------------------------------------------------------------------------
@@ -1394,6 +1819,102 @@ class TestCompositionChecks:
         component["variables"] = ["in_work_tax_credit_before_abatement"]
         with pytest.raises(ValueError, match="in_work_tax_credit_before_abatement"):
             compose._check_unreached_requests(mutant)
+
+    def test_a_literal_engine_reference_is_refused_too(self) -> None:
+        # C2: the component writes the prepared engine reference itself
+        # instead of {"binding": ...}; the check matches that spelling too.
+        refs = {"family_tax_credits": "synthetic:family_tax_credits"}
+        spec = compose.load_transport_spec("nz")
+        compose._check_unreached_requests(spec, refs)
+        mutant = copy.deepcopy(spec)
+        component = next(
+            component
+            for item in mutant["resources"]["scenarios"]["scenarios"]
+            for node in item.get("nodes", ())
+            for component in node.get("params", {}).get("components", ())
+            if component["engine_ref"]["binding"] == "family_tax_credits"
+        )
+        component["engine_ref"] = refs["family_tax_credits"]
+        compose._check_unreached_requests(mutant, refs)
+        component["variables"] = [
+            *component["variables"],
+            "in_work_tax_credit_before_abatement",
+        ]
+        with pytest.raises(ValueError, match="in_work_tax_credit_before_abatement"):
+            compose._check_unreached_requests(mutant, refs)
+        # A JSON-escaped spelling of the literal is the same request.
+        component["engine_ref"] = json.dumps(refs["family_tax_credits"])
+        with pytest.raises(ValueError, match="in_work_tax_credit_before_abatement"):
+            compose._check_unreached_requests(mutant, refs)
+
+    def test_composition_refuses_the_literal_spelling(self) -> None:
+        # C2 through compose_transport_graph, which runs the check before it
+        # composes anything.
+        import importlib.util
+
+        path = _BUILD.tests / "engine_free/shared/test_nz_transport_declarations.py"
+        module_spec = importlib.util.spec_from_file_location("_nz_decl_c2", path)
+        module = importlib.util.module_from_spec(module_spec)
+        module_spec.loader.exec_module(module)
+        spec, config = module._nz_composition_spec_and_config()
+        mutant = copy.deepcopy(spec)
+        literal = config.engine_refs["family_tax_credits"]
+        for item in mutant["resources"]["scenarios"]["scenarios"]:
+            for node in item.get("nodes", ()):
+                for component in node.get("params", {}).get("components", ()):
+                    if component["engine_ref"] == {
+                        **component["engine_ref"],
+                        "binding": "family_tax_credits",
+                    }:
+                        component["engine_ref"] = literal
+                        component["variables"] = [
+                            *component["variables"],
+                            "in_work_tax_credit_before_abatement",
+                        ]
+        with pytest.raises(ValueError, match="in_work_tax_credit_before_abatement"):
+            compose.compose_transport_graph(mutant, config)
+
+    def _closure_graph(self, slices, relation):
+        bindings = {
+            "entity_names": dict(_ENTITY_NAMES),
+            "bindings": [{"id": "toy_relation", "relations": [relation]}],
+        }
+        return _Graph(
+            [
+                Node(
+                    "toy.evidence.input_closure",
+                    INPUT_CLOSURE_REF,
+                    inputs=tuple(Slice(e, tuple(c)) for e, c in slices),
+                    params={"bindings": _text(bindings)},
+                )
+            ]
+        )
+
+    def test_a_closure_slice_without_its_relation_columns_is_refused(self, toy) -> None:
+        # S5: a Slice delivers only the columns it names, so composition
+        # refuses a closure node whose person slice omits a relation column.
+        relation = {**_TOY_RELATION, "role_column": "role", "roles": ["head"]}
+        compose._check_closure_relation_slices(
+            toy.spec,
+            self._closure_graph(
+                [("person", ("age", "member_income", "role"))], relation
+            ),
+        )
+        for columns, missing in (
+            (("age",), "['member_income', 'role']"),
+            (("age", "member_income"), "['role']"),
+            (("age", "role"), "['member_income']"),
+        ):
+            with pytest.raises(ValueError, match=re.escape(missing)):
+                compose._check_closure_relation_slices(
+                    toy.spec, self._closure_graph([("person", columns)], relation)
+                )
+        # The columns must sit on the person slice, not another entity's.
+        with pytest.raises(ValueError, match="toy.evidence.input_closure"):
+            compose._check_closure_relation_slices(
+                toy.spec,
+                self._closure_graph([("family", ("member_income", "role"))], relation),
+            )
 
 
 @pytest.fixture(scope="module")
