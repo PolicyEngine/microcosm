@@ -453,8 +453,9 @@ def test_export_candidate_columns_strip_ids_and_carry_the_weight() -> None:
     # The boundary drops the reviewed export exclusions, the internal
     # disability carriers, the salary-sacrifice pre-conversion pay carrier,
     # the landlord carrier, the FRS bonus carrier (microcosm#1340), the
-    # in-household care hours carrier (microcosm#1418), the value the
-    # regional home values replaced (microcosm#1112) and the household ISA
+    # in-household care hours carrier (microcosm#1418), the company car
+    # carriers (PolicyEngine/uk-autumn-budget-dashboard-2026#316), the value
+    # the regional home values replaced (microcosm#1112) and the household ISA
     # totals policyengine-uk sums from the person balances (microcosm#1415),
     # and nothing else.
     from microcosm.build.uk_runtime.frs_disability import (
@@ -462,6 +463,7 @@ def test_export_candidate_columns_strip_ids_and_carry_the_weight() -> None:
     )
     from microcosm.build.uk_runtime.frs_spine import (
         FRS_BONUS_CARRIER_COLUMN,
+        FRS_COMPANY_CAR_CARRIER_COLUMNS,
         FRS_IN_HOUSEHOLD_CARE_HOURS_COLUMN,
         FRS_LANDLORD_CARRIER_COLUMN,
     )
@@ -486,6 +488,7 @@ def test_export_candidate_columns_strip_ids_and_carry_the_weight() -> None:
         | {f"person.{FRS_LANDLORD_CARRIER_COLUMN}"}
         | {f"person.{FRS_BONUS_CARRIER_COLUMN}"}
         | {f"person.{FRS_IN_HOUSEHOLD_CARE_HOURS_COLUMN}"}
+        | {f"person.{column}" for column in FRS_COMPANY_CAR_CARRIER_COLUMNS}
         | {f"household.{RANK_BASIS_COLUMN}"}
         | {"household.cash_isa", "household.stocks_and_shares_isa"}
     )
@@ -527,6 +530,9 @@ def test_no_spine_column_writes_an_input_signed_at_the_engine_default() -> None:
         for column in stage.get(key, ())
     }
     assert "would_claim_tfc" in written
+    # The company_cars stage writes six of the company car inputs
+    # (PolicyEngine/uk-autumn-budget-dashboard-2026#316).
+    assert "company_car_list_price" in written
     assert not written & set(UK_ENGINE_DEFAULT_INPUTS)
 
 

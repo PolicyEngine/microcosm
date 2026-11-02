@@ -8,6 +8,6 @@ in `legacy_oracle_identity`), exactly this audited surface is cast to that
 dtype. No values, row order, column order, weights, strata, mass records,
 or metadata change.
 
-- `person`: `gender`, `marital_status`, `employment_status`, `employment_sector`, `aa_category`, `dla_sc_category`, `dla_m_category`, `pip_m_category`, `pip_dl_category`, `current_education`, `highest_education`, `person_support_channel`, `student_loan_plan`, `relationship_to_head`, `ons_family_role`, `capital_gains_asset_type`
+- `person`: `gender`, `marital_status`, `employment_status`, `employment_sector`, `aa_category`, `dla_sc_category`, `dla_m_category`, `pip_m_category`, `pip_dl_category`, `current_education`, `highest_education`, `person_support_channel`, `student_loan_plan`, `relationship_to_head`, `ons_family_role`, `capital_gains_asset_type`, `company_car_fuel_type`
 - `benunit`: `benunit_support_channel`, `uc_deduction_combination`
 - `household`: `region`, `tenure_type`, `accommodation_type`, `council_tax_band`, `brma`, `household_support_channel`, `source_household_key`, `ons_household_type`

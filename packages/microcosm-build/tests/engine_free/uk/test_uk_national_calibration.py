@@ -316,11 +316,15 @@ def _facts_for_reference(reference: LedgerTargetReference, value: float) -> list
     if reference.value_operation == "calendar_year_window":
         # A windowed row composes the fiscal years opening in Y-1 and Y from
         # one series; two equal annual facts resolve to the headline value.
+        # An OBR row takes each year from the EFO edition its map names.
+        tables = reference.ledger_selector.get("source_table_by_opening_year", {})
         facts = []
         for year in (reference.period - 1, reference.period):
             fact = _fact_for_reference(reference, value)
             fact["aggregate_fact_key"] += f":fy{year}"
             fact["period"] = {"type": "fiscal_year", "value": year}
+            if str(year) in tables:
+                fact["observed_measure"]["source_table"] = tables[str(year)]
             facts.append(fact)
         return facts
     if reference.name != "dwp.uc.households":
@@ -631,12 +635,18 @@ def test_chronicle_184_uc_and_obr_references_compile_fail_closed() -> None:
         [
             # The OBR total binds the two welfare-cap cells at the calendar-2025
             # window, so each cell's series needs the fiscal years opening in
-            # 2024 and 2025.
+            # 2024 and 2025, from the March and October 2026 EFOs.
             {
                 **_fact(concept=concept, source_name="obr", value=value),
                 "aggregate_fact_key": (
                     f"ledger.aggregate_fact.v2:obr-fixture-{concept}-fy{year}"
                 ),
+                "observed_measure": {
+                    **_fact(concept=concept, source_name="obr")["observed_measure"],
+                    "source_table": (
+                        f"EFO {edition} 2026 detailed forecast tables: expenditure"
+                    ),
+                },
                 "period": {"type": "fiscal_year", "value": year},
                 # Chronicle stamps OBR table 4.9's DWP lines with the
                 # geography DWP counts them over (microcosm#1300).
@@ -650,7 +660,7 @@ def test_chronicle_184_uc_and_obr_references_compile_fail_closed() -> None:
                 ("obr.universal_credit_in_cap", 40_000_000_000),
                 ("obr.universal_credit_outside_cap", 10_000_000_000),
             )
-            for year in (2024, 2025)
+            for year, edition in ((2024, "March"), (2025, "October"))
         ],
         references,
         country="uk",

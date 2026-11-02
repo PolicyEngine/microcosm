@@ -5386,6 +5386,205 @@ def test__given_a_year_to_measure_map_outside_a_window__then_reference_refuses()
         )
 
 
+_EFO_EDITIONS = {
+    "march": ("EFO March 2026 detailed forecast tables: receipts", "2026_03"),
+    "october": ("EFO October 2026 detailed forecast tables: receipts", "2026_10"),
+}
+
+
+def _edition_fact(
+    *,
+    opening_year: int,
+    value: float,
+    edition: str,
+    concept: str = "obr.income_tax",
+    assertion: str = "observation",
+) -> dict:
+    # OBR's EFO since PolicyEngine/chronicle#397: each line and year keeps its
+    # latest edition's number, so a window's two years sit in two tables.
+    table, month = _EFO_EDITIONS[edition]
+    line = concept.removeprefix("obr.")
+    fact = _cy_window_fact(
+        key=f"{line}_{edition}_fy{opening_year}",
+        value=value,
+        opening_year=opening_year,
+        measure_id="amount",
+        assertion=assertion,
+        period_type="fiscal_year",
+    )
+    fact["source"] = {**fact["source"], "source_name": "obr", "source_table": table}
+    fact["observed_measure"] = {
+        **fact["observed_measure"],
+        "source_name": "obr",
+        "source_table": table,
+        "source_concept": concept,
+    }
+    fact["layout"] = {
+        **fact["layout"],
+        "record_set_id": f"obr.efo_{month}.receipts.{line}.fy{opening_year}",
+        "groupby_value_id": line,
+    }
+    return fact
+
+
+def _two_edition_facts() -> list[dict]:
+    return [
+        _edition_fact(opening_year=2024, value=305.9, edition="march"),
+        _edition_fact(opening_year=2025, value=329.3, edition="october"),
+        _edition_fact(
+            opening_year=2026,
+            value=365.4,
+            edition="october",
+            assertion="source_projection",
+        ),
+    ]
+
+
+_TWO_EDITION_SELECTOR = {
+    "source_name": "obr",
+    "source_concept": "obr.income_tax",
+    "geography_level": "country",
+    "geography_id": "0100000US",
+    "source_table_by_opening_year": {
+        "2024": _EFO_EDITIONS["march"][0],
+        "2025": _EFO_EDITIONS["october"][0],
+    },
+}
+
+
+def test__given_a_year_to_table_map__then_calendar_year_window_reads_two_editions_as_one_series() -> (
+    None
+):
+    # A stale March projection of FY2025-26 matches no entry of the map.
+    facts = [
+        *_two_edition_facts(),
+        _edition_fact(
+            opening_year=2025,
+            value=327.0,
+            edition="march",
+            assertion="source_projection",
+        ),
+    ]
+    registry = compile_ledger_target_references(
+        facts,
+        [_cy_window_reference(ledger_selector=_TWO_EDITION_SELECTOR)],
+        country="uk",
+    )
+
+    spec = registry.specs[0]
+    assert spec.value == pytest.approx(0.25 * 305.9 + 0.75 * 329.3)
+    assert spec.metadata["ledger_calendar_year_window_series"] == "1"
+    members = json.loads(spec.metadata["ledger_calendar_year_window_members"])
+    assert {year: member["fact_key"] for year, member in members.items()} == {
+        "2024": "ledger.aggregate_fact.v2:income_tax_march_fy2024",
+        "2025": "ledger.aggregate_fact.v2:income_tax_october_fy2025",
+    }
+    assert spec.metadata["ledger_resolved_assertion"] == "observation"
+
+
+def test__given_two_editions_without_the_table_map__then_calendar_year_window_refuses() -> (
+    None
+):
+    # Each edition's record set is its own series, so neither carries both years.
+    selector = {
+        key: value
+        for key, value in _TWO_EDITION_SELECTOR.items()
+        if key != "source_table_by_opening_year"
+    }
+
+    with pytest.raises(ValueError, match="from one series; found \\[2024, 2025\\]"):
+        compile_ledger_target_references(
+            _two_edition_facts(),
+            [_cy_window_reference(ledger_selector=selector)],
+            country="uk",
+        )
+
+
+def test__given_a_year_to_table_map__then_a_fact_matches_only_its_own_year() -> None:
+    march_2024, october_2025, october_2026 = _two_edition_facts()
+    march_2025 = _edition_fact(opening_year=2025, value=327.0, edition="march")
+
+    assert selector_field_is_supported("source_table_by_opening_year")
+    assert fact_matches_selector(march_2024, _TWO_EDITION_SELECTOR)
+    assert fact_matches_selector(october_2025, _TWO_EDITION_SELECTOR)
+    assert not fact_matches_selector(march_2025, _TWO_EDITION_SELECTOR)
+    assert not fact_matches_selector(october_2026, _TWO_EDITION_SELECTOR)
+
+
+def test__given_a_year_to_table_map_over_two_concepts__then_each_is_windowed_across_editions() -> (
+    None
+):
+    # OBR's two universal credit cells, inside and outside the welfare cap.
+    facts = [
+        _edition_fact(opening_year=year, value=value, edition=edition, concept=concept)
+        for concept, values in (
+            ("obr.universal_credit_in_cap", (40.0, 45.0)),
+            ("obr.universal_credit_outside_cap", (30.0, 33.0)),
+        )
+        for year, edition, value in zip(
+            (2024, 2025), ("march", "october"), values, strict=True
+        )
+    ]
+    reference = _cy_window_reference(
+        ledger_selector={
+            **_TWO_EDITION_SELECTOR,
+            "source_concept": [
+                "obr.universal_credit_in_cap",
+                "obr.universal_credit_outside_cap",
+            ],
+        }
+    )
+    registry = compile_ledger_target_references(facts, [reference], country="uk")
+
+    spec = registry.specs[0]
+    assert spec.value == pytest.approx(0.25 * (40.0 + 30.0) + 0.75 * (45.0 + 33.0))
+    assert spec.metadata["ledger_calendar_year_window_series"] == "2"
+
+
+@pytest.mark.parametrize(
+    ("overrides", "message"),
+    [
+        (
+            {"source_table": _EFO_EDITIONS["october"][0]},
+            "declares both 'source_table'",
+        ),
+        (
+            {
+                "source_table_by_opening_year": {
+                    "FY2024": _EFO_EDITIONS["march"][0],
+                    "2025": _EFO_EDITIONS["october"][0],
+                }
+            },
+            "four-digit opening year",
+        ),
+        ({"source_table_by_opening_year": {}}, "non-empty mapping"),
+        (
+            {
+                "source_measure_id_by_opening_year": {
+                    "2024": "amount",
+                    "2025": "amount",
+                }
+            },
+            "by measure or by table, not both",
+        ),
+    ],
+)
+def test__given_a_malformed_year_to_table_map__then_the_window_refuses(
+    overrides, message
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        _cy_window_reference(ledger_selector={**_TWO_EDITION_SELECTOR, **overrides})
+
+
+def test__given_a_year_to_table_map_outside_a_window__then_reference_refuses() -> None:
+    with pytest.raises(
+        ValueError, match="composes the years of a calendar_year_window"
+    ):
+        _cy_window_reference(
+            ledger_selector=_TWO_EDITION_SELECTOR, value_operation="identity"
+        )
+
+
 @pytest.mark.parametrize(
     ("value", "normalized"),
     [
@@ -5764,6 +5963,40 @@ def test__given_a_window_and_a_pinned_quotient__then_the_window_is_translated() 
     # The window's latest year carries the identity; the operands only
     # translate it.
     assert metadata["ledger_aggregate_fact_key"] == "ledger.aggregate_fact.v2:fy2025"
+
+
+def test__given_a_year_to_table_map__then_the_scaled_window_reads_two_editions() -> (
+    None
+):
+    # The OBR's SDLT line since PolicyEngine/chronicle#397: FY2024-25 in the
+    # March edition, FY2025-26 on in October's.
+    facts = _window_ratio_facts()
+    for fact in facts[:3]:
+        year = fact["period"]["value"]
+        table, month = _EFO_EDITIONS["march" if year == 2024 else "october"]
+        fact["source"] = {**fact["source"], "source_table": table}
+        fact["observed_measure"] = {**fact["observed_measure"], "source_table": table}
+        fact["layout"] = {
+            **fact["layout"],
+            "record_set_id": f"obr.efo_{month}.receipts.sdlt.fy{year}",
+        }
+    reference = _window_ratio_reference(
+        ledger_selector={
+            "source_name": "irs_soi",
+            "source_measure_id": "total_tax_amount",
+            "geography_level": "country",
+            "geography_id": "0100000US",
+            "source_table_by_opening_year": {
+                "2024": _EFO_EDITIONS["march"][0],
+                "2025": _EFO_EDITIONS["october"][0],
+            },
+        }
+    )
+    registry = compile_ledger_target_references(facts, [reference], country="uk")
+
+    assert registry.specs[0].value == pytest.approx(
+        (0.25 * 304.0 + 0.75 * 329.0) * 60.0 / 80.0
+    )
 
 
 def test__given_a_complement_numerator__then_its_cells_come_off_the_universe() -> None:

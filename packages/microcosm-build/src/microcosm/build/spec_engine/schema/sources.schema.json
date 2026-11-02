@@ -13646,6 +13646,278 @@
       "fenced_fact_count",
       "kind"
      ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "household_key",
+      "household_weight",
+      "has_company_vehicle",
+      "vehicles",
+      "yes_code",
+      "car_code",
+      "electric_code",
+      "price_year"
+     ],
+     "properties": {
+      "kind": {
+       "const": "clean_was_company_car_donor"
+      },
+      "household_key": {
+       "type": "string"
+      },
+      "household_weight": {
+       "type": "string"
+      },
+      "has_company_vehicle": {
+       "type": "string"
+      },
+      "vehicles": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+         "car_or_van",
+         "fuel",
+         "list_price"
+        ],
+        "properties": {
+         "car_or_van": {
+          "type": "string"
+         },
+         "fuel": {
+          "type": "string"
+         },
+         "list_price": {
+          "type": "string"
+         }
+        }
+       }
+      },
+      "yes_code": {
+       "type": "integer"
+      },
+      "car_code": {
+       "type": "integer"
+      },
+      "electric_code": {
+       "type": "integer"
+      },
+      "price_year": {
+       "type": "integer"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "outputs",
+      "diesel_fuel_type",
+      "unknown_fuel",
+      "seed",
+      "salt"
+     ],
+     "properties": {
+      "kind": {
+       "const": "assign_company_car_fuel_types"
+      },
+      "outputs": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "string"
+       }
+      },
+      "diesel_fuel_type": {
+       "enum": [
+        "DIESEL_RDE2",
+        "DIESEL_NON_RDE2"
+       ]
+      },
+      "unknown_fuel": {
+       "enum": [
+        "table_2c_shares_together_non_electric_with_private_fuel"
+       ]
+      },
+      "seed": {
+       "type": "integer"
+      },
+      "salt": {
+       "type": "string"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "outputs",
+      "bands",
+      "minimum_donor_households",
+      "open_band_fallback_upper_gbp",
+      "seed",
+      "salt"
+     ],
+     "properties": {
+      "kind": {
+       "const": "draw_company_car_list_prices"
+      },
+      "outputs": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "string"
+       }
+      },
+      "bands": {
+       "type": "object",
+       "minProperties": 1,
+       "additionalProperties": {
+        "type": "array",
+        "minItems": 2,
+        "maxItems": 2,
+        "items": {
+         "type": [
+          "number",
+          "null"
+         ]
+        }
+       }
+      },
+      "minimum_donor_households": {
+       "type": "integer"
+      },
+      "open_band_fallback_upper_gbp": {
+       "type": "number"
+      },
+      "seed": {
+       "type": "integer"
+      },
+      "salt": {
+       "type": "string"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "outputs",
+      "margins",
+      "top_band_upper_g_km",
+      "electric_range_miles",
+      "seed",
+      "salt"
+     ],
+     "properties": {
+      "kind": {
+       "const": "draw_company_car_co2_emissions"
+      },
+      "outputs": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "string"
+       }
+      },
+      "margins": {
+       "enum": [
+        "table_2a_nonzero_shares_hybrids_first"
+       ]
+      },
+      "top_band_upper_g_km": {
+       "type": "integer"
+      },
+      "electric_range_miles": {
+       "type": "number"
+      },
+      "seed": {
+       "type": "integer"
+      },
+      "salt": {
+       "type": "string"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "outputs",
+      "epb_column",
+      "benefits",
+      "minimum_scaled_list_price_gbp"
+     ],
+     "properties": {
+      "kind": {
+       "const": "carve_spi_company_car_benefits"
+      },
+      "outputs": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "string"
+       }
+      },
+      "epb_column": {
+       "type": "string"
+      },
+      "benefits": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "string"
+       }
+      },
+      "minimum_scaled_list_price_gbp": {
+       "type": "number"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "adjudication",
+      "calibration_permitted",
+      "classification_rationale",
+      "fact_fence_id",
+      "fenced_fact_composition",
+      "fenced_fact_count"
+     ],
+     "properties": {
+      "kind": {
+       "const": "classify_company_car_facts_with_reviewed_fence"
+      },
+      "adjudication": {
+       "type": "string"
+      },
+      "calibration_permitted": {
+       "const": false
+      },
+      "classification_rationale": {
+       "type": "string"
+      },
+      "fact_fence_id": {
+       "type": "string"
+      },
+      "fenced_fact_composition": {
+       "type": "string"
+      },
+      "fenced_fact_count": {
+       "type": "number"
+      }
+     }
     }
    ],
    "description": "Closed kind-discriminated source artifact and operation records, covering the packaged US, UK, and BE source vocabularies."

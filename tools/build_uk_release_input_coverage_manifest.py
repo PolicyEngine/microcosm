@@ -932,6 +932,12 @@ def build_manifest(
                 stage_name="isa_subscriptions",
                 candidate_source=candidate_source,
             ),
+            # PolicyEngine/uk-autumn-budget-dashboard-2026#316: the company cars
+            # declare their household-mass receipt like every other stage.
+            "company_cars": _source_stage_family_coverage_contract(
+                stage_name="company_cars",
+                candidate_source=candidate_source,
+            ),
             "nts_bus_travel": _source_stage_family_coverage_contract(
                 stage_name="nts_bus_travel",
                 candidate_source=candidate_source,

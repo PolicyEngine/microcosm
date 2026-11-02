@@ -1063,6 +1063,10 @@
         "source_name": "obr",
         "source_concept": "obr.income_tax",
         "entity_name": "person",
+        "source_table_by_opening_year": {
+          "2024": "EFO March 2026 detailed forecast tables: receipts",
+          "2025": "EFO October 2026 detailed forecast tables: receipts"
+        },
         "geography_level": "country",
         "geography_id": "K02000001"
       },
@@ -1083,6 +1087,10 @@
         "source_name": "obr",
         "source_concept": "obr.ni_employee",
         "entity_name": "person",
+        "source_table_by_opening_year": {
+          "2024": "EFO March 2026 detailed forecast tables: receipts",
+          "2025": "EFO October 2026 detailed forecast tables: receipts"
+        },
         "geography_level": "country",
         "geography_id": "K02000001"
       },
@@ -1103,6 +1111,10 @@
         "source_name": "obr",
         "source_concept": "obr.ni_employer",
         "entity_name": "person",
+        "source_table_by_opening_year": {
+          "2024": "EFO March 2026 detailed forecast tables: receipts",
+          "2025": "EFO October 2026 detailed forecast tables: receipts"
+        },
         "geography_level": "country",
         "geography_id": "K02000001"
       },
@@ -1123,6 +1135,10 @@
         "source_name": "obr",
         "source_concept": "obr.ni_self_employed",
         "entity_name": "person",
+        "source_table_by_opening_year": {
+          "2024": "EFO March 2026 detailed forecast tables: receipts",
+          "2025": "EFO October 2026 detailed forecast tables: receipts"
+        },
         "geography_level": "country",
         "geography_id": "K02000001"
       },
@@ -1143,6 +1159,10 @@
         "source_name": "obr",
         "source_concept": "obr.vat",
         "entity_name": "person",
+        "source_table_by_opening_year": {
+          "2024": "EFO March 2026 detailed forecast tables: receipts",
+          "2025": "EFO October 2026 detailed forecast tables: receipts"
+        },
         "geography_level": "country",
         "geography_id": "K02000001"
       },
@@ -1190,6 +1210,10 @@
         "source_name": "obr",
         "source_concept": "obr.sdlt",
         "entity_name": "person",
+        "source_table_by_opening_year": {
+          "2024": "EFO March 2026 detailed forecast tables: receipts",
+          "2025": "EFO October 2026 detailed forecast tables: receipts"
+        },
         "geography_level": "country",
         "geography_id": "K02000001"
       },
@@ -1239,6 +1263,10 @@
         "source_name": "obr",
         "source_concept": "obr.attendance_allowance",
         "entity_name": "person",
+        "source_table_by_opening_year": {
+          "2024": "EFO March 2026 detailed forecast tables: expenditure",
+          "2025": "EFO October 2026 detailed forecast tables: expenditure"
+        },
         "geography_level": "country",
         "geography_id": "K04000001"
       },
@@ -1259,6 +1287,10 @@
         "source_name": "obr",
         "source_concept": "obr.carers_allowance",
         "entity_name": "person",
+        "source_table_by_opening_year": {
+          "2024": "EFO March 2026 detailed forecast tables: expenditure",
+          "2025": "EFO October 2026 detailed forecast tables: expenditure"
+        },
         "geography_level": "country",
         "geography_id": "K04000001"
       },
@@ -1279,6 +1311,10 @@
         "source_name": "obr",
         "source_concept": "obr.child_benefit",
         "entity_name": "person",
+        "source_table_by_opening_year": {
+          "2024": "EFO March 2026 detailed forecast tables: expenditure",
+          "2025": "EFO October 2026 detailed forecast tables: expenditure"
+        },
         "geography_level": "country",
         "geography_id": "K02000001"
       },
@@ -1298,6 +1334,10 @@
       "ledger_selector": {
         "source_name": "obr",
         "source_concept": "obr.council_tax_receipts_england_scotland_wales",
+        "source_table_by_opening_year": {
+          "2024": "EFO March 2026 detailed forecast tables: expenditure",
+          "2025": "EFO October 2026 detailed forecast tables: expenditure"
+        },
         "geography_level": "country",
         "geography_id": "K02000001"
       },
@@ -1347,6 +1387,10 @@
       "ledger_selector": {
         "source_name": "obr",
         "source_concept": "obr.council_tax_england",
+        "source_table_by_opening_year": {
+          "2024": "EFO March 2026 detailed forecast tables: expenditure",
+          "2025": "EFO October 2026 detailed forecast tables: expenditure"
+        },
         "geography_level": "country",
         "geography_id": "K02000001"
       },
@@ -1396,6 +1440,10 @@
       "ledger_selector": {
         "source_name": "obr",
         "source_concept": "obr.council_tax_scotland",
+        "source_table_by_opening_year": {
+          "2024": "EFO March 2026 detailed forecast tables: expenditure",
+          "2025": "EFO October 2026 detailed forecast tables: expenditure"
+        },
         "geography_level": "country",
         "geography_id": "K02000001"
       },
@@ -1445,6 +1493,10 @@
       "ledger_selector": {
         "source_name": "obr",
         "source_concept": "obr.council_tax_wales",
+        "source_table_by_opening_year": {
+          "2024": "EFO March 2026 detailed forecast tables: expenditure",
+          "2025": "EFO October 2026 detailed forecast tables: expenditure"
+        },
         "geography_level": "country",
         "geography_id": "K02000001"
       },
@@ -1495,6 +1547,10 @@
         "source_name": "obr",
         "source_concept": "obr.domestic_rates",
         "entity_name": "person",
+        "source_table_by_opening_year": {
+          "2024": "EFO March 2026 detailed forecast tables: expenditure",
+          "2025": "EFO October 2026 detailed forecast tables: expenditure"
+        },
         "geography_level": "country",
         "geography_id": "K02000001"
       },
@@ -1515,6 +1571,10 @@
         "source_name": "obr",
         "source_concept": "obr.incapacity_benefits",
         "entity_name": "person",
+        "source_table_by_opening_year": {
+          "2024": "EFO March 2026 detailed forecast tables: expenditure",
+          "2025": "EFO October 2026 detailed forecast tables: expenditure"
+        },
         "geography_level": "country",
         "geography_id": "K03000001"
       },
@@ -1535,6 +1595,10 @@
         "source_name": "obr",
         "source_concept": "obr.housing_benefit",
         "entity_name": "person",
+        "source_table_by_opening_year": {
+          "2024": "EFO March 2026 detailed forecast tables: expenditure",
+          "2025": "EFO October 2026 detailed forecast tables: expenditure"
+        },
         "geography_level": "country",
         "geography_id": "K03000001"
       },
@@ -1555,6 +1619,10 @@
         "source_name": "obr",
         "source_concept": "obr.jobseekers_allowance",
         "entity_name": "person",
+        "source_table_by_opening_year": {
+          "2024": "EFO March 2026 detailed forecast tables: expenditure",
+          "2025": "EFO October 2026 detailed forecast tables: expenditure"
+        },
         "geography_level": "country",
         "geography_id": "K03000001"
       },
@@ -1575,6 +1643,10 @@
         "source_name": "obr",
         "source_concept": "obr.pension_credit",
         "entity_name": "person",
+        "source_table_by_opening_year": {
+          "2024": "EFO March 2026 detailed forecast tables: expenditure",
+          "2025": "EFO October 2026 detailed forecast tables: expenditure"
+        },
         "geography_level": "country",
         "geography_id": "K03000001"
       },
@@ -1595,6 +1667,10 @@
         "source_name": "obr",
         "source_concept": "obr.dla_and_pip",
         "entity_name": "person",
+        "source_table_by_opening_year": {
+          "2024": "EFO March 2026 detailed forecast tables: expenditure",
+          "2025": "EFO October 2026 detailed forecast tables: expenditure"
+        },
         "geography_level": "country",
         "geography_id": "K04000001"
       },
@@ -1615,6 +1691,10 @@
         "source_name": "obr",
         "source_concept": "obr.statutory_maternity_pay",
         "entity_name": "person",
+        "source_table_by_opening_year": {
+          "2024": "EFO March 2026 detailed forecast tables: expenditure",
+          "2025": "EFO October 2026 detailed forecast tables: expenditure"
+        },
         "geography_level": "country",
         "geography_id": "K03000001"
       },
@@ -1635,6 +1715,10 @@
         "source_name": "obr",
         "source_concept": "obr.tv_licence_fee",
         "entity_name": "person",
+        "source_table_by_opening_year": {
+          "2024": "EFO March 2026 detailed forecast tables: expenditure",
+          "2025": "EFO October 2026 detailed forecast tables: expenditure"
+        },
         "geography_level": "country",
         "geography_id": "K02000001"
       },
@@ -1654,7 +1738,6 @@
       "ledger_selector": {
         "source_name": "obr",
         "source_concept": "obr.winter_fuel_payment",
-        "source_table": "EFO March 2026 detailed forecast tables: expenditure",
         "entity_name": "person",
         "period_type": "fiscal_year",
         "period_value": 2025,
@@ -26120,6 +26203,10 @@
           "obr.universal_credit_outside_cap"
         ],
         "entity_name": "person",
+        "source_table_by_opening_year": {
+          "2024": "EFO March 2026 detailed forecast tables: expenditure",
+          "2025": "EFO October 2026 detailed forecast tables: expenditure"
+        },
         "geography_level": "country",
         "geography_id": "K03000001"
       },

@@ -445,6 +445,10 @@ stages:
   - salary_sacrifice_reported
   - salary_sacrifice_asked
   - frs_bonus_amount
+  - frs_company_car_price_band
+  - frs_company_car_fuel_code
+  - frs_company_car_private_fuel
+  - frs_company_car_contribution
   - child_benefit_reported
   - income_support_reported
   - housing_benefit_reported
@@ -533,7 +537,10 @@ stages:
   - external_child_payments
   - care_hours
   - frs_care_hours_in_household
-  notes: Root E2 spine assembly. It carries direct raw mappings only; education-grant aggregate and council-tax reported fields remain raw carriers for E3. Benefit take-up, BRMA/LHA assignment, stochastic flags, and imputations are intentionally absent from this stage, except two identity-keyed draws. One is the UC start-up claim recency (uk-data#527). The other is each person's months_since_last_birthday, which policyengine-uk reads to place a date of birth (the two-child limit, the State Pension scheme, the Pension Credit qualifying age). Each single year of age and sex is spread evenly over the year at the FRS weights, in an order set by a draw on the person's stable id, as the engine spreads it when the column is unset, and the column is stored so every later engine read, the calibration's and the release's included, takes the same months whatever weights or identifiers the file carries (microcosm#1095). The UC start-up period needs the raw claim, interview and job dates only this stage reads, so a UC record without a linked claim date takes its claim recency from a benefit-unit-keyed draw at the linked share. The 2024-25 househol.tab is not sernum-ordered; the declared household sort guards stable identity. care_hours carries the FRS banded care-hours code as weekly hours (lower band edge), and frs_care_hours_in_household the largest of the four in-household care bands (HOURAB, HOURAH, HOURCB, HOURCH) the same way, a stage-internal carrier the Carer's Allowance draw reads and the release drops (microcosm#1418); would_claim_carers_allowance follows reported receipt, so the engine keeps Carer's Allowance on reported claimants while the hours qualify carers for the Universal Credit carer element (#882); after the SPI income chain, carers_allowance_take_up opens the flag to carers the earnings limit alone keeps from the allowance (microcosm#1319). SEINCAM2, the self-employment income the respondent gives, splits by its sign (uk-data#528), so profits go to self_employment_income and losses to trading_loss as a positive amount, the two inputs policyengine-uk reads from 2.131.0 (pe-uk#2085). The engine uprates trading_loss into each projected year as it does self_employment_income, so a loss persists like a profit; the engine documents that a one-off loss would be set to zero in later years, which a one-year survey cannot tell apart. Six of policyengine-uk's eleven owned-company inputs (pe-uk#1965) come from the FRS job tab (microcosm#1095). A director (DIRECTOR 1 or NATURE 1) who owns at least half of the company (DIRPERC 1 to 3, the ruling of 2026-10-16) stands as its sole owner or partner and works in it. The company is their main employment when the job is their first (JOBTYPE 1); it carries on a property business when the main job's SIC division is 68 and a trade otherwise, and its income share is the dividends the job records (DIVIDEND, after tax), the part of the company's profit the survey sees. A company held in another job carries on neither, since ADULT.SIC codes the main job only, which leaves the engine's company-owner rules off for it. The stocks and the intermediaries inputs keep the engine's defaults.
+  - frs_company_car_price_band
+  - frs_company_car_fuel_code
+  - frs_company_car_contribution
+  notes: Root E2 spine assembly. It carries direct raw mappings only; education-grant aggregate and council-tax reported fields remain raw carriers for E3. Benefit take-up, BRMA/LHA assignment, stochastic flags, and imputations are intentionally absent from this stage, except two identity-keyed draws. One is the UC start-up claim recency (uk-data#527). The other is each person's months_since_last_birthday, which policyengine-uk reads to place a date of birth (the two-child limit, the State Pension scheme, the Pension Credit qualifying age). Each single year of age and sex is spread evenly over the year at the FRS weights, in an order set by a draw on the person's stable id, as the engine spreads it when the column is unset, and the column is stored so every later engine read, the calibration's and the release's included, takes the same months whatever weights or identifiers the file carries (microcosm#1095). The UC start-up period needs the raw claim, interview and job dates only this stage reads, so a UC record without a linked claim date takes its claim recency from a benefit-unit-keyed draw at the linked share. The 2024-25 househol.tab is not sernum-ordered; the declared household sort guards stable identity. care_hours carries the FRS banded care-hours code as weekly hours (lower band edge), and frs_care_hours_in_household the largest of the four in-household care bands (HOURAB, HOURAH, HOURCB, HOURCH) the same way, a stage-internal carrier the Carer's Allowance draw reads and the release drops (microcosm#1418); would_claim_carers_allowance follows reported receipt, so the engine keeps Carer's Allowance on reported claimants while the hours qualify carers for the Universal Credit carer element (#882); after the SPI income chain, carers_allowance_take_up opens the flag to carers the earnings limit alone keeps from the allowance (microcosm#1319). SEINCAM2, the self-employment income the respondent gives, splits by its sign (uk-data#528), so profits go to self_employment_income and losses to trading_loss as a positive amount, the two inputs policyengine-uk reads from 2.131.0 (pe-uk#2085). The engine uprates trading_loss into each projected year as it does self_employment_income, so a loss persists like a profit; the engine documents that a one-off loss would be set to zero in later years, which a one-year survey cannot tell apart. Six of policyengine-uk's eleven owned-company inputs (pe-uk#1965) come from the FRS job tab (microcosm#1095). A director (DIRECTOR 1 or NATURE 1) who owns at least half of the company (DIRPERC 1 to 3, the ruling of 2026-10-16) stands as its sole owner or partner and works in it. The company is their main employment when the job is their first (JOBTYPE 1); it carries on a property business when the main job's SIC division is 68 and a trade otherwise, and its income share is the dividends the job records (DIVIDEND, after tax), the part of the company's profit the survey sees. A company held in another job carries on neither, since ADULT.SIC codes the main job only, which leaves the engine's company-owner rules off for it. The stocks and the intermediaries inputs keep the engine's defaults. frs_company_car_price_band, frs_company_car_fuel_code, frs_company_car_private_fuel and frs_company_car_contribution carry each person's company car from the FRS job tab (CARVAL, FUELTYP, EXPBEN03, and CARAMT where CARCON is 1, on their EXPBEN01 job with the lowest JOBTYPE), stage-internal carriers the company_cars stage reads and the release drops (PolicyEngine/uk-autumn-budget-dashboard-2026#316).
 - stage: age_tail
   survey: Family Resources Survey 2024-25 and ONS mid-year population estimates
   source: Office for National Statistics mid-year population estimates for the 80+ age bands by sex, via the chronicle ledger facts the calibration register binds (target family ons_population).
@@ -2249,6 +2256,163 @@ stages:
   - private_pension_income_annual_share
   - contributory_benefits_annual_share
   notes: Runs the SPI-trained income QRFs on the raw-spine support channel, drawing for its claimants and partners aged 16 and over so dependants aged 16 to 19 keep their FRS twin's values (uk-data#504, microcosm#1095), initializes FRS charity columns to zero, trains FRS-only stage 2 on the FRS rows' reported values, flags the rows it drew (person_is_spi_income_recipient) so later stages tell tape-concept rows from FRS-concept ones without re-deriving the recipient rule (microcosm#840), leaves every FRS-channel income as reported (no base-channel redraw of dividends; uk-data#498, microcosm#1095), and emits a sidecar-only 208-fact replay report for the spine path. Stage 2 also draws trading_loss, the year's trading loss the tape does not carry, from the FRS rows (uk-data#528), and a drawn row whose self_employment_income is positive keeps no loss, so profit and loss never both hold an amount, as on the FRS rows (microcosm#1095). The chain draws self_employment_income net of the tape's losses brought forward (LOSSBF), as the tape holds profits, and last of all, so no earlier draw moves, the year's profit before them and the losses. After the FRS-only fill and the HMRC aggregates the stage moves the losses out of the profit into loss_relief and ni_class_4_losses_brought_forward, the inputs policyengine-uk relieves them against (income tax under ITA 2007 s.83, Class 4 under SSCBA 1992 Sch 2 para 3), so Universal Credit, HBAI and market income read the year's profit; where the drawn net profit is positive the losses are its gap to the year's profit and where it is zero they are at least that profit, so the profit after the relief is the drawn net profit on every row, which the HMRC aggregates and the HMRC self-employment rows read (uk-data#528, microcosm#1095). The engine carries both losses into each projected year at their nominal value while the profit grows with its index. Stage 2 draws the six owner-manager inputs last, the five flags as 0 or 1 and then the income share, so each follows the drawn incomes; the root stage's rules then hold on the drawn rows (an owner works in the company, its other inputs need an owner, and a company carries on a trade or a property business, never both), since the tape carries no director answers (microcosm#1095). A drawn row's annual income descriptors follow its drawn incomes. The tape records the tax year's income, so its pay, profit and private pension shares are 1, and its contributory benefits, stage-2 draws on the current concept with no spell of their own, take share 1 too. It keeps its twin's other-spell pay only where it drew no pay, and its twin's ceased self-employment only where it drew no profit, since the bridge draws a record without pay for a twin who left a job in the year. An undrawn copy keeps its twin's descriptors with its twin's incomes.
+- stage: company_cars
+  survey: Family Resources Survey 2024-25 job record; Wealth and Assets Survey round 8; HMRC Benefits in kind statistics (July 2026)
+  source: The FRS job record's company car answers through frs_spine's carriers (EXPBEN01, EXPBEN03, CARVAL, FUELTYP, CARCON, CARAMT), WAS round-8 company cars' list prices, and HMRC's 2024-25 company car recipients by CO2 band (Table 2A) and fuel (Table 2C), via the vendored facts
+  grain: person
+  artifacts:
+  - role: benefits_in_kind_facts
+    kind: public_aggregate_reference
+    resource: hmrc_benefits_in_kind_facts.json
+    format: json
+    runtime_sha256_required: true
+  - role: was_person_tab
+    kind: private_microdata
+    ukds_study_number: 7215
+    doi: 10.5255/UKDA-SN-7215-20
+    filename: was_round_8_person_eul_may_2025_230525.tab
+    format: tab
+    vintage: round_8
+    sha256: 1ca6fd37d9c677242112e0d7839df8b406eb1611db8322b20771f054e329d71a
+    size_bytes: 356930989
+    access: private_local_input
+    locator: caller-supplied local input
+    runtime_sha256_required: true
+  operations:
+  - kind: verify_vendored_fact_resource
+    artifact_role: benefits_in_kind_facts
+    resource: hmrc_benefits_in_kind_facts.json
+    feed_pin: chronicle_feed.json
+    record_sets:
+    - hmrc.benefits_in_kind_july_2026.table1.recipients.ty2024
+    - hmrc.benefits_in_kind_july_2026.table1.taxable_value.ty2024
+    - hmrc.benefits_in_kind_july_2026.table1.income_tax_liability.ty2024
+    - hmrc.benefits_in_kind_july_2026.table1.class_1a_nic_liability.ty2024
+    - hmrc.benefits_in_kind_july_2026.table2a.recipients.ty2024
+    - hmrc.benefits_in_kind_july_2026.table2c.recipients.ty2024
+    - hmrc.benefits_in_kind_july_2026.table3a.recipients.ty2024
+    - hmrc.benefits_in_kind_july_2026.table3a.taxable_value.ty2024
+    - hmrc.benefits_in_kind_july_2026.table3b.recipients.ty2024
+    - hmrc.benefits_in_kind_july_2026.table3b.taxable_value.ty2024
+    - hmrc.benefits_in_kind_july_2026.table4.recipients.ty2024
+    - hmrc.benefits_in_kind_july_2026.table4.taxable_value.ty2024
+    source_vintage: 2024-25, provisional (July 2026 release)
+    mapped_build_period: 2024
+    period_mapping: tax_year_2024_25_is_the_build_period
+    require_before_source_read: true
+    runtime_sha256_required: true
+    fail_on_mismatch: true
+  - kind: clean_was_company_car_donor
+    household_key: CASER8
+    household_weight: R8xshhwgt
+    has_company_vehicle: COMPVEHR8
+    vehicles:
+    - car_or_van: CARVAN1R8
+      fuel: PETROL1R8
+      list_price: LISTPR1R8
+    - car_or_van: CARVAN2R8
+      fuel: PETROL2R8
+      list_price: LISTPR2R8
+    - car_or_van: CARVAN3R8
+      fuel: PETROL3R8
+      list_price: LISTPR3R8
+    yes_code: 1
+    car_code: 1
+    electric_code: 4
+    price_year: 2021
+  - kind: assign_company_car_fuel_types
+    outputs:
+    - company_car_fuel_type
+    diesel_fuel_type: DIESEL_RDE2
+    unknown_fuel: table_2c_shares_together_non_electric_with_private_fuel
+    seed: 0
+    salt: company_cars:fuel_type
+  - kind: draw_company_car_list_prices
+    outputs:
+    - company_car_list_price
+    - company_car_capital_contributions
+    bands:
+      '1':
+      - 0.0
+      - 10000.0
+      '2':
+      - 10000.0
+      - 13000.0
+      '3':
+      - 13000.0
+      - 16000.0
+      '4':
+      - 16000.0
+      - 19000.0
+      '5':
+      - 19000.0
+      - 22000.0
+      '6':
+      - 22000.0
+      - 25000.0
+      '7':
+      - 25000.0
+      - 30000.0
+      '8':
+      - 30000.0
+      - 40000.0
+      '9':
+      - 40000.0
+      - null
+    minimum_donor_households: 3
+    open_band_fallback_upper_gbp: 80000.0
+    seed: 0
+    salt: company_cars:list_price
+  - kind: draw_company_car_co2_emissions
+    outputs:
+    - company_car_co2_emissions
+    - company_car_electric_range
+    margins: table_2a_nonzero_shares_hybrids_first
+    top_band_upper_g_km: 179
+    electric_range_miles: 50.0
+    seed: 0
+    salt: company_cars:co2
+  - kind: carve_spi_company_car_benefits
+    outputs:
+    - employment_income
+    - company_car_private_fuel_provided
+    - uc_is_in_gainful_self_employment
+    epb_column: hmrc_spi_employment_benefits
+    benefits:
+    - company_car_benefit
+    - car_fuel_benefit
+    minimum_scaled_list_price_gbp: 5000.0
+  - kind: record_mass_conservation_receipt
+    entity: household
+    reason: 'Company cars per employee from the FRS job record, WAS round-8 list prices and HMRC''s company car tables on the source spine: household weights pass through unchanged and total household mass is conserved.'
+    declared_factor: 1.0
+    gate_coupling: The terminal family gate requires a valid mass-conserving MassChangeRecord carrying exactly this stage-specific reason.
+  - kind: classify_company_car_facts_with_reviewed_fence
+    calibration_permitted: false
+    fact_fence_id: company_car_facts_imputation_seeds_measured_only
+    fenced_fact_count: 96
+    fenced_fact_composition: 'HMRC Benefits in kind statistics (July 2026): Table 1 car and car fuel benefit recipients, taxable value, income tax and NICs; Table 2A recipients by CO2 band; Table 2C recipients by fuel; Tables 3A and 3B recipients and taxable value by income range; Table 4 recipients by region'
+    classification_rationale: The stage draws fuel and CO2 to Tables 2A and 2C, so binding them in the weight solve would be circular. Comparing the calibrated file with Tables 1, 3A and 4 is a manual step for now; none blocks a build.
+    adjudication: https://github.com/PolicyEngine/uk-autumn-budget-dashboard-2026/issues/316
+  outputs:
+  - company_car_list_price
+  - company_car_co2_emissions
+  - company_car_fuel_type
+  - company_car_electric_range
+  - company_car_capital_contributions
+  - company_car_private_fuel_provided
+  - employment_income
+  - uc_is_in_gainful_self_employment
+  nonnegative_outputs:
+  - company_car_list_price
+  - company_car_co2_emissions
+  - company_car_electric_range
+  - company_car_capital_contributions
+  - employment_income
+  rewrites:
+  - employment_income
+  - uc_is_in_gainful_self_employment
+  notes: 'Writes six of policyengine-uk 2.165.0''s company car inputs (PolicyEngine/uk-autumn-budget-dashboard-2026#316) right after the SPI income stage, so every later stage reads the tape rows'' pay without the car benefits, as the engine''s employment_income excludes them, and salary_sacrifice bounds its sacrifice on that pay (María''s ruling of 31 October 2026). An FRS-channel person keeps the company car frs_spine''s carriers record; a tape row of the SPI channel (person_is_spi_income_recipient) keeps its twin''s only where its drawn EPB is positive, and the channel''s other rows, which keep their twin''s pay, keep its car. Fuel maps from the FRS code (a hybrid is an alternative fuel; a diesel meets RDE2, which every new diesel has since January 2021), and the unknown fuels draw at Table 2C''s shares together: without electricity where the respondent reports private fuel, and with the others'' electric share raised to keep Table 2C''s at the stage''s weights. The list price is drawn within the respondent''s CARVAL band from WAS round-8 company cars'' prices grown by the engine''s CPI index from 2021, the open and unknown bands by fuel class, uniformly from no lower than minimum_scaled_list_price_gbp where a band has fewer than minimum_donor_households WAS households. CO2 is zero for an electric car; the others split between 1 to 50 g/km (hybrids first) and the bands above at Table 2A''s shares among cars that emit CO2, uniformly within each band, and a car at 1 to 50 g/km takes electric_range_miles. Availability, payments for private use and the 2020 registration flag keep the engine''s defaults, which no survey records. A tape row''s pay is the tape''s PAY + EPB + TAXTERM, so the engine''s car and fuel benefits come out of employment_income, capped at EPB within the pay the row''s employee pension contribution leaves (the SPI income stage capped that contribution at the drawn pay, and salary_sacrifice refuses one above the pay that remains): where the two do not fit together the fuel goes first, then the list price is scaled down to fit with its contributions dropped, or the car dropped below minimum_scaled_list_price_gbp (María''s rulings of 30 and 31 October 2026). A scaled price is the room over the car''s appropriate percentage, so the CO2 draw, electric_range_miles and the RDE2 diesel set it, and with it the base the 2030-31 rise acts on. The stage then prices its output again on the engine: on every tape row, pay plus the benefits must equal the pay the row brought in. A carved row''s UC gainful self-employment, which the SPI income stage set on the drawn pay, takes the root''s rule again on the carved pay. No HMRC fact is a calibration target: binding the cells the stage draws to would be circular. No build step reads Tables 1, 3A and 4 after calibration yet: comparing the calibrated file with them is a manual step.'
 - stage: spi_housing_shell
   survey: Family Resources Survey 2024-25
   source: Family Resources Survey 2024-25 base households' housing (tenure, dwelling type, bedrooms, council tax, housing costs and the housing-linked benefit reports), imputed onto the SPI support households from their own region, composition and post-SPI incomes.
