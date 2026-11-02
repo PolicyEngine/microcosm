@@ -111,7 +111,9 @@ membership carries the uprated value with its receipt.
   banded once on its income moved to 2023-24, each income leaf at its own
   factor and each rebased column at its factor over all bands, so the
   band-edge migration the consumers re-band on uprated income is counted
-  once. A record whose band's factor differs from that of all bands can still
+  once. That income, like the band donors', is the published total plus the
+  leaves' growth, net of employment expenses and without the gift leaves,
+  which SPI's total income doesn't hold. A record whose band's factor differs from that of all bands can still
   sit across an edge on its rebased income. A taxpayer is a record the tape flags (TAXPAYER 1) or one whose income
   crosses the Personal Allowance by 2023-24; a flagged taxpayer below the first
   band sits in it (note 8); any other record takes the factor of all bands. A
