@@ -2323,18 +2323,19 @@ def test_uc_take_up_gate_holds_each_family_type_to_dwp() -> None:
         }
 
     # 0.05 until microcosm#1418, and 0.055 after it: the savings follow-up
-    # (microcosm#1428) joins unmet pools instead of widening it. 0.12 from the
-    # SPI pay floor (uk-data#629) until microcosm#1095's UC award fix (María's
-    # ruling of 2026-10-29); the reachable pools keep 0.055 (Vahid's review of
-    # #1426).
+    # (microcosm#1428) joins unmet pools instead of widening it. The caseload's
+    # was 0.12 for the SPI pay floor (uk-data#629) from María's ruling of
+    # 2026-10-29 until the pool joining brought every family type closer to
+    # DWP's count (her ruling of 2026-11-02). The reachable pools have a
+    # tolerance of their own (Vahid's review of #1426).
     parameters = {
         "stage": "uc_take_up",
         "check": "uc_take_up",
-        "maximum_caseload_deviation": 0.12,
+        "maximum_caseload_deviation": 0.055,
         "maximum_reachable_pool_deviation": 0.055,
     }
 
-    def gate(families, **counts):
+    def gate(families, parameters=parameters, **counts):
         return uk_stage_health_gate(
             evidence={
                 "stage": "uc_take_up",
@@ -2360,20 +2361,24 @@ def test_uc_take_up_gate_holds_each_family_type_to_dwp() -> None:
     assert not gate(
         {**good, "SINGLE": family(3_000.0, 3_300.0, 3_020.0, 2_500.0, 2_900.0)}
     ).passed
-    # The pools keep their own tolerance: 8% off fails although the caseload
-    # may move 0.12 of DWP's count.
+    # The pools keep their own tolerance: 8% off fails even where the caseload's
+    # allows more.
     assert not gate(
-        {**good, "SINGLE": family(3_000.0, 3_300.0, 3_020.0, 2_500.0, 2_700.0)}
+        {**good, "SINGLE": family(3_000.0, 3_300.0, 3_020.0, 2_500.0, 2_700.0)},
+        parameters={**parameters, "maximum_caseload_deviation": 0.12},
     ).passed
     # The family type moves further from DWP than before.
     assert not gate(
         {**good, "LONE_PARENT": family(2_100.0, 1_400.0, 1_100.0, 0.0, 0.0)}
     ).passed
-    # The pay floor's pattern: a caseload at DWP's before the redraw may end
-    # up to 0.12 of DWP's count below it after.
+    # A caseload at DWP's before the redraw may end up to 0.055 of DWP's count
+    # from it after, not 0.1.
     assert _passed(
-        gate({**good, "SINGLE": family(3_000.0, 3_000.0, 2_700.0, 2_500.0, 2_510.0)})
+        gate({**good, "SINGLE": family(3_000.0, 3_000.0, 2_850.0, 2_500.0, 2_510.0)})
     )
+    assert not gate(
+        {**good, "SINGLE": family(3_000.0, 3_000.0, 2_700.0, 2_500.0, 2_510.0)}
+    ).passed
     # A caseload resting on fewer than three sources cannot be checked: it is
     # flagged, never failed (María's ruling of 2026-10-26); one missing fails.
     thin = gate({**good, "SINGLE": family(3_000.0, "<3", 1.0, 0.0, 0.0)})
