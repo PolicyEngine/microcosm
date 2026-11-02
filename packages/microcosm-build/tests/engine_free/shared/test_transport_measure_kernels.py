@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import random
 from fractions import Fraction
+from math import fsum
 
 import numpy as np
 import pandas as pd
@@ -56,7 +57,7 @@ def _declaration(components, add_backs=(), *, floor=0, scale=100, outputs=None):
     }
 
 
-def _frame(columns: dict[str, list], dtype: str) -> Frame:
+def _frame(columns: dict[str, list], dtype: str, extra=None) -> Frame:
     size = len(next(iter(columns.values())))
     person = pd.DataFrame(
         {
@@ -66,6 +67,8 @@ def _frame(columns: dict[str, list], dtype: str) -> Frame:
     )
     for name, values in columns.items():
         person[name] = pd.array(values, dtype=dtype)
+    for name, values in (extra or {}).items():
+        person[name] = values
     household = pd.DataFrame({"household_id": np.arange(1, size + 1, dtype=np.int64)})
     return Frame(
         {"person": person, "household": household},
@@ -173,6 +176,36 @@ def test_records_at_or_below_zero_sit_outside_the_positive_universe() -> None:
     assert receipt["at_zero"]["n"] == 1
 
 
+def test_the_receipt_weights_each_record_by_its_frame_weight() -> None:
+    """The weighted totals and masses use each record's own weight."""
+
+    out, receipt = _run(
+        {
+            WAGES: [10_000, 0, 500, 300, 0],
+            BUSINESS: [-5_000, -200, 0, -300, 0],
+        },
+        _declaration([(WAGES, 1), (BUSINESS, 1)]),
+    )
+    assert _measure(out) == [5_000, -200, 500, 0, 0]
+    # _frame weights its five households (one person each) 1, 1.25, 1.5, 1.75
+    # and 2; every record here is resolved.
+    w = [1.0, 1.25, 1.5, 1.75, 2.0]
+    assert np.linspace(1, 2, 5).tolist() == w
+    wages, business = receipt["components"]
+    assert wages["weighted_signed_total"] == fsum(
+        [w[0] * 10_000, w[1] * 0, w[2] * 500, w[3] * 300, w[4] * 0]
+    )
+    assert wages["weighted_signed_total"] == 11_275.0
+    assert business["weighted_signed_total"] == fsum(
+        [w[0] * -5_000, w[1] * -200, w[2] * 0, w[3] * -300, w[4] * 0]
+    )
+    assert business["weighted_signed_total"] == -5_775.0
+    # x < 0 is record 1 alone; x = 0 is records 3 and 4.
+    assert receipt["below_zero"] == {"n": 1, "weighted": w[1]}
+    assert receipt["at_zero"] == {"n": 2, "weighted": fsum([w[3], w[4]])}
+    assert receipt["at_zero"]["weighted"] == 3.75
+
+
 def test_an_int64_overflow_is_refused_by_name() -> None:
     with pytest.raises(ValueError, match="int64_overflow"):
         _run(
@@ -249,6 +282,8 @@ def test_the_receipt_names_the_declared_outputs() -> None:
     [
         ({"floor": 0.5}, "floor must be an integer"),
         ({"floor": True}, "floor must be an integer"),
+        ({"floor": INT64_MAX + 1}, "floor must fit int64"),
+        ({"floor": INT64_MIN - 1}, "floor must fit int64"),
         ({"scale": 0}, "scale must be a positive integer"),
         ({"scale": 1.0}, "scale must be a positive integer"),
         ({"add_backs": ["toy_other_cents"]}, "add_backs must name"),
@@ -271,6 +306,28 @@ def test_malformed_declarations_are_refused(change, message) -> None:
     del missing["floor"]
     with pytest.raises(ValueError, match="declares exactly"):
         validate_measure_declaration(missing)
+
+
+def _run_node(node, frame) -> None:
+    context = _project_context(
+        node,
+        Population.from_frame(frame, "toy.population"),
+        key="0" * 64,
+        sources={},
+        tolerances={},
+        numerics={},
+    )
+    MEASURE_COMBINE.run(context)
+
+
+def _reshaped(node, **change) -> Node:
+    fields = {
+        "inputs": node.inputs,
+        "outputs": node.outputs,
+        "params": node.params,
+        **change,
+    }
+    return Node(node.id, node.kernel, **fields)
 
 
 def test_node_shape_refusals() -> None:
@@ -300,6 +357,44 @@ def test_node_shape_refusals() -> None:
     )
     with pytest.raises(ValueError, match="slice exactly the declared components"):
         MEASURE_COMBINE.run(context)
+
+    # A row mask would combine a subset of the entity: whole rows only.
+    frame = _frame({WAGES: [1, 2]}, "Int64", {"toy_mask": np.array([True, False])})
+    masked = _reshaped(
+        node, inputs=(Slice("person", (WAGES, "toy_mask"), rows="toy_mask"),)
+    )
+    with pytest.raises(ValueError, match="requires whole-row slices"):
+        _run_node(masked, frame)
+
+    # The outputs are exactly the declaration's three columns.
+    frame = _frame({WAGES: [1, 2]}, "Int64")
+    extra = _reshaped(
+        node, outputs=(*node.outputs, Owned("person", "toy_extra_cents", "Int64"))
+    )
+    renamed = _reshaped(
+        node,
+        outputs=(
+            node.outputs[0],
+            Owned("person", "toy_other_units", "float64"),
+            node.outputs[2],
+        ),
+    )
+    for item in (extra, renamed):
+        with pytest.raises(ValueError, match="outputs must equal the declaration"):
+            _run_node(item, frame)
+
+    # Each output is a new column; the stand-in never rewrites one.
+    frame = _frame({WAGES: [1, 2]}, "Int64", {OUTPUTS["unit"]: np.zeros(2)})
+    rewrite = _reshaped(
+        node,
+        outputs=(
+            node.outputs[0],
+            Owned("person", OUTPUTS["unit"], "float64", rewrite=True),
+            node.outputs[2],
+        ),
+    )
+    with pytest.raises(ValueError, match="is a new column of dtype"):
+        _run_node(rewrite, frame)
 
 
 def test_a_float_component_is_refused() -> None:
