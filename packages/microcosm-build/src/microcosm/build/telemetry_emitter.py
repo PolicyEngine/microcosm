@@ -40,6 +40,8 @@ from pathlib import Path
 from typing import Any, Literal
 
 from microcosm_emitter_interface import (
+    COMMAND_ENVIRONMENT_VARIABLE,
+    DEFAULT_COMMAND,
     PROTOCOL_VERSION,
     EmitterClient,
     EmitterStartupError,
@@ -133,50 +135,72 @@ type AdapterFailureReason = Literal[
 ]
 type TelemetryRequiredReason = StartupFailureReason | AdapterFailureReason
 #: What each startup failure the interface reports means, in the error of a
-#: build that must send telemetry. The interface names a fixed reason and,
-#: for an emitter that exited, its exit code; never the emitter's output.
-#: ``microcosm-emitter version`` has listed protocol version 1 by then, so
-#: an ``unsupported_protocol_version`` is a failed ``hello``.
+#: build that must send telemetry; ``{command}`` is the command the adapter
+#: resolved and the interface started. The interface names a fixed reason
+#: and, for an emitter that exited, its exit code; never the emitter's
+#: output. ``microcosm-emitter version`` has listed protocol version 1 by
+#: then, so an ``unsupported_protocol_version`` is a failed ``hello``.
 _STARTUP_PROBLEMS: Mapping[StartupFailureReason, str] = {
     "command_not_found": (
-        "the microcosm-emitter command was found neither through "
-        "MICROCOSM_EMITTER_COMMAND nor on PATH. Install it with "
-        f"`{INSTALL_EMITTER_COMMAND}`, or point MICROCOSM_EMITTER_COMMAND at it."
+        "the emitter command (`{command}`) was no longer found when the "
+        f"interface started it. Install it with `{INSTALL_EMITTER_COMMAND}`, or "
+        "point MICROCOSM_EMITTER_COMMAND at it."
     ),
     "unsupported_protocol_version": (
-        "its emitter became ready, but its `hello` answer failed, timed out or "
-        "could not be read, although `microcosm-emitter version` lists protocol "
-        "version 1 (the interface reports unsupported_protocol_version)."
+        "its emitter (`{command}`) became ready, but its `hello` answer failed, "
+        "timed out or could not be read, although `{command} version` lists "
+        "protocol version 1 (the interface reports unsupported_protocol_version)."
     ),
     "child_exit": (
-        "its emitter exited before it was ready (child_exit{exit_detail}). "
-        'Emitter 0.11.0 and later first print "The Microcosm emitter cannot '
-        'start: …" when MICROCOSM_COLLECTOR_TOKEN, '
+        "its emitter (`{command}`) exited before it was ready "
+        '(child_exit{exit_detail}). Emitter 0.11.0 and later first print "The '
+        'Microcosm emitter cannot start: …" when MICROCOSM_COLLECTOR_TOKEN, '
         "MICROCOSM_COLLECTOR_TOKEN_EXPIRES_AT and MICROCOSM_COLLECTOR_ORIGIN are "
-        "set only in part, cannot be read, or name another collector; for any "
-        'other cause the emitter prints only "Service startup failed '
-        '(startup_failure).", which does not name it.'
+        "set only in part, cannot be read, or name another collector. For any "
+        'other cause in its host, the emitter prints "Service startup failed '
+        '(startup_failure).", without the cause; an emitter installation that '
+        "cannot be imported prints a Python traceback instead."
     ),
     "readiness_timeout": (
-        "its emitter was not ready within its startup time limit (readiness_timeout)."
+        "its emitter (`{command}`) was not ready within its startup time limit "
+        "(readiness_timeout)."
     ),
     "configuration_timeout": (
-        "its emitter did not take its module settings within its startup time "
-        "limit (configuration_timeout)."
+        "its emitter (`{command}`) did not take its module settings within its "
+        "startup time limit (configuration_timeout)."
     ),
     "invalid_configuration": (
-        "its emitter's module settings are invalid or too large "
-        "(invalid_configuration)."
+        "the module settings for its emitter (`{command}`) are invalid or too "
+        "large (invalid_configuration)."
     ),
-    "startup_failure": "its emitter could not be started (startup_failure).",
+    "startup_failure": (
+        "its emitter (`{command}`) could not be started (startup_failure)."
+    ),
 }
+#: An emitter killed by a signal before it was ready prints nothing of its
+#: own (``child_exit`` with a negative exit code).
+_KILLED_PROBLEM = (
+    "`{command}` was killed by signal {signal} before it was ready (child_exit, "
+    "exit code {exit_code}), so it printed nothing of its own."
+)
 #: The reason a required build stops with, for an interface reason that
 #: means something else once ``version`` has answered.
 _REASONS_AFTER_VERSION_CHECK: Mapping[StartupFailureReason, AdapterFailureReason] = {
     "unsupported_protocol_version": "hello_failed"
 }
-#: Why ``microcosm-emitter version`` gave no answer: it did not answer in time.
-_VERSION_TIMED_OUT = "timeout"
+#: How ``microcosm-emitter version`` gave no usable answer: it did not answer
+#: in time, did not run, exited with an error, or answered with something no
+#: emitter release prints.
+type VersionFailureKind = Literal["timeout", "not_run", "exited", "not_an_answer"]
+_NOT_STARTED = "so the emitter was not started"
+#: For a ``version`` that ran and answered with something no emitter
+#: release prints: the command may be another program.
+_NOT_AN_EMITTER_ANSWER = (
+    "every microcosm-emitter release from 0.4.0 answers with a JSON object "
+    "naming its emitter_version and protocol_versions, so `{command}` may not "
+    "be microcosm-emitter. Point MICROCOSM_EMITTER_COMMAND at microcosm-emitter, "
+    f"or install it with `{INSTALL_EMITTER_COMMAND}`."
+)
 
 
 class TelemetryRequiredError(RuntimeError):
@@ -212,25 +236,52 @@ class TelemetryRequiredError(RuntimeError):
 
 
 def _startup_refusal(
-    error: EmitterStartupError | None, *, interface_warned: bool
+    error: EmitterStartupError | None, *, command: str, interface_warned: bool
 ) -> TelemetryRequiredError:
-    """The error of a build that must send telemetry, for a startup failure."""
+    """The error of a build that must send telemetry, for a startup failure.
+
+    ``command`` is the emitter command the interface started.
+    """
     interface_reason: StartupFailureReason = (
         "startup_failure" if error is None else error.reason
     )
     exit_code = None if error is None else error.exit_code
-    problem = (
-        _STARTUP_PROBLEMS.get(interface_reason) or _STARTUP_PROBLEMS["startup_failure"]
-    )
-    exit_detail = "" if exit_code is None else f", exit code {exit_code}"
     reason: TelemetryRequiredReason = interface_reason
     if interface_warned:
         reason = _REASONS_AFTER_VERSION_CHECK.get(interface_reason, interface_reason)
+    if interface_reason == "child_exit" and exit_code is not None and exit_code < 0:
+        problem = _KILLED_PROBLEM.format(
+            command=command, signal=-exit_code, exit_code=exit_code
+        )
+    else:
+        template = (
+            _STARTUP_PROBLEMS.get(interface_reason)
+            or _STARTUP_PROBLEMS["startup_failure"]
+        )
+        exit_detail = "" if exit_code is None else f", exit code {exit_code}"
+        problem = template.format(command=command, exit_detail=exit_detail)
     return TelemetryRequiredError(
-        reason,
-        problem.format(exit_detail=exit_detail),
-        exit_code=exit_code,
-        interface_warned=interface_warned,
+        reason, problem, exit_code=exit_code, interface_warned=interface_warned
+    )
+
+
+def _missing_command_refusal(error: EmitterStartupError) -> TelemetryRequiredError:
+    """A required build's refusal when the adapter finds no emitter command.
+
+    It names what was looked for: ``MICROCOSM_EMITTER_COMMAND``'s value, or
+    ``microcosm-emitter`` on ``PATH``.
+    """
+    named = os.environ.get(COMMAND_ENVIRONMENT_VARIABLE, "").strip()
+    looked_for = (
+        f"`{named}`, named by {COMMAND_ENVIRONMENT_VARIABLE}"
+        if named
+        else f"`{DEFAULT_COMMAND}`, on PATH"
+    )
+    return TelemetryRequiredError(
+        error.reason,
+        f"the emitter command ({looked_for}) was not found. Install it with "
+        f"`{INSTALL_EMITTER_COMMAND}`, or point {COMMAND_ENVIRONMENT_VARIABLE} at "
+        "it.",
     )
 
 
@@ -259,13 +310,13 @@ def _release_number(version: object) -> tuple[int, ...] | None:
 
 def _version_description(
     command: str, timeout: float
-) -> tuple[dict[str, Any] | None, str | None]:
-    """``command version``'s answer, or None and why there is none.
+) -> tuple[dict[str, Any] | None, tuple[VersionFailureKind, str] | None]:
+    """``command version``'s answer, or None and how ``version`` failed.
 
     ``microcosm-emitter version`` (every release since 0.4.0, the first with
     the command) prints the same description as the emitter's ``hello``
-    answer, and starts none of its modules. The reason is
-    ``_VERSION_TIMED_OUT`` or a phrase for an error message.
+    answer, and starts none of its modules. A failure is its kind and a
+    phrase for an error message.
     """
     try:
         answer = subprocess.run(
@@ -277,54 +328,68 @@ def _version_description(
             check=False,
         )
     except subprocess.TimeoutExpired:
-        return None, _VERSION_TIMED_OUT
+        return None, ("timeout", f"did not answer within {timeout:g} s")
     except Exception as error:
-        return None, f"could not be run ({type(error).__name__})"
+        return None, ("not_run", f"could not be run ({type(error).__name__})")
     if answer.returncode != 0:
-        return None, f"exited {answer.returncode}"
+        return None, ("exited", f"exited {answer.returncode}")
     try:
         description = json.loads(answer.stdout)
     except ValueError:
         description = None
     if not isinstance(description, dict):
-        return None, "printed no JSON object"
+        return None, ("not_an_answer", "printed no JSON object")
     return description, None
 
 
 def _version_refusal(
-    version: str | None, failure: str | None, timeout: float
+    command: str,
+    version: str | None,
+    failure: tuple[VersionFailureKind, str] | None,
 ) -> TelemetryRequiredError:
-    """Why a required build does not start the emitter its ``version`` describes."""
-    not_started = "so the emitter was not started"
-    if failure == _VERSION_TIMED_OUT:
-        return TelemetryRequiredError(
-            "version_timeout",
-            f"`microcosm-emitter version` did not answer within {timeout:g} s, "
-            f"{not_started}.",
-        )
+    """Why a required build does not start the emitter its ``version`` describes.
+
+    Only a ``version`` that did not run is advice to check that the command
+    runs, and only an emitter older than the minimum is advice to upgrade.
+    """
     if failure is None and _release_number(version) is not None:
         return TelemetryRequiredError(
             "outdated_emitter",
-            f"the installed microcosm-emitter reports version {version}, and this "
-            f"build needs {MINIMUM_EMITTER_VERSION} or later. Upgrade it with "
-            f"`{UPGRADE_EMITTER_COMMAND}`, or point MICROCOSM_EMITTER_COMMAND at a "
-            "newer one.",
+            f"the installed microcosm-emitter (`{command}`) reports version "
+            f"{version}, and this build needs {MINIMUM_EMITTER_VERSION} or later. "
+            f"Upgrade it with `{UPGRADE_EMITTER_COMMAND}`, or point "
+            f"{COMMAND_ENVIRONMENT_VARIABLE} at a newer one.",
         )
     if failure is None:
         failure = (
+            "not_an_answer",
             "printed no emitter_version"
             if version is None
-            else f"reported version {version!r}, which is not a release number"
+            else f"reported version {version!r}, which is not a release number",
         )
+    kind, detail = failure
+    if kind == "timeout":
+        return TelemetryRequiredError(
+            "version_timeout", f"`{command} version` {detail}, {_NOT_STARTED}."
+        )
+    if kind == "not_run":
+        advice = f"Check that `{command}` runs on this machine."
+    elif kind == "exited":
+        advice = (
+            "Releases before 0.4.0 have no `version` command; for a later one, "
+            f"`{command} version` prints its own error."
+        )
+    else:
+        detail = f"ran but {detail}"
+        advice = _NOT_AN_EMITTER_ANSWER.format(command=command)
     return TelemetryRequiredError(
-        "version_failed",
-        f"`microcosm-emitter version` {failure}, {not_started}. Check that "
-        "`microcosm-emitter version` runs on this machine; releases before 0.4.0 "
-        "have no such command.",
+        "version_failed", f"`{command} version` {detail}, {_NOT_STARTED}. {advice}"
     )
 
 
-def _protocol_refusal(description: Mapping[str, Any]) -> TelemetryRequiredError | None:
+def _protocol_refusal(
+    command: str, description: Mapping[str, Any]
+) -> TelemetryRequiredError | None:
     """A required build's refusal of an emitter that lists no protocol version 1."""
     versions = description.get("protocol_versions")
     if not isinstance(versions, list) or not all(
@@ -332,16 +397,14 @@ def _protocol_refusal(description: Mapping[str, Any]) -> TelemetryRequiredError 
     ):
         return TelemetryRequiredError(
             "version_failed",
-            "`microcosm-emitter version` printed no list of protocol versions, so "
-            "the emitter was not started. Check that `microcosm-emitter version` "
-            "runs on this machine.",
+            f"`{command} version` ran but printed no list of protocol versions, "
+            f"{_NOT_STARTED}. " + _NOT_AN_EMITTER_ANSWER.format(command=command),
         )
     if PROTOCOL_VERSION not in versions:
         return TelemetryRequiredError(
             "unsupported_protocol_version",
-            f"`microcosm-emitter version` lists protocol versions {versions}, not "
-            f"protocol version {PROTOCOL_VERSION}, the one this build sends, so the "
-            "emitter was not started.",
+            f"`{command} version` lists protocol versions {versions}, not protocol "
+            f"version {PROTOCOL_VERSION}, the one this build sends, {_NOT_STARTED}.",
         )
     return None
 
@@ -357,14 +420,16 @@ def _start_emitter(*, required: bool = False, **options: Any) -> EmitterClient:
     unavailable, so every call reports that. A missing command is left to
     ``EmitterClient.start``, which reports it.
 
-    With ``required`` (a build that must send telemetry), each of these
-    failures, and every other one ``EmitterClient.start`` reports, raises
-    ``TelemetryRequiredError`` instead. The adapter finds a missing command,
-    a ``version`` that times out or fails, an outdated emitter and one that
-    lists no protocol version 1 before anything starts, and prints nothing
-    then. For a failure ``EmitterClient.start`` reports, the interface has
-    already printed that the build will continue, and the error says that
-    does not apply.
+    With ``required`` (a build that must send telemetry, which asks for the
+    telemetry module), each of these failures, every other one
+    ``EmitterClient.start`` reports, and an emitter that started without the
+    telemetry module raise ``TelemetryRequiredError`` instead. The adapter
+    finds a missing command, a ``version`` that times out or fails, an
+    outdated emitter and one that lists no protocol version 1 before
+    anything starts, and prints nothing then. For a failure
+    ``EmitterClient.start`` reports, the interface has already printed that
+    the build will continue, and the error says that does not apply. Each
+    message names the command the adapter resolved.
     """
     command: str | None = None
     missing: EmitterStartupError | None = None
@@ -376,7 +441,9 @@ def _start_emitter(*, required: bool = False, **options: Any) -> EmitterClient:
         missing = EmitterStartupError("startup_failure")
     if command is None:
         if required:
-            raise _startup_refusal(missing, interface_warned=False)
+            raise _missing_command_refusal(
+                missing or EmitterStartupError("command_not_found")
+            )
         return EmitterClient.start(**options)
     timeout = options.get("startup_timeout", STARTUP_TIMEOUT_SECONDS)
     description, failure = _version_description(command, timeout)
@@ -387,15 +454,24 @@ def _start_emitter(*, required: bool = False, **options: Any) -> EmitterClient:
     installed = _release_number(version)
     if installed is not None and installed >= _MINIMUM_RELEASE:
         if required and description is not None:
-            refusal = _protocol_refusal(description)
+            refusal = _protocol_refusal(command, description)
             if refusal is not None:
                 raise refusal
         client = EmitterClient.start(command=command, **options)
         if required and not client.available:
-            raise _startup_refusal(client.startup_error, interface_warned=True)
+            raise _startup_refusal(
+                client.startup_error, command=command, interface_warned=True
+            )
+        if required and TELEMETRY_MODULE not in client.modules:
+            # It started without telemetry, so it recorded no run; stop it.
+            client.close()
+            raise TelemetryRequiredError(
+                "telemetry_module_not_loaded",
+                f"its emitter (`{command}`) started without its telemetry module.",
+            )
         return client
     if required:
-        raise _version_refusal(version, failure, timeout)
+        raise _version_refusal(command, version, failure)
     reported = "reports no version" if version is None else f"reports version {version}"
     print(
         OUTDATED_EMITTER_WARNING.format(
@@ -505,13 +581,6 @@ class LocalTelemetryEmitter:
             spool_path=path,
             startup_timeout=startup_timeout_seconds,
         )
-        if required and TELEMETRY_MODULE not in client.modules:
-            # It started without telemetry, so it recorded no run; stop it.
-            client.close()
-            raise TelemetryRequiredError(
-                "telemetry_module_not_loaded",
-                "its emitter started without its telemetry module.",
-            )
         return cls(
             run=run, client=client, close_service_on_finish=close_service_on_finish
         )
