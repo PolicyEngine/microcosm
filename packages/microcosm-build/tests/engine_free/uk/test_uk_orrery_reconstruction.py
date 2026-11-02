@@ -17,7 +17,6 @@ import subprocess
 from pathlib import Path
 
 import pytest
-from microcosm_emitter.orrery.service.queue import publication_inventory
 
 from microcosm.build.country_spec import load_country_spec
 from microcosm.build.staging_dataset import refresh_sha256sums_entry
@@ -44,6 +43,7 @@ from microcosm.graph.reconstruction import (
 )
 from microcosm.graph.schema import validate_graph_schema
 from microcosm.graph.serialize import graph_to_json
+from test_support.microcosm_build.emitter import fake_publication_inventory
 from test_support.paths import paths_for
 
 _RECONSTRUCTION_VERIFY = (
@@ -259,8 +259,9 @@ def test_dense_build_reconstructs_the_normal_publication_layout(tmp_path):
     )
     inventory = read_json(output / INVENTORY_NAME)
     # The emitter recomputes the inventory before it queues a directory; the
-    # reconstructed one must be exactly what it would compute.
-    assert inventory == publication_inventory(
+    # reconstructed one must be exactly what it would compute: each named
+    # file's role, size and SHA-256, in name order.
+    assert inventory == fake_publication_inventory(
         output,
         {GRAPH_NAME: "graph", SCHEMA_NAME: "schema"},
         publication_id=inventory["publication_id"],

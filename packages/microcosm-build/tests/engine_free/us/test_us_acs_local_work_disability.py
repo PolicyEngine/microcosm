@@ -63,6 +63,24 @@ _EXPECTED_BLIND = [False, False, False, False, True, False, False, False]
 _EXPECTED_WEEKS = [52.0, np.nan, 26.0, np.nan, 0.0, 0.0, 0.0, 10.0]
 
 
+def _with_job_fields(row: dict[str, Any]) -> dict[str, Any]:
+    """Add the job fields the ACS loader requires beside WKWN (microcosm#719).
+
+    A past-year worker (WKWN set) holds a coded job; anyone else from age 16
+    is not in the labor force (ESR 6) with blank job codes; a child under 16
+    is outside all three universes. A row's own values win.
+    """
+
+    worked = pd.notna(row["WKWN"])
+    adult = pd.notna(row["AGEP"]) and row["AGEP"] >= 16
+    return {
+        "ESR": (1 if worked else 6) if adult else np.nan,
+        "OCCP": 1010 if worked else np.nan,
+        "INDP": 7380 if worked else np.nan,
+        **row,
+    }
+
+
 def _raw_acs_frame(overrides: dict[int, dict[str, Any]] | None = None) -> Frame:
     records = []
     for index, person in enumerate(_PEOPLE):
@@ -82,7 +100,7 @@ def _raw_acs_frame(overrides: dict[int, dict[str, Any]] | None = None) -> Frame:
             **person,
             **(overrides or {}).get(index, {}),
         }
-        records.append(row)
+        records.append(_with_job_fields(row))
     person = pd.DataFrame(records)
     household_ids = np.asarray([10 * h for h in _HOUSEHOLDS])
     person.insert(0, "person_id", np.arange(1, len(person) + 1))
@@ -273,14 +291,23 @@ def test_items_below_their_minimum_question_age_read_as_no_difficulty() -> None:
         ({1: {"DREM": 2}}, "DREM contradicts its minimum question age 5"),
         ({0: {"DEAR": np.nan}}, "DEAR contradicts its minimum question age 0"),
         ({0: {"DPHY": 3}}, r"DPHY requires blank or integer codes within \[1, 2\]"),
-        # map_acs_native_inputs accepts a blank age; this stage must not.
-        ({0: {"AGEP": np.nan}}, "nonnegative AGEP"),
     ],
-    ids=["coded-below-age", "coded-under-five", "blank-in-universe", "code", "age"],
+    ids=["coded-below-age", "coded-under-five", "blank-in-universe", "code"],
 )
 def test_item_universe_contradictions_are_refused(overrides, match) -> None:
     with pytest.raises(ValueError, match=match):
         map_acs_local_work_disability_inputs(_mapped(overrides))
+
+
+def test_a_blank_age_is_refused() -> None:
+    # map_acs_native_inputs refuses a blank AGEP itself once the ACS job
+    # fields are present (microcosm#719), so blank it after that mapping:
+    # this stage must refuse it too.
+    mapped = _mapped()
+    ages = mapped.table("person")["AGEP"].astype(float).tolist()
+    ages[0] = np.nan
+    with pytest.raises(ValueError, match="nonnegative AGEP"):
+        map_acs_local_work_disability_inputs(_with_person(mapped, AGEP=ages))
 
 
 @pytest.mark.parametrize(

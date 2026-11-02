@@ -10,9 +10,13 @@ engine's default, true, put every such family on Universal Credit.
 This stage draws the flag at DWP's Move to Universal Credit claim rates, as
 uk-data#534 does (a draft, at ``c67077a66``):
 
-* a benefit unit with a member reporting Universal Credit, a unit already
-  drawn to claim it, and a unit reporting none of the six legacy benefits are
-  true, the engine's default;
+* a benefit unit whose claimant or partner reports Universal Credit, a unit
+  already drawn to claim it, and a unit whose claimant and partner report
+  none of the six legacy benefits are true, the engine's default. Only the
+  claimant's and partner's reports count: since policyengine-uk 2.146.0
+  (pe-uk#2549) the closure reaches an award through its owners, so an award
+  another member claims in their own right closes on its own and does not
+  move the family;
 * each other unit is drawn at ``(r - p) / (1 - p)``, clipped to [0, 1]. ``r``
   is DWP's claimed / (claimed + did not claim) for the unit's combination of
   legacy benefits, or the all-households rate where DWP reports none; ``p`` is
@@ -56,6 +60,8 @@ from microcosm.build.uk_runtime.national_frame import (
     validate_uk_national_frame,
 )
 from microcosm.build.uk_runtime.receipt_counts import (
+    UK_DISCLOSURE_FLOOR,
+    UK_WITHHELD,
     distinct_count,
     small_cell_share,
     source_household_ids,
@@ -172,13 +178,22 @@ def load_move_to_uc_claim_rates() -> dict[str, float]:
     return move_to_uc_claim_rates_from_rows(vendored_rows(LEGACY_CLOSURE_RESOURCE))
 
 
+#: Whose reports place a benefit unit in the draw: its claimant and partner,
+#: the members whose awards the engine's closure reaches (pe-uk#2549).
+LEGACY_CLOSURE_REPORTERS = "is_claimant_or_partner"
+
+
 def _reported_by_benunit(
     person: pd.DataFrame, benunit: pd.DataFrame, column: str
 ) -> np.ndarray:
-    if column not in person.columns:
-        raise ValueError(f"The legacy closure draw needs person {column!r}.")
+    """Whether each unit's claimant or partner reports ``column`` above 0."""
+
+    for needed in (column, LEGACY_CLOSURE_REPORTERS):
+        if needed not in person.columns:
+            raise ValueError(f"The legacy closure draw needs person {needed!r}.")
     values = pd.to_numeric(person[column], errors="raise").to_numpy(dtype=float)
-    reporters = person.loc[values > 0, "person_benunit_id"].unique()
+    owners = person[LEGACY_CLOSURE_REPORTERS].astype(bool).to_numpy()
+    reporters = person.loc[(values > 0) & owners, "person_benunit_id"].unique()
     return benunit["benunit_id"].isin(reporters).to_numpy()
 
 
@@ -220,8 +235,8 @@ def legacy_closure_claim_probabilities(
     applies to every unit of the combination. The expected weighted share of
     Great Britain's drawn units claiming at the closure is ``r`` wherever
     ``p <= r``. The receipt bands each cohort on its distinct source
-    households and flags an unreachable rate only where ten or more carry p
-    and neither of its sides rests on one to nine.
+    households and flags an unreachable rate only where three or more carry p
+    and neither of its sides rests on one or two.
     """
 
     gb = np.asarray(great_britain, dtype=bool)
@@ -246,14 +261,14 @@ def legacy_closure_claim_probabilities(
         )
 
         # The flag rests on p, so on Great Britain's sources, and says on which
-        # side of DWP's rate p lies: it is given only where ten or more sources
+        # side of DWP's rate p lies: it is given only where three or more sources
         # carry p and neither the units claiming anyway nor the others rest on
-        # one to nine. A combination with no Great Britain unit has no p.
+        # one or two. A combination with no Great Britain unit has no p.
         sides = (count(basis & claims_anyway), count(basis & ~claims_anyway))
         if not basis.any():
             flag: bool | str | None = None
-        elif count(basis) < 10 or 0 < min(sides) < 10:
-            flag = "<10"
+        elif count(basis) < UK_DISCLOSURE_FLOOR or 0 < min(sides) < UK_DISCLOSURE_FLOOR:
+            flag = UK_WITHHELD
         else:
             flag = bool(p > rate)
         receipt[str(key)] = {
@@ -350,7 +365,7 @@ def assign_uc_claim_at_legacy_closure(
     validate_uk_national_frame(result)
 
     # Great Britain's weighted aggregates only, DWP's universe; a figure one to
-    # nine source households carry is "<10" (UKDS disclosure control).
+    # two source households carry is "<3" (UKDS disclosure control).
     def sources(mask: np.ndarray) -> int:
         return distinct_count(source_ids, mask, weights)
 
@@ -359,12 +374,14 @@ def assign_uc_claim_at_legacy_closure(
     drawn_weight = float(weights[gb_drawn].sum())
     claiming = gb_drawn & flag
     # The share claiming times the drawn weight gives back either side, so the
-    # share is given only where neither side rests on one to nine sources.
-    share_small = 0 < min(sources(claiming), sources(gb_drawn & ~flag)) < 10
+    # share is given only where neither side rests on one or two sources.
+    share_small = (
+        0 < min(sources(claiming), sources(gb_drawn & ~flag)) < UK_DISCLOSURE_FLOOR
+    )
     if not drawn_weight:
         share: float | str | None = None
     elif share_small:
-        share = "<10"
+        share = UK_WITHHELD
     else:
         share = small_cell_share(
             float(weights[claiming].sum()) / drawn_weight, gb_sources
@@ -405,9 +422,14 @@ def legacy_closure_operation_parameters() -> tuple[tuple[str, dict[str, object]]
                 "output": LEGACY_CLOSURE_OUTPUT,
                 "port_of": "uk-data#534 at c67077a66",
                 "legacy_benefits": [name for name, _ in LEGACY_BENEFITS],
+                "reporters": (
+                    "the claimant and partner (is_claimant_or_partner); an award "
+                    "another member claims in their own right closes on its own "
+                    "(policyengine-uk 2.146.0, pe-uk#2549)"
+                ),
                 "true_without_draw": (
-                    "a member reports universal_credit_reported, would_claim_uc is "
-                    "true, or no member reports a legacy benefit"
+                    "the claimant or partner reports universal_credit_reported, "
+                    "would_claim_uc is true, or neither reports a legacy benefit"
                 ),
                 "rate": (
                     "claimed / (claimed + did not claim) for the combination, the "

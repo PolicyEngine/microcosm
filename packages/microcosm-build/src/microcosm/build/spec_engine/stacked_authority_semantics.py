@@ -316,7 +316,7 @@ def _late_families(
 def _late_transfer_surface(
     imputation: Mapping[str, object],
 ) -> tuple[dict[str, dict[str, list[str]]], str, int, str]:
-    """Compile the 70-target post-PUF surface and its shared donor contract."""
+    """Compile the 71-target post-PUF surface and its shared donor contract."""
 
     surface: dict[str, dict[str, list[str]]] = {}
     donor_channels: set[str] = set()

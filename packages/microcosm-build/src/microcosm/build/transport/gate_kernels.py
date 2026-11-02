@@ -721,6 +721,8 @@ class GateBatteryKernel(KernelBase):
             artifact_types,
             binding_identity,
             target_kernels,
+            target_kernels.reference_profiles_module,
+            target_kernels.reference_selection_module,
             gate_battery_module,
             gates_module,
             country_spec_module,

@@ -14,6 +14,8 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from typing import Any
 
+from microcosm.build.target_materialization import expression_names
+
 UK_MEASUREMENT_PERIOD_RECEIPT_SCHEMA = 1
 
 _COUNT_VARIABLES = frozenset({"person_count", "household_count", "benunit_count"})
@@ -27,9 +29,9 @@ _DELIBERATE_FRAME_ROUTES = ("frame_columns:high_value_home_mask",)
 
 def _value_variables(binding: Mapping[str, Any]) -> tuple[str, ...]:
     if "value_expression" in binding:
-        return tuple(
-            part.strip() for part in str(binding["value_expression"]).split("+")
-        )
+        # The binding interpreter's own reading of the expression: a split on
+        # "+" alone would read a subtraction as one name.
+        return expression_names(str(binding["value_expression"]))
     if "value_variable" in binding:
         return (str(binding["value_variable"]),)
     return ()

@@ -47,6 +47,11 @@ from microcosm.build.staging_v2 import (
     validate_staging_delivery,
 )
 from microcosm.build.uk_runtime.release_identity import UK_DENSE_RELEASE_ID
+from microcosm.build.uk_runtime.spi_dependency import (
+    UK_SPI_PUBLIC_USE_TAPE_KEY,
+    uk_check_spi_public_use_tape_marker,
+    uk_spi_public_use_tape_marker_for_stage_names,
+)
 from microcosm.data.contract import (
     _UK_DENSE_SIGNED_EXCLUSION_GATES,
     _check_uk_incumbent_surface_evaluation,
@@ -581,8 +586,9 @@ def _area_support_block(solve: Mapping[str, object]) -> dict[str, object]:
 
     The support gate blocks release, so an area of a released file sits below
     a floor only under a reviewed exclusion the gate stood on, and those
-    entries name the areas. The areas' support figures stay in the run
-    directory's area-support table, which no release ships (microcosm#1301).
+    entries name the areas. Their support figures are in the signed gate
+    report's reviewed exclusions (María's ruling of 2026-10-26 dropped their
+    withholding, microcosm#1301).
     """
     from microcosm.build.uk_runtime.battery_bindings import uk_area_support_floors
 
@@ -1017,6 +1023,21 @@ def _stage_and_finalize(
     )
     evidence_files = (*evidence_files, *source_paths)
     evidence_sha = {name: _sha256(release_dir / name) for name in evidence_files}
+    # The SPI Public Use Tape marker, rederived from the stages the spine
+    # provenance names and checked against any marker it records (#1095).
+    spine_provenance = _mapping(
+        _mapping(identity.get("spine"), "identity.spine").get("spine_provenance"),
+        "identity.spine.spine_provenance",
+    )
+    try:
+        spi_marker = uk_spi_public_use_tape_marker_for_stage_names(
+            [str(stage) for stage in spine_provenance.get("stages") or ()]
+        )
+        uk_check_spi_public_use_tape_marker(
+            spine_provenance.get(UK_SPI_PUBLIC_USE_TAPE_KEY), spi_marker
+        )
+    except ValueError as exc:
+        raise SystemExit(f"error: {exc}") from exc
     release_manifest = {
         "schema_version": 1,
         "data_package": {
@@ -1051,9 +1072,10 @@ def _stage_and_finalize(
             {"name": "policyengine-uk", "specifier": f"=={runtime['policyengine-uk']}"}
         ],
         "artifacts": {
-            _DATASET_KEY: artifact(
-                "microdata", _DATASET_FILENAME, measured["candidate"]
-            ),
+            _DATASET_KEY: {
+                **artifact("microdata", _DATASET_FILENAME, measured["candidate"]),
+                "spi_public_use_tape_dependent": bool(spi_marker["dependent"]),
+            },
             **{
                 Path(name).stem: artifact("diagnostics", name, evidence_sha[name])
                 for name in evidence_files
@@ -1071,6 +1093,7 @@ def _stage_and_finalize(
             "voa": "Valuation Office Agency",
             "slc": "Student Loans Company",
         },
+        "licensed_data": {UK_SPI_PUBLIC_USE_TAPE_KEY: dict(spi_marker)},
     }
     _write_json(release_dir / "release_manifest.json", release_manifest)
     sums = {
@@ -1081,9 +1104,7 @@ def _stage_and_finalize(
     (release_dir / "sha256sums.txt").write_text(
         "".join(f"{digest}  {name}\n" for name, digest in sorted(sums.items()))
     )
-    # The contract warns, without refusing, on a per-area support figure in a
-    # shipped document (microcosm#1301); each warning is weighed before
-    # publication.
+    # A contract warning never refuses; each is weighed before publication.
     contract_warnings = validate_release_dir(release_dir)
     for contract_warning in contract_warnings:
         print(f"warning: {contract_warning}", file=sys.stderr)
