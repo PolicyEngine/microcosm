@@ -703,14 +703,16 @@ def _support_params():
 
 def test_the_w4_support_producer_reads_v2_params_with_an_open_top() -> None:
     params = _support_params()
-    positive, negative = quantile_support(params["bands"], params["interpolation"])
-    assert positive == [
+    support = quantile_support(params["bands"], params["interpolation"])
+    assert support.positive == (
         (1.0, 1000.0),
         (1000.0, 2000.0),
         (2000.0, 3000.0),
         (3000.0, None),
-    ]
-    low, high = quantile_bounds(positive, negative)
+    )
+    # A bare band list feeds both signs, as quantile_map applies it.
+    assert support.negative == support.positive
+    low, high = quantile_bounds(support.positive, support.negative)
     assert high is None  # expected_max: null
 
 
@@ -781,7 +783,6 @@ def test_the_support_bounds_kernel_reports_a_null_expected_max_for_v2() -> None:
     assert row["records_outside"] == 0
 
 
-@pytest.mark.xfail(strict=True, reason="needs the w4 fix round's E1")
 def test_v2_support_bounds_both_signs_for_a_bare_band_list() -> None:
     row = _support_row(_support_params(), [0.0, 5.0, 4e6])
     assert row["expected_min"] is None
