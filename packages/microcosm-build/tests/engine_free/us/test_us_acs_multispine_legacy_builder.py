@@ -205,9 +205,6 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
     # What build_optional_acs_multispine records for the separate ASEC-channel
     # income transfer pass (microcosm#1022).
     income_receipt = {"issue": "microcosm#1022", "donor_channel": "asec"}
-    # What build_optional_acs_multispine records for the ACS adult-nonrelative
-    # SPM-unit split (microcosm#1023).
-    spm_receipt = {"issue": "microcosm#1023", "persons_moved": 0}
     # What build_optional_acs_multispine records for the native FS receipt
     # anchor (microcosm#1022).
     anchor_receipt = {"issue": "microcosm#1022", "snap": {"units_anchored": 1}}
@@ -310,7 +307,6 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
                 ],
                 "acs_local_work_disability": work_disability_receipt,
                 "acs_local_income_transfer": income_receipt,
-                "acs_local_spm_units": spm_receipt,
                 "acs_local_receipt_anchors": anchor_receipt,
             },
         )
@@ -373,17 +369,6 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
             passed=True,
             failures=(),
             details={"per_spine": {}},
-        )
-
-    def fake_spm_unit_gate(frame, *, receipt):
-        assert frame is combined
-        assert receipt is spm_receipt
-        order.append("spm_unit_gate")
-        return GateResult(
-            name="acs_local_spm_unit_signal",
-            passed=True,
-            failures=(),
-            details={"adult_nonrelatives": 0},
         )
 
     def fake_receipt_anchor_gate(frame, *, receipt):
@@ -490,7 +475,6 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
     monkeypatch.setattr(
         builder, "acs_local_work_disability_signal_gate", fake_work_disability_gate
     )
-    monkeypatch.setattr(builder, "acs_local_spm_unit_signal_gate", fake_spm_unit_gate)
     monkeypatch.setattr(
         builder, "acs_local_receipt_anchor_signal_gate", fake_receipt_anchor_gate
     )
@@ -568,7 +552,6 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
         "hours_under15_policy": None,
         "work_disability_inputs": True,
         "income_transfer": True,
-        "split_adult_nonrelative_spm_units": True,
         "native_receipt_anchors": True,
         "donor_channel": builder.ACS_DONOR_CHANNEL_AUTO,
         "seed": 11,
@@ -584,13 +567,11 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
     # the immigration stage and before the input-null audit. microcosm#1022:
     # the SIPP donor is verified before the ACS fetch, and the SSI disability
     # stage runs after the income gate and before the input-null audit.
-    # microcosm#1023: the SPM-unit gate grades the pooled frame first.
-    # microcosm#1022: then the native FS receipt anchor, before any stage
-    # that replaces the frame.
+    # microcosm#1022: the native FS receipt anchor's gate grades the pooled
+    # frame first, before any stage that replaces the frame.
     assert order == [
         "sipp_load",
         "acs_fetch",
-        "spm_unit_gate",
         "receipt_anchor_gate",
         "immigration",
         "work_disability_gate",
@@ -642,19 +623,12 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
         "failures": [],
         "details": {"per_spine": {}},
     }
-    assert summary["acs_local_spm_units"] == spm_receipt
     assert summary["acs_local_receipt_anchors"] == anchor_receipt
     assert summary["acs_local_receipt_anchors_gate"] == {
         "name": "acs_local_receipt_anchor_signal",
         "passed": True,
         "failures": [],
         "details": {"snap": {"units_anchored": 1}},
-    }
-    assert summary["acs_local_spm_units_gate"] == {
-        "name": "acs_local_spm_unit_signal",
-        "passed": True,
-        "failures": [],
-        "details": {"adult_nonrelatives": 0},
     }
     assert summary["acs_local_work_disability"] == work_disability_receipt
     assert summary["acs_local_work_disability_gate"] == {
@@ -814,44 +788,6 @@ def test_work_disability_gate_failures_abort_staging(monkeypatch) -> None:
     entries = builder._require_local_work_disability(result)
     assert entries["acs_local_work_disability"] is receipt
     assert entries["acs_local_work_disability_gate"]["passed"] is True
-
-
-def test_spm_unit_gate_failures_abort_staging(monkeypatch) -> None:
-    """microcosm#1023: no receipt, or a failed gate, never reaches the audit."""
-
-    builder = _load_builder_module()
-    without = builder.AcsMultispineResult(frame=_frame(), provenance={})
-    with pytest.raises(SystemExit, match=r"no SPM-unit receipt \(microcosm#1023\)"):
-        builder._require_local_spm_units(without)
-
-    receipt = {"issue": "microcosm#1023"}
-    result = builder.AcsMultispineResult(
-        frame=_frame(), provenance={"acs_local_spm_units": receipt}
-    )
-    monkeypatch.setattr(
-        builder,
-        "acs_local_spm_unit_signal_gate",
-        lambda frame, *, receipt: GateResult(
-            name="acs_local_spm_unit_signal",
-            passed=False,
-            failures=("acs_2024_1yr: 2 adult roommate(s) share an SPM unit",),
-        ),
-    )
-    with pytest.raises(
-        SystemExit, match="Local staging SPM-unit gate failed: acs_2024_1yr"
-    ):
-        builder._require_local_spm_units(result)
-
-    monkeypatch.setattr(
-        builder,
-        "acs_local_spm_unit_signal_gate",
-        lambda frame, *, receipt: GateResult(
-            name="acs_local_spm_unit_signal", passed=True, failures=()
-        ),
-    )
-    entries = builder._require_local_spm_units(result)
-    assert entries["acs_local_spm_units"] is receipt
-    assert entries["acs_local_spm_units_gate"]["passed"] is True
 
 
 def test_receipt_anchor_gate_failures_abort_staging(monkeypatch) -> None:
