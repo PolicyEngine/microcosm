@@ -141,9 +141,35 @@ source and resolved case-exactly with the import system's path finder,
 without executing anything. Closures, partials, bound methods, lambdas,
 nested functions, decorated wrappers, builtins, numpy scalars and other
 objects are refused when the kernel is constructed. The identity is fixed at
-construction; if a binding or a module in its source closure changes
-afterwards (a `dict` field edited in place, a source file rewritten), the
-kernel refuses to run.
+construction. If a binding or a module in its source closure changes
+afterwards (a `dict` field edited in place, a source file rewritten, deleted
+or left unparseable), the kernel raises `KernelIdentityChangedError` from
+`implementation_hash()` and from `run()`. `run()` checks before it evaluates,
+before it returns, and when evaluation raises. The run then refuses with that
+error:
+
+- A change made before `run_graph` derives its node keys refuses the run
+  before anything is written.
+- A change made after the keys are derived is refused at the gate node. That
+  covers an edit to a binding while the build runs, and a closure file
+  rewritten during a long build. The executor never files a kernel's
+  `KernelIdentityChangedError` as a `fail` verdict (graph amendment 29), and
+  nothing for the gate node is stored. Nodes the run completed earlier keep
+  their stored results, so a later run with the unedited registry on the same
+  store reuses them and computes the gate afresh. Before amendment 29 that
+  later run was served a `fail` stored under the unedited binding's key.
+
+The executor does not re-derive the hash itself, because it cannot tell this
+kernel's in-memory bindings from the module files other gate kernels hash, and
+a file rewritten under a running process does not change code that process has
+already imported. The check therefore belongs to the kernel. A change made
+during evaluation and undone before the next check is not seen.
+
+The change that introduced amendment 29 moved every `gates.battery@1` node
+key: it edited this kernel's own source, and `export.prepare@1` and
+`transport.package@1` hash that source as well. A `fail` that an earlier
+version filed under a stale identity is therefore under a key that no later
+run derives, so it is never served.
 
 The closure is honest rather than small: `microcosm.build.gates` imports
 `us_runtime` lazily inside one function, so a binding over a gate in that
