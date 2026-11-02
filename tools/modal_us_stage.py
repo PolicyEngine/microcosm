@@ -90,6 +90,11 @@ def _image() -> modal.Image:
         # eMudhra roots; git's GitHub fetch and the stdlib's ssl module
         # verify against that system CA store.
         .apt_install("git", "build-essential", "ca-certificates")
+        # The cached base's pip 25.3 still trusts emSign ECC Root CA - G3
+        # through its own certifi, whatever the system CA store holds
+        # (plan_lib.IMAGE_PIP_VERSION). Replace it with the hash-pinned pip
+        # 26.2.2 before pip downloads anything else.
+        .run_commands(plan_lib.image_pip_bootstrap_command())
         # The runner itself (not the build) runs on the image's interpreter;
         # it needs the Hub client to stage hf:// inputs. The build runs in
         # IMAGE_VENV, synced from the pinned tree's own lock.
