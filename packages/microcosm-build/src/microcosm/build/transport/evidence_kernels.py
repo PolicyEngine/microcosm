@@ -855,12 +855,12 @@ def _normalized_bounds(context: KernelContext, ref: str, ranges: Mapping) -> tup
                 continue
             row = ranges.get((entity, column))
             low = (
-                0.0
+                0
                 if row is None or row["realized_min"] is None
                 else row["realized_min"]
             )
             high = (
-                0.0
+                0
                 if row is None or row["realized_max"] is None
                 else row["realized_max"]
             )

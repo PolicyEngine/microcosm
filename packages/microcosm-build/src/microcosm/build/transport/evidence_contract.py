@@ -622,8 +622,8 @@ def quantile_bounds(
             else max(u for _, u in intervals)
         )
 
-    maximum = top(positive) if positive else 0.0
-    minimum = (None if top(negative) is None else -top(negative)) if negative else 0.0
+    maximum = top(positive) if positive else float(0)
+    minimum = (None if top(negative) is None else -top(negative)) if negative else float(0)
     return minimum, maximum
 
 
