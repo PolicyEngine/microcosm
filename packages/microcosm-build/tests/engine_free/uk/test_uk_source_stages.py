@@ -129,6 +129,9 @@ E8_STAGE_NAMES = [
     # microcosm#1415: the ISA subscriptions run on final incomes; nothing
     # reads their outputs.
     "isa_subscriptions",
+    # microcosm#1428: the self-employed's gross receipts run last, on final
+    # profits; only the engine's trading allowance reads them.
+    "trading_allowance_receipts",
 ]
 UK_SOURCE_STAGE_NAMES = [
     "frs_spine",
@@ -316,6 +319,7 @@ class TestUKSourceStagesManifest:
                     "student_loans": _identity,
                     "private_school_attendance": _identity,
                     "isa_subscriptions": _identity,
+                    "trading_allowance_receipts": _identity,
                     "company_cars": _identity,
                     "childcare_copy_take_up": _identity,
                     "age_tail": _identity,

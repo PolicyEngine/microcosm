@@ -1023,6 +1023,7 @@ class TestUKCountryPackage:
             "bonus_sacrifice_anchor.json",
             "obr_salary_sacrifice_costing_facts.json",
             "obr_savings_income_growth_facts.json",
+            "hmrc_spi_table_3_7_savings_rows.json",
             "slc_liable_stocks.json",
             "hmrc_income_release_gate_report.json",
             "hmrc_income_replay_report.json",
@@ -1131,10 +1132,10 @@ class TestUKCountryPackage:
         # uc_capital_coherence; microcosm#1319 carers_allowance_take_up after
         # child_benefit_take_up; childcare_copy_take_up last, after every copy
         # stage; microcosm#1334 uc_take_up after uc_capital_coherence and
-        # frs_annual_income_spells after frs_hmrc_spine_leaves; microcosm#1415
-        # isa_subscriptions last; company_cars right after
+        # frs_annual_income_spells after frs_hmrc_spine_leaves; microcosm#1428
+        # trading_allowance_receipts last; company_cars right after
         # hmrc_spi_income_spine (PolicyEngine/uk-autumn-budget-dashboard-2026#316).
-        assert len(spec.sources.stages) == 51
+        assert len(spec.sources.stages) == 52
         assert not {"frs_hmrc_retained_leaves", "hmrc_spi_income"}.intersection(
             stage.stage for stage in spec.sources.stages
         )
@@ -1189,6 +1190,7 @@ class TestExistingPackagesGeneralize:
             "bonus_sacrifice_anchor.json",
             "obr_salary_sacrifice_costing_facts.json",
             "obr_savings_income_growth_facts.json",
+            "hmrc_spi_table_3_7_savings_rows.json",
             "slc_liable_stocks.json",
             "hmrc_income_release_gate_report.json",
             "hmrc_income_replay_report.json",

@@ -2322,9 +2322,11 @@ def test_uc_take_up_gate_holds_each_family_type_to_dwp() -> None:
             "reachable_pools_caseload_after": realized,
         }
 
-    # 0.05 until microcosm#1418, 0.055 until the SPI pay floor (uk-data#629),
-    # 0.12 until microcosm#1095's UC award fix (María's ruling of 2026-10-29).
-    # The reachable pools keep 0.055 (Vahid's review of #1426).
+    # 0.05 until microcosm#1418, and 0.055 after it: the savings follow-up
+    # (microcosm#1428) joins unmet pools instead of widening it. 0.12 from the
+    # SPI pay floor (uk-data#629) until microcosm#1095's UC award fix (María's
+    # ruling of 2026-10-29); the reachable pools keep 0.055 (Vahid's review of
+    # #1426).
     parameters = {
         "stage": "uc_take_up",
         "check": "uc_take_up",
