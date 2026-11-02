@@ -222,7 +222,7 @@ _MONEY_BRIDGES = frozenset({MONEY_MINOR_UNITS_REF, MONEY_ANNUAL_TRANSFERS_REF})
 #: outputs and cross-population evidence artifacts do not change that basis.
 _MONEY_CONVERSIONS = frozenset({MONEY_NORMALIZE_REF, "transport.currency@1"})
 #: Kernels outside target compilation that replay factors against the feed.
-_FEED_REPLAY_KERNELS = frozenset({MONEY_NORMALIZE_REF})
+_FEED_REPLAY_KERNELS = frozenset({MONEY_NORMALIZE_REF, SUPPORT_BOUNDS_REF})
 _DOCUMENT_FIELDS = frozenset(
     {
         "schema_version",
@@ -882,6 +882,10 @@ def _money_producer_gaps(spec: Mapping[str, object]) -> list[str]:
     rosters = money_column_rosters(declaration)
     found: dict[str, set[str]] = {}
     for row in rows:
+        if row.get("kernel") == DONOR_RANGES_REF:
+            # The support evidence records the donor's own range before any
+            # producer rewrites it; it consumes no money.
+            continue
         reads = (
             row.get("base")
             if row.get("structural", "none") != "none"
@@ -1996,6 +2000,31 @@ def _support_roster(spec: Mapping[str, object]) -> dict[str, object]:
         found = classify(version, entity, column)
         columns.append({"entity": entity, "column": column, **found})
     return {"columns": columns}
+
+
+def support_roster_slices(
+    spec: Mapping[str, object], classes: frozenset[str] | set[str]
+) -> list[dict[str, object]]:
+    """Entity slices of the support roster's columns in ``classes``, sorted.
+
+    Country generators and test fixtures declare the support producers' inputs
+    from this, so a producer slices exactly the columns its roster names. A
+    ``quantile_mapped`` row's ``component_column`` joins its entity's slice,
+    because the support producer checks each value against its own
+    component's bands.
+    """
+
+    columns: dict[str, list[str]] = {}
+    for row in _support_roster(spec)["columns"]:
+        if row["class"] in classes:
+            columns.setdefault(row["entity"], []).append(row["column"])
+            component = (row.get("producer_params") or {}).get("component_column")
+            if row["class"] == "quantile_mapped" and isinstance(component, str):
+                columns[row["entity"]].append(component)
+    return [
+        {"entity": entity, "columns": sorted(set(names))}
+        for entity, names in sorted(columns.items())
+    ]
 
 
 def _person_entity(spec: Mapping[str, object]) -> str:

@@ -1,6 +1,6 @@
 {
   "country": "nz",
-  "fingerprint": "18367e001a76c30d7aa2b94a6fe65b786fe07f40c84ec9fd32203f31c959d364",
+  "fingerprint": "83e88701d2faa8733471aed38e04017534c2d4886c9caa3623555356625d9cc8",
   "gate_ids": [
     "calibration_per_family_fit",
     "demography_per_family_fit",
@@ -87,7 +87,7 @@
     "spec/vintages.yaml": "1ecc1a3f952bd25b834c394314e8c933ddb5b095fd64ba492dddb03e3cdd803e",
     "target_references.json": "feb8630eac964e616dfb9a3de264a551a3834fb891e5b54417868965118ef5b3",
     "transport_atomic_geography_support.json": "53465827f67c87aaf5a06c305c082cbf1e6cdf28f3843e853d1e012635517d10",
-    "transport_graph.json": "6f487b5d10bbee7f5062f84b5a81014cbd6cdfdafdd9d9133f71a4bb45c59e8f",
+    "transport_graph.json": "a28b536d136bdff42be688736da916aa23b7d0194dbd2cf8c7dfdb76b9d13e85",
     "transport_inputs.json": "16d3957214d6305e3d3f41fe6343143a411d6055c75c43d3f171db3ee659ec2d"
   },
   "resources": [
