@@ -8,7 +8,9 @@ installed release; no test runs a real emitter.
 """
 
 import json
+import os
 import traceback
+import typing
 
 import pytest
 from microcosm_emitter_interface import (
@@ -20,6 +22,7 @@ from microcosm_emitter_interface import (
 )
 from microcosm_emitter_interface import client as interface_client
 from microcosm_emitter_interface import launcher as interface_launcher
+from microcosm_emitter_interface.launcher import StartupFailureReason
 
 from microcosm.build import telemetry_emitter as adapter
 from test_support.microcosm_build.emitter import FakeEmitterClient
@@ -532,27 +535,65 @@ def test_fixture_isolates_cached_huggingface_credentials(tmp_path):
 REQUIRED_VARIABLE = "MICROCOSM_TELEMETRY_REQUIRED"
 #: A made-up collector token. Tests never use a real credential.
 DUMMY_COLLECTOR_TOKEN = "dummy-collector-token-not-a-credential"
+#: A short startup limit, so a ``version`` that never answers is given up on
+#: quickly.
+SHORT_STARTUP_TIMEOUT_SECONDS = 2.0
 #: Each way the installed emitter can be unusable: the reason a build that
 #: must send telemetry stops with, and text its error must contain.
 UNUSABLE_EMITTERS = {
-    "missing": ("command_not_found", "uv tool install microcosm-emitter"),
+    "missing": ("command_not_found", "`uv tool install microcosm-emitter`"),
     "too_old": (
         "outdated_emitter",
-        "uv tool install --upgrade "
-        f"'microcosm-emitter>={adapter.MINIMUM_EMITTER_VERSION}'",
+        "`uv tool install --upgrade "
+        f"'microcosm-emitter>={adapter.MINIMUM_EMITTER_VERSION}'`",
     ),
-    "no_protocol_1": ("unsupported_protocol_version", "protocol version 1"),
+    "version_times_out": ("version_timeout", "did not answer within 2 s"),
+    "version_fails": ("version_failed", "exited 3"),
+    "no_protocol_1": ("unsupported_protocol_version", "not protocol version 1"),
+    "hello_fails": ("hello_failed", "`hello` answer"),
     "no_telemetry_module": (
         "telemetry_module_not_loaded",
         "without its telemetry module",
     ),
     "refuses_collector_token": ("child_exit", "exited before it was ready"),
 }
-#: The failures the adapter finds before the interface starts anything. The
-#: interface itself prints that the build will continue when it finds one
-#: (here, an emitter that exits before it is ready); the adapter's error
-#: follows that line.
-FOUND_BY_THE_ADAPTER = {"missing", "too_old", "no_telemetry_module"}
+#: The failures ``EmitterClient.start`` reports. Interface 0.7.0 then prints
+#: "Local Microcosm emitter failed to start (<reason>); the build will
+#: continue." before the adapter's error, which says that line does not apply.
+REPORTED_BY_THE_INTERFACE = {"hello_fails", "refuses_collector_token"}
+#: For each startup failure interface 0.7.0 can report, text the adapter's
+#: error must contain.
+INTERFACE_STARTUP_FAILURES = {
+    "command_not_found": "`uv tool install microcosm-emitter`",
+    "invalid_configuration": "invalid or too large",
+    "configuration_timeout": "did not take its module settings",
+    "child_exit": 'only "Service startup failed (startup_failure)."',
+    "readiness_timeout": "was not ready within its startup time limit",
+    "unsupported_protocol_version": "`hello` answer",
+    "startup_failure": "could not be started",
+}
+
+
+def _install_emitter_script(monkeypatch, directory, version_branch):
+    """Name a stand-in ``microcosm-emitter`` whose ``version`` runs ``version_branch``.
+
+    Started any other way, as the emitter itself would be, it creates the
+    returned file and exits.
+    """
+    directory.mkdir()
+    started = directory / "emitter-started"
+    command = directory / "microcosm-emitter"
+    command.write_text(
+        "#!/bin/sh\n"
+        'if [ "$1" = version ]; then\n'
+        f"{version_branch}\n"
+        "fi\n"
+        f"touch '{started}'\n"
+        "exit 1\n"
+    )
+    command.chmod(0o755)
+    monkeypatch.setenv("MICROCOSM_EMITTER_COMMAND", str(command))
+    return started
 
 
 def _install_emitter_that_refuses_its_collector_token(monkeypatch, directory):
@@ -564,7 +605,7 @@ def _install_emitter_that_refuses_its_collector_token(monkeypatch, directory):
     emitter's refusal and exits 1 before it is ready. Emitter 0.11.0 and
     later do that when ``MICROCOSM_COLLECTOR_TOKEN``,
     ``MICROCOSM_COLLECTOR_TOKEN_EXPIRES_AT`` and ``MICROCOSM_COLLECTOR_ORIGIN``
-    are not all set, cannot be read, or name another collector.
+    are set only in part, cannot be read, or name another collector.
     """
     directory.mkdir()
     inherited_names = directory / "inherited-collector-variables"
@@ -592,51 +633,86 @@ def _arrange_unusable_emitter(monkeypatch, tmp_path, kind):
     """Make the installed emitter unusable in one of ``UNUSABLE_EMITTERS``' ways.
 
     Returns the client a recorded ``EmitterClient.start`` hands back, or None
-    where the interface's own startup runs (or nothing starts).
+    where the interface's own startup runs (or nothing starts), and the list
+    of recorded starts, or None.
     """
     if kind == "missing":
         # The autouse fixture names a missing command; let the interface
         # look for it itself.
         monkeypatch.setattr(interface_client, "start_emitter", INTERFACE_START_EMITTER)
-        return None
-    if kind == "too_old":
-        _record_starts(monkeypatch)
-        _install_emitter_command(
-            monkeypatch, tmp_path / "bin", _version_answer("0.5.1")
-        )
-        return None
+        return None, None
     if kind == "refuses_collector_token":
         monkeypatch.setattr(interface_client, "start_emitter", INTERFACE_START_EMITTER)
         # One of the three variables without the other two.
         monkeypatch.setenv("MICROCOSM_COLLECTOR_TOKEN", DUMMY_COLLECTOR_TOKEN)
         _install_emitter_that_refuses_its_collector_token(monkeypatch, tmp_path / "bin")
-        return None
+        return None, None
+    if kind in {"too_old", "version_times_out", "version_fails", "no_protocol_1"}:
+        # A required build never starts it: the version answer settles it.
+        # Started anyway (as a build that need not send telemetry starts an
+        # emitter without protocol 1), it fails as the interface reports.
+        starts = _record_starts(
+            monkeypatch,
+            EmitterClient(
+                startup_error=EmitterStartupError("unsupported_protocol_version")
+            ),
+        )
+        if kind == "too_old":
+            _install_emitter_command(
+                monkeypatch, tmp_path / "bin", _version_answer("0.5.1")
+            )
+        elif kind == "version_times_out":
+            _install_emitter_script(monkeypatch, tmp_path / "bin", "  sleep 30")
+        elif kind == "version_fails":
+            _install_emitter_script(
+                monkeypatch, tmp_path / "bin", "  echo broken >&2\n  exit 3"
+            )
+        else:
+            answer = json.loads(_version_answer(adapter.MINIMUM_EMITTER_VERSION))
+            answer["protocol_versions"] = [2]
+            _install_emitter_command(monkeypatch, tmp_path / "bin", json.dumps(answer))
+        return None, starts
     _install_emitter_command(
         monkeypatch,
         tmp_path / "bin",
         _version_answer(adapter.MINIMUM_EMITTER_VERSION),
     )
-    if kind == "no_protocol_1":
-        # What EmitterClient.start returns when the emitter's ``hello``
-        # answer does not list protocol version 1.
+    if kind == "hello_fails":
+        # What EmitterClient.start returns when ``hello`` fails, although
+        # ``version`` listed protocol version 1.
         client = EmitterClient(
             startup_error=EmitterStartupError("unsupported_protocol_version")
         )
     else:
         client = FakeEmitterClient(modules={"orrery", "huggingface"})
-    _record_starts(monkeypatch, client)
-    return client
+    return client, _record_starts(monkeypatch, client)
+
+
+def _start_with_a_short_limit(monkeypatch, tmp_path):
+    monkeypatch.setattr(adapter, "runtime_identity", lambda: {"commit": "synthetic"})
+    return START(
+        adapter.LocalTelemetryEmitter,
+        run_id="run-one",
+        country_code="uk",
+        pipeline="full",
+        spool_path=tmp_path / "events.sqlite3",
+        startup_timeout_seconds=SHORT_STARTUP_TIMEOUT_SECONDS,
+    )
+
+
+def _says_the_interface_line_does_not_apply(message):
+    return '"the build will continue"' in message and "does not apply" in message
 
 
 @pytest.mark.parametrize("kind", list(UNUSABLE_EMITTERS))
 def test_a_build_that_must_send_telemetry_stops_when_its_emitter_is_unusable(
     monkeypatch, capfd, tmp_path, kind
 ):
-    client = _arrange_unusable_emitter(monkeypatch, tmp_path, kind)
+    client, starts = _arrange_unusable_emitter(monkeypatch, tmp_path, kind)
     monkeypatch.setenv(REQUIRED_VARIABLE, "1")
 
     with pytest.raises(adapter.TelemetryRequiredError) as raised:
-        _start_build_emitter(monkeypatch, tmp_path)
+        _start_with_a_short_limit(monkeypatch, tmp_path)
 
     error = raised.value
     reason, explanation = UNUSABLE_EMITTERS[kind]
@@ -646,14 +722,25 @@ def test_a_build_that_must_send_telemetry_stops_when_its_emitter_is_unusable(
         "MICROCOSM_TELEMETRY_REQUIRED=1, so this build must send telemetry, but "
     )
     assert explanation in message
-    assert "The build stops before doing any work." in message
+    assert message.endswith("The build stops before doing any work.")
     if isinstance(client, FakeEmitterClient):
         # It started without the telemetry module: nothing was sent to it,
         # and it was told to stop.
         assert client.telemetry_messages == []
         assert client.closed
-    if kind in FOUND_BY_THE_ADAPTER:
-        assert "continue" not in capfd.readouterr().err
+    if client is None and starts is not None:
+        assert starts == []
+    err = capfd.readouterr().err
+    if kind in REPORTED_BY_THE_INTERFACE:
+        assert _says_the_interface_line_does_not_apply(message)
+    else:
+        # The adapter found it before the interface started anything, so
+        # nothing printed that the build continues.
+        assert "continue" not in err
+        assert not _says_the_interface_line_does_not_apply(message)
+    if kind in {"version_times_out", "version_fails"}:
+        # A version check that failed is not advice to upgrade.
+        assert "--upgrade" not in message
 
 
 def test_a_build_that_must_send_telemetry_stops_when_its_emitter_refuses_the_collector_token(
@@ -669,19 +756,58 @@ def test_a_build_that_must_send_telemetry_stops_when_its_emitter_refuses_the_col
     monkeypatch.setenv(REQUIRED_VARIABLE, "1")
 
     with pytest.raises(adapter.TelemetryRequiredError) as raised:
-        _start_build_emitter(monkeypatch, tmp_path)
+        _start_with_a_short_limit(monkeypatch, tmp_path)
 
     assert raised.value.reason == "child_exit"
     assert raised.value.exit_code == 1
     # The emitter inherited the build's collector-token variable.
     assert inherited_names.read_text().split() == ["MICROCOSM_COLLECTOR_TOKEN"]
     output = capfd.readouterr()
-    # The emitter's own reason reaches the build's standard error.
+    # The emitter's own reason reaches the build's standard error, and so
+    # does the interface's line, which the adapter's error supersedes.
     assert "The Microcosm emitter cannot start: MICROCOSM_COLLECTOR_TOKEN" in (
         output.err
     )
+    assert "(child_exit); the build will continue." in output.err
+    assert _says_the_interface_line_does_not_apply(str(raised.value))
     shown = output.out + output.err + "".join(traceback.format_exception(raised.value))
     assert DUMMY_COLLECTOR_TOKEN not in shown
+
+
+def test_every_startup_failure_the_interface_names_has_its_own_message():
+    reasons = set(typing.get_args(StartupFailureReason.__value__))
+    assert set(INTERFACE_STARTUP_FAILURES) == reasons
+    assert set(adapter._STARTUP_PROBLEMS) == reasons
+
+
+@pytest.mark.parametrize("reason", list(INTERFACE_STARTUP_FAILURES))
+def test_a_required_build_s_error_for_each_startup_failure_the_interface_reports(
+    monkeypatch, tmp_path, reason
+):
+    _install_emitter_command(
+        monkeypatch, tmp_path / "bin", _version_answer(adapter.MINIMUM_EMITTER_VERSION)
+    )
+    exit_code = 3 if reason == "child_exit" else None
+    _record_starts(
+        monkeypatch,
+        EmitterClient(startup_error=EmitterStartupError(reason, exit_code=exit_code)),
+    )
+    monkeypatch.setenv(REQUIRED_VARIABLE, "1")
+
+    with pytest.raises(adapter.TelemetryRequiredError) as raised:
+        _start_with_a_short_limit(monkeypatch, tmp_path)
+
+    error = raised.value
+    # ``version`` listed protocol version 1, so a failed ``hello`` is not an
+    # unsupported protocol.
+    expected = "hello_failed" if reason == "unsupported_protocol_version" else reason
+    assert (error.reason, error.exit_code) == (expected, exit_code)
+    message = str(error)
+    assert INTERFACE_STARTUP_FAILURES[reason] in message
+    assert _says_the_interface_line_does_not_apply(message)
+    if reason == "child_exit":
+        assert "(child_exit, exit code 3)" in message
+        assert "set only in part" in message
 
 
 @pytest.mark.parametrize("failure", ["default_spool_path", "runtime_identity"])
@@ -739,13 +865,13 @@ def test_a_build_that_must_send_telemetry_starts_an_emitter_with_telemetry(
 def test_a_build_that_need_not_send_telemetry_continues_without_a_usable_emitter(
     monkeypatch, tmp_path, kind, setting
 ):
-    client = _arrange_unusable_emitter(monkeypatch, tmp_path, kind)
+    client, _ = _arrange_unusable_emitter(monkeypatch, tmp_path, kind)
     if setting is None:
         monkeypatch.delenv(REQUIRED_VARIABLE, raising=False)
     else:
         monkeypatch.setenv(REQUIRED_VARIABLE, setting)
 
-    emitter = _start_build_emitter(monkeypatch, tmp_path)
+    emitter = _start_with_a_short_limit(monkeypatch, tmp_path)
 
     # The build runs on, and no telemetry reaches an emitter.
     assert emitter.client is None or "telemetry" not in emitter.client.modules
@@ -785,3 +911,15 @@ def test_required_telemetry_leaves_short_lived_graph_emitters_optional(
     else:
         receipt = adapter.publish_graph(tmp_path, inventory, wait_seconds=0)
         assert receipt["status"] == "failed"
+
+
+def test_the_shell_s_telemetry_settings_never_reach_a_test():
+    # A shell that exports them would change what every adapter test sees;
+    # the shared fixture clears them, as it clears Hugging Face credentials.
+    for name in (
+        REQUIRED_VARIABLE,
+        "MICROCOSM_COLLECTOR_TOKEN",
+        "MICROCOSM_COLLECTOR_TOKEN_EXPIRES_AT",
+        "MICROCOSM_COLLECTOR_ORIGIN",
+    ):
+        assert name not in os.environ
