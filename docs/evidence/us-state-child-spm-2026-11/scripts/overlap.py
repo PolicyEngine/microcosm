@@ -308,6 +308,20 @@ t["joint_z"] = np.where(
     np.minimum(t.z_dense.abs(), t.z_acs.abs()),
     0,
 )
+
+
+def largest(z2):
+    return np.where(
+        np.sign(t.z_dense.values) == np.sign(z2),
+        np.minimum(np.abs(t.z_dense.values), np.abs(z2)),
+        0,
+    ).max()
+
+
+sim = np.array([largest(t.z_acs.values[rng.permutation(51)]) for _ in range(200000)])
+print(
+    f"largest joint z {t.joint_z.max():.3f}, permutation median {np.median(sim):.2f}, p {(sim >= t.joint_z.max()).mean():.3f}"
+)
 t.to_csv(f"{SP}/run/state_persistence.csv")
 print(
     t.sort_values("joint_z", ascending=False)
