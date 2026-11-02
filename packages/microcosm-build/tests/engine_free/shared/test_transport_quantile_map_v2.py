@@ -18,7 +18,7 @@ from tempfile import TemporaryDirectory
 import numpy as np
 import pandas as pd
 import pytest
-from hypothesis import HealthCheck, given, settings
+from hypothesis import HealthCheck, assume, given, settings
 from hypothesis import strategies as st
 
 from microcosm.build.tail_estimators import (
@@ -265,8 +265,9 @@ def test_property_one_band_and_the_top_match_the_closed_form(
 ) -> None:
     upper = lower * ratio
     expected = _closed_form(n_band, n_top, lower, upper)
-    if not 1.01 < expected < 63:
-        return
+    # Hypothesis replaces a draw whose root lies outside the bracket, so every
+    # counted example reaches the assertion.
+    assume(1.01 < expected < 63)
     fit = _fit([("a", lower, upper, n_band), ("t", upper, None, n_top)])
     assert abs(fit.alpha_float - expected) <= TOLERANCE
 
@@ -352,8 +353,7 @@ def test_property_the_score_changes_sign_once_on_the_bracket(counts, edges) -> N
         )
     ]
     rows.append(("top", edges[-1], None, counts[-1]))
-    if len(rows) < 2 or sum(row[3] for row in rows[:-1]) <= 0:
-        return
+    assume(len(rows) >= 2 and sum(row[3] for row in rows[:-1]) > 0)
     fit_anchors = _anchors(rows)
     grid = np.linspace(float(BRACKET[0]), float(BRACKET[1]), 257)
     scores = [grouped_pareto_score(fit_anchors, float(a)) for a in grid]
@@ -528,7 +528,9 @@ def test_property_v2_is_bitwise_v1_at_the_fitted_alpha(tmp_path, seed, top, midd
                 surface,
             )
         except TailEstimatorRefusalError:
-            return
+            # Hypothesis replaces a draw the estimator refuses, so every
+            # counted example reaches the differential.
+            assume(False)
         alpha = v2.receipt["tail_estimator"]["alpha"]
         literal = {
             "method": "pareto",
