@@ -895,14 +895,28 @@ def documents():
 
 
 def closure_slices():
-    """The frame columns the closure's concept, state and default entries feed."""
-    names = read("axiom_rules_bindings")["entity_names"]
+    """The frame columns the closure producer reads.
+
+    The closure's concept, state and default entries feed their entities'
+    columns, and every declared relation input's physical column and role
+    column feed the person slice, where the producer reads them (NZ
+    declares no relation today).
+    """
+    from microcosm.build.transport.evidence_contract import binding_relation_inputs
+
+    bindings = read("axiom_rules_bindings")
+    names = bindings["entity_names"]
     to_frame = {engine: frame for frame, engine in names.items()}
     columns = {}
     for entry in read("axiom_input_closure")["entries"]:
         if entry.get("encoded_by") == "graph_node":
             continue
         columns.setdefault(to_frame[entry["entity"]], []).append(entry["input"])
+    for row in bindings["bindings"]:
+        for item in binding_relation_inputs(row):
+            for column in (item.column, item.role_column):
+                if column is not None:
+                    columns.setdefault("person", []).append(column)
     return [
         slice_(entity, sorted(set(names))) for entity, names in sorted(columns.items())
     ]

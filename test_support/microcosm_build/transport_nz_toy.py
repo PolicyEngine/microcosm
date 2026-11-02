@@ -25,6 +25,7 @@ from microcosm.build.reference_factors import resolve_reference_factor
 from microcosm.build.transport import compose as compose_module
 from microcosm.build.transport.codecs import FACTS_SOURCE_CODEC
 from microcosm.build.transport.compose import TransportGraphConfig
+from microcosm.build.transport.evidence_contract import binding_relation_inputs
 from microcosm.build.transport.registry import build_transport_registry
 from microcosm.build.transport.takeup_kernels import reporting_cell_declarations
 from microcosm.frame import Frame, VariableMetadata, WeightKind, Weights
@@ -869,6 +870,27 @@ TOY_STRUCTURAL_COLUMNS = (
 TOY_MAXIMUM_RELATIVE_MASS_CHANGE = 0.05
 
 
+def closure_slices(resources):
+    """The closure producer's input slices for the toy's resources.
+
+    The closure's concept, state and default entries feed their entities'
+    columns, and the producer reads each declared relation's column and role
+    column on the person entity; a slice delivers only the columns it names.
+    """
+    names = resources["axiom_rules_bindings"]["entity_names"]
+    to_frame = {engine: frame for frame, engine in names.items()}
+    closure = {}
+    for entry in resources["axiom_input_closure"]["entries"]:
+        if entry.get("encoded_by") != "graph_node":
+            closure.setdefault(to_frame[entry["entity"]], []).append(entry["input"])
+    for binding in resources["axiom_rules_bindings"]["bindings"]:
+        for item in binding_relation_inputs(binding):
+            for column in (item.column, item.role_column):
+                if column is not None:
+                    closure.setdefault("person", []).append(column)
+    return [_slice(e, sorted(set(c))) for e, c in sorted(closure.items())]
+
+
 def _evidence(spec):
     """Wire the five release-evidence producers and their three gates.
 
@@ -931,12 +953,6 @@ def _evidence(spec):
         },
     ]
     rows = r["transport_graph"]["nodes"]
-    names = r["axiom_rules_bindings"]["entity_names"]
-    to_frame = {engine: frame for frame, engine in names.items()}
-    closure = {}
-    for entry in r["axiom_input_closure"]["entries"]:
-        if entry.get("encoded_by") != "graph_node":
-            closure.setdefault(to_frame[entry["entity"]], []).append(entry["input"])
     ranged = compose_module.support_roster_slices(
         spec, {"copied", "normalized", "currency"}
     )
@@ -974,7 +990,7 @@ def _evidence(spec):
             "nz.evidence.input_closure",
             "transport.input_closure@1",
             population="nz.as",
-            inputs=[_slice(e, sorted(set(c))) for e, c in sorted(closure.items())],
+            inputs=closure_slices(r),
             params={
                 **_document("closure", "axiom_input_closure"),
                 **_document("mapping", "concept_mapping"),
