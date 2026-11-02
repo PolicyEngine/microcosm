@@ -33,12 +33,47 @@
       "schema_id": "vintages.schema.json"
     },
     {
+      "path": "chronicle_feed.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
       "path": "gates.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
     },
     {
       "path": "geography_spine.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "holdout_references.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "precal_references.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "reference_aging.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "reference_intervals.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "reference_inventory.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "reference_profiles.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
     },

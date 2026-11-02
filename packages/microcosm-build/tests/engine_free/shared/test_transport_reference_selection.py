@@ -577,17 +577,31 @@ def test_legacy_selection_path_changed_mutant_frozen_surface_params_and_keys(
         reference = next(
             row
             for row in document["target_references"]
-            if row["name"] == "spf_finances_pit_total"
+            if row["name"] == "statbel_population_by_region_sex_age__be1__male__a0_17"
         )
         document["target_references"] = [reference]
+        selector = reference["ledger_selector"]
         fact = toy_fact(reference["name"], 3, entity=reference["entity"])
-        fact["period"] = {"type": "tax_year", "value": reference["period"]}
-        fact["geography"]["id"] = country.upper()
+        fact["aggregate_fact_key"] = selector["aggregate_fact_key"]
+        fact["period"] = {
+            "type": selector["period_type"],
+            "value": selector["period_value"],
+        }
+        fact["geography"].update(
+            level=selector["geography_level"],
+            id=selector["geography_id"],
+            vintage=selector["geography_vintage"],
+        )
         for section in ("source", "observed_measure"):
-            fact[section]["source_name"] = reference["ledger_selector"]["source_name"]
-        fact["observed_measure"]["source_measure_id"] = reference["ledger_selector"][
-            "source_measure_id"
-        ]
+            fact[section]["source_name"] = selector["source_name"]
+        fact["observed_measure"]["source_measure_id"] = selector["source_measure_id"]
+        fact["observed_measure"]["source_concept"] = selector["source_concept"]
+        fact["layout"] = {"record_set_id": selector["record_set_id"]}
+        fact["dimensions"] = dict(selector["dimension_values"])
+        fact["dimension_labels"] = {name: name for name in fact["dimensions"]}
+        fact["dimension_value_labels"] = {
+            name: {value: value} for name, value in fact["dimensions"].items()
+        }
         spec["resources"]["target_references"] = document
     facts = write_facts(tmp_path / "facts.jsonl", [fact])
     legacy_targets = _legacy(
