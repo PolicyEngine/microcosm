@@ -212,7 +212,9 @@ class TestClosure:
         assert {
             ref.name: node for ref, node in CLOSURE.graph_node_inputs().items()
         } == {
-            "accommodation_supplement_base_rate_weekly_amount": "nz.as.bridge.base_rate",
+            "accommodation_supplement_base_rate_weekly_amount": (
+                "nz.scn.S0.bridge.base_rate"
+            ),
             "accommodation_supplement_non_beneficiary_income_cutout_weekly_amount": (
                 "nz.as.bridge.cutout"
             ),
@@ -263,13 +265,19 @@ def _with_state(tables, data) -> dict[str, pd.DataFrame]:
             dtype=bool,
         )
     for column in ("as_area", "as_area_alt"):
-        household[column] = np.asarray(
-            data.draw(
-                st.lists(
-                    st.integers(1, 4), min_size=len(household), max_size=len(household)
+        # The state bindings compare the declared string geography codes.
+        household[column] = pd.array(
+            [
+                str(code)
+                for code in data.draw(
+                    st.lists(
+                        st.integers(1, 4),
+                        min_size=len(household),
+                        max_size=len(household),
+                    )
                 )
-            ),
-            dtype=np.int64,
+            ],
+            dtype="string",
         )
     return {"person": person, "household": household}
 
@@ -407,7 +415,7 @@ def _golden_frame() -> dict[str, pd.DataFrame]:
             "mortgage_interest": [0.0],
             "mortgage_principal": [0.0],
             "property_tax": [0.0],
-            "as_area": np.asarray([1], dtype=np.int64),
+            "as_area": pd.array(["1"], dtype="string"),
         }
     )
     return {"person": person, "household": household}

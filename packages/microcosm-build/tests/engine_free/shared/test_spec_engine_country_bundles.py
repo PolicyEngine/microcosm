@@ -237,6 +237,7 @@ def test_nz_generation_zero_views_come_from_the_country_spec_seam() -> None:
     assert not spec.release_contract.artifact_repo_private
     assert {row.path for row in spec.resource_rows if row.kind == "legacy_json"} == {
         "as_area_crosswalk.json",
+        "as_encoding.json",
         "as_rate_bridge.json",
         "atomic_geography_support.json",
         "axiom_input_closure.json",
@@ -246,14 +247,21 @@ def test_nz_generation_zero_views_come_from_the_country_spec_seam() -> None:
         "calibration_bindings.json",
         "calibration_settings.json",
         "chronicle_feed.json",
+        "concept_mapping.json",
         "currency_bridge.json",
+        "entitlement_graph.json",
         "export_contract.json",
+        "export_replay_bindings.json",
         "family_reconciliation.json",
+        "gap_annualisation.json",
         "gates.json",
+        "geography_assignment.json",
         "geography_spine.json",
+        "holdout_comparator_bindings.json",
         "holdout_references.json",
         "mass_references.json",
         "money_normalization.json",
+        "money_normalization_hold_fixed.json",
         "msd_benefit_rates_20260401.json",
         "msd_pre_activation_reconciliation.json",
         "precal_references.json",
@@ -269,6 +277,9 @@ def test_nz_generation_zero_views_come_from_the_country_spec_seam() -> None:
         "scenarios.json",
         "source_stages.json",
         "target_references.json",
+        "transport_atomic_geography_support.json",
+        "transport_graph.json",
+        "transport_inputs.json",
     }
 
 

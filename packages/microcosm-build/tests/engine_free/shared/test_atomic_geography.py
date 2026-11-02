@@ -1,6 +1,7 @@
 """Invented support controls; no survey, Census or administrative files are read."""
 
 from copy import deepcopy
+from dataclasses import replace
 
 import numpy as np
 import pandas as pd
@@ -509,3 +510,125 @@ def test_typed_geography_gate_edge_refuses_invalid_producer_contract(defect):
                 (base, *nodes, consumer),
             )
         )
+
+
+def _person_location_run(persons, households, *, columns=None, unmatched=None):
+    from microcosm.build.transport.person_location_kernels import (
+        GEOGRAPHY_PERSON_LOCATION,
+    )
+    from microcosm.graph import Slice
+    from test_support.microcosm_frame.kernels import _context
+
+    schema = EntitySchema(group_entities=("household",))
+    frame = Frame(
+        {"person": persons, "household": households},
+        schema,
+        {"household": Weights(np.ones(len(households)), WeightKind.DESIGN)},
+    )
+    node = Node(
+        "toy.geo.person",
+        GEOGRAPHY_PERSON_LOCATION.ref,
+        inputs=(
+            Slice("household", ("household_region_code",)),
+            Slice("person", ("person_household_id",)),
+        ),
+        outputs=(Owned("person", "region_code", "string"),),
+        params={
+            "columns": canonical_json(
+                columns or {"household_region_code": "region_code"}
+            ).decode()
+        },
+    )
+    context = _context(frame, node, weighted_entities=("household",))
+    if unmatched is not None:
+        # Frame refuses a membership that names no household, so the kernel's
+        # own guard is reached only through a hand-built view.
+        person, household = unmatched
+        tables = dict(context.tables)
+        view = tables["person"].copy()
+        view.loc[view["person_id"] == person, "person_household_id"] = household
+        tables["person"] = view
+        context = replace(context, tables=tables)
+    return GEOGRAPHY_PERSON_LOCATION.run(context)
+
+
+def _location_tables():
+    # Persons sit in an order unrelated to household rows, so a projection by
+    # row position gives some persons another household's code.
+    persons = pd.DataFrame(
+        {
+            "person_id": [17, 3, 11, 5, 8],
+            "person_household_id": [30, 10, 20, 30, 10],
+        }
+    )
+    households = pd.DataFrame(
+        {
+            "household_id": [10, 20, 30],
+            "household_region_code": pd.array(["01", "99", "13"], dtype="string"),
+        }
+    )
+    return persons, households
+
+
+def test_person_location_gives_every_person_their_own_households_code():
+    persons, households = _location_tables()
+    result = _person_location_run(persons, households)
+    values = result.columns["person", "region_code"]
+    # Row order and count hold: the result indexes the persons as given.
+    assert values.index.tolist() == persons["person_id"].tolist()
+    assert str(values.dtype) == "string"
+    by_household = dict(
+        zip(
+            households["household_id"],
+            households["household_region_code"],
+            strict=True,
+        )
+    )
+    assert values.tolist() == [
+        by_household[household] for household in persons["person_household_id"]
+    ]
+    assert values.tolist() == ["13", "01", "99", "13", "01"]
+    # The household table is read, never written.
+    assert set(result.columns) == {("person", "region_code")}
+
+
+@pytest.mark.parametrize("missing", [None, pd.NA])
+def test_person_location_refuses_a_missing_household_value(missing):
+    persons, households = _location_tables()
+    households["household_region_code"] = pd.array(
+        ["01", missing, "13"], dtype="string"
+    )
+    with pytest.raises(ValueError, match=r"must hold a string.*rows \[20\]"):
+        _person_location_run(persons, households)
+
+
+def test_person_location_refuses_a_person_whose_household_is_absent():
+    persons, households = _location_tables()
+    with pytest.raises(ValueError, match=r"match no household; rows \[11\]"):
+        _person_location_run(persons, households, unmatched=(11, 40))
+
+
+@pytest.mark.parametrize(
+    "columns",
+    [
+        {"household_region_code": "person_household_id"},
+        {"household_id": "region_code"},
+    ],
+)
+def test_person_location_refuses_structural_column_maps(columns):
+    persons, households = _location_tables()
+    with pytest.raises(ValueError, match="structural"):
+        _person_location_run(persons, households, columns=columns)
+
+
+def test_person_location_registers_outside_the_shared_geography_module():
+    from microcosm.build.transport.person_location_kernels import (
+        register_person_location_kernels,
+    )
+
+    shared = KernelRegistry()
+    register_atomic_geography_kernels(shared)
+    assert "geography.person_location@1" not in shared.refs()
+    registry = register_person_location_kernels(KernelRegistry())
+    register_person_location_kernels(registry)
+    assert registry.refs() == ("geography.person_location@1",)
