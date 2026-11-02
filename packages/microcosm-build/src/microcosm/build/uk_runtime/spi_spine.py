@@ -17,6 +17,9 @@ from microcosm.build.uk_runtime.employer_pension_contributions import (
     employer_scheme_and_sector,
     load_ashe_employer_rates,
 )
+from microcosm.build.uk_runtime.frs_annual_income import (
+    FRS_ANNUAL_INCOME_OUTPUT_COLUMNS,
+)
 from microcosm.build.uk_runtime.frs_hmrc_source import (
     FRS_HMRC_INCPBEN_COLUMN,
     FRS_HMRC_PAY_COLUMN,
@@ -26,6 +29,7 @@ from microcosm.build.uk_runtime.frs_hmrc_source import (
     _raw_source_person_ids,
     _read_raw_frs_table,
 )
+from microcosm.build.uk_runtime.frs_spine import ANNUITY_AND_TRUST_INCOME_COLUMN
 from microcosm.build.uk_runtime.frs_take_up import uk_take_up_population_policy
 from microcosm.build.uk_runtime.hmrc_income import (
     HMRCIncomeTargetSet,
@@ -180,7 +184,6 @@ UK_SPI_SUPPORT_CHANNEL_OUTPUT_COLUMNS = (
     "source_household_key",
 )
 UK_SPI_INCOME_SPINE_OUTPUT_COLUMNS = (
-    "other_investment_income",
     "gift_aid",
     "charitable_investment_gifts",
     # Restricted residential finance costs: the SPI channel's tape draw; the
@@ -213,13 +216,16 @@ UK_SPI_INCOME_SPINE_REWRITE_COLUMNS = (
     "self_employment_income",
     "savings_interest_income",
     "dividend_income",
+    # The tape's OTHERINV on SPI rows; FRS rows carry their own gilt interest
+    # from frs_spine (microcosm#1418), NS&I being interest (microcosm#1428).
+    "other_investment_income",
     "private_pension_income",
     "property_income",
     "employee_pension_contributions",
     EMPLOYER_PENSION_CONTRIBUTIONS_COLUMN,
     "personal_pension_contributions",
     "pension_contributions_via_salary_sacrifice",
-    "tax_free_savings_income",
+    "individual_savings_account_interest_income",
     "universal_credit_reported",
     "pension_credit_reported",
     "child_benefit_reported",
@@ -239,6 +245,7 @@ UK_SPI_INCOME_SPINE_REWRITE_COLUMNS = (
     "afcs_reported",
     "bsp_reported",
     "war_widows_pension_reported",
+    "widowed_parents_allowance_reported",
     "winter_fuel_allowance_reported",
     "council_tax_benefit_reported",
     "jsa_contrib_reported",
@@ -260,6 +267,14 @@ UK_SPI_INCOME_SPINE_REWRITE_COLUMNS = (
     FRS_HMRC_PAY_COLUMN,
     FRS_HMRC_UBISJA_COLUMN,
     FRS_HMRC_INCPBEN_COLUMN,
+    # The annual income descriptors follow a drawn row's drawn incomes: the
+    # tape's income is the tax year's, so each share is 1, and the twin's
+    # other spells stay only where the tape drew none of that income.
+    *FRS_ANNUAL_INCOME_OUTPUT_COLUMNS,
+    # A drawn row's private pension is the tape's, which books annuity and
+    # trust payments as other income, so its descriptor of them is zero
+    # (microcosm#1428).
+    ANNUITY_AND_TRUST_INCOME_COLUMN,
 )
 
 # Reviewed constants for every load-bearing manifest parameter the spine
@@ -300,7 +315,12 @@ SPI_SPINE_STAGE2_OUTPUT_COLUMNS = tuple(
         # Written from the stage-1 loss draws, not drawn by stage 2.
         "loss_relief",
         "ni_class_4_losses_brought_forward",
+        # A stage-1 tape draw, not drawn by stage 2 (microcosm#1418).
+        "other_investment_income",
     )
+    # Held to the drawn incomes by rule, not drawn by stage 2.
+    and column not in FRS_ANNUAL_INCOME_OUTPUT_COLUMNS
+    and column != ANNUITY_AND_TRUST_INCOME_COLUMN
 )
 #: Both forests are queried over every SPI-channel person aged 16 and over,
 #: and the dependants' rows are discarded (uk-data#504, microcosm#1095).
@@ -391,6 +411,7 @@ class UKSPIIncomeSpineResult:
                 self.imputation.gainful_self_employment_refresh
             ),
             "pension_coherence": self.imputation.pension_coherence,
+            "gift_anchor": self.imputation.gift_anchor,
             "state_pension_age_guard": list(self.imputation.state_pension_age_guard),
             "targets": {
                 "count": len(self.source_targets.targets),

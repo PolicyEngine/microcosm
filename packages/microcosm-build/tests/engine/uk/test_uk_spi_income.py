@@ -1,6 +1,8 @@
 """Tests split from packages/microcosm-build/tests/test_uk_spi_income.py."""
 
 # ruff: noqa: F403, F405
+from microcosm.build.uk_runtime.hmrc_uprating import uk_obr_savings_income_level
+from microcosm.build.uk_runtime.spi_income import SPI_SAVINGS_REBASE_CONCEPTS
 from test_support.microcosm_build.uk_spi_income import *
 
 
@@ -20,7 +22,7 @@ def test_spi_preserves_observed_children_outside_the_donor_age_domain(
         "state_pension_reported",
         "universal_credit_reported",
         "savings_interest_income",
-        "tax_free_savings_income",
+        "individual_savings_account_interest_income",
         "dla_sc_reported",
     ]
     person.loc[child, preserved] = [0, 0, 0, 0, 0, 12, 3, 42]
@@ -45,7 +47,8 @@ def test_spi_preserves_observed_children_outside_the_donor_age_domain(
     )
     assert result.spi_prediction_rows == int(person[channel].eq("spi").sum()) - 1
     adults = person[channel].eq("spi") & person.age.ge(16)
-    assert result.person.loc[adults, "gift_aid"].eq(10).all()
+    factor = result.gift_anchor["factors"]["gift_aid"]
+    assert result.person.loc[adults, "gift_aid"].eq(10.0 * factor).all()
 
 
 def test_spi_rebases_income_before_frs_fill_and_preserves_child_inputs(
@@ -66,9 +69,23 @@ def test_spi_rebases_income_before_frs_fill_and_preserves_child_inputs(
     monkeypatch.setattr(
         spi_income,
         "_spi_income_uprating_factors",
-        lambda year: (factors, {"from_period": 2022, "to_period": year}),
+        lambda year, *, rebased_columns=None: (
+            factors,
+            {"from_period": 2022, "to_period": year},
+        ),
         raising=False,
     )
+    # The donor savings rebase runs on the prepared tape when the stage rebases
+    # to the build year, and only then (microcosm#1418 savings follow-up),
+    # banding the tape on its income moved to 2023-24 (microcosm#1428).
+    rebased = []
+
+    def rebase(donor, published, *, income_factors=None):
+        rebased.append(sorted(published))
+        assert income_factors == factors
+        return donor, {"rebased": True, "columns": {}}
+
+    monkeypatch.setattr(spi_income, "rebase_spi_donor_savings", rebase)
     options = dict(
         seed=9,
         n_estimators=3,
@@ -77,6 +94,7 @@ def test_spi_rebases_income_before_frs_fill_and_preserves_child_inputs(
         allow_in_sample_reference=True,
     )
     reference = impute_uk_spi_income_support(support, donor_path, **options)
+    assert rebased == []
     result = impute_uk_spi_income_support(
         support,
         donor_path,
@@ -89,9 +107,12 @@ def test_spi_rebases_income_before_frs_fill_and_preserves_child_inputs(
         result.person.loc[spi, "employment_income"],
         2 * reference.person.loc[spi, "employment_income"],
     )
-    # Only taxable SPI interest is rebased; the FRS fill's £5 tax-free draw
-    # is already in the build-year basis and must not be doubled.
-    assert result.person.loc[spi, "savings_interest_income"].eq(205).all()
+    # Only taxable SPI interest is rebased; the FRS fill's £5 ISA interest draw
+    # is already in the build-year basis and stays beside it (microcosm#1360).
+    assert result.person.loc[spi, "savings_interest_income"].eq(200).all()
+    assert (
+        result.person.loc[spi, "individual_savings_account_interest_income"].eq(5).all()
+    )
     # FRS rows keep their own reported dividends, children and adults alike:
     # the SPI forest never redraws them (uk-data#498, microcosm#1095).
     base = person[channel].eq("frs")
@@ -99,7 +120,12 @@ def test_spi_rebases_income_before_frs_fill_and_preserves_child_inputs(
         result.person.loc[base, "dividend_income"],
         person.loc[base, "dividend_income"],
     )
-    assert result.income_uprating == {"from_period": 2022, "to_period": 2024}
+    assert rebased == [sorted(SPI_SAVINGS_REBASE_CONCEPTS)]
+    assert result.income_uprating == {
+        "from_period": 2022,
+        "to_period": 2024,
+        "savings_rebase": {"rebased": True, "columns": {}},
+    }
 
 
 def test_child_exclusion_keeps_the_other_recipients_draws(
@@ -325,7 +351,7 @@ def test_stage2_pension_bridge_uses_observed_and_drawn_receipt(
     )
 
 
-def test_spi_qrf_stages_use_typed_weights_and_restore_gross_savings(
+def test_spi_qrf_stages_use_typed_weights_and_keep_isa_interest_apart(
     monkeypatch,
     tmp_path,
 ) -> None:
@@ -382,10 +408,28 @@ def test_spi_qrf_stages_use_typed_weights_and_restore_gross_savings(
     channel = support_channel_column("person")
     spi_people = result.person[channel] == "spi"
     base_people = ~spi_people
-    assert result.person.loc[spi_people, "savings_interest_income"].eq(105.0).all()
+    # Interest outside ISAs is the stage-1 draw; ISA interest is the stage-2
+    # draw beside it (microcosm#1360).
+    assert result.person.loc[spi_people, "savings_interest_income"].eq(100.0).all()
+    assert (
+        result.person.loc[spi_people, "individual_savings_account_interest_income"]
+        .eq(5.0)
+        .all()
+    )
     assert result.person.loc[spi_people, "other_investment_income"].eq(25.0).all()
-    assert result.person.loc[spi_people, "gift_aid"].eq(10.0).all()
-    assert result.person.loc[spi_people, "charitable_investment_gifts"].eq(2.0).all()
+    # The gift leaves are the forest's draws scaled to the tape's FACT-weighted
+    # totals, 300 of Gift Aid and 30 of investment gifts (microcosm#1428).
+    factors = result.gift_anchor["factors"]
+    weights = result.person.loc[spi_people, "person_household_id"].map(
+        support.household.set_index("household_id")["household_weight"]
+    )
+    for column, draw, tape in (
+        ("gift_aid", 10.0, 300.0),
+        ("charitable_investment_gifts", 2.0, 30.0),
+    ):
+        gifts = result.person.loc[spi_people, column]
+        assert gifts.eq(draw * factors[column]).all()
+        assert (weights * gifts).sum() == pytest.approx(tape)
     assert (
         result.person.loc[
             spi_people,
@@ -467,9 +511,9 @@ def test_spi_qrf_stages_use_typed_weights_and_restore_gross_savings(
         + profit_after_relief
         + result.person.loc[spi_people, "private_pension_income"]
     )
+    # Interest outside ISAs is the taxable part (microcosm#1360).
     expected_total_investment = (
         result.person.loc[spi_people, "savings_interest_income"]
-        - result.person.loc[spi_people, "tax_free_savings_income"]
         + result.person.loc[spi_people, "dividend_income"]
         + result.person.loc[spi_people, "property_income"]
         + result.person.loc[spi_people, "other_investment_income"]
@@ -702,6 +746,10 @@ def test_spi_uprating_uses_actual_engine_indices_and_explicit_nominal_holdouts()
         for column, row in receipt["columns"].items()
         if row["basis"] == "held_nominal"
     } == nominal
+    # Interest and other income are rebased to SPI's 2023-24 bands first and
+    # grow on the OBR's savings income path from there (microcosm#1418 savings
+    # follow-up).
+    obr_level, _ = uk_obr_savings_income_level(2023, 2024)
     for column, row in receipt["columns"].items():
         if column in nominal:
             assert row == {
@@ -710,6 +758,10 @@ def test_spi_uprating_uses_actual_engine_indices_and_explicit_nominal_holdouts()
                 "factor": 1.0,
                 "basis": "held_nominal",
             }
+        elif column in SPI_SAVINGS_REBASE_CONCEPTS:
+            assert row["basis"] == "spi_published_bands_then_obr_savings_income"
+            assert row["from_period"] == 2023
+            assert factors[column] == pytest.approx(obr_level)
         else:
             path, ratio = expected[row["variable"]]
             assert row["index"] == "gov.economic_assumptions.indices." + path
@@ -769,11 +821,13 @@ def test_spi_rebasing_index_is_the_projections_except_where_named() -> None:
         else:
             assert row["index"] == projection[row["variable"]], column
             assert "dataset_projection_index" not in row
-    savings = receipt["columns"]["savings_interest_income"]
-    assert savings["index"] == (
-        "gov.economic_assumptions.indices.ons.household_interest_income"
-    )
-    assert savings["factor"] == pytest.approx(2.2692, abs=1e-4)
+    # Interest and other income reach the frame's year on SPI's own path, the
+    # 2023-24 bands then the OBR's savings income growth (+35.0% in 2024-25),
+    # and run on the projection's GDP per head from there.
+    for column in SPI_SAVINGS_REBASE_CONCEPTS:
+        savings = receipt["columns"][column]
+        assert savings["index"] == "obr.efo_2026_10.savings_income_growth"
+        assert savings["factor"] == pytest.approx(1.3496108, abs=1e-7)
 
 
 def _zero_taxable_income(person: pd.DataFrame, rows) -> None:
@@ -785,7 +839,7 @@ def _zero_taxable_income(person: pd.DataFrame, rows) -> None:
             "private_pension_income",
             "state_pension_reported",
             "savings_interest_income",
-            "tax_free_savings_income",
+            "individual_savings_account_interest_income",
             "dividend_income",
             "property_income",
             "miscellaneous_income",
@@ -835,7 +889,8 @@ def test_undrawn_twins_keep_their_values_and_are_receipted(
         result.person.loc[copy[0], kept], person.loc[copy[0], kept], check_names=False
     )
     others = person.index[(person[channel] == "spi") & (person["age"] >= 16)].drop(copy)
-    assert result.person.loc[others, "gift_aid"].eq(10.0).all()
+    factor = result.gift_anchor["factors"]["gift_aid"]
+    assert result.person.loc[others, "gift_aid"].eq(10.0 * factor).all()
     # The stage flags the rows it drew, and only those, for the later stages
     # that tell tape-concept rows from FRS-concept ones.
     flag = result.person["person_is_spi_income_recipient"]
@@ -953,9 +1008,16 @@ def test_stage1_queries_only_drawn_recipients_with_the_bridge(
     stage2 = captured["stage2"]
     assert stage2["rows"] == len(domain_ids)
     for target in stage2["quantiles"]:
+        # ISA interest keeps the salt it had as tax_free_savings_income, so the
+        # additive contract redraws nothing (microcosm#1360).
+        name = (
+            "tax_free_savings_income"
+            if target == "individual_savings_account_interest_income"
+            else target
+        )
         for part, salt in (
-            ("quantiles", f"{FRS_ONLY_FIT_NAME}:{target}"),
-            ("sign", f"{FRS_ONLY_FIT_NAME}:{target}:sign"),
+            ("quantiles", f"{FRS_ONLY_FIT_NAME}:{name}"),
+            ("sign", f"{FRS_ONLY_FIT_NAME}:{name}:sign"),
         ):
             np.testing.assert_array_equal(
                 stage2[part][target],

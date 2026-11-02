@@ -10,10 +10,11 @@ projections needed to compile a source manifest into a
 the US plan (an implementation per declared stage or nothing).
 
 Belgium is the first full consumer (microcosm#261, epic microcosm#259): the
-``be/`` package declares its BE-SILC source stages, clone-and-assign commune
-geography spine (vintage-aware NIS codes), Ledger target references (never
-values), gate selection with criticality tiers, and the release contract —
-zero Python in the country folder.
+``be/`` package declares its donor-transport source stage (the pinned
+populace-us support pool), clone-and-assign commune geography spine
+(vintage-aware NIS codes), Ledger target references (never values), gate
+selection with criticality tiers, and the release contract — zero Python in
+the country folder.
 
 Typed resources, by canonical filename:
 
@@ -1938,6 +1939,19 @@ def _attest_be_typed_geography_compatibility(
             "<-> geography_spine/constrain_to_column",
             typed_preserves_constraint,
             True,
+        )
+    elif spine.constrain_to_column == "":
+        # Donor support has no observed Belgian region to preserve.
+        require_equal(
+            "assignment/draw/universe <-> geography_spine/constrain_to_column",
+            draw_contract.get("universe"),
+            f"{spine.geography_level}_nationally",
+        )
+        require_equal(
+            "assignment/assertions/source_nuts1_preserved "
+            "<-> geography_spine/constrain_to_column",
+            isinstance(assertions, list) and "source_nuts1_preserved" in assertions,
+            False,
         )
     else:
         mismatches.append(

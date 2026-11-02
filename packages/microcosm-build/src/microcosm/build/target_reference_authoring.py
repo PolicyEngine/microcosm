@@ -23,6 +23,9 @@ from microcosm.build.ledger_targets import (  # pyright: ignore[reportPrivateUsa
     _not_after_target_period,
     _period_key,
     _period_key_from_value,
+    _period_year,
+    _selection_period,
+    _shift_observation_period,
     compile_ledger_target_references,
     reference_fact_selectors,
 )
@@ -122,6 +125,35 @@ class TargetReferenceAuthoringConfig:
     binding_vocabulary: frozenset[str] = frozenset()
     source_fact_feed: str = ""
     uprating_appliers: Mapping[str, UpratingApplier] = field(default_factory=dict)
+    #: The target period the contract's observation periods are written for:
+    #: a row authored at another period moves its observation period by the
+    #: same number of years, as ``restamp_reference_period`` does (the
+    #: re-review of microcosm#1422). ``None`` copies them unchanged.
+    observation_period_base: int | str | None = None
+
+
+def _authored_observation_period(
+    target: Mapping[str, Any],
+    selector: Mapping[str, Any],
+    config: TargetReferenceAuthoringConfig | AreaTargetReferenceAuthoringConfig,
+) -> int | str | None:
+    """The contract's observation period, moved to the authored target period
+    and read as the row's match policy reads it, as ``restamp_reference_period``
+    reads it."""
+
+    observation_period = target.get("observation_period")
+    if observation_period is None or config.observation_period_base is None:
+        return observation_period
+    return _shift_observation_period(
+        observation_period,
+        _period_year(config.target_period)
+        - _period_year(config.observation_period_base),
+        # A row without a policy takes the reference's default.
+        period_match_policy=str(
+            target.get("period_match_policy") or "latest_not_after"
+        ),
+        ledger_selector=selector,
+    )
 
 
 @dataclass(frozen=True)
@@ -142,6 +174,12 @@ class AreaSignedDeferral:
     #: ISO date after which the deferral no longer stands; the runtime refuses
     #: an expired one at its review date (microcosm#1123 small-cell rule).
     expires_on: str | None = None
+    #: The cell's value for reconciliation only, where the thing measured does
+    #: not exist in the area (no mains gas network: zero; María's ruling of
+    #: 2026-10-25). It is never bound; it replaces a compiled value and stands
+    #: in for an absent one, so the cell's leg counts it as it is
+    #: (microcosm#1095).
+    declared_value: float | None = None
 
     def __post_init__(self) -> None:
         if not self.target_id:
@@ -154,6 +192,12 @@ class AreaSignedDeferral:
             raise ValueError("AreaSignedDeferral.rationale must be non-empty.")
         if not self.area_ids:
             raise ValueError("AreaSignedDeferral.area_ids must be non-empty.")
+        if self.declared_value is not None and not (
+            math.isfinite(self.declared_value) and self.declared_value >= 0
+        ):
+            raise ValueError(
+                "AreaSignedDeferral.declared_value must be finite and non-negative."
+            )
         object.__setattr__(
             self,
             "area_ids",
@@ -196,6 +240,8 @@ class AreaTargetReferenceAuthoringConfig:
     #: uprated at authoring exactly as the runtime compile uprates it, so the
     #: committed reference and the run manifest carry one value (#1123).
     uprating_appliers: Mapping[str, Callable[..., Any]] = field(default_factory=dict)
+    #: As ``TargetReferenceAuthoringConfig.observation_period_base``.
+    observation_period_base: int | str | None = None
 
     def normalized_areas(self) -> dict[str, tuple[str, ...]]:
         """Return area rosters with duplicate ids removed in declared order."""
@@ -627,6 +673,8 @@ def author_area_target_references(
                         ) from error
                     entry["signed_reason_id"] = signed_deferral.reason_id
                     entry["signed_rationale"] = signed_deferral.rationale
+                    if signed_deferral.declared_value is not None:
+                        entry["declared_value"] = float(signed_deferral.declared_value)
                 else:
                     if (
                         signed_deferral is not None
@@ -649,6 +697,10 @@ def author_area_target_references(
                                 "deferred_value": float(registry.specs[0].value),
                             }
                         )
+                        if signed_deferral.declared_value is not None:
+                            entry["declared_value"] = float(
+                                signed_deferral.declared_value
+                            )
                         candidates.append(entry)
                         continue
                     spec = registry.specs[0]
@@ -740,6 +792,11 @@ def author_area_target_references(
                 "area_ids": list(deferral.area_ids),
                 **({"defer_if_compiles": True} if deferral.defer_if_compiles else {}),
                 **({"expires_on": deferral.expires_on} if deferral.expires_on else {}),
+                **(
+                    {"declared_value": deferral.declared_value}
+                    if deferral.declared_value is not None
+                    else {}
+                ),
             }
             for deferral in config.area_signed_deferrals
         ],
@@ -1085,7 +1142,15 @@ def _target_selector(
     config: TargetReferenceAuthoringConfig,
 ) -> dict[str, Any]:
     target_id = str(target["target_id"])
-    selector = {**dict(target["ledger_selector"]), **dict(geography_pin)}
+    declared = dict(target["ledger_selector"])
+    for key, value in dict(geography_pin).items():
+        if key in declared and declared[key] != value:
+            raise ValueError(
+                f"target {target_id!r} declares {key}={declared[key]!r} in its "
+                f"selector, but its geography pin says {value!r}: a declared "
+                "geography wins, so the pin must follow it."
+            )
+    selector = {**declared, **dict(geography_pin)}
     pins = config.selector_pins_by_target_id.get(target_id, {})
     for key, value in pins.items():
         if key == "dimension_values" and isinstance(value, Mapping):
@@ -1167,6 +1232,9 @@ def _area_reference_row(
     period_match_policy = target.get("period_match_policy")
     if period_match_policy is not None:
         row["period_match_policy"] = period_match_policy
+    observation_period = _authored_observation_period(target, selector, config)
+    if observation_period is not None:
+        row["observation_period"] = observation_period
     uprating_index = target.get("uprating_index")
     if uprating_index is not None:
         row["uprating_index"] = str(uprating_index)
@@ -1255,6 +1323,11 @@ def _source_prefilter(
     source_name = target["ledger_selector"].get("source_name")
     if isinstance(source_name, str) and source_name:
         return facts_by_source.get(source_name, ())
+    # A list matches by membership (a family whose published and derived facts
+    # sit under two sources, microcosm#1095): its sources' facts, in feed order.
+    if isinstance(source_name, list) and source_name:
+        names = {str(item) for item in source_name}
+        return tuple(fact for fact in facts if _source_name(fact) in names)
     return facts
 
 
@@ -1386,6 +1459,9 @@ def _reference_row(
     period_match_policy = target.get("period_match_policy")
     if period_match_policy is not None:
         row["period_match_policy"] = period_match_policy
+    observation_period = _authored_observation_period(target, selector, config)
+    if observation_period is not None:
+        row["observation_period"] = observation_period
     uprating_index = target.get("uprating_index")
     if uprating_index is not None:
         row["uprating_index"] = str(uprating_index)
@@ -1428,7 +1504,7 @@ def _compact_compile_error(status: str) -> str:
 def _eligible_fact(reference: LedgerTargetReference, fact: Mapping[str, Any]) -> bool:
     return _not_after_target_period(
         _period_key(fact),
-        _period_key_from_value(reference.period),
+        _period_key_from_value(_selection_period(reference)),
     ) and _assertion_allowed(reference, fact)
 
 
