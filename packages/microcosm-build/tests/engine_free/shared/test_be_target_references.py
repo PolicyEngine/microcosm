@@ -188,9 +188,7 @@ def _separation_violations(documents):
                 bases.setdefault(cell, set()).add(reference_set)
             for cell in _row_cells(row):
                 reads.setdefault(cell, set()).add(reference_set)
-            measures.setdefault((row["entity"], row["measure"]), set()).add(
-                reference_set
-            )
+            measures.setdefault(row["measure"], set()).add(reference_set)
     violations += [("name", name) for name, sets in names.items() if len(sets) > 1]
     violations += [("base", cell) for cell, sets in bases.items() if len(sets) > 1]
     violations += [
@@ -214,17 +212,55 @@ def _keys(facts):
     return [key for fact in facts for key in fact.values()]
 
 
+def _pin_violations(documents, factors, listed):
+    """Each aggregate key a selector pins must sit in its own resolved-read entry.
+
+    A digest ties an entry to its selectors but not to the keys it lists, so a
+    selector rewritten with a recomputed digest would keep its old keys. Roster
+    selectors name no key, and only the feed audit proves what they resolve to.
+    """
+
+    violations = []
+    for document in documents.values():
+        for row in document["target_references"]:
+            entry = listed.get(row["name"])
+            if entry is None:
+                continue
+            base = row["ledger_selector"].get("aggregate_fact_key")
+            operands = {
+                operand["aggregate_fact_key"]
+                for operand in row.get("value_operands", [])
+                if "aggregate_fact_key" in operand
+            }
+            if (
+                base is not None and _keys(entry["base_facts"]) != [base]
+            ) or not operands <= set(_keys(entry["operand_facts"])):
+                violations.append(("pin", row["name"]))
+    for factor in factors["factors"]:
+        declaration = factor["declaration"]
+        name = f"factor:{declaration['id']}"
+        pins = {
+            slot["selector"]["aggregate_fact_key"]
+            for schedule in ("source_schedule", "target_schedule")
+            for slot in declaration[schedule]
+        }
+        if name in listed and pins != set(_keys(listed[name]["operand_facts"])):
+            violations.append(("pin", name))
+    return violations
+
+
 def _read_violations(documents, factors, reads):
     """Disjointness on the listed feed keys, for every selector as committed.
 
     A digest ties each listed entry to its row's exact selectors, so a selector
-    respelled to dodge the cell check fails here, and the feed audit proves the
-    listed keys. Partition totals count as read, because a holdout on a band
-    set's total shares its information.
+    respelled to dodge the cell check fails here. The pin check ties each pinned
+    key to its entry, and the feed audit proves every listed key. Partition
+    totals count as read, because a holdout on a band set's total shares its
+    information.
     """
 
-    violations = []
     listed = {entry["name"]: entry for entry in reads}
+    violations = _pin_violations(documents, factors, listed)
     expected = {
         row["name"]: generator.selector_digest(row)
         for document in documents.values()
@@ -476,6 +512,7 @@ def test_reference_sets_are_separated():
         ("precal_row_in_calibration", "base"),
         ("holdout_reads_calibration_operand", "holdout_read"),
         ("holdout_measures_calibration_column", "holdout_measure"),
+        ("calibration_reuses_holdout_column_on_another_entity", "holdout_measure"),
         ("holdout_base_is_calibration_fact", "holdout_read"),
         ("holdout_pins_a_class_calibration_reads_by_roster", "holdout_read"),
     ],
@@ -502,6 +539,11 @@ def test_separation_mutants_are_caught(mutant, kind):
         holdout[0]["value_operands"][1] = copy.deepcopy(donor["value_operands"][1])
     elif mutant == "holdout_measures_calibration_column":
         holdout[0]["entity"], holdout[0]["measure"] = "tax_unit", "tax_units"
+    elif mutant == "calibration_reuses_holdout_column_on_another_entity":
+        donor = next(
+            row for row in calibration if row["entity"] != holdout[0]["entity"]
+        )
+        donor["measure"] = holdout[0]["measure"]
     elif mutant == "holdout_pins_a_class_calibration_reads_by_roster":
         band = next(
             row
@@ -533,6 +575,9 @@ def test_resolved_reads_bind_every_selector_and_stay_disjoint():
     ("mutant", "kind"),
     [
         ("respelled_selector", "digest"),
+        ("recomputed_digest_on_a_rewritten_base", "pin"),
+        ("recomputed_digest_on_a_rewritten_operand", "pin"),
+        ("factor_entry_keeps_an_old_key", "pin"),
         ("dropped_entry", "unlisted"),
         ("holdout_reads_a_band_class", "holdout_fact"),
         ("holdout_reads_a_factor_operand", "holdout_fact"),
@@ -545,7 +590,8 @@ def test_read_mutants_are_caught(mutant, kind):
     entries = {entry["name"]: entry for entry in reads}
     holdout = next(entry for entry in reads if entry["reference_set"] == "holdout")
     band = entries["statbel_a1_standin_taxable_income__10k_20k"]
-    if mutant == "respelled_selector":
+    row = documents["holdout"]["target_references"][0]
+    if mutant.startswith(("respelled", "recomputed")):
         # A band row's selector with the class named only by its aggregate key:
         # the cell check sees a new cell, yet the selector still reads the class.
         donor = next(
@@ -556,8 +602,20 @@ def test_read_mutants_are_caught(mutant, kind):
         selector = copy.deepcopy(donor["ledger_selector"])
         del selector["dimension_values"]
         selector["aggregate_fact_key"] = _keys(band["base_facts"])[2]
-        documents["holdout"]["target_references"][0]["ledger_selector"] = selector
+        if mutant == "recomputed_digest_on_a_rewritten_operand":
+            row["value_operands"][1]["aggregate_fact_key"] = selector[
+                "aggregate_fact_key"
+            ]
+        else:
+            row["ledger_selector"] = selector
         assert _separation_violations(documents) == []
+        if mutant != "respelled_selector":
+            entries[row["name"]]["selector_sha256"] = generator.selector_digest(row)
+    elif mutant == "factor_entry_keeps_an_old_key":
+        factor = next(
+            entry for entry in reads if entry["reference_set"] == "factor_context"
+        )
+        factor["operand_facts"][0] = {"aggregate_fact_key": "stale"}
     elif mutant == "dropped_entry":
         reads.remove(holdout)
     elif mutant == "holdout_reads_a_band_class":

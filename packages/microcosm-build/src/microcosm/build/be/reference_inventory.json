@@ -1158,12 +1158,12 @@
     }
   ],
   "holdout_information_overlaps": [
-    "Separation is checked at the fact and measure level; holdouts still share information with calibration through economics, not facts:",
-    "FPB gross wages (wage-headline holdout): ONSS's calibrated worker contributions are a fixed share of gross pay.",
+    "The tests check separation at the fact and measure level; holdouts still share information with calibration through economics, not facts:",
+    "FPB gross wages (wage-headline holdout): ONSS's calibrated worker contributions scale with wages.",
     "Eurostat D62 social benefits received contain the calibrated unemployment and GRAPA aggregates.",
     "Eurostat D61 social contributions paid contain the calibrated ONSS worker contributions.",
     "Eurostat D51A_C1 and D5 measure the same personal income tax that B.1 would calibrate once active.",
-    "The A.1 stand-in is 98% net professional income, and its amount pair, FPB T11 total resources, contains gross wages (line 3), the wage holdout's own series."
+    "The A.1 stand-in is 98% net professional income, and its amount pair, FPB T11 total resources, contains gross wages, the wage holdout's own series."
   ],
   "grammar_gaps": [
     "A national row composed from commune facts refuses for Belgium: the composed-geography path labels only UK areas (ledger_targets._geography_fallback_label), so CREATE's single national mass reference cannot be the commune sum.",
@@ -1173,7 +1173,7 @@
     "rolled_forward_by_ratio refuses a negative base, so signed targets (B.1 low deciles) cannot be aged by it.",
     "rolled_forward_by_ratio's series key treats every FPB annex row of one table as one series (same concept, entity, geography and empty dimensions); the generator and tests enforce row identity themselves.",
     "The typed vintage alias set admits only a layer's full id, its country-shortened id and its authority value, so Chronicle's NUTS_2024 label cannot be an alias of vintage:be_nuts1_2025; geography_vintage_bindings carries the mapping instead.",
-    "The schema-1 target_profile drops B1's required_families, basis_periods, tolerance tiers and subnational vintage rule. Package tests restore required families, the vintage rule and each row's periods. Caseload tolerance moves from B1's 15% to BE-MC6's 5%."
+    "The schema-1 target_profile drops B1's required_families, basis_periods, tolerance tiers and subnational vintage rule. Package tests restore required families, the vintage rule and each row's periods. Caseload tolerance moves from B1's 15% to BE-MC6's 5%, and the ONSS contribution row moves from B1's standard_admin_release 10% to 5%."
   ],
   "exclusions": [
     {
