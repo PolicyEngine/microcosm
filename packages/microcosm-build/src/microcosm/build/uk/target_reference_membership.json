@@ -1,5 +1,5 @@
 {
-  "source_fact_feed": "chronicle-uk-53815b2-consumer-facts",
+  "source_fact_feed": "chronicle-uk-08962f1-consumer-facts",
   "target_period": 2025,
   "candidate_count": 1439,
   "contract_target_count": 396,
@@ -11347,12 +11347,12 @@
         {
           "name": "obr.income_tax",
           "status": "active",
-          "matched_fact_count_overall": 14,
-          "matched_fact_count_at_or_before_period": 3,
+          "matched_fact_count_overall": 2,
+          "matched_fact_count_at_or_before_period": 2,
           "resolved_period": 2025,
-          "resolved_value": 325054437305.83215,
+          "resolved_value": 323479750000.0,
           "resolved_fact_period": "2025",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_d928e7da0fbfe088ca1a30d7"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_1fcd60233f3427b192339ae8"
         }
       ]
     },
@@ -11362,12 +11362,12 @@
         {
           "name": "obr.ni_employee",
           "status": "active",
-          "matched_fact_count_overall": 14,
-          "matched_fact_count_at_or_before_period": 3,
+          "matched_fact_count_overall": 2,
+          "matched_fact_count_at_or_before_period": 2,
           "resolved_period": 2025,
-          "resolved_value": 49002029830.141045,
+          "resolved_value": 48913873680.1126,
           "resolved_fact_period": "2025",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_7e3e3e637a9134760a0a530a"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f6056c4f43dfbb9610fed097"
         }
       ]
     },
@@ -11377,12 +11377,12 @@
         {
           "name": "obr.ni_employer",
           "status": "active",
-          "matched_fact_count_overall": 14,
-          "matched_fact_count_at_or_before_period": 3,
+          "matched_fact_count_overall": 2,
+          "matched_fact_count_at_or_before_period": 2,
           "resolved_period": 2025,
-          "resolved_value": 137854706939.8949,
+          "resolved_value": 137917887236.63586,
           "resolved_fact_period": "2025",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_c8719021c501d9757e0e0814"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_4eaee8634b39e3f4caad6175"
         }
       ]
     },
@@ -11392,12 +11392,12 @@
         {
           "name": "obr.ni_self_employed",
           "status": "active",
-          "matched_fact_count_overall": 14,
-          "matched_fact_count_at_or_before_period": 3,
+          "matched_fact_count_overall": 2,
+          "matched_fact_count_at_or_before_period": 2,
           "resolved_period": 2025,
-          "resolved_value": 2876506585.4950743,
+          "resolved_value": 2900120957.4244957,
           "resolved_fact_period": "2025",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_b94b7d74d7df7ff5f9309f3b"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_0071d6a1831881aaea511f11"
         }
       ]
     },
@@ -11407,12 +11407,12 @@
         {
           "name": "obr.vat",
           "status": "active",
-          "matched_fact_count_overall": 14,
-          "matched_fact_count_at_or_before_period": 3,
+          "matched_fact_count_overall": 2,
+          "matched_fact_count_at_or_before_period": 2,
           "resolved_period": 2025,
-          "resolved_value": 177875204014.06345,
+          "resolved_value": 177644250000.0,
           "resolved_fact_period": "2025",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_3c534c3e6313150f8081b777"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_98d952e160efdad1eeb07b27"
         }
       ]
     },
@@ -11422,8 +11422,8 @@
         {
           "name": "obr.fuel_duties",
           "status": "signed_excluded",
-          "matched_fact_count_overall": 14,
-          "matched_fact_count_at_or_before_period": 3,
+          "matched_fact_count_overall": 2,
+          "matched_fact_count_at_or_before_period": 2,
           "signed_rationale": "The OBR fuel duties fact is all-road-users receipts (freight, vans, business mileage) against a household frame. obr.fuel_duties_cars, the cars receipts from the OBR vehicle-type release, was bound in its place (ruling 2026-09-10) until microcosm#1113 moved it to the measure-exclusion register (Mar\u00eda's ruling of 2026-10-08, D2); household road-fuel spend is bound on ons.household_road_fuel_expenditure, and no fuel-duty row is fitted. The all-road-users row is retained in the contract for registry parity and signed out here rather than carried as a calibration measure exclusion."
         }
       ]
@@ -11449,12 +11449,12 @@
         {
           "name": "obr.sdlt",
           "status": "active",
-          "matched_fact_count_overall": 14,
-          "matched_fact_count_at_or_before_period": 3,
+          "matched_fact_count_overall": 2,
+          "matched_fact_count_at_or_before_period": 2,
           "resolved_period": 2025,
-          "resolved_value": 10161716337.860817,
+          "resolved_value": 10043490497.643122,
           "resolved_fact_period": "2025",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_1b6d55fc4ccd78bd0ae457e9"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_1677612c4b01bf5cb20e29ba"
         }
       ]
     },
@@ -11464,12 +11464,12 @@
         {
           "name": "obr.attendance_allowance",
           "status": "active",
-          "matched_fact_count_overall": 14,
-          "matched_fact_count_at_or_before_period": 3,
+          "matched_fact_count_overall": 2,
+          "matched_fact_count_at_or_before_period": 2,
           "resolved_period": 2025,
-          "resolved_value": 8309942303.358463,
+          "resolved_value": 8303914528.200001,
           "resolved_fact_period": "2025",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_b622452dc3ca65969deac2d1"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_1fda5f9abb206cef7daed7bc"
         }
       ]
     },
@@ -11479,12 +11479,12 @@
         {
           "name": "obr.carers_allowance",
           "status": "active",
-          "matched_fact_count_overall": 14,
-          "matched_fact_count_at_or_before_period": 3,
+          "matched_fact_count_overall": 2,
+          "matched_fact_count_at_or_before_period": 2,
           "resolved_period": 2025,
-          "resolved_value": 4487029829.347929,
+          "resolved_value": 4491957194.999996,
           "resolved_fact_period": "2025",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_00d91dd3a0d7320a6ef255c1"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_9c98992cd645ec89df629ddf"
         }
       ]
     },
@@ -11494,12 +11494,12 @@
         {
           "name": "obr.child_benefit",
           "status": "active",
-          "matched_fact_count_overall": 14,
-          "matched_fact_count_at_or_before_period": 3,
+          "matched_fact_count_overall": 2,
+          "matched_fact_count_at_or_before_period": 2,
           "resolved_period": 2025,
-          "resolved_value": 13368730968.878168,
+          "resolved_value": 13409122425.539997,
           "resolved_fact_period": "2025",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_d3ab2c54ce0c4c6a46a7a36b"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_feb041fb338af6f3759c9d90"
         }
       ]
     },
@@ -11509,12 +11509,12 @@
         {
           "name": "obr.council_tax",
           "status": "active",
-          "matched_fact_count_overall": 14,
-          "matched_fact_count_at_or_before_period": 3,
+          "matched_fact_count_overall": 2,
+          "matched_fact_count_at_or_before_period": 2,
           "resolved_period": 2025,
-          "resolved_value": 47197225993.12901,
+          "resolved_value": 47197574984.19505,
           "resolved_fact_period": "2025",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_bd6caaecbca3ab1bebe5d2d8"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_3d3a988c07e4fe6ec194b125"
         }
       ]
     },
@@ -11524,12 +11524,12 @@
         {
           "name": "obr.council_tax_england",
           "status": "active",
-          "matched_fact_count_overall": 14,
-          "matched_fact_count_at_or_before_period": 3,
+          "matched_fact_count_overall": 2,
+          "matched_fact_count_at_or_before_period": 2,
           "resolved_period": 2025,
-          "resolved_value": 41990496408.172676,
+          "resolved_value": 41990323959.26737,
           "resolved_fact_period": "2025",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_198ca997d4ddfd2aaca01f99"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_ceedbb95994a8ac505f786bf"
         }
       ]
     },
@@ -11539,12 +11539,12 @@
         {
           "name": "obr.council_tax_scotland",
           "status": "active",
-          "matched_fact_count_overall": 14,
-          "matched_fact_count_at_or_before_period": 3,
+          "matched_fact_count_overall": 2,
+          "matched_fact_count_at_or_before_period": 2,
           "resolved_period": 2025,
-          "resolved_value": 2925273094.855295,
+          "resolved_value": 2925794534.826645,
           "resolved_fact_period": "2025",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_699522ac3c064cf3770cda90"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_dfff83cd33669be0acf48236"
         }
       ]
     },
@@ -11554,12 +11554,12 @@
         {
           "name": "obr.council_tax_wales",
           "status": "active",
-          "matched_fact_count_overall": 14,
-          "matched_fact_count_at_or_before_period": 3,
+          "matched_fact_count_overall": 2,
+          "matched_fact_count_at_or_before_period": 2,
           "resolved_period": 2025,
           "resolved_value": 2281456490.1010394,
           "resolved_fact_period": "2025",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_d5e6ed73de3f7fd5c44dd9ef"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_ecf95c2f5e00d7d1294784d4"
         }
       ]
     },
@@ -11569,12 +11569,12 @@
         {
           "name": "obr.domestic_rates",
           "status": "active",
-          "matched_fact_count_overall": 14,
-          "matched_fact_count_at_or_before_period": 3,
+          "matched_fact_count_overall": 2,
+          "matched_fact_count_at_or_before_period": 2,
           "resolved_period": 2025,
-          "resolved_value": 494000000.0,
+          "resolved_value": 509814031.9020381,
           "resolved_fact_period": "2025",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_a9a654087fd2268fef7f9f9b"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_774d52d47e06c2403b426f36"
         }
       ]
     },
@@ -11584,12 +11584,12 @@
         {
           "name": "obr.esa",
           "status": "active",
-          "matched_fact_count_overall": 14,
-          "matched_fact_count_at_or_before_period": 3,
+          "matched_fact_count_overall": 2,
+          "matched_fact_count_at_or_before_period": 2,
           "resolved_period": 2025,
-          "resolved_value": 8507979735.87899,
+          "resolved_value": 8545802862.489966,
           "resolved_fact_period": "2025",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_9b072645b7180464a89c16b2"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_9abaf3f02502d33953862972"
         }
       ]
     },
@@ -11599,12 +11599,12 @@
         {
           "name": "obr.housing_benefit",
           "status": "active",
-          "matched_fact_count_overall": 14,
-          "matched_fact_count_at_or_before_period": 3,
+          "matched_fact_count_overall": 2,
+          "matched_fact_count_at_or_before_period": 2,
           "resolved_period": 2025,
-          "resolved_value": 12725786027.543839,
+          "resolved_value": 12812461092.718086,
           "resolved_fact_period": "2025",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_17a2d10ed4cfb593abb0606b"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_186cb8defa0022b6be5e08c0"
         }
       ]
     },
@@ -11614,12 +11614,12 @@
         {
           "name": "obr.jobseekers_allowance",
           "status": "active",
-          "matched_fact_count_overall": 14,
-          "matched_fact_count_at_or_before_period": 3,
+          "matched_fact_count_overall": 2,
+          "matched_fact_count_at_or_before_period": 2,
           "resolved_period": 2025,
-          "resolved_value": 288407204.431046,
+          "resolved_value": 281300678.72749996,
           "resolved_fact_period": "2025",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_664509c14c0b07412b459feb"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_86cb22051464b5d98a0ab19e"
         }
       ]
     },
@@ -11629,12 +11629,12 @@
         {
           "name": "obr.pension_credit",
           "status": "active",
-          "matched_fact_count_overall": 14,
-          "matched_fact_count_at_or_before_period": 3,
+          "matched_fact_count_overall": 2,
+          "matched_fact_count_at_or_before_period": 2,
           "resolved_period": 2025,
-          "resolved_value": 6112217133.109846,
+          "resolved_value": 6251379463.922147,
           "resolved_fact_period": "2025",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_91dc7a037068ea9bda5a80ae"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_889fae05fdd83e950b4a53b9"
         }
       ]
     },
@@ -11644,12 +11644,12 @@
         {
           "name": "obr.pip",
           "status": "active",
-          "matched_fact_count_overall": 14,
-          "matched_fact_count_at_or_before_period": 3,
+          "matched_fact_count_overall": 2,
+          "matched_fact_count_at_or_before_period": 2,
           "resolved_period": 2025,
-          "resolved_value": 36103194307.639694,
+          "resolved_value": 36016311327.49647,
           "resolved_fact_period": "2025",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_fe30dc4ae7072c5cdf5b50a7"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_299a855825d8319a3bca66e2"
         }
       ]
     },
@@ -11659,12 +11659,12 @@
         {
           "name": "obr.statutory_maternity_pay",
           "status": "active",
-          "matched_fact_count_overall": 14,
-          "matched_fact_count_at_or_before_period": 3,
+          "matched_fact_count_overall": 2,
+          "matched_fact_count_at_or_before_period": 2,
           "resolved_period": 2025,
-          "resolved_value": 3179100661.1404104,
+          "resolved_value": 3186824700.5054927,
           "resolved_fact_period": "2025",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_2d1bd4e271d567f688e954e1"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_52e691514c80c63fc65fcc02"
         }
       ]
     },
@@ -11674,12 +11674,12 @@
         {
           "name": "obr.tv_licence_fee",
           "status": "active",
-          "matched_fact_count_overall": 14,
-          "matched_fact_count_at_or_before_period": 3,
+          "matched_fact_count_overall": 2,
+          "matched_fact_count_at_or_before_period": 2,
           "resolved_period": 2025,
-          "resolved_value": 3858750000.0,
+          "resolved_value": 3887250000.0,
           "resolved_fact_period": "2025",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_b0f0afcd44c93532837c9f2a"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_d757225cc0db200ec899f368"
         }
       ]
     },
@@ -11692,9 +11692,9 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 1911040880.4619167,
+          "resolved_value": 1911453982.8600001,
           "resolved_fact_period": "2025",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_86dba41b4681fa0d9c11b3a6"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_66989bed78c8690286fca9a0"
         }
       ]
     },
@@ -19683,8 +19683,8 @@
         {
           "name": "welshgov.council_tax_stock.band_a",
           "status": "active",
-          "matched_fact_count_overall": 447,
-          "matched_fact_count_at_or_before_period": 349,
+          "matched_fact_count_overall": 450,
+          "matched_fact_count_at_or_before_period": 352,
           "resolved_period": 2025,
           "resolved_value": 194973.29,
           "resolved_fact_period": "2025",
@@ -19698,8 +19698,8 @@
         {
           "name": "welshgov.council_tax_stock.band_b",
           "status": "active",
-          "matched_fact_count_overall": 447,
-          "matched_fact_count_at_or_before_period": 349,
+          "matched_fact_count_overall": 450,
+          "matched_fact_count_at_or_before_period": 352,
           "resolved_period": 2025,
           "resolved_value": 285787.52,
           "resolved_fact_period": "2025",
@@ -19713,8 +19713,8 @@
         {
           "name": "welshgov.council_tax_stock.band_c",
           "status": "active",
-          "matched_fact_count_overall": 447,
-          "matched_fact_count_at_or_before_period": 349,
+          "matched_fact_count_overall": 450,
+          "matched_fact_count_at_or_before_period": 352,
           "resolved_period": 2025,
           "resolved_value": 301699.86,
           "resolved_fact_period": "2025",
@@ -19728,8 +19728,8 @@
         {
           "name": "welshgov.council_tax_stock.band_d",
           "status": "active",
-          "matched_fact_count_overall": 447,
-          "matched_fact_count_at_or_before_period": 349,
+          "matched_fact_count_overall": 450,
+          "matched_fact_count_at_or_before_period": 352,
           "resolved_period": 2025,
           "resolved_value": 225179.88,
           "resolved_fact_period": "2025",
@@ -19743,8 +19743,8 @@
         {
           "name": "welshgov.council_tax_stock.band_e",
           "status": "active",
-          "matched_fact_count_overall": 447,
-          "matched_fact_count_at_or_before_period": 349,
+          "matched_fact_count_overall": 450,
+          "matched_fact_count_at_or_before_period": 352,
           "resolved_period": 2025,
           "resolved_value": 185447.46,
           "resolved_fact_period": "2025",
@@ -19758,8 +19758,8 @@
         {
           "name": "welshgov.council_tax_stock.band_f",
           "status": "active",
-          "matched_fact_count_overall": 447,
-          "matched_fact_count_at_or_before_period": 349,
+          "matched_fact_count_overall": 450,
+          "matched_fact_count_at_or_before_period": 352,
           "resolved_period": 2025,
           "resolved_value": 114672.0,
           "resolved_fact_period": "2025",
@@ -19773,8 +19773,8 @@
         {
           "name": "welshgov.council_tax_stock.band_g",
           "status": "active",
-          "matched_fact_count_overall": 447,
-          "matched_fact_count_at_or_before_period": 349,
+          "matched_fact_count_overall": 450,
+          "matched_fact_count_at_or_before_period": 352,
           "resolved_period": 2025,
           "resolved_value": 52211.0,
           "resolved_fact_period": "2025",
@@ -19788,8 +19788,8 @@
         {
           "name": "welshgov.council_tax_stock.band_h",
           "status": "active",
-          "matched_fact_count_overall": 447,
-          "matched_fact_count_at_or_before_period": 349,
+          "matched_fact_count_overall": 450,
+          "matched_fact_count_at_or_before_period": 352,
           "resolved_period": 2025,
           "resolved_value": 12357.0,
           "resolved_fact_period": "2025",
@@ -19803,8 +19803,8 @@
         {
           "name": "welshgov.council_tax_stock.band_i",
           "status": "active",
-          "matched_fact_count_overall": 447,
-          "matched_fact_count_at_or_before_period": 349,
+          "matched_fact_count_overall": 450,
+          "matched_fact_count_at_or_before_period": 352,
           "resolved_period": 2025,
           "resolved_value": 5305.0,
           "resolved_fact_period": "2025",
@@ -19818,8 +19818,8 @@
         {
           "name": "welshgov.council_tax_stock.total",
           "status": "active",
-          "matched_fact_count_overall": 447,
-          "matched_fact_count_at_or_before_period": 349,
+          "matched_fact_count_overall": 450,
+          "matched_fact_count_at_or_before_period": 352,
           "resolved_period": 2025,
           "resolved_value": 1377633.03,
           "resolved_fact_period": "2025",
@@ -21142,12 +21142,12 @@
         {
           "name": "obr.universal_credit",
           "status": "active",
-          "matched_fact_count_overall": 28,
-          "matched_fact_count_at_or_before_period": 6,
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
           "resolved_period": 2025,
-          "resolved_value": 76054754387.77309,
+          "resolved_value": 76615715797.65996,
           "resolved_fact_period": "2025",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_d7377a28ca45388650d961e0"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_0e154e3bcd838cfa794e221f"
         }
       ]
     },

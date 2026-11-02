@@ -29,6 +29,9 @@ ENGINE_VARIABLES: Mapping[str, tuple[str, type]] = {
     # Declared for the loss-relief measures, which know every component.
     "total_income": ("person", float),
     "employment_income": ("person", float),
+    # The company car and car fuel benefits HMRC's employment income counts
+    # (PolicyEngine/uk-autumn-budget-dashboard-2026#316).
+    "benefits_in_kind": ("person", float),
     # Private and State Pension together (microcosm#1418).
     "total_pension_income": ("person", float),
     "income_tax": ("person", float),
@@ -201,6 +204,8 @@ def three_household_engine(**values: Sequence[Any]) -> StubUKEngine:
             # Losses brought forward the profit is counted after (microcosm#1095).
             "loss_relief": [0.0, 0.0, 0.0, 0.0, 0.0],
             "employment_income": [10.0, 20.0, 0.0, 30.0, 0.0],
+            # Nobody has a company car.
+            "benefits_in_kind": [0.0, 0.0, 0.0, 0.0, 0.0],
             # The pensioner's private and State Pension (microcosm#1418).
             "total_pension_income": [0.0, 0.0, 90.0, 0.0, 0.0],
             "income_tax": [1.0, 0.0, 2.0, 3.0, 0.0],

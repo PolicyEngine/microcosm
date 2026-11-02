@@ -120,6 +120,8 @@ def uk_stage_health_gate(
         return _isa_subscriptions_invariants_gate(stage, evidence, parameters)
     if check == "was_lisa_anchor":
         return _was_lisa_anchor_gate(stage, evidence, parameters)
+    if check == "company_cars":
+        return _company_cars_gate(stage, evidence, parameters)
     return GateResult(
         name="stage_health",
         passed=False,
@@ -5087,4 +5089,58 @@ def _was_lisa_anchor_gate(
             "anchor": dict(anchor),
             "saturations_named": named,
         },
+    )
+
+
+def _company_cars_gate(
+    stage: str,
+    evidence: Mapping[str, object],
+    parameters: Mapping[str, object],
+) -> GateResult:
+    """Company cars keep their invariants (dashboard #316).
+
+    Fails on any record the receipt counts against an invariant (a non-finite or
+    negative value, a holder without a list price, an input written for someone
+    without a car, an unknown fuel type, a CO2 figure missing for a car that emits
+    it or set for an electric car, private fuel on an electric car, contributions
+    above the list price, an electric range on a car outside 1 to 50 g/km, an SPI
+    benefit above its EPB, a tape row's employee pension contribution above its
+    carved pay). It also fails when, on any tape row, pay plus the car and fuel
+    benefits the engine computes again on the stage's output misses the pay the
+    row brought in by more than ``maximum_pay_identity_error_gbp``: the carve-out
+    assumes how the engine prices a car, so an engine that prices it otherwise
+    fails here. How far holders, fuels, CO2 bands and list prices sit from HMRC's
+    tables after calibration is not a gate (María's ruling of 28 October 2026 on
+    the ISA facts), and comparing them is a manual step for now.
+    """
+
+    check = "company_cars"
+    tolerance = _finite_number(
+        parameters["maximum_pay_identity_error_gbp"],
+        label=f"{stage}.maximum_pay_identity_error_gbp",
+    )
+    failures: list[str] = []
+    checks = _mapping(evidence.get("checks"), label=f"{stage}.checks")
+    violations = _mapping(checks.get("violations"), label=f"{stage}.violations")
+    if not violations:
+        failures.append(f"{stage}: the receipt counts no invariant.")
+    for name, count in violations.items():
+        if count != 0:
+            failures.append(f"{stage}: {count} record(s) break {name}.")
+    carve = _mapping(evidence.get("spi_carve_out"), label=f"{stage}.spi_carve_out")
+    error = _finite_number(
+        carve.get("max_abs_pay_identity_error_gbp"),
+        label=f"{stage}.max_abs_pay_identity_error_gbp",
+    )
+    if error > tolerance:
+        failures.append(
+            f"{stage}: tape-row pay plus the engine's company car benefits "
+            f"misses the pay the stage received by up to {error} GBP."
+        )
+    holders = _mapping(evidence.get("holders"), label=f"{stage}.holders")
+    return GateResult(
+        name="stage_health",
+        passed=not failures,
+        failures=tuple(failures),
+        details={"stage": stage, "check": check, "holders": dict(holders)},
     )

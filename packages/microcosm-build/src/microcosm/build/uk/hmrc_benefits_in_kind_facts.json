@@ -1,0 +1,4470 @@
+{
+  "schema_version": 1,
+  "country": "uk",
+  "kind": "uk_vendored_ledger_facts",
+  "resource": "hmrc_benefits_in_kind_facts.json",
+  "purpose": "HMRC Benefits in kind statistics (July 2026 release), the 2024-25 provisional rows the company cars stage draws fuel types and CO2 bands to, and that the calibrated file is compared with by hand (PolicyEngine/uk-autumn-budget-dashboard-2026#316): Table 1 car and car fuel benefit recipients, taxable value, income tax and Class 1A NICs liabilities, with their total; Table 2A car benefit recipients by CO2 band; Table 2C car benefit recipients by fuel type; Tables 3A and 3B car and car fuel benefit recipients and taxable value by total income range; Table 4 car benefit recipients and taxable value by country and English region. They count individuals and pounds, rounded as HMRC publishes them; a cell HMRC marks instead of printing carries no fact. None is a calibration target: the stage's reviewed fence keeps them measured only. No value is derived here.",
+  "consumers": [
+    "uk_runtime.hmrc_company_car_statistics"
+  ],
+  "planned_consumers": [],
+  "policy": "Rows are copied verbatim from the pinned Chronicle consumer feed named in source_fact_feed; every value is a publisher-stated fact. Consumers declare their own arithmetic on these rows and never edit this file by hand: regenerate it with tools/vendor_uk_ledger_facts.py.",
+  "generator": {
+    "tool": "tools/vendor_uk_ledger_facts.py",
+    "version": 1
+  },
+  "source_fact_feed": {
+    "source_repo": "PolicyEngine/chronicle",
+    "source_commit": "08962f1b893fc1ba3b7bdd3d800c7e867318951a",
+    "build": "build-bundle --suite uk -> build-consumer-artifact",
+    "artifact_schema_version": "policyengine_ledger.consumer_artifact.v2",
+    "fact_row_count": 1512256,
+    "facts_sha256": "11b20b4333270e269a5cbfe6302eb4986851990b340ef02d948eb71d62c12d5c",
+    "manifest_sha256": "96faf0e33686682cf37e8fa9511727571b3f8221f15bbc21591b799af87de722"
+  },
+  "selections": [
+    {
+      "label": "table1_ty2024_car_and_fuel_benefits",
+      "selector": {
+        "source_name": "hmrc",
+        "record_set_id": [
+          "hmrc.benefits_in_kind_july_2026.table1.recipients.ty2024",
+          "hmrc.benefits_in_kind_july_2026.table1.taxable_value.ty2024",
+          "hmrc.benefits_in_kind_july_2026.table1.income_tax_liability.ty2024",
+          "hmrc.benefits_in_kind_july_2026.table1.class_1a_nic_liability.ty2024"
+        ]
+      },
+      "row_count": 12
+    },
+    {
+      "label": "table2a_ty2024_car_recipients_by_co2_band",
+      "selector": {
+        "source_name": "hmrc",
+        "record_set_id": "hmrc.benefits_in_kind_july_2026.table2a.recipients.ty2024"
+      },
+      "row_count": 20
+    },
+    {
+      "label": "table2c_ty2024_car_recipients_by_fuel_type",
+      "selector": {
+        "source_name": "hmrc",
+        "record_set_id": "hmrc.benefits_in_kind_july_2026.table2c.recipients.ty2024"
+      },
+      "row_count": 3
+    },
+    {
+      "label": "table3a_ty2024_car_benefit_by_income_range",
+      "selector": {
+        "source_name": "hmrc",
+        "record_set_id": [
+          "hmrc.benefits_in_kind_july_2026.table3a.recipients.ty2024",
+          "hmrc.benefits_in_kind_july_2026.table3a.taxable_value.ty2024"
+        ]
+      },
+      "row_count": 22
+    },
+    {
+      "label": "table3b_ty2024_fuel_benefit_by_income_range",
+      "selector": {
+        "source_name": "hmrc",
+        "record_set_id": [
+          "hmrc.benefits_in_kind_july_2026.table3b.recipients.ty2024",
+          "hmrc.benefits_in_kind_july_2026.table3b.taxable_value.ty2024"
+        ]
+      },
+      "row_count": 13
+    },
+    {
+      "label": "table4_ty2024_car_benefit_by_region",
+      "selector": {
+        "source_name": "hmrc",
+        "record_set_id": [
+          "hmrc.benefits_in_kind_july_2026.table4.recipients.ty2024",
+          "hmrc.benefits_in_kind_july_2026.table4.taxable_value.ty2024"
+        ]
+      },
+      "row_count": 26
+    }
+  ],
+  "row_count": 96,
+  "rows": [
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_1703f596c5726f3b523df2d4",
+      "semantic_fact_key": "ledger_semantic_fact_v2_e29df217b43ba49aac7839f4",
+      "source_record_id": "hmrc.benefits_in_kind_july_2026.table1.class_1a_nic_liability.ty2024.all.class_1a_nic_liability",
+      "concept": "hmrc.benefit_in_kind_class_1a_nic_liability",
+      "measure_id": "class_1a_nic_liability",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "benefit_in_kind_recipient"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.benefits_in_kind_july_2026.table1.class_1a_nic_liability.ty2024",
+        "groupby_dimension": "company_car_benefit_type",
+        "groupby_value_id": "all",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "company_car_benefit_type": "all"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Benefits in kind statistics: July 2026, Tables 1 to 4: company car benefit and company car fuel benefit",
+        "source_file": "2026_Tables_1_to_4.ods",
+        "source_sha256": "a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678",
+        "vintage": "benefits_in_kind_statistics_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-benefits-in-kind-july-2026/2026/a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678/2026_Tables_1_to_4.ods"
+      },
+      "value": 440000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_ebf6cc506add5416d5674aeb",
+      "semantic_fact_key": "ledger_semantic_fact_v2_de58eb13e7ccfb7fc41f29ce",
+      "source_record_id": "hmrc.benefits_in_kind_july_2026.table1.class_1a_nic_liability.ty2024.car.class_1a_nic_liability",
+      "concept": "hmrc.benefit_in_kind_class_1a_nic_liability",
+      "measure_id": "class_1a_nic_liability",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "benefit_in_kind_recipient"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.benefits_in_kind_july_2026.table1.class_1a_nic_liability.ty2024",
+        "groupby_dimension": "company_car_benefit_type",
+        "groupby_value_id": "car",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "company_car_benefit_type": "car"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Benefits in kind statistics: July 2026, Tables 1 to 4: company car benefit and company car fuel benefit",
+        "source_file": "2026_Tables_1_to_4.ods",
+        "source_sha256": "a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678",
+        "vintage": "benefits_in_kind_statistics_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-benefits-in-kind-july-2026/2026/a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678/2026_Tables_1_to_4.ods"
+      },
+      "value": 420000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_ab9a75dfd90a1881ab8e6314",
+      "semantic_fact_key": "ledger_semantic_fact_v2_5698d4d2a7bf0309aa3ee158",
+      "source_record_id": "hmrc.benefits_in_kind_july_2026.table1.class_1a_nic_liability.ty2024.fuel.class_1a_nic_liability",
+      "concept": "hmrc.benefit_in_kind_class_1a_nic_liability",
+      "measure_id": "class_1a_nic_liability",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "benefit_in_kind_recipient"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.benefits_in_kind_july_2026.table1.class_1a_nic_liability.ty2024",
+        "groupby_dimension": "company_car_benefit_type",
+        "groupby_value_id": "fuel",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "company_car_benefit_type": "fuel"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Benefits in kind statistics: July 2026, Tables 1 to 4: company car benefit and company car fuel benefit",
+        "source_file": "2026_Tables_1_to_4.ods",
+        "source_sha256": "a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678",
+        "vintage": "benefits_in_kind_statistics_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-benefits-in-kind-july-2026/2026/a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678/2026_Tables_1_to_4.ods"
+      },
+      "value": 20000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_9070afdf409860daf8132af7",
+      "semantic_fact_key": "ledger_semantic_fact_v2_a2d1ad768b15a8c1f9f32092",
+      "source_record_id": "hmrc.benefits_in_kind_july_2026.table1.income_tax_liability.ty2024.all.income_tax_liability",
+      "concept": "hmrc.benefit_in_kind_income_tax_liability",
+      "measure_id": "income_tax_liability",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "benefit_in_kind_recipient"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.benefits_in_kind_july_2026.table1.income_tax_liability.ty2024",
+        "groupby_dimension": "company_car_benefit_type",
+        "groupby_value_id": "all",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "company_car_benefit_type": "all"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Benefits in kind statistics: July 2026, Tables 1 to 4: company car benefit and company car fuel benefit",
+        "source_file": "2026_Tables_1_to_4.ods",
+        "source_sha256": "a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678",
+        "vintage": "benefits_in_kind_statistics_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-benefits-in-kind-july-2026/2026/a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678/2026_Tables_1_to_4.ods"
+      },
+      "value": 1140000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_f293ecdc278e9142bcfab273",
+      "semantic_fact_key": "ledger_semantic_fact_v2_3876ef5d93405256d6028849",
+      "source_record_id": "hmrc.benefits_in_kind_july_2026.table1.income_tax_liability.ty2024.car.income_tax_liability",
+      "concept": "hmrc.benefit_in_kind_income_tax_liability",
+      "measure_id": "income_tax_liability",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "benefit_in_kind_recipient"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.benefits_in_kind_july_2026.table1.income_tax_liability.ty2024",
+        "groupby_dimension": "company_car_benefit_type",
+        "groupby_value_id": "car",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "company_car_benefit_type": "car"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Benefits in kind statistics: July 2026, Tables 1 to 4: company car benefit and company car fuel benefit",
+        "source_file": "2026_Tables_1_to_4.ods",
+        "source_sha256": "a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678",
+        "vintage": "benefits_in_kind_statistics_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-benefits-in-kind-july-2026/2026/a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678/2026_Tables_1_to_4.ods"
+      },
+      "value": 1090000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_b3773b438149ce58d1108f49",
+      "semantic_fact_key": "ledger_semantic_fact_v2_4d7b39fb3f1d9cc9e12831eb",
+      "source_record_id": "hmrc.benefits_in_kind_july_2026.table1.income_tax_liability.ty2024.fuel.income_tax_liability",
+      "concept": "hmrc.benefit_in_kind_income_tax_liability",
+      "measure_id": "income_tax_liability",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "benefit_in_kind_recipient"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.benefits_in_kind_july_2026.table1.income_tax_liability.ty2024",
+        "groupby_dimension": "company_car_benefit_type",
+        "groupby_value_id": "fuel",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "company_car_benefit_type": "fuel"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Benefits in kind statistics: July 2026, Tables 1 to 4: company car benefit and company car fuel benefit",
+        "source_file": "2026_Tables_1_to_4.ods",
+        "source_sha256": "a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678",
+        "vintage": "benefits_in_kind_statistics_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-benefits-in-kind-july-2026/2026/a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678/2026_Tables_1_to_4.ods"
+      },
+      "value": 50000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_9d37509f2a2b92e5c6dfad3b",
+      "semantic_fact_key": "ledger_semantic_fact_v2_f79356f3bf014472a1ed9daa",
+      "source_record_id": "hmrc.benefits_in_kind_july_2026.table4.recipients.ty2024.E12000001.recipients",
+      "concept": "hmrc.benefit_in_kind_recipients",
+      "measure_id": "recipients",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "benefit_in_kind_recipient"
+      },
+      "geography": {
+        "id": "E12000001",
+        "level": "region",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.benefits_in_kind_july_2026.table4.recipients.ty2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "E12000001",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "company_car_benefit_type": "car"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Benefits in kind statistics: July 2026, Tables 1 to 4: company car benefit and company car fuel benefit",
+        "source_file": "2026_Tables_1_to_4.ods",
+        "source_sha256": "a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678",
+        "vintage": "benefits_in_kind_statistics_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-benefits-in-kind-july-2026/2026/a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678/2026_Tables_1_to_4.ods"
+      },
+      "value": 40000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_18859846a77cf2d21522f7cb",
+      "semantic_fact_key": "ledger_semantic_fact_v2_bcf2541fe523ed0bb7ad1122",
+      "source_record_id": "hmrc.benefits_in_kind_july_2026.table4.recipients.ty2024.E12000002.recipients",
+      "concept": "hmrc.benefit_in_kind_recipients",
+      "measure_id": "recipients",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "benefit_in_kind_recipient"
+      },
+      "geography": {
+        "id": "E12000002",
+        "level": "region",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.benefits_in_kind_july_2026.table4.recipients.ty2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "E12000002",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "company_car_benefit_type": "car"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Benefits in kind statistics: July 2026, Tables 1 to 4: company car benefit and company car fuel benefit",
+        "source_file": "2026_Tables_1_to_4.ods",
+        "source_sha256": "a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678",
+        "vintage": "benefits_in_kind_statistics_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-benefits-in-kind-july-2026/2026/a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678/2026_Tables_1_to_4.ods"
+      },
+      "value": 115000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_9657589b7a634e886fd1f14e",
+      "semantic_fact_key": "ledger_semantic_fact_v2_c0a995231f1b332b48e0723d",
+      "source_record_id": "hmrc.benefits_in_kind_july_2026.table4.recipients.ty2024.E12000003.recipients",
+      "concept": "hmrc.benefit_in_kind_recipients",
+      "measure_id": "recipients",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "benefit_in_kind_recipient"
+      },
+      "geography": {
+        "id": "E12000003",
+        "level": "region",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.benefits_in_kind_july_2026.table4.recipients.ty2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "E12000003",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "company_car_benefit_type": "car"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Benefits in kind statistics: July 2026, Tables 1 to 4: company car benefit and company car fuel benefit",
+        "source_file": "2026_Tables_1_to_4.ods",
+        "source_sha256": "a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678",
+        "vintage": "benefits_in_kind_statistics_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-benefits-in-kind-july-2026/2026/a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678/2026_Tables_1_to_4.ods"
+      },
+      "value": 85000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_94b1a86883b1df3e017efba6",
+      "semantic_fact_key": "ledger_semantic_fact_v2_6499e855a70aecf07dfe8b25",
+      "source_record_id": "hmrc.benefits_in_kind_july_2026.table4.recipients.ty2024.E12000004.recipients",
+      "concept": "hmrc.benefit_in_kind_recipients",
+      "measure_id": "recipients",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "benefit_in_kind_recipient"
+      },
+      "geography": {
+        "id": "E12000004",
+        "level": "region",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.benefits_in_kind_july_2026.table4.recipients.ty2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "E12000004",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "company_car_benefit_type": "car"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Benefits in kind statistics: July 2026, Tables 1 to 4: company car benefit and company car fuel benefit",
+        "source_file": "2026_Tables_1_to_4.ods",
+        "source_sha256": "a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678",
+        "vintage": "benefits_in_kind_statistics_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-benefits-in-kind-july-2026/2026/a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678/2026_Tables_1_to_4.ods"
+      },
+      "value": 85000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_3a01496ded297fe73d9fd305",
+      "semantic_fact_key": "ledger_semantic_fact_v2_40ac0c4d5df364529bdc1dc3",
+      "source_record_id": "hmrc.benefits_in_kind_july_2026.table4.recipients.ty2024.E12000005.recipients",
+      "concept": "hmrc.benefit_in_kind_recipients",
+      "measure_id": "recipients",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "benefit_in_kind_recipient"
+      },
+      "geography": {
+        "id": "E12000005",
+        "level": "region",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.benefits_in_kind_july_2026.table4.recipients.ty2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "E12000005",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "company_car_benefit_type": "car"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Benefits in kind statistics: July 2026, Tables 1 to 4: company car benefit and company car fuel benefit",
+        "source_file": "2026_Tables_1_to_4.ods",
+        "source_sha256": "a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678",
+        "vintage": "benefits_in_kind_statistics_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-benefits-in-kind-july-2026/2026/a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678/2026_Tables_1_to_4.ods"
+      },
+      "value": 95000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_bf7353cdd33770ff85896d95",
+      "semantic_fact_key": "ledger_semantic_fact_v2_60ebc5f560459492e4e731b9",
+      "source_record_id": "hmrc.benefits_in_kind_july_2026.table4.recipients.ty2024.E12000006.recipients",
+      "concept": "hmrc.benefit_in_kind_recipients",
+      "measure_id": "recipients",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "benefit_in_kind_recipient"
+      },
+      "geography": {
+        "id": "E12000006",
+        "level": "region",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.benefits_in_kind_july_2026.table4.recipients.ty2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "E12000006",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "company_car_benefit_type": "car"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Benefits in kind statistics: July 2026, Tables 1 to 4: company car benefit and company car fuel benefit",
+        "source_file": "2026_Tables_1_to_4.ods",
+        "source_sha256": "a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678",
+        "vintage": "benefits_in_kind_statistics_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-benefits-in-kind-july-2026/2026/a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678/2026_Tables_1_to_4.ods"
+      },
+      "value": 95000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_08eff18e85577fbb737a315f",
+      "semantic_fact_key": "ledger_semantic_fact_v2_5eed85a313ff969b43239cbc",
+      "source_record_id": "hmrc.benefits_in_kind_july_2026.table4.recipients.ty2024.E12000007.recipients",
+      "concept": "hmrc.benefit_in_kind_recipients",
+      "measure_id": "recipients",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "benefit_in_kind_recipient"
+      },
+      "geography": {
+        "id": "E12000007",
+        "level": "region",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.benefits_in_kind_july_2026.table4.recipients.ty2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "E12000007",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "company_car_benefit_type": "car"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Benefits in kind statistics: July 2026, Tables 1 to 4: company car benefit and company car fuel benefit",
+        "source_file": "2026_Tables_1_to_4.ods",
+        "source_sha256": "a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678",
+        "vintage": "benefits_in_kind_statistics_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-benefits-in-kind-july-2026/2026/a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678/2026_Tables_1_to_4.ods"
+      },
+      "value": 65000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_966a13bcd9890208ae493594",
+      "semantic_fact_key": "ledger_semantic_fact_v2_692255fa1cbdc5c1c3050d4d",
+      "source_record_id": "hmrc.benefits_in_kind_july_2026.table4.recipients.ty2024.E12000008.recipients",
+      "concept": "hmrc.benefit_in_kind_recipients",
+      "measure_id": "recipients",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "benefit_in_kind_recipient"
+      },
+      "geography": {
+        "id": "E12000008",
+        "level": "region",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.benefits_in_kind_july_2026.table4.recipients.ty2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "E12000008",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "company_car_benefit_type": "car"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Benefits in kind statistics: July 2026, Tables 1 to 4: company car benefit and company car fuel benefit",
+        "source_file": "2026_Tables_1_to_4.ods",
+        "source_sha256": "a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678",
+        "vintage": "benefits_in_kind_statistics_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-benefits-in-kind-july-2026/2026/a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678/2026_Tables_1_to_4.ods"
+      },
+      "value": 140000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_13e373d8ea5c8fc90d343764",
+      "semantic_fact_key": "ledger_semantic_fact_v2_672fb072e2fcd0e203f9a1ce",
+      "source_record_id": "hmrc.benefits_in_kind_july_2026.table4.recipients.ty2024.E12000009.recipients",
+      "concept": "hmrc.benefit_in_kind_recipients",
+      "measure_id": "recipients",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "benefit_in_kind_recipient"
+      },
+      "geography": {
+        "id": "E12000009",
+        "level": "region",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.benefits_in_kind_july_2026.table4.recipients.ty2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "E12000009",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "company_car_benefit_type": "car"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Benefits in kind statistics: July 2026, Tables 1 to 4: company car benefit and company car fuel benefit",
+        "source_file": "2026_Tables_1_to_4.ods",
+        "source_sha256": "a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678",
+        "vintage": "benefits_in_kind_statistics_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-benefits-in-kind-july-2026/2026/a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678/2026_Tables_1_to_4.ods"
+      },
+      "value": 70000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_4b197a48479e363dfe94bb32",
+      "semantic_fact_key": "ledger_semantic_fact_v2_7a5c07717e9362650f54285b",
+      "source_record_id": "hmrc.benefits_in_kind_july_2026.table1.recipients.ty2024.all.recipients",
+      "concept": "hmrc.benefit_in_kind_recipients",
+      "measure_id": "recipients",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "benefit_in_kind_recipient"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.benefits_in_kind_july_2026.table1.recipients.ty2024",
+        "groupby_dimension": "company_car_benefit_type",
+        "groupby_value_id": "all",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "company_car_benefit_type": "all"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Benefits in kind statistics: July 2026, Tables 1 to 4: company car benefit and company car fuel benefit",
+        "source_file": "2026_Tables_1_to_4.ods",
+        "source_sha256": "a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678",
+        "vintage": "benefits_in_kind_statistics_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-benefits-in-kind-july-2026/2026/a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678/2026_Tables_1_to_4.ods"
+      },
+      "value": 920000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_7d770efdd7134073af2341a6",
+      "semantic_fact_key": "ledger_semantic_fact_v2_fc7b23b688dda3721310f04c",
+      "source_record_id": "hmrc.benefits_in_kind_july_2026.table1.recipients.ty2024.car.recipients",
+      "concept": "hmrc.benefit_in_kind_recipients",
+      "measure_id": "recipients",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "benefit_in_kind_recipient"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.benefits_in_kind_july_2026.table1.recipients.ty2024",
+        "groupby_dimension": "company_car_benefit_type",
+        "groupby_value_id": "car",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "company_car_benefit_type": "car"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Benefits in kind statistics: July 2026, Tables 1 to 4: company car benefit and company car fuel benefit",
+        "source_file": "2026_Tables_1_to_4.ods",
+        "source_sha256": "a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678",
+        "vintage": "benefits_in_kind_statistics_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-benefits-in-kind-july-2026/2026/a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678/2026_Tables_1_to_4.ods"
+      },
+      "value": 920000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_59eaf4182739574fbb793228",
+      "semantic_fact_key": "ledger_semantic_fact_v2_ea070e0b6ed668c4d3bc4f7f",
+      "source_record_id": "hmrc.benefits_in_kind_july_2026.table2a.recipients.ty2024.co2_0.recipients",
+      "concept": "hmrc.benefit_in_kind_recipients",
+      "measure_id": "recipients",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "benefit_in_kind_recipient"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.benefits_in_kind_july_2026.table2a.recipients.ty2024",
+        "groupby_dimension": "company_car_co2_band",
+        "groupby_value_id": "co2_0",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "company_car_benefit_type": "car",
+        "company_car_co2_band": "co2_0"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Benefits in kind statistics: July 2026, Tables 1 to 4: company car benefit and company car fuel benefit",
+        "source_file": "2026_Tables_1_to_4.ods",
+        "source_sha256": "a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678",
+        "vintage": "benefits_in_kind_statistics_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-benefits-in-kind-july-2026/2026/a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678/2026_Tables_1_to_4.ods"
+      },
+      "value": 467000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_0d6b43873d7194f922b735d4",
+      "semantic_fact_key": "ledger_semantic_fact_v2_37f1b43fe6a429e42861cf2a",
+      "source_record_id": "hmrc.benefits_in_kind_july_2026.table2a.recipients.ty2024.co2_105_to_114.recipients",
+      "concept": "hmrc.benefit_in_kind_recipients",
+      "measure_id": "recipients",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "benefit_in_kind_recipient"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.benefits_in_kind_july_2026.table2a.recipients.ty2024",
+        "groupby_dimension": "company_car_co2_band",
+        "groupby_value_id": "co2_105_to_114",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "company_car_benefit_type": "car",
+        "company_car_co2_band": "co2_105_to_114"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Benefits in kind statistics: July 2026, Tables 1 to 4: company car benefit and company car fuel benefit",
+        "source_file": "2026_Tables_1_to_4.ods",
+        "source_sha256": "a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678",
+        "vintage": "benefits_in_kind_statistics_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-benefits-in-kind-july-2026/2026/a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678/2026_Tables_1_to_4.ods"
+      },
+      "value": 33000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_7410526e5d6d81d9859180be",
+      "semantic_fact_key": "ledger_semantic_fact_v2_f2905faa91f308632e021f4d",
+      "source_record_id": "hmrc.benefits_in_kind_july_2026.table2a.recipients.ty2024.co2_115_to_124.recipients",
+      "concept": "hmrc.benefit_in_kind_recipients",
+      "measure_id": "recipients",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "benefit_in_kind_recipient"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.benefits_in_kind_july_2026.table2a.recipients.ty2024",
+        "groupby_dimension": "company_car_co2_band",
+        "groupby_value_id": "co2_115_to_124",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "company_car_benefit_type": "car",
+        "company_car_co2_band": "co2_115_to_124"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Benefits in kind statistics: July 2026, Tables 1 to 4: company car benefit and company car fuel benefit",
+        "source_file": "2026_Tables_1_to_4.ods",
+        "source_sha256": "a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678",
+        "vintage": "benefits_in_kind_statistics_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-benefits-in-kind-july-2026/2026/a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678/2026_Tables_1_to_4.ods"
+      },
+      "value": 54000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_9bfa5857856b095323bb7ade",
+      "semantic_fact_key": "ledger_semantic_fact_v2_97669178cd56c2400c20a417",
+      "source_record_id": "hmrc.benefits_in_kind_july_2026.table2a.recipients.ty2024.co2_125_to_134.recipients",
+      "concept": "hmrc.benefit_in_kind_recipients",
+      "measure_id": "recipients",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "benefit_in_kind_recipient"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.benefits_in_kind_july_2026.table2a.recipients.ty2024",
+        "groupby_dimension": "company_car_co2_band",
+        "groupby_value_id": "co2_125_to_134",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "company_car_benefit_type": "car",
+        "company_car_co2_band": "co2_125_to_134"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Benefits in kind statistics: July 2026, Tables 1 to 4: company car benefit and company car fuel benefit",
+        "source_file": "2026_Tables_1_to_4.ods",
+        "source_sha256": "a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678",
+        "vintage": "benefits_in_kind_statistics_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-benefits-in-kind-july-2026/2026/a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678/2026_Tables_1_to_4.ods"
+      },
+      "value": 52000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_3b40e3fca7c8700a458e5cca",
+      "semantic_fact_key": "ledger_semantic_fact_v2_57440b8f339004f4ba39e7ce",
+      "source_record_id": "hmrc.benefits_in_kind_july_2026.table2a.recipients.ty2024.co2_135_to_144.recipients",
+      "concept": "hmrc.benefit_in_kind_recipients",
+      "measure_id": "recipients",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "benefit_in_kind_recipient"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.benefits_in_kind_july_2026.table2a.recipients.ty2024",
+        "groupby_dimension": "company_car_co2_band",
+        "groupby_value_id": "co2_135_to_144",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "company_car_benefit_type": "car",
+        "company_car_co2_band": "co2_135_to_144"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Benefits in kind statistics: July 2026, Tables 1 to 4: company car benefit and company car fuel benefit",
+        "source_file": "2026_Tables_1_to_4.ods",
+        "source_sha256": "a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678",
+        "vintage": "benefits_in_kind_statistics_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-benefits-in-kind-july-2026/2026/a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678/2026_Tables_1_to_4.ods"
+      },
+      "value": 24000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_948f3893158de79b6b8a642f",
+      "semantic_fact_key": "ledger_semantic_fact_v2_4d0de41e1ca0695af8c3bc03",
+      "source_record_id": "hmrc.benefits_in_kind_july_2026.table2a.recipients.ty2024.co2_145_to_154.recipients",
+      "concept": "hmrc.benefit_in_kind_recipients",
+      "measure_id": "recipients",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "benefit_in_kind_recipient"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.benefits_in_kind_july_2026.table2a.recipients.ty2024",
+        "groupby_dimension": "company_car_co2_band",
+        "groupby_value_id": "co2_145_to_154",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "company_car_benefit_type": "car",
+        "company_car_co2_band": "co2_145_to_154"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Benefits in kind statistics: July 2026, Tables 1 to 4: company car benefit and company car fuel benefit",
+        "source_file": "2026_Tables_1_to_4.ods",
+        "source_sha256": "a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678",
+        "vintage": "benefits_in_kind_statistics_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-benefits-in-kind-july-2026/2026/a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678/2026_Tables_1_to_4.ods"
+      },
+      "value": 13000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_ab2ddb7f4d501a25e5b8301e",
+      "semantic_fact_key": "ledger_semantic_fact_v2_01a9cd179ffdf742b290f1a3",
+      "source_record_id": "hmrc.benefits_in_kind_july_2026.table2a.recipients.ty2024.co2_155_to_164.recipients",
+      "concept": "hmrc.benefit_in_kind_recipients",
+      "measure_id": "recipients",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "benefit_in_kind_recipient"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.benefits_in_kind_july_2026.table2a.recipients.ty2024",
+        "groupby_dimension": "company_car_co2_band",
+        "groupby_value_id": "co2_155_to_164",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "company_car_benefit_type": "car",
+        "company_car_co2_band": "co2_155_to_164"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Benefits in kind statistics: July 2026, Tables 1 to 4: company car benefit and company car fuel benefit",
+        "source_file": "2026_Tables_1_to_4.ods",
+        "source_sha256": "a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678",
+        "vintage": "benefits_in_kind_statistics_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-benefits-in-kind-july-2026/2026/a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678/2026_Tables_1_to_4.ods"
+      },
+      "value": 6000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_d1e46a36bfc1ce4ae5dccff2",
+      "semantic_fact_key": "ledger_semantic_fact_v2_44f5cf438c3a09c46f40d312",
+      "source_record_id": "hmrc.benefits_in_kind_july_2026.table2a.recipients.ty2024.co2_165_to_169.recipients",
+      "concept": "hmrc.benefit_in_kind_recipients",
+      "measure_id": "recipients",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "benefit_in_kind_recipient"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.benefits_in_kind_july_2026.table2a.recipients.ty2024",
+        "groupby_dimension": "company_car_co2_band",
+        "groupby_value_id": "co2_165_to_169",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "company_car_benefit_type": "car",
+        "company_car_co2_band": "co2_165_to_169"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Benefits in kind statistics: July 2026, Tables 1 to 4: company car benefit and company car fuel benefit",
+        "source_file": "2026_Tables_1_to_4.ods",
+        "source_sha256": "a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678",
+        "vintage": "benefits_in_kind_statistics_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-benefits-in-kind-july-2026/2026/a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678/2026_Tables_1_to_4.ods"
+      },
+      "value": 2000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_662f2d7c5e05f976e7b46a65",
+      "semantic_fact_key": "ledger_semantic_fact_v2_eb77ec506a994a6288b0206e",
+      "source_record_id": "hmrc.benefits_in_kind_july_2026.table2a.recipients.ty2024.co2_170_plus.recipients",
+      "concept": "hmrc.benefit_in_kind_recipients",
+      "measure_id": "recipients",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "benefit_in_kind_recipient"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.benefits_in_kind_july_2026.table2a.recipients.ty2024",
+        "groupby_dimension": "company_car_co2_band",
+        "groupby_value_id": "co2_170_plus",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "company_car_benefit_type": "car",
+        "company_car_co2_band": "co2_170_plus"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Benefits in kind statistics: July 2026, Tables 1 to 4: company car benefit and company car fuel benefit",
+        "source_file": "2026_Tables_1_to_4.ods",
+        "source_sha256": "a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678",
+        "vintage": "benefits_in_kind_statistics_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-benefits-in-kind-july-2026/2026/a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678/2026_Tables_1_to_4.ods"
+      },
+      "value": 10000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_b3077390ff9e29f55add5cf0",
+      "semantic_fact_key": "ledger_semantic_fact_v2_b04cfe69f0f8b5e64a5af783",
+      "source_record_id": "hmrc.benefits_in_kind_july_2026.table2a.recipients.ty2024.co2_1_to_50.recipients",
+      "concept": "hmrc.benefit_in_kind_recipients",
+      "measure_id": "recipients",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "benefit_in_kind_recipient"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.benefits_in_kind_july_2026.table2a.recipients.ty2024",
+        "groupby_dimension": "company_car_co2_band",
+        "groupby_value_id": "co2_1_to_50",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "company_car_benefit_type": "car",
+        "company_car_co2_band": "co2_1_to_50"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Benefits in kind statistics: July 2026, Tables 1 to 4: company car benefit and company car fuel benefit",
+        "source_file": "2026_Tables_1_to_4.ods",
+        "source_sha256": "a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678",
+        "vintage": "benefits_in_kind_statistics_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-benefits-in-kind-july-2026/2026/a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678/2026_Tables_1_to_4.ods"
+      },
+      "value": 220000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_55b8265680eef4e8be5dc2ba",
+      "semantic_fact_key": "ledger_semantic_fact_v2_fb86350dc84aac3174282d3c",
+      "source_record_id": "hmrc.benefits_in_kind_july_2026.table2a.recipients.ty2024.co2_51_to_54.recipients",
+      "concept": "hmrc.benefit_in_kind_recipients",
+      "measure_id": "recipients",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "benefit_in_kind_recipient"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.benefits_in_kind_july_2026.table2a.recipients.ty2024",
+        "groupby_dimension": "company_car_co2_band",
+        "groupby_value_id": "co2_51_to_54",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "company_car_benefit_type": "car",
+        "company_car_co2_band": "co2_51_to_54"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Benefits in kind statistics: July 2026, Tables 1 to 4: company car benefit and company car fuel benefit",
+        "source_file": "2026_Tables_1_to_4.ods",
+        "source_sha256": "a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678",
+        "vintage": "benefits_in_kind_statistics_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-benefits-in-kind-july-2026/2026/a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678/2026_Tables_1_to_4.ods"
+      },
+      "value": 1000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_fb2bf6e7931d4fb8c9d7e2c0",
+      "semantic_fact_key": "ledger_semantic_fact_v2_f96714f3e14ab6fa6178e663",
+      "source_record_id": "hmrc.benefits_in_kind_july_2026.table2a.recipients.ty2024.co2_55_to_59.recipients",
+      "concept": "hmrc.benefit_in_kind_recipients",
+      "measure_id": "recipients",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "benefit_in_kind_recipient"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.benefits_in_kind_july_2026.table2a.recipients.ty2024",
+        "groupby_dimension": "company_car_co2_band",
+        "groupby_value_id": "co2_55_to_59",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "company_car_benefit_type": "car",
+        "company_car_co2_band": "co2_55_to_59"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Benefits in kind statistics: July 2026, Tables 1 to 4: company car benefit and company car fuel benefit",
+        "source_file": "2026_Tables_1_to_4.ods",
+        "source_sha256": "a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678",
+        "vintage": "benefits_in_kind_statistics_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-benefits-in-kind-july-2026/2026/a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678/2026_Tables_1_to_4.ods"
+      },
+      "value": 2000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_cc57f8ffd308baad7beec81b",
+      "semantic_fact_key": "ledger_semantic_fact_v2_bd32353bbbf2ebbce932daba",
+      "source_record_id": "hmrc.benefits_in_kind_july_2026.table2a.recipients.ty2024.co2_60_to_64.recipients",
+      "concept": "hmrc.benefit_in_kind_recipients",
+      "measure_id": "recipients",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "benefit_in_kind_recipient"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.benefits_in_kind_july_2026.table2a.recipients.ty2024",
+        "groupby_dimension": "company_car_co2_band",
+        "groupby_value_id": "co2_60_to_64",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "company_car_benefit_type": "car",
+        "company_car_co2_band": "co2_60_to_64"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Benefits in kind statistics: July 2026, Tables 1 to 4: company car benefit and company car fuel benefit",
+        "source_file": "2026_Tables_1_to_4.ods",
+        "source_sha256": "a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678",
+        "vintage": "benefits_in_kind_statistics_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-benefits-in-kind-july-2026/2026/a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678/2026_Tables_1_to_4.ods"
+      },
+      "value": 1000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_669bfa7440a1bc9bf392ae56",
+      "semantic_fact_key": "ledger_semantic_fact_v2_8fea88210f0e96ec6013c510",
+      "source_record_id": "hmrc.benefits_in_kind_july_2026.table2a.recipients.ty2024.co2_65_to_69.recipients",
+      "concept": "hmrc.benefit_in_kind_recipients",
+      "measure_id": "recipients",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "benefit_in_kind_recipient"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.benefits_in_kind_july_2026.table2a.recipients.ty2024",
+        "groupby_dimension": "company_car_co2_band",
+        "groupby_value_id": "co2_65_to_69",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "company_car_benefit_type": "car",
+        "company_car_co2_band": "co2_65_to_69"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Benefits in kind statistics: July 2026, Tables 1 to 4: company car benefit and company car fuel benefit",
+        "source_file": "2026_Tables_1_to_4.ods",
+        "source_sha256": "a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678",
+        "vintage": "benefits_in_kind_statistics_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-benefits-in-kind-july-2026/2026/a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678/2026_Tables_1_to_4.ods"
+      },
+      "value": 1000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_d1fbcb3bd2b7e8a85481ee01",
+      "semantic_fact_key": "ledger_semantic_fact_v2_1cad9f2205c3319952bb8fc8",
+      "source_record_id": "hmrc.benefits_in_kind_july_2026.table2a.recipients.ty2024.co2_70_to_74.recipients",
+      "concept": "hmrc.benefit_in_kind_recipients",
+      "measure_id": "recipients",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "benefit_in_kind_recipient"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.benefits_in_kind_july_2026.table2a.recipients.ty2024",
+        "groupby_dimension": "company_car_co2_band",
+        "groupby_value_id": "co2_70_to_74",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "company_car_benefit_type": "car",
+        "company_car_co2_band": "co2_70_to_74"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Benefits in kind statistics: July 2026, Tables 1 to 4: company car benefit and company car fuel benefit",
+        "source_file": "2026_Tables_1_to_4.ods",
+        "source_sha256": "a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678",
+        "vintage": "benefits_in_kind_statistics_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-benefits-in-kind-july-2026/2026/a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678/2026_Tables_1_to_4.ods"
+      },
+      "value": 1000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_a71952dee4843fbfe3738192",
+      "semantic_fact_key": "ledger_semantic_fact_v2_39131b4cd6c48ced1885b1ed",
+      "source_record_id": "hmrc.benefits_in_kind_july_2026.table2a.recipients.ty2024.co2_75_to_79.recipients",
+      "concept": "hmrc.benefit_in_kind_recipients",
+      "measure_id": "recipients",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "benefit_in_kind_recipient"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.benefits_in_kind_july_2026.table2a.recipients.ty2024",
+        "groupby_dimension": "company_car_co2_band",
+        "groupby_value_id": "co2_75_to_79",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "company_car_benefit_type": "car",
+        "company_car_co2_band": "co2_75_to_79"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Benefits in kind statistics: July 2026, Tables 1 to 4: company car benefit and company car fuel benefit",
+        "source_file": "2026_Tables_1_to_4.ods",
+        "source_sha256": "a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678",
+        "vintage": "benefits_in_kind_statistics_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-benefits-in-kind-july-2026/2026/a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678/2026_Tables_1_to_4.ods"
+      },
+      "value": 2000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_cee65e41d8da9415451b7c7f",
+      "semantic_fact_key": "ledger_semantic_fact_v2_167f47ba116b1062782deb65",
+      "source_record_id": "hmrc.benefits_in_kind_july_2026.table2a.recipients.ty2024.co2_80_to_84.recipients",
+      "concept": "hmrc.benefit_in_kind_recipients",
+      "measure_id": "recipients",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "benefit_in_kind_recipient"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.benefits_in_kind_july_2026.table2a.recipients.ty2024",
+        "groupby_dimension": "company_car_co2_band",
+        "groupby_value_id": "co2_80_to_84",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "company_car_benefit_type": "car",
+        "company_car_co2_band": "co2_80_to_84"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Benefits in kind statistics: July 2026, Tables 1 to 4: company car benefit and company car fuel benefit",
+        "source_file": "2026_Tables_1_to_4.ods",
+        "source_sha256": "a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678",
+        "vintage": "benefits_in_kind_statistics_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-benefits-in-kind-july-2026/2026/a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678/2026_Tables_1_to_4.ods"
+      },
+      "value": 1000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_b4ca3c2f7f4cddf4b385a65d",
+      "semantic_fact_key": "ledger_semantic_fact_v2_911431dfbb6fb8b4ed1fc01a",
+      "source_record_id": "hmrc.benefits_in_kind_july_2026.table2a.recipients.ty2024.co2_85_to_89.recipients",
+      "concept": "hmrc.benefit_in_kind_recipients",
+      "measure_id": "recipients",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "benefit_in_kind_recipient"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.benefits_in_kind_july_2026.table2a.recipients.ty2024",
+        "groupby_dimension": "company_car_co2_band",
+        "groupby_value_id": "co2_85_to_89",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "company_car_benefit_type": "car",
+        "company_car_co2_band": "co2_85_to_89"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Benefits in kind statistics: July 2026, Tables 1 to 4: company car benefit and company car fuel benefit",
+        "source_file": "2026_Tables_1_to_4.ods",
+        "source_sha256": "a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678",
+        "vintage": "benefits_in_kind_statistics_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-benefits-in-kind-july-2026/2026/a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678/2026_Tables_1_to_4.ods"
+      },
+      "value": 2000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_05a8102f77342ca9f76ffc69",
+      "semantic_fact_key": "ledger_semantic_fact_v2_3acceb881d884dcf4ce5f61d",
+      "source_record_id": "hmrc.benefits_in_kind_july_2026.table2a.recipients.ty2024.co2_90_to_94.recipients",
+      "concept": "hmrc.benefit_in_kind_recipients",
+      "measure_id": "recipients",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "benefit_in_kind_recipient"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.benefits_in_kind_july_2026.table2a.recipients.ty2024",
+        "groupby_dimension": "company_car_co2_band",
+        "groupby_value_id": "co2_90_to_94",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "company_car_benefit_type": "car",
+        "company_car_co2_band": "co2_90_to_94"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Benefits in kind statistics: July 2026, Tables 1 to 4: company car benefit and company car fuel benefit",
+        "source_file": "2026_Tables_1_to_4.ods",
+        "source_sha256": "a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678",
+        "vintage": "benefits_in_kind_statistics_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-benefits-in-kind-july-2026/2026/a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678/2026_Tables_1_to_4.ods"
+      },
+      "value": 5000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_8434dafd9291b0123813560b",
+      "semantic_fact_key": "ledger_semantic_fact_v2_7bf9539b1b6694fee1fad928",
+      "source_record_id": "hmrc.benefits_in_kind_july_2026.table2a.recipients.ty2024.co2_95_to_104.recipients",
+      "concept": "hmrc.benefit_in_kind_recipients",
+      "measure_id": "recipients",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "benefit_in_kind_recipient"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.benefits_in_kind_july_2026.table2a.recipients.ty2024",
+        "groupby_dimension": "company_car_co2_band",
+        "groupby_value_id": "co2_95_to_104",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "company_car_benefit_type": "car",
+        "company_car_co2_band": "co2_95_to_104"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Benefits in kind statistics: July 2026, Tables 1 to 4: company car benefit and company car fuel benefit",
+        "source_file": "2026_Tables_1_to_4.ods",
+        "source_sha256": "a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678",
+        "vintage": "benefits_in_kind_statistics_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-benefits-in-kind-july-2026/2026/a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678/2026_Tables_1_to_4.ods"
+      },
+      "value": 25000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_58c4aa76a9d3ef1ce3e332f7",
+      "semantic_fact_key": "ledger_semantic_fact_v2_c49491ddf52c4fce01108a47",
+      "source_record_id": "hmrc.benefits_in_kind_july_2026.table2c.recipients.ty2024.diesel_including_hybrids.recipients",
+      "concept": "hmrc.benefit_in_kind_recipients",
+      "measure_id": "recipients",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "benefit_in_kind_recipient"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.benefits_in_kind_july_2026.table2c.recipients.ty2024",
+        "groupby_dimension": "company_car_fuel_type",
+        "groupby_value_id": "diesel_including_hybrids",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "company_car_benefit_type": "car",
+        "company_car_fuel_type": "diesel_including_hybrids"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Benefits in kind statistics: July 2026, Tables 1 to 4: company car benefit and company car fuel benefit",
+        "source_file": "2026_Tables_1_to_4.ods",
+        "source_sha256": "a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678",
+        "vintage": "benefits_in_kind_statistics_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-benefits-in-kind-july-2026/2026/a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678/2026_Tables_1_to_4.ods"
+      },
+      "value": 60000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_66909c015cd8a43a7de4bb1f",
+      "semantic_fact_key": "ledger_semantic_fact_v2_54c2368b6ed02d192e1a02ab",
+      "source_record_id": "hmrc.benefits_in_kind_july_2026.table1.recipients.ty2024.fuel.recipients",
+      "concept": "hmrc.benefit_in_kind_recipients",
+      "measure_id": "recipients",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "benefit_in_kind_recipient"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.benefits_in_kind_july_2026.table1.recipients.ty2024",
+        "groupby_dimension": "company_car_benefit_type",
+        "groupby_value_id": "fuel",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "company_car_benefit_type": "fuel"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Benefits in kind statistics: July 2026, Tables 1 to 4: company car benefit and company car fuel benefit",
+        "source_file": "2026_Tables_1_to_4.ods",
+        "source_sha256": "a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678",
+        "vintage": "benefits_in_kind_statistics_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-benefits-in-kind-july-2026/2026/a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678/2026_Tables_1_to_4.ods"
+      },
+      "value": 40000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_3b60b8f7d982772345e8008a",
+      "semantic_fact_key": "ledger_semantic_fact_v2_934a57f62c33484e11950e1c",
+      "source_record_id": "hmrc.benefits_in_kind_july_2026.table2c.recipients.ty2024.fully_electric.recipients",
+      "concept": "hmrc.benefit_in_kind_recipients",
+      "measure_id": "recipients",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "benefit_in_kind_recipient"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.benefits_in_kind_july_2026.table2c.recipients.ty2024",
+        "groupby_dimension": "company_car_fuel_type",
+        "groupby_value_id": "fully_electric",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "company_car_benefit_type": "car",
+        "company_car_fuel_type": "fully_electric"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Benefits in kind statistics: July 2026, Tables 1 to 4: company car benefit and company car fuel benefit",
+        "source_file": "2026_Tables_1_to_4.ods",
+        "source_sha256": "a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678",
+        "vintage": "benefits_in_kind_statistics_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-benefits-in-kind-july-2026/2026/a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678/2026_Tables_1_to_4.ods"
+      },
+      "value": 465000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_3f5e8a9051d69444dd76681a",
+      "semantic_fact_key": "ledger_semantic_fact_v2_cb4f45cda0fb8857fe857fcd",
+      "source_record_id": "hmrc.benefits_in_kind_july_2026.table3a.recipients.ty2024.income_0_to_8499.recipients",
+      "concept": "hmrc.benefit_in_kind_recipients",
+      "measure_id": "recipients",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "benefit_in_kind_recipient"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.benefits_in_kind_july_2026.table3a.recipients.ty2024",
+        "groupby_dimension": "benefit_in_kind_income_band",
+        "groupby_value_id": "income_0_to_8499",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "benefit_in_kind_income_band": "income_0_to_8499",
+        "company_car_benefit_type": "car"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Benefits in kind statistics: July 2026, Tables 1 to 4: company car benefit and company car fuel benefit",
+        "source_file": "2026_Tables_1_to_4.ods",
+        "source_sha256": "a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678",
+        "vintage": "benefits_in_kind_statistics_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-benefits-in-kind-july-2026/2026/a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678/2026_Tables_1_to_4.ods"
+      },
+      "value": 5000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_bfaa27cdd82522e75a94caf3",
+      "semantic_fact_key": "ledger_semantic_fact_v2_7ce2a6992dd5d327c53601ef",
+      "source_record_id": "hmrc.benefits_in_kind_july_2026.table3a.recipients.ty2024.income_100000_to_149999.recipients",
+      "concept": "hmrc.benefit_in_kind_recipients",
+      "measure_id": "recipients",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "benefit_in_kind_recipient"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.benefits_in_kind_july_2026.table3a.recipients.ty2024",
+        "groupby_dimension": "benefit_in_kind_income_band",
+        "groupby_value_id": "income_100000_to_149999",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "benefit_in_kind_income_band": "income_100000_to_149999",
+        "company_car_benefit_type": "car"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Benefits in kind statistics: July 2026, Tables 1 to 4: company car benefit and company car fuel benefit",
+        "source_file": "2026_Tables_1_to_4.ods",
+        "source_sha256": "a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678",
+        "vintage": "benefits_in_kind_statistics_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-benefits-in-kind-july-2026/2026/a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678/2026_Tables_1_to_4.ods"
+      },
+      "value": 110000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_2042b22afd53b9346094bc59",
+      "semantic_fact_key": "ledger_semantic_fact_v2_dd0bbf3a685c870bc168814e",
+      "source_record_id": "hmrc.benefits_in_kind_july_2026.table3b.recipients.ty2024.income_100000_to_149999.recipients",
+      "concept": "hmrc.benefit_in_kind_recipients",
+      "measure_id": "recipients",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "benefit_in_kind_recipient"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.benefits_in_kind_july_2026.table3b.recipients.ty2024",
+        "groupby_dimension": "benefit_in_kind_income_band",
+        "groupby_value_id": "income_100000_to_149999",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "benefit_in_kind_income_band": "income_100000_to_149999",
+        "company_car_benefit_type": "fuel"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Benefits in kind statistics: July 2026, Tables 1 to 4: company car benefit and company car fuel benefit",
+        "source_file": "2026_Tables_1_to_4.ods",
+        "source_sha256": "a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678",
+        "vintage": "benefits_in_kind_statistics_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-benefits-in-kind-july-2026/2026/a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678/2026_Tables_1_to_4.ods"
+      },
+      "value": 5000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_55aa33592eac60a9de4b2949",
+      "semantic_fact_key": "ledger_semantic_fact_v2_2e0b71511a557fc1910ba2da",
+      "source_record_id": "hmrc.benefits_in_kind_july_2026.table3a.recipients.ty2024.income_150000_to_199999.recipients",
+      "concept": "hmrc.benefit_in_kind_recipients",
+      "measure_id": "recipients",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "benefit_in_kind_recipient"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.benefits_in_kind_july_2026.table3a.recipients.ty2024",
+        "groupby_dimension": "benefit_in_kind_income_band",
+        "groupby_value_id": "income_150000_to_199999",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "benefit_in_kind_income_band": "income_150000_to_199999",
+        "company_car_benefit_type": "car"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Benefits in kind statistics: July 2026, Tables 1 to 4: company car benefit and company car fuel benefit",
+        "source_file": "2026_Tables_1_to_4.ods",
+        "source_sha256": "a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678",
+        "vintage": "benefits_in_kind_statistics_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-benefits-in-kind-july-2026/2026/a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678/2026_Tables_1_to_4.ods"
+      },
+      "value": 30000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_fcc768282946a60dfea61b5e",
+      "semantic_fact_key": "ledger_semantic_fact_v2_55ee64976527f867f3b055d0",
+      "source_record_id": "hmrc.benefits_in_kind_july_2026.table3a.recipients.ty2024.income_15000_to_19999.recipients",
+      "concept": "hmrc.benefit_in_kind_recipients",
+      "measure_id": "recipients",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "benefit_in_kind_recipient"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.benefits_in_kind_july_2026.table3a.recipients.ty2024",
+        "groupby_dimension": "benefit_in_kind_income_band",
+        "groupby_value_id": "income_15000_to_19999",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "benefit_in_kind_income_band": "income_15000_to_19999",
+        "company_car_benefit_type": "car"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Benefits in kind statistics: July 2026, Tables 1 to 4: company car benefit and company car fuel benefit",
+        "source_file": "2026_Tables_1_to_4.ods",
+        "source_sha256": "a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678",
+        "vintage": "benefits_in_kind_statistics_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-benefits-in-kind-july-2026/2026/a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678/2026_Tables_1_to_4.ods"
+      },
+      "value": 10000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_d71967fac27f1aba32451ce3",
+      "semantic_fact_key": "ledger_semantic_fact_v2_d74f2b0206f679bcfdb84333",
+      "source_record_id": "hmrc.benefits_in_kind_july_2026.table3a.recipients.ty2024.income_200000_plus.recipients",
+      "concept": "hmrc.benefit_in_kind_recipients",
+      "measure_id": "recipients",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "benefit_in_kind_recipient"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.benefits_in_kind_july_2026.table3a.recipients.ty2024",
+        "groupby_dimension": "benefit_in_kind_income_band",
+        "groupby_value_id": "income_200000_plus",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "benefit_in_kind_income_band": "income_200000_plus",
+        "company_car_benefit_type": "car"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Benefits in kind statistics: July 2026, Tables 1 to 4: company car benefit and company car fuel benefit",
+        "source_file": "2026_Tables_1_to_4.ods",
+        "source_sha256": "a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678",
+        "vintage": "benefits_in_kind_statistics_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-benefits-in-kind-july-2026/2026/a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678/2026_Tables_1_to_4.ods"
+      },
+      "value": 50000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_20af1873d1e465b54013f133",
+      "semantic_fact_key": "ledger_semantic_fact_v2_ce7e4c7861d5617802d16cfe",
+      "source_record_id": "hmrc.benefits_in_kind_july_2026.table3b.recipients.ty2024.income_200000_plus.recipients",
+      "concept": "hmrc.benefit_in_kind_recipients",
+      "measure_id": "recipients",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "benefit_in_kind_recipient"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.benefits_in_kind_july_2026.table3b.recipients.ty2024",
+        "groupby_dimension": "benefit_in_kind_income_band",
+        "groupby_value_id": "income_200000_plus",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "benefit_in_kind_income_band": "income_200000_plus",
+        "company_car_benefit_type": "fuel"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Benefits in kind statistics: July 2026, Tables 1 to 4: company car benefit and company car fuel benefit",
+        "source_file": "2026_Tables_1_to_4.ods",
+        "source_sha256": "a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678",
+        "vintage": "benefits_in_kind_statistics_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-benefits-in-kind-july-2026/2026/a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678/2026_Tables_1_to_4.ods"
+      },
+      "value": 5000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_f068f5c43260ae98f1de7154",
+      "semantic_fact_key": "ledger_semantic_fact_v2_e1096dd45c78a31867e9476e",
+      "source_record_id": "hmrc.benefits_in_kind_july_2026.table3a.recipients.ty2024.income_20000_to_29999.recipients",
+      "concept": "hmrc.benefit_in_kind_recipients",
+      "measure_id": "recipients",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "benefit_in_kind_recipient"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.benefits_in_kind_july_2026.table3a.recipients.ty2024",
+        "groupby_dimension": "benefit_in_kind_income_band",
+        "groupby_value_id": "income_20000_to_29999",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "benefit_in_kind_income_band": "income_20000_to_29999",
+        "company_car_benefit_type": "car"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Benefits in kind statistics: July 2026, Tables 1 to 4: company car benefit and company car fuel benefit",
+        "source_file": "2026_Tables_1_to_4.ods",
+        "source_sha256": "a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678",
+        "vintage": "benefits_in_kind_statistics_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-benefits-in-kind-july-2026/2026/a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678/2026_Tables_1_to_4.ods"
+      },
+      "value": 30000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_465aa75db63aa7b33073fc2c",
+      "semantic_fact_key": "ledger_semantic_fact_v2_b51b96f998d74da358afeccc",
+      "source_record_id": "hmrc.benefits_in_kind_july_2026.table3a.recipients.ty2024.income_30000_to_39999.recipients",
+      "concept": "hmrc.benefit_in_kind_recipients",
+      "measure_id": "recipients",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "benefit_in_kind_recipient"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.benefits_in_kind_july_2026.table3a.recipients.ty2024",
+        "groupby_dimension": "benefit_in_kind_income_band",
+        "groupby_value_id": "income_30000_to_39999",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "benefit_in_kind_income_band": "income_30000_to_39999",
+        "company_car_benefit_type": "car"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Benefits in kind statistics: July 2026, Tables 1 to 4: company car benefit and company car fuel benefit",
+        "source_file": "2026_Tables_1_to_4.ods",
+        "source_sha256": "a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678",
+        "vintage": "benefits_in_kind_statistics_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-benefits-in-kind-july-2026/2026/a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678/2026_Tables_1_to_4.ods"
+      },
+      "value": 80000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_186663cdfcab6b88ed0843dc",
+      "semantic_fact_key": "ledger_semantic_fact_v2_708f9eaab2dca0e29dc36e87",
+      "source_record_id": "hmrc.benefits_in_kind_july_2026.table3a.recipients.ty2024.income_40000_to_49999.recipients",
+      "concept": "hmrc.benefit_in_kind_recipients",
+      "measure_id": "recipients",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "benefit_in_kind_recipient"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.benefits_in_kind_july_2026.table3a.recipients.ty2024",
+        "groupby_dimension": "benefit_in_kind_income_band",
+        "groupby_value_id": "income_40000_to_49999",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "benefit_in_kind_income_band": "income_40000_to_49999",
+        "company_car_benefit_type": "car"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Benefits in kind statistics: July 2026, Tables 1 to 4: company car benefit and company car fuel benefit",
+        "source_file": "2026_Tables_1_to_4.ods",
+        "source_sha256": "a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678",
+        "vintage": "benefits_in_kind_statistics_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-benefits-in-kind-july-2026/2026/a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678/2026_Tables_1_to_4.ods"
+      },
+      "value": 130000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_45cebb98def88e86c6d7639d",
+      "semantic_fact_key": "ledger_semantic_fact_v2_993d6335b3b5c9df8b4875a1",
+      "source_record_id": "hmrc.benefits_in_kind_july_2026.table3b.recipients.ty2024.income_40000_to_49999.recipients",
+      "concept": "hmrc.benefit_in_kind_recipients",
+      "measure_id": "recipients",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "benefit_in_kind_recipient"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.benefits_in_kind_july_2026.table3b.recipients.ty2024",
+        "groupby_dimension": "benefit_in_kind_income_band",
+        "groupby_value_id": "income_40000_to_49999",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "benefit_in_kind_income_band": "income_40000_to_49999",
+        "company_car_benefit_type": "fuel"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Benefits in kind statistics: July 2026, Tables 1 to 4: company car benefit and company car fuel benefit",
+        "source_file": "2026_Tables_1_to_4.ods",
+        "source_sha256": "a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678",
+        "vintage": "benefits_in_kind_statistics_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-benefits-in-kind-july-2026/2026/a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678/2026_Tables_1_to_4.ods"
+      },
+      "value": 5000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_21221ba4f1a1b6209c183fb5",
+      "semantic_fact_key": "ledger_semantic_fact_v2_5c06088d006631f139ac1db8",
+      "source_record_id": "hmrc.benefits_in_kind_july_2026.table3a.recipients.ty2024.income_50000_to_74999.recipients",
+      "concept": "hmrc.benefit_in_kind_recipients",
+      "measure_id": "recipients",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "benefit_in_kind_recipient"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.benefits_in_kind_july_2026.table3a.recipients.ty2024",
+        "groupby_dimension": "benefit_in_kind_income_band",
+        "groupby_value_id": "income_50000_to_74999",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "benefit_in_kind_income_band": "income_50000_to_74999",
+        "company_car_benefit_type": "car"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Benefits in kind statistics: July 2026, Tables 1 to 4: company car benefit and company car fuel benefit",
+        "source_file": "2026_Tables_1_to_4.ods",
+        "source_sha256": "a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678",
+        "vintage": "benefits_in_kind_statistics_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-benefits-in-kind-july-2026/2026/a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678/2026_Tables_1_to_4.ods"
+      },
+      "value": 320000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_d7b3f1db1fe8bc3351447073",
+      "semantic_fact_key": "ledger_semantic_fact_v2_2d85c41d3da1da0a96dca38d",
+      "source_record_id": "hmrc.benefits_in_kind_july_2026.table3b.recipients.ty2024.income_50000_to_74999.recipients",
+      "concept": "hmrc.benefit_in_kind_recipients",
+      "measure_id": "recipients",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "benefit_in_kind_recipient"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.benefits_in_kind_july_2026.table3b.recipients.ty2024",
+        "groupby_dimension": "benefit_in_kind_income_band",
+        "groupby_value_id": "income_50000_to_74999",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "benefit_in_kind_income_band": "income_50000_to_74999",
+        "company_car_benefit_type": "fuel"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Benefits in kind statistics: July 2026, Tables 1 to 4: company car benefit and company car fuel benefit",
+        "source_file": "2026_Tables_1_to_4.ods",
+        "source_sha256": "a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678",
+        "vintage": "benefits_in_kind_statistics_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-benefits-in-kind-july-2026/2026/a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678/2026_Tables_1_to_4.ods"
+      },
+      "value": 20000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_636789028630cd74d74068c9",
+      "semantic_fact_key": "ledger_semantic_fact_v2_23ace78f932951f450244827",
+      "source_record_id": "hmrc.benefits_in_kind_july_2026.table3a.recipients.ty2024.income_75000_to_99999.recipients",
+      "concept": "hmrc.benefit_in_kind_recipients",
+      "measure_id": "recipients",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "benefit_in_kind_recipient"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.benefits_in_kind_july_2026.table3a.recipients.ty2024",
+        "groupby_dimension": "benefit_in_kind_income_band",
+        "groupby_value_id": "income_75000_to_99999",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "benefit_in_kind_income_band": "income_75000_to_99999",
+        "company_car_benefit_type": "car"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Benefits in kind statistics: July 2026, Tables 1 to 4: company car benefit and company car fuel benefit",
+        "source_file": "2026_Tables_1_to_4.ods",
+        "source_sha256": "a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678",
+        "vintage": "benefits_in_kind_statistics_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-benefits-in-kind-july-2026/2026/a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678/2026_Tables_1_to_4.ods"
+      },
+      "value": 140000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_8e989f6d4cc44d23f81f41d9",
+      "semantic_fact_key": "ledger_semantic_fact_v2_adbf83d63d22d643ebc4ee89",
+      "source_record_id": "hmrc.benefits_in_kind_july_2026.table3b.recipients.ty2024.income_75000_to_99999.recipients",
+      "concept": "hmrc.benefit_in_kind_recipients",
+      "measure_id": "recipients",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "benefit_in_kind_recipient"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.benefits_in_kind_july_2026.table3b.recipients.ty2024",
+        "groupby_dimension": "benefit_in_kind_income_band",
+        "groupby_value_id": "income_75000_to_99999",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "benefit_in_kind_income_band": "income_75000_to_99999",
+        "company_car_benefit_type": "fuel"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Benefits in kind statistics: July 2026, Tables 1 to 4: company car benefit and company car fuel benefit",
+        "source_file": "2026_Tables_1_to_4.ods",
+        "source_sha256": "a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678",
+        "vintage": "benefits_in_kind_statistics_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-benefits-in-kind-july-2026/2026/a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678/2026_Tables_1_to_4.ods"
+      },
+      "value": 5000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_1514e88df9bd8014fe368ef4",
+      "semantic_fact_key": "ledger_semantic_fact_v2_08720d9a2256b614f8ac0553",
+      "source_record_id": "hmrc.benefits_in_kind_july_2026.table3a.recipients.ty2024.income_8500_to_14999.recipients",
+      "concept": "hmrc.benefit_in_kind_recipients",
+      "measure_id": "recipients",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "benefit_in_kind_recipient"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.benefits_in_kind_july_2026.table3a.recipients.ty2024",
+        "groupby_dimension": "benefit_in_kind_income_band",
+        "groupby_value_id": "income_8500_to_14999",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "benefit_in_kind_income_band": "income_8500_to_14999",
+        "company_car_benefit_type": "car"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Benefits in kind statistics: July 2026, Tables 1 to 4: company car benefit and company car fuel benefit",
+        "source_file": "2026_Tables_1_to_4.ods",
+        "source_sha256": "a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678",
+        "vintage": "benefits_in_kind_statistics_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-benefits-in-kind-july-2026/2026/a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678/2026_Tables_1_to_4.ods"
+      },
+      "value": 5000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_38c25d0c99cf361170a8251e",
+      "semantic_fact_key": "ledger_semantic_fact_v2_739db8c93c675b137db90f84",
+      "source_record_id": "hmrc.benefits_in_kind_july_2026.table2c.recipients.ty2024.petrol_including_hybrids.recipients",
+      "concept": "hmrc.benefit_in_kind_recipients",
+      "measure_id": "recipients",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "benefit_in_kind_recipient"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.benefits_in_kind_july_2026.table2c.recipients.ty2024",
+        "groupby_dimension": "company_car_fuel_type",
+        "groupby_value_id": "petrol_including_hybrids",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "company_car_benefit_type": "car",
+        "company_car_fuel_type": "petrol_including_hybrids"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Benefits in kind statistics: July 2026, Tables 1 to 4: company car benefit and company car fuel benefit",
+        "source_file": "2026_Tables_1_to_4.ods",
+        "source_sha256": "a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678",
+        "vintage": "benefits_in_kind_statistics_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-benefits-in-kind-july-2026/2026/a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678/2026_Tables_1_to_4.ods"
+      },
+      "value": 390000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_8cefe07e535ac8a5d0a32566",
+      "semantic_fact_key": "ledger_semantic_fact_v2_a982d8b34546f7b999800a32",
+      "source_record_id": "hmrc.benefits_in_kind_july_2026.table4.recipients.ty2024.N92000002.recipients",
+      "concept": "hmrc.benefit_in_kind_recipients",
+      "measure_id": "recipients",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "benefit_in_kind_recipient"
+      },
+      "geography": {
+        "id": "N92000002",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.benefits_in_kind_july_2026.table4.recipients.ty2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "N92000002",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "company_car_benefit_type": "car"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Benefits in kind statistics: July 2026, Tables 1 to 4: company car benefit and company car fuel benefit",
+        "source_file": "2026_Tables_1_to_4.ods",
+        "source_sha256": "a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678",
+        "vintage": "benefits_in_kind_statistics_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-benefits-in-kind-july-2026/2026/a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678/2026_Tables_1_to_4.ods"
+      },
+      "value": 15000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_9e220d0714a47a73e033bc32",
+      "semantic_fact_key": "ledger_semantic_fact_v2_7f8cd47fbede42dba271af7b",
+      "source_record_id": "hmrc.benefits_in_kind_july_2026.table4.recipients.ty2024.S92000003.recipients",
+      "concept": "hmrc.benefit_in_kind_recipients",
+      "measure_id": "recipients",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "benefit_in_kind_recipient"
+      },
+      "geography": {
+        "id": "S92000003",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.benefits_in_kind_july_2026.table4.recipients.ty2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "S92000003",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "company_car_benefit_type": "car"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Benefits in kind statistics: July 2026, Tables 1 to 4: company car benefit and company car fuel benefit",
+        "source_file": "2026_Tables_1_to_4.ods",
+        "source_sha256": "a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678",
+        "vintage": "benefits_in_kind_statistics_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-benefits-in-kind-july-2026/2026/a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678/2026_Tables_1_to_4.ods"
+      },
+      "value": 65000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_cfc5ad313c2667dab6c7bccc",
+      "semantic_fact_key": "ledger_semantic_fact_v2_c604b49f32dfac0cca6e5412",
+      "source_record_id": "hmrc.benefits_in_kind_july_2026.table4.recipients.ty2024.W92000004.recipients",
+      "concept": "hmrc.benefit_in_kind_recipients",
+      "measure_id": "recipients",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "benefit_in_kind_recipient"
+      },
+      "geography": {
+        "id": "W92000004",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.benefits_in_kind_july_2026.table4.recipients.ty2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "W92000004",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "company_car_benefit_type": "car"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Benefits in kind statistics: July 2026, Tables 1 to 4: company car benefit and company car fuel benefit",
+        "source_file": "2026_Tables_1_to_4.ods",
+        "source_sha256": "a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678",
+        "vintage": "benefits_in_kind_statistics_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-benefits-in-kind-july-2026/2026/a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678/2026_Tables_1_to_4.ods"
+      },
+      "value": 35000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_435c72432fc033f553d4d475",
+      "semantic_fact_key": "ledger_semantic_fact_v2_43d5b02d999870881f17542c",
+      "source_record_id": "hmrc.benefits_in_kind_july_2026.table4.recipients.ty2024.recipient_region_unknown.recipients",
+      "concept": "hmrc.benefit_in_kind_recipients",
+      "measure_id": "recipients",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "benefit_in_kind_recipient"
+      },
+      "geography": {
+        "id": "hmrc:recipient_region_unknown",
+        "level": "statistical_scope",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.benefits_in_kind_july_2026.table4.recipients.ty2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "recipient_region_unknown",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "company_car_benefit_type": "car"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Benefits in kind statistics: July 2026, Tables 1 to 4: company car benefit and company car fuel benefit",
+        "source_file": "2026_Tables_1_to_4.ods",
+        "source_sha256": "a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678",
+        "vintage": "benefits_in_kind_statistics_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-benefits-in-kind-july-2026/2026/a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678/2026_Tables_1_to_4.ods"
+      },
+      "value": 10000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_b6eb21482835e5c4cc56b5b0",
+      "semantic_fact_key": "ledger_semantic_fact_v2_38b1a7b8e223197e6e13b1ac",
+      "source_record_id": "hmrc.benefits_in_kind_july_2026.table4.taxable_value.ty2024.E12000001.taxable_value",
+      "concept": "hmrc.benefit_in_kind_taxable_value",
+      "measure_id": "taxable_value",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "benefit_in_kind_recipient"
+      },
+      "geography": {
+        "id": "E12000001",
+        "level": "region",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.benefits_in_kind_july_2026.table4.taxable_value.ty2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "E12000001",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "company_car_benefit_type": "car"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Benefits in kind statistics: July 2026, Tables 1 to 4: company car benefit and company car fuel benefit",
+        "source_file": "2026_Tables_1_to_4.ods",
+        "source_sha256": "a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678",
+        "vintage": "benefits_in_kind_statistics_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-benefits-in-kind-july-2026/2026/a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678/2026_Tables_1_to_4.ods"
+      },
+      "value": 130000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_b2b5d5a1d1d204bf0b0fd0ba",
+      "semantic_fact_key": "ledger_semantic_fact_v2_7dd19b76eef7ce8881259c9b",
+      "source_record_id": "hmrc.benefits_in_kind_july_2026.table4.taxable_value.ty2024.E12000002.taxable_value",
+      "concept": "hmrc.benefit_in_kind_taxable_value",
+      "measure_id": "taxable_value",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "benefit_in_kind_recipient"
+      },
+      "geography": {
+        "id": "E12000002",
+        "level": "region",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.benefits_in_kind_july_2026.table4.taxable_value.ty2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "E12000002",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "company_car_benefit_type": "car"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Benefits in kind statistics: July 2026, Tables 1 to 4: company car benefit and company car fuel benefit",
+        "source_file": "2026_Tables_1_to_4.ods",
+        "source_sha256": "a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678",
+        "vintage": "benefits_in_kind_statistics_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-benefits-in-kind-july-2026/2026/a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678/2026_Tables_1_to_4.ods"
+      },
+      "value": 380000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_c487eb5c1ce1bf9590a526f7",
+      "semantic_fact_key": "ledger_semantic_fact_v2_f4c0770670c7a07622e9c582",
+      "source_record_id": "hmrc.benefits_in_kind_july_2026.table4.taxable_value.ty2024.E12000003.taxable_value",
+      "concept": "hmrc.benefit_in_kind_taxable_value",
+      "measure_id": "taxable_value",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "benefit_in_kind_recipient"
+      },
+      "geography": {
+        "id": "E12000003",
+        "level": "region",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.benefits_in_kind_july_2026.table4.taxable_value.ty2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "E12000003",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "company_car_benefit_type": "car"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Benefits in kind statistics: July 2026, Tables 1 to 4: company car benefit and company car fuel benefit",
+        "source_file": "2026_Tables_1_to_4.ods",
+        "source_sha256": "a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678",
+        "vintage": "benefits_in_kind_statistics_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-benefits-in-kind-july-2026/2026/a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678/2026_Tables_1_to_4.ods"
+      },
+      "value": 300000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_fa9f97422f4a8b9bbfdd5ece",
+      "semantic_fact_key": "ledger_semantic_fact_v2_642d309822afc96d60340829",
+      "source_record_id": "hmrc.benefits_in_kind_july_2026.table4.taxable_value.ty2024.E12000004.taxable_value",
+      "concept": "hmrc.benefit_in_kind_taxable_value",
+      "measure_id": "taxable_value",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "benefit_in_kind_recipient"
+      },
+      "geography": {
+        "id": "E12000004",
+        "level": "region",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.benefits_in_kind_july_2026.table4.taxable_value.ty2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "E12000004",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "company_car_benefit_type": "car"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Benefits in kind statistics: July 2026, Tables 1 to 4: company car benefit and company car fuel benefit",
+        "source_file": "2026_Tables_1_to_4.ods",
+        "source_sha256": "a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678",
+        "vintage": "benefits_in_kind_statistics_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-benefits-in-kind-july-2026/2026/a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678/2026_Tables_1_to_4.ods"
+      },
+      "value": 300000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_7453d389e875a0ef0d8ffc3b",
+      "semantic_fact_key": "ledger_semantic_fact_v2_b4d57ce20b7e7581821ee7b0",
+      "source_record_id": "hmrc.benefits_in_kind_july_2026.table4.taxable_value.ty2024.E12000005.taxable_value",
+      "concept": "hmrc.benefit_in_kind_taxable_value",
+      "measure_id": "taxable_value",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "benefit_in_kind_recipient"
+      },
+      "geography": {
+        "id": "E12000005",
+        "level": "region",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.benefits_in_kind_july_2026.table4.taxable_value.ty2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "E12000005",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "company_car_benefit_type": "car"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Benefits in kind statistics: July 2026, Tables 1 to 4: company car benefit and company car fuel benefit",
+        "source_file": "2026_Tables_1_to_4.ods",
+        "source_sha256": "a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678",
+        "vintage": "benefits_in_kind_statistics_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-benefits-in-kind-july-2026/2026/a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678/2026_Tables_1_to_4.ods"
+      },
+      "value": 330000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_a96a14d0e7e96d39d9f19ebe",
+      "semantic_fact_key": "ledger_semantic_fact_v2_4a85256a5cc8d596ebdf3f29",
+      "source_record_id": "hmrc.benefits_in_kind_july_2026.table4.taxable_value.ty2024.E12000006.taxable_value",
+      "concept": "hmrc.benefit_in_kind_taxable_value",
+      "measure_id": "taxable_value",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "benefit_in_kind_recipient"
+      },
+      "geography": {
+        "id": "E12000006",
+        "level": "region",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.benefits_in_kind_july_2026.table4.taxable_value.ty2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "E12000006",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "company_car_benefit_type": "car"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Benefits in kind statistics: July 2026, Tables 1 to 4: company car benefit and company car fuel benefit",
+        "source_file": "2026_Tables_1_to_4.ods",
+        "source_sha256": "a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678",
+        "vintage": "benefits_in_kind_statistics_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-benefits-in-kind-july-2026/2026/a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678/2026_Tables_1_to_4.ods"
+      },
+      "value": 330000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_f63399c642a7f1f83b9d7b73",
+      "semantic_fact_key": "ledger_semantic_fact_v2_68284ef75f60b1acbe35f536",
+      "source_record_id": "hmrc.benefits_in_kind_july_2026.table4.taxable_value.ty2024.E12000007.taxable_value",
+      "concept": "hmrc.benefit_in_kind_taxable_value",
+      "measure_id": "taxable_value",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "benefit_in_kind_recipient"
+      },
+      "geography": {
+        "id": "E12000007",
+        "level": "region",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.benefits_in_kind_july_2026.table4.taxable_value.ty2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "E12000007",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "company_car_benefit_type": "car"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Benefits in kind statistics: July 2026, Tables 1 to 4: company car benefit and company car fuel benefit",
+        "source_file": "2026_Tables_1_to_4.ods",
+        "source_sha256": "a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678",
+        "vintage": "benefits_in_kind_statistics_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-benefits-in-kind-july-2026/2026/a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678/2026_Tables_1_to_4.ods"
+      },
+      "value": 190000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_1314c8105260f9ce1544e72f",
+      "semantic_fact_key": "ledger_semantic_fact_v2_3dc3cddd319883a53f05270f",
+      "source_record_id": "hmrc.benefits_in_kind_july_2026.table4.taxable_value.ty2024.E12000008.taxable_value",
+      "concept": "hmrc.benefit_in_kind_taxable_value",
+      "measure_id": "taxable_value",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "benefit_in_kind_recipient"
+      },
+      "geography": {
+        "id": "E12000008",
+        "level": "region",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.benefits_in_kind_july_2026.table4.taxable_value.ty2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "E12000008",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "company_car_benefit_type": "car"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Benefits in kind statistics: July 2026, Tables 1 to 4: company car benefit and company car fuel benefit",
+        "source_file": "2026_Tables_1_to_4.ods",
+        "source_sha256": "a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678",
+        "vintage": "benefits_in_kind_statistics_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-benefits-in-kind-july-2026/2026/a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678/2026_Tables_1_to_4.ods"
+      },
+      "value": 440000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_8996af5785b58035433408e7",
+      "semantic_fact_key": "ledger_semantic_fact_v2_4abb18750f27b5a3c95a5b54",
+      "source_record_id": "hmrc.benefits_in_kind_july_2026.table4.taxable_value.ty2024.E12000009.taxable_value",
+      "concept": "hmrc.benefit_in_kind_taxable_value",
+      "measure_id": "taxable_value",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "benefit_in_kind_recipient"
+      },
+      "geography": {
+        "id": "E12000009",
+        "level": "region",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.benefits_in_kind_july_2026.table4.taxable_value.ty2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "E12000009",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "company_car_benefit_type": "car"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Benefits in kind statistics: July 2026, Tables 1 to 4: company car benefit and company car fuel benefit",
+        "source_file": "2026_Tables_1_to_4.ods",
+        "source_sha256": "a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678",
+        "vintage": "benefits_in_kind_statistics_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-benefits-in-kind-july-2026/2026/a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678/2026_Tables_1_to_4.ods"
+      },
+      "value": 240000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_c6cca03ace634f0d6807e16f",
+      "semantic_fact_key": "ledger_semantic_fact_v2_c2350b6757e442499f1aef38",
+      "source_record_id": "hmrc.benefits_in_kind_july_2026.table1.taxable_value.ty2024.all.taxable_value",
+      "concept": "hmrc.benefit_in_kind_taxable_value",
+      "measure_id": "taxable_value",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "benefit_in_kind_recipient"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.benefits_in_kind_july_2026.table1.taxable_value.ty2024",
+        "groupby_dimension": "company_car_benefit_type",
+        "groupby_value_id": "all",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "company_car_benefit_type": "all"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Benefits in kind statistics: July 2026, Tables 1 to 4: company car benefit and company car fuel benefit",
+        "source_file": "2026_Tables_1_to_4.ods",
+        "source_sha256": "a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678",
+        "vintage": "benefits_in_kind_statistics_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-benefits-in-kind-july-2026/2026/a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678/2026_Tables_1_to_4.ods"
+      },
+      "value": 3210000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_b036c7a54c3c0ea9089d5114",
+      "semantic_fact_key": "ledger_semantic_fact_v2_f3a7deb6063416cd576ad9ab",
+      "source_record_id": "hmrc.benefits_in_kind_july_2026.table1.taxable_value.ty2024.car.taxable_value",
+      "concept": "hmrc.benefit_in_kind_taxable_value",
+      "measure_id": "taxable_value",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "benefit_in_kind_recipient"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.benefits_in_kind_july_2026.table1.taxable_value.ty2024",
+        "groupby_dimension": "company_car_benefit_type",
+        "groupby_value_id": "car",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "company_car_benefit_type": "car"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Benefits in kind statistics: July 2026, Tables 1 to 4: company car benefit and company car fuel benefit",
+        "source_file": "2026_Tables_1_to_4.ods",
+        "source_sha256": "a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678",
+        "vintage": "benefits_in_kind_statistics_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-benefits-in-kind-july-2026/2026/a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678/2026_Tables_1_to_4.ods"
+      },
+      "value": 3070000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_66d17b35178910bafa19d025",
+      "semantic_fact_key": "ledger_semantic_fact_v2_a0f942d66142d10df3249f9d",
+      "source_record_id": "hmrc.benefits_in_kind_july_2026.table1.taxable_value.ty2024.fuel.taxable_value",
+      "concept": "hmrc.benefit_in_kind_taxable_value",
+      "measure_id": "taxable_value",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "benefit_in_kind_recipient"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.benefits_in_kind_july_2026.table1.taxable_value.ty2024",
+        "groupby_dimension": "company_car_benefit_type",
+        "groupby_value_id": "fuel",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "company_car_benefit_type": "fuel"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Benefits in kind statistics: July 2026, Tables 1 to 4: company car benefit and company car fuel benefit",
+        "source_file": "2026_Tables_1_to_4.ods",
+        "source_sha256": "a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678",
+        "vintage": "benefits_in_kind_statistics_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-benefits-in-kind-july-2026/2026/a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678/2026_Tables_1_to_4.ods"
+      },
+      "value": 140000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_6dd7c5c38db44dc898704a27",
+      "semantic_fact_key": "ledger_semantic_fact_v2_a153135ad3d02b0b5abef2c9",
+      "source_record_id": "hmrc.benefits_in_kind_july_2026.table3b.taxable_value.ty2024.income_0_to_29999.taxable_value",
+      "concept": "hmrc.benefit_in_kind_taxable_value",
+      "measure_id": "taxable_value",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "benefit_in_kind_recipient"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.benefits_in_kind_july_2026.table3b.taxable_value.ty2024",
+        "groupby_dimension": "benefit_in_kind_income_band",
+        "groupby_value_id": "income_0_to_29999",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "benefit_in_kind_income_band": "income_0_to_29999",
+        "company_car_benefit_type": "fuel"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Benefits in kind statistics: July 2026, Tables 1 to 4: company car benefit and company car fuel benefit",
+        "source_file": "2026_Tables_1_to_4.ods",
+        "source_sha256": "a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678",
+        "vintage": "benefits_in_kind_statistics_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-benefits-in-kind-july-2026/2026/a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678/2026_Tables_1_to_4.ods"
+      },
+      "value": 5000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_3eccee0a45e19e0ae5892887",
+      "semantic_fact_key": "ledger_semantic_fact_v2_04494a6aaaa9cd56fe30998d",
+      "source_record_id": "hmrc.benefits_in_kind_july_2026.table3a.taxable_value.ty2024.income_0_to_8499.taxable_value",
+      "concept": "hmrc.benefit_in_kind_taxable_value",
+      "measure_id": "taxable_value",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "benefit_in_kind_recipient"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.benefits_in_kind_july_2026.table3a.taxable_value.ty2024",
+        "groupby_dimension": "benefit_in_kind_income_band",
+        "groupby_value_id": "income_0_to_8499",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "benefit_in_kind_income_band": "income_0_to_8499",
+        "company_car_benefit_type": "car"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Benefits in kind statistics: July 2026, Tables 1 to 4: company car benefit and company car fuel benefit",
+        "source_file": "2026_Tables_1_to_4.ods",
+        "source_sha256": "a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678",
+        "vintage": "benefits_in_kind_statistics_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-benefits-in-kind-july-2026/2026/a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678/2026_Tables_1_to_4.ods"
+      },
+      "value": 10000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_d276b310248e8b367be6c2d2",
+      "semantic_fact_key": "ledger_semantic_fact_v2_2f8983b5820779db065d7d19",
+      "source_record_id": "hmrc.benefits_in_kind_july_2026.table3a.taxable_value.ty2024.income_100000_to_149999.taxable_value",
+      "concept": "hmrc.benefit_in_kind_taxable_value",
+      "measure_id": "taxable_value",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "benefit_in_kind_recipient"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.benefits_in_kind_july_2026.table3a.taxable_value.ty2024",
+        "groupby_dimension": "benefit_in_kind_income_band",
+        "groupby_value_id": "income_100000_to_149999",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "benefit_in_kind_income_band": "income_100000_to_149999",
+        "company_car_benefit_type": "car"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Benefits in kind statistics: July 2026, Tables 1 to 4: company car benefit and company car fuel benefit",
+        "source_file": "2026_Tables_1_to_4.ods",
+        "source_sha256": "a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678",
+        "vintage": "benefits_in_kind_statistics_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-benefits-in-kind-july-2026/2026/a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678/2026_Tables_1_to_4.ods"
+      },
+      "value": 360000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_c4c956fb5d82c1db43503fd6",
+      "semantic_fact_key": "ledger_semantic_fact_v2_d82249c99ac62a962d2174dd",
+      "source_record_id": "hmrc.benefits_in_kind_july_2026.table3b.taxable_value.ty2024.income_100000_to_149999.taxable_value",
+      "concept": "hmrc.benefit_in_kind_taxable_value",
+      "measure_id": "taxable_value",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "benefit_in_kind_recipient"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.benefits_in_kind_july_2026.table3b.taxable_value.ty2024",
+        "groupby_dimension": "benefit_in_kind_income_band",
+        "groupby_value_id": "income_100000_to_149999",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "benefit_in_kind_income_band": "income_100000_to_149999",
+        "company_car_benefit_type": "fuel"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Benefits in kind statistics: July 2026, Tables 1 to 4: company car benefit and company car fuel benefit",
+        "source_file": "2026_Tables_1_to_4.ods",
+        "source_sha256": "a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678",
+        "vintage": "benefits_in_kind_statistics_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-benefits-in-kind-july-2026/2026/a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678/2026_Tables_1_to_4.ods"
+      },
+      "value": 20000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_28486394e81a60455c7ac6bd",
+      "semantic_fact_key": "ledger_semantic_fact_v2_b305d462509a98ec7d9b0487",
+      "source_record_id": "hmrc.benefits_in_kind_july_2026.table3a.taxable_value.ty2024.income_150000_to_199999.taxable_value",
+      "concept": "hmrc.benefit_in_kind_taxable_value",
+      "measure_id": "taxable_value",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "benefit_in_kind_recipient"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.benefits_in_kind_july_2026.table3a.taxable_value.ty2024",
+        "groupby_dimension": "benefit_in_kind_income_band",
+        "groupby_value_id": "income_150000_to_199999",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "benefit_in_kind_income_band": "income_150000_to_199999",
+        "company_car_benefit_type": "car"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Benefits in kind statistics: July 2026, Tables 1 to 4: company car benefit and company car fuel benefit",
+        "source_file": "2026_Tables_1_to_4.ods",
+        "source_sha256": "a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678",
+        "vintage": "benefits_in_kind_statistics_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-benefits-in-kind-july-2026/2026/a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678/2026_Tables_1_to_4.ods"
+      },
+      "value": 100000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_392b19050a0ddbe0177e4eb3",
+      "semantic_fact_key": "ledger_semantic_fact_v2_92d8569f01e23add20b4eb08",
+      "source_record_id": "hmrc.benefits_in_kind_july_2026.table3b.taxable_value.ty2024.income_150000_to_199999.taxable_value",
+      "concept": "hmrc.benefit_in_kind_taxable_value",
+      "measure_id": "taxable_value",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "benefit_in_kind_recipient"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.benefits_in_kind_july_2026.table3b.taxable_value.ty2024",
+        "groupby_dimension": "benefit_in_kind_income_band",
+        "groupby_value_id": "income_150000_to_199999",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "benefit_in_kind_income_band": "income_150000_to_199999",
+        "company_car_benefit_type": "fuel"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Benefits in kind statistics: July 2026, Tables 1 to 4: company car benefit and company car fuel benefit",
+        "source_file": "2026_Tables_1_to_4.ods",
+        "source_sha256": "a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678",
+        "vintage": "benefits_in_kind_statistics_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-benefits-in-kind-july-2026/2026/a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678/2026_Tables_1_to_4.ods"
+      },
+      "value": 5000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_8cfe932efab85f7dd72a0b6b",
+      "semantic_fact_key": "ledger_semantic_fact_v2_00e6340a15056ef75a501a53",
+      "source_record_id": "hmrc.benefits_in_kind_july_2026.table3a.taxable_value.ty2024.income_15000_to_19999.taxable_value",
+      "concept": "hmrc.benefit_in_kind_taxable_value",
+      "measure_id": "taxable_value",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "benefit_in_kind_recipient"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.benefits_in_kind_july_2026.table3a.taxable_value.ty2024",
+        "groupby_dimension": "benefit_in_kind_income_band",
+        "groupby_value_id": "income_15000_to_19999",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "benefit_in_kind_income_band": "income_15000_to_19999",
+        "company_car_benefit_type": "car"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Benefits in kind statistics: July 2026, Tables 1 to 4: company car benefit and company car fuel benefit",
+        "source_file": "2026_Tables_1_to_4.ods",
+        "source_sha256": "a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678",
+        "vintage": "benefits_in_kind_statistics_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-benefits-in-kind-july-2026/2026/a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678/2026_Tables_1_to_4.ods"
+      },
+      "value": 20000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_4c0e4dd96c580994ff4409aa",
+      "semantic_fact_key": "ledger_semantic_fact_v2_9b7de42f59384523f9706ef6",
+      "source_record_id": "hmrc.benefits_in_kind_july_2026.table3a.taxable_value.ty2024.income_200000_plus.taxable_value",
+      "concept": "hmrc.benefit_in_kind_taxable_value",
+      "measure_id": "taxable_value",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "benefit_in_kind_recipient"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.benefits_in_kind_july_2026.table3a.taxable_value.ty2024",
+        "groupby_dimension": "benefit_in_kind_income_band",
+        "groupby_value_id": "income_200000_plus",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "benefit_in_kind_income_band": "income_200000_plus",
+        "company_car_benefit_type": "car"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Benefits in kind statistics: July 2026, Tables 1 to 4: company car benefit and company car fuel benefit",
+        "source_file": "2026_Tables_1_to_4.ods",
+        "source_sha256": "a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678",
+        "vintage": "benefits_in_kind_statistics_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-benefits-in-kind-july-2026/2026/a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678/2026_Tables_1_to_4.ods"
+      },
+      "value": 280000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_fb3c5ddc9bc688067252e2af",
+      "semantic_fact_key": "ledger_semantic_fact_v2_5d0dedda575c10bbbaf252e0",
+      "source_record_id": "hmrc.benefits_in_kind_july_2026.table3b.taxable_value.ty2024.income_200000_plus.taxable_value",
+      "concept": "hmrc.benefit_in_kind_taxable_value",
+      "measure_id": "taxable_value",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "benefit_in_kind_recipient"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.benefits_in_kind_july_2026.table3b.taxable_value.ty2024",
+        "groupby_dimension": "benefit_in_kind_income_band",
+        "groupby_value_id": "income_200000_plus",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "benefit_in_kind_income_band": "income_200000_plus",
+        "company_car_benefit_type": "fuel"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Benefits in kind statistics: July 2026, Tables 1 to 4: company car benefit and company car fuel benefit",
+        "source_file": "2026_Tables_1_to_4.ods",
+        "source_sha256": "a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678",
+        "vintage": "benefits_in_kind_statistics_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-benefits-in-kind-july-2026/2026/a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678/2026_Tables_1_to_4.ods"
+      },
+      "value": 10000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_bcace3ac989f7deca8d89efe",
+      "semantic_fact_key": "ledger_semantic_fact_v2_8bd7d8836b29d152d889d56a",
+      "source_record_id": "hmrc.benefits_in_kind_july_2026.table3a.taxable_value.ty2024.income_20000_to_29999.taxable_value",
+      "concept": "hmrc.benefit_in_kind_taxable_value",
+      "measure_id": "taxable_value",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "benefit_in_kind_recipient"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.benefits_in_kind_july_2026.table3a.taxable_value.ty2024",
+        "groupby_dimension": "benefit_in_kind_income_band",
+        "groupby_value_id": "income_20000_to_29999",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "benefit_in_kind_income_band": "income_20000_to_29999",
+        "company_car_benefit_type": "car"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Benefits in kind statistics: July 2026, Tables 1 to 4: company car benefit and company car fuel benefit",
+        "source_file": "2026_Tables_1_to_4.ods",
+        "source_sha256": "a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678",
+        "vintage": "benefits_in_kind_statistics_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-benefits-in-kind-july-2026/2026/a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678/2026_Tables_1_to_4.ods"
+      },
+      "value": 80000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_8f8ce389ccc9fa59af490e47",
+      "semantic_fact_key": "ledger_semantic_fact_v2_360dde921ba46dfb47872f77",
+      "source_record_id": "hmrc.benefits_in_kind_july_2026.table3a.taxable_value.ty2024.income_30000_to_39999.taxable_value",
+      "concept": "hmrc.benefit_in_kind_taxable_value",
+      "measure_id": "taxable_value",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "benefit_in_kind_recipient"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.benefits_in_kind_july_2026.table3a.taxable_value.ty2024",
+        "groupby_dimension": "benefit_in_kind_income_band",
+        "groupby_value_id": "income_30000_to_39999",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "benefit_in_kind_income_band": "income_30000_to_39999",
+        "company_car_benefit_type": "car"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Benefits in kind statistics: July 2026, Tables 1 to 4: company car benefit and company car fuel benefit",
+        "source_file": "2026_Tables_1_to_4.ods",
+        "source_sha256": "a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678",
+        "vintage": "benefits_in_kind_statistics_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-benefits-in-kind-july-2026/2026/a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678/2026_Tables_1_to_4.ods"
+      },
+      "value": 200000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_37d694a6b934e761dbdf7834",
+      "semantic_fact_key": "ledger_semantic_fact_v2_dc9320ceda41ee922c83fa80",
+      "source_record_id": "hmrc.benefits_in_kind_july_2026.table3b.taxable_value.ty2024.income_30000_to_39999.taxable_value",
+      "concept": "hmrc.benefit_in_kind_taxable_value",
+      "measure_id": "taxable_value",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "benefit_in_kind_recipient"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.benefits_in_kind_july_2026.table3b.taxable_value.ty2024",
+        "groupby_dimension": "benefit_in_kind_income_band",
+        "groupby_value_id": "income_30000_to_39999",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "benefit_in_kind_income_band": "income_30000_to_39999",
+        "company_car_benefit_type": "fuel"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Benefits in kind statistics: July 2026, Tables 1 to 4: company car benefit and company car fuel benefit",
+        "source_file": "2026_Tables_1_to_4.ods",
+        "source_sha256": "a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678",
+        "vintage": "benefits_in_kind_statistics_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-benefits-in-kind-july-2026/2026/a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678/2026_Tables_1_to_4.ods"
+      },
+      "value": 5000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_23ffce0e153fd815d837ddb3",
+      "semantic_fact_key": "ledger_semantic_fact_v2_fbd24cfdcb49d06b2cb5a79d",
+      "source_record_id": "hmrc.benefits_in_kind_july_2026.table3a.taxable_value.ty2024.income_40000_to_49999.taxable_value",
+      "concept": "hmrc.benefit_in_kind_taxable_value",
+      "measure_id": "taxable_value",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "benefit_in_kind_recipient"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.benefits_in_kind_july_2026.table3a.taxable_value.ty2024",
+        "groupby_dimension": "benefit_in_kind_income_band",
+        "groupby_value_id": "income_40000_to_49999",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "benefit_in_kind_income_band": "income_40000_to_49999",
+        "company_car_benefit_type": "car"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Benefits in kind statistics: July 2026, Tables 1 to 4: company car benefit and company car fuel benefit",
+        "source_file": "2026_Tables_1_to_4.ods",
+        "source_sha256": "a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678",
+        "vintage": "benefits_in_kind_statistics_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-benefits-in-kind-july-2026/2026/a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678/2026_Tables_1_to_4.ods"
+      },
+      "value": 430000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_c2de8123aab284522c5fb46a",
+      "semantic_fact_key": "ledger_semantic_fact_v2_eded439e60f8f96f4927c353",
+      "source_record_id": "hmrc.benefits_in_kind_july_2026.table3b.taxable_value.ty2024.income_40000_to_49999.taxable_value",
+      "concept": "hmrc.benefit_in_kind_taxable_value",
+      "measure_id": "taxable_value",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "benefit_in_kind_recipient"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.benefits_in_kind_july_2026.table3b.taxable_value.ty2024",
+        "groupby_dimension": "benefit_in_kind_income_band",
+        "groupby_value_id": "income_40000_to_49999",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "benefit_in_kind_income_band": "income_40000_to_49999",
+        "company_car_benefit_type": "fuel"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Benefits in kind statistics: July 2026, Tables 1 to 4: company car benefit and company car fuel benefit",
+        "source_file": "2026_Tables_1_to_4.ods",
+        "source_sha256": "a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678",
+        "vintage": "benefits_in_kind_statistics_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-benefits-in-kind-july-2026/2026/a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678/2026_Tables_1_to_4.ods"
+      },
+      "value": 10000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_aeaff2985406784d07fd7cd6",
+      "semantic_fact_key": "ledger_semantic_fact_v2_5e7caa4191b421a6c87be90e",
+      "source_record_id": "hmrc.benefits_in_kind_july_2026.table3a.taxable_value.ty2024.income_50000_to_74999.taxable_value",
+      "concept": "hmrc.benefit_in_kind_taxable_value",
+      "measure_id": "taxable_value",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "benefit_in_kind_recipient"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.benefits_in_kind_july_2026.table3a.taxable_value.ty2024",
+        "groupby_dimension": "benefit_in_kind_income_band",
+        "groupby_value_id": "income_50000_to_74999",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "benefit_in_kind_income_band": "income_50000_to_74999",
+        "company_car_benefit_type": "car"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Benefits in kind statistics: July 2026, Tables 1 to 4: company car benefit and company car fuel benefit",
+        "source_file": "2026_Tables_1_to_4.ods",
+        "source_sha256": "a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678",
+        "vintage": "benefits_in_kind_statistics_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-benefits-in-kind-july-2026/2026/a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678/2026_Tables_1_to_4.ods"
+      },
+      "value": 1080000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_6b20e3ba46f1226f21674410",
+      "semantic_fact_key": "ledger_semantic_fact_v2_bc79eb81b9063beb7df65316",
+      "source_record_id": "hmrc.benefits_in_kind_july_2026.table3b.taxable_value.ty2024.income_50000_to_74999.taxable_value",
+      "concept": "hmrc.benefit_in_kind_taxable_value",
+      "measure_id": "taxable_value",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "benefit_in_kind_recipient"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.benefits_in_kind_july_2026.table3b.taxable_value.ty2024",
+        "groupby_dimension": "benefit_in_kind_income_band",
+        "groupby_value_id": "income_50000_to_74999",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "benefit_in_kind_income_band": "income_50000_to_74999",
+        "company_car_benefit_type": "fuel"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Benefits in kind statistics: July 2026, Tables 1 to 4: company car benefit and company car fuel benefit",
+        "source_file": "2026_Tables_1_to_4.ods",
+        "source_sha256": "a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678",
+        "vintage": "benefits_in_kind_statistics_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-benefits-in-kind-july-2026/2026/a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678/2026_Tables_1_to_4.ods"
+      },
+      "value": 50000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_21ce665e3c8ce9e558ee3123",
+      "semantic_fact_key": "ledger_semantic_fact_v2_8c4ecd04ba18034d863135da",
+      "source_record_id": "hmrc.benefits_in_kind_july_2026.table3a.taxable_value.ty2024.income_75000_to_99999.taxable_value",
+      "concept": "hmrc.benefit_in_kind_taxable_value",
+      "measure_id": "taxable_value",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "benefit_in_kind_recipient"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.benefits_in_kind_july_2026.table3a.taxable_value.ty2024",
+        "groupby_dimension": "benefit_in_kind_income_band",
+        "groupby_value_id": "income_75000_to_99999",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "benefit_in_kind_income_band": "income_75000_to_99999",
+        "company_car_benefit_type": "car"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Benefits in kind statistics: July 2026, Tables 1 to 4: company car benefit and company car fuel benefit",
+        "source_file": "2026_Tables_1_to_4.ods",
+        "source_sha256": "a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678",
+        "vintage": "benefits_in_kind_statistics_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-benefits-in-kind-july-2026/2026/a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678/2026_Tables_1_to_4.ods"
+      },
+      "value": 480000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_5ef16d8164b564a0a1c54f39",
+      "semantic_fact_key": "ledger_semantic_fact_v2_69ef558cd47296591749d23b",
+      "source_record_id": "hmrc.benefits_in_kind_july_2026.table3b.taxable_value.ty2024.income_75000_to_99999.taxable_value",
+      "concept": "hmrc.benefit_in_kind_taxable_value",
+      "measure_id": "taxable_value",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "benefit_in_kind_recipient"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.benefits_in_kind_july_2026.table3b.taxable_value.ty2024",
+        "groupby_dimension": "benefit_in_kind_income_band",
+        "groupby_value_id": "income_75000_to_99999",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "benefit_in_kind_income_band": "income_75000_to_99999",
+        "company_car_benefit_type": "fuel"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Benefits in kind statistics: July 2026, Tables 1 to 4: company car benefit and company car fuel benefit",
+        "source_file": "2026_Tables_1_to_4.ods",
+        "source_sha256": "a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678",
+        "vintage": "benefits_in_kind_statistics_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-benefits-in-kind-july-2026/2026/a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678/2026_Tables_1_to_4.ods"
+      },
+      "value": 20000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_752c53b29e91dae34d5ea3cf",
+      "semantic_fact_key": "ledger_semantic_fact_v2_198f979d17d7f1fee240de8d",
+      "source_record_id": "hmrc.benefits_in_kind_july_2026.table3a.taxable_value.ty2024.income_8500_to_14999.taxable_value",
+      "concept": "hmrc.benefit_in_kind_taxable_value",
+      "measure_id": "taxable_value",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "benefit_in_kind_recipient"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.benefits_in_kind_july_2026.table3a.taxable_value.ty2024",
+        "groupby_dimension": "benefit_in_kind_income_band",
+        "groupby_value_id": "income_8500_to_14999",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "benefit_in_kind_income_band": "income_8500_to_14999",
+        "company_car_benefit_type": "car"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Benefits in kind statistics: July 2026, Tables 1 to 4: company car benefit and company car fuel benefit",
+        "source_file": "2026_Tables_1_to_4.ods",
+        "source_sha256": "a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678",
+        "vintage": "benefits_in_kind_statistics_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-benefits-in-kind-july-2026/2026/a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678/2026_Tables_1_to_4.ods"
+      },
+      "value": 20000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_f0ae762a9b471574fad6fe34",
+      "semantic_fact_key": "ledger_semantic_fact_v2_d19b4919f1b27c5bd4c02fa7",
+      "source_record_id": "hmrc.benefits_in_kind_july_2026.table4.taxable_value.ty2024.N92000002.taxable_value",
+      "concept": "hmrc.benefit_in_kind_taxable_value",
+      "measure_id": "taxable_value",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "benefit_in_kind_recipient"
+      },
+      "geography": {
+        "id": "N92000002",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.benefits_in_kind_july_2026.table4.taxable_value.ty2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "N92000002",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "company_car_benefit_type": "car"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Benefits in kind statistics: July 2026, Tables 1 to 4: company car benefit and company car fuel benefit",
+        "source_file": "2026_Tables_1_to_4.ods",
+        "source_sha256": "a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678",
+        "vintage": "benefits_in_kind_statistics_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-benefits-in-kind-july-2026/2026/a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678/2026_Tables_1_to_4.ods"
+      },
+      "value": 60000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_28e262f0d7e67376fca5e982",
+      "semantic_fact_key": "ledger_semantic_fact_v2_05c4ba077ab6264da0868b2e",
+      "source_record_id": "hmrc.benefits_in_kind_july_2026.table4.taxable_value.ty2024.S92000003.taxable_value",
+      "concept": "hmrc.benefit_in_kind_taxable_value",
+      "measure_id": "taxable_value",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "benefit_in_kind_recipient"
+      },
+      "geography": {
+        "id": "S92000003",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.benefits_in_kind_july_2026.table4.taxable_value.ty2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "S92000003",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "company_car_benefit_type": "car"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Benefits in kind statistics: July 2026, Tables 1 to 4: company car benefit and company car fuel benefit",
+        "source_file": "2026_Tables_1_to_4.ods",
+        "source_sha256": "a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678",
+        "vintage": "benefits_in_kind_statistics_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-benefits-in-kind-july-2026/2026/a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678/2026_Tables_1_to_4.ods"
+      },
+      "value": 200000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_3bba98626bd44a3df1319373",
+      "semantic_fact_key": "ledger_semantic_fact_v2_0347ac1682751bc7b4f278fb",
+      "source_record_id": "hmrc.benefits_in_kind_july_2026.table4.taxable_value.ty2024.W92000004.taxable_value",
+      "concept": "hmrc.benefit_in_kind_taxable_value",
+      "measure_id": "taxable_value",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "benefit_in_kind_recipient"
+      },
+      "geography": {
+        "id": "W92000004",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.benefits_in_kind_july_2026.table4.taxable_value.ty2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "W92000004",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "company_car_benefit_type": "car"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Benefits in kind statistics: July 2026, Tables 1 to 4: company car benefit and company car fuel benefit",
+        "source_file": "2026_Tables_1_to_4.ods",
+        "source_sha256": "a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678",
+        "vintage": "benefits_in_kind_statistics_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-benefits-in-kind-july-2026/2026/a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678/2026_Tables_1_to_4.ods"
+      },
+      "value": 120000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_84f6dcb848a158d375f7f8f6",
+      "semantic_fact_key": "ledger_semantic_fact_v2_a2654b8d6ff264252eec4c65",
+      "source_record_id": "hmrc.benefits_in_kind_july_2026.table4.taxable_value.ty2024.recipient_region_unknown.taxable_value",
+      "concept": "hmrc.benefit_in_kind_taxable_value",
+      "measure_id": "taxable_value",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "benefit_in_kind_recipient"
+      },
+      "geography": {
+        "id": "hmrc:recipient_region_unknown",
+        "level": "statistical_scope",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.benefits_in_kind_july_2026.table4.taxable_value.ty2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "recipient_region_unknown",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "company_car_benefit_type": "car"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Benefits in kind statistics: July 2026, Tables 1 to 4: company car benefit and company car fuel benefit",
+        "source_file": "2026_Tables_1_to_4.ods",
+        "source_sha256": "a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678",
+        "vintage": "benefits_in_kind_statistics_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-benefits-in-kind-july-2026/2026/a0ee56173ad12b784c3b986652f904c1229e165f5b27454b44ac9144cd98c678/2026_Tables_1_to_4.ods"
+      },
+      "value": 40000000
+    }
+  ]
+}

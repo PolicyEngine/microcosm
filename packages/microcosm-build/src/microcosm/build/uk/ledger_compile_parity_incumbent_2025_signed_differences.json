@@ -1,11 +1,11 @@
 {
  "compiled_count": 1409,
  "counts_by_kind": {
-  "calibration_drift": 564,
+  "calibration_drift": 566,
   "fixture_only": 42,
   "ledger_only": 814
  },
- "difference_count": 1420,
+ "difference_count": 1422,
  "differences": [
   {
    "fixture_value": 1608000.0,
@@ -124,7 +124,7 @@
    "kind": "fixture_only",
    "name": "obr.capital_gains_tax",
    "period": 2025,
-   "reason": "PR #889 retains the exact March 2026 OBR FY2025-26 cash forecast as diagnostic provenance outside the FY2024-25 observation fit. The frozen incumbent fixture keeps its fitted cash row, so it is fixture-only on the current surface. This scoped change does not settle the general liability-to-cash translation tracked by #875."
+   "reason": "PR #889 retains the exact OBR FY2025-26 cash figure, the October 2026 EFO's outturn since PolicyEngine/chronicle#397, as diagnostic provenance outside the FY2024-25 observation fit. The frozen incumbent fixture keeps its fitted cash row, so it is fixture-only on the current surface. This scoped change does not settle the general liability-to-cash translation tracked by #875."
   },
   {
    "fixture_value": 24241874775.213375,
@@ -138,14 +138,14 @@
    "kind": "fixture_only",
    "name": "obr.ni",
    "period": 2025,
-   "reason": "microcosm#1095 (María's ruling of 2026-10-09; uk-data#537 drops the row) moves OBR's total NICs receipts out of the fit: a cash total against the three accrued class rows, carrying statutory-payment recoveries, Class 1A, 1B and 3 and settlements that no household carries. The exact FY2025-26 figure is retained as diagnostic provenance on obr.ni_employee, so the frozen fixture's fitted row is fixture-only on the current surface."
+   "reason": "microcosm#1095 (María's ruling of 2026-10-09; uk-data#537 drops the row) moves OBR's total NICs receipts out of the fit: a cash total against the three accrued class rows, carrying statutory-payment recoveries, Class 1A on benefits other than the company cars and fuel the build carries, Class 1B and 3, and settlements that no household carries. The exact FY2025-26 figure is retained as diagnostic provenance on obr.ni_employee, so the frozen fixture's fitted row is fixture-only on the current surface."
   },
   {
    "fixture_value": 146185954351.57382,
    "kind": "fixture_only",
    "name": "obr.state_pension",
    "period": 2025,
-   "reason": "microcosm#1069 (ruling R4) moves the OBR FY2025-26 State Pension forecast out of the fit: it counts Great Britain plus pensioners paid abroad and leaves out Northern Ireland, a different quantity from the resident level the DWP Stat-Xplore and DfC rows bind. The exact forecast is retained as diagnostic provenance on dwp.state_pension.amount, so the frozen fixture's fitted row is fixture-only on the current surface."
+   "reason": "microcosm#1069 (ruling R4) moves the OBR FY2025-26 State Pension line out of the fit: it counts Great Britain plus pensioners paid abroad and leaves out Northern Ireland, a different quantity from the resident level the DWP Stat-Xplore and DfC rows bind. The exact figure, the October 2026 EFO's outturn since PolicyEngine/chronicle#397, is retained as diagnostic provenance on dwp.state_pension.amount, so the frozen fixture's fitted row is fixture-only on the current surface."
   },
   {
    "fixture_value": 66410800011.47837,
@@ -5707,7 +5707,7 @@
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 76054754387.77309,
+   "ledger_value": 76615715797.65996,
    "name": "obr.universal_credit",
    "period": 2025,
    "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
@@ -9002,31 +9002,31 @@
   {
    "fixture_value": 8492497075.074617,
    "kind": "calibration_drift",
-   "ledger_value": 8309942303.358463,
+   "ledger_value": 8303914528.200001,
    "name": "obr.attendance_allowance",
    "period": 2025,
-   "reason": "Period basis (PolicyEngine/chronicle#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR March 2026 line at the calendar-2025 window, three twelfths of FY2024-25 and nine twelfths of FY2025-26, on the same series; the frozen incumbent fixture holds the FY2025-26 value alone."
+   "reason": "Period basis (PolicyEngine/chronicle#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR line at the calendar-2025 window, three twelfths of FY2024-25 from the March 2026 EFO and nine twelfths of FY2025-26 from the October 2026 EFO, each year's latest edition (PolicyEngine/chronicle#397, María's ruling of 2026-10-31); the frozen incumbent fixture holds the FY2025-26 value alone."
   },
   {
    "fixture_value": 4569403813.760573,
    "kind": "calibration_drift",
-   "ledger_value": 4487029829.347929,
+   "ledger_value": 4491957194.999996,
    "name": "obr.carers_allowance",
    "period": 2025,
-   "reason": "Period basis (PolicyEngine/chronicle#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR March 2026 line at the calendar-2025 window, three twelfths of FY2024-25 and nine twelfths of FY2025-26, on the same series; the frozen incumbent fixture holds the FY2025-26 value alone."
+   "reason": "Period basis (PolicyEngine/chronicle#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR line at the calendar-2025 window, three twelfths of FY2024-25 from the March 2026 EFO and nine twelfths of FY2025-26 from the October 2026 EFO, each year's latest edition (PolicyEngine/chronicle#397, María's ruling of 2026-10-31); the frozen incumbent fixture holds the FY2025-26 value alone."
   },
   {
    "fixture_value": 13389272724.45089,
    "kind": "calibration_drift",
-   "ledger_value": 13368730968.878168,
+   "ledger_value": 13409122425.539997,
    "name": "obr.child_benefit",
    "period": 2025,
-   "reason": "Period basis (PolicyEngine/chronicle#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR March 2026 line at the calendar-2025 window, three twelfths of FY2024-25 and nine twelfths of FY2025-26, on the same series; the frozen incumbent fixture holds the FY2025-26 value alone."
+   "reason": "Period basis (PolicyEngine/chronicle#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR line at the calendar-2025 window, three twelfths of FY2024-25 from the March 2026 EFO and nine twelfths of FY2025-26 from the October 2026 EFO, each year's latest edition (PolicyEngine/chronicle#397, María's ruling of 2026-10-31); the frozen incumbent fixture holds the FY2025-26 value alone."
   },
   {
    "fixture_value": 50925163826.30539,
    "kind": "calibration_drift",
-   "ledger_value": 47197225993.12901,
+   "ledger_value": 47197574984.19505,
    "name": "obr.council_tax",
    "period": 2025,
    "reason": "Series and period basis (microcosm#1095, María's ruling of 2026-10-09): ours binds OBR table 4.1 row 15, the council tax receipts of England, Scotland and Wales, over Great Britain's households, at the calendar-2025 window (three twelfths of FY2024-25 and nine twelfths of FY2025-26, María's rule of 2026-09-22, PolicyEngine/chronicle#280 lane), scaled to main residences by England's chargeable dwellings less its second homes and empty dwellings, over its chargeable dwellings (MHCLG Council Taxbase, October 2025; María's ruling of 2026-10-29, microcosm#1095 D14f); the frozen incumbent fixture holds the FY2025-26 value of row 19 alone, which adds Northern Ireland domestic rates, the council tax accruals adjustment and the high-value council tax surcharge."
@@ -9034,18 +9034,18 @@
   {
    "fixture_value": 44117237614.71528,
    "kind": "calibration_drift",
-   "ledger_value": 41990496408.172676,
+   "ledger_value": 41990323959.26737,
    "name": "obr.council_tax_england",
    "period": 2025,
-   "reason": "Period basis (PolicyEngine/chronicle#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR March 2026 line at the calendar-2025 window, three twelfths of FY2024-25 and nine twelfths of FY2025-26, on the same series; the frozen incumbent fixture holds the FY2025-26 value alone."
+   "reason": "Series and period basis (microcosm#1095): ours measures the nation's OBR table 4.1 council tax receipts at the calendar-2025 window, three twelfths of FY2024-25 from the March 2026 EFO and nine twelfths of FY2025-26 from the October 2026 EFO, each year's latest edition (María's rule of 2026-09-22, PolicyEngine/chronicle#280 lane, and her ruling of 2026-10-31), scaled to main residences by the share obr.council_tax takes, England's chargeable dwellings less its second homes and empty dwellings, over its chargeable dwellings (MHCLG Council Taxbase, October 2025; María's ruling of 2026-10-29, microcosm#1095 D14f), so the three nation rows sum to the bound one; the frozen incumbent fixture holds the FY2025-26 value alone."
   },
   {
    "fixture_value": 3051227494.93594,
    "kind": "calibration_drift",
-   "ledger_value": 2925273094.855295,
+   "ledger_value": 2925794534.826645,
    "name": "obr.council_tax_scotland",
    "period": 2025,
-   "reason": "Period basis (PolicyEngine/chronicle#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR March 2026 line at the calendar-2025 window, three twelfths of FY2024-25 and nine twelfths of FY2025-26, on the same series; the frozen incumbent fixture holds the FY2025-26 value alone."
+   "reason": "Series and period basis (microcosm#1095): ours measures the nation's OBR table 4.1 council tax receipts at the calendar-2025 window, three twelfths of FY2024-25 from the March 2026 EFO and nine twelfths of FY2025-26 from the October 2026 EFO, each year's latest edition (María's rule of 2026-09-22, PolicyEngine/chronicle#280 lane, and her ruling of 2026-10-31), scaled to main residences by the share obr.council_tax takes, England's chargeable dwellings less its second homes and empty dwellings, over its chargeable dwellings (MHCLG Council Taxbase, October 2025; María's ruling of 2026-10-29, microcosm#1095 D14f), so the three nation rows sum to the bound one; the frozen incumbent fixture holds the FY2025-26 value alone."
   },
   {
    "fixture_value": 2400769752.36827,
@@ -9053,111 +9053,127 @@
    "ledger_value": 2281456490.1010394,
    "name": "obr.council_tax_wales",
    "period": 2025,
-   "reason": "Period basis (PolicyEngine/chronicle#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR March 2026 line at the calendar-2025 window, three twelfths of FY2024-25 and nine twelfths of FY2025-26, on the same series; the frozen incumbent fixture holds the FY2025-26 value alone."
+   "reason": "Series and period basis (microcosm#1095): ours measures the nation's OBR table 4.1 council tax receipts at the calendar-2025 window, three twelfths of FY2024-25 from the March 2026 EFO and nine twelfths of FY2025-26 from the October 2026 EFO, each year's latest edition (María's rule of 2026-09-22, PolicyEngine/chronicle#280 lane, and her ruling of 2026-10-31), scaled to main residences by the share obr.council_tax takes, England's chargeable dwellings less its second homes and empty dwellings, over its chargeable dwellings (MHCLG Council Taxbase, October 2025; María's ruling of 2026-10-29, microcosm#1095 D14f), so the three nation rows sum to the bound one; the frozen incumbent fixture holds the FY2025-26 value alone."
+  },
+  {
+   "fixture_value": 494000000.0,
+   "kind": "calibration_drift",
+   "ledger_value": 509814031.9020381,
+   "name": "obr.domestic_rates",
+   "period": 2025,
+   "reason": "Period basis (PolicyEngine/chronicle#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR line at the calendar-2025 window, three twelfths of FY2024-25 from the March 2026 EFO and nine twelfths of FY2025-26 from the October 2026 EFO, each year's latest edition (PolicyEngine/chronicle#397, María's ruling of 2026-10-31); the frozen incumbent fixture holds the FY2025-26 value alone."
   },
   {
    "fixture_value": 7206287181.538654,
    "kind": "calibration_drift",
-   "ledger_value": 8507979735.87899,
+   "ledger_value": 8545802862.489966,
    "name": "obr.esa",
    "period": 2025,
-   "reason": "Period basis (PolicyEngine/chronicle#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR March 2026 line at the calendar-2025 window, three twelfths of FY2024-25 and nine twelfths of FY2025-26, on the same series; the frozen incumbent fixture holds the FY2025-26 value alone."
+   "reason": "Period basis (PolicyEngine/chronicle#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR line at the calendar-2025 window, three twelfths of FY2024-25 from the March 2026 EFO and nine twelfths of FY2025-26 from the October 2026 EFO, each year's latest edition (PolicyEngine/chronicle#397, María's ruling of 2026-10-31); the frozen incumbent fixture holds the FY2025-26 value alone."
   },
   {
    "fixture_value": 12103254163.788864,
    "kind": "calibration_drift",
-   "ledger_value": 12725786027.543839,
+   "ledger_value": 12812461092.718086,
    "name": "obr.housing_benefit",
    "period": 2025,
-   "reason": "Period basis (PolicyEngine/chronicle#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR March 2026 line at the calendar-2025 window, three twelfths of FY2024-25 and nine twelfths of FY2025-26, on the same series; the frozen incumbent fixture holds the FY2025-26 value alone."
+   "reason": "Period basis (PolicyEngine/chronicle#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR line at the calendar-2025 window, three twelfths of FY2024-25 from the March 2026 EFO and nine twelfths of FY2025-26 from the October 2026 EFO, each year's latest edition (PolicyEngine/chronicle#397, María's ruling of 2026-10-31); the frozen incumbent fixture holds the FY2025-26 value alone."
   },
   {
    "fixture_value": 331437583074.4429,
    "kind": "calibration_drift",
-   "ledger_value": 325054437305.83215,
+   "ledger_value": 323479750000.0,
    "name": "obr.income_tax",
    "period": 2025,
-   "reason": "Period basis (PolicyEngine/chronicle#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR March 2026 line at the calendar-2025 window, three twelfths of FY2024-25 and nine twelfths of FY2025-26, on the same series; the frozen incumbent fixture holds the FY2025-26 value alone."
+   "reason": "Period basis (PolicyEngine/chronicle#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR line at the calendar-2025 window, three twelfths of FY2024-25 from the March 2026 EFO and nine twelfths of FY2025-26 from the October 2026 EFO, each year's latest edition (PolicyEngine/chronicle#397, María's ruling of 2026-10-31); the frozen incumbent fixture holds the FY2025-26 value alone."
   },
   {
    "fixture_value": 280558748.04472804,
    "kind": "calibration_drift",
-   "ledger_value": 288407204.431046,
+   "ledger_value": 281300678.72749996,
    "name": "obr.jobseekers_allowance",
    "period": 2025,
-   "reason": "Period basis (PolicyEngine/chronicle#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR March 2026 line at the calendar-2025 window, three twelfths of FY2024-25 and nine twelfths of FY2025-26, on the same series; the frozen incumbent fixture holds the FY2025-26 value alone."
+   "reason": "Period basis (PolicyEngine/chronicle#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR line at the calendar-2025 window, three twelfths of FY2024-25 from the March 2026 EFO and nine twelfths of FY2025-26 from the October 2026 EFO, each year's latest edition (PolicyEngine/chronicle#397, María's ruling of 2026-10-31); the frozen incumbent fixture holds the FY2025-26 value alone."
   },
   {
    "fixture_value": 49544363784.26465,
    "kind": "calibration_drift",
-   "ledger_value": 49002029830.141045,
+   "ledger_value": 48913873680.1126,
    "name": "obr.ni_employee",
    "period": 2025,
-   "reason": "Period basis (PolicyEngine/chronicle#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR March 2026 line at the calendar-2025 window, three twelfths of FY2024-25 and nine twelfths of FY2025-26, on the same series; the frozen incumbent fixture holds the FY2025-26 value alone."
+   "reason": "Period basis (PolicyEngine/chronicle#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR line at the calendar-2025 window, three twelfths of FY2024-25 from the March 2026 EFO and nine twelfths of FY2025-26 from the October 2026 EFO, each year's latest edition (PolicyEngine/chronicle#397, María's ruling of 2026-10-31); the frozen incumbent fixture holds the FY2025-26 value alone."
   },
   {
    "fixture_value": 145324007512.71753,
    "kind": "calibration_drift",
-   "ledger_value": 137854706939.8949,
+   "ledger_value": 137917887236.63586,
    "name": "obr.ni_employer",
    "period": 2025,
-   "reason": "Period basis (PolicyEngine/chronicle#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR March 2026 line at the calendar-2025 window, three twelfths of FY2024-25 and nine twelfths of FY2025-26, on the same series; the frozen incumbent fixture holds the FY2025-26 value alone."
+   "reason": "Period basis (PolicyEngine/chronicle#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR line at the calendar-2025 window, three twelfths of FY2024-25 from the March 2026 EFO and nine twelfths of FY2025-26 from the October 2026 EFO, each year's latest edition (PolicyEngine/chronicle#397, María's ruling of 2026-10-31); the frozen incumbent fixture holds the FY2025-26 value alone."
   },
   {
    "fixture_value": 2902816090.4147716,
    "kind": "calibration_drift",
-   "ledger_value": 2876506585.4950743,
+   "ledger_value": 2900120957.4244957,
    "name": "obr.ni_self_employed",
    "period": 2025,
-   "reason": "Period basis (PolicyEngine/chronicle#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR March 2026 line at the calendar-2025 window, three twelfths of FY2024-25 and nine twelfths of FY2025-26, on the same series; the frozen incumbent fixture holds the FY2025-26 value alone."
+   "reason": "Period basis (PolicyEngine/chronicle#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR line at the calendar-2025 window, three twelfths of FY2024-25 from the March 2026 EFO and nine twelfths of FY2025-26 from the October 2026 EFO, each year's latest edition (PolicyEngine/chronicle#397, María's ruling of 2026-10-31); the frozen incumbent fixture holds the FY2025-26 value alone."
   },
   {
    "fixture_value": 6146422389.476461,
    "kind": "calibration_drift",
-   "ledger_value": 6112217133.109846,
+   "ledger_value": 6251379463.922147,
    "name": "obr.pension_credit",
    "period": 2025,
-   "reason": "Period basis (PolicyEngine/chronicle#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR March 2026 line at the calendar-2025 window, three twelfths of FY2024-25 and nine twelfths of FY2025-26, on the same series; the frozen incumbent fixture holds the FY2025-26 value alone."
+   "reason": "Period basis (PolicyEngine/chronicle#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR line at the calendar-2025 window, three twelfths of FY2024-25 from the March 2026 EFO and nine twelfths of FY2025-26 from the October 2026 EFO, each year's latest edition (PolicyEngine/chronicle#397, María's ruling of 2026-10-31); the frozen incumbent fixture holds the FY2025-26 value alone."
   },
   {
    "fixture_value": 36910059270.5278,
    "kind": "calibration_drift",
-   "ledger_value": 36103194307.639694,
+   "ledger_value": 36016311327.49647,
    "name": "obr.pip",
    "period": 2025,
-   "reason": "Period basis (PolicyEngine/chronicle#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR March 2026 line at the calendar-2025 window, three twelfths of FY2024-25 and nine twelfths of FY2025-26, on the same series; the frozen incumbent fixture holds the FY2025-26 value alone."
+   "reason": "Period basis (PolicyEngine/chronicle#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR line at the calendar-2025 window, three twelfths of FY2024-25 from the March 2026 EFO and nine twelfths of FY2025-26 from the October 2026 EFO, each year's latest edition (PolicyEngine/chronicle#397, María's ruling of 2026-10-31); the frozen incumbent fixture holds the FY2025-26 value alone."
   },
   {
    "fixture_value": 15406516698.785578,
    "kind": "calibration_drift",
-   "ledger_value": 10161716337.860817,
+   "ledger_value": 10043490497.643122,
    "name": "obr.sdlt",
    "period": 2025,
-   "reason": "Payer and period basis (uk-data#564, microcosm#1095): ours binds households' SDLT, the OBR March 2026 line at the calendar-2025 window (three twelfths of FY2024-25 and nine twelfths of FY2025-26, María's rule of 2026-09-22, PolicyEngine/chronicle#280 lane) times individuals' share of HMRC's 2024-25 SDLT receipts, residential (Table 8a) and non-residential (Table 8b) together; the frozen incumbent fixture holds the FY2025-26 value of the whole line alone, which companies, partnerships and collective investment schemes pay about a third of."
+   "reason": "Payer and period basis (uk-data#564, microcosm#1095): ours binds households' SDLT, the OBR line at the calendar-2025 window (three twelfths of FY2024-25 from the March 2026 EFO and nine twelfths of FY2025-26 from the October 2026 EFO, María's rule of 2026-09-22, PolicyEngine/chronicle#280 lane, and her ruling of 2026-10-31) times individuals' share of HMRC's 2024-25 SDLT receipts, residential (Table 8a) and non-residential (Table 8b) together; the frozen incumbent fixture holds the FY2025-26 value of the whole line alone, which companies, partnerships and collective investment schemes pay about a third of."
   },
   {
    "fixture_value": 3194800881.520547,
    "kind": "calibration_drift",
-   "ledger_value": 3179100661.1404104,
+   "ledger_value": 3186824700.5054927,
    "name": "obr.statutory_maternity_pay",
    "period": 2025,
-   "reason": "Period basis (PolicyEngine/chronicle#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR March 2026 line at the calendar-2025 window, three twelfths of FY2024-25 and nine twelfths of FY2025-26, on the same series; the frozen incumbent fixture holds the FY2025-26 value alone."
+   "reason": "Period basis (PolicyEngine/chronicle#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR line at the calendar-2025 window, three twelfths of FY2024-25 from the March 2026 EFO and nine twelfths of FY2025-26 from the October 2026 EFO, each year's latest edition (PolicyEngine/chronicle#397, María's ruling of 2026-10-31); the frozen incumbent fixture holds the FY2025-26 value alone."
   },
   {
    "fixture_value": 3872000000.0,
    "kind": "calibration_drift",
-   "ledger_value": 3858750000.0,
+   "ledger_value": 3887250000.0,
    "name": "obr.tv_licence_fee",
    "period": 2025,
-   "reason": "Period basis (PolicyEngine/chronicle#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR March 2026 line at the calendar-2025 window, three twelfths of FY2024-25 and nine twelfths of FY2025-26, on the same series; the frozen incumbent fixture holds the FY2025-26 value alone."
+   "reason": "Period basis (PolicyEngine/chronicle#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR line at the calendar-2025 window, three twelfths of FY2024-25 from the March 2026 EFO and nine twelfths of FY2025-26 from the October 2026 EFO, each year's latest edition (PolicyEngine/chronicle#397, María's ruling of 2026-10-31); the frozen incumbent fixture holds the FY2025-26 value alone."
   },
   {
    "fixture_value": 180168938685.41794,
    "kind": "calibration_drift",
-   "ledger_value": 177875204014.06345,
+   "ledger_value": 177644250000.0,
    "name": "obr.vat",
    "period": 2025,
-   "reason": "Period basis (PolicyEngine/chronicle#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR March 2026 line at the calendar-2025 window, three twelfths of FY2024-25 and nine twelfths of FY2025-26, on the same series; the frozen incumbent fixture holds the FY2025-26 value alone."
+   "reason": "Period basis (PolicyEngine/chronicle#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR line at the calendar-2025 window, three twelfths of FY2024-25 from the March 2026 EFO and nine twelfths of FY2025-26 from the October 2026 EFO, each year's latest edition (PolicyEngine/chronicle#397, María's ruling of 2026-10-31); the frozen incumbent fixture holds the FY2025-26 value alone."
+  },
+  {
+   "fixture_value": 1911040880.4619167,
+   "kind": "calibration_drift",
+   "ledger_value": 1911453982.8600001,
+   "name": "obr.winter_fuel_allowance",
+   "period": 2025,
+   "reason": "Edition basis (PolicyEngine/chronicle#397): ours binds FY2025-26 alone (María's ruling of 2026-10-26), now the October 2026 EFO's outturn, the latest number Chronicle keeps for the year; the frozen incumbent fixture holds the March 2026 EFO's FY2025-26 projection."
   },
   {
    "fixture_value": 2057128451236.5015,

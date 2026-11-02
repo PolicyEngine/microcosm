@@ -258,7 +258,7 @@ def test_the_obr_line_is_a_diagnostic_beside_the_resident_level() -> None:
     } == required
 
 
-def test_the_state_pension_diagnostics_carry_the_published_forecasts() -> None:
+def test_the_state_pension_diagnostics_carry_the_published_fy2025_26_figures() -> None:
     """Feed-gated: each diagnostic resolves its exact FY2025-26 fact."""
 
     from microcosm.build.uk_runtime.ledger_targets import (
@@ -283,8 +283,10 @@ def test_the_state_pension_diagnostics_carry_the_published_forecasts() -> None:
     recipients = _attached_diagnostic_metadata(facts, "dwp.state_pension.recipients")
 
     assert amount["obr_state_pension_diagnostic_role"] == "diagnostic_only_not_in_fit"
+    # OBR's figure is the October 2026 EFO's outturn since
+    # PolicyEngine/chronicle#397 (microcosm#1430); DWP's are its forecasts.
     assert float(amount["obr_state_pension_diagnostic_value_gbp"]) == pytest.approx(
-        146_185_954_351.574
+        146_258_870_571.707
     )
     assert float(amount["dwp_forecast_state_pension_diagnostic_value_gbp"]) == (
         pytest.approx(146_071_196_250.359)

@@ -1,8 +1,8 @@
 """ISA subscriptions per adult, imputed from HMRC's ISA tables (microcosm#1415).
 
 The FRS and the Wealth and Assets Survey record ISA balances, not what people pay
-in during a year, so no survey donor exists for subscriptions. This stage, the
-last in the UK roster, draws them from HMRC's published tables and writes five
+in during a year, so no survey donor exists for subscriptions. This stage, run
+on final incomes, draws them from HMRC's published tables and writes five
 person inputs policyengine-uk reads: ``cash_isa_balance``,
 ``stocks_and_shares_isa_balance``, ``cash_isa_subscriptions``,
 ``stocks_and_shares_isa_subscriptions`` and ``lifetime_isa_payments``. It rewrites
