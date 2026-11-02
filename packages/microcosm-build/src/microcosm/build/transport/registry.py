@@ -50,9 +50,9 @@ from .evidence_kernels import register_evidence_kernels
 from .gate_bindings import TRANSPORT_GATE_REGISTRY
 from .gate_kernels import register_gate_kernel
 from .geography_kernels import register_geography_kernels
+from .measure_kernels import register_measure_kernels
 from .money_kernels import register_money_kernels
 from .person_location_kernels import register_person_location_kernels
-from .measure_kernels import register_measure_kernels
 from .population_kernels import register_population_kernels
 from .quantile_kernels import register_quantile_kernels
 from .reporting_kernels import register_reporting_kernels
