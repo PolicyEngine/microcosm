@@ -119,13 +119,25 @@ its own version (`PROTOCOL_VERSION`), every emitter release accepts the
 versions interfaces still send, and an emitter that lacks a module the build
 asks for starts without it.
 
+A build does not start an emitter older than `MINIMUM_EMITTER_VERSION` in
+`microcosm.build.telemetry_emitter`, now 0.11.8, and the Modal image installs
+at least the same release (`IMAGE_EMITTER_REQUIREMENT` in
+`tools/modal_us_stage_plan.py`, `microcosm-emitter>=0.11.8`); a test checks
+that the two agree. Releases before 0.10.0 send telemetry to the collector's
+Cloud Run address, which changes when the collector moves to another Google
+Cloud project. From 0.10.0 on, the emitter's default collector address is the
+collector's hostname, which stays the same. Microcosm passes the emitter no
+collector address: the adapter's `development_collector_url` parameter, which
+no build command sets, accepts only a loopback address. Raise both values
+together, and only when builds must stop starting older releases.
+
 To adopt a new interface release, regenerate `uv.lock`, update
 `APPROVED_UV_LOCK_SHA256` in `microcosm.build.us_runtime.worker_identity` to
 the new lockfile digest and rerun the tests and wheel checks.
 
 ## Migrating an existing workstation
 
-Install the emitter once with `uv tool install microcosm-emitter` (0.6.0 or
+Install the emitter once with `uv tool install microcosm-emitter` (0.11.8 or
 later; a build does not start an older emitter, says how to upgrade it and
 continues without it). It keeps using the existing spool database,
 `$XDG_CACHE_HOME/microcosm/telemetry/events.sqlite3`, at the same Alembic
@@ -137,3 +149,8 @@ database on one machine. The emitter rejects unversioned databases without
 modification. The emitter's README describes the repair for a machine that
 ran an earlier, unreleased build of the hand-over queue. No new credential,
 hosted service or infrastructure is required by this migration.
+
+To upgrade a machine whose emitter is older than 0.11.8, run
+`uv tool install --upgrade 'microcosm-emitter>=0.11.8'`; it also replaces a
+version constraint given at install time, which `uv tool upgrade` keeps.
+`microcosm-emitter version` prints the installed release.

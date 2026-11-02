@@ -67,13 +67,19 @@ release directory onto the runs volume. Publication stays the human step in
    and asserts `HEAD` equals the commit. It then runs
    `uv sync --all-packages --extra us --frozen` against that tree's own
    `uv.lock` into `/opt/venv`, installs the newest `microcosm-emitter`
-   release (0.7.0 or later) on its own with `uv tool install` into
-   `/usr/local/bin`, checks that `microcosm-emitter version` runs, and
-   asserts `git status --porcelain` is empty. The image sets
+   release (0.11.8 or later, the oldest a build starts) on its own with
+   `uv tool install` into `/usr/local/bin`, checks that
+   `microcosm-emitter version` runs, and asserts `git status --porcelain` is
+   empty. Emitter releases from 0.10.0 on send telemetry to the collector's
+   hostname by default, which stays the same when the collector moves to
+   another Google Cloud project. The image sets
    `MICROCOSM_EMITTER_COMMAND` to that command, so a build that starts its
    emitter finds it; the check reports the version and the receipt's runner
    identity records it. An image built for a commit keeps the emitter it was
-   built with. The tool's environment withholds credentials and sets
+   built with. A plan pinned to an older commit gets that commit's install
+   step and minimum, so only a plan pinned to a commit with the 0.11.8 floor
+   is sure to run 0.11.8 or later. The tool's environment withholds
+   credentials and sets
    `HF_HUB_OFFLINE=1`, so an emitter started there keeps its events and
    hand-overs local.
    A commit that is not on GitHub fails the build. `checkout -B` would put

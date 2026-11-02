@@ -61,6 +61,7 @@ change:
 ```bash
 uv tool install microcosm-emitter   # once per machine
 uv tool upgrade microcosm-emitter   # to take a new release
+microcosm-emitter version           # the installed release; builds need 0.11.8 or later
 ```
 
 The build finds the `microcosm-emitter` command through
@@ -70,9 +71,14 @@ credential (`HF_TOKEN`, then `HUGGINGFACE_TOKEN`, then the `hf auth login`
 token). Without the command the build continues with no hosted telemetry and
 no remote staging. Before it starts the emitter, the build reads its
 version from `microcosm-emitter version` and does not start one older than
-0.6.0, the first release that takes staging run files; it prints the
-installed and required versions and the upgrade command, and continues as
-it does without the command. Microcosm supplies build metadata, graph files and staging
+0.11.8. Releases before 0.10.0 send telemetry to the collector's Cloud Run
+address, which changes when the collector moves to another Google Cloud
+project; from 0.10.0 on, releases send to the collector's hostname, which
+stays the same. The build prints the installed and required versions and
+the upgrade command, `uv tool install --upgrade 'microcosm-emitter>=0.11.8'`,
+and continues as it does without the command. `uv tool upgrade` keeps any
+version constraint given at install time, such as `==0.7.0`; that
+`uv tool install --upgrade` command replaces it. Microcosm supplies build metadata, graph files and staging
 run files; the emitter owns authentication, durable queues and delivery.
 The telemetry module reports live progress to the hosted collector when the
 operator's Hugging Face login is accepted; otherwise it retains the events

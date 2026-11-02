@@ -72,12 +72,18 @@ SETUP_WARNING = (
 #: The emitter took about four seconds to become ready on an M1 Max; this is
 #: only a ceiling on the wait.
 STARTUP_TIMEOUT_SECONDS = 15.0
-#: The first emitter release with everything a build hands over: the Hugging
-#: Face module (``stage_run_files``, ``run_files_receipt`` and
-#: ``read_back_run_files``) and its queue in ``events.handovers.sqlite3``.
-#: Releases 0.4.0 to 0.5.1 accept the same protocol version but start without
-#: that module; 0.7.0 added only release publication, which builds do not use.
-MINIMUM_EMITTER_VERSION = "0.6.0"
+#: The oldest emitter release a build starts, and the newest release on
+#: 2026-11-02, when it was chosen. Since 0.10.0 the emitter sends to the
+#: collector's hostname by default, which stays the same when the collector
+#: moves to another Google Cloud project; earlier releases send to its Cloud
+#: Run address, which changes with the move. 0.11.1 fixed two cases in which
+#: the telemetry module stopped; 0.11.2 to 0.11.8 change no emitter behaviour.
+#: 0.6.0 added the Hugging Face module (``stage_run_files``,
+#: ``run_files_receipt`` and ``read_back_run_files``) and its queue in
+#: ``events.handovers.sqlite3``; releases 0.4.0 to 0.5.1 accept the same
+#: protocol version but start without that module. ``IMAGE_EMITTER_REQUIREMENT``
+#: in ``tools/modal_us_stage_plan.py`` repeats this release.
+MINIMUM_EMITTER_VERSION = "0.11.8"
 OUTDATED_EMITTER_WARNING = (
     "The installed microcosm-emitter {reported}; this build needs {required} "
     "or later, so it did not start that emitter and will continue without it. "
