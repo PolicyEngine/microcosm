@@ -52,6 +52,7 @@ from .gate_kernels import register_gate_kernel
 from .geography_kernels import register_geography_kernels
 from .money_kernels import register_money_kernels
 from .person_location_kernels import register_person_location_kernels
+from .measure_kernels import register_measure_kernels
 from .population_kernels import register_population_kernels
 from .quantile_kernels import register_quantile_kernels
 from .reporting_kernels import register_reporting_kernels
@@ -532,7 +533,7 @@ def build_transport_registry(
 
 
 def register_transport_population_kernels(registry: KernelRegistry) -> KernelRegistry:
-    """Install the fourteen population kernels without import-time side effects.
+    """Install the fifteen population kernels without import-time side effects.
 
     Source codecs are separately installed with ``register_transport_codecs``;
     target, solver and terminal kernels keep their own registration functions.
@@ -543,4 +544,5 @@ def register_transport_population_kernels(registry: KernelRegistry) -> KernelReg
     register_column_kernels(registry)
     register_geography_kernels(registry)
     register_money_kernels(registry)
+    register_measure_kernels(registry)
     return registry

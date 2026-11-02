@@ -188,6 +188,7 @@ SKELETON_KERNELS = CREATE_REFS | frozenset(
         "simulate.solve_zero@1",  # [BE] Non-structural pre-calibration solves.
         "money.minor_units@1",
         "money.annual_transfers@1",
+        "measure.combine@1",
         "takeup.assign@1",
         "targets.compile@1",
         "calibration.prepare@1",
