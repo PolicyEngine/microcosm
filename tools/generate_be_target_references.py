@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import copy
+import hashlib
 import json
 import os
 import re
@@ -29,6 +30,7 @@ from microcosm.build.ledger_artifact import (
     load_ledger_consumer_artifact,
     validate_chronicle_feed_pin,
 )
+from microcosm.build.ledger_targets import fact_matches_selector
 
 SPEC = (
     Path(__file__).resolve().parents[1]
@@ -77,10 +79,11 @@ B4 = "statbel.fiscal_income_distribution.b4.declaration_type_age_decile.v1"
 # (BE-MC5; d1952 option A). Edges are income-year-2023 euros of total net
 # taxable income, chosen on A.1's own class edges so every band is an exact sum
 # of published EUR 1,000 classes and no cut is interpolated. EUR 10,000 steps
-# cover the dense middle of the declaration distribution, where B.1's deciles 2
-# to 8 fall; above EUR 50,000 counts thin, so the steps widen; A.1's open top
-# class (EUR 100,000 and more) stays whole. Eight bands give sixteen count and
-# amount constraints, the "short list" d1952 asks for, not 101 classes. The
+# cover the dense middle of the declaration distribution, which holds B.1's
+# deciles 3 to 7 whole (their bounds run from EUR 16,867 to EUR 44,639); above
+# EUR 50,000 counts thin, so the steps widen; A.1's open top class (EUR 100,000
+# and more) stays whole. Eight bands give sixteen count and amount
+# constraints, the "short list" d1952 asks for, not 101 classes. The
 # lowest band is kept so the bands partition A.1's whole positive range and sum
 # exactly to B.4's joint plus individual declarations.
 STANDIN_BANDS = (
@@ -165,7 +168,7 @@ AGEING_PAIRS = {
         "row": "social_benefits_detail.social_security_cash_unemployment",
         "operands": {2025: "5602000000", 2026: "4255000000"},
         "use": "calibration",
-        "reason": "The target's own series: the observed 2025 level rolled by FPB's 2026/2025 step, which carries the 2026 limit on benefit duration.",
+        "reason": "The target's own series, FPB T24 line a., rolled by its 2026/2025 step. unemployment_series_choice in the inventory compares it with the larger line 4.",
     },
     "fpb_t24_federal_cash_income_guarantee_for_older_people": {
         "row": "social_benefits_detail.federal_government_cash_income_guarantee_for_older_people",
@@ -231,6 +234,20 @@ FPB_OBSERVED_2025 = {
 # carry none, so the only Belgian operands the resolver can authenticate are
 # RSZ's annual wage totals: diagnostic cross-checks of the observed segment of
 # the wage-driven pairs, never profile or money-normalization inputs.
+# FPB T24 prints unemployment twice. The pair takes line a.; these reviewed 2025
+# levels keep the inventory's comparison with line 4 tied to the feed.
+T24_UNEMPLOYMENT_2025 = {
+    "chosen": ("social_security_cash_unemployment", "5602000000"),
+    "alternative": ("social_security_cash_unemployment_total", "6510000000"),
+    "company_supplement": (
+        "social_security_cash_unemployment_with_company_supplement",
+        "167000000",
+    ),
+    "career_breaks": (
+        "social_security_cash_career_breaks_and_time_credit",
+        "740000000",
+    ),
+}
 RSZ_SOURCE_SHA256 = "7f97f510d332a0966b1afba110ce448f4a4a83d9d58fd5c3bb4d8d36d1aeca97"
 RSZ_OPERANDS = {2023: "160796591.5", 2024: "165739460", 2025: "171074878.6"}
 RSZ_FACTORS = {
@@ -243,6 +260,15 @@ FACTOR_VALIDITY = {
     "valid_until": "2027-06-30",
     "as_of": "2026-11-01",
 }
+# Chronicle labels Statbel's regions NUTS_2024, while the typed geography layer
+# names vintage:be_nuts1_2025 and its closed alias set admits no NUTS label.
+# Each selector keeps Chronicle's label, and its row names the layer's typed
+# authority, so an unreviewed label refuses at generation.
+GEOGRAPHY_VINTAGES = {
+    "nuts1": ("NUTS_2024", "vintage:be_nuts1_2025"),
+    "commune": ("nis_2025", "vintage:be_nis_2025"),
+}
+TRANSPORTED_INPUTS = {"employment_income", "nonfarm_self_employment_income"}
 PROVIDERS = {
     "statbel": "Statbel",
     "fpb": "Federal Planning Bureau",
@@ -438,7 +464,7 @@ def _operand(role, fact):
     return {"role": role, **selector}
 
 
-def _roll(reference, pair_id, numerator, denominator, *, members=None):
+def _roll(reference, pair_id, numerator, denominator, *, base_fact=None, members=None):
     base = {"role": "base"}
     selector = reference["ledger_selector"]
     selector["assertion"] = "observation"
@@ -460,14 +486,13 @@ def _roll(reference, pair_id, numerator, denominator, *, members=None):
             "assertion_policy": "allow_source_projection",
         }
     )
-    if (
-        reference["ledger_selector"].get("aggregate_fact_key")
-        == denominator["aggregate_fact_key"]
-    ):
-        # The base is the pair's own observation, so the target is FPB's
-        # 2026 projection of the row: declared, not hidden.
+    if base_fact is not None and _value(base_fact) == _value(denominator):
+        # A base equal to the denominator makes the target FPB's 2026
+        # projection of the row: declared, not hidden.
         reference["metadata"]["ageing_target_equals"] = (
             "FPB's 2026 projection of the base's own row"
+            if base_fact["aggregate_fact_key"] == denominator["aggregate_fact_key"]
+            else "FPB's 2026 projection of the pair's row: the base equals its denominator"
         )
     reference["metadata"].update(
         {
@@ -478,6 +503,27 @@ def _roll(reference, pair_id, numerator, denominator, *, members=None):
             "target_period": str(POLICY_YEAR),
         }
     )
+
+
+def _vintage_authority(fact):
+    """Return a subnational fact's typed authority; refuse an unreviewed label."""
+
+    geography = fact["geography"]
+    if geography["level"] == "country":
+        return None
+    vintage, authority = GEOGRAPHY_VINTAGES[geography["level"]]
+    if geography["vintage"] != vintage:
+        raise ValueError(
+            f"{geography['level']} fact carries vintage {geography['vintage']!r}; "
+            f"the reviewed mapping names {vintage!r}."
+        )
+    return authority
+
+
+def _measure_kind(measure):
+    if measure.startswith("belgium_"):
+        return "rules_output"
+    return "transported_input" if measure in TRANSPORTED_INPUTS else "prepared_column"
 
 
 def _reference(
@@ -527,6 +573,12 @@ def _reference(
             "method_card_status": METHOD_CARD_STATUS,
         },
     }
+    authority = _vintage_authority(fact)
+    if authority is not None:
+        result["metadata"].update(
+            geography_vintage=fact["geography"]["vintage"],
+            geography_vintage_authority=authority,
+        )
     if tolerance is not None:
         result["metadata"]["fit_tolerance"] = tolerance
     if filter_column is not None:
@@ -600,6 +652,7 @@ def _a1_classes(inventory):
 
 def _band_members(classes):
     members = {}
+    ends = {code: end for _, end, code in classes}
     for band, lower, upper in STANDIN_BANDS:
         inside = [
             code
@@ -607,8 +660,8 @@ def _band_members(classes):
             if start >= lower and (upper is None or (end is not None and end <= upper))
         ]
         edges = [start for start, _, code in classes if code in inside]
-        if not inside or edges[0] != lower:
-            raise ValueError(f"Band {band} does not start on an A.1 class edge")
+        if not inside or edges[0] != lower or ends[inside[-1]] != upper:
+            raise ValueError(f"Band {band} does not sit on A.1 class edges")
         members[band] = inside
     flat = [code for band in members for code in members[band]]
     if flat != [code for _, _, code in classes]:
@@ -843,6 +896,7 @@ def calibration_references(inventory, pairs, members):
         row,
         "fpb_t11_actual_social_contributions",
         *pairs["fpb_t11_actual_social_contributions"],
+        base_fact=onss,
     )
     rows.append(row)
     labels["onss_worker_personal_contributions"] = (
@@ -866,11 +920,11 @@ def calibration_references(inventory, pairs, members):
             measure_kind="receipt_flag",
             reason=(
                 "No declared ageing pair: FPB publishes jobseeker levels (BFP "
-                "unemployment, +0.6% 2026/2025), not benefit recipients, and the "
-                "2026 limit on benefit duration cuts FPB's unemployment benefit "
-                "spending by 24% in 2026, so the jobseeker series would overstate "
-                "2026 recipients. Kept unaged at its 2024 source period. Also "
-                "needs W3's receipt contract for unemployment."
+                "unemployment, +0.6% 2026/2025), not benefit recipients, and its "
+                "unemployment benefit spending falls 24% in 2026, so the two "
+                "series point opposite ways and neither ages a recipient count. "
+                "Kept unaged at its 2024 source period. Also needs W3's receipt "
+                "contract for unemployment."
             ),
             tolerance="0.05",
         )
@@ -953,13 +1007,11 @@ def calibration_references(inventory, pairs, members):
             reference_set="calibration",
             status=status,
             method_card=method_card,
-            measure_kind="rules_output"
-            if measure.startswith("belgium_")
-            else "transported_input",
+            measure_kind=_measure_kind(measure),
             reason=reason,
             tolerance="0.05",
         )
-        _roll(row, pair_id, numerator, denominator)
+        _roll(row, pair_id, numerator, denominator, base_fact=fact)
         rows.append(row)
         labels[name] = label
     return rows, labels
@@ -1124,12 +1176,10 @@ def holdout_references(inventory, pairs):
             reference_set="holdout",
             status="requires_holdout_measure",
             method_card="BE-MC5",
-            measure_kind="rules_output"
-            if measure.startswith("belgium_")
-            else "prepared_column",
+            measure_kind=_measure_kind(measure),
             reason="Held out of calibration; compared, never fitted. " + reason,
         )
-        _roll(row, pair_id, *pairs[pair_id])
+        _roll(row, pair_id, *pairs[pair_id], base_fact=fact)
         row["metadata"]["holdout_use"] = "validation_comparator"
         rows.append(row)
         labels[name] = label
@@ -1503,11 +1553,11 @@ def _b1_checks(inventory):
                 "negative_deciles": negative,
             },
             "passed": [
-                "B.1's total enrolled tax equals the total taxes in SPF Finances' own Chronicle package (spf-finances-pit-2023) to EUR 0.06: one administrative total, read twice, rather than an independent corroboration.",
+                "B.1's total enrolled tax equals the total taxes in Chronicle's spf-finances-pit-2023 package to EUR 0.06. That fact carries Statbel's concept and evidence URL, so the match reads one administrative total twice and corroborates nothing independently.",
                 "B.1's deciles sum to its total, and percentiles 91-100 sum to decile 10, within EUR 0.10.",
             ],
             "missing": [
-                "Statbel defines total taxes as state, municipal and agglomeration tax. rulespec-be's candidate output belgium_pit_federal_and_local_tax_before_withholding (final_tax.yaml at 530849e) adds article 134 federal tax and the articles 465-468 local additions but not regional_surcharge.yaml's regional additional tax; whether Statbel's state tax includes the regional additional tax is not established by any document in the suite.",
+                "rulespec-be's candidate output belgium_pit_federal_and_local_tax_before_withholding (final_tax.yaml at 530849e) adds article 134 federal tax and the articles 465-466 local additions but not regional_surcharge.yaml's regional additional tax. No document in the suite says whether Statbel's total taxes include the regional additional tax.",
                 "B.1 counts declarations (joint = one); every rulespec-be PIT output is per Person, and the couple pipeline needs relation bindings (S2-d) that are not built.",
                 "That output is also the D51A_C1 holdout's measure: a B.1 producer must be a separately bound declaration-level measure, because S5 refuses a pre-calibration stage whose module produces a holdout measure.",
             ],
@@ -1558,6 +1608,154 @@ def _b1_checks(inventory):
         else "B.1 stays inactive: no check passes completely from the documents.",
         "asserted_evidence": asserted,
         **checks,
+    }
+
+
+def _digest(payload):
+    encoded = json.dumps(
+        payload, ensure_ascii=False, separators=(",", ":"), sort_keys=True
+    )
+    return hashlib.sha256(encoded.encode()).hexdigest()
+
+
+def selector_digest(row):
+    """Digest everything a reference row selects, however it is spelled."""
+
+    return _digest(
+        {key: row[key] for key in ("ledger_selector", "value_operands") if key in row}
+    )
+
+
+def factor_digest(declaration):
+    """Digest the selectors of one factor declaration's two schedules."""
+
+    return _digest(
+        [
+            slot["selector"]
+            for schedule in ("source_schedule", "target_schedule")
+            for slot in declaration[schedule]
+        ]
+    )
+
+
+def _matching(inventory, selector):
+    pool = inventory.by_record_set.get(selector["record_set_id"], [])
+    return [fact for fact in pool if fact_matches_selector(fact, selector)]
+
+
+def _partition_total(inventory, row):
+    """Return the published total a row's bands or rank groups add up to."""
+
+    if row["metadata"].get("interval_table_id") == STANDIN_TABLE:
+        return inventory.one(
+            A1.format(component="taxable_income"),
+            measure=row["ledger_selector"]["source_measure_id"],
+            geography="BE",
+            dimensions={A1_CLASS: "all"},
+        )
+    if row["metadata"]["contract_target_id"] == "statbel_b1_enrolled_tax_by_rank_group":
+        return inventory.one(
+            spec=B1_VALUES,
+            measure="total_tax_eur",
+            geography="BE",
+            dimensions={"tax_return.rank_group": "all"},
+        )
+    return None
+
+
+def _resolved_row(inventory, row, reference_set):
+    base = _matching(inventory, row["ledger_selector"])
+    operands = [
+        fact
+        for operand in row.get("value_operands", [])
+        if operand.get("role") != "base"
+        for fact in _matching(
+            inventory, {key: value for key, value in operand.items() if key != "role"}
+        )
+    ]
+    entry = {
+        "name": row["name"],
+        "reference_set": reference_set,
+        "selector_sha256": selector_digest(row),
+        "base_fact_keys": sorted({fact["aggregate_fact_key"] for fact in base}),
+        "operand_fact_keys": sorted({fact["aggregate_fact_key"] for fact in operands}),
+        "semantic_fact_keys": sorted(
+            {fact["semantic_fact_key"] for fact in [*base, *operands]}
+        ),
+    }
+    total = _partition_total(inventory, row)
+    if total is not None:
+        entry["partition_total_semantic_key"] = total["semantic_fact_key"]
+    return entry
+
+
+def _resolved_factor(inventory, declaration):
+    facts = [
+        fact
+        for schedule in ("source_schedule", "target_schedule")
+        for slot in declaration[schedule]
+        for fact in _matching(inventory, slot["selector"])
+    ]
+    return {
+        "name": f"factor:{declaration['id']}",
+        "reference_set": "factor_context",
+        "selector_sha256": factor_digest(declaration),
+        "base_fact_keys": [],
+        "operand_fact_keys": sorted({fact["aggregate_fact_key"] for fact in facts}),
+        "semantic_fact_keys": sorted({fact["semantic_fact_key"] for fact in facts}),
+    }
+
+
+def resolved_reads(inventory, documents):
+    """Bind each row and factor to the facts its selectors resolve to in the feed.
+
+    CI holds no artifact, so it checks each digest against the committed row and
+    the listed keys for disjointness. The feed audit proves the listed keys.
+    """
+
+    rows = [
+        _resolved_row(inventory, row, document["reference_set"])
+        for filename in (
+            "target_references.json",
+            "precal_references.json",
+            "holdout_references.json",
+        )
+        for document in (documents[filename],)
+        for row in document["target_references"]
+    ]
+    factors = [
+        _resolved_factor(inventory, entry["declaration"])
+        for entry in documents["reference_aging.json"]["factors"]
+    ]
+    return [*rows, *factors]
+
+
+def _unemployment_series_choice(inventory):
+    lines = {
+        key: _fpb(inventory, f"social_benefits_detail.{row}", 2025)
+        for key, (row, _) in T24_UNEMPLOYMENT_2025.items()
+    }
+    for key, (_, token) in T24_UNEMPLOYMENT_2025.items():
+        if _token(lines[key]["value"]) != token:
+            raise ValueError(f"Reviewed FPB T24 level {key} changed")
+    return {
+        "lines_2025": {
+            key: {
+                "row": fact["layout"]["source_row_id"],
+                "label": fact["layout"]["groupby_value_label"],
+                "eur": float(_value(fact)),
+            }
+            for key, fact in lines.items()
+        },
+        "choice": (
+            "The target takes line a. Line 4 also holds benefits with a company "
+            "supplement and career breaks and time credit, about 14% of the level. "
+            "This row choice is proposed with d1902."
+        ),
+        "open_question": (
+            "No document in the suite says whether line a. includes temporary "
+            "unemployment, which the ordinary-benefit output does not compute."
+        ),
     }
 
 
@@ -1807,7 +2005,7 @@ def _inventory(inventory, pairs, documents, feed_pin, members, communes):
         ),
         (
             "spf_finances_pit_total",
-            "SPF Finances' total taxes equal B.1's total; it is the independent tax-definition check, not a target.",
+            "SPF Finances' total taxes equal B.1's total: one administrative total, read twice. The tax-definition check records it, and no row targets it.",
         ),
         (
             "spf_municipal_surcharge_rates",
@@ -1835,7 +2033,7 @@ def _inventory(inventory, pairs, documents, feed_pin, members, communes):
         ),
         (
             "fpb_projections_as_direct_targets",
-            "No reference takes an FPB projection as its base: every base is an observation. Where the base is an FPB row's own 2025 observation (unemployment benefits, GRAPA and net mixed income in calibration, gross wages in the holdouts), the row's own 2026/2025 step makes the target equal FPB's 2026 projection; those rows say so in ageing_target_equals.",
+            "No reference takes an FPB projection as its base: every base is an observation. Seven rolled rows still equal FPB's 2026 projection, because each base equals its pair's denominator: unemployment benefits, GRAPA and net mixed income in calibration, and gross wages and the Eurostat D61, D62 and D5 rows in the holdouts. Those rows say so in ageing_target_equals.",
         ),
         (
             "german_and_french_rows",
@@ -1894,12 +2092,30 @@ def _inventory(inventory, pairs, documents, feed_pin, members, communes):
             "create_mass_reference": "Not in B3. CREATE needs exactly one unfiltered national person count. The suite has no national Statbel population fact, and a national row composed from the 565 communes refuses: the shared composed-geography path labels only UK areas. W3 chooses between a shared Belgian geography label (NZ hub) and FPB's annual-average population.",
         },
         "b1_checks": _b1_checks(inventory),
+        "unemployment_series_choice": _unemployment_series_choice(inventory),
+        "geography_vintage_bindings": [
+            {
+                "layer": "nuts1",
+                "chronicle_vintage": GEOGRAPHY_VINTAGES["nuts1"][0],
+                "typed_authority": GEOGRAPHY_VINTAGES["nuts1"][1],
+                "relation": "crosswalk",
+                "basis": "Chronicle labels Statbel's regions NUTS_2024. The typed nuts1 layer records no code list, so the mapping rests on destination_mass: the three regions' 2025 population equals the 565 communes' sum. A package test holds every nuts1 row to this binding. This choice is proposed with d1902.",
+            },
+            {
+                "layer": "commune",
+                "chronicle_vintage": GEOGRAPHY_VINTAGES["commune"][0],
+                "typed_authority": GEOGRAPHY_VINTAGES["commune"][1],
+                "relation": "exact_alias",
+                "basis": "nis_2025 is an exact typed alias of vintage:be_nis_2025.",
+            },
+        ],
         "holdout_information_overlaps": [
             "Separation is checked at the fact and measure level; holdouts still share information with calibration through economics, not facts:",
             "FPB gross wages (wage-headline holdout): ONSS's calibrated worker contributions are a fixed share of gross pay.",
             "Eurostat D62 social benefits received contain the calibrated unemployment and GRAPA aggregates.",
             "Eurostat D61 social contributions paid contain the calibrated ONSS worker contributions.",
             "Eurostat D51A_C1 and D5 measure the same personal income tax that B.1 would calibrate once active.",
+            "The A.1 stand-in is 98% net professional income, and its amount pair, FPB T11 total resources, contains gross wages (line 3), the wage holdout's own series.",
         ],
         "grammar_gaps": [
             "A national row composed from commune facts refuses for Belgium: the composed-geography path labels only UK areas (ledger_targets._geography_fallback_label), so CREATE's single national mass reference cannot be the commune sum.",
@@ -1908,8 +2124,11 @@ def _inventory(inventory, pairs, documents, feed_pin, members, communes):
             "G8-r2's resolver needs dated period_coverage on every operand; Chronicle's FPB, Statbel NUTS1, NBB, ONSS, ONEM and most Eurostat facts carry none.",
             "rolled_forward_by_ratio refuses a negative base, so signed targets (B.1 low deciles) cannot be aged by it.",
             "rolled_forward_by_ratio's series key treats every FPB annex row of one table as one series (same concept, entity, geography and empty dimensions); the generator and tests enforce row identity themselves.",
+            "The typed vintage alias set admits only a layer's full id, its country-shortened id and its authority value, so Chronicle's NUTS_2024 label cannot be an alias of vintage:be_nuts1_2025; geography_vintage_bindings carries the mapping instead.",
+            "The schema-1 target_profile drops B1's required_families, basis_periods, tolerance tiers and subnational vintage rule. Package tests restore required families, the vintage rule and each row's periods. Caseload tolerance moves from B1's 15% to BE-MC6's 5%.",
         ],
         "exclusions": [{"id": name, "reason": reason} for name, reason in excluded],
+        "resolved_reads": resolved_reads(inventory, documents),
     }
 
 

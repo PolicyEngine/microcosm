@@ -21,7 +21,11 @@ import pytest
 from hypothesis import HealthCheck, example, given, settings
 from hypothesis import strategies as st
 
-from microcosm.build.country_spec import _carried_value_keys, load_country_spec
+from microcosm.build.country_spec import (
+    _carried_value_keys,
+    _typed_geography_vintage_aliases,
+    load_country_spec,
+)
 from microcosm.build.ledger_artifact import (
     ChronicleFeedPinMismatchError,
     chronicle_feed_identity,
@@ -70,6 +74,20 @@ GENERATED = (
     "reference_profiles.json",
 )
 BELGIAN_LEVELS = {"country": {"BE"}, "nuts1": {"BE1", "BE2", "BE3"}}
+# B1's schema-2 profile required these; schema 1 can't, so this package test does.
+REQUIRED_FAMILIES = {
+    "demography",
+    "fiscal_income",
+    "income_tax",
+    "social_security",
+    "caseloads",
+}
+# Rows whose Eurostat base equals the pair's denominator without being its fact.
+BASES_EQUAL_TO_DENOMINATOR = {
+    "eurostat_household_current_taxes_paid",
+    "eurostat_household_social_benefits_received",
+    "eurostat_household_social_contributions_paid",
+}
 A1_CLASSES = [
     (0, 1000, "class_under_1"),
     *(
@@ -185,6 +203,120 @@ def _separation_violations(documents):
         for measure, sets in measures.items()
         if "holdout" in sets and len(sets) > 1
     ]
+    return violations
+
+
+def _reads():
+    return _document("reference_inventory.json")["resolved_reads"]
+
+
+def _read_violations(documents, factors, reads):
+    """Disjointness on the listed feed keys, for every selector as committed.
+
+    A digest ties each listed entry to its row's exact selectors, so a selector
+    respelled to dodge the cell check fails here, and the feed audit proves the
+    listed keys. Partition totals count as read, because a holdout on a band
+    set's total shares its information.
+    """
+
+    violations = []
+    listed = {entry["name"]: entry for entry in reads}
+    expected = {
+        row["name"]: generator.selector_digest(row)
+        for document in documents.values()
+        for row in document["target_references"]
+    } | {
+        f"factor:{entry['declaration']['id']}": generator.factor_digest(
+            entry["declaration"]
+        )
+        for entry in factors["factors"]
+    }
+    violations += [("unlisted", name) for name in expected.keys() - listed.keys()]
+    violations += [("unlisted", name) for name in listed.keys() - expected.keys()]
+    violations += [
+        ("digest", name)
+        for name in expected.keys() & listed.keys()
+        if listed[name]["selector_sha256"] != expected[name]
+    ]
+    facts, semantic, bases = {}, {}, {}
+    for entry in reads:
+        reference_set = entry["reference_set"]
+        for key in entry["base_fact_keys"]:
+            bases.setdefault(key, set()).add(reference_set)
+            facts.setdefault(key, set()).add(reference_set)
+        for key in entry["operand_fact_keys"]:
+            facts.setdefault(key, set()).add(reference_set)
+        total = entry.get("partition_total_semantic_key")
+        for key in [*entry["semantic_fact_keys"], *([total] if total else [])]:
+            semantic.setdefault(key, set()).add(reference_set)
+    violations += [("shared_base", key) for key, sets in bases.items() if len(sets) > 1]
+    violations += [
+        (kind, key)
+        for kind, index in (("holdout_fact", facts), ("holdout_semantic", semantic))
+        for key, sets in index.items()
+        if "holdout" in sets and len(sets) > 1
+    ]
+    return violations
+
+
+def _vintage_violations(rows, layers):
+    """Each subnational row must map its vintage to its layer's typed authority."""
+
+    violations = []
+    for row in rows:
+        selector, metadata = row["ledger_selector"], row["metadata"]
+        level = selector["geography_level"]
+        if level == "country":
+            continue
+        vintage, _ = generator.GEOGRAPHY_VINTAGES.get(level, (None, None))
+        if (
+            selector["geography_vintage"] != vintage
+            or metadata.get("geography_vintage") != vintage
+            or metadata.get("geography_vintage_authority") != layers.get(level)
+        ):
+            violations.append(row["name"])
+    return violations
+
+
+def _money_context_violations(package):
+    """One factor context must serve references and money, as #1436 can't check.
+
+    Run entry validates each money node's context on its own, so two contexts
+    could carry one factor id under different declarations. A non-diagnostic
+    factor may live only in reference_profiles.factor_context_resource, and
+    every money.normalize@1 node, in the graph or in entitlement rows, must
+    select that resource.
+    """
+
+    context = json.loads((package / "reference_profiles.json").read_text())[
+        "factor_context_resource"
+    ]
+    stem = context.removesuffix(".json")
+
+    def nodes(value):
+        if isinstance(value, dict):
+            if value.get("kernel") == "money.normalize@1":
+                yield value
+            value = list(value.values())
+        if isinstance(value, list):
+            for item in value:
+                yield from nodes(item)
+
+    violations = []
+    for path in sorted(package.glob("*.json")):
+        document = json.loads(path.read_text())
+        factors = document.get("factors") if isinstance(document, dict) else None
+        if path.name != context and isinstance(factors, list):
+            violations += [
+                ("stray_factor", path.name)
+                for entry in factors
+                if entry["declaration"]["purpose"] != "diagnostic"
+            ]
+        for node in nodes(document):
+            selection = node.get("params", {}).get("factor_context")
+            resource = selection.get("resource") if isinstance(selection, dict) else ""
+            if str(resource).removesuffix(".json") != stem:
+                violations.append(("money_context", path.name))
     return violations
 
 
@@ -386,6 +518,132 @@ def test_separation_mutants_are_caught(mutant, kind):
     assert kind in {violation[0] for violation in _separation_violations(documents)}
 
 
+def test_resolved_reads_bind_every_selector_and_stay_disjoint():
+    assert (
+        _read_violations(_documents(), _document("reference_aging.json"), _reads())
+        == []
+    )
+
+
+@pytest.mark.parametrize(
+    ("mutant", "kind"),
+    [
+        ("respelled_selector", "digest"),
+        ("dropped_entry", "unlisted"),
+        ("holdout_reads_a_band_class", "holdout_fact"),
+        ("holdout_reads_a_factor_operand", "holdout_fact"),
+        ("holdout_on_a_partition_total", "holdout_semantic"),
+        ("calibration_base_in_precal", "shared_base"),
+    ],
+)
+def test_read_mutants_are_caught(mutant, kind):
+    documents, reads = copy.deepcopy(_documents()), copy.deepcopy(_reads())
+    entries = {entry["name"]: entry for entry in reads}
+    holdout = next(entry for entry in reads if entry["reference_set"] == "holdout")
+    band = entries["statbel_a1_standin_taxable_income__10k_20k"]
+    if mutant == "respelled_selector":
+        # A band row's selector with the class named only by its aggregate key:
+        # the cell check sees a new cell, yet the selector still reads the class.
+        donor = next(
+            row
+            for row in documents["calibration"]["target_references"]
+            if row["name"] == band["name"]
+        )
+        selector = copy.deepcopy(donor["ledger_selector"])
+        del selector["dimension_values"]
+        selector["aggregate_fact_key"] = band["base_fact_keys"][2]
+        documents["holdout"]["target_references"][0]["ledger_selector"] = selector
+        assert _separation_violations(documents) == []
+    elif mutant == "dropped_entry":
+        reads.remove(holdout)
+    elif mutant == "holdout_reads_a_band_class":
+        holdout["base_fact_keys"].append(band["base_fact_keys"][0])
+    elif mutant == "holdout_reads_a_factor_operand":
+        factor = next(
+            entry for entry in reads if entry["reference_set"] == "factor_context"
+        )
+        holdout["operand_fact_keys"].append(factor["operand_fact_keys"][0])
+    elif mutant == "holdout_on_a_partition_total":
+        holdout["semantic_fact_keys"].append(band["partition_total_semantic_key"])
+    else:
+        precal = next(entry for entry in reads if entry["reference_set"] == "precal")
+        precal["base_fact_keys"].append(band["base_fact_keys"][0])
+    assert kind in {
+        violation[0]
+        for violation in _read_violations(
+            documents, _document("reference_aging.json"), reads
+        )
+    }
+
+
+@functools.cache
+def _typed_layers():
+    resolved = load_country_spec(_SPEC).resolved_spec
+    assignment = resolved.domain("geography").to_wire()["assignment"]
+    return json.dumps(assignment["layer_vintages"])
+
+
+def test_subnational_rows_map_their_vintage_to_the_typed_layer():
+    layers = json.loads(_typed_layers())
+    for reference_set in SETS:
+        assert _vintage_violations(_rows(reference_set), layers) == []
+    aliases = _typed_geography_vintage_aliases(
+        load_country_spec(_SPEC).resolved_spec, country="be"
+    )
+    bindings = _document("reference_inventory.json")["geography_vintage_bindings"]
+    assert {row["layer"] for row in bindings} == set(generator.GEOGRAPHY_VINTAGES)
+    for binding in bindings:
+        layer = binding["layer"]
+        assert binding["typed_authority"] == layers[layer]
+        assert (binding["chronicle_vintage"], binding["typed_authority"]) == (
+            generator.GEOGRAPHY_VINTAGES[layer]
+        )
+        exact = binding["chronicle_vintage"] in aliases[layer]
+        assert binding["relation"] == ("exact_alias" if exact else "crosswalk")
+
+
+@pytest.mark.parametrize(
+    ("reference_set", "change"),
+    [
+        ("calibration", {"selector": "NUTS_2021"}),
+        ("calibration", {"metadata": "NUTS_2021"}),
+        ("calibration", {"metadata": None}),
+        ("calibration", {"authority": "vintage:be_province_2025"}),
+        ("calibration", {"authority": None}),
+        ("precal", {"selector": "nis_2024"}),
+    ],
+)
+def test_vintage_mutants_refuse(reference_set, change):
+    rows = copy.deepcopy(_rows(reference_set)[:1])
+    selector, metadata = rows[0]["ledger_selector"], rows[0]["metadata"]
+    for field, value in change.items():
+        if field == "selector":
+            selector["geography_vintage"] = value
+        else:
+            key = {
+                "metadata": "geography_vintage",
+                "authority": "geography_vintage_authority",
+            }[field]
+            if value is None:
+                del metadata[key]
+            else:
+                metadata[key] = value
+    assert _vintage_violations(rows, json.loads(_typed_layers())) == [rows[0]["name"]]
+
+
+def test_an_unreviewed_vintage_label_refuses_generation():
+    fact = {
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:synthetic",
+        "geography": {"level": "nuts1", "id": "BE1", "vintage": "NUTS_2027"},
+    }
+    with pytest.raises(ValueError, match="reviewed mapping"):
+        generator._vintage_authority(fact)
+
+
+def test_calibration_keeps_every_family_b1_required():
+    assert REQUIRED_FAMILIES <= {row["family"] for row in _rows()}
+
+
 def test_belgian_selectors_never_name_german_or_french_rows():
     for reference_set in SETS:
         for row in _rows(reference_set):
@@ -577,7 +835,8 @@ def test_a_missing_roster_member_refuses_compilation(name):
         compile_ledger_target_references(facts[1:], [reference], country="be")
 
 
-def test_own_series_rows_declare_that_they_reproduce_the_fpb_projection():
+def test_rows_equal_to_the_fpb_projection_declare_it():
+    flagged = set()
     for reference_set in SETS:
         for row in _rows(reference_set):
             if row.get("value_operation") != "rolled_forward_by_ratio":
@@ -585,7 +844,10 @@ def test_own_series_rows_declare_that_they_reproduce_the_fpb_projection():
             own = row["ledger_selector"].get("aggregate_fact_key") == row[
                 "value_operands"
             ][2].get("aggregate_fact_key")
-            assert ("ageing_target_equals" in row["metadata"]) == own, row["name"]
+            declared = "ageing_target_equals" in row["metadata"]
+            assert declared == (own or row["name"] in BASES_EQUAL_TO_DENOMINATOR)
+            flagged |= {row["name"]} if declared else set()
+    assert len(flagged) == 7
 
 
 def test_band_edges_strictly_increase_and_partition_the_positive_range():
@@ -663,9 +925,16 @@ def test_any_band_list_on_class_edges_partitions_a1(cuts):
         assert spans[0][0] == lower and spans[-1][1] == upper, band
 
 
-@pytest.mark.parametrize("bad", [10_500, 99_999])
-def test_band_edges_off_class_edges_refuse(bad):
-    bands = (("a", 0, bad), ("b", bad, None))
+@pytest.mark.parametrize(
+    "bands",
+    [
+        (("a", 0, 10_500), ("b", 10_500, None)),
+        (("a", 0, 99_999), ("b", 99_999, None)),
+        # The upper is off an edge, yet the next band restarts on one.
+        (("a", 0, 10_500), ("b", 10_000, None)),
+    ],
+)
+def test_band_edges_off_class_edges_refuse(bands):
     with mock.patch.object(generator, "STANDIN_BANDS", bands):
         with pytest.raises(ValueError, match="class edge|partition"):
             generator._band_members(A1_CLASSES)
@@ -720,23 +989,102 @@ def test_each_rolled_period_matches_its_declaration(index, shift, where):
     )
 
 
-def test_no_money_factor_arrives_without_its_shared_context_test():
-    """Tripwire for B4: one factor context must serve references and money.
-
-    #1436 checks each money node's factor context on its own; nothing compares
-    it with reference_profiles.factor_context_resource. When Belgium declares
-    its first profile_input or money_normalization_input factor, add the
-    package test that every money.normalize@1 node selects that resource.
-    """
-
-    purposes = {
-        entry["declaration"]["purpose"]
-        for entry in _document("reference_aging.json")["factors"]
-    }
-    assert purposes == {"diagnostic"}
+def test_every_money_factor_lives_in_the_reference_profile_context():
+    assert _money_context_violations(_SPEC) == []
     assert (
         _document("reference_profiles.json")["factor_context_resource"]
         == "reference_aging.json"
+    )
+
+
+_MONEY_FACTOR = {"factors": [{"declaration": {"purpose": "money_normalization_input"}}]}
+
+
+@pytest.mark.parametrize(
+    ("files", "expected"),
+    [
+        # A money node on the reference context passes, in either resource.
+        (
+            {
+                "reference_aging.json": _MONEY_FACTOR,
+                "transport_graph.json": {
+                    "nodes": [
+                        {
+                            "kernel": "money.normalize@1",
+                            "params": {
+                                "factor_context": {"resource": "reference_aging.json"}
+                            },
+                        }
+                    ]
+                },
+            },
+            [],
+        ),
+        (
+            {
+                "entitlement_graph.json": {
+                    "steps": [
+                        {
+                            "kernel": "money.normalize@1",
+                            "params": {
+                                "factor_context": {"resource": "reference_aging"}
+                            },
+                        }
+                    ]
+                }
+            },
+            [],
+        ),
+        # A second context, with or without a node that selects it.
+        ({"money_factor_context.json": _MONEY_FACTOR}, ["stray_factor"]),
+        (
+            {
+                "money_factor_context.json": _MONEY_FACTOR,
+                "transport_graph.json": {
+                    "nodes": [
+                        {
+                            "kernel": "money.normalize@1",
+                            "params": {
+                                "factor_context": {
+                                    "resource": "money_factor_context.json"
+                                }
+                            },
+                        }
+                    ]
+                },
+            },
+            ["stray_factor", "money_context"],
+        ),
+        (
+            {
+                "entitlement_graph.json": {
+                    "steps": [
+                        {
+                            "kernel": "money.normalize@1",
+                            "params": {"factor_context": {"resource": "other.json"}},
+                        }
+                    ]
+                }
+            },
+            ["money_context"],
+        ),
+        (
+            {"transport_graph.json": {"nodes": [{"kernel": "money.normalize@1"}]}},
+            ["money_context"],
+        ),
+    ],
+)
+def test_money_context_mutants(tmp_path, files, expected):
+    (tmp_path / "reference_profiles.json").write_text(
+        (_SPEC / "reference_profiles.json").read_text()
+    )
+    (tmp_path / "reference_aging.json").write_text(
+        (_SPEC / "reference_aging.json").read_text()
+    )
+    for name, document in files.items():
+        (tmp_path / name).write_text(json.dumps(document))
+    assert sorted(kind for kind, _ in _money_context_violations(tmp_path)) == sorted(
+        expected
     )
 
 
@@ -902,6 +1250,17 @@ def test_jrc_is_deferred_and_august_gaps_are_named():
     assert onem["metadata"]["activation_status"].startswith("requires_ageing_ruling")
 
 
+def test_unemployment_choice_names_the_larger_line():
+    choice = _document("reference_inventory.json")["unemployment_series_choice"]
+    lines = {key: row["eur"] for key, row in choice["lines_2025"].items()}
+    assert choice["lines_2025"]["chosen"]["label"] == "a. Chômage"
+    assert choice["lines_2025"]["alternative"]["label"] == "4. Chômage"
+    assert lines["alternative"] == pytest.approx(
+        lines["chosen"] + lines["company_supplement"] + lines["career_breaks"],
+        abs=2e6,
+    )
+
+
 def test_inventory_feed_identity_is_the_pin():
     assert _document("reference_inventory.json")["feed_identity"] == _document(
         "chronicle_feed.json"
@@ -1054,6 +1413,80 @@ def test_resolved_sets_share_no_fact_and_holdouts_read_none(artifact, by_record_
             for fact in _matched(row["ledger_selector"], by_record_set):
                 bases.setdefault(fact["aggregate_fact_key"], set()).add(reference_set)
     assert all(len(sets) == 1 for sets in bases.values())
+
+
+def test_resolved_reads_list_what_each_selector_resolves_to(artifact, by_record_set):
+    listed = {entry["name"]: entry for entry in _reads()}
+    for reference_set in SETS:
+        for row in _rows(reference_set):
+            entry = listed[row["name"]]
+            selectors = list(_selectors(row))
+            base = _matched(selectors[0], by_record_set)
+            operands = [
+                fact
+                for selector in selectors[1:]
+                for fact in _matched(selector, by_record_set)
+            ]
+            assert entry["base_fact_keys"] == sorted(
+                {fact["aggregate_fact_key"] for fact in base}
+            )
+            assert entry["operand_fact_keys"] == sorted(
+                {fact["aggregate_fact_key"] for fact in operands}
+            )
+            assert entry["semantic_fact_keys"] == sorted(
+                {fact["semantic_fact_key"] for fact in [*base, *operands]}
+            )
+
+
+def test_a_holdout_on_b1s_income_total_collides_with_a1s_bands(artifact):
+    """B.1 and A.1 print one semantic total, which the bands add up to."""
+
+    inventory = generator.Inventory(artifact.facts)
+    total = inventory.one(
+        spec=generator.B1_VALUES,
+        measure="taxable_income_eur",
+        geography="BE",
+        dimensions={"tax_return.rank_group": "all"},
+    )
+    documents = copy.deepcopy(_documents())
+    row = documents["holdout"]["target_references"][0]
+    row["ledger_selector"] = generator._selector(total)
+    del row["value_operands"]
+    named = {name: documents[key] for key, name in SETS.items()}
+    context = _document("reference_aging.json")
+    reads = generator.resolved_reads(
+        inventory, {**named, "reference_aging.json": context}
+    )
+    assert ("holdout_semantic", total["semantic_fact_key"]) in _read_violations(
+        documents, context, reads
+    )
+
+
+def test_projection_flags_match_the_feed(artifact, by_record_set):
+    for reference_set in SETS:
+        for row in _rows(reference_set):
+            if row.get("value_operation") != "rolled_forward_by_ratio":
+                continue
+            selectors = list(_selectors(row))
+            base = _matched(selectors[0], by_record_set)
+            (denominator,) = _matched(selectors[2], by_record_set)
+            equal = len(base) == 1 and generator._value(base[0]) == generator._value(
+                denominator
+            )
+            assert ("ageing_target_equals" in row["metadata"]) == equal, row["name"]
+
+
+def test_a_changed_b1_fact_refuses_generation(artifact):
+    facts = list(artifact.facts)
+    index = next(
+        position
+        for position, fact in enumerate(facts)
+        if fact["layout"].get("record_set_spec_id")
+        == "spf_finances.pit.tax_before_withholding.country.v1"
+    )
+    facts[index] = {**facts[index], "value": 1.0}
+    with pytest.raises(ValueError, match="Reviewed B.1 evidence changed"):
+        generator._b1_checks(generator.Inventory(facts))
 
 
 def test_shared_series_check_accepts_a_mismatched_fpb_row_that_ours_refuses(

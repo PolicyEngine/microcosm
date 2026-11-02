@@ -1,6 +1,6 @@
 {
   "country": "be",
-  "fingerprint": "77981e0d75d9818fc9520f9c13c9ba7d05b3c71a84201f61a50a56bd19b52fd7",
+  "fingerprint": "ca4085c2031c56b15b9a387a1110dd9c6a48c47e63dd02ba9be9bb85eb9c52b5",
   "gate_ids": [
     "calibration_per_family_fit",
     "national_and_nuts1_admin_aggregates",
@@ -32,11 +32,11 @@
     "country_package.json": "d6ec55828ac4fe5b4754b0727c0630f7720ad1aff0624d076c55ba8ed68dcfe1",
     "gates.json": "85c07f713168058a081b40cf94da6a33035108ba7807e04818486032fb2ad580",
     "geography_spine.json": "090b83a4fa511e691b8f1486bc4188e4170cf9d4a1239e7418d33d5020ceca50",
-    "holdout_references.json": "bcdbf35275c97efcc62f46bb8d17b33d98b1a32684df3a03dcf58c4bce2fab27",
-    "precal_references.json": "4cc099d06a82b12ecdf1431e7b76bab67c9195118174bc25ce9fd2bca8f90a93",
+    "holdout_references.json": "c9d32204b4c6364a95fcab066cbbc8b1b99dd49ef608e72c99009f01c7d1c942",
+    "precal_references.json": "acd7904779b34bca841686fa6000c5cb57db9a031638e021f59ba348f771de63",
     "reference_aging.json": "e1eb7a4e5abc6aad77b822bf91b09ad1de0a22d349ee39b63b8bb787bd036404",
     "reference_intervals.json": "5c13dc32257d9d3c9b5cbbd14b79c229bbeb7037671778fdb8b09042693bb562",
-    "reference_inventory.json": "0e4f671edac57d49e1103fb153bd9f9974abf8e592e6f506c9a4498afe035104",
+    "reference_inventory.json": "44862d408725296ba7e8db16d4976a803aa8c7aafb98880fff70fe81a33b19b2",
     "reference_profiles.json": "1f7eb7f7a5bde2484b423e12835c9ef5eb8351599c29d836e35a910897ead52a",
     "release_contract.json": "916d8cba095d05ee5bc0c3d1b8e165eb1cf22867b91f0adac01533448b394730",
     "source_stages.json": "3d0a362345894dc6ea230ebed7fec7ff99a972879dc60c06001635c1b4a1ec47",
@@ -46,7 +46,7 @@
     "spec/sources.yaml": "24ea9b8c9aac32175d1c75156af5549a05bb3f155fbb23968235f3ead2cbefda",
     "spec/spine.yaml": "981be4881954d7696fbabf1bc989f619577b6e5600262f1a9c20915461808d41",
     "spec/vintages.yaml": "1a10d5aedd24cdb2fc9544c7a0d444df0b06d4b089dcb769bf0a7de9218df696",
-    "target_references.json": "86eaa410b2d138fed08d31870b497f367f2062da1dae2af577eebc9f81887668"
+    "target_references.json": "38178a5015b520061542c471cec70ac34702deccb29b586f6a59045656789465"
   },
   "resources": [
     "spec/bundle.yaml",
