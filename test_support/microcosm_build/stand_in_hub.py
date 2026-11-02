@@ -15,9 +15,23 @@ requests that ``huggingface_hub`` 1.33.0 (the release
   a form with ``paths`` and ``expand``;
 - ``file_exists``: ``HEAD /datasets/<repository>/resolve/<revision>/<path>``;
 - ``hf_hub_download``: the same ``HEAD``, then ``GET`` on that address;
-- ``create_commit``: ``POST /api/datasets/<repository>/preupload/<revision>``,
-  then ``POST /api/datasets/<repository>/commit/<revision>`` with one JSON
-  object per line.
+- ``create_commit``: ``POST /api/datasets/<repository>/preupload/<revision>``;
+  for each file the preupload answer sends through LFS, ``POST
+  /datasets/<repository>.git/info/lfs/objects/batch``, a ``PUT`` of its bytes
+  to the address the batch answer gives, and ``POST
+  /datasets/<repository>.git/info/lfs/objects/verify``; then ``POST
+  /api/datasets/<repository>/commit/<revision>`` with one JSON object per
+  line of text, where an LFS file is a reference to its stored object.
+
+A real Hub stores files over 10 MB, and files that match its default
+``.gitattributes`` (``*.h5`` among them), through LFS or Xet, never inside
+the commit request. The tests turn Xet off (``HF_HUB_DISABLE_XET=1``), so
+``huggingface_hub`` takes the LFS path with its ``basic`` transfer, which the
+server offers as a real Hub does; machines with ``hf_xet`` installed upload
+through Xet instead, which the server does not model. Every other file
+travels inside the commit request (the ``regular`` upload mode). Downloads are
+answered directly, without the redirect a real Hub sends for an LFS file,
+and listings do not describe LFS pointers.
 
 Repositories follow the emitter's own in-memory Hub
 (``tests/support/fake_hugging_face.py`` in microcosm-emitter): each starts with
@@ -25,17 +39,19 @@ one commit; a commit whose ``parentCommit`` is no longer the head gets HTTP
 412; a missing repository, revision or file gets HTTP 404 with the error code
 ``huggingface_hub`` turns into ``RepositoryNotFoundError``,
 ``RevisionNotFoundError`` or ``RemoteEntryNotFoundError``; and every commit
-keeps the exact bytes it added. The preupload answer gives every file the
-``regular`` upload mode, so file contents travel inside the commit request
-and nothing is uploaded through LFS or Xet; a commit that names an LFS file
-is refused with HTTP 400.
+keeps the exact bytes it added. Each commit request is recorded with the
+``parentCommit`` it sent (``commit_attempts``).
 
 A request without the configured token gets HTTP 401. A test can refuse
-writes, as the Hub does for a read-only token (``refuse_writes``), and hold
-one kind of request without answering until it calls ``release``
-(``stall``). The server also refuses every proxy request with HTTP 403 and
+writes, as the Hub does for a read-only token (``refuse_writes``), let
+another writer's commit land just before the next commit request
+(``land_before_next_commit``), and hold one kind of request without
+answering until it calls ``release`` (``stall``). The server records every
+request it answers (``requests``) and every one it has no route for
+(``unmatched_requests``). It refuses every proxy request with HTTP 403 and
 records its target (``proxied_requests``): a test that sets the proxy
-variables to this server's address sees any request meant for another host.
+variables to this server's address sees a request meant for another host
+from any client that honours those variables.
 """
 
 from __future__ import annotations
@@ -44,72 +60,109 @@ import base64
 import hashlib
 import json
 import re
+import secrets
 import threading
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from fnmatch import fnmatch
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from typing import Any
+from pathlib import PurePosixPath
+from typing import Any, Literal
 from urllib.parse import parse_qs, unquote, urlsplit
 
-__all__ = ["REQUEST_KINDS", "StandInCommit", "StandInHub"]
+__all__ = [
+    "REQUEST_KINDS",
+    "CommitAttempt",
+    "RecordedRequest",
+    "StandInCommit",
+    "StandInHub",
+]
 
-#: The kinds of request the server answers, as ``requests`` records them.
-REQUEST_KINDS = (
-    "whoami",
-    "repo_info",
-    "tree",
-    "paths_info",
-    "resolve",
-    "preupload",
-    "commit",
-)
 #: How long a stalled request waits for ``release`` before it is answered
 #: anyway, so a test that never releases it cannot hold the server forever.
 STALL_LIMIT_SECONDS = 120.0
-_REPOSITORY = r"(?P<repository>[^/]+/[^/]+)"
+#: The size above which the Hub stores a file through LFS (10 MB).
+LFS_SIZE_LIMIT_BYTES = 10_000_000
+#: Default dataset ``.gitattributes`` patterns that this server stores
+#: through LFS whatever their size.
+LFS_PATTERNS = ("*.h5", "*.hdf5", "*.parquet", "*.arrow")
+_LFS_CONTENT_TYPE = "application/vnd.git-lfs+json"
+_REPOSITORY = r"(?P<repository>[^/]+/[^/]+?)"
 _REVISION = r"(?P<revision>[^/]+)"
-_ROUTES: tuple[tuple[str, str, re.Pattern[str]], ...] = (
-    ("GET", "whoami", re.compile(r"^/api/whoami-v2$")),
-    (
+_TRUE_VALUES = frozenset({"1", "true"})
+
+type UploadMode = Literal["regular", "lfs"]
+
+
+@dataclass(frozen=True)
+class _Route:
+    method: str
+    kind: str
+    pattern: re.Pattern[str]
+    #: Whether the request must carry the configured token. The LFS upload
+    #: address carries a one-time key instead, as a signed address would.
+    authenticated: bool = True
+
+
+_ROUTES: tuple[_Route, ...] = (
+    _Route("GET", "whoami", re.compile(r"^/api/whoami-v2$")),
+    _Route(
         "GET",
         "repo_info",
         re.compile(rf"^/api/datasets/{_REPOSITORY}/revision/{_REVISION}$"),
     ),
-    (
+    _Route(
         "GET",
         "tree",
         re.compile(
             rf"^/api/datasets/{_REPOSITORY}/tree/{_REVISION}(?:/(?P<path>.+))?$"
         ),
     ),
-    (
+    _Route(
         "POST",
         "paths_info",
         re.compile(rf"^/api/datasets/{_REPOSITORY}/paths-info/{_REVISION}$"),
     ),
-    (
+    _Route(
         "POST",
         "preupload",
         re.compile(rf"^/api/datasets/{_REPOSITORY}/preupload/{_REVISION}$"),
     ),
-    (
+    _Route(
+        "POST",
+        "lfs_batch",
+        re.compile(rf"^/datasets/{_REPOSITORY}\.git/info/lfs/objects/batch$"),
+    ),
+    _Route(
+        "PUT",
+        "lfs_upload",
+        re.compile(r"^/lfs-uploads/(?P<oid>[0-9a-f]{64})$"),
+        authenticated=False,
+    ),
+    _Route(
+        "POST",
+        "lfs_verify",
+        re.compile(rf"^/datasets/{_REPOSITORY}\.git/info/lfs/objects/verify$"),
+    ),
+    _Route(
         "POST",
         "commit",
         re.compile(rf"^/api/datasets/{_REPOSITORY}/commit/{_REVISION}$"),
     ),
-    (
+    _Route(
         "HEAD",
         "resolve",
         re.compile(rf"^/datasets/{_REPOSITORY}/resolve/{_REVISION}/(?P<path>.+)$"),
     ),
-    (
+    _Route(
         "GET",
         "resolve",
         re.compile(rf"^/datasets/{_REPOSITORY}/resolve/{_REVISION}/(?P<path>.+)$"),
     ),
 )
-_TRUE_VALUES = frozenset({"1", "true"})
+#: The kinds of request the server answers, as ``requests`` records them.
+REQUEST_KINDS = tuple(dict.fromkeys(route.kind for route in _ROUTES))
 
 
 def git_blob_id(content: bytes) -> str:
@@ -122,25 +175,81 @@ def _hub_date(moment: datetime) -> str:
     return moment.strftime("%Y-%m-%dT%H:%M:%S.") + f"{moment.microsecond // 1000:03d}Z"
 
 
+def _upload_mode(path: str, size: int) -> UploadMode:
+    name = PurePosixPath(path).name
+    if size > LFS_SIZE_LIMIT_BYTES or any(fnmatch(name, item) for item in LFS_PATTERNS):
+        return "lfs"
+    return "regular"
+
+
 @dataclass(frozen=True)
 class StandInCommit:
-    """One commit: the repository's files after it, and what it wrote."""
+    """One commit: the repository's files after it, and what it wrote.
+
+    ``uploaded_as`` says how each added file travelled: inside the commit
+    request (``regular``) or as a reference to a stored LFS object (``lfs``).
+    """
 
     oid: str
     parent: str | None
     title: str
     files: Mapping[str, bytes]
     added: Mapping[str, bytes]
+    uploaded_as: Mapping[str, UploadMode]
     date: datetime
+
+
+@dataclass(frozen=True)
+class CommitAttempt:
+    """One commit request: the ``parentCommit`` it sent, the head then, and
+    the HTTP status it was answered with."""
+
+    parent_commit: str | None
+    head: str
+    status: int
+
+
+@dataclass(frozen=True)
+class RecordedRequest:
+    method: str
+    kind: str
+    path: str
+    status: int
 
 
 @dataclass
 class _Repository:
     commits: list[StandInCommit] = field(default_factory=list)
+    attempts: list[CommitAttempt] = field(default_factory=list)
+    #: Another writer's files, committed when the next commit request comes.
+    land_before_next_commit: dict[str, bytes] | None = None
 
     @property
     def head(self) -> StandInCommit:
         return self.commits[-1]
+
+
+@dataclass(frozen=True)
+class HubRequest:
+    """One request, as a route's handler sees it."""
+
+    method: str
+    path: str
+    query: Mapping[str, list[str]]
+    headers: Mapping[str, str]
+    body: bytes
+    match: re.Match[str]
+
+    @property
+    def repository(self) -> str:
+        return self.match["repository"]
+
+    @property
+    def revision(self) -> str:
+        return unquote(self.match["revision"])
+
+    def json(self) -> Any:
+        return json.loads(self.body)
 
 
 class HubError(Exception):
@@ -152,7 +261,6 @@ class HubError(Exception):
         super().__init__(message)
         self.status = status
         self.message = message
-        self.error_code = error_code
         self.headers: dict[str, str] = {"X-Error-Message": message}
         if error_code is not None:
             self.headers["X-Error-Code"] = error_code
@@ -165,12 +273,10 @@ class _Answer:
     headers: Mapping[str, str] = field(default_factory=dict)
 
 
-def _json_answer(payload: Any, status: int = 200) -> _Answer:
-    return _Answer(
-        status,
-        json.dumps(payload).encode(),
-        {"Content-Type": "application/json"},
-    )
+def _json_answer(
+    payload: Any, *, status: int = 200, content_type: str = "application/json"
+) -> _Answer:
+    return _Answer(status, json.dumps(payload).encode(), {"Content-Type": content_type})
 
 
 class StandInHub:
@@ -190,8 +296,24 @@ class StandInHub:
         self._stalled_count: dict[str, int] = {}
         self._release = threading.Event()
         self._stall_changed = threading.Condition(self._lock)
-        self._requests: list[tuple[str, str]] = []
+        self._requests: list[RecordedRequest] = []
+        self._unmatched: list[str] = []
         self._proxied: list[str] = []
+        #: Stored LFS objects by SHA-256, and the key each upload address takes.
+        self._lfs_objects: dict[str, bytes] = {}
+        self._upload_keys: dict[str, str] = {}
+        self._handlers: dict[str, Callable[[HubRequest], _Answer]] = {
+            "whoami": self._whoami,
+            "repo_info": self._repo_info,
+            "tree": self._tree,
+            "paths_info": self._paths_info,
+            "preupload": self._preupload,
+            "lfs_batch": self._lfs_batch,
+            "lfs_upload": self._lfs_upload,
+            "lfs_verify": self._lfs_verify,
+            "commit": self._commit,
+            "resolve": self._resolve,
+        }
         self._server = ThreadingHTTPServer(("127.0.0.1", 0), _handler_for(self))
         self._server.daemon_threads = True
         self._thread = threading.Thread(
@@ -221,7 +343,7 @@ class StandInHub:
         with self._lock:
             self._repositories[repository] = _Repository()
             return self._append_commit(
-                repository, files={}, added={}, title="Initial commit", parent=None
+                repository, added={}, uploaded_as={}, title="Initial commit"
             ).oid
 
     def head(self, repository: str) -> str:
@@ -233,11 +355,25 @@ class StandInHub:
         with self._lock:
             return list(self._repositories[repository].commits[1:])
 
+    def commit_attempts(self, repository: str) -> list[CommitAttempt]:
+        """Each commit request to ``repository`` checked against its head:
+        accepted (200), or refused for naming an older head (412)."""
+        with self._lock:
+            return list(self._repositories[repository].attempts)
+
+    def land_before_next_commit(
+        self, repository: str, files: Mapping[str, bytes]
+    ) -> None:
+        """Commit ``files`` as another writer just before the next commit
+        request is checked, so a request pinned to the old head gets 412."""
+        with self._lock:
+            self._repositories[repository].land_before_next_commit = dict(files)
+
     def refuse_writes(self) -> None:
         """Answer as the Hub does for a read-only token.
 
-        ``whoami`` reports the token's role as ``read``, and the preupload and
-        commit requests get HTTP 403. Reads still succeed.
+        ``whoami`` reports the token's role as ``read``, and the preupload,
+        LFS batch and commit requests get HTTP 403. Reads still succeed.
         """
         with self._lock:
             self._writes_refused = True
@@ -264,16 +400,34 @@ class StandInHub:
             self._release.set()
 
     @property
-    def requests(self) -> list[tuple[str, str]]:
-        """Each request answered or held, as ``(method, kind)``, in order."""
+    def requests(self) -> list[RecordedRequest]:
+        """Each request answered, in order of its answer."""
         with self._lock:
             return list(self._requests)
+
+    def statuses(self, kind: str) -> list[int]:
+        """The HTTP status of each answered request of ``kind``, in order."""
+        if kind not in REQUEST_KINDS:
+            raise ValueError(f"unknown request kind: {kind}")
+        return [request.status for request in self.requests if request.kind == kind]
+
+    @property
+    def unmatched_requests(self) -> list[str]:
+        """``METHOD path`` of each request the server has no route for."""
+        with self._lock:
+            return list(self._unmatched)
 
     @property
     def proxied_requests(self) -> list[str]:
         """The target of each request sent to this server as a proxy."""
         with self._lock:
             return list(self._proxied)
+
+    @property
+    def lfs_objects(self) -> dict[str, bytes]:
+        """The stored LFS objects, by SHA-256."""
+        with self._lock:
+            return dict(self._lfs_objects)
 
     # Request handling ------------------------------------------------------
 
@@ -292,57 +446,56 @@ class StandInHub:
             self._stalled_count[kind] -= 1
 
     def answer(
-        self,
-        method: str,
-        target: str,
-        headers: Mapping[str, str],
-        body: bytes,
+        self, method: str, target: str, headers: Mapping[str, str], body: bytes
     ) -> _Answer:
         address = urlsplit(target)
-        path = address.path
-        for route_method, kind, pattern in _ROUTES:
-            found = pattern.fullmatch(path)
-            if route_method != method or found is None:
+        for route in _ROUTES:
+            found = route.pattern.fullmatch(address.path)
+            if route.method != method or found is None:
                 continue
-            with self._lock:
-                self._requests.append((method, kind))
-            self._hold_if_stalled(kind)
+            self._hold_if_stalled(route.kind)
+            request = HubRequest(
+                method=method,
+                path=address.path,
+                query=parse_qs(address.query),
+                headers=headers,
+                body=body,
+                match=found,
+            )
             try:
-                self._authenticate(headers)
-                handler = self._handlers()[kind]
-                return handler(
-                    method=method,
-                    match=found,
-                    query=parse_qs(address.query),
-                    headers=headers,
-                    body=body,
-                )
+                if route.authenticated:
+                    self._authenticate(headers)
+                answer = self._handlers[route.kind](request)
             except HubError as error:
-                return _Answer(
+                answer = _Answer(
                     error.status,
                     json.dumps({"error": error.message}).encode(),
                     {"Content-Type": "application/json", **error.headers},
                 )
+            with self._lock:
+                self._requests.append(
+                    RecordedRequest(method, route.kind, address.path, answer.status)
+                )
+            return answer
+        with self._lock:
+            self._unmatched.append(f"{method} {address.path}")
         return _Answer(
             404,
-            json.dumps({"error": f"the stand-in Hub has no {method} {path}"}).encode(),
+            json.dumps(
+                {"error": f"the stand-in Hub has no {method} {address.path}"}
+            ).encode(),
             {"Content-Type": "application/json"},
         )
-
-    def _handlers(self) -> dict[str, Callable[..., _Answer]]:
-        return {
-            "whoami": self._whoami,
-            "repo_info": self._repo_info,
-            "tree": self._tree,
-            "paths_info": self._paths_info,
-            "resolve": self._resolve,
-            "preupload": self._preupload,
-            "commit": self._commit,
-        }
 
     def _authenticate(self, headers: Mapping[str, str]) -> None:
         if headers.get("authorization") != f"Bearer {self.token}":
             raise HubError(401, "Invalid credentials in Authorization header")
+
+    def _refuse_if_read_only(self) -> None:
+        with self._lock:
+            refused = self._writes_refused
+        if refused:
+            raise HubError(403, "You don't have the rights to write to this repository")
 
     def _repository(self, repository: str) -> _Repository:
         found = self._repositories.get(repository)
@@ -363,21 +516,24 @@ class StandInHub:
         self,
         repository: str,
         *,
-        files: Mapping[str, bytes],
         added: Mapping[str, bytes],
+        uploaded_as: Mapping[str, UploadMode],
         title: str,
-        parent: str | None,
     ) -> StandInCommit:
+        """A new head with ``added`` written over the current head's files."""
+        commits = self._repositories[repository].commits
+        head = commits[-1] if commits else None
         self._sequence += 1
         commit = StandInCommit(
             oid=hashlib.sha1(f"{repository}:{self._sequence}".encode()).hexdigest(),
-            parent=parent,
+            parent=None if head is None else head.oid,
             title=title,
-            files=dict(files),
+            files={**({} if head is None else head.files), **added},
             added=dict(added),
+            uploaded_as=dict(uploaded_as),
             date=datetime.now(UTC),
         )
-        self._repositories[repository].commits.append(commit)
+        commits.append(commit)
         return commit
 
     def _last_commit(self, repository: str, path: str) -> StandInCommit | None:
@@ -425,7 +581,7 @@ class StandInHub:
                 }
         return entry
 
-    def _whoami(self, **_: Any) -> _Answer:
+    def _whoami(self, request: HubRequest) -> _Answer:
         with self._lock:
             role = "read" if self._writes_refused else "write"
         return _json_answer(
@@ -439,33 +595,28 @@ class StandInHub:
             }
         )
 
-    def _repo_info(self, *, match: re.Match[str], **_: Any) -> _Answer:
-        repository = match["repository"]
+    def _repo_info(self, request: HubRequest) -> _Answer:
         with self._lock:
-            commit = self._commit_at(repository, unquote(match["revision"]))
+            commit = self._commit_at(request.repository, request.revision)
         return _json_answer(
             {
-                "id": repository,
+                "id": request.repository,
                 "sha": commit.oid,
                 "private": True,
                 "lastModified": _hub_date(commit.date),
             }
         )
 
-    def _tree(
-        self, *, match: re.Match[str], query: Mapping[str, list[str]], **_: Any
-    ) -> _Answer:
-        repository = match["repository"]
-        folder = unquote(match["path"] or "").strip("/")
-        recursive = query.get("recursive", ["false"])[0].lower() in _TRUE_VALUES
-        expand = query.get("expand", ["false"])[0].lower() in _TRUE_VALUES
+    def _tree(self, request: HubRequest) -> _Answer:
+        repository = request.repository
+        folder = unquote(request.match["path"] or "").strip("/")
+        recursive = request.query.get("recursive", ["false"])[0].lower() in _TRUE_VALUES
+        expand = request.query.get("expand", ["false"])[0].lower() in _TRUE_VALUES
         with self._lock:
-            commit = self._commit_at(repository, unquote(match["revision"]))
+            commit = self._commit_at(repository, request.revision)
             base = f"{folder}/" if folder else ""
-            if folder and folder in commit.files:
-                raise HubError(404, "Entry not found", error_code="EntryNotFound")
             below = sorted(name for name in commit.files if name.startswith(base))
-            if folder and not below:
+            if folder and (folder in commit.files or not below):
                 raise HubError(404, "Entry not found", error_code="EntryNotFound")
             paths: list[str] = []
             for name in below:
@@ -480,26 +631,21 @@ class StandInHub:
             ]
         return _json_answer([entry for entry in entries if entry is not None])
 
-    def _paths_info(
-        self, *, match: re.Match[str], headers: Mapping[str, str], body: bytes, **_: Any
-    ) -> _Answer:
-        repository = match["repository"]
-        fields = parse_qs(body.decode(), keep_blank_values=True)
-        paths = fields.get("paths", [])
+    def _paths_info(self, request: HubRequest) -> _Answer:
+        fields = parse_qs(request.body.decode(), keep_blank_values=True)
         expand = fields.get("expand", ["false"])[0].lower() in _TRUE_VALUES
         with self._lock:
-            commit = self._commit_at(repository, unquote(match["revision"]))
+            commit = self._commit_at(request.repository, request.revision)
             entries = [
-                self._entry(repository, commit, path.strip("/"), expand=expand)
-                for path in paths
+                self._entry(request.repository, commit, path.strip("/"), expand=expand)
+                for path in fields.get("paths", [])
             ]
         return _json_answer([entry for entry in entries if entry is not None])
 
-    def _resolve(self, *, method: str, match: re.Match[str], **_: Any) -> _Answer:
-        repository = match["repository"]
-        path = unquote(match["path"])
+    def _resolve(self, request: HubRequest) -> _Answer:
+        path = unquote(request.match["path"])
         with self._lock:
-            commit = self._commit_at(repository, unquote(match["revision"]))
+            commit = self._commit_at(request.repository, request.revision)
             content = commit.files.get(path)
         if content is None:
             error = HubError(404, "Entry not found", error_code="EntryNotFound")
@@ -507,7 +653,7 @@ class StandInHub:
             raise error
         return _Answer(
             200,
-            content if method == "GET" else b"",
+            content if request.method == "GET" else b"",
             {
                 "Content-Type": "application/octet-stream",
                 "Content-Length": str(len(content)),
@@ -516,72 +662,144 @@ class StandInHub:
             },
         )
 
-    def _refuse_if_read_only(self) -> None:
-        with self._lock:
-            refused = self._writes_refused
-        if refused:
-            raise HubError(403, "You don't have the rights to write to this repository")
-
-    def _preupload(self, *, match: re.Match[str], body: bytes, **_: Any) -> _Answer:
+    def _preupload(self, request: HubRequest) -> _Answer:
         self._refuse_if_read_only()
-        repository = match["repository"]
         with self._lock:
-            commit = self._commit_at(repository, unquote(match["revision"]))
-        files = json.loads(body)["files"]
+            commit = self._commit_at(request.repository, request.revision)
         return _json_answer(
             {
                 "files": [
                     {
                         "path": item["path"],
-                        "uploadMode": "regular",
+                        "uploadMode": _upload_mode(item["path"], int(item["size"])),
                         "shouldIgnore": False,
                     }
-                    for item in files
+                    for item in request.json()["files"]
                 ],
                 "commitOid": commit.oid,
             }
         )
 
-    def _commit(self, *, match: re.Match[str], body: bytes, **_: Any) -> _Answer:
+    def _lfs_batch(self, request: HubRequest) -> _Answer:
+        """Offer the ``basic`` transfer for each object not yet stored."""
         self._refuse_if_read_only()
-        repository = match["repository"]
-        revision = unquote(match["revision"])
-        if revision != "main":
-            raise HubError(400, "the stand-in Hub commits only to main")
+        payload = request.json()
+        if payload.get("operation") != "upload":
+            raise HubError(400, "the stand-in Hub accepts only LFS uploads")
+        if "basic" not in (payload.get("transfers") or ["basic"]):
+            raise HubError(400, "the stand-in Hub offers only the basic transfer")
+        with self._lock:
+            self._repository(request.repository)
+            objects = []
+            for item in payload["objects"]:
+                oid, size = str(item["oid"]), int(item["size"])
+                answer: dict[str, Any] = {"oid": oid, "size": size}
+                stored = self._lfs_objects.get(oid)
+                if stored is None or len(stored) != size:
+                    key = self._upload_keys.setdefault(oid, secrets.token_hex(16))
+                    answer["authenticated"] = True
+                    answer["actions"] = {
+                        "upload": {"href": f"{self.url}/lfs-uploads/{oid}?key={key}"},
+                        "verify": {
+                            "href": f"{self.url}/datasets/{request.repository}.git"
+                            "/info/lfs/objects/verify"
+                        },
+                    }
+                objects.append(answer)
+        return _json_answer(
+            {"transfer": "basic", "objects": objects, "hash_algo": "sha256"},
+            content_type=_LFS_CONTENT_TYPE,
+        )
+
+    def _lfs_upload(self, request: HubRequest) -> _Answer:
+        """Store an object's bytes, sent to the address the batch answer gave."""
+        oid = request.match["oid"]
+        with self._lock:
+            expected_key = self._upload_keys.get(oid)
+        if expected_key is None or request.query.get("key") != [expected_key]:
+            raise HubError(403, "the upload address is not valid")
+        if hashlib.sha256(request.body).hexdigest() != oid:
+            raise HubError(400, "the uploaded bytes do not match the object ID")
+        with self._lock:
+            self._lfs_objects[oid] = request.body
+        return _Answer(200)
+
+    def _lfs_verify(self, request: HubRequest) -> _Answer:
+        payload = request.json()
+        with self._lock:
+            stored = self._lfs_objects.get(str(payload.get("oid")))
+        if stored is None or len(stored) != payload.get("size"):
+            raise HubError(404, "the LFS object is not stored")
+        return _json_answer({"success": True}, content_type=_LFS_CONTENT_TYPE)
+
+    def _commit_contents(
+        self, body: bytes
+    ) -> tuple[Mapping[str, Any], dict[str, bytes], dict[str, UploadMode]]:
+        """The commit's header, and each added file with how it travelled."""
         header: Mapping[str, Any] | None = None
         added: dict[str, bytes] = {}
-        for line in body.splitlines():
-            if not line.strip():
+        uploaded_as: dict[str, UploadMode] = {}
+        for text in body.splitlines():
+            if not text.strip():
                 continue
-            item = json.loads(line)
+            item = json.loads(text)
             key, value = item.get("key"), item.get("value") or {}
             if key == "header":
                 header = value
             elif key == "file" and value.get("encoding") == "base64":
                 added[value["path"]] = base64.b64decode(value["content"])
+                uploaded_as[value["path"]] = "regular"
+            elif key == "lfsFile" and value.get("algo") == "sha256":
+                with self._lock:
+                    stored = self._lfs_objects.get(str(value.get("oid")))
+                if stored is None or len(stored) != value.get("size"):
+                    raise HubError(
+                        400, f"no stored LFS object for {value.get('path')!r}"
+                    )
+                added[value["path"]] = stored
+                uploaded_as[value["path"]] = "lfs"
             else:
                 raise HubError(
-                    400, f"the stand-in Hub accepts only regular files, not {key!r}"
+                    400, f"the stand-in Hub accepts only file additions, not {key!r}"
                 )
         if header is None or not header.get("summary"):
             raise HubError(400, "the commit has no summary")
+        return header, added, uploaded_as
+
+    def _commit(self, request: HubRequest) -> _Answer:
+        self._refuse_if_read_only()
+        if request.revision != "main":
+            raise HubError(400, "the stand-in Hub commits only to main")
+        header, added, uploaded_as = self._commit_contents(request.body)
+        parent = header.get("parentCommit")
         with self._lock:
-            head = self._repository(repository).head
-            parent = header.get("parentCommit")
-            if parent is not None and parent != head.oid:
+            repository = self._repository(request.repository)
+            if repository.land_before_next_commit is not None:
+                other_files = repository.land_before_next_commit
+                repository.land_before_next_commit = None
+                self._append_commit(
+                    request.repository,
+                    added=other_files,
+                    uploaded_as=dict.fromkeys(other_files, "regular"),
+                    title="Another writer's commit",
+                )
+            head = repository.head.oid
+            if parent is not None and parent != head:
+                repository.attempts.append(CommitAttempt(parent, head, 412))
                 raise HubError(412, "A commit has happened since. Please refresh.")
             commit = self._append_commit(
-                repository,
-                files={**head.files, **added},
+                request.repository,
                 added=added,
+                uploaded_as=uploaded_as,
                 title=str(header["summary"]).split("\n", 1)[0],
-                parent=head.oid,
             )
+            repository.attempts.append(CommitAttempt(parent, head, 200))
         return _json_answer(
             {
                 "success": True,
                 "commitOid": commit.oid,
-                "commitUrl": f"{self.url}/datasets/{repository}/commit/{commit.oid}",
+                "commitUrl": f"{self.url}/datasets/{request.repository}/commit/"
+                f"{commit.oid}",
                 "hookOutput": "",
                 "pullRequestUrl": None,
             }
@@ -593,6 +811,8 @@ def _handler_for(hub: StandInHub) -> type[BaseHTTPRequestHandler]:
         """Pass each request to ``hub``; refuse proxy requests."""
 
         def _body(self) -> bytes:
+            # huggingface_hub 1.33.0 sends every body, the LFS upload's
+            # included, with a Content-Length.
             length = int(self.headers.get("Content-Length") or 0)
             return self.rfile.read(length) if length else b""
 
@@ -625,7 +845,7 @@ def _handler_for(hub: StandInHub) -> type[BaseHTTPRequestHandler]:
         def do_CONNECT(self) -> None:  # noqa: N802 (http.server's naming)
             self._refuse_proxy()
 
-        do_GET = do_HEAD = do_POST = _handle  # noqa: N815
+        do_GET = do_HEAD = do_POST = do_PUT = do_DELETE = do_PATCH = _handle  # noqa: N815
 
         def log_message(self, message_format: str, *args: Any) -> None:
             """Keep the test output free of one line per request."""

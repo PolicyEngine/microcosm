@@ -1,6 +1,7 @@
 # The newest microcosm-emitter release the installed-emitter CI job tests,
 # besides the minimum release builds accept (MINIMUM_EMITTER_VERSION in
-# microcosm.build.telemetry_emitter). tools/run_installed_emitter_tests.sh
-# installs exactly this release. Raise it in a pull request when the emitter
-# publishes a release.
-microcosm-emitter==0.11.10
+# microcosm.build.telemetry_emitter). tools/installed_emitter_releases.py reads
+# it, and tools/run_installed_emitter_tests.sh installs exactly this release and
+# warns when the package index has a newer one. Raise it in a pull request when
+# the emitter publishes a release.
+microcosm-emitter==0.11.11

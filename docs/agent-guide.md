@@ -118,20 +118,25 @@ HTTP-delivery tests belong in microcosm-emitter; do not copy them into
 Microcosm.
 
 The `installed-emitter` job is the one place that starts the real emitter.
-`tools/run_installed_emitter_tests.sh` installs `microcosm-emitter` at
-`MINIMUM_EMITTER_VERSION` and at the newest release pinned in
-`tools/installed-emitter/requirements.txt`, each into its own uv tool
-directory, and runs `installed_emitter/shared/` once for each. Those tests start
-the installed command with `start_bundle_emitter()` and send its Hugging Face
-Hub requests through `HF_ENDPOINT` to a loopback stand-in server
+`tools/run_installed_emitter_tests.sh` installs `microcosm-emitter` at each
+release `tools/installed_emitter_releases.py` names (`MINIMUM_EMITTER_VERSION`,
+then the newest release pinned in `tools/installed-emitter/requirements.txt`),
+each into its own uv tool directory, and runs `installed_emitter/shared/` once
+for each; it tests every release even when an earlier one fails. Those tests
+start the installed command with `start_bundle_emitter()`, as the UK re-stage
+command does (the Hugging Face module only), and send its Hugging Face Hub
+requests through `HF_ENDPOINT` to a loopback stand-in server
 (`test_support/microcosm_build/stand_in_hub.py`), so the job needs no secret.
-They check what builds rely on in the hand-over (one commit per bundle,
-`copied_files`, `already_staged`, the recorded error codes and the version
-check), not the emitter's own queue or delivery. Raise the pinned release in a
-pull request when the emitter publishes one.
-`tools/installed-emitter/constraints.txt` pins the `huggingface_hub` release
-whose requests the stand-in answers; change it only together with the
-stand-in. Run the job's tests locally with
+With Xet turned off, the stand-in takes the dataset through the LFS upload a
+real Hub requires for it; machines with `hf_xet` upload through Xet, which it
+does not model. A request it has no route for fails the test. The tests check
+what builds rely on in the hand-over (one commit per bundle on the head it
+names, `copied_files`, `already_staged`, the recorded error codes and the
+version check), not the emitter's own queue or delivery. The runner warns when
+the package index has a newer release than the pin; raise the pin in a pull
+request then. `tools/installed-emitter/constraints.txt` pins the
+`huggingface_hub` release whose requests the stand-in answers; change it only
+together with the stand-in. Run the job's tests locally with
 `bash tools/run_installed_emitter_tests.sh <directory for the tool installs>`.
 
 The UK full-build caller sets `close_service_on_finish=False`: reporting an outcome
