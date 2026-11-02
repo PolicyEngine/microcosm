@@ -1033,7 +1033,11 @@ def band_support(
     """Distinct source households and source-household Kish ESS per band.
 
     Each included record contributes ``w`` to its band's count and ``w * z``
-    to its band's amount, where ``z`` is its floored amount in cents. The
+    to its band's amount, where ``w`` is its weight as the diagnostics read
+    it (the frame's weights on the table's entity, the weights entering
+    calibration) and ``z`` is its floored amount in cents: an amount
+    contribution's weight is ``w * z``, the record's share of the band's
+    weighted amount. The
     contributions are summed per source household first, so donor clones of
     one household add no support, and only then enter the Kish ratio. A
     household counts as support only where its summed contribution is
@@ -1073,14 +1077,17 @@ def band_support(
 def record_source_households(frame, entity: str, household_entity: str) -> list:
     """Each ``entity`` record's source household, through household membership.
 
-    The frame maps a unit to its household through the person table's
-    membership columns (``EntitySchema.membership_column``,
-    ``microcosm/frame/schema.py``; ``Frame._group_positions``,
-    ``microcosm/frame/bundle.py``). A person reads its household membership
-    directly. A group unit reads its members' households, which must be
-    exactly one: a unit with no members, or members in several households,
-    has no household membership and refuses by name. The household table
-    supplies ``source_household_id``.
+    The frame declares membership only through the person table: each group
+    entity has a person column ``EntitySchema.membership_column(group)``
+    (``microcosm/frame/schema.py``), which ``Frame._group_positions`` reads
+    (``microcosm/frame/bundle.py``). A person reads its household column
+    directly. A group unit reads the households of its members, as
+    ``Frame._aggregate_group_to_group`` does when it places one group onto
+    another, and like it requires the unit to nest in one household: a unit
+    with no members, or members in several households, has no household
+    membership and refuses by name. So two units in one household map to
+    one source household and count once. The household table supplies
+    ``source_household_id``.
     """
 
     schema = frame.schema
