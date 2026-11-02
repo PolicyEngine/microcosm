@@ -467,6 +467,11 @@ def lineage_balanced_positions(
     and claim together, as when the stage ran before the CGT clones split the
     source's weight (microcosm#1095 B5). Rows of distinct identities are placed
     exactly as ``weight_balanced_uniforms`` places them.
+
+    One lineage can sit in two strata, as a record of each: salary sacrifice
+    draws each copy's pay on its own id, so a copy's earnings band can differ
+    from its source's. Each stratum's start is keyed on its own members, so the
+    starts are drawn stratum by stratum, where an identity names one record.
     """
 
     strata = np.asarray(strata)
@@ -486,13 +491,20 @@ def lineage_balanced_positions(
         raise ValueError("Rows of one lineage must share their draw.")
     record_strata = unique.get_level_values(0).to_numpy()
     record_identities = unique.get_level_values(1).to_numpy()
+    starts = np.empty(len(unique), dtype=np.float64)
+    for code in pd.unique(record_strata):
+        members = record_strata == code
+        starts[members] = stratum_starts(
+            record_strata[members],
+            salt=salt,
+            identities=record_identities[members],
+            draws=low[members],
+        )
     positions = weight_balanced_uniforms(
         record_strata,
         low,
         np.bincount(record, weights=weights, minlength=len(unique)),
-        starts=stratum_starts(
-            record_strata, salt=salt, identities=record_identities, draws=low
-        ),
+        starts=starts,
     )
     return np.asarray(positions, dtype=np.float64)[record]
 

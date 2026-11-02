@@ -1279,3 +1279,67 @@ def test_the_stage_draws_a_cgt_clone_with_the_carer_it_copies() -> None:
     clones = after.loc[before.index + 10_000]
     np.testing.assert_array_equal(clones.to_numpy(), before.to_numpy())
     assert 0 < before.sum() < n
+
+
+def test_a_lineage_in_two_strata_is_placed_in_each() -> None:
+    """Salary sacrifice draws a copy's pay on its own id, so a copy's earnings
+    band, and so its stratum, can differ from its source's. The lineage is then
+    a record of each stratum, each placed with its own stratum's start, as if
+    each stratum were placed alone (B-1's first spine, microcosm#1095 B5)."""
+
+    strata = np.array([1, 2, 1, 2])
+    identities = np.array([11, 11, 21, 31], dtype="int64")
+    draws = stable_identity_uniforms(identities, seed=0, salt="test")
+    weights = np.array([0.5, 0.5, 1.0, 1.0])
+    positions = ca.lineage_balanced_positions(
+        strata, draws, weights, identities=identities, salt="test"
+    )
+    for code in (1, 2):
+        rows = strata == code
+        np.testing.assert_array_equal(
+            positions[rows],
+            ca.lineage_balanced_positions(
+                strata[rows],
+                draws[rows],
+                weights[rows],
+                identities=identities[rows],
+                salt="test",
+            ),
+        )
+
+
+def test_the_stage_draws_a_clone_whose_pay_left_its_source_s_band() -> None:
+    """A CGT clone whose pay salary sacrifice moved into another earnings band
+    draws in that band's stratum, keyed on its source, and every stratum still
+    claims its rate to within one record (microcosm#1095 B5)."""
+
+    n = 12
+    base = _frame(care_hours=[40.0] * n, reported=[0.0] * n, weekly_pay=[200.0] * n)
+    person = base.table("person")
+    household = _cgt_lineage(base.table("household"))
+    clone = household[household["household_id"] == 1].copy()
+    clone["household_id"] = 101
+    clone["household_is_capital_gains_clone"] = True
+    members = person[person["person_household_id"] == 1].copy()
+    members["person_id"] += 10_000
+    members["person_household_id"] = 101
+    members["person_benunit_id"] += 1_000
+    # The clone's pay sits three weekly rates above the limit.
+    members.loc[members["care_hours"] > 0, "employment_income"] = 600.0 * 52.0
+    benunit = pd.concat(
+        [
+            base.table("benunit"),
+            pd.DataFrame({"benunit_id": members["person_benunit_id"]}),
+        ],
+        ignore_index=True,
+    ).sort_values("benunit_id", ignore_index=True)
+    cloned = uk_national_frame(
+        person=pd.concat([person, members], ignore_index=True),
+        benunit=benunit,
+        household=pd.concat([household, clone], ignore_index=True),
+        time_period="2024",
+        weight_kind=WeightKind.DESIGN,
+        household_weights=np.r_[0.5, np.ones(n - 1), 0.5],
+    )
+    result = _run(cloned).frame.table("person").set_index("person_id")[_OUTPUT]
+    assert result.loc[[11, 10_011]].notna().all()
