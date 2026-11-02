@@ -1,4 +1,4 @@
-"""The d1712 stage-001 lineage check accepts only the 9/30 float-rounding class."""
+"""The stage-001 lineage check accepts only the float-rounding class Max ruled on (d1712, d2274)."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import pytest
-from hypothesis import given, settings
+from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
 from test_support.microcosm_build.us_modal_stage_plan_tool import ROOT
@@ -26,10 +26,15 @@ def check():
     return module
 
 
-def _tables(rent, *, other=(1.0, 2.0), ages=(30, 40, 50), index=(1, 2, 3)):
+def _tables(rent, *, esi=None, other=(1.0, 2.0), ages=(30, 40, 50), index=(1, 2, 3)):
+    esi = np.zeros(len(rent)) if esi is None else np.asarray(esi, dtype=float)
     return {
         "person": pd.DataFrame(
-            {"pre_subsidy_rent": np.asarray(rent, dtype=float), "age": list(ages)},
+            {
+                "pre_subsidy_rent": np.asarray(rent, dtype=float),
+                "employer_sponsored_insurance_premiums": esi,
+                "age": list(ages),
+            },
             index=pd.Index(list(index), name="person_id"),
         ),
         "household": pd.DataFrame(
@@ -76,16 +81,54 @@ def test_ulp_difference_in_the_9_30_column_is_inside_the_class(
     assert difference["max_rel"] <= check.REL_TOL
 
 
+def test_ulp_difference_in_the_esi_premium_column_is_inside_the_class(
+    check, monkeypatch, tmp_path
+):
+    # d2274: on the 2026-11 base every differing ESI value sat one unit in the
+    # last place above the Mac value.
+    esi = (0.0, 5_000.0, 7_250.25)
+    modal_esi = (0.0, float(np.nextafter(5_000.0, np.inf)), 7_250.25)
+    rc, verdict = _run(
+        check,
+        monkeypatch,
+        tmp_path,
+        _tables([100.0, 0.0, 250.5], esi=esi),
+        _tables([100.0, 0.0, 250.5], esi=modal_esi),
+    )
+    assert rc == 0
+    [difference] = verdict["differences"]
+    assert (difference["table"], difference["column"]) == (
+        "person",
+        "employer_sponsored_insurance_premiums",
+    )
+    assert difference["rows_differ"] == 1
+    assert difference["max_rel"] <= check.REL_TOL
+
+
+def test_the_accepted_columns_are_exactly_the_ruled_ones(check):
+    # Widening this set changes a stop rule Max set; it needs his ruling.
+    assert check.ACCEPTED_COLUMNS == {
+        ("person", "pre_subsidy_rent"),
+        ("person", "employer_sponsored_insurance_premiums"),
+    }
+
+
 @pytest.mark.parametrize(
     ("local", "modal", "problem"),
     [
-        # Within tolerance, but not the 9/30 column: stops for Max.
+        # Within tolerance, but not an accepted column: stops for Max.
         (
             _tables([1.0, 2.0, 3.0]),
             _tables([1.0, 2.0, 3.0], other=(1.0, 2.0 * (1 + 4e-16))),
-            "not the 9/30 column",
+            "not an accepted column",
         ),
-        # Above 1e-12 relative in the accepted column.
+        # Above 1e-12 relative in the ESI column accepted under d2274.
+        (
+            _tables([1.0, 2.0, 3.0], esi=(0.0, 5_000.0, 7_250.25)),
+            _tables([1.0, 2.0, 3.0], esi=(0.0, 5_000.0, 7_251.0)),
+            "difference above",
+        ),
+        # Above 1e-12 relative in the 9/30 column.
         (_tables([1.0, 2.0, 3.0]), _tables([1.0, 2.0, 3.001]), "difference above"),
         # A non-float column that differs.
         (
@@ -204,3 +247,33 @@ def test_property_any_value_moved_by_1e9_is_outside(check, rents, data):
         "person", "pre_subsidy_rent", local, pd.Series(moved, dtype=float)
     )
     assert entry is not None and "problem" in entry
+
+
+_PREMIUMS = st.lists(
+    st.floats(min_value=1.0, max_value=1e6, allow_nan=False), min_size=3, max_size=3
+)
+
+
+@settings(
+    max_examples=40,
+    deadline=None,
+    suppress_health_check=[HealthCheck.function_scoped_fixture],
+)
+@given(premiums=_PREMIUMS, nudged=st.lists(st.booleans(), min_size=3, max_size=3))
+def test_property_one_ulp_up_in_esi_premiums_is_inside(
+    check, monkeypatch, tmp_path, premiums, nudged
+):
+    # d2274's class: each differing premium sits one ulp above the local value.
+    modal = [
+        float(np.nextafter(p, np.inf)) if up else p
+        for p, up in zip(premiums, nudged, strict=True)
+    ]
+    rc, verdict = _run(
+        check,
+        monkeypatch,
+        tmp_path,
+        _tables([1.0, 2.0, 3.0], esi=premiums),
+        _tables([1.0, 2.0, 3.0], esi=modal),
+    )
+    assert rc == 0
+    assert verdict["inside_accepted_class"] is True

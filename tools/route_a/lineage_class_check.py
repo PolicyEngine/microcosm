@@ -4,8 +4,14 @@ Max ruled on 2026-10-19 (d1712) that a repeat of the 9/30 Linux-vs-Mac
 float-rounding difference may be accepted: every entity table has the same
 shape and index, totals are equal, and every differing value is within 1e-12
 relative. Anything else stops for Max. On 9/30 the only difference was
-person.pre_subsidy_rent (313 of 432,523 rows, max relative 6.08e-15), so a
-difference in any other column is reported as outside the class.
+person.pre_subsidy_rent (313 of 432,523 rows, max relative 6.08e-15).
+
+Max ruled on 2026-11-02 (d2274) that the same class in
+person.employer_sponsored_insurance_premiums may be accepted too. On the
+2026-11 base, 73,966 of its 432,523 rows differed by exactly +1 unit in the
+last place (max relative 2.21e-16, identical totals), which fits one scale
+factor rounding differently on the two platforms. A difference in any other
+column is reported as outside the class.
 
 Usage (with the build worktree's interpreter):
     python lineage_class_check.py LOCAL_FRAME.h5 MODAL_FRAME.h5 OUT.json
@@ -25,7 +31,11 @@ import pandas as pd
 from microcosm.build.frame_checkpoint import _frame_tables, load_frame_checkpoint
 
 REL_TOL = 1e-12
-ACCEPTED_COLUMNS = {("person", "pre_subsidy_rent")}
+# d1712: the 9/30 column. d2274: the ESI premium column, new to the base since d1386.
+ACCEPTED_COLUMNS = {
+    ("person", "pre_subsidy_rent"),
+    ("person", "employer_sponsored_insurance_premiums"),
+}
 
 
 def sha256(path: Path) -> str:
@@ -118,10 +128,10 @@ def main() -> int:
                 problems.append(f"{name}.{column}: {entry['problem']}")
             elif (name, column) not in ACCEPTED_COLUMNS:
                 problems.append(
-                    f"{name}.{column}: within tolerance but not the 9/30 column; stop for Max"
+                    f"{name}.{column}: within tolerance but not an accepted column; stop for Max"
                 )
     verdict = {
-        "ruling": "d1712 (Max 2026-10-19)",
+        "ruling": "d1712 (Max 2026-10-19); d2274 (Max 2026-11-02)",
         "rel_tol": REL_TOL,
         "accepted_columns": sorted(f"{t}.{c}" for t, c in ACCEPTED_COLUMNS),
         "local": {"path": str(local_path), "sha256": sha256(local_path)},
