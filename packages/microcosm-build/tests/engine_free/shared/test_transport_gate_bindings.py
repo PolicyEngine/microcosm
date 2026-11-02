@@ -135,21 +135,21 @@ BOUND = (
     "weight_ratio",
 )
 #: Registered fail-closed bindings awaiting producers and comparisons.
-PENDING = ("support",)
-PENDING_ARTIFACTS = {
-    "support": ("donor_support_bounds",),
-}
+PENDING: tuple[str, ...] = ()
+PENDING_ARTIFACTS: dict[str, tuple[str, ...]] = {}
 #: Bindings that check producer evidence against the battery's graph
 #: (``graph_evidence``) before they compare anything, with the artifacts
 #: their producers emit and their required ``gates.json`` parameters.
-EVIDENCE = ("release_input_coverage",)
+EVIDENCE = ("release_input_coverage", "support")
 EVIDENCE_ARTIFACTS = {
     "release_input_coverage": ("axiom_input_closure", "donor_artifact_receipt"),
+    "support": ("donor_support_bounds",),
     "weights_audit": ("fit_weight_records",),
 }
 EVIDENCE_PARAMETERS = {
     "release_input_coverage": {"allow_engine_optional": False},
     "weights_audit": {"maximum_relative_mass_change": 0.02},
+    "support": {"structural_columns": []},
 }
 #: Gates deliberately deferred by country policy.
 UNBOUND = ("macro_realism",)
@@ -611,25 +611,14 @@ class TestRegistry:
             assert binding.name == name
         assert set(UNBOUND).isdisjoint(TRANSPORT_GATE_REGISTRY)
 
-    @pytest.mark.parametrize("gate", PENDING)
-    @pytest.mark.parametrize("supplied", (False, True))
-    def test_pending_bindings_require_named_artifacts_and_never_pass(
-        self, gate, supplied
-    ) -> None:
-        artifacts = {name: {"passed": True} for name in PENDING_ARTIFACTS[gate]}
-        outcome = _outcome(_entry(gate), **(artifacts if supplied else {}))
-        expected = GateStatus.FAILED if supplied else GateStatus.EVIDENCE_ABSENT
-        assert outcome.status is expected
-        binding = TRANSPORT_GATE_REGISTRY[gate]
-        assert isinstance(binding, FunctionBinding)
-        assert binding.__dataclass_params__.frozen
-        assert isinstance(binding.artifact_arguments, type(TRANSPORT_GATE_REGISTRY))
-        assert binding.required_artifacts({}) == frozenset(artifacts)
-        assert binding.parameter_keys == required_gate_parameters(binding) == set()
-        if supplied:
-            assert any("not implemented" in line for line in outcome.result.failures)
-        else:
-            assert outcome.reason == "missing evidence: " + ", ".join(sorted(artifacts))
+    def test_no_registered_binding_is_a_pending_stub(self) -> None:
+        # Every pending stub has been replaced by an evidence-checked binding.
+        import microcosm.build.transport.gate_bindings as module
+
+        assert PENDING == () and PENDING_ARTIFACTS == {}
+        assert not [name for name in vars(module) if name.startswith("_pending_")]
+        for gate in EVIDENCE:
+            assert GRAPH_EVIDENCE in TRANSPORT_GATE_REGISTRY[gate].artifact_arguments
 
     @pytest.mark.parametrize("gate", EVIDENCE)
     def test_evidence_bindings_route_their_artifacts_and_parameters(self, gate) -> None:
@@ -732,7 +721,9 @@ class TestNewZealandManifest:
             assert entry.not_applicable is None
             assert entry.evidence_absent_blocks
             raw = next(row for row in document["gates"] if row["gate"] == gate)
-            assert raw["parameters"] == EVIDENCE_PARAMETERS[gate]
+            assert set(raw["parameters"]) == set(EVIDENCE_PARAMETERS[gate])
+            if gate != "support":
+                assert raw["parameters"] == EVIDENCE_PARAMETERS[gate]
         raw = next(row for row in document["gates"] if row["gate"] == "weights_audit")
         assert raw["parameters"] == EVIDENCE_PARAMETERS["weights_audit"]
 
@@ -2196,6 +2187,16 @@ def _unchecked_evidence(gate: str) -> dict[str, dict]:
                 },
             ),
         ),
+        "donor_support_bounds": (
+            contract.SUPPORT_BOUNDS_TYPE,
+            contract.decode_support_bounds,
+            payload(
+                "transport_donor_support_bounds",
+                contract.SUPPORT_BOUNDS_REF,
+                "x.evidence.support",
+                {"rate": None, "structural_columns": [], "columns": []},
+            ),
+        ),
         "fit_weight_records": (
             contract.WEIGHTS_AUDIT_TYPE,
             contract.decode_weights_audit,
@@ -2248,7 +2249,7 @@ def _unchecked_evidence(gate: str) -> dict[str, dict]:
 
 #: Gates this test covers at this head: each one's evidence binding is
 #: implemented. w4b adds weights_audit and w4c adds support.
-CHECKED_EVIDENCE_GATES = ("release_input_coverage", "weights_audit")
+CHECKED_EVIDENCE_GATES = ("release_input_coverage", "weights_audit", "support")
 
 
 @pytest.mark.parametrize("gate", CHECKED_EVIDENCE_GATES)

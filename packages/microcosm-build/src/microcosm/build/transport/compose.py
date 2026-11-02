@@ -18,6 +18,9 @@ explicit selection:
 - ``{"prepared": "unit_entities"}`` is the canonical JSON of every declared
   partition entity, read from the declared CREATE with the legacy
   benefit-unit fallback.
+- ``{"prepared": "support_roster"}`` is the canonical JSON of the support
+  gate's roster: every column the battery and the calibration problem read,
+  classed by its producer in lineage (:func:`_support_roster`).
 - ``{"binding": name, "field": field}`` selects exactly ``engine_ref`` or
   ``period`` from one declared, prepared rules binding.
 
@@ -89,6 +92,7 @@ from microcosm.build.money_normalization import (
 )
 from microcosm.build.reference_profiles import resolve_reference_profiles
 from microcosm.calibrate.ordered_kernels import OUTPUT_TYPES
+from microcosm.frame.concepts import ProvenanceClass, concept_for_column
 from microcosm.frame.kernels import missing_relation_inputs
 from microcosm.frame.materialize import _WEIGHT_COLUMN_SUFFIX
 from microcosm.graph import (
@@ -117,10 +121,14 @@ from microcosm.graph.expansion import (
 from .artifact_types import KERNEL_OUTPUTS
 from .column_kernels import validate_receipt_contract
 from .evidence_contract import (
+    DONOR_RANGES_REF,
+    DONOR_RANGES_TYPE,
     DONOR_RECEIPT_REF,
     DONOR_RECEIPT_TYPE,
     INPUT_CLOSURE_REF,
     INPUT_CLOSURE_TYPE,
+    SUPPORT_BOUNDS_REF,
+    SUPPORT_BOUNDS_TYPE,
     WEIGHTS_AUDIT_REF,
     WEIGHTS_AUDIT_TYPE,
 )
@@ -194,6 +202,8 @@ SKELETON_KERNELS = CREATE_REFS | frozenset(
         DONOR_RECEIPT_REF,
         INPUT_CLOSURE_REF,
         WEIGHTS_AUDIT_REF,
+        DONOR_RANGES_REF,
+        SUPPORT_BOUNDS_REF,
         "export.prepare@1",
         "export.readback@1",
         "transport.package@1",
@@ -245,7 +255,7 @@ _NODE_FIELDS = frozenset(
     }
 )
 _ENCODINGS = frozenset({"value", "json", "sha256"})
-_PREPARED = frozenset({"engine_refs", "unit_entities"})
+_PREPARED = frozenset({"engine_refs", "unit_entities", "support_roster"})
 _PRECALIBRATION_SCHEMA_VERSION = 1
 _PRECALIBRATION_PURPOSES = frozenset({"calibration_measure", "classification"})
 _PRECALIBRATION_STAGE_FIELDS = frozenset(
@@ -262,6 +272,8 @@ _OUTPUT_TYPES: Mapping[str, Mapping[str, ArtifactType]] = MappingProxyType(
         DONOR_RECEIPT_REF: {"donor_artifact_receipt": DONOR_RECEIPT_TYPE},
         INPUT_CLOSURE_REF: {"axiom_input_closure": INPUT_CLOSURE_TYPE},
         WEIGHTS_AUDIT_REF: {"fit_weight_records": WEIGHTS_AUDIT_TYPE},
+        DONOR_RANGES_REF: {"donor_ranges": DONOR_RANGES_TYPE},
+        SUPPORT_BOUNDS_REF: {"donor_support_bounds": SUPPORT_BOUNDS_TYPE},
     }
 )
 
@@ -1592,6 +1604,312 @@ def _check_weights_audit_entity(spec: Mapping[str, object], graph: Graph) -> Non
                 f"{weights.get('entity')!r}, but the weights audit reads "
                 f"{entity!r}; a unit may not persist a second weight vector."
             )
+
+
+#: The support roster's covered classes; a derived row passes only when every
+#: walked source is one of them.
+SUPPORT_COVERED = frozenset(
+    {
+        "copied",
+        "normalized",
+        "quantile_mapped",
+        "currency",
+        "structural",
+        "closure_default",
+    }
+)
+#: Producer kernel -> the support class its owned column takes.
+_SUPPORT_PRODUCERS = MappingProxyType(
+    {
+        MONEY_NORMALIZE_REF: "normalized",
+        "transport.quantile_map@1": "quantile_mapped",
+        "transport.currency@1": "currency",
+    }
+)
+_SUPPORT_ENCODERS = frozenset({"concepts.encode@1", "concepts.encode_groups@1"})
+#: The only kernels that may own a column a support ``structural_columns`` row
+#: excuses: they assign identity or geography, never donor values.
+SUPPORT_STRUCTURAL_OWNERS = frozenset(
+    {"geography.derive@1", "geography.person_location@1", "geography.assign_atomic@1"}
+)
+#: The producer parameters a support row carries, resolved, so the support
+#: producer reads the same bands and rates the producer read.
+_SUPPORT_PRODUCER_PARAMS = (
+    "bands",
+    "interpolation",
+    "aggregate_entity",
+    "component_column",
+    "columns",
+    "rate",
+)
+RANK_ONLY_MESSAGE = (
+    "{entity}.{column}: lineage class 'rank_only' is reserved for the declared "
+    "rank-only input (BE d1902); no producer implements it yet."
+)
+
+
+def support_structural_columns(spec: Mapping[str, object]) -> list[dict]:
+    """The ``structural_columns`` rows of every applicable ``support`` entry."""
+
+    if not _has_resource(spec, "gates"):
+        return []
+    rows = []
+    for entry in transport_resource(spec, "gates").get("gates", ()):
+        if (
+            not isinstance(entry, Mapping)
+            or entry.get("gate") != "support"
+            or entry.get("not_applicable") is not None
+        ):
+            continue
+        declared = (entry.get("parameters") or {}).get("structural_columns", ())
+        for row in _sequence(declared, "support structural_columns"):
+            if (
+                not isinstance(row, Mapping)
+                or set(row) != {"entity", "column", "reason"}
+                or not all(_is_text(row[key]) for key in row)
+            ):
+                raise ValueError(
+                    "A support structural_columns row holds exactly entity, column "
+                    "and a reason."
+                )
+            rows.append(dict(row))
+    keys = [(row["entity"], row["column"]) for row in rows]
+    if len(keys) != len(set(keys)):
+        raise ValueError("Support structural_columns repeats a column.")
+    return rows
+
+
+def _check_structural_columns(spec: Mapping[str, object]) -> None:
+    """Bound what a ``structural_columns`` row may excuse from support.
+
+    Refused: a column a declared row owns, unless its owner assigns
+    geography; a column on a money roster; a column whose concept is
+    ``observed`` (the donor's realized range governs it).
+    """
+
+    rows = support_structural_columns(spec)
+    if not rows:
+        return
+    owners: dict[tuple, set[str]] = {}
+    for row in _declared_rows(spec):
+        if row.get("structural", "none") == "none":
+            for key in _owned_columns(row):
+                owners.setdefault(key, set()).add(str(row.get("kernel")))
+    rosters = {}
+    if _has_resource(spec, MONEY_NORMALIZATION_RESOURCE):
+        rosters = money_column_rosters(
+            validate_money_normalization(
+                _raw_transport_resource(spec, MONEY_NORMALIZATION_RESOURCE)
+            )
+        )
+    problems = []
+    for row in rows:
+        key = (row["entity"], row["column"])
+        label = f"{key[0]}.{key[1]}"
+        foreign = sorted(owners.get(key, set()) - SUPPORT_STRUCTURAL_OWNERS)
+        if foreign:
+            problems.append(f"{label} is owned by {foreign}, which carry values.")
+        if key in rosters:
+            problems.append(f"{label} is a declared money column.")
+        concept = concept_for_column(*key)
+        if concept is not None and concept.provenance is ProvenanceClass.OBSERVED:
+            problems.append(f"{label} is an observed concept with donor support.")
+    if problems:
+        raise ValueError(
+            "Support structural_columns may not excuse these columns: "
+            + " ".join(problems)
+        )
+
+
+def _support_producer_params(spec: Mapping[str, object], row: Mapping) -> dict:
+    params = row.get("params") or {}
+    out = {}
+    for name in _SUPPORT_PRODUCER_PARAMS:
+        if name in params:
+            value = _param(spec, params[name], None)
+            out[name] = (
+                json.loads(value)
+                if isinstance(value, str) and value[:1] in "[{"
+                else value
+            )
+    return out
+
+
+def _support_roster(spec: Mapping[str, object]) -> dict[str, object]:
+    """Every column the support gate covers, classed by its producer in lineage.
+
+    The roster is the battery slice plus the calibration problem's measures.
+    A column's class follows its owner in the reading node's population
+    lineage: ``normalized``, ``quantile_mapped`` or ``currency`` by producer
+    kernel; ``closure_default`` for a closure default an encode node writes;
+    ``structural`` for a declared ``structural_columns`` row; ``derived`` for
+    any other owner, whose node-level sources the walk reports; and, with no
+    owner after CREATE, ``pending`` for a money route awaiting its producer,
+    ``copied`` for a donor concept, ``uncovered`` otherwise.
+    """
+
+    rows = _declared_rows(spec)
+    structural_rows = {
+        row["id"]: row
+        for row in rows
+        if row.get("structural", "none") != "none" and isinstance(row.get("id"), str)
+    }
+    default = next(iter(structural_rows)) if len(structural_rows) == 1 else None
+
+    def lineage(version: object) -> list[str]:
+        chain: list[str] = []
+        while isinstance(version, str) and version in structural_rows:
+            if version in chain:
+                break
+            chain.append(version)
+            version = structural_rows[version].get("base")
+        return chain
+
+    owners: dict[tuple, list[Mapping]] = {}
+    for row in rows:
+        if row.get("structural", "none") == "none":
+            version = row.get("population") or default
+            for entity, column in _owned_columns(row):
+                owners.setdefault((version, entity, column), []).append(row)
+    excused = {
+        (row["entity"], row["column"]): row["reason"]
+        for row in support_structural_columns(spec)
+    }
+    rosters = {}
+    if _has_resource(spec, MONEY_NORMALIZATION_RESOURCE):
+        rosters = money_column_rosters(
+            validate_money_normalization(
+                _raw_transport_resource(spec, MONEY_NORMALIZATION_RESOURCE)
+            )
+        )
+    defaults: dict[tuple, str] = {}
+    if _has_resource(spec, _CLOSURE_RESOURCE) and _has_resource(
+        spec, _BINDINGS_RESOURCE
+    ):
+        names = transport_resource(spec, _BINDINGS_RESOURCE).get("entity_names", {})
+        to_frame = {engine: frame for frame, engine in names.items()}
+        for entry in transport_resource(spec, _CLOSURE_RESOURCE).get("entries", ()):
+            if isinstance(entry, Mapping) and entry.get("class") == "defaulted":
+                frame_entity = to_frame.get(entry.get("entity"))
+                defaults[(frame_entity, entry.get("input"))] = (
+                    f"{entry.get('rulespec_path')} {entry.get('entity')}."
+                    f"{entry.get('input')}"
+                )
+    reserved = []
+    for row in rows:
+        for item in _sequence(
+            (row.get("params") or {}).get("rank_only", ()), "rank_only"
+        ):
+            if isinstance(item, Mapping):
+                reserved.append(
+                    RANK_ONLY_MESSAGE.format(
+                        **{k: item.get(k) for k in ("entity", "column")}
+                    )
+                )
+    if reserved:
+        raise ValueError(" ".join(reserved))
+
+    memo: dict[tuple, dict] = {}
+
+    def classify(version: object, entity: str, column: str, trail=()) -> dict:
+        key = (version, entity, column)
+        if key in memo:
+            return memo[key]
+        if key in trail:
+            return {"class": "uncovered", "reason": "a cycle in the declared lineage"}
+        row: dict[str, object] = {}
+        owner = next(
+            (
+                found[0]
+                for item in lineage(version)
+                for found in [owners.get((item, entity, column))]
+                if found
+            ),
+            None,
+        )
+        if (entity, column) in excused:
+            row = {"class": "structural", "reason": excused[entity, column]}
+        elif owner is not None and owner.get("kernel") in _SUPPORT_PRODUCERS:
+            row = {
+                "class": _SUPPORT_PRODUCERS[owner["kernel"]],
+                "producer_params": _support_producer_params(spec, owner),
+            }
+        elif (
+            owner is not None
+            and owner.get("kernel") in _SUPPORT_ENCODERS
+            and (
+                entity,
+                column,
+            )
+            in defaults
+        ):
+            row = {
+                "class": "closure_default",
+                "closure_entry": defaults[entity, column],
+            }
+        elif owner is not None:
+            sources: dict[tuple, dict] = {}
+            reads = owner.get("population") or default
+            for item in owner.get("inputs", ()):
+                if not isinstance(item, Mapping):
+                    continue
+                for name in item.get("columns", ()):
+                    found = classify(reads, item.get("entity"), name, (*trail, key))
+                    if found["class"] == "derived":
+                        for source in found["sources"]:
+                            sources[(source["entity"], source["column"])] = source
+                    else:
+                        sources[(item.get("entity"), name)] = {
+                            "entity": item.get("entity"),
+                            "column": name,
+                            "class": found["class"],
+                            **(
+                                {"reason": found["reason"]} if "reason" in found else {}
+                            ),
+                        }
+            row = {
+                "class": "derived",
+                "sources": [sources[k] for k in sorted(sources)],
+                "reason": "Sources are the owner node's declared inputs, walked per "
+                "node, so a source the row itself never reads can appear.",
+            }
+        else:
+            route, awaits = rosters.get((entity, column), (None, ()))
+            if route in {"quantile_mapped", "pending", "normalized"}:
+                row = {
+                    "class": "pending",
+                    "reason": f"awaits {', '.join(awaits) or 'its declared producer'}",
+                }
+            elif concept_for_column(entity, column) is not None:
+                row = {"class": "copied"}
+            else:
+                row = {
+                    "class": "uncovered",
+                    "reason": "CREATE synthesizes it and no structural_columns row "
+                    "excuses it",
+                }
+        if owner is not None:
+            row["owner"] = owner.get("id")
+            row["owner_kernel"] = owner.get("kernel")
+        memo[key] = row
+        return row
+
+    readers: dict[tuple, object] = {}
+    for kernel in ("gates.battery@1", "targets.problem@1"):
+        for row in rows:
+            if row.get("kernel") != kernel:
+                continue
+            for item in row.get("inputs", ()):
+                if isinstance(item, Mapping):
+                    for name in item.get("columns", ()):
+                        readers.setdefault(
+                            (item.get("entity"), name), row.get("population") or default
+                        )
+    columns = []
+    for (entity, column), version in sorted(readers.items()):
+        found = classify(version, entity, column)
+        columns.append({"entity": entity, "column": column, **found})
+    return {"columns": columns}
 
 
 def _binding_modules(spec: Mapping[str, object]) -> dict[str, Mapping]:
@@ -3065,6 +3383,8 @@ def _param(
             raise ValueError("The whole-spec fingerprint cannot enter node parameters.")
         if value["prepared"] not in _PREPARED:
             raise ValueError(f"Unknown prepared parameter {value['prepared']!r}.")
+        if value["prepared"] == "support_roster":
+            return canonical_json(_support_roster(spec)).decode("utf-8")
         if value["prepared"] == "unit_entities":
             return canonical_json(
                 {"unit_entities": [str(entity) for entity in _unit_entities(spec)]}
@@ -3495,6 +3815,7 @@ def compose_transport_graph(
         raise TypeError("config must be a TransportGraphConfig.")
     validate_transport_activation(spec)
     _check_unreached_requests(spec)
+    _check_structural_columns(spec)
     from .entitlement import transport_extensions
 
     config = replace(config, extensions=transport_extensions(spec, config.extensions))

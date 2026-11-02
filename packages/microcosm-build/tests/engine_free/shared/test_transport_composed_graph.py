@@ -7765,3 +7765,61 @@ def test_the_weights_audit_reads_every_declared_partition(composed, keep_legacy_
     resolved = compose_module._param(spec, {"prepared": "unit_entities"}, None)
     assert json.loads(resolved) == {"unit_entities": [UNIT_RULE.entity, "assessment"]}
     assert compose_module._unit_entities(spec) == (UNIT_RULE.entity, "assessment")
+
+
+@pytest.mark.parametrize("keep_legacy_rule", [False, True])
+def test_the_support_roster_needs_every_synthesized_partition_id(
+    composed, keep_legacy_rule
+):
+    # Belgium's second partition adds CREATE-synthesized ids: a battery read
+    # of one is uncovered until gates.json lists it, with or without a stale
+    # legacy benefit_unit_rule.json.
+    from microcosm.build.transport import compose as compose_module
+
+    units = MultiUnitRule(
+        units=(
+            UnitDeclaration(kind="benefit_unit", rule=UNIT_RULE),
+            UnitDeclaration(
+                kind="benefit_unit", rule=replace(UNIT_RULE, entity="assessment")
+            ),
+        )
+    )
+    spec = _closed_export_on_create2(composed, units, keep_legacy_rule=keep_legacy_rule)
+    battery = next(
+        row
+        for row in spec["resources"]["transport_graph"]["nodes"]
+        if row["kernel"] == "gates.battery@1"
+    )
+    battery.setdefault("inputs", []).append(
+        {"entity": "assessment", "columns": ["assessment_household_id"]}
+    )
+
+    def row_for(document):
+        return next(
+            row
+            for row in compose_module._support_roster(document)["columns"]
+            if (row["entity"], row["column"])
+            == ("assessment", "assessment_household_id")
+        )
+
+    assert row_for(spec)["class"] == "uncovered"
+    listed = copy.deepcopy(spec)
+    listed["resources"]["gates"]["gates"].append(
+        {
+            "id": "toy_support",
+            "gate": "support",
+            "phase": "terminal",
+            "criticality": "release_blocking",
+            "parameters": {
+                "structural_columns": [
+                    {
+                        "entity": "assessment",
+                        "column": "assessment_household_id",
+                        "reason": "CREATE synthesizes the assessment's household pointer.",
+                    }
+                ]
+            },
+        }
+    )
+    compose_module._check_structural_columns(listed)
+    assert row_for(listed)["class"] == "structural"

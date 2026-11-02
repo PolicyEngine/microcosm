@@ -393,6 +393,26 @@ class TestImplementationHashes:
                 "microcosm.graph.canonical",
                 "microcosm.build.transport.evidence_contract",
             ),
+            "transport.donor_ranges@1": (
+                "microcosm.build.transport.evidence_kernels",
+                "microcosm.graph.canonical",
+                "microcosm.build.transport.evidence_contract",
+            ),
+            "transport.support_bounds@1": (
+                "microcosm.build.transport.evidence_kernels",
+                "microcosm.build.transport.money_kernels",
+                "microcosm.build.money_normalization",
+                "microcosm.build.reference_factors",
+                "microcosm.build.ledger_artifact",
+                "microcosm.build.ledger_targets",
+                "microcosm.build.chronicle_epoch",
+                "microcosm.build.transport.graph_inputs",
+                "microcosm.frame.concepts",
+                "microcosm.frame.exact_money",
+                "microcosm.frame.transport",
+                "microcosm.graph.canonical",
+                "microcosm.build.transport.evidence_contract",
+            ),
         }
 
     def test_the_leaf_hash_imports_no_kernel_module(self) -> None:
@@ -1923,3 +1943,750 @@ class TestWeightsAudit:
 
 
 import math  # noqa: E402
+
+# ---------------------------------------------------------------------------
+# Support: the roster (H34, H44 D) and its producers (H35, H39)
+# ---------------------------------------------------------------------------
+from microcosm.build.transport.evidence_contract import (  # noqa: E402
+    DONOR_RANGES,
+    DONOR_RANGES_REF,
+    DONOR_RANGES_TYPE,
+    DONOR_SUPPORT_BOUNDS,
+    SUPPORT_BOUNDS_REF,
+    SUPPORT_BOUNDS_TYPE,
+    decode_support_bounds,
+    inside_quantile_support,
+    quantile_bounds,
+    quantile_support,
+)
+from microcosm.build.transport.evidence_kernels import (  # noqa: E402
+    TRANSPORT_DONOR_RANGES,
+    TRANSPORT_SUPPORT_BOUNDS,
+)
+from microcosm.build.transport.money_kernels import MONEY_NORMALIZE  # noqa: E402
+from microcosm.frame.transport import quantile_map  # noqa: E402
+
+H34_STRUCTURAL = (
+    ("family", "family_id"),
+    ("family", "family_household_id"),
+    ("family", "family_head_person_id"),
+    ("family", "family_source_household_id"),
+    ("person", "person_family_id"),
+    ("person", "take_up_seed"),
+    ("household", "donor_support_stratum"),
+    ("household", "source_household_id"),
+    ("household", "reference_person_id"),
+    ("person", "parent_1_person_id"),
+    ("person", "parent_2_person_id"),
+    ("person", "partner_person_id"),
+    ("household", "household_region_code"),
+    ("household", "as_area"),
+    ("household", "as_area_alt"),
+    ("person", "region_code"),
+)
+H44_REFUSED = (
+    "person.employment_income",
+    "household.rent",
+    "person.age",
+    "person.sex",
+    "household.tenure",
+    "person.usual_weekly_hours",
+    "person.has_disability",
+    "person.legal_marital_status",
+    "person.enrolled_full_time",
+    "person.public_pension_income",
+    "person.dividend_income",
+    "person.receives_jobseeker_support",
+    "person.entitled_to_jobseeker_support",
+    "family.accommodation_supplement_boarder",
+)
+
+
+@pytest.fixture(scope="module")
+def nz_spec():
+    return compose.load_transport_spec("nz")
+
+
+def _with_structural(spec, rows):
+    spec = copy.deepcopy(spec)
+    for entry in spec["resources"]["gates"]["gates"]:
+        if entry["gate"] == "support":
+            entry["parameters"] = {
+                "structural_columns": [
+                    {"entity": e, "column": c, "reason": "Synthetic."} for e, c in rows
+                ]
+            }
+    return spec
+
+
+class TestSupportRoster:
+    def test_the_packaged_nz_list_is_h34s_and_passes(self, nz_spec) -> None:
+        declared = [
+            (row["entity"], row["column"])
+            for row in compose.support_structural_columns(nz_spec)
+        ]
+        assert declared == list(H34_STRUCTURAL)
+        compose._check_structural_columns(nz_spec)
+
+    @pytest.mark.parametrize("column", H44_REFUSED)
+    def test_a_structural_row_that_excuses_values_is_refused(
+        self, nz_spec, column
+    ) -> None:
+        entity, name = column.split(".")
+        with pytest.raises(ValueError, match="may not excuse"):
+            compose._check_structural_columns(
+                _with_structural(nz_spec, [(entity, name)])
+            )
+
+    def test_the_nz_roster_classes(self, nz_spec) -> None:
+        roster = compose._support_roster(nz_spec)["columns"]
+        counts = {}
+        for row in roster:
+            counts[row["class"]] = counts.get(row["class"], 0) + 1
+        assert counts == {
+            "closure_default": 93,
+            "derived": 307,
+            "normalized": 10,
+            "copied": 3,
+            "pending": 1,
+            "structural": 6,
+        }
+        derived = [row for row in roster if row["class"] == "derived"]
+        pending = {
+            "household.rent",
+            "person.employment_income",
+            "person.liquid_financial_assets",
+        }
+        for row in derived:
+            missing = {
+                f"{s['entity']}.{s['column']}"
+                for s in row["sources"]
+                if s["class"] not in compose.SUPPORT_COVERED
+            }
+            assert missing == pending, row["column"]
+            assert "walked per node" in row["reason"]
+
+    def test_a_closure_default_is_classed_closure_default(self, nz_spec) -> None:
+        # Mutant: dropping the closure_default class makes this a derived row
+        # that names donor concepts the constant never reads.
+        roster = {
+            (row["entity"], row["column"]): row
+            for row in compose._support_roster(nz_spec)["columns"]
+        }
+        row = roster["person", "jobseeker_has_no_income"]
+        assert row["class"] == "closure_default"
+        assert row["closure_entry"].endswith("Person.jobseeker_has_no_income")
+        assert row["owner_kernel"] == "concepts.encode@1"
+
+    def test_differential_owners_match_an_independent_walk(self, toy) -> None:
+        # The roster's owner for every bounded or derived row equals the owner
+        # the compiled graph records in the reader's population lineage.
+        from microcosm.graph import compile_graph
+
+        graph = compose.compose_transport_graph(toy.spec, toy.config)
+        compiled = compile_graph(graph)
+        nodes = {node.id: node for node in graph.nodes}
+        readers = {}
+        for node in graph.nodes:
+            if node.kernel in {"gates.battery@1", "targets.problem@1"}:
+                for item in node.inputs:
+                    for column in item.columns:
+                        readers.setdefault((item.entity, column), node.population)
+
+        def owner(version, entity, column):
+            while version is not None:
+                found = compiled.owners.get((version, entity, column))
+                if found is not None and nodes[found].kernel not in compose.CREATE_REFS:
+                    return found
+                version = nodes[version].base if version in nodes else None
+            return None
+
+        roster = compose._support_roster(toy.spec)["columns"]
+        assert {(row["entity"], row["column"]) for row in roster} == set(readers)
+        for row in roster:
+            if row["class"] in {"structural"}:
+                continue
+            assert row.get("owner") == owner(
+                readers[row["entity"], row["column"]], row["entity"], row["column"]
+            ), (row["entity"], row["column"])
+
+    def test_a_rank_only_declaration_is_refused_with_the_reserved_message(
+        self, toy
+    ) -> None:
+        spec = copy.deepcopy(toy.spec)
+        node = spec["resources"]["transport_graph"]["nodes"][1]
+        node.setdefault("params", {})["rank_only"] = [
+            {"entity": "person", "column": "employment_income"}
+        ]
+        with pytest.raises(
+            ValueError,
+            match=r"person\.employment_income: lineage class 'rank_only' is reserved "
+            r"for the declared rank-only input \(BE d1902\)",
+        ):
+            compose._support_roster(spec)
+
+
+# --- the producers on hand-built contexts ---------------------------------
+
+
+def _support_frame(columns: dict) -> Frame:
+    frame = _units_frame()
+    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    for (entity, column), values in columns.items():
+        tables[entity][column] = values
+    return Frame(tables, UNITS_SCHEMA, {"household": frame.weights_for("household")})
+
+
+def _support_node(
+    kernel,
+    artifact,
+    artifact_type,
+    roster,
+    columns,
+    *,
+    params=None,
+    inputs=None,
+    sources=(),
+):
+    by_entity: dict[str, list[str]] = {}
+    for entity, column in columns:
+        by_entity.setdefault(entity, []).append(column)
+    return Node(
+        f"toy.evidence.{artifact}",
+        kernel,
+        inputs=tuple(Slice(e, tuple(c)) for e, c in sorted(by_entity.items())),
+        sources=sources,
+        params={"support_roster": _text(roster), **(params or {})},
+        artifact_inputs=inputs or (),
+        artifact_outputs=(ArtifactOutput(artifact, artifact_type),),
+    )
+
+
+def _support_context(frame, node, artifacts=None, sources=None):
+    return _project_context(
+        node,
+        Population.from_frame(frame, "toy.terminal"),
+        key="0" * 64,
+        sources=sources or {},
+        tolerances={},
+        numerics={},
+        artifacts=artifacts or {},
+    )
+
+
+def _run_support(
+    roster, donor_frame, terminal_frame, *, params=None, sources=None, feed_source=()
+):
+    ranged = [
+        (row["entity"], row["column"])
+        for row in roster["columns"]
+        if row["class"] in {"copied", "normalized", "currency"}
+    ]
+    ranges_node = _support_node(
+        DONOR_RANGES_REF, DONOR_RANGES, DONOR_RANGES_TYPE, roster, ranged
+    )
+    ranges = TRANSPORT_DONOR_RANGES.run(
+        _support_context(donor_frame, ranges_node)
+    ).artifacts[DONOR_RANGES]
+    bounded = [
+        (row["entity"], row["column"])
+        for row in roster["columns"]
+        if row["class"] in {"copied", "normalized", "currency", "quantile_mapped"}
+    ]
+    node = _support_node(
+        SUPPORT_BOUNDS_REF,
+        DONOR_SUPPORT_BOUNDS,
+        SUPPORT_BOUNDS_TYPE,
+        roster,
+        bounded,
+        params=params,
+        sources=feed_source,
+        inputs=(
+            ArtifactInput(
+                DONOR_RANGES, ranges_node.id, DONOR_RANGES, DONOR_RANGES_TYPE
+            ),
+        ),
+    )
+    value = ArtifactValue(
+        ranges, DONOR_RANGES_TYPE, _sha(b"r"), _sha(ranges), NumericScope()
+    )
+    context = _support_context(terminal_frame, node, {DONOR_RANGES: value}, sources)
+    bounds = TRANSPORT_SUPPORT_BOUNDS.run(context).artifacts[DONOR_SUPPORT_BOUNDS]
+    return ranges, bounds, ranges_node.id, node.id
+
+
+def _support_edges(ranges, bounds, ranges_node, bounds_node):
+    return {
+        DONOR_SUPPORT_BOUNDS: {
+            "producer": bounds_node,
+            "artifact": DONOR_SUPPORT_BOUNDS,
+            "type": [SUPPORT_BOUNDS_TYPE.name, SUPPORT_BOUNDS_TYPE.schema_version],
+            "sha256": _sha(bounds),
+            "producer_key": "c" * 64,
+        },
+        DONOR_RANGES: {
+            "producer": ranges_node,
+            "artifact": DONOR_RANGES,
+            "type": [DONOR_RANGES_TYPE.name, DONOR_RANGES_TYPE.schema_version],
+            "sha256": _sha(ranges),
+            "producer_key": "d" * 64,
+        },
+    }
+
+
+def _support_outcome(
+    ranges, bounds, ranges_node, bounds_node, frame, structural=(), edges=None
+):
+    manifest = GatesManifest.from_mapping(
+        {
+            "country": "xx",
+            "version": 1,
+            "policy": "Synthetic support.",
+            "phases": ["terminal"],
+            "gates": [
+                {
+                    "id": "toy_support",
+                    "gate": "support",
+                    "phase": "terminal",
+                    "criticality": "release_blocking",
+                    "parameters": {
+                        "structural_columns": [
+                            {"entity": e, "column": c, "reason": "Synthetic."}
+                            for e, c in structural
+                        ]
+                    },
+                }
+            ],
+        },
+        country="xx",
+    )
+    report = evaluate_phase(
+        manifest,
+        "terminal",
+        EvidenceContext(
+            frame=frame,
+            artifacts={
+                DONOR_SUPPORT_BOUNDS: decode_support_bounds(bounds),
+                GRAPH_EVIDENCE: MappingProxyType(
+                    edges or _support_edges(ranges, bounds, ranges_node, bounds_node)
+                ),
+            },
+        ),
+        registry=TRANSPORT_GATE_REGISTRY,
+    )
+    (outcome,) = report.outcomes
+    return outcome
+
+
+_BANDS = [
+    {"lower": 100.0, "upper": 200.0, "reference": "low"},
+    {"lower": 200.0, "upper": 400.0, "reference": "high"},
+]
+
+
+def _toy_roster(**extra):
+    columns = [
+        {"entity": "person", "column": "age", "class": "copied"},
+        {"entity": "household", "column": "tenure_code", "class": "copied"},
+        {
+            "entity": "person",
+            "column": "wage",
+            "class": "quantile_mapped",
+            "producer_params": {
+                "bands": _BANDS,
+                "interpolation": {"method": "uniform"},
+            },
+        },
+        {
+            "entity": "person",
+            "column": "interest_income",
+            "class": "currency",
+            "producer_params": {
+                "rate": 1.6,
+                "columns": {"person": ["interest_income"]},
+            },
+        },
+        {
+            "entity": "household",
+            "column": "source_household_id",
+            "class": "structural",
+            "reason": "Synthetic.",
+        },
+        {"entity": "tax_unit", "column": "tax_unit_flag", "class": "copied"},
+        {"entity": "family", "column": "family_flag", "class": "copied"},
+    ]
+    columns += extra.get("more", [])
+    return {"columns": columns}
+
+
+def _donor_and_terminal(*, wage=(150.0, 0.0, 399.0, 120.0, 0.0, 250.0), age_shift=0):
+    donor = _support_frame(
+        {
+            ("person", "wage"): [5.0, 0.0, 9.0, 1.0, 0.0, 3.0],
+            ("person", "interest_income"): [1.0, 2.0, 0.0, 3.0, 4.0, 5.0],
+            ("household", "tenure_code"): pd.array(
+                ["own", "rent", "own"], dtype="string"
+            ),
+        }
+    )
+    terminal = _support_frame(
+        {
+            ("person", "wage"): list(wage),
+            ("person", "interest_income"): [1.6, 3.2, 0.0, 4.8, 6.4, 8.0],
+            ("household", "tenure_code"): pd.array(
+                ["own", "rent", "rent"], dtype="string"
+            ),
+            ("person", "age"): (np.arange(30, 36) + age_shift).astype(np.int64),
+        }
+    )
+    return donor, terminal
+
+
+class TestSupportBounds:
+    def test_every_bounded_class_passes_inside_its_support(self) -> None:
+        donor, terminal = _donor_and_terminal()
+        ranges, bounds, rn, bn = _run_support(_toy_roster(), donor, terminal)
+        rows = {
+            (r["entity"], r["column"]): r
+            for r in decode_support_bounds(bounds).document["columns"]
+        }
+        assert rows["person", "age"]["expected_min"] == 30.0
+        assert rows["person", "wage"]["expected_max"] == 400.0
+        assert rows["person", "interest_income"]["expected_max"] == 8.0
+        assert rows["household", "tenure_code"]["expected_categories"] == [
+            '"own"',
+            '"rent"',
+        ]
+        assert all(row["records_outside"] in (0, None) for row in rows.values())
+        outcome = _support_outcome(
+            ranges,
+            bounds,
+            rn,
+            bn,
+            terminal,
+            structural=[("household", "source_household_id")],
+        )
+        assert outcome.status is GateStatus.PASSED, outcome.result.failures
+
+    def test_values_outside_their_support_fail_with_counts(self) -> None:
+        donor, terminal = _donor_and_terminal(
+            wage=(150.0, 0.0, 401.0, 50.0, 0.0, 250.0), age_shift=1
+        )
+        ranges, bounds, rn, bn = _run_support(_toy_roster(), donor, terminal)
+        outcome = _support_outcome(
+            ranges,
+            bounds,
+            rn,
+            bn,
+            terminal,
+            structural=[("household", "source_household_id")],
+        )
+        assert outcome.status is GateStatus.FAILED
+        lines = outcome.result.failures
+        assert any(
+            line.startswith("person.wage (quantile_mapped): 2 records")
+            for line in lines
+        )
+        assert any(line.startswith("person.age (copied): 1 records") for line in lines)
+
+    def test_an_undeclared_structural_row_fails(self) -> None:
+        donor, terminal = _donor_and_terminal()
+        ranges, bounds, rn, bn = _run_support(_toy_roster(), donor, terminal)
+        outcome = _support_outcome(ranges, bounds, rn, bn, terminal, structural=[])
+        assert any("does not declare it" in line for line in outcome.result.failures)
+
+    def test_derived_pending_and_uncovered_rows_fail_with_their_reasons(self) -> None:
+        donor, terminal = _donor_and_terminal()
+        more = [
+            {
+                "entity": "person",
+                "column": "flag",
+                "class": "derived",
+                "sources": [
+                    {"entity": "person", "column": "age", "class": "copied"},
+                    {
+                        "entity": "household",
+                        "column": "rent",
+                        "class": "pending",
+                        "reason": "awaits C1",
+                    },
+                ],
+                "reason": "Sources are walked per node.",
+            },
+            {
+                "entity": "household",
+                "column": "rent",
+                "class": "pending",
+                "reason": "awaits C1",
+            },
+            {
+                "entity": "family",
+                "column": "family_flag",
+                "class": "uncovered",
+                "reason": "no row excuses it",
+            },
+        ]
+        ranges, bounds, rn, bn = _run_support(_toy_roster(more=more), donor, terminal)
+        outcome = _support_outcome(
+            ranges,
+            bounds,
+            rn,
+            bn,
+            terminal,
+            structural=[("household", "source_household_id")],
+        )
+        lines = outcome.result.failures
+        assert any(
+            "person.flag (derived): sources without coverage: household.rent (pending)"
+            in line
+            for line in lines
+        )
+        assert any(
+            line.startswith("household.rent (pending): awaits C1") for line in lines
+        )
+        assert any(line.startswith("family.family_flag (uncovered)") for line in lines)
+
+    def test_a_rank_only_row_is_refused_with_the_reserved_message(self) -> None:
+        donor, terminal = _donor_and_terminal()
+        more = [{"entity": "person", "column": "pension_rank", "class": "rank_only"}]
+        ranges, bounds, rn, bn = _run_support(_toy_roster(more=more), donor, terminal)
+        outcome = _support_outcome(
+            ranges,
+            bounds,
+            rn,
+            bn,
+            terminal,
+            structural=[("household", "source_household_id")],
+        )
+        assert (
+            "person.pension_rank: lineage class 'rank_only' is reserved for the declared "
+            "rank-only input (BE d1902); no producer implements it yet."
+        ) in outcome.result.failures
+
+    @pytest.mark.parametrize(
+        ("edit", "match"),
+        [
+            (
+                lambda d: d["producer"].update(implementation_hash="0" * 64),
+                "implementation hash",
+            ),
+            (
+                lambda d: d["inputs"]["artifacts"].update(donor_ranges="0" * 64),
+                "input artifact 'donor_ranges'",
+            ),
+            (
+                lambda d: d["inputs"]["frame"].update({"person.wage": "0" * 64}),
+                "differs from the battery's frame",
+            ),
+        ],
+    )
+    def test_forged_or_edited_support_fails(self, edit, match) -> None:
+        donor, terminal = _donor_and_terminal()
+        ranges, bounds, rn, bn = _run_support(_toy_roster(), donor, terminal)
+        bounds = _forged(bounds, edit)
+        outcome = _support_outcome(
+            ranges,
+            bounds,
+            rn,
+            bn,
+            terminal,
+            structural=[("household", "source_household_id")],
+        )
+        assert any(match in line for line in outcome.result.failures), (
+            outcome.result.failures
+        )
+
+    def test_the_roster_must_name_every_column_the_battery_slices(self) -> None:
+        donor, terminal = _donor_and_terminal()
+        ranges, bounds, rn, bn = _run_support(_toy_roster(), donor, terminal)
+        outcome = _support_outcome(
+            ranges,
+            bounds,
+            rn,
+            bn,
+            terminal,
+            structural=[("household", "source_household_id")],
+        )
+        # The terminal frame here carries only roster columns.
+        assert not any("does not name it" in line for line in outcome.result.failures)
+        wider = _support_frame({("person", "unlisted"): [1, 2, 3, 4, 5, 6]})
+        outcome = _support_outcome(
+            ranges,
+            bounds,
+            rn,
+            bn,
+            wider,
+            structural=[("household", "source_household_id")],
+        )
+        assert any(
+            "person.unlisted: the battery slices it" in line
+            for line in outcome.result.failures
+        )
+
+
+class TestQuantileSupport:
+    def test_an_open_pareto_top_records_a_null_bound(self) -> None:
+        bands = [
+            {"lower": 0.0, "upper": 100.0, "reference": "a"},
+            {"lower": 100.0, "upper": None, "reference": "b"},
+        ]
+        positive, negative = quantile_support(bands, {"method": "pareto", "alpha": 2.0})
+        assert quantile_bounds(positive, negative) == (0.0, None)
+        assert inside_quantile_support(1e12, positive, negative)
+
+    def test_an_open_negative_top_records_a_null_lower_bound(self) -> None:
+        bands = {
+            "positive": [{"lower": 0.0, "upper": 10.0, "reference": "p"}],
+            "negative": [
+                {"lower": 0.0, "upper": 5.0, "reference": "n1"},
+                {"lower": 5.0, "upper": None, "reference": "n2"},
+            ],
+        }
+        positive, negative = quantile_support(bands, {"method": "pareto", "alpha": 1.5})
+        assert quantile_bounds(positive, negative) == (None, 10.0)
+        # Belgium's probe reached -22.36 past every finite bound.
+        assert inside_quantile_support(-22.36, positive, negative)
+
+    def test_another_mode_is_refused_by_name(self) -> None:
+        with pytest.raises(
+            ValueError, match="'donor_tail' lands with its own producer"
+        ):
+            quantile_support(_BANDS, {"method": "donor_tail"})
+
+    @PROPERTY
+    @given(
+        values=st.lists(
+            st.one_of(st.just(0.0), st.floats(0.01, 1e6)), min_size=4, max_size=40
+        ),
+        cuts=st.lists(st.floats(1.0, 1e5), min_size=2, max_size=4, unique=True),
+        pareto=st.booleans(),
+    )
+    def test_property_every_quantile_mapped_value_lies_inside_its_bands(
+        self, values, cuts, pareto
+    ) -> None:
+        values = np.asarray(values)
+        if not (values > 0).any():
+            values[0] = 1.0
+        edges = sorted(cuts)
+        rows = [
+            {"lower": low, "upper": high, "share": 1 / (len(edges) - 1)}
+            for low, high in zip(edges[:-1], edges[1:], strict=True)
+        ]
+        interpolation = "uniform"
+        if pareto:
+            rows[-1]["upper"] = None
+            interpolation = {"method": "pareto", "alpha": 2.0}
+        mapped = quantile_map(
+            values, np.ones(len(values)), rows, interpolation=interpolation
+        )
+        declared = [
+            {"lower": r["lower"], "upper": r["upper"], "reference": "x"} for r in rows
+        ]
+        positive, negative = quantile_support(
+            declared, interpolation if pareto else {"method": "uniform"}
+        )
+        assert all(
+            inside_quantile_support(float(v), positive, negative) for v in mapped
+        )
+        assert all(mapped[values == 0] == 0)
+
+
+class TestNormalizedSupport:
+    def test_differential_bounds_equal_money_normalize_outputs(self, tmp_path) -> None:
+        from test_support.microcosm_build.money_normalization import (
+            graph_declaration,
+            money_factor_context,
+            normalize_node,
+            write_money_feed,
+        )
+
+        path, pin, identity, facts = write_money_feed(tmp_path, rate="1.25")
+        context = money_factor_context(identity, facts)
+        declaration = graph_declaration()
+        raw = {
+            "interest_income": [3.0, 5.0, 0.1],
+            "rental_income": [-120.5, 0.0, 35.25],
+            "farm_self_employment_income": [0.0, -2.675, 1000000.0],
+        }
+        node = normalize_node("toy.normalize", "toy.central", declaration, context, pin)
+        money_context = KernelContext(
+            node=node,
+            tables={"person": pd.DataFrame({"person_id": [11, 12, 13], **raw})},
+            weights={},
+            strata=pd.Series([], dtype=object),
+            params=node.params,
+            rng=np.random.default_rng(0),
+            sources={"money_facts": path},
+            frame_metadata={"donor_time_period": 2024},
+        )
+        normalized = MONEY_NORMALIZE.run(money_context).columns
+        roster = {
+            "columns": [
+                {"entity": "person", "column": column, "class": "normalized"}
+                for column in raw
+            ]
+        }
+        donor = KernelContext(
+            node=_support_node(
+                DONOR_RANGES_REF,
+                DONOR_RANGES,
+                DONOR_RANGES_TYPE,
+                roster,
+                [("person", c) for c in raw],
+            ),
+            tables={"person": pd.DataFrame({"person_id": [11, 12, 13], **raw})},
+            weights={},
+            strata=pd.Series([], dtype=object),
+            params={"support_roster": _text(roster)},
+            rng=np.random.default_rng(0),
+        )
+        ranges = TRANSPORT_DONOR_RANGES.run(donor).artifacts[DONOR_RANGES]
+        money_params = {k: v for k, v in node.params.items()}
+        bounds_node = _support_node(
+            SUPPORT_BOUNDS_REF,
+            DONOR_SUPPORT_BOUNDS,
+            SUPPORT_BOUNDS_TYPE,
+            roster,
+            [("person", c) for c in raw],
+            params=money_params,
+            sources=("money_facts",),
+            inputs=(
+                ArtifactInput(
+                    DONOR_RANGES,
+                    "toy.evidence.donor_ranges",
+                    DONOR_RANGES,
+                    DONOR_RANGES_TYPE,
+                ),
+            ),
+        )
+        terminal = pd.DataFrame(
+            {
+                "person_id": [11, 12, 13],
+                **{c: normalized["person", c].to_numpy() for c in raw},
+            }
+        )
+        bounds_context = KernelContext(
+            node=bounds_node,
+            tables={"person": terminal},
+            weights={},
+            strata=pd.Series([], dtype=object),
+            params=bounds_node.params,
+            rng=np.random.default_rng(0),
+            sources={"money_facts": path},
+            artifacts={
+                DONOR_RANGES: ArtifactValue(
+                    ranges, DONOR_RANGES_TYPE, _sha(b"r"), _sha(ranges), NumericScope()
+                )
+            },
+        )
+        rows = decode_support_bounds(
+            TRANSPORT_SUPPORT_BOUNDS.run(bounds_context).artifacts[DONOR_SUPPORT_BOUNDS]
+        ).document["columns"]
+        for row in rows:
+            values = normalized["person", row["column"]].to_numpy()
+            assert row["expected_min"] == float(values.min()), row["column"]
+            assert row["expected_max"] == float(values.max()), row["column"]
+            assert row["records_outside"] == 0
+            # Signs and zeros carry through the normalization.
+            raw_values = np.asarray(raw[row["column"]])
+            assert np.array_equal(np.sign(values), np.sign(raw_values))

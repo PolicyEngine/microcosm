@@ -17,6 +17,15 @@ battery's gate bindings check that identity before they compare anything.
   change, source-household concentration, and, for the person entity and
   every declared partition, whether its effective weights are exactly the
   household vector broadcast through membership (no second vector).
+- ``transport.donor_ranges@1`` records, at the first population after
+  CREATE, each copied, normalized or currency-bridged roster column's
+  realized range (or category set) before any transform.
+- ``transport.support_bounds@1`` computes each roster column's expected
+  support from its producer in lineage (the donor range normalized through
+  ``money.normalize@1``'s own public helpers, the declared quantile bands,
+  the currency bridge, or the donor range itself) and counts the records and
+  weight outside it on the terminal frame; derived, closure-default,
+  structural, pending and uncovered rows carry their class and sources.
 - ``transport.input_closure@1`` reads each bound module's root inputs per
   engine entity from the prepared engines, partitions them against the
   reviewed closure (:func:`~.evidence_contract.closure_partition`), and runs
@@ -66,17 +75,25 @@ from microcosm.graph import (
 from microcosm.graph.canonical import canonical_json
 
 from .evidence_contract import (
+    DONOR_RANGES,
+    DONOR_RANGES_REF,
     DONOR_RECEIPT_REF,
+    DONOR_SUPPORT_BOUNDS,
     EVIDENCE_KERNEL_DEPENDENCIES,
     FIT_WEIGHT_RECORDS,
     INPUT_CLOSURE_REF,
+    SUPPORT_BOUNDS_REF,
     WEIGHTS_AUDIT_REF,
     closure_partition,
+    decode_donor_ranges,
     evidence_header,
     evidence_implementation_hash,
     frame_column_sha256,
+    inside_quantile_support,
     module_declares_imports,
     payload_sha256,
+    quantile_bounds,
+    quantile_support,
 )
 from .weight_quality import aggregate_source_weights
 
@@ -84,6 +101,8 @@ __all__ = [
     "TransportDonorReceiptKernel",
     "TransportInputClosureKernel",
     "TransportWeightsAuditKernel",
+    "TransportDonorRangesKernel",
+    "TransportSupportBoundsKernel",
     "engine_root_inputs",
     "register_evidence_kernels",
 ]
@@ -655,9 +674,393 @@ class TransportWeightsAuditKernel(_EvidenceKernel):
         )
 
 
+# ---------------------------------------------------------------------------
+# transport.donor_ranges@1 and transport.support_bounds@1
+# ---------------------------------------------------------------------------
+
+#: Roster classes whose expected support starts from the donor's range.
+_DONOR_RANGED = frozenset({"copied", "normalized", "currency"})
+#: Classes the support gate counts as covered sources of a derived row.
+_COVERED = frozenset(
+    {
+        "copied",
+        "normalized",
+        "quantile_mapped",
+        "currency",
+        "structural",
+        "closure_default",
+    }
+)
+_MONEY_PARAMS = frozenset(
+    {
+        "declaration",
+        "declaration_sha256",
+        "factor_context",
+        "factor_context_sha256",
+        "profile_selection",
+    }
+)
+
+
+def _roster(context: KernelContext, ref: str) -> list[dict]:
+    columns = _document(context, ref, "support_roster").get("columns")
+    if not isinstance(columns, list) or not all(
+        isinstance(row, dict) for row in columns
+    ):
+        raise ValueError(f"{ref} support_roster must list its columns.")
+    return columns
+
+
+def _numeric(series) -> bool:
+    import pandas as pd
+
+    dtype = series.dtype
+    return pd.api.types.is_numeric_dtype(dtype) and not pd.api.types.is_bool_dtype(
+        dtype
+    )
+
+
+def _realized(series) -> dict:
+    """Realized range of a numeric column, or the category set of any other."""
+
+    if _numeric(series):
+        values = series.to_numpy(dtype=np.float64, na_value=np.nan)
+        finite = values[np.isfinite(values)]
+        return {
+            "n_records": int(len(values)),
+            "realized_min": float(finite.min()) if finite.size else None,
+            "realized_max": float(finite.max()) if finite.size else None,
+            "categories": None,
+        }
+    values = series.astype(object).where(series.notna(), None).tolist()
+    return {
+        "n_records": int(len(values)),
+        "realized_min": None,
+        "realized_max": None,
+        "categories": sorted({json.dumps(v, sort_keys=True) for v in values}),
+    }
+
+
+class TransportDonorRangesKernel(_EvidenceKernel):
+    """Record each donor-ranged roster column's realized support."""
+
+    ref = DONOR_RANGES_REF
+    artifact = DONOR_RANGES
+    _required = frozenset({"support_roster"})
+
+    def run(self, context: KernelContext) -> KernelResult:
+        ref = self.ref
+        _params(context, ref, self._required)
+        _no_outputs(context, ref, self.artifact)
+        wanted = [
+            (row["entity"], row["column"])
+            for row in _roster(context, ref)
+            if row.get("class") in _DONOR_RANGED
+        ]
+        sliced = {
+            (entity, str(column))
+            for entity, table in context.tables.items()
+            for column in table.columns
+        }
+        missing = sorted(set(wanted) - sliced)
+        if missing:
+            raise ValueError(
+                f"{ref} must slice every donor-ranged column; missing {missing}."
+            )
+        rows = []
+        for entity, column in sorted(set(wanted)):
+            rows.append(
+                {
+                    "entity": entity,
+                    "column": column,
+                    **_realized(context.tables[entity][column]),
+                }
+            )
+        ids = {entity: f"{entity}_id" for entity in context.tables}
+        document = {
+            **evidence_header(
+                "transport_donor_ranges",
+                kernel=ref,
+                node=context.node.id,
+                artifacts={},
+                frame=_frame_digests(context, ids),
+                params={"support_roster": context.params["support_roster"]},
+            ),
+            "columns": rows,
+        }
+        payload = canonical_json(document)
+        return KernelResult(
+            artifacts={self.artifact: payload},
+            receipt={"columns": len(rows), "artifact_sha256": payload_sha256(payload)},
+        )
+
+
+def _normalized_bounds(context: KernelContext, ref: str, ranges: Mapping) -> tuple:
+    """Each normalized column's donor range, through money.normalize@1's helpers.
+
+    Returns ``({(entity, column): (low, high)}, rate_text)``. A two-row table
+    per entity carries each column's realized minimum and maximum; the
+    normalization is monotone, so its outputs bound the normalized column.
+    """
+
+    import pandas as pd
+
+    from microcosm.build.money_normalization import (
+        money_factor_inputs,
+        normalize_money_tables,
+        normalized_column_families,
+        resolve_money_rate,
+        selected_money_factors,
+        validate_money_normalization,
+    )
+    from microcosm.build.reference_factors import validate_factor_context
+
+    from . import money_kernels
+
+    declaration = validate_money_normalization(_document(context, ref, "declaration"))
+    _profile, chosen = selected_money_factors(
+        declaration, _document(context, ref, "profile_selection")
+    )
+    factor_ids = sorted({value for value in chosen.values() if value is not None})
+    entries = validate_factor_context(
+        _document(context, ref, "factor_context"), factor_ids
+    )
+    inputs = {fid: money_factor_inputs(entries[fid], declaration) for fid in factor_ids}
+    try:
+        facts, feed = money_kernels._authenticated_facts(
+            context, [entries[fid] for fid in factor_ids]
+        )
+    except ValueError as error:
+        raise ValueError(
+            f"{ref} could not authenticate the factor feed: {error}"
+        ) from error
+    rate, evidence = resolve_money_rate(declaration, facts, feed["identity"])
+    factors = {
+        family: (
+            {
+                "identity": True,
+                "reason": declaration["index_family_factors"][family]["reason"],
+            }
+            if factor_id is None
+            else inputs[factor_id]
+        )
+        for family, factor_id in chosen.items()
+    }
+    families = normalized_column_families(declaration)
+    tables = {}
+    for entity in sorted({entity for entity, _ in families}):
+        table = {f"{entity}_id": [0, 1]}
+        for family_entity, column in families:
+            if family_entity != entity:
+                continue
+            row = ranges.get((entity, column))
+            low = (
+                0.0
+                if row is None or row["realized_min"] is None
+                else row["realized_min"]
+            )
+            high = (
+                0.0
+                if row is None or row["realized_max"] is None
+                else row["realized_max"]
+            )
+            table[column] = [float(low), float(high)]
+        tables[entity] = pd.DataFrame(table)
+    arrays, _ = normalize_money_tables(
+        tables, declaration, rate=rate, rate_text=evidence["text"], factors=factors
+    )
+    bounds = {key: (float(arrays[key][0]), float(arrays[key][1])) for key in families}
+    return bounds, evidence["text"]
+
+
+def _currency_bounds(row: Mapping, low: float, high: float) -> tuple[float, float]:
+    import pandas as pd
+
+    from microcosm.frame.transport import currency_bridge
+
+    params = row.get("producer_params") or {}
+    entity, column = row["entity"], row["column"]
+    tables = {entity: pd.DataFrame({column: [low, high]})}
+    bridged = currency_bridge(tables, {entity: [column]}, params["rate"])[entity][
+        column
+    ]
+    return float(bridged.iloc[0]), float(bridged.iloc[1])
+
+
+class TransportSupportBoundsKernel(_EvidenceKernel):
+    """Every roster column's realized support against its producer's support."""
+
+    ref = SUPPORT_BOUNDS_REF
+    artifact = DONOR_SUPPORT_BOUNDS
+    _required = frozenset({"support_roster"})
+
+    def run(self, context: KernelContext) -> KernelResult:
+        import pandas as pd
+
+        ref = self.ref
+        present = set(context.params)
+        money = present & _MONEY_PARAMS
+        optional = _MONEY_PARAMS | {"chronicle_feed_pin"}
+        if (
+            not self._required <= present
+            or present - self._required - optional
+            or (money and money != _MONEY_PARAMS)
+        ):
+            raise ValueError(
+                f"{ref} takes support_roster, and the five money.normalize@1 "
+                "parameters together when the roster normalizes."
+            )
+        _no_outputs(context, ref, self.artifact)
+        if set(context.artifacts) != {DONOR_RANGES}:
+            raise ValueError(f"{ref} reads exactly the {DONOR_RANGES!r} artifact.")
+        ranges_payload = context.artifacts[DONOR_RANGES].payload
+        ranges = {
+            (row["entity"], row["column"]): row
+            for row in decode_donor_ranges(ranges_payload).document["columns"]
+        }
+        roster = _roster(context, ref)
+        structural = [
+            {
+                "entity": row["entity"],
+                "column": row["column"],
+                "reason": row.get("reason"),
+            }
+            for row in roster
+            if row.get("class") == "structural"
+        ]
+        normalized = [row for row in roster if row.get("class") == "normalized"]
+        bounds: dict = {}
+        rate = None
+        if normalized:
+            if not money:
+                raise ValueError(f"{ref} needs the money.normalize@1 parameters.")
+            bounds, rate = _normalized_bounds(context, ref, ranges)
+        columns = []
+        for row in roster:
+            entity, column, cls = row["entity"], row["column"], row["class"]
+            out = {
+                "entity": entity,
+                "column": column,
+                "class": cls,
+                "owner": row.get("owner"),
+                "realized_min": None,
+                "realized_max": None,
+                "expected_min": None,
+                "expected_max": None,
+                "expected_categories": None,
+                "records_outside": None,
+                "weighted_outside": None,
+                "sources": [
+                    {k: source[k] for k in ("entity", "column", "class")}
+                    for source in row.get("sources", ())
+                ],
+                "reason": row.get("reason") or row.get("closure_entry"),
+            }
+            if cls in _DONOR_RANGED | {"quantile_mapped"}:
+                table = context.tables.get(entity)
+                if table is None or column not in table.columns:
+                    raise ValueError(
+                        f"{ref} must slice roster column {entity}.{column}."
+                    )
+                series = table[column]
+                weights = context.weights.get(entity)
+                weight_values = (
+                    np.ones(len(series))
+                    if weights is None
+                    else np.asarray(weights.values)
+                )
+                realized = _realized(series)
+                out["realized_min"] = realized["realized_min"]
+                out["realized_max"] = realized["realized_max"]
+                donor = ranges.get((entity, column))
+                if cls in _DONOR_RANGED and donor is None:
+                    raise ValueError(f"{ref} has no donor range for {entity}.{column}.")
+                if cls == "copied" and donor["categories"] is not None:
+                    allowed = set(donor["categories"])
+                    out["expected_categories"] = sorted(allowed)
+                    observed = (
+                        series.astype(object).where(series.notna(), None).tolist()
+                    )
+                    outside = np.asarray(
+                        [json.dumps(v, sort_keys=True) not in allowed for v in observed]
+                    )
+                else:
+                    if cls == "quantile_mapped":
+                        params = row.get("producer_params") or {}
+                        positive, negative = quantile_support(
+                            params.get("bands"), params.get("interpolation")
+                        )
+                        low, high = quantile_bounds(positive, negative)
+                        values = series.to_numpy(dtype=np.float64, na_value=np.nan)
+                        aggregate = params.get("aggregate_entity")
+                        if aggregate is not None:
+                            members = table[f"{entity}_{aggregate}_id"].to_numpy()
+                            totals = pd.Series(values).groupby(members).transform("sum")
+                            values = totals.to_numpy()
+                        outside = np.asarray(
+                            [
+                                not np.isfinite(v)
+                                or not inside_quantile_support(
+                                    float(v), positive, negative
+                                )
+                                for v in values
+                            ]
+                        )
+                    else:
+                        low, high = donor["realized_min"], donor["realized_max"]
+                        if cls == "normalized":
+                            low, high = bounds[(entity, column)]
+                        elif cls == "currency":
+                            low, high = _currency_bounds(row, low, high)
+                        values = series.to_numpy(dtype=np.float64, na_value=np.nan)
+                        outside = np.asarray(
+                            [
+                                not np.isfinite(v)
+                                or (low is not None and v < low)
+                                or (high is not None and v > high)
+                                for v in values
+                            ]
+                        )
+                    out["expected_min"], out["expected_max"] = low, high
+                out["records_outside"] = int(outside.sum())
+                out["weighted_outside"] = float(
+                    math.fsum(weight_values[outside].tolist())
+                )
+            columns.append(out)
+        ids = {entity: f"{entity}_id" for entity in context.tables}
+        document = {
+            **evidence_header(
+                "transport_donor_support_bounds",
+                kernel=ref,
+                node=context.node.id,
+                artifacts={DONOR_RANGES: ranges_payload},
+                frame=_frame_digests(context, ids),
+                params={
+                    name: context.params[name]
+                    for name in sorted(present)
+                    if name != "chronicle_feed_pin"
+                },
+            ),
+            "rate": rate,
+            "structural_columns": structural,
+            "columns": columns,
+        }
+        payload = canonical_json(document)
+        return KernelResult(
+            artifacts={self.artifact: payload},
+            receipt={
+                "columns": len(columns),
+                "records_outside": sum(row["records_outside"] or 0 for row in columns),
+                "artifact_sha256": payload_sha256(payload),
+            },
+        )
+
+
 #: The engine-free evidence kernel, shared across registries.
 TRANSPORT_DONOR_RECEIPT = TransportDonorReceiptKernel()
 TRANSPORT_WEIGHTS_AUDIT = TransportWeightsAuditKernel()
+TRANSPORT_DONOR_RANGES = TransportDonorRangesKernel()
+TRANSPORT_SUPPORT_BOUNDS = TransportSupportBoundsKernel()
 
 
 def register_evidence_kernels(
@@ -667,5 +1070,7 @@ def register_evidence_kernels(
 
     registry.register(TRANSPORT_DONOR_RECEIPT)
     registry.register(TRANSPORT_WEIGHTS_AUDIT)
+    registry.register(TRANSPORT_DONOR_RANGES)
+    registry.register(TRANSPORT_SUPPORT_BOUNDS)
     registry.register(TransportInputClosureKernel(engines))
     return registry
