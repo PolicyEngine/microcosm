@@ -51,6 +51,13 @@ _TRANSITION_STATUSES = {
     "started": "started",
     "running": "started",
 }
+#: The adapter's own ``LocalTelemetryEmitter.start``, kept before the shared
+#: fixture replaces it with one that returns a ``FakeTelemetryEmitter``. The
+#: fixture imports this module before it replaces the method. A test of what
+#: the adapter does when it starts the installed emitter (its version check,
+#: and stopping a build that must send telemetry) puts it back with
+#: ``monkeypatch.setattr(LocalTelemetryEmitter, "start", classmethod(ADAPTER_START))``.
+ADAPTER_START = LocalTelemetryEmitter.start.__func__
 
 
 def fake_publication_inventory(
