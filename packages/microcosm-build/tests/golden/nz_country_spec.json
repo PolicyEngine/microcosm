@@ -1,6 +1,6 @@
 {
   "country": "nz",
-  "fingerprint": "a11bf5ad637ad5ed80c68251818b0ecd4586eec6a283cacbe6cfa85e4048b395",
+  "fingerprint": "b4baf12cbbf796cbd2562ca90833925eed625d223986bc016bc52334823473b0",
   "gate_ids": [
     "calibration_per_family_fit",
     "demography_per_family_fit",
@@ -43,7 +43,7 @@
     "as_rate_bridge.json": "1399321cc7ef44486f7ab407968b036930ff6ae8fbab4c30ce710ea0fff7301c",
     "atomic_geography_support.json": "6efd09d5cde2f16d4d01e522a721191a829a754d2ce019d75bb0407085ecb4b7",
     "axiom_input_closure.json": "791c1cd420de8eddde8af6f9bc8a9aa5627d517f90ffed9b0012a36734071058",
-    "axiom_rules_bindings.json": "6e4cec74e91dac3c6e5b8ebe38daab33270f63bd42aa135de2dbce8cf17d0a0b",
+    "axiom_rules_bindings.json": "2ec91292e3231a4524c372ba78f1e9fedc62a34f8a4f6e38a274c9f608d138a6",
     "benefit_gross_up.json": "bb0100927c3d666f497b24694109463de247d53d6e7ee0cfa092255e33c5514e",
     "benefit_unit_rule.json": "c84efba8353c770131256a8c17b82c7d98f738e6dd8ef217e19d30014cb14604",
     "calibration_bindings.json": "abf5278b51a13530e2c589a932942a185f5dda095c1eb3e4bc703999c24852b3",
