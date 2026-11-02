@@ -6,11 +6,14 @@ local-authority rows bind from them, each through a declared
 ``uprating_index`` the reference generators and the runtime compiles share:
 
 * consumption (``desnz.energy_trends.gb_domestic_level``): the sub-national
-  totals stand on another basis than Energy Trends, the level the LCFS stage
-  rakes every household's kWh to (meter readings allocated to the year, and
-  weather-corrected for gas). The rows bind as a distribution: one factor per
-  fuel puts Great Britain's authorities on the stage's own level, so they
-  carry only DESNZ's split between areas. Energy Trends is a United Kingdom
+  totals stand on another basis than the level the LCFS stage rakes every
+  household's kWh to (meter readings allocated to the year, and
+  weather-corrected for gas). That level is Energy Trends, or, for a fuel the
+  stage levels to ONS household spending, the kWh that spending buys at QEP
+  prices (microcosm#1418; the index keeps its name). The rows bind as a
+  distribution: one factor per fuel puts Great Britain's authorities on the
+  stage's own level, so they carry only DESNZ's split between areas. The
+  level is a United Kingdom
   total and the sub-national statistics cover Great Britain: Great Britain's
   part of the level is its share of DESNZ's sub-national domestic consumption
   with Northern Ireland's row added, so each factor is the UK level over the
@@ -21,6 +24,13 @@ local-authority rows bind from them, each through a declared
 * gas-connected households (``desnz.subnational.gas_meter_share``): each
   authority's census households times its gas meters over its electricity
   meters, the share the stage already imposes by region, here by authority.
+
+The same three rows bind by constituency (microcosm#1095). DESNZ publishes no
+constituency cut, so a seat's consumption and meters are Microcosm's split of
+its authorities' totals by DESNZ's small-area figures
+(``uk/desnz_constituency_energy_facts.json``, ``desnz_constituency_energy``):
+the seat cells take the same factor per fuel, and their meter share reads the
+split's seat meters.
 
 The rows keep the fact's own period: consumption is DESNZ's 2024 kWh,
 calendar 2024 for electricity and gas year 2024 for gas, which the
@@ -38,6 +48,8 @@ read one function.
 
 from __future__ import annotations
 
+import copy
+import functools
 import math
 from collections.abc import Mapping, Sequence
 from dataclasses import replace
@@ -47,12 +59,25 @@ import numpy as np
 
 from microcosm.build.country_spec import load_country_spec
 from microcosm.build.ledger_targets import LedgerTargetReference, TargetRegistry
+from microcosm.build.uk_runtime.desnz_constituency_energy import (
+    FACTS_RESOURCE as UK_CONSTITUENCY_ENERGY_RESOURCE,
+)
+from microcosm.build.uk_runtime.desnz_constituency_energy import (
+    UKDesnzConstituencyEnergyFacts,
+    load_uk_desnz_constituency_energy_facts,
+    seat_meter_counts,
+)
 from microcosm.build.uk_runtime.energy_pricing import (
     ELECTRICITY_FUEL,
     ELECTRICITY_KWH,
     FUEL_OF_COLUMN,
     GAS_FUEL,
     GAS_KWH,
+    GREAT_BRITAIN_GEOGRAPHY_ID,
+    LEVEL_BASIS_ENERGY_TRENDS,
+    LEVEL_BASIS_ONS_HOUSEHOLD_SPEND,
+    NORTHERN_IRELAND_GEOGRAPHY_ID,
+    NORTHERN_IRELAND_PERIOD_TYPES,
     SUBNATIONAL_METER_CONCEPTS,
     SUBNATIONAL_PERIOD_TYPES,
     UK_DESNZ_DOMESTIC_ENERGY_RESOURCE,
@@ -71,29 +96,28 @@ UK_ENERGY_LEVEL_INDEX_CONCEPT = "desnz.energy_trends.gb_domestic_level"
 UK_GAS_METER_SHARE_INDEX_CONCEPT = "desnz.subnational.gas_meter_share"
 UK_LOCAL_ENERGY_RESOURCE = "desnz_local_energy_facts.json"
 UK_ENERGY_STAGE = "lcfs_consumption"
-GREAT_BRITAIN_GEOGRAPHY_ID = "K03000001"
-UNITED_KINGDOM_GEOGRAPHY_ID = "K02000001"
 GREAT_BRITAIN_NATION_IDS = ("E92000001", "W92000004", "S92000003")
 SUBNATIONAL_CONSUMPTION_CONCEPTS: Mapping[str, str] = {
     ELECTRICITY_KWH: "desnz.subnational.domestic_electricity_consumption",
     GAS_KWH: "desnz.subnational.domestic_gas_consumption",
 }
-#: Northern Ireland's row of DESNZ's sub-national domestic consumption, all
-#: domestic meters: electricity on financial years from April (the publisher's
-#: opening-year label, not weather corrected) and gas on DESNZ's Northern
-#: Ireland gas years (15 May to 15 May from 2018, weather corrected). The year
-#: labelled Y pairs with Great Britain's year Y, as Great Britain's gas year
-#: pairs with its calendar-year electricity (microcosm#1278).
-NORTHERN_IRELAND_GEOGRAPHY_ID = "N92000002"
-NORTHERN_IRELAND_PERIOD_TYPES: Mapping[str, str] = {
-    ELECTRICITY_FUEL: "fiscal_year",
-    GAS_FUEL: "gas_year",
-}
 #: The meter year the gas-connected share is read for: the stage's own.
 GAS_METER_SHARE_PERIOD = 2024
+#: The stage's UK level as a cell's basis names it, by the fuel's level basis
+#: (``energy_pricing.published_energy_level``; microcosm#1418).
+UK_ENERGY_LEVEL_SOURCES: Mapping[str, str] = {
+    LEVEL_BASIS_ENERGY_TRENDS: (
+        "DESNZ Energy Trends domestic {fuel} consumption at actual temperature, "
+        "United Kingdom, calendar {year}"
+    ),
+    LEVEL_BASIS_ONS_HOUSEHOLD_SPEND: (
+        "the kWh ONS Consumer Trends household spending on {fuel} (COICOP "
+        "{coicop}), United Kingdom, calendar {year}, buys at QEP's United Kingdom "
+        "average prices over every domestic meter"
+    ),
+}
 UK_ENERGY_LEVEL_BASIS = (
-    "DESNZ Energy Trends domestic {fuel} consumption at actual temperature, "
-    "United Kingdom, calendar {year} (the level the LCFS stage rakes to), times "
+    "{source} (the level the LCFS stage rakes to), times "
     "Great Britain's share of DESNZ's sub-national domestic {fuel} consumption "
     "with Northern Ireland's row added ({year}, all domestic meters; DESNZ calls "
     "Northern Ireland's figures not directly comparable with Great Britain's), "
@@ -103,6 +127,11 @@ UK_ENERGY_LEVEL_BASIS = (
 UK_GAS_METER_SHARE_BASIS = (
     "DESNZ sub-national domestic gas meters over electricity meters in the "
     "authority, {year}, applied to the authority's census households"
+)
+UK_SEAT_GAS_METER_SHARE_BASIS = (
+    "DESNZ domestic gas meters over electricity meters in the constituency, "
+    "{year}, Microcosm's split of its authorities' meters by DESNZ's small-area "
+    "figures, applied to the constituency's census households"
 )
 UK_ENERGY_LEVEL_HOLD = "matched_period"
 UK_GAS_CONNECTED_HOLD = "control_rescaled"
@@ -196,7 +225,7 @@ def northern_ireland_consumption(
 
     The Northern Ireland row (all domestic meters) for the year labelled
     ``year``, in each fuel's own period type. Great Britain's part of the
-    Energy Trends UK level is its share of the sub-national total with this
+    stage's UK level is its share of the sub-national total with this
     row added (microcosm#1278; Great Britain's share of UK households stood in
     until Chronicle carried these rows).
     """
@@ -252,9 +281,33 @@ def gb_energy_level_factors(
     consumption with Northern Ireland's row added, so the factor is the UK
     level over the UK sub-national total. ``local_rows`` stands in for the
     local energy resource's rows (tests).
+
+    The declared call reads only committed resources, so it is computed once
+    per process: every local energy reference levels through it, and the
+    ONS-spend level re-reads the QEP table, which made a local compile about
+    twenty minutes slower (the independent review of microcosm#1420, finding
+    6).
     """
 
-    parameters = declared_energy_pricing() if parameters is None else parameters
+    if parameters is None and local_rows is None:
+        factors, receipt = _declared_gb_energy_level_factors()
+        return dict(factors), copy.deepcopy(receipt)
+    return _gb_energy_level_factors(
+        declared_energy_pricing() if parameters is None else parameters,
+        local_rows=local_rows,
+    )
+
+
+@functools.lru_cache(maxsize=1)
+def _declared_gb_energy_level_factors() -> tuple[dict[str, float], dict[str, Any]]:
+    return _gb_energy_level_factors(declared_energy_pricing(), local_rows=None)
+
+
+def _gb_energy_level_factors(
+    parameters: Mapping[str, Any],
+    *,
+    local_rows: Sequence[Mapping[str, Any]] | None,
+) -> tuple[dict[str, float], dict[str, Any]]:
     if str(parameters.get("level_period_type")) != "calendar_year":
         raise ValueError(
             "The local energy rows bind calendar-year sub-national totals: the "
@@ -330,16 +383,24 @@ def align_energy_to_stage_level(
     parameters: Mapping[str, Any] | None = None,
     local_rows: Sequence[Mapping[str, Any]] | None = None,
 ) -> TargetRegistry:
-    """Put each authority's DESNZ consumption on the stage's Energy Trends level."""
+    """Put each authority's DESNZ consumption on the stage's published level.
+
+    The level is the stage's own for the fuel: Energy Trends, or the kWh ONS
+    household spending buys for a fuel the stage levels to it (microcosm#1418).
+    """
 
     if reference.uprating_index != UK_ENERGY_LEVEL_INDEX_CONCEPT:
         return registry
     column = _fuel_column(reference)
     factors, receipt = gb_energy_level_factors(parameters, local_rows=local_rows)
     factor = factors[column]
-    basis = UK_ENERGY_LEVEL_BASIS.format(
-        fuel=FUEL_OF_COLUMN[column], year=receipt["period_value"]
+    fuel = FUEL_OF_COLUMN[column]
+    year = receipt["period_value"]
+    level_block = receipt["level"]["by_fuel"][column]
+    source = UK_ENERGY_LEVEL_SOURCES[str(level_block["basis"])].format(
+        fuel=fuel, year=year, coicop=level_block.get("coicop")
     )
+    basis = UK_ENERGY_LEVEL_BASIS.format(source=source, fuel=fuel, year=year)
     aligned = []
     for spec in registry.specs:
         # The factor is the stage's level year over DESNZ's same year: a row
@@ -430,22 +491,43 @@ def align_census_households_by_gas_meter_share(
     *,
     year: int = GAS_METER_SHARE_PERIOD,
     rows: Sequence[Mapping[str, Any]] | None = None,
+    seat_facts: UKDesnzConstituencyEnergyFacts | None = None,
 ) -> TargetRegistry:
-    """Each authority's census households times its gas-connected meter share."""
+    """Each area's census households times its gas-connected meter share.
+
+    An authority reads its own DESNZ meters (``rows``, by default the vendored
+    resource); a constituency reads the split of its authorities' meters
+    (``seat_facts``, by default the committed derived resource).
+    """
 
     if reference.uprating_index != UK_GAS_METER_SHARE_INDEX_CONCEPT:
         return registry
-    meters = _meter_rows_by_roster_area(year, rows)
-    basis = UK_GAS_METER_SHARE_BASIS.format(year=year)
+    meters: dict[str, dict[str, float]] | None = None
+    seat_meters: dict[str, dict[str, float]] | None = None
     aligned = []
     for spec in registry.specs:
         area = _cell_area(spec)
-        counts = meters.get(area, {})
+        if str(spec.metadata.get("ledger_geography_level")) == "constituency":
+            if seat_meters is None:
+                seat_meters = seat_meter_counts(
+                    seat_facts or load_uk_desnz_constituency_energy_facts(),
+                    year=year,
+                    period_types=SUBNATIONAL_PERIOD_TYPES,
+                )
+            counts = seat_meters.get(area, {})
+            resource = UK_CONSTITUENCY_ENERGY_RESOURCE
+            basis = UK_SEAT_GAS_METER_SHARE_BASIS.format(year=year)
+        else:
+            if meters is None:
+                meters = _meter_rows_by_roster_area(year, rows)
+            counts = meters.get(area, {})
+            resource = UK_LOCAL_ENERGY_RESOURCE
+            basis = UK_GAS_METER_SHARE_BASIS.format(year=year)
         if set(counts) != {ELECTRICITY_FUEL, GAS_FUEL}:
             raise ValueError(
-                f"UK target {spec.name!r}: {UK_LOCAL_ENERGY_RESOURCE} has no "
+                f"UK target {spec.name!r}: {resource} has no "
                 f"{year} {sorted({ELECTRICITY_FUEL, GAS_FUEL} - set(counts))} "
-                f"meter count for {area!r} (an authority without a gas network "
+                f"meter count for {area!r} (an area without a gas network "
                 "is a signed deferral, never a zero)."
             )
         if counts[ELECTRICITY_FUEL] <= 0:
@@ -462,7 +544,7 @@ def align_census_households_by_gas_meter_share(
             **spec.metadata,
             "uprating_index": UK_GAS_METER_SHARE_INDEX_CONCEPT,
             "uprating_index_basis": basis,
-            "uprating_index_resource": UK_LOCAL_ENERGY_RESOURCE,
+            "uprating_index_resource": resource,
             "uprating_factor": f"{share:.15g}",
             "ledger_value_before_alignment": f"{spec.value:.15g}",
             "uprating_hold": UK_GAS_CONNECTED_HOLD,

@@ -332,10 +332,10 @@ def gate_payload(phase, failed=None, release_candidate=False):
 
 
 LADDER_TARGET = "ons.census.households@E14000001"
-#: microcosm#1262: tests flip ``WITHHELD_BRMA_ROW`` to stage a Scottish BRMA
-#: row whose model figures the terminal gates withhold (it rests on fewer than
-#: ten source households), so the projection reads it blank.
-WITHHELD_BRMA_ROW = False
+#: Tests flip ``THIN_BRMA_ROW`` to stage a Scottish BRMA row that rests on
+#: fewer than ten source households; it carries its model figures like any
+#: other row (María's ruling of 2026-10-26).
+THIN_BRMA_ROW = False
 BRMA_TARGET = "ons.rent.private_rent_brma@S33000001"
 
 #: The synthetic measures node's engine resolution, as the problem bindings
@@ -380,7 +380,7 @@ def problem_payload() -> bytes:
             "source": "fixture",
         }
     ]
-    if WITHHELD_BRMA_ROW:
+    if THIN_BRMA_ROW:
         targets.append(
             Target(
                 BRMA_TARGET,
@@ -580,16 +580,17 @@ TARGET_ROWS_CSV = (
 
 
 def target_rows_csv() -> bytes:
-    """The terminal targets table; a withheld BRMA row reads blank (#1262)."""
+    """The terminal targets table, with the thin BRMA row when it is staged."""
 
-    if not WITHHELD_BRMA_ROW:
+    if not THIN_BRMA_ROW:
         return TARGET_ROWS_CSV
-    header, ladder = TARGET_ROWS_CSV.decode().splitlines()
     return (
-        f"{header},model_figures_withheld\n{ladder},False\n"
-        f"{BRMA_TARGET}@2025,{BRMA_TARGET}@2025,1000.0,,,,"
-        "private_rent,brma,brma,S33000001,rent/private_rent_brma,True\n"
-    ).encode()
+        TARGET_ROWS_CSV
+        + (
+            f"{BRMA_TARGET}@2025,{BRMA_TARGET}@2025,1000.0,900.0,-0.1,0.1,"
+            "private_rent,brma,brma,S33000001,rent/private_rent_brma\n"
+        ).encode()
+    )
 
 
 SUPPORT_CSV = (

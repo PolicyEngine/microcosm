@@ -1,0 +1,176 @@
+{
+  "country": "nz",
+  "reference_set": "holdout",
+  "description": "New Zealand v0 held-out references: Accommodation Supplement comparators (recipients, MSD Accommodation Assistance expenditure, Treasury AN 24/01) and the Working for Families tripwire. MC5 holds these out of calibration; no calibration-side graph node may read this resource. target_role is validation throughout. Every row is an unactivated placeholder. Each period follows the label convention of its Chronicle package (IRD tax years by closing year; MSD fiscal years by opening year, as recorded in source_period_kind, source_period_start and source_period_end); activation re-checks every period against the harvested facts.",
+  "allowed_value_operations": [
+    "identity"
+  ],
+  "target_references": [
+    {
+      "name": "msd_accommodation_supplement_recipients_by_region",
+      "ledger_selector": {
+        "source_name": "msd_quarterly_benefit_facts",
+        "source_measure_id": "accommodation_supplement_recipients_by_region",
+        "geography_level": "region"
+      },
+      "entity": "family",
+      "measure": "receives_accommodation_supplement",
+      "period": "2026-03",
+      "family": "accommodation_supplement",
+      "metadata": {
+        "activation_status": "requires_harvested_cell_references_and_geography_bridge",
+        "criticality": "diagnostic",
+        "measure_kind": "prepared_column",
+        "publisher": "Ministry of Social Development",
+        "target_role": "validation",
+        "reference_set": "holdout",
+        "method_card_row": "MC5",
+        "holdout_use": "accommodation_supplement_recipient_comparator"
+      },
+      "notes": "Held out (MC5, conflict C5): calibrating to Accommodation Supplement recipients would predetermine the take-up comparison. MSD Work and Income regions are not Stats NZ regions, so comparison needs an explicit geography bridge. Compared with modelled eligible units, never used as a target."
+    },
+    {
+      "name": "msd_annual_report_accommodation_assistance_expenditure",
+      "ledger_selector": {
+        "source_name": "msd_annual_report",
+        "source_measure_id": "benefits_or_related_expenses_accommodation_assistance",
+        "geography_level": "country"
+      },
+      "entity": "family",
+      "measure": "accommodation_supplement_annual_amount",
+      "period": 2024,
+      "family": "accommodation_supplement",
+      "metadata": {
+        "activation_status": "requires_harvested_fact_reference_and_scope_evidence",
+        "measure_kind": "prepared_column",
+        "publisher": "Ministry of Social Development",
+        "source_period_kind": "fiscal_year",
+        "source_period_start": "2024-07-01",
+        "source_period_end": "2025-06-30",
+        "target_role": "validation",
+        "criticality": "diagnostic",
+        "reference_set": "holdout",
+        "method_card_row": "MC2",
+        "holdout_use": "accommodation_supplement_dollar_comparator"
+      },
+      "notes": "MSD Annual Report 2025, Benefits or Related Expenses, 2024/25 actual, published line \"Accommodation Assistance\" (targets doc M2). The comparator for the annual dollar gap (MC2). The line label may cover more than the Accommodation Supplement; the Chronicle package must record the appropriation definition before any statement that calls it Accommodation Supplement paid. Period 2024 is the opening year of the July-June fiscal year."
+    },
+    {
+      "name": "treasury_an24_01_accommodation_supplement_fiscal_total",
+      "ledger_selector": {
+        "source_name": "treasury_an24_01",
+        "source_measure_id": "fiscal_totals_accommodation_supplement",
+        "geography_level": "country"
+      },
+      "entity": "family",
+      "measure": "accommodation_supplement_annual_amount",
+      "period": 2019,
+      "family": "accommodation_supplement",
+      "metadata": {
+        "activation_status": "requires_harvested_fact_reference",
+        "measure_kind": "prepared_column",
+        "publisher": "The Treasury",
+        "source_period_kind": "tax_year",
+        "source_period_start": "2018-04-01",
+        "source_period_end": "2019-03-31",
+        "target_role": "validation",
+        "criticality": "diagnostic",
+        "reference_set": "holdout",
+        "method_card_row": "MC2",
+        "holdout_use": "accommodation_supplement_dollar_comparator"
+      },
+      "notes": "Treasury Analytical Note AN 24/01 fiscal_totals.csv, Accommodation Supplement row, tax year 2018/19 (targets doc T4, CC0). A secondary historical comparator only; it is never scaled or uprated to the model year."
+    },
+    {
+      "name": "ird_wff_recipient_families",
+      "ledger_selector": {
+        "source_name": "ird",
+        "source_measure_id": "wff_recipient_families",
+        "geography_level": "country"
+      },
+      "entity": "family",
+      "measure": "receives_working_for_families",
+      "period": 2024,
+      "family": "working_for_families",
+      "metadata": {
+        "activation_status": "requires_receipt_assignment_wff_bindings_and_2026_basis",
+        "chronicle_package_id": "ird-working-for-families-statistics-sept-2025",
+        "criticality": "diagnostic",
+        "measure_kind": "prepared_column",
+        "publisher": "Inland Revenue",
+        "target_role": "validation",
+        "chronicle_package_path": "ird/working_for_families_statistics_sept_2025",
+        "source_period_kind": "tax_year",
+        "source_period_start": "2023-04-01",
+        "source_period_end": "2024-03-31",
+        "reference_set": "holdout",
+        "method_card_row": "MC5",
+        "holdout_use": "working_for_families_tripwire"
+      },
+      "notes": "Held out as the Working for Families tripwire (IRD WFF statistics, targets doc I3). Cell-pinned IRD administrative count of families with a claim and non-zero final entitlement, not every eligible family and not cash paid. Chronicle owns the September 2025 workbook facts. Activation requires a separate family receipt/claim state and an explicit bridge from tax year ending 2024 to the 2026-27 build basis. Total and average entitlement NZD remain held-out validation, never calibration values. No v0 graph node computes WFF, so the comparison is parked until the WFF modules are bound.",
+      "ledger_source_record_id": "ird_wff_statistics.ty2024.recipient_families.all.wff_recipient_families"
+    },
+    {
+      "name": "ird_iwtc_recipient_families",
+      "ledger_selector": {
+        "source_name": "ird",
+        "source_measure_id": "iwtc_recipient_families",
+        "geography_level": "country"
+      },
+      "entity": "family",
+      "measure": "receives_in_work_tax_credit",
+      "period": 2024,
+      "family": "working_for_families",
+      "metadata": {
+        "activation_status": "requires_receipt_assignment_wff_bindings_and_2026_basis",
+        "chronicle_package_id": "ird-working-for-families-statistics-sept-2025",
+        "criticality": "diagnostic",
+        "measure_kind": "prepared_column",
+        "publisher": "Inland Revenue",
+        "target_role": "validation",
+        "chronicle_package_path": "ird/working_for_families_statistics_sept_2025",
+        "source_period_kind": "tax_year",
+        "source_period_start": "2023-04-01",
+        "source_period_end": "2024-03-31",
+        "reference_set": "holdout",
+        "method_card_row": "MC5",
+        "holdout_use": "working_for_families_tripwire"
+      },
+      "notes": "Held out as the Working for Families tripwire (IRD WFF statistics, targets doc I3). Cell-pinned IRD administrative count of families with a claim and non-zero final entitlement, not every eligible family and not cash paid. Chronicle owns the September 2025 workbook facts. Activation requires a separate family receipt/claim state and an explicit bridge from tax year ending 2024 to the 2026-27 build basis. Total and average entitlement NZD remain held-out validation, never calibration values. No v0 graph node computes WFF, so the comparison is parked until the WFF modules are bound.",
+      "ledger_source_record_id": "ird_wff_statistics.ty2024.recipient_families.all.iwtc_recipient_families"
+    },
+    {
+      "name": "ird_wff_recipient_families_by_family_income_band",
+      "ledger_selector": {
+        "source_name": "ird",
+        "source_measure_id": "wff_recipient_families_by_family_income_band",
+        "geography_level": "country"
+      },
+      "entity": "family",
+      "measure": "receives_working_for_families",
+      "filter": "family_scheme_income_band_indicator",
+      "period": 2024,
+      "family": "working_for_families",
+      "metadata": {
+        "activation_status": "requires_harvested_cell_references_wff_bindings_and_2026_basis",
+        "measure_kind": "prepared_column",
+        "publisher": "Inland Revenue",
+        "chronicle_package_id": "ird-working-for-families-statistics-sept-2025",
+        "chronicle_package_path": "ird/working_for_families_statistics_sept_2025",
+        "source_period_kind": "tax_year",
+        "source_period_start": "2023-04-01",
+        "source_period_end": "2024-03-31",
+        "target_role": "validation",
+        "criticality": "diagnostic",
+        "reference_set": "holdout",
+        "method_card_row": "MC5",
+        "holdout_use": "working_for_families_tripwire"
+      },
+      "notes": "IRD WFF recipient-family income distribution (targets doc I3, 2020 onward): the one published conditional slice of the joint-income distribution, reported as the joint-income tripwire. Held out; never calibration."
+    }
+  ],
+  "target_profile": {
+    "schema_version": 1,
+    "hierarchy_reconciliations": []
+  }
+}

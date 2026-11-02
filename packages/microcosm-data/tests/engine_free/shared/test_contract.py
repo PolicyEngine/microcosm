@@ -115,6 +115,13 @@ UK_INPUT_MASS_REVIEWED_EXCLUSIONS: dict[str, dict[str, str]] = {
         "approved_on": "2026-10-11",
         "expires_on": "2027-04-11",
     },
+    "tax_free_savings_income": {
+        "reason": "The candidate no longer ships person.tax_free_savings_income: policyengine-uk derives it as the sum of individual_savings_account_interest_income, which the candidate stores apart from non-ISA interest under the additive ISA income contract, and a persisted copy overrides that sum and is never uprated (microcosm#1360). The enhanced-FRS reference stores it in the legacy gross layout, so the column is present in the reference and absent from the candidate, which this gate otherwise fails whatever the tolerance. Non-ISA savings_interest_income stays compared; it falls below the reference's gross total by the ISA part.",
+        "approved_by": "juaristi22",
+        "adjudication": "microcosm#1360 folded into microcosm#1418's PR B (ruling 2026-10-28 in session)",
+        "approved_on": "2026-10-28",
+        "expires_on": "2027-04-28",
+    },
 }
 GIT_COMMIT = "5fa48f07436a806ad75ff76fd22cfb8613bddbe0"
 DATASET_SHA = "d" * 64
@@ -213,19 +220,19 @@ def _trusted_terminal_gate_signing_key(monkeypatch) -> None:
 UK_GATE_BATTERY_PRODUCER = "microcosm.build.gate_battery"
 UK_GATE_BATTERY_SIGNING_KEY_ENV = "MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY"
 UK_GATE_BATTERY_POLICY_SHA256 = (
-    "3e9896aa61e9d9340a3cf6ce4a7b85626288b4312f59b795a7aef77fb4c111d6"
+    "40e24836c45468ccb50b025dcd05603dc4d8af37ef546fa3bc6d4ea9152f707e"
 )
 UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "2054ed4194fac38952f51832c7a30ca81abfec177dff0f22c3d34acf4e63a779"
+    "7d9a294b0c17dd545beb88fcf3d1e596a4c36dd4aa8a7821b6fe767de3beb85f"
 )
 UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "a6d9b3f1dcaeea839af81fda2388e60736fd41c1c7b2e9d23af9b9dbca4e8886"
+    "0b82c7d90eb4400bb333a4f477509c9570221ecfd5afde13f08de4c8689b6db9"
 )
 UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256 = (
-    "6a179222c6b6058ad9caacfd347f7bdb8cb98a62237b50d1fc1136df09337251"
+    "f246388de42654dd68dbbb40c42282001b5b0a8bf48976162bcb1199085cb1d3"
 )
 UK_GATE_BATTERY_INPUT_MASS_EVIDENCE_SHA256 = (
-    "82a5fa0c7dec5ac5c169f0b8b2f4acc6b302e80637dc698d3247e75a6d133933"
+    "24bb96f93de3bda45425b797a2f5069df7477bf3a56616080cc04376beab56e5"
 )
 #: Spec entry id -> (neutral gate name, phase, legacy detail-schema name).
 #: microcosm#1240: the two report-only high-value homes gates.
@@ -246,6 +253,7 @@ UK_GATE_BATTERY_ENTRIES = {
     ),
     "uk_stage_was_wealth_support": ("stage_health", "transferred", None),
     "uk_stage_was_lisa_support": ("stage_health", "transferred", None),
+    "uk_stage_was_lisa_anchor": ("stage_health", "transferred", None),
     "uk_stage_property_components": ("stage_health", "transferred", None),
     "uk_stage_was_wealth_coherence": ("stage_health", "transferred", None),
     "uk_stage_uc_deduction_attributes": (
@@ -267,6 +275,16 @@ UK_GATE_BATTERY_ENTRIES = {
         "transferred",
         None,
     ),
+    "uk_stage_lcfs_consumption_excise_quantities": (
+        "stage_health",
+        "transferred",
+        None,
+    ),
+    "uk_stage_lcfs_consumption_gambling_participation": (
+        "stage_health",
+        "transferred",
+        None,
+    ),
     "uk_stage_lcfs_consumption_basis": ("stage_health", "transferred", None),
     "uk_stage_nts_bus_travel_support": ("stage_health", "transferred", None),
     "uk_stage_nts_bus_travel_facts": ("stage_health", "transferred", None),
@@ -278,6 +296,7 @@ UK_GATE_BATTERY_ENTRIES = {
         "transferred",
         None,
     ),
+    "uk_stage_frs_annual_income_spells": ("stage_health", "transferred", None),
     "uk_stage_spi_support_channel_mass": (
         "stage_health",
         "transferred",
@@ -289,6 +308,7 @@ UK_GATE_BATTERY_ENTRIES = {
         None,
     ),
     "uk_stage_spi_benefit_coherence": ("stage_health", "transferred", None),
+    "uk_stage_uc_take_up": ("stage_health", "transferred", None),
     "uk_stage_pension_credit_take_up": ("stage_health", "transferred", None),
     "uk_stage_child_benefit_take_up": ("stage_health", "transferred", None),
     "uk_stage_high_value_home_support_mass": ("stage_health", "transferred", None),
@@ -323,6 +343,49 @@ UK_GATE_BATTERY_ENTRIES = {
         None,
     ),
     "uk_stage_student_loans_realization": (
+        "stage_health",
+        "transferred",
+        None,
+    ),
+    "uk_stage_regional_home_values_ranking": (
+        "stage_health",
+        "transferred",
+        None,
+    ),
+    "uk_stage_property_purchases_fit": (
+        "stage_health",
+        "transferred",
+        None,
+    ),
+    "uk_stage_uc_legacy_closure_take_up_contract": (
+        "stage_health",
+        "transferred",
+        None,
+    ),
+    "uk_stage_frs_person_draws_apprentices": (
+        "stage_health",
+        "transferred",
+        None,
+    ),
+    "uk_stage_isa_subscriptions_invariants": ("stage_health", "transferred", None),
+    "uk_stage_isa_subscriptions": ("stage_health", "transferred", None),
+    "uk_stage_company_cars_invariants": ("stage_health", "transferred", None),
+    "uk_stage_frs_take_up_signal": (
+        "stage_health",
+        "assembled",
+        None,
+    ),
+    "uk_stage_frs_person_draws_take_up_signal": (
+        "stage_health",
+        "assembled",
+        None,
+    ),
+    "uk_stage_frs_household_draws_take_up_signal": (
+        "stage_health",
+        "assembled",
+        None,
+    ),
+    "uk_stage_childcare_copy_take_up_signal": (
         "stage_health",
         "transferred",
         None,
@@ -1119,7 +1182,7 @@ def _terminal_gate_details(name: str) -> dict:
     if name == "take_up_signal":
         # Mirrors uk_take_up_signal_gate's per-column detail block.
         return {
-            "benunit.would_claim_uc": {
+            "benunit.would_claim_tfc": {
                 "weighted_share": 0.55,
                 "target": 0.55,
                 "absolute_deviation": 0.0,
@@ -1345,6 +1408,7 @@ def _gate_battery_payload(
         "hmrc_spi_income_spine",
         "spi_benefit_coherence",
         "uc_capital_coherence",
+        "uc_take_up",
         "pension_credit_take_up",
         "child_benefit_take_up",
         "uc_deduction_attributes",
@@ -1359,6 +1423,7 @@ def _gate_battery_payload(
     stage_health_stages = {
         "uk_stage_was_wealth_support": "was_wealth",
         "uk_stage_was_lisa_support": "was_lisa",
+        "uk_stage_was_lisa_anchor": "was_lisa",
         "uk_stage_property_components": "property_components",
         "uk_stage_was_wealth_coherence": "was_wealth",
         "uk_stage_uc_deduction_attributes": "uc_deduction_attributes",
@@ -1368,6 +1433,8 @@ def _gate_battery_payload(
         "uk_stage_lcfs_consumption_road_fuel_incidence": "lcfs_consumption",
         "uk_stage_lcfs_consumption_road_fuel_level": "lcfs_consumption",
         "uk_stage_lcfs_consumption_recomposed_totals": "lcfs_consumption",
+        "uk_stage_lcfs_consumption_excise_quantities": "lcfs_consumption",
+        "uk_stage_lcfs_consumption_gambling_participation": "lcfs_consumption",
         "uk_stage_lcfs_consumption_basis": "lcfs_consumption",
         "uk_stage_nts_bus_travel_support": "nts_bus_travel",
         "uk_stage_nts_bus_travel_facts": "nts_bus_travel",
@@ -1375,9 +1442,11 @@ def _gate_battery_payload(
         "uk_stage_etb_services_support": "etb_services",
         "uk_stage_etb_services_support_pricing": "etb_services",
         "uk_stage_frs_hmrc_spine_leaves_signal": "frs_hmrc_spine_leaves",
+        "uk_stage_frs_annual_income_spells": "frs_annual_income_spells",
         "uk_stage_spi_support_channel_mass": "spi_support_channel",
         "uk_stage_hmrc_spi_income_spine_identity": "hmrc_spi_income_spine",
         "uk_stage_spi_benefit_coherence": "spi_benefit_coherence",
+        "uk_stage_uc_take_up": "uc_take_up",
         "uk_stage_pension_credit_take_up": "pension_credit_take_up",
         "uk_stage_child_benefit_take_up": "child_benefit_take_up",
         "uk_stage_high_value_home_support_mass": "high_value_home_support",
@@ -1390,6 +1459,17 @@ def _gate_battery_payload(
         "uk_stage_cgt_incidence_anchor_composition": "cgt_incidence_anchor",
         "uk_stage_salary_sacrifice_realization": "salary_sacrifice",
         "uk_stage_student_loans_realization": "student_loans",
+        "uk_stage_regional_home_values_ranking": "regional_home_values",
+        "uk_stage_property_purchases_fit": "property_purchases",
+        "uk_stage_uc_legacy_closure_take_up_contract": "uc_legacy_closure_take_up",
+        "uk_stage_frs_person_draws_apprentices": "frs_person_draws",
+        "uk_stage_isa_subscriptions_invariants": "isa_subscriptions",
+        "uk_stage_isa_subscriptions": "isa_subscriptions",
+        "uk_stage_company_cars_invariants": "company_cars",
+        "uk_stage_frs_take_up_signal": "frs_take_up",
+        "uk_stage_frs_person_draws_take_up_signal": "frs_person_draws",
+        "uk_stage_frs_household_draws_take_up_signal": "frs_household_draws",
+        "uk_stage_childcare_copy_take_up_signal": "childcare_copy_take_up",
         "uk_stage_age_tail_targets": "age_tail",
         "uk_stage_frs_relationships_composition": "frs_relationships",
     }

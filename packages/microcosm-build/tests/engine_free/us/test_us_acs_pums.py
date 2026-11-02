@@ -8,11 +8,15 @@ import pandas as pd
 import pytest
 
 from microcosm.build.serialization_dtypes import CANONICAL_STRING_DTYPE
+from microcosm.build.us_runtime.acs_inputs import map_acs_native_inputs
 from microcosm.build.us_runtime.acs_pums import (
     ACS_2024_1YR_SPINE,
     AcsPumsSource,
     build_acs_pums_unit_frame,
     load_acs_pums_tables,
+)
+from microcosm.build.us_runtime.operator_boundary import (
+    assert_operator_free_source_frame,
 )
 from microcosm.build.us_runtime.spine_assembly import assemble_spines
 from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
@@ -68,6 +72,14 @@ def _person(
         "PWGTP": 10,
     }
     row.update(overrides)
+    in_work_universe = int(row["AGEP"]) >= 16
+    for column, value in (
+        ("OCCP", 1010),
+        ("INDP", 7380),
+        ("WKWN", 52),
+        ("ESR", 1),
+    ):
+        row.setdefault(column, value if in_work_universe else None)
     return row
 
 
@@ -218,7 +230,10 @@ def test_acs_loader_keeps_immigration_sources_and_renames_military_service(
 
 def test_acs_loader_leaves_absent_immigration_sources_absent(tmp_path: Path) -> None:
     tables, _ = load_acs_pums_tables(_source(tmp_path))
-    for column in (*_IMMIGRATION_SOURCES, "ACS_MIL"):
+    # ESR is also a required work-experience column, so it is always loaded.
+    optional = [column for column in _IMMIGRATION_SOURCES if column != "ESR"]
+    assert "ESR" in tables["person"]
+    for column in (*optional, "ACS_MIL"):
         assert column not in tables["person"]
 
 
@@ -287,7 +302,10 @@ def test_acs_loader_leaves_absent_work_disability_sources_absent(
     tmp_path: Path,
 ) -> None:
     tables, _ = load_acs_pums_tables(_source(tmp_path))
-    for column in _WORK_DISABILITY_SOURCES:
+    # WKWN is also a required work-experience column, so it is always loaded.
+    optional = [column for column in _WORK_DISABILITY_SOURCES if column != "WKWN"]
+    assert "WKWN" in tables["person"]
+    for column in optional:
         assert column not in tables["person"]
 
 
@@ -300,6 +318,60 @@ def test_built_acs_frame_carries_the_immigration_sources(tmp_path: Path) -> None
     assert person["CIT"].tolist() == [5, 1]
     assert person["SPORDER"].tolist() == [1, 2]
     assert frame.table("household")["SERIALNO"].tolist() == ["imm"]
+
+
+def test_acs_archive_to_native_inputs_carries_work_experience_on_every_row(tmp_path):
+    household_zip = tmp_path / "work-hh.zip"
+    person_zip = tmp_path / "work-person.zip"
+    _write_csv_zip(household_zip, {"psam_husa.csv": [_household("work", NP=4)]})
+    _write_csv_zip(
+        person_zip,
+        {
+            "psam_pusa.csv": [
+                _person("work", 1, 20, WKWN=13),
+                # ACS retains the most recent job for up to five years.
+                _person("work", 2, 21, ESR=6, WKWN=None),
+                _person("work", 3, 28, AGEP=16, ESR=6, OCCP=None, INDP=None, WKWN=None),
+                _person("work", 4, 25, AGEP=15, MAR=5),
+            ]
+        },
+    )
+    frame, _ = build_acs_pums_unit_frame(AcsPumsSource(household_zip, person_zip))
+    result = map_acs_native_inputs(frame)
+    person = result.frame.person.sort_values("source_person_id")
+
+    assert person["detailed_occupation_recode"].tolist() == [8, 8, 53, 0]
+    assert person["detailed_industry_recode"].tolist() == [13, 13, 23, 0]
+    assert person["major_industry_recode"].tolist() == [9, 9, 15, 0]
+    assert person["worked_last_year"].tolist() == [True, False, False, False]
+    assert person["worked_last_year"].dtype == bool
+    assert person["detailed_industry_recode"].dtype == np.int16
+    for column in (
+        "detailed_occupation_recode",
+        "detailed_industry_recode",
+        "major_industry_recode",
+        "worked_last_year",
+    ):
+        assert result.native_inputs[column]["observed_rows"] == 4
+        assert result.native_inputs[column]["missing_rows"] == 0
+    assert_operator_free_source_frame(
+        result.frame,
+        label="ACS native work-experience fixture",
+        native_inputs=result.native_inputs,
+    )
+
+
+@pytest.mark.parametrize("column", ["OCCP", "INDP", "WKWN", "ESR"])
+def test_acs_loader_refuses_missing_work_experience_source_columns(tmp_path, column):
+    household_zip = tmp_path / "missing-work-hh.zip"
+    person_zip = tmp_path / "missing-work-person.zip"
+    _write_csv_zip(household_zip, {"psam_husa.csv": [_household("work")]})
+    row = _person("work", 1, 20)
+    del row[column]
+    _write_csv_zip(person_zip, {"psam_pusa.csv": [row]})
+
+    with pytest.raises(ValueError, match=f"missing required column.*{column}"):
+        load_acs_pums_tables(AcsPumsSource(household_zip, person_zip))
 
 
 def _asec_shaped_frame() -> Frame:

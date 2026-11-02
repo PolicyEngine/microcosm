@@ -94,5 +94,12 @@ What the numbers say:
   inputs'. The calibration is on the inputs' mass. A probe run with
   `--reference-release-dir` reports each effect's z-score against the
   full-size build's, which is one draw on the effects themselves.
+  [`route-a-p005/`](route-a-p005/README.md) is that draw on this export. All 8
+  authoritative verdicts agree with the full-size build, the largest of
+  their |z| is 0.68, and no probe's |z| exceeds 4. The one verdict that
+  disagrees,
+  `tx_snap_additional_vehicle_exemption_abolition`, is informational: its
+  effect reaches few of its 309,580 carriers, and none of the 22,889 sampled
+  ones.
 
 "Authoritative" is a calibrated label, not a proof.

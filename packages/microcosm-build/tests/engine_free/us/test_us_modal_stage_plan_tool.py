@@ -360,6 +360,55 @@ def test_image_pins_the_commit_and_the_lock() -> None:
     assert commands[-1].startswith('test -z "$(git')
 
 
+def test_image_installs_the_emitter_command_on_its_own(app) -> None:
+    """Builds start the separately installed emitter, never the synced one."""
+
+    plan = plan_lib.parse_plan(_plan_data())
+    commands = plan_lib.image_build_commands(plan)
+    sync = next(index for index, command in enumerate(commands) if "uv sync" in command)
+    install = commands.index(
+        "UV_TOOL_BIN_DIR=/usr/local/bin uv tool install 'microcosm-emitter>=0.7.0'"
+    )
+    # Outside the build's environment, after it is synced and before the
+    # clean-tree check. The image does not build unless the command runs.
+    assert sync < install < len(commands) - 1
+    assert commands[install + 1] == "/usr/local/bin/microcosm-emitter version"
+    # The interface in the build finds the command through the image's
+    # environment, which the stage tool inherits.
+    image = sys.modules["modal"].Image.debian_slim.return_value
+    image_env = image.apt_install.return_value.pip_install.return_value.env
+    environment = image_env.call_args.args[0]
+    assert environment["MICROCOSM_EMITTER_COMMAND"] == (
+        "/usr/local/bin/microcosm-emitter"
+    )
+    tool_env, removed = plan_lib.tool_environment(
+        {"PATH": "/usr/local/bin:/usr/bin", **environment}, {}
+    )
+    assert tool_env["MICROCOSM_EMITTER_COMMAND"] == "/usr/local/bin/microcosm-emitter"
+    assert "MICROCOSM_EMITTER_COMMAND" not in removed
+
+
+def test_the_app_never_runs_an_emitter_installed_where_the_image_puts_it(
+    app, monkeypatch, tmp_path: Path
+) -> None:
+    """A machine with a command at the image's emitter path never runs it here."""
+
+    ran = tmp_path / "emitter-ran"
+    command = tmp_path / "microcosm-emitter"
+    command.write_text(f"#!/bin/sh\ntouch '{ran}'\necho '{{}}'\n")
+    command.chmod(0o755)
+    monkeypatch.setattr(plan_lib, "IMAGE_EMITTER_COMMAND", str(command))
+    # _runner_identity() also hashes the image clone's uv.lock. The image's
+    # /root/microcosm is unreadable on a CI runner, where Python 3.13's
+    # Path.exists() raises PermissionError, so point it at an empty folder.
+    monkeypatch.setattr(plan_lib, "IMAGE_REPO_ROOT", str(tmp_path / "repo"))
+
+    recorded = {"emitter_version": "0.7.0", "protocol_versions": [1]}
+    assert app._emitter_version() == recorded
+    assert app._runner_identity()["microcosm_emitter"] == recorded
+    assert not ran.exists()
+
+
 # --------------------------------------------------------------------------- #
 # Hashing, mirroring, receipts                                                 #
 # --------------------------------------------------------------------------- #
