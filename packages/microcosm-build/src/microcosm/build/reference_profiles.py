@@ -93,7 +93,9 @@ def _measurement_proofs(proofs: Mapping | None) -> dict:
             or not isinstance(producers, Mapping)
             or not producers
             or any(
-                not isinstance(key, str) or not key or not isinstance(value, str)
+                not isinstance(key, str)
+                or not key
+                or not isinstance(value, str)
                 or not value
                 for key, value in producers.items()
             )
@@ -252,7 +254,9 @@ def _summed_members(row: Mapping) -> frozenset | None:
                 "that repeat or are not scalars."
             )
         cells = [
-            (*cell, (key, _member_order(item).decode())) for cell in cells for item in members
+            (*cell, (key, _member_order(item).decode()))
+            for cell in cells
+            for item in members
         ]
     count = row.get("expected_member_count")
     if type(count) is not int or count != len(cells):
@@ -272,11 +276,7 @@ def _row_cells(row: Mapping) -> frozenset:
     if not isinstance(pins, Mapping):
         return frozenset()
     return frozenset(
-        {
-            tuple(
-                (key, _member_order(pins[key]).decode()) for key in sorted(pins)
-            )
-        }
+        {tuple((key, _member_order(pins[key]).decode()) for key in sorted(pins))}
     )
 
 
@@ -392,7 +392,7 @@ def _validate_companions(transform: Mapping, by_name: Mapping) -> tuple[list, li
         if complete != set(names):
             raise ValueError("Money and count rosters are incomplete companions.")
     _validate_summed_rows(money, counts, by_name)
-    money_keys =[_companion_key(by_name[name]) for name in money]
+    money_keys = [_companion_key(by_name[name]) for name in money]
     count_keys = [_companion_key(by_name[name]) for name in counts]
     if len(set(money_keys)) != len(money) or set(money_keys) != set(count_keys):
         raise ValueError("Money and count rosters must match one-to-one companions.")

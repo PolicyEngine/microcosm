@@ -2,7 +2,7 @@
 
 ``compose.measurement_proofs`` satisfies ``measurement:<id>`` only when, for
 every calibration node, exactly one node upstream of it declares
-``measurement_id: <id>`` and writes the scaled interval table's income and
+``params.measurement_id: <id>`` and writes the scaled interval table's income and
 universe columns on that table's entity. Each mutant below breaks one clause
 and must leave the rows parked, with the activation gap naming the
 measurement.
@@ -31,6 +31,11 @@ GROUPS = [[f"n{index}" for index in range(5)], [f"n{index}" for index in range(5
 
 
 def _graph(entity="person", *, producer_entity=None, measured=True):
+    """CREATE, the producer, preparation, the problem and calibration.
+
+    Preparation reads the income and universe columns on the producer's
+    entity, so the producer always sits upstream of calibration.
+    """
     producer_entity = entity if producer_entity is None else producer_entity
     measure = {
         "id": "toy.measure",
@@ -43,7 +48,7 @@ def _graph(entity="person", *, producer_entity=None, measured=True):
         ],
     }
     if measured:
-        measure["measurement_id"] = SUMMED_MEASUREMENT
+        measure["params"] = {"measurement_id": SUMMED_MEASUREMENT}
     return {
         "schema_version": 1,
         "country": "toy",
@@ -59,7 +64,10 @@ def _graph(entity="person", *, producer_entity=None, measured=True):
                 "kernel": "calibration.prepare@1",
                 "population": "toy.create",
                 "inputs": [
-                    {"entity": entity, "columns": [INCOME_COLUMN, UNIVERSE_COLUMN]}
+                    {
+                        "entity": producer_entity,
+                        "columns": [INCOME_COLUMN, UNIVERSE_COLUMN],
+                    }
                 ],
                 "outputs": [
                     {"entity": entity, "column": "toy_income_band_b0", "dtype": "bool"}
@@ -131,7 +139,7 @@ def test_a_third_entity_table_passes_the_proof():
 
 
 def _no_producer(graph):
-    del _nodes(graph)["toy.measure"]["measurement_id"]
+    del _nodes(graph)["toy.measure"]["params"]
 
 
 def _after_calibration(graph):
@@ -155,6 +163,13 @@ def _two_producers(graph):
 
 
 def _wrong_column(graph):
+    # The producer writes another income column; CREATE supplies the one
+    # the table names.
+    nodes = _nodes(graph)
+    nodes["toy.measure"]["outputs"][0]["column"] = "toy_other_cents"
+
+
+def _income_without_universe(graph):
     nodes = _nodes(graph)
     nodes["toy.measure"]["outputs"] = nodes["toy.measure"]["outputs"][:1]
     graph["nodes"].insert(
@@ -177,6 +192,12 @@ def _wrong_column(graph):
         ("after_calibration", _after_calibration, "person", "0 nodes declaring"),
         ("two_producers", _two_producers, "person", "2 nodes declaring"),
         ("wrong_column", _wrong_column, "person", "does not write"),
+        (
+            "income_without_universe",
+            _income_without_universe,
+            "person",
+            "does not write",
+        ),
         ("wrong_entity", None, "person", "does not write"),
         ("wrong_entity_tax_unit", None, "tax_unit", "does not write"),
     ],
@@ -200,9 +221,7 @@ def test_each_proof_mutant_leaves_rows_parked_and_names_the_measurement(
         "requires_prerequisites"
     }
     gaps = list(
-        _reference_activation_gaps(
-            references, "target_references", refusals=refusals
-        )
+        _reference_activation_gaps(references, "target_references", refusals=refusals)
     )
     assert len(gaps) == len(rows)
     assert all(f"measurement:{SUMMED_MEASUREMENT} (" in gap for gap in gaps)
@@ -242,7 +261,118 @@ def test_proof_result_is_bound_into_the_selection_identity():
         proved_receipt["reference_selection_sha256"]
         != parked_receipt["reference_selection_sha256"]
     )
-    assert json.loads(
-        proved["target_references"][0]["metadata"]["reference_prerequisites_remaining"]
-    ) == []
+    assert (
+        json.loads(
+            proved["target_references"][0]["metadata"][
+                "reference_prerequisites_remaining"
+            ]
+        )
+        == []
+    )
     assert parked != proved
+
+
+def _compiled_toy(*, second_producer=False):
+    """A compiled graph: CREATE, one or two producers, preparation, calibration."""
+    from microcosm.graph import (
+        Graph,
+        Node,
+        Owned,
+        Slice,
+        SourceRef,
+        StructuralDelta,
+        compile_graph,
+    )
+
+    def producer(name, column):
+        return Node(
+            id=name,
+            kernel="measure.combine@1",
+            population="toy.create",
+            params={"measurement_id": SUMMED_MEASUREMENT},
+            outputs=(Owned("person", column, "int64"),),
+        )
+
+    nodes = [
+        Node(
+            id="toy.create",
+            kernel="transport.create@1",
+            structural=StructuralDelta.CREATE,
+            sources=("toy_donor",),
+            outputs=(Owned("person", "person_id", "int64"),),
+        ),
+        producer("toy.measure", INCOME_COLUMN),
+    ]
+    read = [INCOME_COLUMN]
+    if second_producer:
+        nodes.append(producer("toy.measure.again", "toy_other_cents"))
+        read.append("toy_other_cents")
+    nodes += [
+        Node(
+            id="toy.prepare",
+            kernel="calibration.prepare@1",
+            population="toy.create",
+            inputs=(Slice("person", tuple(read)),),
+            outputs=(Owned("person", "toy_income_band_b0", "bool"),),
+        ),
+        Node(
+            id="toy.calibrate",
+            kernel="calibrate.ordered_adam@1",
+            population="toy.create",
+            inputs=(Slice("person", ("toy_income_band_b0",)),),
+        ),
+    ]
+    graph = Graph(
+        country="toy",
+        sources=(SourceRef("toy_donor", "toy-codec-v1"),),
+        nodes=tuple(nodes),
+    )
+    return graph, compile_graph(graph)
+
+
+def _forced_proof(monkeypatch, producer):
+    from microcosm.build.transport import compose as compose_module
+
+    proof = {
+        SUMMED_MEASUREMENT: {
+            "measurement_id": SUMMED_MEASUREMENT,
+            "producers": {"toy.calibrate": producer},
+            "columns": [],
+        }
+    }
+    monkeypatch.setattr(compose_module, "measurement_proofs", lambda spec: (proof, {}))
+    monkeypatch.setattr(
+        compose_module,
+        "transport_endpoints",
+        lambda spec: {"calibration": "toy.calibrate"},
+    )
+    return compose_module._check_measurement_proofs
+
+
+def test_the_compiled_graph_confirms_the_declared_producer(monkeypatch):
+    check = _forced_proof(monkeypatch, "toy.measure")
+    graph, compiled = _compiled_toy()
+    check({}, graph, compiled)
+
+
+@pytest.mark.parametrize(
+    ("producer", "second", "found"),
+    [("toy.elsewhere", False, "1 nodes"), ("toy.measure", True, "2 nodes")],
+)
+def test_composition_refuses_a_proof_the_compiled_graph_contradicts(
+    monkeypatch, producer, second, found
+):
+    check = _forced_proof(monkeypatch, producer)
+    graph, compiled = _compiled_toy(second_producer=second)
+    with pytest.raises(ValueError, match=f"contradicts the declared proof; {found}"):
+        check({}, graph, compiled)
+
+
+def test_a_non_string_measurement_id_param_proves_nothing():
+    document = _graph()
+    _nodes(document)["toy.measure"]["params"] = {
+        "measurement_id": {"resource": "factor_context", "path": [], "encoding": "json"}
+    }
+    proofs, refusals = measurement_proofs(_spec(document))
+    assert proofs == {}
+    assert "not a string" in refusals[SUMMED_MEASUREMENT]
