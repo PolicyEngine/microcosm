@@ -484,7 +484,7 @@ def _concentration(weights: np.ndarray, source_ids: np.ndarray) -> dict:
 
     values = aggregate_source_weights(weights, source_ids)
     positive = values[values > 0]
-    maximum = float(values.max()) if values.size else 0.0
+    maximum = float(values.max()) if values.size else 0
     scaled = values / maximum if maximum > 0 else values
     median = float(np.median(scaled[scaled > 0])) if positive.size else None
     return {
