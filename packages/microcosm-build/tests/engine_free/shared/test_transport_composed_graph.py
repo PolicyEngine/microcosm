@@ -39,6 +39,7 @@ import ast
 import copy
 import hashlib
 import json
+import os
 import re
 import shutil
 import time
@@ -59,7 +60,10 @@ from microcosm.build.reference_profiles import reference_document_sha256
 from microcosm.build.transport import cli as cli_module
 from microcosm.build.transport import compose as compose_module
 from microcosm.build.transport import target_kernels as target_kernels_module
-from microcosm.build.transport.artifact_types import COMPARISON_TYPE
+from microcosm.build.transport.artifact_types import (
+    CALIBRATION_PREPARATION_TYPE,
+    COMPARISON_TYPE,
+)
 from microcosm.build.transport.cli import (
     EXPORT_FILENAME,
     execute_transport_graph,
@@ -79,6 +83,7 @@ from microcosm.build.transport.takeup_kernels import GAP_TYPE
 from microcosm.build.transport.target_kernels import CALIBRATION_PREPARE
 from microcosm.build.transport.terminal_kernels import materialize_export
 from microcosm.frame.kernels import SimulateRulesKernel
+from microcosm.frame.unit_construction import MultiUnitRule, UnitDeclaration
 from microcosm.graph import (
     ArtifactInput,
     ArtifactOutput,
@@ -129,6 +134,7 @@ from test_support.microcosm_build.transport_entitlement import (
     make_entitlement_fixture,
 )
 from test_support.microcosm_build.transport_graph import descendants
+from test_support.microcosm_build.transport_population import UNIT_RULE
 from test_support.paths import paths_for
 
 TRANSPORT = paths_for("microcosm-build").package / "src/microcosm/build/transport"
@@ -2059,6 +2065,307 @@ def _run_prepare(node, incomes):
     )
 
 
+def _positive_payment_preparation(payments):
+    """Run the existing preparation kernel on invented comparator payments."""
+    bindings = {
+        "schema_version": 1,
+        "required_inputs": {"family": ["weekly_payment"]},
+        "input_domains": {"family": {"weekly_payment": {"kind": "nonnegative_number"}}},
+        "columns": [
+            {
+                "entity": "family",
+                "name": "positive_payment",
+                "predicates": [
+                    {"column": "weekly_payment", "operator": "gt", "value": 0}
+                ],
+            }
+        ],
+    }
+    node = Node(
+        id="positive_payment",
+        kernel=CALIBRATION_PREPARE.ref,
+        population="open",
+        inputs=(Slice("family", ("weekly_payment",)),),
+        outputs=(Owned("family", "positive_payment", "bool"),),
+        params={
+            "bindings": canonical_json(bindings).decode(),
+            "references": canonical_json({"target_references": []}).decode(),
+            "references_sha256": "0" * 64,
+        },
+        artifact_outputs=(ArtifactOutput("preparation", CALIBRATION_PREPARATION_TYPE),),
+    )
+    return CALIBRATION_PREPARE.run(
+        KernelContext(
+            node=node,
+            tables={
+                "family": pd.DataFrame(
+                    {"family_id": range(len(payments)), "weekly_payment": payments}
+                )
+            },
+            weights={},
+            strata=pd.Series([], dtype=object),
+            params=node.params,
+            rng=np.random.default_rng(0),
+        )
+    )
+
+
+def test_h1_positive_payment_producer_counts_recipients_and_h2_annualises_dollars():
+    payments = [0, 0.5, 3.25]
+    result = _positive_payment_preparation(payments)
+    indicator = result.columns["family", "positive_payment"]
+    assert indicator.tolist() == [False, True, True]
+    weights = np.asarray([2, 3, 5])
+    assert np.sum(weights * indicator.to_numpy() * 1) == 8
+    assert np.sum(weights * np.asarray(payments) * 52) == 923
+    receipt = json.loads(result.artifacts["preparation"])
+    assert receipt["bindings"]["columns"][0]["predicates"][0]["operator"] == "gt"
+
+
+@pytest.mark.parametrize("payment", [-0.01, float("nan"), float("inf"), True, "1"])
+def test_h1_positive_payment_producer_refuses_invalid_money(payment):
+    with pytest.raises(ValueError, match="missing values|outside its declared domain"):
+        _positive_payment_preparation([payment])
+
+
+def _closed_export_spec(fixture):
+    """Opt a synthetic package into exact terminal slices without formula outputs."""
+    spec = copy.deepcopy(fixture.spec)
+    document = spec["resources"]["transport_graph"]
+    formula = {
+        variable
+        for row in spec["resources"]["axiom_rules_bindings"]["bindings"]
+        for variable in row["variables"]
+    }
+    structural = {
+        "person": {"person_id", "person_household_id", "person_family_id"},
+        "household": {"household_id"},
+        "family": {"family_id"},
+    }
+    rosters = {}
+    for row in document["nodes"]:
+        if row["kernel"] == "export.prepare@1":
+            role = "export"
+        elif (
+            row["kernel"] == "gates.battery@1" and row["params"]["phase"] == "terminal"
+        ):
+            role = "gates"
+        else:
+            continue
+        for item in row["inputs"]:
+            item["columns"] = [
+                name
+                for name in item["columns"]
+                if name not in formula | structural[item["entity"]]
+            ]
+        rosters[role] = {item["entity"]: item["columns"] for item in row["inputs"]}
+    spec["resources"]["closed_export"] = {
+        "closed": True,
+        "required": [
+            "person_id",
+            "person_household_id",
+            "person_family_id",
+            "household_id",
+            "family_id",
+            "family_household_id",
+            "household_weight",
+        ],
+        "optional": sorted(
+            {
+                name
+                for roster in rosters.values()
+                for columns in roster.values()
+                for name in columns
+            }
+            - {"person_id", "household_id", "family_id"}
+        ),
+        "formula_owned_excluded": sorted(formula),
+        "entity_slices": rosters,
+    }
+    document["export_contract"] = "closed_export"
+    return spec
+
+
+def test_closed_export_contract_enforces_exact_entity_slices(composed):
+    spec = _closed_export_spec(composed)
+    graph = compose_transport_graph(spec, composed.config)
+    compile_graph(graph)
+    export = graph.node("nz.export.prepare")
+    selected = {name for item in export.inputs for name in item.columns}
+    assert not selected & {
+        "toy_main_payment",
+        "person_id",
+        "person_household_id",
+        "person_family_id",
+        "household_id",
+        "family_id",
+    }
+    assert "family_household_id" in selected
+    # Keep every sliced entity, so ids still project, and drop one roster
+    # column: only the exact-slice check can refuse.
+    for row in spec["resources"]["transport_graph"]["nodes"]:
+        if row["id"] == "nz.export.prepare":
+            for item in row["inputs"]:
+                if item["entity"] == "person":
+                    item["columns"] = item["columns"][:-1]
+    with pytest.raises(ValueError, match="exact entity-qualified whole-row slice"):
+        compose_transport_graph(spec, composed.config)
+
+
+def test_closed_export_contract_refuses_missing_replay_inputs(composed):
+    spec = _closed_export_spec(composed)
+    for roster in spec["resources"]["closed_export"]["entity_slices"].values():
+        roster["person"].remove("input_income")
+    with pytest.raises(ValueError, match="omits required replay inputs.*input_income"):
+        compose_transport_graph(spec, composed.config)
+
+
+def test_closed_export_contract_requires_ordinary_family_household_link(composed):
+    spec = _closed_export_spec(composed)
+    for roster in spec["resources"]["closed_export"]["entity_slices"].values():
+        roster["family"].remove("family_household_id")
+    with pytest.raises(ValueError, match="required columns.*family_household_id"):
+        compose_transport_graph(spec, composed.config)
+
+
+def test_closed_export_contract_applies_roster_to_automatic_structural_columns(
+    composed,
+):
+    spec = _closed_export_spec(composed)
+    spec["resources"]["closed_export"]["forbidden"] = ["person_id"]
+    with pytest.raises(ValueError, match="outside its closed roster"):
+        compose_transport_graph(spec, composed.config)
+
+
+def _on_declared_units(value):
+    if isinstance(value, dict):
+        rows = {key: _on_declared_units(item) for key, item in value.items()}
+        if rows.get("resource") == "benefit_unit_rule":
+            rows["resource"] = "unit_declarations"
+        return rows
+    if isinstance(value, list):
+        return [_on_declared_units(item) for item in value]
+    return value
+
+
+def _closed_export_on_create2(fixture, units, *, keep_legacy_rule=False):
+    """Move the closed-export spec to ``transport.create@2`` over ``units``."""
+    spec = _closed_export_spec(fixture)
+    resources = spec["resources"]
+    legacy = resources.pop("benefit_unit_rule")
+    for name in ("transport_graph", "entitlement_graph", "scenarios"):
+        if name in resources:
+            resources[name] = _on_declared_units(resources[name])
+    resources["unit_declarations"] = units.to_dict()
+    create = next(
+        row
+        for row in resources["transport_graph"]["nodes"]
+        if row.get("structural") == "create"
+    )
+    create["kernel"] = "transport.create@2"
+    resources["axiom_rules_bindings"]["entity_names"]["assessment"] = "Assessment"
+    if keep_legacy_rule:
+        resources["benefit_unit_rule"] = legacy
+    return spec
+
+
+def test_closed_export_contract_on_one_declared_unit_needs_no_legacy_rule(composed):
+    units = MultiUnitRule.from_benefit_unit(UNIT_RULE)
+    spec = _closed_export_on_create2(composed, units)
+    assert "benefit_unit_rule" not in spec["resources"]
+    compile_graph(compose_transport_graph(spec, composed.config))
+
+
+@pytest.mark.parametrize("keep_legacy_rule", [False, True])
+def test_closed_export_contract_covers_every_declared_partition(
+    composed, keep_legacy_rule
+):
+    units = MultiUnitRule(
+        units=(
+            UnitDeclaration(kind="benefit_unit", rule=UNIT_RULE),
+            UnitDeclaration(
+                kind="benefit_unit", rule=replace(UNIT_RULE, entity="assessment")
+            ),
+        )
+    )
+    silent = _closed_export_on_create2(
+        composed, units, keep_legacy_rule=keep_legacy_rule
+    )
+    with pytest.raises(ValueError, match="outside its closed roster"):
+        compose_transport_graph(silent, composed.config)
+    allowed = copy.deepcopy(silent)
+    allowed["resources"]["closed_export"]["optional"] += [
+        "person_assessment_id",
+        "assessment_id",
+    ]
+    compile_graph(compose_transport_graph(allowed, composed.config))
+    forbids = copy.deepcopy(allowed)
+    forbids["resources"]["closed_export"]["forbidden"] = ["person_assessment_id"]
+    with pytest.raises(ValueError, match="outside its closed roster"):
+        compose_transport_graph(forbids, composed.config)
+
+
+@pytest.mark.parametrize("kind", ["scratch_cents", "reporting", "formula"])
+def test_closed_export_contract_refuses_scratch_reporting_and_formula_outputs(
+    composed, kind
+):
+    spec = _closed_export_spec(composed)
+    graph = compose_transport_graph(spec, composed.config)
+    column = {
+        "scratch_cents": "scratch_cents",
+        "reporting": "income_decile",
+        "formula": "toy_main_payment",
+    }[kind]
+    if kind != "formula":
+        kernel = (
+            "money.minor_units@1"
+            if kind == "scratch_cents"
+            else "reporting.income_decile@1"
+        )
+        graph = replace(
+            graph,
+            nodes=(
+                *graph.nodes,
+                Node(
+                    id="extra_output",
+                    kernel=kernel,
+                    population="nz.terminal",
+                    outputs=(Owned("person", column, "int64"),),
+                ),
+            ),
+        )
+    contract = spec["resources"]["closed_export"]
+    contract["optional"].append(column)
+    for roster in contract["entity_slices"].values():
+        roster["person"].append(column)
+    graph = replace(
+        graph,
+        nodes=tuple(
+            replace(
+                node,
+                inputs=tuple(
+                    replace(item, columns=(*item.columns, column))
+                    if item.entity == "person"
+                    else item
+                    for item in node.inputs
+                ),
+            )
+            if node.id in {"nz.gates.terminal", "nz.export.prepare"}
+            else node
+            for node in graph.nodes
+        ),
+    )
+    if mutant_root := os.environ.get("NZ_TRANSPORT_MUTANT_ROOT"):
+        assert (
+            Path(compose_module.__file__)
+            .resolve()
+            .is_relative_to(Path(mutant_root).resolve())
+        )
+        print(f"Mutation imports compose from {compose_module.__file__}")
+    with pytest.raises(ValueError, match="scratch, reporting or formula outputs"):
+        compose_module._check_export_contract(spec, graph, compile_graph(graph))
+
+
 def test_composition_supplies_each_variant_its_own_effective_interval_companion():
     spec, row = _interval_prepare_spec()
     incomes = [104_999, 107_000, 112_000, 114_000, 116_000]
@@ -2446,7 +2753,9 @@ def test_cli_arguments():
 _GAPS = (
     "axiom_rules_bindings.engine.commit",
     "axiom_rules_bindings.engine.wheel_sha256",
-    "transport_graph.json",
+    "money column person.employment_income awaits quantile map",
+    "money column person.liquid_financial_assets awaits quantile map",
+    "money column household.rent awaits quantile map",
 )
 
 
@@ -2456,14 +2765,9 @@ def test_packaged_spec_refuses_with_every_activation_gap_named():
         validate_transport_activation(spec)
     for gap in _GAPS:
         assert gap in str(error.value), gap
-    assert (
-        len(
-            str(error.value)
-            .removeprefix("Transport spec is not activated: ")
-            .split("; ")
-        )
-        == 3
-    )
+    assert len(
+        str(error.value).removeprefix("Transport spec is not activated: ").split("; ")
+    ) == len(_GAPS)
     for removed in (
         "placeholder reference precal_references.",
         "placeholder reference target_references.",
@@ -7410,3 +7714,33 @@ def test_composition_checks_a_normalized_companion_on_each_pass(
         assert compose_transport_graph(spec, config).node(writer.id).kernel == (
             writer.kernel
         )
+
+
+def test_cold_build_executes_create_for_inventory_and_graph(
+    composed, tmp_path, monkeypatch
+):
+    calls = []
+    create = cli_module.TRANSPORT_CREATE.run
+
+    def counted(context):
+        calls.append(context.node.id)
+        return create(context)
+
+    monkeypatch.setattr(cli_module.TRANSPORT_CREATE, "run", counted)
+    prepared = prepare_transport_build(
+        composed.spec,
+        sources=composed.sources,
+        engines_by_binding=composed.engines_by_binding,
+        inventory_store=tmp_path / "inventory",
+        resume="forbid",
+    )
+    assert calls == ["nz.create"]
+    execute_transport_graph(
+        prepared.graph,
+        prepared.registry,
+        prepared.sources,
+        out=tmp_path / "cold-run",
+        endpoints=prepared.endpoints,
+        resume="forbid",
+    )
+    assert calls == ["nz.create", "nz.create"]

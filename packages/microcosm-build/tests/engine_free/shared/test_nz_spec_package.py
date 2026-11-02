@@ -148,6 +148,7 @@ import re
 import subprocess
 import unicodedata
 from collections.abc import Callable, Iterator, Mapping, Sequence
+from fractions import Fraction
 from functools import cache
 from pathlib import PurePosixPath
 from types import SimpleNamespace
@@ -170,6 +171,7 @@ from microcosm.build.ledger_targets import (
 )
 from microcosm.build.spec_engine import load_yaml12
 from microcosm.frame import concepts as frame_concepts
+from microcosm.frame.concept_mapping import MAPPING_FORMAT
 from microcosm.frame.input_closure import INPUT_CLOSURE_FORMAT
 from test_support.paths import paths_for
 
@@ -992,7 +994,7 @@ def dotted_symbol_citations(value: object) -> set[str]:
             for key, child in value.items()
             for nested in (
                 [str(key)]
-                if key == "format" and child == INPUT_CLOSURE_FORMAT
+                if key == "format" and child in {INPUT_CLOSURE_FORMAT, MAPPING_FORMAT}
                 else [str(key), child]
             )
             for dotted in dotted_symbol_citations(nested)
@@ -1865,7 +1867,9 @@ class TestRulesBindings:
         # Differential: the export gate's formula-owned list and the bindings.
         contract = _load("export_contract.json")
         bound = {v for binding in _bindings().values() for v in binding["variables"]}
-        assert set(contract["formula_owned_excluded"]) == bound
+        # H25: the gated entitlement payment is a formula output too.
+        entitled = "accommodation_supplement_entitled_weekly_payment"
+        assert set(contract["formula_owned_excluded"]) == bound | {entitled}
         assert contract["closed"] is True
         assert set(contract["forbidden"]) == {"person_weight", "family_weight"}
         assert (
@@ -1878,21 +1882,44 @@ class TestRulesBindings:
         bindings = _bindings()
         surface = _input_surface()
         assert set(bridge["rate_bindings"]) <= set(bindings)
-        evaluations = []
-        for output in bridge["outputs"]:
-            evaluations += output.get("terms", [])
-            for branch in output.get("branches", []):
-                evaluations += branch["evaluations"]
+        reg17, reg18 = bridge["outputs"]
+        s5 = bridge["superannuitant_units"]["s5_base_rate"]
+        # Each declaration's overrides apply to its primary binding; component
+        # overrides apply to their own binding.
+        override_sets = [
+            (reg17["primary_binding"], reg17["input_overrides"]),
+            (reg18["gross_rate"]["binding"], reg18["gross_rate"]["input_overrides"]),
+            (reg18["solve"]["binding"], reg18["solve"]["input_overrides"]),
+            *(
+                (component["binding"], component["input_overrides"])
+                for declaration in (reg17, s5)
+                for component in declaration["components"]
+            ),
+        ]
+        evaluations = [
+            *reg17["terms"],
+            reg18["gross_rate"],
+            *(term for term in reg18["solve"]["terms"] if "variable" in term),
+            *s5["terms"],
+        ]
         assert evaluations
+        allowed = set(bridge["rate_bindings"]) | {"nz_super"}
         for evaluation in evaluations:
             binding = bindings[evaluation["binding"]]
-            assert evaluation["binding"] in bridge["rate_bindings"]
+            assert evaluation["binding"] in allowed
             assert evaluation["variable"] in binding["variables"]
             assert evaluation["engine_entity"] == binding["engine_entity"]
-            inputs = set(surface[binding["rulespec_path"]]["canonical_inputs"])
-            overrides = [row["variable"] for row in evaluation["input_overrides"]]
+        for name, rows in override_sets:
+            inputs = set(surface[bindings[name]["rulespec_path"]]["canonical_inputs"])
+            overrides = [row["variable"] for row in rows]
             assert len(set(overrides)) == len(overrides)
             assert set(overrides) <= inputs
+        solve_input = reg18["solve"]["solve_input"]["column"]
+        assert solve_input in set(
+            surface[bindings["main_benefits_rates"]["rulespec_path"]][
+                "canonical_inputs"
+            ]
+        )
 
     def test_bridge_targets_are_the_two_as_inputs_the_module_leaves_open(self) -> None:
         bridge = _load("as_rate_bridge.json")
@@ -1914,12 +1941,28 @@ class TestRulesBindings:
 
     def test_bridge_reads_only_unit_attributes_the_unit_rule_declares(self) -> None:
         declared = set(_load("benefit_unit_rule.json")["unit_attributes"]["columns"])
-        bridge_text = json.dumps(_load("as_rate_bridge.json"))
+        bridge = _load("as_rate_bridge.json")
+        bridge_text = json.dumps(bridge)
         used = {
             f"family.{name}" for name in re.findall(r"family\.([a-z_]+)", bridge_text)
         }
+        # The bridge's own mask node derives these columns from unit attributes.
+        derived = {
+            f"family.{column['name']}"
+            for bindings in (
+                bridge["mask_bindings"],
+                bridge["superannuitant_units"]["s5_mask_bindings"],
+            )
+            for column in bindings["columns"]
+        } | {f"family.{bridge['outputs'][1]['gross_rate']['column']}"}
         assert used
-        assert used <= declared
+        assert used - derived <= declared
+        for bindings in (
+            bridge["mask_bindings"],
+            bridge["superannuitant_units"]["s5_mask_bindings"],
+        ):
+            for column in bindings["required_inputs"]["family"]:
+                assert f"family.{column}" in declared or column == "receipt_group"
 
     def test_reg17_family_tax_credit_term_uses_the_statutory_divisor(self) -> None:
         (base_rate,) = [
@@ -1927,8 +1970,12 @@ class TestRulesBindings:
             for output in _load("as_rate_bridge.json")["outputs"]
             if output["id"] == "reg17_base_rate"
         ]
-        (ftc,) = [term for term in base_rate["terms"] if "divisor" in term]
-        assert ftc["divisor"] == 52
+        (ftc,) = [
+            term
+            for term in base_rate["terms"]
+            if term["variable"] == "family_tax_credit_prescribed_amount"
+        ]
+        assert Fraction(ftc["coefficient"]) == Fraction(1, 52)
 
 
 # ---------------------------------------------------------------------------
@@ -2300,11 +2347,15 @@ class TestScenarios:
             "V2",
             "V3",
             "V4",
+            "VHF",
         ]
         branch_points = {
             tier: row["branch_point"] for tier, row in document["tiers"].items()
         }
-        assert branch_points == {"entitlement": "nz.as", "calibration": "nz.open"}
+        assert branch_points == {
+            "entitlement": "nz.as.bridge",
+            "calibration": "nz.open",
+        }
         assert [s["id"] for s in document["scenarios"] if not s["knobs"]] == ["S0"]
 
     def test_input_overrides_name_real_accommodation_supplement_inputs(self) -> None:
@@ -4101,7 +4152,12 @@ class TestReportingClassifiers:
         }
         assert all(row["annualisation_factor"] == 1 for row in market)
         benefits = [row for row in classifier["components"] if row["kind"] == "benefit"]
-        assert all(row["annualisation_factor"] == 52 for row in benefits)
+        # Main benefits read the gross-up's annual gross; NZ Super stays weekly.
+        assert all(
+            row["annualisation_factor"]
+            == (52 if row["receipt_column"] == "receives_nz_super" else 1)
+            for row in benefits
+        )
         assert all(row["tax_basis"] == "before_tax" for row in classifier["components"])
         super_income = next(
             row for row in benefits if row["receipt_column"] == "receives_nz_super"
@@ -4128,7 +4184,7 @@ class TestReportingClassifiers:
             for row in classifier["components"]
             if row["kind"] == "benefit" and row["receipt_column"] != "receives_nz_super"
         } == {
-            f"{program}_gross_weekly_payment"
+            f"{program}_annual_gross"
             for program in (
                 "jobseeker_support",
                 "sole_parent_support",
@@ -4298,17 +4354,18 @@ class TestReportingClassifiers:
         assert units["family_id"].tolist() == [102, 201, 202]
         assert units["family_source_household_id"].tolist() == ["same_source"] * 3
 
-    def test_s0_through_s3_structural_zero_cells_are_listed_on_support_entry(
+    def test_every_scenario_but_s5_lists_the_superannuitant_structural_zero(
         self,
     ) -> None:
         document = _load("reporting_classifiers.json")
         zeros = document["structural_zero_cells"]
+        # H26: MC11 excludes superannuitants everywhere but S5.
         assert zeros == [
             {
-                "scenario": f"S{index}",
+                "scenario": scenario,
                 "cell": "beneficiary_superannuitant_other/superannuitant",
             }
-            for index in range(4)
+            for scenario in ("S0", "S1", "S2", "S3", "V1", "V2", "V3", "V4", "VHF")
         ]
         support = next(
             row

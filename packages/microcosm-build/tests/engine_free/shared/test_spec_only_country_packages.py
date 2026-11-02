@@ -224,6 +224,28 @@ def test__given_schema_kernel_reference__then_it_is_not_an_entrypoint() -> None:
     assert not _looks_like_python_entrypoint("kernel:fit_qrf")
 
 
+@pytest.mark.parametrize(
+    ("location", "value", "refused"),
+    [
+        ("pkg/nz/concept_mapping.json.bindings[0]", "nz/statutes/a/b.yaml", False),
+        ("pkg/nz/concept_mapping.json.bindings[0]", "dotted.module", True),
+        ("pkg/nz/concept_mapping.json.bindings[0]", "dotted.module:callable", True),
+        ("pkg/nz/concept_mapping.json.bindings[0]", "../outside.yaml", True),
+        ("pkg/nz/concept_mapping.json.bindings[0]", "nz/statutes/a/b.py", True),
+        ("pkg/nz/concept_mapping.json", "nz/statutes/a/b.yaml", True),
+        ("pkg/nz/transport_graph.json.bindings[0]", "nz/statutes/a/b.yaml", True),
+    ],
+)
+def test__given_a_concept_mapping_module__then_only_a_rulespec_path_is_data(
+    location,
+    value,
+    refused,
+) -> None:
+    offenders = []
+    _collect_executable_content({"module": value}, location, offenders)
+    assert (f"{location}.module" in offenders) is refused
+
+
 def _partition_fact_key_roster() -> dict:
     keys = [
         "ledger.aggregate_fact.v2:" + "a" * 24,
@@ -619,4 +641,19 @@ def _is_compiler_identity_field(*, key: str, value: object, location: str) -> bo
         and isinstance(value, str)
         and re.fullmatch(r"ledger\.[a-z_]+\.v\d+:[0-9a-f]{24}", value) is not None
     )
-    return virtual_resource_label or generated_lock_count or ledger_fact_identity
+    # A concept mapping's ``module`` names the RuleSpec file that scopes one
+    # binding. ``ConceptMapping.from_dict`` reads that field and the transport
+    # kernels select bindings by it, so a packaged mapping has to spell it so.
+    # Anything other than a country's RuleSpec YAML path stays refused.
+    concept_mapping_module = (
+        key == "module"
+        and isinstance(value, str)
+        and re.fullmatch(r"[a-z]{2}(?:/[a-z0-9_]+)+\.yaml", value) is not None
+        and re.search(r"/concept_mapping\.json\.bindings\[\d+\]$", location) is not None
+    )
+    return (
+        virtual_resource_label
+        or generated_lock_count
+        or ledger_fact_identity
+        or concept_mapping_module
+    )

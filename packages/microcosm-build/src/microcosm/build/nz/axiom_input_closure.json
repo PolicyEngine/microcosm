@@ -1086,8 +1086,8 @@
    "input": "accommodation_supplement_base_rate_weekly_amount",
    "class": "encoded",
    "encoded_by": "graph_node",
-   "node": "nz.as.bridge.base_rate",
-   "reason": "The reg 17 base rate, computed by the engine-calling bridge node from the main-benefit and family tax credit modules (method card MC11, amendment MC11a; the one sanctioned exception to real-Axiom-only runtime until rulespec-nz encodes reg 17, work package B13). Unit construction and group encoding never compute it."
+   "node": "nz.scn.S0.bridge.base_rate",
+   "reason": "The reg 17 base rate. Each scenario and variant branch runs its own simulate.counterfactual@1 base-rate node (nz.scn.S0.bridge.base_rate for the central run) over the main-benefit and family tax credit modules, under method card MC11, the one sanctioned exception to real-Axiom-only runtime until rulespec-nz encodes reg 17 (work package B13). Unit construction and group encoding never compute it."
   },
   {
    "rulespec_path": "nz/statutes/social_security/accommodation_supplement/core.yaml",
@@ -1211,7 +1211,7 @@
    "class": "encoded",
    "encoded_by": "graph_node",
    "node": "nz.as.bridge.cutout",
-   "reason": "The reg 18 non-beneficiary income cutout, computed by the engine-calling bridge node (method card MC11, amendment MC11a; deleted when B13 encodes reg 18). Unit construction and group encoding never compute it."
+   "reason": "The reg 18 non-beneficiary income cutout. A simulate.solve_zero@1 node finds the income that extinguishes Jobseeker Support, with Income Test 3 for sole parents under reg 18(3)(b); nz.as.bridge.cutout serves the entitlement scenarios and each variant runs its own (method card MC11; deleted when B13 encodes reg 18). Unit construction and group encoding never compute it."
   },
   {
    "rulespec_path": "nz/statutes/social_security/accommodation_supplement/core.yaml",
@@ -1301,10 +1301,10 @@
      "household.as_area"
     ],
     "test": "equals",
-    "value": 1,
+    "value": "1",
     "group_rule": "household_value",
     "canonical_input": "nz:statutes/social_security/accommodation_supplement/core#input.accommodation_supplement_resides_in_area_1",
-    "note": "Consumed in nz/statutes/social_security/accommodation_supplement/core.yaml by accommodation_supplement_maximum_weekly_rate (source: Social Security Act 2018 Schedule 4 Part 7 clauses 1 to 6), which picks the area's maximum weekly rate; a family in none of areas 1 to 3 takes the area 4 rates. Read from the household's assigned Accommodation Supplement area (household.as_area, 1 to 4) equal to 1. The area is model state: the geography nodes assign it to the household from the territorial-authority-to-area crosswalk with population split shares (method card MC9), not from an address, so every family in a household shares the household's area."
+    "note": "Consumed in nz/statutes/social_security/accommodation_supplement/core.yaml by accommodation_supplement_maximum_weekly_rate (source: Social Security Act 2018 Schedule 4 Part 7 clauses 1 to 6), which picks the area's maximum weekly rate; a family in none of areas 1 to 3 takes the area 4 rates. Read from the household's assigned Accommodation Supplement area (household.as_area, 1 to 4) equal to 1. The area is model state: the geography nodes assign it to the household from the territorial-authority-to-area crosswalk with population split shares (method card MC9), not from an address, so every family in a household shares the household's area. The geography kernel carries area codes as text; this predicate compares the same text code."
    },
    "reason": "Model state, not a concept: see the state binding's note."
   },
@@ -1321,10 +1321,10 @@
      "household.as_area"
     ],
     "test": "equals",
-    "value": 2,
+    "value": "2",
     "group_rule": "household_value",
     "canonical_input": "nz:statutes/social_security/accommodation_supplement/core#input.accommodation_supplement_resides_in_area_2",
-    "note": "Consumed in nz/statutes/social_security/accommodation_supplement/core.yaml by accommodation_supplement_maximum_weekly_rate (source: Social Security Act 2018 Schedule 4 Part 7 clauses 1 to 6), which picks the area's maximum weekly rate; a family in none of areas 1 to 3 takes the area 4 rates. Read from the household's assigned Accommodation Supplement area (household.as_area, 1 to 4) equal to 2. The area is model state: the geography nodes assign it to the household from the territorial-authority-to-area crosswalk with population split shares (method card MC9), not from an address, so every family in a household shares the household's area."
+    "note": "Consumed in nz/statutes/social_security/accommodation_supplement/core.yaml by accommodation_supplement_maximum_weekly_rate (source: Social Security Act 2018 Schedule 4 Part 7 clauses 1 to 6), which picks the area's maximum weekly rate; a family in none of areas 1 to 3 takes the area 4 rates. Read from the household's assigned Accommodation Supplement area (household.as_area, 1 to 4) equal to 2. The area is model state: the geography nodes assign it to the household from the territorial-authority-to-area crosswalk with population split shares (method card MC9), not from an address, so every family in a household shares the household's area. The geography kernel carries area codes as text; this predicate compares the same text code."
    },
    "reason": "Model state, not a concept: see the state binding's note."
   },
@@ -1341,10 +1341,10 @@
      "household.as_area"
     ],
     "test": "equals",
-    "value": 3,
+    "value": "3",
     "group_rule": "household_value",
     "canonical_input": "nz:statutes/social_security/accommodation_supplement/core#input.accommodation_supplement_resides_in_area_3",
-    "note": "Consumed in nz/statutes/social_security/accommodation_supplement/core.yaml by accommodation_supplement_maximum_weekly_rate (source: Social Security Act 2018 Schedule 4 Part 7 clauses 1 to 6), which picks the area's maximum weekly rate; a family in none of areas 1 to 3 takes the area 4 rates. Read from the household's assigned Accommodation Supplement area (household.as_area, 1 to 4) equal to 3. The area is model state: the geography nodes assign it to the household from the territorial-authority-to-area crosswalk with population split shares (method card MC9), not from an address, so every family in a household shares the household's area."
+    "note": "Consumed in nz/statutes/social_security/accommodation_supplement/core.yaml by accommodation_supplement_maximum_weekly_rate (source: Social Security Act 2018 Schedule 4 Part 7 clauses 1 to 6), which picks the area's maximum weekly rate; a family in none of areas 1 to 3 takes the area 4 rates. Read from the household's assigned Accommodation Supplement area (household.as_area, 1 to 4) equal to 3. The area is model state: the geography nodes assign it to the household from the territorial-authority-to-area crosswalk with population split shares (method card MC9), not from an address, so every family in a household shares the household's area. The geography kernel carries area codes as text; this predicate compares the same text code."
    },
    "reason": "Model state, not a concept: see the state binding's note."
   },
