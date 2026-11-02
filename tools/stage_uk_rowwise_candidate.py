@@ -18,8 +18,19 @@ When the manifest names the build's own hand-over
 command records that hand-over's outcome instead of handing over a second
 bundle: a national build rewrites its build record after the hand-over, so a
 bundle built again from the directory would differ from the one on the Hub.
-Re-running on an already staged directory is a no-op; a directory whose bytes
-differ from the remote bundle is refused.
+It hands the directory over as a new job instead when that hand-over can never
+finish: the directory moved since, or the emitter reports its files missing or
+changed. The emitter keeps retrying the abandoned job; Microcosm cannot cancel
+it.
+
+A record that says the bundle landed is never replaced by a failure: a
+manifest that records the outputs as handed over is left untouched. Where the
+emitter does not hold the build's hand-over (another machine, or another user
+or cache directory), a national directory's new hand-over comes back
+``REMOTE_DIFFERS`` once the build's bundle is on the Hub, and the emitter
+cannot say whether the folder holds this build's bundle; the command then
+keeps the manifest's records and says so. A directory whose bytes differ from
+the remote bundle is otherwise refused.
 
 Staging is not publication: ``releases/`` and ``latest.json`` are untouched.
 """
@@ -39,14 +50,17 @@ from typing import Any
 from microcosm.build.staging_dataset import (
     HANDOVER_RECORD_KEY,
     RESTAGE_WAIT_SECONDS,
+    RETRYING_ERROR_CODES,
     SHA256SUMS_FILENAME,
     StagedBundleHandOver,
     StagedDatasetBundle,
+    StagedDatasetDelivery,
+    StagedDatasetError,
     delivery_covers_bundle,
     handover_record,
     hub_offline,
     local_only_staged_dataset,
-    recorded_handover_id,
+    recorded_handover,
     refresh_sha256sums_entry,
     resume_hand_over,
     stage_bundle,
@@ -54,7 +68,7 @@ from microcosm.build.staging_dataset import (
     write_access_problem,
     write_sidecars,
 )
-from microcosm.build.telemetry_emitter import start_bundle_emitter
+from microcosm.build.telemetry_emitter import BundleEmitter, start_bundle_emitter
 from microcosm.build.uk_runtime.staging import (
     UK_STAGED_DATASET_PREFIX,
     UK_STAGED_DATASET_REPOSITORY,
@@ -63,7 +77,7 @@ from microcosm.build.uk_runtime.staging import (
 MANIFEST_FILENAME = "rowwise_candidate_manifest.json"
 
 
-def _start_bundle_emitter():
+def _start_bundle_emitter() -> BundleEmitter:
     """This command's own emitter (test seam)."""
 
     return start_bundle_emitter()
@@ -165,19 +179,22 @@ def main(argv: list[str] | None = None) -> int:
             "release_posture": manifest.get("release_posture"),
         },
     )
-    existing = manifest.get("staged_dataset")
-    if delivery_covers_bundle(existing, bundle, repository=repository):
-        # Already on the Hub with these very outputs: keep the driver's record
-        # (its revision is the bundle's commit) and touch nothing on disk.
-        print(
-            f"already staged at {existing['repository']}/{existing['prefix']} "
-            f"(revision {existing['revision']}); nothing to do.",
-            file=sys.stderr,
-            flush=True,
-        )
-        print(json.dumps(existing, indent=2, sort_keys=True))
-        return 0
+    existing = _valid_record(manifest.get("staged_dataset"))
+    handed_over = (
+        None
+        if repository is None
+        else recorded_handover(manifest, repository=repository, run_id=run_id)
+    )
+    if delivery_covers_bundle(
+        existing, bundle, repository=repository
+    ) or _landed_as_handed_over(existing, handed_over):
+        # Already on the Hub with these very outputs, or with the outputs the
+        # build handed over: keep the record (its revision is the bundle's
+        # commit) and touch nothing on disk.
+        return _nothing_to_do(existing)
     if repository is None:
+        if _landed(existing):
+            return _keep_landed(existing, "--local-only does not replace it")
         _write_sidecars(bundle, manifest, repository=None)
         staged = StagedBundleHandOver(
             local_only_staged_dataset(bundle, prefix=UK_STAGED_DATASET_PREFIX)
@@ -199,7 +216,16 @@ def main(argv: list[str] | None = None) -> int:
             problem = write_access_problem(emitter, repository)
             if problem is not None:
                 raise SystemExit(f"error: {problem}.")
-            staged = _resume(bundle, manifest, emitter, repository, args.wait_seconds)
+            staged = None
+            if handed_over is not None:
+                staged = resume_hand_over(
+                    bundle,
+                    emitter=emitter,
+                    record=handed_over,
+                    repository=repository,
+                    prefix=UK_STAGED_DATASET_PREFIX,
+                    wait_seconds=args.wait_seconds,
+                )
             if staged is None:
                 _write_sidecars(bundle, manifest, repository=repository)
                 staged = stage_bundle(
@@ -208,23 +234,37 @@ def main(argv: list[str] | None = None) -> int:
                     repository=repository,
                     prefix=UK_STAGED_DATASET_PREFIX,
                     wait_seconds=args.wait_seconds,
+                    earlier_files=None if handed_over is None else handed_over["files"],
                 )
         finally:
             emitter.close()
     delivery = staged.delivery
-    if _same_landed_record(existing, delivery):
+    if _landed(existing) and not _landed(delivery):
+        return _keep_landed(existing, f"this attempt ended {delivery['error_code']}")
+    if _landed(existing) and _same_bundle(existing, delivery):
+        return _nothing_to_do(existing)
+    if (
+        delivery["error_code"] == "REMOTE_DIFFERS"
+        and handed_over is not None
+        and handed_over["files"] != bundle.digests()
+    ):
+        # The folder may hold the build's own bundle; only the emitter that
+        # holds the build's hand-over can say, so nothing here is replaced.
         print(
-            f"already staged at {existing['repository']}/{existing['prefix']} "
-            f"(revision {existing['revision']}); nothing to do.",
+            f"the manifest keeps its staged dataset record "
+            f"({_describe(existing)}) and the build's hand-over record.",
             file=sys.stderr,
             flush=True,
         )
-        print(json.dumps(existing, indent=2, sort_keys=True))
-        return 0
+        print(json.dumps(delivery, indent=2, sort_keys=True))
+        return 1
     manifest["staged_dataset"] = validate_staged_dataset_delivery(delivery)
-    record = handover_record(staged)
-    if record is not None:
-        manifest[HANDOVER_RECORD_KEY] = record
+    if _landed(delivery) or delivery["error_code"] in RETRYING_ERROR_CODES:
+        # A hand-over the emitter holds replaces the record; one it settled
+        # as a failure leaves the build's record for a later re-stage.
+        record = handover_record(staged, earlier=handed_over)
+        if record is not None:
+            manifest[HANDOVER_RECORD_KEY] = record
     # The emitter uploads an uncopied file from disk later; it keeps its bytes.
     if staged.may_rewrite(MANIFEST_FILENAME):
         _rewrite_manifest(manifest_path, manifest)
@@ -237,7 +277,7 @@ def main(argv: list[str] | None = None) -> int:
             file=sys.stderr,
             flush=True,
         )
-    _note_unchanged_records(existing, delivery)
+    _note_unchanged_records(existing, handed_over, delivery)
     print(json.dumps(delivery, indent=2, sort_keys=True))
     return 0 if delivery["status"] != "failed" else 1
 
@@ -266,68 +306,105 @@ def _write_sidecars(
     )
 
 
-def _resume(
-    bundle: StagedDatasetBundle,
-    manifest: Mapping[str, Any],
-    emitter: Any,
-    repository: str,
-    wait_seconds: float,
-) -> StagedBundleHandOver | None:
-    """The outcome of the build's own hand-over, if this machine still holds it.
-
-    The run directory's sidecars stay as they were handed over, so they keep
-    describing that bundle.
-    """
-    handover_id = recorded_handover_id(
-        manifest, repository=repository, run_id=bundle.run_id
-    )
-    if handover_id is None:
-        return None
-    return resume_hand_over(
-        bundle,
-        emitter=emitter,
-        handover_id=handover_id,
-        repository=repository,
-        prefix=UK_STAGED_DATASET_PREFIX,
-        wait_seconds=wait_seconds,
-    )
-
-
 _LANDED = ("uploaded", "already_staged")
 
 
-def _same_landed_record(existing: Any, delivery: Mapping[str, Any]) -> bool:
-    """Whether the manifest already records this landed bundle and commit."""
-    if not isinstance(existing, Mapping):
-        return False
+def _valid_record(value: Any) -> StagedDatasetDelivery | None:
+    if not isinstance(value, Mapping):
+        return None
     try:
-        existing = validate_staged_dataset_delivery(existing)
-    except ValueError:
-        return False
-    return (
-        existing["status"] in _LANDED
-        and delivery["status"] in _LANDED
-        and all(
-            existing[key] == delivery[key]
-            for key in ("repository", "prefix", "run_id", "revision", "files")
-        )
+        return validate_staged_dataset_delivery(value)
+    except StagedDatasetError:
+        return None
+
+
+def _landed(record: Mapping[str, Any] | None) -> bool:
+    return record is not None and record["status"] in _LANDED
+
+
+def _same_bundle(existing: Mapping[str, Any], delivery: Mapping[str, Any]) -> bool:
+    return all(
+        existing[key] == delivery[key]
+        for key in ("repository", "prefix", "run_id", "revision", "files")
     )
 
 
-def _note_unchanged_records(existing: Any, delivery: Mapping[str, Any]) -> None:
-    """Say which of the build's records still say its bundle failed, and why."""
-    if delivery["status"] not in _LANDED or not isinstance(existing, Mapping):
+def _landed_as_handed_over(
+    existing: StagedDatasetDelivery | None, handed_over: Mapping[str, Any] | None
+) -> bool:
+    """Whether the record says the bundle the build handed over landed.
+
+    A national build rewrites its build record after the hand-over, so its
+    outputs no longer match the record; the hand-over record lists them as
+    handed over.
+    """
+    return (
+        _landed(existing)
+        and handed_over is not None
+        and existing is not None
+        and existing["repository"] == handed_over["repository"]
+        and existing["run_id"] == handed_over["run_id"]
+        and existing["files"] == handed_over["files"]
+    )
+
+
+def _describe(record: Mapping[str, Any] | None) -> str:
+    if record is None:
+        return "none"
+    code = record["error_code"]
+    return record["status"] if code is None else f"{record['status']}, {code}"
+
+
+def _nothing_to_do(existing: Mapping[str, Any]) -> int:
+    print(
+        f"already staged at {existing['repository']}/{existing['prefix']} "
+        f"(revision {existing['revision']}); nothing to do.",
+        file=sys.stderr,
+        flush=True,
+    )
+    print(json.dumps(existing, indent=2, sort_keys=True))
+    return 0
+
+
+def _keep_landed(existing: Mapping[str, Any], why: str) -> int:
+    """A landed record is never replaced by a failure or a local record."""
+    print(
+        f"warning: the manifest says the bundle landed at {existing['repository']}/"
+        f"{existing['prefix']} (revision {existing['revision']}); {why}, so the "
+        "record stays.",
+        file=sys.stderr,
+        flush=True,
+    )
+    print(json.dumps(existing, indent=2, sort_keys=True))
+    return 0
+
+
+def _note_unchanged_records(
+    existing: Mapping[str, Any] | None,
+    handed_over: Mapping[str, Any] | None,
+    delivery: Mapping[str, Any],
+) -> None:
+    """Say which of the build's records still say its bundle failed, and why.
+
+    The code is the build's own, which the hand-over record keeps; the
+    manifest's may have been replaced by an earlier re-stage.
+    """
+    if delivery["status"] not in _LANDED:
         return
-    if existing.get("status") != "failed":
+    if handed_over is not None and "staging_run_error_code" in handed_over:
+        code = handed_over["staging_run_error_code"]
+    else:
+        code = None if existing is None else existing["error_code"]
+    if code is None:
         return
     print(
         f"note: the manifest now records the bundle as {delivery['status']}. The "
         "build's staging run (its staged_dataset and fit_summary artifacts, which "
-        "the dashboard reads, and its dataset_staging event) and its Logbook row "
-        f"still record {existing.get('error_code')}: a completed staging run "
-        "accepts no changes, and a Logbook row is identified by the digest of "
-        "its content and chained to the next row, so this command cannot change "
-        "them.",
+        f"the dashboard reads, and its dataset_staging event) still records {code}, "
+        "and its Logbook row still lists the phase dataset_stage_failed: a "
+        "completed staging run accepts no changes, and a Logbook row is identified "
+        "by the digest of its content and chained to the next row, so this command "
+        "cannot change them.",
         file=sys.stderr,
         flush=True,
     )

@@ -28,16 +28,20 @@ import subprocess
 import sys
 from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 from microcosm_emitter_interface import (
     EmitterClient,
+    EmitterStartupError,
     HuggingFaceSettings,
     OrrerySettings,
+    RequestFailure,
+    StageDatasetBundle,
     TelemetryRun,
     TelemetrySettings,
     default_spool_path,
 )
+from microcosm_emitter_interface.bundles import DatasetBundleReceipt, WriteAccess
 from microcosm_emitter_interface.launcher import resolve_command
 from microcosm_emitter_interface.orrery import (
     PublicationFileRole,
@@ -59,6 +63,7 @@ from microcosm.build.telemetry_identity import runtime_identity
 __all__ = [
     "DEFAULT_HEARTBEAT_SECONDS",
     "MINIMUM_EMITTER_VERSION",
+    "BundleEmitter",
     "EmitterClient",
     "LocalTelemetryEmitter",
     "OutdatedEmitterClient",
@@ -175,7 +180,36 @@ class OutdatedEmitterClient(EmitterClient):
         self.reported = reported
 
 
-def emitter_problem(client: Any) -> str | None:
+class BundleEmitter(Protocol):
+    """The interface ``EmitterClient``'s staged-bundle calls and state.
+
+    ``startup_error`` says why an emitter did not start, and ``last_failure``
+    why its latest call reported failure.
+    """
+
+    startup_error: EmitterStartupError | None
+    last_failure: RequestFailure | None
+
+    @property
+    def available(self) -> bool: ...
+
+    @property
+    def modules(self) -> frozenset[str]: ...
+
+    def stage_dataset_bundle(
+        self, request: StageDatasetBundle, *, wait_seconds: float = 0
+    ) -> DatasetBundleReceipt: ...
+
+    def dataset_bundle_receipt(
+        self, handover_id: str
+    ) -> DatasetBundleReceipt | None: ...
+
+    def check_write_access(self, repository: str) -> WriteAccess: ...
+
+    def close(self) -> None: ...
+
+
+def emitter_problem(client: BundleEmitter | None) -> str | None:
     """Why ``client`` cannot take a Hugging Face hand-over, and what fixes it.
 
     ``None`` when it is running with its Hugging Face module.
@@ -191,8 +225,8 @@ def emitter_problem(client: Any) -> str | None:
     if client is None:
         return "the build could not prepare its emitter (see the warning above)"
     if not client.available:
-        failure = getattr(client, "startup_error", None)
-        reason = getattr(failure, "reason", None)
+        failure = client.startup_error
+        reason = None if failure is None else failure.reason
         if reason == "command_not_found":
             return (
                 "no microcosm-emitter command was found (MICROCOSM_EMITTER_COMMAND, "
