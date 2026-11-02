@@ -34,6 +34,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import os
 import re
 import shlex
@@ -41,10 +42,13 @@ import shutil
 import signal
 import subprocess
 import sys
+import time
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
+from datetime import UTC, datetime
 from itertools import zip_longest
 from pathlib import Path, PurePosixPath
+from urllib.parse import urlsplit
 
 PLAN_SCHEMA = "microcosm-modal-us-stage-plan/1"
 RECEIPT_SCHEMA = "microcosm-modal-us-stage-receipt/1"
@@ -152,6 +156,35 @@ _GITHUB_URL = re.compile(r"https://github\.com/[A-Za-z0-9._-]+/[A-Za-z0-9._-]+\.
 #: environment that would carry any other value (``hash_seed_problem``).
 HASH_SEED_ENV = "PYTHONHASHSEED"
 HASH_SEED = "0"
+#: Whether the stage's build must send telemetry, read by the build adapter
+#: (``microcosm.build.telemetry_emitter``). The runner sets ``1``, so a build
+#: that starts its emitter stops at once when that emitter cannot be used. A
+#: plan may set ``0`` to run without telemetry; its launch then asks for no
+#: collector token, and the plan, with the setting, is copied into the
+#: receipt.
+TELEMETRY_REQUIRED_ENV = "MICROCOSM_TELEMETRY_REQUIRED"
+#: The variables microcosm-emitter 0.11.0 and later read a collector token
+#: from (its ``core.constants``). The token only writes telemetry; the emitter
+#: sends it only to the collector it was obtained from. The tool gets these
+#: three only from the runner's per-launch secret (RUNNER_TOKEN_SECRET_ENV),
+#: and a plan cannot set them.
+COLLECTOR_TOKEN_ENV = (
+    "MICROCOSM_COLLECTOR_TOKEN",
+    "MICROCOSM_COLLECTOR_TOKEN_EXPIRES_AT",
+    "MICROCOSM_COLLECTOR_ORIGIN",
+)
+#: The names under which the secret a launch makes for its container
+#: (``tools/modal_us_stage.py``) holds the same three values, and the tool's
+#: name for each. They are the runner's own, so the tool's three variables
+#: can only come from that secret: the runner removes the emitter's names
+#: from whatever else the container holds, such as an attached Hugging Face
+#: secret.
+RUNNER_TOKEN_SECRET_ENV = {
+    "MICROCOSM_MODAL_TELEMETRY_TOKEN": "MICROCOSM_COLLECTOR_TOKEN",
+    "MICROCOSM_MODAL_TELEMETRY_TOKEN_EXPIRES_AT": "MICROCOSM_COLLECTOR_TOKEN_EXPIRES_AT",
+    "MICROCOSM_MODAL_TELEMETRY_ORIGIN": "MICROCOSM_COLLECTOR_ORIGIN",
+}
+_TOKEN_ENV_NAMES = frozenset(COLLECTOR_TOKEN_ENV) | frozenset(RUNNER_TOKEN_SECRET_ENV)
 
 
 class PlanError(ValueError):
@@ -1347,6 +1380,12 @@ def parse_plan(data: object) -> Plan:
                 f"env {key!r} is not allowlisted (MICROCOSM_*, POPULACE_*, or one "
                 f"of {', '.join(THREAD_ENV_KEYS)})"
             )
+        if key in _TOKEN_ENV_NAMES:
+            raise PlanError(
+                f"env {key!r} carries the collector token; only the runner's "
+                "per-launch secret supplies it, and an emitter given part of it "
+                "exits at start"
+            )
         if is_credential_env_key(key):
             raise PlanError(
                 f"env {key!r} names a credential; a plan's values are copied into "
@@ -1354,6 +1393,8 @@ def parse_plan(data: object) -> Plan:
             )
         if not isinstance(raw_env[key], str):
             raise PlanError(f"env {key!r} must be a string")
+        if key == TELEMETRY_REQUIRED_ENV and raw_env[key] != "0":
+            raise PlanError(_telemetry_setting_refusal(raw_env[key]))
         env[key] = raw_env[key]
 
     max_wall = data.get("max_wall_seconds")
@@ -1556,6 +1597,20 @@ def planned_argv(plan: Plan, work_root: str | None = None) -> list[str]:
     )
 
 
+def _telemetry_setting_refusal(value: str) -> str:
+    """Why a plan may not set MICROCOSM_TELEMETRY_REQUIRED to ``value``.
+
+    The runner sets ``1``; a plan may only opt out with ``0``. Refused when
+    the plan is loaded, because the build reads it only after the runner has
+    staged the inputs.
+    """
+
+    return (
+        f"env {TELEMETRY_REQUIRED_ENV} may only be 0, which runs the stage "
+        f"without telemetry; the runner sets 1 itself. Not {value!r}"
+    )
+
+
 def tool_environment(
     base: Mapping[str, str], plan_env: Mapping[str, str]
 ) -> tuple[dict[str, str], list[str]]:
@@ -1568,19 +1623,405 @@ def tool_environment(
     recorded), with ``HF_HUB_OFFLINE=1`` so the tool cannot reach the Hub, and
     with the plan's allowlisted overrides last. Only names are returned, for
     the receipt; never values.
+
+    The tool must send telemetry (``MICROCOSM_TELEMETRY_REQUIRED=1``) unless
+    the plan sets ``0``. It gets the collector token (COLLECTOR_TOKEN_ENV)
+    only from the runner's per-launch secret, whose names
+    (RUNNER_TOKEN_SECRET_ENV) are removed like the emitter's own names from
+    anywhere else: all three values or none, and none when the plan sets
+    ``0``.
     """
 
     for key in plan_env:
-        if not _ENV_KEY.fullmatch(key) or is_credential_env_key(key):
+        if (
+            not _ENV_KEY.fullmatch(key)
+            or is_credential_env_key(key)
+            or key in _TOKEN_ENV_NAMES
+        ):
             raise PlanError(f"env {key!r} may not be passed to the tool")
+    if plan_env.get(TELEMETRY_REQUIRED_ENV, "0") != "0":
+        raise PlanError(_telemetry_setting_refusal(plan_env[TELEMETRY_REQUIRED_ENV]))
     removed = sorted(
-        key for key in base if is_credential_env_key(key) or key == HASH_SEED_ENV
+        key
+        for key in base
+        if is_credential_env_key(key) or key == HASH_SEED_ENV or key in _TOKEN_ENV_NAMES
     )
     dropped = set(removed)
     env = {key: value for key, value in base.items() if key not in dropped}
     env["HF_HUB_OFFLINE"] = "1"
+    env[TELEMETRY_REQUIRED_ENV] = "1"
+    if telemetry_required(plan_env):
+        given = {
+            tool_name: base[secret_name]
+            for secret_name, tool_name in RUNNER_TOKEN_SECRET_ENV.items()
+            if base.get(secret_name, "").strip()
+        }
+        if len(given) == len(RUNNER_TOKEN_SECRET_ENV):
+            env.update(given)
     env.update(plan_env)
     return env, removed
+
+
+def emitter_query_environment(base: Mapping[str, str]) -> dict[str, str]:
+    """The environment for the image emitter's ``version``, without credentials.
+
+    The runner's own environment holds the collector token (under
+    RUNNER_TOKEN_SECRET_ENV) and any attached Hub secret; ``version`` needs
+    neither, since the collector origin it reports is built into the emitter.
+    """
+
+    return {
+        key: value
+        for key, value in base.items()
+        if not is_credential_env_key(key) and key not in _TOKEN_ENV_NAMES
+    }
+
+
+# --------------------------------------------------------------------------- #
+# Telemetry: the collector token a launched stage's emitter uses              #
+# --------------------------------------------------------------------------- #
+
+#: What the launch asks for beyond the stage's class timeout: room for the
+#: container to start late (a queue, an early preemption restart) and still
+#: hold a token that covers the whole stage. The collector caps a token at
+#: 24 hours; the longest class (ACS staging, 17 hours) asks for 18.
+TELEMETRY_TOKEN_EXTRA_SECONDS = 3600
+#: After its build exits, the emitter keeps delivering for up to this long
+#: (``DRAIN_SECONDS`` in microcosm-emitter's host).
+EMITTER_DRAIN_SECONDS = 15
+#: The emitter stops sending a given token this long before it expires
+#: (``TOKEN_REFRESH_MARGIN_SECONDS`` in microcosm-emitter).
+EMITTER_TOKEN_MARGIN_SECONDS = 30
+#: How long the launch waits for ``telemetry-token``: one exchange with the
+#: collector.
+TELEMETRY_TOKEN_TIMEOUT_SECONDS = 120
+#: Where the launch finds the operator's emitter, then on ``PATH``, as the
+#: interface does in a build.
+EMITTER_COMMAND_ENV = "MICROCOSM_EMITTER_COMMAND"
+#: What each failing exit code of ``microcosm-emitter telemetry-token`` means
+#: (its ``cli`` module). 2 is argparse's usage error, which a release before
+#: 0.11.0, without the command, also gives.
+TELEMETRY_TOKEN_EXIT_MEANINGS = {
+    2: (
+        "the installed emitter has no telemetry-token command; it needs "
+        "0.11.0 or later (`uv tool install --upgrade microcosm-emitter`)"
+    ),
+    3: (
+        "no Hugging Face login was found on this machine, or it could not be "
+        "read (HF_TOKEN, HUGGINGFACE_TOKEN or `hf auth login`)"
+    ),
+    4: "the collector refused the Hugging Face login",
+    5: "the collector could not be reached or gave no usable token",
+    6: "the collector does not accept a token lifetime yet",
+    7: "the emitter failed unexpectedly",
+}
+#: Visible ASCII, the only characters a bearer token can carry (as the
+#: emitter itself requires).
+_SENDABLE_TOKEN = re.compile(r"[!-~]+")
+_TELEMETRY_OPT_OUT = (
+    f"to run this stage without telemetry, set {TELEMETRY_REQUIRED_ENV}=0 in "
+    "the plan's env"
+)
+
+
+def telemetry_required(env: Mapping[str, str]) -> bool:
+    """Whether a plan's environment leaves telemetry required (no ``0``)."""
+
+    return env.get(TELEMETRY_REQUIRED_ENV, "1") != "0"
+
+
+def telemetry_token_lifetime_seconds(plan: Plan) -> int:
+    """The lifetime the launch asks for: the class timeout plus an hour."""
+
+    return plan.resources.timeout_s + TELEMETRY_TOKEN_EXTRA_SECONDS
+
+
+def _aware_time(value: str) -> datetime | None:
+    """An ISO 8601 time with a time zone, or None."""
+
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo is not None else None
+
+
+def _utc(epoch: float) -> str:
+    return datetime.fromtimestamp(epoch, UTC).isoformat(timespec="seconds")
+
+
+def _https_origin(value: str) -> str | None:
+    """``value`` without a trailing slash if it is an HTTPS origin, else None."""
+
+    try:
+        parts = urlsplit(value)
+    except ValueError:
+        return None
+    if (
+        parts.scheme != "https"
+        or not parts.hostname
+        or parts.username
+        or parts.password
+        or parts.query
+        or parts.fragment
+        or parts.path not in ("", "/")
+    ):
+        return None
+    return value.rstrip("/")
+
+
+@dataclass(frozen=True)
+class TelemetryToken:
+    """A collector token that only writes telemetry, for one launched stage.
+
+    ``expires_at`` is the ISO 8601 time, with its time zone, that
+    ``telemetry-token`` printed; ``origin`` is the collector it was obtained
+    from. Its repr leaves the token out.
+    """
+
+    access_token: str = field(repr=False)
+    expires_at: str
+    origin: str
+
+    @property
+    def expires_epoch(self) -> float:
+        return datetime.fromisoformat(self.expires_at).timestamp()
+
+    def secret_values(self) -> dict[str, str]:
+        """The per-launch secret's variables, under the runner's names."""
+
+        values = dict(
+            zip(
+                COLLECTOR_TOKEN_ENV,
+                (self.access_token, self.expires_at, self.origin),
+                strict=True,
+            )
+        )
+        return {
+            secret_name: values[tool_name]
+            for secret_name, tool_name in RUNNER_TOKEN_SECRET_ENV.items()
+        }
+
+    def record(self) -> dict[str, str]:
+        """What a receipt or the launch's output may show: never the token."""
+
+        return {"expires_at": self.expires_at, "origin": self.origin}
+
+
+def parse_telemetry_token(stdout: str) -> TelemetryToken:
+    """The token ``telemetry-token`` printed, or a PlanError that never quotes it."""
+
+    unusable = "`microcosm-emitter telemetry-token` gave an unusable answer"
+    try:
+        answer = json.loads(stdout)
+    except ValueError:
+        raise PlanError(f"{unusable}: it is not JSON") from None
+    if not isinstance(answer, Mapping):
+        raise PlanError(f"{unusable}: it is not a JSON object")
+    token = answer.get("access_token")
+    if not isinstance(token, str) or not _SENDABLE_TOKEN.fullmatch(token):
+        raise PlanError(f"{unusable}: no access_token of visible ASCII characters")
+    expires_at = answer.get("expires_at")
+    if not isinstance(expires_at, str) or _aware_time(expires_at) is None:
+        raise PlanError(
+            f"{unusable}: expires_at is not an ISO 8601 time with a time zone"
+        )
+    origin = answer.get("collector_origin")
+    https_origin = _https_origin(origin) if isinstance(origin, str) else None
+    if https_origin is None:
+        raise PlanError(f"{unusable}: collector_origin is not an HTTPS origin")
+    return TelemetryToken(token, expires_at, https_origin)
+
+
+def request_telemetry_token(
+    plan: Plan,
+    environ: Mapping[str, str],
+    *,
+    run: Callable[..., subprocess.CompletedProcess] = subprocess.run,
+    now: Callable[[], float] = time.time,
+) -> TelemetryToken | None:
+    """At launch, on the operator's machine: a telemetry token for the stage.
+
+    Runs the installed emitter's ``telemetry-token`` (``MICROCOSM_EMITTER_COMMAND``,
+    then ``PATH``) with this machine's environment, so it exchanges the
+    operator's Hugging Face login, for the class timeout plus
+    TELEMETRY_TOKEN_EXTRA_SECONDS. None when the plan sets
+    ``MICROCOSM_TELEMETRY_REQUIRED=0``. Raises PlanError, so nothing is
+    launched, when the command is missing or fails, when its answer is
+    unusable, or when the token is shorter than asked for. The emitter's own
+    reason for a failure goes to standard error unchanged; the token is on
+    standard output, which only this function reads, and no error quotes it.
+    """
+
+    if not telemetry_required(plan.env):
+        return None
+    name = environ.get(EMITTER_COMMAND_ENV, "").strip() or "microcosm-emitter"
+    command = shutil.which(name, path=environ.get("PATH"))
+    if command is None:
+        raise PlanError(
+            f"the microcosm-emitter command was found neither through "
+            f"{EMITTER_COMMAND_ENV} nor on PATH. Install it on this machine with "
+            f"`uv tool install microcosm-emitter`, or point {EMITTER_COMMAND_ENV} "
+            f"at it; {_TELEMETRY_OPT_OUT}"
+        )
+    lifetime = telemetry_token_lifetime_seconds(plan)
+    started = now()
+    try:
+        answer = run(
+            [command, "telemetry-token", "--lifetime-seconds", str(lifetime)],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            text=True,
+            timeout=TELEMETRY_TOKEN_TIMEOUT_SECONDS,
+            env=dict(environ),
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        raise PlanError(
+            "`microcosm-emitter telemetry-token` did not answer within "
+            f"{TELEMETRY_TOKEN_TIMEOUT_SECONDS} s; {_TELEMETRY_OPT_OUT}"
+        ) from None
+    except OSError as error:
+        raise PlanError(
+            "`microcosm-emitter telemetry-token` could not run "
+            f"({type(error).__name__}); {_TELEMETRY_OPT_OUT}"
+        ) from None
+    if answer.returncode != 0:
+        meaning = TELEMETRY_TOKEN_EXIT_MEANINGS.get(
+            answer.returncode, "an exit code it does not document"
+        )
+        raise PlanError(
+            f"`microcosm-emitter telemetry-token` exited {answer.returncode}: "
+            f"{meaning}. Its own message is above; {_TELEMETRY_OPT_OUT}"
+        )
+    token = parse_telemetry_token(answer.stdout)
+    # telemetry-token counts the expiry from just before its request and
+    # prints it to the second, so compare with this whole second.
+    asked_until = math.floor(started) + lifetime
+    if token.expires_epoch < asked_until:
+        shortfall = math.ceil(asked_until - token.expires_epoch)
+        raise PlanError(
+            f"the collector token expires at {token.expires_at}, {shortfall} s "
+            f"shorter than the {lifetime} s asked for (the class timeout plus "
+            f"{TELEMETRY_TOKEN_EXTRA_SECONDS} s); {_TELEMETRY_OPT_OUT}"
+        )
+    return token
+
+
+def _image_emitter_origin(image_emitter: Mapping | None) -> str | None:
+    origin = (
+        image_emitter.get("collector_origin")
+        if isinstance(image_emitter, Mapping)
+        else None
+    )
+    return origin if isinstance(origin, str) and origin else None
+
+
+def _no_image_emitter_origin() -> str:
+    return (
+        f"the image's emitter ({IMAGE_EMITTER_COMMAND}) reported no collector "
+        "origin from `microcosm-emitter version`: it does not run, or it "
+        "predates collector tokens, which emitter 0.11.0 and later take"
+    )
+
+
+def telemetry_check_report(
+    plan: Plan, image_emitter: Mapping | None
+) -> tuple[dict[str, object], str | None]:
+    """The check's telemetry record, and a problem the paid run would refuse on.
+
+    A check asks for no token; it reports what the launch would ask for and
+    the collector the image's emitter sends to.
+    """
+
+    required = telemetry_required(plan.env)
+    origin = _image_emitter_origin(image_emitter)
+    report: dict[str, object] = {
+        "required": required,
+        "image_emitter_collector_origin": origin,
+        "collector_token_lifetime_seconds": (
+            telemetry_token_lifetime_seconds(plan) if required else None
+        ),
+    }
+    problem = _no_image_emitter_origin() if required and origin is None else None
+    return report, problem
+
+
+def telemetry_check(
+    plan: Plan,
+    environ: Mapping[str, str],
+    image_emitter: Mapping | None,
+    *,
+    container_started: float,
+) -> tuple[dict[str, object], str | None]:
+    """In the container, before staging: the receipt's telemetry record, and a refusal.
+
+    Unless the plan sets ``MICROCOSM_TELEMETRY_REQUIRED=0``, the runner's
+    secret must hold all three token values, the token must come from the
+    collector the image's emitter sends to (its ``version`` answer), and it
+    must stay usable until the latest moment the runner stops the tool (the
+    class timeout less the runner's reserve, counted from
+    ``container_started``) plus the emitter's drain, plus the margin before
+    expiry at which the emitter stops sending it. Staging comes out of the
+    tool's time, so a tool limited by ``max_wall_seconds`` can stop later
+    than its budget suggests, never later than that moment. The record holds
+    the token's expiry and origin, never its value.
+    """
+
+    required = telemetry_required(plan.env)
+    image_origin = _image_emitter_origin(image_emitter)
+    needed_until = (
+        container_started
+        + container_tool_seconds(plan, 0)
+        + EMITTER_DRAIN_SECONDS
+        + EMITTER_TOKEN_MARGIN_SECONDS
+    )
+    record: dict[str, object] = {
+        "required": required,
+        "collector_token": None,
+        "image_emitter_collector_origin": image_origin,
+        "token_needed_until": _utc(needed_until) if required else None,
+        # Not recorded yet: how many events the emitter left undelivered when
+        # the tool ended. How the runner learns that count without reading
+        # the emitter's event queue file waits on a decision (microcosm#1470).
+        "undelivered_events": None,
+    }
+    if not required:
+        return record, None
+    values = {name: environ.get(name, "").strip() for name in RUNNER_TOKEN_SECRET_ENV}
+    if not all(values.values()):
+        return record, (
+            "no collector token reached the container: the secret a launch with "
+            "--run makes for it is missing or incomplete. Launch with "
+            f"`modal run ... --run`, which asks for one; {_TELEMETRY_OPT_OUT}"
+        )
+    expires_at = values["MICROCOSM_MODAL_TELEMETRY_TOKEN_EXPIRES_AT"]
+    origin = values["MICROCOSM_MODAL_TELEMETRY_ORIGIN"]
+    expires = _aware_time(expires_at)
+    if expires is None:
+        return record, (
+            "the collector token's expiry is not an ISO 8601 time with a time "
+            "zone; launch again for a new token"
+        )
+    record["collector_token"] = {"expires_at": expires_at, "origin": origin}
+    if image_origin is None:
+        return record, _no_image_emitter_origin()
+    if origin.rstrip("/") != image_origin.rstrip("/"):
+        return record, (
+            f"the collector token was obtained from another collector ({origin}) "
+            f"than the image's emitter sends to ({image_origin}); launch again "
+            "with an emitter on this machine that sends where the image's does"
+        )
+    if expires.timestamp() < needed_until:
+        return record, (
+            f"the collector token expires at {expires_at}, before "
+            f"{record['token_needed_until']}: the latest the runner stops the "
+            f"tool, plus the emitter's {EMITTER_DRAIN_SECONDS} s of delivery "
+            f"after the build exits and the {EMITTER_TOKEN_MARGIN_SECONDS} s "
+            "before expiry at which it stops sending the token. The container "
+            "started too long after its launch; launch again for a new token"
+        )
+    return record, None
 
 
 def hash_seed_problem(env: Mapping[str, str]) -> str | None:
@@ -2487,7 +2928,9 @@ MIN_ATTEMPT_SECONDS = 60
 
 # How an attempt ended. A running (or preempted) attempt has no outcome.
 OUTCOME_RECEIPT = "receipt"  # the tool ran and a receipt was written
-OUTCOME_REFUSED = "refused"  # the lock or the budget stopped it before staging
+# A check before staging stopped it: the lock, the budget, the disk, the hash
+# seed or the collector token.
+OUTCOME_REFUSED = "refused"
 OUTCOME_ERROR = "error"  # an exception after its first record
 
 
@@ -2790,6 +3233,15 @@ def summarize(plan: Plan) -> dict[str, object]:
         },
         "max_wall_seconds": plan.max_wall_seconds,
         "env": dict(plan.env),
+        # What a launch with --run asks this machine's emitter for.
+        "telemetry": {
+            "required": telemetry_required(plan.env),
+            "collector_token_lifetime_seconds": (
+                telemetry_token_lifetime_seconds(plan)
+                if telemetry_required(plan.env)
+                else None
+            ),
+        },
         "inputs": {name: ref.to_json() for name, ref in plan.inputs.items()},
         "argv": planned_argv(plan),
         "image_build_commands": image_build_commands(plan),

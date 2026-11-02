@@ -50,7 +50,11 @@ release directory onto the runs volume. Publication stays the human step in
    looks like a credential (`KEY`, `TOKEN`, `SECRET`, `PASSW`, `SIGNING`,
    `CREDENTIAL`) is refused even under an allowed prefix. `PYTHONHASHSEED`
    is outside the allowlist, so no plan can set it (see "Route A's base
-   stage", Environment). The runner sets the flags for input paths,
+   stage", Environment). A plan may set `MICROCOSM_TELEMETRY_REQUIRED` only
+   to `0` (see item 6), and none of the collector-token variables
+   (`MICROCOSM_COLLECTOR_TOKEN`, `MICROCOSM_COLLECTOR_TOKEN_EXPIRES_AT`,
+   `MICROCOSM_COLLECTOR_ORIGIN`) or the runner's own names for them
+   (`MICROCOSM_MODAL_TELEMETRY_*`). The runner sets the flags for input paths,
    checkpoints and outputs, and a plan cannot pass them. It also cannot pass
    `--allow-dirty`: every run builds from a clean clone. A registered
    option's flag must be a plain long flag with no `=` in it that is neither
@@ -74,8 +78,9 @@ release directory onto the runs volume. Publication stays the human step in
    emitter finds it; the check reports the version and the receipt's runner
    identity records it. An image built for a commit keeps the emitter it was
    built with. The tool's environment withholds credentials and sets
-   `HF_HUB_OFFLINE=1`, so an emitter started there keeps its events and
-   hand-overs local.
+   `HF_HUB_OFFLINE=1`, so an emitter started there keeps its Hub
+   hand-overs local; it sends telemetry with the collector token the launch
+   passes (item 6).
    A commit that is not on GitHub fails the build. `checkout -B` would put
    any branch name on any commit, so each container also proves the name
    before it runs anything: it fetches the plan's branch from the remote
@@ -152,8 +157,77 @@ release directory onto the runs volume. Publication stays the human step in
      (`outputs_not_mirrored`, empty unless the stage's rest is resume
      state).
 
+   - `runner.telemetry`: whether the build had to send telemetry, the
+     collector token's expiry and origin (never its value), the collector
+     origin the image's emitter reported, and the time the token had to
+     last until (`token_needed_until`). Its `undelivered_events` is always
+     `null` for now: how the runner learns how many events the emitter left
+     undelivered, without reading the emitter's event queue file, waits on
+     a decision (microcosm#1470).
+
    A failed stage still mirrors its state, so `calibrate` can resume from
    `weights_latest.npz`, and its receipt says `FAILED`.
+6. **Telemetry uses a token made at launch.** The build on Modal has no
+   Hugging Face credential, so it cannot exchange one for a collector
+   session. Instead, the launch command passes it a collector token that
+   only writes telemetry. Nothing is run by hand for it.
+   - **At launch, with `--run`.** Before it spawns or calls the stage,
+     `tools/modal_us_stage.py` runs this machine's emitter:
+     `microcosm-emitter telemetry-token --lifetime-seconds <class timeout + 3600>`.
+     It finds the command through `MICROCOSM_EMITTER_COMMAND`, then `PATH`,
+     so the launching machine needs `microcosm-emitter` 0.11.0 or later
+     (`uv tool install microcosm-emitter`) and a Hugging Face login
+     (`HF_TOKEN`, `HUGGINGFACE_TOKEN`, or `hf auth login`) that the
+     collector accepts. The launch refuses, launching nothing, when the
+     command is missing, exits nonzero (the emitter prints why: no or
+     unreadable login, a refused login, an unreachable collector, a
+     collector that does not accept a lifetime, or a release without the
+     command), prints an unusable answer, or grants a shorter lifetime than
+     asked for. The longest class, acs-staging, asks for 18 hours; the
+     collector caps a token at 24.
+   - **To the container.** The token, its expiry and its origin go into a
+     Modal secret made for this launch (`modal.Secret.from_dict`), under
+     the runner's own names `MICROCOSM_MODAL_TELEMETRY_TOKEN`,
+     `MICROCOSM_MODAL_TELEMETRY_TOKEN_EXPIRES_AT` and
+     `MICROCOSM_MODAL_TELEMETRY_ORIGIN`. It is attached with
+     `with_options(secrets=…)`, which replaces the function's secrets, so
+     the Hub secret named by `MICROCOSM_MODAL_HF_SECRET` goes with it. The
+     token is never in the plan, so the plan digest and its attempt budget
+     stay the same and no receipt copies it. The launch prints the token's
+     expiry and origin, never its value.
+   - **To the build.** The tool's environment gets the three values as
+     `MICROCOSM_COLLECTOR_TOKEN`, `MICROCOSM_COLLECTOR_TOKEN_EXPIRES_AT` and
+     `MICROCOSM_COLLECTOR_ORIGIN` only from that secret, all three or none.
+     The same names from anywhere else, such as the Hub secret, are removed
+     and listed in `runner.tool_env_removed`. It also gets
+     `MICROCOSM_TELEMETRY_REQUIRED=1`, so a build that starts its emitter
+     stops at once when the emitter cannot be used. The emitter the build
+     starts inherits the token and sends telemetry only to the collector it
+     was obtained from. Today the registered tools do not start the emitter,
+     so they send nothing yet.
+   - **Before staging.** The container refuses the attempt (`refused`,
+     finished, nothing charged) when the token is missing or incomplete,
+     when its origin is not the collector origin the image's emitter
+     reports from `microcosm-emitter version` (which needs emitter 0.11.0
+     or later in the image), or when it expires before the latest moment
+     the runner stops the tool (the class timeout less the stage's runner
+     reserve, counted from the container's start) plus the emitter's 15 s
+     of delivery after the build exits and the 30 s before expiry at which
+     it stops sending the token. A container that starts more than about an
+     hour after its launch, after a queue or a preemption restart, is
+     refused that way; launch again for a new token.
+   - **The check** (without `--run`) asks for no token. It reports the
+     collector origin the image's emitter would send to, and the lifetime a
+     launch would ask for, and fails when the image's emitter reports no
+     origin.
+   - **Opting out.** A plan whose `env` sets `MICROCOSM_TELEMETRY_REQUIRED`
+     to `0` asks for no token, and its build runs without telemetry: the
+     emitter, if one starts, keeps its events in the container, and they
+     are lost with it. The plan, and so the setting, is copied into every
+     receipt. Use it, for example, while the collector is unavailable.
+   - **Events left undelivered.** Events the emitter has not sent when the
+     build ends are lost with the container. The receipt does not yet
+     record how many there were (see `runner.telemetry` above).
 
 ## Resources and cost
 
@@ -254,6 +328,10 @@ MICROCOSM_MODAL_PLAN=plan.json modal run tools/modal_us_stage.py
 #    comes off it (see "Preemption and restarts" below). A stop at the
 #    budget writes a receipt, so launching the same plan again gets the
 #    whole budget again.
+#    --run first asks this machine's microcosm-emitter (0.11.0 or later, with
+#    a Hugging Face login) for the build's telemetry-only collector token,
+#    and refuses to launch without one; a plan that sets
+#    MICROCOSM_TELEMETRY_REQUIRED=0 skips that (item 6 of "How a run works").
 MICROCOSM_MODAL_PLAN=plan.json modal run --detach tools/modal_us_stage.py --run --spawn
 
 # 5. Fetch the state and verify it against the receipt. A receipt whose
@@ -287,7 +365,10 @@ runner uses the token, to download inputs. The tool always runs with
 `HF_HUB_OFFLINE=1` (huggingface_hub then refuses every request) and without
 any variable whose name looks like a credential (`KEY`, `TOKEN`, `SECRET`,
 `PASSW`, `SIGNING`, `CREDENTIAL`); the receipt lists the names removed,
-never their values. A plan cannot set such a variable either. The tool
+never their values. A plan cannot set such a variable either. The one
+exception is the telemetry-only collector token the launch makes for the
+build (item 6 of "How a run works"), which reaches the tool only from that
+launch's own secret. The tool
 also never gets the container's `PYTHONHASHSEED`: the runner removes it
 (and lists its name with the others), and refuses before pulling or
 staging anything if the tool's environment would still carry a value

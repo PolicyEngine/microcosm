@@ -1481,6 +1481,10 @@ def test_nonpreemptible_prices_every_attempt_at_three_times_list() -> None:
     )
 
 
+#: A plan's opt-out: its launch asks for no collector token.
+_NO_TELEMETRY = {"MICROCOSM_TELEMETRY_REQUIRED": "0"}
+
+
 @pytest.mark.parametrize(
     ("status", "returncode", "stopped", "fails"),
     [
@@ -1492,7 +1496,8 @@ def test_nonpreemptible_prices_every_attempt_at_three_times_list() -> None:
 def test_app_main_exits_nonzero_unless_the_stage_completed(
     app, monkeypatch, capsys, status, returncode, stopped, fails
 ) -> None:
-    data = _plan_data(max_wall_seconds=600)
+    # Without telemetry, so the launch asks this machine for no token.
+    data = _plan_data(max_wall_seconds=600, env=_NO_TELEMETRY)
     monkeypatch.setattr(app, "_LOADED", (data, plan_lib.parse_plan(data)))
     receipt = {
         "status": status,
@@ -1520,7 +1525,7 @@ def test_app_main_exits_nonzero_unless_the_stage_completed(
 def test_app_main_spawn_returns_the_call_id_without_waiting(
     app, monkeypatch, capsys
 ) -> None:
-    data = _plan_data(max_wall_seconds=600)
+    data = _plan_data(max_wall_seconds=600, env=_NO_TELEMETRY)
     plan = plan_lib.parse_plan(data)
     monkeypatch.setattr(app, "_LOADED", (data, plan))
     runner = MagicMock()
@@ -1533,6 +1538,7 @@ def test_app_main_spawn_returns_the_call_id_without_waiting(
         "run_id": plan.run_id,
         "stage": plan.stage,
         "function_call_id": "fc-123",
+        "collector_token": None,
     }
 
 
