@@ -30,6 +30,7 @@ from microcosm.build.staging_dataset import (
     SHA256SUMS_FILENAME,
     STAGED_MANIFEST_FILENAME,
     StagedDatasetBundle,
+    handover_record,
     resume_hand_over,
     stage_bundle,
     write_access_problem,
@@ -383,17 +384,19 @@ def test_a_hub_that_never_answers_leaves_the_upload_pending(
     assert handover.delivery["error_code"] == "UPLOAD_PENDING"
     assert handover.delivery["revision"] is None
     assert handover.handed_over == BUNDLE_NAMES
-    assert handover.handover_id is not None
+    record = handover_record(handover)
+    assert record is not None
     assert stand_in_hub.wait_for_stalled("commit", timeout=UPLOAD_WAIT_SECONDS)
     assert stand_in_hub.commits(REPOSITORY) == []
 
     # The emitter keeps the bundle queued and finishes once the Hub answers;
-    # a re-stage then records the outcome of the build's own hand-over.
+    # a re-stage then records the outcome of the hand-over the build's
+    # manifest names (its ``staged_dataset_handover`` block).
     stand_in_hub.release()
     resumed = resume_hand_over(
         bundle,
         emitter=client,
-        handover_id=handover.handover_id,
+        record=record,
         repository=REPOSITORY,
         wait_seconds=UPLOAD_WAIT_SECONDS,
     )
