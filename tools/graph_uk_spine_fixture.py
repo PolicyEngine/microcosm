@@ -177,6 +177,9 @@ from microcosm.build.uk_runtime.spi_spine import (
 )
 from microcosm.build.uk_runtime.student_loans import UKStudentLoansStageTransform
 from microcosm.build.uk_runtime.take_up_contract import load_uk_take_up_contract
+from microcosm.build.uk_runtime.trading_allowance_receipts import (
+    UKTradingAllowanceReceiptsStageTransform,
+)
 from microcosm.build.uk_runtime.uc_capital_coherence import (
     UKUCCapitalCoherenceStageTransform,
 )
@@ -209,7 +212,7 @@ _SPI_SAMPLE_FRACTION = _ROOT_HOUSEHOLDS / 10_000
 _SPI_DONOR_SAMPLE_SIZE = 64
 #: The packaged FRS spine roster the fixture exercises (manifest minus the
 #: certified-pair exclusions); moves whenever a spine stage is added.
-UK_FIXTURE_STAGE_COUNT = 51
+UK_FIXTURE_STAGE_COUNT = 52
 _QRF_ESTIMATORS = 4
 
 # These are the complete object-string surface observed in the unchanged
@@ -754,6 +757,10 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
                 "SERNUM": household_id,
                 "BENUNIT": 1,
                 "PERSON": 1,
+                # Every fifth household's payment is trust income (PENTYPE 5),
+                # which stays private pension with its part stored as the
+                # annuity and trust descriptor (microcosm#1428).
+                "PENTYPE": 5 if household_id % 5 == 0 else 1,
                 "PENPAY": 10.0,
                 "PTAMT": 2.0,
                 "PTINC": 2,
@@ -2200,6 +2207,9 @@ def _build_implementations(
             engine=engine,
             donor_household=was,
             donor_person=was_person,
+        ),
+        "trading_allowance_receipts": UKTradingAllowanceReceiptsStageTransform(
+            stage=stages["trading_allowance_receipts"]
         ),
         "company_cars": UKCompanyCarsStageTransform(
             stage=stages["company_cars"],

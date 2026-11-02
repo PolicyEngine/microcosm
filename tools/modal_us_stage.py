@@ -93,14 +93,7 @@ def _image() -> modal.Image:
             f"uv=={plan_lib.IMAGE_UV_VERSION}",
             f"huggingface_hub=={plan_lib.RUNNER_HF_HUB_VERSION}",
         )
-        .env(
-            {
-                "UV_PROJECT_ENVIRONMENT": plan_lib.IMAGE_VENV,
-                "UV_PYTHON_DOWNLOADS": "never",
-                "UV_LINK_MODE": "copy",
-                "PYTHONDONTWRITEBYTECODE": "1",
-            }
-        )
+        .env(dict(plan_lib.IMAGE_ENVIRONMENT))
     )
     if _LOADED is not None:
         _, plan = _LOADED
@@ -227,9 +220,28 @@ def _cpu_visibility() -> dict[str, object]:
     }
 
 
+def _emitter_version() -> dict[str, object] | None:
+    """The installed emitter's ``version`` answer, or None if it does not run."""
+
+    try:
+        answer = subprocess.run(
+            [plan_lib.IMAGE_EMITTER_COMMAND, "version"],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        version = json.loads(answer.stdout) if answer.returncode == 0 else None
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return None
+    return version if isinstance(version, dict) else None
+
+
 def _runner_identity() -> dict[str, object]:
     identity: dict[str, object] = {
         "python": sys.version.split()[0],
+        # The separately installed emitter the build starts for telemetry and
+        # staging hand-overs; the image installs the newest release.
+        "microcosm_emitter": _emitter_version(),
         # Platform and CPU visibility, for comparing a Modal run with a local
         # one: BLAS, OpenMP and the base's QRF pool size their thread pools
         # from what they see.
@@ -669,6 +681,11 @@ def check_stage(plan_data: dict) -> dict:
     )
     if env_probe.returncode != 0:
         problems.append("the synced environment does not import microcosm.build")
+    report["emitter"] = _emitter_version()
+    if report["emitter"] is None:
+        problems.append(
+            f"the emitter command {plan_lib.IMAGE_EMITTER_COMMAND} does not run"
+        )
 
     argv = plan_lib.planned_argv(plan)
     parse = (
