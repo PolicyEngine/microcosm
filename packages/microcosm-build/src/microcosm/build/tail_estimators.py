@@ -19,7 +19,10 @@ declared bracket for a declared number of iterations, rounds the midpoint
 once to six decimals (half-even) and carries alpha as ``p / 10**6``. It
 refuses, by name, a bracket on which ``l'`` does not change sign and any
 alpha at or below one, where the top band's mean ``alpha c / (alpha - 1)``
-is infinite.
+is infinite. Under the r2c design's bracket ``[1 + 2**-20, 64]`` the
+rounded alpha is at least 1.000001, so ``alpha_not_above_one`` cannot fire
+there: heavy-tail data whose root lies at or below one is refused as
+``bracket_without_sign_change`` instead, and the receipt names that reason.
 
 The estimator reads no country data: the caller passes the anchors, their
 counts and the declared bracket and iteration count.

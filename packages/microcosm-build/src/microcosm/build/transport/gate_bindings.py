@@ -1286,6 +1286,11 @@ def _support(
             f"{entity}.{column}: classed structural, but gates.json's "
             "structural_columns does not declare it."
         )
+    # A declared row excuses a column only when the roster reaches it (H46);
+    # the rows it never reaches are listed, and do not fail the gate.
+    details["declared_unreached"] = [
+        ".".join(key) for key in declared if key not in recorded
+    ]
     named = {(row["entity"], row["column"]) for row in rows}
     if frame is not None:
         skip = set(_structural_columns(frame))
@@ -1327,6 +1332,11 @@ def _support(
                 for source in row["sources"]
                 if source["class"] not in _SUPPORT_COVERED
             ]
+            if not row["sources"]:
+                failures.append(
+                    f"{label} (derived): the walk reached no source, so nothing "
+                    "covers it."
+                )
             if missing:
                 failures.append(
                     f"{label} (derived): sources without coverage: "
@@ -1408,6 +1418,11 @@ def _closure_rows(
                 f"{row['reviewed_sha256']}."
             )
         failures += [f"{label}: gap {name}." for name in row["gap"]]
+        failures += [
+            f"{label}: relation input {item} is missing from the producer's "
+            "frame slice."
+            for item in row["relation_missing"]
+        ]
         failures += [
             f"{label}: {name} is closed but is not a live root."
             for name in row["unexpected"]

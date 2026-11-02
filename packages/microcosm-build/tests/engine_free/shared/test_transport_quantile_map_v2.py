@@ -11,6 +11,7 @@ from __future__ import annotations
 import copy
 import json
 import math
+from decimal import Decimal
 from fractions import Fraction
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -18,13 +19,14 @@ from tempfile import TemporaryDirectory
 import numpy as np
 import pandas as pd
 import pytest
-from hypothesis import HealthCheck, given, settings
+from hypothesis import HealthCheck, assume, given, settings
 from hypothesis import strategies as st
 
 from microcosm.build.tail_estimators import (
     GROUPED_PARETO_MLE_REF,
     TailEstimatorRefusalError,
     _anchors,
+    _round_half_even,
     grouped_pareto_mle,
     grouped_pareto_score,
     parse_grouped_pareto_declaration,
@@ -253,6 +255,19 @@ def test_belgium_rsz_counts_give_the_closed_form_alpha() -> None:
     assert f"{_closed_form(n_band, n_top, 200, 300):.6f}" == "3.348955"
 
 
+def test_six_decimal_rounding_is_half_even_at_an_exact_tie() -> None:
+    """A tie goes to the even sixth decimal; half-up would differ on the first."""
+
+    # 1.0078125 is a binary64 value lying exactly halfway between 1.007812
+    # and 1.007813: the even neighbour is 1.007812.
+    assert _round_half_even(Fraction("1.0078125"), 6) == Decimal("1.007812")
+    # Halfway between 1.007813 and 1.007814: the even neighbour is 1.007814.
+    assert _round_half_even(Fraction("1.0078135"), 6) == Decimal("1.007814")
+    # Off a tie, the nearer neighbour wins either way.
+    assert _round_half_even(Fraction("1.00781249"), 6) == Decimal("1.007812")
+    assert _round_half_even(Fraction("1.00781251"), 6) == Decimal("1.007813")
+
+
 @PROPERTY
 @given(
     n_band=st.integers(min_value=1, max_value=10**8),
@@ -265,8 +280,9 @@ def test_property_one_band_and_the_top_match_the_closed_form(
 ) -> None:
     upper = lower * ratio
     expected = _closed_form(n_band, n_top, lower, upper)
-    if not 1.01 < expected < 63:
-        return
+    # Hypothesis replaces a draw whose root lies outside the bracket, so every
+    # counted example reaches the assertion.
+    assume(1.01 < expected < 63)
     fit = _fit([("a", lower, upper, n_band), ("t", upper, None, n_top)])
     assert abs(fit.alpha_float - expected) <= TOLERANCE
 
@@ -352,8 +368,7 @@ def test_property_the_score_changes_sign_once_on_the_bracket(counts, edges) -> N
         )
     ]
     rows.append(("top", edges[-1], None, counts[-1]))
-    if len(rows) < 2 or sum(row[3] for row in rows[:-1]) <= 0:
-        return
+    assume(len(rows) >= 2 and sum(row[3] for row in rows[:-1]) > 0)
     fit_anchors = _anchors(rows)
     grid = np.linspace(float(BRACKET[0]), float(BRACKET[1]), 257)
     scores = [grouped_pareto_score(fit_anchors, float(a)) for a in grid]
@@ -528,7 +543,9 @@ def test_property_v2_is_bitwise_v1_at_the_fitted_alpha(tmp_path, seed, top, midd
                 surface,
             )
         except TailEstimatorRefusalError:
-            return
+            # Hypothesis replaces a draw the estimator refuses, so every
+            # counted example reaches the differential.
+            assume(False)
         alpha = v2.receipt["tail_estimator"]["alpha"]
         literal = {
             "method": "pareto",
@@ -703,14 +720,16 @@ def _support_params():
 
 def test_the_w4_support_producer_reads_v2_params_with_an_open_top() -> None:
     params = _support_params()
-    positive, negative = quantile_support(params["bands"], params["interpolation"])
-    assert positive == [
+    support = quantile_support(params["bands"], params["interpolation"])
+    assert support.positive == (
         (1.0, 1000.0),
         (1000.0, 2000.0),
         (2000.0, 3000.0),
         (3000.0, None),
-    ]
-    low, high = quantile_bounds(positive, negative)
+    )
+    # A bare band list feeds both signs, as quantile_map applies it.
+    assert support.negative == support.positive
+    low, high = quantile_bounds(support.positive, support.negative)
     assert high is None  # expected_max: null
 
 
@@ -781,7 +800,6 @@ def test_the_support_bounds_kernel_reports_a_null_expected_max_for_v2() -> None:
     assert row["records_outside"] == 0
 
 
-@pytest.mark.xfail(strict=True, reason="needs the w4 fix round's E1")
 def test_v2_support_bounds_both_signs_for_a_bare_band_list() -> None:
     row = _support_row(_support_params(), [0.0, 5.0, 4e6])
     assert row["expected_min"] is None
