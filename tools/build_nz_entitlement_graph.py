@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
 """Generate NZ's post-calibration entitlement branch declarations.
 
-The Accommodation Supplement bridge follows ``as_rate_bridge.json``. On each
-population that runs the AS engine, a ``calibration.prepare@1`` node writes
-the family masks, a ``simulate.counterfactual@1`` node writes the reg 18(3)(b)
-sole-parent gross rate and a ``simulate.solve_zero@1`` node writes the reg 18
-cutout. The shared ``nz.as.bridge`` population, a FILTER branch of ``nz.as``,
-runs these once for every entitlement scenario, and each variant repeats them
-on its own housing population. An extension node on ``nz.as`` itself would
-re-key the skeleton's ``nz.terminal``, which composition refuses. Each
-branch runs its own reg 17 base-rate counterfactual. Every coefficient, mask
-and override comes from the resource; this generator adds no schedule.
+The Accommodation Supplement bridge follows ``as_rate_bridge.json``. A
+``calibration.prepare@1`` node writes the family masks, a
+``simulate.counterfactual@1`` node writes the reg 18(3)(b) sole-parent gross
+rate and a ``simulate.solve_zero@1`` node writes the reg 18 cutout. The shared
+``nz.as.bridge`` population, a FILTER branch of ``nz.as``, runs these once for
+every entitlement scenario, and each variant repeats them on its own housing
+population. An extension node on ``nz.as`` itself would re-key the skeleton's
+``nz.terminal``, which composition refuses. Each branch runs its own reg 17
+base-rate counterfactual. Every bridge coefficient, mask and override comes
+from the resource; this generator adds no schedule.
 """
 
 from __future__ import annotations
