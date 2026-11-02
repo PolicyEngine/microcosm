@@ -1,0 +1,7 @@
+['ssn_card_type', 'immigration_status_str']
+{'CITIZEN': 0.9229, 'NONE': 0.0402, 'OTHER_NON_CITIZEN': 0.0252, 'NON_CITIZEN_VALID_EAD': 0.0118}
+lost share of child weight 2.48 units 1058
+lost units with no adult holding a valid card, share of lost child weight 0.834
+all child units with no valid-card adult, share of child weight 4.58
+{'asec': 0.377, 'puf_tax_detail': 0.623}
+flips into poverty, child weight share 1.58 of which lost CTC 0.11 of which lost and no valid adult 0.09
