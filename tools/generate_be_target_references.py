@@ -3,9 +3,10 @@
 Run with ``BE_CHRONICLE_ARTIFACT`` or ``--artifact``. References carry selectors
 only: observations stay in Chronicle. The separate inventory resource records the
 diagnostics the method card asks to publish (ageing ratios, stand-in gaps, the
-B.1 checks) and every exclusion. Each choice that shapes numbers is a proposal
-of the Belgian method card (BE-MC0 to BE-MC6), pending Max's ruling d1902;
-nothing here publishes a number, and Belgium stays inactive.
+B.1 checks, the counts behind the quantile surfaces) and every exclusion, and
+quantile_surfaces.json holds BE-MC3's band documents. Each choice that shapes
+numbers is a proposal of the Belgian method card (BE-MC0 to BE-MC6), pending
+Max's ruling d1902; nothing here publishes a number, and Belgium stays inactive.
 
 ``--pin-feed SOURCE_COMMIT`` rewrites ``chronicle_feed.json`` from the loaded
 artifact's verified identity before generating; use it only when Chronicle
@@ -269,6 +270,50 @@ GEOGRAPHY_VINTAGES = {
     "commune": ("nis_2025", "vintage:be_nis_2025"),
 }
 TRANSPORTED_INPUTS = {"employment_income", "nonfarm_self_employment_income"}
+# BE-MC3's quantile surfaces (B4a). RSZ T17 counts employees at the end of
+# 2026-Q1 by daily-wage class, age and sex; each class spans one record set per
+# sex, so a class's row sums its 24 age and sex cells. T17 prints its classes as
+# bare labels, so their edges are reviewed here, in EUR a day: each class runs
+# from its printed lower bound up to the next class's lower bound.
+WAGE_SPEC = "rsz.t17.daily_wage_class.v1"
+WAGE_CROSS_CHECK_SPEC = "rsz.t7.daily_wage_class.v1"
+WAGE_PERIOD = "2026-Q1"
+WAGE_MEASURE = "employed_workers"
+WAGE_CLASS = "rsz.daily_wage_class"
+WAGE_UNKNOWN_CLASS = "Onbekend-Inconnu"
+WAGE_CLASSES = (
+    ("lt100", "<100", 0, 100),
+    ("100_149", "100 - 149", 100, 150),
+    ("150_199", "150 - 199", 150, 200),
+    ("200_299", "200 - 299", 200, 300),
+    ("300_plus", ">= 300", 300, None),
+)
+WAGE_CONTRACT = "rsz_employed_workers_by_daily_wage_class"
+# SFPD group 1: every legal-pension recipient (employees and self-employed),
+# all careers, categories and sexes, by gross monthly amount on 1 January 2025.
+# Chronicle publishes each band's bounds as universe constraints.
+PENSION_RECORD_SET = "sfpd.amount_bands.jan2025.group1.recipients"
+PENSION_BAND = "sfpd.monthly_amount_band"
+PENSION_AMOUNT = "sfpd.monthly_amount"
+PENSION_TOTAL_LABEL = "Totaal"
+PENSION_COHORT = {
+    "sfpd.career": "Alle loopbanen",
+    "sfpd.pension_category": "Totaal",
+    "sfpd.population": "Pensioengerechtigden (werknemers en zelfstandigen)",
+    "sfpd.sex": "Mannen en vrouwen",
+}
+PENSION_CONTRACT = "sfpd_legal_pension_recipients_by_monthly_amount_band"
+PENSION_STATUS = "requires_pension_route_d1902"
+PENSION_REASON = (
+    "B4a: SFPD's January 2025 amount bands are BE-MC3's legal-pension quantile "
+    "surface, but nothing may read them until shared rank_only support lands. "
+    "The shared transport rule drops the donor's public pension, so a shared "
+    "change, still to be agreed with the NZ hub, must keep the donor's receipt "
+    "for ranking only, isolated from destination income, before Belgian amounts "
+    "are assigned. d1902 also settles the pension route and how these monthly "
+    "amounts are annualized."
+)
+SURFACE_RESOURCE = "quantile_surfaces.json"
 PROVIDERS = {
     "statbel": "Statbel",
     "fpb": "Federal Planning Bureau",
@@ -276,10 +321,13 @@ PROVIDERS = {
     "onem": "National Employment Office",
     "eurostat": "Eurostat",
     "nbb": "National Bank of Belgium",
+    "sfpd": "Federal Pension Service",
 }
 CATEGORIES = {
     "statbel.demography": ("statbel", "Demography"),
     "statbel.geography_support": ("statbel", "Geography support"),
+    "onss.wage_distribution": ("onss", "Daily-wage distribution"),
+    "sfpd.pension_distribution": ("sfpd", "Legal-pension amount distribution"),
     "statbel.fiscal_income": ("statbel", "Fiscal income"),
     "statbel.income_tax": ("statbel", "Assessed income tax"),
     "onss.social_security": ("onss", "Social security contributions"),
@@ -1047,6 +1095,540 @@ def precal_references(communes):
     return rows, labels
 
 
+def _decimal(value):
+    return Fraction(_token(value))
+
+
+def _number(value):
+    """An exact decimal edge as a JSON number: an integer when it is whole."""
+
+    return int(value) if value.denominator == 1 else float(value)
+
+
+def _member_selector(facts):
+    """One selector that reads exactly ``facts`` through rosters, without keys.
+
+    The members must agree on every scalar field. Dimensions that vary across
+    them become rosters and their record sets a list; the roster product must
+    equal the member count, so the rosters name no cell outside the members.
+    The resolved-read entry lists the members' keys.
+    """
+
+    selector = _selector(facts[0], pin_key=False)
+    varying = {"record_set_id", "dimension_values"}
+    for fact in facts[1:]:
+        other = _selector(fact, pin_key=False)
+        if {key: other[key] for key in other if key not in varying} != {
+            key: selector[key] for key in selector if key not in varying
+        }:
+            raise ValueError("Summed members disagree outside their dimension values")
+    selector["record_set_id"] = sorted(
+        {fact["layout"]["record_set_id"] for fact in facts}
+    )
+    product = 1
+    for name in selector["dimensions"]:
+        values = sorted({fact["dimensions"][name] for fact in facts}, key=str)
+        selector["dimension_values"][name] = values if len(values) > 1 else values[0]
+        product *= len(values)
+    keys = {fact["aggregate_fact_key"] for fact in facts}
+    if len(keys) != len(facts) or product != len(facts):
+        raise ValueError("Summed members must fill their roster product exactly once")
+    return selector
+
+
+def _wage_classes(inventory):
+    """Return T17's cells at WAGE_PERIOD by class, each class one cell per age and sex.
+
+    The quarter's labels must be exactly the reviewed classes plus unknown pay,
+    and each class must lie in one record set per sex.
+    """
+
+    cells = inventory.cells(
+        spec=WAGE_SPEC, measure=WAGE_MEASURE, geography="BE", period=WAGE_PERIOD
+    )
+    expected = {label for _, label, _, _ in WAGE_CLASSES} | {WAGE_UNKNOWN_CLASS}
+    if {fact["dimensions"].get(WAGE_CLASS) for fact in cells} != expected:
+        raise ValueError(f"RSZ T17's {WAGE_PERIOD} daily-wage classes changed")
+    if {tuple(sorted(fact["dimensions"])) for fact in cells} != {
+        ("rsz.age_class", WAGE_CLASS, "rsz.sex")
+    }:
+        raise ValueError("RSZ T17 cells must carry exactly age, sex and wage class")
+    ages = sorted({fact["dimensions"]["rsz.age_class"] for fact in cells})
+    sexes = sorted({fact["dimensions"]["rsz.sex"] for fact in cells})
+    grid = sorted((age, sex) for age in ages for sex in sexes)
+    by_class = {}
+    for label in sorted(expected):
+        members = [
+            _belgian(fact) for fact in cells if fact["dimensions"][WAGE_CLASS] == label
+        ]
+        record_sets = {}
+        for fact in members:
+            record_sets.setdefault(fact["layout"]["record_set_id"], set()).add(
+                fact["dimensions"]["rsz.sex"]
+            )
+        if (
+            sorted(
+                (fact["dimensions"]["rsz.age_class"], fact["dimensions"]["rsz.sex"])
+                for fact in members
+            )
+            != grid
+            or len(record_sets) != len(sexes)
+            or any(len(owned) != 1 for owned in record_sets.values())
+            or any(not name.endswith(f".{WAGE_MEASURE}") for name in record_sets)
+            or any(
+                fact["entity"]["name"] != "person"
+                or fact["observed_measure"]["unit"] != "count"
+                or fact["period"]["type"] != "quarter"
+                or fact["assertion"] != "observation"
+                for fact in members
+            )
+        ):
+            raise ValueError(f"RSZ T17 class {label!r} is not one cell per age and sex")
+        by_class[label] = members
+    return by_class, ages, sexes
+
+
+def wage_surface_references(inventory):
+    """Five precal rows, one per known-pay class, each summing its 24 cells."""
+
+    by_class, ages, sexes = _wage_classes(inventory)
+    rows = []
+    for slug, label, lower, upper in WAGE_CLASSES:
+        members = by_class[label]
+        row = _reference(
+            members[0],
+            name=f"{WAGE_CONTRACT}__{slug}",
+            contract=WAGE_CONTRACT,
+            category="onss.wage_distribution",
+            entity="person",
+            measure="people",
+            family="wage_distribution",
+            reference_set="precal",
+            status="active",
+            method_card="BE-MC3",
+            measure_kind="prepared_column",
+        )
+        row["ledger_selector"] = _member_selector(members)
+        row["value_operation"] = "sum"
+        row["expected_member_count"] = len(members)
+        row["period_match_policy"] = "exact"
+        row["metadata"].update(
+            {
+                "precal_use": "quantile_surface:wages",
+                "quantile_surface_resource": SURFACE_RESOURCE,
+                "daily_wage_class": label,
+                "daily_wage_lower_eur": str(lower),
+                "daily_wage_upper_eur": "open" if upper is None else str(upper),
+                "ageing": "none: quarter-end stock on 31 March 2026",
+                "source_snapshot": "RSZ/ONSS employees at the end of 2026-Q1",
+            }
+        )
+        rows.append(row)
+    labels = {
+        WAGE_CONTRACT: (
+            "RSZ/ONSS employees on 31 March 2026 by daily-wage class, summed over "
+            "age and sex (wage quantile surface)"
+        )
+    }
+    return rows, labels, {"by_class": by_class, "ages": ages, "sexes": sexes}
+
+
+_PENSION_LABEL = re.compile(
+    r"(?P<lower>[0-9.]+,[0-9]{2})(?: - (?P<upper>[0-9.]+,[0-9]{2})| en >)"
+)
+
+
+def _printed_eur(text):
+    return Fraction(text.replace(".", "").replace(",", "."))
+
+
+def _pension_bands(facts):
+    """Read SFPD's bands from Chronicle's universe constraints, tiled half-open.
+
+    Chronicle bounds each band lower <= amount <= upper in euro cents, and the
+    top band below only. Each surface band runs from its lower bound to the
+    next band's, which must sit exactly one cent above its upper bound; the
+    printed label must state the same bounds.
+    """
+
+    cent = Fraction(1, 100)
+    bands = []
+    for fact in facts:
+        label = fact["dimensions"][PENSION_BAND]
+        bounds = {}
+        for row in fact["universe_constraints"]["constraints"]:
+            if row["variable"] != PENSION_AMOUNT:
+                continue
+            if (
+                row.get("unit") != "eur"
+                or row["operator"] not in {">=", "<="}
+                or row["operator"] in bounds
+            ):
+                raise ValueError(f"SFPD band {label!r} has an unexpected bound")
+            bounds[row["operator"]] = _decimal(row["value"])
+        printed = _PENSION_LABEL.fullmatch(label)
+        if (
+            printed is None
+            or bounds.get(">=") != _printed_eur(printed["lower"])
+            or bounds.get("<=")
+            != (None if printed["upper"] is None else _printed_eur(printed["upper"]))
+        ):
+            raise ValueError(f"SFPD band {label!r} disagrees with its constraints")
+        bands.append((bounds[">="], bounds.get("<="), label, fact))
+    bands.sort(key=lambda band: band[0])
+    if not bands or bands[0][0] != cent:
+        raise ValueError("SFPD's first band must start at one cent")
+    tiled = []
+    for index, (lower, last_cent, label, fact) in enumerate(bands):
+        following = bands[index + 1][0] if index + 1 < len(bands) else None
+        if (following is None) != (last_cent is None) or (
+            following is not None and last_cent + cent != following
+        ):
+            raise ValueError(f"SFPD band {label!r} leaves a gap or overlap")
+        tiled.append((lower, following, last_cent, label, fact))
+    return tiled
+
+
+def _edge_text(edge):
+    return str(edge) if edge.denominator == 1 else str(float(edge))
+
+
+def _edge_slug(edge):
+    return _edge_text(edge).replace(".", "_")
+
+
+def pension_surface_references(inventory):
+    """Twenty-six parked precal rows, one per SFPD group 1 amount band."""
+
+    facts = inventory.cells(PENSION_RECORD_SET, measure="recipients", geography="BE")
+    for fact in facts:
+        _belgian(fact)
+        dimensions = dict(fact["dimensions"])
+        dimensions.pop(PENSION_BAND, None)
+        if (
+            dimensions != PENSION_COHORT
+            or fact["entity"]["name"] != "person"
+            or fact["observed_measure"]["unit"] != "count"
+            or fact["period"] != {"type": "month", "value": "2025-01"}
+            or fact["assertion"] != "observation"
+        ):
+            raise ValueError("SFPD group 1 left its reviewed cohort")
+    (total,) = [
+        fact
+        for fact in facts
+        if fact["dimensions"][PENSION_BAND] == PENSION_TOTAL_LABEL
+    ]
+    bands = _pension_bands([fact for fact in facts if fact is not total])
+    if len(bands) != 26 or sum(
+        (_value(band[-1]) for band in bands), Fraction()
+    ) != _value(total):
+        raise ValueError("SFPD's 26 bands must sum to their published total")
+    rows = []
+    for lower, upper, _, label, fact in bands:
+        row = _reference(
+            fact,
+            name=(
+                f"{PENSION_CONTRACT}__{_edge_slug(lower)}_"
+                + ("plus" if upper is None else f"to_{_edge_slug(upper)}")
+            ),
+            contract=PENSION_CONTRACT,
+            category="sfpd.pension_distribution",
+            entity="person",
+            measure="people",
+            family="pension_distribution",
+            reference_set="precal",
+            status=PENSION_STATUS,
+            method_card="BE-MC3",
+            measure_kind="prepared_column",
+            reason=PENSION_REASON,
+        )
+        row["period_match_policy"] = "exact"
+        row["metadata"].update(
+            {
+                "precal_use": "quantile_surface:legal_pensions",
+                "quantile_surface_resource": SURFACE_RESOURCE,
+                "monthly_amount_band": label,
+                "band_lower_eur": _edge_text(lower),
+                "band_upper_eur": "open" if upper is None else _edge_text(upper),
+                "ageing": "none: beneficiary stock on 1 January 2025, monthly amounts",
+                "source_snapshot": "SFPD legal-pension beneficiaries on 1 January 2025",
+            }
+        )
+        rows.append(row)
+    labels = {
+        PENSION_CONTRACT: (
+            "SFPD legal-pension recipients (employees and self-employed) on "
+            "1 January 2025 by gross monthly amount band (pension quantile "
+            "surface, parked)"
+        )
+    }
+    return rows, labels, {"bands": bands, "total": total}
+
+
+def _surface_document(wage_rows, pension_rows, pensions):
+    """The band resource: each band_document is transport.quantile_map@1's bands."""
+
+    wage_bands = [
+        (row["name"], label, lower, upper)
+        for row, (_, label, lower, upper) in zip(wage_rows, WAGE_CLASSES, strict=True)
+    ]
+    pension_bands = [
+        (row["name"], label, lower, upper, last_cent)
+        for row, (lower, upper, last_cent, label, _) in zip(
+            pension_rows, pensions["bands"], strict=True
+        )
+    ]
+    return {
+        "schema_version": 1,
+        "country": "be",
+        "generated_by": "tools/generate_be_target_references.py",
+        "description": (
+            "BE-MC3's quantile-map surfaces (B4a), proposed pending d1902. Each "
+            "band_document is the bands parameter transport.quantile_map@1 takes "
+            "verbatim; its references name precal_references.json rows, which "
+            "compile into the target surface the kernel reads. Everything else "
+            "stays outside band_document, because the kernel refuses any key "
+            "beside its band lists. No graph reads this resource: Belgium has no "
+            "transport_graph.json and stays inactive. Counts stay in Chronicle; "
+            "reference_inventory.json records the evidence."
+        ),
+        "status": METHOD_CARD_STATUS,
+        "method_card_row": "BE-MC3",
+        "reference_resource": "precal_references.json",
+        "wages": {
+            "status": METHOD_CARD_STATUS,
+            "activation": (
+                "Not read by any graph. Nothing may map donor wages onto these "
+                "edges until d1902 picks the annual-to-daily conversion and the "
+                "coverage rule (choices 21 to 23)."
+            ),
+            "ranked_entity": "person",
+            "donor_column": "employment_income",
+            "unit": "eur_per_day",
+            "source_period": WAGE_PERIOD,
+            "source": (
+                "RSZ/ONSS quarterly labour-market tables, T17 (daily-wage class, "
+                f"age and sex), record set spec {WAGE_SPEC}, measure "
+                f"{WAGE_MEASURE}"
+            ),
+            "cohort": (
+                "Employees registered with RSZ/ONSS at the end of the first "
+                "quarter of 2026, a quarter-end stock on 31 March 2026. "
+                "Chronicle's coverage note: it counts inbound cross-border "
+                "workers and leaves out posted workers and the self-employed. "
+                "BE-MC3 records that the classes rank normalized daily pay of the "
+                "main job, without bonuses, 13th month or double holiday pay. It "
+                "is not a distribution of resident earners over a year."
+            ),
+            "coverage": (
+                "The five known-pay classes only. T17's unknown-pay class "
+                f"({WAGE_UNKNOWN_CLASS}) has no numeric interval and gets no "
+                "band, so the shares rank known pay only (d1902 choice 22)."
+            ),
+            "conversion": (
+                "The donor's employment_income is annual gross pay from all "
+                "employee jobs, bonuses included; these edges are euros a day. "
+                "Nothing may map donor wages onto them until d1902 picks the "
+                "annual-to-daily conversion (choice 23)."
+            ),
+            "edge_closure": (
+                "Left-closed: each class runs from its printed lower bound up to "
+                "the next class's lower bound, so '100 - 149' is [100, 150)."
+            ),
+            "top_band": (
+                "Open from EUR 300 a day. Uniform interpolation refuses an open "
+                "top band; the tail is d1902 choice 24."
+            ),
+            "band_provenance": [
+                {
+                    "reference": name,
+                    "printed_label": label,
+                    "lower": lower,
+                    "upper": upper,
+                }
+                for name, label, lower, upper in wage_bands
+            ],
+            "band_document": {
+                "bands": [
+                    {"lower": lower, "upper": upper, "reference": name}
+                    for name, _, lower, upper in wage_bands
+                ]
+            },
+        },
+        "legal_pensions": {
+            "status": METHOD_CARD_STATUS,
+            "activation": (
+                f"Parked: its references carry activation_status {PENSION_STATUS} "
+                "and refuse compilation until shared rank_only support lands and "
+                "d1902 settles the pension route (choice 25)."
+            ),
+            "ranked_entity": "person",
+            "donor_column": None,
+            "donor_column_note": (
+                "None yet: the shared transport rule drops the donor's "
+                "public_pension_income, so no donor column carries pension ranks "
+                "until shared rank_only support keeps the receipt for ranking only."
+            ),
+            "unit": "eur_per_month",
+            "source_period": "2025-01",
+            "source": (
+                "SFPD Jaarlijkse statistiek 2025, amount bands of group 1, record "
+                f"set {PENSION_RECORD_SET}"
+            ),
+            "cohort": (
+                "Legal-pension beneficiaries of the employee and self-employed "
+                "schemes, all careers, pension categories and sexes, a stock on "
+                "1 January 2025."
+            ),
+            "coverage": (
+                "Gross monthly payment. Includes beneficiaries residing abroad and "
+                "excludes public-sector pension amounts. The Totaal row and the "
+                "monthly_expenditure_eur measure are not bands."
+            ),
+            "annualization": (
+                "Monthly euros, not annualized. Multiplying January by 12 repeats "
+                "one month's amount rather than observing an annual pension; it "
+                "is d1902's choice (25) and is not applied here."
+            ),
+            "edge_closure": (
+                "Chronicle bounds each band lower <= amount <= upper in cents; each "
+                "surface band runs half-open to the next band's lower bound, one "
+                "cent above, so '0,01 - 124,99' is [0.01, 125)."
+            ),
+            "top_band": (
+                "Open from EUR 3,125 a month. Uniform interpolation refuses an "
+                "open top band, and no d1902 choice yet names the pension tail."
+            ),
+            "band_provenance": [
+                {
+                    "reference": name,
+                    "printed_label": label,
+                    "source_lower_eur": _edge_text(lower),
+                    "source_upper_eur": None
+                    if last_cent is None
+                    else _edge_text(last_cent),
+                    "lower": _number(lower),
+                    "upper": None if upper is None else _number(upper),
+                }
+                for name, label, lower, upper, last_cent in pension_bands
+            ],
+            "band_document": {
+                "bands": [
+                    {
+                        "lower": _number(lower),
+                        "upper": None if upper is None else _number(upper),
+                        "reference": name,
+                    }
+                    for name, _, lower, upper, _ in pension_bands
+                ]
+            },
+        },
+    }
+
+
+def _surface_evidence(inventory, wage_rows, wages, pension_rows, pensions):
+    """Counts behind the surfaces, so tests can close them without the feed."""
+
+    def workers(facts):
+        return sum((_value(fact) for fact in facts), Fraction())
+
+    by_class = wages["by_class"]
+    known = sum(
+        (workers(by_class[label]) for _, label, _, _ in WAGE_CLASSES), Fraction()
+    )
+    unknown = workers(by_class[WAGE_UNKNOWN_CLASS])
+    table = workers(
+        inventory.cells(
+            spec=WAGE_SPEC, measure=WAGE_MEASURE, geography="BE", period=WAGE_PERIOD
+        )
+    )
+    t7 = {}
+    for fact in inventory.cells(
+        spec=WAGE_CROSS_CHECK_SPEC,
+        measure=WAGE_MEASURE,
+        geography="BE",
+        period=WAGE_PERIOD,
+    ):
+        label = fact["dimensions"][WAGE_CLASS]
+        t7[label] = t7.get(label, Fraction()) + _value(fact)
+    total = pensions["total"]
+    band_sum = sum((_value(band[-1]) for band in pensions["bands"]), Fraction())
+    return {
+        "resource": SURFACE_RESOURCE,
+        "wages": {
+            "record_set_spec_id": WAGE_SPEC,
+            "period": WAGE_PERIOD,
+            "measure": WAGE_MEASURE,
+            "age_classes": wages["ages"],
+            "sexes": wages["sexes"],
+            "members_per_class": len(wages["ages"]) * len(wages["sexes"]),
+            "classes": [
+                {
+                    "label": label,
+                    "reference": row["name"],
+                    "workers": float(workers(by_class[label])),
+                }
+                for row, (_, label, _, _) in zip(wage_rows, WAGE_CLASSES, strict=True)
+            ],
+            "unknown_pay": {
+                "label": WAGE_UNKNOWN_CLASS,
+                "workers": float(unknown),
+                "facts": _keyed(by_class[WAGE_UNKNOWN_CLASS], "aggregate_fact_key"),
+            },
+            "known_pay_workers": float(known),
+            "table_workers": float(table),
+            "known_plus_unknown_equals_table": known + unknown == table,
+            "unknown_share_of_table": float(unknown / table),
+            "t7_cross_check": {
+                "record_set_spec_id": WAGE_CROSS_CHECK_SPEC,
+                "workers_by_class": {
+                    label: float(t7[label]) for label in sorted(t7, key=str)
+                },
+                "equals_t17_by_class": t7
+                == {label: workers(facts) for label, facts in by_class.items()},
+                "use": (
+                    "Diagnostic only: T7 crosses NACE 2025 activity, worker status "
+                    "and sex; no reference reads it."
+                ),
+            },
+            "measure_pin": (
+                "employed_workers, never jobs: T17's jobs measure shares the "
+                "person entity, the count unit and the classes, so _surface_bands "
+                "cannot tell them apart; the generator and the package tests pin "
+                "the measure."
+            ),
+        },
+        "legal_pensions": {
+            "record_set_id": PENSION_RECORD_SET,
+            "period": "2025-01",
+            "bands": [
+                {
+                    "label": label,
+                    "reference": row["name"],
+                    "recipients": float(_value(fact)),
+                }
+                for row, (_, _, _, label, fact) in zip(
+                    pension_rows, pensions["bands"], strict=True
+                )
+            ],
+            "band_recipients": float(band_sum),
+            "total_fact": {
+                "aggregate_fact_key": total["aggregate_fact_key"],
+                "label": PENSION_TOTAL_LABEL,
+                "recipients": float(_value(total)),
+            },
+            "bands_sum_to_total": band_sum == _value(total),
+            "excluded": (
+                "The Totaal row, which the bands sum to, and every "
+                "monthly_expenditure_eur fact. SFPD's other groups are not "
+                "stacked: groups 2 to 164 split group 1's population by career, "
+                "pension category and sex, and the FPD-beneficiary and IGO groups "
+                "count other beneficiary populations."
+            ),
+        },
+    }
+
+
 def holdout_references(inventory, pairs):
     rows, labels = [], {}
     d51 = _eurostat(
@@ -1639,7 +2221,14 @@ def factor_digest(declaration):
 
 
 def _matching(inventory, selector):
-    pool = inventory.by_record_set.get(selector["record_set_id"], [])
+    record_sets = selector["record_set_id"]
+    pool = [
+        fact
+        for record_set in (
+            record_sets if isinstance(record_sets, list) else [record_sets]
+        )
+        for fact in inventory.by_record_set.get(record_set, [])
+    ]
     return [fact for fact in pool if fact_matches_selector(fact, selector)]
 
 
@@ -1659,6 +2248,13 @@ def _partition_total(inventory, row):
             measure="total_tax_eur",
             geography="BE",
             dimensions={"tax_return.rank_group": "all"},
+        )
+    if row["metadata"]["contract_target_id"] == PENSION_CONTRACT:
+        return inventory.one(
+            PENSION_RECORD_SET,
+            measure="recipients",
+            geography="BE",
+            dimensions={**PENSION_COHORT, PENSION_BAND: PENSION_TOTAL_LABEL},
         )
     return None
 
@@ -1837,11 +2433,15 @@ def build_reference_documents(artifact, *, package_dir=SPEC):
         raise ValueError("Expected the 565 NIS 2025 communes")
     targets, target_labels = calibration_references(inventory, pairs, members)
     precal, precal_labels = precal_references(communes)
+    wage_rows, wage_labels, wages = wage_surface_references(inventory)
+    pension_rows, pension_labels, pensions = pension_surface_references(inventory)
+    precal += [*wage_rows, *pension_rows]
+    precal_labels |= wage_labels | pension_labels
     holdouts, holdout_labels = holdout_references(inventory, pairs)
     documents = {}
     description = {
         "calibration": "Belgian calibration references (reference set calibration), generated by tools/generate_be_target_references.py from the pinned Chronicle be feed. Selectors only: no observation is carried. Demography targets Statbel's 1 January 2026 population directly; every other row rolls a 2023-2025 fact to 2026 by a declared FPB June 2026 ratio pair or stays parked with a named reason. Method-card choices are proposed pending d1902. Belgium stays inactive.",
-        "precal": "Belgian pre-calibration references: Statbel commune population on 1 January 2025 as the atomic geography support mass, unaged (support shares). Identity only; no observation is carried.",
+        "precal": "Belgian pre-calibration references: Statbel commune population on 1 January 2025 as the atomic geography support mass, unaged (support shares), and BE-MC3's two quantile surfaces (B4a, quantile_surfaces.json). The wage surface is RSZ/ONSS T17's five known-pay daily-wage classes of employees at the end of 2026-Q1, each the sum of its 24 age and sex cells. The legal-pension surface is SFPD's 26 amount bands of January 2025, parked until shared rank_only support lands. Identity and sums only; no observation is carried.",
         "holdout": "Belgian held-out references: compared with the model, never fitted. No calibration-side node may read this resource. Every row is parked until its measure has a producer; JRC's EUROMOD-BE statistics are deferred while d1822 is open.",
     }
     for reference_set, rows, labels, filename, operations in (
@@ -1852,7 +2452,13 @@ def build_reference_documents(artifact, *, package_dir=SPEC):
             "target_references.json",
             ["identity", "rolled_forward_by_ratio"],
         ),
-        ("precal", precal, precal_labels, "precal_references.json", ["identity"]),
+        (
+            "precal",
+            precal,
+            precal_labels,
+            "precal_references.json",
+            ["identity", "sum"],
+        ),
         (
             "holdout",
             holdouts,
@@ -1874,13 +2480,15 @@ def build_reference_documents(artifact, *, package_dir=SPEC):
     documents["reference_intervals.json"] = _interval_document(classes, members)
     documents["reference_profiles.json"] = _reference_profiles()
     documents["reference_aging.json"] = build_reference_aging(inventory, feed_identity)
+    documents[SURFACE_RESOURCE] = _surface_document(wage_rows, pension_rows, pensions)
+    surfaces = _surface_evidence(inventory, wage_rows, wages, pension_rows, pensions)
     documents["reference_inventory.json"] = _inventory(
-        inventory, pairs, documents, feed_pin, members, communes
+        inventory, pairs, documents, feed_pin, members, communes, surfaces
     )
     return documents
 
 
-def _inventory(inventory, pairs, documents, feed_pin, members, communes):
+def _inventory(inventory, pairs, documents, feed_pin, members, communes, surfaces):
     counts = {}
     for filename in (
         "target_references.json",
@@ -1966,7 +2574,7 @@ def _inventory(inventory, pairs, documents, feed_pin, members, communes):
         ),
         (
             "legal_pensions",
-            "FPB pension amounts and SFPD beneficiary counts and bands: legal pensions are not modelled until d1902 settles BE-MC3's pension route; the SFPD bands are B4's quantile-map surface.",
+            "FPB pension amounts and SFPD's other beneficiary tables: legal pensions are not modelled until d1902 settles BE-MC3's pension route. SFPD group 1's 26 amount bands are B4a's parked legal-pension surface rows in precal; its Totaal row and expenditure measure are not bands. Groups 2 to 164 split group 1's population, and the FPD-beneficiary and IGO groups count other beneficiary populations, so none is stacked on group 1.",
         ),
         (
             "family_allowances",
@@ -1974,7 +2582,7 @@ def _inventory(inventory, pairs, documents, feed_pin, members, communes):
         ),
         (
             "rsz_wage_classes",
-            "RSZ daily-wage classes (B2f) are B4's wage quantile-map input under d1902, not a reference.",
+            "RSZ daily-wage classes (B2f): B4a's wage surface reads only T17's five known-pay classes of employed workers at 2026-Q1, as precal rows. Earlier quarters, the jobs and FTE measures, the unknown-pay class and T7 (a diagnostic in quantile_surfaces) are not read.",
         ),
         (
             "usd_eur_rate",
@@ -2121,6 +2729,7 @@ def _inventory(inventory, pairs, documents, feed_pin, members, communes):
             "Eurostat D61 social contributions paid contain the calibrated ONSS worker contributions.",
             "Eurostat D51A_C1 and D5 measure the same personal income tax that B.1 would calibrate once active.",
             "The A.1 stand-in is 98% net professional income, and its amount pair, FPB T11 total resources, contains gross wages, the wage holdout's own series.",
+            "RSZ T7's daily-wage cells at 2026-Q1 sum to the same class counts as the T17 wage surface, under different facts and semantic keys: a holdout on T7 would share the surface's information.",
         ],
         "grammar_gaps": [
             "A national row composed from commune facts refuses for Belgium: the composed-geography path labels only UK areas (ledger_targets._geography_fallback_label), so CREATE's single national mass reference cannot be the commune sum.",
@@ -2131,7 +2740,11 @@ def _inventory(inventory, pairs, documents, feed_pin, members, communes):
             "rolled_forward_by_ratio's series key treats every FPB annex row of one table as one series (same concept, entity, geography and empty dimensions); the generator and tests enforce row identity themselves.",
             "The typed vintage alias set admits only a layer's full id, its country-shortened id and its authority value, so Chronicle's NUTS_2024 label cannot be an alias of vintage:be_nuts1_2025; geography_vintage_bindings carries the mapping instead.",
             "The schema-1 target_profile drops B1's required_families, basis_periods, tolerance tiers and subnational vintage rule. Package tests restore required families, the vintage rule and each row's periods. Caseload tolerance moves from B1's 15% to BE-MC6's 5%, and the ONSS contribution row moves from B1's standard_admin_release 10% to 5%.",
+            "A selector cannot pair a record set with a dimension value, and T17 holds each daily-wage class in one record set per sex. Each wage row lists both record sets beside an age and a sex roster, so the package tests' cell check expands their product: 24 cells that exist and 24 that cannot. A list of the members' aggregate keys would bind each member without the artifact, but the package scan admits fact keys only as single strings, so the rosters stay key-free and the feed audit proves their members.",
+            "No shared code reads a rank-only input. Transport drops the donor's public_pension_income (TransportRule.DROP), and transport.quantile_map@1 ranks one column and overwrites that same column with the mapped amounts. So the SFPD surface rows are kept non-executable only by activation_status, and each one is a named activation gap.",
+            "Uniform interpolation refuses an open top band, and both surfaces' top bands are open; Pareto interpolation needs a declared alpha, and no shared mode scales the donor's own tail.",
         ],
+        "quantile_surfaces": surfaces,
         "exclusions": [{"id": name, "reason": reason} for name, reason in excluded],
         "resolved_reads": resolved_reads(inventory, documents),
     }
