@@ -805,7 +805,8 @@ def test_restaging_a_national_build_records_the_bundle_its_emitter_delivered(
     record = json.loads(manifest_path.read_text())["staged_dataset_handover"]
     assert record["handover_id"] == handed_over
     assert record["files"] == staged["files"]
-    assert record["staging_run_error_code"] == "UPLOAD_PENDING"
+    at_build = json.loads(manifest_path.read_text())["staged_dataset_at_build"]
+    assert at_build["error_code"] == "UPLOAD_PENDING"
     _sums_verify(out)
 
 
@@ -865,6 +866,123 @@ def test_a_national_re_stage_elsewhere_keeps_the_record_it_cannot_decide(
     assert "another run id" not in err
     assert "may hold the bundle handed over earlier" in err
     assert len(hub.commits) == 1
+
+
+NATIONAL_H5 = "microcosm_uk_2024_25.h5"
+
+
+@pytest.mark.parametrize(
+    "case", ["landed, then moved", "queued, then moved", "queued, then copied"]
+)
+def test_a_national_directory_moved_after_its_hand_over(monkeypatch, tmp_path, case):
+    """The build's job names its files at the paths they had at hand-over. A
+    landed job is recorded wherever the directory is now; a queued one is
+    waited for while its files are still at those paths; only one that can
+    never finish there is left for a new hand-over of the moved directory."""
+    pytest.importorskip("tables")
+    from test_support.microcosm_build.emitter import (
+        FakeEmitterClient,
+        FakeHandoverQueue,
+    )
+
+    hub = candidate._FakeHub()
+    queue = FakeHandoverQueue()
+    builder, out = _national_build(
+        monkeypatch,
+        tmp_path,
+        hub,
+        queue=queue,
+        deliver=False,
+        answer_receipts=False,
+        never_copy={NATIONAL_H5},
+    )
+    (handed_over,) = queue.jobs
+    (job,) = queue.jobs.values()
+    if case == "landed, then moved":
+        FakeEmitterClient(hub_files=hub.files, hub_api=hub, queue=queue).deliver_now()
+    moved = tmp_path / "moved"
+    if case == "queued, then copied":
+        shutil.copytree(out, moved)
+    else:
+        shutil.move(str(out), str(moved))
+
+    status = _restage(
+        monkeypatch,
+        moved,
+        FakeEmitterClient(hub_files=hub.files, hub_api=hub, queue=queue),
+    )
+    manifest = json.loads((moved / builder.MANIFEST_FILENAME).read_text())
+    staged = manifest["staged_dataset"]
+    run_id = manifest["build_id"]
+    remote_record = hub.files[
+        ("policyengine/populace-uk-private", f"staged/{run_id}/build_record.json")
+    ]
+    assert len(hub.commits) == 1
+    if case == "queued, then moved":
+        # Its H5 is gone from the old path: a new job uploads the moved
+        # directory, and the emitter keeps retrying the old one.
+        assert (staged["status"], status) == ("uploaded", 0)
+        record = manifest["staged_dataset_handover"]
+        assert record["handover_id"] != handed_over
+        assert record["run_dir"] == str(moved.resolve())
+        assert queue.jobs[handed_over]["receipt"]["status"] == "pending"
+        assert remote_record == (moved / "build_record.json").read_bytes()
+    else:
+        # The build's own bundle is the one on the Hub.
+        assert (staged["status"], staged["error_code"], status) == (
+            "already_staged",
+            None,
+            0,
+        )
+        assert staged["revision"] == hub.sha
+        assert list(queue.jobs) == [handed_over]
+        assert remote_record == job["copied"]["build_record.json"]
+
+
+def test_a_national_builds_own_hand_over_settled_as_remote_differs_is_recorded(
+    monkeypatch, tmp_path, capsys
+):
+    """The emitter settled the build's own job as ``REMOTE_DIFFERS``: that
+    final code replaces the retried one, and no second run id is advised."""
+    pytest.importorskip("tables")
+    from test_support.microcosm_build.emitter import (
+        FakeEmitterClient,
+        FakeHandoverQueue,
+    )
+
+    hub = candidate._FakeHub()
+    queue = FakeHandoverQueue()
+    builder, out = _national_build(
+        monkeypatch, tmp_path, hub, queue=queue, deliver=False, answer_receipts=False
+    )
+    manifest_path = out / builder.MANIFEST_FILENAME
+    record = json.loads(manifest_path.read_text())["staged_dataset_handover"]
+    settled = FakeEmitterClient(
+        bundle_receipts=[
+            {
+                "status": "failed",
+                "error_code": "REMOTE_DIFFERS",
+                "revision": None,
+                "attempts": 1,
+                "repository": "policyengine/populace-uk-private",
+                "prefix": "",
+                "copied_files": [],
+            }
+        ]
+    )
+    capsys.readouterr()
+    assert _restage(monkeypatch, out, settled) == 1
+    after = json.loads(manifest_path.read_text())
+    assert (
+        after["staged_dataset"]["status"],
+        after["staged_dataset"]["error_code"],
+    ) == (
+        "failed",
+        "REMOTE_DIFFERS",
+    )
+    assert after["staged_dataset_handover"] == record
+    assert settled.bundle_requests == []
+    assert "another run id" not in capsys.readouterr().err
 
 
 def test_uk_national_dry_run_prints_the_plan_and_writes_nothing(

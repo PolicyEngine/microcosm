@@ -1574,7 +1574,12 @@ def test_remote_staging_uploads_telemetry_and_the_bundle_in_one_commit(
         "run_id": run_id,
         "run_dir": str(out.resolve()),
         "files": staged["files"],
-        "staging_run_error_code": None,
+    }
+    # What the build recorded in its staging run, which re-stages keep.
+    assert manifest["staged_dataset_at_build"] == {
+        "mode": "local_and_remote",
+        "status": "uploaded",
+        "error_code": None,
     }
 
     def sums_verify() -> None:
@@ -1894,7 +1899,7 @@ def test_a_moved_run_directory_is_handed_over_again_not_resumed(
     record = manifest["staged_dataset_handover"]
     assert record["handover_id"] != first
     assert record["run_dir"] == str(moved.resolve())
-    assert record["staging_run_error_code"] == "UPLOAD_PENDING"
+    assert manifest["staged_dataset_at_build"]["error_code"] == "UPLOAD_PENDING"
     assert len(hub.commits) == 1
     assert queue.jobs[first]["receipt"]["status"] == "pending"
 
@@ -1932,6 +1937,113 @@ def test_the_restage_note_names_the_code_the_build_recorded(
     assert "still records UPLOAD_PENDING" in err
     assert "CREDENTIAL_MISSING" not in err
     assert "phase dataset_stage_failed" in err
+
+
+def _landed_dense_build(tmp_path, monkeypatch):
+    hub = _remote_hub(monkeypatch)
+    status, out = run_dense_main(tmp_path, monkeypatch, staging=None)
+    assert status == 0
+    manifest = json.loads((out / cli.MANIFEST_FILENAME).read_text())
+    assert manifest["staged_dataset"]["status"] == "uploaded"
+    return hub, out
+
+
+def _edit_an_output(out):
+    """Change a CSV output after landing, keeping the manifest consistent."""
+    manifest_path = out / cli.MANIFEST_FILENAME
+    manifest = json.loads(manifest_path.read_text())
+    key, entry = next(
+        (key, entry)
+        for key, entry in manifest["outputs"].items()
+        if entry and str(entry["path"]).endswith(".csv")
+    )
+    path = out / Path(entry["path"]).name
+    path.write_bytes(path.read_bytes() + b"edited,after,landing\n")
+    manifest["outputs"][key] = {
+        **entry,
+        "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+        "bytes": path.stat().st_size,
+    }
+    manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True))
+
+
+@pytest.mark.parametrize(
+    ("case", "expected_status"),
+    [
+        ("an output edited after landing", 1),
+        ("a stage to another repository that fails", 1),
+        ("a local-only re-stage", 0),
+    ],
+)
+def test_a_landed_record_stays_and_a_failed_attempt_still_exits_1(
+    tmp_path, monkeypatch, capsys, case, expected_status
+):
+    """A landed record is never replaced, but only an attempt that changed
+    nothing exits 0: a directory whose bytes differ from the remote bundle, or
+    a stage elsewhere that fails, is a failure the operator must see."""
+    from test_support.microcosm_build.emitter import FakeEmitterClient
+
+    pytest.importorskip("tables")
+    hub, out = _landed_dense_build(tmp_path, monkeypatch)
+    manifest_path = out / cli.MANIFEST_FILENAME
+    landed = json.loads(manifest_path.read_text())["staged_dataset"]
+    stager = load_tool("stage_uk_rowwise_candidate")
+    argv = ["--run-dir", str(out), "--wait-seconds", "60"]
+    if case == "an output edited after landing":
+        _edit_an_output(out)
+        monkeypatch.setattr(stager, "_start_bundle_emitter", _bundle_emitter_for(hub))
+    elif case == "a stage to another repository that fails":
+        argv += ["--repo-id", "policyengine/another-private"]
+        monkeypatch.setattr(
+            stager,
+            "_start_bundle_emitter",
+            lambda: FakeEmitterClient(hub_files=hub.files),
+        )
+    else:
+        argv += ["--local-only"]
+    capsys.readouterr()
+    assert stager.main(argv) == expected_status
+    assert json.loads(manifest_path.read_text())["staged_dataset"] == landed
+    assert "record stays" in capsys.readouterr().err
+    assert len(hub.commits) == 1
+
+
+def test_the_restage_note_names_what_a_local_only_build_recorded(
+    tmp_path, monkeypatch, capsys
+):
+    """A build that kept its bundle local recorded a skipped stage and the
+    phase dataset_stage_skipped; a re-stage's own failure never takes their
+    place in the note."""
+    from test_support.microcosm_build.emitter import (
+        FakeEmitterClient,
+        FakeHandoverQueue,
+    )
+    from test_support.microcosm_build.uk_rowwise_candidate import _FakeHub
+
+    pytest.importorskip("tables")
+    status, out = run_dense_main(tmp_path, monkeypatch, staging="--staging-local-only")
+    assert status == 0
+    hub = _FakeHub()
+    queue = FakeHandoverQueue()
+    stager = load_tool("stage_uk_rowwise_candidate")
+    # A first re-stage, by a user whose emitter finds no credential.
+    monkeypatch.setattr(
+        stager,
+        "_start_bundle_emitter",
+        lambda: FakeEmitterClient(hub_files=hub.files, queue=queue),
+    )
+    assert stager.main(["--run-dir", str(out), "--wait-seconds", "0"]) == 1
+    monkeypatch.setattr(
+        stager,
+        "_start_bundle_emitter",
+        lambda: FakeEmitterClient(hub_files=hub.files, hub_api=hub, queue=queue),
+    )
+    capsys.readouterr()
+    assert stager.main(["--run-dir", str(out), "--wait-seconds", "60"]) == 0
+    err = capsys.readouterr().err
+    assert "still records skipped" in err
+    assert "phase dataset_stage_skipped" in err
+    assert "CREDENTIAL_MISSING" not in err and "dataset_stage_failed" not in err
 
 
 def test_the_restage_tool_waits_three_hours_unless_told_otherwise():
