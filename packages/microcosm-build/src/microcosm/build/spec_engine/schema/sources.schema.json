@@ -2285,6 +2285,30 @@
         "below_age"
        ]
       },
+      "non_parental_care_child": {
+       "type": "object",
+       "additionalProperties": false,
+       "properties": {
+        "child_codes": {
+         "type": "array",
+         "minItems": 1,
+         "items": {
+          "type": "integer"
+         }
+        },
+        "parent_codes": {
+         "type": "array",
+         "minItems": 1,
+         "items": {
+          "type": "integer"
+         }
+        }
+       },
+       "required": [
+        "child_codes",
+        "parent_codes"
+       ]
+      },
       "one_person_age_split": {
        "type": "integer",
        "minimum": 0
@@ -2359,6 +2383,7 @@
       "family_link_codes",
       "dependent_child",
       "looked_after_child",
+      "non_parental_care_child",
       "one_person_age_split",
       "family_role_values",
       "household_type_values",
