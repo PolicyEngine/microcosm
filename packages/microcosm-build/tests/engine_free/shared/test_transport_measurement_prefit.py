@@ -158,16 +158,18 @@ def test_a_band_failing_count_and_amount_counts_once():
 
 @pytest.mark.parametrize("role", ["count", "amount"])
 @pytest.mark.parametrize(
-    ("households", "ess", "passes"),
+    ("households", "ess", "refusals"),
     [
-        (30, (30, 1), True),
-        (29, (29, 1), False),
-        (30, (2999, 100), False),
-        (60, (30, 1), True),
+        (30, (30, 1), []),
+        (29, (29, 1), ["29 source households", "Kish ESS 29"]),
+        (30, (2999, 100), ["Kish ESS 29.99"]),
+        (60, (30, 1), []),
+        # Separately: the household floor alone refuses, whatever the ESS.
+        (29, (30, 1), ["29 source households"]),
     ],
 )
 def test_support_refuses_below_30_households_or_ess_separately(
-    role, households, ess, passes
+    role, households, ess, refusals
 ):
     support = _support()
     support[role] = {
@@ -175,9 +177,11 @@ def test_support_refuses_below_30_households_or_ess_separately(
         "kish_ess": {"numerator": ess[0], "denominator": ess[1]},
     }
     result = _run(_case(support={4: support}))
-    assert result.passed is passes, result.failures
-    if not passes:
-        assert all(f"band {TABLE}/b4 {role}" in line for line in result.failures)
+    assert result.passed is (not refusals), result.failures
+    assert len(result.failures) == len(refusals)
+    for line, reason in zip(result.failures, refusals, strict=True):
+        assert line.startswith(f"support: band {TABLE}/b4 {role}")
+        assert reason in line
 
 
 def test_missing_evidence_refuses_each_way():
