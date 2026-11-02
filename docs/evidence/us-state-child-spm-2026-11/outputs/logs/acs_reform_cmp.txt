@@ -1,0 +1,21 @@
+['state', 'census', 'moe', 'acs_local', 'se', 'kish_src', 'acs_share', 'acs_only', 'acs_only_se', 'donor_only', 'donor_only_se', 'delta', 'delta_se', 'stored_2301', 'gap']
+state  delta_pub  delta_se_pub  delta_rent  delta_se_rent  diff
+   AR      -1.97          0.85       -2.14           0.85 -0.17
+   DC      -8.65          4.34       -7.87           4.30  0.78
+   DE      -2.97          1.68       -1.76           1.05  1.21
+   FL      -3.53          1.11       -6.27           1.74 -2.74
+   HI      -1.60          0.70       -1.39           0.69  0.21
+   LA      -1.62          0.35       -2.07           0.61 -0.45
+   MA      -3.44          1.67       -2.59           1.46  0.85
+   MD      -3.41          2.11       -3.67           2.14 -0.25
+   ME      -2.63          1.57       -2.57           1.57  0.06
+   MO      -8.96          3.70       -8.25           3.60  0.71
+   MS      -3.39          1.56       -3.57           1.57 -0.18
+   MT      -0.67          0.24       -0.66           0.22  0.01
+   RI      -7.08          3.27       -6.85           3.27  0.24
+   TN      -5.47          2.10       -5.77           2.17 -0.29
+   VT      -0.17          0.08       -0.82           0.56 -0.65
+n 15 median pub -3.39 median rent -2.59 mean abs diff 0.59 max 2.74 mean diff -0.04
+median se pub 1.57 rent 1.57
+baseline move, same 15: mean 0.465 median 0.244 | all 51: mean 0.499 median 0.264
+reform move, 15: mean 0.587 median 0.294 | without FL: mean 0.432 | above 1 point ['DE', 'FL']

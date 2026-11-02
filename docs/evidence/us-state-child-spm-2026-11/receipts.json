@@ -164,16 +164,16 @@
       "bytes": 9218
     },
     "outputs/acsrent_eval.csv": {
-      "sha256": "af50a76abef8112c17a2a70935a2c2a26ddd719a2b32f0101743e57abd0048bb",
-      "bytes": 11069
+      "sha256": "02400416f37d7dabd7b666fcb75f140566c7cebfee8cf3fa7b2554ca639da7db",
+      "bytes": 10853
     },
     "outputs/acsrent_reform.csv": {
       "sha256": "42e443027f04b30f71d14aa239588637c2a647420724a62c4756abca2ca67a2d",
       "bytes": 1621
     },
     "outputs/acsrent_solves.csv": {
-      "sha256": "6c6c991852c1259947339c85ab414a6687e37e6d1264218f1342975382b13d3f",
-      "bytes": 3090
+      "sha256": "fef3ba85d72e2389f2f5d0545ea21f843ba1226384991f666db2e1c5c17a8037",
+      "bytes": 3024
     },
     "outputs/asec_state_raw.csv": {
       "sha256": "5e28ec94ce143145bd3d8335d2820a90aab8ca9ecb9ebf43e996690a3eab5a5c",
@@ -275,13 +275,21 @@
       "sha256": "71d3effe7aa843ad4eb2c6ebc368ccfc99ab4b1edc61177844468253174e566a",
       "bytes": 4872
     },
+    "outputs/logs/ablate_noise.txt": {
+      "sha256": "ecf6ebde31a35f085d3499d3bc15c29ce305763e6f3346b6040dc03326da72bb",
+      "bytes": 1692
+    },
     "outputs/logs/acs_eval.txt": {
       "sha256": "b6f09dc0999a9c007574daeedb64bda4df33180278801af9c1c19f803ce58659",
       "bytes": 9939
     },
+    "outputs/logs/acs_reform_cmp.txt": {
+      "sha256": "69bb8f2efb82b96b53f8b6713c3c84e8413197156aca4821c128367fae643b0e",
+      "bytes": 1486
+    },
     "outputs/logs/acsrent_eval.txt": {
-      "sha256": "6555d6ee0d5d15d7ae4839c0e2793088bcc5a650eb9e65daca69faa50e9eea8d",
-      "bytes": 9933
+      "sha256": "fdb5e7770a817328981f4ef471bb13ac15c98db5bfdbeb16116c3953442b066f",
+      "bytes": 9939
     },
     "outputs/logs/ctc_ssn.txt": {
       "sha256": "1d81a564a70fd2ad43424f5ff20d3d974e023ad4fc91ee56ebdfc6c2350142a3",
@@ -290,6 +298,10 @@
     "outputs/logs/dmiss.txt": {
       "sha256": "9349ae893019dd6700f544b1286479b2d01ac9b3b93392df807d61a2cc1b2d1b",
       "bytes": 1632
+    },
+    "outputs/logs/fl_reform.txt": {
+      "sha256": "a8d06e96ccf726bdec27183aea630682728257bc244636aec3742f6f28c3dc9d",
+      "bytes": 2508
     },
     "outputs/logs/house.txt": {
       "sha256": "6ffde97ab4ad0fd8d62f08bd0aa64025f72af56b3ecc897ccb46164f33f29cab",
@@ -304,8 +316,8 @@
       "bytes": 3024
     },
     "outputs/logs/overlap.txt": {
-      "sha256": "f9286e475133b75d69090232b7881415db04a370ca6f9302585aa9e8fa997ba1",
-      "bytes": 2942
+      "sha256": "1f54a28190d774637c5007a38e48c810605c1f699c9d7e1b7548945475b415c2",
+      "bytes": 3475
     },
     "outputs/logs/part.txt": {
       "sha256": "64776b5b610f49772f79f0fe31ae0fb75b1a6554458ba890f0da0af6cad03863",
@@ -348,8 +360,8 @@
       "bytes": 9894
     },
     "outputs/state_persistence.csv": {
-      "sha256": "f079534fdfbbe03491f51d4aadf9ba335369bf6b1b71445492b0181470f364a8",
-      "bytes": 7047
+      "sha256": "1512f58ee9588a3c5fc7f0e3930b9ccf6bc0ff680e10a898a73cb4d1b6154383",
+      "bytes": 7673
     },
     "outputs/waterfall.csv": {
       "sha256": "75aa3c1eec097056ce342aa28e43bcd4431c726cd8eab56bc806c9f03af0cc56",
@@ -364,8 +376,8 @@
       "bytes": 4093
     },
     "scripts/acs_eval.py": {
-      "sha256": "6336b8e205359e0baffb2a90f34c6fbd0889715554e513bebc6246b648b9b0a7",
-      "bytes": 6829
+      "sha256": "7eb43cbf01c33c15066d0e12d745721afbe2207a2860a2004fb37af7a101690a",
+      "bytes": 7069
     },
     "scripts/acs_hh.py": {
       "sha256": "bf827c705569556dcda37ed1e5f7902da82ae716378059396ea84618cc0978f6",
@@ -380,8 +392,8 @@
       "bytes": 2423
     },
     "scripts/acs_reform_cmp.py": {
-      "sha256": "5488d5aca4d5d4036aa64704c52c8c57b5fa63c8a6678d8751fa9f43b1fbb4e7",
-      "bytes": 1299
+      "sha256": "79402b83786323aa2252576c1b4fc457245970509674376c4499e0af4855a591",
+      "bytes": 2103
     },
     "scripts/acs_rent_run.py": {
       "sha256": "da787ccc5de771fbfa5735f16b15589e284a18fc0483726ff8ccaa3608b784bc",
@@ -471,6 +483,10 @@
       "sha256": "20cf8033ae5044e7ccf1fb1678679ddcd01befbfbc7b5a39fb3f4ddc07670660",
       "bytes": 1273
     },
+    "scripts/fl_reform.py": {
+      "sha256": "ee1cff431fd9f323e0705d0911b41247d1a42cddd6d7575d8146d9d2468d3d1a",
+      "bytes": 2670
+    },
     "scripts/flip.py": {
       "sha256": "90a35ab5c4d615a387738ebb5f6a71f7ef0d0b3c96f77f7f1ab7ea6d3f0b4ee6",
       "bytes": 2264
@@ -508,8 +524,8 @@
       "bytes": 4119
     },
     "scripts/overlap.py": {
-      "sha256": "4a0177e36ec85f3fa965c09dacbba7c8c9509194bdc94fa7163d8d7b904df267",
-      "bytes": 9172
+      "sha256": "09b9717a9ccb5451f7d1f5a65af825c048d68ff5d096aaa812ac3a9a4810898a",
+      "bytes": 9911
     },
     "scripts/paired.py": {
       "sha256": "a4461b5e7b31e37386daa9c14d67dda7607e2b93ddda04e09d2c513e6bb9ca77",
@@ -520,8 +536,8 @@
       "bytes": 2463
     },
     "scripts/prep_evidence.py": {
-      "sha256": "074ef4e497a28dbb3b2da46a4f156d6d1ec22134fe28445b374144fb7ba73186",
-      "bytes": 2429
+      "sha256": "4848e0b9113348755bd010909df5429c5de84e8d640e28caadaa7d31f8c16ca0",
+      "bytes": 2439
     },
     "scripts/puf_house.py": {
       "sha256": "f7055e02c3dfee9d4e2654a60db0754138f76a04a127e0adcd3b6fcc184d7224",

@@ -174,6 +174,7 @@ zc = (
     .zc.sum()
 )
 rows = []
+covs = {}
 for tag, u in (("dense", dense), ("default", load("default"))):
     for W, wlab in (("W0", "initial"), ("W1", "published")):
         for ch in ("all", "asec", "puf"):
@@ -181,6 +182,7 @@ for tag, u in (("dense", dense), ("default", load("default"))):
             zm = influence(x, W, "y").groupby([x.state, x.clu]).sum().rename("zm")
             j = pd.concat([zm, zc], axis=1).dropna()
             cov = (j.zm * j.zc).groupby(level=0).sum() * 1e4
+            covs[(tag, wlab, ch)] = cov
             sem = np.sqrt((zm**2).groupby(level=0).sum()) * 100
             gap = (x[W] * x.y).groupby(x.state).sum() / x[W].groupby(
                 x.state
@@ -214,6 +216,12 @@ print(f.round(2).to_string(index=False))
 # one month in consecutive Marches at most, so a two-year separation leaves no rotation overlap.
 bench = raw[[2024, 2025]].mean(axis=1)
 bse = cse * np.sqrt(3 / 2)
+for y in (2022, 2023, 2024):
+    x = dense[(dense.source_year == y) & (dense.ch == "asec")]
+    m = (x.W0 * x.E).groupby(x.state).sum() / x.W0.groupby(x.state).sum() * 100
+    print(
+        f"Census's flag on ASEC rows at initial weights against raw ASEC, {y}: corr {m.corr(raw[y]):.3f}"
+    )
 print(f"benchmark 2024-25 against Table 18: corr {bench.corr(c.rate):.3f}")
 rows = []
 for lab, x in (
@@ -264,16 +272,16 @@ t = pd.DataFrame(
 t["z_dense"] = t.dense_initial / np.sqrt(t.dense_initial_se**2 + t.census_se**2)
 t["z_acs"] = t.acs_rows / np.sqrt(t.acs_rows_se**2 + t.census_se**2)
 t.to_csv(f"{SP}/run/state_persistence.csv")
-r = t.dense_initial.corr(t.acs_rows)
+# ACS rows share no household with Census, so the gaps' sampling covariance equals Var(Census) less Cov(dense, Census).
 print(
-    f"gap corr dense initial, ACS rows {r:.2f}; p {stats.pearsonr(t.dense_initial, t.acs_rows)[1]:.3f}"
+    f"gap corr dense initial, ACS rows {t.dense_initial.corr(t.acs_rows):.2f}; p {stats.pearsonr(t.dense_initial, t.acs_rows)[1]:.3f}"
 )
 print(
-    f"shared Census noise alone would give about {(t.census_se**2).mean() / (t.dense_initial.std() * t.acs_rows.std()):.2f}"
+    f"  Census noise alone would give about {(t.census_se**2 - covs[('dense', 'initial', 'all')]).mean() / (t.dense_initial.std() * t.acs_rows.std()):.2f}"
 )
-pub = s.dense_W1
+print(f"gap corr dense published, ACS rows {s.dense_W1.corr(t.acs_rows):.2f}")
 print(
-    f"gap corr dense published, ACS rows {pub.corr(t.acs_rows):.2f}; shared Census noise alone would give about {(t.census_se**2).mean() / (pub.std() * t.acs_rows.std()):.2f}"
+    f"  Census noise alone would give about {(t.census_se**2 - covs[('dense', 'published', 'all')]).mean() / (s.dense_W1.std() * t.acs_rows.std()):.2f}"
 )
 rng = np.random.default_rng(0)
 same = lambda z1, z2, th: (
@@ -295,8 +303,15 @@ for th in (1.28, 1.645, 1.96):
     print(
         f"|z|>{th}: {obs} states {pick}, permutation mean {sim.mean():.2f}, p {(sim >= obs).mean():.3f}"
     )
+t["joint_z"] = np.where(
+    np.sign(t.z_dense) == np.sign(t.z_acs),
+    np.minimum(t.z_dense.abs(), t.z_acs.abs()),
+    0,
+)
+t.to_csv(f"{SP}/run/state_persistence.csv")
 print(
-    t.loc[["DE", "LA", "MS"], ["dense_initial", "acs_rows", "z_dense", "z_acs"]]
+    t.sort_values("joint_z", ascending=False)
+    .head(8)[["dense_initial", "acs_rows", "z_dense", "z_acs", "joint_z"]]
     .round(2)
     .to_string()
 )

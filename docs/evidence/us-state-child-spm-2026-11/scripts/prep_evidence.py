@@ -13,7 +13,7 @@ E = os.path.expanduser(
 R = os.path.expanduser(
     "~/PolicyEngine/microcosm/_worktrees/rent-head-align/.venv/bin/ruff"
 )
-KEEP = "extract_state assemble assemble_dense asec_extract cutrun runcuts decomp decomp2 noise vardec flip year paired thr cols rep_boot rep_eval chi_solve chi_eval ablate_eval ablate_noise fam dl dense_fit steps dmiss idcheck acs_stored acs_hh acs_w acs_one acs_eval acs_rent_run acs_reform_cmp overlap thr_census receipts prep_evidence national_cf cf_eval ctc_ssn house house_sim puf_house part rent2 rent3 rent4 rent5 rentfix dense_rent sparse_rent rent_eval acsrent dash_swing kish initial_fit noise_ci resource_growth".split()
+KEEP = "extract_state assemble assemble_dense asec_extract cutrun runcuts decomp decomp2 noise vardec flip year paired thr cols rep_boot rep_eval chi_solve chi_eval ablate_eval ablate_noise fam dl dense_fit steps dmiss idcheck acs_stored acs_hh acs_w acs_one acs_eval acs_rent_run acs_reform_cmp fl_reform overlap thr_census receipts prep_evidence national_cf cf_eval ctc_ssn house house_sim puf_house part rent2 rent3 rent4 rent5 rentfix dense_rent sparse_rent rent_eval acsrent dash_swing kish initial_fit noise_ci resource_growth".split()
 for f in glob.glob(E + "/*"):
     os.remove(f) if os.path.isfile(f) else shutil.rmtree(f)
 for k in KEEP:

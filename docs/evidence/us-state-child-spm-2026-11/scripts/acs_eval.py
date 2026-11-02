@@ -86,7 +86,9 @@ if rf:
     )
 if "poor_r" not in u:
     u["poor_r"] = np.nan
-u["poor_r"] = u.poor_r.fillna(u.poor)  # acsrent_r covers the top-gap states only
+# acsrent_r covers 15 states, so the rest carry no reform delta.
+u["poor_r_ran"] = u.poor_r.notna()
+u["poor_r"] = u.poor_r.fillna(u.poor)
 u = (
     u[u.kids > 0]
     .merge(uh, left_on="spm_unit_id", right_on="person_spm_unit_id")
@@ -141,6 +143,8 @@ for st, g in u.groupby("state"):
     )
 d = pd.DataFrame(rows).set_index("state")
 d["gap"] = d.acs_local - d.census
+unrun = [st for st, g in u.groupby("state") if not g.poor_r_ran.any()]
+d.loc[unrun, ["delta", "delta_se"]] = np.nan
 print(d.round(2).to_string())
 print(
     "median se",
@@ -252,5 +256,7 @@ for n in names:
         )
     )
 o = pd.DataFrame(out).set_index("run")
+if unrun:
+    o[[c_ for c_ in o.columns if "delta" in c_]] = np.nan
 o.to_csv(f"{SP}/run/{TAG}_solves.csv")
 print(o.round(2).to_string())
