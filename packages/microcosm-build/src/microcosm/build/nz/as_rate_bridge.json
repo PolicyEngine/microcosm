@@ -111,7 +111,7 @@
           "variable": "jobseeker_support_youngest_dependent_child_age",
           "unit_attribute": "family.youngest_dependent_child_age",
           "value_source": "unit",
-          "reason": "harness: family_shape youngest_child_age (run.py:1938,1951). The unit column is null for a childless family, and the engine adapter reads integer inputs as int64, so the override applies only where the unit has a dependent child; other rows keep the closure default 0.",
+          "reason": "harness: family_shape youngest_child_age (run.py:1938,1951). The unit column is null for a childless family, and that null would reach the engine input as NaN, so the override applies only where the unit has a dependent child; other rows keep the closure default 0.",
           "mask": {
             "unit_attribute": "family.accommodation_supplement_bridge_has_dependent_child",
             "equals": true
@@ -285,7 +285,7 @@
             "variable": "jobseeker_support_youngest_dependent_child_age",
             "unit_attribute": "family.youngest_dependent_child_age",
             "value_source": "unit",
-            "reason": "harness: family_shape youngest_child_age (run.py:1938,1951). The unit column is null for a childless family, and the engine adapter reads integer inputs as int64, so the override applies only where the unit has a dependent child; other rows keep the closure default 0.",
+            "reason": "harness: family_shape youngest_child_age (run.py:1938,1951). The unit column is null for a childless family, and that null would reach the engine input as NaN, so the override applies only where the unit has a dependent child; other rows keep the closure default 0.",
             "mask": {
               "unit_attribute": "family.accommodation_supplement_bridge_has_dependent_child",
               "equals": true

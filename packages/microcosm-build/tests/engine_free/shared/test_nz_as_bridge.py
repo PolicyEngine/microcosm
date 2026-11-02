@@ -31,7 +31,7 @@ from microcosm.build.transport.compose import (
 from microcosm.build.transport.entitlement import _parameter, _rows
 from microcosm.build.transport.target_kernels import CalibrationPrepareKernel
 from microcosm.frame import ExportContract, Frame, VariableMetadata, WeightKind, Weights
-from microcosm.frame.adapters.axiom import NZ_SCHEMA
+from microcosm.frame.adapters.axiom import NZ_SCHEMA, _batch_from_table
 from microcosm.frame.rules_kernels import (
     SimulateCounterfactualKernel,
     SimulateSolveZeroKernel,
@@ -373,6 +373,7 @@ class Unit:
     adult_age: int = 30
     cash_assets: float = 0.0
     rent: float = 400.0
+    partner_age: int | None = None
 
 
 _RECEIPT_FLAGS = {
@@ -414,7 +415,12 @@ def _frame(units):
         adults = 2 if unit.partnered else 1
         for member in range(adults + len(unit.children)):
             adult = member < adults
-            age = unit.adult_age if adult else unit.children[member - adults]
+            if not adult:
+                age = unit.children[member - adults]
+            elif member == 1 and unit.partner_age is not None:
+                age = unit.partner_age
+            else:
+                age = unit.adult_age
             row = {
                 "person_id": next_person,
                 "person_household_id": family_id,
@@ -724,28 +730,28 @@ def _youngest_received(units, *, masked=True):
         _run(frame, row, scenario, engines)
     finally:
         received = engines[_REFS["main_benefits_rates"]].received
-    return received[-1][_YOUNGEST]
+    table = received[-1][[_YOUNGEST]]
+    return _batch_from_table(table, [_YOUNGEST])[_YOUNGEST]
 
 
 def test_a_childless_family_keeps_the_closure_default_youngest_child_age():
     units = [Unit(), Unit(children=(4, 7))]
     received = _youngest_received(units)
     # 0 for the childless family's adult, 4 for the parent and both children.
-    assert pd.Series(received).to_numpy(dtype=np.int64).tolist() == [0, 4, 4, 4]
+    assert received.dtype == np.float64
+    assert received.tolist() == [0.0, 4.0, 4.0, 4.0]
 
 
 def test_unmasked_youngest_child_override_carries_a_missing_age_to_the_engine():
     """Without the mask the childless unit's null age reaches the engine input.
 
-    pandas 3 reads the nullable Int64 source as float64 with NaN, so the
-    adapter's int64 conversion raises under numpy's invalid-value check and
-    otherwise yields int64's minimum.
+    pandas 3 reads the nullable Int64 source as float64 with NaN, so the adapter
+    takes its float branch and hands the engine NaN for that adult.
     """
     units = [Unit(), Unit(children=(4, 7))]
     received = _youngest_received(units, masked=False)
-    assert received.isna().tolist() == [True, False, False, False]
-    with np.errstate(invalid="raise"), pytest.raises(FloatingPointError):
-        pd.Series(received).to_numpy(dtype=np.int64)
+    assert received.dtype == np.float64
+    assert np.isnan(received).tolist() == [True, False, False, False]
 
 
 def test_bridge_scratch_columns_stay_out_of_the_export_contract():
@@ -761,7 +767,7 @@ def test_bridge_scratch_columns_stay_out_of_the_export_contract():
     assert not persisted & (scratch | {_GROSS})
 
 
-def test_every_as_population_runs_its_own_bridge_and_every_branch_its_base_rate():
+def test_each_bridge_population_runs_the_bridge_and_every_branch_its_base_rate():
     rows = {row["id"]: row for row, _ in _rows(_SPEC)[0]}
     scenarios = _SPEC["resources"]["scenarios"]["scenarios"]
     for node_id in ("masks", "sole_parent_gross_rate", "cutout"):
@@ -924,6 +930,25 @@ def test_a_partnered_superannuitant_unit_takes_coefficient_two_in_s5():
     assert base[100] == 2 * SuperannuationEngine.weekly
     credit = TaxCreditEngine.eldest / 52
     assert abs(base[101] - (SuperannuationEngine.weekly + credit)) <= 1e-9
+
+
+@pytest.mark.parametrize(("first_age", "second_age"), [(70, 50), (50, 70)])
+def test_a_mixed_couple_in_s5_takes_the_superannuitants_amount_for_both_partners(
+    first_age, second_age
+):
+    # The fixture pays the partner under 65 nothing, so ``max`` over members
+    # gives the superannuitant's amount in either person order.
+    base = _s5_base_rate(
+        [
+            Unit(
+                receipt_group="superannuitant",
+                adult_age=first_age,
+                partner_age=second_age,
+                partnered=True,
+            )
+        ]
+    )
+    assert base[100] == 2 * SuperannuationEngine.weekly
 
 
 def test_the_central_base_rate_keeps_jobseeker_for_superannuitant_units():
