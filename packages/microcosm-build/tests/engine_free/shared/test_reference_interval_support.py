@@ -259,20 +259,24 @@ _records = st.lists(
 def test_ess_is_at_most_distinct_households_and_clones_leave_it_unchanged(
     records, clones
 ):
+    """Records draw from 7 source households over 3 positive bands and a nil
+    band, so the strategy reaches shared households, clones and empty bands.
+    """
     table = interval_table(_declaration())
     floored = [amount for _, _, amount in records]
-    weights = [float(weight) for _, weight, _ in records]
+    # Each original record carries clones x w; each clone carries w exactly.
+    weights = [float(weight * clones) for _, weight, _ in records]
     sources = [f"s{source}" for source, _, _ in records]
     support = band_support(table, floored, weights, sources)
     for band in support.values():
         for role in ("count", "amount"):
             measured = band[role]
             assert _rational(measured["kish_ess"]) <= measured["source_households"]
-    # Split every record into equal clones of one source household: the
-    # summed contribution per household, and so the support, is unchanged.
+            if measured["source_households"] == 0:
+                assert _rational(measured["kish_ess"]) == 0
     split = [
-        (source, weight / clones, amount)
-        for source, weight, amount in zip(sources, weights, floored, strict=True)
+        (source, float(weight), amount)
+        for source, (_, weight, amount) in zip(sources, records, strict=True)
         for _ in range(clones)
     ]
     cloned = band_support(
@@ -281,10 +285,22 @@ def test_ess_is_at_most_distinct_households_and_clones_leave_it_unchanged(
         [row[1] for row in split],
         [row[0] for row in split],
     )
-    if all(
-        Fraction(weight / clones) * clones == Fraction(weight) for weight in weights
-    ):
-        assert cloned == support
+    assert cloned == support
+
+
+def test_an_empty_band_reports_no_support():
+    table = interval_table(_declaration())
+    support = band_support(table, [50_000], [2.0], ["s0"])
+    assert support["b0"]["count"] == {
+        "source_households": 1,
+        "kish_ess": {"numerator": 1, "denominator": 1},
+    }
+    for band in ("nil", "b1", "b2"):
+        for role in ("count", "amount"):
+            assert support[band][role] == {
+                "source_households": 0,
+                "kish_ess": {"numerator": 0, "denominator": 1},
+            }
 
 
 @_SETTINGS
