@@ -12,11 +12,15 @@ user, so it finds the build's Hugging Face credential (``HF_TOKEN``, then
 ``HUGGINGFACE_TOKEN``, then the token saved by ``hf auth login``). Its module
 settings travel on its standard input, never in environment variables or
 process arguments. No call raises into the build: a missing, slow,
-refusing or outdated emitter leaves the build running without it. The one
-exception is a build that must send telemetry: with
-``MICROCOSM_TELEMETRY_REQUIRED=1``, starting the adapter raises
-``TelemetryRequiredError`` when the emitter cannot be used, so the build
-stops before doing any work.
+refusing or outdated emitter leaves the build running without it.
+
+Starting the adapter is the exception, and only through
+``MICROCOSM_TELEMETRY_REQUIRED``. With ``1`` (a build that must send
+telemetry) it raises ``TelemetryRequiredError`` when the emitter cannot be
+used, so the build stops before doing any work; any value other than ``1``,
+``0`` or unset raises ``ValueError``. For a startup failure that
+``EmitterClient.start`` reports itself, the interface first prints that the
+build will continue; the adapter's error says that line does not apply.
 
 The adapter never starts an emitter older than ``MINIMUM_EMITTER_VERSION``.
 It reads the version from ``microcosm-emitter version`` first, because the
@@ -33,9 +37,10 @@ import subprocess
 import sys
 from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from microcosm_emitter_interface import (
+    PROTOCOL_VERSION,
     EmitterClient,
     EmitterStartupError,
     HuggingFaceSettings,
@@ -44,7 +49,7 @@ from microcosm_emitter_interface import (
     TelemetrySettings,
     default_spool_path,
 )
-from microcosm_emitter_interface.launcher import resolve_command
+from microcosm_emitter_interface.launcher import StartupFailureReason, resolve_command
 from microcosm_emitter_interface.orrery import (
     PublicationFileRole,
     PublicationInventory,
@@ -87,11 +92,15 @@ STARTUP_TIMEOUT_SECONDS = 15.0
 #: Releases 0.4.0 to 0.5.1 accept the same protocol version but start without
 #: that module; 0.7.0 added only release publication, which builds do not use.
 MINIMUM_EMITTER_VERSION = "0.6.0"
+UPGRADE_EMITTER_COMMAND = (
+    f"uv tool install --upgrade 'microcosm-emitter>={MINIMUM_EMITTER_VERSION}'"
+)
+INSTALL_EMITTER_COMMAND = "uv tool install microcosm-emitter"
 OUTDATED_EMITTER_WARNING = (
     "The installed microcosm-emitter {reported}; this build needs {required} "
     "or later, so it did not start that emitter and will continue without it. "
-    "Upgrade it with `uv tool install --upgrade 'microcosm-emitter>={required}'`, "
-    "or point MICROCOSM_EMITTER_COMMAND at a newer one."
+    "Upgrade it with `{upgrade}`, or point MICROCOSM_EMITTER_COMMAND at a newer "
+    "one."
 )
 _RELEASE_NUMBER = re.compile(r"(\d+)\.(\d+)\.(\d+)")
 _MINIMUM_RELEASE = tuple(int(part) for part in MINIMUM_EMITTER_VERSION.split("."))
@@ -101,35 +110,52 @@ _MINIMUM_RELEASE = tuple(int(part) for part in MINIMUM_EMITTER_VERSION.split("."
 #: build sets it; the adapter reads it each time it starts.
 TELEMETRY_REQUIRED_VARIABLE = "MICROCOSM_TELEMETRY_REQUIRED"
 REQUIRED_TELEMETRY_ERROR = (
-    "MICROCOSM_TELEMETRY_REQUIRED=1, so this build must send telemetry, but "
-    "{problem} The build stops before doing any work."
+    "{variable}=1, so this build must send telemetry, but {problem}"
+    "{interface_line} The build stops before doing any work."
 )
-OUTDATED_EMITTER_PROBLEM = (
-    "the installed microcosm-emitter {reported}, and this build needs "
-    "{required} or later. Upgrade it with "
-    "`uv tool install --upgrade 'microcosm-emitter>={required}'`, or point "
-    "MICROCOSM_EMITTER_COMMAND at a newer one."
+#: Added for a startup failure ``EmitterClient.start`` reports: interface
+#: 0.7.0 prints "Local Microcosm emitter failed to start (<reason>); the
+#: build will continue." first, and has no setting to leave it out.
+INTERFACE_LINE_SUPERSEDED = (
+    ' The line above saying "the build will continue" comes from '
+    "microcosm-emitter-interface, which cannot tell that this build must send "
+    "telemetry; it does not apply."
 )
+#: The reasons the adapter finds itself, before or after
+#: ``EmitterClient.start``; the interface's own are ``StartupFailureReason``.
+type AdapterFailureReason = Literal[
+    "setup_failure",
+    "version_timeout",
+    "version_failed",
+    "outdated_emitter",
+    "hello_failed",
+    "telemetry_module_not_loaded",
+]
+type TelemetryRequiredReason = StartupFailureReason | AdapterFailureReason
 #: What each startup failure the interface reports means, in the error of a
 #: build that must send telemetry. The interface names a fixed reason and,
 #: for an emitter that exited, its exit code; never the emitter's output.
-_STARTUP_PROBLEMS = {
+#: ``microcosm-emitter version`` has listed protocol version 1 by then, so
+#: an ``unsupported_protocol_version`` is a failed ``hello``.
+_STARTUP_PROBLEMS: Mapping[StartupFailureReason, str] = {
     "command_not_found": (
         "the microcosm-emitter command was found neither through "
         "MICROCOSM_EMITTER_COMMAND nor on PATH. Install it with "
-        "`uv tool install microcosm-emitter`, or point MICROCOSM_EMITTER_COMMAND "
-        "at it."
+        f"`{INSTALL_EMITTER_COMMAND}`, or point MICROCOSM_EMITTER_COMMAND at it."
     ),
     "unsupported_protocol_version": (
-        "the installed emitter does not accept protocol version 1 "
-        "(unsupported_protocol_version)."
+        "its emitter became ready, but its `hello` answer failed, timed out or "
+        "could not be read, although `microcosm-emitter version` lists protocol "
+        "version 1 (the interface reports unsupported_protocol_version)."
     ),
     "child_exit": (
-        "its emitter exited before it was ready (child_exit{exit_detail}). The "
-        "emitter's own message above says why. Emitter 0.11.0 and later exit "
-        "there when MICROCOSM_COLLECTOR_TOKEN, "
+        "its emitter exited before it was ready (child_exit{exit_detail}). "
+        'Emitter 0.11.0 and later first print "The Microcosm emitter cannot '
+        'start: …" when MICROCOSM_COLLECTOR_TOKEN, '
         "MICROCOSM_COLLECTOR_TOKEN_EXPIRES_AT and MICROCOSM_COLLECTOR_ORIGIN are "
-        "not all set, cannot be read, or name another collector."
+        "set only in part, cannot be read, or name another collector; for any "
+        'other cause the emitter prints only "Service startup failed '
+        '(startup_failure).", which does not name it.'
     ),
     "readiness_timeout": (
         "its emitter was not ready within its startup time limit (readiness_timeout)."
@@ -144,37 +170,67 @@ _STARTUP_PROBLEMS = {
     ),
     "startup_failure": "its emitter could not be started (startup_failure).",
 }
+#: The reason a required build stops with, for an interface reason that
+#: means something else once ``version`` has answered.
+_REASONS_AFTER_VERSION_CHECK: Mapping[StartupFailureReason, AdapterFailureReason] = {
+    "unsupported_protocol_version": "hello_failed"
+}
+#: Why ``microcosm-emitter version`` gave no answer: it did not answer in time.
+_VERSION_TIMED_OUT = "timeout"
 
 
 class TelemetryRequiredError(RuntimeError):
     """A build that must send telemetry has no emitter it can use.
 
     ``LocalTelemetryEmitter.start`` raises it only with
-    ``MICROCOSM_TELEMETRY_REQUIRED=1``. ``reason`` is a fixed code:
-    ``setup_failure``, ``outdated_emitter``, ``telemetry_module_not_loaded``,
-    or the startup reason the interface reported (``command_not_found``,
-    ``child_exit``, ``readiness_timeout``, ``unsupported_protocol_version``
-    and the others ``EmitterStartupError`` names). ``exit_code`` is the
-    emitter's exit code when it exited before it was ready. The message holds
-    no setting's or credential's value.
+    ``MICROCOSM_TELEMETRY_REQUIRED=1``. ``reason`` is the interface's startup
+    reason (``StartupFailureReason``) or one the adapter finds itself
+    (``AdapterFailureReason``). ``exit_code`` is the emitter's exit code when
+    it exited before it was ready. With ``interface_warned`` the message
+    says that the interface's line above, which says the build will
+    continue, does not apply. The message holds no setting's or credential's
+    value.
     """
 
     def __init__(
-        self, reason: str, problem: str, *, exit_code: int | None = None
+        self,
+        reason: TelemetryRequiredReason,
+        problem: str,
+        *,
+        exit_code: int | None = None,
+        interface_warned: bool = False,
     ) -> None:
-        self.reason = reason
+        self.reason: TelemetryRequiredReason = reason
         self.exit_code = exit_code
-        super().__init__(REQUIRED_TELEMETRY_ERROR.format(problem=problem))
+        super().__init__(
+            REQUIRED_TELEMETRY_ERROR.format(
+                variable=TELEMETRY_REQUIRED_VARIABLE,
+                problem=problem,
+                interface_line=INTERFACE_LINE_SUPERSEDED if interface_warned else "",
+            )
+        )
 
 
-def _startup_refusal(error: EmitterStartupError | None) -> TelemetryRequiredError:
+def _startup_refusal(
+    error: EmitterStartupError | None, *, interface_warned: bool
+) -> TelemetryRequiredError:
     """The error of a build that must send telemetry, for a startup failure."""
-    reason = "startup_failure" if error is None else error.reason
+    interface_reason: StartupFailureReason = (
+        "startup_failure" if error is None else error.reason
+    )
     exit_code = None if error is None else error.exit_code
-    problem = _STARTUP_PROBLEMS.get(reason, _STARTUP_PROBLEMS["startup_failure"])
+    problem = (
+        _STARTUP_PROBLEMS.get(interface_reason) or _STARTUP_PROBLEMS["startup_failure"]
+    )
     exit_detail = "" if exit_code is None else f", exit code {exit_code}"
+    reason: TelemetryRequiredReason = interface_reason
+    if interface_warned:
+        reason = _REASONS_AFTER_VERSION_CHECK.get(interface_reason, interface_reason)
     return TelemetryRequiredError(
-        reason, problem.format(exit_detail=exit_detail), exit_code=exit_code
+        reason,
+        problem.format(exit_detail=exit_detail),
+        exit_code=exit_code,
+        interface_warned=interface_warned,
     )
 
 
@@ -201,12 +257,15 @@ def _release_number(version: object) -> tuple[int, ...] | None:
     return None if found is None else tuple(int(part) for part in found.groups())
 
 
-def _installed_emitter_version(command: str, timeout: float) -> str | None:
-    """The release ``command version`` reports, or None without a usable answer.
+def _version_description(
+    command: str, timeout: float
+) -> tuple[dict[str, Any] | None, str | None]:
+    """``command version``'s answer, or None and why there is none.
 
     ``microcosm-emitter version`` (every release since 0.4.0, the first with
     the command) prints the same description as the emitter's ``hello``
-    answer, and starts none of its modules.
+    answer, and starts none of its modules. The reason is
+    ``_VERSION_TIMED_OUT`` or a phrase for an error message.
     """
     try:
         answer = subprocess.run(
@@ -217,13 +276,74 @@ def _installed_emitter_version(command: str, timeout: float) -> str | None:
             timeout=timeout,
             check=False,
         )
-        description = json.loads(answer.stdout) if answer.returncode == 0 else None
-    except Exception:
-        return None
-    version = (
-        description.get("emitter_version") if isinstance(description, dict) else None
+    except subprocess.TimeoutExpired:
+        return None, _VERSION_TIMED_OUT
+    except Exception as error:
+        return None, f"could not be run ({type(error).__name__})"
+    if answer.returncode != 0:
+        return None, f"exited {answer.returncode}"
+    try:
+        description = json.loads(answer.stdout)
+    except ValueError:
+        description = None
+    if not isinstance(description, dict):
+        return None, "printed no JSON object"
+    return description, None
+
+
+def _version_refusal(
+    version: str | None, failure: str | None, timeout: float
+) -> TelemetryRequiredError:
+    """Why a required build does not start the emitter its ``version`` describes."""
+    not_started = "so the emitter was not started"
+    if failure == _VERSION_TIMED_OUT:
+        return TelemetryRequiredError(
+            "version_timeout",
+            f"`microcosm-emitter version` did not answer within {timeout:g} s, "
+            f"{not_started}.",
+        )
+    if failure is None and _release_number(version) is not None:
+        return TelemetryRequiredError(
+            "outdated_emitter",
+            f"the installed microcosm-emitter reports version {version}, and this "
+            f"build needs {MINIMUM_EMITTER_VERSION} or later. Upgrade it with "
+            f"`{UPGRADE_EMITTER_COMMAND}`, or point MICROCOSM_EMITTER_COMMAND at a "
+            "newer one.",
+        )
+    if failure is None:
+        failure = (
+            "printed no emitter_version"
+            if version is None
+            else f"reported version {version!r}, which is not a release number"
+        )
+    return TelemetryRequiredError(
+        "version_failed",
+        f"`microcosm-emitter version` {failure}, {not_started}. Check that "
+        "`microcosm-emitter version` runs on this machine; releases before 0.4.0 "
+        "have no such command.",
     )
-    return version if isinstance(version, str) else None
+
+
+def _protocol_refusal(description: Mapping[str, Any]) -> TelemetryRequiredError | None:
+    """A required build's refusal of an emitter that lists no protocol version 1."""
+    versions = description.get("protocol_versions")
+    if not isinstance(versions, list) or not all(
+        type(version) is int for version in versions
+    ):
+        return TelemetryRequiredError(
+            "version_failed",
+            "`microcosm-emitter version` printed no list of protocol versions, so "
+            "the emitter was not started. Check that `microcosm-emitter version` "
+            "runs on this machine.",
+        )
+    if PROTOCOL_VERSION not in versions:
+        return TelemetryRequiredError(
+            "unsupported_protocol_version",
+            f"`microcosm-emitter version` lists protocol versions {versions}, not "
+            f"protocol version {PROTOCOL_VERSION}, the one this build sends, so the "
+            "emitter was not started.",
+        )
+    return None
 
 
 def _start_emitter(*, required: bool = False, **options: Any) -> EmitterClient:
@@ -239,9 +359,12 @@ def _start_emitter(*, required: bool = False, **options: Any) -> EmitterClient:
 
     With ``required`` (a build that must send telemetry), each of these
     failures, and every other one ``EmitterClient.start`` reports, raises
-    ``TelemetryRequiredError`` instead. The adapter then prints no warning
-    that the build continues: it finds a missing command before
-    ``EmitterClient.start`` would print one.
+    ``TelemetryRequiredError`` instead. The adapter finds a missing command,
+    a ``version`` that times out or fails, an outdated emitter and one that
+    lists no protocol version 1 before anything starts, and prints nothing
+    then. For a failure ``EmitterClient.start`` reports, the interface has
+    already printed that the build will continue, and the error says that
+    does not apply.
     """
     command: str | None = None
     missing: EmitterStartupError | None = None
@@ -253,27 +376,32 @@ def _start_emitter(*, required: bool = False, **options: Any) -> EmitterClient:
         missing = EmitterStartupError("startup_failure")
     if command is None:
         if required:
-            raise _startup_refusal(missing)
+            raise _startup_refusal(missing, interface_warned=False)
         return EmitterClient.start(**options)
     timeout = options.get("startup_timeout", STARTUP_TIMEOUT_SECONDS)
-    version = _installed_emitter_version(command, timeout)
+    description, failure = _version_description(command, timeout)
+    reported_version = (
+        None if description is None else description.get("emitter_version")
+    )
+    version = reported_version if isinstance(reported_version, str) else None
     installed = _release_number(version)
     if installed is not None and installed >= _MINIMUM_RELEASE:
+        if required and description is not None:
+            refusal = _protocol_refusal(description)
+            if refusal is not None:
+                raise refusal
         client = EmitterClient.start(command=command, **options)
         if required and not client.available:
-            raise _startup_refusal(client.startup_error)
+            raise _startup_refusal(client.startup_error, interface_warned=True)
         return client
-    reported = "reports no version" if version is None else f"reports version {version}"
     if required:
-        raise TelemetryRequiredError(
-            "outdated_emitter",
-            OUTDATED_EMITTER_PROBLEM.format(
-                reported=reported, required=MINIMUM_EMITTER_VERSION
-            ),
-        )
+        raise _version_refusal(version, failure, timeout)
+    reported = "reports no version" if version is None else f"reports version {version}"
     print(
         OUTDATED_EMITTER_WARNING.format(
-            reported=reported, required=MINIMUM_EMITTER_VERSION
+            reported=reported,
+            required=MINIMUM_EMITTER_VERSION,
+            upgrade=UPGRADE_EMITTER_COMMAND,
         ),
         file=sys.stderr,
     )
@@ -324,10 +452,11 @@ class LocalTelemetryEmitter:
 
         With ``MICROCOSM_TELEMETRY_REQUIRED=1`` a failure raises
         ``TelemetryRequiredError`` instead, before the build does any work:
-        the emitter could not be prepared, was not found, is older than
-        ``MINIMUM_EMITTER_VERSION``, does not accept protocol version 1,
-        exited or timed out before it was ready, or started without its
-        telemetry module. The version check and the start each wait at most
+        the emitter could not be prepared or was not found, its ``version``
+        timed out or failed, it is older than ``MINIMUM_EMITTER_VERSION``, it
+        lists no protocol version 1, its ``hello`` failed, it exited or timed
+        out before it was ready, or it started without its telemetry module.
+        The version check and the start each wait at most
         ``startup_timeout_seconds``. An emitter that cannot use the
         collector-token variables it inherits exits before it is ready, so it
         is refused too. Whether the emitter later authenticates to the
