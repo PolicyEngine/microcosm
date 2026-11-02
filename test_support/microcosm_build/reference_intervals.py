@@ -363,3 +363,46 @@ def proof_for(producer="toy.measure", calibration="toy.calibrate"):
         }
     }
 
+
+# ---------------------------------------------------------------------------
+# Pre-fit acceptance (G8-r2c hunk D, ruling R2C-3)
+# ---------------------------------------------------------------------------
+
+#: R2C-3's frozen pre-fit thresholds, as a ``measurement_prefit`` entry
+#: declares them. ``maximum_discrepant_bands`` is 2 because three or more
+#: discrepant bands refuse. A change needs a new hub ruling first.
+R2C3_PREFIT_THRESHOLDS = {
+    "roster_total_bounds": [0.75, 1.25],
+    "band_bounds": [0.5, 2.0],
+    "maximum_discrepant_bands": 2,
+    "minimum_source_households": 30,
+    "minimum_kish_ess": 30,
+}
+
+#: Evidence aliases the toy battery wires; a country names its own.
+TOY_PREFIT_EVIDENCE = [
+    "native_band_report",
+    "omission_register",
+    "scenario_vsi",
+    "scenario_vex",
+    "scenario_vpt",
+    "identity_receipts",
+]
+
+
+def prefit_gate_entry(*, tables=("toy_coarse",), evidence=None, **overrides):
+    """A fixture ``gates.json`` entry carrying R2C-3's numbers."""
+    return {
+        "id": "measurement_prefit_toy",
+        "gate": "measurement_prefit",
+        "phase": "terminal",
+        "criticality": "release_blocking",
+        "parameters": {
+            **deepcopy(R2C3_PREFIT_THRESHOLDS),
+            "tables": list(tables),
+            "required_evidence": list(
+                TOY_PREFIT_EVIDENCE if evidence is None else evidence
+            ),
+            **overrides,
+        },
+    }

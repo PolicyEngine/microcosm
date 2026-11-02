@@ -46,6 +46,7 @@ from numbers import Integral
 
 import numpy as np
 
+from microcosm.frame.concepts import SOURCE_HOUSEHOLD_ID_COLUMN
 from microcosm.graph.canonical import canonical_json
 
 __all__ = [
@@ -55,6 +56,7 @@ __all__ = [
     "IntervalPreparationError",
     "IntervalTable",
     "alternative_closure",
+    "band_support",
     "boundary_diagnostics",
     "classify_records",
     "frame_boundary_diagnostics",
@@ -62,6 +64,8 @@ __all__ = [
     "interval_indicators",
     "interval_input_fingerprint",
     "interval_table",
+    "kish_ess",
+    "record_source_households",
     "scale_interval_document",
     "scale_interval_table",
     "source_interval_table",
@@ -127,6 +131,11 @@ _SCALING_FIELDS = frozenset(
 _DIAGNOSTIC_FIELDS = frozenset(
     {"boundary_window_cents", "alternative_positive_band_closure"}
 )
+#: Optional diagnostics fields. ``support_household_entity`` names the
+#: household entity whose ``source_household_id`` the per-band support
+#: diagnostics group contributions by; a table without it reports no support.
+_OPTIONAL_DIAGNOSTIC_FIELDS = frozenset({"support_household_entity"})
+SUPPORT_SCHEMA_VERSION = 1
 
 
 class IntervalPreparationError(ValueError):
@@ -159,6 +168,7 @@ class IntervalTable:
     cuts: tuple[Fraction, ...]
     scaled: bool
     declaration: Mapping[str, object]
+    support_household_entity: str | None = None
 
 
 def interval_document_sha256(document: object) -> str:
@@ -318,8 +328,14 @@ def interval_table(value: object) -> IntervalTable:
     if "description" in row:
         _text(row["description"], "Interval table description")
     diagnostics = _closed(
-        row["diagnostics"], _DIAGNOSTIC_FIELDS, frozenset(), "interval diagnostics"
+        row["diagnostics"],
+        _DIAGNOSTIC_FIELDS,
+        _OPTIONAL_DIAGNOSTIC_FIELDS,
+        "interval diagnostics",
     )
+    support_household = diagnostics.get("support_household_entity")
+    if support_household is not None:
+        _text(support_household, "Interval support household entity")
     window = diagnostics["boundary_window_cents"]
     if type(window) is not int or window < 0:
         raise ValueError("boundary_window_cents must be a nonnegative integer.")
@@ -427,6 +443,7 @@ def interval_table(value: object) -> IntervalTable:
         cuts=tuple(cuts),
         scaled=scaled,
         declaration=copy.deepcopy(row),
+        support_household_entity=support_household,
     )
     if scaled:
         _validate_scaling(table, row)
@@ -762,8 +779,15 @@ def boundary_diagnostics(
     *,
     weight_record_ids: Sequence[object],
     weight_kind: str,
+    source_households: Sequence[object] | None = None,
 ) -> dict[str, object]:
-    """Fixed-weight boundary sensitivity, computed with exact weight arithmetic."""
+    """Fixed-weight boundary sensitivity, computed with exact weight arithmetic.
+
+    ``source_households`` gives each record's source household, aligned with
+    ``record_ids``. A table that declares ``support_household_entity`` needs
+    it and gains per-band support (:func:`band_support`); a table that does
+    not declare it refuses it, so its report is unchanged.
+    """
 
     order = _record_order(record_ids)
     if _record_order(weight_record_ids) != order:
@@ -774,6 +798,11 @@ def boundary_diagnostics(
     amounts = list(amounts)
     if len(amounts) != len(order):
         raise ValueError("Diagnostic amounts must be record-aligned.")
+    if (table.support_household_entity is None) != (source_households is None):
+        raise ValueError(
+            f"Interval table {table.id!r} support diagnostics need source "
+            "households exactly when the table declares support_household_entity."
+        )
     alternative = alternative_closure(table.closure)
     floored = _validated(table, amounts, universe)
     zero = Fraction(0)
@@ -901,8 +930,21 @@ def boundary_diagnostics(
             row["alternative"] = measures(other[index])
             row["delta"] = delta(index)
         bands.append(row)
+    if source_households is not None:
+        support = band_support(table, floored, values.tolist(), source_households)
+        declared_bands = {
+            band["id"]: band for band in table.declaration["bands"]
+        }
+        for row in bands:
+            row["support"] = support[row["band"]]
+            band = declared_bands[row["band"]]
+            if "count_reference" in band:
+                row["references"] = {
+                    "count": band["count_reference"],
+                    "amount": band["amount_reference"],
+                }
     scaling = table.declaration.get("scaling")
-    return {
+    report = {
         "schema_version": 1,
         "kind": "interval_boundary_diagnostics",
         "table": table.id,
@@ -952,6 +994,138 @@ def boundary_diagnostics(
         "publisher_reclassification": PUBLISHER_RECLASSIFICATION,
         "limitation": LIMITATION,
     }
+    if source_households is not None:
+        report["support"] = {
+            "schema_version": SUPPORT_SCHEMA_VERSION,
+            "household_entity": table.support_household_entity,
+            "source_household_column": SOURCE_HOUSEHOLD_ID_COLUMN,
+            "grouping": "source_household",
+        }
+    return report
+
+
+# ---------------------------------------------------------------------------
+# Per-band support (G8-r2c hunk D)
+# ---------------------------------------------------------------------------
+
+def kish_ess(contributions: Sequence[Fraction]) -> Fraction:
+    """Kish effective sample size ``(sum c)^2 / sum c^2``, exactly; 0 when empty."""
+
+    total = sum(contributions, Fraction(0))
+    squares = sum((value * value for value in contributions), Fraction(0))
+    return Fraction(0) if squares == 0 else total * total / squares
+
+
+def _support_measure(groups: Mapping[object, Fraction]) -> dict[str, object]:
+    contributions = [value for value in groups.values() if value != 0]
+    ess = kish_ess(contributions)
+    return {
+        "source_households": len(contributions),
+        "kish_ess": _rational(ess),
+    }
+
+
+def band_support(
+    table: IntervalTable,
+    floored: Sequence[int | None],
+    weights: Sequence[float],
+    source_households: Sequence[object],
+) -> dict[str, dict[str, object]]:
+    """Distinct source households and source-household Kish ESS per band.
+
+    Each included record contributes ``w`` to its band's count and ``w * z``
+    to its band's amount, where ``z`` is its floored amount in cents. The
+    contributions are summed per source household first, so donor clones of
+    one household add no support, and only then enter the Kish ratio. A
+    household counts as support only where its summed contribution is
+    nonzero. Counts and amounts are reported separately.
+    """
+
+    households = list(source_households)
+    if len(households) != len(floored) or len(weights) != len(floored):
+        raise ValueError("Support diagnostics need record-aligned source households.")
+    if any(
+        isinstance(item, (bool, np.bool_)) or not isinstance(item, (str, Integral))
+        for item in households
+    ):
+        raise ValueError("Source household identities are strings or integers.")
+    counts = {band: {} for band in table.band_ids}
+    amounts = {band: {} for band in table.band_ids}
+    for weight, z, household in zip(weights, floored, households, strict=True):
+        if z is None:
+            continue
+        position = _position(table, z, table.closure)
+        if position == BELOW_FIRST_CUT:
+            continue
+        band = table.band_ids[position]
+        key = household if isinstance(household, str) else int(household)
+        exact = Fraction(weight)
+        counts[band][key] = counts[band].get(key, Fraction(0)) + exact
+        amounts[band][key] = amounts[band].get(key, Fraction(0)) + exact * z
+    return {
+        band: {
+            "count": _support_measure(counts[band]),
+            "amount": _support_measure(amounts[band]),
+        }
+        for band in table.band_ids
+    }
+
+
+def record_source_households(frame, entity: str, household_entity: str) -> list:
+    """Each ``entity`` record's source household, through household membership.
+
+    The frame maps a unit to its household through the person table's
+    membership columns (``EntitySchema.membership_column``,
+    ``microcosm/frame/schema.py``; ``Frame._group_positions``,
+    ``microcosm/frame/bundle.py``). A person reads its household membership
+    directly. A group unit reads its members' households, which must be
+    exactly one: a unit with no members, or members in several households,
+    has no household membership and refuses by name. The household table
+    supplies ``source_household_id``.
+    """
+
+    schema = frame.schema
+    refusal = (
+        f"Interval support: entity {entity!r} has no household membership in "
+        f"{household_entity!r}"
+    )
+    if household_entity not in schema.group_entities:
+        raise ValueError(f"{refusal}; the frame declares no such household entity.")
+    households = frame.table(household_entity)
+    if SOURCE_HOUSEHOLD_ID_COLUMN not in households:
+        raise ValueError(
+            f"Interval support needs {household_entity}."
+            f"{SOURCE_HOUSEHOLD_ID_COLUMN} on the frame."
+        )
+    source = dict(
+        zip(
+            households[schema.id_column(household_entity)].tolist(),
+            households[SOURCE_HOUSEHOLD_ID_COLUMN].tolist(),
+            strict=True,
+        )
+    )
+    if entity == household_entity:
+        return [source[item] for item in households[schema.id_column(entity)]]
+    person = frame.table(schema.person_entity)
+    membership = person[schema.membership_column(household_entity)].tolist()
+    if entity == schema.person_entity:
+        return [source[item] for item in membership]
+    if entity not in schema.group_entities:
+        raise ValueError(f"{refusal}; it is not a declared entity.")
+    unit_households: dict[object, set] = {}
+    for unit, household in zip(
+        person[schema.membership_column(entity)].tolist(), membership, strict=True
+    ):
+        unit_households.setdefault(unit, set()).add(household)
+    result = []
+    for unit in frame.table(entity)[schema.id_column(entity)].tolist():
+        found = unit_households.get(unit, set())
+        if len(found) != 1:
+            raise ValueError(
+                f"{refusal}; unit {unit!r} has members in {len(found)} households."
+            )
+        result.append(source[next(iter(found))])
+    return result
 
 
 def frame_boundary_diagnostics(table: IntervalTable, frame) -> dict[str, object]:
@@ -973,4 +1147,9 @@ def frame_boundary_diagnostics(table: IntervalTable, frame) -> dict[str, object]
         weights.values,
         weight_record_ids=ids,
         weight_kind=weights.kind.value,
+        source_households=None
+        if table.support_household_entity is None
+        else record_source_households(
+            frame, table.entity, table.support_household_entity
+        ),
     )
