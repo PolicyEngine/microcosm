@@ -119,6 +119,7 @@ from microcosm.graph.expansion import (
 )
 
 from .artifact_types import KERNEL_OUTPUTS
+from .codecs import RULESPEC_SOURCE_CODEC
 from .column_kernels import validate_receipt_contract
 from .evidence_contract import (
     DONOR_RANGES_REF,
@@ -1722,6 +1723,47 @@ def _check_structural_columns(spec: Mapping[str, object]) -> None:
         )
 
 
+def _check_structural_rows_written(spec: Mapping[str, object], graph: Graph) -> None:
+    """Every declared ``structural_columns`` row names a column the graph writes.
+
+    A row excuses a column only when the support roster reaches it (H46), so
+    a row whose column no node in the composed graph owns, and that CREATE
+    does not synthesize, excuses nothing: a misspelled or stale row such as
+    ``household.employment_income``. CREATE's columns are its prepared
+    inventory (its node's outputs) and the schema's id and membership columns.
+    """
+
+    rows = support_structural_columns(spec)
+    if not rows:
+        return
+    written = {
+        (output.entity, output.column)
+        for node in graph.nodes
+        for output in node.outputs
+    }
+    declaration = _versioned_create_units(spec)
+    if declaration is None:
+        declaration = create_unit_declaration(
+            CREATE_V1_REF, transport_resource(spec, "benefit_unit_rule")
+        )
+    schema = declaration.entity_schema()[0]
+    written |= {(entity, schema.entity_id_column(entity)) for entity in schema.entities}
+    written |= {
+        (schema.person_entity, schema.membership_column(group))
+        for group in schema.group_entities
+    }
+    unwritten = sorted(
+        f"{row['entity']}.{row['column']}"
+        for row in rows
+        if (row["entity"], row["column"]) not in written
+    )
+    if unwritten:
+        raise ValueError(
+            "Support structural_columns names columns no node in the composed "
+            f"graph writes and CREATE does not synthesize: {unwritten}."
+        )
+
+
 def _support_producer_params(spec: Mapping[str, object], row: Mapping) -> dict:
     params = row.get("params") or {}
     out = {}
@@ -1733,6 +1775,25 @@ def _support_producer_params(spec: Mapping[str, object], row: Mapping) -> dict:
                 if isinstance(value, str) and value[:1] in "[{"
                 else value
             )
+    return out
+
+
+#: The codec of the RuleSpec tree the rules kernels read; a node source with
+#: any other codec carries values the support walk cannot cover.
+_RULESPEC_TREE_CODEC = RULESPEC_SOURCE_CODEC
+#: The pseudo-entity a support row names a node source under.
+_SOURCE_ENTITY = "source"
+
+
+def _source_codecs(spec: Mapping[str, object]) -> dict[str, object]:
+    """Source name -> codec, from the graph's top-level ``sources`` list."""
+
+    if not _has_resource(spec, GRAPH_RESOURCE):
+        return {}
+    out = {}
+    for item in transport_graph_document(spec).get("sources", ()) or ():
+        if isinstance(item, Mapping) and isinstance(item.get("name"), str):
+            out[item["name"]] = item.get("codec")
     return out
 
 
@@ -1810,6 +1871,7 @@ def _support_roster(spec: Mapping[str, object]) -> dict[str, object]:
     if reserved:
         raise ValueError(" ".join(reserved))
 
+    codecs = _source_codecs(spec)
     memo: dict[tuple, dict] = {}
 
     def classify(version: object, entity: str, column: str, trail=()) -> dict:
@@ -1851,6 +1913,20 @@ def _support_roster(spec: Mapping[str, object]) -> dict[str, object]:
         elif owner is not None:
             sources: dict[tuple, dict] = {}
             reads = owner.get("population") or default
+            # A node source other than the RuleSpec tree the rules kernels
+            # read carries values no support producer covers (C1). The graph's
+            # top-level sources give each name its codec.
+            for name in _sequence(owner.get("sources", ()), "node sources"):
+                codec = codecs.get(name)
+                if codec == _RULESPEC_TREE_CODEC:
+                    continue
+                sources[(_SOURCE_ENTITY, str(name))] = {
+                    "entity": _SOURCE_ENTITY,
+                    "column": str(name),
+                    "class": "uncovered",
+                    "reason": f"the owner reads source {name!r} (codec "
+                    f"{codec!r}), which no support producer covers",
+                }
             for item in owner.get("inputs", ()):
                 if not isinstance(item, Mapping):
                     continue
@@ -1868,12 +1944,21 @@ def _support_roster(spec: Mapping[str, object]) -> dict[str, object]:
                                 {"reason": found["reason"]} if "reason" in found else {}
                             ),
                         }
-            row = {
-                "class": "derived",
-                "sources": [sources[k] for k in sorted(sources)],
-                "reason": "Sources are the owner node's declared inputs, walked per "
-                "node, so a source the row itself never reads can appear.",
-            }
+            row = (
+                {
+                    "class": "derived",
+                    "sources": [sources[k] for k in sorted(sources)],
+                    "reason": "Sources are the owner node's declared inputs and "
+                    "sources, walked per node, so a source the row itself never "
+                    "reads can appear.",
+                }
+                if sources
+                else {
+                    "class": "uncovered",
+                    "reason": "its owner declares no input or source the walk "
+                    "reaches, so nothing covers its values",
+                }
+            )
         else:
             route, awaits = rosters.get((entity, column), (None, ()))
             if route in {"quantile_mapped", "pending", "normalized"}:
@@ -3995,6 +4080,7 @@ def compose_transport_graph(
         _check_export_contract(spec, skeleton, compiled)
         _check_donor_receipts(skeleton)
         _check_closure_relation_slices(spec, skeleton)
+        _check_structural_rows_written(spec, skeleton)
         _check_graph_node_entries(spec, config, skeleton, extended=False)
         _check_weights_audit_entity(spec, skeleton)
         return skeleton
@@ -4029,6 +4115,7 @@ def compose_transport_graph(
     _check_export_contract(spec, graph, extended)
     _check_donor_receipts(graph)
     _check_closure_relation_slices(spec, graph)
+    _check_structural_rows_written(spec, graph)
     _check_graph_node_entries(spec, config, graph, extended=True)
     _check_weights_audit_entity(spec, graph)
     for node in skeleton.nodes:

@@ -99,6 +99,7 @@ __all__ = [
     "decode_support_bounds",
     "inside_quantile_support",
     "quantile_bounds",
+    "QuantileSupport",
     "quantile_support",
     "WEIGHTS_AUDIT_REF",
     "WEIGHTS_AUDIT_TYPE",
@@ -197,6 +198,7 @@ EVIDENCE_KERNEL_MODULES: Mapping[str, tuple[str, ...]] = MappingProxyType(
             "microcosm.frame.concepts",
             "microcosm.frame.exact_money",
             "microcosm.frame.transport",
+            "microcosm.frame.scaling",
             _CANONICAL,
             _LEAF,
         ),
@@ -563,16 +565,41 @@ _KINDS = {
 }
 
 
-def quantile_support(
-    bands: object, interpolation: object
-) -> tuple[list[tuple[float, float | None]], list[tuple[float, float | None]]]:
+@dataclass(frozen=True)
+class QuantileSupport:
     """The magnitude intervals a quantile map can write, by sign.
 
-    ``bands`` is the declared band document: a list of ``{lower, upper,
-    reference}`` rows over positive magnitudes, ``{positive, negative}``, or
-    ``{components: {code: bands}}``. ``uniform`` needs finite uppers; a
-    ``pareto`` top band may have no upper bound, recorded as ``None``. Any
-    other mode is refused by name. Zero always maps to zero.
+    ``positive`` and ``negative`` are the union over components, which sets
+    ``expected_min`` and ``expected_max``. ``components`` maps each declared
+    component code to its own ``(positive, negative)`` intervals, or is
+    ``None`` when the bands declare no components; a value is checked
+    against its own component's intervals only.
+    """
+
+    positive: tuple[tuple[float, float | None], ...]
+    negative: tuple[tuple[float, float | None], ...]
+    components: Mapping[object, tuple[tuple, tuple]] | None = None
+
+    def intervals(self, component: object = None) -> tuple[tuple, tuple] | None:
+        """``(positive, negative)`` for one component, or ``None`` if undeclared."""
+
+        if self.components is None:
+            return self.positive, self.negative
+        return self.components.get(component)
+
+
+def quantile_support(bands: object, interpolation: object) -> QuantileSupport:
+    """The intervals a quantile map can write, read as ``quantile_map`` reads bands.
+
+    ``bands`` is the declared band document: rows ``{lower, upper,
+    reference}`` over positive magnitudes, as a bare list, under ``bands``,
+    as ``{positive, negative}``, or per component as ``{components:
+    [{value, bands}]}``. A bare row list applies to both signs, as
+    ``quantile_map`` applies it (``sign_bands = {"positive": bands,
+    "negative": bands}``), wherever it appears; ``{positive, negative}``
+    keeps each sign's rows. ``uniform`` needs finite uppers; a ``pareto``
+    top band may have no upper bound, recorded as ``None``. Any other mode,
+    or any other shape, is refused by name. Zero always maps to zero.
     """
 
     method = (
@@ -586,31 +613,53 @@ def quantile_support(
             f"{method!r} lands with its own producer."
         )
 
-    def rows(value) -> list[tuple[float, float | None]]:
+    def rows(value) -> tuple[tuple[float, float | None], ...]:
         if not isinstance(value, list) or not value:
             raise ValueError("Quantile support needs a nonempty band list.")
         out = []
         for index, row in enumerate(value):
+            if not isinstance(row, Mapping):
+                raise ValueError("Each quantile band is an object.")
             upper = row.get("upper")
             if upper is None and (method != "pareto" or index != len(value) - 1):
                 raise ValueError("Only a pareto top band may have no upper bound.")
             out.append((float(row["lower"]), None if upper is None else float(upper)))
-        return out
+        return tuple(out)
 
-    positive: list = []
-    negative: list = []
-    documents = (
-        list(bands["components"].values())
-        if isinstance(bands, Mapping) and set(bands) == {"components"}
-        else [bands]
-    )
-    for document in documents:
-        if isinstance(document, Mapping):
-            positive += rows(document["positive"]) if "positive" in document else []
-            negative += rows(document["negative"]) if "negative" in document else []
+    def signs(document) -> tuple[tuple, tuple]:
+        if isinstance(document, Mapping) and set(document) == {"bands"}:
+            document = document["bands"]
+        if isinstance(document, list):
+            both = rows(document)
+            return both, both
+        if isinstance(document, Mapping) and set(document) == {"positive", "negative"}:
+            return rows(document["positive"]), rows(document["negative"])
+        raise ValueError(
+            "Quantile bands declare a band list, bands, positive and negative "
+            "rows, or components."
+        )
+
+    if isinstance(bands, Mapping) and set(bands) == {"components"}:
+        declared = bands["components"]
+        if isinstance(declared, Mapping):
+            items = list(declared.items())
+        elif isinstance(declared, list) and all(
+            isinstance(item, Mapping) and set(item) == {"value", "bands"}
+            for item in declared
+        ):
+            items = [(item["value"], item["bands"]) for item in declared]
         else:
-            positive += rows(document)
-    return positive, negative
+            raise ValueError("Component bands declare value and bands per component.")
+        if not items or len({code for code, _ in items}) != len(items):
+            raise ValueError("Component bands need distinct component codes.")
+        components = {code: signs(document) for code, document in items}
+        return QuantileSupport(
+            positive=tuple(i for pos, _ in components.values() for i in pos),
+            negative=tuple(i for _, neg in components.values() for i in neg),
+            components=MappingProxyType(components),
+        )
+    positive, negative = signs(bands)
+    return QuantileSupport(positive, negative)
 
 
 def quantile_bounds(
@@ -627,7 +676,9 @@ def quantile_bounds(
         )
 
     maximum = top(positive) if positive else float(0)
-    minimum = (None if top(negative) is None else -top(negative)) if negative else float(0)
+    minimum = (
+        (None if top(negative) is None else -top(negative)) if negative else float(0)
+    )
     return minimum, maximum
 
 

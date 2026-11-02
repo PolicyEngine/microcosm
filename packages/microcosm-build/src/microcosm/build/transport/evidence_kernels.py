@@ -867,14 +867,10 @@ def _normalized_bounds(context: KernelContext, ref: str, ranges: Mapping) -> tup
                 continue
             row = ranges.get((entity, column))
             low = (
-                0
-                if row is None or row["realized_min"] is None
-                else row["realized_min"]
+                0 if row is None or row["realized_min"] is None else row["realized_min"]
             )
             high = (
-                0
-                if row is None or row["realized_max"] is None
-                else row["realized_max"]
+                0 if row is None or row["realized_max"] is None else row["realized_max"]
             )
             table[column] = [float(low), float(high)]
         tables[entity] = pd.DataFrame(table)
@@ -999,23 +995,42 @@ class TransportSupportBoundsKernel(_EvidenceKernel):
                 else:
                     if cls == "quantile_mapped":
                         params = row.get("producer_params") or {}
-                        positive, negative = quantile_support(
+                        support = quantile_support(
                             params.get("bands"), params.get("interpolation")
                         )
-                        low, high = quantile_bounds(positive, negative)
+                        low, high = quantile_bounds(support.positive, support.negative)
                         values = series.to_numpy(dtype=np.float64, na_value=np.nan)
+                        # Component bands: each value is checked against its
+                        # own component's intervals, read from the producer's
+                        # component_column on the mapped column's entity.
+                        codes = [None] * len(values)
+                        if support.components is not None:
+                            name = params.get("component_column")
+                            if not isinstance(name, str) or name not in table.columns:
+                                raise ValueError(
+                                    f"{ref} must slice component column "
+                                    f"{entity}.{name} for {entity}.{column}'s "
+                                    "component bands."
+                                )
+                            codes = table[name].tolist()
                         aggregate = params.get("aggregate_entity")
                         if aggregate is not None:
                             members = table[f"{entity}_{aggregate}_id"].to_numpy()
                             totals = pd.Series(values).groupby(members).transform("sum")
                             values = totals.to_numpy()
+
+                        def outside_support(value, code, support=support) -> bool:
+                            intervals = support.intervals(code)
+                            return (
+                                not np.isfinite(value)
+                                or intervals is None
+                                or not inside_quantile_support(float(value), *intervals)
+                            )
+
                         outside = np.asarray(
                             [
-                                not np.isfinite(v)
-                                or not inside_quantile_support(
-                                    float(v), positive, negative
-                                )
-                                for v in values
+                                outside_support(v, code)
+                                for v, code in zip(values, codes, strict=True)
                             ]
                         )
                     else:

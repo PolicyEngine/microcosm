@@ -417,6 +417,8 @@ class TestImplementationHashes:
                 "microcosm.frame.concepts",
                 "microcosm.frame.exact_money",
                 "microcosm.frame.transport",
+                # S2: the trace finds it in run(); the list missed it.
+                "microcosm.frame.scaling",
                 "microcosm.graph.canonical",
                 "microcosm.build.transport.evidence_contract",
             ),
@@ -607,6 +609,31 @@ def kernel_traces(toy, donor, tmp_path_factory):
         artifacts=_artifact_values(_calibration()),
     )
     traces[WEIGHTS_AUDIT_REF] = _traced(lambda: TRANSPORT_WEIGHTS_AUDIT.run(weights))
+    # The support producers: trace only their run() while the existing
+    # support tests drive them (copied, quantile, component, currency,
+    # structural, and normalized rows through the money helpers).
+    support_traces = {DONOR_RANGES_REF: set(), SUPPORT_BOUNDS_REF: set()}
+    with pytest.MonkeyPatch.context() as patch:
+        for kernel in (TRANSPORT_DONOR_RANGES, TRANSPORT_SUPPORT_BOUNDS):
+            real = type(kernel).run
+
+            def run(self, context, real=real):
+                result = []
+                support_traces[self.ref].update(
+                    _traced(lambda: result.append(real(self, context)))
+                )
+                return result[0]
+
+            patch.setattr(type(kernel), "run", run)
+        donor_frame, terminal = _donor_and_terminal()
+        _run_support(_toy_roster(), donor_frame, terminal)
+        TestComponentSupport()._run(
+            (5.0, 7.0, 0.0, 120.0, 0.0, 150.0), ["a", "a", "a", "b", "b", "b"]
+        )
+        TestNormalizedSupport().test_differential_bounds_equal_money_normalize_outputs(
+            tmp_path_factory.mktemp("money")
+        )
+    traces.update(support_traces)
     return traces
 
 
@@ -2739,6 +2766,134 @@ class TestSupportRoster:
             compose._support_roster(spec)
 
 
+def _impute_spec(*, inputs, sources=("external_wage_table",)):
+    """C1's toy: CREATE, an imputation reading an external table, a battery."""
+
+    return {
+        "country": "xx",
+        "resources": {
+            "transport_graph": {
+                "schema_version": 1,
+                "country": "xx",
+                "sources": [
+                    {"name": "external_wage_table", "codec": "toy-wage-table-v1"},
+                    {"name": "rulespec_toy", "codec": "rulespec-tree-v1"},
+                ],
+                "nodes": [
+                    {
+                        "id": "x.open",
+                        "kernel": "transport.create@1",
+                        "structural": "create",
+                    },
+                    {
+                        "id": "x.impute",
+                        "kernel": "toy.impute@1",
+                        "sources": list(sources),
+                        "inputs": [
+                            {"entity": "person", "columns": list(columns)}
+                            for columns in [inputs]
+                            if columns
+                        ],
+                        "outputs": [
+                            {
+                                "entity": "person",
+                                "column": "imputed_wage",
+                                "dtype": "float64",
+                            }
+                        ],
+                    },
+                    {
+                        "id": "x.gates",
+                        "kernel": "gates.battery@1",
+                        "inputs": [{"entity": "person", "columns": ["imputed_wage"]}],
+                    },
+                ],
+            }
+        },
+    }
+
+
+class TestExternalSources:
+    @pytest.mark.parametrize("inputs", (["age"], []), ids=("with_inputs", "no_inputs"))
+    def test_an_imputation_from_an_external_source_is_uncovered(self, inputs) -> None:
+        # C1: the owner reads an external table, so its row has no support.
+        roster = compose._support_roster(_impute_spec(inputs=inputs))
+        (row,) = [r for r in roster["columns"] if r["column"] == "imputed_wage"]
+        if inputs:
+            assert row["class"] == "derived"
+            external = [
+                s for s in row["sources"] if s["column"] == "external_wage_table"
+            ]
+            assert external and external[0]["class"] == "uncovered"
+            assert "toy-wage-table-v1" in external[0]["reason"]
+        else:
+            assert row["class"] == "derived"
+        donor, _ = _donor_and_terminal()
+        terminal = _support_frame({("person", "imputed_wage"): [1e9] * 6})
+        ranges, bounds, rn, bn = _run_support(roster, donor, terminal)
+        outcome = _support_outcome(ranges, bounds, rn, bn, terminal)
+        assert outcome.status is GateStatus.FAILED
+        assert any("external_wage_table" in line for line in outcome.result.failures)
+
+    def test_a_derived_row_with_no_walked_source_is_uncovered(self) -> None:
+        roster = compose._support_roster(_impute_spec(inputs=[], sources=()))
+        (row,) = [r for r in roster["columns"] if r["column"] == "imputed_wage"]
+        assert row["class"] == "uncovered"
+        donor, _ = _donor_and_terminal()
+        terminal = _support_frame({("person", "imputed_wage"): [1e9] * 6})
+        ranges, bounds, rn, bn = _run_support(roster, donor, terminal)
+        outcome = _support_outcome(ranges, bounds, rn, bn, terminal)
+        assert outcome.status is GateStatus.FAILED
+
+    def test_the_rulespec_tree_is_no_external_source(self) -> None:
+        # Matched on the codec, not the name.
+        roster = compose._support_roster(
+            _impute_spec(inputs=["age"], sources=("rulespec_toy",))
+        )
+        (row,) = [r for r in roster["columns"] if r["column"] == "imputed_wage"]
+        assert row["class"] == "derived"
+        assert [s["column"] for s in row["sources"]] == ["age"]
+
+
+class TestDeclaredStructuralRows:
+    def test_a_row_no_node_writes_is_refused(self, nz_composed) -> None:
+        # H46: household.employment_income is a stale, misspelled row.
+        spec, _, graph = nz_composed
+        compose._check_structural_rows_written(spec, graph)
+        mutant = _with_structural(
+            spec, [*H34_STRUCTURAL, ("household", "employment_income")]
+        )
+        with pytest.raises(ValueError, match=r"household\.employment_income"):
+            compose._check_structural_rows_written(mutant, graph)
+
+    def test_a_declared_unreached_row_is_listed_and_does_not_fail(self) -> None:
+        donor, terminal = _donor_and_terminal()
+        ranges, bounds, rn, bn = _run_support(_toy_roster(), donor, terminal)
+        base = _support_outcome(
+            ranges,
+            bounds,
+            rn,
+            bn,
+            terminal,
+            structural=[("household", "source_household_id")],
+        )
+        extra = _support_outcome(
+            ranges,
+            bounds,
+            rn,
+            bn,
+            terminal,
+            structural=[
+                ("household", "source_household_id"),
+                ("person", "never_reached"),
+            ],
+        )
+        assert extra.result.details["declared_unreached"] == ["person.never_reached"]
+        assert base.result.details["declared_unreached"] == []
+        assert extra.status is base.status is GateStatus.PASSED
+        assert extra.result.failures == base.result.failures
+
+
 # --- the producers on hand-built contexts ---------------------------------
 
 
@@ -2788,7 +2943,14 @@ def _support_context(frame, node, artifacts=None, sources=None):
 
 
 def _run_support(
-    roster, donor_frame, terminal_frame, *, params=None, sources=None, feed_source=()
+    roster,
+    donor_frame,
+    terminal_frame,
+    *,
+    params=None,
+    sources=None,
+    feed_source=(),
+    extra_columns=(),
 ):
     ranged = [
         (row["entity"], row["column"])
@@ -2805,7 +2967,7 @@ def _run_support(
         (row["entity"], row["column"])
         for row in roster["columns"]
         if row["class"] in {"copied", "normalized", "currency", "quantile_mapped"}
-    ]
+    ] + list(extra_columns)
     node = _support_node(
         SUPPORT_BOUNDS_REF,
         DONOR_SUPPORT_BOUNDS,
@@ -3143,9 +3305,12 @@ class TestQuantileSupport:
             {"lower": 0.0, "upper": 100.0, "reference": "a"},
             {"lower": 100.0, "upper": None, "reference": "b"},
         ]
-        positive, negative = quantile_support(bands, {"method": "pareto", "alpha": 2.0})
-        assert quantile_bounds(positive, negative) == (0.0, None)
+        support = quantile_support(bands, {"method": "pareto", "alpha": 2.0})
+        positive, negative = support.positive, support.negative
+        # A bare list feeds both signs, so the open top is open below too.
+        assert quantile_bounds(positive, negative) == (None, None)
         assert inside_quantile_support(1e12, positive, negative)
+        assert inside_quantile_support(-1e12, positive, negative)
 
     def test_an_open_negative_top_records_a_null_lower_bound(self) -> None:
         bands = {
@@ -3155,7 +3320,8 @@ class TestQuantileSupport:
                 {"lower": 5.0, "upper": None, "reference": "n2"},
             ],
         }
-        positive, negative = quantile_support(bands, {"method": "pareto", "alpha": 1.5})
+        support = quantile_support(bands, {"method": "pareto", "alpha": 1.5})
+        positive, negative = support.positive, support.negative
         assert quantile_bounds(positive, negative) == (None, 10.0)
         # Belgium's probe reached -22.36 past every finite bound.
         assert inside_quantile_support(-22.36, positive, negative)
@@ -3166,42 +3332,235 @@ class TestQuantileSupport:
         ):
             quantile_support(_BANDS, {"method": "donor_tail"})
 
+    def test_a_bare_band_list_reads_on_both_signs(self) -> None:
+        # E1, Belgium's case: uniform bands [0, 10] and [10, 50] over donor
+        # values -5 to 3. quantile_map applies a bare list to both signs.
+        rows = [
+            {"lower": 0.0, "upper": 10.0, "reference": "a"},
+            {"lower": 10.0, "upper": 50.0, "reference": "b"},
+        ]
+        values = np.arange(-5.0, 4.0)
+        mapped = quantile_map(
+            values,
+            np.ones(len(values)),
+            [
+                {"lower": row["lower"], "upper": row["upper"], "share": 0.5}
+                for row in rows
+            ],
+            interpolation="uniform",
+        )
+        assert (mapped < 0).sum() == 5
+        uniform = {"method": "uniform"}
+        for declared in (rows, {"bands": rows}):
+            support = quantile_support(declared, uniform)
+            assert quantile_bounds(support.positive, support.negative) == (-50.0, 50.0)
+            assert all(
+                inside_quantile_support(float(v), support.positive, support.negative)
+                for v in mapped
+            )
+        signed = quantile_support({"positive": rows, "negative": rows}, uniform)
+        assert quantile_bounds(signed.positive, signed.negative) == (-50.0, 50.0)
+
+    def test_every_declared_shape_is_read(self) -> None:
+        # C3: {bands}, {positive, negative} and the component list.
+        uniform = {"method": "uniform"}
+        support = quantile_support({"bands": _BANDS}, uniform)
+        assert inside_quantile_support(150.0, support.positive, support.negative)
+        components = quantile_support(
+            {
+                "components": [
+                    {"value": "a", "bands": _BANDS},
+                    {"value": 2, "bands": {"bands": _BANDS}},
+                ]
+            },
+            uniform,
+        )
+        assert set(components.components) == {"a", 2}
+        assert components.intervals("missing") is None
+        with pytest.raises(ValueError, match="band list, bands, positive"):
+            quantile_support({"positive": _BANDS}, uniform)
+
+    def test_a_value_is_checked_against_its_own_component_only(self) -> None:
+        # E2: component a on [0, 10], b on [100, 200]; 150 in a is outside.
+        bands = {
+            "components": [
+                {
+                    "value": "a",
+                    "bands": [{"lower": 0.0, "upper": 10.0, "reference": "x"}],
+                },
+                {
+                    "value": "b",
+                    "bands": [{"lower": 100.0, "upper": 200.0, "reference": "y"}],
+                },
+            ]
+        }
+        support = quantile_support(bands, {"method": "uniform"})
+        assert not inside_quantile_support(150.0, *support.intervals("a"))
+        assert inside_quantile_support(150.0, *support.intervals("b"))
+        assert quantile_bounds(support.positive, support.negative) == (-200.0, 200.0)
+
     @PROPERTY
     @given(
         values=st.lists(
-            st.one_of(st.just(0.0), st.floats(0.01, 1e6)), min_size=4, max_size=40
+            st.one_of(st.just(0.0), st.floats(-1e6, -0.01), st.floats(0.01, 1e6)),
+            min_size=4,
+            max_size=40,
         ),
         cuts=st.lists(st.floats(1.0, 1e5), min_size=2, max_size=4, unique=True),
+        negative_cuts=st.lists(
+            st.floats(1.0, 1e5), min_size=2, max_size=4, unique=True
+        ),
         pareto=st.booleans(),
+        shape=st.sampled_from(("bare", "bands", "signed", "components")),
+        codes=st.lists(st.sampled_from(("a", "b")), min_size=40, max_size=40),
     )
     def test_property_every_quantile_mapped_value_lies_inside_its_bands(
-        self, values, cuts, pareto
+        self, values, cuts, negative_cuts, pareto, shape, codes
     ) -> None:
+        # Differential: the real quantile_map writes the values; every one
+        # must lie inside quantile_support's intervals for its own component.
         values = np.asarray(values)
-        if not (values > 0).any():
+        if not (values != 0).any():
             values[0] = 1.0
-        edges = sorted(cuts)
-        rows = [
-            {"lower": low, "upper": high, "share": 1 / (len(edges) - 1)}
-            for low, high in zip(edges[:-1], edges[1:], strict=True)
+        interpolation = (
+            {"method": "pareto", "alpha": 2.0} if pareto else {"method": "uniform"}
+        )
+
+        def band_rows(edges, tag):
+            edges = sorted(edges)
+            rows = [
+                {"lower": low, "upper": high, "reference": f"{tag}{index}"}
+                for index, (low, high) in enumerate(
+                    zip(edges[:-1], edges[1:], strict=True)
+                )
+            ]
+            if pareto:
+                rows[-1]["upper"] = None
+            return rows
+
+        def shares(rows):
+            return [
+                {"lower": r["lower"], "upper": r["upper"], "share": 1 / len(rows)}
+                for r in rows
+            ]
+
+        def mapped_for(selected, document):
+            if isinstance(document, dict) and set(document) == {"bands"}:
+                document = document["bands"]
+            target = (
+                {sign: shares(rows) for sign, rows in document.items()}
+                if isinstance(document, dict)
+                else shares(document)
+            )
+            method = interpolation if pareto else "uniform"
+            return quantile_map(
+                selected, np.ones(len(selected)), target, interpolation=method
+            )
+
+        positive = band_rows(cuts, "p")
+        negative = band_rows(negative_cuts, "n")
+        component = np.asarray(codes[: len(values)], dtype=object)
+        if shape == "bare":
+            declared = positive
+        elif shape == "bands":
+            declared = {"bands": positive}
+        elif shape == "signed":
+            declared = {"positive": positive, "negative": negative}
+        else:
+            declared = {
+                "components": [
+                    {"value": "a", "bands": positive},
+                    {"value": "b", "bands": negative},
+                ]
+            }
+        support = quantile_support(declared, interpolation)
+        if shape == "components":
+            by_code = {"a": positive, "b": negative}
+            for code in ("a", "b"):
+                selected = values[component == code]
+                if not len(selected) or not (selected != 0).any():
+                    continue
+                mapped = mapped_for(selected, by_code[code])
+                intervals = support.intervals(code)
+                assert all(
+                    inside_quantile_support(float(v), *intervals) for v in mapped
+                )
+                assert all(mapped[selected == 0] == 0)
+        else:
+            mapped = mapped_for(values, declared)
+            assert all(
+                inside_quantile_support(float(v), support.positive, support.negative)
+                for v in mapped
+            )
+            assert all(mapped[values == 0] == 0)
+
+
+class TestComponentSupport:
+    _bands = {
+        "components": [
+            {"value": "a", "bands": [{"lower": 0.0, "upper": 10.0, "reference": "x"}]},
+            {
+                "value": "b",
+                "bands": [{"lower": 100.0, "upper": 200.0, "reference": "y"}],
+            },
         ]
-        interpolation = "uniform"
-        if pareto:
-            rows[-1]["upper"] = None
-            interpolation = {"method": "pareto", "alpha": 2.0}
-        mapped = quantile_map(
-            values, np.ones(len(values)), rows, interpolation=interpolation
+    }
+
+    def _roster(self, component_column="wage_code"):
+        params = {"bands": self._bands, "interpolation": {"method": "uniform"}}
+        if component_column is not None:
+            params["component_column"] = component_column
+        return {
+            "columns": [
+                {
+                    "entity": "person",
+                    "column": "wage",
+                    "class": "quantile_mapped",
+                    "producer_params": params,
+                }
+            ]
+        }
+
+    def _run(self, wage, codes, *, roster=None, sliced=True):
+        donor, _ = _donor_and_terminal()
+        terminal = _support_frame(
+            {
+                ("person", "wage"): list(wage),
+                ("person", "wage_code"): pd.array(codes, dtype="string"),
+            }
         )
-        declared = [
-            {"lower": r["lower"], "upper": r["upper"], "reference": "x"} for r in rows
-        ]
-        positive, negative = quantile_support(
-            declared, interpolation if pareto else {"method": "uniform"}
+        _, bounds, _, _ = _run_support(
+            roster or self._roster(),
+            donor,
+            terminal,
+            extra_columns=[("person", "wage_code")] if sliced else (),
         )
-        assert all(
-            inside_quantile_support(float(v), positive, negative) for v in mapped
+        (row,) = decode_support_bounds(bounds).document["columns"]
+        return row
+
+    def test_a_value_inside_another_components_bands_is_outside(self) -> None:
+        # E2: 150 in component a passes only on b's bands.
+        row = self._run(
+            (5.0, 150.0, 0.0, 120.0, 0.0, 9.0), ["a", "a", "a", "b", "b", "b"]
         )
-        assert all(mapped[values == 0] == 0)
+        assert row["records_outside"] == 2  # 150 in a, 9 in b
+        assert (row["expected_min"], row["expected_max"]) == (-200.0, 200.0)
+        inside = self._run(
+            (5.0, 7.0, 0.0, 120.0, 0.0, 150.0), ["a", "a", "a", "b", "b", "b"]
+        )
+        assert inside["records_outside"] == 0
+
+    def test_a_code_without_bands_is_outside(self) -> None:
+        row = self._run(
+            (5.0, 7.0, 0.0, 120.0, 0.0, 150.0), ["a", "a", "a", "b", "b", "c"]
+        )
+        assert row["records_outside"] == 1
+
+    def test_a_missing_component_column_is_refused_by_name(self) -> None:
+        with pytest.raises(ValueError, match=r"component column person\.wage_code"):
+            self._run((5.0,) * 6, ["a"] * 6, sliced=False)
+        with pytest.raises(ValueError, match=r"component column person\.None"):
+            self._run((5.0,) * 6, ["a"] * 6, roster=self._roster(None))
 
 
 class TestNormalizedSupport:
