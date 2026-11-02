@@ -2231,15 +2231,19 @@ def test_a_plan_may_not_set_the_collector_token_variables(key: str) -> None:
         plan_lib.tool_environment({}, {key: "x"})
 
 
-@pytest.mark.parametrize("value", ["", "true", "2", " 0", "no"])
-def test_a_plan_sets_the_telemetry_requirement_only_to_0_or_1(value: str) -> None:
+@pytest.mark.parametrize("value", ["1", "", "true", "2", " 0", "no"])
+def test_a_plan_may_set_the_telemetry_requirement_only_to_0(value: str) -> None:
+    # The runner sets 1; a plan may only opt out. Any other value is refused
+    # when the plan is loaded: in the build it would raise only after the
+    # runner had staged the inputs.
     with pytest.raises(
-        plan_lib.PlanError, match="MICROCOSM_TELEMETRY_REQUIRED must be 0 or 1"
+        plan_lib.PlanError, match="MICROCOSM_TELEMETRY_REQUIRED may only be 0"
     ):
         plan_lib.parse_plan(_plan_data(env={"MICROCOSM_TELEMETRY_REQUIRED": value}))
-    for allowed in ("0", "1"):
-        env = {"MICROCOSM_TELEMETRY_REQUIRED": allowed}
-        assert dict(plan_lib.parse_plan(_plan_data(env=env)).env) == env
+    with pytest.raises(plan_lib.PlanError, match="may only be 0"):
+        plan_lib.tool_environment({}, {"MICROCOSM_TELEMETRY_REQUIRED": value})
+    env = {"MICROCOSM_TELEMETRY_REQUIRED": "0"}
+    assert dict(plan_lib.parse_plan(_plan_data(env=env)).env) == env
 
 
 def test_the_tool_gets_the_collector_token_only_from_the_runner_s_secret() -> None:
