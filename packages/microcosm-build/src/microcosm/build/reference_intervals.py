@@ -932,9 +932,7 @@ def boundary_diagnostics(
         bands.append(row)
     if source_households is not None:
         support = band_support(table, floored, values.tolist(), source_households)
-        declared_bands = {
-            band["id"]: band for band in table.declaration["bands"]
-        }
+        declared_bands = {band["id"]: band for band in table.declaration["bands"]}
         for row in bands:
             row["support"] = support[row["band"]]
             band = declared_bands[row["band"]]
@@ -1007,6 +1005,7 @@ def boundary_diagnostics(
 # ---------------------------------------------------------------------------
 # Per-band support (G8-r2c hunk D)
 # ---------------------------------------------------------------------------
+
 
 def kish_ess(contributions: Sequence[Fraction]) -> Fraction:
     """Kish effective sample size ``(sum c)^2 / sum c^2``, exactly; 0 when empty."""

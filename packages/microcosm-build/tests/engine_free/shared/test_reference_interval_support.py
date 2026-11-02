@@ -63,10 +63,18 @@ def test_a_table_without_support_fields_parses_and_reports_as_before():
     weights = [1.0, 2.0, 0.5, 4.0, 3.0, 1.0]
     ids = list(range(6))
     report = boundary_diagnostics(
-        old, ids, amounts, universe, weights, weight_record_ids=ids, weight_kind="design"
+        old,
+        ids,
+        amounts,
+        universe,
+        weights,
+        weight_record_ids=ids,
+        weight_kind="design",
     )
     assert "support" not in report
-    assert all("support" not in row and "references" not in row for row in report["bands"])
+    assert all(
+        "support" not in row and "references" not in row for row in report["bands"]
+    )
     assert set(report) == {
         "schema_version",
         "kind",
@@ -202,7 +210,12 @@ def test_an_entity_without_household_membership_refuses_by_name(frame, table, me
                 "tax_unit": frame.table("tax_unit"),
             },
             frame.schema,
-            {"household": Weights(np.asarray([4.0, 6.0]), WeightKind.DESIGN)},
+            # Explicit unit weights, so the frame derives none from members
+            # that span two households.
+            {
+                "household": Weights(np.asarray([4.0, 6.0]), WeightKind.DESIGN),
+                "tax_unit": Weights(np.asarray([4.0, 6.0, 6.0]), WeightKind.DESIGN),
+            },
         )
         with pytest.raises(
             ValueError,

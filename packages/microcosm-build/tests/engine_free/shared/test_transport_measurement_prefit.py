@@ -9,6 +9,7 @@ four checks to just inside and just outside its threshold, on each side.
 from __future__ import annotations
 
 import copy
+import json
 from types import SimpleNamespace
 
 import numpy as np
@@ -28,6 +29,12 @@ from test_support.microcosm_build.reference_intervals import (
 
 BANDS = 12
 TABLE = "toy_coarse"
+_MANIFEST_HEADER = {
+    "version": 2,
+    "country": "toy",
+    "policy": "Toy gates for the pre-fit rule.",
+    "phases": ["terminal"],
+}
 
 
 class _Problem:
@@ -79,7 +86,9 @@ def _case(ratios=None, *, support=None):
 def _run(problem, *, evidence=None, **overrides):
     parameters = prefit_gate_entry(tables=(TABLE,))["parameters"]
     parameters.update(overrides)
-    wired = {alias: {} for alias in TOY_PREFIT_EVIDENCE} if evidence is None else evidence
+    wired = (
+        {alias: {} for alias in TOY_PREFIT_EVIDENCE} if evidence is None else evidence
+    )
     return _measurement_prefit(problem=problem, graph_evidence=wired, **parameters)
 
 
@@ -118,9 +127,7 @@ def test_roster_totals_refuse_outside_75_to_125_percent(role, ratio, passes):
         assert any(f"summed {role}" in line for line in result.failures)
 
 
-@pytest.mark.parametrize(
-    ("discrepant", "passes"), [(2, True), (3, False)]
-)
+@pytest.mark.parametrize(("discrepant", "passes"), [(2, True), (3, False)])
 @pytest.mark.parametrize("low", [True, False])
 def test_three_discrepant_bands_refuse_and_two_pass(discrepant, passes, low):
     # Pair each discrepant band with an offsetting one so the totals hold.
@@ -133,7 +140,9 @@ def test_three_discrepant_bands_refuse_and_two_pass(discrepant, passes, low):
     assert result.passed is passes, result.failures
 
 
-@pytest.mark.parametrize(("ratio", "inside"), [(0.5, True), (0.4999, False), (2.0, True), (2.0001, False)])
+@pytest.mark.parametrize(
+    ("ratio", "inside"), [(0.5, True), (0.4999, False), (2.0, True), (2.0001, False)]
+)
 def test_band_bounds_are_inclusive_at_50_and_200_percent(ratio, inside):
     ratios = {0: (ratio, 1), 1: (ratio, 1), 2: (ratio, 1)}
     result = _run(_case(ratios), roster_total_bounds=[0, 10])
@@ -184,9 +193,7 @@ def test_missing_evidence_refuses_each_way():
 
     no_support = _case()
     del no_support.bindings["interval_diagnostics"]["tables"][0]["support"]
-    assert any(
-        "no per-band support" in line for line in _run(no_support).failures
-    )
+    assert any("no per-band support" in line for line in _run(no_support).failures)
 
     not_in_matrix = _case()
     not_in_matrix.bindings["interval_diagnostics"]["tables"][0]["bands"][3][
@@ -219,7 +226,7 @@ def test_the_binding_takes_every_threshold_from_gates_json():
 def test_a_country_without_the_entry_gets_no_gate():
     manifest = GatesManifest.from_mapping(
         {
-            "schema_version": 1,
+            **_MANIFEST_HEADER,
             "gates": [
                 {
                     "id": "coverage",
@@ -235,14 +242,15 @@ def test_a_country_without_the_entry_gets_no_gate():
     assert [entry.gate for entry in manifest.gates] == ["target_profile_coverage"]
 
 
-def test_the_frozen_loader_does_not_yet_admit_the_gate_name():
-    """Pinned pending the hub ruling on ``country_spec.ALLOWED_GATE_FUNCTIONS``.
-
-    ``country_spec.py`` is frozen for hunk D. When the hub adds the name,
-    this test flips and the fixture entry loads.
-    """
-    assert "measurement_prefit" not in ALLOWED_GATE_FUNCTIONS
-    with pytest.raises(ValueError, match="unknown gate function 'measurement_prefit'"):
-        GatesManifest.from_mapping(
-            {"schema_version": 1, "gates": [prefit_gate_entry()]}, country="toy"
-        )
+def test_a_gates_json_entry_naming_the_gate_loads():
+    """Ruling R2C-12: the loader admits ``measurement_prefit``."""
+    assert "measurement_prefit" in ALLOWED_GATE_FUNCTIONS
+    entry = prefit_gate_entry()
+    manifest = GatesManifest.from_mapping(
+        {**_MANIFEST_HEADER, "gates": [entry]}, country="toy"
+    )
+    (loaded,) = manifest.gates
+    assert loaded.gate == "measurement_prefit"
+    assert loaded.criticality == "release_blocking"
+    # The loader freezes lists into tuples; the values are the entry's.
+    assert json.loads(json.dumps(dict(loaded.parameters))) == entry["parameters"]
