@@ -140,7 +140,7 @@ def test_kernel_registration_is_explicit_idempotent_and_country_neutral():
         )
 
 
-def test_aggregate_population_registration_installs_exactly_fourteen_kernels():
+def test_aggregate_population_registration_installs_exactly_fifteen_kernels():
     registry = KernelRegistry()
     assert register_transport_population_kernels(registry) is registry
     assert register_transport_population_kernels(registry) is registry
@@ -153,6 +153,7 @@ def test_aggregate_population_registration_installs_exactly_fourteen_kernels():
         "transport.boundary@1",
         "transport.currency@1",
         "transport.quantile_map@1",
+        "transport.quantile_map@2",
         "transport.unit_attributes@1",
         "concepts.encode@1",
         "concepts.encode_groups@1",
