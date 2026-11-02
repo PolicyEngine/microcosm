@@ -69,7 +69,40 @@ def _selection_identity(receipt: Mapping) -> dict:
         identity["transformed_names"] = receipt["transformed_names"]
         if "interval_tables" in receipt:
             identity["interval_tables_sha256"] = receipt["interval_tables_sha256"]
+        if "measurement_proofs" in receipt:
+            identity["measurement_proofs"] = receipt["measurement_proofs"]
     return identity
+
+
+def _measurement_proofs(proofs: Mapping | None) -> dict:
+    """Validate composition's proof map.
+
+    Each proof names its measurement and, for every calibration node, the
+    one producer node upstream of it.
+    """
+    if proofs is None:
+        return {}
+    proofs = _mapping(proofs, "measurement proofs")
+    for binding, proof in proofs.items():
+        proof = _mapping(proof, "measurement proof")
+        producers = proof.get("producers")
+        if (
+            not isinstance(binding, str)
+            or not binding
+            or proof.get("measurement_id") != binding
+            or not isinstance(producers, Mapping)
+            or not producers
+            or any(
+                not isinstance(key, str) or not key or not isinstance(value, str)
+                or not value
+                for key, value in producers.items()
+            )
+        ):
+            raise ValueError(
+                "A measurement proof names its measurement and, for each "
+                "calibration node, one producer node."
+            )
+    return _copy(proofs)
 
 
 def validate_reference_factor_evidence(receipt: Mapping) -> dict:
@@ -143,6 +176,20 @@ def _explicit_names(transform: Mapping, field: str) -> list[str]:
     return names
 
 
+def _member_order(value: object) -> bytes:
+    return canonical_json(value)
+
+
+def _canonical_pins(pins: object) -> object:
+    """Order a summed row's member lists, so a pair compares as member sets."""
+    if not isinstance(pins, Mapping):
+        return pins
+    return {
+        key: sorted(value, key=_member_order) if isinstance(value, list) else value
+        for key, value in pins.items()
+    }
+
+
 def _companion_key(row: Mapping, *, scope: bool = False) -> bytes:
     selector = _mapping(row.get("ledger_selector"), "companion selector")
     excluded = {"aggregate_fact_key", "source_record_id"}
@@ -152,7 +199,9 @@ def _companion_key(row: Mapping, *, scope: bool = False) -> bytes:
         excluded.add("dimension_values")
     payload = {
         "selector": {
-            key: value for key, value in selector.items() if key not in excluded
+            key: _canonical_pins(value) if key == "dimension_values" else value
+            for key, value in selector.items()
+            if key not in excluded
         },
         "entity": row.get("entity"),
         "period": row.get("period"),
@@ -161,6 +210,161 @@ def _companion_key(row: Mapping, *, scope: bool = False) -> bytes:
     if not scope:
         payload["filter"] = row.get("filter")
     return canonical_json(payload)
+
+
+def _summed_members(row: Mapping) -> frozenset | None:
+    """The member cells of a summed row, or ``None`` for a singleton row.
+
+    A summed row names no ``aggregate_fact_key``. Its selector pins at least
+    one dimension to a list of members, and its ``expected_member_count``
+    equals the number of cells those lists span (a scalar pin spans one).
+    The ledger sums exactly those cells (``ledger_targets.py``
+    ``_resolve_linear_combination_reference_facts`` for money and
+    ``_resolve_sum_reference_facts`` for counts), so a declared count that
+    disagrees with the lists would sum a different member set than the
+    reviewer read.
+    """
+    selector = _mapping(row.get("ledger_selector"), "summed selector")
+    pins = selector.get("dimension_values")
+    listed = isinstance(pins, Mapping) and any(
+        isinstance(value, list) for value in pins.values()
+    )
+    if "aggregate_fact_key" in selector:
+        if listed or "expected_member_count" in row:
+            raise ValueError(
+                f"Reference {row.get('name')!r} names a singleton fact key and "
+                "a member set; a summed row names members only."
+            )
+        return None
+    if not listed:
+        return None
+    cells = [()]
+    for key in sorted(pins):
+        value = pins[key]
+        members = value if isinstance(value, list) else [value]
+        ordered = sorted(members, key=_member_order)
+        if any(
+            _member_order(item) == _member_order(previous)
+            for item, previous in zip(ordered[1:], ordered, strict=False)
+        ) or any(isinstance(item, (Mapping, list)) for item in members):
+            raise ValueError(
+                f"Reference {row.get('name')!r} lists dimension {key!r} members "
+                "that repeat or are not scalars."
+            )
+        cells = [
+            (*cell, (key, _member_order(item).decode())) for cell in cells for item in members
+        ]
+    count = row.get("expected_member_count")
+    if type(count) is not int or count != len(cells):
+        raise ValueError(
+            f"Reference {row.get('name')!r} lists {len(cells)} members but "
+            f"declares expected_member_count {count!r}."
+        )
+    return frozenset(cells)
+
+
+def _row_cells(row: Mapping) -> frozenset:
+    """The dimension cells one row selects, singleton or summed."""
+    members = _summed_members(row)
+    if members is not None:
+        return members
+    pins = _mapping(row.get("ledger_selector"), "selector").get("dimension_values")
+    if not isinstance(pins, Mapping):
+        return frozenset()
+    return frozenset(
+        {
+            tuple(
+                (key, _member_order(pins[key]).decode()) for key in sorted(pins)
+            )
+        }
+    )
+
+
+def _validate_summed_rows(money: list, counts: list, by_name: Mapping) -> None:
+    """Pair summed money and count rows on one member set, without overlap.
+
+    A summed money row is an ``identity`` row the resolver turns into one
+    weighted operand. Its count companion keeps ``sum`` semantics over the
+    same members: the ledger's ``identity`` path resolves a single fact, so
+    it cannot sum a member set. Within one selector scope no two rows of one
+    role may share a member, because the summed facts would then count twice.
+    """
+    pairs = {_companion_key(by_name[name]): name for name in counts}
+    summed = set()
+    for name in money:
+        money_row = by_name[name]
+        members = _summed_members(money_row)
+        count_name = pairs.get(_companion_key(money_row))
+        count_members = (
+            None if count_name is None else _summed_members(by_name[count_name])
+        )
+        if members is None and count_members is None:
+            continue
+        summed.update({name, count_name})
+        if members != count_members or count_name is None:
+            raise ValueError(
+                f"Summed references {name!r} and {count_name!r} select "
+                "different member sets."
+            )
+        count_row = by_name[count_name]
+        if count_row.get("value_operation") != "sum" or count_row.get(
+            "value_operands", []
+        ):
+            raise ValueError(
+                f"Summed count reference {count_name!r} must sum its members "
+                "with value_operation 'sum'."
+            )
+    for role in (money, counts):
+        if not summed & set(role):
+            continue
+        seen: dict[tuple, str] = {}
+        for name in role:
+            scope = _companion_key(by_name[name], scope=True)
+            for cell in _row_cells(by_name[name]):
+                other = seen.setdefault((scope, cell), name)
+                if other != name and summed & {name, other}:
+                    raise ValueError(
+                        f"References {other!r} and {name!r} share a summed member."
+                    )
+
+
+def _money_operand(row: Mapping, weight: float) -> dict:
+    """The one weighted operand that scales a money row by its factor."""
+    selector = _mapping(row.get("ledger_selector"), "money selector")
+    members = _summed_members(row)
+    if members is not None:
+        return {
+            "dimension_values": _copy(selector["dimension_values"]),
+            "expected_member_count": row["expected_member_count"],
+            "weight": weight,
+        }
+    key = selector.get("aggregate_fact_key")
+    if not isinstance(key, str) or not key:
+        raise ValueError(
+            "Money scaling needs a singleton source fact key or a summed member set."
+        )
+    return {"aggregate_fact_key": key, "expected_member_count": 1, "weight": weight}
+
+
+def _binary64_weight(rational: Mapping) -> dict:
+    """State how far the binary64 operand weight sits from the exact factor.
+
+    Interval cuts stay exact rationals, while the ledger multiplies each
+    member value by a float weight. The record gives the float, the exact
+    factor and the exact relative rounding as a reduced fraction.
+    """
+    from fractions import Fraction
+
+    exact = Fraction(rational["numerator"], rational["denominator"])
+    weight = rational["numerator"] / rational["denominator"]
+    relative = (Fraction(weight) - exact) / exact
+    return {
+        "weight": weight,
+        "exact_numerator": rational["numerator"],
+        "exact_denominator": rational["denominator"],
+        "binary64_relative_rounding": f"{relative.numerator}/{relative.denominator}",
+        "rounding": "round_half_even_binary64",
+    }
 
 
 def _validate_companions(transform: Mapping, by_name: Mapping) -> tuple[list, list]:
@@ -187,7 +391,8 @@ def _validate_companions(transform: Mapping, by_name: Mapping) -> tuple[list, li
         }
         if complete != set(names):
             raise ValueError("Money and count rosters are incomplete companions.")
-    money_keys = [_companion_key(by_name[name]) for name in money]
+    _validate_summed_rows(money, counts, by_name)
+    money_keys =[_companion_key(by_name[name]) for name in money]
     count_keys = [_companion_key(by_name[name]) for name in counts]
     if len(set(money_keys)) != len(money) or set(money_keys) != set(count_keys):
         raise ValueError("Money and count rosters must match one-to-one companions.")
@@ -224,6 +429,15 @@ def _factor_companions(chosen: Mapping, by_name: Mapping) -> dict:
                                     "value_operation", "identity"
                                 ),
                                 "value_operands": row.get("value_operands", []),
+                                **(
+                                    {
+                                        "expected_member_count": row[
+                                            "expected_member_count"
+                                        ]
+                                    }
+                                    if "expected_member_count" in row
+                                    else {}
+                                ),
                                 "metadata": {
                                     "reference_value_kind": row["metadata"][
                                         "reference_value_kind"
@@ -419,7 +633,17 @@ def _validate_interval_resolution(
             raise ValueError("Effective interval table scaling identity mismatch.")
 
 
-def _satisfy_factor_prerequisite(row: dict, dimension: str, binding: str) -> list:
+def _satisfy_factor_prerequisite(
+    row: dict, dimension: str, binding: str, *, proven: bool = False
+) -> list:
+    """Satisfy the profile half, and the measurement half only on a proof.
+
+    ``proven`` is composition's result (``compose.measurement_proofs``): it
+    is true only when exactly one node upstream of every calibration node
+    declares the measurement and writes its interval columns. A proven row
+    becomes active; any other row stays parked with the measurement named in
+    ``reference_prerequisites_remaining``.
+    """
     metadata = row.setdefault("metadata", {})
     if metadata.get("activation_status") != REQUIRES_PREREQUISITES:
         raise ValueError(
@@ -446,10 +670,15 @@ def _satisfy_factor_prerequisite(row: dict, dimension: str, binding: str) -> lis
         raise ValueError(
             "Reference prerequisites must name the profile and measurement."
         )
-    remaining = [
-        item for item in prerequisites if item != f"reference_profile:{dimension}"
-    ]
+    satisfied = {f"reference_profile:{dimension}"}
+    if proven:
+        satisfied.add(f"measurement:{binding}")
+    remaining = [item for item in prerequisites if item not in satisfied]
     metadata["reference_prerequisites_remaining"] = canonical_json(remaining).decode()
+    if not remaining:
+        metadata["activation_status"] = "active"
+        metadata.pop("activation_reason", None)
+        metadata.pop("parking_reason", None)
     return remaining
 
 
@@ -460,6 +689,7 @@ def resolve_reference_profiles(
     interval_document: Mapping | None = None,
     *,
     factor_context: Mapping | None = None,
+    measurement_proofs: Mapping | None = None,
 ) -> tuple[dict, dict | None, dict]:
     """Return effective references, effective intervals and a bound receipt.
 
@@ -470,7 +700,10 @@ def resolve_reference_profiles(
     scaled by the same selected factor as their money companions; without
     named tables the interval document passes through unchanged.
     Resource headers are bound into the base identity; effective references use
-    the compiler's closed document shape.
+    the compiler's closed document shape. ``measurement_proofs`` is
+    composition's proof result (``compose.measurement_proofs``), keyed by
+    measurement id: only a proven binding satisfies ``measurement:<id>``, and
+    the proofs a selection uses enter its identity.
     """
     base = _copy(_mapping(base_reference_document, "base references"))
     declarations = _copy(_mapping(profile_declarations, "profile declarations"))
@@ -528,6 +761,17 @@ def resolve_reference_profiles(
                 if not isinstance(factor_id, str) or not factor_id:
                     raise ValueError("Money scaling needs a declared factor id.")
                 factor_ids.add(factor_id)
+    proofs = _measurement_proofs(measurement_proofs)
+    bindings = {
+        transform.get("required_measurement_binding")
+        for choice in chosen.values()
+        for transform in choice["declaration"].get("transformations", [])
+        if isinstance(transform, Mapping)
+        and transform.get("operation") == SCALE_MONEY_AND_INTERVALS
+    }
+    used_proofs = {
+        binding: proofs[binding] for binding in sorted(bindings & set(proofs))
+    }
     selected_factors = {}
     if factor_ids:
         from microcosm.build.reference_factors import validate_factor_context
@@ -579,6 +823,12 @@ def resolve_reference_profiles(
                 interval_tables=interval_records,
                 interval_tables_sha256=reference_document_sha256(interval_records),
             )
+        receipt["factor_weight_rounding"] = {
+            factor_id: _binary64_weight(entry["operational_factor"])
+            for factor_id, entry in sorted(selected_factors.items())
+        }
+        if used_proofs:
+            receipt["measurement_proofs"] = _copy(used_proofs)
     selection_hash = reference_document_sha256(_selection_identity(receipt))
     interval_hash = None if intervals is None else reference_document_sha256(intervals)
     transformed, policies = {}, []
@@ -642,7 +892,9 @@ def resolve_reference_profiles(
                         raise ValueError(
                             "Factor and reference source/target periods are incompatible."
                         )
-                    remaining = _satisfy_factor_prerequisite(row, dimension, binding)
+                    remaining = _satisfy_factor_prerequisite(
+                        row, dimension, binding, proven=binding in used_proofs
+                    )
                     if name in money:
                         if row.get(
                             "value_operation", "identity"
@@ -650,22 +902,8 @@ def resolve_reference_profiles(
                             raise ValueError(
                                 "Money scaling requires an untransformed source reference."
                             )
-                        selector = _mapping(
-                            row.get("ledger_selector"), "money selector"
-                        )
-                        key = selector.get("aggregate_fact_key")
-                        if not isinstance(key, str) or not key:
-                            raise ValueError(
-                                "Money scaling needs a singleton source fact key."
-                            )
                         row["value_operation"] = "linear_combination"
-                        row["value_operands"] = [
-                            {
-                                "aggregate_fact_key": key,
-                                "expected_member_count": 1,
-                                "weight": weight,
-                            }
-                        ]
+                        row["value_operands"] = [_money_operand(row, weight)]
                     row_metadata = row.setdefault("metadata", {})
                     row_metadata.update(metadata)
                     row_metadata["reference_selection_sha256"] = selection_hash
@@ -830,6 +1068,12 @@ def validate_reference_resolution(
     ) != resolution.get("effective_intervals_sha256"):
         raise ValueError("Effective interval document hash mismatch.")
     _validate_interval_resolution(resolution, factors, interval_document)
+    if factors and resolution.get("factor_weight_rounding") != {
+        factor_id: _binary64_weight(entry["operational_factor"])
+        for factor_id, entry in sorted(factors.items())
+    }:
+        raise ValueError("Factor weight rounding record mismatch.")
+    _measurement_proofs(resolution.get("measurement_proofs"))
     factor_bindings = _factor_reference_bindings(resolution)
     transformed_names = resolution.get("transformed_names")
     if not isinstance(transformed_names, list) or not all(
@@ -906,15 +1150,23 @@ def validate_reference_resolution(
                     or action.get("target_period") != declaration["target_period"]
                 ):
                     raise ValueError("Effective reference factor identity mismatch.")
+                proven = metadata.get("required_measurement_binding") in resolution.get(
+                    "measurement_proofs", {}
+                )
+                if (metadata.get("activation_status") == "active") is not proven:
+                    raise ValueError(
+                        "A factor companion is active exactly when composition "
+                        "proved its measurement."
+                    )
                 if role == "money":
                     expected = [
-                        {
-                            "aggregate_fact_key": source.get("ledger_selector", {}).get(
-                                "aggregate_fact_key"
-                            ),
-                            "expected_member_count": 1,
-                            "weight": rational["numerator"] / rational["denominator"],
-                        }
+                        _money_operand(
+                            {
+                                **source,
+                                "name": name,
+                            },
+                            rational["numerator"] / rational["denominator"],
+                        )
                     ]
                     if (
                         row.get("value_operation") != "linear_combination"
