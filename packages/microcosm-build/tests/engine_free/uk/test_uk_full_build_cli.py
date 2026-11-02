@@ -3,6 +3,7 @@
 # ruff: noqa: F403, F405
 import base64
 import os
+import shutil
 import signal
 from types import SimpleNamespace
 
@@ -1571,6 +1572,9 @@ def test_remote_staging_uploads_telemetry_and_the_bundle_in_one_commit(
         "handover_id": request.handover_id(),
         "repository": "policyengine/populace-uk-private",
         "run_id": run_id,
+        "run_dir": str(out.resolve()),
+        "files": staged["files"],
+        "staging_run_error_code": None,
     }
 
     def sums_verify() -> None:
@@ -1734,6 +1738,7 @@ def test_a_build_with_the_hub_switched_off_hands_its_emitter_no_bundle(
         ("CREDENTIAL_MISSING", "keeps the bundle queued", "stay local"),
         ("REMOTE_DIFFERS", "another run id", "can be re-staged"),
         ("EMITTER_UNAVAILABLE", "stay local", "queued"),
+        ("RECEIPT_UNRECOGNIZED", "stay local", "queued"),
     ],
 )
 def test_the_staged_dataset_status_says_where_a_failed_bundle_is(
@@ -1835,6 +1840,98 @@ def test_the_restage_tool_hands_the_bundle_to_its_own_emitter(
     for line in (run_dir / "sha256sums.txt").read_text().splitlines():
         digest, name = line.split("  ")
         assert hashlib.sha256((run_dir / name).read_bytes()).hexdigest() == digest
+
+
+def _pending_dense_build(tmp_path, monkeypatch, queue):
+    """A remote dense build whose emitter takes the hand-over and stops.
+
+    The emitter leaves the H5 on disk, as it does a real one of hundreds of
+    megabytes, and uploads it from there.
+    """
+    hub = _remote_hub(
+        monkeypatch,
+        client_options={
+            "queue": queue,
+            "deliver": False,
+            "answer_receipts": False,
+            "never_copy": {f"{STEM}.h5"},
+        },
+    )
+    status, out = run_dense_main(tmp_path, monkeypatch, staging=None)
+    assert status == 0
+    staged = json.loads((out / cli.MANIFEST_FILENAME).read_text())["staged_dataset"]
+    assert staged["error_code"] == "UPLOAD_PENDING"
+    return hub, out
+
+
+def test_a_moved_run_directory_is_handed_over_again_not_resumed(
+    tmp_path, monkeypatch, capsys
+):
+    """The build's queued job names its files at their old paths and can
+    never finish there, so the re-stage hands the moved directory over as a
+    new job; the emitter keeps retrying the old one."""
+    from test_support.microcosm_build.emitter import (
+        FakeEmitterClient,
+        FakeHandoverQueue,
+    )
+
+    queue = FakeHandoverQueue()
+    hub, out = _pending_dense_build(tmp_path, monkeypatch, queue)
+    (first,) = queue.jobs
+    moved = tmp_path / "moved"
+    shutil.move(str(out), str(moved))
+    stager = load_tool("stage_uk_rowwise_candidate")
+    monkeypatch.setattr(
+        stager,
+        "_start_bundle_emitter",
+        lambda: FakeEmitterClient(hub_files=hub.files, hub_api=hub, queue=queue),
+    )
+    capsys.readouterr()
+    assert stager.main(["--run-dir", str(moved)]) == 0
+    manifest = json.loads((moved / cli.MANIFEST_FILENAME).read_text())
+    assert manifest["staged_dataset"]["status"] == "uploaded"
+    assert manifest["staged_dataset"]["revision"] == hub.sha
+    record = manifest["staged_dataset_handover"]
+    assert record["handover_id"] != first
+    assert record["run_dir"] == str(moved.resolve())
+    assert record["staging_run_error_code"] == "UPLOAD_PENDING"
+    assert len(hub.commits) == 1
+    assert queue.jobs[first]["receipt"]["status"] == "pending"
+
+
+def test_the_restage_note_names_the_code_the_build_recorded(
+    tmp_path, monkeypatch, capsys
+):
+    """An earlier re-stage replaced the manifest's code; the build's staging
+    run and Logbook row still hold the build's own record."""
+    from test_support.microcosm_build.emitter import (
+        FakeEmitterClient,
+        FakeHandoverQueue,
+    )
+
+    queue = FakeHandoverQueue()
+    hub, out = _pending_dense_build(tmp_path, monkeypatch, queue)
+    stager = load_tool("stage_uk_rowwise_candidate")
+    # A first re-stage, by a user whose emitter finds no credential.
+    monkeypatch.setattr(
+        stager,
+        "_start_bundle_emitter",
+        lambda: FakeEmitterClient(hub_files=hub.files, queue=queue),
+    )
+    assert stager.main(["--run-dir", str(out)]) == 1
+    staged = json.loads((out / cli.MANIFEST_FILENAME).read_text())["staged_dataset"]
+    assert staged["error_code"] == "CREDENTIAL_MISSING"
+    monkeypatch.setattr(
+        stager,
+        "_start_bundle_emitter",
+        lambda: FakeEmitterClient(hub_files=hub.files, hub_api=hub, queue=queue),
+    )
+    capsys.readouterr()
+    assert stager.main(["--run-dir", str(out), "--wait-seconds", "60"]) == 0
+    err = capsys.readouterr().err
+    assert "still records UPLOAD_PENDING" in err
+    assert "CREDENTIAL_MISSING" not in err
+    assert "phase dataset_stage_failed" in err
 
 
 def test_the_restage_tool_waits_three_hours_unless_told_otherwise():

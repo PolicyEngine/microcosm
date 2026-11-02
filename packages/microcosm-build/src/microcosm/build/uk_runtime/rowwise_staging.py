@@ -52,6 +52,7 @@ from microcosm.build.staging_v2 import (
     disabled_staging_delivery,
 )
 from microcosm.build.telemetry_emitter import (
+    EmitterClient,
     LocalTelemetryEmitter,
     start_local_telemetry_emitter_service,
 )
@@ -112,8 +113,12 @@ def active_telemetry_emitter() -> LocalTelemetryEmitter | None:
     return _ACTIVE_EMITTER
 
 
-def _run_file_emitter() -> Any:
-    """The client of this build attempt's emitter, which takes its run files."""
+def _emitter_client() -> EmitterClient | None:
+    """This build attempt's emitter client, running or not, or None.
+
+    The staging writer hands it the run files, and a refused remote stage
+    reads from it why the emitter cannot take the bundle.
+    """
 
     return None if _ACTIVE_EMITTER is None else _ACTIVE_EMITTER.client
 
@@ -125,12 +130,6 @@ def bundle_emitter() -> BundleEmitter | None:
     if _ACTIVE_EMITTER is None or not _ACTIVE_EMITTER.available:
         return None
     return _ACTIVE_EMITTER.client
-
-
-def _build_emitter_client() -> Any:
-    """This build attempt's emitter client, running or not, for its refusals."""
-
-    return None if _ACTIVE_EMITTER is None else _ACTIVE_EMITTER.client
 
 
 def _requested_staged_dataset_mode(args: argparse.Namespace) -> str:
@@ -189,7 +188,7 @@ def preflight_staged_dataset(args: argparse.Namespace) -> None:
         return
     repo_id = str(args.staged_dataset_repo_id).strip()
     hint = "pass --staging-local-only or --no-staged-dataset to keep the bundle local"
-    problem = write_access_problem(_build_emitter_client(), repo_id)
+    problem = write_access_problem(_emitter_client(), repo_id)
     if problem is not None:
         raise ValueError(f"{problem}; {hint}.")
 
@@ -218,7 +217,7 @@ def create_staging_run_bundle(
         delivery_mode="local_only" if local_only else "local_and_remote",
         repo_id=None if local_only else args.staging_repo_id,
         upload_interval_seconds=args.staging_upload_interval_seconds,
-        emitter_client=None if local_only else _run_file_emitter(),
+        emitter_client=None if local_only else _emitter_client(),
     )
 
 

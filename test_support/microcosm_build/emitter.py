@@ -16,9 +16,11 @@ database or network request:
   emitter does before it answers ``pending``. It becomes a job in a
   ``FakeHandoverQueue``, which several clients can share as emitters on one
   machine share their hand-over database: a hand-over identical to a queued
-  one returns that job's receipt, and a client that delivers makes one
-  upload attempt for each pending job, oldest first, whenever it takes a
-  hand-over or answers for a receipt. An attempt goes through ``hub_api``,
+  one returns that job's receipt. Whenever a delivering client takes a
+  hand-over or answers for a receipt, the queue's clock moves on one step
+  and the client makes one upload attempt for each job that is due, the
+  earliest due first, as the emitter claims them; a failed attempt makes the
+  job due again after a wait that doubles each time. An attempt goes through ``hub_api``,
   an ``HfApi``-like fake Hub (without one, the job stays pending with
   ``CREDENTIAL_MISSING``, as on an emitter that finds no credential).
   ``deliver=False`` and ``answer_receipts=False`` stand for an emitter that
@@ -91,15 +93,30 @@ class _BundleRefusedError(Exception):
 
 
 class FakeHandoverQueue:
-    """Bundle jobs by hand-over ID, in the order they were handed over."""
+    """Bundle jobs by hand-over ID, with the step at which each is due.
+
+    ``clock`` counts delivery steps. A new job is due at once; a failed
+    attempt makes it due again after ``2 ** attempts`` steps (the emitter
+    waits 2 seconds, doubling up to 300).
+    """
 
     def __init__(self) -> None:
-        #: Each job's request, copied bytes and latest receipt.
+        #: Each job's request, copied bytes, latest receipt and due step.
         self.jobs: dict[str, dict[str, Any]] = {}
+        self.clock = 0
 
     def receipt(self, handover_id: str) -> dict[str, Any] | None:
         job = self.jobs.get(handover_id)
         return None if job is None else dict(job["receipt"])
+
+    def due_jobs(self) -> list[dict[str, Any]]:
+        """Pending jobs due now, the earliest due first, then the oldest."""
+        pending = [
+            (job["due"], order, job)
+            for order, job in enumerate(self.jobs.values())
+            if job["receipt"]["status"] == "pending" and job["due"] <= self.clock
+        ]
+        return [job for _, _, job in sorted(pending, key=lambda item: item[:2])]
 
 
 def fake_publication_inventory(
@@ -417,6 +434,7 @@ class FakeEmitterClient:
             "request": request,
             "copied": copied,
             "receipt": dict(queued),
+            "due": self.queue.clock,
         }
         self._deliver_pending_jobs()
         return queued  # type: ignore[return-value]
@@ -425,6 +443,12 @@ class FakeEmitterClient:
         self.calls.append("dataset_bundle_receipt")
         if "huggingface" not in self.modules or not self.answer_receipts:
             return None
+        if self.bundle_receipts is not None and handover_id not in self._bundle_answers:
+            # A scripted emitter that holds a hand-over made elsewhere.
+            self._bundle_answers[handover_id] = [
+                {"handover_id": handover_id, **dict(receipt)}
+                for receipt in self.bundle_receipts
+            ]
         answers = self._bundle_answers.get(handover_id)
         if answers:
             return dict(answers.pop(0) if len(answers) > 1 else answers[0])  # type: ignore[return-value]
@@ -432,22 +456,27 @@ class FakeEmitterClient:
         return self.queue.receipt(handover_id)  # type: ignore[return-value]
 
     def _deliver_pending_jobs(self) -> None:
-        """One upload attempt for each pending job, oldest first."""
+        """One delivery step: an upload attempt for each job that is due."""
         if not self.deliver:
             return
-        for job in self.queue.jobs.values():
+        self.queue.clock += 1
+        for job in self.queue.due_jobs():
             receipt = job["receipt"]
-            if receipt["status"] != "pending":
-                continue
             status, error_code, revision = self._upload_bundle(
                 job["request"], job["copied"]
             )
+            attempts = receipt["attempts"] + 1
             receipt.update(
                 status=status,
                 error_code=error_code,
                 revision=revision,
-                attempts=receipt["attempts"] + 1,
+                attempts=attempts,
             )
+            job["due"] = self.queue.clock + 2**attempts
+
+    def deliver_now(self) -> None:
+        """Stand for this emitter's worker running once, with no caller."""
+        self._deliver_pending_jobs()
 
     def check_write_access(self, repository: str) -> WriteAccess:
         self.calls.append("check_write_access")

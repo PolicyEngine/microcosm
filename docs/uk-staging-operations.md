@@ -267,8 +267,10 @@ run directory unchanged until then, and re-stage it to record the outcome. A
 `failed` record therefore means one of two things. With `UPLOAD_PENDING`,
 `REPOSITORY_UNAVAILABLE`, `UPLOAD_FAILED`, `CREDENTIAL_MISSING` or
 `PRESERVED_FILES_MISSING` (`RETRYING_ERROR_CODES`), the bundle may still
-arrive, because the emitter keeps it queued; with any other code the failure
-is final. The manifest also names the build's hand-over
+arrive, because the emitter keeps it queued; with any other code
+(`REMOTE_DIFFERS`, `PRESERVED_BYTES_CHANGED`, `HANDOVER_REFUSED`,
+`EMITTER_UNAVAILABLE`, or `RECEIPT_UNRECOGNIZED` for a settled answer
+Microcosm does not recognize) the failure is final. The manifest also names the build's hand-over
 (`staged_dataset_handover`: the emitter's hand-over ID, the repository and the
 run id), so a re-stage can ask the emitter for its outcome.
 
@@ -279,9 +281,10 @@ The manifest gains two evidence blocks after the bundle is on disk:
 `error_code`, and the `files` inventory as a mapping). The error codes are the
 emitter's (`REMOTE_DIFFERS` and `PRESERVED_BYTES_CHANGED`, which are final;
 `REPOSITORY_UNAVAILABLE`, `UPLOAD_FAILED`, `CREDENTIAL_MISSING` and
-`PRESERVED_FILES_MISSING` for a bundle it keeps retrying) and three of
+`PRESERVED_FILES_MISSING` for a bundle it keeps retrying) and four of
 Microcosm's: `UPLOAD_PENDING`, `HANDOVER_REFUSED` for a hand-over the emitter
-refused to queue, and `EMITTER_UNAVAILABLE` when no emitter took it. A failed
+refused to queue, `EMITTER_UNAVAILABLE` when no emitter took it, and
+`RECEIPT_UNRECOGNIZED` for a settled answer it does not recognize. A failed
 upload is recorded with its code, warned on stderr, and never changes the
 build's exit code or Logbook disposition. The emitter copies the bundle's small
 files (each up to 32 MiB, up to 64 MiB in all, smallest first) before it
@@ -311,28 +314,59 @@ uv run python tools/stage_uk_rowwise_candidate.py --run-dir <run directory>
 ```
 
 It starts a short-lived emitter of its own, with only its Hugging Face module,
-and checks write access as a build does. When the manifest names the build's
-hand-over and this machine's emitter still holds it, the command records that
-hand-over's outcome, as `already_staged` with its commit once the bundle is on
-the Hub, and hands nothing over again. That matters for a national build, which
-rewrites its build record after the hand-over: a bundle built again from the
-directory would differ from the one on the Hub and be refused as
-`REMOTE_DIFFERS`. Otherwise (another machine, or a run that kept its bundle
-local) it hands the bundle over. Either way it waits for the emitter's upload
-attempt for up to three hours by default (`--wait-seconds`; a 2.4 GB bundle
-takes about 2 hours 40 minutes at 2 Mbit/s), longer than a build's 30 minutes,
-since finishing the upload is its only job. When it stops waiting it closes its
-emitter, which abandons an upload still running; the next emitter started on
-the machine retries it from the start. The command updates the manifest's
-record. It cannot update the build's other records of a failure, and says so:
-the staging run's `staged_dataset` and `fit_summary` artifacts and its
-`dataset_staging` event (a completed staging run accepts no changes) and the
-Logbook row (identified by the digest of its content and chained to the next
-row). So the dashboard keeps showing such a run without its bundle. It is
-idempotent on the outputs' digests: a directory whose manifest already
-records the same outputs as uploaded is left untouched (the driver's revision
-stands); an identical remote bundle the manifest does not know about is
-recorded as `already_staged` with the bundle's own commit; a different bundle
+and checks write access as a build does. It then works out what to do from the
+manifest:
+
+- **The record says the bundle landed.** A manifest that records the same
+  outputs as uploaded, or the outputs the build handed over (a national
+  build's, whose build record changed afterwards), is left untouched: the
+  driver's revision stands. A landed record is never replaced by a failure or
+  a local-only record.
+- **The emitter still holds the build's hand-over.** The manifest's
+  `staged_dataset_handover` names it, with the run directory and the outputs'
+  digests as handed over. Emitters run by the same user with the same cache
+  directory share their hand-overs: the hand-over database,
+  `events.handovers.sqlite3`, beside the emitter's event queue file under
+  `$XDG_CACHE_HOME/microcosm/telemetry/` (`~/.cache` when `XDG_CACHE_HOME` is
+  unset). The command then records that hand-over's outcome, as
+  `already_staged` with its commit once the bundle is on the Hub, and hands
+  nothing over again. That matters for a national build, which rewrites its
+  build record after the hand-over: a bundle built again from the directory
+  would differ from the one handed over.
+- **That hand-over can never finish.** Its job names the files by the paths
+  they had at hand-over, so if the run directory moved since, or the emitter
+  reports the files changed (`PRESERVED_BYTES_CHANGED`) or missing
+  (`PRESERVED_FILES_MISSING`) and they are still missing, the command hands
+  the directory, where it is now, over as a new job, and records that
+  hand-over. The emitter keeps retrying the abandoned job, waiting up to five
+  minutes between attempts, for as long as emitters run on the machine; no
+  emitter command removes a job, and Microcosm cannot cancel it.
+- **Otherwise** (another machine, another user or cache directory, a cleared
+  cache, or a run that kept its bundle local) it hands the directory over. For
+  a national build whose bundle already reached the Hub, that hand-over comes
+  back `REMOTE_DIFFERS`: the folder holds the bundle with the build record as
+  handed over, and this directory's build record has changed since. The
+  emitter cannot say whether the folder holds this build's own bundle, so the
+  command keeps the manifest's records, exits 1 and says so. Re-stage where
+  the build's emitter keeps its hand-overs to record it, or compare
+  `staged/<run_id>/staged_manifest.json` on the Hub with the hand-over record's
+  `files`. Do not stage it under another run id, which would upload a second
+  copy.
+
+It waits for the emitter's upload attempt for up to three hours by default
+(`--wait-seconds`; a 2.4 GB bundle takes about 2 hours 40 minutes at
+2 Mbit/s), longer than a build's 30 minutes, since finishing the upload is its
+only job. When it stops waiting it closes its emitter, which abandons an upload
+still running; the next emitter started on the machine retries it from the
+start. The command updates the manifest's record. It cannot update the build's
+other records of a failure, and says so: the staging run's `staged_dataset`
+and `fit_summary` artifacts and its `dataset_staging` event still hold the
+build's code (a completed staging run accepts no changes), and the Logbook row
+still lists the phase `dataset_stage_failed` (a row is identified by the
+digest of its content and chained to the next row). So the dashboard keeps
+showing such a run without its bundle. An identical remote bundle the manifest
+does not know about is recorded as `already_staged` with the bundle's own
+commit; a different bundle
 under the same run id is refused (`REMOTE_DIFFERS`). Fetch a bundle for a scorecard, an evaluation leg or the
 dashboard's local-directory mode with:
 

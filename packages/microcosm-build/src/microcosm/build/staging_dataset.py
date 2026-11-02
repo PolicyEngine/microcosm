@@ -36,7 +36,7 @@ import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
-from typing import Any, Final, Literal, Protocol, TypedDict, cast, get_args
+from typing import Any, Final, Literal, TypedDict, cast, get_args
 
 from microcosm_emitter_interface import BundleFile, StageDatasetBundle
 from microcosm_emitter_interface.bundles import (
@@ -45,13 +45,12 @@ from microcosm_emitter_interface.bundles import (
     CHECKSUMS_ROLE,
     SIDECAR_ROLES,
     DatasetBundleReceipt,
-    WriteAccess,
     unavailable_bundle_receipt,
 )
 from microcosm_emitter_interface.identifiers import repository_identifier
 
 from microcosm.build.staging_storage import HuggingFaceDatasetStorage
-from microcosm.build.telemetry_emitter import emitter_problem
+from microcosm.build.telemetry_emitter import BundleEmitter, emitter_problem
 
 __all__ = [
     "DEFAULT_STAGED_DATASET_PREFIX",
@@ -80,7 +79,7 @@ __all__ = [
     "local_only_staged_dataset",
     "output_role",
     "parse_sha256sums",
-    "recorded_handover_id",
+    "recorded_handover",
     "refresh_sha256sums_entry",
     "resume_hand_over",
     "sha256_file",
@@ -118,9 +117,11 @@ _STATUSES = ("uploaded", "already_staged", "failed", "skipped")
 #: ``PRESERVED_BYTES_CHANGED`` are the emitter's final failures;
 #: ``REPOSITORY_UNAVAILABLE``, ``UPLOAD_FAILED``, ``CREDENTIAL_MISSING`` and
 #: ``PRESERVED_FILES_MISSING`` its last failed attempt on a hand-over it keeps
-#: retrying. Microcosm adds three: ``UPLOAD_PENDING``, a hand-over whose first
+#: retrying. Microcosm adds four: ``UPLOAD_PENDING``, a hand-over whose first
 #: attempt had not finished when the wait ended; ``HANDOVER_REFUSED``, one the
-#: emitter refused to queue; and ``EMITTER_UNAVAILABLE``, one no emitter took.
+#: emitter refused to queue; ``EMITTER_UNAVAILABLE``, one no emitter took; and
+#: ``RECEIPT_UNRECOGNIZED``, a settled answer it does not recognize (a
+#: ``failed`` receipt with an unknown code, or ``uploaded`` with no revision).
 #: With a code in ``RETRYING_ERROR_CODES`` the bundle may still arrive: the
 #: emitter keeps it queued, and a re-stage records the outcome.
 type StagedDatasetErrorCode = Literal[
@@ -133,10 +134,13 @@ type StagedDatasetErrorCode = Literal[
     "UPLOAD_PENDING",
     "HANDOVER_REFUSED",
     "EMITTER_UNAVAILABLE",
+    "RECEIPT_UNRECOGNIZED",
 ]
-_ERROR_CODES: Final[tuple[str, ...]] = get_args(StagedDatasetErrorCode.__value__)
+_ERROR_CODES: Final[tuple[StagedDatasetErrorCode, ...]] = get_args(
+    StagedDatasetErrorCode.__value__
+)
 #: The codes of a bundle the emitter still holds and may yet deliver.
-RETRYING_ERROR_CODES: Final = frozenset(
+RETRYING_ERROR_CODES: Final[frozenset[StagedDatasetErrorCode]] = frozenset(
     {
         "UPLOAD_PENDING",
         "REPOSITORY_UNAVAILABLE",
@@ -144,6 +148,12 @@ RETRYING_ERROR_CODES: Final = frozenset(
         "CREDENTIAL_MISSING",
         "PRESERVED_FILES_MISSING",
     }
+)
+assert RETRYING_ERROR_CODES <= frozenset(_ERROR_CODES)
+#: Answers about a queued hand-over that it can never finish where it is:
+#: its files are gone from their recorded paths, or changed.
+_STUCK_ERROR_CODES: Final = frozenset(
+    {"PRESERVED_FILES_MISSING", "PRESERVED_BYTES_CHANGED"}
 )
 #: The manifest block that names the build's hand-over, so that a later
 #: re-stage asks the emitter for its outcome instead of handing over again.
@@ -709,27 +719,7 @@ def hub_offline(environment: Mapping[str, str] | None = None) -> bool:
     return str(value or "").upper() in _TRUE_VALUES
 
 
-class BundleEmitter(Protocol):
-    """The staged-bundle calls of the interface's ``EmitterClient``."""
-
-    @property
-    def available(self) -> bool: ...
-
-    @property
-    def modules(self) -> frozenset[str]: ...
-
-    def stage_dataset_bundle(
-        self, request: StageDatasetBundle, *, wait_seconds: float = 0
-    ) -> DatasetBundleReceipt: ...
-
-    def dataset_bundle_receipt(
-        self, handover_id: str
-    ) -> DatasetBundleReceipt | None: ...
-
-    def check_write_access(self, repository: str) -> WriteAccess: ...
-
-
-def write_access_problem(emitter: Any, repository: str) -> str | None:
+def write_access_problem(emitter: BundleEmitter | None, repository: str) -> str | None:
     """Why a remote stage to ``repository`` could not complete, or None.
 
     ``emitter`` is the build's emitter client, running or not. The refusal
@@ -755,21 +745,20 @@ def write_access_problem(emitter: Any, repository: str) -> str | None:
     problem = emitter_problem(emitter)
     if problem is not None:
         return f"{needs} {problem}"
+    assert emitter is not None, "emitter_problem refuses a missing emitter."
     access: Mapping[str, Any] = emitter.check_write_access(repository)
     if access.get("status") != "checked":
-        failure = getattr(emitter, "last_failure", None)
-        details = [
-            str(value)
-            for value in (
-                getattr(failure, "reason", None),
-                getattr(failure, "error_type", None),
+        # The client's latest failure is shared by every call, so it is only
+        # a hint about this one.
+        failure = emitter.last_failure
+        hint = ""
+        if failure is not None:
+            details = ", ".join(
+                str(value) for value in (failure.reason, failure.error_type) if value
             )
-            if value
-        ]
+            hint = f" (its latest failed call: {details})"
         return (
-            f"{needs} it did not answer the write-access check "
-            f"({', '.join(details) or 'no answer'}); check that "
-            "`microcosm-emitter version` runs, then try again"
+            f"{needs} it did not answer the write-access check in time{hint}; try again"
         )
     if access.get("credential") != "present":
         return (
@@ -812,6 +801,8 @@ class StagedBundleHandOver:
     handed_over: frozenset[str] = frozenset()
     copied_files: frozenset[str] = frozenset()
     handover_id: str | None = None
+    #: The run directory the hand-over names its files in.
+    run_dir: str | None = None
 
     def may_rewrite(self, name: str) -> bool:
         """Whether the build may change ``name`` in the run directory now."""
@@ -819,41 +810,61 @@ class StagedBundleHandOver:
         return name not in self.handed_over or name in self.copied_files
 
 
-def handover_record(staged: StagedBundleHandOver) -> dict[str, str] | None:
+def handover_record(
+    staged: StagedBundleHandOver, *, earlier: Mapping[str, Any] | None = None
+) -> dict[str, Any] | None:
     """The manifest's ``staged_dataset_handover`` block, or None if none queued.
 
-    It names the emitter's hand-over, so a later re-stage of the run
-    directory asks for that hand-over's outcome (:func:`resume_hand_over`)
-    instead of handing over a second bundle.
+    It names the emitter's hand-over, the run directory its files are named
+    in, and the outputs' digests as handed over, so a later re-stage asks
+    for that hand-over's outcome (:func:`resume_hand_over`) instead of
+    handing over a second bundle, whatever the run directory's sidecars say
+    by then. ``staging_run_error_code`` is the code the build's staging run
+    recorded; a re-stage that replaces the block keeps the ``earlier``
+    block's.
     """
 
     delivery = staged.delivery
-    if staged.handover_id is None or delivery["repository"] is None:
+    if (
+        staged.handover_id is None
+        or staged.run_dir is None
+        or delivery["repository"] is None
+    ):
         return None
+    code = delivery["error_code"]
+    if earlier is not None and "staging_run_error_code" in earlier:
+        code = earlier["staging_run_error_code"]
     return {
         "handover_id": staged.handover_id,
         "repository": delivery["repository"],
         "run_id": str(delivery["run_id"]),
+        "run_dir": staged.run_dir,
+        "files": {name: dict(entry) for name, entry in delivery["files"].items()},
+        "staging_run_error_code": code,
     }
 
 
-def recorded_handover_id(
+def recorded_handover(
     manifest: Mapping[str, Any], *, repository: str, run_id: str
-) -> str | None:
+) -> dict[str, Any] | None:
     """The hand-over a manifest records for ``repository`` and ``run_id``."""
 
     record = manifest.get(HANDOVER_RECORD_KEY)
     if not isinstance(record, Mapping):
         return None
     handover_id = record.get("handover_id")
+    files = record.get("files")
     if (
         not isinstance(handover_id, str)
         or not _HANDOVER_ID.fullmatch(handover_id)
         or record.get("repository") != repository
         or record.get("run_id") != run_id
+        or not isinstance(record.get("run_dir"), str)
+        or not isinstance(files, Mapping)
+        or not files
     ):
         return None
-    return handover_id
+    return dict(record)
 
 
 def _sidecar_paths(bundle: StagedDatasetBundle) -> tuple[Path, Path]:
@@ -959,11 +970,15 @@ def _delivery_from_receipt(
     *,
     wait_seconds: float,
     earlier: bool = False,
+    may_hold_earlier_bundle: bool = False,
 ) -> StagedDatasetDelivery:
     """The build's delivery record of the emitter's receipt; warns on failure.
 
     ``earlier`` is a receipt of a hand-over made before this staging: its
-    upload means the bundle was already staged.
+    upload means the bundle was already staged. ``may_hold_earlier_bundle``
+    says that this directory handed a bundle over before and its outputs
+    have changed since, so a folder that holds a different bundle may hold
+    that one.
     """
 
     prefix = record["prefix"]
@@ -1003,16 +1018,35 @@ def _delivery_from_receipt(
             )
     elif status == "failed" and code == "REMOTE_DIFFERS":
         error_code = "REMOTE_DIFFERS"
-        _warn(
-            f"{prefix} already holds a different bundle, and the emitter refuses "
-            "to overwrite it (REMOTE_DIFFERS). Re-stage under another run id if "
-            "that is intended."
-        )
-    elif status in ("failed", "uploaded"):
-        error_code = code if code in _ERROR_CODES else "UPLOAD_FAILED"
+        if may_hold_earlier_bundle:
+            _warn(
+                f"{prefix} already holds a bundle whose outputs differ from this "
+                "directory's, and the emitter refuses to overwrite it "
+                "(REMOTE_DIFFERS). This directory's outputs changed after its "
+                "earlier hand-over, so the folder may hold the bundle handed over "
+                "earlier: re-stage where the emitter keeps that hand-over to record "
+                "it. Do not stage under a new run id, which would upload a second "
+                "copy."
+            )
+        else:
+            _warn(
+                f"{prefix} already holds a different bundle, and the emitter "
+                "refuses to overwrite it (REMOTE_DIFFERS). Re-stage under another "
+                "run id if that is intended."
+            )
+    elif status == "failed" and code in _ERROR_CODES:
+        error_code = code
         _warn(
             f"staged dataset upload failed for {prefix} ({error_code}); the bundle "
             "stays local and can be re-staged."
+        )
+    elif status in ("failed", "uploaded"):
+        error_code = "RECEIPT_UNRECOGNIZED"
+        answer = status if code is None else f"{status}, {code}"
+        _warn(
+            f"the emitter settled the staged dataset hand-over for {prefix} with an "
+            f"answer this build does not recognize ({answer}; RECEIPT_UNRECOGNIZED); "
+            "the bundle stays local and can be re-staged."
         )
     elif status == "refused":
         error_code = "HANDOVER_REFUSED"
@@ -1064,8 +1098,13 @@ def stage_bundle(
     poll_seconds: float = RECEIPT_POLL_SECONDS,
     clock: Callable[[], float] = time.monotonic,
     sleep: Callable[[float], None] = time.sleep,
+    earlier_files: Mapping[str, Any] | None = None,
 ) -> StagedBundleHandOver:
     """Hand the bundle and its sidecars to the emitter; record, never raise.
+
+    ``earlier_files`` are the outputs' digests of an earlier hand-over of
+    this run, if any; a ``REMOTE_DIFFERS`` warning then says when the folder
+    may hold that bundle.
 
     The emitter writes every file under ``<prefix>/<run_id>/`` in one commit,
     idempotent on the outputs' digests (``already_staged``, or
@@ -1119,7 +1158,13 @@ def stage_bundle(
             clock=clock,
             sleep=sleep,
         )
-    delivery = _delivery_from_receipt(record, receipt, wait_seconds=wait_seconds)
+    delivery = _delivery_from_receipt(
+        record,
+        receipt,
+        wait_seconds=wait_seconds,
+        may_hold_earlier_bundle=earlier_files is not None
+        and dict(earlier_files) != record["files"],
+    )
     if answer.get("status") not in _QUEUED_STATUSES:
         return StagedBundleHandOver(delivery)
     return StagedBundleHandOver(
@@ -1127,6 +1172,7 @@ def stage_bundle(
         handed_over=frozenset(item.name for item in request.files),
         copied_files=_copied_files(answer, receipt),
         handover_id=_handover_id(answer),
+        run_dir=str(bundle.run_dir),
     )
 
 
@@ -1148,36 +1194,28 @@ def _handover_id(receipt: Mapping[str, Any]) -> str | None:
     )
 
 
-def _handed_over_inventory(bundle: StagedDatasetBundle) -> dict[str, Any] | None:
-    """The outputs' digests in the run directory's ``staged_manifest.json``.
+def _stuck(
+    receipt: Mapping[str, Any], record: Mapping[str, Any], run_dir: Path
+) -> bool:
+    """Whether a queued hand-over can never finish from this run directory.
 
-    The build writes that inventory just before its hand-over and never
-    changes it afterwards, so it describes the bundle the emitter holds even
-    when the build has since rewritten one of its outputs.
+    Its files changed (``PRESERVED_BYTES_CHANGED``, final), or went missing
+    from their recorded paths and are still missing.
     """
 
-    try:
-        inventory = json.loads(
-            (bundle.run_dir / STAGED_MANIFEST_FILENAME).read_text(encoding="utf-8")
-        )
-    except (OSError, ValueError):
-        return None
-    files = inventory.get("files") if isinstance(inventory, Mapping) else None
-    if (
-        not isinstance(inventory, Mapping)
-        or inventory.get("run_id") != bundle.run_id
-        or not isinstance(files, Mapping)
-        or not files
-    ):
-        return None
-    return {str(name): dict(entry) for name, entry in files.items()}
+    code = receipt.get("error_code")
+    if code == "PRESERVED_BYTES_CHANGED":
+        return True
+    if code != "PRESERVED_FILES_MISSING":
+        return False
+    return any(not (run_dir / str(name)).is_file() for name in record["files"])
 
 
 def resume_hand_over(
     bundle: StagedDatasetBundle,
     *,
     emitter: BundleEmitter | None,
-    handover_id: str,
+    record: Mapping[str, Any],
     repository: str,
     prefix: str = DEFAULT_STAGED_DATASET_PREFIX,
     wait_seconds: float = STAGED_DATASET_WAIT_SECONDS,
@@ -1187,33 +1225,38 @@ def resume_hand_over(
 ) -> StagedBundleHandOver | None:
     """Record the outcome of an earlier hand-over the emitter still holds.
 
-    The bundle stays the one handed over then: nothing is handed over again,
-    so a build that rewrote an output afterwards (the national build record)
-    is not refused as ``REMOTE_DIFFERS``. A hand-over still queued is waited
-    for as :func:`stage_bundle` waits; one already uploaded is recorded as
-    ``already_staged``, with its commit. None when the emitter does not know
-    the hand-over (another machine, say) or the run directory has no
-    inventory of it; the caller then hands the bundle over again.
+    ``record`` is the manifest's ``staged_dataset_handover``. The bundle stays
+    the one handed over then, with the outputs' digests the record lists:
+    nothing is handed over again, so a build that rewrote an output
+    afterwards (the national build record) is not refused as
+    ``REMOTE_DIFFERS``. A hand-over still queued is waited for as
+    :func:`stage_bundle` waits; one already uploaded is recorded as
+    ``already_staged``, with its commit.
+
+    None, so that the caller hands the directory over as a new job, when the
+    emitter does not know the hand-over (another machine, another user or
+    cache directory), or when the hand-over can never finish: the run
+    directory moved since (the job names its files by their old paths), or
+    the job reports its files changed or missing.
     """
 
+    handover_id = str(record.get("handover_id"))
     if (
         emitter is None
         or not emitter.available
         or not _HANDOVER_ID.fullmatch(handover_id)
+        or record.get("run_dir") != str(bundle.run_dir)
     ):
         return None
-    inventory = _handed_over_inventory(bundle)
-    if inventory is None:
-        return None
     receipt = emitter.dataset_bundle_receipt(handover_id)
-    if receipt is None:
+    if receipt is None or _stuck(receipt, record, bundle.run_dir):
         return None
-    record = _remote_record(
-        bundle, repository=repository, prefix=prefix, files=inventory
+    remote = _remote_record(
+        bundle, repository=repository, prefix=prefix, files=record["files"]
     )
     if receipt.get("status") == "pending":
         print(
-            f"the emitter still holds the earlier hand-over of {record['prefix']}; "
+            f"the emitter still holds the earlier hand-over of {remote['prefix']}; "
             f"waiting up to {_minutes(wait_seconds)} for its upload...",
             file=sys.stderr,
             flush=True,
@@ -1226,15 +1269,18 @@ def resume_hand_over(
             clock=clock,
             sleep=sleep,
         )
+        if _stuck(receipt, record, bundle.run_dir):
+            return None
     delivery = _delivery_from_receipt(
-        record, receipt, wait_seconds=wait_seconds, earlier=True
+        remote, receipt, wait_seconds=wait_seconds, earlier=True
     )
     return StagedBundleHandOver(
         delivery,
-        handed_over=frozenset(inventory)
+        handed_over=frozenset(record["files"])
         | {bundle.manifest_name, STAGED_MANIFEST_FILENAME, SHA256SUMS_FILENAME},
         copied_files=_copied_files(receipt, receipt),
         handover_id=handover_id,
+        run_dir=str(bundle.run_dir),
     )
 
 
