@@ -286,6 +286,13 @@ def test_no_county_materialization_matches_pre_county_surface(
     monkeypatch.setattr(
         module, "_require_acs_self_employment_identity", lambda *_: None
     )
+    # microcosm#1019: the ACS take-up stage needs SPM-unit origin tags this
+    # geography fixture does not carry; this test checks county hooks only.
+    monkeypatch.setattr(
+        module,
+        "_with_local_take_up",
+        lambda frame, *, seed: (frame, {"seed": seed, "assigned_sha256": "stub"}),
+    )
     monkeypatch.setattr(module, "log", lambda *_: None)
 
     def materialize(_frame, specs, **_kwargs):
