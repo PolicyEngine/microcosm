@@ -1921,7 +1921,7 @@ def support_roster_slices(
 ) -> list[dict[str, object]]:
     """Entity slices of the support roster's columns in ``classes``, sorted.
 
-    The NZ generator and test fixtures declare the support producers' inputs
+    Country generators and test fixtures declare the support producers' inputs
     from this, so a producer slices exactly the columns its roster names.
     """
 
