@@ -66,6 +66,26 @@ SETS = {
     "precal": "precal_references.json",
     "holdout": "holdout_references.json",
 }
+# The committed selectors' fields. The shared vocabulary admits more, including
+# other fact keys that neither the pin check nor the cell check reads.
+_SELECTOR_FIELDS = frozenset(
+    {
+        "aggregate_fact_key",
+        "assertion",
+        "dimension_values",
+        "dimensions",
+        "entity_name",
+        "geography_id",
+        "geography_level",
+        "geography_vintage",
+        "period_type",
+        "period_value",
+        "record_set_id",
+        "source_concept",
+        "source_measure_id",
+        "source_name",
+    }
+)
 GENERATED = (
     *SETS.values(),
     "reference_aging.json",
@@ -212,8 +232,30 @@ def _keys(facts):
     return [key for fact in facts for key in fact.values()]
 
 
+def _unpinned(row):
+    """Whether a row's selectors read through a spelling no check here can see.
+
+    The pin check reads aggregate keys and the cell check reads measures and
+    dimension values literally, but the resolver skips an empty field and admits
+    other fact keys. So each selector keeps to the committed fields, leaves none
+    empty, and pins an aggregate key or, for a base selector, a roster.
+    """
+
+    for index, selector in enumerate(_selectors(row)):
+        pins = selector.get("dimension_values") or {}
+        roster = any(isinstance(value, list) for value in pins.values())
+        if (
+            set(selector) - _SELECTOR_FIELDS
+            or any(value is None or value == "" for value in selector.values())
+            or not isinstance(selector.get("dimensions", []), list)
+            or not (selector.get("aggregate_fact_key") or (index == 0 and roster))
+        ):
+            return True
+    return False
+
+
 def _pin_violations(documents, factors, listed):
-    """Each aggregate key a selector pins must sit in its own resolved-read entry.
+    """Each selector must pin what its resolved-read entry lists, under its set.
 
     A digest ties an entry to its selectors but not to the keys it lists, so a
     selector rewritten with a recomputed digest would keep its old keys. Roster
@@ -221,11 +263,15 @@ def _pin_violations(documents, factors, listed):
     """
 
     violations = []
-    for document in documents.values():
+    for reference_set, document in documents.items():
         for row in document["target_references"]:
+            if _unpinned(row):
+                violations.append(("unpinned", row["name"]))
             entry = listed.get(row["name"])
             if entry is None:
                 continue
+            if entry["reference_set"] != reference_set:
+                violations.append(("relabelled", row["name"]))
             base = row["ledger_selector"].get("aggregate_fact_key")
             operands = {
                 operand["aggregate_fact_key"]
@@ -244,8 +290,12 @@ def _pin_violations(documents, factors, listed):
             for schedule in ("source_schedule", "target_schedule")
             for slot in declaration[schedule]
         }
-        if name in listed and pins != set(_keys(listed[name]["operand_facts"])):
+        if name not in listed:
+            continue
+        if pins != set(_keys(listed[name]["operand_facts"])):
             violations.append(("pin", name))
+        if listed[name]["reference_set"] != "factor_context":
+            violations.append(("relabelled", name))
     return violations
 
 
@@ -254,9 +304,9 @@ def _read_violations(documents, factors, reads):
 
     A digest ties each listed entry to its row's exact selectors, so a selector
     respelled to dodge the cell check fails here. The pin check ties each pinned
-    key to its entry, and the feed audit proves every listed key. Partition
-    totals count as read, because a holdout on a band set's total shares its
-    information.
+    key and each row's set to its entry and refuses a spelling these checks can't
+    read, and the feed audit proves every listed key. Partition totals count as
+    read, because a holdout on a band set's total shares its information.
     """
 
     listed = {entry["name"]: entry for entry in reads}
@@ -578,6 +628,8 @@ def test_resolved_reads_bind_every_selector_and_stay_disjoint():
         ("recomputed_digest_on_a_rewritten_base", "pin"),
         ("recomputed_digest_on_a_rewritten_operand", "pin"),
         ("factor_entry_keeps_an_old_key", "pin"),
+        ("relabelled_entry", "relabelled"),
+        ("relabelled_factor_entry", "relabelled"),
         ("dropped_entry", "unlisted"),
         ("holdout_reads_a_band_class", "holdout_fact"),
         ("holdout_reads_a_factor_operand", "holdout_fact"),
@@ -603,9 +655,8 @@ def test_read_mutants_are_caught(mutant, kind):
         del selector["dimension_values"]
         selector["aggregate_fact_key"] = _keys(band["base_facts"])[2]
         if mutant == "recomputed_digest_on_a_rewritten_operand":
-            row["value_operands"][1]["aggregate_fact_key"] = selector[
-                "aggregate_fact_key"
-            ]
+            operand = row["value_operands"][1]
+            row["value_operands"][1] = {"role": operand["role"], **selector}
         else:
             row["ledger_selector"] = selector
         assert _separation_violations(documents) == []
@@ -616,6 +667,13 @@ def test_read_mutants_are_caught(mutant, kind):
             entry for entry in reads if entry["reference_set"] == "factor_context"
         )
         factor["operand_facts"][0] = {"aggregate_fact_key": "stale"}
+    elif mutant == "relabelled_entry":
+        entries[row["name"]]["reference_set"] = "calibration"
+    elif mutant == "relabelled_factor_entry":
+        factor = next(
+            entry for entry in reads if entry["reference_set"] == "factor_context"
+        )
+        factor["reference_set"] = "calibration"
     elif mutant == "dropped_entry":
         reads.remove(holdout)
     elif mutant == "holdout_reads_a_band_class":
@@ -636,6 +694,60 @@ def test_read_mutants_are_caught(mutant, kind):
             documents, _document("reference_aging.json"), reads
         )
     }
+
+
+@pytest.mark.parametrize("target", ["base", "operand"])
+@pytest.mark.parametrize(
+    "spelling",
+    [
+        {"semantic_fact_key": "key"},
+        {"legacy_fact_key": "key"},
+        {"source_record_id": "key"},
+        {"layout_groupby_value_id": "key"},
+        {"dimensions": {generator.A1_CLASS: "class_12_13"}},
+        {"aggregate_fact_key": None, "source_measure_id": None},
+        {"aggregate_fact_key": ""},
+        {
+            "dimension_values": {generator.A1_CLASS: ["class_12_13"]},
+            "source_measure_id": None,
+        },
+        {
+            "dimension_values": {generator.A1_CLASS: ["class_12_13"]},
+            "source_measure_id": "",
+        },
+        {
+            "dimension_values": {generator.A1_CLASS: ["class_12_13"]},
+            "semantic_fact_key": "key",
+        },
+    ],
+)
+def test_spellings_the_checks_cannot_read_refuse(spelling, target):
+    """A selector can name a fact in ways neither the key nor cell check sees."""
+
+    documents, reads = copy.deepcopy(_documents()), copy.deepcopy(_reads())
+    row = documents["holdout"]["target_references"][0]
+    selector = row["ledger_selector"]
+    if target == "operand":
+        selector = row["value_operands"][1]
+    del selector["aggregate_fact_key"]
+    selector.update(spelling)
+    next(entry for entry in reads if entry["name"] == row["name"])[
+        "selector_sha256"
+    ] = generator.selector_digest(row)
+    violations = _read_violations(documents, _document("reference_aging.json"), reads)
+    assert ("unpinned", row["name"]) in violations
+    assert ("digest", row["name"]) not in violations
+
+
+def test_an_operand_needs_a_key_even_with_a_roster():
+    """Only a base selector may read a roster; an operand reads one fact."""
+
+    row = copy.deepcopy(_rows("holdout")[0])
+    operand = row["value_operands"][1]
+    del operand["aggregate_fact_key"]
+    operand["dimension_values"] = {generator.A1_CLASS: ["class_12_13"]}
+    assert _unpinned(row)
+    assert not _unpinned(_rows("holdout")[0])
 
 
 @functools.cache
