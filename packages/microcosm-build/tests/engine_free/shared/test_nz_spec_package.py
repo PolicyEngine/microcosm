@@ -1271,7 +1271,8 @@ class TestReferenceSets:
                 compile_ledger_target_references([], [reference], country="nz")
         assert (
             sum(row.metadata["activation_status"] == "active" for row in references)
-            == {"calibration": 77, "precal": 80, "holdout": 2}[reference_set]
+            # G8-r2c E activates the 235 P1 wage rows.
+            == {"calibration": 77, "precal": 315, "holdout": 2}[reference_set]
         )
 
     def test_pre_calibration_rows_are_not_weight_calibration_targets(self) -> None:
