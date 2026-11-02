@@ -91,9 +91,11 @@ from ..staging_cli import (
     validate_staging_arguments,
 )
 from ..staging_dataset import (
+    AT_BUILD_RECORD_KEY,
     HANDOVER_RECORD_KEY,
     SHA256SUMS_FILENAME,
     StagedBundleHandOver,
+    at_build_record,
     handover_record,
     refresh_sha256sums_entry,
 )
@@ -2091,10 +2093,12 @@ def _record_staged_dataset(
     """The manifest's staging records: the delivery, and the emitter's hand-over.
 
     The hand-over block lets a later re-stage ask for that hand-over's
-    outcome instead of handing over a second bundle.
+    outcome instead of handing over a second bundle; the at-build block keeps
+    what the staging run and Logbook row recorded, which re-stages leave.
     """
     manifest["staging_delivery"] = delivery
     manifest["staged_dataset"] = staged.delivery
+    manifest[AT_BUILD_RECORD_KEY] = at_build_record(staged.delivery)
     record = handover_record(staged)
     if record is not None:
         manifest[HANDOVER_RECORD_KEY] = record
