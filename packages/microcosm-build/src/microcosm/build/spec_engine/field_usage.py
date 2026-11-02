@@ -26,9 +26,9 @@ from .resolver import (
 )
 from .schemas import load_schema_registry
 
-EXPECTED_AUTHORED_FIELD_COUNT = 32_524
-EXPECTED_RESOLVED_BINDING_FIELD_COUNT = 9_781
-EXPECTED_CONFIGURATION_FIELD_COUNT = 42_305
+EXPECTED_AUTHORED_FIELD_COUNT = 32525
+EXPECTED_RESOLVED_BINDING_FIELD_COUNT = 9822
+EXPECTED_CONFIGURATION_FIELD_COUNT = 42347
 
 
 class FieldUsageError(AssertionError):
@@ -377,8 +377,8 @@ _PINS: dict[str, tuple[int, str]] = {
         "8a186065f5b8ffc59bc3f62fe927975e6f36bc1e913aa61761652c9a8aa67988",
     ),
     "generated_authorities": (
-        8_614,
-        "66eec1216f404e43f7605fba0016d1cd666e71ebe3e35278d14a944d8b48b619",
+        8655,
+        "e8cb4e455fd52f3ff9fffe402fc5a943dea81c89a1310a458649c7561b286ccb",
     ),
     "geography_assignment": (
         28,
@@ -505,8 +505,8 @@ _PINS: dict[str, tuple[int, str]] = {
         "cf0000464013118955571dac2691d4cc1b900c97c6570349b489678cdf937649",
     ),
     "spine_pipeline_contract": (
-        88,
-        "ae011455154bae0df3913ca9a056058a909d913439b292cb46c11f63c7d0d9a3",
+        89,
+        "68a3a00171aca397db079a7482b68aba8a7b4ad88235ac1bd0d8d7061a242e1c",
     ),
     "spine_sampling": (
         17,

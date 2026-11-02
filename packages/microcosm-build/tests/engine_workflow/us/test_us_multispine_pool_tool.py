@@ -350,7 +350,8 @@ def test_constants_adapter_equals_live_constants_and_stays_out_of_identities(
             # microcosm#1251's passive partnership/S-corp leaf in puf_support moves it.
             # microcosm#1259's recipient-share bound in puf_support moves it again.
             # microcosm#1261's entity split of line 32 moves it too.
-            "spec_sha256": '395510a7a23f8474ca9ce79daa87c7808c851474e82ad5e2be2a00e18b0c1fd2',
+            # The local-tax derive operator (with_us_local_tax_inputs) moves it.
+            "spec_sha256": "c69a4313618e0099e9d4dbeb18af80e7a3aac797c0263bd0e4f16d87b442af0e",
         },
     }
 

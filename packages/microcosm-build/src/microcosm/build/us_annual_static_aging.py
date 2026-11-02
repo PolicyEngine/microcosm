@@ -21,6 +21,12 @@ from typing import Any
 
 import pandas as pd
 
+from microcosm.build.us_runtime.local_jurisdictions import (
+    LOCAL_TAX_INPUT_RESIDENT_WAGES,
+    packaged_us_local_tax_input_registry,
+    us_local_tax_input_failures,
+    us_resident_wage_tax_values,
+)
 from microcosm.calibrate import (
     SeriesProjection,
     ssa_population_projection,
@@ -34,6 +40,32 @@ from microcosm.frame.materialize import (
     put_frame_table,
     read_frame_table,
 )
+
+
+def _rederive_local_tax_inputs(
+    tables: Mapping[str, pd.DataFrame],
+) -> tuple[dict[str, pd.DataFrame], list[str]]:
+    """Re-derive each resident wage-tax base the tables carry from their wages.
+
+    Static aging factors a column only by its own uprating series, and these
+    inputs have none: carried unchanged, a resident's taxable wages would stay
+    at base-year wages while the wages themselves grow. A base that does not
+    carry an input gains none.
+    """
+
+    out = dict(tables)
+    rederived: list[str] = []
+    for item in packaged_us_local_tax_input_registry().with_provision(
+        LOCAL_TAX_INPUT_RESIDENT_WAGES
+    ):
+        table = out[item.entity]
+        if item.variable not in table:
+            continue
+        table = table.copy()
+        table[item.variable] = us_resident_wage_tax_values(table, item)
+        out[item.entity] = table
+        rederived.append(item.variable)
+    return out, rederived
 
 
 def _sha256(path: Path) -> str:
@@ -269,6 +301,12 @@ def build_annual_static_aging(
     }
     _verify(base, base_tables, base_year)
     del tables, base_tables
+    local_tax_input_failures = us_local_tax_input_failures(frame.table("person"))
+    if local_tax_input_failures:
+        raise ValueError(
+            "Base local-tax inputs disagree with its residence flags and wages: "
+            + "; ".join(local_tax_input_failures)
+        )
     demographics = ssa_population_projection(ssa, age_top=85, age_bands={80: 84})
     for year in range(base_year, end_year + 1):
         demographics.for_year(year)
@@ -363,6 +401,9 @@ def build_annual_static_aging(
                     entity: getattr(dataset, entity).loc[:, columns[entity]]
                     for entity in frame.entities
                 }
+                projected_tables, rederived_inputs = _rederive_local_tax_inputs(
+                    projected_tables
+                )
                 round_trip = _write_year(path, projected_tables, year)
                 receipt_path = output / f"projection_{year}.json"
                 _json(
@@ -388,6 +429,7 @@ def build_annual_static_aging(
                         "fraction_within_10pct": float(
                             projection.fraction_within_10pct
                         ),
+                        "rederived_local_tax_inputs": rederived_inputs,
                     },
                 )
                 projection_receipt = {

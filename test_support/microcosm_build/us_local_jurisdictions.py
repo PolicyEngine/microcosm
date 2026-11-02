@@ -50,6 +50,7 @@ FIXTURE_BLOCKS: tuple[FixtureBlock, ...] = (
     FixtureBlock("place_77580_in_north_carolina", 371290001001000, 77580, 3707, 30.0),
 )
 FIXTURE_BLOCK_BY_NAME = {block.name: block for block in FIXTURE_BLOCKS}
+WAGE_INPUT = "employment_income_before_lsr"
 
 
 def block_ladder_metadata() -> dict[str, object]:
@@ -98,6 +99,8 @@ def us_frame(
     ``households`` gives each household's columns (``household_id`` is
     assigned 1..n when absent); ``person_inputs`` gives each household's
     people, one mapping of person columns each (one empty person by default).
+    Every person has ``employment_income_before_lsr`` (0 unless given), as
+    every built frame does, so the local-tax inputs can be derived.
     """
 
     household = pd.DataFrame(list(households))
@@ -112,6 +115,7 @@ def us_frame(
             row: dict[str, object] = {}
             for group in US_SCHEMA.group_entities:
                 row[US_SCHEMA.membership_column(group)] = int(household_id)
+            row[WAGE_INPUT] = 0.0
             row.update(member)
             rows.append(row)
     person = pd.DataFrame(rows)

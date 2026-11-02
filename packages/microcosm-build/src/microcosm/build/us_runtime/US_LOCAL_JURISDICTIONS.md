@@ -97,6 +97,60 @@ The gates see only the household table, so they check the household flags.
 `us_local_jurisdiction_flag_failures(household, person=...)` also checks that
 each person carries its household's value.
 
-The Philadelphia flag records residence only. `pa_philadelphia_wage_tax` also
-needs `pa_philadelphia_wage_tax_taxable_wages`, which no line supplies yet, so
-the tax stays zero in built datasets.
+## Local-tax inputs
+
+A residence flag alone moves no tax. `pa_philadelphia_wage_tax` returns 0
+unless the person input `pa_philadelphia_wage_tax_taxable_wages` is nonzero,
+and four more local-tax inputs depend on where a person works or what they
+claim rather than where they live. `us_local_tax_inputs.json` records how
+microcosm provisions each, and `local_jurisdictions.py` pins its SHA-256:
+
+| Input | Provision | Why |
+| --- | --- | --- |
+| `pa_philadelphia_wage_tax_taxable_wages` | `resident_wages`: a resident gets `max(employment_income_before_lsr, 0)`; everyone else gets 0 | Philadelphia taxes a resident's compensation wherever earned, including 401(k) deferrals and Section 125 reductions, which the engine's gross wages include. Self-employment income falls under the Net Profits Tax instead. |
+| nonresident component of the same input | unavailable | ACS POWPUMA 42/03200 is exactly Philadelphia County, but microcosm reads no place-of-work field, and ACS codes elective home workers to their home, whom Philadelphia taxes as working in the city. |
+| `pa_philadelphia_wage_tax_reduced_rate_eligible` | unavailable (`refund_claim`) | Workers get the 1.5% rate only by petition after the year ends; 1,421 filers claimed it for 2020 against as many as 60,000 eligible households. |
+| `ny_yonkers_nonresident_earnings` | unavailable (`work_location`) | The smallest place-of-work unit, POWPUMA 36/03100, is all of Westchester County. |
+| `de_wilmington_nonresident_earnings` | unavailable (`work_location`) | POWPUMA 10/00100 is all of New Castle County. |
+| `co_denver_employee_occupational_privilege_tax_months` | unavailable (`work_location`) | No source counts months with $500 or more earned in Denver; POWPUMA 08/00490 spans nine counties. |
+
+The registry cites the Philadelphia regulations and Revenue Department
+guidance, the ACS PUMS code lists (with their SHA-256) and the LODES technical
+documentation for each row.
+
+`with_us_local_tax_inputs` writes the `resident_wages` inputs once a line has
+both the residence flag and final wages, and never writes an unavailable
+input (it removes a stale column). The receipt records each input's status,
+the resident counts, and, with weights, the weighted resident wage base:
+
+- **Block ladder** (`tools/build_us_puf_support_base.py`): right after
+  `with_household_us_geography_ladder`, since the wages are final by then.
+  The assignment summary records the receipt as `local_tax_inputs`.
+- **Stacked pool**: the derive operator `with_us_local_tax_inputs`, after
+  the Schedule D completion and before the QBI reconciliation, because the
+  PUMA ladder draws geography before the wage transfers. The derive receipt
+  holds the receipt, and the engine ABI lock lists the taxable wages as
+  `derived_resident_wage_tax_input` and the other four as
+  `unavailable_work_location_input` or `unavailable_refund_claim_input`.
+- **Pooled ACS line** (`with_optional_acs_spine`): after the flags, on every
+  row. ACS people under 15 carry the PUMS blank wage, which the local release
+  fills with the engine default; with `null_wages="propagate"` a resident's
+  input stays null with it, joins the reviewed-null register, and gets the
+  same fill.
+- **Existing artifacts**: `rederive_us_local_jurisdiction_flags` derives the
+  inputs after the flags and refuses a carried input that disagrees with the
+  artifact's own flags and wages.
+- **Annual static aging** (`microcosm.build.us_annual_static_aging`): the
+  engine has no uprating for these inputs, so each projected year re-derives
+  the taxable wages from that year's projected wages.
+
+`us_local_tax_input_failures` fails an unavailable input that is present, a
+taxable-wage column that disagrees with its rule, and, with
+`require_derivable`, a missing taxable-wage column where the residence flag is
+present. A missing residence flag or wage column, a null flag, or a resident's
+missing or infinite wage raises instead of writing 0.
+
+The value stays fixed once written, so a labor-supply response moves the
+engine's `employment_income` but not this input. Philadelphia also excludes
+nonqualified stock-option income from the base, which microcosm cannot
+separate from wages.

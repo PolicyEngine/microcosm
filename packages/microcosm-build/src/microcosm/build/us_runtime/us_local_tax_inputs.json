@@ -1,0 +1,167 @@
+{
+  "kind": "us_local_tax_input_registry",
+  "schema_version": 1,
+  "description": "How microcosm provisions the policyengine-us local-tax inputs that depend on where a person works, what they earn or what they claim, rather than on residence alone. A resident_wages input is derived from a residence flag in us_local_jurisdictions.json and the person's wages. An unavailable input has no defensible source at microcosm's geography; it is never written, so the engine default applies to every row.",
+  "engine": {
+    "package": "policyengine-us",
+    "versions_checked": [
+      "2.2.1",
+      "2.60.4"
+    ],
+    "note": "Each variable is an input with no formula in both versions. The float inputs default to 0, the boolean to False and the month count to 0, and none has an uprating parameter."
+  },
+  "inputs": [
+    {
+      "variable": "co_denver_employee_occupational_privilege_tax_months",
+      "entity": "person",
+      "jurisdiction": "City and County of Denver, Colorado",
+      "provision": "unavailable",
+      "basis": "work_location",
+      "engine_consumers": [
+        "co_denver_employee_occupational_privilege_tax"
+      ],
+      "requires": "The number of calendar months in which the person earned at least $500 for work performed in Denver.",
+      "reason": "No source records months worked in Denver. ACS PUMS records one reference-week place of work, and its smallest Colorado unit, POWPUMA 08/00490, spans nine counties (Adams, Arapahoe, Boulder, Broomfield, Clear Creek, Denver, Douglas, Gilpin and Jefferson). LODES counts jobs held on April 1, and its lowest earnings band is $1,250 a month or less, so neither the month count nor the $500 test can be read from it.",
+      "sources": [
+        "denver_opt",
+        "acs_pums_code_lists",
+        "acs_place_of_work",
+        "lodes"
+      ]
+    },
+    {
+      "variable": "de_wilmington_nonresident_earnings",
+      "entity": "person",
+      "jurisdiction": "City of Wilmington, Delaware",
+      "provision": "unavailable",
+      "basis": "work_location",
+      "engine_consumers": [
+        "de_wilmington_earned_income_tax"
+      ],
+      "requires": "A nonresident's earnings for work performed in Wilmington.",
+      "reason": "The smallest person-level place-of-work unit is ACS PUMS POWPUMA 10/00100, which is all of New Castle County, and Wilmington is one place inside it. Wilmington appears only in aggregate commuting flows (CTPP place tables, LODES origin-destination counts), which give no person's earnings.",
+      "sources": [
+        "acs_pums_code_lists",
+        "acs_place_of_work",
+        "lodes"
+      ]
+    },
+    {
+      "variable": "ny_yonkers_nonresident_earnings",
+      "entity": "person",
+      "jurisdiction": "City of Yonkers, New York",
+      "provision": "unavailable",
+      "basis": "work_location",
+      "engine_consumers": [
+        "ny_yonkers_income_tax"
+      ],
+      "requires": "A nonresident's earnings for work performed in Yonkers.",
+      "reason": "The smallest person-level place-of-work unit is ACS PUMS POWPUMA 36/03100, which is all of Westchester County. Yonkers appears only in aggregate commuting flows (ACS county-subdivision flows, CTPP, LODES origin-destination counts), which give no person's earnings.",
+      "sources": [
+        "acs_pums_code_lists",
+        "acs_place_of_work",
+        "lodes"
+      ]
+    },
+    {
+      "variable": "pa_philadelphia_wage_tax_reduced_rate_eligible",
+      "entity": "person",
+      "jurisdiction": "City and County of Philadelphia, Pennsylvania",
+      "provision": "unavailable",
+      "basis": "refund_claim",
+      "engine_consumers": [
+        "pa_philadelphia_wage_tax"
+      ],
+      "requires": "Whether the person receives the 1.5% income-based Wage Tax rate.",
+      "reason": "Employers withhold the full rate. A worker approved for Pennsylvania Schedule SP tax forgiveness gets the reduced rate only by filing a refund petition after the year ends, and few do: 1,421 filers received refunds for tax year 2020, against as many as 60,000 eligible households by the City Council's estimate. No survey records the petition. Eligibility alone would overstate the relief many times over, so the input is not written and the engine applies the standard rates.",
+      "sources": [
+        "philadelphia_income_based_rate"
+      ]
+    },
+    {
+      "variable": "pa_philadelphia_wage_tax_taxable_wages",
+      "entity": "person",
+      "jurisdiction": "City and County of Philadelphia, Pennsylvania",
+      "provision": "resident_wages",
+      "residence_flag": "pa_philadelphia_wage_tax_resident",
+      "wage_input": "employment_income_before_lsr",
+      "engine_consumers": [
+        "pa_philadelphia_wage_tax"
+      ],
+      "requires": "The person's compensation subject to the Philadelphia Wage Tax.",
+      "resident_rule": "A Philadelphia resident is taxed on all compensation wherever earned, so the resident's taxable wages are max(employment_income_before_lsr, 0): the engine's gross wages, which include elective retirement deferrals and Section 125 salary reductions, both taxable in Philadelphia. Self-employment income falls under the Net Profits Tax, not the Wage Tax, and is excluded. Every other person holds 0.",
+      "nonresident_reason": "A nonresident is taxed on pay for days worked in Philadelphia. ACS PUMS POWPUMA 42/03200 is exactly Philadelphia County, but microcosm does not read the ACS place-of-work fields, it records one reference-week location for the main job only, and it codes people working from home to their home POWPUMA although Philadelphia taxes a nonresident's elective home-work days. Nonresident rows therefore hold 0, the engine default, and the nonresident component is recorded as unavailable.",
+      "limitations": [
+        "Nonqualified stock-option income (W-2 code V) is excluded from the Philadelphia base; microcosm cannot separate it from wages.",
+        "The value is fixed when written. A labor-supply response changes employment_income in the engine but not this input."
+      ],
+      "sources": [
+        "philadelphia_wage_tax_base",
+        "acs_pums_code_lists",
+        "acs_place_of_work"
+      ]
+    }
+  ],
+  "sources": {
+    "philadelphia_wage_tax_base": {
+      "summary": "Residents are taxed on all compensation regardless of where services are performed; nonresidents on work done in Philadelphia, apportioned by working days, with employer-required remote days exempt and elective home days taxable. Employee 401(k) deferrals, pension contributions, Section 125 premiums, HSA and FSA contributions are taxable; self-employment income is taxed under the Net Profits Tax.",
+      "documents": [
+        "https://www.phila.gov/media/20200131115216/Philadelphia-Income-Tax-Regulations-compiled-2020-january.pdf",
+        "https://www.phila.gov/2020-06-15-what-types-of-income-are-not-subject-to-the-wage-tax/",
+        "https://www.phila.gov/media/20231024112123/UPDATED-Wage-Tax-policy-guidance-for-non-resident-employees.pdf",
+        "https://www.phila.gov/media/20260112135700/2025-Earnings-Tax-return-instructions-general-information.pdf"
+      ],
+      "sections": "Regulations sections 201, 203, 205, 207-209 and 102(b)"
+    },
+    "philadelphia_income_based_rate": {
+      "summary": "A resident or nonresident approved for Pennsylvania Schedule SP tax forgiveness pays the Wage Tax at 1.5% by refund petition after the year ends; employers continue to withhold the full rate.",
+      "documents": [
+        "https://www.phila.gov/services/payments-assistance-taxes/taxes/business-taxes/business-taxes-by-type/wage-tax-employers/",
+        "https://www.phila.gov/media/20260128153824/Philadelphia-Income-Based-Wage-Tax-Refund-Petition-form-fillable.pdf",
+        "https://phlcouncil.com/?p=69732"
+      ],
+      "sections": "Regulations section 601(l)"
+    },
+    "denver_opt": {
+      "summary": "The employee occupational privilege tax is $5.75 for each calendar month in which the employee earns at least $500 for services performed in Denver.",
+      "documents": [
+        "https://www.denvergov.org/files/assets/public/v/2/finance/documents/treasury/tax-guides/taxguidetopic61_occupationalprivilegetaxes.pdf"
+      ]
+    },
+    "acs_pums_code_lists": {
+      "summary": "PUMA to POWPUMA relationship (sheet PUMA_POWPUMA_MIGPUMA) and county to POWPUMA lookup. Philadelphia County 42101 is POWPUMA 42/03200 and no other county; Westchester 36119 is POWPUMA 36/03100 alone; New Castle 10003 is POWPUMA 10/00100 alone; Denver 08031 shares POWPUMA 08/00490 with eight other counties. POWPUMAs aggregate whole counties.",
+      "documents": [
+        {
+          "url": "https://www2.census.gov/programs-surveys/acs/tech_docs/pums/code_lists/ACSPUMS2023CodeLists.xls",
+          "sha256": "9da7cc5c8169e31111fbc0673a99aeb9c63459c84af7233f7c789ee382cf312f"
+        },
+        {
+          "url": "https://www2.census.gov/programs-surveys/acs/tech_docs/pums/code_lists/ACSPUMS2022CodeLists.xls",
+          "sha256": "1db73c534d4025a89299902504a689d32f64320779320d1fa035c43ccd3e1dd4"
+        },
+        {
+          "url": "https://www2.census.gov/geo/pdfs/reference/puma2020/2020PUMA_FinalCriteria.pdf",
+          "sha256": "f7eaa4345dc4527aad11e102464e7fdcd68dd148e91311818a221fbf9ea32daf"
+        }
+      ]
+    },
+    "acs_place_of_work": {
+      "summary": "ACS records the place of work for people at work in the reference week, at the location where they worked most that week; people who worked from home are coded to their residence.",
+      "documents": [
+        {
+          "url": "https://www2.census.gov/programs-surveys/acs/tech_docs/subject_definitions/2024_ACSSubjectDefinitions.pdf",
+          "sha256": "6e0c5b1a5d3ebf7e300e583ac6424cbd5f09de50d69e7ef03aa6d070d9c4a7a8"
+        }
+      ]
+    },
+    "lodes": {
+      "summary": "LODES 8.4 origin-destination files count jobs, not people, with positive earnings in the first two quarters and held on April 1, in three monthly earnings bands ($1,250 or less, $1,251 to $3,333, more than $3,333), with noise infusion; self-employment is not covered.",
+      "documents": [
+        {
+          "url": "https://lehd.ces.census.gov/data/lodes/LODES8/LODESTechDoc8.4.pdf",
+          "sha256": "1189b8aa4cefd6cdf53c3b85e27366054af0cd5418056b04ff70d210b87eddee"
+        }
+      ]
+    }
+  }
+}

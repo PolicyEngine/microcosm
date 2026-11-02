@@ -57,6 +57,9 @@ from microcosm.build.us_runtime.housing_inputs import (
     US_HOUSING_SPM_UNIT_OUTPUT_COLUMNS,
 )
 from microcosm.build.us_runtime.immigration import US_IMMIGRATION_OUTPUT_COLUMNS
+from microcosm.build.us_runtime.local_jurisdictions import (
+    us_local_tax_input_output_columns,
+)
 from microcosm.build.us_runtime.medicare_take_up import (
     US_MEDICARE_TAKE_UP_OUTPUT_COLUMNS,
 )
@@ -355,6 +358,7 @@ PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES: OperatorOutputFamilies = {
     "qbi_reconciliation": {
         "person": frozenset(US_QBI_RECONCILED_PERSON_COLUMNS),
     },
+    "local_tax_inputs": us_local_tax_input_output_columns(),
     "housing_assistance": {
         "spm_unit": frozenset(
             {

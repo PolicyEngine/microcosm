@@ -63,8 +63,11 @@ from microcosm.build.us_runtime.housing_inputs import (
 )
 from microcosm.build.us_runtime.immigration import with_us_immigration_inputs
 from microcosm.build.us_runtime.local_jurisdictions import (
+    LOCAL_TAX_INPUT_RESIDENT_WAGES,
     PUMA_GEOGRAPHY_RUNGS,
     packaged_us_local_jurisdiction_registry,
+    packaged_us_local_tax_input_registry,
+    with_us_local_tax_inputs,
 )
 from microcosm.build.us_runtime.medicare_take_up import (
     with_us_medicare_take_up_input,
@@ -241,9 +244,14 @@ pre-clone derivation and a post-clone PUF-imputation pass.
 
 POOL_DERIVE_OPERATOR_ORDER = (
     "_complete_schedule_d_input",
+    "with_us_local_tax_inputs",
     "with_us_qbi_input_reconciliation",
 )
-"""Whole-pool deterministic operators owned by the derive stage."""
+"""Whole-pool deterministic operators owned by the derive stage.
+
+The local-tax inputs precede the QBI reconciliation, whose receipt binds the
+live person-column inventory; they read wages, which it does not change.
+"""
 
 POOL_RANDOM_SEED = 0
 """Fixed seed shared by pool imputations and seeded input stages."""
@@ -371,8 +379,9 @@ is asserted.
 
 POOL_PROJECTION_INPUT_PROVISION_COUNTS: tuple[tuple[str, int], ...] = (
     ("assembled_native_engine_input", 5),
-    ("declared_absent_engine_input", 756),
+    ("declared_absent_engine_input", 751),
     ("declared_deferred_null_input", 3),
+    ("derived_resident_wage_tax_input", 1),
     ("derived_schedule_d_input", 1),
     ("frame_structural_engine_input", 10),
     ("geography_derived_jurisdiction_input", 2),
@@ -380,6 +389,8 @@ POOL_PROJECTION_INPUT_PROVISION_COUNTS: tuple[tuple[str, int], ...] = (
     ("preserved_stacked_engine_input", 6),
     ("seed_stage_program_contract", 17),
     ("unavailable_place_jurisdiction_input", 2),
+    ("unavailable_refund_claim_input", 1),
+    ("unavailable_work_location_input", 3),
     ("unprovisioned_source_input", 1),
 )
 """How every installed engine input is provisioned, by count.
@@ -389,9 +400,9 @@ tool re-derives every engine-pinned quantity this module carries.
 """
 
 POOL_REMAINING_STAGE_INPUT_MANIFEST_SHA256 = (
-    "6e70bc749ab7fd34d6bb902423a3240029d14533819cb5c6f1f75457875cf956"
+    "92cad0dc6283e463b74cec5137196d4db4e29b34cb87c0718c6c2f669cf99915"
 )
-"""Pinned content digest of all 1,059 post-transfer consumer/input rows."""
+"""Pinned content digest of all 1,064 post-transfer consumer/input rows."""
 
 
 @dataclass(frozen=True)
@@ -644,6 +655,13 @@ POOL_OPERATOR_CONTRACTS: Mapping[str, SourceOperatorContract] = {
         "transferred tax-unit parents exist only on the physically cloned pool",
         execution_scope=_WHOLE_POOL_EXECUTION_SCOPE,
     ),
+    "with_us_local_tax_inputs": SourceOperatorContract(
+        "local_tax_inputs",
+        (_POST_CLONE_PHASE,),
+        "resident wage-tax bases read the assembled residence flags and the "
+        "transferred wages",
+        execution_scope=_WHOLE_POOL_EXECUTION_SCOPE,
+    ),
     "with_us_qbi_input_reconciliation": SourceOperatorContract(
         "qbi_reconciliation",
         (_POST_CLONE_PHASE,),
@@ -651,7 +669,7 @@ POOL_OPERATOR_CONTRACTS: Mapping[str, SourceOperatorContract] = {
         execution_scope=_WHOLE_POOL_EXECUTION_SCOPE,
     ),
 }
-"""Total clone-phase registry for all 23 pool-path operator kernels."""
+"""Total clone-phase registry for all 24 pool-path operator kernels."""
 
 POOL_SOURCE_OPERATOR_CONTRACTS = POOL_OPERATOR_CONTRACTS
 """Backward-compatible name for the now-total pool operator registry."""
@@ -1178,7 +1196,7 @@ def pool_remaining_stage_input_manifest(
     """Enumerate and statically provision every remaining-stage data read.
 
     The manifest starts at a validated ``transferred`` checkpoint and covers
-    tail preparation, both derive kernels, all seventeen seed-program branches,
+    tail preparation, all three derive kernels, all seventeen seed-program branches,
     and the terminal SSI simulation.  Simulation leaves come from the pinned
     source-index graph rather than a handwritten dependency list.
     """
@@ -1365,6 +1383,58 @@ def pool_remaining_stage_input_manifest(
         provision="frame_entity_id",
         available_by="assembled",
     )
+
+    # The stacked pool's geography comes from the PUMA ladder, which draws a
+    # county but no place: county-rule jurisdiction flags are derived with
+    # it, place-rule flags are never written (local_jurisdictions).
+    local_jurisdiction_inputs = {
+        (item.entity, item.flag): item.rule in PUMA_GEOGRAPHY_RUNGS
+        for item in packaged_us_local_jurisdiction_registry().jurisdictions
+    }
+    local_tax_inputs = {
+        (item.entity, item.variable): item
+        for item in packaged_us_local_tax_input_registry().inputs
+    }
+    # A resident wage-tax base reads the residence flag assembled with the
+    # geography and the transferred wages; its receipt weighs residents by
+    # their household's weight.
+    for item in local_tax_inputs.values():
+        if item.provision != LOCAL_TAX_INPUT_RESIDENT_WAGES:
+            continue
+        assert item.residence_flag is not None and item.wage_input is not None
+        if local_jurisdiction_inputs[("person", item.residence_flag)]:
+            register(
+                "derive",
+                "with_us_local_tax_inputs",
+                "person",
+                item.residence_flag,
+                execution_scope="whole_pool",
+                provision="geography_derived_jurisdiction_input",
+                available_by="assembled",
+            )
+        register(
+            "derive",
+            "with_us_local_tax_inputs",
+            "person",
+            item.wage_input,
+            execution_scope="whole_pool",
+            provision=surface_provision(item.wage_input),
+            available_by="transferred",
+        )
+    for entity, variable, provision in (
+        ("person", "person_household_id", "frame_membership"),
+        ("household", "household_id", "frame_entity_id"),
+        ("household", "<resolved_weight>", "frame_household_weight"),
+    ):
+        register(
+            "derive",
+            "with_us_local_tax_inputs",
+            entity,
+            variable,
+            execution_scope="whole_pool",
+            provision=provision,
+            available_by="assembled",
+        )
 
     transfer_owned = {
         variable
@@ -1566,13 +1636,6 @@ def pool_remaining_stage_input_manifest(
         for entity, variables in _POOL_NATIVE_COMPLETE_OUTPUTS.items()
         for variable in variables
     }
-    # The stacked pool's geography comes from the PUMA ladder, which draws a
-    # county but no place: county-rule jurisdiction flags are derived with
-    # it, place-rule flags are never written (local_jurisdictions).
-    local_jurisdiction_inputs = {
-        (item.entity, item.flag): item.rule in PUMA_GEOGRAPHY_RUNGS
-        for item in packaged_us_local_jurisdiction_registry().jurisdictions
-    }
     projection_provisions: dict[str, int] = {}
     for entity, variable in _pool_engine_input_projection(
         resolved_metadata_index,
@@ -1609,6 +1672,25 @@ def pool_remaining_stage_input_manifest(
                 provision = "unavailable_place_jurisdiction_input"
                 available_by = "simulate"
                 fallback = "policyengine_default_no_place_rung"
+        elif (entity, variable) in local_tax_inputs:
+            # A resident wage-tax base is derived for residents; its
+            # nonresident rows hold the engine default because no source
+            # gives where a nonresident works. Every other local-tax input
+            # has no source and is never written (us_local_tax_inputs.json).
+            tax_input = local_tax_inputs[(entity, variable)]
+            if tax_input.provision == LOCAL_TAX_INPUT_RESIDENT_WAGES:
+                if local_jurisdiction_inputs[("person", tax_input.residence_flag)]:
+                    provision = "derived_resident_wage_tax_input"
+                    available_by = "derived"
+                    fallback = "nonresident_work_location_unavailable_engine_default"
+                else:
+                    provision = "unavailable_residence_wage_tax_input"
+                    available_by = "simulate"
+                    fallback = "policyengine_default_no_residence_rung"
+            else:
+                provision = f"unavailable_{tax_input.basis}_input"
+                available_by = "simulate"
+                fallback = f"policyengine_default_no_{tax_input.basis}_source"
         elif (entity, variable) in _POOL_SIMULATION_PRESERVED_ENGINE_INPUTS:
             provision = "preserved_stacked_engine_input"
             available_by, preserved_fallback = _POOL_SIMULATION_PRESERVED_ENGINE_INPUTS[
@@ -2911,11 +2993,18 @@ def derive_multispine_pool_inputs(frame: Frame) -> PoolStageOutput:
     Schedule D capital-gain distributions are derived once per tax unit from
     the transferred parent inputs, then carried by the first person only when
     the unit has no pre-existing values. Existing non-null values are never
-    rewritten. The shared QBI reconciliation then restores its documented
-    all-or-nothing identities on the imputed PUF-detail surface.
+    rewritten. The local-tax inputs are then derived from the residence
+    flags assembled with the geography and the now-final wages (a
+    Philadelphia resident's taxable wages); the inputs no source decides are
+    left unwritten and receipted. The shared QBI reconciliation last restores
+    its documented all-or-nothing identities on the imputed PUF-detail
+    surface.
     """
 
     remaining_stage_manifest_receipt = pool_remaining_stage_input_manifest_receipt()
+
+    def local_tax_inputs_with_receipt(input_frame: Frame) -> PoolStageOutput:
+        return PoolStageOutput(*with_us_local_tax_inputs(input_frame))
 
     def reconcile_qbi_with_receipt(input_frame: Frame) -> PoolStageOutput:
         reconciled = with_us_qbi_input_reconciliation(input_frame)
@@ -2938,10 +3027,12 @@ def derive_multispine_pool_inputs(frame: Frame) -> PoolStageOutput:
         operators={
             "_complete_schedule_d_input": _complete_schedule_d_input,
             "with_us_qbi_input_reconciliation": reconcile_qbi_with_receipt,
+            "with_us_local_tax_inputs": local_tax_inputs_with_receipt,
         },
     )
     schedule_d_receipt = completed.receipt["suboperators"][0]["kernel_receipt"]
-    qbi_receipt = completed.receipt["suboperators"][1]["kernel_receipt"]
+    local_tax_input_receipt = completed.receipt["suboperators"][1]["kernel_receipt"]
+    qbi_receipt = completed.receipt["suboperators"][2]["kernel_receipt"]
     authorized = bind_us_qbi_reconciliation_transition_authority(
         completed.frame,
         qbi_receipt,
@@ -2960,6 +3051,7 @@ def derive_multispine_pool_inputs(frame: Frame) -> PoolStageOutput:
             "remaining_stage_input_manifest": remaining_stage_manifest_receipt,
             "schedule_d_capital_gain_distributions": schedule_d_receipt,
             "qbi_input_reconciliation": dict(qbi_receipt),
+            "local_tax_inputs": dict(local_tax_input_receipt),
         },
         qbi_transition_authority_sha256=qbi_receipt["sha256"],
     )

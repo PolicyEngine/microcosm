@@ -6,7 +6,7 @@
   "country": "us",
   "documentation_sha256": "811b4091f9419c8792e5cc7fcda30d54c5a7c6d35dd944c26c005e32cae06647",
   "field_usage": {
-    "authored_normative_field_count": 32524,
+    "authored_normative_field_count": 32525,
     "claim_count": 49,
     "claims": [
       {
@@ -530,8 +530,8 @@
         ],
         "mode": "legacy_behavior",
         "pointer_class": "all",
-        "pointer_count": 88,
-        "pointer_sha256": "ae011455154bae0df3913ca9a056058a909d913439b292cb46c11f63c7d0d9a3",
+        "pointer_count": 89,
+        "pointer_sha256": "68a3a00171aca397db079a7482b68aba8a7b4ad88235ac1bd0d8d7061a242e1c",
         "rationale": null,
         "relative_sink_prefix": null,
         "source_prefix": "/authored/spec~1spine.yaml/pipeline_contract",
@@ -722,8 +722,8 @@
         ],
         "mode": "legacy_behavior",
         "pointer_class": "all",
-        "pointer_count": 8614,
-        "pointer_sha256": "66eec1216f404e43f7605fba0016d1cd666e71ebe3e35278d14a944d8b48b619",
+        "pointer_count": 8655,
+        "pointer_sha256": "e8cb4e455fd52f3ff9fffe402fc5a943dea81c89a1310a458649c7561b286ccb",
         "rationale": null,
         "relative_sink_prefix": null,
         "source_prefix": "/resolved/generated_authorities",
@@ -772,21 +772,21 @@
         "verifier": "vintages"
       }
     ],
-    "configuration_field_count": 42305,
-    "consumed_field_count": 42305,
+    "configuration_field_count": 42347,
+    "consumed_field_count": 42347,
     "generation0_effect_counts": {
-      "legacy_behavior": 38608,
+      "legacy_behavior": 38650,
       "no_generation0_effect": 3697
     },
     "mode_counts": {
       "compiler_semantic": 27751,
       "front_end_validation": 354,
       "identity_only": 103,
-      "legacy_behavior": 14097
+      "legacy_behavior": 14139
     },
     "multiple_primary_use_field_count": 0,
-    "pointer_inventory_sha256": "d51087fd950f99fb7fcf126c31419374172d946f5846d2bf9d0eb0e7a6dfca46",
-    "resolved_binding_field_count": 9781,
+    "pointer_inventory_sha256": "29f7f23ad778c4a3f56f5cc269bd8868739fd39470e5f9fbb0089c205ad56238",
+    "resolved_binding_field_count": 9822,
     "unused_field_count": 0
   },
   "inventory_coverage": {
@@ -1887,7 +1887,7 @@
             "alpha",
             "zeta"
           ],
-          "sha256": "94ed381f17dc9cafb80396b2ea0f02ed8745d9359ec3f4d551a65a5a7f2fc26d"
+          "sha256": "668073673f214f8cee24f435a5b8f6167831ac6a4e303fc6420b8ad3684ed9db"
         },
         "failures": [],
         "observed": {
@@ -1911,7 +1911,7 @@
             "alpha",
             "zeta"
           ],
-          "sha256": "94ed381f17dc9cafb80396b2ea0f02ed8745d9359ec3f4d551a65a5a7f2fc26d"
+          "sha256": "668073673f214f8cee24f435a5b8f6167831ac6a4e303fc6420b8ad3684ed9db"
         },
         "status": "covered"
       },
@@ -1975,7 +1975,7 @@
             "take_up_contract",
             "us_qbi_reconciliation_contract"
           ],
-          "sha256": "e31727246ecd547071778fb91c2f6b102cf024f3c0cc64252bbc8040b9fb1201"
+          "sha256": "cac308466b897bc5652fc1cd9e6304fcc98c3b4bd5141b03268c4b5f1139de5d"
         },
         "status": "covered"
       },
@@ -2599,7 +2599,7 @@
       "country": "us",
       "schema_id": "country_spec",
       "schema_version": 1,
-      "spec_sha256": "395510a7a23f8474ca9ce79daa87c7808c851474e82ad5e2be2a00e18b0c1fd2"
+      "spec_sha256": "c69a4313618e0099e9d4dbeb18af80e7a3aac797c0263bd0e4f16d87b442af0e"
     }
   },
   "report_schema_version": 3,
@@ -2609,7 +2609,7 @@
     "country": "us",
     "schema_id": "country_spec",
     "schema_version": 1,
-    "spec_sha256": "395510a7a23f8474ca9ce79daa87c7808c851474e82ad5e2be2a00e18b0c1fd2"
+    "spec_sha256": "c69a4313618e0099e9d4dbeb18af80e7a3aac797c0263bd0e4f16d87b442af0e"
   },
   "status": "pass"
 }

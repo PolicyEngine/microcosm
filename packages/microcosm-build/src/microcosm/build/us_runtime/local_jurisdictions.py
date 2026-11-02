@@ -38,6 +38,26 @@ line calls :func:`rederive_us_local_jurisdiction_flags`. It derives every
 flag the artifact's own geography decides and refuses a carried flag that
 disagrees with that geography. Both ladder gates fail a table that lacks a
 flag its geography decides.
+
+A residence flag alone moves no tax: ``pa_philadelphia_wage_tax`` returns 0
+unless the person input ``pa_philadelphia_wage_tax_taxable_wages`` is
+nonzero. The second packaged registry, ``us_local_tax_inputs.json`` (its
+SHA-256 also pinned here), records how each local-tax input that depends on
+work, wages or a claim is provisioned:
+
+- provision ``resident_wages``: a resident's input is
+  ``max(employment_income_before_lsr, 0)``, since a resident is taxed on all
+  compensation wherever earned; every other person holds 0, the engine
+  default, because the nonresident (work-location) component has no source;
+- provision ``unavailable``: no source decides the input at microcosm's
+  geography (a nonresident's earnings in Yonkers or Wilmington, Denver
+  occupational-privilege-tax months, the petition-claimed Philadelphia
+  reduced rate). It is never written, and the receipt says why.
+
+A line writes these with :func:`with_us_local_tax_inputs` once both the
+residence flag and the wages are final, which is after the wage transfers
+rather than at the geography step on the stacked pool.
+:func:`rederive_us_local_jurisdiction_flags` re-derives them with the flags.
 """
 
 from __future__ import annotations
@@ -78,6 +98,31 @@ PUMA_GEOGRAPHY_RUNGS = (JURISDICTION_RUNG_COUNTY,)
 #: Receipt statuses.
 JURISDICTION_FLAG_DERIVED = "derived"
 JURISDICTION_FLAG_UNAVAILABLE = "unavailable"
+
+US_LOCAL_TAX_INPUT_REGISTRY_RESOURCE = "us_local_tax_inputs.json"
+#: SHA-256 of the packaged local-tax input registry;
+#: :func:`packaged_us_local_tax_input_registry` refuses any other bytes.
+US_LOCAL_TAX_INPUT_REGISTRY_SHA256 = (
+    "e5592932856d9de3815d97890b7839e28a106a451c544c7f503b3a72da2871d6"
+)
+US_LOCAL_TAX_INPUT_REGISTRY_KIND = "us_local_tax_input_registry"
+US_LOCAL_TAX_INPUT_REGISTRY_SCHEMA_VERSION = 1
+
+#: Local-tax input provisions.
+LOCAL_TAX_INPUT_RESIDENT_WAGES = "resident_wages"
+LOCAL_TAX_INPUT_UNAVAILABLE = "unavailable"
+LOCAL_TAX_INPUT_PROVISIONS = (
+    LOCAL_TAX_INPUT_RESIDENT_WAGES,
+    LOCAL_TAX_INPUT_UNAVAILABLE,
+)
+#: Why an unavailable input has no source.
+LOCAL_TAX_INPUT_UNAVAILABLE_BASES = ("refund_claim", "work_location")
+#: What a resident's null wage yields: refuse it (every finished line), or
+#: leave the input null so a nullable staging artifact's reviewed-null fill
+#: gives it the engine default along with the wage itself.
+NULL_WAGES_REFUSE = "refuse"
+NULL_WAGES_PROPAGATE = "propagate"
+NULL_WAGE_MODES = (NULL_WAGES_REFUSE, NULL_WAGES_PROPAGATE)
 
 _ENTITIES = ("household", "person")
 _REQUIRED_JURISDICTION_KEYS = (
@@ -533,7 +578,13 @@ def rederive_us_local_jurisdiction_flags(
     already carries must agree with that geography, or this raises:
     re-deriving it would hide a corrupt artifact.
 
-    The receipt adds ``carried_flags``, the flags the artifact already held.
+    The local-tax inputs are then derived from the re-derived flags and the
+    artifact's wages (:func:`with_us_local_tax_inputs`); a carried input that
+    disagrees with the artifact's own flags and wages is refused the same way.
+
+    The receipt adds ``carried_flags``, the flags the artifact already held,
+    ``local_tax_inputs``, the local-tax input receipt, and
+    ``carried_local_tax_inputs``, the inputs the artifact already held.
     """
 
     resolved = registry or packaged_us_local_jurisdiction_registry()
@@ -546,6 +597,14 @@ def rederive_us_local_jurisdiction_flags(
             "The artifact carries local-jurisdiction flags that disagree with "
             "its own geography: " + "; ".join(failures)
         )
+    failures = us_local_tax_input_failures(
+        frame.table("person"), jurisdictions=resolved
+    )
+    if failures:
+        raise ValueError(
+            "The artifact carries local-tax inputs that disagree with its own "
+            "residence flags and wages: " + "; ".join(failures)
+        )
     carried = sorted(
         item.flag
         for item in resolved.jurisdictions
@@ -557,6 +616,16 @@ def rederive_us_local_jurisdiction_flags(
         registry=resolved,
     )
     receipt["carried_flags"] = carried
+    carried_tax_inputs = sorted(
+        item.variable
+        for item in packaged_us_local_tax_input_registry().inputs
+        if item.variable in frame.table(item.entity)
+    )
+    derived, tax_input_receipt = with_us_local_tax_inputs(
+        derived, jurisdictions=resolved
+    )
+    receipt["local_tax_inputs"] = tax_input_receipt
+    receipt["carried_local_tax_inputs"] = carried_tax_inputs
     return derived, receipt
 
 
@@ -699,6 +768,544 @@ def us_local_jurisdiction_flag_failures(
 
 
 # ---------------------------------------------------------------------------
+# Local-tax inputs
+# ---------------------------------------------------------------------------
+
+_REQUIRED_TAX_INPUT_KEYS = (
+    "variable",
+    "entity",
+    "jurisdiction",
+    "provision",
+    "engine_consumers",
+    "requires",
+    "sources",
+)
+_RESIDENT_WAGES_KEYS = (
+    "residence_flag",
+    "wage_input",
+    "resident_rule",
+    "nonresident_reason",
+)
+_UNAVAILABLE_KEYS = ("basis", "reason")
+
+
+@dataclass(frozen=True)
+class UsLocalTaxInput:
+    """One policyengine-us local-tax input and how microcosm provisions it.
+
+    Attributes:
+        variable: The policyengine-us input variable.
+        entity: ``person`` or ``household``; a ``resident_wages`` input is a
+            person input.
+        jurisdiction: Human-readable name.
+        provision: ``resident_wages`` or ``unavailable``.
+        basis: For ``unavailable``, what no source supplies
+            (``work_location`` or ``refund_claim``).
+        residence_flag: For ``resident_wages``, the person flag in
+            ``us_local_jurisdictions.json`` that marks residents.
+        wage_input: For ``resident_wages``, the person wage input.
+        reason: For ``unavailable``, why no source decides the input; for
+            ``resident_wages``, why its nonresident component is unavailable.
+    """
+
+    variable: str
+    entity: str
+    jurisdiction: str
+    provision: str
+    basis: str | None
+    residence_flag: str | None
+    wage_input: str | None
+    reason: str
+
+
+@dataclass(frozen=True)
+class UsLocalTaxInputRegistry:
+    """The parsed local-tax input registry plus the SHA-256 of its bytes."""
+
+    inputs: tuple[UsLocalTaxInput, ...]
+    sha256: str
+    metadata: Mapping[str, Any]
+
+    @property
+    def variables(self) -> tuple[str, ...]:
+        return tuple(item.variable for item in self.inputs)
+
+    def with_provision(self, provision: str) -> tuple[UsLocalTaxInput, ...]:
+        return tuple(item for item in self.inputs if item.provision == provision)
+
+
+def load_us_local_tax_input_registry(
+    path: str | Path,
+    *,
+    expected_sha256: str | None = None,
+) -> UsLocalTaxInputRegistry:
+    """Load and validate a local-tax input registry, optionally pinning its SHA-256."""
+
+    payload = Path(path).read_bytes()
+    return _tax_input_registry_from_bytes(payload, expected_sha256=expected_sha256)
+
+
+@cache
+def packaged_us_local_tax_input_registry() -> UsLocalTaxInputRegistry:
+    """The packaged local-tax input registry, refused unless its bytes match the pin."""
+
+    payload = (
+        files("microcosm.build.us_runtime")
+        .joinpath(US_LOCAL_TAX_INPUT_REGISTRY_RESOURCE)
+        .read_bytes()
+    )
+    return _tax_input_registry_from_bytes(
+        payload, expected_sha256=US_LOCAL_TAX_INPUT_REGISTRY_SHA256
+    )
+
+
+def us_local_tax_input_output_columns(
+    registry: UsLocalTaxInputRegistry | None = None,
+) -> dict[str, frozenset[str]]:
+    """The columns a local-tax input step writes, by entity.
+
+    Only ``resident_wages`` inputs are ever written; an unavailable input
+    never is.
+    """
+
+    resolved = registry or packaged_us_local_tax_input_registry()
+    columns: dict[str, set[str]] = {}
+    for item in resolved.with_provision(LOCAL_TAX_INPUT_RESIDENT_WAGES):
+        columns.setdefault(item.entity, set()).add(item.variable)
+    return {entity: frozenset(names) for entity, names in columns.items()}
+
+
+def _tax_input_registry_from_bytes(
+    payload: bytes,
+    *,
+    expected_sha256: str | None,
+) -> UsLocalTaxInputRegistry:
+    digest = hashlib.sha256(payload).hexdigest()
+    if expected_sha256 is not None and digest != expected_sha256:
+        raise ValueError(
+            "US local-tax input registry bytes do not match the pinned SHA-256: "
+            f"expected {expected_sha256}, observed {digest}."
+        )
+    document = json.loads(payload)
+    if not isinstance(document, Mapping):
+        raise ValueError("US local-tax input registry must be a JSON object.")
+    if document.get("kind") != US_LOCAL_TAX_INPUT_REGISTRY_KIND:
+        raise ValueError(
+            "US local-tax input registry kind must be "
+            f"{US_LOCAL_TAX_INPUT_REGISTRY_KIND!r}, got {document.get('kind')!r}."
+        )
+    if document.get("schema_version") != US_LOCAL_TAX_INPUT_REGISTRY_SCHEMA_VERSION:
+        raise ValueError(
+            "US local-tax input registry schema_version must be "
+            f"{US_LOCAL_TAX_INPUT_REGISTRY_SCHEMA_VERSION}, got "
+            f"{document.get('schema_version')!r}."
+        )
+    sources = document.get("sources")
+    if not isinstance(sources, Mapping) or not sources:
+        raise ValueError("US local-tax input registry has no sources.")
+    raw = document.get("inputs")
+    if not isinstance(raw, list) or not raw:
+        raise ValueError("US local-tax input registry has no inputs.")
+    inputs = tuple(
+        _tax_input(item, index, sources=sources) for index, item in enumerate(raw)
+    )
+    variables = [item.variable for item in inputs]
+    if len(set(variables)) != len(variables):
+        raise ValueError(
+            f"US local-tax input registry repeats a variable: {variables}."
+        )
+    if variables != sorted(variables):
+        raise ValueError(
+            f"US local-tax input registry variables must be sorted: {variables}."
+        )
+    metadata = {key: value for key, value in document.items() if key != "inputs"}
+    return UsLocalTaxInputRegistry(inputs=inputs, sha256=digest, metadata=metadata)
+
+
+def _tax_input(
+    item: object, index: int, *, sources: Mapping[str, Any]
+) -> UsLocalTaxInput:
+    label = f"inputs[{index}]"
+    if not isinstance(item, Mapping):
+        raise ValueError(f"{label} must be an object.")
+    missing = [key for key in _REQUIRED_TAX_INPUT_KEYS if key not in item]
+    if missing:
+        raise ValueError(f"{label} is missing {missing}.")
+    variable = _identifier(item["variable"], label=f"{label}.variable")
+    entity = item["entity"]
+    if entity not in _ENTITIES:
+        raise ValueError(f"{label}.entity must be one of {_ENTITIES}: {entity!r}.")
+    provision = item["provision"]
+    if provision not in LOCAL_TAX_INPUT_PROVISIONS:
+        raise ValueError(
+            f"{label}.provision must be one of {LOCAL_TAX_INPUT_PROVISIONS}: "
+            f"{provision!r}."
+        )
+    for key in ("jurisdiction", "requires"):
+        if not isinstance(item[key], str) or not item[key]:
+            raise ValueError(f"{label}.{key} must be a non-empty string.")
+    consumers = item["engine_consumers"]
+    if (
+        not isinstance(consumers, list)
+        or not consumers
+        or not all(isinstance(name, str) and name.isidentifier() for name in consumers)
+    ):
+        raise ValueError(f"{label}.engine_consumers must list engine variables.")
+    cited = item["sources"]
+    if not isinstance(cited, list) or not cited:
+        raise ValueError(f"{label}.sources must name at least one source.")
+    unknown = sorted(set(cited) - set(sources))
+    if unknown:
+        raise ValueError(f"{label}.sources names unknown source(s) {unknown}.")
+    own, other = (
+        (_RESIDENT_WAGES_KEYS, _UNAVAILABLE_KEYS)
+        if provision == LOCAL_TAX_INPUT_RESIDENT_WAGES
+        else (_UNAVAILABLE_KEYS, _RESIDENT_WAGES_KEYS)
+    )
+    missing = [key for key in own if key not in item]
+    if missing:
+        raise ValueError(f"{label}: a {provision} input is missing {missing}.")
+    mixed = [key for key in other if key in item]
+    if mixed:
+        raise ValueError(f"{label}: a {provision} input may not name {mixed}.")
+    for key in own:
+        if not isinstance(item[key], str) or not item[key]:
+            raise ValueError(f"{label}.{key} must be a non-empty string.")
+    if provision == LOCAL_TAX_INPUT_RESIDENT_WAGES:
+        if entity != "person":
+            raise ValueError(f"{label}: a resident_wages input is a person input.")
+        return UsLocalTaxInput(
+            variable=variable,
+            entity=entity,
+            jurisdiction=item["jurisdiction"],
+            provision=provision,
+            basis=None,
+            residence_flag=_identifier(
+                item["residence_flag"], label=f"{label}.residence_flag"
+            ),
+            wage_input=_identifier(item["wage_input"], label=f"{label}.wage_input"),
+            reason=item["nonresident_reason"],
+        )
+    basis = item["basis"]
+    if basis not in LOCAL_TAX_INPUT_UNAVAILABLE_BASES:
+        raise ValueError(
+            f"{label}.basis must be one of {LOCAL_TAX_INPUT_UNAVAILABLE_BASES}: "
+            f"{basis!r}."
+        )
+    return UsLocalTaxInput(
+        variable=variable,
+        entity=entity,
+        jurisdiction=item["jurisdiction"],
+        provision=provision,
+        basis=basis,
+        residence_flag=None,
+        wage_input=None,
+        reason=item["reason"],
+    )
+
+
+def _identifier(value: object, *, label: str) -> str:
+    if not isinstance(value, str) or not value.isidentifier() or value != value.lower():
+        raise ValueError(f"{label} must be a lowercase identifier: {value!r}.")
+    return value
+
+
+def _resident_wage_inputs(
+    registry: UsLocalTaxInputRegistry,
+    jurisdictions: UsLocalJurisdictionRegistry,
+) -> tuple[UsLocalTaxInput, ...]:
+    """The registry's resident_wages inputs, each tied to a person residence flag."""
+
+    person_flags = {item.flag for item in jurisdictions.for_entity("person")}
+    inputs = registry.with_provision(LOCAL_TAX_INPUT_RESIDENT_WAGES)
+    unknown = sorted(
+        item.residence_flag
+        for item in inputs
+        if item.residence_flag not in person_flags
+    )
+    if unknown:
+        raise ValueError(
+            "Local-tax residence flag(s) "
+            f"{unknown} are not person flags in the local-jurisdiction registry."
+        )
+    return inputs
+
+
+def _boolean_values(values: pd.Series, *, column: str) -> np.ndarray:
+    if values.isna().any():
+        raise ValueError(f"{column} has {int(values.isna().sum())} null row(s).")
+    if not pd.api.types.is_bool_dtype(values) and not values.isin([True, False]).all():
+        raise ValueError(f"{column} holds non-boolean values.")
+    return values.astype(bool).to_numpy()
+
+
+def us_resident_wage_tax_values(
+    person: pd.DataFrame,
+    item: UsLocalTaxInput,
+    *,
+    null_wages: str = NULL_WAGES_REFUSE,
+) -> np.ndarray:
+    """A ``resident_wages`` input's values, aligned to ``person``'s rows.
+
+    A resident (``item.residence_flag`` true) gets ``max(wages, 0)``: a
+    resident owes the tax on all compensation wherever earned, and a negative
+    wage is no compensation. Everyone else gets 0, the engine default, since
+    the nonresident component has no source. A missing column, a null or
+    non-boolean flag, or an infinite wage raises: writing 0 for a row nothing
+    could decide would be a silent guess. A resident's null wage raises too,
+    unless ``null_wages`` is ``propagate``: then the resident's value is null,
+    to be filled with the engine default exactly where the wage is.
+    """
+
+    if item.provision != LOCAL_TAX_INPUT_RESIDENT_WAGES:
+        raise ValueError(f"{item.variable} is not a resident_wages input.")
+    if null_wages not in NULL_WAGE_MODES:
+        raise ValueError(f"null_wages must be one of {NULL_WAGE_MODES}.")
+    assert item.residence_flag is not None and item.wage_input is not None
+    for column in (item.residence_flag, item.wage_input):
+        if column not in person:
+            raise ValueError(
+                f"person table has no {column!r}; it cannot decide {item.variable}."
+            )
+    resident = _boolean_values(person[item.residence_flag], column=item.residence_flag)
+    wages = pd.to_numeric(person[item.wage_input], errors="coerce").to_numpy(
+        dtype=np.float64, na_value=np.nan
+    )
+    infinite = np.isinf(wages)
+    if infinite.any():
+        raise ValueError(
+            f"{item.wage_input} has {int(infinite.sum())} infinite row(s); "
+            f"{item.variable} cannot be derived for them."
+        )
+    null_residents = resident & np.isnan(wages)
+    if null_residents.any() and null_wages == NULL_WAGES_REFUSE:
+        raise ValueError(
+            f"{item.wage_input} is null on {int(null_residents.sum())} resident "
+            f"row(s); {item.variable} cannot be derived for them."
+        )
+    return np.where(resident, np.maximum(wages, 0.0), 0.0)
+
+
+def apply_us_local_tax_inputs(
+    tables: Mapping[str, pd.DataFrame],
+    *,
+    registry: UsLocalTaxInputRegistry | None = None,
+    jurisdictions: UsLocalJurisdictionRegistry | None = None,
+    household_weights: np.ndarray | None = None,
+    null_wages: str = NULL_WAGES_REFUSE,
+) -> tuple[dict[str, pd.DataFrame], dict[str, Any]]:
+    """Write every derivable local-tax input and return the tables with a receipt.
+
+    A ``resident_wages`` input is written whenever its residence flag is on
+    the person table. Without the flag the line's geography could not decide
+    residence, so the input is not written (a stale column is removed) and
+    the receipt records it as unavailable. An ``unavailable`` input is never
+    written; a stale column is removed. The engine default then applies to
+    every row the receipt marks unavailable. ``null_wages`` is passed to
+    :func:`us_resident_wage_tax_values`.
+
+    Tables an input lives on are returned as new (shallow-copied) frames; the
+    input tables are never modified, and the other tables pass through.
+    """
+
+    resolved = registry or packaged_us_local_tax_input_registry()
+    flags = jurisdictions or packaged_us_local_jurisdiction_registry()
+    _resident_wage_inputs(resolved, flags)
+    out = dict(tables)
+    for entity in {item.entity for item in resolved.inputs}:
+        out[entity] = tables[entity].copy(deep=False)
+    person_weights: np.ndarray | None = None
+    entries: dict[str, Any] = {}
+    for item in resolved.inputs:
+        table = out[item.entity]
+        entry: dict[str, Any] = {"entity": item.entity, "provision": item.provision}
+        if item.provision == LOCAL_TAX_INPUT_UNAVAILABLE:
+            if item.variable in table:
+                out[item.entity] = table.drop(columns=[item.variable])
+            entry.update(
+                {
+                    "status": JURISDICTION_FLAG_UNAVAILABLE,
+                    "basis": item.basis,
+                    "reason": item.reason,
+                }
+            )
+            entries[item.variable] = entry
+            continue
+        assert item.residence_flag is not None
+        entry.update(
+            {"residence_flag": item.residence_flag, "wage_input": item.wage_input}
+        )
+        if item.residence_flag not in table:
+            if item.variable in table:
+                out[item.entity] = table.drop(columns=[item.variable])
+            entry.update(
+                {
+                    "status": JURISDICTION_FLAG_UNAVAILABLE,
+                    "reason": (
+                        f"the line wrote no {item.residence_flag}, so residence is "
+                        "undecided; the input is not written and the engine "
+                        "default (0) applies to every row"
+                    ),
+                }
+            )
+            entries[item.variable] = entry
+            continue
+        values = us_resident_wage_tax_values(table, item, null_wages=null_wages)
+        resident = table[item.residence_flag].astype(bool).to_numpy()
+        assert item.wage_input is not None
+        wages = pd.to_numeric(table[item.wage_input], errors="coerce").to_numpy(
+            dtype=np.float64, na_value=np.nan
+        )
+        table[item.variable] = values
+        entry.update(
+            {
+                "status": JURISDICTION_FLAG_DERIVED,
+                "null_wages": null_wages,
+                "residents": int(resident.sum()),
+                "residents_with_taxable_wages": int((values > 0).sum()),
+                "residents_with_negative_wages_set_to_zero": int(
+                    (resident & (wages < 0)).sum()
+                ),
+                "residents_with_null_wages_left_null": int(np.isnan(values).sum()),
+                "nonresident_component": {
+                    "status": JURISDICTION_FLAG_UNAVAILABLE,
+                    "reason": item.reason,
+                },
+            }
+        )
+        if household_weights is not None:
+            if person_weights is None:
+                weights = np.asarray(household_weights, dtype=np.float64)
+                if len(weights) != len(out["household"]):
+                    raise ValueError(
+                        "household_weights must align with the household table."
+                    )
+                person_weights = weights[
+                    _person_household_positions(out["household"], table)
+                ]
+            entry["weighted_residents"] = float(person_weights[resident].sum())
+            entry["weighted_taxable_wages"] = float(
+                person_weights @ np.nan_to_num(values, nan=0.0)
+            )
+        entries[item.variable] = entry
+    receipt = {
+        "registry": US_LOCAL_TAX_INPUT_REGISTRY_RESOURCE,
+        "registry_sha256": resolved.sha256,
+        "jurisdiction_registry_sha256": flags.sha256,
+        "inputs": entries,
+    }
+    return out, receipt
+
+
+def with_us_local_tax_inputs(
+    frame: Frame,
+    *,
+    registry: UsLocalTaxInputRegistry | None = None,
+    jurisdictions: UsLocalJurisdictionRegistry | None = None,
+) -> tuple[Frame, dict[str, Any]]:
+    """Return ``frame`` with its local-tax inputs and the receipt.
+
+    A line calls this once both the residence flags and the wages are final:
+    after the geography step on a line whose wages are already in place, and
+    after the wage transfers on a line that draws geography first.
+    """
+
+    tables = {entity: frame.table(entity) for entity in frame.entities}
+    written, receipt = apply_us_local_tax_inputs(
+        tables,
+        registry=registry,
+        jurisdictions=jurisdictions,
+        household_weights=frame.weights_for("household").values,
+    )
+    for link_name in frame.links:
+        written[link_name] = frame.link(link_name).copy()
+    weights = {entity: frame.weights_for(entity) for entity in frame.weighted_entities}
+    return (
+        Frame(
+            written,
+            frame.schema,
+            weights,
+            frame.strata,
+            mass_log=frame.mass_log,
+            metadata=frame.metadata,
+        ),
+        receipt,
+    )
+
+
+def us_local_tax_input_failures(
+    person: pd.DataFrame,
+    *,
+    require_derivable: bool = False,
+    registry: UsLocalTaxInputRegistry | None = None,
+    jurisdictions: UsLocalJurisdictionRegistry | None = None,
+    null_wages: str = NULL_WAGES_REFUSE,
+) -> list[str]:
+    """Gate check: every local-tax input present agrees with the table.
+
+    An ``unavailable`` input must be absent: nothing could have decided it.
+    A ``resident_wages`` input present must equal its rule applied to the
+    table's own residence flag and wages, which must both be present. With
+    ``require_derivable``, a ``resident_wages`` input whose residence flag is
+    present must also be present, so an artifact built before the input
+    existed fails rather than leaving the engine default on every resident.
+    With ``null_wages`` ``propagate``, a resident's null wage must carry a
+    null input; otherwise any null fails.
+    """
+
+    resolved = registry or packaged_us_local_tax_input_registry()
+    flags = jurisdictions or packaged_us_local_jurisdiction_registry()
+    _resident_wage_inputs(resolved, flags)
+    failures: list[str] = []
+    for item in resolved.inputs:
+        if item.entity != "person":
+            continue
+        present = item.variable in person
+        if item.provision == LOCAL_TAX_INPUT_UNAVAILABLE:
+            if present:
+                failures.append(
+                    f"{item.variable}: present, but no source decides it ({item.basis})"
+                )
+            continue
+        if not present:
+            if require_derivable and item.residence_flag in person:
+                failures.append(
+                    f"{item.variable}: absent, but {item.residence_flag} is present "
+                    "and decides it; the engine would default every resident to 0"
+                )
+            continue
+        if item.residence_flag not in person:
+            failures.append(
+                f"{item.variable}: present, but {item.residence_flag} is absent, so "
+                "nothing decided residence"
+            )
+            continue
+        try:
+            expected = us_resident_wage_tax_values(person, item, null_wages=null_wages)
+        except ValueError as error:
+            failures.append(f"{item.variable}: present but cannot be checked ({error})")
+            continue
+        observed = pd.to_numeric(person[item.variable], errors="coerce").to_numpy(
+            dtype=np.float64, na_value=np.nan
+        )
+        unexpected = ~np.isfinite(observed) & ~np.isnan(expected)
+        if unexpected.any():
+            failures.append(
+                f"{item.variable}: {int(unexpected.sum())} missing or non-finite "
+                "row(s) where the residence flag and wages decide a value"
+            )
+            continue
+        disagree = (observed != expected) & ~(np.isnan(observed) & np.isnan(expected))
+        if disagree.any():
+            failures.append(
+                f"{item.variable}: {int(disagree.sum())}/{len(person)} person row(s) "
+                f"disagree with max({item.wage_input}, 0) for residents and 0 "
+                "otherwise"
+            )
+    return failures
+
+
+# ---------------------------------------------------------------------------
 # Block-ladder verification
 # ---------------------------------------------------------------------------
 
@@ -780,21 +1387,41 @@ __all__ = [
     "JURISDICTION_RUNGS",
     "JURISDICTION_RUNG_COUNTY",
     "JURISDICTION_RUNG_PLACE",
+    "LOCAL_TAX_INPUT_PROVISIONS",
+    "LOCAL_TAX_INPUT_RESIDENT_WAGES",
+    "LOCAL_TAX_INPUT_UNAVAILABLE",
+    "LOCAL_TAX_INPUT_UNAVAILABLE_BASES",
+    "NULL_WAGES_PROPAGATE",
+    "NULL_WAGES_REFUSE",
+    "NULL_WAGE_MODES",
     "PUMA_GEOGRAPHY_RUNGS",
     "US_LOCAL_JURISDICTION_REGISTRY_KIND",
     "US_LOCAL_JURISDICTION_REGISTRY_RESOURCE",
     "US_LOCAL_JURISDICTION_REGISTRY_SCHEMA_VERSION",
     "US_LOCAL_JURISDICTION_REGISTRY_SHA256",
+    "US_LOCAL_TAX_INPUT_REGISTRY_KIND",
+    "US_LOCAL_TAX_INPUT_REGISTRY_RESOURCE",
+    "US_LOCAL_TAX_INPUT_REGISTRY_SCHEMA_VERSION",
+    "US_LOCAL_TAX_INPUT_REGISTRY_SHA256",
     "UsLocalJurisdiction",
     "UsLocalJurisdictionRegistry",
+    "UsLocalTaxInput",
+    "UsLocalTaxInputRegistry",
     "apply_us_local_jurisdiction_flags",
+    "apply_us_local_tax_inputs",
     "check_us_local_jurisdictions_against_block_ladder",
     "load_us_local_jurisdiction_registry",
+    "load_us_local_tax_input_registry",
     "packaged_us_local_jurisdiction_registry",
+    "packaged_us_local_tax_input_registry",
     "rederive_us_local_jurisdiction_flags",
     "us_local_jurisdiction_flag_failures",
     "us_local_jurisdiction_flag_receipt",
     "us_local_jurisdiction_flag_values",
     "us_local_jurisdiction_rungs_present",
+    "us_local_tax_input_failures",
+    "us_local_tax_input_output_columns",
+    "us_resident_wage_tax_values",
     "with_us_local_jurisdiction_flags",
+    "with_us_local_tax_inputs",
 ]

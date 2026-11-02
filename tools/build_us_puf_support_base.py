@@ -161,6 +161,7 @@ from microcosm.build.us_runtime.h5_io import (
     refuse_denied_frame,
     refuse_denied_pool_h5,
 )
+from microcosm.build.us_runtime.local_jurisdictions import with_us_local_tax_inputs
 from microcosm.build.us_runtime.puf_qrf_chain import (
     finalize_primary_puf_qrf_chain,
     initialize_primary_puf_qrf_chain,
@@ -280,7 +281,10 @@ STAGE_BOUNDARIES: tuple[tuple[str, tuple[str, ...]], ...] = (
         "congressional_district_assignment",
         ("with_household_congressional_districts",),
     ),
-    ("block_ladder_assignment", ("with_household_us_geography_ladder",)),
+    (
+        "block_ladder_assignment",
+        ("with_household_us_geography_ladder", "with_us_local_tax_inputs"),
+    ),
     ("final_export", ("PolicyEngineUSEngine.write_dataset",)),
 )
 OUTER_STAGE_PIPELINE = StagePipeline(
@@ -1596,6 +1600,8 @@ def _run_all(
                 CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE
             ),
         )
+        # Wages are final here, and the block has just fixed residence.
+        imputed, local_tax_inputs = with_us_local_tax_inputs(imputed)
         household = imputed.table("household")
         household_weights = imputed.weights_for("household").values
         gate = us_geography_ladder_gate(household, household_weights)
@@ -1613,6 +1619,7 @@ def _run_all(
                 "artifact": str(args.block_ladder_artifact.resolve()),
                 "artifact_sha256": _sha256(args.block_ladder_artifact),
                 "seed": args.geography_ladder_seed,
+                "local_tax_inputs": local_tax_inputs,
                 "gate": {
                     "passed": gate.passed,
                     "failures": list(gate.failures),
@@ -2978,6 +2985,8 @@ def _post_qrf_frame_stage(
                     CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE
                 ),
             )
+            # Wages are final here, and the block has just fixed residence.
+            frame, local_tax_inputs = with_us_local_tax_inputs(frame)
             household = frame.table("household")
             household_weights = frame.weights_for("household").values
             gate = us_geography_ladder_gate(household, household_weights)
@@ -2995,6 +3004,7 @@ def _post_qrf_frame_stage(
                     "artifact": str(args.block_ladder_artifact.resolve()),
                     "artifact_sha256": _sha256(args.block_ladder_artifact),
                     "seed": args.geography_ladder_seed,
+                    "local_tax_inputs": local_tax_inputs,
                     "gate": {
                         "passed": gate.passed,
                         "failures": list(gate.failures),

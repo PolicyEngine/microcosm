@@ -350,7 +350,7 @@ EXPECTED_HASHES = {
     "acs_person_predictors": "878c788a6f037d7aca12b3586ea034eff04f3034ffa11935a736493042551f25",
     "authority": "bf681aedc859fd6398ef72da68f584069b7d25b3085c549bf99f82e8324c4eef",
     "early_families": "4aa9f736fd76e83955477ad1667e58f48f264783f05bdc7f0102cd32d61323bd",
-    "full_checkpoint": '94ed381f17dc9cafb80396b2ea0f02ed8745d9359ec3f4d551a65a5a7f2fc26d',
+    "full_checkpoint": "668073673f214f8cee24f435a5b8f6167831ac6a4e303fc6420b8ad3684ed9db",
     "gap_fill_schedule": "1c31f9868f7884347cc19cf1ff65da43f950b9114941a715bab168246db414a7",
     "graph_nodes": "1b208fff4f6d878c522147fee617177544bda8963c940f98a4bfc37507cb955f",
     "geography_assignment": "44e7f5f6cd7ceeef85d532c3d46306d03de4f4ee811376e6d29920742746b65c",
@@ -380,8 +380,8 @@ EXPECTED_HASHES = {
     # microcosm#1259's recipient-share bound in puf_support moves both again.
     # microcosm#1261 moves both again: the PUF donor carries partnership and
     # S-corp line-32 shares as separate leaves.
-    "seed_map": '42c141d97283222723e0e96822f62f49829d3c5a1904fac950b1110af85028da',
-    "seed_protocol": 'cf465029597523a6efc4fd411601180ff811d26614f3af85ef0e0610f8b8f24d',
+    "seed_map": "42c141d97283222723e0e96822f62f49829d3c5a1904fac950b1110af85028da",
+    "seed_protocol": "cf465029597523a6efc4fd411601180ff811d26614f3af85ef0e0610f8b8f24d",
     "source_manifest": "608c3621b1e4a108e57c8f83d16a184acdb3d05e16a81b895f7f72dbf5d0685c",
     "take_up": "9522ce40f7dea569312dd7a7beb474e5a5afadd2f1e10cb5876534c3ef623d35",
     "tail": "071d418bb49976f4682c320d2ad07097c177de3a645d2524f235e1ff33ac83f9",

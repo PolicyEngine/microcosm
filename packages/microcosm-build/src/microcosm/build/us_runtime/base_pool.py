@@ -14,8 +14,10 @@ from microcosm.build.us_runtime.county_vintage import (
     county_fips_2023_from_tracts,
 )
 from microcosm.build.us_runtime.local_jurisdictions import (
+    NULL_WAGES_PROPAGATE,
     PUMA_GEOGRAPHY_RUNGS,
     apply_us_local_jurisdiction_flags,
+    apply_us_local_tax_inputs,
 )
 from microcosm.build.us_runtime.puf_support import (
     support_channel_column,
@@ -131,7 +133,9 @@ def with_optional_acs_spine(
     county either. A flag column is never left half-null for the engine
     default to fill. :func:`acs_pool_local_jurisdiction_rungs` names the rungs
     used, so a caller can record which flags were derived and which were
-    left unavailable.
+    left unavailable. The local-tax inputs (a Philadelphia resident's taxable
+    wages) are then re-derived on every row from those flags and the pooled
+    wages, or removed when no residence flag was written.
 
     ``max_peak_bytes`` is a fail-fast bound on estimated frame-resident peak
     memory. Pass ``None`` to disable the preflight. The estimate includes both
@@ -221,6 +225,11 @@ def with_optional_acs_spine(
             tables, rungs=acs_pool_local_jurisdiction_rungs(puma_ladder)
         )[0]
     )
+    # Both spines arrive with final wages, so the local-tax inputs follow the
+    # re-derived residence flags on every row. ACS people under 15 carry the
+    # PUMS blank wage, which the release fills with the engine default; a
+    # resident's input stays null with it and is filled the same way.
+    tables.update(apply_us_local_tax_inputs(tables, null_wages=NULL_WAGES_PROPAGATE)[0])
     if household_order is not None:
         reordered = household_weights.values[household_order]
         household_weights = Weights(reordered, household_weights.kind)

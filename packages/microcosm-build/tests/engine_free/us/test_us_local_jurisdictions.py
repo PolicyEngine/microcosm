@@ -47,6 +47,7 @@ from microcosm.build.us_runtime.local_jurisdictions import (
     us_local_jurisdiction_flag_values,
     us_local_jurisdiction_rungs_present,
     with_us_local_jurisdiction_flags,
+    with_us_local_tax_inputs,
 )
 from microcosm.build.us_runtime.puma_ladder import (
     UsPumaLadder,
@@ -909,7 +910,10 @@ def test_rungs_present_needs_the_columns_themselves() -> None:
 def _without_flags(frame):
     tables = {entity: frame.table(entity) for entity in frame.entities}
     tables["household"] = tables["household"].drop(columns=list(HOUSEHOLD_FLAGS))
-    tables["person"] = tables["person"].drop(columns=list(PERSON_FLAGS))
+    tables["person"] = tables["person"].drop(
+        columns=[*PERSON_FLAGS, "pa_philadelphia_wage_tax_taxable_wages"],
+        errors="ignore",
+    )
     return type(frame)(
         tables, frame.schema, {"household": frame.weights_for("household")}
     )
@@ -919,7 +923,10 @@ def _without_flags(frame):
 @given(st.lists(st.sampled_from(_NAMES), min_size=1, max_size=12))
 def test_rederiving_a_pre_flag_artifact_restores_the_block_line_flags(names) -> None:
     frame = us_frame(households_on_blocks(names), person_inputs=[[{}] for _ in names])
-    assigned = with_household_us_geography_ladder(frame, block_ladder(), seed=1)
+    # What the block line writes: the ladder's flags, then the local-tax inputs.
+    assigned, _ = with_us_local_tax_inputs(
+        with_household_us_geography_ladder(frame, block_ladder(), seed=1)
+    )
 
     rederived, receipt = rederive_us_local_jurisdiction_flags(_without_flags(assigned))
     again, again_receipt = rederive_us_local_jurisdiction_flags(rederived)
@@ -935,6 +942,10 @@ def test_rederiving_a_pre_flag_artifact_restores_the_block_line_flags(names) -> 
     assert {entry["status"] for entry in receipt["flags"].values()} == {
         JURISDICTION_FLAG_DERIVED
     }
+    assert receipt["carried_local_tax_inputs"] == []
+    assert again_receipt["carried_local_tax_inputs"] == [
+        "pa_philadelphia_wage_tax_taxable_wages"
+    ]
 
 
 @pytest.mark.parametrize("flag", sorted(EXPECTED_RULES))

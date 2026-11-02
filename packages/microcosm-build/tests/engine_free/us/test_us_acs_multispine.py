@@ -209,6 +209,25 @@ def test__given_source__then_stages_run_in_order_and_provenance_is_json_ready(
             "the line supplies no county rung",
         ),
     }
+    # Without the residence flag nothing decides the Philadelphia taxable
+    # wages, and the four work-location or refund inputs have no source.
+    local_tax_inputs = provenance.pop("local_tax_inputs")
+    assert {
+        variable: (entry["provision"], entry["status"])
+        for variable, entry in local_tax_inputs["inputs"].items()
+    } == {
+        "co_denver_employee_occupational_privilege_tax_months": (
+            "unavailable",
+            "unavailable",
+        ),
+        "de_wilmington_nonresident_earnings": ("unavailable", "unavailable"),
+        "ny_yonkers_nonresident_earnings": ("unavailable", "unavailable"),
+        "pa_philadelphia_wage_tax_reduced_rate_eligible": (
+            "unavailable",
+            "unavailable",
+        ),
+        "pa_philadelphia_wage_tax_taxable_wages": ("resident_wages", "unavailable"),
+    }
     assert provenance == {
         "enabled": True,
         "acs_share": 0.4,
@@ -662,6 +681,13 @@ def test__given_ladder__then_multispine_records_geography_assignment(
         "pa_philadelphia_wage_tax_resident": "derived",
     }
     assert result.provenance["local_jurisdiction_flags"]["rungs"] == ["county"]
+    # The county rung decides Philadelphia residence, so the taxable wages
+    # are derived for the pooled rows.
+    taxable = result.provenance["local_tax_inputs"]["inputs"][
+        "pa_philadelphia_wage_tax_taxable_wages"
+    ]
+    assert taxable["status"] == "derived"
+    assert taxable["null_wages"] == "propagate"
 
 
 def _test_puma_ladder() -> UsPumaLadder:

@@ -38,15 +38,15 @@ def test_checked_in_us_lock_is_fresh_schema_valid_and_not_authored() -> None:
         for row in payload["programs"].values()
     )
     remaining = payload["remaining_stage_input_manifest"]
-    assert len(remaining["rows"]) == 1059
-    assert remaining["receipt"]["entry_count"] == 1059
+    assert len(remaining["rows"]) == 1064
+    assert remaining["receipt"]["entry_count"] == 1064
     assert remaining["receipt"]["stage_counts"] == {
-        "derive": 34,
+        "derive": 39,
         "seed": 33,
         "simulate": 992,
     }
     assert remaining["receipt"]["manifest_sha256"] == (
-        "6e70bc749ab7fd34d6bb902423a3240029d14533819cb5c6f1f75457875cf956"
+        "92cad0dc6283e463b74cec5137196d4db4e29b34cb87c0718c6c2f669cf99915"
     )
     assert (
         remaining["receipt"]["ssi_dependency_contract"]["engine_version_ref"]
