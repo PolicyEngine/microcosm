@@ -282,6 +282,24 @@ def test_the_measurement_id_is_carried_not_used() -> None:
         pd.testing.assert_series_equal(out[role], bare[role])
 
 
+@pytest.mark.parametrize(
+    "node",
+    [
+        {"measurement_id": 123},
+        {"measurement_id": ""},
+        {"measurement_id": True},
+        {"params": {"measurement_id": None}},
+    ],
+    ids=["integer", "empty", "boolean", "explicit_null"],
+)
+def test_a_measurement_id_that_is_not_a_non_empty_string_is_refused(node) -> None:
+    with pytest.raises(TypeError) as refusal:
+        _run({WAGES: [5, -5]}, _declaration([(WAGES, 1)]), **node)
+    assert str(refusal.value) == (
+        f"{MEASURE_COMBINE_REF} parameter 'measurement_id' must be a non-empty string."
+    )
+
+
 def test_the_receipt_names_the_declared_outputs() -> None:
     _, receipt = _run({WAGES: [1]}, _declaration([(WAGES, 1)]))
     assert receipt["outputs"] == OUTPUTS
