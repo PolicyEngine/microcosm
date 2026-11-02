@@ -37,6 +37,7 @@ from ..stage_evidence import STAGE_EVIDENCE_TYPE
 from .national_sampling import UK_SAMPLE_SEED_DEFAULT
 
 __all__ = [
+    "UK_SPINE_ASSEMBLED_FINAL_STAGE",
     "UK_SPINE_STRUCTURAL_STAGES",
     "uk_registry",
     "uk_spine_endpoint",
@@ -56,6 +57,15 @@ UK_SPINE_STRUCTURAL_STAGES = frozenset(
         "cgt_residential_split",
     }
 )
+
+#: The last stage of the assembled checkpoint: everything through the base
+#: FRS mapping and the stochastic draws. A name, not an index — a position
+#: standing in for a key is correct only while two independently-maintained
+#: orderings happen to agree (the uk-data#468 class). The graph freezes the
+#: checkpoint after it, and the graph's spine gates and the plan path read it,
+#: so an assembled-phase gate's stage is checked against the boundary the
+#: build runs (the third and fourth reviews of microcosm#1422).
+UK_SPINE_ASSEMBLED_FINAL_STAGE = "frs_brma"
 
 # The executor's mass ledger is weighted *person* mass per stratum
 # (``Frame.stratum_mass``: household weights broadcast through membership), so
@@ -109,8 +119,9 @@ _STRUCTURAL_WEIGHT_KIND = {
 # units without an observed FRS capital answer.
 _READER_ISOLATION_BOUNDARIES = frozenset(
     {
-        # The housing shell rewrites root household cells right after the
-        # open-surface SPI income stage, which would otherwise bind them.
+        # The housing shell rewrites root household cells after the
+        # open-surface SPI income stage and the company cars, which would
+        # otherwise bind them.
         "spi_housing_shell",
         "uc_reporter_redraw",
         # The SPI benefit pass rewrites cells the open-surface readers before
@@ -143,6 +154,11 @@ _READER_ISOLATION_BOUNDARIES = frozenset(
         # its own version right after the root, the root cells are inherited
         # rather than owned there, so the isolation must be declared.
         "frs_education_grant_split",
+        # The company cars carve their benefits out of the tape rows' pay, and
+        # take their UC gainful self-employment again on it, right after the
+        # open-surface SPI income stage, which would otherwise bind the cells
+        # they rewrite (PolicyEngine/uk-autumn-budget-dashboard-2026#316).
+        "company_cars",
     }
 )
 # ``age_tail`` needs no isolation entry: it is declared immediately after the
@@ -159,6 +175,12 @@ _SPLIT_STAGE_SOURCES: Mapping[str, tuple[str, ...]] = {
     "frs_legacy_proxies": ("frs",),
     "was_wealth": ("was",),
     "was_lisa": ("was", "was_person"),
+    # The ISA subscriptions split household ISA balances by a WAS donor
+    # household's holding pattern (microcosm#1415).
+    "isa_subscriptions": ("was", "was_person"),
+    # The company cars draw list prices from WAS round-8 company cars
+    # (PolicyEngine/uk-autumn-budget-dashboard-2026#316).
+    "company_cars": ("was_person",),
     # The finance-cost model trains on the SPI tape (microcosm#1106).
     "property_components": ("spi",),
     "nts_bus_travel": (
@@ -356,6 +378,7 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
             ("person", "self_employment_income"),
             ("person", "private_pension_income"),
             ("person", "savings_interest_income"),
+            ("person", "individual_savings_account_interest_income"),
             ("person", "dividend_income"),
             ("person", "property_income"),
             ("person", "other_investment_income"),
@@ -436,6 +459,7 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
             ("person", "universal_credit_reported"),
             # The capital cells' financial investment income (microcosm#1095).
             ("person", "savings_interest_income"),
+            ("person", "individual_savings_account_interest_income"),
             ("person", "dividend_income"),
             ("person", "other_investment_income"),
             # The recorded capitals' property: the household reference
@@ -501,7 +525,7 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
                     "private_pension_income",
                     "property_income",
                     "state_pension_reported",
-                    "tax_free_savings_income",
+                    "individual_savings_account_interest_income",
                     "age",
                 )
             ),
@@ -559,6 +583,7 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
                     "private_pension_income",
                     "property_income",
                     "savings_interest_income",
+                    "individual_savings_account_interest_income",
                     "dividend_income",
                     "miscellaneous_income",
                 )
@@ -570,6 +595,40 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
     # One engine materialization of private-school attendance over the whole
     # frame at its weights: an open surface (microcosm#1095).
     "private_school_attendance": None,
+    # Two engine materializations of the company car and car fuel benefits
+    # over the whole frame: one the stage carves out of the tape rows' pay, and
+    # one on its output to check the carve-out. An open surface
+    # (PolicyEngine/uk-autumn-budget-dashboard-2026#316).
+    "company_cars": None,
+    # Subscribers are cells of age, sex, region and the CGT income proxy; the
+    # balance split reads the household ISA totals and the payments the LISA
+    # holding (microcosm#1415).
+    "isa_subscriptions": frozenset(
+        {
+            *(
+                ("person", column)
+                for column in (
+                    "age",
+                    "gender",
+                    "has_lifetime_isa",
+                    "lifetime_isa_balance",
+                    "employment_income",
+                    "self_employment_income",
+                    "state_pension_reported",
+                    "private_pension_income",
+                    "property_income",
+                    "savings_interest_income",
+                    "individual_savings_account_interest_income",
+                    "dividend_income",
+                    "miscellaneous_income",
+                    "loss_relief",
+                )
+            ),
+            ("household", "region"),
+            ("household", "cash_isa"),
+            ("household", "stocks_and_shares_isa"),
+        }
+    ),
     # The copies' childcare re-draw reads every household's clone path (the
     # lineage columns of each copy stage) and keeps the native units' cells:
     # an open surface, like the other take-up redraws.
@@ -638,8 +697,14 @@ _ROOT_PERSON_BOOL = {
     "owned_company_carries_on_trade",
     "owned_company_carries_on_property_business",
     "would_claim_carers_allowance",
+    "frs_company_car_private_fuel",
 }
-_ROOT_PERSON_INT = {"age"}
+_ROOT_PERSON_INT = {
+    "age",
+    # The company car carriers' FRS codes (frs_spine.frs_company_car_carriers).
+    "frs_company_car_price_band",
+    "frs_company_car_fuel_code",
+}
 _ROOT_PERSON_FLOAT: set[str] = set()
 _ROOT_BENUNIT_TYPES = {
     "frs_benunit_capital": "float64",
@@ -683,7 +748,8 @@ def _root_cells(stage_outputs: Iterable[str]) -> tuple[_Cell, ...]:
             # integral, and age_tail keeps an integer input integer (its
             # bands are integral), so the legacy runner and this declaration
             # agree without relying on the CREATE-time cast (#845).  Rewrites
-            # cannot change their base's dtype.
+            # cannot change their base's dtype.  frs_spine writes the company
+            # car codes as int64 too.
             cells.append(_Cell("person", column, "int64"))
         elif column in _ROOT_PERSON_FLOAT:
             cells.append(_Cell("person", column, "float64"))
@@ -1174,6 +1240,28 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
     ),
     "student_loans": (_Cell("person", "student_loan_plan", "string"),),
     "private_school_attendance": (_Cell("person", "attends_private_school", "bool"),),
+    "isa_subscriptions": _cells(
+        "person",
+        (
+            "cash_isa_balance",
+            "stocks_and_shares_isa_balance",
+            "cash_isa_subscriptions",
+            "stocks_and_shares_isa_subscriptions",
+            "lifetime_isa_payments",
+        ),
+    ),
+    "company_cars": (
+        _Cell("person", "company_car_list_price", "float64"),
+        _Cell("person", "company_car_co2_emissions", "float64"),
+        _Cell("person", "company_car_fuel_type", "string"),
+        _Cell("person", "company_car_electric_range", "float64"),
+        _Cell("person", "company_car_capital_contributions", "float64"),
+        _Cell("person", "company_car_private_fuel_provided", "bool"),
+        # A tape row's pay gives up the benefits carved out of it, and its UC
+        # gainful self-employment follows the carved pay.
+        _Cell("person", "employment_income", "float64"),
+        _Cell("person", "uc_is_in_gainful_self_employment", "bool"),
+    ),
     "childcare_copy_take_up": (
         *_cells(
             "benunit",
@@ -1218,7 +1306,7 @@ _HMRC_SPI_FLOAT_COLUMNS = (
     "employer_pension_contributions",
     "personal_pension_contributions",
     "pension_contributions_via_salary_sacrifice",
-    "tax_free_savings_income",
+    "individual_savings_account_interest_income",
     "universal_credit_reported",
     "pension_credit_reported",
     "child_benefit_reported",
@@ -1671,8 +1759,8 @@ def uk_spine_graph(
         if cells:
             shape_anchor = cells[-1].coordinate
 
-        if stage_name == "frs_brma":
-            checkpoint = "frs_brma.checkpoint"
+        if stage_name == UK_SPINE_ASSEMBLED_FINAL_STAGE:
+            checkpoint = f"{UK_SPINE_ASSEMBLED_FINAL_STAGE}.checkpoint"
             nodes.append(
                 Node(
                     id=checkpoint,

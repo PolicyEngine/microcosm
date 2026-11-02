@@ -60,6 +60,8 @@ from microcosm.build.uk_runtime.national_frame import (
     validate_uk_national_frame,
 )
 from microcosm.build.uk_runtime.receipt_counts import (
+    UK_DISCLOSURE_FLOOR,
+    UK_WITHHELD,
     distinct_count,
     small_cell_share,
     source_household_ids,
@@ -233,8 +235,8 @@ def legacy_closure_claim_probabilities(
     applies to every unit of the combination. The expected weighted share of
     Great Britain's drawn units claiming at the closure is ``r`` wherever
     ``p <= r``. The receipt bands each cohort on its distinct source
-    households and flags an unreachable rate only where ten or more carry p
-    and neither of its sides rests on one to nine.
+    households and flags an unreachable rate only where three or more carry p
+    and neither of its sides rests on one or two.
     """
 
     gb = np.asarray(great_britain, dtype=bool)
@@ -259,14 +261,14 @@ def legacy_closure_claim_probabilities(
         )
 
         # The flag rests on p, so on Great Britain's sources, and says on which
-        # side of DWP's rate p lies: it is given only where ten or more sources
+        # side of DWP's rate p lies: it is given only where three or more sources
         # carry p and neither the units claiming anyway nor the others rest on
-        # one to nine. A combination with no Great Britain unit has no p.
+        # one or two. A combination with no Great Britain unit has no p.
         sides = (count(basis & claims_anyway), count(basis & ~claims_anyway))
         if not basis.any():
             flag: bool | str | None = None
-        elif count(basis) < 10 or 0 < min(sides) < 10:
-            flag = "<10"
+        elif count(basis) < UK_DISCLOSURE_FLOOR or 0 < min(sides) < UK_DISCLOSURE_FLOOR:
+            flag = UK_WITHHELD
         else:
             flag = bool(p > rate)
         receipt[str(key)] = {
@@ -363,7 +365,7 @@ def assign_uc_claim_at_legacy_closure(
     validate_uk_national_frame(result)
 
     # Great Britain's weighted aggregates only, DWP's universe; a figure one to
-    # nine source households carry is "<10" (UKDS disclosure control).
+    # two source households carry is "<3" (UKDS disclosure control).
     def sources(mask: np.ndarray) -> int:
         return distinct_count(source_ids, mask, weights)
 
@@ -372,12 +374,14 @@ def assign_uc_claim_at_legacy_closure(
     drawn_weight = float(weights[gb_drawn].sum())
     claiming = gb_drawn & flag
     # The share claiming times the drawn weight gives back either side, so the
-    # share is given only where neither side rests on one to nine sources.
-    share_small = 0 < min(sources(claiming), sources(gb_drawn & ~flag)) < 10
+    # share is given only where neither side rests on one or two sources.
+    share_small = (
+        0 < min(sources(claiming), sources(gb_drawn & ~flag)) < UK_DISCLOSURE_FLOOR
+    )
     if not drawn_weight:
         share: float | str | None = None
     elif share_small:
-        share = "<10"
+        share = UK_WITHHELD
     else:
         share = small_cell_share(
             float(weights[claiming].sum()) / drawn_weight, gb_sources

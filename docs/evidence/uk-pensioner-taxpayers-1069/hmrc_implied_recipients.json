@@ -1,0 +1,34 @@
+{
+  "spi_state_pension_taxpayers_2023": 7980000.0,
+  "united_kingdom_state_pension_age_taxpayers_2023": 8160000.0,
+  "share_with_a_state_pension": 0.9779411764705882,
+  "calendar_2025_windows": {
+    "twelve_areas": 8841750.0,
+    "united_kingdom": 9005000.0
+  },
+  "recipient_target": 12383021.5,
+  "implied": {
+    "twelve_areas": {
+      "taxpaying": 8646711.397058824,
+      "non_taxpaying": 3736310.102941176
+    },
+    "united_kingdom": {
+      "taxpaying": 8806360.294117646,
+      "non_taxpaying": 3576661.2058823537
+    }
+  },
+  "builds": {
+    "baseline": {
+      "taxpaying": 8839849.607664086,
+      "non_taxpaying": 3530991.3667199854,
+      "taxpaying_within_range": false,
+      "non_taxpaying_within_range": false
+    },
+    "candidate": {
+      "taxpaying": 8743572.065928714,
+      "non_taxpaying": 3628068.020062985,
+      "taxpaying_within_range": true,
+      "non_taxpaying_within_range": true
+    }
+  }
+}

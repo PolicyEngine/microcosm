@@ -90,6 +90,12 @@ _RECORD_FIELDS = (
     "approved_on",
     "expires_on",
 )
+#: The fields a recorded drop must share with the declared floor: its
+#: signature, not its reason or adjudication text. A re-worded record keeps
+#: its signature, so a run that dropped a row under it can still be
+#: certified at a later head (the re-review of microcosm#1420, 3); a moved
+#: signature, a new approver or a new window, refuses.
+_SIGNATURE_FIELDS = ("tracking", "approved_by", "approved_on", "expires_on")
 
 
 @dataclass(frozen=True)
@@ -571,7 +577,7 @@ def narrow_uk_registry_by_support_floor(
         elif any(
             record.get(field) != value
             for field, value in floor.record(floor.approved_on).items()
-            if field in _RECORD_FIELDS
+            if field in _SIGNATURE_FIELDS
         ):
             failures.append(f"{name}: not under the declared signature")
     if failures:

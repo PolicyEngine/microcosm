@@ -108,6 +108,14 @@ def test_the_annual_measures_tax_each_persons_year(tmp_path) -> None:
         np.asarray(state_pension) * state_pension_annual_share(months),
         rtol=1e-6,
     )
+    # The SPI area tables' pension income: both pensions over the year
+    # (microcosm#1418).
+    annual_total_pension, _ = resolver.compute("person", "total_pension_income_annual")
+    np.testing.assert_allclose(
+        annual_total_pension,
+        np.asarray(annual_pension) + np.asarray(annual_state_pension),
+        rtol=1e-6,
+    )
     # Taxed by the engine on the year: the leaver's spell makes them a
     # taxpayer, and halving the entrant's pay lowers their tax.
     tax, _ = resolver.compute("person", "income_tax")
@@ -131,6 +139,27 @@ def test_the_annual_measures_tax_each_persons_year(tmp_path) -> None:
     assert route.startswith("annual_income_simulation:engine_components:")
     band, _ = resolver.compute("person", "tax_band_annual")
     assert len(band) == 5
+    # The savings income each rate charges, on the same year (microcosm#1418):
+    # nobody here has any.
+    for name in (
+        "basic_rate_savings_income_annual",
+        "higher_rate_savings_income_annual",
+        "add_rate_savings_income_annual",
+    ):
+        savings, route = resolver.compute("person", name)
+        assert route.startswith("annual_income_simulation:")
+        np.testing.assert_allclose(savings, 0.0)
+    # HMRC's employment income, which the SPI rows read, adds the company car
+    # benefits (PolicyEngine/uk-autumn-budget-dashboard-2026#316): nobody here
+    # has a car, so it is the year's pay.
+    with_cars, route = resolver.compute(
+        "person", "employment_income_with_benefits_in_kind_annual"
+    )
+    assert route == (
+        "annual_income_simulation:engine_components:"
+        "employment_income_with_benefits_in_kind"
+    )
+    np.testing.assert_allclose(with_cars, annual_pay, rtol=1e-6)
     receipt = resolver.receipt()["annual_income_measures"]
     assert receipt["route"] == "annual_income_simulation"
     factors = receipt["other_spells_engine_factors"]

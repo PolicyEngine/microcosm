@@ -49,9 +49,14 @@ def test_known_gap_register_records_post_candidate_restoration_separately() -> N
     gaps = _resource("efrs_parity_known_gaps.json")
     assert gaps["known_gaps"] == {}
     # microcosm#1106: property_wealth is formula-owned in policyengine-uk, so
-    # the release leaves it for the engine to derive. It is a declared
-    # exclusion in its own section, never parity debt in known_gaps.
-    assert set(gaps["engine_derived_exclusions"]) == {"property_wealth"}
+    # the release leaves it for the engine to derive, and so is
+    # tax_free_savings_income under the additive ISA income contract
+    # (microcosm#1360). Each is a declared exclusion in its own section, never
+    # parity debt in known_gaps.
+    assert set(gaps["engine_derived_exclusions"]) == {
+        "property_wealth",
+        "tax_free_savings_income",
+    }
     assert gaps["engine_derived_exclusions"]["property_wealth"]["reason"] == (
         "formula-owned in policyengine-uk and derived from persisted "
         "components; a persisted copy overrides the formula and is not uprated"
@@ -125,24 +130,26 @@ def test_promoted_manifest_requires_the_full_reference_surface() -> None:
     reference = _resource("efrs_parity_reference.json")
     manifest = _resource("release_input_coverage_manifest.json")
     assert manifest["counts"] == {
-        "required": 144,
-        "reviewed_exclusion": 1,
+        "required": 143,
+        "reviewed_exclusion": 2,
         "total": 145,
     }
     assert set(manifest["columns"]) == set(reference["nonzero_shares"])
-    # Every reference input is required except the engine-derived total; its
-    # three persisted components stay required (microcosm#1106).
+    # Every reference input is required except the engine-derived totals; their
+    # persisted components stay required (microcosm#1106, microcosm#1360).
     excluded = {
         name: entry
         for name, entry in manifest["columns"].items()
         if entry != {"status": "required"}
     }
-    assert set(excluded) == {"property_wealth"}
-    assert excluded["property_wealth"]["status"] == "reviewed_exclusion"
+    assert set(excluded) == {"property_wealth", "tax_free_savings_income"}
+    for name in excluded:
+        assert excluded[name]["status"] == "reviewed_exclusion"
     for component in (
         "main_residence_value",
         "other_residential_property_value",
         "non_residential_property_value",
+        "savings_interest_income",
     ):
         assert manifest["columns"][component] == {"status": "required"}
     assert manifest["restoration_evidence"] == {
@@ -412,9 +419,10 @@ def test_engine_derived_exclusions_require_a_signature(tmp_path) -> None:
 
     committed = load_efrs_engine_derived_exclusions()
     assert [(gap.variable, gap.approved_by) for gap in committed] == [
-        ("property_wealth", "juaristi22")
+        ("property_wealth", "juaristi22"),
+        ("tax_free_savings_income", "juaristi22"),
     ]
-    assert committed[0].approved_on == "2026-10-11"
+    assert [gap.approved_on for gap in committed] == ["2026-10-11", "2026-10-28"]
     assert all(gap.approved_by is None for gap in load_efrs_parity_known_gaps())
 
     unsigned = tmp_path / "ledger.json"
