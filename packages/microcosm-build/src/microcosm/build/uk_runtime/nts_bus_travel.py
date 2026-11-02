@@ -59,6 +59,7 @@ from microcosm.build.uk_runtime.national_frame import (
     uk_time_period,
     validate_uk_national_frame,
 )
+from microcosm.build.uk_runtime.receipt_counts import UK_DISCLOSURE_FLOOR, UK_WITHHELD
 from microcosm.build.uk_runtime.support_clip import (
     UKSupportClipReceipt,
     support_clip_to_donor_with_receipt,
@@ -193,13 +194,14 @@ RESIDENCE_GROUPS: tuple[str, str] = (LONDON_GROUP, REST_OF_ENGLAND_GROUP)
 FREQUENCY_SOURCE_INTERVIEW = "interview_band"
 FREQUENCY_SOURCE_PUBLISHED_SHARES = "published_shares"
 #: The disclosure floor of the fare-mix receipt lines (UK Data Service End User
-#: Licence CD137 clause 8 and CD171 section 5.2.1, whose working floor is 10
-#: cases): a line, and its complement, must rest on at least this many
-#: unweighted boardings and this many distinct households, because one
-#: respondent makes many boardings; otherwise it reads ``"<10"``.
-UK_NTS_RECEIPT_MINIMUM_BOARDINGS = 10
-UK_NTS_RECEIPT_MINIMUM_HOUSEHOLDS = 10
-UK_NTS_RECEIPT_SUPPRESSED = "<10"
+#: Licence CD137 clause 8 and CD171 section 5.2.1; the build's floor of three
+#: cases, ``receipt_counts.UK_DISCLOSURE_FLOOR``): a line, and its complement,
+#: must rest on at least this many unweighted boardings and this many distinct
+#: households, because one respondent makes many boardings; otherwise it reads
+#: ``"<3"``.
+UK_NTS_RECEIPT_MINIMUM_BOARDINGS = UK_DISCLOSURE_FLOOR
+UK_NTS_RECEIPT_MINIMUM_HOUSEHOLDS = UK_DISCLOSURE_FLOOR
+UK_NTS_RECEIPT_SUPPRESSED = UK_WITHHELD
 
 
 class NTSBusTravelError(ValueError):
@@ -963,7 +965,7 @@ def _fare_mix_receipt(
     the journey), weighted as the boarding classes are. Before the cap: the
     share paid above the cap, by more than the tolerance, and their mean fare,
     at that year's prices. Under the cap: the share paid at the cap, within
-    the tolerance. A line reads ``"<10"`` unless it and its complement each
+    the tolerance. A line reads ``"<3"`` unless it and its complement each
     rest on ``UK_NTS_RECEIPT_MINIMUM_BOARDINGS`` unweighted boardings and
     ``UK_NTS_RECEIPT_MINIMUM_HOUSEHOLDS`` distinct households. Shares are
     rounded to two decimals and fares to the penny; no minimum, maximum or
@@ -1139,6 +1141,8 @@ def recipient_predictors(
             .to_numpy(),
             "household_size": sizes.reindex(hh_ids).astype(np.int64).to_numpy(),
             "income_band": income_band.astype(np.int64),
+            # Not a predictor: the income-quintile receipt reads it.
+            "household_gross_income": np.asarray(gross_by_household, dtype=float),
         }
     )
     return result
@@ -1379,6 +1383,20 @@ def single_fare_shares_from_donor(
     return shares, receipt
 
 
+#: How the non-user band's diary trips are carried (microcosm#1386, María's
+#: option 1). The band ("less than once a year or never") holds about half of
+#: all persons, and its diary mean of a few trips a year gave every one of
+#: them fares, so counts of riders read about double. It carries no trips, and
+#: each series' other bands in a residence group take its trips, scaled so the
+#: group's mean trips per person on the donor stay as the diary gives them.
+NON_USER_BAND_RULE = (
+    "the non-user band carries no trips; each series' other bands in a "
+    "residence group are scaled by the group's donor-weighted trips over the "
+    "trips of its other bands, so the group's mean trips per person on the "
+    "donor stay as the diary gives them"
+)
+
+
 def band_means_from_donor(
     donor: pd.DataFrame,
 ) -> tuple[dict[str, dict[str, dict[int, float]]], dict[str, Any]]:
@@ -1386,6 +1404,7 @@ def band_means_from_donor(
 
     A (group, band) cell with no donor persons falls back to the band's
     all-England mean, receipted; a band with no persons at all is refused.
+    The non-user band's trips go to the other bands (``NON_USER_BAND_RULE``).
     """
 
     if BAND_COLUMN not in donor:
@@ -1414,9 +1433,11 @@ def band_means_from_donor(
                         np.average(values[in_band], weights=weights[in_band])
                     )
                     fallbacks.append({"series": series, "group": group, "band": band})
+    factors = _move_non_user_band_trips(means, weights, bands, groups)
     receipt = {
         "source": "donor_diary_band_means",
         "annualisation_weeks": WEEKS_IN_YEAR,
+        "non_user_band": {"rule": NON_USER_BAND_RULE, "other_band_factors": factors},
         "means": {
             series: {
                 group: {BAND_IDS[b]: v for b, v in by_band.items()}
@@ -1427,6 +1448,40 @@ def band_means_from_donor(
         "cells_filled_from_all_england": fallbacks,
     }
     return means, receipt
+
+
+def _move_non_user_band_trips(
+    means: dict[str, dict[str, dict[int, float]]],
+    weights: np.ndarray,
+    bands: np.ndarray,
+    groups: np.ndarray,
+) -> dict[str, dict[str, float]]:
+    """Zero the non-user band's means and scale the other bands to keep the
+    donor's trips in each series and residence group; return the scales."""
+
+    factors: dict[str, dict[str, float]] = {}
+    for series, by_group in means.items():
+        factors[series] = {}
+        for group, by_band in by_group.items():
+            in_group = groups == group
+            persons = {
+                band: float(weights[in_group & (bands == band)].sum())
+                for band in by_band
+            }
+            total = sum(persons[band] * mean for band, mean in by_band.items())
+            rest = total - persons[NON_USER_BAND] * by_band[NON_USER_BAND]
+            if total > 0.0 and rest <= 0.0:
+                raise NTSBusTravelError(
+                    f"{series} trips of the {group} group lie in the non-user band "
+                    "alone; no other band can carry them."
+                )
+            factor = total / rest if rest > 0.0 else 1.0
+            by_group[group] = {
+                band: 0.0 if band == NON_USER_BAND else mean * factor
+                for band, mean in by_band.items()
+            }
+            factors[series][group] = factor
+    return factors
 
 
 def band_means_from_published_rate(
@@ -2037,6 +2092,49 @@ class UKNTSBusTravelStageTransform:
         return {"evidence": self.last_result.evidence()}
 
 
+#: The regions outside England: NTS0705a, the publisher's trips by household
+#: income quintile, covers England residents.
+_NON_ENGLAND_REGIONS = frozenset({"SCOTLAND", "WALES", "NORTHERN_IRELAND"})
+
+
+def _trips_by_income_quintile(
+    person: pd.DataFrame, recipient: pd.DataFrame, weights: np.ndarray
+) -> dict[str, Any]:
+    """England residents' trips per person by household income quintile, the
+    frame's side of DfT's NTS0705a (microcosm#1386)."""
+
+    england = ~np.isin(
+        recipient["residence_region"].to_numpy().astype(str),
+        sorted(_NON_ENGLAND_REGIONS),
+    )
+    income = recipient["household_gross_income"].to_numpy(dtype=float)[england]
+    w = weights[england]
+    order = np.argsort(income, kind="stable")
+    cumulative = np.cumsum(w[order]) / w.sum()
+    quintile = np.empty(len(order), dtype=np.int64)
+    quintile[order] = np.minimum((cumulative * 5.0 - 1e-12).astype(np.int64), 4) + 1
+    out: dict[str, dict[str, float]] = {}
+    for q in range(1, 6):
+        mask = quintile == q
+        out[str(q)] = {
+            series: float(
+                np.average(
+                    person[column].to_numpy(dtype=float)[england][mask],
+                    weights=w[mask],
+                )
+            )
+            for series, column in SERIES_TRIP_COLUMNS.items()
+        }
+    return {
+        "basis": (
+            "England residents ranked by their household's HBAI gross income, "
+            "the band model's income, in person-weighted fifths (1 lowest); "
+            "NTS0705a ranks by total household income"
+        ),
+        "trips_per_person": out,
+    }
+
+
 def _trip_rate_receipt(
     person: pd.DataFrame,
     recipient: pd.DataFrame,
@@ -2073,6 +2171,9 @@ def _trip_rate_receipt(
             }
     return {
         "basis": "prior-weighted persons of the frame (SPI support rows included)",
+        "frame_trips_per_person_by_income_quintile": _trips_by_income_quintile(
+            person, recipient, weights
+        ),
         "frame_trips_per_person": frame_rates,
         "published_trips_per_person": published,
         "published_period_value": int(parameters["trip_rates_period_value"]),

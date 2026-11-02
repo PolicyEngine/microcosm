@@ -10,6 +10,9 @@ import pytest
 
 from microcosm.build.country_spec import load_country_spec
 from microcosm.build.ledger_targets import LedgerTargetReference
+from microcosm.build.uk_runtime.desnz_constituency_energy import (
+    UKDesnzConstituencyEnergyFacts,
+)
 from microcosm.build.uk_runtime.domestic_energy_targets import (
     GREAT_BRITAIN_GEOGRAPHY_ID,
     NORTHERN_IRELAND_GEOGRAPHY_ID,
@@ -19,6 +22,7 @@ from microcosm.build.uk_runtime.domestic_energy_targets import (
     UK_ENERGY_LEVEL_INDEX_CONCEPT,
     UK_GAS_CONNECTED_HOLD,
     UK_GAS_METER_SHARE_INDEX_CONCEPT,
+    UK_LOCAL_ENERGY_RESOURCE,
     _meter_rows_by_roster_area,
     align_census_households_by_gas_meter_share,
     align_energy_to_stage_level,
@@ -338,6 +342,97 @@ def test_census_households_take_the_authority_s_gas_meter_share():
     assert is_uprating_hold(
         replace(spec, metadata={**spec.metadata, "ledger_fact_period": "2021"}), 2025
     )
+
+
+def _seat_cell(target_id: str, area: str, value: float) -> TargetSpec:
+    spec = _cell(target_id, area, value)
+    return replace(
+        spec, metadata={**spec.metadata, "ledger_geography_level": "constituency"}
+    )
+
+
+def _seat_facts(meters: dict[str, dict[str, float]]) -> UKDesnzConstituencyEnergyFacts:
+    rows = tuple(
+        {
+            "observed_measure": {"source_concept": SUBNATIONAL_METER_CONCEPTS[fuel]},
+            "period": {"type": _FEED_PERIOD_TYPES[fuel], "value": 2024},
+            "geography": {"id": seat, "level": "constituency"},
+            "value": value,
+        }
+        for seat, by_fuel in meters.items()
+        for fuel, value in by_fuel.items()
+    )
+    return UKDesnzConstituencyEnergyFacts(
+        rows=rows,
+        inputs_sha256="",
+        rows_sha256="",
+        parameters={},
+        inputs={},
+        generator={},
+    )
+
+
+def test_a_seat_and_its_authorities_take_one_level_factor():
+    # microcosm#1095: the seat cells split the authorities' totals, so one
+    # factor per fuel keeps the two grains equal within every region.
+    registry = TargetRegistry(
+        [
+            _cell(ELECTRICITY_TARGET, "E06000001", 400.0),
+            _seat_cell(ELECTRICITY_TARGET, "E14000001", 250.0),
+        ],
+        country="uk",
+    )
+    reference = _reference(
+        ELECTRICITY_TARGET,
+        UK_ENERGY_LEVEL_INDEX_CONCEPT,
+        source_concept=SUBNATIONAL_CONSUMPTION_CONCEPTS[ELECTRICITY_KWH],
+    )
+    aligned = align_energy_to_stage_level(
+        reference, registry, local_rows=_NORTHERN_IRELAND
+    )
+    factor = gb_energy_level_factors(local_rows=_NORTHERN_IRELAND)[0][ELECTRICITY_KWH]
+    assert [spec.value for spec in aligned.specs] == pytest.approx(
+        [400.0 * factor, 250.0 * factor]
+    )
+
+
+def test_a_seat_takes_the_gas_meter_share_of_its_split_meters():
+    registry = TargetRegistry(
+        [
+            _cell(GAS_CONNECTED_TARGET, "E06000001", 1000.0),
+            _seat_cell(GAS_CONNECTED_TARGET, "E14000001", 800.0),
+        ],
+        country="uk",
+    )
+    reference = _reference(GAS_CONNECTED_TARGET, UK_GAS_METER_SHARE_INDEX_CONCEPT)
+    aligned = align_census_households_by_gas_meter_share(
+        reference,
+        registry,
+        rows=_METERS,
+        seat_facts=_seat_facts({"E14000001": {"electricity": 100.0, "gas": 80.0}}),
+    )
+    authority, seat = aligned.specs
+    assert authority.value == pytest.approx(750.0)
+    assert seat.value == pytest.approx(640.0)
+    assert authority.metadata["uprating_index_resource"] == UK_LOCAL_ENERGY_RESOURCE
+    assert seat.metadata["uprating_index_resource"] == (
+        "desnz_constituency_energy_facts.json"
+    )
+    assert seat.metadata["uprating_hold"] == UK_GAS_CONNECTED_HOLD
+
+
+def test_a_seat_without_gas_meters_is_refused_not_zeroed():
+    registry = TargetRegistry(
+        [_seat_cell(GAS_CONNECTED_TARGET, "S14000051", 10.0)], country="uk"
+    )
+    reference = _reference(GAS_CONNECTED_TARGET, UK_GAS_METER_SHARE_INDEX_CONCEPT)
+    with pytest.raises(ValueError, match="signed deferral"):
+        align_census_households_by_gas_meter_share(
+            reference,
+            registry,
+            rows=_METERS,
+            seat_facts=_seat_facts({"S14000051": {"electricity": 100.0}}),
+        )
 
 
 def test_an_authority_without_gas_meters_is_refused_not_zeroed():

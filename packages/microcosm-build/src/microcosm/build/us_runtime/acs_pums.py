@@ -85,11 +85,16 @@ _PERSON_REQUIRED = (
     "RETP",
     "INTP",
     "PWGTP",
+    "OCCP",
+    "INDP",
+    "WKWN",
+    "ESR",
 )
 # Preserve source hours and their universe/allocation evidence when supplied,
 # and the citizenship, entry-year, birthplace, coverage, class-of-worker,
-# school, employment and military-service fields the ACS local lane's
-# immigration stage reads (microcosm#1020, acs_local_immigration). Older or
+# school and military-service fields the ACS local lane's immigration stage
+# reads (microcosm#1020, acs_local_immigration). The employment status (ESR)
+# it also reads is required above, for the work-experience inputs. Older or
 # minimal source fixtures remain loadable; an absent column stays absent and a
 # Census blank stays missing, never a zero.
 _PERSON_OPTIONAL: tuple[str, ...] = (
@@ -106,7 +111,6 @@ _PERSON_OPTIONAL: tuple[str, ...] = (
     "HINS7",
     "COW",
     "SCHG",
-    "ESR",
     "MIL",
 )
 # ACS source columns whose Census name is already a different CPS ASEC field in

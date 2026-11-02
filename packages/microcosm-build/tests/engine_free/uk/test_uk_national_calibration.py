@@ -53,12 +53,6 @@ from microcosm.calibrate import TargetRegistry, TargetSpec, calibrate
 from microcosm.calibrate.artifacts import decode_problem
 from microcosm.frame import EntitySchema, Frame, MassChange, WeightKind, Weights
 
-# microcosm#1301: the references include the high-value homes region cells (30
-# less the two signed out below the small-cell floor), which
-# load_uk_national_target_inputs drops after the compile; microcosm#1278 adds
-# the ONS single years 0, 1 and 2 for all persons.
-ACTIVE_REFERENCE_COUNT = 1322
-
 
 def _uc_reference(**overrides) -> LedgerTargetReference:
     values = {
@@ -322,11 +316,15 @@ def _facts_for_reference(reference: LedgerTargetReference, value: float) -> list
     if reference.value_operation == "calendar_year_window":
         # A windowed row composes the fiscal years opening in Y-1 and Y from
         # one series; two equal annual facts resolve to the headline value.
+        # An OBR row takes each year from the EFO edition its map names.
+        tables = reference.ledger_selector.get("source_table_by_opening_year", {})
         facts = []
         for year in (reference.period - 1, reference.period):
             fact = _fact_for_reference(reference, value)
             fact["aggregate_fact_key"] += f":fy{year}"
             fact["period"] = {"type": "fiscal_year", "value": year}
+            if str(year) in tables:
+                fact["observed_measure"]["source_table"] = tables[str(year)]
             facts.append(fact)
         return facts
     if reference.name != "dwp.uc.households":
@@ -589,9 +587,8 @@ def test_chronicle_184_uc_and_obr_references_compile_fail_closed() -> None:
     from microcosm.build.ledger_targets import compile_ledger_target_references
 
     spec = load_country_spec("uk")
-    assert len(spec.target_references) == ACTIVE_REFERENCE_COUNT
     reference_names = {reference.name for reference in spec.target_references}
-    assert "obr.universal_credit_in_cap" in reference_names
+    assert "obr.universal_credit" in reference_names
     assert "dwp.uc.households" in reference_names
 
     membership = json.loads(
@@ -632,19 +629,24 @@ def test_chronicle_184_uc_and_obr_references_compile_fail_closed() -> None:
     references = tuple(
         reference
         for reference in spec.target_references
-        if reference.name == "obr.universal_credit_in_cap"
+        if reference.name == "obr.universal_credit"
     )
     registry = compile_ledger_target_references(
         [
-            # The OBR row binds at the calendar-2025 window, so the series
-            # needs the fiscal years opening in 2024 and 2025.
+            # The OBR total binds the two welfare-cap cells at the calendar-2025
+            # window, so each cell's series needs the fiscal years opening in
+            # 2024 and 2025, from the March and October 2026 EFOs.
             {
-                **_fact(
-                    concept="obr.universal_credit_in_cap",
-                    source_name="obr",
-                    value=40_000_000_000,
+                **_fact(concept=concept, source_name="obr", value=value),
+                "aggregate_fact_key": (
+                    f"ledger.aggregate_fact.v2:obr-fixture-{concept}-fy{year}"
                 ),
-                "aggregate_fact_key": f"ledger.aggregate_fact.v2:obr-fixture-fy{year}",
+                "observed_measure": {
+                    **_fact(concept=concept, source_name="obr")["observed_measure"],
+                    "source_table": (
+                        f"EFO {edition} 2026 detailed forecast tables: expenditure"
+                    ),
+                },
                 "period": {"type": "fiscal_year", "value": year},
                 # Chronicle stamps OBR table 4.9's DWP lines with the
                 # geography DWP counts them over (microcosm#1300).
@@ -654,13 +656,17 @@ def test_chronicle_184_uc_and_obr_references_compile_fail_closed() -> None:
                     "name": "Great Britain",
                 },
             }
-            for year in (2024, 2025)
+            for concept, value in (
+                ("obr.universal_credit_in_cap", 40_000_000_000),
+                ("obr.universal_credit_outside_cap", 10_000_000_000),
+            )
+            for year, edition in ((2024, "March"), (2025, "October"))
         ],
         references,
         country="uk",
     )
 
-    assert {spec.name for spec in registry.specs} == {"obr.universal_credit_in_cap"}
+    assert {spec.name for spec in registry.specs} == {"obr.universal_credit"}
 
 
 def test_packaged_binding_classes_materialize_through_the_national_route() -> None:

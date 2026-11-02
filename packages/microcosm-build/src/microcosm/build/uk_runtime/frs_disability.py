@@ -117,8 +117,9 @@ def uk_dwp_disability_category_rates(
 
     The parameter instant is the fiscal-year label instant: policyengine-uk
     writes the April rates over the whole labelled year. This corrects the
-    tree mismatch identified by uk-data#475 and uses the shared 365.25/7 week
-    conversion identified by uk-data#476.
+    tree mismatch identified by uk-data#475 and uses the spine's shared week
+    conversion identified by uk-data#476, 52 weeks since María's ruling of
+    2026-10-23 (uk-data#531).
     """
 
     dwp = _uk_dwp_tree(year)
@@ -148,8 +149,9 @@ def uk_dwp_disability_flag_rates(year: int) -> UKDWPDisabilityFlagRates:
 
     The parameter instant is the fiscal-year label instant: policyengine-uk
     writes the April rates over the whole labelled year. This keeps the tree
-    correction from uk-data#475 and the shared 365.25/7 week conversion from
-    uk-data#476 aligned with the category derivation.
+    correction from uk-data#475 and the spine's shared week conversion from
+    uk-data#476 (52 weeks since 2026-10-23) aligned with the category
+    derivation.
     """
 
     dwp = _uk_dwp_tree(year)

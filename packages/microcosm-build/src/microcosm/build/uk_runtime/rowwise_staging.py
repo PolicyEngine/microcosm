@@ -8,8 +8,10 @@ build must never abort on its own progress report.
 
 These helpers were moved from ``tools/build_uk_rowwise_candidate.py`` so the
 graph full-build driver and the rowwise tool stage identically; the tool
-imports them back. ``_hub_api`` and ``_hub_token`` are the test seams the
-drivers' tests patch on this module.
+imports them back. The run files go to the build's emitter, which commits
+them with the build's own credential; the staged dataset is still uploaded
+here. ``_hub_api`` and ``_hub_token`` are the test seams the drivers' tests
+patch on this module for the staged dataset.
 """
 
 from __future__ import annotations
@@ -105,8 +107,14 @@ def active_telemetry_emitter() -> LocalTelemetryEmitter | None:
     return _ACTIVE_EMITTER
 
 
+def _run_file_emitter() -> Any:
+    """The client of this build attempt's emitter, which takes its run files."""
+
+    return None if _ACTIVE_EMITTER is None else _ACTIVE_EMITTER.client
+
+
 def _hub_api() -> Any:
-    """The Hub client used for the run bundle and staged dataset (test seam)."""
+    """The Hub client used for the staged dataset (test seam)."""
 
     from huggingface_hub import HfApi
 
@@ -215,7 +223,7 @@ def create_staging_run_bundle(
         delivery_mode="local_only" if local_only else "local_and_remote",
         repo_id=None if local_only else args.staging_repo_id,
         upload_interval_seconds=args.staging_upload_interval_seconds,
-        api=None if local_only else _hub_api(),
+        emitter_client=None if local_only else _run_file_emitter(),
     )
 
 
@@ -365,7 +373,6 @@ def thinned_epochs(
     sink: Callable[[Mapping[str, Any]], None],
     *,
     every: int = CALIBRATION_EPOCH_EVERY,
-    withhold_loss: bool = False,
 ) -> Callable[[dict[str, object]], None]:
     """Forward the shared rule's calibration epochs to ``sink``.
 
@@ -378,10 +385,6 @@ def thinned_epochs(
     (the national command never runs a budget search and never met this). A
     contract or content refusal from the telemetry is reported once and stops
     the forwarding: the solve must never abort on its own progress report.
-
-    ``withhold_loss`` forwards each epoch with a null ``loss``: an epoch's loss
-    covers every row, so for a problem that may withhold a row's model figures
-    it would give them back against the published ones (microcosm#1262).
     """
 
     disabled = False
@@ -391,8 +394,6 @@ def thinned_epochs(
         if disabled or not forwards_calibration_epoch(event, every=every):
             return
         forwarded = dict(event)
-        if withhold_loss:
-            forwarded["loss"] = None
         budget_search = forwarded.get("budget_search")
         if isinstance(budget_search, bool):
             forwarded["budget_search"] = 1 if budget_search else None

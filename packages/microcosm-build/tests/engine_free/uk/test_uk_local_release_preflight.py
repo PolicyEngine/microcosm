@@ -234,33 +234,6 @@ def test_good_candidate_dir_passes(tmp_path: Path) -> None:
     )
 
 
-def test_the_candidate_walk_warns_on_shipped_support_figures(tmp_path: Path) -> None:
-    """The files the assembler ships byte for byte get the release's
-    disclosure walk right after the build, as warnings (microcosm#1301)."""
-    module = _load()
-    candidate = _good_candidate(tmp_path)
-    assert module.candidate_disclosure_warnings(candidate) == []
-
-    manifest_path = candidate / "rowwise_candidate_manifest.json"
-    manifest = json.loads(manifest_path.read_text())
-    manifest["support"] = {"min_nonzero_households": 7}
-    # A cross-grain relation's excess is not an ESS extreme.
-    manifest["cross_grain"] = {"subset_relations": [{"max_excess": 0.0}]}
-    manifest_path.write_text(json.dumps(manifest))
-    (warning,) = module.candidate_disclosure_warnings(candidate)
-    assert warning.startswith("rowwise_candidate_manifest.json carries 1 minimum")
-    assert "support.min_nonzero_households" in warning
-    # The warning names where the figure is, never its value.
-    assert "7" not in warning
-
-
-#: A placeholder area code no area carries, so a planted figure never sits
-#: beside a real area (as in the sign-off drafter's tests).
-_AREA = "E06999999"
-#: The synthetic support figures the walk tests plant; no output may repeat one.
-_PLANTED = ("37", "23.75", "29")
-
-
 def _in_force_today(candidate: Path) -> None:
     """Centre the synthetic measure exclusion's window on today: ``main``
     checks the run on the real clock."""
@@ -275,13 +248,11 @@ def _in_force_today(candidate: Path) -> None:
     path.write_text(json.dumps(manifest))
 
 
-def test_candidate_dir_prints_the_findings_in_every_shipped_file_without_failing(
+def test_the_candidate_preflight_warns_on_no_support_figure(
     tmp_path: Path, capsys
 ) -> None:
-    """--candidate-dir carries the walk through to its output: a figure in
-    the candidate manifest, the diagnostics, the signed local report or an
-    opt-in incumbent file is a WARN line naming the file and the path, never
-    a failure (review of microcosm#1307)."""
+    """María's ruling of 2026-10-26: a release ships per-area support figures
+    (microcosm#1301), so the candidate pre-flight no longer walks for them."""
 
     module = _load()
     candidate = _good_candidate(tmp_path)
@@ -290,101 +261,29 @@ def test_candidate_dir_prints_the_findings_in_every_shipped_file_without_failing
     manifest = json.loads(manifest_path.read_text())
     manifest["support"] = {"min_nonzero_households": 37}
     manifest_path.write_text(json.dumps(manifest))
-    (candidate / "microcosm_uk_2024_25_local.diagnostics.json").write_text(
-        json.dumps({"weakest_areas": [{"area_code": _AREA, "rows": 37}]})
-    )
-    # Planted before signing, so the report still authenticates.
-    (candidate / "microcosm_uk_2024_25_local.local_gates.json").write_text(
-        json.dumps(
-            _signed_report(
-                area_support_details={
-                    "reviewed_exclusions": {
-                        f"local_authority/{_AREA}": {
-                            "shortfalls": ["ESS < 50"],
-                            "ess": 23.75,
-                        }
-                    }
-                }
-            )
-        )
-    )
-    (candidate / "score_vs_incumbent.json").write_text(
-        json.dumps({"support": {"sources_by_area": {_AREA: 29}}})
-    )
-    (candidate / "incumbent_surface_evaluation.json").write_text(
-        json.dumps({"notes": [f"local_authority/{_AREA}: rows 37 < 50"]})
-    )
-    incumbent = tmp_path / "incumbent_local_surface_manifest.json"
-    incumbent.write_text(
-        json.dumps({"areas": [{"geography_id": _AREA, "nonzero_households": "3,729"}]})
-    )
-
-    argv = ["--candidate-dir", str(candidate), "--incumbent-manifest", str(incumbent)]
-    assert module.main(argv) == 0
+    assert not hasattr(module, "candidate_disclosure_warnings")
+    assert module.main(["--candidate-dir", str(candidate)]) == 0
     err = capsys.readouterr().err
-    for name in (
-        "rowwise_candidate_manifest.json",
-        "microcosm_uk_2024_25_local.diagnostics.json",
-        "microcosm_uk_2024_25_local.local_gates.json",
-        "score_vs_incumbent.json",
-        "incumbent_surface_evaluation.json",
-        "incumbent_local_surface_manifest.json",
-    ):
-        assert f"WARN {name} carries 1 " in err, name
-    assert "FAIL" not in err
-    assert "preflight: OK, 6 warning(s)" in err
-    for figure in _PLANTED:
-        assert figure not in err
+    assert "WARN" not in err and "FAIL" not in err
 
 
-def test_the_candidate_walk_reads_the_incumbent_manifest_only_when_named(
-    tmp_path: Path, capsys
-) -> None:
+def test_a_named_incumbent_manifest_must_exist(tmp_path: Path, capsys) -> None:
     module = _load()
     candidate = _good_candidate(tmp_path)
-    incumbent = tmp_path / "incumbent_local_surface_manifest.json"
-    incumbent.write_text(json.dumps({"min_rows": 37}))
-    assert module.candidate_disclosure_warnings(candidate) == []
-    (warning,) = module.candidate_disclosure_warnings(
-        candidate, incumbent_manifest=incumbent
-    )
-    assert warning.startswith("incumbent_local_surface_manifest.json carries 1 min")
-
     _in_force_today(candidate)
     missing = tmp_path / "no-such-manifest.json"
     argv = ["--candidate-dir", str(candidate), "--incumbent-manifest", str(missing)]
     assert module.main(argv) == 1
     assert f"FAIL incumbent manifest missing: {missing}" in capsys.readouterr().err
     with pytest.raises(SystemExit):
-        module.main(["--env", "--incumbent-manifest", str(incumbent)])
-
-
-@pytest.mark.parametrize(
-    "content",
-    [b'{"weakest_areas": [{"rows": NaN}]}', b"[" * 100_000 + b"]" * 100_000],
-    ids=["non-standard-constant", "nested-too-deep"],
-)
-def test_the_candidate_walk_reports_a_file_it_cannot_walk(
-    tmp_path: Path, content: bytes
-) -> None:
-    """The walk reads a run's files as the contract does: NaN is refused and
-    a nesting too deep to recurse is reported, never a crash."""
-
-    module = _load()
-    candidate = _good_candidate(tmp_path)
-    (candidate / "microcosm_uk_2024_25_local.diagnostics.json").write_bytes(content)
-    (warning,) = module.candidate_disclosure_warnings(candidate)
-    assert warning.startswith(
-        "microcosm_uk_2024_25_local.diagnostics.json cannot be read and walked as "
-        "JSON, so the disclosure walk cannot rule out"
-    )
+        module.main(["--env", "--incumbent-manifest", str(missing)])
 
 
 def test_release_dir_contract_warnings_print_without_failing(
     tmp_path: Path, monkeypatch, capsys
 ) -> None:
-    """The contract's warnings (its disclosure walk, microcosm#1301) never
-    fail the pre-flight; its failures still do."""
+    """The contract's warnings never fail the pre-flight; its failures
+    still do."""
     from microcosm.data import contract
 
     module = _load()

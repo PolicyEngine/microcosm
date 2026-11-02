@@ -32,6 +32,11 @@ from microcosm.build.uk_runtime.national_frame import (
     uk_time_period,
 )
 from microcosm.build.uk_runtime.release_identity import UK_NATIONAL_RELEASE_ID
+from microcosm.build.uk_runtime.spi_dependency import (
+    UK_SPI_PUBLIC_USE_TAPE_KEY,
+    uk_check_spi_public_use_tape_marker,
+    uk_spi_public_use_tape_marker_for_stage_names,
+)
 from microcosm.build.uk_runtime.weight_year import uk_weights_are_at_dataset_year
 from microcosm.data.contract import validate_release_dir
 
@@ -252,6 +257,7 @@ def _assemble(args: argparse.Namespace) -> dict[str, object]:
         signed_input_posture.get("sha256"),
     )
     cut_tag = _cut_tag(attempt_id, args.cut_tag)
+    spi_marker = _spi_public_use_tape_marker(build_block)
     runtime = _runtime_versions(build_block, dict(args.runtime_version))
     code_pin = _diagnostics_code_pin(diagnostics)
     calibration_filename = f"{_DATASET_KEY}_calibration.npz"
@@ -353,6 +359,7 @@ def _assemble(args: argparse.Namespace) -> dict[str, object]:
             release_cut_part=release_cut_part,
             spine_report_path=spine_report_path,
             staging_delivery=staging_delivery,
+            spi_marker=spi_marker,
         )
     finally:
         shutil.rmtree(staging_parent, ignore_errors=True)
@@ -382,6 +389,7 @@ def _stage_and_finalize(
     release_cut_part: Mapping[str, object],
     spine_report_path: Path,
     staging_delivery: Mapping[str, object],
+    spi_marker: Mapping[str, object],
 ) -> dict[str, object]:
     np.savez(
         calibration_path,
@@ -502,9 +510,12 @@ def _stage_and_finalize(
             }
         ],
         "artifacts": {
-            _DATASET_KEY: artifact(
-                "microdata", _DATASET_FILENAME, measured["candidate"]
-            ),
+            # The microdata's own entry says whether it rests on the SPI
+            # Public Use Tape; licensed_data carries the tape's conditions.
+            _DATASET_KEY: {
+                **artifact("microdata", _DATASET_FILENAME, measured["candidate"]),
+                "spi_public_use_tape_dependent": bool(spi_marker["dependent"]),
+            },
             f"{_DATASET_KEY}_calibration": artifact(
                 "calibration", calibration_filename, calibration_sha
             ),
@@ -549,6 +560,7 @@ def _stage_and_finalize(
             f"{attempt_id} at immutable cut {cut_tag}."
         ),
         "publisher_labels": _uk_publisher_labels(),
+        "licensed_data": {UK_SPI_PUBLIC_USE_TAPE_KEY: dict(spi_marker)},
     }
     release_manifest_path = release_dir / "release_manifest.json"
     _write_json(release_manifest_path, release_manifest)
@@ -683,6 +695,31 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
             parser.error(f"{flag} aliases {resolved[canonical]}: {path}")
         resolved[canonical] = flag
     return args
+
+
+def _spi_public_use_tape_marker(
+    build_block: Mapping[str, object],
+) -> dict[str, object]:
+    """The SPI Public Use Tape marker, rederived from the signed stage list.
+
+    The spine provenance in the signed diagnostics names the stages the spine
+    ran; the packaged spec says which of them read the tape. A provenance that
+    also records a marker must agree with the rederived one (microcosm#1095).
+    """
+
+    provenance = _mapping(
+        build_block.get("spine_provenance"), "diagnostics.build.spine_provenance"
+    )
+    try:
+        marker = uk_spi_public_use_tape_marker_for_stage_names(
+            [str(stage) for stage in provenance.get("stages") or ()]
+        )
+        uk_check_spi_public_use_tape_marker(
+            provenance.get(UK_SPI_PUBLIC_USE_TAPE_KEY), marker
+        )
+    except ValueError as exc:
+        raise SystemExit(f"error: {exc}") from exc
+    return marker
 
 
 def _runtime_version(value: str) -> tuple[str, str]:
