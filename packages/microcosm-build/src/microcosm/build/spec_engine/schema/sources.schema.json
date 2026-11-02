@@ -6618,6 +6618,75 @@
      "required": [
       "kind",
       "output",
+      "profit",
+      "draw",
+      "seed",
+      "claimant_bands",
+      "claimant_expenses",
+      "other_expenses",
+      "calibration",
+      "rule"
+     ],
+     "properties": {
+      "kind": {
+       "const": "assign_trading_allowance_receipts"
+      },
+      "output": {
+       "type": "string"
+      },
+      "profit": {
+       "type": "string"
+      },
+      "draw": {
+       "type": "string"
+      },
+      "seed": {
+       "type": "integer"
+      },
+      "claimant_bands": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+         "rate"
+        ],
+        "properties": {
+         "upper_inclusive": {
+          "type": "number",
+          "exclusiveMinimum": 0
+         },
+         "rate": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+         }
+        }
+       }
+      },
+      "claimant_expenses": {
+       "type": "number",
+       "minimum": 0
+      },
+      "other_expenses": {
+       "type": "number",
+       "minimum": 0
+      },
+      "calibration": {
+       "type": "string"
+      },
+      "rule": {
+       "type": "string"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "output",
       "draw",
       "seed",
       "anchor",
