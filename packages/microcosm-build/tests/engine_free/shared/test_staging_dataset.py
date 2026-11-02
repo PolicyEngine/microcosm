@@ -873,10 +873,11 @@ def test_a_hand_over_whose_files_are_gone_or_changed_is_not_resumed(tmp_path):
     hub = FakeHub(tmp_path)
     queue = FakeHandoverQueue()
     record = staging_dataset.handover_record(_first_hand_over(bundle, hub, queue))
-    # The directory moved: the job names its files at the old paths, where
-    # they are gone.
+    # The directory moved: the job, still queued, names its files at the old
+    # paths, where they are gone.
     moved = {**record, "run_dir": str(tmp_path / "elsewhere")}
-    assert _resume(bundle, FakeEmitterClient(hub_api=hub, queue=queue), moved) is None
+    queued = FakeEmitterClient(bundle_receipts=[QUEUED])
+    assert _resume(bundle, queued, moved) is None
     # The emitter settled the job for good because its files changed.
     changed = FakeEmitterClient(
         bundle_receipts=[_receipt("failed", error_code="PRESERVED_BYTES_CHANGED")]

@@ -800,7 +800,7 @@ def test_restaging_a_national_build_records_the_bundle_its_emitter_delivered(
     # The command updates the manifest; it says which records it cannot
     # change: the build's completed staging run and its Logbook row.
     assert "staging run" in captured.err and "Logbook row" in captured.err
-    assert "still records UPLOAD_PENDING" in captured.err
+    assert "still records failed (UPLOAD_PENDING)" in captured.err
     assert "phase dataset_stage_failed" in captured.err
     record = json.loads(manifest_path.read_text())["staged_dataset_handover"]
     assert record["handover_id"] == handed_over
@@ -966,7 +966,12 @@ def test_a_national_builds_own_hand_over_settled_as_remote_differs_is_recorded(
                 "attempts": 1,
                 "repository": "policyengine/populace-uk-private",
                 "prefix": "",
-                "copied_files": [],
+                "copied_files": [
+                    builder.MANIFEST_FILENAME,
+                    "build_record.json",
+                    "sha256sums.txt",
+                    "staged_manifest.json",
+                ],
             }
         ]
     )

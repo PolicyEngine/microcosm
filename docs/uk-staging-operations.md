@@ -270,9 +270,14 @@ run directory unchanged until then, and re-stage it to record the outcome. A
 arrive, because the emitter keeps it queued; with any other code
 (`REMOTE_DIFFERS`, `PRESERVED_BYTES_CHANGED`, `HANDOVER_REFUSED`,
 `EMITTER_UNAVAILABLE`, or `RECEIPT_UNRECOGNIZED` for a settled answer
-Microcosm does not recognize) the failure is final. The manifest also names the build's hand-over
-(`staged_dataset_handover`: the emitter's hand-over ID, the repository and the
-run id), so a re-stage can ask the emitter for its outcome.
+Microcosm does not recognize) the failure is final. The manifest also names
+the build's hand-over in `staged_dataset_handover`: `handover_id` (the
+emitter's hand-over ID), `repository`, `run_id`, `run_dir` (the directory
+whose paths the emitter's job names) and `files` (the outputs' digests and
+sizes as handed over), so a re-stage can ask the emitter for its outcome. It
+keeps what the build recorded in its staging run and Logbook row in
+`staged_dataset_at_build` (`mode`, `status`, `error_code`), which re-stages
+never change.
 
 The manifest gains two evidence blocks after the bundle is on disk:
 `staging_delivery`, the validated version 2 telemetry receipt, and
@@ -318,29 +323,38 @@ and checks write access as a build does. It then works out what to do from the
 manifest:
 
 - **The record says the bundle landed.** A manifest that records the same
-  outputs as uploaded, or the outputs the build handed over (a national
-  build's, whose build record changed afterwards), is left untouched: the
-  driver's revision stands. A landed record is never replaced by a failure or
-  a local-only record.
+  outputs as uploaded, or the outputs the build handed over while the
+  directory still holds them (a national build's build record and score
+  receipt may differ, since it writes them after the hand-over), is left
+  untouched: the driver's revision stands. A landed record is never replaced
+  by a failure or a local-only record; when an attempt failed (the directory
+  changed since, or the stage went to another repository) the record stays
+  and the command exits 1.
 - **The emitter still holds the build's hand-over.** The manifest's
-  `staged_dataset_handover` names it, with the run directory and the outputs'
-  digests as handed over. Emitters run by the same user with the same cache
+  `staged_dataset_handover` names it. Emitters run by the same user with the
+  same cache
   directory share their hand-overs: the hand-over database,
   `events.handovers.sqlite3`, beside the emitter's event queue file under
   `$XDG_CACHE_HOME/microcosm/telemetry/` (`~/.cache` when `XDG_CACHE_HOME` is
-  unset). The command then records that hand-over's outcome, as
-  `already_staged` with its commit once the bundle is on the Hub, and hands
-  nothing over again. That matters for a national build, which rewrites its
-  build record after the hand-over: a bundle built again from the directory
-  would differ from the one handed over.
-- **That hand-over can never finish.** Its job names the files by the paths
-  they had at hand-over, so if the run directory moved since, or the emitter
-  reports the files changed (`PRESERVED_BYTES_CHANGED`) or missing
-  (`PRESERVED_FILES_MISSING`) and they are still missing, the command hands
-  the directory, where it is now, over as a new job, and records that
-  hand-over. The emitter keeps retrying the abandoned job, waiting up to five
-  minutes between attempts, for as long as emitters run on the machine; no
-  emitter command removes a job, and Microcosm cannot cancel it.
+  unset). The command reads that hand-over's receipt first. One that landed is
+  recorded as `already_staged`, with its commit, wherever the directory is
+  now. One still queued is waited for; one the emitter settled as a failure
+  is recorded with its final code (`REMOTE_DIFFERS`, for example when a
+  re-stage of a copy of the directory uploaded first). Nothing is handed over
+  again. That matters for a national build, which rewrites its build record
+  after the hand-over: a bundle built again from the directory would differ
+  from the one handed over.
+- **That hand-over has not landed and can never finish.** Its job reads the
+  files the emitter did not copy from the paths they had at hand-over, in
+  `run_dir`. If one of them is gone from there (the directory moved, rather
+  than being copied) or the emitter reports the files changed
+  (`PRESERVED_BYTES_CHANGED`), the command hands the directory, where it is
+  now, over as a new job, and records that hand-over. A job that reported
+  files missing (`PRESERVED_FILES_MISSING`) while they are back at its paths
+  is waited for instead. The emitter keeps retrying an abandoned job for as
+  long as emitters run on the machine; the wait between attempts doubles from
+  2 seconds until it reaches its cap of five minutes. No emitter command
+  removes a job, and Microcosm cannot cancel it.
 - **Otherwise** (another machine, another user or cache directory, a cleared
   cache, or a run that kept its bundle local) it hands the directory over. For
   a national build whose bundle already reached the Hub, that hand-over comes
@@ -360,10 +374,12 @@ only job. When it stops waiting it closes its emitter, which abandons an upload
 still running; the next emitter started on the machine retries it from the
 start. The command updates the manifest's record. It cannot update the build's
 other records of a failure, and says so: the staging run's `staged_dataset`
-and `fit_summary` artifacts and its `dataset_staging` event still hold the
-build's code (a completed staging run accepts no changes), and the Logbook row
-still lists the phase `dataset_stage_failed` (a row is identified by the
-digest of its content and chained to the next row). So the dashboard keeps
+and `fit_summary` artifacts and its `dataset_staging` event still hold what
+the build recorded, from `staged_dataset_at_build` (a completed staging run
+accepts no changes), and the Logbook row still lists the phase that status
+gave it, `dataset_stage_failed` or, for a build that kept its bundle local,
+`dataset_stage_skipped` (a row is identified by the digest of its content and
+chained to the next row). So the dashboard keeps
 showing such a run without its bundle. An identical remote bundle the manifest
 does not know about is recorded as `already_staged` with the bundle's own
 commit; a different bundle

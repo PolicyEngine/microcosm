@@ -1934,7 +1934,7 @@ def test_the_restage_note_names_the_code_the_build_recorded(
     capsys.readouterr()
     assert stager.main(["--run-dir", str(out), "--wait-seconds", "60"]) == 0
     err = capsys.readouterr().err
-    assert "still records UPLOAD_PENDING" in err
+    assert "still records failed (UPLOAD_PENDING)" in err
     assert "CREDENTIAL_MISSING" not in err
     assert "phase dataset_stage_failed" in err
 
