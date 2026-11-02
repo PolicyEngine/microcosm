@@ -1,0 +1,33 @@
+format: rulespec/v1
+module:
+  summary: Binary relation batching fixture for declared partition members.
+inputs:
+  - name: toy_income
+    entity: Person
+    dtype: Decimal
+rules:
+  - name: toy_person_income
+    kind: derived
+    entity: Person
+    dtype: Decimal
+    period: Year
+    source: microcosm test fixture
+    versions:
+      - effective_from: '2025-01-01'
+        formula: toy_income
+  - name: toy_member
+    kind: data_relation
+    data_relation:
+      predicate: toy_member
+      arity: 2
+      arguments: [TaxUnit, Person]
+    source: microcosm test fixture
+  - name: toy_total
+    kind: derived
+    entity: TaxUnit
+    dtype: Decimal
+    period: Year
+    source: microcosm test fixture
+    versions:
+      - effective_from: '2025-01-01'
+        formula: sum(toy_member.toy_person_income)
