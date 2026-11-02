@@ -120,8 +120,10 @@ MODULE_PATH = _BUILD.package / "src/microcosm/build/transport/gate_bindings.py"
 NZ_ROOT = _BUILD.package / "src/microcosm/build/nz"
 COUNTRY = "xx"
 
-#: The nine implemented comparisons; pending bindings never pass.
+#: The ten implemented comparisons; pending bindings never pass.
+#: ``weights_audit`` overrides its ``DEFAULT_REGISTRY`` binding (H30).
 BOUND = (
+    "weights_audit",
     "aggregate_admin",
     "calibration_reference_coverage",
     "exported_nonzero",
@@ -143,9 +145,11 @@ PENDING_ARTIFACTS = {
 EVIDENCE = ("release_input_coverage",)
 EVIDENCE_ARTIFACTS = {
     "release_input_coverage": ("axiom_input_closure", "donor_artifact_receipt"),
+    "weights_audit": ("fit_weight_records",),
 }
 EVIDENCE_PARAMETERS = {
     "release_input_coverage": {"allow_engine_optional": False},
+    "weights_audit": {"maximum_relative_mass_change": 0.02},
 }
 #: Gates deliberately deferred by country policy.
 UNBOUND = ("macro_realism",)
@@ -398,7 +402,84 @@ FIT = {
 
 #: Per bound gate: a passing parameter row and its full evidence. The fail
 #: and absent cases below are derived from these.
+
+
+def _weights_audit_evidence(relative_change: float) -> dict:
+    """A decoded transport weights audit whose edges agree with its bytes.
+
+    The calibrated weights are the toy frame's, so only the recorded mass
+    change decides the gate.
+    """
+
+    from microcosm.build.transport import evidence_contract as contract
+
+    frame = toy_frame(kind=WeightKind.CALIBRATED)
+    weights = frame.weights_for("household").values.tolist()
+    ids = frame.table("household")["household_id"].tolist()
+    document = {
+        **contract.evidence_header(
+            "transport_weights_audit",
+            kernel=contract.WEIGHTS_AUDIT_REF,
+            node="x.evidence.weights",
+            artifacts={},
+            frame={},
+            params={},
+        ),
+        "weight_entity": "household",
+        "fit_records": [{"fit_name": "x.calibrate", "weight_kind": "calibrated"}],
+        "transition": {
+            "from_kind": "design",
+            "to_kind": "calibrated",
+            "household_id": ids,
+            "source_household_id": [str(i) for i in ids],
+            "design_weight": weights,
+            "calibrated_weight": weights,
+        },
+        "binding": {
+            "problem_sha256": "a" * 64,
+            "solution_problem_sha256": "a" * 64,
+            "result_problem_sha256": "a" * 64,
+        },
+        "mass": {
+            "destination_person_mass": 100.0,
+            "calibrated_person_mass": 100.0 * (1 + relative_change),
+            "design_household_mass": 1.0,
+            "calibrated_household_mass": 1.0,
+            "absolute_change": 100.0 * relative_change,
+            "relative_change": relative_change,
+        },
+        "source_households": {},
+        "partitions": [
+            {"entity": "person", "inherited": True, "weight_columns": []},
+            {"entity": "family", "inherited": True, "weight_columns": []},
+        ],
+    }
+    payload = canonical_json(document)
+    return {
+        "frame": frame,
+        "artifacts": {
+            "fit_weight_records": contract.decode_weights_audit(payload),
+            GRAPH_EVIDENCE: {
+                "fit_weight_records": {
+                    "producer": "x.evidence.weights",
+                    "artifact": "fit_weight_records",
+                    "type": [
+                        contract.WEIGHTS_AUDIT_TYPE.name,
+                        contract.WEIGHTS_AUDIT_TYPE.schema_version,
+                    ],
+                    "sha256": hashlib.sha256(payload).hexdigest(),
+                    "producer_key": "e" * 64,
+                }
+            },
+        },
+    }
+
+
 PASSING = {
+    "weights_audit": lambda: (
+        {"maximum_relative_mass_change": 0.02},
+        _weights_audit_evidence(0.01),
+    ),
     "per_family_fit": lambda: (
         FIT,
         {"artifacts": {DIAGNOSTICS: _diagnostics([("income", "a", 0.01)])}},
@@ -443,6 +524,10 @@ PASSING = {
 
 #: Per bound gate: a failing parameter row and evidence.
 FAILING = {
+    "weights_audit": lambda: (
+        {"maximum_relative_mass_change": 0.02},
+        _weights_audit_evidence(0.03),
+    ),
     "per_family_fit": lambda: (
         FIT,
         {"artifacts": {DIAGNOSTICS: _diagnostics([("income", "a", 0.5)])}},
@@ -648,6 +733,8 @@ class TestNewZealandManifest:
             assert entry.evidence_absent_blocks
             raw = next(row for row in document["gates"] if row["gate"] == gate)
             assert raw["parameters"] == EVIDENCE_PARAMETERS[gate]
+        raw = next(row for row in document["gates"] if row["gate"] == "weights_audit")
+        assert raw["parameters"] == EVIDENCE_PARAMETERS["weights_audit"]
 
     @pytest.mark.parametrize("supplied", (False, True))
     def test_pending_gates_block_candidates_with_every_other_gate_passing(
@@ -820,9 +907,9 @@ class TestModuleBoundaries:
             )
             == set()
         )
-        assert (
-            required_gate_parameters(TRANSPORT_GATE_REGISTRY["weights_audit"]) == set()
-        )
+        assert required_gate_parameters(TRANSPORT_GATE_REGISTRY["weights_audit"]) == {
+            "maximum_relative_mass_change"
+        }
 
     @pytest.mark.parametrize(
         ("gate", "parameters"),
@@ -1959,8 +2046,10 @@ class TestThroughTheGateKernel:
         store, runs = toy_runs
         report = _report(store, runs["pass"][2])
         statuses = {o.entry.gate: o.status for o in report.report.outcomes}
+        # This toy graph has no weights-audit producer; the NZ toy graph
+        # (test_nz_transport_toy_graph.py) runs that gate end to end.
         assert statuses == {
-            **dict.fromkeys(BOUND, GateStatus.PASSED),
+            **dict.fromkeys(set(BOUND) - {"weights_audit"}, GateStatus.PASSED),
             "macro_realism": GateStatus.NOT_APPLICABLE,
         }
         assert report.outcome == "pass"
@@ -2107,6 +2196,29 @@ def _unchecked_evidence(gate: str) -> dict[str, dict]:
                 },
             ),
         ),
+        "fit_weight_records": (
+            contract.WEIGHTS_AUDIT_TYPE,
+            contract.decode_weights_audit,
+            payload(
+                "transport_weights_audit",
+                contract.WEIGHTS_AUDIT_REF,
+                "x.evidence.weights",
+                {
+                    key: value
+                    for key, value in json.loads(
+                        canonical_json(
+                            {
+                                k: v
+                                for k, v in _weights_audit_evidence(0.0)["artifacts"][
+                                    "fit_weight_records"
+                                ].document.items()
+                            }
+                        )
+                    ).items()
+                    if key not in {"schema_version", "kind", "producer", "inputs"}
+                },
+            ),
+        ),
     }
     aliases = EVIDENCE_ARTIFACTS[gate]
     decoded = {alias: documents[alias][1](documents[alias][2]) for alias in aliases}
@@ -2136,7 +2248,7 @@ def _unchecked_evidence(gate: str) -> dict[str, dict]:
 
 #: Gates this test covers at this head: each one's evidence binding is
 #: implemented. w4b adds weights_audit and w4c adds support.
-CHECKED_EVIDENCE_GATES = ("release_input_coverage",)
+CHECKED_EVIDENCE_GATES = ("release_input_coverage", "weights_audit")
 
 
 @pytest.mark.parametrize("gate", CHECKED_EVIDENCE_GATES)

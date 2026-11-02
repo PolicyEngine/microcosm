@@ -87,6 +87,10 @@ __all__ = [
     "EVIDENCE_KERNEL_MODULES",
     "EVIDENCE_TYPES",
     "EvidenceDocument",
+    "FIT_WEIGHT_RECORDS",
+    "WEIGHTS_AUDIT_REF",
+    "WEIGHTS_AUDIT_TYPE",
+    "decode_weights_audit",
     "GRAPH_EVIDENCE",
     "INPUT_CLOSURE_REF",
     "INPUT_CLOSURE_TYPE",
@@ -113,14 +117,19 @@ GRAPH_EVIDENCE = "graph_evidence"
 DONOR_ARTIFACT_RECEIPT = "donor_artifact_receipt"
 AXIOM_INPUT_CLOSURE = "axiom_input_closure"
 
+FIT_WEIGHT_RECORDS = "fit_weight_records"
+
 DONOR_RECEIPT_REF = "transport.donor_receipt@1"
 INPUT_CLOSURE_REF = "transport.input_closure@1"
+WEIGHTS_AUDIT_REF = "transport.weights_audit@1"
 
 DONOR_RECEIPT_TYPE = ArtifactType("microcosm.transport.donor-artifact-receipt", 1)
 INPUT_CLOSURE_TYPE = ArtifactType("microcosm.transport.axiom-input-closure", 1)
+WEIGHTS_AUDIT_TYPE = ArtifactType("microcosm.transport.weights-audit", 1)
 
 _DONOR_RECEIPT_KIND = "transport_donor_artifact_receipt"
 _INPUT_CLOSURE_KIND = "transport_axiom_input_closure"
+_WEIGHTS_AUDIT_KIND = "transport_weights_audit"
 
 _KERNELS = "microcosm.build.transport.evidence_kernels"
 _LEAF = __name__
@@ -138,6 +147,16 @@ EVIDENCE_KERNEL_MODULES: Mapping[str, tuple[str, ...]] = MappingProxyType(
             "microcosm.frame.concepts",
             "microcosm.frame.adapters.axiom_input_surface",
             "microcosm.frame.adapters.axiom",
+            _CANONICAL,
+            _LEAF,
+        ),
+        WEIGHTS_AUDIT_REF: (
+            _KERNELS,
+            "microcosm.build.transport.weight_quality",
+            "microcosm.calibrate.artifacts",
+            "microcosm.calibrate.matrix",
+            "microcosm.calibrate.registry",
+            "microcosm.calibrate.solve",
             _CANONICAL,
             _LEAF,
         ),
@@ -390,17 +409,68 @@ def decode_input_closure(payload: bytes) -> EvidenceDocument:
     return decoded
 
 
+_WEIGHTS_AUDIT_BODY = frozenset(
+    {
+        "weight_entity",
+        "fit_records",
+        "transition",
+        "binding",
+        "mass",
+        "source_households",
+        "partitions",
+    }
+)
+
+
+def decode_weights_audit(payload: bytes) -> EvidenceDocument:
+    """Decode a ``fit_weight_records`` audit; its rows are checked by the gate."""
+
+    decoded = _decode(payload, kind=_WEIGHTS_AUDIT_KIND, body=_WEIGHTS_AUDIT_BODY)
+    document = decoded.document
+    transition = document["transition"]
+    if (
+        not isinstance(document["fit_records"], list)
+        or not isinstance(document["partitions"], list)
+        or not isinstance(transition, dict)
+        or set(transition)
+        != {
+            "from_kind",
+            "to_kind",
+            "household_id",
+            "source_household_id",
+            "design_weight",
+            "calibrated_weight",
+        }
+        or len(
+            {
+                len(transition[key])
+                for key in (
+                    "household_id",
+                    "source_household_id",
+                    "design_weight",
+                    "calibrated_weight",
+                )
+            }
+        )
+        != 1
+    ):
+        raise ValueError("A weights audit's records are malformed.")
+    return decoded
+
+
 #: Artifact type -> decoder, for ``gates.battery@1``.
 EVIDENCE_TYPES: Mapping[ArtifactType, object] = MappingProxyType(
     {
         DONOR_RECEIPT_TYPE: decode_donor_receipt,
         INPUT_CLOSURE_TYPE: decode_input_closure,
+        WEIGHTS_AUDIT_TYPE: decode_weights_audit,
     }
 )
 
 _KINDS = {
     DONOR_RECEIPT_REF: (_DONOR_RECEIPT_KIND, DONOR_RECEIPT_TYPE),
     INPUT_CLOSURE_REF: (_INPUT_CLOSURE_KIND, INPUT_CLOSURE_TYPE),
+    WEIGHTS_AUDIT_REF: (_WEIGHTS_AUDIT_KIND, WEIGHTS_AUDIT_TYPE),
 }
 
 
