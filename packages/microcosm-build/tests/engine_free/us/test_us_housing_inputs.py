@@ -1,6 +1,9 @@
 """Tests split from packages/microcosm-build/tests/test_us_housing_inputs.py."""
 
 # ruff: noqa: F403, F405
+from hypothesis import given, settings
+from hypothesis import strategies as st
+
 from test_support.microcosm_build.us_housing_inputs import *
 
 
@@ -354,3 +357,91 @@ def test_release_wiring_promotes_all_five_inputs_and_probes() -> None:
     ]
     assert contract.populace_treatment == "out_of_scope"
     assert contract.rate == {"status": "not_used_measured_source"}
+
+
+def test_rent_reaches_its_own_household_when_person_order_differs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(module, "QRF", _RentQRF)
+    frame = _frame()
+    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    tables["person"] = tables["person"].iloc[::-1].reset_index(drop=True)
+    reordered = Frame(
+        tables,
+        frame.schema,
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+    )
+
+    result = with_us_housing_inputs(
+        reordered, seed=0, time_period=2024, acs_rent_donor=_donor()
+    )
+
+    person = result.table("person")
+    rent_by_household = person.set_index("person_household_id")["pre_subsidy_rent"]
+    tenure_by_household = result.table("household").set_index("household_id")[
+        "tenure_type"
+    ]
+    renters = tenure_by_household.index[tenure_by_household == "RENTED"]
+    others = tenure_by_household.index[tenure_by_household != "RENTED"]
+    assert (rent_by_household.loc[renters] == 12_000.0).all()
+    assert (rent_by_household.loc[others] == 0.0).all()
+
+
+class _OneDrawPerHouseholdFitted:
+    def predict(self, test: pd.DataFrame, **kwargs) -> pd.DataFrame:
+        return pd.DataFrame(
+            {"rent": 1_000.0 * np.arange(1, len(test) + 1)}, index=test.index
+        )
+
+
+class _OneDrawPerHouseholdQRF:
+    def __init__(self, **_kwargs: object) -> None:
+        pass
+
+    def fit(self, *_args: object, **_kwargs: object) -> _OneDrawPerHouseholdFitted:
+        return _OneDrawPerHouseholdFitted()
+
+
+def _frame_with_members(extra_members: list[int], *, order_seed: int) -> Frame:
+    frame = derive_us_housing_inputs(_frame())
+    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    heads = tables["person"]
+    members = heads.loc[np.repeat(heads.index.to_numpy(), extra_members)].copy()
+    members["person_id"] = heads["person_id"].max() + np.arange(1, len(members) + 1)
+    members["is_household_head"] = False
+    members["tax_unit_role_input"] = "DEPENDENT"
+    person = pd.concat([heads, members], ignore_index=True)
+    order = np.random.default_rng(order_seed).permutation(len(person))
+    tables["person"] = person.iloc[order].reset_index(drop=True)
+    return Frame(
+        tables,
+        frame.schema,
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+    )
+
+
+@settings(max_examples=40, deadline=None)
+@given(
+    extra_members=st.lists(st.integers(0, 3), min_size=20, max_size=20),
+    order_seed=st.integers(0, 2**32 - 1),
+)
+def test_each_head_holds_its_households_draw_under_any_person_order(
+    extra_members: list[int], order_seed: int
+) -> None:
+    frame = _frame_with_members(extra_members, order_seed=order_seed)
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(module, "QRF", _OneDrawPerHouseholdQRF)
+        rent = module.impute_us_pre_subsidy_rent(frame, _donor(), seed=0)
+
+    person = frame.table("person")
+    draws = pd.Series(
+        1_000.0 * np.arange(1, frame.n("household") + 1),
+        index=frame.table("household")["household_id"].to_numpy(),
+    )
+    is_head = person["is_household_head"].to_numpy()
+    assert (
+        rent[is_head]
+        == draws.loc[person.loc[is_head, "person_household_id"]].to_numpy()
+    ).all()
+    assert (rent[~is_head] == 0.0).all()
+    assert rent.sum() == draws.sum()
