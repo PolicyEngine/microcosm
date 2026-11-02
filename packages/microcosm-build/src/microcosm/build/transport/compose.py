@@ -88,7 +88,6 @@ from microcosm.build.reference_profiles import resolve_reference_profiles
 from microcosm.calibrate.ordered_kernels import OUTPUT_TYPES
 from microcosm.frame.kernels import missing_relation_inputs
 from microcosm.frame.materialize import _WEIGHT_COLUMN_SUFFIX
-from microcosm.frame.unit_construction import BenefitUnitRule
 from microcosm.graph import (
     ROWS_ALL,
     ArtifactInput,
@@ -1289,11 +1288,12 @@ def _check_export_contract(
         return
     if not _is_text(resource):
         raise ValueError("Transport export_contract must name a resource.")
-    from .registry import transport_entity_schema
-
-    schema, _ = transport_entity_schema(
-        BenefitUnitRule.from_spec(transport_resource(spec, "benefit_unit_rule"))
-    )
+    declaration = _versioned_create_units(spec)
+    if declaration is None:
+        declaration = create_unit_declaration(
+            CREATE_V1_REF, transport_resource(spec, "benefit_unit_rule")
+        )
+    schema = declaration.entity_schema()[0]
     automatic = {
         entity: {schema.entity_id_column(entity)} for entity in schema.entities
     }

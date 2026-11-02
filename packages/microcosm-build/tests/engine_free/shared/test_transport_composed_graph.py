@@ -83,6 +83,7 @@ from microcosm.build.transport.takeup_kernels import GAP_TYPE
 from microcosm.build.transport.target_kernels import CALIBRATION_PREPARE
 from microcosm.build.transport.terminal_kernels import materialize_export
 from microcosm.frame.kernels import SimulateRulesKernel
+from microcosm.frame.unit_construction import MultiUnitRule, UnitDeclaration
 from microcosm.graph import (
     ArtifactInput,
     ArtifactOutput,
@@ -133,6 +134,7 @@ from test_support.microcosm_build.transport_entitlement import (
     make_entitlement_fixture,
 )
 from test_support.microcosm_build.transport_graph import descendants
+from test_support.microcosm_build.transport_population import UNIT_RULE
 from test_support.paths import paths_for
 
 TRANSPORT = paths_for("microcosm-build").package / "src/microcosm/build/transport"
@@ -2233,6 +2235,74 @@ def test_closed_export_contract_applies_roster_to_automatic_structural_columns(
     spec["resources"]["closed_export"]["forbidden"] = ["person_id"]
     with pytest.raises(ValueError, match="outside its closed roster"):
         compose_transport_graph(spec, composed.config)
+
+
+def _on_declared_units(value):
+    if isinstance(value, dict):
+        rows = {key: _on_declared_units(item) for key, item in value.items()}
+        if rows.get("resource") == "benefit_unit_rule":
+            rows["resource"] = "unit_declarations"
+        return rows
+    if isinstance(value, list):
+        return [_on_declared_units(item) for item in value]
+    return value
+
+
+def _closed_export_on_create2(fixture, units, *, keep_legacy_rule=False):
+    """Move the closed-export spec to ``transport.create@2`` over ``units``."""
+    spec = _closed_export_spec(fixture)
+    resources = spec["resources"]
+    legacy = resources.pop("benefit_unit_rule")
+    for name in ("transport_graph", "entitlement_graph", "scenarios"):
+        if name in resources:
+            resources[name] = _on_declared_units(resources[name])
+    resources["unit_declarations"] = units.to_dict()
+    create = next(
+        row
+        for row in resources["transport_graph"]["nodes"]
+        if row.get("structural") == "create"
+    )
+    create["kernel"] = "transport.create@2"
+    resources["axiom_rules_bindings"]["entity_names"]["assessment"] = "Assessment"
+    if keep_legacy_rule:
+        resources["benefit_unit_rule"] = legacy
+    return spec
+
+
+def test_closed_export_contract_on_one_declared_unit_needs_no_legacy_rule(composed):
+    units = MultiUnitRule.from_benefit_unit(UNIT_RULE)
+    spec = _closed_export_on_create2(composed, units)
+    assert "benefit_unit_rule" not in spec["resources"]
+    compile_graph(compose_transport_graph(spec, composed.config))
+
+
+@pytest.mark.parametrize("keep_legacy_rule", [False, True])
+def test_closed_export_contract_covers_every_declared_partition(
+    composed, keep_legacy_rule
+):
+    units = MultiUnitRule(
+        units=(
+            UnitDeclaration(kind="benefit_unit", rule=UNIT_RULE),
+            UnitDeclaration(
+                kind="benefit_unit", rule=replace(UNIT_RULE, entity="assessment")
+            ),
+        )
+    )
+    silent = _closed_export_on_create2(
+        composed, units, keep_legacy_rule=keep_legacy_rule
+    )
+    with pytest.raises(ValueError, match="outside its closed roster"):
+        compose_transport_graph(silent, composed.config)
+    allowed = copy.deepcopy(silent)
+    allowed["resources"]["closed_export"]["optional"] += [
+        "person_assessment_id",
+        "assessment_id",
+    ]
+    compile_graph(compose_transport_graph(allowed, composed.config))
+    forbids = copy.deepcopy(allowed)
+    forbids["resources"]["closed_export"]["forbidden"] = ["person_assessment_id"]
+    with pytest.raises(ValueError, match="outside its closed roster"):
+        compose_transport_graph(forbids, composed.config)
 
 
 @pytest.mark.parametrize("kind", ["scratch_cents", "reporting", "formula"])
