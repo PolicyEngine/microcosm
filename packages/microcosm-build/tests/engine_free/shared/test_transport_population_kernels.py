@@ -591,8 +591,15 @@ def _one_sex_per_household(tables):
     person["is_female"] = person.groupby("person_household_id").ngroup() % 2 == 0
 
 
+def _one_mixed_household(tables):
+    """Give the first household one sex flag and leave the others as drawn."""
+    person = tables["person"]
+    first = person["person_household_id"] == person["person_household_id"].iloc[0]
+    person.loc[first, "is_female"] = False
+
+
 @pytest.mark.parametrize("shape", ["bare", "component"])
-@pytest.mark.parametrize("mixed", [True, False])
+@pytest.mark.parametrize("mixed", [True, "one_household", False])
 def test_aggregate_map_refuses_members_with_two_component_codes(tmp_path, mixed, shape):
     """An aggregate maps as one unit only when its members share one code.
 
@@ -604,12 +611,17 @@ def test_aggregate_map_refuses_members_with_two_component_codes(tmp_path, mixed,
     sources = write_population_sources(
         tmp_path / "sources",
         band_entity="household",
-        edit_tables=None if mixed else _one_sex_per_household,
+        edit_tables={
+            True: None,
+            "one_household": _one_mixed_household,
+            False: _one_sex_per_household,
+        }[mixed],
     )
     direct, _ = direct_population(sources)
     person = direct.table("person")
     codes = person.groupby("person_household_id")["sex"].nunique()
-    assert bool((codes > 1).any()) == mixed
+    assert bool((codes > 1).any()) == bool(mixed)
+    assert bool((codes > 1).all()) == (mixed is True)
     assert person["sex"].nunique() == 2
     graph = population_graph(
         sources, qmap_column="liquid_financial_assets", aggregate_entity="household"
