@@ -43,13 +43,21 @@ The evidence each bound gate reads:
   ``gates.json``.
 - ``weight_ess`` and ``weight_ratio``: the frame's one weighted entity.
 
-Two frozen bindings remain pending: ``support`` requires
+``release_input_coverage`` reads ``donor_artifact_receipt``
+(``transport.donor_receipt@1``) and ``axiom_input_closure``
+(``transport.input_closure@1``) with the battery's reserved
+``graph_evidence`` map and the frame, and requires
+``allow_engine_optional`` from ``gates.json``. Each artifact's identity
+header must name the producer node the battery's own edge names, the
+producer kernel and its implementation hash, and the digests of the bytes
+and frame columns the battery also holds
+(:func:`~microcosm.build.transport.evidence_contract.checked_header`); the
+gate then reports every bound module, never stopping at the first failure.
+One frozen binding remains pending: ``support`` requires
 ``donor_support_bounds`` (realized donor-support bounds of transported
-columns), and ``release_input_coverage`` requires ``donor_artifact_receipt``
-and ``axiom_input_closure`` (donor authentication and per-module Axiom input
-closure). Missing artifacts resolve to registered ``evidence_absent``;
+columns). Missing artifacts resolve to registered ``evidence_absent``;
 supplied artifacts still fail until the checks are implemented. New Zealand
-keeps both entries applicable with ``evidence_absent_blocks``. Only
+keeps the entry applicable with ``evidence_absent_blocks``. Only
 ``macro_realism`` has no transport binding and remains ``not_applicable``
 pending national-accounts evidence and reviewed bands. ``weights_audit`` keeps its
 ``DEFAULT_REGISTRY`` binding, but no transport kernel emits its
@@ -98,6 +106,17 @@ from microcosm.build.plan import _nonzero_share
 from microcosm.calibrate.solve import effective_sample_size
 from microcosm.frame import Frame
 
+from .evidence_contract import (
+    AXIOM_INPUT_CLOSURE,
+    CLOSURE_CLASSES,
+    DONOR_ARTIFACT_RECEIPT,
+    DONOR_RECEIPT_REF,
+    GRAPH_EVIDENCE,
+    INPUT_CLOSURE_REF,
+    EvidenceDocument,
+    checked_header,
+    partition_counts,
+)
 from .weight_quality import aggregate_source_weights
 
 __all__ = [
@@ -1199,19 +1218,159 @@ def _pending_support(*, donor_support_bounds: object) -> GateResult:
     )
 
 
-def _pending_release_input_coverage(
-    *, donor_artifact_receipt: object, axiom_input_closure: object
-) -> GateResult:
-    """A producer artifact cannot bypass the pending authentication checks."""
+def _decoded_document(value: object, kind: str) -> Mapping[str, Any] | None:
+    if isinstance(value, EvidenceDocument) and value.kind == kind:
+        return value.document
+    return None
 
+
+def _donor_receipt_rows(receipt: Mapping[str, Any]) -> tuple[list[str], dict]:
+    donor, pin = receipt["donor"], receipt["pin"]
+    failures = []
+    if donor["sha256"] != pin["sha256"] or donor["size_bytes"] != pin["size_bytes"]:
+        failures.append(
+            f"donor: SHA-256 {donor['sha256']} ({donor['size_bytes']} bytes) is not "
+            f"the source_stages pin {pin['sha256']} ({pin['size_bytes']} bytes)."
+        )
+    for key in ("content_basis", "donor_time_period"):
+        if receipt[key] in (None, ""):
+            failures.append(f"donor: the receipt records no {key}.")
+    return failures, {
+        "sha256": donor["sha256"],
+        "size_bytes": donor["size_bytes"],
+        "pin_stage": pin["stage"],
+        "content_basis": receipt["content_basis"],
+        "donor_time_period": receipt["donor_time_period"],
+    }
+
+
+def _closure_rows(
+    closure: Mapping[str, Any], *, allow_engine_optional: bool
+) -> tuple[list[str], dict]:
+    failures = [f"closure check: {problem}" for problem in closure["check"]]
+    engine = closure["engine"]
+    declared = engine.get("declared_commit")
+    surface = engine.get("closure_surface_commit")
+    if declared is None:
+        failures.append(
+            "engine: the run declares no engine commit "
+            "(axiom_rules_bindings.engine.commit is null)."
+        )
+    elif declared != surface:
+        failures.append(
+            f"engine: the run's engine commit {declared} is not the closure's "
+            f"surface engine commit {surface}; regenerate the input surface and "
+            "re-review the closure, including its engine_optional_evidence."
+        )
+    modules = []
+    for row in closure["modules"]:
+        label = f"{row['binding']} ({row['rulespec_path']})"
+        counts = partition_counts(row)
+        if sum(counts.values()) != len(row["roots"]):
+            failures.append(f"{label}: the classes do not partition its roots.")
+        if row["sha256"] != row["reviewed_sha256"]:
+            failures.append(
+                f"{label}: module SHA-256 {row['sha256']} is not the reviewed "
+                f"{row['reviewed_sha256']}."
+            )
+        failures += [f"{label}: gap {name}." for name in row["gap"]]
+        failures += [
+            f"{label}: {name} is closed but is not a live root."
+            for name in row["unexpected"]
+        ]
+        failures += [
+            f"{label}: {name} is closed as a graph column the producer's frame "
+            "slice lacks."
+            for name in row["frame_missing"]
+        ]
+        if not allow_engine_optional:
+            failures += [
+                f"{label}: {name} is engine-optional, and gates.json sets "
+                "allow_engine_optional false."
+                for name in row["engine_optional"]
+            ]
+        modules.append(
+            {
+                "binding": row["binding"],
+                "rulespec_path": row["rulespec_path"],
+                "counts": counts,
+                "covered": sorted(
+                    name for names in row["encoded"].values() for name in names
+                ),
+                "knob_targeted": list(row["knob_targeted"]),
+                "defaulted": [item["input"] for item in row["defaulted"]],
+                "engine_optional": list(row["engine_optional"]),
+                "relation": [item["input"] for item in row["relation"]],
+                "unreached": list(row["unreached"]),
+                "unmapped_entity": list(row["unmapped_entity"]),
+                "gap": list(row["gap"]),
+            }
+        )
+    return failures, {"engine": dict(engine), "modules": modules}
+
+
+def _release_input_coverage(
+    *,
+    donor_artifact_receipt: object,
+    axiom_input_closure: object,
+    graph_evidence: object,
+    frame: Frame,
+    allow_engine_optional: bool,
+) -> GateResult:
+    """Donor authentication and per-module Axiom input closure, both checked.
+
+    Both artifacts' headers are checked first
+    (:func:`~microcosm.build.transport.evidence_contract.checked_header`).
+    The donor's bytes must equal its ``source_stages`` pin, and the receipt
+    must record ``content_basis`` and ``donor_time_period``. Every bound
+    module's live roots must partition into the closure classes with no
+    gap, no closed input that is not a root, no encoded column missing from
+    the producer's slice, and no engine-optional input unless
+    ``allow_engine_optional`` is true; the closure check must hold, and the
+    run's declared engine commit must equal the closure's surface engine
+    commit. Every module is reported, in binding order.
+    """
+
+    if not isinstance(allow_engine_optional, bool):
+        raise TypeError(
+            f"allow_engine_optional must be true or false, got {allow_engine_optional!r}."
+        )
+    failures = checked_header(
+        DONOR_ARTIFACT_RECEIPT,
+        donor_artifact_receipt,
+        graph_evidence,
+        frame,
+        kernel=DONOR_RECEIPT_REF,
+    )
+    failures += checked_header(
+        AXIOM_INPUT_CLOSURE,
+        axiom_input_closure,
+        graph_evidence,
+        frame,
+        kernel=INPUT_CLOSURE_REF,
+    )
+    details: dict[str, object] = {
+        "allow_engine_optional": allow_engine_optional,
+        "classes": list(CLOSURE_CLASSES),
+    }
+    receipt = _decoded_document(
+        donor_artifact_receipt, "transport_donor_artifact_receipt"
+    )
+    if receipt is not None:
+        donor_failures, details["donor"] = _donor_receipt_rows(receipt)
+        failures += donor_failures
+    closure = _decoded_document(axiom_input_closure, "transport_axiom_input_closure")
+    if closure is not None:
+        closure_failures, closure_details = _closure_rows(
+            closure, allow_engine_optional=allow_engine_optional
+        )
+        failures += closure_failures
+        details.update(closure_details)
     return GateResult(
         name="release_input_coverage",
-        passed=False,
-        failures=(
-            "Transport donor authentication and Axiom input-closure checks "
-            "are not implemented.",
-        ),
-        details={},
+        passed=not failures,
+        failures=tuple(failures),
+        details=details,
     )
 
 
@@ -1250,6 +1409,15 @@ def _problem_evidence(
     return {"problem_sha256": context.artifacts[PROBLEM].sha256}
 
 
+def _release_input_coverage_evidence(
+    context: EvidenceContext, parameters: Mapping[str, Any]
+) -> object:
+    return {
+        alias: getattr(context.artifacts[alias], "sha256", None)
+        for alias in (DONOR_ARTIFACT_RECEIPT, AXIOM_INPUT_CLOSURE)
+    }
+
+
 def _cell_diagnostics_evidence(
     context: EvidenceContext, parameters: Mapping[str, Any]
 ) -> object:
@@ -1264,7 +1432,17 @@ def _cell_diagnostics_evidence(
 def _parameters(gate: object) -> frozenset[str]:
     """Every keyword the evaluator takes that no artifact or frame supplies."""
 
-    supplied = {"frame", SURFACE, PROBLEM, DIAGNOSTICS, CELL_DIAGNOSTICS}
+    supplied = {
+        "frame",
+        SURFACE,
+        PROBLEM,
+        DIAGNOSTICS,
+        CELL_DIAGNOSTICS,
+        GRAPH_EVIDENCE,
+        DONOR_ARTIFACT_RECEIPT,
+        AXIOM_INPUT_CLOSURE,
+        "donor_support_bounds",
+    }
     return frozenset(
         name for name in inspect.signature(gate).parameters if name not in supplied
     )
@@ -1359,13 +1537,17 @@ TRANSPORT_GATE_REGISTRY: Mapping[str, GateBinding] = MappingProxyType(
         ),
         "release_input_coverage": FunctionBinding(
             name="release_input_coverage",
-            gate=_pending_release_input_coverage,
+            gate=_release_input_coverage,
+            parameter_keys=_parameters(_release_input_coverage),
             artifact_arguments=MappingProxyType(
                 {
-                    "donor_artifact_receipt": "donor_artifact_receipt",
-                    "axiom_input_closure": "axiom_input_closure",
+                    DONOR_ARTIFACT_RECEIPT: DONOR_ARTIFACT_RECEIPT,
+                    AXIOM_INPUT_CLOSURE: AXIOM_INPUT_CLOSURE,
+                    GRAPH_EVIDENCE: GRAPH_EVIDENCE,
                 }
             ),
+            frame_argument="frame",
+            evidence=_release_input_coverage_evidence,
         ),
     }
 )

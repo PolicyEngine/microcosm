@@ -102,9 +102,11 @@
       "gate": "release_input_coverage",
       "phase": "terminal",
       "criticality": "release_blocking",
-      "parameters": {},
+      "parameters": {
+        "allow_engine_optional": false
+      },
       "evidence_absent_blocks": true,
-      "notes": "Authenticate the exact Build P donor artifact and close every declared Frame/Axiom input. A missing substantive root input of any module bound in axiom_rules_bindings.json is a build failure, never an engine default."
+      "notes": "Authenticate the exact Build P donor artifact and close every declared Frame/Axiom input. A missing substantive root input of any module bound in axiom_rules_bindings.json is a build failure, never an engine default. allow_engine_optional is false: an engine default never closes an input here, and the gate names every engine-optional input it finds."
     },
     {
       "id": "donor_support_bounds",

@@ -127,7 +127,31 @@
       "relations_declared": false,
       "imports_declared": false,
       "root_input_count": 21,
-      "notes": "Used only for the eldest-child family tax credit amount in the reg 17 base rate. The module also declares 4 rules on an engine Child entity that the NZ schema does not map; the bridge requests none of them, and G1/G7 must show the adapter compiles the module under that condition or stop."
+      "notes": "Used only for the eldest-child family tax credit amount in the reg 17 base rate. The module also declares 4 rules on an engine Child entity that the NZ schema does not map; the bridge requests none of them, and G1/G7 must show the adapter compiles the module under that condition or stop. The G8-w4 review ran the real engine (axiom-rules-engine 04315d94) at rulespec-nz 8dc2507 and 6fe181fc: the output returned 7921 with only the two care-unit inputs at 1 and 0 and the other 15 Family roots at arbitrary values, dropping either input raised missing input, AxiomEngine.variables() listed the 17 Family roots and no Child name, and simulate.counterfactual@1 delivered both inputs as overrides with neither column on the frame. A second walk over the engine's parsed model reached exactly the two inputs.",
+      "unreached_roots": {
+        "sha256": "d4bde4b4a72ec495dc516af1c95c9f438c0778d4f07cc02f64f242532a6efe05",
+        "outputs": [
+          "family_tax_credit_prescribed_amount"
+        ],
+        "names": [
+          "child_tax_credit_for_entitlement_period",
+          "entitled_to_in_work_tax_credit",
+          "family_tax_credit_entitlement_days",
+          "in_work_tax_credit_allowed_children_count",
+          "in_work_tax_credit_weekly_periods",
+          "minimum_family_adjusted_income_tax_liability",
+          "minimum_family_amount_paid",
+          "minimum_family_amount_received",
+          "minimum_family_full_time_earner_weeks",
+          "minimum_family_scheme_income_attributable_to_full_time_weeks",
+          "minimum_family_tax_credit_weekly_periods",
+          "parental_tax_credit_additional_abatement",
+          "parental_tax_credit_for_entitlement_period",
+          "wff_family_credit_abatement_days",
+          "wff_family_scheme_income_for_relationship_period"
+        ],
+        "reason": "family_tax_credit_prescribed_amount reads only the eldest and subsequent dependent child care units, so no request this binding makes reaches these 15 Family roots. The axiom:nz concept mapping binds in_work_tax_credit_allowed_children_count, but no requested rule reads it, so the input-closure producer drops that binding from the mapping it checks. A binding that requests another output, or a module edit that moves the SHA-256 above, makes the producer refuse until a reviewer re-verifies this list."
+      }
     },
     {
       "id": "income_tax_schedule_1",
