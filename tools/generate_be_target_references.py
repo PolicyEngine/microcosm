@@ -1663,6 +1663,12 @@ def _partition_total(inventory, row):
     return None
 
 
+def _keyed(facts, field):
+    """List distinct keys under the field name package scans admit as fact keys."""
+
+    return [{field: key} for key in sorted({fact[field] for fact in facts})]
+
+
 def _resolved_row(inventory, row, reference_set):
     base = _matching(inventory, row["ledger_selector"])
     operands = [
@@ -1677,15 +1683,13 @@ def _resolved_row(inventory, row, reference_set):
         "name": row["name"],
         "reference_set": reference_set,
         "selector_sha256": selector_digest(row),
-        "base_fact_keys": sorted({fact["aggregate_fact_key"] for fact in base}),
-        "operand_fact_keys": sorted({fact["aggregate_fact_key"] for fact in operands}),
-        "semantic_fact_keys": sorted(
-            {fact["semantic_fact_key"] for fact in [*base, *operands]}
-        ),
+        "base_facts": _keyed(base, "aggregate_fact_key"),
+        "operand_facts": _keyed(operands, "aggregate_fact_key"),
+        "semantic_facts": _keyed([*base, *operands], "semantic_fact_key"),
     }
     total = _partition_total(inventory, row)
     if total is not None:
-        entry["partition_total_semantic_key"] = total["semantic_fact_key"]
+        entry["partition_total"] = {"semantic_fact_key": total["semantic_fact_key"]}
     return entry
 
 
@@ -1700,9 +1704,9 @@ def _resolved_factor(inventory, declaration):
         "name": f"factor:{declaration['id']}",
         "reference_set": "factor_context",
         "selector_sha256": factor_digest(declaration),
-        "base_fact_keys": [],
-        "operand_fact_keys": sorted({fact["aggregate_fact_key"] for fact in facts}),
-        "semantic_fact_keys": sorted({fact["semantic_fact_key"] for fact in facts}),
+        "base_facts": [],
+        "operand_facts": _keyed(facts, "aggregate_fact_key"),
+        "semantic_facts": _keyed(facts, "semantic_fact_key"),
     }
 
 

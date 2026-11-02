@@ -210,6 +210,10 @@ def _reads():
     return _document("reference_inventory.json")["resolved_reads"]
 
 
+def _keys(facts):
+    return [key for fact in facts for key in fact.values()]
+
+
 def _read_violations(documents, factors, reads):
     """Disjointness on the listed feed keys, for every selector as committed.
 
@@ -241,13 +245,13 @@ def _read_violations(documents, factors, reads):
     facts, semantic, bases = {}, {}, {}
     for entry in reads:
         reference_set = entry["reference_set"]
-        for key in entry["base_fact_keys"]:
+        for key in _keys(entry["base_facts"]):
             bases.setdefault(key, set()).add(reference_set)
             facts.setdefault(key, set()).add(reference_set)
-        for key in entry["operand_fact_keys"]:
+        for key in _keys(entry["operand_facts"]):
             facts.setdefault(key, set()).add(reference_set)
-        total = entry.get("partition_total_semantic_key")
-        for key in [*entry["semantic_fact_keys"], *([total] if total else [])]:
+        total = entry.get("partition_total")
+        for key in _keys([*entry["semantic_facts"], *([total] if total else [])]):
             semantic.setdefault(key, set()).add(reference_set)
     violations += [("shared_base", key) for key, sets in bases.items() if len(sets) > 1]
     violations += [
@@ -551,23 +555,23 @@ def test_read_mutants_are_caught(mutant, kind):
         )
         selector = copy.deepcopy(donor["ledger_selector"])
         del selector["dimension_values"]
-        selector["aggregate_fact_key"] = band["base_fact_keys"][2]
+        selector["aggregate_fact_key"] = _keys(band["base_facts"])[2]
         documents["holdout"]["target_references"][0]["ledger_selector"] = selector
         assert _separation_violations(documents) == []
     elif mutant == "dropped_entry":
         reads.remove(holdout)
     elif mutant == "holdout_reads_a_band_class":
-        holdout["base_fact_keys"].append(band["base_fact_keys"][0])
+        holdout["base_facts"].append(band["base_facts"][0])
     elif mutant == "holdout_reads_a_factor_operand":
         factor = next(
             entry for entry in reads if entry["reference_set"] == "factor_context"
         )
-        holdout["operand_fact_keys"].append(factor["operand_fact_keys"][0])
+        holdout["operand_facts"].append(factor["operand_facts"][0])
     elif mutant == "holdout_on_a_partition_total":
-        holdout["semantic_fact_keys"].append(band["partition_total_semantic_key"])
+        holdout["semantic_facts"].append(band["partition_total"])
     else:
         precal = next(entry for entry in reads if entry["reference_set"] == "precal")
-        precal["base_fact_keys"].append(band["base_fact_keys"][0])
+        precal["base_facts"].append(band["base_facts"][0])
     assert kind in {
         violation[0]
         for violation in _read_violations(
@@ -1427,13 +1431,13 @@ def test_resolved_reads_list_what_each_selector_resolves_to(artifact, by_record_
                 for selector in selectors[1:]
                 for fact in _matched(selector, by_record_set)
             ]
-            assert entry["base_fact_keys"] == sorted(
+            assert _keys(entry["base_facts"]) == sorted(
                 {fact["aggregate_fact_key"] for fact in base}
             )
-            assert entry["operand_fact_keys"] == sorted(
+            assert _keys(entry["operand_facts"]) == sorted(
                 {fact["aggregate_fact_key"] for fact in operands}
             )
-            assert entry["semantic_fact_keys"] == sorted(
+            assert _keys(entry["semantic_facts"]) == sorted(
                 {fact["semantic_fact_key"] for fact in [*base, *operands]}
             )
 
