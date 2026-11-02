@@ -1293,17 +1293,21 @@ def _drive_epochs(args, telemetry, epochs: int = 2) -> None:
         )
 
 
-def _remote_hub(monkeypatch, **kwargs):
-    """One fake Hub for the staged dataset and the run files the emitter commits."""
-    from microcosm.build.uk_runtime import rowwise_staging
+def _remote_hub(monkeypatch, client_options=None, **kwargs):
+    """One fake Hub for the run files and the bundle the build's emitter commits."""
     from test_support.microcosm_build.telemetry import share_fake_hub
     from test_support.microcosm_build.uk_rowwise_candidate import _FakeHub
 
     hub = _FakeHub(**kwargs)
-    monkeypatch.setattr(rowwise_staging, "_hub_api", lambda: hub)
-    monkeypatch.setattr(rowwise_staging, "_hub_token", lambda: "hf_test_token")
-    share_fake_hub(monkeypatch, hub)
+    share_fake_hub(monkeypatch, hub, **(client_options or {}))
     return hub
+
+
+def _bundle_emitter_for(hub):
+    """The re-stage tool's own short-lived emitter, committing to ``hub``."""
+    from test_support.microcosm_build.emitter import FakeEmitterClient
+
+    return lambda: FakeEmitterClient(hub_files=hub.files, hub_api=hub)
 
 
 def test_no_staging_records_both_opt_outs(tmp_path, monkeypatch):
@@ -1440,7 +1444,7 @@ def test_telemetry_content_refusal_never_aborts_the_solve(
 
 
 def test_remote_staging_uploads_telemetry_and_the_bundle_in_one_commit(
-    tmp_path, monkeypatch, capsys
+    tmp_path, monkeypatch, capsys, fake_telemetry_emitters
 ):
     pytest.importorskip("tables")
     hub = _remote_hub(monkeypatch)
@@ -1527,6 +1531,35 @@ def test_remote_staging_uploads_telemetry_and_the_bundle_in_one_commit(
     assert "dataset_staged" in rows[0].phases_reached
     assert rows[0].disposition == "iterating"
 
+    # The build handed the bundle to its own emitter: every file by path,
+    # with its role, and with the SHA-256 and size of the bytes committed.
+    (client,) = [emitter.client for emitter in fake_telemetry_emitters]
+    (request,) = client.bundle_requests
+    assert (request.repository, request.run_id, request.prefix) == (
+        "policyengine/populace-uk-private",
+        run_id,
+        "staged",
+    )
+    roles = {item.name: item.role for item in request.files}
+    assert roles[dataset_name] == "dataset"
+    assert roles["calibration_diagnostics.json"] == "calibration_diagnostics"
+    assert roles[cli.MANIFEST_FILENAME] == "build_manifest"
+    assert roles["staged_manifest.json"] == "staged_manifest"
+    assert roles["sha256sums.txt"] == "checksums"
+    assert set(roles) == expected
+    for item in request.files:
+        assert Path(item.local_path) == out / item.name
+        committed = hub.files[
+            ("policyengine/populace-uk-private", f"staged/{run_id}/{item.name}")
+        ]
+        assert (item.sha256, item.bytes) == (
+            hashlib.sha256(committed).hexdigest(),
+            len(committed),
+        )
+    # The files the build rewrote after staging were all copied at hand-over.
+    copied = set(next(iter(client.copied_bundle_files.values())))
+    assert {cli.MANIFEST_FILENAME, "sha256sums.txt"} <= copied
+
     def sums_verify() -> None:
         for line in (out / "sha256sums.txt").read_text().splitlines():
             digest, name = line.split("  ")
@@ -1536,7 +1569,7 @@ def test_remote_staging_uploads_telemetry_and_the_bundle_in_one_commit(
     # uploaded touches nothing: the driver's record and revision stand, the
     # sidecars keep their bytes, and no commit is made.
     stager = load_tool("stage_uk_rowwise_candidate")
-    monkeypatch.setattr(stager, "_hub_api", lambda: hub)
+    monkeypatch.setattr(stager, "_start_bundle_emitter", _bundle_emitter_for(hub))
     sidecar_bytes = (out / "staged_manifest.json").read_bytes()
     capsys.readouterr()
     assert stager.main(["--run-dir", str(out)]) == 0
@@ -1625,6 +1658,62 @@ def test_remote_staging_failure_is_recorded_and_the_build_still_succeeds(
     ).is_file()
 
 
+def test_a_bundle_file_the_emitter_did_not_copy_stays_as_handed_over(
+    tmp_path, monkeypatch, capsys
+):
+    """The emitter uploads an uncopied file from disk later, so the build
+    leaves it unchanged: here the manifest keeps its handed-over bytes and
+    the sums still verify, and the delivery record is printed instead."""
+    pytest.importorskip("tables")
+    hub = _remote_hub(
+        monkeypatch, client_options={"never_copy": {cli.MANIFEST_FILENAME}}
+    )
+    status, out = run_dense_main(tmp_path, monkeypatch, staging=None)
+    assert status == 0
+    captured = capsys.readouterr()
+    run_id = single_run_id(out)
+    remote_manifest = hub.files[
+        ("policyengine/populace-uk-private", f"staged/{run_id}/{cli.MANIFEST_FILENAME}")
+    ]
+    assert (out / cli.MANIFEST_FILENAME).read_bytes() == remote_manifest
+    assert "staged_dataset" not in json.loads(remote_manifest)
+    assert f"{cli.MANIFEST_FILENAME} stays as handed over" in captured.err
+    printed = json.loads(captured.out[captured.out.index("{") :])
+    assert printed["staged_dataset"]["status"] == "uploaded"
+    for line in (out / "sha256sums.txt").read_text().splitlines():
+        digest, name = line.split("  ")
+        assert hashlib.sha256((out / name).read_bytes()).hexdigest() == digest, name
+    assert "dataset_staged" in spool_rows(out)[0].phases_reached
+
+
+def test_a_build_with_the_hub_switched_off_hands_its_emitter_no_bundle(
+    tmp_path, monkeypatch, capsys, fake_telemetry_emitters
+):
+    """The Modal runner sets ``HF_HUB_OFFLINE=1`` for every build it runs, so
+    a build there uploads nothing from its container: the bundle is verified,
+    its sidecars are written, and it is recorded as local, to be staged from
+    the workstation once the outputs are copied back."""
+    pytest.importorskip("tables")
+    monkeypatch.setenv("HF_HUB_OFFLINE", "1")
+    hub = _remote_hub(monkeypatch)
+    status, out = run_dense_main(tmp_path, monkeypatch, staging=None)
+    assert status == 0
+    (client,) = [emitter.client for emitter in fake_telemetry_emitters]
+    assert "stage_dataset_bundle" not in client.calls
+    assert "check_write_access" not in client.calls
+    assert hub.paths("policyengine/populace-uk-private") == []
+    staged = json.loads((out / cli.MANIFEST_FILENAME).read_text())["staged_dataset"]
+    assert (staged["mode"], staged["status"], staged["repository"]) == (
+        "local_only",
+        "skipped",
+        None,
+    )
+    assert staged["prefix"] == f"staged/{single_run_id(out)}"
+    assert (out / "staged_manifest.json").is_file()
+    assert (out / "sha256sums.txt").is_file()
+    assert "HF_HUB_OFFLINE" in capsys.readouterr().err
+
+
 def test_a_failed_refresh_after_a_passed_read_back_still_records_the_attempt(
     tmp_path, monkeypatch, capsys
 ):
@@ -1656,7 +1745,7 @@ def test_a_failed_refresh_after_a_passed_read_back_still_records_the_attempt(
     monkeypatch.setattr(
         telemetry_support,
         "client_factory",
-        lambda: RefreshFails(hub_files=hub.files),
+        lambda: RefreshFails(hub_files=hub.files, hub_api=hub),
     )
     status, out = run_dense_main(
         tmp_path,

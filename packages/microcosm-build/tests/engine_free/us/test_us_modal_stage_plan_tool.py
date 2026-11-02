@@ -964,6 +964,19 @@ def test_tool_environment_strips_credentials_and_stays_offline() -> None:
     assert env["MICROCOSM_ACS_POOL_PEAK_LIMIT_BYTES"] == "1"
 
 
+def test_a_build_the_runner_starts_keeps_its_staged_bundle_in_the_container() -> None:
+    """A build on Modal uploads nothing from its container: the runner's
+    environment switches the Hub off, and a build that sees that hands no
+    dataset bundle to its emitter (the bundle is staged later from the
+    workstation)."""
+    from microcosm.build.staging_dataset import hub_offline
+
+    env, _removed = plan_lib.tool_environment(
+        {"PATH": "/usr/bin", "HF_HUB_OFFLINE": "0", "HF_TOKEN": "hf_secret"}, {}
+    )
+    assert hub_offline(env)
+
+
 @pytest.mark.parametrize(
     "key", ["HF_HUB_OFFLINE", "HF_TOKEN", "POPULACE_LEDGER_KEY", "PYTHONHASHSEED"]
 )

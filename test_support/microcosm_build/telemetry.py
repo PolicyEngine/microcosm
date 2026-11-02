@@ -229,23 +229,31 @@ def telemetry_events(messages: Sequence[Mapping[str, Any]]) -> list[dict[str, An
 
 
 #: Makes the in-memory client of each ``FakeTelemetryEmitter`` built without
-#: one; :func:`share_fake_hub` replaces it for one test.
+#: one; :func:`configure_fake_emitter` and :func:`share_fake_hub` replace it
+#: for one test.
 client_factory: Callable[[], FakeEmitterClient] = FakeEmitterClient
 
 
-def share_fake_hub(monkeypatch, hub: Any) -> None:
-    """Commit the run files every fake emitter receives into ``hub.files``.
-
-    ``hub`` is a fake Hub keyed by ``(repository, path)``; the build's other
-    uploads (staged dataset bundles, releases) still go to it directly, so a
-    test sees both in one place.
-    """
+def configure_fake_emitter(monkeypatch, **options: Any) -> None:
+    """Build each ``FakeTelemetryEmitter``'s client with ``options`` in one test."""
 
     monkeypatch.setattr(
         sys.modules[__name__],
         "client_factory",
-        lambda: FakeEmitterClient(hub_files=hub.files),
+        lambda: FakeEmitterClient(**options),
     )
+
+
+def share_fake_hub(monkeypatch, hub: Any, **options: Any) -> None:
+    """Have every fake emitter commit what it is handed to ``hub``.
+
+    ``hub`` is an ``HfApi``-like fake Hub keyed by ``(repository, path)``: run
+    files land in ``hub.files``, and staged dataset bundles are committed
+    with ``hub.create_commit``, so a test sees both in one place. ``options``
+    go to each ``FakeEmitterClient``.
+    """
+
+    configure_fake_emitter(monkeypatch, hub_files=hub.files, hub_api=hub, **options)
 
 
 class FakeTelemetryEmitter(LocalTelemetryEmitter):

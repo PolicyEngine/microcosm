@@ -29,7 +29,6 @@ from microcosm.build.uk_runtime import (
     full_targets,
     graph_national,
     national_role,
-    rowwise_staging,
     spine_build,
 )
 from microcosm.build.uk_runtime.calibration_run import (
@@ -614,8 +613,6 @@ def test_uk_national_role_publishes_telemetry_and_the_bundle_to_the_hub(
     builder = candidate._load_builder_module()
     input_h5, _registry, _artifact, _pin = _national_inputs(monkeypatch, tmp_path)
     hub = candidate._FakeHub()
-    monkeypatch.setattr(rowwise_staging, "_hub_api", lambda: hub)
-    monkeypatch.setattr(rowwise_staging, "_hub_token", lambda: "hf_test_token")
     share_fake_hub(monkeypatch, hub)
     out = tmp_path / "national"
 
@@ -680,6 +677,43 @@ def test_uk_national_role_publishes_telemetry_and_the_bundle_to_the_hub(
     assert remote_h5 == (out / "microcosm_uk_2024_25.h5").read_bytes()
     record = json.loads((out / "build_record.json").read_text())
     assert record["staging_delivery"] == delivery
+
+
+def test_uk_national_role_leaves_a_build_record_the_emitter_did_not_copy(
+    monkeypatch, tmp_path, capsys
+):
+    """The build record is a bundle file: when the emitter will upload it
+    from disk, it keeps its handed-over bytes and no staging receipt, and the
+    manifest keeps the digest of those bytes; the manifest, which the emitter
+    copied, still gains the delivery records."""
+    pytest.importorskip("tables")
+    builder = candidate._load_builder_module()
+    input_h5, _registry, _artifact, _pin = _national_inputs(monkeypatch, tmp_path)
+    hub = candidate._FakeHub()
+    share_fake_hub(monkeypatch, hub, never_copy={"build_record.json"})
+    out = tmp_path / "national"
+
+    assert builder.main(_argv(input_h5, out, "--epochs", "5")) == 0
+
+    manifest = json.loads((out / builder.MANIFEST_FILENAME).read_text())
+    run_id = manifest["build_id"]
+    assert manifest["staged_dataset"]["status"] == "uploaded"
+    assert manifest["staging_delivery"]["mode"] == "local_and_remote"
+    record_bytes = (out / "build_record.json").read_bytes()
+    assert (
+        record_bytes
+        == hub.files[
+            ("policyengine/populace-uk-private", f"staged/{run_id}/build_record.json")
+        ]
+    )
+    assert "staging_delivery" not in json.loads(record_bytes)
+    assert manifest["outputs"]["build_record"]["sha256"] == (
+        hashlib.sha256(record_bytes).hexdigest()
+    )
+    assert "build_record.json stays as handed over" in capsys.readouterr().err
+    for line in (out / "sha256sums.txt").read_text().splitlines():
+        digest, name = line.split("  ")
+        assert hashlib.sha256((out / name).read_bytes()).hexdigest() == digest, name
 
 
 def test_uk_national_dry_run_prints_the_plan_and_writes_nothing(
