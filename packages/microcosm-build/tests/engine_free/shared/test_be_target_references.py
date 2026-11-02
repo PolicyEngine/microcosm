@@ -241,7 +241,7 @@ def _unpinned(row):
     keeps to the committed fields, leaves none empty, pins every dimension it
     declares with at most one roster, and pins an aggregate key or, for a base
     selector, a roster. The feed audit stays the proof: these shapes catch hand
-    edits, and a roster's members bind to nothing without the artifact.
+    edits, and a roster's members bind to no listed key without the artifact.
     """
 
     for index, selector in enumerate(_selectors(row)):
@@ -772,6 +772,7 @@ def test_an_operand_needs_a_key_even_with_a_roster():
     row = copy.deepcopy(_rows("holdout")[0])
     operand = row["value_operands"][1]
     del operand["aggregate_fact_key"]
+    operand["dimensions"] = [generator.A1_CLASS]
     operand["dimension_values"] = {generator.A1_CLASS: ["class_12_13"]}
     assert _unpinned(row)
     assert not _unpinned(_rows("holdout")[0])
