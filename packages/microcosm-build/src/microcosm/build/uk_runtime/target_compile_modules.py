@@ -23,6 +23,7 @@ from types import MappingProxyType, ModuleType
 
 UK_TARGET_COMPILE_MODULE_NAMES: tuple[str, ...] = (
     "microcosm.build.cross_grain",
+    "microcosm.build.ledger_artifact",
     "microcosm.build.ledger_targets",
     "microcosm.build.target_materialization",
     "microcosm.build.target_reference_authoring",
@@ -31,6 +32,8 @@ UK_TARGET_COMPILE_MODULE_NAMES: tuple[str, ...] = (
     "microcosm.build.uk_runtime.chronicle_feed",
     "microcosm.build.uk_runtime.council_tax_constants",
     "microcosm.build.uk_runtime.cross_grain_declarations",
+    "microcosm.build.uk_runtime.derived_facts",
+    "microcosm.build.uk_runtime.desnz_constituency_energy",
     "microcosm.build.uk_runtime.domestic_energy_targets",
     "microcosm.build.uk_runtime.energy_pricing",
     "microcosm.build.uk_runtime.frs_release",
@@ -64,8 +67,10 @@ EXCLUDED_DIRECT_IMPORTS: Mapping[str, str] = MappingProxyType(
             "refuses an undeclared condition and never moves a value"
         ),
         "microcosm.build.chronicle_epoch": (
-            "the feed-pin epoch arithmetic chronicle_feed checks; the pinned "
-            "facts themselves are node inputs hashed by content"
+            "the feed-pin epoch arithmetic chronicle_feed checks, and the "
+            "consumer schema gate and epoch labels ledger_artifact applies; "
+            "none moves a fact value, and the pinned facts themselves are node "
+            "inputs hashed by content"
         ),
         "microcosm.build.gates": (
             "imported for the GateResult and TargetCoverageRequirement types only"

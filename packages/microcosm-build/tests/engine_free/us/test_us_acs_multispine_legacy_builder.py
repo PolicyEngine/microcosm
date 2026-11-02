@@ -53,6 +53,10 @@ def _frame(
             "person_marital_unit_id": [1, 2],
             "age": [35, 67],
             "is_female": [False, True],
+            "detailed_occupation_recode": [8, 53],
+            "detailed_industry_recode": [13, 23],
+            "major_industry_recode": [9, 15],
+            "worked_last_year": [True, False],
         }
     )
     if benefit_participation:
@@ -198,6 +202,15 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
     combined.table("household")["congressional_district_geoid"] = [101, 200]
     combined.table("household")["county_fips"] = ["01001", "02020"]
     combined.table("household")["TYPEHUGQ"] = [1.0, 3.0]
+    # microcosm#1380: the ACS row carries its SEMP * ADJINC / 1e6 (2,042)
+    # wholly on the SSTB leaf, as QBI reconciliation routes an SSTB owner's
+    # SEMP; the ASEC row is outside the check.
+    combined.table("person")["SEMP"] = [np.nan, 2_000.0]
+    combined.table("person")["ADJINC"] = [np.nan, 1_021_000.0]
+    combined.table("person")["self_employment_income_before_lsr"] = [5_000.0, 0.0]
+    combined.table("person")["sstb_self_employment_income_before_lsr"] = [0.0, 2_042.0]
+    combined.table("person")["farm_operations_income"] = [0.0, 0.0]
+    combined.table("person")["partnership_self_employment_net_earnings"] = [0.0, 0.0]
     base_h5 = tmp_path / "dense.h5"
     base_h5.write_bytes(b"dense-base")
     manifest_path = tmp_path / "acs_sources.json"
@@ -451,6 +464,15 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
     ]
     assert summary["reviewed_engine_input_nulls"] == [reviewed_null]
     assert summary["local_hours_gate"]["passed"] is True
+    self_employment = summary["acs_self_employment_identity_gate"]
+    assert self_employment["name"] == "acs_self_employment_identity"
+    assert self_employment["passed"] is True
+    assert self_employment["failures"] == []
+    assert self_employment["details"]["acs_person_rows"] == 1
+    assert self_employment["details"]["semp_reported_rows"] == 1
+    assert self_employment["details"]["mismatched_rows"] == 0
+    assert self_employment["details"]["non_acs_component_rows"] == 0
+    assert self_employment["details"]["base_and_sstb_rows"] == 0
     assert "pending_engine_input_nulls" not in summary
     assert summary["staging_export_peak_estimate_bytes"] == 123_456
     assert summary["geography_ladder"] == {
@@ -1223,6 +1245,70 @@ def test_donor_release_identity_requires_one_microdata_artifact(
 
     with pytest.raises(SystemExit, match="exactly one microdata artifact"):
         module._donor_release_identity(manifest, "a" * 64)
+
+
+@pytest.mark.parametrize(
+    "column",
+    [
+        "detailed_occupation_recode",
+        "detailed_industry_recode",
+        "major_industry_recode",
+        "worked_last_year",
+    ],
+)
+def test_donor_without_work_experience_fails_before_fetch(
+    monkeypatch: pytest.MonkeyPatch,
+    column: str,
+) -> None:
+    builder = _load_builder_module()
+    donor = _frame()
+    donor.person.drop(columns=[column], inplace=True)
+    monkeypatch.setattr(
+        builder.acs_sources, "load_acs_source_manifest", lambda path: _manifest()
+    )
+    monkeypatch.setattr(builder, "_load_base_frame", lambda path: donor)
+    monkeypatch.setattr(builder, "_sha256", lambda path: "0" * 64)
+
+    def must_not_fetch(*_args, **_kwargs):
+        pytest.fail("source fetch must not run for an incomplete work-experience donor")
+
+    monkeypatch.setattr(builder.acs_sources, "fetch_acs_pums_sources", must_not_fetch)
+
+    with pytest.raises(SystemExit, match=f"lacks canonical work-experience.*{column}"):
+        builder.main(["--base-h5", "donor.h5", "--out-h5", "combined.h5"])
+
+
+@pytest.mark.parametrize(
+    "column",
+    [
+        "detailed_occupation_recode",
+        "detailed_industry_recode",
+        "major_industry_recode",
+        "worked_last_year",
+    ],
+)
+@pytest.mark.parametrize("invalid", [None, np.inf, "invalid"])
+def test_donor_work_experience_rejects_null_or_nonfinite_values(
+    column, invalid
+) -> None:
+    builder = _load_builder_module()
+    donor = _frame()
+    donor.person[column] = pd.Series(
+        [donor.person[column].iloc[0], invalid], dtype=object
+    )
+
+    with pytest.raises(SystemExit, match=f"missing or nonfinite.*{column}"):
+        builder._require_donor_work_experience(donor)
+
+
+def test_complete_donor_work_experience_passes_without_changing_rows() -> None:
+    builder = _load_builder_module()
+    donor = _frame()
+    before = donor.person.copy(deep=True)
+
+    builder._require_donor_work_experience(donor)
+
+    pd.testing.assert_frame_equal(donor.person, before)
 
 
 def test_donor_without_the_spm_role_fails_before_fetch(

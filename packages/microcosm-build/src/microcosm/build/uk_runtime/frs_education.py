@@ -336,8 +336,8 @@ def _ema(raw: pd.DataFrame, *, code_column: str, amount_column: str) -> np.ndarr
     Participants (code == 1) reporting a sentinel negative amount receive
     the mean of participants' non-negative reported amounts; everyone else
     keeps their reported amount. Floored at zero and annualized at
-    WEEKS_IN_YEAR (the signed multiplier difference vs the incumbent's
-    bare 52). A vintage with participants but no valid donor amount fills
+    WEEKS_IN_YEAR, 52 weeks like the incumbent's since María's ruling of
+    2026-10-23. A vintage with participants but no valid donor amount fills
     with zero — frames refuse NaN, where the incumbent would propagate it.
     """
 

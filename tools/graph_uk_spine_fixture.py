@@ -63,6 +63,7 @@ from microcosm.build.uk_runtime.child_benefit_take_up import (
 from microcosm.build.uk_runtime.childcare_copy_take_up import (
     UKChildcareCopyTakeUpStageTransform,
 )
+from microcosm.build.uk_runtime.company_cars import UKCompanyCarsStageTransform
 from microcosm.build.uk_runtime.content_identity import uk_frame_content_identity
 from microcosm.build.uk_runtime.etb_services import UKETBServicesStageTransform
 from microcosm.build.uk_runtime.etb_vat import UKETBVATStageTransform
@@ -120,6 +121,9 @@ from microcosm.build.uk_runtime.hmrc_property_rental import (
     HMRCPropertyRentalBand,
     HMRCPropertyRentalFacts,
 )
+from microcosm.build.uk_runtime.isa_subscriptions import (
+    UKISASubscriptionsStageTransform,
+)
 from microcosm.build.uk_runtime.lcfs_consumption import (
     BUS_FARE_LCFS_CODES,
     UKLCFSConsumptionStageTransform,
@@ -173,6 +177,9 @@ from microcosm.build.uk_runtime.spi_spine import (
 )
 from microcosm.build.uk_runtime.student_loans import UKStudentLoansStageTransform
 from microcosm.build.uk_runtime.take_up_contract import load_uk_take_up_contract
+from microcosm.build.uk_runtime.trading_allowance_receipts import (
+    UKTradingAllowanceReceiptsStageTransform,
+)
 from microcosm.build.uk_runtime.uc_capital_coherence import (
     UKUCCapitalCoherenceStageTransform,
 )
@@ -205,7 +212,7 @@ _SPI_SAMPLE_FRACTION = _ROOT_HOUSEHOLDS / 10_000
 _SPI_DONOR_SAMPLE_SIZE = 64
 #: The packaged FRS spine roster the fixture exercises (manifest minus the
 #: certified-pair exclusions); moves whenever a spine stage is added.
-UK_FIXTURE_STAGE_COUNT = 49
+UK_FIXTURE_STAGE_COUNT = 52
 _QRF_ESTIMATORS = 4
 
 # These are the complete object-string surface observed in the unchanged
@@ -228,6 +235,7 @@ _NORMALIZED_STRING_COLUMNS: Mapping[str, tuple[str, ...]] = {
         "relationship_to_head",
         "ons_family_role",
         "capital_gains_asset_type",
+        "company_car_fuel_type",
     ),
     "benunit": ("benunit_support_channel", "uc_deduction_combination"),
     "household": (
@@ -506,6 +514,11 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
             "CHAMTTST": 10.0,
             "APAMT": 11.0,
             "APDAMT": 12.0,
+            # Alimony for the adult's own keep, the usual amount differing
+            # from the last (#1320).
+            "ALIUS": 2,
+            "ALUAMT": 3.0,
+            "ALIAMT": 4.0,
             "PAREAMT": 13.0,
             "REDAMT": 20.0,
             "SLREPAMT": 2.0,
@@ -660,6 +673,56 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
                 "NATURE": 4,
                 "DIRPERC": 2 if household_id % 10 == 0 else -1,
                 "DIVIDEND": 1000.0 if household_id % 10 == 0 else 0.0,
+                # Two employee jobs come with a company car (EXPBEN01 1;
+                # PolicyEngine/uk-autumn-budget-dashboard-2026#316): household
+                # 7's a diesel (FUELTYP 2) listed at GBP 30,001 to 40,000
+                # (CARVAL 8), with fuel for private use (EXPBEN03 1) and a
+                # contribution to its cost (CARCON 1, CARAMT); household 17's
+                # of unknown price band and fuel (CARVAL 10, FUELTYP 6, "Don't
+                # know"). Other employee jobs answer no; self-employed jobs are
+                # not asked.
+                "EXPBEN01": (
+                    ""
+                    if household_id % 8 in (2, 3)
+                    else 1
+                    if household_id in (7, 17)
+                    else 2
+                ),
+                "EXPBEN03": (
+                    "" if household_id % 8 in (2, 3) else 1 if household_id == 7 else 2
+                ),
+                "CARVAL": {7: 8, 17: 10}.get(household_id, ""),
+                "FUELTYP": {7: 2, 17: 6}.get(household_id, ""),
+                "CARCON": {7: 1, 17: 2}.get(household_id, ""),
+                "CARAMT": 1500.0 if household_id == 7 else "",
+                # Every fifth job pays one bonus, given before or after tax by
+                # turn (#1340).
+                **{
+                    f"BONAMT{index}": (
+                        float(500 + 100 * (household_id % 7))
+                        if index == 1 and household_id % 5 == 0
+                        else ""
+                    )
+                    for index in range(1, 7)
+                },
+                **{
+                    f"BONTAX{index}": (
+                        1 + (household_id // 5) % 2
+                        if index == 1 and household_id % 5 == 0
+                        else ""
+                    )
+                    for index in range(1, 7)
+                },
+                **{
+                    f"BONTXAM{index}": (
+                        3.0
+                        if index == 1
+                        and household_id % 5 == 0
+                        and (household_id // 5) % 2 == 1
+                        else ""
+                    )
+                    for index in range(1, 7)
+                },
                 # The annual income stage's job columns: a job under a year old
                 # follows paid employment (WRKPREV 1) on two households in
                 # four; every employee job carries its DV pay (UGRSPAY) and
@@ -694,6 +757,10 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
                 "SERNUM": household_id,
                 "BENUNIT": 1,
                 "PERSON": 1,
+                # Every fifth household's payment is trust income (PENTYPE 5),
+                # which stays private pension with its part stored as the
+                # annuity and trust descriptor (microcosm#1428).
+                "PENTYPE": 5 if household_id % 5 == 0 else 1,
                 "PENPAY": 10.0,
                 "PTAMT": 2.0,
                 "PTINC": 2,
@@ -801,13 +868,33 @@ def _was_person_donor() -> pd.DataFrame:
     financial wealth, which WAS counts them in), one banded value, one
     ONS-imputed holder, one ONS-imputed non-holder, one self-employment
     sentinel and one holder in an age band the product rules exclude (recoded
-    by the stage's credibility rule).
+    by the stage's credibility rule). The household tab's cash and
+    stocks-and-shares ISA totals are split across its adults in a few patterns
+    (one holder, an even split, a lead holder), summing exactly to the
+    aggregates, for the ISA subscriptions stage (microcosm#1415). Every third
+    household's first adult has a company vehicle (COMPVEHR8 1): a car with
+    its fuel and list price, prices on both sides of GBP 40,000, except a van
+    in household 9 and a car without a price in household 15, for the
+    company cars stage (PolicyEngine/uk-autumn-budget-dashboard-2026#316).
+    The person tab carries its household's weight, as the deposit's does.
     """
 
     rows: list[dict[str, float]] = []
     for household in range(_DONOR_ROWS):
         adults = 1 + household % 3
         children = household % 3
+        cash_total = 7.0 + household
+        stocks_total = 5.0 + household
+        cash_shares = {
+            1: (1.0,),
+            2: (0.5, 0.5) if household % 2 == 0 else (1.0, 0.0),
+            3: (0.5, 0.25, 0.25) if household % 4 == 0 else (1.0, 0.0, 0.0),
+        }[adults]
+        stocks_shares = {
+            1: (1.0,),
+            2: (0.0, 1.0) if household % 2 == 0 else (0.5, 0.5),
+            3: (0.25, 0.75, 0.0) if household % 4 == 0 else (0.0, 0.0, 1.0),
+        }[adults]
         for person in range(adults + children):
             adult = person < adults
             band = (
@@ -817,6 +904,7 @@ def _was_person_donor() -> pd.DataFrame:
             )
             holder = adult and person == 0 and household % 2 == 0 and 4 <= band <= 9
             impossible = adult and person == 0 and household == 5
+            company_vehicle = adult and person == 0 and household % 3 == 0
             if impossible:
                 band = 13
             value = float(5 + household % 20) if (holder or impossible) else 0.0
@@ -848,6 +936,32 @@ def _was_person_donor() -> pd.DataFrame:
                     "FLISABR8": 1.0 if banded else -9.0,
                     "flisabr8_iflag": 0.0,
                     "DVFLISAvR8": value,
+                    "DVCISAvR8": cash_total * cash_shares[person] if adult else 0.0,
+                    "DVIISAvR8": (
+                        stocks_total * stocks_shares[person] if adult else 0.0
+                    ),
+                    "R8xshhwgt": 1.0 + household % 7 / 10.0,
+                    "COMPVEHR8": (1.0 if company_vehicle else (2.0 if adult else -9.0)),
+                    "CARVAN1R8": (
+                        (2.0 if household == 9 else 1.0) if company_vehicle else -9.0
+                    ),
+                    "PETROL1R8": (
+                        float(1 + household % 4) if company_vehicle else -9.0
+                    ),
+                    "LISTPR1R8": (
+                        (
+                            -8.0
+                            if household == 15
+                            else 18_000.0 + 4_000.0 * (household % 12)
+                        )
+                        if company_vehicle
+                        else -9.0
+                    ),
+                    **{
+                        f"{stem}{index}R8": -9.0
+                        for stem in ("CARVAN", "PETROL", "LISTPR")
+                        for index in (2, 3)
+                    },
                 }
             )
     return pd.DataFrame(rows)
@@ -904,6 +1018,12 @@ def _was_donor() -> pd.DataFrame:
     other_mortgage = np.where(
         ~mortgaged & (other_houses > 0.0) & (position % 2 == 0), 2_000.0 + rows, 0.0
     )
+    # The debt secured on each class of other property, parts of the
+    # mortgages on it and zero where its asset is zero, as on the real tab
+    # (microcosm#1095).
+    other_houses_debt = np.where(other_houses > 0.0, 0.6 * other_mortgage, 0.0)
+    buy_to_let_debt = np.where(buy_to_let > 0.0, 0.1 * other_mortgage, 0.0)
+    buildings_debt = np.where(buildings > 0.0, 0.3 * other_mortgage, 0.0)
     return pd.DataFrame(
         {
             "CASER8": rows + 1.0,
@@ -952,6 +1072,9 @@ def _was_donor() -> pd.DataFrame:
             "DVHseValR8_sum": other_houses,
             "DVBltValR8_sum": buy_to_let,
             "DVBlDValR8_sum": buildings,
+            "DVHseDebtR8_sum": other_houses_debt,
+            "DVBLtDebtR8_sum": buy_to_let_debt,
+            "DVBldDebtR8_sum": buildings_debt,
             "DVTotinc_bhcR8": 20_000.0 + rows * 1_000.0,
             "DVSaValR8_aggr": savings,
             "vcarnr8": position % 4,
@@ -1027,6 +1150,42 @@ def _lcfs_donors() -> tuple[pd.DataFrame, pd.DataFrame]:
     # Other motor fuels (c72213): the level_road_fuel step nets the donor's own
     # share of them from ONS 07.2.2 (microcosm#1113), so a few diaries buy some.
     household["c72213"] = np.where(rows.astype(int) % 5 == 0, 0.5, 0.0)
+    # The alcohol and tobacco lines P602 sums, the drinks inside P611 and the
+    # gambling stakes inside P609, which the excise shares read (microcosm#1359): P602 is its ten lines, with
+    # tobacco on a quarter of the diaries (all of P602 on a twelfth), and a
+    # third of the diaries buy drinks away from home.
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        UK_LCFS_GAMBLING_STAKE_CODES,
+        UK_LCFS_OFF_TRADE_ALCOHOL_CODES,
+        UK_LCFS_ON_TRADE_ALCOHOL_CODES,
+        UK_LCFS_TOBACCO_CODES,
+    )
+
+    p602 = np.asarray(household["p602"], dtype=float)
+    tobacco = np.where(
+        rows.astype(int) % 12 == 0,
+        p602,
+        np.where(rows.astype(int) % 4 == 0, 0.3 * p602, 0.0),
+    )
+    for code, share in zip(UK_LCFS_TOBACCO_CODES, (0.7, 0.0, 0.3), strict=True):
+        household[code] = share * tobacco
+    for code in UK_LCFS_OFF_TRADE_ALCOHOL_CODES:
+        household[code] = (p602 - tobacco) / len(UK_LCFS_OFF_TRADE_ALCOHOL_CODES)
+    on_trade = np.where(
+        rows.astype(int) % 3 == 1,
+        0.25 * np.asarray(household["p611"], dtype=float),
+        0.0,
+    )
+    for code in UK_LCFS_ON_TRADE_ALCOHOL_CODES:
+        household[code] = on_trade / len(UK_LCFS_ON_TRADE_ALCOHOL_CODES)
+    # Gambling stakes inside P609, on a fifth of the diaries.
+    stakes = np.where(
+        rows.astype(int) % 5 == 2,
+        0.05 * np.asarray(household["p609"], dtype=float),
+        0.0,
+    )
+    for code in UK_LCFS_GAMBLING_STAKE_CODES:
+        household[code] = stakes / len(UK_LCFS_GAMBLING_STAKE_CODES)
     person = pd.DataFrame(
         {
             "case": np.arange(1, _DONOR_ROWS + 1),
@@ -1889,8 +2048,8 @@ def _normalize_legacy_strings(frame: Frame) -> Frame:
         for entity, columns in _NORMALIZED_STRING_COLUMNS.items()
         for column in columns
     ]
-    if observed != expected_order or len(observed) != 26:
-        raise RuntimeError("The legacy normalization audit is not exactly 26 cells.")
+    if observed != expected_order or len(observed) != 27:
+        raise RuntimeError("The legacy normalization audit is not exactly 27 cells.")
     return Frame(
         tables,
         frame.schema,
@@ -2041,6 +2200,20 @@ def _build_implementations(
             stage=stages["was_lisa"],
             engine=engine,
             donor_household=was,
+            donor_person=was_person,
+        ),
+        "isa_subscriptions": UKISASubscriptionsStageTransform(
+            stage=stages["isa_subscriptions"],
+            engine=engine,
+            donor_household=was,
+            donor_person=was_person,
+        ),
+        "trading_allowance_receipts": UKTradingAllowanceReceiptsStageTransform(
+            stage=stages["trading_allowance_receipts"]
+        ),
+        "company_cars": UKCompanyCarsStageTransform(
+            stage=stages["company_cars"],
+            engine=engine,
             donor_person=was_person,
         ),
         "nts_bus_travel": UKNTSBusTravelStageTransform(

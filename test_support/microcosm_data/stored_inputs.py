@@ -154,13 +154,17 @@ def _column_strategies(st):
 
 
 #: Register entries that postdate the files examined for #1026 and rest on a
-#: live producer instead: the parent ids (microcosm#884), bound to
-#: eligibility_inputs.US_ELIGIBILITY_INPUTS_PARENT_ID_COLUMNS, and the four
-#: federal student loan inputs (microcosm#1073), bound to
-#: scf_education_debt.US_SCF_EDUCATION_DEBT_OUTPUT_COLUMNS, both by
-#: test_us_stored_input_register.py (microcosm-data cannot import the build).
+#: live producer instead (microcosm-data cannot import the build). The parent
+#: ids (microcosm#884) are bound to
+#: eligibility_inputs.US_ELIGIBILITY_INPUTS_PARENT_ID_COLUMNS and the four
+#: federal student loan inputs (microcosm#1073) to
+#: scf_education_debt.US_SCF_EDUCATION_DEBT_OUTPUT_COLUMNS by
+#: test_us_stored_input_register.py. That test also binds county_fips_2023 to
+#: county_vintage; test_us_county_vintage_ladders.py proves the PUMA and block
+#: assignments write it.
 _PRODUCER_BOUND_ENTRIES = frozenset(
     {
+        "county_fips_2023",
         "parent_1_id",
         "parent_2_id",
         "federal_student_loan_balance",

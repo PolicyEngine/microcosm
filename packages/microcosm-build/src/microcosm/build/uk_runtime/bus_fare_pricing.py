@@ -7,9 +7,13 @@ two published ratios, so the calibration targets constrain something the
 stage did not set:
 
 * the yield per fare-paying boarding, ``y = R / (B - C)``: BUS05ai passenger
-  fare receipts over BUS01 passenger journeys less the concessionary journeys,
-  per area (London and England outside London; Scotland and Northern Ireland
-  from their own receipts and journeys);
+  fare receipts over BUS01 passenger journeys less the concessionary journeys
+  the area declares, per area (London and England outside London; Scotland
+  and Northern Ireland from their own receipts and journeys). England outside
+  London takes off only BUS01c's older and disabled concessions, as
+  policyengine-uk prices it from 2.158.3, so its other concessions stay in the
+  priced denominator, as the frame's eligibility flag leaves them priced
+  (microcosm#1095);
 * boardings per resident trip, ``k = B / (T x P)``: the published boardings over
   the published NTS trips per resident times the resident population, per
   series, which translates a survey trip (one-way, main mode, England

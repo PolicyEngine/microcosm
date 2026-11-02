@@ -1,0 +1,1 @@
+Add generated SA1-derived territorial authority × region × Accommodation Supplement area support for NZ. Preserve each of the 67 TA ERP anchors, retain region 99 under its own SA1s, and disclose the 33 unanchored outside-TA Census residents separately. Pin all 29 REGC source pages and add offline regeneration checks; transport activation remains deferred.

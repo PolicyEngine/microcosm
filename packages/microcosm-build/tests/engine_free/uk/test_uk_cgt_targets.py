@@ -178,9 +178,7 @@ def test_coverage_requires_all_three_observed_facts():
     assert set(requirement.accepted_names) == CGT_TARGET_NAMES
 
 
-def test_original_cash_forecast_survives_only_as_diagnostic_metadata(
-    tmp_path, compile_cgt
-):
+def test_the_cash_outturn_survives_only_as_diagnostic_metadata(tmp_path, compile_cgt):
     compilation = compile_cgt(_facts(), target_period=2025)
     by_name = {spec.name: spec for spec in compilation.registry.specs}
     assert "obr.capital_gains_tax" not in by_name
@@ -188,12 +186,14 @@ def test_original_cash_forecast_survives_only_as_diagnostic_metadata(
     assert metadata["cgt_cash_diagnostic_status"] == "available"
     assert metadata["cgt_cash_diagnostic_role"] == "diagnostic_only_not_in_fit"
     assert metadata["cgt_cash_reconciliation_status"] == "unresolved"
-    assert float(metadata["cgt_cash_diagnostic_value_gbp"]) == 21_801_546_197.09165
+    # The October 2026 EFO's FY2025-26 outturn: March's forecast left the feed
+    # with PolicyEngine/chronicle#397 (microcosm#1430).
+    assert float(metadata["cgt_cash_diagnostic_value_gbp"]) == 24_310_000_000
     assert metadata["cgt_cash_diagnostic_period"] == "2025"
     assert metadata["cgt_cash_diagnostic_ledger_period_type"] == "fiscal_year"
-    assert metadata["cgt_cash_diagnostic_ledger_assertion"] == "source_projection"
+    assert metadata["cgt_cash_diagnostic_ledger_assertion"] == "observation"
     assert metadata["cgt_cash_diagnostic_ledger_aggregate_fact_key"] == (
-        "ledger.aggregate_fact.v2:93699bb9caa7ec0d6833f420"
+        "ledger.aggregate_fact.v2:81ca86a5fa9d42cfa0eff5e3"
     )
     assert "obr.uk" in metadata["cgt_cash_diagnostic_source"]
     # TargetSpec's normal serialization is used in national/local receipts.
@@ -211,8 +211,8 @@ def test_original_cash_forecast_survives_only_as_diagnostic_metadata(
     [
         "missing",
         "wrong_year",
-        "observation",
-        "different_forecast",
+        "projection",
+        "different_figure",
         "wrong_period_type",
         "duplicate",
     ],
@@ -235,8 +235,8 @@ def test_missing_cash_diagnostic_does_not_remove_observed_targets(
         for fact in cash:
             if cash_change == "wrong_year":
                 fact["period"]["value"] = 2026
-            elif cash_change == "observation":
-                fact["assertion"] = "observation"
+            elif cash_change == "projection":
+                fact["assertion"] = "source_projection"
             elif cash_change == "wrong_period_type":
                 fact["period"]["type"] = "tax_year"
             else:
@@ -254,11 +254,11 @@ def test_missing_cash_diagnostic_does_not_remove_observed_targets(
     assert metadata["cgt_cash_diagnostic_status"] == "unavailable"
     assert metadata["cgt_cash_diagnostic_unavailable_reason"]
     assert metadata["cgt_cash_diagnostic_expected_fact_key"] == (
-        "ledger.aggregate_fact.v2:93699bb9caa7ec0d6833f420"
+        "ledger.aggregate_fact.v2:81ca86a5fa9d42cfa0eff5e3"
     )
     assert metadata["cgt_cash_diagnostic_expected_period"] == "2025"
     assert metadata["cgt_cash_diagnostic_expected_period_type"] == "fiscal_year"
-    assert metadata["cgt_cash_diagnostic_expected_assertion"] == "source_projection"
+    assert metadata["cgt_cash_diagnostic_expected_assertion"] == "observation"
     assert "cgt_cash_diagnostic_value_gbp" not in metadata
     assert "cgt_cash_diagnostic_source" not in metadata
     restored = TargetRegistry.from_json(
@@ -333,7 +333,8 @@ def test_malformed_cash_declaration_remains_a_compile_error(
     elif change == "fact_key":
         declaration["reference"]["ledger_fact_key"] = None
     else:
-        declaration["required_assertion"] = "observation"
+        # The outturn pin pairs with observed_only; a projection disagrees.
+        declaration["required_assertion"] = "source_projection"
     (tmp_path / "uk_population_targets.json").write_text(json.dumps(contract))
     original_files = ledger_targets.importlib_resources.files
     monkeypatch.setattr(

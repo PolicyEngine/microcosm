@@ -103,23 +103,6 @@ def _fake_cgt_projection(base_year: int = 2023, horizon_year: int = 2030):
 
 
 @pytest.fixture(autouse=True)
-def _every_seam_row_published(monkeypatch):
-    """Publish every row of the four-household seam fixture.
-
-    A row's model figures leave a build only when ten distinct source
-    households carry it (María's rule of 2026-10-21 binds a thin row and
-    withholds its figures), and no row here rests on more than four, so the
-    fit gate would see no published row. The pipeline tests lower the count
-    to one to read the solve's figures; the withheld path has its own tests
-    in test_uk_diagnostics.py and test_uk_battery_bindings.py.
-    """
-
-    from microcosm.build.uk_runtime import diagnostics
-
-    monkeypatch.setattr(diagnostics, "UK_DIAGNOSTIC_MIN_SOURCE_HOUSEHOLDS", 1)
-
-
-@pytest.fixture(autouse=True)
 def _cgt_projection(monkeypatch):
     """The seam reads the projection from the engine; tests supply a flat one."""
 

@@ -1,0 +1,32 @@
+{
+  "block_vintage": "2020_tabulation_blocks",
+  "county_vintage": "2020",
+  "diagnostics": {
+    "connecticut_tract_count": 880,
+    "fixture_tract_count": 4015,
+    "legacy_county_count": 3143,
+    "source_50_states_dc_tract_count": 84414,
+    "state_count": 51
+  },
+  "kind": "us_county_vintage_tract_support_fixture",
+  "limitation": "Complete county support coverage; this fixture does not certify an actual full ladder NPZ artifact.",
+  "output_sha256": "b0fdf899c37ecb9431df1cbd0bc428192f9a59d35fb4592ffc638995de256c32",
+  "schema_version": 1,
+  "selection": {
+    "connecticut": "Every source tract represented by town-defined 2020 BAF blocks in the packaged CT tract crosswalk.",
+    "excluded_connecticut_reason": "The three tracts contain only undefined-town water blocks, have zero population, and cannot host a household.",
+    "excluded_connecticut_tracts": [
+      "09007990100",
+      "09009990000",
+      "09011990100"
+    ],
+    "non_connecticut": "Lexicographically first real 2020 tract for each 2020 county-equivalent."
+  },
+  "source_files": {
+    "tract_to_puma": {
+      "sha256": "5262f460b2c8dbe86b00549e916317b1791fdc595c9af72ab18f6f6a67040531",
+      "url": "https://www2.census.gov/geo/docs/maps-data/data/rel2020/2020_Census_Tract_to_2020_PUMA.txt"
+    }
+  },
+  "state_scope": "50 states and District of Columbia"
+}

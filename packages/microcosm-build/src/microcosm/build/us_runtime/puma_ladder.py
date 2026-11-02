@@ -24,6 +24,10 @@ per-area files, the standing rule): the dense ACS-spine artifact is filtered to
 state / congressional district / county for local analysis because every record
 carries them.
 
+``county_fips_2023`` separately supplies calibration geography. Connecticut
+uses the assigned tract's planning region, or a further tract draw conditional
+on the already assigned PUMA and 2020 county when the tract rung is omitted.
+
 Vintage discipline follows the country-spec geography-spine schema
 (``vintage_policy: "error"``): the artifact records one vintage per derived
 layer, the loader refuses an artifact that omits any of them, and the
@@ -55,9 +59,16 @@ from microcosm.build.gates import GateResult
 from microcosm.build.us_runtime.congressional_district_geography import (
     CONGRESSIONAL_DISTRICT_GEOID_COLUMN,
 )
+from microcosm.build.us_runtime.county_vintage import (
+    COUNTY_FIPS_2023_COLUMN,
+    county_fips_2023_assignment_failures,
+)
 from microcosm.build.us_runtime.geography_ladder import (
     US_NYC_COUNTY_FIPS,
     non_text_county_fips_failure,
+)
+from microcosm.build.us_runtime.puma_county_vintage import (
+    county_fips_2023_for_puma_assignment,
 )
 from microcosm.build.us_runtime.puma_ladder_sources import (
     COUNTY_FROM_TRACT_DIVISOR,
@@ -73,12 +84,13 @@ US_PUMA_LADDER_DERIVED_LAYERS = (
 )
 
 #: Household spine columns the launch assignment writes (state / CD / county
-#: filtering surface), in write order. ``puma`` is the anchor; the other two
-#: are policyengine-us household inputs.
+#: filtering surface), in write order. ``puma`` is the anchor; district and
+#: legacy county are engine inputs, and the 2023 county is calibration metadata.
 US_PUMA_LADDER_COLUMNS = (
     "puma",
     CONGRESSIONAL_DISTRICT_GEOID_COLUMN,
     "county_fips",
+    COUNTY_FIPS_2023_COLUMN,
 )
 
 #: The finer tract rung, written only when ``assign_tract=True``.
@@ -379,6 +391,13 @@ def assign_us_puma_ladder(
     assigned["county_fips"] = np.array(
         [f"{value:05d}" for value in county_values.tolist()], dtype=object
     )
+    assigned[COUNTY_FIPS_2023_COLUMN] = county_fips_2023_for_puma_assignment(
+        row_puma,
+        county_values,
+        tract_values=tract_values,
+        tract_overlap=ladder._overlap("tract"),
+        rng=rng,
+    )
     if tract_values is not None:
         assigned[US_PUMA_LADDER_TRACT_COLUMN] = np.array(
             [f"{value:011d}" for value in tract_values.tolist()], dtype=object
@@ -517,6 +536,24 @@ def us_puma_ladder_gate(
     non_text = non_text_county_fips_failure(
         household["county_fips"], column="county_fips"
     )
+    failures.extend(
+        county_fips_2023_assignment_failures(
+            household[COUNTY_FIPS_2023_COLUMN],
+            household["county_fips"],
+            tracts=household[US_PUMA_LADDER_TRACT_COLUMN] if assign_tract else None,
+        )
+    )
+    if not assign_tract and US_PUMA_LADDER_TRACT_COLUMN in household.columns:
+        # Pooled donors retain tracts even when fresh ACS rows have none.
+        tracts = household[US_PUMA_LADDER_TRACT_COLUMN]
+        retained = household.loc[tracts.notna() & tracts.ne("")]
+        failures.extend(
+            county_fips_2023_assignment_failures(
+                retained[COUNTY_FIPS_2023_COLUMN],
+                retained["county_fips"],
+                tracts=retained[US_PUMA_LADDER_TRACT_COLUMN],
+            )
+        )
     if non_text is not None:
         failures.append(non_text)
     puma = household["puma"].astype(str).to_numpy()

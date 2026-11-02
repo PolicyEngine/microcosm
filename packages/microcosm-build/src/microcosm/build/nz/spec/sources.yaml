@@ -10,11 +10,11 @@ sources:
     value: '2024'
   vintages:
   - vintage:nz_support_pool_2024_buildp
-- byte_size: 2207
+- byte_size: 2448
   id: nz_region_assignment_contract
   loader: kernel:assign_nz_regions
   role: nz_region_assignment_contract
-  sha256: 799bb85e0e4ef943b9f14c6223e2b6168d587e09d1fbf8c7ea2e1aaa0eaee17d
+  sha256: 5f2b1bdd9f8768249912ffd0fbcb2f7d4ed493b51c74306f793ec12441fd383f
   vintage_authorities:
   - id: nz_region_2025
     kind: geography_vintage

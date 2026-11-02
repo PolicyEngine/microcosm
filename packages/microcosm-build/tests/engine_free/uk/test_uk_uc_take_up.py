@@ -11,6 +11,7 @@ import pytest
 
 from microcosm.build.country_spec import load_country_spec
 from microcosm.build.source_manifest import SourceStageSpec
+from microcosm.build.uk_runtime import uc_take_up
 from microcosm.build.uk_runtime.frs_take_up import (
     UK_TAKE_UP_SIGNAL_OUTPUTS,
     UKTakeUpPopulationPolicy,
@@ -233,9 +234,11 @@ def test_a_pool_nearer_zero_than_its_first_unit_draws_no_claimant() -> None:
     assert would_claim.tolist() == [True, False]
 
 
-def test_clipped_pools_are_flagged_unreachable() -> None:
-    # Band 0: reporters alone exceed DWP's count, so no drawn unit claims.
-    # Band 2: DWP's count exceeds every entitled unit, so all of them claim.
+def test_a_family_type_that_cannot_meet_its_count_is_flagged_unreachable() -> None:
+    # Band 0: reporters alone exceed DWP's count; band 2: the count exceeds
+    # every entitled unit. Each band keeps its own pool: the two gaps offset,
+    # the remaining shortfall takes band 0's one drawn unit, and the family
+    # type still falls short, so every drawn unit claims (microcosm#1428).
     award = np.asarray([100.0] * 4 + [3_000.0] * 4)
     reporter = np.asarray([True, True, True, False, False, False, False, False])
     would_claim, receipt = _assign(
@@ -243,41 +246,106 @@ def test_clipped_pools_are_flagged_unreachable() -> None:
         reporter=reporter,
         previous=np.asarray([False, False, False, True, False, False, False, False]),
         targets=_targets(SINGLE_0=2.0, SINGLE_2=10.0),
-        source_ids=np.arange(8),
+        # Band 0's four units copy two source households.
+        source_ids=np.asarray([0, 0, 1, 1, 4, 5, 6, 7]),
         minimum_pool_sources=1,
     )
-    assert would_claim.tolist() == [True, True, True, False, True, True, True, True]
+    assert would_claim.all()
     flags = {
-        tuple(pool["bands"]): pool["target_unreachable"]
+        pool["bands"][0]: pool["target_unreachable"]
         for pool in receipt["pools"]
         if pool["family_type"] == "SINGLE"
     }
-    assert flags[(UC_AWARD_BAND_LABELS[0],)] == "<10"
-    pools = receipt["pools"]
-    assert all("rate" not in pool for pool in pools)
-    # With ten or more sources behind a pool the flag says which side it is on.
-    many = np.asarray([100.0] * 12 + [3_000.0] * 12)
+    # A pool on fewer than three sources withholds its flag; band 2's pool,
+    # with the empty band 1 and those above, rests on four.
+    assert flags == {
+        UC_AWARD_BAND_LABELS[0]: "<3",
+        UC_AWARD_BAND_LABELS[1]: "target_exceeds_entitled",
+    }
+    assert all("rate" not in pool for pool in receipt["pools"])
+    # With three or more sources behind a pool the flag says which side it is
+    # on: the singles' reporters exceed their count, and the couples' count
+    # exceeds every entitled unit.
+    family = np.asarray(["SINGLE"] * 12 + ["COUPLE_NO_CHILDREN"] * 12, dtype=object)
     _, receipt = _assign(
-        award=many,
-        reporter=np.asarray([True] * 10 + [False] * 14),
-        targets=_targets(SINGLE_0=2.0, SINGLE_2=50.0),
+        award=np.asarray([100.0] * 12 + [3_000.0] * 12),
+        family=family,
+        reporter=np.asarray([True] * 12 + [False] * 12),
+        targets=_targets(SINGLE_0=2.0, COUPLE_NO_CHILDREN_2=50.0),
         minimum_pool_sources=1,
     )
-
-    # Band 1 holds no unit, so it pools with band 2, and the empty bands above
-    # join that pool.
-    def flag(label):
-        return next(
-            pool["target_unreachable"]
-            for pool in receipt["pools"]
-            if pool["family_type"] == "SINGLE" and label in pool["bands"]
-        )
-
-    assert flag(UC_AWARD_BAND_LABELS[0]) == "undrawn_claims_reach_target"
-    assert flag(UC_AWARD_BAND_LABELS[2]) == "target_exceeds_entitled"
-    single = receipt["families"]["SINGLE"]
+    flags = {
+        pool["family_type"]: pool["target_unreachable"]
+        for pool in receipt["pools"]
+        if pool["family_type"] in {"SINGLE", "COUPLE_NO_CHILDREN"}
+    }
+    assert flags == {
+        "SINGLE": "undrawn_claims_reach_target",
+        "COUPLE_NO_CHILDREN": "target_exceeds_entitled",
+    }
     # No pool is reachable, so the gate's reachable totals are empty.
-    assert single["reachable_pools_dwp_caseload"] == 0.0
+    assert receipt["families"]["SINGLE"]["reachable_pools_dwp_caseload"] == 0.0
+
+
+def test_an_unmet_pool_passes_its_gap_to_the_neighbour_with_more_room() -> None:
+    # Band 0: four drawn units and a count of 3 (one to spare); band 2: two
+    # drawn units and a count of 5 (three short); band 4: ten drawn units and a
+    # count of 5 (five to spare). Band 2 is held at its two claims and passes
+    # its three to band 4, which has more room; band 0 keeps its own count, and
+    # the singles land on DWP's 13 (microcosm#1428 review, finding 7).
+    award = np.asarray([600.0] * 4 + [3_000.0] * 2 + [5_500.0] * 10)
+    would_claim, receipt = _assign(
+        award=award, targets=_targets(SINGLE_0=3.0, SINGLE_2=5.0, SINGLE_4=5.0)
+    )
+    assert int(would_claim[:4].sum()) == 3
+    assert would_claim[4:6].all()
+    assert int(would_claim[6:].sum()) == 8
+    single = receipt["families"]["SINGLE"]
+    assert single["caseload_after"] == pytest.approx(13.0)
+    assert single["reachable_pools_dwp_caseload"] == pytest.approx(13.0)
+    # On equal room the lower neighbour takes the gap.
+    award = np.asarray([600.0] * 3 + [3_000.0] + [5_500.0] * 3)
+    would_claim, _ = _assign(
+        award=award, targets=_targets(SINGLE_0=1.0, SINGLE_2=2.0, SINGLE_4=1.0)
+    )
+    assert [
+        int(would_claim[:3].sum()),
+        int(would_claim[3]),
+        int(would_claim[4:].sum()),
+    ] == [2, 1, 1]
+
+
+def test_an_overshooting_pool_passes_its_excess_to_one_with_drawn_claims() -> None:
+    # Band 0: three reporters, one drawn unit and a count of 1 (two over);
+    # band 2: six drawn units and a count of 4. Band 0 is held at its
+    # reporters and its drawn unit does not claim; its two over come off band
+    # 2, whose drawn units carry the two claims DWP's 5 leaves. A joined pool
+    # had let band 0's drawn unit claim (microcosm#1428 review, finding 7).
+    award = np.asarray([600.0] * 4 + [3_000.0] * 6)
+    reporter = np.asarray([True] * 3 + [False] * 7)
+    would_claim, receipt = _assign(
+        award=award, reporter=reporter, targets=_targets(SINGLE_0=1.0, SINGLE_2=4.0)
+    )
+    assert would_claim[:3].all()
+    assert not would_claim[3]
+    assert int(would_claim[4:].sum()) == 2
+    assert receipt["families"]["SINGLE"]["caseload_after"] == pytest.approx(5.0)
+
+
+def test_gaps_offset_before_they_pass() -> None:
+    # One pool overshoots by 1 and another falls short by 6: the excess
+    # offsets the shortfall, and only the remaining 5 look for room
+    # (microcosm#1428 review, finding 7).
+    counts, unplaced = uc_take_up._pass_unmet_gaps([(2.0, 3.0, 1.0), (10.0, 0.0, 4.0)])
+    assert counts == [4.0, 4.0]
+    assert unplaced == [0.0, 4.0]
+    # A feasible family type keeps its total: 3 + 5 + 5 over pools that hold
+    # 0-4, 0-2 and 0-10.
+    counts, unplaced = uc_take_up._pass_unmet_gaps(
+        [(3.0, 0.0, 4.0), (5.0, 0.0, 2.0), (5.0, 0.0, 10.0)]
+    )
+    assert counts == [3.0, 2.0, 8.0]
+    assert not any(unplaced)
 
 
 def test_undrawn_units_keep_their_flag_and_count_at_their_expected_claim() -> None:
@@ -307,7 +375,7 @@ def test_undrawn_units_keep_their_flag_and_count_at_their_expected_claim() -> No
     assert single["caseload_before"] == pytest.approx(9.0)
     assert single["caseload_after"] == pytest.approx(5.0)
     assert receipt["changed_outside_draw"] == 0
-    assert receipt["moved_units"] == "<10"
+    assert receipt["moved_units"] == "<3"
 
 
 def test_rates_are_solved_over_great_britain_and_drawn_in_northern_ireland() -> None:
@@ -373,7 +441,8 @@ def test_the_receipt_bands_counts_and_carries_no_rate() -> None:
         weights=np.full(40, 3.0),
         targets=_targets(SINGLE_1=60.0),
     )
-    # Counts of records are banded or rounded, never exact (UKDS CD137 cl. 8).
+    # Counts of records are banded or rounded, and one or two are withheld
+    # (UKDS CD137 cl. 8).
     assert receipt["drawn_units"] == 40
     assert receipt["drawn_units_northern_ireland"] == 0
     pool = next(
@@ -391,9 +460,9 @@ def test_the_receipt_bands_counts_and_carries_no_rate() -> None:
         "drawn_support",
         "target_unreachable",
     }
-    _, small = _assign(award=np.full(5, 1_500.0), targets=_targets(SINGLE_1=2.0))
-    assert small["drawn_units"] == "<10"
-    assert small["families"]["SINGLE"]["caseload_after"] == "<10"
+    _, small = _assign(award=np.full(2, 1_500.0), targets=_targets(SINGLE_1=2.0))
+    assert small["drawn_units"] == "<3"
+    assert small["families"]["SINGLE"]["caseload_after"] == "<3"
 
 
 def test_inputs_must_align_and_name_known_cells() -> None:
@@ -465,6 +534,9 @@ def _frame(time_period: str = "2024"):
             "is_uc_claimant": [True] * 4,
             "is_benunit_head": [True] * 4,
             "is_parent": [False] * 4,
+            # The legacy reports that count are the claimant's and partner's
+            # (pe-uk#2549).
+            "is_claimant_or_partner": [True] * 4,
             "universal_credit_reported": [1_000.0, 0.0, 0.0, 0.0],
             **{column: [0.0] * 4 for column in _LEGACY_REPORTS},
         }
@@ -627,22 +699,32 @@ def test_the_receipt_counts_working_age_housing_benefit_kept_and_drawn() -> None
     moved[16:20] = True
     uc_after = np.zeros(count, dtype=bool)
     uc_after[:6] = True
-    receipt = working_age_housing_benefit_receipt(
-        person=person,
-        benunit=benunit,
-        population=np.ones(count, dtype=bool),
-        moved=moved,
-        uc_before=np.zeros(count, dtype=bool),
-        uc_after=uc_after,
-        weights=np.ones(count),
-        great_britain=np.ones(count, dtype=bool),
-        source_ids=np.arange(count),
-    )
+
+    def receipt_for(uc_after: np.ndarray) -> dict:
+        return working_age_housing_benefit_receipt(
+            person=person,
+            benunit=benunit,
+            population=np.ones(count, dtype=bool),
+            moved=moved,
+            uc_before=np.zeros(count, dtype=bool),
+            uc_after=uc_after,
+            weights=np.ones(count),
+            great_britain=np.ones(count, dtype=bool),
+            source_ids=np.arange(count),
+        )
+
+    receipt = receipt_for(uc_after)
     assert receipt["reporting_units"] == pytest.approx(16.0)
     assert receipt["keeping_housing_benefit_before"] == pytest.approx(16.0)
     assert receipt["keeping_housing_benefit_after"] == pytest.approx(10.0)
-    # Six drawn units rest on fewer than ten sources: no weighted figure.
-    assert receipt["drawn_onto_universal_credit"] == "<10"
+    # Six drawn units rest on six sources: their weight is given.
+    assert receipt["drawn_onto_universal_credit"] == pytest.approx(6.0)
+    # Two drawn units rest on fewer than three sources: no weighted figure.
+    two = np.zeros(count, dtype=bool)
+    two[:2] = True
+    receipt = receipt_for(two)
+    assert receipt["keeping_housing_benefit_after"] == pytest.approx(14.0)
+    assert receipt["drawn_onto_universal_credit"] == "<3"
 
 
 def test_a_unit_keeping_a_legacy_benefit_is_not_drawn_onto_uc() -> None:
@@ -668,3 +750,38 @@ def test_a_unit_keeping_a_legacy_benefit_is_not_drawn_onto_uc() -> None:
     )
     # Counted at its stored flag: the pool then needs only two more claims.
     assert kept_previous.tolist() == [True, True, True, False]
+
+
+@pytest.mark.parametrize(
+    ("claimant_or_partner", "claims"),
+    [(True, False), (False, True)],
+)
+def test_a_unit_keeping_income_related_esa_claims_no_universal_credit(
+    claimant_or_partner: bool, claims: bool
+) -> None:
+    """policyengine-uk ends a claimant's or partner's income-related ESA once
+    the family claims Universal Credit (pe-uk#2563, from 2.149.0): a unit on
+    the award at the interview, neither a UC reporter nor moved off its
+    legacy benefits, claims none. A report by anyone else does not count, as
+    the engine leaves that person's award alone (microcosm#1095)."""
+
+    engine = _StubEngine({1: 900.0, 2: 900.0, 3: 0.0, 4: 900.0})
+    frame = _frame()
+    person = frame.table("person")
+    unit_three = person["person_benunit_id"] == 3
+    # Unit 3 has no award, so the solve leaves it at its stored claim.
+    person.loc[unit_three, "esa_income_reported"] = 4_000.0
+    person.loc[unit_three, "is_claimant_or_partner"] = claimant_or_partner
+
+    result = _redraw(frame, engine)
+
+    after = result.frame.table("benunit").set_index("benunit_id")
+    assert bool(after.loc[3, "would_claim_uc"]) is claims
+    kept = result.evidence()["income_related_esa_kept"]
+    assert kept["scope"] == "great_britain"
+    assert kept["column"] == "esa_income_reported"
+    # One source household carries it: a band, never a count or a weight.
+    assert kept["kept_off_support"] == ("<3" if claimant_or_partner else 0)
+    assert kept["units_kept_off_universal_credit"] == (
+        "<3" if claimant_or_partner else 0.0
+    )

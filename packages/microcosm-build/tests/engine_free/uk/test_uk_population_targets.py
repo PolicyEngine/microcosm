@@ -21,7 +21,6 @@ from microcosm.build.uk_runtime.local_targets import (
 )
 from microcosm.build.uk_runtime.uprating_holds import (
     load_uk_uprating_holds,
-    uk_hold_is_signed,
 )
 
 FORBIDDEN_VALUE_KEYS = {"aggregation", "operation", "registry", "target_value", "value"}
@@ -50,6 +49,8 @@ PROJECTION_FAMILIES = {
     "scotgov_social_security",
     "hmrc_itl",
     "hmrc_itl_marginal_rate",
+    "hmrc_itl_age",
+    "hmrc_itl_savings_rate",
     "dwp_benefit_expenditure",
 }
 NATIONAL_SELECTOR_KEYS = {
@@ -66,9 +67,15 @@ NATIONAL_SELECTOR_KEYS = {
     "period_value",
     "layout_groupby_value_id",
     "source_measure_id_by_opening_year",
+    # microcosm#1430: the 19 OBR rows windowed into calendar 2025 read
+    # FY2024-25 from the March 2026 EFO and FY2025-26 from October's.
+    "source_table_by_opening_year",
     # microcosm#1301: the high-value homes region rows select the derived
     # stock's record set, as its local cells do.
     "record_set_spec_id",
+    # microcosm#1095 R8: a selector may declare its fact's geography, which
+    # wins over the inferred pin; the devolved SLC repayment rows do.
+    "geography_id",
 }
 LOCAL_SELECTOR_KEYS = {
     "source_name",
@@ -244,8 +251,23 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
     # to 6 and England's 0 to 6, and the DfE single-age rows five more
     # funded-childcare counts (working parent 9 to 11 months and ages 1-3,
     # nursery age 3; the age-4 cells are signed out, as the bound rows fix
-    # them).
-    assert len(resource["targets"]) == 437
+    # them). The next policyengine-uk bump retires the OBR welfare-cap split
+    # and the England postgraduate repayments to registry_parity.excluded
+    # (microcosm#1095), adds England's single adult discount cells by
+    # billing authority and HMRC's Child Benefit families in payment by
+    # number of children, five national rows (microcosm#1095); microcosm#1359
+    # adds five OBR excise receipts rows, measured at FY2024-25 and held out
+    # of the objective; microcosm#1069 adds HMRC's Income Tax payers of State
+    # Pension age and aged 65 and over by region and nation; microcosm#1418
+    # adds HMRC's Income Tax on savings at the basic, higher and additional
+    # rates, three national rows, SPI pension income and the taxpayers with
+    # it by constituency and local authority, SPI Table 3.7's other income by
+    # total-income band, and SPI Table 3.10's self-employment counts and
+    # amounts by self-employment band and the counts with employment income
+    # among them, and DWP's income-based Jobseeker's Allowance spending;
+    # microcosm#1095 R4 splits SLC's devolved repayments into one row per
+    # nation, three rows for one.
+    assert len(resource["targets"]) == 460
 
     providers = resource["hierarchy"]["providers"]
     categories = resource["hierarchy"]["categories"]
@@ -259,10 +281,10 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
     target_ids = [target["target_id"] for target in resource["targets"]]
     registry_scope = resource["registry_parity"]["scope_target_ids"]
     profile_scope = resource["profile_parity"]["scope_target_ids"]
-    assert len(registry_scope) == 378
-    assert len(profile_scope) == 59
-    assert target_ids[:378] == registry_scope
-    assert target_ids[378:] == profile_scope
+    assert len(registry_scope) == 398
+    assert len(profile_scope) == 62
+    assert target_ids[:398] == registry_scope
+    assert target_ids[398:] == profile_scope
 
     parity = resource["registry_parity"]
     assert parity["pinned_ref"] == "12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3"
@@ -282,9 +304,19 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
     # microcosm#1301's three high-value homes region rows have no uk-data
     # metric, nor do microcosm#1278's three single years of age or the eleven
     # the childcare costing fixes add (UK 3 to 6, England 0 to 6), nor the
-    # five DfE funded-childcare single-age rows.
-    assert len(mapped_target_ids) == 186
-    assert len(unmapped_declarations) == 192
+    # five DfE funded-childcare single-age rows. The next policyengine-uk bump
+    # retires the OBR welfare-cap split and the England postgraduate
+    # repayments to the excluded rows (microcosm#1095), and HMRC's five Child
+    # Benefit family rows have no uk-data metric either. microcosm#1359's five
+    # OBR excise rows have no uk-data metric (uk-data never measured excise
+    # duty), nor microcosm#1069's two Income Tax payer by age rows, nor
+    # microcosm#1418's three Income Tax on savings rows, its SPI other income
+    # row or its three Table 3.10 rows, nor microcosm#1428's income-based JSA
+    # spending row. microcosm#1095 R4 maps the incumbent's three devolved SLC
+    # repayment metrics one to one, to three nation rows in place of one
+    # devolved row.
+    assert len(mapped_target_ids) == 185
+    assert len(unmapped_declarations) == 213
     suppressed_ancestors = parity["suppressed_ancestors"]
     assert len(suppressed_ancestors) == 5
     assert set(suppressed_ancestors).isdisjoint(parity["mapped"])
@@ -303,9 +335,9 @@ def test_uk_population_targets_profile_accounting_and_local_renames() -> None:
     parity = resource["profile_parity"]
     assert parity["source_profile_id"] == "uk_local_geography"
     assert parity["source_target_count"] == 25
-    assert parity["contract_target_count"] == 59
+    assert parity["contract_target_count"] == 62
     assert parity["corrected_rows"] == len(parity["corrected"]) == 25
-    assert parity["activation_added_rows"] == len(parity["activation_additions"]) == 34
+    assert parity["activation_added_rows"] == len(parity["activation_additions"]) == 37
 
     targets = {target["target_id"]: target for target in resource["targets"]}
     corrected_ids = {entry["target_id"] for entry in parity["corrected"]}
@@ -742,7 +774,7 @@ def test_uk_population_targets_bind_dfe_funded_childcare_by_single_age() -> None
         "measures every DfE row at the spring term",
         "by their age on the preceding 31 December",
         "No row reads current_education",
-        "one birth cohort earlier",
+        "each declares observation_period 2026-01",
         "the three age-4 cells",
         "already fix them",
         "reception at age 3",
@@ -767,31 +799,36 @@ def test_dfe_rows_read_the_spring_term_measures_only() -> None:
         assert not names & {"age", "current_education"}, target["target_id"]
 
 
-def test_dfe_single_age_rows_hold_the_january_2025_census() -> None:
-    """The rows read the January 2025 census, signed in-year snapshots."""
+def test_dfe_rows_read_the_january_2026_census_without_a_hold() -> None:
+    """Model year 2025's spring term is the January 2026 census (D5).
 
-    holds = load_uk_uprating_holds()["holds"]
-    entries = [
-        entry for entry in holds if set(DFE_SINGLE_AGE_IDS) & set(entry["target_ids"])
+    Every DfE row selects its fact at January 2026, a period after the 2025
+    target period, so none is held (María's ruling of 2026-10-29,
+    microcosm#1095 D5); the January 2025 census, held as an in-year snapshot
+    before, was a year out.
+    """
+
+    dfe = [
+        target
+        for target in _load()["targets"]
+        if target["target_id"].startswith("dfe.funded_childcare.")
     ]
-    assert sorted(
-        target_id for entry in entries for target_id in entry["target_ids"]
-    ) == sorted(DFE_SINGLE_AGE_IDS)
+    assert len(dfe) == 8
+    assert {target["observation_period"] for target in dfe} == {"2026-01"}
+    assert set(DFE_SINGLE_AGE_IDS) <= {target["target_id"] for target in dfe}
+    holds = load_uk_uprating_holds()["holds"]
     assert not any(
-        set(DFE_SIGNED_OUT_AGE_4_IDS) & set(hold["target_ids"]) for hold in holds
+        target_id.startswith("dfe.")
+        for entry in holds
+        for target_id in entry["target_ids"]
     )
-    for entry in entries:
-        assert entry["scope"] == "national"
-        assert entry["kind"] == "in_year_snapshot"
-        assert uk_hold_is_signed(entry)
-    assert {entry["approved_on"] for entry in entries} == {"2026-10-21", "2026-10-22"}
 
 
 def test_uk_population_targets_have_unique_target_ids() -> None:
     resource = _load()
 
     target_ids = [target["target_id"] for target in resource["targets"]]
-    assert len(target_ids) == 437
+    assert len(target_ids) == 460
     assert len(target_ids) == len(set(target_ids))
 
 
@@ -1084,8 +1121,8 @@ def test_uk_population_targets_preserve_local_metric_ordering_contract() -> None
         "constituency"
     )
     assert metric_names_from_target_profile(resource, "la") == metric_names("la")
-    assert len(metric_names_from_target_profile(resource, "constituency")) == 22
-    assert len(metric_names_from_target_profile(resource, "la")) == 38
+    assert len(metric_names_from_target_profile(resource, "constituency")) == 27
+    assert len(metric_names_from_target_profile(resource, "la")) == 41
 
 
 def test_uk_population_uc_households_target_counts_benunits() -> None:
@@ -1294,7 +1331,7 @@ def test_uc_payment_bands_share_administrative_family_but_keep_source_window() -
 
 def test_paid_joint_diagnostics_do_not_add_active_targets() -> None:
     targets = _load()["targets"]
-    assert len(targets) == 437
+    assert len(targets) == 460
     assert not any(
         f.get("variable") == "uc_calibration_child_entitlement"
         for target in targets
@@ -1544,7 +1581,7 @@ def test_household_composition_cells_do_not_share_the_household_total_signature(
 
 def test_only_the_uc_award_bands_read_whole_pence() -> None:
     """microcosm#1095: the four UC payment families opt in to whole-pence,
-    upper-closed bands; the other 28 banded bindings keep the half-open
+    upper-closed bands; the other 32 banded bindings keep the half-open
     reading."""
 
     banded = {
@@ -1557,7 +1594,7 @@ def test_only_the_uc_award_bands_read_whole_pence() -> None:
         for target_id, binding in banded.items()
         if binding.get("band_semantics") == "whole_pence_upper_closed"
     }
-    assert len(banded) == 32
+    assert len(banded) == 36
     assert whole_pence == {
         f"dwp.uc.payment_distribution_{family}"
         for family in (
@@ -1572,3 +1609,36 @@ def test_only_the_uc_award_bands_read_whole_pence() -> None:
         for target_id, binding in banded.items()
         if target_id not in whole_pence and "band_semantics" in binding
     ]
+
+
+def test_every_hmrc_employment_income_row_reads_the_benefit_in_kind_term() -> None:
+    """HMRC's employment income holds taxable benefits in kind, so every HMRC
+    employment income row, amount or count, national or local, reads pay plus
+    the company car benefits, never pay alone: a tape row carved to zero pay
+    that keeps its car still counts (microcosm#1430, and the merge with
+    microcosm#1428's Table 3.10 row in its third review)."""
+
+    term = "employment_income_with_benefits_in_kind_annual"
+    rows = {
+        target["target_id"]: target["bindings"]["policyengine"]
+        for target in _load()["targets"]
+        if target["target_id"].startswith(
+            ("hmrc.spi.employment_income.", "hmrc.employment_income.")
+        )
+    }
+    assert {
+        "hmrc.spi.employment_income.amount_by_total_income_band",
+        "hmrc.spi.employment_income.count_by_total_income_band",
+        "hmrc.employment_income.amount",
+        "hmrc.employment_income.count",
+    } <= set(rows)
+    for target_id, binding in rows.items():
+        read = [binding.get("value_variable"), binding.get("value_expression")]
+        read += [entry.get("variable") for entry in binding.get("filters", ())]
+        assert "employment_income_annual" not in read, target_id
+        if binding.get("value_variable") == "person_count":
+            assert {"variable": term, "operator": "!=", "value": 0} in binding[
+                "filters"
+            ], target_id
+        else:
+            assert binding.get("value_variable") == term, target_id

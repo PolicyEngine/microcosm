@@ -406,6 +406,8 @@ def _property_tables():
             ],
             "non_residential_property_value": [20_000.0, 0.0, 0.0, 2_000.0],
             "owned_land": [5_000.0, 30_000.0, 0.0, 0.0],
+            "other_residential_property_secured_debt": [0.0, 0.0, 0.0, 0.0],
+            "non_residential_property_secured_debt": [0.0, 0.0, 0.0, 0.0],
         }
     )
     return person, benunit, household
@@ -435,6 +437,36 @@ def test_the_reference_persons_unit_holds_the_households_property() -> None:
     np.testing.assert_allclose(
         by_household, [108_000.0, 81_000.0, 36_000.0, 10_800.0], rtol=1e-12
     )
+
+
+def test_the_property_shares_net_the_debt_secured_on_each_class() -> None:
+    """microcosm#1095: the debt secured on each property class comes off its
+    value after the costs of sale, floored at zero class by class (UC Regs
+    2013 reg 49(1)(b); SPC Regs 2002 reg 19(b)); owned land carries none."""
+
+    person, benunit, household = _property_tables()
+    household["other_residential_property_secured_debt"] = [30_000.0, 0.0, 0.0, 0.0]
+    # 25,000 on buildings worth 20,000: that class floors at zero and takes
+    # nothing off the other residential property.
+    household["non_residential_property_secured_debt"] = [25_000.0, 0.0, 0.0, 0.0]
+
+    uc = uc_property_capital_share(person, benunit, household)
+    pension_credit = pension_credit_property_capital_share(person, benunit, household)
+
+    np.testing.assert_allclose(
+        uc, [60_000.0, 81_000.0, 0.0, 36_000.0, 0.0, 10_800.0], rtol=1e-12
+    )
+    np.testing.assert_allclose(
+        pension_credit,
+        [64_500.0, 108_000.0, 0.0, 36_000.0, 0.0, 10_800.0],
+        rtol=1e-12,
+    )
+    with pytest.raises(ValueError, match="finite and nonnegative"):
+        uc_property_capital_share(
+            person,
+            benunit,
+            household.assign(other_residential_property_secured_debt=-1.0),
+        )
 
 
 def test_a_household_needs_exactly_one_reference_person() -> None:

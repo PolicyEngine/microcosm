@@ -568,8 +568,17 @@ def test_the_energy_rake_gate_holds_a_connect_rule_to_its_shortfalls() -> None:
     assert any("connect rule" in f for f in result.failures)
 
 
+def _energy_trends_only() -> dict:
+    """The declared pricing with no fuel levelled to ONS household spending."""
+
+    parameters = dict(_declared())
+    parameters.pop("spend_level_fuels")
+    parameters.pop("spend_level_resource")
+    return parameters
+
+
 def test_published_level_is_the_calendar_year_sum_of_energy_trends_quarters() -> None:
-    level, receipt = published_energy_level(_declared())
+    level, receipt = published_energy_level(_energy_trends_only())
     quarters = period_quarters("calendar_year", 2024)
     assert receipt["quarters"] == list(quarters)
     assert (receipt["period_type"], receipt["period_value"]) == ("calendar_year", 2024)
@@ -607,6 +616,100 @@ def test_published_level_is_the_calendar_year_sum_of_energy_trends_quarters() ->
         ),
     ):
         parameters = dict(_declared())
+        mutation(parameters)
+        with pytest.raises(ValueError, match=match):
+            published_energy_level(parameters)
+
+
+def _one_vendored(resource: str, **criteria) -> dict:
+    rows = vendored_rows(resource, **criteria)
+    assert len(rows) == 1, criteria
+    return rows[0]
+
+
+def test_the_electricity_level_is_the_kwh_ons_household_spending_buys() -> None:
+    """Electricity's level is ONS 04.5.1 less every meter's standing charge, over
+    the unit cost, at QEP's UK average prices (microcosm#1418); gas keeps Energy
+    Trends."""
+
+    declared = _declared()
+    assert declared["spend_level_fuels"] == ["electricity"]
+    level, receipt = published_energy_level(declared)
+    trends, _ = published_energy_level(_energy_trends_only())
+    spend = _one_vendored(
+        "ons_household_expenditure_facts.json",
+        concept="ons.household_expenditure.electricity",
+        geography_id="K02000001",
+        period_type="calendar_year",
+        period_value=2024,
+        dimensions={"coicop": "04.5.1", "consumption_concept": "domestic"},
+    )
+    meters = sum(
+        float(
+            _one_vendored(
+                "desnz_domestic_energy_facts.json",
+                concept="desnz.subnational.domestic_electricity_meter_count",
+                geography_id=geography,
+                period_type=period_type,
+                period_value=2024,
+                dimensions={"domestic_scope": "all_domestic"},
+            )["value"]
+        )
+        for geography, period_type in (
+            ("K03000001", "calendar_year"),
+            ("N92000002", "fiscal_year"),
+        )
+    )
+    unit = _qep_value(
+        "desnz.qep.domestic_electricity_variable_unit_cost",
+        UK,
+        "variable_unit_cost",
+        "electricity",
+    )
+    fixed = _qep_value(
+        "desnz.qep.domestic_electricity_fixed_cost", UK, "fixed_cost", "electricity"
+    )
+    expected = (float(spend["value"]) - meters * fixed) / unit
+    assert level[ELECTRICITY_KWH] == pytest.approx(expected, rel=1e-12)
+    # Calendar 2024: ONS's GBP 28.13bn buys about 84.9 TWh, 7.4% below Energy
+    # Trends' 91.7 TWh; about 30.2 million meters pay the standing charges.
+    assert level[ELECTRICITY_KWH] == pytest.approx(84.94e9, rel=1e-3)
+    assert meters == pytest.approx(30.19e6, rel=1e-3)
+    # Gas keeps Energy Trends: ONS 04.5.2 counts the bottled gas the frame
+    # holds as liquid fuel (María's ruling of 2026-10-29).
+    assert level[GAS_KWH] == trends[GAS_KWH]
+    block = receipt["by_fuel"][ELECTRICITY_KWH]
+    assert block["basis"] == "ons_household_spend"
+    assert block["coicop"] == "04.5.1"
+    assert block["spend_gbp"] == float(spend["value"])
+    assert block["energy_trends_kwh"] == trends[ELECTRICITY_KWH]
+    assert block["total_kwh"] == level[ELECTRICITY_KWH]
+    assert block["domestic_meters"]["meters"] == meters
+    # Northern Ireland's electricity meters stay in the subtraction, and the
+    # block says why (Anthony's review of microcosm#1420).
+    assert "northern_ireland_meters" in block
+    assert receipt["by_fuel"][GAS_KWH]["basis"] == "energy_trends_volume"
+    assert receipt["spend_level_fuels"] == ["electricity"]
+    both = {**declared, "spend_level_fuels": ["electricity", "gas"]}
+    gas_level, gas_receipt = published_energy_level(both)
+    assert gas_receipt["by_fuel"][GAS_KWH]["coicop"] == "04.5.2"
+    assert "northern_ireland_meters" not in gas_receipt["by_fuel"][GAS_KWH]
+    assert gas_level[GAS_KWH] == pytest.approx(236.47e9, rel=1e-3)
+    for mutation, match in (
+        (lambda p: p.update(spend_level_fuels=["electricity", "oil"]), "at most once"),
+        (
+            lambda p: p.update(spend_level_fuels=["electricity", "electricity"]),
+            "at most once",
+        ),
+        (lambda p: p.update(spend_level_fuels=[]), "non-empty list"),
+        (
+            lambda p: p.update(spend_level_resource="excise_facts.json"),
+            "spend_level_resource",
+        ),
+        (lambda p: p.update(level_period_type="fiscal_year"), "calendar years"),
+        (lambda p: p.update(period_value=2025), "level's year"),
+    ):
+        parameters = dict(declared)
         mutation(parameters)
         with pytest.raises(ValueError, match=match):
             published_energy_level(parameters)
@@ -929,6 +1032,33 @@ def test_energy_is_checked_at_stage_time_by_the_energy_rake_gate() -> None:
     assert passed.details["cells_fact_checked"] > 0
     assert set(passed.details["level_factor"]) == {ELECTRICITY_KWH, GAS_KWH}
     assert set(passed.details["connected_share"]) == {"LONDON", "WALES", "SCOTLAND"}
+    # Anthony's reviews of microcosm#1420: the recomputation shares the
+    # stage's inputs, so the ONS-spend level is also held to a declared share
+    # of the Energy Trends volume, and the QEP payment method, which that
+    # share cannot see, to the gate's own declaration. Gas keeps Energy Trends.
+    ratios = passed.details["ons_level_to_energy_trends_ratio"]
+    assert set(ratios) == {ELECTRICITY_KWH}
+    assert 0.92 < ratios[ELECTRICITY_KWH] < 0.93
+    assert parameters["qep_payment_method"] == "all"
+    with pytest.raises(ValueError, match="no qep_payment_method"):
+        run({k: v for k, v in generous.items() if k != "qep_payment_method"})
+    with pytest.raises(ValueError, match="qep_payment_method 'direct_debit' differs"):
+        run({**generous, "qep_payment_method": "direct_debit"})
+    failing(
+        {
+            **generous,
+            "ons_level_to_energy_trends_ratio": {"minimum": 0.95, "maximum": 1.0},
+        },
+        match="ONS-spend level is 0.9258 of Energy Trends'",
+    )
+    with pytest.raises(ValueError, match="no ons_level_to_energy_trends_ratio"):
+        run(
+            {
+                key: value
+                for key, value in generous.items()
+                if key != "ons_level_to_energy_trends_ratio"
+            }
+        )
     failing(
         {**parameters, "maximum_relative_deviation": 0.0}, match="residual tolerance"
     )
@@ -964,7 +1094,7 @@ def test_energy_is_checked_at_stage_time_by_the_energy_rake_gate() -> None:
     failing(
         generous,
         {"stage": "lcfs_consumption", "energy_rake": tampered},
-        match="not the vendored DESNZ total",
+        match="not the declared published level",
     )
     tampered = copy.deepcopy(receipt)
     tampered["level"][GAS_KWH]["frame_kwh_after"] *= 1.01
@@ -1507,3 +1637,82 @@ def test_the_energy_rake_gate_takes_only_the_declared_held_cells() -> None:
     assert any("does not declare" in f for f in run(undeclared).failures)
     missing = {k: v for k, v in receipt.items() if k != "cells_held_at_need_mean"}
     assert any("carries no cells_held_at_need_mean" in f for f in run(missing).failures)
+
+
+def test_the_lcfs_stage_key_covers_energy_pricing() -> None:
+    """The independent review of microcosm#1420, finding 5: the stage's energy
+    level and prices live in energy_pricing, so a code-only change there must
+    re-key the stage rather than resume a cached pass."""
+
+    from microcosm.build.uk_runtime import energy_pricing
+    from microcosm.build.uk_runtime.graph_kernels import _STAGE_HELPER_MODULES
+
+    assert energy_pricing in _STAGE_HELPER_MODULES["lcfs_consumption"]
+
+
+def test_each_bound_ons_energy_row_is_a_fuel_levelled_to_ons_spending() -> None:
+    """The independent review of microcosm#1420, finding 11: a per-fuel ONS
+    spending row binds only when the stage levels that fuel to ONS spending.
+    Otherwise the solve pulls a frame levelled to Energy Trends onto ONS's
+    level, the pull microcosm#1113 took out (D1). Gas's row is held out while
+    ONS 04.5.2 counts bottled gas, so rebinding it (microcosm#1095) needs gas
+    in spend_level_fuels too."""
+
+    from importlib import resources as importlib_resources
+
+    from microcosm.build.uk_runtime.energy_pricing import (
+        ELECTRICITY_FUEL,
+        GAS_FUEL,
+        ONS_HOUSEHOLD_SPEND_CONCEPTS,
+        declared_spend_level_fuels,
+    )
+    from microcosm.build.uk_runtime.measure_simulation import (
+        load_uk_calibration_measure_exclusions,
+    )
+
+    def load(resource: str) -> dict:
+        return json.loads(
+            importlib_resources.files("microcosm.build.uk")
+            .joinpath(resource)
+            .read_text(encoding="utf-8")
+        )
+
+    fuel_of_concept = {
+        ONS_HOUSEHOLD_SPEND_CONCEPTS[ELECTRICITY_KWH]: ELECTRICITY_FUEL,
+        ONS_HOUSEHOLD_SPEND_CONCEPTS[GAS_KWH]: GAS_FUEL,
+    }
+    rows = {}
+    for target in load("uk_population_targets.json")["targets"]:
+        concept = (target.get("ledger_selector") or {}).get("source_concept")
+        if isinstance(concept, str) and concept in fuel_of_concept:
+            rows[target["target_id"]] = fuel_of_concept[concept]
+    assert sorted(rows.values()) == [ELECTRICITY_FUEL, GAS_FUEL]
+    held = {entry["name"] for entry in load_uk_calibration_measure_exclusions()} | {
+        entry["target_id"]
+        for entry in load("target_reference_signed_exclusions.json")["exclusions"]
+        if "row" not in entry
+    }
+    bound = {
+        target_id: fuel for target_id, fuel in rows.items() if target_id not in held
+    }
+    assert bound == {"ons.household_electricity_expenditure": ELECTRICITY_FUEL}
+    assert set(bound.values()) <= set(declared_spend_level_fuels(_declared()))
+
+
+def test_the_ons_row_variant_is_defined_once() -> None:
+    """docs/shared-constants.md: the lcfs_consumption stage reads the ONS
+    resource and row variant energy_pricing defines (the independent review of
+    microcosm#1420), and the energy view only adds the domestic concept."""
+
+    from microcosm.build.uk_runtime import energy_pricing, lcfs_consumption
+
+    assert lcfs_consumption.UK_ONS_HFCE_ROW_DIMENSIONS is (
+        energy_pricing.UK_ONS_HFCE_ROW_DIMENSIONS
+    )
+    assert lcfs_consumption.UK_LCFS_ROAD_FUEL_LEVEL_RESOURCE == (
+        energy_pricing.UK_ONS_HOUSEHOLD_EXPENDITURE_RESOURCE
+    )
+    assert dict(energy_pricing.ONS_HOUSEHOLD_SPEND_DIMENSIONS) == {
+        "consumption_concept": "domestic",
+        **energy_pricing.UK_ONS_HFCE_ROW_DIMENSIONS,
+    }
