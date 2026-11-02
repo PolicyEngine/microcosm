@@ -49,6 +49,7 @@ def test_production_operator_invocations_are_total_and_guarded(
                 "us_qbi_reconciliation_change_receipt",
                 "validate_us_qbi_reconciliation_live_output",
                 "validate_us_qbi_reconciliation_transition",
+                "with_us_local_tax_inputs",
                 "with_us_qbi_input_reconciliation",
             },
         ),
@@ -201,8 +202,12 @@ def test_derive_stage_keeps_whole_pool_qbi_reconciliation() -> None:
     person["self_employment_income_before_lsr"] = 10.0
     person["SEMP"] = 10.0
     person["sstb_self_employment_income_before_lsr"] = 5.0
-    # Residence assembled with the geography; wages final after transfers.
+    # Residence assembled with the geography; wages final after transfers,
+    # a negative (loss-netted) wage on some residents and nonresidents.
     person["pa_philadelphia_wage_tax_resident"] = person.index % 2 == 0
+    person["employment_income_before_lsr"] = np.where(
+        np.arange(len(person)) % 3 == 0, -40.0, 1_000.0 + np.arange(len(person))
+    )
     frame = _replace_person(frame, person)
 
     result = multispine_pool_module.derive_multispine_pool_inputs(frame)
@@ -235,7 +240,10 @@ def test_derive_stage_keeps_whole_pool_qbi_reconciliation() -> None:
     assert derived["sstb_self_employment_income_before_lsr"].eq(0.0).all()
     resident = derived["pa_philadelphia_wage_tax_resident"].to_numpy()
     wages = derived["employment_income_before_lsr"].to_numpy()
+    # No later derive operator rewrites the wages the taxable base read.
+    assert wages.tolist() == person["employment_income_before_lsr"].tolist()
     assert resident.any() and not resident.all()
+    assert (resident & (wages < 0)).any() and (resident & (wages > 0)).any()
     assert derived["pa_philadelphia_wage_tax_taxable_wages"].tolist() == (
         np.where(resident, np.maximum(wages, 0.0), 0.0).tolist()
     )

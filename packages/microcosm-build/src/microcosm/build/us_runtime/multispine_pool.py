@@ -3026,8 +3026,8 @@ def derive_multispine_pool_inputs(frame: Frame) -> PoolStageOutput:
         operator_names=POOL_DERIVE_OPERATOR_ORDER,
         operators={
             "_complete_schedule_d_input": _complete_schedule_d_input,
-            "with_us_qbi_input_reconciliation": reconcile_qbi_with_receipt,
             "with_us_local_tax_inputs": local_tax_inputs_with_receipt,
+            "with_us_qbi_input_reconciliation": reconcile_qbi_with_receipt,
         },
     )
     schedule_d_receipt = completed.receipt["suboperators"][0]["kernel_receipt"]
