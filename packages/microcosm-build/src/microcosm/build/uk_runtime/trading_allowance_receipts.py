@@ -31,8 +31,11 @@ or less is now taxed where the engine used to relieve it in full.
 
 Until HMRC publishes claimant counts, the rates are calibrated to HMRC's
 policy paper on the Budget 2026 raise (about 400,000 taxpayers with a lower
-bill, by about GBP 380 on average) on the #1428 national b441bb5a0, at
-2028-29 prices (María's choice of 2026-10-31).
+bill, by about GBP 380 on average), measured on policyengine-uk for the
+#1428 national from 9f70c71e7 at 2028-29 prices (María's choices of
+2026-10-31 and 2026-11-01). The rates drift with each national, as its
+small traders and their other incomes move, so microcosm#1439 re-measures
+them after each build.
 
 Two limits of encoding the claim in receipts (#1428 review, findings 2 and 8;
 María's ruling of 2026-11-01 keeps them, documented, until policyengine-uk#2765
@@ -95,15 +98,16 @@ TRADING_ALLOWANCE_OTHER_EXPENSES = 3_000.0
 #: The claimant probability by the person's profit, upper bounds inclusive,
 #: over profits above zero; the last band has no upper bound.
 TRADING_ALLOWANCE_CLAIMANT_BANDS: tuple[tuple[float | None, float], ...] = (
-    (4_500.0, 0.64),
-    (9_000.0, 0.32),
+    (4_500.0, 0.72),
+    (9_000.0, 0.14),
     (None, 0.0),
 )
 TRADING_ALLOWANCE_CALIBRATION = (
     "HMRC's policy paper on the Budget 2026 trading allowance raise: about "
-    "400,000 taxpayers with a lower bill, by about GBP 380 on average, on the "
-    "microcosm#1428 national b441bb5a0's final weights at 2028-29 prices, "
-    "until HMRC publishes claimant counts (María's choice of 2026-10-31)"
+    "400,000 taxpayers with a lower bill, by about GBP 380 on average, measured "
+    "on policyengine-uk for the microcosm#1428 national from 9f70c71e7 at "
+    "2028-29 prices; the rates drift with each national (microcosm#1439), until "
+    "HMRC publishes claimant counts (María's choices of 2026-10-31 and 2026-11-01)"
 )
 TRADING_ALLOWANCE_RECEIPTS_MASS_CHANGE_REASON = (
     "Self-employed gross receipts stored on the source spine: household weights "

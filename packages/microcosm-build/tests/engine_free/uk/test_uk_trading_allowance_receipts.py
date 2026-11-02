@@ -54,7 +54,7 @@ def _frame(profit: np.ndarray):
 
 def test_claimant_rates_follow_the_profit_bands_with_inclusive_upper_bounds() -> None:
     profit = np.asarray([-500.0, 0.0, 0.01, 4_500.0, 4_500.01, 9_000.0, 9_000.01])
-    assert claimant_rates(profit).tolist() == [0.0, 0.0, 0.64, 0.64, 0.32, 0.32, 0.0]
+    assert claimant_rates(profit).tolist() == [0.0, 0.0, 0.72, 0.72, 0.14, 0.14, 0.0]
 
 
 def test_claimants_add_the_allowance_and_other_traders_the_raised_one() -> None:
@@ -79,8 +79,8 @@ def test_claimants_add_the_allowance_and_other_traders_the_raised_one() -> None:
         == (uniforms < claimant_rates(profit[trader])).tolist()
     )
     # Two hundred draws per band land near the band's rate.
-    assert claimant[profit == 800.0].mean() == pytest.approx(0.64, abs=0.1)
-    assert claimant[profit == 6_000.0].mean() == pytest.approx(0.32, abs=0.1)
+    assert claimant[profit == 800.0].mean() == pytest.approx(0.72, abs=0.1)
+    assert claimant[profit == 6_000.0].mean() == pytest.approx(0.14, abs=0.1)
 
 
 def test_the_stage_stores_receipts_deterministically_and_moves_nothing_else() -> None:
@@ -116,7 +116,7 @@ def test_the_receipt_rounds_counts_and_bands_shares() -> None:
     evidence = transform.checkpoint_metadata()["evidence"]
     assert evidence["traders"] == 150
     assert isinstance(evidence["claimants"], int)
-    assert [band["rate"] for band in evidence["bands"]] == [0.64, 0.32, 0.0]
+    assert [band["rate"] for band in evidence["bands"]] == [0.72, 0.14, 0.0]
     assert all(band["support"] == "30+" for band in evidence["bands"])
     assert evidence["bands"][0]["weighted_traders"] == pytest.approx(100.0)
     # Fewer than ten source households behind a band print the small-cell

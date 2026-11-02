@@ -6212,13 +6212,13 @@ stages:
     seed: 0
     claimant_bands:
     - upper_inclusive: 4500.0
-      rate: 0.64
+      rate: 0.72
     - upper_inclusive: 9000.0
-      rate: 0.32
+      rate: 0.14
     - rate: 0.0
     claimant_expenses: 1000.0
     other_expenses: 3000.0
-    calibration: 'HMRC''s policy paper on the Budget 2026 trading allowance raise: about 400,000 taxpayers with a lower bill, by about GBP 380 on average, on the microcosm#1428 national b441bb5a0''s final weights at 2028-29 prices, until HMRC publishes claimant counts (María''s choice of 2026-10-31)'
+    calibration: 'HMRC''s policy paper on the Budget 2026 trading allowance raise: about 400,000 taxpayers with a lower bill, by about GBP 380 on average, measured on policyengine-uk for the microcosm#1428 national from 9f70c71e7 at 2028-29 prices; the rates drift with each national (microcosm#1439), until HMRC publishes claimant counts (María''s choices of 2026-10-31 and 2026-11-01)'
     rule: a person with a positive self_employment_income claims the allowance where their uniform falls below their profit band's rate; a claimant's receipts are their profit plus claimant_expenses, any other trader's their profit plus other_expenses, and a person with no positive profit keeps zero
   - kind: record_mass_conservation_receipt
     entity: household
