@@ -2700,8 +2700,9 @@ def test_a_container_without_a_usable_token_is_refused(
     assert DUMMY_COLLECTOR_TOKEN not in problem
     assert "MICROCOSM_TELEMETRY_REQUIRED=0" in problem
     if image_emitter is not None and "collector_origin" not in image_emitter:
-        # An image built before 0.11.0 keeps that emitter until rebuilt.
+        # An image built before 0.11.0 keeps that emitter until rebuilt, once.
         assert "MODAL_FORCE_BUILD=1" in problem
+        assert "for one launch" in problem
 
 
 def test_a_container_of_a_plan_that_opts_out_needs_no_token() -> None:
@@ -2786,8 +2787,12 @@ def test_a_stage_without_a_usable_token_is_refused_before_anything_is_staged(
         for name in RUNNER_TOKEN_SECRET:
             monkeypatch.delenv(name)
     elif problem == "expires-too-soon":
-        soon = datetime.fromtimestamp(time.time() + 60, UTC).isoformat()
-        monkeypatch.setenv("MICROCOSM_MODAL_TELEMETRY_TOKEN_EXPIRES_AT", soon)
+        # In the format telemetry-token prints.
+        soon = datetime.fromtimestamp(time.time() + 60, UTC)
+        monkeypatch.setenv(
+            "MICROCOSM_MODAL_TELEMETRY_TOKEN_EXPIRES_AT",
+            soon.isoformat(timespec="seconds"),
+        )
     else:
         monkeypatch.setenv(
             "MICROCOSM_MODAL_TELEMETRY_ORIGIN", "https://other-collector.invalid"
@@ -2800,6 +2805,9 @@ def test_a_stage_without_a_usable_token_is_refused_before_anything_is_staged(
     # A refusal: finished and not charged; nothing pulled, staged or run.
     assert (outcome, finished) == ("refused", True)
     assert DUMMY_COLLECTOR_TOKEN not in note
+    # The record keeps the refusal's first ATTEMPT_NOTE_MAX_CHARS characters,
+    # and they name the opt-out.
+    assert "MICROCOSM_TELEMETRY_REQUIRED=0" in note
     assert not (tmp_path / "work" / "inputs").exists()
     assert not (tmp_path / "work" / "state").exists()
     run_dir = tmp_path / "runs" / "runs" / "fake-run"
@@ -2854,6 +2862,7 @@ def test_check_stage_reports_whether_the_image_s_emitter_can_take_a_token(
     report = app.check_stage(_fake_plan())
     (old_image,) = [item for item in report["problems"] if "emitter" in item]
     assert "0.11.0" in old_image and "MODAL_FORCE_BUILD=1" in old_image
+    assert "for one launch" in old_image
     assert "MICROCOSM_TELEMETRY_REQUIRED=0" in old_image
     report = app.check_stage(_fake_plan(env={"MICROCOSM_TELEMETRY_REQUIRED": "0"}))
     assert not [item for item in report["problems"] if "0.11.0" in item]
@@ -2986,3 +2995,47 @@ def test_every_class_s_token_fits_within_the_collector_s_cap() -> None:
     for resources in plan_lib.RESOURCE_CLASSES.values():
         lifetime = resources.timeout_s + plan_lib.TELEMETRY_TOKEN_EXTRA_SECONDS
         assert lifetime <= plan_lib.COLLECTOR_TOKEN_LIFETIME_CAP_SECONDS, resources
+
+
+def test_every_container_refusal_names_the_opt_out_within_the_note_s_limit() -> None:
+    # _run_stage keeps a refusal's first ATTEMPT_NOTE_MAX_CHARS characters in
+    # the attempt record, which an operator reads after --detach --spawn.
+    assert plan_lib.ATTEMPT_NOTE_MAX_CHARS == 500
+    plan = plan_lib.parse_plan(_smoke_plan_data())
+    started = time.time()
+    # Origins longer than a collector's, and the expiry as telemetry-token
+    # prints it.
+    long_origin = "https://" + "telemetry-collector." * 3 + "invalid"
+    other_origin = "https://" + "another-telemetry-collector." * 2 + "invalid"
+    soon = datetime.fromtimestamp(started + 60, UTC).isoformat(timespec="seconds")
+    image = {**RECORDED_EMITTER_VERSION, "collector_origin": long_origin}
+    cases = {
+        "missing": ({"PATH": "/usr/bin"}, image),
+        "unreadable-expiry": (
+            _telemetry_environment(MICROCOSM_MODAL_TELEMETRY_TOKEN_EXPIRES_AT="soon"),
+            image,
+        ),
+        "silent-emitter": (_telemetry_environment(), None),
+        "old-emitter": (
+            _telemetry_environment(),
+            {"emitter_version": "0.10.0", "protocol_versions": [1]},
+        ),
+        "other-origin": (
+            _telemetry_environment(MICROCOSM_MODAL_TELEMETRY_ORIGIN=other_origin),
+            image,
+        ),
+        "expires-too-soon": (
+            _telemetry_environment(
+                MICROCOSM_MODAL_TELEMETRY_ORIGIN=long_origin,
+                MICROCOSM_MODAL_TELEMETRY_TOKEN_EXPIRES_AT=soon,
+            ),
+            image,
+        ),
+    }
+    for case, (environment, image_emitter) in cases.items():
+        _, problem = plan_lib.telemetry_check(
+            plan, environment, image_emitter, container_started=started
+        )
+        assert problem is not None, case
+        assert len(problem) <= plan_lib.ATTEMPT_NOTE_MAX_CHARS, (case, len(problem))
+        assert "MICROCOSM_TELEMETRY_REQUIRED=0" in problem, case
