@@ -1,6 +1,6 @@
 {
   "country": "be",
-  "fingerprint": "ca4085c2031c56b15b9a387a1110dd9c6a48c47e63dd02ba9be9bb85eb9c52b5",
+  "fingerprint": "6cb9b7d855b3032afbbaf21799b371ebe00a0d617205bd717dc79a7f25c8ea92",
   "gate_ids": [
     "calibration_per_family_fit",
     "national_and_nuts1_admin_aggregates",
@@ -36,7 +36,7 @@
     "precal_references.json": "acd7904779b34bca841686fa6000c5cb57db9a031638e021f59ba348f771de63",
     "reference_aging.json": "e1eb7a4e5abc6aad77b822bf91b09ad1de0a22d349ee39b63b8bb787bd036404",
     "reference_intervals.json": "5c13dc32257d9d3c9b5cbbd14b79c229bbeb7037671778fdb8b09042693bb562",
-    "reference_inventory.json": "44862d408725296ba7e8db16d4976a803aa8c7aafb98880fff70fe81a33b19b2",
+    "reference_inventory.json": "3dcaaa6c603785125a1fd454e09cd4a484be8d99b3092429f375fca2b2d7b262",
     "reference_profiles.json": "1f7eb7f7a5bde2484b423e12835c9ef5eb8351599c29d836e35a910897ead52a",
     "release_contract.json": "916d8cba095d05ee5bc0c3d1b8e165eb1cf22867b91f0adac01533448b394730",
     "source_stages.json": "3d0a362345894dc6ea230ebed7fec7ff99a972879dc60c06001635c1b4a1ec47",
