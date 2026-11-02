@@ -9,8 +9,8 @@ rate and a ``simulate.solve_zero@1`` node writes the reg 18 cutout. The shared
 every entitlement scenario, and each variant repeats them on its own housing
 population. An extension node on ``nz.as`` itself would re-key the skeleton's
 ``nz.terminal``, which composition refuses. Each branch runs its own reg 17
-base-rate counterfactual. Every coefficient, mask and override comes from the
-resource; this generator adds no schedule.
+base-rate counterfactual. Every bridge coefficient, mask and override comes
+from the resource; this generator adds no schedule.
 """
 
 from __future__ import annotations
