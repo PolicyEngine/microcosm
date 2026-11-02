@@ -395,10 +395,18 @@ QUEUED = _receipt("pending", attempts=0)
             "UPLOAD_FAILED",
             None,
         ),
+        # Settled answers Microcosm does not recognize are final, with their
+        # own code, never one the emitter keeps retrying.
         (
             _receipt("failed", error_code="A_LATER_EMITTER_CODE"),
             "failed",
-            "UPLOAD_FAILED",
+            "RECEIPT_UNRECOGNIZED",
+            None,
+        ),
+        (
+            _receipt("uploaded", revision=None),
+            "failed",
+            "RECEIPT_UNRECOGNIZED",
             None,
         ),
     ],
@@ -725,72 +733,152 @@ def test_a_remote_bundle_that_differs_is_left_for_another_run_id(tmp_path, capsy
     assert "another run id" in err and "can be re-staged" not in err
 
 
+def test_the_codes_of_a_bundle_that_may_still_arrive_are_record_codes():
+    retrying = staging_dataset.RETRYING_ERROR_CODES
+    assert retrying <= set(staging_dataset._ERROR_CODES)
+    assert retrying == {
+        "UPLOAD_PENDING",
+        "REPOSITORY_UNAVAILABLE",
+        "UPLOAD_FAILED",
+        "CREDENTIAL_MISSING",
+        "PRESERVED_FILES_MISSING",
+    }
+    for final in (
+        "REMOTE_DIFFERS",
+        "PRESERVED_BYTES_CHANGED",
+        "RECEIPT_UNRECOGNIZED",
+        "HANDOVER_REFUSED",
+        "EMITTER_UNAVAILABLE",
+    ):
+        assert final in staging_dataset._ERROR_CODES and final not in retrying
+
+
+def test_a_remote_bundle_this_directory_handed_over_is_not_sent_to_another_run_id(
+    tmp_path, capsys
+):
+    """When the directory's outputs changed after an earlier hand-over, the
+    folder may hold that earlier bundle: a second copy is not advised."""
+    bundle = _bundle(tmp_path)
+    earlier = {
+        **bundle.digests(),
+        "build_record.json": {"sha256": "c" * 64, "bytes": 1},
+    }
+    emitter = FakeEmitterClient(
+        bundle_receipts=[QUEUED, _receipt("failed", error_code="REMOTE_DIFFERS")]
+    )
+    staged = _stage(bundle, emitter, earlier_files=earlier)
+    assert staged.delivery["error_code"] == "REMOTE_DIFFERS"
+    err = capsys.readouterr().err
+    assert "may hold the bundle handed over earlier" in err
+    assert "another run id" not in err
+
+
+def _first_hand_over(bundle, hub, queue):
+    """The build's emitter took the hand-over and stopped."""
+    return _stage(
+        bundle,
+        FakeEmitterClient(
+            hub_api=hub, queue=queue, deliver=False, answer_receipts=False
+        ),
+    )
+
+
+def _resume(bundle, emitter, record):
+    clock = Clock()
+    return staging_dataset.resume_hand_over(
+        bundle,
+        emitter=emitter,
+        record=record,
+        repository=REPOSITORY,
+        clock=clock,
+        sleep=clock.sleep,
+    )
+
+
 def test_a_bundle_staged_again_resumes_the_earlier_hand_over(tmp_path):
     """The emitter still holds the earlier hand-over: its outcome is the
     record, and nothing is handed over again."""
     bundle = _bundle(tmp_path)
     hub = FakeHub(tmp_path)
     queue = FakeHandoverQueue()
-    # The build's emitter took the hand-over and stopped.
-    first = _stage(
-        bundle,
-        FakeEmitterClient(
-            hub_api=hub, queue=queue, deliver=False, answer_receipts=False
-        ),
-    )
+    first = _first_hand_over(bundle, hub, queue)
     assert first.delivery["error_code"] == "UPLOAD_PENDING"
     assert first.handover_id in queue.jobs
-    assert staging_dataset.handover_record(first) == {
+    record = staging_dataset.handover_record(first)
+    assert record == {
         "handover_id": first.handover_id,
         "repository": REPOSITORY,
         "run_id": RUN_ID,
+        "run_dir": str(bundle.run_dir),
+        "files": bundle.digests(),
+        "staging_run_error_code": "UPLOAD_PENDING",
     }
+    # Rewriting the local sidecars does not change what was handed over.
+    (bundle.run_dir / STAGED_MANIFEST_FILENAME).write_text('{"files": {}}')
 
     later = FakeEmitterClient(hub_api=hub, queue=queue)
-    clock = Clock()
-    resumed = staging_dataset.resume_hand_over(
-        bundle,
-        emitter=later,
-        handover_id=first.handover_id,
-        repository=REPOSITORY,
-        clock=clock,
-        sleep=clock.sleep,
-    )
+    resumed = _resume(bundle, later, record)
     assert resumed is not None
     assert later.bundle_requests == []
     assert (resumed.delivery["status"], resumed.delivery["revision"]) == (
         "already_staged",
         hub.sha,
     )
-    assert resumed.delivery["files"] == bundle.digests()
+    assert resumed.delivery["files"] == record["files"]
     assert resumed.handover_id == first.handover_id
     # The manifest was copied when the bundle was handed over.
     assert resumed.may_rewrite(MANIFEST)
+    # A later record keeps the code the build's staging run recorded.
+    assert (
+        staging_dataset.handover_record(resumed, earlier=record)[
+            "staging_run_error_code"
+        ]
+        == "UPLOAD_PENDING"
+    )
 
     # An emitter that never had the hand-over cannot resume it.
+    assert _resume(bundle, FakeEmitterClient(hub_api=hub), record) is None
+    manifest = {"staged_dataset_handover": record}
     assert (
-        staging_dataset.resume_hand_over(
-            bundle,
-            emitter=FakeEmitterClient(hub_api=hub),
-            handover_id=first.handover_id,
-            repository=REPOSITORY,
-        )
-        is None
-    )
-    manifest = {"staged_dataset_handover": staging_dataset.handover_record(first)}
-    assert (
-        staging_dataset.recorded_handover_id(
+        staging_dataset.recorded_handover(
             manifest, repository=REPOSITORY, run_id=RUN_ID
         )
-        == first.handover_id
+        == record
     )
     for repository, run_id in (("other/repo", RUN_ID), (REPOSITORY, "other-run")):
         assert (
-            staging_dataset.recorded_handover_id(
+            staging_dataset.recorded_handover(
                 manifest, repository=repository, run_id=run_id
             )
             is None
         )
+
+
+def test_a_hand_over_whose_files_are_gone_or_changed_is_not_resumed(tmp_path):
+    """A job that can never finish is left to the emitter; the caller hands
+    the directory over again as a new job."""
+    bundle = _bundle(tmp_path)
+    hub = FakeHub(tmp_path)
+    queue = FakeHandoverQueue()
+    record = staging_dataset.handover_record(_first_hand_over(bundle, hub, queue))
+    # The directory moved: the job names the files at their old paths.
+    moved = {**record, "run_dir": str(tmp_path / "elsewhere")}
+    assert _resume(bundle, FakeEmitterClient(hub_api=hub, queue=queue), moved) is None
+    # The emitter settled the job for good because its files changed.
+    changed = FakeEmitterClient(
+        bundle_receipts=[
+            _receipt("failed", error_code="PRESERVED_BYTES_CHANGED"),
+        ]
+    )
+    assert _resume(bundle, changed, record) is None
+    # The files went missing at their recorded paths.
+    (bundle.run_dir / DATASET).unlink()
+    missing = FakeEmitterClient(
+        bundle_receipts=[
+            _receipt("pending", error_code="PRESERVED_FILES_MISSING"),
+        ]
+    )
+    assert _resume(bundle, missing, record) is None
 
 
 def test_fetch_bundle_verifies_every_digest_and_copies_out_of_the_cache(tmp_path):
