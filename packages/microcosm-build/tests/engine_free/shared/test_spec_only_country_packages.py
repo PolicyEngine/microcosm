@@ -228,6 +228,8 @@ def test__given_schema_kernel_reference__then_it_is_not_an_entrypoint() -> None:
     ("location", "value", "refused"),
     [
         ("pkg/nz/concept_mapping.json.bindings[0]", "nz/statutes/a/b.yaml", False),
+        ("pkg/be/concept_mapping.json.bindings[0]", "be-vlg/statutes/a/b.yaml", False),
+        ("pkg/be/concept_mapping.json.bindings[0]", "be/statutes/a/37-10.yaml", False),
         ("pkg/nz/concept_mapping.json.bindings[0]", "dotted.module", True),
         ("pkg/nz/concept_mapping.json.bindings[0]", "dotted.module:callable", True),
         ("pkg/nz/concept_mapping.json.bindings[0]", "../outside.yaml", True),
@@ -648,7 +650,8 @@ def _is_compiler_identity_field(*, key: str, value: object, location: str) -> bo
     concept_mapping_module = (
         key == "module"
         and isinstance(value, str)
-        and re.fullmatch(r"[a-z]{2}(?:/[a-z0-9_]+)+\.yaml", value) is not None
+        and re.fullmatch(r"[a-z]{2}(?:-[a-z]+)?(?:/[a-z0-9_-]+)+\.yaml", value)
+        is not None
         and re.search(r"/concept_mapping\.json\.bindings\[\d+\]$", location) is not None
     )
     return (
