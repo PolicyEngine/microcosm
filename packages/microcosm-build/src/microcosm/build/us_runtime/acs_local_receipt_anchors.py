@@ -18,11 +18,13 @@ release tool's take-up stage reads.
 The rule
 --------
 
-``FS`` says only that *someone* in the housing unit received SNAP. Since
-microcosm#1023 a housing unit can hold several SPM units (a roommate's own
-unit, say), and a roommate who buys and prepares food apart is a SNAP
-household of their own (7 U.S.C. 2012(m)). So ``FS == 1`` is a constraint
-that at least one unit received SNAP, not a label for every unit
+``FS`` says only that *someone* in the housing unit received SNAP. The ACS
+loader makes each ACS housing unit one SPM unit, so in this build ``FS``
+decides that unit directly. The rule does not assume that partition: if a
+reconstructed SPM partition puts several SPM units in a housing unit (a
+roommate's own unit, say), a roommate who buys and prepares food apart is a
+SNAP household of their own (7 U.S.C. 2012(m)). So ``FS == 1`` is a
+constraint that at least one unit received SNAP, not a label for every unit
 (microcosm#1062 review). Census's proration of a household SNAP amount to
 every SPM unit (Supplemental Poverty Measure technical documentation,
 section 4.3.1) allocates resources for poverty measurement; it does not
@@ -398,8 +400,9 @@ def _snap_counts(
         "acs_spm_units": int(len(values)),
         "units_anchored": int(values.sum()),
         "group_quarters_units": int(anchor.unit_group_quarters.sum()),
-        # Units without the reference person (microcosm#1023's roommate and
-        # other-nonrelative units) reporting SNAP: only the QRF puts them here.
+        # Units without the reference person reporting SNAP (a roommate's own
+        # unit, if a reconstructed SPM partition puts several units in a
+        # housing unit): only the QRF puts them here.
         "non_reference_units_anchored": int((values & ~anchor.unit_reference).sum()),
         # Several-unit FS == 1 housing units whose only reporting unit is the
         # reference person's: where a forced reference unit must sit.

@@ -138,12 +138,6 @@ from microcosm.build.us_runtime.acs_local_reviewed_fill_consumers import (
     load_reviewed_fill_consumer_register,
     reviewed_fill_register_summary,
 )
-from microcosm.build.us_runtime.acs_local_spm_units import (
-    ACS_LOCAL_SPM_UNIT_GATE_NAME,
-    ACS_LOCAL_SPM_UNIT_ISSUE,
-    ACS_LOCAL_SPM_UNIT_METHOD,
-    acs_local_spm_unit_signal_gate,
-)
 from microcosm.build.us_runtime.acs_local_ssi_disability import (
     ACS_LOCAL_SSI_DISABILITY_COLUMN,
     ACS_LOCAL_SSI_DISABILITY_GATE_NAME,
@@ -1933,14 +1927,13 @@ def do_materialize(args) -> None:
             "reviewed_engine_input_nulls register."
         )
     staging_summary = _load_json(summary_path)
-    # microcosm#1020/#1021/#1022/#1023: refuse a pre-change staging run
+    # microcosm#1020/#1021/#1022: refuse a pre-change staging run
     # (including one without the native SNAP receipt anchor) before hashing
     # or loading.
     _require_local_immigration(staging_summary)
     _require_local_work_disability(staging_summary)
     _require_local_income_transfer(staging_summary)
     _require_local_ssi_disability(staging_summary)
-    _require_local_spm_units(staging_summary)
     _require_local_receipt_anchors(staging_summary)
     # microcosm#1022: the SSI and Medicaid take-up counts, from the same feed
     # and compile path, before the staging frame is loaded.
@@ -2533,7 +2526,6 @@ def do_calibrate(args) -> None:
     _require_local_work_disability(staging_summary)
     _require_local_income_transfer(staging_summary)
     _require_local_ssi_disability(staging_summary)
-    _require_local_spm_units(staging_summary)
     _require_local_receipt_anchors(staging_summary)
     # microcosm#1022: and a checkpoint without the recorded ACS SSI/Medicaid
     # take-up the export must apply.
@@ -2832,7 +2824,6 @@ def _write_calibrated_artifact(
     _require_local_work_disability(staging_summary)
     _require_local_income_transfer(staging_summary)
     _require_local_ssi_disability(staging_summary)
-    _require_local_spm_units(staging_summary)
     _require_local_receipt_anchors(staging_summary)
     ssi_medicaid, ssi_medicaid_path = _recorded_ssi_medicaid_take_up(
         identity, args.checkpoint_dir
@@ -3808,67 +3799,6 @@ def finalize_reviewed_limitations(
             "calibration_blocker": False,
         },
         {
-            "id": "acs_spm_unit_adult_nonrelatives",
-            "status": "reviewed_modeling_decision",
-            "affected_spines": ["acs_2024_1yr"],
-            "reason": (
-                "The ACS has no SPM unit id, so the loader makes each ACS "
-                "housing unit one SPM unit. Staging "
-                f"({ACS_LOCAL_SPM_UNIT_ISSUE}) gives every roommate or "
-                "housemate (RELSHIPP 34) aged 15 or over an SPM unit of their "
-                "own, per the Census SPM unit definition (related people, "
-                "co-resident unrelated children cared for by the family, and "
-                "cohabiting partners and their children). An other "
-                "nonrelative (36) aged 15 or over gets their own unit unless "
-                "the household has an unmarried partner (22 or 24) whose age "
-                "differs from theirs by at least 15 years (the closest-aged "
-                "partner, if several): the ACS records relationship to the "
-                "householder only, so a partner's child or parent is coded "
-                "36, and a generation's age gap makes a 36 plausibly one "
-                "(microcosm#1061 review, C2). This generational rule is a "
-                "documented proxy, not an exact SPM partition: the ACS codes "
-                "relationship to Person 1 only, so code 36 cannot separate a "
-                "partner's kin from an unrelated adult, and no fixed age "
-                "threshold can. Known misclassifications: a 31-year-old "
-                "partner's 17-year-old child coded 36 (a gap under 15) is "
-                "wrongly split from the couple, and a 50-year-old unrelated "
-                "lodger coded 36 living with a 25-year-old partner (a gap of "
-                "15 or more) is wrongly kept with them; a partner's sibling "
-                "or cousin near the partner's age is also split. The staging "
-                "receipt counts the 36s on each side, and benefit "
-                "sensitivity is measured in the first real build "
-                "(microcosm#1093). RELSHIPP "
-                "relates each person to the reference person only, so a "
-                "couple or a parent and child among the nonrelatives is not "
-                "identifiable: each mover is a one-person unit, and a 36 "
-                "moved from a household that also holds a roommate, who may "
-                "be the roommate's child, is counted in the staging receipt, "
-                "with the unit-size sensitivity under the 34-only, "
-                "34-and-every-36 and 34-and-36-with-partner-kin rules. "
-                "Nonrelatives under 15 stay in the "
-                "reference person's unit, whose tax unit claims them. "
-                "Unmarried partners (22, 24), foster children (35) and every "
-                "relative stay with the reference person. New units take the "
-                "household's tenure through SPM membership; the household's "
-                "measured housing amounts stay on the reference person, and "
-                "the transferred pre_subsidy_rent is a person-level fit. "
-                "ACS families remain whole households. Related adults who "
-                "buy and prepare food apart are not split: SNAP-unit "
-                "construction is option 2 of the same issue."
-            ),
-            "treatment": (
-                "Gated by acs_local_spm_unit_signal at staging and finalize: "
-                "no ACS SPM unit holds a mover (a roommate, or an other "
-                "nonrelative with no partner in the household) together with "
-                "the reference person, no other nonrelative in a partner's "
-                "household is outside the reference person's unit, the ACS "
-                "partition is exactly the rule, ACS tax units nest in SPM "
-                "units, and the staging receipt moved and kept as many "
-                "people as the packaged ACS rows hold."
-            ),
-            "calibration_blocker": False,
-        },
-        {
             "id": "acs_snap_receipt_anchor",
             "status": "reviewed_modeling_decision",
             "affected_spines": ["acs_2024_1yr"],
@@ -3881,13 +3811,16 @@ def finalize_reviewed_limitations(
                 "names the housing unit, not the SNAP household, so FS == 1 "
                 "is a constraint that at least one SPM unit of the housing "
                 "unit received SNAP (microcosm#1062 review): the only SPM "
-                "unit of a single-unit housing unit is True; in a housing "
-                "unit with several SPM units (microcosm#1023's roommate "
-                "units) each unit keeps its transferred QRF value, which is "
-                "conditioned on the unit's own size, ages, income and tenure, "
-                "and the reference person's unit is set True when the QRF "
-                "names none. A roommate who buys and prepares food apart is "
-                "therefore not forced to report the family's receipt. Census "
+                "unit of a single-unit housing unit is True. The ACS loader "
+                "makes each ACS housing unit one SPM unit, so in this build "
+                "FS decides that unit directly. If a reconstructed SPM "
+                "partition puts several SPM units in a housing unit (a "
+                "roommate's own unit, say), each unit keeps its transferred "
+                "QRF value, which is conditioned on the unit's own size, "
+                "ages, income and tenure, and the reference person's unit is "
+                "set True when the QRF names none, so a roommate who buys and "
+                "prepares food apart is not forced to report the family's "
+                "receipt. Census "
                 "prorates a household SNAP amount to every SPM unit (the "
                 "donor's SPM_SNAPSUB > 0) to measure poverty resources, which "
                 "does not establish that every unit enrolled. FS == 2 marks "
@@ -4257,44 +4190,6 @@ def _require_local_ssi_disability(staging_summary: dict) -> dict:
     return receipt
 
 
-def _require_local_spm_units(staging_summary: dict) -> dict:
-    """The staging ACS SPM-unit receipt (microcosm#1023), or refuse it.
-
-    Staging gives every ACS roommate (``RELSHIPP`` 34) aged 15 or over, and
-    every other nonrelative (36) aged 15 or over unless an unmarried partner
-    (22/24) in the household is a generation (15+ years) from their age, an
-    SPM unit of their own, per the Census SPM unit definition, and gates the
-    partition before writing the H5. A summary without a passing receipt and
-    gate, or with an earlier method, is a pre-change staging run:
-    whole-household ACS SPM units, a partner's child split from the partner,
-    or an independent adult merged into a partner's household.
-    """
-
-    receipt = staging_summary.get("acs_local_spm_units")
-    gate = staging_summary.get("acs_local_spm_units_gate")
-    counted = (
-        isinstance(receipt, dict)
-        and type(receipt.get("persons_moved")) is int
-        and type(receipt.get("units_created")) is int
-        and receipt["persons_moved"] == receipt["units_created"]
-    )
-    if (
-        not counted
-        or receipt.get("issue") != ACS_LOCAL_SPM_UNIT_ISSUE
-        or receipt.get("method") != ACS_LOCAL_SPM_UNIT_METHOD
-        or not isinstance(gate, dict)
-        or gate.get("passed") is not True
-    ):
-        raise SystemExit(
-            "The staging summary records no passing ACS SPM-unit split "
-            f"({ACS_LOCAL_SPM_UNIT_ISSUE}): every ACS household would be one "
-            "SPM unit, with adult roommates and other nonrelatives in the "
-            "reference person's unit. Re-run staging "
-            "(tools/build_us_acs_multispine_base.py) with the current builder."
-        )
-    return receipt
-
-
 def _require_local_receipt_anchors(staging_summary: dict) -> dict:
     """The staging ACS receipt-anchor receipt (microcosm#1022), or refuse it.
 
@@ -4303,7 +4198,7 @@ def _require_local_receipt_anchors(staging_summary: dict) -> dict:
     none of an FS == 2 one) and gates it before writing the H5. A summary
     without a passing receipt and gate is a pre-change staging run, whose ACS
     SNAP reporters are the QRF transfer's; one with an earlier method marked
-    every unit of an FS == 1 housing unit, roommates included.
+    every SPM unit of an FS == 1 housing unit, not at least one.
     """
 
     receipt = staging_summary.get("acs_local_receipt_anchors")
@@ -4561,12 +4456,6 @@ def do_finalize(args) -> None:
     ssi_medicaid_gate = acs_local_ssi_medicaid_take_up_signal_gate(
         frame, receipt=identity.get("acs_local_ssi_medicaid_take_up")
     )
-    # microcosm#1023: refuse ACS SPM units that keep an adult roommate or
-    # other nonrelative with the reference person on the packaged bytes, or a
-    # staging receipt that did not split them.
-    spm_unit_gate = acs_local_spm_unit_signal_gate(
-        frame, receipt=staging_summary.get("acs_local_spm_units")
-    )
     # microcosm#1022: refuse ACS SNAP reporters that are not the native
     # household FS on the packaged bytes, or a staging receipt that counts
     # other households, units or anchors.
@@ -4666,12 +4555,6 @@ def do_finalize(args) -> None:
             "passed": bool(ssi_medicaid_gate.passed),
             "failures": list(ssi_medicaid_gate.failures),
             "detail": dict(ssi_medicaid_gate.details),
-            "artifact_sha256": hours_artifact_sha,
-        },
-        ACS_LOCAL_SPM_UNIT_GATE_NAME: {
-            "passed": bool(spm_unit_gate.passed),
-            "failures": list(spm_unit_gate.failures),
-            "detail": dict(spm_unit_gate.details),
             "artifact_sha256": hours_artifact_sha,
         },
         ACS_LOCAL_RECEIPT_ANCHOR_GATE_NAME: {
@@ -4801,14 +4684,7 @@ def do_finalize(args) -> None:
                 "band and CMS state counts scaled to the ACS rows' weight "
                 "share, gated by acs_local_ssi_medicaid_take_up_signal "
                 f"({ACS_LOCAL_SSI_MEDICAID_TAKE_UP_ISSUE}; reviewed limitation "
-                "acs_local_ssi_medicaid_take_up). ACS SPM units are not the "
-                "loader's whole households: staging gives each ACS roommate "
-                "and other nonrelative aged 15 or over (except a 36 a "
-                "generation from an unmarried partner's age) an SPM unit of "
-                "their own before the transfer, gated by "
-                "acs_local_spm_unit_signal "
-                f"({ACS_LOCAL_SPM_UNIT_ISSUE}; reviewed limitation "
-                "acs_spm_unit_adult_nonrelatives). ACS receives_snap is not "
+                "acs_local_ssi_medicaid_take_up). ACS receives_snap is not "
                 "the transfer's either: staging replaces it with native "
                 "household FS on every ACS SPM unit before pooling, gated by "
                 "acs_local_receipt_anchor_signal "
@@ -4874,7 +4750,6 @@ def do_finalize(args) -> None:
             ACS_LOCAL_INCOME_TRANSFER_GATE_NAME,
             ACS_LOCAL_SSI_DISABILITY_GATE_NAME,
             ACS_LOCAL_SSI_MEDICAID_TAKE_UP_GATE_NAME,
-            ACS_LOCAL_SPM_UNIT_GATE_NAME,
             ACS_LOCAL_RECEIPT_ANCHOR_GATE_NAME,
             ACS_LOCAL_REVIEWED_FILL_CONSUMER_GATE_NAME,
             "calibration",
@@ -5176,9 +5051,6 @@ def do_package(args) -> dict:
     _require_bound_finalize_gate(
         gates, ACS_LOCAL_SSI_MEDICAID_TAKE_UP_GATE_NAME, h5_sha
     )
-    # microcosm#1023: nor, before the SPM-unit gate existed, for the packaged
-    # ACS SPM units.
-    _require_bound_finalize_gate(gates, ACS_LOCAL_SPM_UNIT_GATE_NAME, h5_sha)
     # microcosm#1022: nor, before the receipt-anchor gate existed, for the
     # packaged ACS SNAP reporters.
     _require_bound_finalize_gate(gates, ACS_LOCAL_RECEIPT_ANCHOR_GATE_NAME, h5_sha)
