@@ -862,11 +862,11 @@ def documents():
             "terminal": ["nz.export.prepare", "nz.package"],
         },
         "pending_outputs": [
-            "w4 support, release-input coverage and weight audit evidence",
             "r2c income stand-in and reconciliation",
             "P1 earnings, Census rent and liquid-assets quantile producers",
         ],
     }
+    add_evidence(graph)
     return {
         "export_replay_bindings.json": {
             "export_contract_sha256": hashlib.sha256(
@@ -892,6 +892,136 @@ def documents():
         "export_contract.json": export,
         "transport_graph.json": graph,
     }
+
+
+def closure_slices():
+    """The frame columns the closure's concept, state and default entries feed."""
+    names = read("axiom_rules_bindings")["entity_names"]
+    to_frame = {engine: frame for frame, engine in names.items()}
+    columns = {}
+    for entry in read("axiom_input_closure")["entries"]:
+        if entry.get("encoded_by") == "graph_node":
+            continue
+        columns.setdefault(to_frame[entry["entity"]], []).append(entry["input"])
+    return [
+        slice_(entity, sorted(set(names))) for entity, names in sorted(columns.items())
+    ]
+
+
+def add_evidence(graph):
+    """Declare the five release-evidence producers and the battery's edges.
+
+    The support producers slice the columns the composed roster names, read
+    from this graph with the packaged resources.
+    """
+    from microcosm.build.transport import compose
+
+    spec = copy.deepcopy(compose.load_transport_spec("nz"))
+    spec["resources"]["transport_graph"] = copy.deepcopy(graph)
+    ranged = compose.support_roster_slices(spec, {"copied", "normalized", "currency"})
+    bounded = compose.support_roster_slices(
+        spec, {"copied", "normalized", "currency", "quantile_mapped"}
+    )
+    rows = graph["nodes"]
+    money = next(
+        row
+        for row in rows
+        if row["kernel"] == "money.normalize@1"
+        and row.get("population") == "nz.central"
+    )
+    roster = {"prepared": "support_roster"}
+    evidence = [
+        node(
+            "nz.evidence.donor_receipt",
+            "transport.donor_receipt@1",
+            population="nz.open",
+            sources=["populace_us_donor"],
+            params={
+                "donor_source": "populace_us_donor",
+                "donor_sha256": select("transport_inputs", "value", "donor", "sha256"),
+                "donor_size": select(
+                    "transport_inputs", "value", "donor", "size_bytes"
+                ),
+                "donor_locator": select(
+                    "transport_inputs", "value", "donor", "locator"
+                ),
+                "donor_revision": select(
+                    "transport_inputs", "value", "donor", "revision"
+                ),
+                "source_stages": select("source_stages"),
+                "source_stages_sha256": select("source_stages", "sha256"),
+            },
+        ),
+        node(
+            "nz.evidence.donor_ranges",
+            "transport.donor_ranges@1",
+            population="nz.open",
+            inputs=[slice_(item["entity"], item["columns"]) for item in ranged],
+            params={"support_roster": roster},
+        ),
+        node(
+            "nz.evidence.input_closure",
+            "transport.input_closure@1",
+            population="nz.terminal",
+            inputs=closure_slices(),
+            params={
+                **document("closure", "axiom_input_closure"),
+                **document("mapping", "concept_mapping"),
+                **document("bindings", "axiom_rules_bindings"),
+                "engine_refs": {"prepared": "engine_refs"},
+            },
+        ),
+        node(
+            "nz.evidence.weights",
+            "transport.weights_audit@1",
+            population="nz.terminal",
+            inputs=[
+                slice_("person", ["age"]),
+                slice_("household", [SOURCE_HOUSEHOLD_ID_COLUMN]),
+                slice_(unit_schema()[0].entity, []),
+            ],
+            params={
+                "weight_entity": "household",
+                "unit_entities": {"prepared": "unit_entities"},
+            },
+            artifact_inputs=[
+                edge("problem", "nz.targets.problem"),
+                edge("solution", "nz.calibrate"),
+                edge("result", "nz.calibrate"),
+            ],
+        ),
+        node(
+            "nz.evidence.support",
+            "transport.support_bounds@1",
+            population="nz.terminal",
+            sources=list(money["sources"]),
+            inputs=[slice_(item["entity"], item["columns"]) for item in bounded],
+            params={
+                "support_roster": roster,
+                **{
+                    name: money["params"][name]
+                    for name in (
+                        "declaration",
+                        "declaration_sha256",
+                        "factor_context",
+                        "factor_context_sha256",
+                        "profile_selection",
+                    )
+                },
+            },
+            artifact_inputs=[edge("donor_ranges", "nz.evidence.donor_ranges")],
+        ),
+    ]
+    battery = next(row for row in rows if row["id"] == "nz.gates.terminal")
+    rows[rows.index(battery) : rows.index(battery)] = evidence
+    battery["artifact_inputs"] += [
+        edge("result", "nz.calibrate"),
+        edge("donor_artifact_receipt", "nz.evidence.donor_receipt"),
+        edge("axiom_input_closure", "nz.evidence.input_closure"),
+        edge("donor_ranges", "nz.evidence.donor_ranges"),
+        edge("donor_support_bounds", "nz.evidence.support"),
+        edge("fit_weight_records", "nz.evidence.weights"),
+    ]
 
 
 def main():

@@ -564,9 +564,11 @@ def quantile_support(
 ) -> tuple[list[tuple[float, float | None]], list[tuple[float, float | None]]]:
     """The magnitude intervals a quantile map can write, by sign.
 
-    ``bands`` is the declared band document: a list of ``{lower, upper,
-    reference}`` rows over positive magnitudes, ``{positive, negative}``, or
-    ``{components: {code: bands}}``. ``uniform`` needs finite uppers; a
+    ``bands`` is the declared band document the quantile map reads:
+    ``{bands: rows}``, ``{positive: rows, negative: rows}`` or
+    ``{components: [{value, bands: rows}]}``, where rows are ``{lower, upper,
+    reference}`` over positive magnitudes (a bare row list is read as
+    ``bands``). ``uniform`` needs finite uppers; a
     ``pareto`` top band may have no upper bound, recorded as ``None``. Any
     other mode is refused by name. Zero always maps to zero.
     """
@@ -595,13 +597,26 @@ def quantile_support(
 
     positive: list = []
     negative: list = []
-    documents = (
-        list(bands["components"].values())
-        if isinstance(bands, Mapping) and set(bands) == {"components"}
-        else [bands]
-    )
+    if isinstance(bands, Mapping) and set(bands) == {"bands"}:
+        bands = bands["bands"]
+    if isinstance(bands, Mapping) and set(bands) == {"components"}:
+        components = bands["components"]
+        documents = (
+            [item["bands"] for item in components]
+            if isinstance(components, list)
+            else list(components.values())
+        )
+    else:
+        documents = [bands]
     for document in documents:
+        if isinstance(document, Mapping) and set(document) == {"bands"}:
+            document = document["bands"]
         if isinstance(document, Mapping):
+            if not set(document) <= {"positive", "negative"}:
+                raise ValueError(
+                    "Quantile bands declare bands, positive and negative rows, or "
+                    "components."
+                )
             positive += rows(document["positive"]) if "positive" in document else []
             negative += rows(document["negative"]) if "negative" in document else []
         else:

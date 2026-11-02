@@ -6,6 +6,7 @@ import copy
 import importlib
 import json
 import os
+from dataclasses import replace
 from fractions import Fraction
 from hashlib import sha256
 from pathlib import Path
@@ -35,6 +36,7 @@ from microcosm.frame import WeightKind, Weights
 from microcosm.frame.reporting import carry_baseline_deciles
 from microcosm.graph import (
     ArtifactOutput,
+    ContentStore,
     KernelContext,
     Node,
     NodeRejectedError,
@@ -482,3 +484,101 @@ def test_four_regional_age_cells_prepare_and_calibrate_once(toy):
         for row in rows
         if row["metadata"]["activation_status"] == "active"
     } == set(names)
+
+
+#: The three release-evidence gates the toy now wires end to end (G8-w4).
+EVIDENCE_GATES = {
+    "toy_release_input_coverage": "release_input_coverage",
+    "toy_donor_support_bounds": "support",
+    "toy_calibration_weights_audit": "weights_audit",
+}
+
+
+def test_the_three_evidence_gates_pass_on_the_toy_and_export_proceeds(toy):
+    fixture, run = toy
+    manifest, _, exported = run
+    report = json.loads(_artifact(run, "nz.gates.terminal", "gate_report"))
+    rows = {row["id"]: row for row in report["report"]["outcomes"]}
+    for entry, gate in EVIDENCE_GATES.items():
+        assert rows[entry]["gate"] == gate
+        assert rows[entry]["status"] == "passed", rows[entry]["failures"]
+        assert rows[entry]["evidence_sha256"] is not None
+    assert report["enforcement"]["artifact_permitted"] is True
+    assert exported.exists()
+    for node in (
+        "nz.evidence.donor_receipt",
+        "nz.evidence.donor_ranges",
+        "nz.evidence.input_closure",
+        "nz.evidence.weights",
+        "nz.evidence.support",
+    ):
+        assert node in manifest.nodes
+    # H36: the toy closure's surface engine commit is the toy bindings'.
+    resources = fixture.spec["resources"]
+    assert (
+        resources["axiom_input_closure"]["input_surface"]["engine"]["commit"]
+        == resources["axiom_rules_bindings"]["engine"]["commit"]
+        == "a" * 40
+    )
+
+
+class _ForgedClosure:
+    """The closure producer, with one frame digest in its header edited."""
+
+    def __init__(self, kernel):
+        self._kernel = kernel
+        self.ref = kernel.ref
+        self.capabilities = kernel.capabilities
+
+    def implementation_hash(self):
+        return self._kernel.implementation_hash()
+
+    def run(self, context):
+        result = self._kernel.run(context)
+        document = json.loads(result.artifacts["axiom_input_closure"])
+        # A column the battery also slices, so its digest is compared.
+        assert "person.input_age" in document["inputs"]["frame"]
+        document["inputs"]["frame"]["person.input_age"] = "0" * 64
+        return replace(
+            result, artifacts={"axiom_input_closure": canonical_json(document)}
+        )
+
+
+def test_export_refuses_when_one_producers_evidence_mutates(toy, tmp_path):
+    from dataclasses import replace as replace_dataclass
+
+    from microcosm.graph import KernelRegistry
+
+    fixture, _ = toy
+    original = fixture.registry.kernels
+    kernels = KernelRegistry()
+    for ref in original.refs():
+        kernel = original.get(ref)
+        kernels.register(
+            _ForgedClosure(kernel) if ref == "transport.input_closure@1" else kernel
+        )
+    forged = replace_dataclass(
+        fixture, registry=replace_dataclass(fixture.registry, kernels=kernels)
+    )
+    graph = forged.graph()
+    store = ContentStore(tmp_path / "store", codecs=forged.registry.codecs)
+    blocked = run_graph(
+        compile_graph(through(graph, "nz.gates.terminal")),
+        sources=forged.sources,
+        store=store,
+        kernels=kernels,
+    )
+    report = json.loads(
+        store.load_bytes(
+            blocked.nodes["nz.gates.terminal"].opaque_artifacts["gate_report"]
+        )
+    )
+    rows = {row["id"]: row for row in report["report"]["outcomes"]}
+    coverage = rows["toy_release_input_coverage"]
+    assert coverage["status"] == "failed"
+    assert any(
+        "differs from the battery's frame" in line for line in coverage["failures"]
+    )
+    assert report["enforcement"]["blocking"] == ["toy_release_input_coverage"]
+    with pytest.raises(NodeRejectedError, match="blocking gate report"):
+        run_entitlement_graph(tmp_path / "blocked", forged, store=store, graph=graph)
