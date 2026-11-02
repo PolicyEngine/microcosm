@@ -91,8 +91,10 @@ from ..staging_cli import (
     validate_staging_arguments,
 )
 from ..staging_dataset import (
+    HANDOVER_RECORD_KEY,
     SHA256SUMS_FILENAME,
     StagedBundleHandOver,
+    handover_record,
     refresh_sha256sums_entry,
 )
 from . import country_adapter, national_role
@@ -2083,6 +2085,21 @@ def _kept_for_emitter(staged: StagedBundleHandOver, path: Path) -> bool:
     return True
 
 
+def _record_staged_dataset(
+    manifest: dict, staged: StagedBundleHandOver, delivery: Mapping
+) -> None:
+    """The manifest's staging records: the delivery, and the emitter's hand-over.
+
+    The hand-over block lets a later re-stage ask for that hand-over's
+    outcome instead of handing over a second bundle.
+    """
+    manifest["staging_delivery"] = delivery
+    manifest["staged_dataset"] = staged.delivery
+    record = handover_record(staged)
+    if record is not None:
+        manifest[HANDOVER_RECORD_KEY] = record
+
+
 def _close_attempt(
     args: argparse.Namespace,
     attempt: dict,
@@ -2114,8 +2131,7 @@ def _close_attempt(
         try:
             _close_staging(args, telemetry, classified, record)
         finally:
-            manifest["staging_delivery"] = staging_delivery(telemetry)
-            manifest["staged_dataset"] = staged_dataset
+            _record_staged_dataset(manifest, staged, staging_delivery(telemetry))
             manifest_path = output / MANIFEST_FILENAME
             sums_path = output / SHA256SUMS_FILENAME
             # Only files the emitter copied, or that are not in the bundle,
@@ -3500,10 +3516,14 @@ def _close_national_attempt(
 ) -> None:
     """Stage the published bundle, evaluate, close the telemetry, spool the row.
 
-    The seam's order: the manifest and the staged bundle first, the
-    incumbent evaluation after the bundle is on the Hub and before the
-    telemetry completes, then the build record and the manifest rewritten
-    with the delivery summary and the sums refreshed.
+    The seam's order: the manifest and the staged bundle's hand-over first,
+    then the incumbent evaluation, which waits for no upload and runs before
+    the telemetry completes, then the build record and the manifest rewritten
+    with the delivery summary and the sums refreshed. The build record is
+    rewritten after the hand-over, so the bundle the emitter holds keeps the
+    earlier build record; a re-stage asks the emitter for that hand-over's
+    outcome (the manifest's ``staged_dataset_handover``) rather than hand
+    over the changed directory again.
     """
     from microcosm.build.staging_v2 import validate_staging_delivery
 
@@ -3538,8 +3558,7 @@ def _close_national_attempt(
             _close_staging(args, telemetry, classified, record)
         finally:
             delivery = staging_delivery(telemetry)
-            manifest["staging_delivery"] = delivery
-            manifest["staged_dataset"] = staged_dataset
+            _record_staged_dataset(manifest, staged, delivery)
             manifest["evaluation"] = evaluation
             if evaluation.get("status") == "completed":
                 manifest["outputs"]["score_receipt"] = evaluation["receipt"]

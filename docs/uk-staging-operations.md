@@ -263,7 +263,14 @@ for the retries: it records the bundle as `failed` with the attempt's error
 code, or with `UPLOAD_PENDING` when the first attempt had not finished after
 30 minutes. The emitter keeps such a bundle queued, and it or the next emitter
 started on the machine (the re-stage command's included) uploads it. Leave the
-run directory unchanged until then, and re-stage it to record the outcome.
+run directory unchanged until then, and re-stage it to record the outcome. A
+`failed` record therefore means one of two things. With `UPLOAD_PENDING`,
+`REPOSITORY_UNAVAILABLE`, `UPLOAD_FAILED`, `CREDENTIAL_MISSING` or
+`PRESERVED_FILES_MISSING` (`RETRYING_ERROR_CODES`), the bundle may still
+arrive, because the emitter keeps it queued; with any other code the failure
+is final. The manifest also names the build's hand-over
+(`staged_dataset_handover`: the emitter's hand-over ID, the repository and the
+run id), so a re-stage can ask the emitter for its outcome.
 
 The manifest gains two evidence blocks after the bundle is on disk:
 `staging_delivery`, the validated version 2 telemetry receipt, and
@@ -304,8 +311,25 @@ uv run python tools/stage_uk_rowwise_candidate.py --run-dir <run directory>
 ```
 
 It starts a short-lived emitter of its own, with only its Hugging Face module,
-checks write access as a build does, hands the bundle over and waits for the
-first upload attempt the same way. It is idempotent on the outputs' digests: a directory whose manifest already
+and checks write access as a build does. When the manifest names the build's
+hand-over and this machine's emitter still holds it, the command records that
+hand-over's outcome, as `already_staged` with its commit once the bundle is on
+the Hub, and hands nothing over again. That matters for a national build, which
+rewrites its build record after the hand-over: a bundle built again from the
+directory would differ from the one on the Hub and be refused as
+`REMOTE_DIFFERS`. Otherwise (another machine, or a run that kept its bundle
+local) it hands the bundle over. Either way it waits for the emitter's upload
+attempt for up to three hours by default (`--wait-seconds`; a 2.4 GB bundle
+takes about 2 hours 40 minutes at 2 Mbit/s), longer than a build's 30 minutes,
+since finishing the upload is its only job. When it stops waiting it closes its
+emitter, which abandons an upload still running; the next emitter started on
+the machine retries it from the start. The command updates the manifest's
+record. It cannot update the build's other records of a failure, and says so:
+the staging run's `staged_dataset` and `fit_summary` artifacts and its
+`dataset_staging` event (a completed staging run accepts no changes) and the
+Logbook row (identified by the digest of its content and chained to the next
+row). So the dashboard keeps showing such a run without its bundle. It is
+idempotent on the outputs' digests: a directory whose manifest already
 records the same outputs as uploaded is left untouched (the driver's revision
 stands); an identical remote bundle the manifest does not know about is
 recorded as `already_staged` with the bundle's own commit; a different bundle

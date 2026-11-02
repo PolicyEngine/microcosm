@@ -107,7 +107,12 @@ emitter's documented request-to-event rules, and the run files they were handed
 are in `client.hub_files`. Staged dataset bundles are in `client.bundle_requests`;
 the fake copies their small files as the emitter does and commits them through
 the fake Hub `share_fake_hub` gives it (`bundle_receipts` scripts other answers,
-`never_copy` leaves named files uncopied). Emitter process, persistence and
+`never_copy` leaves named files uncopied). Its bundles are jobs in a
+`FakeHandoverQueue`, which clients standing for emitters on one machine can
+share: an identical hand-over returns the queued receipt, and a delivering
+client attempts pending jobs oldest first (`deliver=False` and
+`answer_receipts=False` stand for an emitter that took a hand-over and
+stopped). Emitter process, persistence and
 HTTP-delivery tests belong in microcosm-emitter; do not copy them into
 Microcosm.
 
