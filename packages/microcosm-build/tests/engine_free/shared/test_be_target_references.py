@@ -236,19 +236,31 @@ def _unpinned(row):
     """Whether a row's selectors read through a spelling no check here can see.
 
     The pin check reads aggregate keys and the cell check reads measures and
-    dimension values literally, but the resolver skips an empty field and admits
-    other fact keys. So each selector keeps to the committed fields, leaves none
-    empty, and pins an aggregate key or, for a base selector, a roster.
+    dimension values literally, but the resolver skips an empty field, admits
+    other fact keys and checks only the pins a selector names. So each selector
+    keeps to the committed fields, leaves none empty, pins every dimension it
+    declares with at most one roster, and pins an aggregate key or, for a base
+    selector, a roster. The feed audit stays the proof: these shapes catch hand
+    edits, and a roster's members bind to nothing without the artifact.
     """
 
     for index, selector in enumerate(_selectors(row)):
         pins = selector.get("dimension_values") or {}
-        roster = any(isinstance(value, list) for value in pins.values())
+        rosters = [value for value in pins.values() if isinstance(value, list)]
+        members = [
+            member
+            for value in pins.values()
+            for member in (value if isinstance(value, list) else [value])
+        ]
         if (
             set(selector) - _SELECTOR_FIELDS
             or any(value is None or value == "" for value in selector.values())
-            or not isinstance(selector.get("dimensions", []), list)
-            or not (selector.get("aggregate_fact_key") or (index == 0 and roster))
+            or not isinstance(selector.get("dimensions"), list)
+            or set(pins) != set(selector["dimensions"])
+            or len(rosters) > 1
+            or not all(rosters)
+            or not all(isinstance(item, str | int) and item != "" for item in members)
+            or not (selector.get("aggregate_fact_key") or (index == 0 and rosters))
         ):
             return True
     return False
@@ -708,17 +720,32 @@ def test_read_mutants_are_caught(mutant, kind):
         {"aggregate_fact_key": None, "source_measure_id": None},
         {"aggregate_fact_key": ""},
         {
+            "dimensions": [generator.A1_CLASS],
             "dimension_values": {generator.A1_CLASS: ["class_12_13"]},
             "source_measure_id": None,
         },
         {
+            "dimensions": [generator.A1_CLASS],
             "dimension_values": {generator.A1_CLASS: ["class_12_13"]},
             "source_measure_id": "",
         },
         {
+            "dimensions": [generator.A1_CLASS],
             "dimension_values": {generator.A1_CLASS: ["class_12_13"]},
             "semantic_fact_key": "key",
         },
+        {},
+        {"dimensions": {"a": "x"}, "dimension_values": {"a": ["x"]}},
+        {"dimensions": ["a", "b"], "dimension_values": {"a": ["x"]}},
+        {"dimensions": ["a", "b"], "dimension_values": {"a": ["x"], "b": ["y"]}},
+        {"dimensions": ["a"], "dimension_values": {"a": []}},
+        {"dimensions": ["a"], "dimension_values": {"a": [None]}},
+        {"dimensions": ["a"], "dimension_values": {"a": [""]}},
+        {"dimensions": ["a"], "dimension_values": {"a": [[]]}},
+        {"dimensions": ["a"], "dimension_values": {"a": ["x", None]}},
+        {"dimensions": ["a", "b"], "dimension_values": {"a": ["x"], "b": None}},
+        {"dimensions": ["a", "b"], "dimension_values": {"a": ["x"], "b": ""}},
+        {"dimensions": ["a", "b"], "dimension_values": {"a": ["x"], "b": []}},
     ],
 )
 def test_spellings_the_checks_cannot_read_refuse(spelling, target):
