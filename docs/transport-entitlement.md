@@ -178,15 +178,18 @@ does this with its invented family-credit engine. It supplies no real WFF
 inputs or statutory claim.
 
 `build/nz/as_rate_bridge.json` declares both NZ bridge outputs as kernel
-calls, with no new kernel. On each population that runs the Accommodation
-Supplement engine, a `calibration.prepare@1` node writes the family masks the
-equality-only bridge masks compare, a `simulate.counterfactual@1` node writes
-the reg 18(3)(b) sole-parent Jobseeker Support rate, and a
+calls, with no new kernel. A `calibration.prepare@1` node writes the family
+masks the equality-only bridge masks compare, a `simulate.counterfactual@1`
+node writes the reg 18(3)(b) sole-parent Jobseeker Support rate, and a
 `simulate.solve_zero@1` node writes the reg 18 cutout: the zero of each
 unit's Jobseeker Support residual over weekly income on [0, 5000]. A sole
 parent's residual is the sole-parent rate minus the Income Test 3 reduction;
-every other unit's residual is its own net payment. The resource keeps the
-harness expressions as the statement of equivalence. Each branch runs its own
+every other unit's residual is its own net payment. The shared `nz.as.bridge`
+population, a FILTER branch of `nz.as`, runs these three nodes once for S0,
+S1, S2, S3 and S5, and each variant repeats them on its own housing
+population. A node on `nz.as` itself would re-key the skeleton's
+`nz.terminal`, which composition refuses. The resource keeps the harness
+expressions as the statement of equivalence. Each branch runs its own
 reg 17 base-rate counterfactual: zero-income Jobseeker Support once for a
 single unit and twice for a partnered one, plus the eldest-child family tax
 credit over 52 for a unit with a dependent child. The tests in

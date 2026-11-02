@@ -1,0 +1,1 @@
+Correct the NZ Accommodation Supplement bridge's documentation and tests after the review of #1440. `docs/transport-entitlement.md` now names `nz.as.bridge` as the shared population that runs the bridge for S0, S1, S2, S3 and S5. The childless-family tests read the Axiom adapter's own batch builder, and a new test runs a mixed couple through S5's base rate.
