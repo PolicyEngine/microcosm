@@ -1,4 +1,4 @@
-"""The stage-001 lineage check accepts only the float-rounding class Max ruled on (d1712, d2274)."""
+"""The stage-001 lineage check accepts only the rounding class Max ruled on (d1712, d2274, d2336)."""
 
 from __future__ import annotations
 
@@ -122,7 +122,7 @@ def test_the_accepted_columns_are_exactly_the_ruled_ones(check):
             _tables([1.0, 2.0, 3.0], other=(1.0, 2.0 * (1 + 4e-16))),
             "not an accepted column",
         ),
-        # Above 1e-12 relative in the ESI column accepted under d2274.
+        # Above 1e-12 relative in the ESI column accepted under d2274 and d2336.
         (
             _tables([1.0, 2.0, 3.0], esi=(0.0, 5_000.0, 7_250.25)),
             _tables([1.0, 2.0, 3.0], esi=(0.0, 5_000.0, 7_251.0)),

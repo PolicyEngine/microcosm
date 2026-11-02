@@ -105,11 +105,11 @@ accepted for this run: every entity table has the same shape and index, totals
 are equal, and every differing value is within 1e-12 relative. Step 5b runs
 `tools/route_a/lineage_class_check.py`, which is narrower: any difference
 outside `person.pre_subsidy_rent` stops for Max, and so does a total that
-differs by more than 1e-12 relative. Max ruled on 2 November (d2274) that the
-same class may be accepted in `person.employer_sponsored_insurance_premiums`,
-which reached the base after this run: on the 2026-11 base it differed by one
-unit in the last place on 73,966 rows, with identical totals. Its JSON verdict
-goes into the run's provenance. Any other mismatch,
+differs by more than 1e-12 relative. Max accepted the same class in
+`person.employer_sponsored_insurance_premiums`, which reached the base after
+this run, for the 2026-11 build (d2274) and for later builds (d2336): on the
+2026-11 base it differed by one unit in the last place on 73,966 rows, with
+identical totals. Its JSON verdict goes into the run's provenance. Any other mismatch,
 skipping the new local reference, or relaxing the hand-off still needs **Max's
 explicit decision** with the new evidence. Stop before writing `ACCEPTED` while
 that decision is outstanding.
