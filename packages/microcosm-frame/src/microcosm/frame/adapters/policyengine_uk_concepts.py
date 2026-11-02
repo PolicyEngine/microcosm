@@ -35,7 +35,7 @@ __all__ = [
 # ---------------------------------------------------------------------------
 #
 # Which PolicyEngine-UK inputs each engine-neutral concept feeds
-# (microcosm.frame.concepts), reviewed against policyengine-uk 2.164.2. Every
+# (microcosm.frame.concepts), reviewed against policyengine-uk 2.165.1. Every
 # target is a pure input (in ``PolicyEngineUKEngine.variables``). The UK
 # loader also accepts some formula-owned variables as overrides
 # (``employment_income``, ``state_pension_reported``, ``is_household_head``);
@@ -386,6 +386,22 @@ UK_ENGINE_DEFAULT_INPUTS: dict[str, str] = {
         "Lifetime ISA withdrawals they change nothing, so they stay false "
         "(microcosm#1095; for María's signature).",
     ),
+    **dict.fromkeys(
+        (
+            "company_car_availability",
+            "company_car_private_use_payments",
+            "company_car_registered_from_6_april_2020",
+        ),
+        "Three of the company car inputs (policyengine-uk 2.165.0, "
+        "policyengine-uk#2750) that the FRS does not ask, so the company_cars "
+        "stage leaves them at the engine's defaults (microcosm#1430): every car "
+        "is available all year, its holder pays nothing for private use, and no "
+        "car carries the flag for registration from 6 April 2020, which changes "
+        "the rates only in 2020-21 and 2021-22. Each car's benefit is then its "
+        "full year's charge, which overstates it for a car held for part of the "
+        "year or one whose holder pays towards its private use (for María's "
+        "signature).",
+    ),
     "is_in_first_year_of_apprenticeship": (
         "Whether an apprentice is in the first 12 months of the apprenticeship "
         "(policyengine-uk 2.162.8, policyengine-uk#2683): the apprentice "
@@ -422,7 +438,7 @@ def _uk_take_up(program: str, entity: str) -> InputBinding:
 
 POLICYENGINE_UK_CONCEPT_MAPPING = ConceptMapping(
     engine="policyengine-uk",
-    engine_version="2.164.2",
+    engine_version="2.165.1",
     entity_correspondence={"person": "person", "household": "household"},
     input_declaration=InputDeclaration.ENGINE_TYPED,
     bindings=(
@@ -789,6 +805,11 @@ POLICYENGINE_UK_CONCEPT_MAPPING = ConceptMapping(
             "stocks_and_shares_isa sum them; the isa_subscriptions stage "
             "splits the WAS household totals into them (microcosm#1415), a "
             "split of one wrapper's balance, not of liquid financial assets. "
+            "Since policyengine-uk 2.165.0 company_car_list_price and "
+            "company_car_capital_contributions describe a car the person's "
+            "employer makes available, whose benefit is taxed as employment "
+            "income (ITEPA 2003 ss. 121 and 132); the company_cars stage writes "
+            "them from the FRS job table, and neither is the person's asset. "
             "savings and share_like_capital are two "
             "of Universal Credit's capital sources "
             "(gov.dwp.universal_credit.means_test.capital.sources); since "

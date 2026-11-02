@@ -3,13 +3,17 @@
 from __future__ import annotations
 
 import copy
+import functools
 import json
+import sys
 from datetime import date
 
 import pytest
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
+from microcosm.build import reference_factors
+from microcosm.build.money_normalization import MONEY_FACTOR_PURPOSE
 from microcosm.build.reference_factors import resolve_reference_factor
 from microcosm.build.reference_profiles import (
     REFERENCE_DOCUMENT_KEYS,
@@ -918,36 +922,126 @@ def test_legacy_receipt_remains_version_one_without_factor_fields():
     )
 
 
-@pytest.mark.parametrize(
-    ("selection", "digest"),
-    [
-        ({}, "b0f8648dbd50ee3bfa6d9f53613bc97ac5c5403466e6acfc758fa133aa3ac94f"),
-        (
-            {"aging_index": "low"},
-            "8989fa75e44520ea8e64b9ebcf4a5c894869b95d8f85507a450b3d4486973f8a",
-        ),
-        (
-            {"aging_index": "high"},
-            "e246f61518e09b0e2c1b652f94a7eb44b05d84ce4ac4c2e77c4c606807718165",
-        ),
-    ],
-)
-def test_nz_factor_receipts_are_byte_identical_after_additive_factors(
-    selection, digest
-):
-    # Canonical v2 receipts, with the interval document, produced at #1398's
-    # 0a8568b4, before the donor factors and the money_normalization_input
-    # purpose were added to the factor document.
+_NZ_DONOR_FACTORS = {
+    "donor_cy2024_to_ty2027_low",
+    "donor_cy2024_to_ty2027_central",
+    "donor_cy2024_to_ty2027_high",
+}
+
+
+def _nz_resolution_inputs():
     spec = paths_for("microcosm-build").package / "src/microcosm/build/nz"
+    return {
+        name: json.loads((spec / f"{name}.json").read_text())
+        for name in (
+            "target_references",
+            "reference_profiles",
+            "reference_intervals",
+            "reference_aging",
+        )
+    }
+
+
+@functools.cache
+def _shared_nz_resolution_inputs():
+    # The resolver leaves its inputs unchanged, so examples may share them.
+    return _nz_resolution_inputs()
+
+
+def _nz_selection(profile):
+    return {} if profile == "central" else {"aging_index": profile}
+
+
+def _nz_receipt(inputs, selection, factors):
+    context = {**inputs["reference_aging"], "factors": factors}
     _, _, receipt = resolve_reference_profiles(
-        json.loads((spec / "target_references.json").read_text()),
-        json.loads((spec / "reference_profiles.json").read_text()),
+        inputs["target_references"],
+        inputs["reference_profiles"],
         selection,
-        json.loads((spec / "reference_intervals.json").read_text()),
-        factor_context=json.loads((spec / "reference_aging.json").read_text()),
+        inputs["reference_intervals"],
+        factor_context=context,
     )
-    assert receipt["resolver_version"] == "reference-profiles-v2"
-    assert receipt["receipt_sha256"] == digest
+    return receipt
+
+
+@pytest.mark.parametrize("profile", ["central", "low", "high"])
+def test_nz_factor_receipts_depend_only_on_their_selected_factors(profile):
+    # Factors a selection never reads, such as the money donor factors, must
+    # leave its receipt byte-identical, so adding them cannot move a receipt.
+    inputs = _nz_resolution_inputs()
+    selection = _nz_selection(profile)
+    factors = inputs["reference_aging"]["factors"]
+    full = _nz_receipt(inputs, selection, factors)
+    selected = f"ird_ty2024_to_ty2027_{profile}"
+    assert full["resolver_version"] == "reference-profiles-v2"
+    assert set(full["selected_factors"]) == {selected}
+    assert _NZ_DONOR_FACTORS <= {entry["declaration"]["id"] for entry in factors}
+    only_selected = [
+        entry for entry in factors if entry["declaration"]["id"] == selected
+    ]
+    assert len(only_selected) == 1
+    assert canonical_json(_nz_receipt(inputs, selection, only_selected)) == (
+        canonical_json(full)
+    )
+
+
+@functools.cache
+def _nz_full_receipt_bytes(profile):
+    inputs = _shared_nz_resolution_inputs()
+    factors = inputs["reference_aging"]["factors"]
+    return canonical_json(_nz_receipt(inputs, _nz_selection(profile), factors))
+
+
+@pytest.mark.parametrize("profile", ["central", "low", "high"])
+def test_nz_factor_receipts_ignore_purposes_their_factors_do_not_use(
+    profile, monkeypatch
+):
+    # The money_normalization_input purpose joined the vocabulary after these
+    # receipts existed. Resolving under the earlier vocabulary must give
+    # today's bytes, so a new purpose cannot move an existing receipt.
+    inputs = _shared_nz_resolution_inputs()
+    today = _nz_full_receipt_bytes(profile)
+    selected = f"ird_ty2024_to_ty2027_{profile}"
+    only_selected = [
+        entry
+        for entry in inputs["reference_aging"]["factors"]
+        if entry["declaration"]["id"] == selected
+    ]
+    assert [entry["declaration"]["purpose"] for entry in only_selected] == [
+        "profile_input"
+    ]
+    current = reference_factors.FACTOR_PURPOSES
+    assert MONEY_FACTOR_PURPOSE in current
+    patched = [
+        name
+        for name, module in list(sys.modules.items())
+        if name.startswith("microcosm")
+        and getattr(module, "FACTOR_PURPOSES", None) is current
+    ]
+    assert "microcosm.build.reference_factors" in patched
+    for name in patched:
+        monkeypatch.setattr(
+            sys.modules[name], "FACTOR_PURPOSES", current - {MONEY_FACTOR_PURPOSE}
+        )
+    receipt = _nz_receipt(inputs, _nz_selection(profile), only_selected)
+    assert canonical_json(receipt) == today
+
+
+@settings(max_examples=12, deadline=None, suppress_health_check=[HealthCheck.too_slow])
+@given(st.sampled_from(["central", "low", "high"]), st.data())
+def test_nz_factor_receipts_ignore_the_order_and_presence_of_unread_factors(
+    profile, data
+):
+    inputs = _shared_nz_resolution_inputs()
+    selected = f"ird_ty2024_to_ty2027_{profile}"
+    order = data.draw(st.permutations(inputs["reference_aging"]["factors"]))
+    kept = [
+        entry
+        for entry in order
+        if entry["declaration"]["id"] == selected or data.draw(st.booleans())
+    ]
+    receipt = _nz_receipt(inputs, _nz_selection(profile), kept)
+    assert canonical_json(receipt) == _nz_full_receipt_bytes(profile)
 
 
 def test_legacy_receipt_without_transformed_names_refuses_as_a_value_error():

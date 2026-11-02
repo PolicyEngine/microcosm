@@ -198,6 +198,7 @@
         "miscellaneous_income",
         "partnership_income",
         "s_corp_income",
+        "passive_partnership_s_corp_income",
         "partnership_self_employment_net_earnings",
         "first_home_mortgage_balance",
         "second_home_mortgage_balance",

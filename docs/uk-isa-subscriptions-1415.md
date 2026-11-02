@@ -2,7 +2,8 @@
 
 The `isa_subscriptions` stage gives every adult of the UK spine what they paid
 into ISAs in the year, by type, and the per-person ISA balances behind them. It
-runs last, on final incomes, and nothing in the spine reads its outputs.
+runs late, on final incomes, after every stage that writes income, and
+nothing in the spine reads its outputs.
 
 | Column | Meaning |
 |---|---|
@@ -15,7 +16,7 @@ runs last, on final incomes, and nothing in the spine reads its outputs.
 The `was_lisa` stage also anchors Lifetime ISA holders to HMRC's payers (below,
 and [the LISA notes](uk-lisa-1003.md)).
 
-The pinned policyengine-uk 2.164.2 reads all five:
+The pinned policyengine-uk 2.165.1 reads all five:
 
 - `lifetime_isa_payments`, whose 25% bonus is `lifetime_isa_bonus`;
 - the subscriptions, against the limits of policyengine-uk#2712
@@ -190,7 +191,7 @@ HMRC's national totals, so it is a population fact check.
 The fields support the subscriptions a limit leaves out: the overall £20,000
 limit and a separate cash limit (the £12,000 under-65 setting is a reform in
 policyengine-uk), through `isa_subscriptions_above_limit` and
-`cash_isa_subscriptions_above_limit`. policyengine-uk 2.164.2 reads neither in
+`cash_isa_subscriptions_above_limit`. policyengine-uk 2.165.1 reads neither in
 any tax or spending variable, so a limit reform changes those amounts but costs
 nothing until the engine models where the excess goes. The subscriptions are
 flows the engine does not uprate, so a later year reads 2024-25 amounts. In

@@ -746,9 +746,13 @@ def impute_salary_sacrifice(
     # Net-pay contributions come out of pay: the spine caps them at pay
     # (uk_runtime.pension_coherence), and the conversion takes the same amount
     # off both, so a contribution above the pay that remains is a defect. The
-    # caps hold here only while no stage between them and this one lowers
-    # pay: today only hmrc_spi_income_spine and salary_sacrifice write
-    # employment_income, so a new pay rewrite must cap contributions again.
+    # caps hold here only while every stage between them and this one that
+    # lowers pay keeps the contribution: company_cars carves a tape row's car
+    # benefits only out of the pay its contribution leaves, and a new pay
+    # rewrite must do the same or cap contributions again. A pay rewrite also
+    # moves the root's UC gainful self-employment rule, which reads pay:
+    # company_cars takes it again on the carved pay, but this stage's own
+    # conversion does not yet.
     if (employee > np.maximum(employment_income, 0.0) + 1e-6).any():
         raise ValueError(
             "Employee pension contributions must not exceed the pay that remains."
@@ -764,7 +768,7 @@ def impute_salary_sacrifice(
     person["employment_income"] = employment_income
     person[SALSAC_PRE_CONVERSION_PAY_COLUMN] = pre_conversion_pay
     # Weighted aggregates only, banded on distinct source households; a figure
-    # one to nine of them carry is "<10" (UKDS disclosure control).
+    # one or two of them carry is "<3" (UKDS disclosure control).
 
     def bonus_sources(mask: np.ndarray) -> int:
         return distinct_count(source_ids, mask, person_weights)

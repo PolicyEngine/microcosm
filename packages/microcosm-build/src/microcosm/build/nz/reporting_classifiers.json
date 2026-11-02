@@ -2,7 +2,7 @@
   "version": 1,
   "country": "nz",
   "description": "Benefit-unit reporting classifiers with their A1 and A2 method basis archived in docs/nz-reporting-classifiers-method.md. Executable declarations are selected individually; provenance and activation gaps remain explicit spec data.",
-  "status": "A1 provisional pending confirmation of the publication income basis; activation blocked by missing before-tax paid main-benefit amounts and Veterans Pension receipt/amount inputs",
+  "status": "A1 remains provisional until Max confirms the publication income basis. The classifier uses the declared paid gross columns; H4 excludes unsupported Veterans Pension from v0 reporting.",
   "income_decile": {
     "entity": "family",
     "person_entity": "person",
@@ -66,7 +66,7 @@
       },
       {
         "entity": "person",
-        "column": null,
+        "column": "jobseeker_support_gross_weekly_payment",
         "kind": "benefit",
         "tax_basis": "before_tax",
         "annualisation_factor": 52,
@@ -74,7 +74,7 @@
       },
       {
         "entity": "person",
-        "column": null,
+        "column": "sole_parent_support_gross_weekly_payment",
         "kind": "benefit",
         "tax_basis": "before_tax",
         "annualisation_factor": 52,
@@ -82,7 +82,7 @@
       },
       {
         "entity": "person",
-        "column": null,
+        "column": "supported_living_payment_gross_weekly_payment",
         "kind": "benefit",
         "tax_basis": "before_tax",
         "annualisation_factor": 52,
@@ -95,14 +95,6 @@
         "tax_basis": "before_tax",
         "annualisation_factor": 52,
         "receipt_column": "receives_nz_super"
-      },
-      {
-        "entity": "person",
-        "column": null,
-        "kind": "benefit",
-        "tax_basis": "before_tax",
-        "annualisation_factor": 52,
-        "receipt_column": "receives_veterans_pension"
       }
     ],
     "excluded_columns": [
@@ -145,8 +137,7 @@
       "superannuitant": {
         "entity": "person",
         "columns": [
-          "receives_nz_super",
-          "receives_veterans_pension"
+          "receives_nz_super"
         ],
         "reduction": "any"
       },
@@ -173,7 +164,6 @@
       "S1",
       "S2",
       "S3",
-      "S4",
       "S5",
       "V1",
       "V2",
@@ -201,57 +191,12 @@
       "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
     }
   },
-  "blocked_inputs": [
-    {
-      "receipt_column": "receives_jobseeker_support",
-      "required": "before-tax weekly paid engine amount after the income test, multiplied by assigned receipt; null column refuses activation",
-      "unavailable_bound_outputs": [
-        "jobseeker_support_net_weekly_payment",
-        "jobseeker_support_gross_weekly_rate",
-        "jobseeker_support_weekly_income_test_reduction"
-      ],
-      "citation": {
-        "item": "A1",
-        "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
-      }
-    },
-    {
-      "receipt_column": "receives_sole_parent_support",
-      "required": "before-tax weekly paid engine amount after the income test, multiplied by assigned receipt; null column refuses activation",
-      "unavailable_bound_outputs": [
-        "sole_parent_support_net_weekly_payment"
-      ],
-      "citation": {
-        "item": "A1",
-        "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
-      }
-    },
-    {
-      "receipt_column": "receives_supported_living_payment",
-      "required": "before-tax weekly paid engine amount after the income test, multiplied by assigned receipt; null column refuses activation",
-      "unavailable_bound_outputs": [
-        "supported_living_payment_net_weekly_payment"
-      ],
-      "citation": {
-        "item": "A1",
-        "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
-      }
-    },
-    {
-      "receipt_column": "receives_veterans_pension",
-      "required": "before-tax weekly paid engine amount after the income test, multiplied by assigned receipt; null column refuses activation",
-      "unavailable_bound_outputs": [],
-      "citation": {
-        "item": "A1",
-        "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
-      }
-    }
-  ],
+  "blocked_inputs": [],
   "unsupported_receipt_inputs": [
     {
       "column": "receives_veterans_pension",
       "evidence": "axiom_input_closure.json receipt_flags omits this flag; main_benefit_receiving_veterans_pension defaults false because Veterans Pension is not modelled in v0",
-      "required_behavior": "Missing flag is refused; a missing flag never implies false.",
+      "required_behavior": "The hub reports Veterans Pension as unsupported under H4 and excludes its component and predicate column. The kernel must refuse any declaration that requests an unavailable flag; a missing flag never implies false.",
       "citation": {
         "item": "A2",
         "source": "docs/nz-reporting-classifiers-method.md#a2-receipt-group"
@@ -274,6 +219,10 @@
         "item": "A1",
         "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
       }
+    },
+    {
+      "note": "The hub leaves Veterans Pension unsupported under H4: the June 2026 feed reports 4,674 recipients, and v0 supplies no veteran facts or receipt producer. Reporting omits its benefit income and predicate rather than inventing a false receipt flag.",
+      "evidence": "reference_inventory.json; receipt_contract.json#/receipts/unmodelled_programs"
     }
   ],
   "mixed_unit_audit": {
@@ -299,10 +248,6 @@
     },
     {
       "scenario": "S3",
-      "cell": "beneficiary_superannuitant_other/superannuitant"
-    },
-    {
-      "scenario": "S4",
       "cell": "beneficiary_superannuitant_other/superannuitant"
     }
   ],
@@ -587,30 +532,6 @@
       "item": "A1",
       "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
     },
-    "/income_decile/components/11/entity": {
-      "item": "A1",
-      "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
-    },
-    "/income_decile/components/11/column": {
-      "item": "A1",
-      "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
-    },
-    "/income_decile/components/11/kind": {
-      "item": "A1",
-      "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
-    },
-    "/income_decile/components/11/tax_basis": {
-      "item": "A1",
-      "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
-    },
-    "/income_decile/components/11/annualisation_factor": {
-      "item": "A1",
-      "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
-    },
-    "/income_decile/components/11/receipt_column": {
-      "item": "A1",
-      "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
-    },
     "/income_decile/excluded_columns/0/entity": {
       "item": "A1",
       "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
@@ -691,10 +612,6 @@
       "item": "A2",
       "source": "docs/nz-reporting-classifiers-method.md#a2-receipt-group"
     },
-    "/receipt_group/predicates/superannuitant/columns/1": {
-      "item": "A2",
-      "source": "docs/nz-reporting-classifiers-method.md#a2-receipt-group"
-    },
     "/receipt_group/predicates/superannuitant/reduction": {
       "item": "A2",
       "source": "docs/nz-reporting-classifiers-method.md#a2-receipt-group"
@@ -734,7 +651,7 @@
   },
   "as_non_beneficiary_audit": {
     "nz_super": "The existing accommodation_supplement_non_beneficiary state binding negates any_true over assigned member receipt flags, including NZ Super. A unit with any assigned NZ Super receipt is therefore not a non-beneficiary.",
-    "veterans_pension": "The same binding omits the unsupported Veterans Pension flag, so it must be extended when that receipt input is activated. A missing Veterans Pension flag continues to block reporting rather than classify its recipients as other.",
+    "veterans_pension": "The AS state binding and reporting predicate both omit unsupported Veterans Pension. The hub must extend both together when a reviewed receipt producer supports that program; v0 reports the omission explicitly.",
     "evidence": "axiom_input_closure.json#/entries[input=accommodation_supplement_non_beneficiary]",
     "citation": {
       "item": "A2",

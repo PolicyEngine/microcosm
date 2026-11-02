@@ -604,10 +604,11 @@ def _write_uk_single_year_tables(
 
 #: Columns the release boundary drops from the written candidate (microcosm#1063
 #: c9): the enhanced FRS stores ``incapacity_benefit_reported`` as an all-zero
-#: legacy layer and the export-surface gate's reviewed exclusion requires the
-#: candidate to drop it. The spine keeps the column (the SPI income stage
-#: reads it); only the release H5 and its readback expectation lose it.
-#: ``terminal_gates.UK_REVIEWED_EXPORT_EXCLUSIONS`` names the first; the
+#: legacy layer, so the pinned parity reference leaves it off the export
+#: surface as a zero-share input, and the export-surface gate would refuse it
+#: as an unlisted extra (microcosm#1095 retired its reviewed exclusion, which
+#: never matched). The spine keeps the column (the SPI income stage reads it);
+#: only the release H5 and its readback expectation lose it. The
 #: five internal disability carriers (``frs_disability``'s
 #: ``UK_INTERNAL_DISABILITY_REPORTED_COLUMNS``) are stage-internal inputs
 #: that the export registers keep off the release (review of #1089).
@@ -647,6 +648,14 @@ UK_RELEASE_EXPORT_DROPPED_COLUMNS: Mapping[str, tuple[str, ...]] = {
         # (frs_spine.FRS_IN_HOUSEHOLD_CARE_HOURS_COLUMN) the Carer's Allowance
         # draw reads (microcosm#1418); it is no engine input.
         "frs_care_hours_in_household",
+        # The company car carriers (frs_spine.FRS_COMPANY_CAR_CARRIER_COLUMNS)
+        # the company_cars stage reads to set policyengine-uk's company car
+        # inputs (PolicyEngine/uk-autumn-budget-dashboard-2026#316); they are
+        # no engine inputs.
+        "frs_company_car_price_band",
+        "frs_company_car_fuel_code",
+        "frs_company_car_private_fuel",
+        "frs_company_car_contribution",
         # policyengine-uk's sum of the ISA interest parts (microcosm#1360). The
         # producer stores individual_savings_account_interest_income instead,
         # so no stage writes it; a persisted copy would override the sum and

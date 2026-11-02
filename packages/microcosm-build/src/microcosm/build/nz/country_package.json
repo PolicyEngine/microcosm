@@ -68,6 +68,11 @@
       "schema_id": "legacy_json"
     },
     {
+      "path": "calibration_settings.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
       "path": "chronicle_feed.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
@@ -108,6 +113,21 @@
       "schema_id": "legacy_json"
     },
     {
+      "path": "mass_references.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "msd_benefit_rates_20260401.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "msd_pre_activation_reconciliation.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
       "path": "precal_references.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
@@ -133,6 +153,16 @@
       "schema_id": "legacy_json"
     },
     {
+      "path": "reference_selection.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "receipt_contract.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
       "path": "release_contract.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
@@ -154,6 +184,16 @@
     },
     {
       "path": "target_references.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "benefit_gross_up.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "precalibration_stages.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
     }

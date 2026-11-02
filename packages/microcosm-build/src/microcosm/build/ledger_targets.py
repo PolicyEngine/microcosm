@@ -110,6 +110,18 @@ MULTI_FACT_VALUE_OPERATIONS = frozenset(
         *MONTHLY_WINDOW_OPERATIONS,
     )
 )
+#: Operations that compose or pin periods of their own, so a reference may
+#: not move its fact selection with ``observation_period``.
+PERIOD_COMPOSING_OPERATIONS = frozenset(
+    (
+        "calendar_year_average",
+        "calendar_year_window",
+        "latest_plateau",
+        "scaled_by_ratio",
+        ROLLED_FORWARD_BY_RATIO,
+        CALENDAR_YEAR_WINDOW_SCALED_BY_RATIO,
+    )
+)
 EXACT_PERIOD_VALUE_OPERATIONS = frozenset(
     (
         "identity",
@@ -138,6 +150,14 @@ CALENDAR_YEAR_WINDOW_PERIOD_TYPES = frozenset(("fiscal_year", "tax_year"))
 #: to the measure that carries it: a fact matches only the measure its own
 #: year declares, and the window reads the declared measures as one series.
 SOURCE_MEASURE_ID_BY_OPENING_YEAR = "source_measure_id_by_opening_year"
+#: The same for a series whose years sit in different editions of one
+#: publication. OBR's EFO keeps one number per line and year, the latest
+#: edition's (PolicyEngine/chronicle#397), so FY2024-25 sits in March 2026's
+#: tables and FY2025-26 in October 2026's. The key maps each overlapping year,
+#: by its opening year, to the source table that carries it: a fact matches
+#: only the table its own year declares, and the window reads the declared
+#: tables as one series.
+SOURCE_TABLE_BY_OPENING_YEAR = "source_table_by_opening_year"
 #: Ordered operand roles of ``scaled_by_ratio``: the published cell the
 #: reference selects, then the two national facts whose quotient translates
 #: it (a subset share of the publisher's universe, so the ratio lies in
@@ -256,6 +276,11 @@ class LedgerTargetReference:
     hierarchy: CalibrationHierarchySeed | None = None
     assertion_policy: str = "observed_only"
     period_match_policy: str = "latest_not_after"
+    #: The period the reference's facts are selected at, where it differs
+    #: from the target period the model is measured at: DfE's January census
+    #: for model year Y is January Y + 1, the spring term of the year's
+    #: entitlements (microcosm#1095 D5). ``None`` selects at the target period.
+    observation_period: int | str | None = None
     uprating_index: str | None = None
     uprating_from_period: int | str | None = None
     uprating_to_period: int | str | None = None
@@ -312,13 +337,17 @@ class LedgerTargetReference:
             _validate_calendar_year_window_reference(self)
         elif self.value_operation == CALENDAR_YEAR_WINDOW_SCALED_BY_RATIO:
             _validate_calendar_year_window_scaled_by_ratio_reference(self)
-        elif SOURCE_MEASURE_ID_BY_OPENING_YEAR in self.ledger_selector:
-            raise ValueError(
-                f"LedgerTargetReference {self.name!r}: "
-                f"{SOURCE_MEASURE_ID_BY_OPENING_YEAR!r} composes the years of a "
-                "calendar_year_window; it is refused under value_operation "
-                f"{self.value_operation!r}."
-            )
+        else:
+            for key in (
+                SOURCE_MEASURE_ID_BY_OPENING_YEAR,
+                SOURCE_TABLE_BY_OPENING_YEAR,
+            ):
+                if key in self.ledger_selector:
+                    raise ValueError(
+                        f"LedgerTargetReference {self.name!r}: {key!r} composes "
+                        "the years of a calendar_year_window; it is refused under "
+                        f"value_operation {self.value_operation!r}."
+                    )
         if self.value_operation == MONTHLY_WINDOW_COUNT_X_MEAN:
             _validate_count_x_mean_operands(self.name, self.value_operands)
         if self.assertion_policy not in ALLOWED_ASSERTION_POLICIES:
@@ -336,6 +365,24 @@ class LedgerTargetReference:
             *MONTHLY_WINDOW_OPERATIONS,
             MONTHLY_WINDOW_COUNT_X_MEAN,
         }
+        if self.observation_period is not None:
+            period_type = _observation_period_type(
+                self.period_match_policy, self.ledger_selector
+            )
+            if not _normalize_period_value(
+                self.observation_period, declared_type=period_type
+            )[0][0]:
+                under = f" under period_type {period_type!r}" if period_type else ""
+                raise ValueError(
+                    f"LedgerTargetReference {self.name!r}: observation_period "
+                    f"{self.observation_period!r} is not a parseable period{under}."
+                )
+            if is_window or self.value_operation in PERIOD_COMPOSING_OPERATIONS:
+                raise ValueError(
+                    f"LedgerTargetReference {self.name!r}: observation_period "
+                    "selects facts at one period, but value_operation "
+                    f"{self.value_operation!r} composes periods of its own."
+                )
         if is_window != (self.period_match_policy == "source_window"):
             raise ValueError(
                 "A monthly window operation requires the paired source_window period policy."
@@ -944,9 +991,18 @@ def target_spec_from_ledger_reference(
         )
         numerator = math.fsum(numeric_values[cut : cut + numerators])
         denominator = math.fsum(numeric_values[cut + numerators :])
+        complement = _window_ratio_numerator_is_complement(reference)
+        if complement:
+            numerator = denominator - numerator
         numeric_value, ratio_metadata = _scaled_by_ratio_value(
             reference, [base, numerator, denominator]
         )
+        if complement:
+            # The recorded numerator is the complement itself, so the formula
+            # reads numerator / denominator (the review of microcosm#1422).
+            ratio_metadata["ledger_value_numerator_rule"] = (
+                "the denominator less the listed numerator cells"
+            )
         value_metadata = {
             **_calendar_year_window_metadata(reference, window),
             **ratio_metadata,
@@ -2069,7 +2125,7 @@ def _resolve_reference_fact(
             raise ValueError(
                 f"Ledger target reference {reference.name!r} did not match a "
                 f"Ledger fact {period_requirement} "
-                f"{reference.period!r} for selector: "
+                f"{_selection_period(reference)!r} for selector: "
                 f"{dict(reference.ledger_selector)!r}."
             )
         identifiers = [
@@ -3973,6 +4029,15 @@ def _validate_calendar_year_window_reference(
             "requires an explicit calendar-year target period."
         )
     measure_map = reference.ledger_selector.get(SOURCE_MEASURE_ID_BY_OPENING_YEAR)
+    if SOURCE_TABLE_BY_OPENING_YEAR in reference.ledger_selector:
+        if measure_map is not None:
+            raise ValueError(
+                f"LedgerTargetReference {reference.name!r}: calendar_year_window "
+                f"declares both {SOURCE_MEASURE_ID_BY_OPENING_YEAR!r} and "
+                f"{SOURCE_TABLE_BY_OPENING_YEAR!r}; it maps its years by measure "
+                "or by table, not both."
+            )
+        _validate_table_by_opening_year(reference, "calendar_year_window")
     if measure_map is None:
         return
     for key in ("source_measure_id", "layout_measure_id"):
@@ -3986,12 +4051,33 @@ def _validate_calendar_year_window_reference(
         raise ValueError(
             f"LedgerTargetReference {reference.name!r}: calendar_year_window "
             f"reads {SOURCE_MEASURE_ID_BY_OPENING_YEAR!r} as one series; it "
-            "cannot be combined with a list-valued series key."
+            "cannot be combined with a list-valued series key or several "
+            "pinned dimension values."
         )
     # The map's years are checked against the window when it resolves, not
     # here: a compile may restamp the reference to another period, and a map
     # without that period's years then defers like any reference without facts.
     _measure_id_by_opening_year(measure_map)
+
+
+def _validate_table_by_opening_year(
+    reference: LedgerTargetReference, operation: str
+) -> None:
+    """A window that maps its years to tables names no other table.
+
+    A list-valued ``source_concept`` or ``source_measure_id`` still names
+    several series (OBR's two universal credit cells), each read across the
+    mapped tables. As for the measure map, the years are checked when the
+    window resolves.
+    """
+
+    if reference.ledger_selector.get("source_table") not in (None, ""):
+        raise ValueError(
+            f"LedgerTargetReference {reference.name!r}: {operation} declares both "
+            f"'source_table' and {SOURCE_TABLE_BY_OPENING_YEAR!r}; the map names "
+            "each year's table itself."
+        )
+    _table_by_opening_year(reference.ledger_selector[SOURCE_TABLE_BY_OPENING_YEAR])
 
 
 def _calendar_year_window_opening_year(
@@ -4068,11 +4154,21 @@ def _validate_calendar_year_window_scaled_by_ratio_reference(
                 "cell(s), so it names them in exactly one list-valued selector "
                 f"field of {count} distinct member(s), got {members!r}."
             )
+    for operand in reference.value_operands[1:]:
+        if "complement" in operand and (
+            operand.get("role") != "numerator" or operand["complement"] is not True
+        ):
+            raise ValueError(
+                f"{prefix}: only the numerator may declare complement, and only "
+                "as true."
+            )
     if SOURCE_MEASURE_ID_BY_OPENING_YEAR in reference.ledger_selector:
         raise ValueError(
             f"{prefix} reads one series; {SOURCE_MEASURE_ID_BY_OPENING_YEAR!r} is "
             "refused."
         )
+    if SOURCE_TABLE_BY_OPENING_YEAR in reference.ledger_selector:
+        _validate_table_by_opening_year(reference, CALENDAR_YEAR_WINDOW_SCALED_BY_RATIO)
     if reference.period_match_policy != "latest_not_after":
         raise ValueError(
             f"{prefix} resolves the two years overlapping the target calendar "
@@ -4084,9 +4180,12 @@ def _validate_calendar_year_window_scaled_by_ratio_reference(
         raise ValueError(f"{prefix} requires an explicit calendar-year target period.")
 
 
-#: Keys of a window-ratio operand that are not selector fields.
+#: Keys of a window-ratio operand that are not selector fields. A numerator
+#: may declare ``complement``: its cells are taken off the denominator, so
+#: the share is the rest of the published universe (England's chargeable
+#: dwellings less second homes and empty dwellings, microcosm#1095 D14f).
 _WINDOW_RATIO_OPERAND_METADATA_KEYS = frozenset(
-    ("role", "expected_member_count", "label")
+    ("role", "expected_member_count", "label", "complement")
 )
 
 
@@ -4115,6 +4214,12 @@ def _window_ratio_operand_selectors(
         }
         for operand in reference.value_operands[1:]
     )
+
+
+def _window_ratio_numerator_is_complement(reference: LedgerTargetReference) -> bool:
+    """Whether the numerator's cells are taken off the denominator."""
+
+    return reference.value_operands[1].get("complement") is True
 
 
 def _window_ratio_operand_counts(reference: LedgerTargetReference) -> tuple[int, int]:
@@ -4212,7 +4317,10 @@ def _resolve_calendar_year_window_reference_facts(
     partial window never lands as a value. A selector that maps each year to
     its own measure (``source_measure_id_by_opening_year``) has matched every
     fact to the measure its year declares, so those measures form the one
-    series and the measure drops out of its identity. A selector that names
+    series and the measure drops out of its identity. A selector that maps
+    each year to its own table (``source_table_by_opening_year``) does the
+    same for two editions of one publication: the record set, which belongs
+    to its table, drops out of the identity. A selector that names
     several series (a list-valued ``source_concept``, ``source_measure_id`` or
     ``source_table``) resolves both years of every one of them, so the window
     of a sum of series is the sum of the windowed series; a series short of a
@@ -4221,15 +4329,19 @@ def _resolve_calendar_year_window_reference_facts(
 
     target_year = _calendar_year_from_reference(reference)
     wanted = {target_year + offset for offset in CALENDAR_YEAR_WINDOW_WEIGHTS}
-    measure_map = reference.ledger_selector.get(SOURCE_MEASURE_ID_BY_OPENING_YEAR)
-    if measure_map is not None:
-        declared = sorted(_measure_id_by_opening_year(measure_map))
+    for map_key, parse_map in (
+        (SOURCE_MEASURE_ID_BY_OPENING_YEAR, _measure_id_by_opening_year),
+        (SOURCE_TABLE_BY_OPENING_YEAR, _table_by_opening_year),
+    ):
+        year_map = reference.ledger_selector.get(map_key)
+        if year_map is None:
+            continue
+        declared = sorted(parse_map(year_map))
         if declared != sorted(wanted):
             raise ValueError(
                 f"Ledger target reference {reference.name!r}: calendar_year_window "
                 f"of calendar year {target_year} reads the years opening in "
-                f"{sorted(wanted)}; {SOURCE_MEASURE_ID_BY_OPENING_YEAR!r} maps "
-                f"{declared}."
+                f"{sorted(wanted)}; {map_key!r} maps {declared}."
             )
     expected_series = _calendar_year_window_series_count(reference)
     partitions: dict[tuple[str, ...], dict[int, list[object]]] = {}
@@ -4241,6 +4353,9 @@ def _resolve_calendar_year_window_reference_facts(
             fact,
             include_measure=(
                 SOURCE_MEASURE_ID_BY_OPENING_YEAR not in reference.ledger_selector
+            ),
+            include_record_set=(
+                SOURCE_TABLE_BY_OPENING_YEAR not in reference.ledger_selector
             ),
         )
         partitions.setdefault(series_key, {}).setdefault(opening_year, []).append(fact)
@@ -4269,6 +4384,28 @@ def _resolve_calendar_year_window_reference_facts(
             f"needs both years opening in {sorted(wanted)} from {series_phrase}; "
             f"{len(complete)} of {len(partitions)} matched series carry both."
         )
+    if expected_series > 1:
+        # Each declared member carries exactly one series: two series of one
+        # member and none of another would pass the count alone (the review
+        # of microcosm#1422), as the ratio operands' members are checked.
+        members: dict[tuple[str, ...], int] = {}
+        for years in complete.values():
+            member = _calendar_year_window_member(
+                next(iter(years.values()))[0], reference
+            )
+            members[member] = members.get(member, 0) + 1
+        if len(members) != expected_series or any(
+            count != 1 for count in members.values()
+        ):
+            found = ", ".join(
+                f"{'/'.join(member)} x{count}"
+                for member, count in sorted(members.items())
+            )
+            raise ValueError(
+                f"Ledger target reference {reference.name!r}: calendar_year_window "
+                f"needs one series per declared selector member ({expected_series}); "
+                f"the complete series stand for {found}."
+            )
     resolved: list[object] = []
     for key in sorted(complete):
         years = complete[key]
@@ -4292,22 +4429,74 @@ _CALENDAR_YEAR_WINDOW_SERIES_KEYS = (
 
 
 def _calendar_year_window_series_count(reference: LedgerTargetReference) -> int:
-    """How many series the window composes: one per declared selector member."""
+    """How many series the window composes: one per declared selector member.
 
+    A dimension the selector pins to several values names one series per value,
+    as a list-valued source concept, measure or table does (DfI's Translink
+    receipts by service).
+    """
+
+    selector = reference.ledger_selector or {}
     count = 1
     for key in _CALENDAR_YEAR_WINDOW_SERIES_KEYS:
-        value = (reference.ledger_selector or {}).get(key)
+        value = selector.get(key)
         if isinstance(value, (list, tuple)):
             count *= len(value)
+    for name in _calendar_year_window_listed_dimensions(reference):
+        count *= len(selector["dimension_values"][name])
     return count
 
 
-def _calendar_year_window_series_label(fact: object) -> str:
-    return (
+def _calendar_year_window_member(
+    fact: object, reference: LedgerTargetReference
+) -> tuple[str, ...]:
+    """The declared selector member a series stands for: its value of each
+    list-valued source key and of each dimension pinned to several values."""
+
+    selector = reference.ledger_selector or {}
+    member: list[str] = []
+    for key in _CALENDAR_YEAR_WINDOW_SERIES_KEYS:
+        declared = selector.get(key)
+        if isinstance(declared, (list, tuple)):
+            candidates = {str(value) for value in _selector_candidates(fact, key)}
+            member.append(
+                ",".join(sorted(str(v) for v in declared if str(v) in candidates))
+            )
+    dimensions = _dimensions(fact)
+    for name in _calendar_year_window_listed_dimensions(reference):
+        member.append(f"{name}={dimensions.get(name, '')}")
+    return tuple(member)
+
+
+def _calendar_year_window_listed_dimensions(
+    reference: LedgerTargetReference,
+) -> tuple[str, ...]:
+    """The dimensions the selector pins to several values, in name order."""
+
+    pins = (reference.ledger_selector or {}).get("dimension_values") or {}
+    return tuple(
+        sorted(
+            str(name)
+            for name, value in pins.items()
+            if isinstance(value, (list, tuple)) and len(value) > 1
+        )
+    )
+
+
+def _calendar_year_window_series_label(
+    fact: object, reference: LedgerTargetReference
+) -> str:
+    label = (
         _str_at(fact, "observed_measure", "source_measure_id")
         or _str_at(fact, "layout", "measure_id")
         or _source_measure_concept(fact)
     )
+    listed = _calendar_year_window_listed_dimensions(reference)
+    if not listed:
+        return label
+    dimensions = _dimensions(fact)
+    members = ",".join(f"{name}={dimensions.get(name, '')}" for name in listed)
+    return f"{label}[{members}]"
 
 
 def _calendar_year_window_weights(
@@ -4333,7 +4522,7 @@ def _calendar_year_window_metadata(
         member_key = (
             str(opening_year)
             if series_count == 1
-            else f"{_calendar_year_window_series_label(fact)}@{opening_year}"
+            else f"{_calendar_year_window_series_label(fact, reference)}@{opening_year}"
         )
         members[member_key] = {
             "weight": f"{CALENDAR_YEAR_WINDOW_WEIGHTS[opening_year - target_year]:.15g}",
@@ -4534,11 +4723,177 @@ def _count_mean_fact_role(fact: object) -> str:
     return ""
 
 
+def restamp_reference_period(
+    reference: LedgerTargetReference, period: int | str
+) -> LedgerTargetReference:
+    """The reference measured at another target period.
+
+    A declared ``observation_period`` keeps its offset from the target period:
+    a row that reads DfE's January census after its model year reads the
+    census after the new one. Restamping only ``period`` left every such row
+    on the census it was written for (the review of microcosm#1422). The
+    observation period is read as the reference's match policy reads it
+    (``_shift_observation_period``).
+    """
+
+    if reference.observation_period is None:
+        return replace(reference, period=period)
+    if reference.period is None:
+        raise ValueError(
+            f"LedgerTargetReference {reference.name!r}: an observation_period "
+            "needs a target period to keep its offset from."
+        )
+    shift = _period_year(period) - _period_year(reference.period)
+    return replace(
+        reference,
+        period=period,
+        observation_period=_shift_observation_period(
+            reference.observation_period,
+            shift,
+            period_match_policy=reference.period_match_policy,
+            ledger_selector=reference.ledger_selector,
+        ),
+    )
+
+
+def _observation_period_type(
+    period_match_policy: str, ledger_selector: Mapping[str, Any]
+) -> str:
+    """The period type a match policy reads an observation period under.
+
+    The exact-match path reads it under the selector's ``period_type``. The
+    ``latest_not_after`` cutoff reads it untyped (``_period_key_from_value``),
+    so under a fiscal-year selector "2026-01" is the January 2026 cutoff, not
+    a malformed fiscal year (the fifth review of microcosm#1422).
+    """
+
+    if period_match_policy == "exact":
+        return str(ledger_selector.get("period_type", ""))
+    return ""
+
+
+def _shift_observation_period(
+    observation_period: int | str,
+    years: int,
+    *,
+    period_match_policy: str,
+    ledger_selector: Mapping[str, Any],
+) -> int | str:
+    """``observation_period`` moved ``years``, read as its match policy reads it
+    (``_observation_period_type``).
+
+    A spelling read two ways has no one spelling a year later, so it refuses
+    (the fifth review of microcosm#1422):
+
+    - an exact match without a selector ``period_type`` reads the period under
+      each fact's own type, so "2011-12" is December 2011 to a month fact and
+      2011-12 to a fiscal-year one;
+    - the ``latest_not_after`` cutoff reads it untyped, as December 2011, and
+      compares facts' own spellings untyped. Under a fiscal-year selector it
+      must move to "2012-13" to keep selecting the year's own fact, and under
+      a calendar-year one to "2012-12".
+
+    A spelling the selector's type cannot read ("2026-01" under a fiscal
+    year) is the cutoff's alone.
+    """
+
+    period_type = _observation_period_type(period_match_policy, ledger_selector)
+    if period_match_policy == "exact":
+        readings = () if period_type else ("month", "fiscal_year")
+        why = (
+            "an exact match without a selector period_type reads it as a "
+            "month or as an annual range, by each fact's own type"
+        )
+    else:
+        selector_type = str(ledger_selector.get("period_type", ""))
+        readings = ("", selector_type) if selector_type else ()
+        why = (
+            f"the {period_match_policy} cutoff reads it untyped and the "
+            f"selector's period_type {selector_type!r} reads it otherwise"
+        )
+    parsed = {
+        (key[1], range_end)
+        for (key, _, range_end, _) in (
+            _normalize_period_value(observation_period, declared_type=reading)
+            for reading in readings
+        )
+        if key[0]
+    }
+    if years and len(parsed) > 1:
+        raise ValueError(
+            f"cannot move the period {observation_period!r} by {years} year(s): "
+            f"{why}. A prefixed or four-digit spelling reads one way."
+        )
+    return _shift_period_years(observation_period, years, declared_type=period_type)
+
+
+def _period_year(period: int | str) -> int:
+    parsed, ordinal, _ = _period_key_from_value(period)
+    year = ordinal // 100
+    # The parser reads "FY25" as the year 25, which would move an observation
+    # period by two millennia (the fourth review of microcosm#1422).
+    if not parsed or not 1000 <= year <= 9999:
+        raise ValueError(f"cannot read a four-digit year from the period {period!r}.")
+    return year
+
+
+def _shift_period_years(
+    period: int | str, years: int, *, declared_type: str = ""
+) -> int | str:
+    """The period ``years`` later, in its own spelling.
+
+    The spelling is classified as the ledger's period parser reads it under
+    ``declared_type`` (``_normalize_period_value``; untyped when empty). An
+    annual range (``"2024-25"``, ``"2024-2025"``, ``"fy2024_25"``, and
+    ``"2011-12"`` under an annual type) moves both ends, and a year
+    (``2026``, ``"FY2026"``) or a month (``"2026-01"``, ``"2026-1"``, and
+    ``"2011-12"`` untyped or under ``month``) moves its year. A spelling or
+    year the parser does not read under that type refuses, unless it does
+    not move (the third, fourth and fifth reviews of microcosm#1422).
+    """
+
+    if years == 0:
+        return period
+    text = str(period).strip()
+    (parsed, _, _), _, range_end, _ = _normalize_period_value(
+        text, declared_type=declared_type
+    )
+    if parsed and isinstance(period, int):
+        return period + years
+    if parsed and range_end is not None:
+        ranged = re.fullmatch(r"(\D*)(\d{4})([-_])(\d{2}|\d{4})", text)
+        if ranged:
+            start = int(ranged.group(2)) + years
+            end = start + 1 if len(ranged.group(4)) == 4 else (start + 1) % 100
+            width = len(ranged.group(4))
+            return f"{ranged.group(1)}{start}{ranged.group(3)}{end:0{width}d}"
+    elif parsed:
+        dated = re.fullmatch(r"(\D*)(\d{4})((?:[-_]\d{1,2})?)", text)
+        if dated:
+            return f"{dated.group(1)}{int(dated.group(2)) + years}{dated.group(3)}"
+    raise ValueError(f"cannot move the period {period!r} by {years} year(s).")
+
+
+def _selection_period(reference: LedgerTargetReference) -> int | str | None:
+    """The period a reference selects its facts at: its observation period if
+    it declares one, else its target period."""
+
+    if reference.observation_period is not None:
+        return reference.observation_period
+    return reference.period
+
+
+def _selection_period_label(reference: LedgerTargetReference) -> str:
+    if reference.observation_period is not None:
+        return "observation period"
+    return "target period"
+
+
 def _eligible_selector_matches(
     reference: LedgerTargetReference,
     matches: list[object],
 ) -> list[object]:
-    target_period_key = _period_key_from_value(reference.period)
+    target_period_key = _period_key_from_value(_selection_period(reference))
     if reference.period_match_policy == "source_window":
         return [
             fact
@@ -4626,18 +4981,19 @@ def _validate_reference_period(fact: object, reference: LedgerTargetReference) -
         return
     if reference.period_match_policy != "exact":
         if not _not_after_target_period(
-            _period_key(fact), _period_key_from_value(reference.period)
+            _period_key(fact), _period_key_from_value(_selection_period(reference))
         ):
             raise ValueError(
                 f"Ledger target reference {reference.name!r} requires a fact "
-                f"at or before target period {reference.period!r}, but resolved "
+                f"at or before {_selection_period_label(reference)} "
+                f"{_selection_period(reference)!r}, but resolved "
                 f"fact period {_at(fact, 'period', 'value')!r}."
             )
         return
     if not _exact_period_matches(fact, reference):
         raise ValueError(
             f"Ledger target reference {reference.name!r} requires exact period "
-            f"{reference.period!r}, but resolved fact period "
+            f"{_selection_period(reference)!r}, but resolved fact period "
             f"{_at(fact, 'period', 'type')!r}:"
             f"{_at(fact, 'period', 'value')!r}. A period mismatch must resolve "
             "through a Ledger source_projection at the target period, never "
@@ -4661,7 +5017,7 @@ def _latest_period_selector_match(
     if len(semantic_keys) != 1:
         return None
 
-    target_period_key = _period_key_from_value(reference.period)
+    target_period_key = _period_key_from_value(_selection_period(reference))
     best: tuple[int, int, str] | None = None
     best_matches: list[object] = []
     for fact in matches:
@@ -4681,7 +5037,7 @@ def _latest_period_selector_match(
 
 
 def _selector_period_invariant_key(
-    fact: object, *, include_measure: bool = True
+    fact: object, *, include_measure: bool = True, include_record_set: bool = True
 ) -> tuple[str, ...]:
     return (
         _source_name(fact),
@@ -4696,7 +5052,9 @@ def _selector_period_invariant_key(
         _str_at(fact, "geography", "id"),
         _str_at(fact, "entity", "name"),
         _str_at(fact, "aggregation", "method"),
-        _normalized_record_set_id(_str_at(fact, "layout", "record_set_id")),
+        _normalized_record_set_id(_str_at(fact, "layout", "record_set_id"))
+        if include_record_set
+        else "",
         _str_at(fact, "layout", "groupby_dimension"),
         _normalized_period_bearing_id(_str_at(fact, "layout", "groupby_value_id")),
         json.dumps(_dimensions(fact), sort_keys=True, separators=(",", ":")),
@@ -4847,7 +5205,7 @@ def _period_key(fact: object) -> tuple[int, int, str]:
 def _exact_period_matches(fact: object, reference: LedgerTargetReference) -> bool:
     """Match exact periods by semantic value while retaining period-kind pins."""
 
-    expected_value = reference.period
+    expected_value = _selection_period(reference)
     actual_value = _comparable_period_value(fact)
     actual_type = _str_at(fact, "period", "type")
     selector_type = str(reference.ledger_selector.get("period_type", ""))
@@ -5032,6 +5390,8 @@ def _reference_metadata(reference: LedgerTargetReference) -> dict[str, str]:
     metadata["ledger_value_operation"] = reference.value_operation
     metadata["ledger_assertion_policy"] = reference.assertion_policy
     metadata["ledger_period_match_policy"] = reference.period_match_policy
+    if reference.observation_period is not None:
+        metadata["ledger_observation_period"] = str(reference.observation_period)
     if reference.value_operation in MONTHLY_WINDOW_OPERATIONS:
         months = _declared_source_months(reference)
         metadata["ledger_source_months"] = json.dumps(months, separators=(",", ":"))
@@ -5162,6 +5522,10 @@ def _fact_matches_selector(fact: object, selector: Mapping[str, object]) -> bool
             if not _measure_by_opening_year_matches(fact, expected):
                 return False
             continue
+        if key == SOURCE_TABLE_BY_OPENING_YEAR:
+            if not _table_by_opening_year_matches(fact, expected):
+                return False
+            continue
         if expected is None or expected == "":
             continue
         candidates = _selector_candidates(fact, str(key))
@@ -5189,7 +5553,12 @@ def fact_matches_selector(fact: object, selector: Mapping[str, object]) -> bool:
 def selector_field_is_supported(key: str) -> bool:
     """Whether ``key`` is in the closed selector vocabulary."""
 
-    if key in {"dimensions", "dimension_values", SOURCE_MEASURE_ID_BY_OPENING_YEAR}:
+    if key in {
+        "dimensions",
+        "dimension_values",
+        SOURCE_MEASURE_ID_BY_OPENING_YEAR,
+        SOURCE_TABLE_BY_OPENING_YEAR,
+    }:
         return True
     try:
         _selector_candidates({}, key)
@@ -5256,41 +5625,64 @@ def _selector_candidates(fact: object, key: str) -> tuple[str, ...]:
 def _measure_id_by_opening_year(expected: object) -> dict[int, str]:
     """Parse a year-to-measure map: four-digit opening years to measure ids."""
 
+    return _by_opening_year(SOURCE_MEASURE_ID_BY_OPENING_YEAR, expected, "measure id")
+
+
+def _table_by_opening_year(expected: object) -> dict[int, str]:
+    """Parse a year-to-table map: four-digit opening years to source tables."""
+
+    return _by_opening_year(SOURCE_TABLE_BY_OPENING_YEAR, expected, "source table")
+
+
+def _by_opening_year(field: str, expected: object, noun: str) -> dict[int, str]:
     if not isinstance(expected, Mapping) or not expected:
         raise ValueError(
-            f"Ledger fact selector field {SOURCE_MEASURE_ID_BY_OPENING_YEAR!r} "
-            "must be a non-empty mapping of opening year to measure id."
+            f"Ledger fact selector field {field!r} must be a non-empty mapping "
+            f"of opening year to {noun}."
         )
-    measure_by_year: dict[int, str] = {}
-    for year, measure in expected.items():
+    by_year: dict[int, str] = {}
+    for year, value in expected.items():
         year_text = str(year)
         if (
             isinstance(year, bool)
             or len(year_text) != 4
             or not year_text.isdigit()
-            or not isinstance(measure, str)
-            or not measure
+            or not isinstance(value, str)
+            or not value
         ):
             raise ValueError(
-                f"Ledger fact selector field {SOURCE_MEASURE_ID_BY_OPENING_YEAR!r} "
-                f"maps {year!r} to {measure!r}; expected a four-digit opening "
-                "year and a non-blank measure id."
+                f"Ledger fact selector field {field!r} maps {year!r} to "
+                f"{value!r}; expected a four-digit opening year and a non-blank "
+                f"{noun}."
             )
-        measure_by_year[int(year_text)] = measure
-    return measure_by_year
+        by_year[int(year_text)] = value
+    return by_year
 
 
 def _measure_by_opening_year_matches(fact: object, expected: object) -> bool:
     """Match an annual fact only to the measure its own opening year declares."""
 
-    measure_by_year = _measure_id_by_opening_year(expected)
+    return _matches_its_opening_year(
+        fact, _measure_id_by_opening_year(expected), "source_measure_id"
+    )
+
+
+def _table_by_opening_year_matches(fact: object, expected: object) -> bool:
+    """Match an annual fact only to the table its own opening year declares."""
+
+    return _matches_its_opening_year(
+        fact, _table_by_opening_year(expected), "source_table"
+    )
+
+
+def _matches_its_opening_year(
+    fact: object, by_year: Mapping[int, str], field: str
+) -> bool:
     period_key = _period_key(fact)
     if not period_key[0] or period_key[1] % 100 != 99:
         return False
-    measure = measure_by_year.get(period_key[1] // 100)
-    return measure is not None and measure in _selector_candidates(
-        fact, "source_measure_id"
-    )
+    declared = by_year.get(period_key[1] // 100)
+    return declared is not None and declared in _selector_candidates(fact, field)
 
 
 def _dimensions_match(fact: object, expected: object) -> bool:

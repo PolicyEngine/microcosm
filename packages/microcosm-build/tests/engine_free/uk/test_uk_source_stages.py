@@ -67,6 +67,10 @@ E7_STAGE_NAMES = [
     "spi_support_channel",
     "spi_income_band_donors",
     "hmrc_spi_income_spine",
+    # The company cars carve their benefits out of SPI-channel pay right after
+    # the income stage writes it, so every later stage reads pay without them
+    # (PolicyEngine/uk-autumn-budget-dashboard-2026#316).
+    "company_cars",
 ]
 HOUSING_SHELL_STAGE_NAMES = [
     "spi_housing_shell",
@@ -122,8 +126,8 @@ E8_STAGE_NAMES = [
     "childcare_copy_take_up",
     # microcosm#1095: the stored private-school attendance runs after them.
     "private_school_attendance",
-    # microcosm#1415: the ISA subscriptions run after them, on final incomes;
-    # nothing reads their outputs.
+    # microcosm#1415: the ISA subscriptions run on final incomes; nothing
+    # reads their outputs.
     "isa_subscriptions",
     # microcosm#1428: the self-employed's gross receipts run last, on final
     # profits; only the engine's trading allowance reads them.
@@ -209,7 +213,7 @@ class TestUKSourceStagesManifest:
         names = [stage["stage"] for stage in canonical["stages"]]
 
         assert names[
-            names.index("hmrc_spi_income_spine") + 1 : names.index("cgt_support_split")
+            names.index(E7_STAGE_NAMES[-1]) + 1 : names.index("cgt_support_split")
         ] == [
             *HOUSING_SHELL_STAGE_NAMES,
             *E5_STAGE_NAMES,
@@ -316,6 +320,7 @@ class TestUKSourceStagesManifest:
                     "private_school_attendance": _identity,
                     "isa_subscriptions": _identity,
                     "trading_allowance_receipts": _identity,
+                    "company_cars": _identity,
                     "childcare_copy_take_up": _identity,
                     "age_tail": _identity,
                     "frs_relationships": _identity,

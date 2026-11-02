@@ -605,12 +605,14 @@ _PACKAGED_EXCLUSION_CENSUS = {
     # (María's rule of 2026-10-21), re-signed on 2026-10-23. Of the five SLC
     # rows, the postgraduate repayments row retired from the targets (the
     # stage assigns no postgraduate plan) and Plan 5's liable stock binds; the
-    # Plan 5 repayments and the two Plan 2 stocks stay.
+    # Plan 5 repayments and the two Plan 2 stocks stay. microcosm#1095 splits
+    # the devolved repayments by nation and holds Scotland's and Northern
+    # Ireland's (ruling R4: Wales only binds).
     "_1_000_000_to_inf": 10,
     # The SPI Table 3.7 £1m-and-over interest amount row, held on the savings
     # follow-up's measured distortion (microcosm#1428, 2026-10-30).
     "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_1000000": 1,
-    "slc.": 3,
+    "slc.": 5,
     # microcosm#1095 (2026-10-07): two bands whose few supporting awards
     # policyengine-uk 2.122.2 moves out join the uk-data#452 class.
     # microcosm#1095 U3 (2026-10-16): the sparse-band support floor drops
@@ -738,10 +740,13 @@ def test_packaged_exclusions_load():
     # electricity row again (María's ruling of 2026-10-28), and holds the ONS
     # gas row again for bottled gas (María's ruling of 2026-10-29). The
     # betting and gaming row stays held: the solve cannot yet measure its
-    # 2024 duty (microcosm#1420). The savings follow-up holds the SPI £1m-and-over
-    # interest amount row on its measured distortion (microcosm#1428, María's
-    # ruling of 2026-10-30).
-    assert len(names) == len(set(names)) == 40
+    # 2024 duty (microcosm#1420). microcosm#1095 holds the three OBR council
+    # tax nation rows, pinned to the UK as measured diagnostics (ruling D14e),
+    # and SLC's Scottish and Northern Irish repayment rows (ruling R4: Wales
+    # only binds). The savings follow-up holds the SPI £1m-and-over interest
+    # amount row on its measured distortion (microcosm#1428, María's ruling of
+    # 2026-10-30).
+    assert len(names) == len(set(names)) == 45
     (gas,) = [
         entry
         for entry in exclusions
@@ -2332,6 +2337,8 @@ class _AnnualSimulation:
             "higher_rate_savings_income",
             "add_rate_savings_income",
             "total_pension_income",
+            "benefits_in_kind",
+            "company_car_availability",
         )
         variables = {
             name: SimpleNamespace(
@@ -2371,6 +2378,17 @@ class _AnnualSimulation:
             # The engine's sum of the two pensions (microcosm#1418).
             return self.calculate("private_pension_income", year) + self.calculate(
                 "state_pension", year
+            )
+        if variable == "company_car_availability":
+            # The engine's default: a car available all year.
+            return np.ones(3)
+        if variable == "benefits_in_kind":
+            # The first and third stub people have a company car; the engine
+            # computes its benefit from the car, not from pay, for the share of
+            # the year it is available
+            # (PolicyEngine/uk-autumn-budget-dashboard-2026#316).
+            return np.array([3_000.0, 0.0, 2_000.0]) * self.calculate(
+                "company_car_availability", year
             )
         total = sum(
             self.calculate(name, year)
@@ -2433,6 +2451,16 @@ def test_annual_measures_read_each_persons_year(monkeypatch, tmp_path):
     # The engine carries the year's pay from 2024 at its own index.
     np.testing.assert_allclose(pay, [31_500.0, 9_450.0, 10_500.0])
     assert route == "annual_income_simulation:native"
+    # HMRC's employment income: the year's pay plus the company car benefits,
+    # the third person's car available for the half year their pay covers.
+    with_cars, route = resolver.compute(
+        "person", "employment_income_with_benefits_in_kind_annual"
+    )
+    np.testing.assert_allclose(with_cars, [34_500.0, 9_450.0, 11_500.0])
+    assert route == (
+        "annual_income_simulation:engine_components:"
+        "employment_income_with_benefits_in_kind"
+    )
     profit, route = resolver.compute(
         "person", "self_employment_income_after_loss_relief_annual"
     )

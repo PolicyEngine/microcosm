@@ -540,11 +540,13 @@ _SOURCES: tuple[dict[str, Any], ...] = (
         "latest_vintage": "financial year ending 2023",
         "status": SOURCE_STATUS_SIGNED_DEFERRED,
         "ledger_fact_pin": _LEDGER_FACT_FEED_PIN,
-        "signed_reason_id": "msoa_mean_to_la_deferred",
+        "signed_reason_id": "frs_model_based_circularity",
         "signed_rationale": (
-            "The pinned Ledger fact feed carries ONS equivalised-income facts "
-            "at MSOA grain, not local-authority grain; the local-authority "
-            "mean aggregation design is deferred."
+            "Kept out: ONS models its small-area income estimates (MSOA "
+            "means, before and after housing costs, and housing costs) from "
+            "the FRS, so binding them would partly fit the FRS to itself; the "
+            "feed also carries no local-authority rows (María's ruling of "
+            "2026-10-29, microcosm#1095 D18a)."
         ),
         "verified_on": _SOURCES_VERIFIED_ON,
         "notes": (
@@ -552,8 +554,8 @@ _SOURCES: tuple[dict[str, Any], ...] = (
             "see the frs_model_based_target_circularity adjudication. The "
             "BHC and AHC measures are independently modelled and not "
             "directly comparable — see the ons_bhc_ahc_noncomparable "
-            "adjudication. MSOA-to-local-authority aggregation is signed "
-            "deferred for this run; England and Wales only."
+            "adjudication. Kept out as circular (María's ruling of "
+            "2026-10-29, microcosm#1095 D18a); England and Wales only."
         ),
     },
     {

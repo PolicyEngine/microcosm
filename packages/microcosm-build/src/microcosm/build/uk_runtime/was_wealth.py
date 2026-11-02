@@ -279,7 +279,7 @@ WAS_PRIVATE_RENT_CODE = 1
 #: which the 2026-08-19 licensed audit found carrying them: vcarnr8 (2 rows
 #: of -8) and HBedRmR8 (95.8% -8 - the bedrooms question is effectively
 #: unasked in the WAS household file; the predictor-quality question is
-#: registered for the end-of-workstream revisit on microcosm#145).
+#: tracked in microcosm#1095 as num_bedrooms as a WAS predictor, uk-data#463).
 #: DVPriRntR8's -9 is structural not-applicable (not a private renter), so
 #: the private-renter reading (code 1) is already correct; genuinely negative
 #: domains (net financial wealth, self-employment losses, BHC income) are
@@ -617,7 +617,9 @@ def clean_was_household_table(raw: pd.DataFrame) -> pd.DataFrame:
     )
     _assert_donor_net_financial_identity(cleaned)
     secured = cleaned[list(UK_WAS_PROPERTY_SECURED_DEBT)].sum(axis=1)
-    above = secured - cleaned[UK_WAS_SECURED_DEBT_WITHIN] > UK_WAS_IDENTITY_TOLERANCE_GBP
+    above = (
+        secured - cleaned[UK_WAS_SECURED_DEBT_WITHIN] > UK_WAS_IDENTITY_TOLERANCE_GBP
+    )
     if above.any():
         raise ValueError(
             f"WAS donor secured debt {list(UK_WAS_PROPERTY_SECURED_DEBT)} passes "

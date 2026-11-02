@@ -1,0 +1,343 @@
+{
+  "schema_version": 1,
+  "country": "nz",
+  "generator": "tools/build_nz_benefit_gross_up.py",
+  "status": "reusable graph declarations; packaged transport graph wiring remains pending",
+  "disclosure": "Annualised Schedule 1, before credits, 52-week benefit gross-up, each benefit inverted independently of other income.",
+  "monotonicity": "For the pinned Schedule 1, every marginal tax rate falls below one; 52*n + T(G) - G decreases or stays constant as each person's own G increases.",
+  "authoritative_value": "money.minor_units@1 recovers annual integer cents exactly from certified float64 quantum multiples and preserves the bridge's float64 output contract.",
+  "certificate_contract": "certificate_margin bounds the absolute difference between each computed residual and the exact residual of the declared terms at every evaluated point. Boundary residuals must exceed the margin in magnitude; ambiguous boundaries refuse, and the residual bound includes the margin. A zero margin asserts exact outputs and permits half-even ties.",
+  "weekly_gross_reporting": {
+    "source": "annual_gross_cents",
+    "divisor": 52,
+    "tie_rule": "half_even",
+    "reporting_only": true,
+    "persist": false
+  },
+  "nodes": [
+    {
+      "id": "nz.benefits.rates",
+      "kernel": "simulate.rules_by_ref@1",
+      "population": "nz.open",
+      "structural": "none",
+      "rules_binding": "main_benefits_rates",
+      "inputs": [
+        {
+          "entity": "person",
+          "columns": [
+            "jobseeker_support_applicant_age",
+            "jobseeker_support_benefit_commenced_on_or_after_1998_07_01",
+            "jobseeker_support_dependent_children_count",
+            "jobseeker_support_living_with_parent",
+            "jobseeker_support_partner_ineligible_due_to_sanction_or_strike",
+            "jobseeker_support_partner_receives_main_benefit",
+            "jobseeker_support_partner_receives_new_zealand_superannuation_or_veterans_pension",
+            "jobseeker_support_single",
+            "jobseeker_support_total_income",
+            "jobseeker_support_transferred_2013_no_dependent_children",
+            "jobseeker_support_youngest_dependent_child_age",
+            "main_benefit_income_test_assessable_income",
+            "sole_parent_support_personal_earnings_used_for_childcare",
+            "sole_parent_support_total_income",
+            "supported_living_blind_average_weekly_earnings",
+            "supported_living_blind_beneficiary_employed",
+            "supported_living_blind_other_weekly_amounts_from_all_sources",
+            "supported_living_payment_applicant_age",
+            "supported_living_payment_beneficiary_personal_earnings",
+            "supported_living_payment_caring",
+            "supported_living_payment_dependent_children_count",
+            "supported_living_payment_partner_receives_main_benefit",
+            "supported_living_payment_partner_receives_new_zealand_superannuation_or_veterans_pension",
+            "supported_living_payment_partnered_long_term_residential_care_halving_applies",
+            "supported_living_payment_restricted_or_blind",
+            "supported_living_payment_single",
+            "supported_living_payment_total_income",
+            "supported_living_payment_totally_blind"
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "entity": "person",
+          "column": "jobseeker_support_net_weekly_payment",
+          "dtype": "float64"
+        },
+        {
+          "entity": "person",
+          "column": "sole_parent_support_net_weekly_payment",
+          "dtype": "float64"
+        },
+        {
+          "entity": "person",
+          "column": "supported_living_payment_net_weekly_payment",
+          "dtype": "float64"
+        }
+      ],
+      "params": {
+        "variables": [
+          "jobseeker_support_net_weekly_payment",
+          "sole_parent_support_net_weekly_payment",
+          "supported_living_payment_net_weekly_payment"
+        ]
+      }
+    },
+    {
+      "id": "nz.gross_up.jobseeker_support",
+      "kernel": "simulate.solve_zero@1",
+      "population": "nz.open",
+      "structural": "none",
+      "inputs": [
+        {
+          "entity": "person",
+          "columns": [
+            "jobseeker_support_net_weekly_payment"
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "entity": "person",
+          "column": "jobseeker_support_annual_gross",
+          "dtype": "float64"
+        }
+      ],
+      "params": {
+        "engine_ref": {
+          "binding": "income_tax_schedule_1",
+          "field": "engine_ref"
+        },
+        "period": {
+          "binding": "income_tax_schedule_1",
+          "field": "period"
+        },
+        "variables": [
+          "individual_income_tax_before_credits"
+        ],
+        "input_overrides": "[]",
+        "output_coefficients": "[{\"coefficient\":52,\"column\":\"jobseeker_support_annual_gross\",\"entity\":\"person\",\"source_column\":\"jobseeker_support_net_weekly_payment\",\"source_entity\":\"person\"},{\"coefficient\":1,\"column\":\"jobseeker_support_annual_gross\",\"entity\":\"person\",\"variable\":\"individual_income_tax_before_credits\"},{\"coefficient\":-1,\"column\":\"jobseeker_support_annual_gross\",\"entity\":\"person\",\"trial\":true}]",
+        "solve_input": "{\"column\":\"taxable_income\",\"entity\":\"person\"}",
+        "bracket": [
+          0,
+          1000000
+        ],
+        "tolerance": 1e-07,
+        "iterations": 48,
+        "quantum": "0.01",
+        "tie_rule": "half_even",
+        "certificate_margin": "0.000001",
+        "quantized_residual_bound": "0.0050001",
+        "extra_evaluation_budget": 9
+      }
+    },
+    {
+      "id": "nz.gross_up.sole_parent_support",
+      "kernel": "simulate.solve_zero@1",
+      "population": "nz.open",
+      "structural": "none",
+      "inputs": [
+        {
+          "entity": "person",
+          "columns": [
+            "sole_parent_support_net_weekly_payment"
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "entity": "person",
+          "column": "sole_parent_support_annual_gross",
+          "dtype": "float64"
+        }
+      ],
+      "params": {
+        "engine_ref": {
+          "binding": "income_tax_schedule_1",
+          "field": "engine_ref"
+        },
+        "period": {
+          "binding": "income_tax_schedule_1",
+          "field": "period"
+        },
+        "variables": [
+          "individual_income_tax_before_credits"
+        ],
+        "input_overrides": "[]",
+        "output_coefficients": "[{\"coefficient\":52,\"column\":\"sole_parent_support_annual_gross\",\"entity\":\"person\",\"source_column\":\"sole_parent_support_net_weekly_payment\",\"source_entity\":\"person\"},{\"coefficient\":1,\"column\":\"sole_parent_support_annual_gross\",\"entity\":\"person\",\"variable\":\"individual_income_tax_before_credits\"},{\"coefficient\":-1,\"column\":\"sole_parent_support_annual_gross\",\"entity\":\"person\",\"trial\":true}]",
+        "solve_input": "{\"column\":\"taxable_income\",\"entity\":\"person\"}",
+        "bracket": [
+          0,
+          1000000
+        ],
+        "tolerance": 1e-07,
+        "iterations": 48,
+        "quantum": "0.01",
+        "tie_rule": "half_even",
+        "certificate_margin": "0.000001",
+        "quantized_residual_bound": "0.0050001",
+        "extra_evaluation_budget": 9
+      }
+    },
+    {
+      "id": "nz.gross_up.supported_living_payment",
+      "kernel": "simulate.solve_zero@1",
+      "population": "nz.open",
+      "structural": "none",
+      "inputs": [
+        {
+          "entity": "person",
+          "columns": [
+            "supported_living_payment_net_weekly_payment"
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "entity": "person",
+          "column": "supported_living_payment_annual_gross",
+          "dtype": "float64"
+        }
+      ],
+      "params": {
+        "engine_ref": {
+          "binding": "income_tax_schedule_1",
+          "field": "engine_ref"
+        },
+        "period": {
+          "binding": "income_tax_schedule_1",
+          "field": "period"
+        },
+        "variables": [
+          "individual_income_tax_before_credits"
+        ],
+        "input_overrides": "[]",
+        "output_coefficients": "[{\"coefficient\":52,\"column\":\"supported_living_payment_annual_gross\",\"entity\":\"person\",\"source_column\":\"supported_living_payment_net_weekly_payment\",\"source_entity\":\"person\"},{\"coefficient\":1,\"column\":\"supported_living_payment_annual_gross\",\"entity\":\"person\",\"variable\":\"individual_income_tax_before_credits\"},{\"coefficient\":-1,\"column\":\"supported_living_payment_annual_gross\",\"entity\":\"person\",\"trial\":true}]",
+        "solve_input": "{\"column\":\"taxable_income\",\"entity\":\"person\"}",
+        "bracket": [
+          0,
+          1000000
+        ],
+        "tolerance": 1e-07,
+        "iterations": 48,
+        "quantum": "0.01",
+        "tie_rule": "half_even",
+        "certificate_margin": "0.000001",
+        "quantized_residual_bound": "0.0050001",
+        "extra_evaluation_budget": 9
+      }
+    },
+    {
+      "id": "nz.gross_up.annual_cents",
+      "kernel": "money.minor_units@1",
+      "population": "nz.open",
+      "structural": "none",
+      "inputs": [
+        {
+          "entity": "person",
+          "columns": [
+            "jobseeker_support_annual_gross",
+            "sole_parent_support_annual_gross",
+            "supported_living_payment_annual_gross"
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "entity": "person",
+          "column": "jobseeker_support_annual_gross_cents",
+          "dtype": "int64"
+        },
+        {
+          "entity": "person",
+          "column": "sole_parent_support_annual_gross_cents",
+          "dtype": "int64"
+        },
+        {
+          "entity": "person",
+          "column": "supported_living_payment_annual_gross_cents",
+          "dtype": "int64"
+        }
+      ],
+      "params": {
+        "engine_ref": {
+          "binding": "income_tax_schedule_1",
+          "field": "engine_ref"
+        },
+        "period": {
+          "binding": "income_tax_schedule_1",
+          "field": "period"
+        },
+        "declaration": "{\"columns\":[{\"output_column\":\"jobseeker_support_annual_gross_cents\",\"quantum\":\"0.01\",\"rounding\":\"exact\",\"source_column\":\"jobseeker_support_annual_gross\"},{\"output_column\":\"sole_parent_support_annual_gross_cents\",\"quantum\":\"0.01\",\"rounding\":\"exact\",\"source_column\":\"sole_parent_support_annual_gross\"},{\"output_column\":\"supported_living_payment_annual_gross_cents\",\"quantum\":\"0.01\",\"rounding\":\"exact\",\"source_column\":\"supported_living_payment_annual_gross\"}],\"entity\":\"person\"}"
+      }
+    },
+    {
+      "id": "nz.gross_up.super_cents",
+      "kernel": "money.minor_units@1",
+      "population": "nz.open",
+      "structural": "none",
+      "inputs": [
+        {
+          "entity": "person",
+          "columns": [
+            "nz_super_weekly_amount_before_tax"
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "entity": "person",
+          "column": "nz_super_weekly_amount_before_tax_cents",
+          "dtype": "int64"
+        }
+      ],
+      "params": {
+        "declaration": "{\"columns\":[{\"output_column\":\"nz_super_weekly_amount_before_tax_cents\",\"quantum\":\"0.01\",\"rounding\":\"half_even\",\"source_column\":\"nz_super_weekly_amount_before_tax\",\"source_tax_basis\":\"before_tax\"}],\"entity\":\"person\"}"
+      }
+    },
+    {
+      "id": "nz.benefits.annual_transfers",
+      "kernel": "money.annual_transfers@1",
+      "population": "nz.open",
+      "structural": "none",
+      "inputs": [
+        {
+          "entity": "person",
+          "columns": [
+            "receives_jobseeker_support",
+            "receives_sole_parent_support",
+            "receives_supported_living_payment",
+            "receives_nz_super",
+            "jobseeker_support_annual_gross_cents",
+            "sole_parent_support_annual_gross_cents",
+            "supported_living_payment_annual_gross_cents",
+            "nz_super_weekly_amount_before_tax_cents"
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "entity": "person",
+          "column": "jobseeker_support_annual_gross_transfer_cents",
+          "dtype": "int64"
+        },
+        {
+          "entity": "person",
+          "column": "sole_parent_support_annual_gross_transfer_cents",
+          "dtype": "int64"
+        },
+        {
+          "entity": "person",
+          "column": "supported_living_payment_annual_gross_transfer_cents",
+          "dtype": "int64"
+        },
+        {
+          "entity": "person",
+          "column": "nz_super_annual_gross_transfer_cents",
+          "dtype": "int64"
+        }
+      ],
+      "params": {
+        "declaration": "{\"entity\":\"person\",\"exposure\":{\"central\":1,\"convention\":\"full_year_stock_equivalent\"},\"transfers\":[{\"flag_column\":\"receives_jobseeker_support\",\"output_column\":\"jobseeker_support_annual_gross_transfer_cents\",\"source_basis\":\"annual_gross_cents\",\"source_column\":\"jobseeker_support_annual_gross_cents\"},{\"flag_column\":\"receives_sole_parent_support\",\"output_column\":\"sole_parent_support_annual_gross_transfer_cents\",\"source_basis\":\"annual_gross_cents\",\"source_column\":\"sole_parent_support_annual_gross_cents\"},{\"flag_column\":\"receives_supported_living_payment\",\"output_column\":\"supported_living_payment_annual_gross_transfer_cents\",\"source_basis\":\"annual_gross_cents\",\"source_column\":\"supported_living_payment_annual_gross_cents\"},{\"flag_column\":\"receives_nz_super\",\"output_column\":\"nz_super_annual_gross_transfer_cents\",\"source_basis\":\"weekly_before_tax_cents\",\"source_column\":\"nz_super_weekly_amount_before_tax_cents\",\"source_tax_basis\":\"before_tax\"}],\"weeks_per_year\":52}"
+      }
+    }
+  ]
+}

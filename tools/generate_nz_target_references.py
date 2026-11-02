@@ -1,4 +1,4 @@
-"""Generate the reviewed NZ selector inventory through G8-r3a from a pinned artifact.
+"""Generate the reviewed NZ selector inventory through G8-w3a from a pinned artifact.
 
 Run with ``NZ_CHRONICLE_ARTIFACT`` or ``--artifact``. Observations stay in
 Chronicle: references contain selectors only; the separate inventory resource
@@ -25,6 +25,8 @@ SPEC = (
     Path(__file__).resolve().parents[1]
     / "packages/microcosm-build/src/microcosm/build/nz"
 )
+HOLDOUT_TEMPLATES = Path(__file__).with_name("nz_holdout_reference_templates.json")
+PRECAL_TEMPLATES = Path(__file__).with_name("nz_precal_reference_templates.json")
 REGIONS = (
     "01",
     "02",
@@ -65,7 +67,9 @@ TENURE = {
         "rent_free",
     ],
 }
-RESIDUAL_REASON = "Requires the shared reference-profile resolver to apply d1886 Census not-stated residual allocation before the single ERP bridge; raw size and tenure rows cannot compile."
+RESIDUAL_REASON = "The shared reference-profile resolver must apply d1886 Census not-stated residual allocation before the single ERP bridge; G8-w3b selects the resolved tenure rows."
+SIZE_REASON = "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+REGION_99_REASON = "G8-w4 must provide support and release-input coverage evidence for the separate region-99 national-growth proxy; G8-m2 supplies joint geography but no regional ERP series."
 RESIDUAL_DISCLOSURE = (
     "d1886 modelling convention, 23 October 2026. Microcosm allocates Census "
     "counts with unstated household size across stated size categories in "
@@ -81,8 +85,8 @@ RESIDUAL_DISCLOSURE = (
     "one application of B2 ERP growth. Region 99 remains separate and uses the "
     "disclosed national-growth proxy."
 )
-FAMILY_REASON = "G8-r3b Census-family multiplicity classifier is not implemented; the signed d1932 reconciliation is computed and receipted, but these rows remain parked and exempt. MC7 benefit units and family labels cannot substitute for Census multiplicities."
-IRD_REASON = "B4: reviewed IRD-definition taxable-income measurement, annual component closure and record universe remain required. Ageing resolution does not establish that measurement."
+FAMILY_REASON = "G8-r3b must implement Census-family multiplicity classification before activation. The hub records the signed d1932 reconciliation; MC7 benefit units and family labels cannot substitute for Census multiplicities."
+IRD_REASON = "B4: G8-r2c must supply reviewed IRD-definition taxable-income measurement, annual component closure and the record universe. Ageing resolution does not establish that measurement."
 IRD_MEASUREMENT_BINDING = "ird_taxable_income_ty2027_v1"
 # Reviewed national detail-row map: nil row 8 through open tail row 244.
 # Published national total row 246 is diagnostic and is deliberately absent.
@@ -115,9 +119,7 @@ INTERVAL_DISCLOSURE = (
     "weighted mass within $1 of every cut and the fixed-weight change under the "
     "left-closed alternative; publisher reclassification is unavailable."
 )
-RECEIPT_REASON = "G8-w: age-stratified receipt assignment is not supported by the current total-only receipt kernel; preserve the source snapshot and age filters."
-NZS_REASON = "NZ Super receipt binding and prepared receipt flag are not implemented."
-VP_REASON = "Veterans Pension is unsupported: no veteran facts or producer; a missing flag must refuse, never default to false."
+VP_REASON = "G8-w3b must refuse Veterans Pension as unsupported under H4. Activation needs veteran facts and a reviewed receipt producer; G8-y owns the closing step."
 
 
 def _selector(fact, *, pin_key=True):
@@ -438,16 +440,6 @@ def calibration_bindings():
                 for code in range(1, 4)
             ],
             {
-                "name": "receives_<program>",
-                "activation_status": "requires_stratified_receipt_assignment",
-                "reason": RECEIPT_REASON,
-            },
-            {
-                "name": "receives_nz_super",
-                "activation_status": "requires_receipt_binding",
-                "reason": NZS_REASON,
-            },
-            {
                 "name": "receives_veterans_pension",
                 "activation_status": "requires_unsupported_veterans_pension",
                 "reason": VP_REASON,
@@ -509,8 +501,8 @@ def build_reference_documents(artifact, *, package_dir=SPEC):
             8,
             "stats_nz_census_households_by_size_region",
             "household_structure",
-            "requires_reference_profile_resolution",
-            RESIDUAL_REASON,
+            "requires_household_structure_release_evidence",
+            SIZE_REASON,
         ),
         (
             "family_type",
@@ -603,8 +595,10 @@ def build_reference_documents(artifact, *, package_dir=SPEC):
                 entity="household",
                 measure="households",
                 family="housing_tenure",
-                status="requires_reference_profile_resolution",
-                reason=RESIDUAL_REASON,
+                status="requires_region_99_release_evidence"
+                if region == "99"
+                else "requires_reference_profile_resolution",
+                reason=REGION_99_REASON if region == "99" else RESIDUAL_REASON,
                 filter_column=f"household_region_{region}_{tenure}_indicator",
                 label=label,
             )
@@ -685,26 +679,30 @@ def build_reference_documents(artifact, *, package_dir=SPEC):
                 reference_set="precal",
                 period=2027,
                 method_card="MC4",
-                status="requires_g8r2_source_period_wage_bridge_and_intervals",
-                reason="G8-r2: source TY2026 requires its own TY2026-to-TY2027 wage bridge and reviewed numerical interval map; TY2024 factors are inapplicable.",
+                status="requires_g8r2c_wage_quantile_producer",
+                reason="G8-r2c must connect the reviewed TY2026-to-TY2027 wage bridge, intervals and coverage to an active P1 earnings quantile producer; declarations alone do not produce calibrated earnings.",
                 label=f"TY2026-27 wage/salary band {fact['dimensions']['wage_salary_band_source_label']} (parked)",
             )
         )
-    old_precal = json.loads((package_dir / "precal_references.json").read_text())
+    precal_templates = json.loads(PRECAL_TEMPLATES.read_text())
     for contract, status, reason in (
         (
             "mbie_bond_rents_by_territorial_authority",
             "requires_rent_band_frequencies",
-            "MBIE medians, quartiles and bond counts do not supply rent-band frequencies by territorial authority, bedrooms and dwelling type.",
+            "G8-d1 supplies a Census rent-band replacement and must resolve C1 rent ageing; that replacement does not activate this MBIE P2 row. MBIE activation needs rent-band frequencies that medians, quartiles and bond counts cannot supply; G8-y owns the closing step.",
         ),
         (
             "stats_nz_household_financial_net_worth_distribution",
             "requires_all_household_liquid_asset_histogram",
-            "Nonzero-holder summaries do not supply an all-household liquid-financial-asset histogram.",
+            "P3 activation needs an all-household liquid-financial-asset histogram; nonzero-holder summaries cannot supply it. G8-x may run d1982's separate diagnostic donor-stock exception without claiming NZ calibration; that exception does not activate P3. G8-y owns the closing step.",
         ),
     ):
         row = copy.deepcopy(
-            next(r for r in old_precal["target_references"] if r["name"] == contract)
+            next(
+                r
+                for r in precal_templates["target_references"]
+                if r["name"] == contract
+            )
         )
         row["metadata"].update(
             {
@@ -758,8 +756,6 @@ def build_reference_documents(artifact, *, package_dir=SPEC):
                     measure=f"receives_{program}",
                     family="main_benefits",
                     reference_set=reference_set,
-                    status="requires_stratified_receipt_assignment",
-                    reason=RECEIPT_REASON,
                     filter_column=f"age_{code}_indicator",
                     method_card="MC5" if reference_set == "calibration" else "MC6",
                 )
@@ -768,7 +764,7 @@ def build_reference_documents(artifact, *, package_dir=SPEC):
                 )
                 destination.append(row)
         for source_program, program, status, reason in (
-            ("nzs", "nz_super", "requires_receipt_binding", NZS_REASON),
+            ("nzs", "nz_super", "active", None),
             (
                 "vp",
                 "veterans_pension",
@@ -820,6 +816,26 @@ def build_reference_documents(artifact, *, package_dir=SPEC):
             "target_references": rows,
             "target_profile": {"schema_version": 1, "hierarchy_reconciliations": []},
         }
+    documents["mass_references.json"] = {
+        "country": "nz",
+        "reference_set": "mass",
+        "description": "CREATE scales design weights to Stats NZ's national June 2025 estimated resident population under H8; this unfiltered person count supplies mass, not a calibration row.",
+        "target_references": [
+            _reference(
+                erp["NZ"][2025],
+                name="stats_nz_national_erp_june_2025",
+                contract="national_erp",
+                entity="person",
+                measure="people",
+                family="demography",
+                reference_set="mass",
+                method_card="MC5",
+                label="New Zealand estimated resident population, June 2025",
+            )
+        ],
+    }
+    documents["holdout_references.json"] = _holdout_references(inventory)
+    documents["reference_selection.json"] = _reference_selection(documents)
     documents["calibration_bindings.json"] = calibration_bindings()
     documents["reference_profiles.json"] = _reference_profiles(
         inventory, targets, family_declaration
@@ -829,6 +845,122 @@ def build_reference_documents(artifact, *, package_dir=SPEC):
         inventory, erp, documents, feed_pin, ta_facts, family_declaration
     )
     return documents
+
+
+def _holdout_references(inventory):
+    """Pin the two supported comparators; preserve the other reviewed rows."""
+    document = json.loads(HOLDOUT_TEMPLATES.read_text())
+    document["description"] = (
+        "tools/generate_nz_target_references.py generates NZ v0 held-out references. "
+        "H1 counts national positive-payment recipients and H2 compares annual "
+        "model dollars with historical Accommodation Assistance expenditure. "
+        "Neither enters calibration. Treasury and WFF remain exempt until their "
+        "named prerequisites close; historical observations retain their source periods."
+    )
+    rows = document["target_references"]
+    recipients = next(
+        row
+        for row in rows
+        if row["name"]
+        in {
+            "msd_accommodation_supplement_recipients_by_region",
+            "msd_accommodation_supplement_recipients_national",
+        }
+    )
+    recipients.update(
+        {
+            "name": "msd_accommodation_supplement_recipients_national",
+            "ledger_selector": _selector(
+                inventory.one(
+                    "msd_benefit_statistics.month2026_06.national_supplementary_assistance",
+                    measure="recipients",
+                    geography="NZ",
+                    dimensions={
+                        "msd_supplementary_assistance_type": "accommodation_supplement"
+                    },
+                )
+            ),
+            "measure": "accommodation_supplement_positive_payment_indicator",
+            "period": "2026-06",
+            "notes": "H1 compares the June 2026 national recipient stock with family units whose accommodation_supplement_rounded_weekly_payment exceeds zero. The declared positive-payment indicator counts each unit once, with factor 1; it never sums dollars. The national fact avoids a Work and Income region to Stats NZ region bridge. MC5 holds this comparison outside calibration.",
+        }
+    )
+    recipients["metadata"].update(
+        {
+            "activation_status": "active",
+            "annualisation_factor": "1",
+            "indicator_input_column": "accommodation_supplement_rounded_weekly_payment",
+            "indicator_operator": "positive",
+            "indicator_threshold": "0",
+            "measurement_basis": "National positive-payment recipient count; June 2026 snapshot stock, not annual recipients or dollars.",
+        }
+    )
+    expenditure = next(
+        row
+        for row in rows
+        if row["name"] == "msd_annual_report_accommodation_assistance_expenditure"
+    )
+    expenditure.update(
+        {
+            "ledger_selector": _selector(
+                inventory.one(
+                    "msd.benefit_expenses.fy2024",
+                    measure="actual_expenses_nzd",
+                    geography="NZ",
+                    dimensions={
+                        "benefit_expense_component": "Accommodation Assistance"
+                    },
+                )
+            ),
+            "measure": "accommodation_supplement_rounded_weekly_payment",
+            "notes": "H2 annualises accommodation_supplement_rounded_weekly_payment by 52 and compares model dollars with the historical fiscal-year 2024/25 Accommodation Assistance line in MSD Annual Report 2025. The published appropriation may cover more than Accommodation Supplement; this comparator makes no AS-only scope claim and never uprates the historical observation. The selector pins msd.benefit_expenses.fy2024 because the feed repeats this amount in another record set.",
+        }
+    )
+    expenditure["metadata"].update(
+        {
+            "activation_status": "active",
+            "annualisation_factor": "52",
+            "measurement_basis": "Historical fiscal-year 2024/25 Accommodation Assistance expenditure versus annualised model dollars; no period alignment or AS-only scope claim.",
+        }
+    )
+    return document
+
+
+def _reference_selection(documents):
+    """Exempt only rows that remain parked after the declared profile resolver."""
+    resources = {}
+    for filename in (
+        "target_references.json",
+        "precal_references.json",
+        "holdout_references.json",
+        "mass_references.json",
+    ):
+        exemptions = []
+        for row in documents[filename]["target_references"]:
+            metadata = row["metadata"]
+            status = metadata["activation_status"]
+            # Non-99 tenure has complete d1886 transformations. Its effective
+            # profile rows activate; raw unresolved rows cannot compile directly.
+            if status in {"active", "requires_reference_profile_resolution"}:
+                continue
+            if row["family"] == "working_for_families":
+                reason = "WFF activation needs module bindings, receipt and claim state, and a tax-year-to-model-period bridge. G8-w3b keeps these tripwires exempt; G8-y owns the closing step."
+                if "harvested_cell_references" in status:
+                    reason = (
+                        "The income-band comparator needs harvested and pinned cell references. "
+                        + reason
+                    )
+            elif (
+                row["name"] == "treasury_an24_01_accommodation_supplement_fiscal_total"
+            ):
+                reason = "G8-w3b keeps H3 outside its comparison requests. Activation needs a pinned fact and reviewed scope for the existing Treasury row; G8-y owns the closing step."
+            else:
+                reason = metadata["parking_reason"]
+            exemptions.append(
+                {"name": row["name"], "activation_status": status, "reason": reason}
+            )
+        resources[filename.removesuffix(".json")] = {"exempt": exemptions}
+    return {"schema_version": 1, "resources": resources}
 
 
 def _national_upper_dollars(row):
@@ -1059,10 +1191,11 @@ def _reference_profiles(inventory, rows, family_declaration):
     for profile in ("mar", "small_households"):
         transformations = []
         for row in rows:
-            if (
-                row["metadata"]["activation_status"]
-                != "requires_reference_profile_resolution"
-            ):
+            if row["metadata"]["activation_status"] not in {
+                "requires_reference_profile_resolution",
+                "requires_household_structure_release_evidence",
+                "requires_region_99_release_evidence",
+            }:
                 continue
             size = "households_by_size" in row["name"]
             recipients = (
@@ -1484,12 +1617,20 @@ def _receipts(inventory, erp, documents, feed_pin, ta_facts, family_declaration)
             }
         )
     counts = {}
-    for filename in ("target_references.json", "precal_references.json"):
+    for filename in (
+        "target_references.json",
+        "precal_references.json",
+        "holdout_references.json",
+        "mass_references.json",
+    ):
         rows = documents[filename]["target_references"]
         counts[filename] = {
             "total": len(rows),
             "by_contract": dict(
-                Counter(row["metadata"]["contract_target_id"] for row in rows)
+                Counter(
+                    row["metadata"].get("contract_target_id", row["name"])
+                    for row in rows
+                )
             ),
             "by_activation_status": dict(
                 Counter(row["metadata"]["activation_status"] for row in rows)
@@ -1502,7 +1643,7 @@ def _receipts(inventory, erp, documents, feed_pin, ta_facts, family_declaration)
         ),
         (
             "national_erp",
-            "Bridge operand or diagnostic only; national and regional ERP totals are independently published.",
+            "CREATE uses the national June 2025 ERP as mass; bridge operands and diagnostics retain independent national and regional source totals. Never fit this total alongside regional age leaves.",
         ),
         (
             "sex_specific_regional_erp",
@@ -1522,7 +1663,7 @@ def _receipts(inventory, erp, documents, feed_pin, ta_facts, family_declaration)
         ),
         (
             "other_main_benefits",
-            "Unsupported aggregate of other programs; outside the three declared receipt programs.",
+            "Unsupported aggregate of other programs; outside the three declared working-age receipt programs and NZ Super.",
         ),
         ("all_main_benefits", "Aggregate overlaps selected program-age leaves."),
         (

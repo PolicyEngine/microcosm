@@ -13,11 +13,24 @@ def test_take_up_anchor_missing_source_column_fails_loud() -> None:
 
 
 def test_take_up_anchors_or_over_persons_and_stage_writes_outputs() -> None:
+    from microcosm.build.uk_runtime.frs_take_up import take_up_signal_outputs
+
     frame = _frame()
-    transformed = UKFRSTakeUpStageTransform(
+    stage = UKFRSTakeUpStageTransform(
         contract=_Contract(), stage=_take_up_stage(), population_policy=_POLICY
-    )(frame)
+    )
+    transformed = stage(frame)
     benunit = transformed.table("benunit")
+    # The receipt carries the take-up flags the stage draws, for its stage-time
+    # signal gate (microcosm#1095).
+    evidence = stage.checkpoint_metadata()["evidence"]
+    assert evidence["stage"] == "frs_take_up"
+    assert [row["output"] for row in evidence["take_up_signal"]["flags"]] == [
+        f"{entity}.{output}"
+        for entity, output, _ in take_up_signal_outputs(
+            UKFRSTakeUpStageTransform.output_columns()
+        )
+    ]
 
     anchors = aggregate_person_reported_to_benunit(
         frame.table("person"), frame.table("benunit")
@@ -113,6 +126,18 @@ def test_person_and_household_stage_families_are_deterministic() -> None:
         household_a[list(FRS_HOUSEHOLD_DRAW_OUTPUT_COLUMNS)],
         household_b[list(FRS_HOUSEHOLD_DRAW_OUTPUT_COLUMNS)],
     )
+    # Each stage's receipt carries the take-up flags it draws, for its
+    # stage-time signal gate (microcosm#1095).
+    person_evidence = person_stage.checkpoint_metadata()["evidence"]
+    assert "apprentice_receipt" in person_evidence
+    assert [row["output"] for row in person_evidence["take_up_signal"]["flags"]] == [
+        "person.would_claim_marriage_allowance",
+        "person.would_claim_scp",
+    ]
+    household_evidence = household_stage.checkpoint_metadata()["evidence"]
+    assert [row["output"] for row in household_evidence["take_up_signal"]["flags"]] == [
+        f"household.{column}" for column in FRS_HOUSEHOLD_DRAW_OUTPUT_COLUMNS
+    ]
 
 
 def test_brma_cell_membership_and_household_collapse() -> None:
@@ -221,7 +246,7 @@ def test_uc_take_up_population_excludes_units_without_a_working_age_adult() -> N
 def test_uc_take_up_population_needs_a_claimant_or_partner_of_working_age() -> None:
     """A working-age dependant does not bring a unit into the UC population.
 
-    policyengine-uk 2.164.2's is_uc_eligible reads the age of the unit's UC
+    policyengine-uk 2.165.1's is_uc_eligible reads the age of the unit's UC
     claimant or partner (is_uc_claimant), not of any adult: a pensioner unit
     with an 18-year-old dependant cannot claim Universal Credit.
     """

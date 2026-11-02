@@ -246,15 +246,24 @@ def test_a_family_type_that_cannot_meet_its_count_is_flagged_unreachable() -> No
         reporter=reporter,
         previous=np.asarray([False, False, False, True, False, False, False, False]),
         targets=_targets(SINGLE_0=2.0, SINGLE_2=10.0),
-        source_ids=np.arange(8),
+        # Band 0's four units copy two source households.
+        source_ids=np.asarray([0, 0, 1, 1, 4, 5, 6, 7]),
         minimum_pool_sources=1,
     )
     assert would_claim.all()
-    pools = [pool for pool in receipt["pools"] if pool["family_type"] == "SINGLE"]
-    assert [pool["bands"][0] for pool in pools] == list(UC_AWARD_BAND_LABELS[:2])
-    assert all(pool["target_unreachable"] == "<10" for pool in pools)
+    flags = {
+        pool["bands"][0]: pool["target_unreachable"]
+        for pool in receipt["pools"]
+        if pool["family_type"] == "SINGLE"
+    }
+    # A pool on fewer than three sources withholds its flag; band 2's pool,
+    # with the empty band 1 and those above, rests on four.
+    assert flags == {
+        UC_AWARD_BAND_LABELS[0]: "<3",
+        UC_AWARD_BAND_LABELS[1]: "target_exceeds_entitled",
+    }
     assert all("rate" not in pool for pool in receipt["pools"])
-    # With ten or more sources behind a pool the flag says which side it is
+    # With three or more sources behind a pool the flag says which side it is
     # on: the singles' reporters exceed their count, and the couples' count
     # exceeds every entitled unit.
     family = np.asarray(["SINGLE"] * 12 + ["COUPLE_NO_CHILDREN"] * 12, dtype=object)
@@ -366,7 +375,7 @@ def test_undrawn_units_keep_their_flag_and_count_at_their_expected_claim() -> No
     assert single["caseload_before"] == pytest.approx(9.0)
     assert single["caseload_after"] == pytest.approx(5.0)
     assert receipt["changed_outside_draw"] == 0
-    assert receipt["moved_units"] == "<10"
+    assert receipt["moved_units"] == "<3"
 
 
 def test_rates_are_solved_over_great_britain_and_drawn_in_northern_ireland() -> None:
@@ -432,7 +441,8 @@ def test_the_receipt_bands_counts_and_carries_no_rate() -> None:
         weights=np.full(40, 3.0),
         targets=_targets(SINGLE_1=60.0),
     )
-    # Counts of records are banded or rounded, never exact (UKDS CD137 cl. 8).
+    # Counts of records are banded or rounded, and one or two are withheld
+    # (UKDS CD137 cl. 8).
     assert receipt["drawn_units"] == 40
     assert receipt["drawn_units_northern_ireland"] == 0
     pool = next(
@@ -450,9 +460,9 @@ def test_the_receipt_bands_counts_and_carries_no_rate() -> None:
         "drawn_support",
         "target_unreachable",
     }
-    _, small = _assign(award=np.full(5, 1_500.0), targets=_targets(SINGLE_1=2.0))
-    assert small["drawn_units"] == "<10"
-    assert small["families"]["SINGLE"]["caseload_after"] == "<10"
+    _, small = _assign(award=np.full(2, 1_500.0), targets=_targets(SINGLE_1=2.0))
+    assert small["drawn_units"] == "<3"
+    assert small["families"]["SINGLE"]["caseload_after"] == "<3"
 
 
 def test_inputs_must_align_and_name_known_cells() -> None:
@@ -689,22 +699,32 @@ def test_the_receipt_counts_working_age_housing_benefit_kept_and_drawn() -> None
     moved[16:20] = True
     uc_after = np.zeros(count, dtype=bool)
     uc_after[:6] = True
-    receipt = working_age_housing_benefit_receipt(
-        person=person,
-        benunit=benunit,
-        population=np.ones(count, dtype=bool),
-        moved=moved,
-        uc_before=np.zeros(count, dtype=bool),
-        uc_after=uc_after,
-        weights=np.ones(count),
-        great_britain=np.ones(count, dtype=bool),
-        source_ids=np.arange(count),
-    )
+
+    def receipt_for(uc_after: np.ndarray) -> dict:
+        return working_age_housing_benefit_receipt(
+            person=person,
+            benunit=benunit,
+            population=np.ones(count, dtype=bool),
+            moved=moved,
+            uc_before=np.zeros(count, dtype=bool),
+            uc_after=uc_after,
+            weights=np.ones(count),
+            great_britain=np.ones(count, dtype=bool),
+            source_ids=np.arange(count),
+        )
+
+    receipt = receipt_for(uc_after)
     assert receipt["reporting_units"] == pytest.approx(16.0)
     assert receipt["keeping_housing_benefit_before"] == pytest.approx(16.0)
     assert receipt["keeping_housing_benefit_after"] == pytest.approx(10.0)
-    # Six drawn units rest on fewer than ten sources: no weighted figure.
-    assert receipt["drawn_onto_universal_credit"] == "<10"
+    # Six drawn units rest on six sources: their weight is given.
+    assert receipt["drawn_onto_universal_credit"] == pytest.approx(6.0)
+    # Two drawn units rest on fewer than three sources: no weighted figure.
+    two = np.zeros(count, dtype=bool)
+    two[:2] = True
+    receipt = receipt_for(two)
+    assert receipt["keeping_housing_benefit_after"] == pytest.approx(14.0)
+    assert receipt["drawn_onto_universal_credit"] == "<3"
 
 
 def test_a_unit_keeping_a_legacy_benefit_is_not_drawn_onto_uc() -> None:
@@ -761,7 +781,7 @@ def test_a_unit_keeping_income_related_esa_claims_no_universal_credit(
     assert kept["scope"] == "great_britain"
     assert kept["column"] == "esa_income_reported"
     # One source household carries it: a band, never a count or a weight.
-    assert kept["kept_off_support"] == ("<10" if claimant_or_partner else 0)
+    assert kept["kept_off_support"] == ("<3" if claimant_or_partner else 0)
     assert kept["units_kept_off_universal_credit"] == (
-        "<10" if claimant_or_partner else 0.0
+        "<3" if claimant_or_partner else 0.0
     )

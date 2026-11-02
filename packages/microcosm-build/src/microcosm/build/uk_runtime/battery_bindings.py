@@ -2102,6 +2102,11 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 "minimum_age_child_rows",
                 "maximum_opt_out_share_deviation",
                 "minimum_eligible_family_units",
+                # microcosm#1095 take_up_signal stage-health check (María's
+                # ruling of 2026-10-29: the flags at their drawing stages).
+                "maximum_share_deviation",
+                "under_two_usage_maximum_share_deviation",
+                "outputs",
                 "absolute_tolerance",
                 "household_weight_kind",
                 "minimum_spi_households",
@@ -2183,6 +2188,9 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 # household draws they split.
                 "maximum_relative_total_deviation",
                 "maximum_household_sum_error_gbp",
+                # The company_cars check (dashboard #316): how far SPI-channel
+                # pay plus its carved benefits may miss the tape's total.
+                "maximum_pay_identity_error_gbp",
                 # #1113 road_fuel_incidence check: the ceiling on the chain's
                 # zero share among flagged fuel-car households.
                 "maximum_flagged_zero_share",

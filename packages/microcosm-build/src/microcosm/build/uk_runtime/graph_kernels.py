@@ -52,10 +52,13 @@ from . import (
     frs_disability,
     frs_education,
     frs_hmrc_source,
+    frs_spine,
     frs_take_up,
+    hmrc_company_car_statistics,
     hmrc_income,
     hmrc_isa_statistics,
     hmrc_property_rental,
+    hmrc_uprating,
     household_lineage,
     ledger_fact_vendoring,
     legacy_closure_take_up,
@@ -136,6 +139,7 @@ _STAGE_MODULES = {
     "private_school_attendance": "private_school_attendance",
     "isa_subscriptions": "isa_subscriptions",
     "trading_allowance_receipts": "trading_allowance_receipts",
+    "company_cars": "company_cars",
     "childcare_copy_take_up": "childcare_copy_take_up",
     "age_tail": "age_tail",
 }
@@ -143,6 +147,12 @@ _STAGE_MODULES = {
 # Imported modules are not traversed by ``source_hash``. Bind relationship
 # helpers and the adapter's input-retention checks into every consuming stage.
 _STAGE_HELPER_MODULES = {
+    # The three FRS draw stages' receipts measure their take-up flags through
+    # frs_take_up's signal measurement and count support by the shared
+    # disclosure rules (microcosm#1095).
+    "frs_take_up": (receipt_counts,),
+    "frs_person_draws": (frs_take_up, receipt_counts),
+    "frs_household_draws": (frs_take_up, receipt_counts),
     "frs_hmrc_spine_leaves": (frs_hmrc_source,),
     # The annual income descriptors' receipt follows the shared disclosure rules
     # (microcosm#1164).
@@ -234,9 +244,26 @@ _STAGE_HELPER_MODULES = {
     # The claimant draw is keyed on identity and its receipt rounds its
     # support (microcosm#1428).
     "trading_allowance_receipts": (receipt_counts, stochastic_assignment),
+    # The company cars read their carriers' names and codes from frs_spine,
+    # HMRC's company car tables through their typed loader, the engine's CPI
+    # index and contribution cap, the SPI channel's EPB and tape-row flag, and
+    # price the cars twice through the engine adapter; their draws are keyed on
+    # identity, and their receipts' support is rounded
+    # (PolicyEngine/uk-autumn-budget-dashboard-2026#316).
+    "company_cars": (
+        frs_spine,
+        hmrc_company_car_statistics,
+        hmrc_uprating,
+        receipt_counts,
+        spi_income,
+        spi_support,
+        stochastic_assignment,
+        uk_engine_adapter,
+    ),
     # The copies' childcare re-draw draws through frs_take_up's childcare
-    # helper and reads each household's clone path.
-    "childcare_copy_take_up": (frs_take_up, household_lineage),
+    # helper, reads each household's clone path, and measures its flags for
+    # the stage-time signal gate by the shared disclosure rules (microcosm#1095).
+    "childcare_copy_take_up": (frs_take_up, household_lineage, receipt_counts),
 }
 
 _COMPUTE = Capabilities(
@@ -547,6 +574,7 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
     from .cgt_support import UKCGTSupportSplitStageTransform
     from .child_benefit_take_up import UKChildBenefitTakeUpStageTransform
     from .childcare_copy_take_up import UKChildcareCopyTakeUpStageTransform
+    from .company_cars import UKCompanyCarsStageTransform
     from .etb_services import UKETBServicesStageTransform
     from .etb_vat import UKETBVATStageTransform
     from .frs_annual_income import UKFRSAnnualIncomeStageTransform
@@ -854,6 +882,11 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
             ),
             "trading_allowance_receipts": UKTradingAllowanceReceiptsStageTransform(
                 stage=stages["trading_allowance_receipts"]
+            ),
+            "company_cars": UKCompanyCarsStageTransform(
+                stage=stages["company_cars"],
+                engine=engine,
+                donor_person=was_person,
             ),
             "childcare_copy_take_up": UKChildcareCopyTakeUpStageTransform(
                 contract=contract, stage=stages["childcare_copy_take_up"]

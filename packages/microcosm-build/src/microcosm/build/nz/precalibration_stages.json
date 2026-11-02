@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "stages": [
+    {
+      "id": "nz.precal.main_benefit_rates",
+      "rules_binding": "main_benefits_rates",
+      "rulespec_path": "nz/statutes/social_security/main_benefits/rates.yaml",
+      "outputs": [
+        {
+          "entity": "person",
+          "column": "jobseeker_support_net_weekly_payment",
+          "purpose": "calibration_measure"
+        },
+        {
+          "entity": "person",
+          "column": "sole_parent_support_net_weekly_payment",
+          "purpose": "calibration_measure"
+        },
+        {
+          "entity": "person",
+          "column": "supported_living_payment_net_weekly_payment",
+          "purpose": "calibration_measure"
+        }
+      ],
+      "citation": "https://github.com/TheAxiomFoundation/rulespec-nz/blob/8dc2507d5f10a0467c285fed54d018ee37246798/nz/statutes/social_security/main_benefits/rates.yaml (SHA-256 7c8ebbc3e62268722529ad790e3f561bbebf807d8a4d67bba24f93cb0809ec39); https://www.workandincome.govt.nz/products/benefit-rates/benefit-rates-april-2026.html. The rates stage supplies after-tax payments after abatement."
+    },
+    {
+      "id": "nz.precal.benefit_gross_up",
+      "rules_binding": "income_tax_schedule_1",
+      "rulespec_path": "nz/statutes/income_tax/schedule_1/individual_income_tax.yaml",
+      "outputs": [],
+      "derived_outputs": [
+        {
+          "entity": "person",
+          "column": "jobseeker_support_annual_gross",
+          "purpose": "calibration_measure"
+        },
+        {
+          "entity": "person",
+          "column": "sole_parent_support_annual_gross",
+          "purpose": "calibration_measure"
+        },
+        {
+          "entity": "person",
+          "column": "supported_living_payment_annual_gross",
+          "purpose": "calibration_measure"
+        },
+        {
+          "entity": "person",
+          "column": "jobseeker_support_annual_gross_cents",
+          "purpose": "calibration_measure"
+        },
+        {
+          "entity": "person",
+          "column": "sole_parent_support_annual_gross_cents",
+          "purpose": "calibration_measure"
+        },
+        {
+          "entity": "person",
+          "column": "supported_living_payment_annual_gross_cents",
+          "purpose": "calibration_measure"
+        }
+      ],
+      "citation": "https://github.com/TheAxiomFoundation/rulespec-nz/blob/8dc2507d5f10a0467c285fed54d018ee37246798/nz/statutes/income_tax/schedule_1/individual_income_tax.yaml (SHA-256 5ff8e7bf645b85e3d59d612e3c6eb70e09090fb13b40d49c3c5f8a4202e0b82a); https://www.workandincome.govt.nz/products/benefit-rates/benefit-rates-april-2026.html. Each gross-up inverts annualised Schedule 1 before credits over 52 weeks independently of other income and recovers authoritative annual cents."
+    }
+  ]
+}

@@ -93,6 +93,9 @@ from microcosm.build.uk_runtime.child_benefit_take_up import (
 from microcosm.build.uk_runtime.childcare_copy_take_up import (
     UKChildcareCopyTakeUpStageTransform,
 )
+from microcosm.build.uk_runtime.company_cars import (
+    UKCompanyCarsStageTransform,
+)
 from microcosm.build.uk_runtime.content_identity import uk_frame_content_identity
 from microcosm.build.uk_runtime.etb_services import UKETBServicesStageTransform
 from microcosm.build.uk_runtime.etb_vat import UKETBVATStageTransform
@@ -104,7 +107,6 @@ from microcosm.build.uk_runtime.frs_council_tax import UKFRSCouncilTaxStageTrans
 from microcosm.build.uk_runtime.frs_disability import UKFRSDisabilityStageTransform
 from microcosm.build.uk_runtime.frs_education import UKFRSEducationStageTransform
 from microcosm.build.uk_runtime.frs_education_grants import (
-    FRS_EDUCATION_GRANT_REWRITES,
     UKFRSEducationGrantSplitStageTransform,
 )
 from microcosm.build.uk_runtime.frs_employment import UKFRSEmploymentStageTransform
@@ -125,6 +127,7 @@ from microcosm.build.uk_runtime.frs_spine import (
 )
 from microcosm.build.uk_runtime.frs_take_up import UKFRSTakeUpStageTransform
 from microcosm.build.uk_runtime.graph import (
+    UK_SPINE_ASSEMBLED_FINAL_STAGE,
     uk_registry,
     uk_spine_graph,
     uk_spine_operation_inventory,
@@ -239,11 +242,6 @@ _REPOSITORY = next(
 )
 _RUNG_NAMED_EDGE_SIGNATURE = "The least populated classes in y have only 1 member"
 _RUNG_ABORT_EXIT_CODE = 3
-#: The last stage of the assembled checkpoint: everything through the base
-#: FRS mapping and the stochastic draws. A name, not an index — a position
-#: standing in for a key is correct only while two independently-maintained
-#: orderings happen to agree (the uk-data#468 class).
-UK_SPINE_ASSEMBLED_FINAL_STAGE = "frs_brma"
 
 
 def _uk_spine_stage_names(spec) -> tuple[str, ...]:
@@ -364,8 +362,8 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--was-person-tab",
         type=Path,
         help=(
-            "Caller-supplied private WAS round-8 person tab for was_lisa and "
-            "isa_subscriptions (with --was-tab)."
+            "Caller-supplied private WAS round-8 person tab for was_lisa, "
+            "isa_subscriptions and company_cars (with --was-tab)."
         ),
     )
     parser.add_argument(
@@ -856,6 +854,9 @@ def _declared_seeds(stages) -> dict[str, dict[str, int]]:
                     "allocate_isa_subscribers",
                     "draw_isa_subscription_amounts",
                     "draw_lifetime_isa_payments",
+                    "assign_company_car_fuel_types",
+                    "draw_company_car_list_prices",
+                    "draw_company_car_co2_emissions",
                 ):
                     # Identity-keyed draws: the seed is declared under the salt
                     # it is hashed with (microcosm#1415).
@@ -904,6 +905,7 @@ def _build_sidecar(
             {
                 "stage": record.stage,
                 "produced": list(record.produced),
+                "rewrote": list(record.rewrote),
                 "nonzero_share": dict(record.nonzero_share),
                 "seconds": record.seconds,
             }
@@ -990,7 +992,9 @@ def _graph_stage_records(
         )
         output_receipt = manifest.nodes[output_node]
         shares: dict[str, float] = {}
-        for column in stage.outputs:
+        # A declared rewrite is an owned cell of its node, as an output is, so
+        # its share reads the node's artifact too (microcosm#721).
+        for column in (*stage.outputs, *stage.rewrites):
             matches = [
                 (coordinate, key)
                 for coordinate, key in output_receipt.artifacts.items()
@@ -1002,7 +1006,8 @@ def _graph_stage_records(
             if len(matches) != 1:
                 raise RuntimeError(
                     f"graph stage {stage.stage!r} exposes {len(matches)} artifacts "
-                    f"for declared output {column!r}."
+                    f"for declared {'rewrite' if column in stage.rewrites else 'output'} "
+                    f"{column!r}."
                 )
             shares[column] = _series_nonzero_share(store.load_column(matches[0][1]))
         execution_node = "create_uk_frs" if stage.stage == "frs_spine" else stage.stage
@@ -1010,6 +1015,7 @@ def _graph_stage_records(
             StageRecord(
                 stage=stage.stage,
                 produced=stage.outputs,
+                rewrote=stage.rewrites,
                 donor_survey=stage.survey,
                 nonzero_share=shares,
                 seconds=manifest.nodes[execution_node].wall_time,
@@ -1561,7 +1567,7 @@ def prepare_uk_spine_execution(
         raise ValueError(
             "--was-tab is required when the was_wealth stage is scheduled."
         )
-    for was_person_stage in ("was_lisa", "isa_subscriptions"):
+    for was_person_stage in ("was_lisa", "isa_subscriptions", "company_cars"):
         if (
             args.synthetic_fixture_dir is not None
             or was_person_stage not in stage_names
@@ -1719,6 +1725,14 @@ def prepare_uk_spine_execution(
                 stage=stages_by_name["isa_subscriptions"],
                 engine=engine,
                 was_tab_path=sources["was"],
+                was_person_tab_path=sources["was_person"],
+            )
+        )
+    if "company_cars" in stage_names:
+        implementations["company_cars"] = _GraphSourceTransform(
+            lambda sources: UKCompanyCarsStageTransform(
+                stage=stages_by_name["company_cars"],
+                engine=engine,
                 was_person_tab_path=sources["was_person"],
             )
         )
@@ -1965,7 +1979,11 @@ def prepare_uk_spine_execution(
         graph_sources = _synthetic_graph_sources(args.synthetic_fixture_dir)
     else:
         graph_sources = {"frs": args.frs_raw_dir}
-        was_person_stages = {"was_lisa", "isa_subscriptions"} & set(stage_names)
+        was_person_stages = {
+            "was_lisa",
+            "isa_subscriptions",
+            "company_cars",
+        } & set(stage_names)
         if "was_wealth" in stage_names or was_person_stages:
             graph_sources["was"] = args.was_tab
         if was_person_stages:
@@ -2368,8 +2386,9 @@ def _main(argv: list[str] | None = None) -> int:
         if args.emit_nonzero_shares is not None:
             final_columns = list(
                 dict.fromkeys(
-                    [column for record in records for column in record.produced]
-                    + list(FRS_EDUCATION_GRANT_REWRITES)
+                    column
+                    for record in records
+                    for column in (*record.produced, *record.rewrote)
                 )
             )
             atomic_write_json(

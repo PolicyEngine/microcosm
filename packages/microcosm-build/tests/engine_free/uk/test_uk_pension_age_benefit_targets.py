@@ -191,7 +191,9 @@ def test_income_based_jsa_spending_reads_the_dwp_calendar_window() -> None:
     assert "NORTHERN_IRELAND" not in condition["value"]
 
 
-def test_the_table_3_10_employment_counts_read_annual_pay_by_profit_band() -> None:
+def test_the_table_3_10_employment_counts_read_pay_with_benefits_by_profit_band() -> (
+    None
+):
     # Table 3.10's individuals with employment income over the self-employment
     # bands from GBP 1 to GBP 10,000 (microcosm#1428; review finding 12).
     target = _targets()[
@@ -203,7 +205,11 @@ def test_the_table_3_10_employment_counts_read_annual_pay_by_profit_band() -> No
         "self_employment_income_after_loss_relief_annual"
     )
     assert binding["filters"] == [
-        {"variable": "employment_income_annual", "operator": "!=", "value": 0}
+        {
+            "variable": "employment_income_with_benefits_in_kind_annual",
+            "operator": "!=",
+            "value": 0,
+        }
     ]
     assert binding["band_upper_bound"] == 10_000
     assert binding["band_upper_bound_inclusive"] is False

@@ -36,11 +36,9 @@ or pending.
 
 from __future__ import annotations
 
-import math
 import re
 from collections.abc import Iterable, Mapping
 from datetime import date
-from decimal import Decimal, InvalidOperation
 from fractions import Fraction
 
 import numpy as np
@@ -61,6 +59,15 @@ from microcosm.frame.concepts import (
     TransportRule,
     Unit,
     concept_for_column,
+)
+from microcosm.frame.exact_money import (
+    _decimal_text as _decimal_text,
+)
+from microcosm.frame.exact_money import (
+    _half_even as _half_even,
+)
+from microcosm.frame.exact_money import (
+    _shortest_decimal as _shortest_decimal,
 )
 
 __all__ = [
@@ -106,7 +113,6 @@ _FIELDS = frozenset(
 )
 _DESCRIPTIVE_FIELDS = frozenset({"description", "status", "notes"})
 _CURRENCY = re.compile(r"[A-Z]{3}")
-_DECIMAL_TEXT = re.compile(r"[0-9]+(?:\.[0-9]+)?")
 _SUFFIX = re.compile(r"_[a-z0-9_]+")
 _ROSTERS = ("normalized", "quantile_mapped", "pending")
 
@@ -132,24 +138,6 @@ def _text(value: object, label: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"Money normalization {label} must be nonempty text.")
     return value
-
-
-def _decimal_text(value: object, label: str) -> Fraction:
-    """A positive decimal written as JSON text; a JSON number is refused."""
-    if not isinstance(value, str):
-        raise ValueError(
-            f"Money normalization {label} must be decimal text, never a JSON "
-            "number: a binary float cannot carry the declared decimal exactly."
-        )
-    if _DECIMAL_TEXT.fullmatch(value) is None:
-        raise ValueError(f"Money normalization {label} must be plain decimal text.")
-    try:
-        result = Fraction(Decimal(value))
-    except (InvalidOperation, ValueError) as error:
-        raise ValueError(f"Money normalization {label} is not decimal text.") from error
-    if result <= 0:
-        raise ValueError(f"Money normalization {label} must be positive.")
-    return result
 
 
 def _rate(value: object) -> dict:
@@ -606,19 +594,6 @@ def resolve_money_rate(
         "text": rate["expected_decimal"],
         "operand": evidence,
     }
-
-
-def _half_even(value: Fraction) -> int:
-    """Round an exact rational to an integer, ties to even."""
-    return round(value)
-
-
-def _shortest_decimal(value: object) -> Fraction:
-    """The shortest round-trip decimal of a float, read without arithmetic."""
-    number = float(value)
-    if not math.isfinite(number):
-        raise ValueError("Money normalization refuses NaN and infinite amounts.")
-    return Fraction(Decimal(repr(number)))
 
 
 def _rational(value: Fraction) -> dict:
