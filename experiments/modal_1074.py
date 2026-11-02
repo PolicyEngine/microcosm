@@ -10,9 +10,11 @@ run's files back into this checkout. Inputs:
   (policyengine/populace-us at a pinned revision);
 - the Federal Reserve's SCF 2025 public zips (summary extract and full file);
 - for ``fit``: a candidate Chronicle feed, built in the container and cached
-  on the volume. It is the pinned US feed (rebuilt byte for byte at Chronicle
-  ``51aa40f`` with ``tools/build_us_chronicle_feed.py`` and checked against
-  ``us/chronicle_feed.json``) plus the six FSA packages of
+  on the volume. It is the US feed pinned when the experiment began (rebuilt
+  byte for byte at Chronicle ``51aa40f`` with ``tools/build_us_chronicle_feed.py``
+  and checked against that pin's facts sha256; main has since re-pinned to
+  ``cf9ece2``, which adds the B4923C ESI anchor facts of microcosm#454, a
+  reviewed exclusion that binds no target) plus the six FSA packages of
   PolicyEngine/chronicle#347 (``chronicle build-bundle --year 2026`` at the
   merge commit ``acbedb5`` on Chronicle main, which reads the raw files from
   R2). The candidate is a reviewed diagnostic input only; no pin in the
@@ -80,7 +82,9 @@ SCF_ZIPS = {
         "38926275dfb8f00ea843b80ced7a9412ad4653d39c7fab8fe24c3bdf912902ad",
     ),
 }
-#: The pinned US feed (us/chronicle_feed.json) and where it is rebuilt from.
+#: The US feed pinned (us/chronicle_feed.json) when the experiment began, and
+#: where it is rebuilt from. Main's re-pin to cf9ece2 (microcosm#454) adds only
+#: facts that bind no target, so the arms stay comparable across receipts.
 PINNED_FEED = {
     "repo": "https://github.com/PolicyEngine/chronicle.git",
     "commit": "51aa40fd28e2ca81937752515e773d123fecfb71",
