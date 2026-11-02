@@ -147,6 +147,7 @@ EVIDENCE_KERNEL_MODULES: Mapping[str, tuple[str, ...]] = MappingProxyType(
             "microcosm.frame.concepts",
             "microcosm.frame.adapters.axiom_input_surface",
             "microcosm.frame.adapters.axiom",
+            "microcosm.frame.schema",
             _CANONICAL,
             _LEAF,
         ),
@@ -565,11 +566,16 @@ def checked_header(
 
 @dataclass(frozen=True, order=True)
 class RelationInput:
-    """One relation input: the engine name, its physical column and role."""
+    """One relation input: the engine name, its physical column and role.
+
+    ``root_entity`` is the manifest's frame entity, whose engine program
+    receives the input (``AxiomEngine.variables()`` adds it there).
+    """
 
     input: str
     column: str
     role_column: str | None = None
+    root_entity: str | None = None
 
 
 def binding_relation_inputs(row: Mapping[str, object]) -> tuple[RelationInput, ...]:
@@ -594,9 +600,13 @@ def binding_relation_inputs(row: Mapping[str, object]) -> tuple[RelationInput, .
                 f"rules binding {row.get('id')!r} relation manifest lacks related_inputs."
             )
         role = manifest.get("role_column")
+        root = manifest.get("root_entity")
         for name, column in manifest["related_inputs"].items():
             item = RelationInput(
-                str(name), str(column), None if role is None else str(role)
+                str(name),
+                str(column),
+                None if role is None else str(role),
+                None if root is None else str(root),
             )
             if inputs.get(item.input, item) != item:
                 raise ValueError(
@@ -690,12 +700,36 @@ _MODULE_ROW_KEYS = frozenset(
         "gap",
         "unexpected",
         "frame_missing",
+        "relation_missing",
     }
 )
 
 
 def _label(entity: str, name: str) -> str:
     return f"{entity}.{name}"
+
+
+def _relation_for(
+    row: Mapping[str, object],
+    entity: str,
+    name: str,
+    to_frame: Mapping[str, str],
+) -> RelationInput | None:
+    """The binding's declared relation input ``name`` on engine ``entity``.
+
+    A relation input belongs to the engine entity of its manifest's
+    ``root_entity``; without an entity map (engine-free tests) the name alone
+    selects it.
+    """
+
+    for item in binding_relation_inputs(row):
+        if item.input != name:
+            continue
+        if not to_frame or item.root_entity is None:
+            return item
+        if to_frame.get(entity) == item.root_entity:
+            return item
+    return None
 
 
 def _unreached_declaration(row: Mapping[str, object]) -> Mapping[str, object] | None:
@@ -851,6 +885,33 @@ def closure_partition(
             + " ".join(refusals)
         )
 
+    # A declared relation input has no closure entry: the partition classes
+    # it ``relation`` (or ``gap`` when the frame lacks its columns), and the
+    # checker's surface leaves it out, as ``without_unreached`` drops
+    # excused roots, so ``check`` does not report it "not closed".
+    relation_refs = {
+        InputRef(name, entity, str(row["rulespec_path"]))
+        for row in bindings
+        for entity, names in live_roots[str(row["id"])].items()
+        for name in names
+        if _relation_for(row, entity, name, to_frame) is not None
+        and not any(
+            entry.input == name and entry.entity == entity
+            for entry in closure.entries_for(str(row["rulespec_path"]))
+        )
+    }
+    checked_roots = {
+        str(row["id"]): {
+            entity: tuple(
+                name
+                for name in names
+                if InputRef(name, entity, str(row["rulespec_path"]))
+                not in relation_refs
+            )
+            for entity, names in live_roots[str(row["id"])].items()
+        }
+        for row in bindings
+    }
     surface = AxiomInputSurface(
         country=closure.country,
         rulespec_commit=closure.surface_rulespec_commit,
@@ -862,7 +923,7 @@ def closure_partition(
                     path=str(row["rulespec_path"]),
                     sha256=module_sha256[str(row["id"])],
                     status="compiled",
-                    inputs=MappingProxyType(live_roots[str(row["id"])]),
+                    inputs=MappingProxyType(checked_roots[str(row["id"])]),
                     canonical_inputs=MappingProxyType({}),
                 )
                 for row in bindings
@@ -878,11 +939,11 @@ def closure_partition(
     for row in bindings:
         binding = str(row["id"])
         path = str(row["rulespec_path"])
-        relations = {item.input: item for item in binding_relation_inputs(row)}
         entries = {entry.ref: entry for entry in closure.entries_for(path)}
         classes: dict[str, list] = {name: [] for name in CLOSURE_CLASSES}
         encoded: dict[str, list[str]] = {by.value: [] for by in EncodedBy}
         frame_missing: list[str] = []
+        relation_missing: list[str] = []
         roots_out: list[str] = []
         listed = path in closure.modules
         for entity, names in live_roots[binding].items():
@@ -927,12 +988,28 @@ def closure_partition(
                         frame_missing.append(label)
                 elif entry is not None:
                     classes["engine_optional"].append(label)
-                elif name in relations:
-                    relation = relations[name]
-                    if frame_columns is not None and relation.column not in (
-                        frame_columns.get(person_entity, frozenset())
-                    ):
+                elif (
+                    relation := _relation_for(row, entity, name, to_frame)
+                ) is not None:
+                    # Both the physical column and a declared role column
+                    # must reach the producer's person slice.
+                    person = (
+                        frozenset()
+                        if frame_columns is None
+                        else frame_columns.get(person_entity, frozenset())
+                    )
+                    missing = [
+                        column
+                        for column in (relation.column, relation.role_column)
+                        if column is not None
+                        and frame_columns is not None
+                        and column not in person
+                    ]
+                    if missing:
                         classes["gap"].append(label)
+                        relation_missing += [
+                            f"{label}: {person_entity}.{column}" for column in missing
+                        ]
                     else:
                         classes["relation"].append(
                             {
@@ -975,6 +1052,7 @@ def closure_partition(
                 "gap": sorted(classes["gap"]),
                 "unexpected": unexpected,
                 "frame_missing": sorted(frame_missing),
+                "relation_missing": sorted(relation_missing),
             }
         )
     return {"check": problems, "modules": modules}
