@@ -78,14 +78,13 @@ def test_integration_job_is_uk_selected_and_read_only() -> None:
 
 
 def test_installed_emitter_job_tests_two_releases_without_secrets() -> None:
-    """One job, without a matrix or secrets, installs the minimum emitter
-    release builds accept and the pinned newest release into separate tool
-    directories, and runs the installed-emitter tests once for each."""
+    """One job, without a matrix or secrets, runs the installed-emitter runner.
+
+    Which releases it installs, and how it runs them, is tested in
+    ``test_installed_emitter_releases``."""
     job = yaml.safe_load(_TEST_WORKFLOW.read_text(encoding="utf-8"))["jobs"][
         "installed-emitter"
     ]
-    script = _INSTALLED_EMITTER_SCRIPT.read_text(encoding="utf-8")
-    pinned = _requirement_lines(_INSTALLED_EMITTER_PINS / "requirements.txt")
     constrained = _requirement_lines(_INSTALLED_EMITTER_PINS / "constraints.txt")
 
     assert "strategy" not in job
@@ -98,20 +97,6 @@ def test_installed_emitter_job_tests_two_releases_without_secrets() -> None:
         "uv sync --all-packages --locked",
         f"bash {_INSTALLED_EMITTER_SCRIPT.relative_to(_ROOT)}",
     ]
-    for expected in (
-        "MINIMUM_EMITTER_VERSION",
-        "tools/installed-emitter/requirements.txt",
-        "--constraints tools/installed-emitter/constraints.txt",
-        "UV_TOOL_DIR=",
-        "UV_TOOL_BIN_DIR=",
-        "MICROCOSM_EMITTER_COMMAND=",
-        "INSTALLED_EMITTER_VERSION=",
-        "list-job installed-emitter",
-        "--run-integration",
-    ):
-        assert expected in script, expected
-    assert len(pinned) == 1
-    assert re.fullmatch(r"microcosm-emitter==\d+\.\d+\.\d+", pinned[0])
     assert any(line.startswith("huggingface-hub==") for line in constrained)
     for line in constrained:
         assert re.fullmatch(r"[a-z0-9-]+==\d+(\.\d+)*", line), line

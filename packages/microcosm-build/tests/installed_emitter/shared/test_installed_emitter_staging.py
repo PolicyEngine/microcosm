@@ -1,10 +1,15 @@
 """Staged dataset bundles handed to the installed microcosm-emitter.
 
 Every other workspace test hands bundles to the in-memory emitter client. These
-start the separately installed ``microcosm-emitter`` command, as a build does
-(``start_bundle_emitter``: the Hugging Face module only, so the telemetry
-module never starts and nothing contacts the collector), and send its Hugging
-Face Hub requests to the loopback stand-in Hub (``HF_ENDPOINT``).
+start the separately installed ``microcosm-emitter`` command with
+``start_bundle_emitter()``, as the UK re-stage command
+(``tools/stage_uk_rowwise_candidate.py``) starts it: the Hugging Face module
+only, so the telemetry module never starts and nothing contacts the collector.
+A build's own emitter also runs the telemetry and Orrery modules; its Hugging
+Face module is the same code. The emitter's Hugging Face Hub requests go to the
+loopback stand-in Hub (``HF_ENDPOINT``), which takes the dataset through the
+LFS upload a real Hub requires for it, since Xet is turned off.
+
 ``tools/run_installed_emitter_tests.sh`` installs the minimum release builds
 accept and the newest pinned release, and runs this file once for each, with
 ``MICROCOSM_EMITTER_COMMAND`` naming the installed command and
@@ -16,7 +21,9 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import shutil
 import subprocess
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -40,7 +47,7 @@ from microcosm.build.telemetry_emitter import (
     OutdatedEmitterClient,
     start_bundle_emitter,
 )
-from test_support.microcosm_build.stand_in_hub import StandInHub
+from test_support.microcosm_build.stand_in_hub import CommitAttempt, StandInHub
 
 REPOSITORY = "microcosm-tests/staged-bundles"
 RUN_ID = "installed-emitter-20261102T000000Z"
@@ -69,6 +76,24 @@ BUNDLE_NAMES = frozenset(
         SHA256SUMS_FILENAME,
     }
 )
+#: Lists the repository with the emitter's own huggingface_hub, as JSON.
+LIST_REPOSITORY = """\
+import json
+import sys
+
+from huggingface_hub import HfApi
+
+api = HfApi()
+repository, folder = sys.argv[1], sys.argv[2]
+files = api.list_repo_files(repository, repo_type="dataset")
+entries = api.list_repo_tree(repository, path_in_repo=folder, repo_type="dataset")
+print(json.dumps(
+    {
+        "files": sorted(files),
+        "folder": [[type(entry).__name__, entry.path] for entry in entries],
+    }
+))
+"""
 
 
 def _sha256(content: bytes) -> str:
@@ -124,10 +149,21 @@ def _local_digests(bundle: StagedDatasetBundle) -> dict[str, str]:
     }
 
 
+def _stage(bundle: StagedDatasetBundle, client: EmitterClient, **options: Any):
+    return stage_bundle(
+        bundle,
+        emitter=client,
+        repository=REPOSITORY,
+        wait_seconds=options.pop("wait_seconds", UPLOAD_WAIT_SECONDS),
+        **options,
+    )
+
+
 @dataclass
 class InstalledEmitter:
-    """Starts the installed emitter as a build does, and stops what it started."""
+    """Starts the installed emitter as the re-stage command does, and stops it."""
 
+    command: str
     version: str
     monkeypatch: pytest.MonkeyPatch
     processes: list[launcher.EmitterProcess] = field(default_factory=list)
@@ -150,6 +186,23 @@ class InstalledEmitter:
         process = launcher.start_emitter(*arguments, **options)
         self.processes.append(process)
         return process
+
+    def run_hub_client(self, script: str, *arguments: str) -> Any:
+        """Run ``script`` with the emitter's own Python and huggingface_hub.
+
+        The uv tool directory keeps the emitter's interpreter beside its
+        command. The script inherits this process's environment, so its
+        requests go to the stand-in too; it prints JSON.
+        """
+        python = Path(self.command).resolve().parent / "python"
+        answer = subprocess.run(
+            [str(python), "-I", "-c", script, *arguments],
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=True,
+        )
+        return json.loads(answer.stdout)
 
     def stop(self) -> None:
         for client in self.clients:
@@ -179,11 +232,13 @@ def installed_emitter(fake_telemetry_emitters, monkeypatch, tmp_path, stand_in_h
     The emitter inherits this process's environment, which the fixture sets.
     The workspace's own fixture makes any attempt to start an emitter fail
     the test; this one puts the interface's launcher back, records every
-    emitter process it starts, and waits for each to exit afterwards.
+    emitter process it starts, and waits for each to exit afterwards. Then it
+    fails the test if the stand-in saw a request it does not answer, or a
+    proxy request meant for another host.
     """
     command = os.environ.get("MICROCOSM_EMITTER_COMMAND", "").strip()
     version = os.environ.get("INSTALLED_EMITTER_VERSION", "").strip()
-    if not command or not version:
+    if not command or not version or shutil.which(command) is None:
         pytest.fail(
             "Run these tests with tools/run_installed_emitter_tests.sh, which sets "
             "MICROCOSM_EMITTER_COMMAND and INSTALLED_EMITTER_VERSION."
@@ -206,8 +261,10 @@ def installed_emitter(fake_telemetry_emitters, monkeypatch, tmp_path, stand_in_h
         "HF_HUB_DISABLE_TELEMETRY": "1",
         "HF_HOME": str(tmp_path / "hugging-face-home"),
         "XDG_CACHE_HOME": str(tmp_path / "emitter-cache"),
-        # A request meant for any host but the stand-in goes to the stand-in
-        # as a proxy request, which it refuses and records.
+        # A client that honours the proxy variables, as huggingface_hub's
+        # does, sends a request meant for any other host to the stand-in,
+        # which refuses and records it. A client that ignored them would
+        # reach that host unseen.
         "HTTP_PROXY": stand_in_hub.url,
         "HTTPS_PROXY": stand_in_hub.url,
         "ALL_PROXY": stand_in_hub.url,
@@ -215,13 +272,17 @@ def installed_emitter(fake_telemetry_emitters, monkeypatch, tmp_path, stand_in_h
     }
     for name, value in environment.items():
         monkeypatch.setenv(name, value)
-    emitter = InstalledEmitter(version=version, monkeypatch=monkeypatch)
+    emitter = InstalledEmitter(
+        command=command, version=version, monkeypatch=monkeypatch
+    )
     monkeypatch.setattr(emitter_interface_client, "start_emitter", emitter.record_start)
     try:
         yield emitter
     finally:
         emitter.stop()
-    assert stand_in_hub.proxied_requests == [], "a request left the loopback stand-in"
+    stray = [f"unanswered: {request}" for request in stand_in_hub.unmatched_requests]
+    stray += [f"proxy request for {target}" for target in stand_in_hub.proxied_requests]
+    assert stray == [], "the stand-in Hub saw requests it does not answer"
 
 
 def test_the_build_starts_the_installed_emitter_with_only_its_hub_module(
@@ -272,18 +333,30 @@ def test_the_installed_emitter_uploads_the_bundle_in_one_commit(
     client = installed_emitter.start()
 
     assert write_access_problem(client, REPOSITORY) is None
-    handover = stage_bundle(
-        bundle, emitter=client, repository=REPOSITORY, wait_seconds=UPLOAD_WAIT_SECONDS
-    )
+    handover = _stage(bundle, client)
 
     commits = stand_in_hub.commits(REPOSITORY)
     assert len(commits) == 1
     commit = commits[0]
+    # The commit names the head it was built on, and that was the head.
+    assert stand_in_hub.commit_attempts(REPOSITORY) == [
+        CommitAttempt(parent_commit=first_head, head=first_head, status=200)
+    ]
     assert commit.parent == first_head
     assert commit.title == f"Stage {RUN_ID} under {PREFIX}"
     assert {path: _sha256(content) for path, content in commit.added.items()} == (
         _local_digests(bundle)
     )
+    # The dataset went through the LFS upload, as a real Hub requires for an
+    # .h5 file over 10 MB; the other files travelled inside the commit.
+    dataset_sha256 = _sha256((bundle.run_dir / DATASET).read_bytes())
+    assert commit.uploaded_as == {
+        f"{PREFIX}/{name}": "lfs" if name == DATASET else "regular"
+        for name in BUNDLE_NAMES
+    }
+    assert set(stand_in_hub.lfs_objects) == {dataset_sha256}
+    for kind in ("preupload", "lfs_batch", "lfs_upload", "lfs_verify", "commit"):
+        assert stand_in_hub.statuses(kind) == [200], kind
     assert handover.delivery == {
         "contract_version": 1,
         "mode": "local_and_remote",
@@ -305,34 +378,63 @@ def test_the_installed_emitter_uploads_the_bundle_in_one_commit(
         assert handover.may_rewrite(name)
 
 
+def test_a_commit_on_a_moved_head_is_refused_then_made_on_the_new_head(
+    tmp_path: Path, stand_in_hub: StandInHub, installed_emitter: InstalledEmitter
+) -> None:
+    bundle = _write_bundle(tmp_path)
+    first_head = stand_in_hub.head(REPOSITORY)
+    other_file = "other-writer/notes.json"
+    stand_in_hub.land_before_next_commit(REPOSITORY, {other_file: b"{}\n"})
+    client = installed_emitter.start()
+
+    handover = _stage(bundle, client)
+
+    other_commit, bundle_commit = stand_in_hub.commits(REPOSITORY)
+    assert stand_in_hub.commit_attempts(REPOSITORY) == [
+        CommitAttempt(parent_commit=first_head, head=other_commit.oid, status=412),
+        CommitAttempt(
+            parent_commit=other_commit.oid, head=other_commit.oid, status=200
+        ),
+    ]
+    assert bundle_commit.parent == other_commit.oid
+    assert bundle_commit.files[other_file] == b"{}\n"
+    # The dataset's LFS object was stored once; the second commit refers to it.
+    assert stand_in_hub.statuses("lfs_upload") == [200]
+    assert handover.delivery["status"] == "uploaded"
+    assert handover.delivery["revision"] == bundle_commit.oid
+
+
+def test_the_tree_lists_the_staged_folder(
+    tmp_path: Path, stand_in_hub: StandInHub, installed_emitter: InstalledEmitter
+) -> None:
+    bundle = _write_bundle(tmp_path)
+    assert _stage(bundle, installed_emitter.start()).delivery["status"] == "uploaded"
+
+    listing = installed_emitter.run_hub_client(LIST_REPOSITORY, REPOSITORY, "staged")
+
+    assert listing["files"] == sorted(_local_digests(bundle))
+    assert listing["folder"] == [["RepoFolder", PREFIX]]
+    assert stand_in_hub.statuses("tree") == [200, 200]
+
+
 def test_staging_the_same_bundle_again_records_already_staged(
     tmp_path: Path, stand_in_hub: StandInHub, installed_emitter: InstalledEmitter
 ) -> None:
     bundle = _write_bundle(tmp_path)
     client = installed_emitter.start()
-    first = stage_bundle(
-        bundle, emitter=client, repository=REPOSITORY, wait_seconds=UPLOAD_WAIT_SECONDS
-    )
+    first = _stage(bundle, client)
     assert first.delivery["status"] == "uploaded"
-    revision = first.delivery["revision"]
 
     # Through the same queue, the identical hand-over returns its receipt.
-    repeated = stage_bundle(
-        bundle, emitter=client, repository=REPOSITORY, wait_seconds=UPLOAD_WAIT_SECONDS
-    )
+    repeated = _stage(bundle, client)
     # An emitter with its own queue finds the bundle on the Hub.
     second_client = installed_emitter.start(queue_directory=tmp_path / "second-queue")
-    again = stage_bundle(
-        bundle,
-        emitter=second_client,
-        repository=REPOSITORY,
-        wait_seconds=UPLOAD_WAIT_SECONDS,
-    )
+    again = _stage(bundle, second_client)
 
     assert repeated.delivery == first.delivery
     assert again.delivery == {**first.delivery, "status": "already_staged"}
-    assert again.delivery["revision"] == revision
     assert len(stand_in_hub.commits(REPOSITORY)) == 1
+    assert stand_in_hub.statuses("paths_info") == [200]
 
 
 def test_a_read_only_credential_is_refused_before_the_build_stages(
@@ -345,7 +447,7 @@ def test_a_read_only_credential_is_refused_before_the_build_stages(
 
     assert problem is not None
     assert "needs a write credential" in problem
-    assert ("GET", "whoami") in stand_in_hub.requests
+    assert stand_in_hub.statuses("whoami") == [200]
 
 
 def test_a_refused_commit_is_recorded_and_the_build_continues(
@@ -355,31 +457,75 @@ def test_a_refused_commit_is_recorded_and_the_build_continues(
     stand_in_hub.refuse_writes()
     client = installed_emitter.start()
 
-    handover = stage_bundle(
-        bundle, emitter=client, repository=REPOSITORY, wait_seconds=UPLOAD_WAIT_SECONDS
-    )
+    handover = _stage(bundle, client)
 
     assert handover.delivery["status"] == "failed"
     assert handover.delivery["error_code"] == "UPLOAD_FAILED"
     assert handover.delivery["revision"] is None
     assert stand_in_hub.commits(REPOSITORY) == []
-    assert ("POST", "preupload") in stand_in_hub.requests
+    assert stand_in_hub.statuses("preupload") == [403]
+    assert stand_in_hub.lfs_objects == {}
+
+
+def test_a_rejected_token_is_refused_and_recorded(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    stand_in_hub: StandInHub,
+    installed_emitter: InstalledEmitter,
+) -> None:
+    bundle = _write_bundle(tmp_path)
+    monkeypatch.setenv("HF_TOKEN", "a-token-the-stand-in-rejects")
+    client = installed_emitter.start()
+
+    problem = write_access_problem(client, REPOSITORY)
+    handover = _stage(bundle, client)
+
+    assert problem is not None
+    assert f"cannot reach {REPOSITORY} (HfHubHTTPError)" in problem
+    assert handover.delivery["status"] == "failed"
+    assert handover.delivery["error_code"] == "REPOSITORY_UNAVAILABLE"
+    assert stand_in_hub.requests
+    assert {request.status for request in stand_in_hub.requests} == {401}
+    assert stand_in_hub.commits(REPOSITORY) == []
+
+
+def test_a_missing_token_is_refused_without_a_hub_request(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    stand_in_hub: StandInHub,
+    installed_emitter: InstalledEmitter,
+) -> None:
+    bundle = _write_bundle(tmp_path)
+    monkeypatch.delenv("HF_TOKEN")
+    client = installed_emitter.start()
+
+    problem = write_access_problem(client, REPOSITORY)
+    handover = _stage(bundle, client)
+
+    assert problem is not None
+    assert "needs a Hugging Face write credential" in problem
+    assert handover.delivery["status"] == "failed"
+    assert handover.delivery["error_code"] == "CREDENTIAL_MISSING"
+    assert stand_in_hub.requests == []
 
 
 def test_a_hub_that_never_answers_leaves_the_upload_pending(
-    tmp_path: Path, stand_in_hub: StandInHub, installed_emitter: InstalledEmitter
+    tmp_path: Path,
+    stand_in_hub: StandInHub,
+    installed_emitter: InstalledEmitter,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     bundle = _write_bundle(tmp_path)
     stand_in_hub.stall("commit")
     client = installed_emitter.start()
 
-    handover = stage_bundle(
-        bundle,
-        emitter=client,
-        repository=REPOSITORY,
-        wait_seconds=NO_ANSWER_WAIT_SECONDS,
-    )
+    started = time.monotonic()
+    handover = _stage(bundle, client, wait_seconds=NO_ANSWER_WAIT_SECONDS)
+    waited = time.monotonic() - started
 
+    # The build waited until its limit, not until a failed receipt request.
+    assert waited >= NO_ANSWER_WAIT_SECONDS
+    assert "(UPLOAD_PENDING)" in capsys.readouterr().err
     assert handover.delivery["status"] == "failed"
     assert handover.delivery["error_code"] == "UPLOAD_PENDING"
     assert handover.delivery["revision"] is None
