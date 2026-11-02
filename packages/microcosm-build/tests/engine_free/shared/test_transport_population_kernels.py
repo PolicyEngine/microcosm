@@ -585,6 +585,71 @@ def test_quantile_map_refuses_absent_facts_and_mismatched_component_coverage(
         run_population(tmp_path / "run", sources, graph=graph)
 
 
+def _one_sex_per_household(tables):
+    """Give every member the donor sex flag of its household's first member."""
+    person = tables["person"]
+    person["is_female"] = person.groupby("person_household_id")["is_female"].transform(
+        "first"
+    )
+
+
+@pytest.mark.parametrize("shape", ["bare", "component"])
+@pytest.mark.parametrize("mixed", [True, False])
+def test_aggregate_map_refuses_members_with_two_component_codes(tmp_path, mixed, shape):
+    """An aggregate maps as one unit only when its members share one code.
+
+    Under component bands this check is the only guard: each component's map
+    would see a split household as a partial aggregate. The support kernel
+    judges each member's aggregate total by that member's own code, so it
+    relies on this refusal too.
+    """
+    sources = write_population_sources(
+        tmp_path / "sources",
+        band_entity="household",
+        edit_tables=None if mixed else _one_sex_per_household,
+    )
+    direct, _ = direct_population(sources)
+    person = direct.table("person")
+    codes = person.groupby("person_household_id")["sex"].nunique()
+    assert bool((codes > 1).any()) == mixed
+    graph = population_graph(
+        sources, qmap_column="liquid_financial_assets", aggregate_entity="household"
+    )
+    quantile = graph.node("nz.quantile")
+    params = {**quantile.params, "component_column": "sex"}
+    if shape == "component":
+        bands = json.loads(quantile.params["bands"])["bands"]
+        document = {
+            "components": [
+                {"value": code, "bands": bands}
+                for code in sorted(person["sex"].unique().tolist())
+            ]
+        }
+        params = {
+            **params,
+            "bands": canonical_text(document),
+            "bands_sha256": digest(document),
+        }
+    quantile = replace(
+        quantile,
+        inputs=(Slice("person", ("liquid_financial_assets", "sex")),),
+        params=params,
+    )
+    graph = replace(
+        graph,
+        nodes=tuple(
+            quantile if node.id == quantile.id else node for node in graph.nodes
+        ),
+    )
+    if mixed:
+        with pytest.raises(
+            NodeRejectedError, match="Aggregate members must repeat one component code"
+        ):
+            run_population(tmp_path / "run", sources, graph=graph)
+    else:
+        run_population(tmp_path / "run", sources, graph=graph)
+
+
 def test_create_runtime_rejects_a_missing_declared_column(tmp_path):
     sources = write_population_sources(tmp_path / "sources")
     graph = population_graph(sources, through="boundary")
