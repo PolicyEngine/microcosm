@@ -12,7 +12,9 @@ import collections
 import copy
 import dataclasses
 import hashlib
+import inspect
 import json
+import math
 import os
 import shutil
 import subprocess
@@ -2372,6 +2374,10 @@ def test_the_launch_asks_for_a_token_for_the_class_timeout_plus_an_hour(
     assert plan_lib.summarize(plan)["telemetry"] == {
         "required": True,
         "collector_token_lifetime_seconds": lifetime,
+        "image_emitter_collector_origin": None,
+        "collector_token": None,
+        "token_needed_until": None,
+        "undelivered_events": None,
     }
     arguments = _install_workstation_emitter(
         monkeypatch, tmp_path / "bin", _token_answer(lifetime + 5)
@@ -2474,6 +2480,7 @@ def test_the_launch_refuses_an_unusable_token_answer(
     with pytest.raises(plan_lib.PlanError, match="unusable answer") as refused:
         plan_lib.request_telemetry_token(plan, os.environ)
     assert LAUNCH_TOKEN not in str(refused.value)
+    assert "MICROCOSM_TELEMETRY_REQUIRED=0" in str(refused.value)
 
 
 def test_the_launch_needs_the_emitter_installed_on_this_machine(
@@ -2499,6 +2506,10 @@ def test_a_plan_that_opts_out_asks_for_no_token(monkeypatch, tmp_path: Path) -> 
     assert plan_lib.summarize(plan)["telemetry"] == {
         "required": False,
         "collector_token_lifetime_seconds": None,
+        "image_emitter_collector_origin": None,
+        "collector_token": None,
+        "token_needed_until": None,
+        "undelivered_events": None,
     }
 
 
@@ -2591,18 +2602,19 @@ def _telemetry_environment(**overrides: str) -> dict[str, str]:
     return {"PATH": "/usr/bin", **RUNNER_TOKEN_SECRET, **overrides}
 
 
-def test_the_token_must_outlast_the_tool_s_latest_stop_plus_the_emitter_s_drain() -> (
+def test_the_token_must_outlast_the_tool_s_kill_plus_the_emitter_s_exit_and_drain() -> (
     None
 ):
     plan = plan_lib.parse_plan(_smoke_plan_data())
     started = 1_000_000.0
-    # The runner stops the tool by the class timeout less its reserve; the
-    # emitter then delivers for up to 15 s and stops using a given token 30 s
-    # before it expires.
-    latest_stop = (
+    # By the class timeout less its reserve the runner sends the tool SIGTERM,
+    # and SIGKILL 60 s later. The emitter notices its build has exited within
+    # 0.5 s, then delivers for up to 15 s, and stops sending a given token
+    # 30 s before it expires.
+    terminated = (
         started + plan.resources.timeout_s - (plan.stage_spec.runner_overhead_seconds)
     )
-    needed = latest_stop + 15 + 30
+    needed = math.ceil(terminated + 60 + 0.5 + 15 + 30)
 
     def check(expires_epoch: float):
         expires_at = datetime.fromtimestamp(expires_epoch, UTC).isoformat()
@@ -2626,6 +2638,7 @@ def test_the_token_must_outlast_the_tool_s_latest_stop_plus_the_emitter_s_drain(
     assert record["token_needed_until"] == datetime.fromtimestamp(
         needed, UTC
     ).isoformat(timespec="seconds")
+    assert set(record) == set(plan_lib.TelemetryRecord.__annotations__)
     # The undelivered-event count waits on a decision: not measured yet.
     assert record["undelivered_events"] is None
     assert DUMMY_COLLECTOR_TOKEN not in json.dumps(record)
@@ -2660,7 +2673,7 @@ def test_the_token_must_outlast_the_tool_s_latest_stop_plus_the_emitter_s_drain(
             {"emitter_version": "0.10.0", "protocol_versions": [1]},
             "0.11.0",
         ),
-        (_telemetry_environment(), None, "0.11.0"),
+        (_telemetry_environment(), None, "did not answer `version`"),
         (
             _telemetry_environment(MICROCOSM_MODAL_TELEMETRY_TOKEN_EXPIRES_AT="soon"),
             RECORDED_EMITTER_VERSION,
@@ -2685,6 +2698,10 @@ def test_a_container_without_a_usable_token_is_refused(
     )
     assert problem is not None and refusal in problem
     assert DUMMY_COLLECTOR_TOKEN not in problem
+    assert "MICROCOSM_TELEMETRY_REQUIRED=0" in problem
+    if image_emitter is not None and "collector_origin" not in image_emitter:
+        # An image built before 0.11.0 keeps that emitter until rebuilt.
+        assert "MODAL_FORCE_BUILD=1" in problem
 
 
 def test_a_container_of_a_plan_that_opts_out_needs_no_token() -> None:
@@ -2821,8 +2838,11 @@ def test_check_stage_reports_whether_the_image_s_emitter_can_take_a_token(
     report = app.check_stage(_fake_plan())
     assert report["telemetry"] == {
         "required": True,
-        "image_emitter_collector_origin": TEST_COLLECTOR_ORIGIN,
         "collector_token_lifetime_seconds": 3600 + 3600,
+        "image_emitter_collector_origin": TEST_COLLECTOR_ORIGIN,
+        "collector_token": None,
+        "token_needed_until": None,
+        "undelivered_events": None,
     }
     assert not [item for item in report["problems"] if "collector" in item]
 
@@ -2832,12 +2852,137 @@ def test_check_stage_reports_whether_the_image_s_emitter_can_take_a_token(
         lambda: {"emitter_version": "0.10.0", "protocol_versions": [1]},
     )
     report = app.check_stage(_fake_plan())
-    assert [item for item in report["problems"] if "0.11.0" in item]
+    (old_image,) = [item for item in report["problems"] if "emitter" in item]
+    assert "0.11.0" in old_image and "MODAL_FORCE_BUILD=1" in old_image
+    assert "MICROCOSM_TELEMETRY_REQUIRED=0" in old_image
     report = app.check_stage(_fake_plan(env={"MICROCOSM_TELEMETRY_REQUIRED": "0"}))
     assert not [item for item in report["problems"] if "0.11.0" in item]
+
+    # An emitter that does not run is one cause: reported once.
+    monkeypatch.setattr(app, "_emitter_version", lambda: None)
+    report = app.check_stage(_fake_plan())
+    (not_running,) = [item for item in report["problems"] if "emitter" in item]
+    assert "does not run" in not_running
 
 
 def test_the_shell_s_runner_token_names_never_reach_a_test() -> None:
     # Outside the stub container (load_app), which sets them itself, a shell
     # that exports the runner's token names must not reach a test.
     assert not set(RUNNER_TOKEN_SECRET) & set(os.environ)
+
+
+def test_the_token_bound_covers_the_grace_the_budget_watch_gives_the_tool(app) -> None:
+    # The budget sends SIGTERM and gives the tool its grace before SIGKILL; a
+    # build that closes its emitter in that grace starts its drain only then.
+    grace = (
+        inspect.signature(app._BudgetWatch.__init__).parameters["grace_seconds"].default
+    )
+    assert grace == plan_lib.STOP_GRACE_SECONDS
+    plan = plan_lib.parse_plan(_smoke_plan_data())
+    started = 1_000_000.0
+    terminated = started + plan_lib.container_tool_seconds(plan, 0)
+
+    def problem_for(expires_epoch: float) -> str | None:
+        expires_at = datetime.fromtimestamp(expires_epoch, UTC).isoformat()
+        _, problem = plan_lib.telemetry_check(
+            plan,
+            _telemetry_environment(
+                MICROCOSM_MODAL_TELEMETRY_TOKEN_EXPIRES_AT=expires_at
+            ),
+            RECORDED_EMITTER_VERSION,
+            container_started=started,
+        )
+        return problem
+
+    # Enough for a build that exits at SIGTERM, not for one that uses its grace.
+    assert problem_for(terminated + 15 + 30) is not None
+    assert problem_for(math.ceil(terminated + grace + 0.5 + 15 + 30)) is None
+
+
+def test_a_plan_may_not_choose_the_emitter_the_build_starts() -> None:
+    # The check and the run ask the image's emitter its version and origin;
+    # the build must start that same emitter.
+    with pytest.raises(plan_lib.PlanError, match="the image's emitter"):
+        plan_lib.parse_plan(
+            _plan_data(env={"MICROCOSM_EMITTER_COMMAND": "/opt/other/emitter"})
+        )
+    with pytest.raises(plan_lib.PlanError, match="may not be passed"):
+        plan_lib.tool_environment(
+            {}, {"MICROCOSM_EMITTER_COMMAND": "/opt/other/emitter"}
+        )
+
+
+def test_every_telemetry_record_has_the_same_fields() -> None:
+    plan = plan_lib.parse_plan(_smoke_plan_data())
+    fields = set(plan_lib.TelemetryRecord.__annotations__)
+    summary = plan_lib.summarize(plan)["telemetry"]
+    check, _ = plan_lib.telemetry_check_report(plan, RECORDED_EMITTER_VERSION)
+    receipt, _ = plan_lib.telemetry_check(
+        plan,
+        _telemetry_environment(),
+        RECORDED_EMITTER_VERSION,
+        container_started=time.time(),
+    )
+    assert set(summary) == set(check) == set(receipt) == fields
+
+
+def test_the_tool_gets_the_runner_s_token_values_stripped() -> None:
+    padded = {name: f"  {value}\n" for name, value in RUNNER_TOKEN_SECRET.items()}
+    env, _ = plan_lib.tool_environment({"PATH": "/usr/bin", **padded}, {})
+    assert env["MICROCOSM_COLLECTOR_TOKEN"] == DUMMY_COLLECTOR_TOKEN
+    assert env["MICROCOSM_COLLECTOR_TOKEN_EXPIRES_AT"] == TEST_TOKEN_EXPIRES_AT
+    assert env["MICROCOSM_COLLECTOR_ORIGIN"] == TEST_COLLECTOR_ORIGIN
+
+
+@pytest.mark.parametrize(
+    ("failure", "refusal"),
+    [
+        (subprocess.TimeoutExpired(["microcosm-emitter"], 120), "within 120 s"),
+        (PermissionError("not permitted"), "could not run (PermissionError)"),
+    ],
+    ids=["hangs", "cannot-run"],
+)
+def test_the_launch_refuses_when_the_emitter_hangs_or_cannot_run(
+    monkeypatch, tmp_path: Path, failure, refusal
+) -> None:
+    plan = plan_lib.parse_plan(_smoke_plan_data())
+    _install_workstation_emitter(monkeypatch, tmp_path / "bin", _token_answer(9000))
+
+    def run(*arguments, **options):
+        raise failure
+
+    with pytest.raises(plan_lib.PlanError) as refused:
+        plan_lib.request_telemetry_token(plan, os.environ, run=run)
+    assert refusal in str(refused.value)
+    assert "MICROCOSM_TELEMETRY_REQUIRED=0" in str(refused.value)
+    assert "not permitted" not in str(refused.value)
+
+
+def test_a_run_launch_without_a_hub_secret_attaches_only_the_token_s(
+    app, monkeypatch, tmp_path: Path
+) -> None:
+    modal = sys.modules["modal"]
+    modal.is_local.return_value = True
+    monkeypatch.delenv("MICROCOSM_MODAL_HF_SECRET", raising=False)
+    data = _smoke_plan_data()
+    lifetime = plan_lib.telemetry_token_lifetime_seconds(plan_lib.parse_plan(data))
+    _install_workstation_emitter(
+        monkeypatch, tmp_path / "bin", _token_answer(lifetime + 5)
+    )
+
+    runner = _launch(app, monkeypatch, data)
+
+    modal.Secret.from_name.assert_not_called()
+    runner.with_options.assert_called_once_with(
+        secrets=[modal.Secret.from_dict.return_value]
+    )
+    runner.with_options.return_value.spawn.assert_called_once_with(data)
+
+
+def test_every_class_s_token_fits_within_the_collector_s_cap() -> None:
+    # The collector grants at most 24 hours; a class whose timeout plus an
+    # hour asked for more would make every launch refuse a shorter token.
+    assert plan_lib.COLLECTOR_TOKEN_LIFETIME_CAP_SECONDS == 86_400
+    for resources in plan_lib.RESOURCE_CLASSES.values():
+        lifetime = resources.timeout_s + plan_lib.TELEMETRY_TOKEN_EXTRA_SECONDS
+        assert lifetime <= plan_lib.COLLECTOR_TOKEN_LIFETIME_CAP_SECONDS, resources
