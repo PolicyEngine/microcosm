@@ -29,6 +29,7 @@ from test_support.microcosm_build.reference_intervals import (
     proof_for,
     summed_profile_fixture,
     summed_row,
+    with_target_labels,
 )
 
 TEN = [f"n{index:02d}" for index in range(10)]
@@ -230,7 +231,9 @@ def _partition(draw_sizes, labels):
     values=st.lists(
         st.integers(min_value=0, max_value=10**9), min_size=30, max_size=30
     ),
-    counts=st.lists(st.integers(min_value=0, max_value=10**6), min_size=30, max_size=30),
+    counts=st.lists(
+        st.integers(min_value=0, max_value=10**6), min_size=30, max_size=30
+    ),
     numerator=st.integers(min_value=500_000, max_value=2_000_000),
 )
 @settings(
@@ -274,11 +277,16 @@ def _singleton_inputs(labels, anchors=None):
             row["filter"] = f"single_{label}"
             selector = row["ledger_selector"]
             selector["dimension_values"] = {"band": label}
-            selector["aggregate_fact_key"] = f"ledger.aggregate_fact.v2:toy-{kind}-{label}"
+            selector["aggregate_fact_key"] = (
+                f"ledger.aggregate_fact.v2:toy-{kind}-{label}"
+            )
             if kind == "count":
                 row["value_operation"] = "identity"
             rows.append(row)
     base["target_references"] = rows
+    for row in rows:
+        row["metadata"]["contract_target_id"] = row["name"]
+    with_target_labels(base)
     transform = profiles["dimensions"]["index"]["profiles"]["central"][
         "transformations"
     ][0]

@@ -254,7 +254,6 @@ _NODE_FIELDS = frozenset(
         "artifact_inputs",
         "artifact_outputs",
         "rules_binding",
-        "measurement_id",
     }
 )
 _ENCODINGS = frozenset({"value", "json", "sha256"})
@@ -479,10 +478,14 @@ def _measurement_tables(spec: Mapping[str, object]) -> dict[str, list[Mapping]]:
     found: dict[str, list[Mapping]] = {}
     dimensions = declarations.get("dimensions", {})
     for dimension in dimensions.values() if isinstance(dimensions, Mapping) else ():
-        profiles = dimension.get("profiles", {}) if isinstance(dimension, Mapping) else {}
+        profiles = (
+            dimension.get("profiles", {}) if isinstance(dimension, Mapping) else {}
+        )
         for profile in profiles.values() if isinstance(profiles, Mapping) else ():
             for transform in (
-                profile.get("transformations", ()) if isinstance(profile, Mapping) else ()
+                profile.get("transformations", ())
+                if isinstance(profile, Mapping)
+                else ()
             ):
                 if (
                     not isinstance(transform, Mapping)
@@ -500,54 +503,69 @@ def _measurement_tables(spec: Mapping[str, object]) -> dict[str, list[Mapping]]:
     return found
 
 
-def _declared_predecessors(rows: Mapping[str, Mapping]) -> dict[str, set[str]]:
-    """Declared-row predecessors, by the rule ``graph.decl.compile_graph`` uses.
+MEASUREMENT_PARAM = "measurement_id"
 
-    A node in version ``V`` follows ``V`` and the owner in ``V`` of each
-    column it reads (the version itself when no node in ``V`` owns it). A
-    structural node follows its base and every member of its base. Artifact
-    edges join the same sets.
+
+def _measurement_declaration(row: Mapping) -> object:
+    """The ``measurement_id`` a node declares in its params, or ``None``.
+
+    A producer declares the id as a literal string param, as
+    ``measure.combine@1`` reads ``context.params["measurement_id"]``.
     """
-    structural = {
-        name for name, row in rows.items() if row.get("structural", "none") != "none"
-    }
-    default = next(iter(structural)) if len(structural) == 1 else None
-    owners: dict[tuple, str] = {}
-    members: dict[object, set[str]] = {}
+    params = row.get("params")
+    return params.get(MEASUREMENT_PARAM) if isinstance(params, Mapping) else None
+
+
+def _declared_calibration_predecessors(
+    rows: Mapping[str, Mapping],
+) -> tuple[dict[str, set[str]], dict[str, set[tuple[str, str, str]]]]:
+    """Declared predecessors and reads, by the S5 ancestry guard's rule.
+
+    A node follows its population version (or, if structural, its base and
+    every member of the base), each artifact producer it names, and each
+    writer :func:`_precalibration_declared_reads` resolves for its reads.
+    """
+    predecessors = {name: set() for name in rows}
+    reads = _precalibration_declared_reads(rows)
     for name, row in rows.items():
-        if row.get("structural", "none") == "none":
-            version = row.get("population") or default
-            members.setdefault(version, set()).add(name)
-            for entity, column in _owned_columns(row):
-                owners[version, entity, column] = name
-    predecessors: dict[str, set[str]] = {name: set() for name in rows}
-    for name, row in rows.items():
-        if row.get("structural", "none") == "create":
-            continue
-        if row.get("structural", "none") != "none":
-            version = row.get("base")
-            predecessors[name].add(version)
-            predecessors[name].update(members.get(version, ()))
-            rewritten = set()
-        else:
-            version = row.get("population") or default
-            predecessors[name].add(version)
-            rewritten = _owned_columns(row, rewrite=True)
-        for item in row.get("inputs", ()):
-            if not isinstance(item, Mapping):
-                continue
-            for column in item.get("columns", ()):
-                if (item.get("entity"), column) not in rewritten:
-                    predecessors[name].add(
-                        owners.get((version, item.get("entity"), column), version)
-                    )
+        base = row.get("base")
+        if isinstance(base, str):
+            predecessors[name].add(base)
+            predecessors[name].update(
+                item["id"] for item in rows.values() if item.get("population") == base
+            )
+        elif isinstance(row.get("population"), str):
+            predecessors[name].add(row["population"])
         predecessors[name].update(
-            edge.get("producer")
-            for edge in row.get("artifact_inputs", ())
-            if isinstance(edge, Mapping)
+            edge["producer"] for edge in row.get("artifact_inputs", ())
         )
-        predecessors[name].discard(name)
-    return predecessors
+        predecessors[name].update(producer for _, _, producer in reads[name])
+    return predecessors, reads
+
+
+def _calibration_roots(rows: Mapping[str, Mapping], document: Mapping) -> set[str]:
+    roots = {
+        name
+        for name, row in rows.items()
+        if isinstance(row.get("kernel"), str) and row["kernel"].startswith("calibrate.")
+    }
+    endpoint = (document.get("endpoints") or {}).get("calibration")
+    if isinstance(endpoint, str) and endpoint in rows:
+        roots.add(endpoint)
+    return roots
+
+
+def _measurement_refusal(
+    binding: str,
+    root: str,
+    found: Sequence[str],
+    declared: Sequence[str],
+) -> str:
+    return (
+        f"{len(found)} nodes declaring measurement_id {binding!r} "
+        f"sit upstream of calibration node {root!r} "
+        f"(declared by {list(declared)}); exactly one must"
+    )
 
 
 def measurement_proofs(
@@ -557,54 +575,34 @@ def measurement_proofs(
 
     G8-r2c ruling R2C-1: composition satisfies ``measurement:<id>`` only when,
     for every calibration node, exactly one node upstream of it declares
-    ``measurement_id: <id>`` and writes the income and universe columns of
-    every interval table the measurement's profiles scale, on that table's
-    entity. Upstream follows the graph compiler's own predecessor rule over
-    the declared ``transport_graph`` rows (:func:`_declared_predecessors`).
-    Returns the proofs by measurement id and, for each measurement without
-    one, the reason it stays parked.
+    ``params.measurement_id: <id>`` (a string) and writes the income and
+    universe columns of every interval table the measurement's profiles
+    scale, on that table's entity. "Upstream" is ancestry in the declared
+    graph under the S5 guard's rule (:func:`_declared_calibration_predecessors`);
+    composition then checks the same producers against the compiled graph's
+    exact predecessors (:func:`_check_measurement_proofs`). Returns the
+    proofs by measurement id and, for each measurement without one, the
+    reason it stays parked.
     """
     if not _has_resource(spec, "reference_profiles"):
         return {}, {}
     wanted = _measurement_tables(spec)
     if not wanted:
         return {}, {}
-    nodes = (
-        _raw_transport_resource(spec, GRAPH_RESOURCE).get("nodes", ())
-        if _has_resource(spec, GRAPH_RESOURCE)
-        else ()
-    )
-    rows = {
-        row["id"]: row
-        for row in nodes
-        if isinstance(row, Mapping) and isinstance(row.get("id"), str)
-    }
-    document = (
-        _raw_transport_resource(spec, GRAPH_RESOURCE)
-        if _has_resource(spec, GRAPH_RESOURCE)
-        else {}
-    )
-    roots = {
+    if _has_resource(spec, GRAPH_RESOURCE):
+        document = _raw_transport_resource(spec, GRAPH_RESOURCE)
+        rows = _precalibration_rows(document)
+    else:
+        document, rows = {}, {}
+    roots = _calibration_roots(rows, document)
+    predecessors, _ = _declared_calibration_predecessors(rows)
+    upstream = {root: _ancestor_closure(predecessors, {root}) for root in sorted(roots)}
+    malformed = sorted(
         name
         for name, row in rows.items()
-        if isinstance(row.get("kernel"), str) and row["kernel"].startswith("calibrate.")
-    }
-    endpoint = (document.get("endpoints") or {}).get("calibration")
-    if isinstance(endpoint, str) and endpoint in rows:
-        roots.add(endpoint)
-    predecessors = _declared_predecessors(rows)
-
-    def ancestors(root: str) -> set[str]:
-        seen, pending = set(), [root]
-        while pending:
-            name = pending.pop()
-            if name in seen or name not in rows:
-                continue
-            seen.add(name)
-            pending.extend(predecessors[name])
-        return seen
-
-    upstream = {root: ancestors(root) for root in sorted(roots)}
+        if _measurement_declaration(row) is not None
+        and not _is_text(_measurement_declaration(row))
+    )
     proofs: dict[str, dict] = {}
     refusals: dict[str, str] = {}
     for binding, tables in sorted(wanted.items()):
@@ -617,10 +615,14 @@ def measurement_proofs(
             key=str,
         )
         declared = sorted(
-            name for name, row in rows.items() if row.get("measurement_id") == binding
+            name
+            for name, row in rows.items()
+            if _measurement_declaration(row) == binding
         )
         producers, reason = {}, None
-        if not tables:
+        if malformed:
+            reason = f"nodes {malformed} declare a measurement_id that is not a string"
+        elif not tables:
             reason = "its profiles scale no declared interval table"
         elif not upstream:
             reason = "the graph declares no calibration node"
@@ -629,11 +631,7 @@ def measurement_proofs(
                 break
             found = [name for name in declared if name in closure]
             if len(found) != 1:
-                reason = (
-                    f"{len(found)} nodes declaring measurement_id {binding!r} "
-                    f"sit upstream of calibration node {root!r} "
-                    f"(declared by {declared}); exactly one must"
-                )
+                reason = _measurement_refusal(binding, root, found, declared)
                 break
             (producer,) = found
             missing = [
@@ -657,6 +655,42 @@ def measurement_proofs(
         else:
             refusals[binding] = reason
     return proofs, refusals
+
+
+def _check_measurement_proofs(
+    spec: Mapping[str, object], graph: Graph, compiled: CompiledGraph
+) -> None:
+    """Refuse a declared proof the compiled graph's ancestry contradicts.
+
+    For each proved measurement and each calibration node of the composed
+    graph, the compiled ancestors of that node must hold exactly one node
+    whose params declare the measurement, and it must be the proof's
+    producer for that node.
+    """
+    proofs, _ = measurement_proofs(spec)
+    if not proofs:
+        return
+    roots = {node.id for node in graph.nodes if node.kernel.startswith("calibrate.")}
+    endpoint = transport_endpoints(spec).get("calibration")
+    if isinstance(endpoint, str):
+        roots.add(endpoint)
+    declared = {
+        node.id: node.params.get(MEASUREMENT_PARAM)
+        for node in graph.nodes
+        if isinstance(node.params, Mapping) and MEASUREMENT_PARAM in node.params
+    }
+    for binding, proof in sorted(proofs.items()):
+        named = sorted(name for name, value in declared.items() if value == binding)
+        for root in sorted(roots):
+            closure = _ancestor_closure(compiled.predecessors, {root})
+            found = [name for name in named if name in closure]
+            if found != [proof["producers"].get(root)]:
+                raise ValueError(
+                    f"Measurement {binding!r}: the compiled graph contradicts "
+                    "the declared proof; "
+                    + _measurement_refusal(binding, root, found, named)
+                    + f", and the declaration proved {proof['producers'].get(root)!r}."
+                )
 
 
 def reference_profile_view(
@@ -876,8 +910,8 @@ def _reference_activation_gaps(
                 remaining = []
             measurements = [
                 item.removeprefix("measurement:")
-                for item in remaining if isinstance(item, str)
-                and item.startswith("measurement:")
+                for item in remaining
+                if isinstance(item, str) and item.startswith("measurement:")
             ]
             if measurements:
                 gap += "; awaits " + ", ".join(
@@ -3243,21 +3277,7 @@ def _validate_precalibration_ancestry(
                 "name a node."
             )
         roots.add(endpoints["calibration"])
-    predecessors = {name: set() for name in rows}
-    reads = _precalibration_declared_reads(rows)
-    for name, row in rows.items():
-        base = row.get("base")
-        if isinstance(base, str):
-            predecessors[name].add(base)
-            predecessors[name].update(
-                item["id"] for item in rows.values() if item.get("population") == base
-            )
-        elif isinstance(row.get("population"), str):
-            predecessors[name].add(row["population"])
-        predecessors[name].update(
-            edge["producer"] for edge in row.get("artifact_inputs", ())
-        )
-        predecessors[name].update(producer for _, _, producer in reads[name])
+    predecessors, reads = _declared_calibration_predecessors(rows)
 
     declarations = rows
 
@@ -4263,6 +4283,7 @@ def compose_transport_graph(
     )
     compiled = compile_graph(skeleton)
     validate_transport_calibration_ancestry(spec, graph=skeleton, config=config)
+    _check_measurement_proofs(spec, skeleton, compiled)
     # Money ownership is checked after each graph pass of the ancestry guard.
     _check_single_money_normalization(spec, skeleton, compiled)
     _check_money_bridge_owners(skeleton, compiled)

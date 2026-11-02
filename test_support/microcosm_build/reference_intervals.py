@@ -236,6 +236,8 @@ def band_fact(kind, label, value, *, period=2001, record_set="toy.bands"):
             "vintage": "v1",
         },
         "dimensions": {"band": label},
+        "dimension_labels": {"band": "Band"},
+        "dimension_value_labels": {"band": {label: f"Band {label}"}},
         "universe_constraints": {"domain": "toy"},
         "layout": {
             "record_set_id": record_set,
@@ -348,9 +350,22 @@ def summed_profile_fixture(
             }
         },
     }
-    base = reference_document(references)
+    base = with_target_labels(reference_document(references))
     intervals = {"schema_version": 1, "tables": [table]}
     return base, profiles, context, intervals
+
+
+def with_target_labels(document):
+    """Give every row the Microcosm label a summed or scaled target needs.
+
+    The ledger refuses a multi-fact or transformed target without an explicit
+    target label (``ledger_targets.py`` ``_target_label``).
+    """
+    document["hierarchy"]["target_labels"] = {
+        row["metadata"]["contract_target_id"]: f"Toy target {row['name']}"
+        for row in document["target_references"]
+    }
+    return document
 
 
 def proof_for(producer="toy.measure", calibration="toy.calibrate"):
