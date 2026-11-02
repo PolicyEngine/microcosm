@@ -226,22 +226,22 @@ def money_node_factor_entries(spec: Mapping) -> tuple[dict, ...]:
     Skeleton and entitlement rows select their own declaration, profile and
     context before engine preparation or CREATE. Keep contexts separate even
     when nodes select the same factor id. A spec without money nodes selects
-    no money factors. Caller extensions contain code rather than spec rows;
-    this walk does not cover them.
+    no money factors. A node that selects no factor still needs a valid
+    context, as the kernel does. Caller extensions contain code rather than
+    spec rows; this walk does not cover them.
     """
     rows = []
     if _has_resource(spec, GRAPH_RESOURCE):
         rows.extend(
             (row, None, False)
             for row in transport_resource(spec, GRAPH_RESOURCE).get("nodes", ())
-            if isinstance(row, Mapping)
         )
     if _has_resource(spec, ENTITLEMENT_RESOURCE) and _has_resource(spec, "scenarios"):
         rows.extend((row, scenario, True) for row, scenario in _rows(spec)[0])
     config = SimpleNamespace(engine_refs={})
     entries = []
     for row, scenario, entitlement in rows:
-        if row.get("kernel") != MONEY_NORMALIZE_REF:
+        if _mapping(row, "graph node").get("kernel") != MONEY_NORMALIZE_REF:
             continue
         documents = {}
         for name in ("declaration", "profile_selection", "factor_context"):
@@ -281,15 +281,14 @@ def money_node_factor_entries(spec: Mapping) -> tuple[dict, ...]:
                 f"Money node {row.get('id')!r} profile_selection: {error}"
             ) from error
         ids = sorted({value for value in factors.values() if value is not None})
+        try:
+            selected = validate_factor_context(documents["factor_context"], ids)
+        except (ValueError, TypeError, KeyError) as error:
+            raise ValueError(
+                f"Money node {row.get('id')!r} factor_context: {error}"
+            ) from error
         if ids:
-            try:
-                entries.append(
-                    validate_factor_context(documents["factor_context"], ids)
-                )
-            except (ValueError, TypeError, KeyError) as error:
-                raise ValueError(
-                    f"Money node {row.get('id')!r} factor_context: {error}"
-                ) from error
+            entries.append(selected)
     return tuple(entries)
 
 
