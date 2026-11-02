@@ -62,8 +62,11 @@ def _age_upper(row):
 
 
 def _tables():
+    """The two IRD taxable-income tables; the wage table has its own tests."""
     return {
-        table["id"]: table for table in _document("reference_intervals.json")["tables"]
+        table["id"]: table
+        for table in _document("reference_intervals.json")["tables"]
+        if table["id"] in {NATIONAL, AGE}
     }
 
 
@@ -73,7 +76,8 @@ def _upper_dollars(band):
 
 def test_document_validates_under_the_shared_contract_with_declared_semantics():
     parsed = validate_interval_document(_document("reference_intervals.json"))
-    assert list(parsed) == [NATIONAL, AGE]
+    # G8-r2c E appends the declared-only TY2026 wage table.
+    assert list(parsed) == [NATIONAL, AGE, "ird_wage_salary_national_ty2026"]
     for table in _tables().values():
         assert {
             key: table[key]
@@ -287,10 +291,7 @@ def test_resolution_is_not_activation_and_no_active_row_requests_the_proxy():
     precal = _document("precal_references.json")["target_references"]
     wages = [row for row in precal if row["name"].startswith("ird_wage_salary_")]
     assert len(wages) == 235
-    assert all(
-        row["metadata"]["activation_status"] == "requires_g8r2c_wage_quantile_producer"
-        for row in wages
-    )
+    assert all(row["metadata"]["activation_status"] == "active" for row in wages)
 
 
 def test_declared_convention_is_disclosed_in_the_resource_and_the_docs():

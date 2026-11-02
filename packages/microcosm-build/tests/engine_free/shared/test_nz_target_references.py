@@ -141,7 +141,8 @@ def test_inventory_has_exact_contract_counts_and_named_parking_reasons():
     assert len(_rows("precal_references.json")) == 318
     for filename, active in (
         ("target_references.json", 77),
-        ("precal_references.json", 80),
+        # G8-r2c E activates the 235 P1 wage rows.
+        ("precal_references.json", 315),
     ):
         rows = _rows(filename)
         assert (
@@ -297,7 +298,8 @@ def test_full_nz_resource_resolves_directly_to_the_strict_compiler_document(prof
     assert receipt["base_intervals_sha256"] == reference_document_sha256(
         _document("reference_intervals.json")
     )
-    assert ["scaling" in table for table in intervals["tables"]] == [True, False]
+    # National scaled; the age and wage tables stay declared and validated only.
+    assert ["scaling" in table for table in intervals["tables"]] == [True, False, False]
     assert set(effective) == set(raw) & REFERENCE_DOCUMENT_KEYS
     references = parse_reference_document(effective, country="nz")
     assert len(references) == 773
@@ -740,10 +742,16 @@ def test_receipt_snapshots_activate_thirteen_cells_and_keep_vp_unsupported():
         and row.get("filter") is None
         for row in wages
     )
+    # G8-r2c E activates P1 for transport.quantile_map@2 and drops its exemptions.
+    assert all(row["metadata"]["activation_status"] == "active" for row in wages)
     assert all(
-        row["metadata"]["activation_status"] == "requires_g8r2c_wage_quantile_producer"
+        row["metadata"]["quantile_producer"] == "transport.quantile_map@2"
         for row in wages
     )
+    exempt = _document("reference_selection.json")["resources"]["precal_references"]
+    assert not {row["name"] for row in exempt["exempt"]} & {
+        row["name"] for row in wages
+    }
 
 
 @pytest.fixture(scope="module")
@@ -1116,3 +1124,65 @@ def test_wrong_source_pins_and_wrong_snapshot_refuse_even_with_matching_fact_key
         compile_ledger_target_references(
             artifact.facts, _parsed([receipt]), country="nz"
         )
+
+
+def test_wage_cuts_match_the_feed_labels_and_the_committed_table(artifact):
+    """G8-r2c E: every wage cut is its pinned feed label's upper bound."""
+    import re
+    from decimal import Decimal
+
+    from tools.generate_nz_target_references import WAGE_TABLE
+
+    generated = build_reference_documents(artifact)["reference_intervals.json"]
+    (table,) = [row for row in generated["tables"] if row["id"] == WAGE_TABLE]
+    (committed,) = [
+        row
+        for row in _document("reference_intervals.json")["tables"]
+        if row["id"] == WAGE_TABLE
+    ]
+    assert table == committed
+    labels = {
+        fact["layout"]["source_row_id"]: fact["dimensions"][
+            "wage_salary_band_source_label"
+        ]
+        for fact in artifact.facts
+        if fact.get("layout", {}).get("record_set_id")
+        == "ird_wage_salary_distribution.ty2026.income_bands"
+        and fact["layout"]["table_record_kind"] == "detail"
+    }
+    assert [band["id"] for band in table["bands"]] == [
+        f"row_{row}" for row in range(7, 242)
+    ]
+    previous = 0
+    for band in table["bands"]:
+        label = " ".join(labels[band["id"]].split())
+        assert band["source_label"] == labels[band["id"]]
+        if band["upper_cent"] is None:
+            assert label == "Over $1 million"
+            assert previous == 100_000_000
+            continue
+        lower, upper = re.fullmatch(
+            r"\$([\d,]+) - \$([\d,]+|1 million)", label
+        ).groups()
+        upper = 1_000_000 if upper == "1 million" else int(upper.replace(",", ""))
+        assert band["upper_cent"] == upper * 100
+        lower = Decimal(lower.replace(",", "")) * 100
+        # Right closure: a label that repeats the previous upper endpoint
+        # leaves that endpoint in the lower band; every other label starts $1 on.
+        if band["id"] in {"row_27", "row_57", "row_87"}:
+            assert lower == previous
+        else:
+            assert lower == previous + 100
+        previous = band["upper_cent"]
+
+
+def test_activated_wage_rows_compile_with_count_metadata_from_the_feed(artifact):
+    """Each P1 row resolves to one unfiltered person count fact (the map's shares)."""
+    wages = [
+        row for row in _rows("precal_references.json") if row["family"] == "earnings"
+    ]
+    keys = {fact["aggregate_fact_key"]: fact for fact in artifact.facts}
+    for row in wages:
+        fact = keys[row["ledger_selector"]["aggregate_fact_key"]]
+        assert fact["observed_measure"]["source_measure_id"] == "individuals"
+        assert fact["value"] >= 0

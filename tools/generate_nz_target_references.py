@@ -119,6 +119,28 @@ INTERVAL_DISCLOSURE = (
     "weighted mass within $1 of every cut and the fixed-weight change under the "
     "left-closed alternative; publisher reclassification is unavailable."
 )
+WAGE_TABLE = "ird_wage_salary_national_ty2026"
+# Reviewed wage-and-salary detail rows: "$1 - $1,000" (row 7) through
+# "Over $1 million" (row 241). Published total row 242 is diagnostic.
+WAGE_ROWS = tuple(f"row_{row}" for row in range(7, 242))
+# Rows whose published lower label repeats the previous row's upper endpoint:
+# "$20,000 - $21,000", "$50,000 - $51,000" and "$80,000 - $81,000".
+WAGE_SHARED_ENDPOINT_ROWS = ("row_27", "row_57", "row_87")
+WAGE_INCOME_COLUMN = "employment_income_cents"
+# Declared so the table validates; no producer writes it, so preparation
+# never classifies wages into these bands (design 80, section 2).
+WAGE_UNIVERSE_COLUMN = "employment_income_universe_status"
+WAGE_DISCLOSURE = (
+    "IRD publishes the TY2026 wage-and-salary bands as labels only. The cuts, "
+    "right closure and integer-cent arithmetic are Microcosm's declared "
+    "convention. Three published label pairs share an endpoint ($20,000, $50,000 "
+    "and $80,000: rows 26/27, 56/57 and 86/87); the right-closed cuts give each "
+    "shared endpoint to the lower band. The table has no nil band, because IRD counts only people "
+    "with wages, and refuses negative wages. It serves as the single source of "
+    "cuts for earnings_bands.json, which scales every cut by the P1 TY2026 to "
+    "TY2027 factor for the transport.quantile_map@2 producer; it carries no "
+    "companions and no fit rows."
+)
 VP_REASON = "G8-w3b must refuse Veterans Pension as unsupported under H4. Activation needs veteran facts and a reviewed receipt producer; G8-y owns the closing step."
 
 
@@ -679,10 +701,16 @@ def build_reference_documents(artifact, *, package_dir=SPEC):
                 reference_set="precal",
                 period=2027,
                 method_card="MC4",
-                status="requires_g8r2c_wage_quantile_producer",
-                reason="G8-r2c must connect the reviewed TY2026-to-TY2027 wage bridge, intervals and coverage to an active P1 earnings quantile producer; declarations alone do not produce calibrated earnings.",
-                label=f"TY2026-27 wage/salary band {fact['dimensions']['wage_salary_band_source_label']} (parked)",
+                label=f"TY2026-27 wage/salary band {fact['dimensions']['wage_salary_band_source_label']}",
             )
+        )
+        precal[-1]["metadata"].update(
+            {
+                "precal_use": "earnings_quantile_band",
+                "quantile_producer": "transport.quantile_map@2",
+                "band_edges_resource": "earnings_bands.json",
+                "interval_table_id": WAGE_TABLE,
+            }
         )
     precal_templates = json.loads(PRECAL_TEMPLATES.read_text())
     for contract, status, reason in (
@@ -1083,6 +1111,103 @@ def _interval_table(table_id, rows, labels, upper_dollars, locator, companions):
     }
 
 
+def _wage_upper_dollars(row):
+    """Each wage row's published upper cut in dollars; None is the open tail."""
+    if 7 <= row <= 206:
+        return 1000 * (row - 6)
+    if 207 <= row <= 226:
+        return 200000 + 5000 * (row - 206)
+    if 227 <= row <= 240:
+        return 300000 + 50000 * (row - 226)
+    if row == 241:
+        return None
+    raise ValueError(f"No wage-and-salary cut for row {row}")
+
+
+def _wage_label_bounds(label):
+    """Read a wage label as (lower, upper) dollars; IRD spells $1,000,000 "$1 million"."""
+    return _label_bounds(re.sub(r"\$1 million$", "$1,000,000", " ".join(label.split())))
+
+
+def wage_interval_table(labels):
+    """Generate the wage cuts from the row formulas and check every label.
+
+    Labels must tile (0, $1,000,000] with no gap, from "$1 - $1,000" to the
+    open tail. Exactly the three reviewed rows repeat the previous row's
+    upper endpoint; the right-closed cuts give each shared endpoint to the
+    lower band.
+    """
+    if tuple(sorted(labels, key=lambda row: int(row[4:]))) != WAGE_ROWS:
+        raise ValueError("Wage detail rows differ from the reviewed rows 7-241")
+    bands, previous, shared = [], Decimal(0), []
+    for row_id in WAGE_ROWS:
+        row = int(row_id.removeprefix("row_"))
+        label = labels[row_id]
+        lower, published_upper = _wage_label_bounds(label)
+        upper = _wage_upper_dollars(row)
+        if published_upper != (None if upper is None else Decimal(upper)):
+            raise ValueError(
+                f"Wage row {row_id} label {label!r} disagrees with its cut"
+            )
+        if lower == previous and upper is not None:
+            shared.append(row_id)
+        elif lower != (previous if upper is None else previous + 1):
+            raise ValueError(f"Wage row {row_id} label {label!r} leaves a gap")
+        bands.append(
+            {
+                "id": row_id,
+                "kind": "positive",
+                "upper_cent": None if upper is None else upper * 100,
+                "indicator": f"wage_salary_band_{row_id}_indicator",
+                "source_label": label,
+            }
+        )
+        if upper is not None:
+            previous = Decimal(upper)
+    if tuple(shared) != WAGE_SHARED_ENDPOINT_ROWS:
+        raise ValueError(f"{WAGE_TABLE} shared endpoint rows changed: {shared}")
+    return {
+        "id": WAGE_TABLE,
+        "entity": "person",
+        "currency": "NZD",
+        "input_unit": "integer_cent",
+        "income_column": WAGE_INCOME_COLUMN,
+        "universe_column": WAGE_UNIVERSE_COLUMN,
+        "source_period": 2026,
+        "target_period": 2027,
+        "positive_band_closure": "right",
+        "nil_band": "absent",
+        "negative_income_policy": "refuse",
+        "first_lower_cut_cents": 0,
+        "source_locator": "ird_wage_salary_distribution.ty2026.income_bands rows 7-241",
+        "diagnostics": {
+            "boundary_window_cents": 100,
+            "alternative_positive_band_closure": "left",
+        },
+        "description": (
+            "National TY2026 wage-and-salary bands, rows 7-241: 200 bands of "
+            "$1,000 to $200,000, 20 of $5,000 to $300,000, 14 of $50,000 to "
+            "$1,000,000 and the open tail. Declared and validated only: no "
+            "companions and no fit rows. " + WAGE_DISCLOSURE
+        ),
+        "bands": bands,
+    }
+
+
+def _wage_labels(inventory):
+    labels = {}
+    for fact in inventory.cells(
+        "ird_wage_salary_distribution.ty2026.income_bands", measure="individuals"
+    ):
+        if fact["layout"]["table_record_kind"] != "detail":
+            continue
+        row = fact["layout"]["source_row_id"]
+        label = fact["dimensions"]["wage_salary_band_source_label"]
+        if labels.setdefault(row, label) != label:
+            raise ValueError(f"Wage row {row} has inconsistent labels")
+    return labels
+
+
 def _reference_intervals(inventory):
     national = _band_labels(
         inventory.cells(
@@ -1123,6 +1248,7 @@ def _reference_intervals(inventory):
         "181 finite bands and the open tail over $180,000. Declared and "
         "validated only; no reference companions and no fit rows."
     )
+    tables.append(wage_interval_table(_wage_labels(inventory)))
     return {
         "schema_version": 1,
         "country": "nz",

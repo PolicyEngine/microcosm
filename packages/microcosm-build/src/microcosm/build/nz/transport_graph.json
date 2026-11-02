@@ -585,6 +585,83 @@
       }
     },
     {
+      "id": "nz.earnings.map",
+      "kernel": "transport.quantile_map@2",
+      "population": "nz.central",
+      "inputs": [
+        {
+          "entity": "person",
+          "columns": [
+            "employment_income"
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "entity": "person",
+          "column": "employment_income",
+          "dtype": "float64",
+          "rewrite": true
+        }
+      ],
+      "params": {
+        "entity": "person",
+        "column": "employment_income",
+        "bands": {
+          "resource": "earnings_bands",
+          "path": [
+            "profiles",
+            "central",
+            "map_bands"
+          ],
+          "encoding": "json"
+        },
+        "bands_sha256": {
+          "resource": "earnings_bands",
+          "path": [],
+          "encoding": "sha256"
+        },
+        "interpolation": {
+          "resource": "earnings_bands",
+          "path": [
+            "tails",
+            "central"
+          ],
+          "encoding": "json"
+        }
+      },
+      "artifact_inputs": [
+        {
+          "name": "surface",
+          "producer": "nz.facts.precal",
+          "artifact": "surface"
+        }
+      ]
+    },
+    {
+      "id": "nz.earnings.cents",
+      "kernel": "money.minor_units@1",
+      "population": "nz.central",
+      "inputs": [
+        {
+          "entity": "person",
+          "columns": [
+            "employment_income"
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "entity": "person",
+          "column": "employment_income_cents",
+          "dtype": "int64"
+        }
+      ],
+      "params": {
+        "declaration": "{\"columns\":[{\"output_column\":\"employment_income_cents\",\"quantum\":\"0.01\",\"rounding\":\"half_even\",\"source_column\":\"employment_income\"}],\"entity\":\"person\"}"
+      }
+    },
+    {
       "id": "nz.encode.person",
       "kernel": "concepts.encode@1",
       "population": "nz.central",
@@ -4184,6 +4261,7 @@
           "columns": [
             "age",
             "dividend_income",
+            "employment_income",
             "farm_self_employment_income",
             "interest_income",
             "nonfarm_self_employment_income",
@@ -4238,6 +4316,7 @@
           "columns": [
             "age",
             "dividend_income",
+            "employment_income",
             "farm_self_employment_income",
             "interest_income",
             "jobseeker_applicant_age",
@@ -4494,6 +4573,7 @@
           "columns": [
             "age",
             "dividend_income",
+            "employment_income",
             "farm_self_employment_income",
             "interest_income",
             "jobseeker_applicant_age",
@@ -4753,6 +4833,6 @@
   },
   "pending_outputs": [
     "r2c income stand-in and reconciliation",
-    "P1 earnings, Census rent and liquid-assets quantile producers"
+    "Census rent and liquid-assets quantile producers"
   ]
 }

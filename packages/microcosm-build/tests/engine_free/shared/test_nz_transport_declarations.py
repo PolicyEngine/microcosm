@@ -685,10 +685,19 @@ def _nz_composition_spec_and_config():
         money = next(row for row in rows if row["kernel"] == "money.normalize@1")
         at = rows.index(money) + 1
         synthetic = []
+        mapped = {
+            (output["entity"], output["column"])
+            for row in rows
+            if row["kernel"].startswith("transport.quantile_map@")
+            for output in row.get("outputs", ())
+        }
         for entity, columns in resources["money_normalization"][
             "quantile_mapped"
         ].items():
             for column in columns:
+                # G8-r2c E declares the real P1 wage map; keep it the only producer.
+                if (entity, column) in mapped:
+                    continue
                 synthetic.append(
                     {
                         "id": money["id"] + ".synthetic_quantile." + column,
@@ -962,3 +971,213 @@ def test_nz_export_slices_need_no_ids_because_compile_refuses_them():
         GraphError, match=r"reads household\.household_id, which no node owns"
     ):
         compose.compose_transport_graph(spec, config)
+
+
+# ---------------------------------------------------------------------------
+# G8-r2c E: the P1 wage map on scaled band edges
+# ---------------------------------------------------------------------------
+
+_WAGE_TABLE = "ird_wage_salary_national_ty2026"
+_PROFILES = ("low", "central", "high")
+
+
+def _earnings_sources():
+    spec = _spec()
+    resources = spec["resources"]
+    (table,) = [
+        row
+        for row in resources["reference_intervals"]["tables"]
+        if row["id"] == _WAGE_TABLE
+    ]
+    factors = {
+        entry["receipt"]["factor_id"]: entry
+        for entry in resources["reference_aging"]["factors"]
+    }
+    return resources, table, factors
+
+
+def _branches(spec):
+    """Each calibration branch's node list: the skeleton's and every variant's."""
+    yield "nz", spec["resources"]["transport_graph"]["nodes"]
+    for scenario in spec["resources"]["scenarios"]["scenarios"]:
+        if scenario["tier"] == "calibration":
+            yield f"nz.v.{scenario['id']}", scenario["nodes"]
+
+
+def test_every_profiles_edges_equal_cut_times_factor_exactly():
+    """Each edge is float(cut_cents × P1 factor / 100), rounded once from Fraction."""
+    from fractions import Fraction
+
+    resources, table, factors = _earnings_sources()
+    document = resources["earnings_bands"]
+    cuts = [table["first_lower_cut_cents"]] + [b["upper_cent"] for b in table["bands"]]
+    # Design 80 gives the P1 factors as 1.026690, 1.028580 and 1.030467.
+    assert {
+        profile: factors[f"p1_ty2026_to_ty2027_{profile}"]["operational_factor"]
+        for profile in _PROFILES
+    } == {
+        "low": {"numerator": 1026690, "denominator": 1000000},
+        "central": {"numerator": 1028580, "denominator": 1000000},
+        "high": {"numerator": 1030467, "denominator": 1000000},
+    }
+    assert set(document["profiles"]) == set(_PROFILES)
+    for profile in _PROFILES:
+        entry = factors[f"p1_ty2026_to_ty2027_{profile}"]
+        factor = Fraction(
+            entry["operational_factor"]["numerator"],
+            entry["operational_factor"]["denominator"],
+        )
+        declared = document["profiles"][profile]
+        assert declared["factor_receipt_sha256"] == entry["receipt"]["receipt_sha256"]
+        bands = declared["map_bands"]["bands"]
+        assert [row["reference"] for row in bands] == [
+            f"ird_wage_salary_people_by_band__{band['id']}" for band in table["bands"]
+        ]
+        edges = [bands[0]["lower"]] + [row["upper"] for row in bands]
+        assert edges == [
+            None if cut is None else float(Fraction(cut) * factor / 100) for cut in cuts
+        ]
+    # Design 80's worked band "$50,001 - $51,000" at the central factor.
+    row_57 = document["profiles"]["central"]["map_bands"]["bands"][50]
+    assert (row_57["lower"], row_57["upper"]) == (51429.0, 52457.58)
+
+
+def test_wage_table_has_235_right_closed_bands_and_no_companions():
+    _, table, _ = _earnings_sources()
+    assert len(table["bands"]) == 235
+    assert table["bands"][0]["id"] == "row_7" and table["bands"][-1]["id"] == "row_241"
+    assert table["bands"][-1]["upper_cent"] is None
+    assert table["bands"][-2]["upper_cent"] == 100_000_000
+    assert (
+        table["entity"],
+        table["income_column"],
+        table["positive_band_closure"],
+        table["nil_band"],
+        table["negative_income_policy"],
+        table["first_lower_cut_cents"],
+    ) == ("person", "employment_income_cents", "right", "absent", "refuse", 0)
+    assert not any("count_reference" in band for band in table["bands"])
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    ["hand_edited_edge", "stale_factor_receipt", "stale_interval_table", "tail"],
+)
+def test_the_builder_check_refuses_each_stale_earnings_declaration(mutate):
+    from tools import build_nz_transport_graph as builder
+
+    resources, _, _ = _earnings_sources()
+    document = copy.deepcopy(resources["earnings_bands"])
+    intervals = copy.deepcopy(resources["reference_intervals"])
+    aging = copy.deepcopy(resources["reference_aging"])
+    builder.validate_earnings_bands(document, intervals, aging)
+    if mutate == "hand_edited_edge":
+        document["profiles"]["high"]["map_bands"]["bands"][100]["upper"] += 0.01
+        match = "edges differ"
+    elif mutate == "stale_factor_receipt":
+        for entry in aging["factors"]:
+            if entry["receipt"]["factor_id"] == "p1_ty2026_to_ty2027_low":
+                entry["receipt"]["receipt_sha256"] = "0" * 64
+        match = "stale factor_receipt_sha256"
+    elif mutate == "stale_interval_table":
+        (table,) = [t for t in intervals["tables"] if t["id"] == _WAGE_TABLE]
+        table["source_locator"] += " (edited)"
+        match = "stale wage interval table"
+    else:
+        document["tails"]["central"]["estimator"]["anchor_references"].pop(0)
+        match = "tails differ"
+    with pytest.raises(ValueError, match=match):
+        builder.validate_earnings_bands(document, intervals, aging)
+
+
+def test_the_wage_map_and_cents_precede_the_person_encoder_on_every_branch():
+    spec = _spec()
+    selected = {"V1": "low", "V2": "high"}
+    for prefix, rows in _branches(spec):
+        ids = [row["id"] for row in rows]
+        by_id = {row["id"]: row for row in rows}
+        mapper, cents = (
+            by_id[f"{prefix}.earnings.map"],
+            by_id[f"{prefix}.earnings.cents"],
+        )
+        assert (
+            ids.index(mapper["id"])
+            < ids.index(cents["id"])
+            < ids.index(f"{prefix}.encode.person")
+        )
+        assert mapper["kernel"] == "transport.quantile_map@2"
+        assert mapper["population"] == by_id[f"{prefix}.money.normalize"]["population"]
+        assert mapper["outputs"] == [
+            {
+                "entity": "person",
+                "column": "employment_income",
+                "dtype": "float64",
+                "rewrite": True,
+            }
+        ]
+        assert mapper["artifact_inputs"] == [
+            {"name": "surface", "producer": "nz.facts.precal", "artifact": "surface"}
+        ]
+        variant = prefix.removeprefix("nz.v.") if prefix != "nz" else None
+        assert mapper["params"]["bands"]["path"] == [
+            "profiles",
+            selected.get(variant, "central"),
+            "map_bands",
+        ]
+        assert mapper["params"]["interpolation"]["path"] == [
+            "tails",
+            "vpt" if variant == "VPT" else "central",
+        ]
+        assert cents["kernel"] == "money.minor_units@1"
+        assert json.loads(cents["params"]["declaration"])["columns"] == [
+            {
+                "output_column": "employment_income_cents",
+                "quantum": "0.01",
+                "rounding": "half_even",
+                "source_column": "employment_income",
+            }
+        ]
+        # The encoder reads the mapped wages from the same population.
+        encode = by_id[f"{prefix}.encode.person"]
+        assert any("employment_income" in item["columns"] for item in encode["inputs"])
+
+
+def test_the_tails_anchor_on_the_r2c9_rows_with_the_declared_bracket():
+    resources, table, _ = _earnings_sources()
+    labels = {band["id"]: band["source_label"] for band in table["bands"]}
+    tails = resources["earnings_bands"]["tails"]
+    central = tails["central"]["estimator"]["anchor_references"]
+    vpt = tails["vpt"]["estimator"]["anchor_references"]
+    assert central == [
+        f"ird_wage_salary_people_by_band__row_{row}" for row in range(231, 242)
+    ]
+    assert vpt == [
+        f"ird_wage_salary_people_by_band__row_{row}" for row in range(227, 242)
+    ]
+    assert " ".join(labels["row_231"].split()) == "$500,001 - $550,000"
+    assert " ".join(labels["row_227"].split()) == "$300,001 - $350,000"
+    assert labels["row_241"] == "Over $1 million"
+    for tail in tails.values():
+        assert tail["method"] == "pareto"
+        assert tail["estimator"]["id"] == "grouped_pareto_mle@1"
+        assert tail["estimator"]["bracket"] == ["1.00000095367431640625", "64"]
+        assert tail["estimator"]["iterations"] == 64
+
+
+def test_r2c6_exports_employment_income_on_the_export_and_both_slices():
+    contract = _spec()["resources"]["export_contract"]
+    assert "employment_income" in contract["optional"]
+    for role in ("export", "gates"):
+        assert "employment_income" in contract["entity_slices"][role]["person"]
+
+
+def test_the_wage_bands_reach_quantile_map_v2_as_a_bare_band_list():
+    resources, _, _ = _earnings_sources()
+    for profile in resources["earnings_bands"]["profiles"].values():
+        assert set(profile["map_bands"]) == {"bands"}
+
+
+def test_pending_outputs_no_longer_name_p1_earnings():
+    pending = _spec()["resources"]["transport_graph"]["pending_outputs"]
+    assert "Census rent and liquid-assets quantile producers" in pending
+    assert not any("P1" in entry or "earnings" in entry for entry in pending)

@@ -54,10 +54,9 @@
         "msd_veterans_pension_recipients": 1
       },
       "by_activation_status": {
-        "requires_g8r2c_wage_quantile_producer": 235,
+        "active": 315,
         "requires_rent_band_frequencies": 1,
         "requires_all_household_liquid_asset_histogram": 1,
-        "active": 80,
         "requires_unsupported_veterans_pension": 1
       }
     },

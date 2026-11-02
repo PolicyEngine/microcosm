@@ -613,9 +613,19 @@ def documents(nz=NZ):
                 if scenario["id"] == "VHF"
                 else "money_normalization"
             )
+            # Each variant repeats the wage map and its cents node with its own
+            # aging profile's P1 edges (V1 low, V2 high); VPT re-anchors the
+            # open top at $300,000 (R2C-9).
+            knobs = scenario["knobs"]
             rows = [
                 boundary(prefix, "nz.open"),
-                *calibration_nodes(prefix, prefix, money_resource=resource),
+                *calibration_nodes(
+                    prefix,
+                    prefix,
+                    money_resource=resource,
+                    earnings_profile=knobs.get("aging_index", "central"),
+                    earnings_tail=knobs.get("earnings_tail_anchor", "central"),
+                ),
             ]
             for row in rows:
                 if row["kernel"] == "money.normalize@1":

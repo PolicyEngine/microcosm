@@ -708,3 +708,34 @@ def test_a_relation_reaches_the_closure_producer_through_the_executor(toy):
     ]
     assert rows[binding["id"]]["gap"] == []
     assert rows[binding["id"]]["relation_missing"] == []
+
+
+def test_the_wage_map_v2_support_row_is_quantile_mapped_with_none_outside(toy):
+    """G8-r2c E: the support gate range-checks the @2 wage map on both signs.
+
+    A bare band list feeds both signs, and the open Pareto top leaves both
+    expected bounds open, so every mapped wage sits inside.
+    """
+    _, run = toy
+    support = json.loads(_artifact(run, "nz.evidence.support", "donor_support_bounds"))
+    (row,) = [
+        row
+        for row in support["columns"]
+        if (row["entity"], row["column"]) == ("person", "employment_income")
+    ]
+    assert row["class"] == "quantile_mapped"
+    assert row["records_outside"] == 0
+    assert row["expected_max"] is None and row["expected_min"] is None
+    assert row["realized_min"] >= 0
+
+
+def test_the_wage_map_v2_fits_the_toy_alpha_on_scaled_edges(toy):
+    """The toy anchors (3 in (250, 500], 1 above 500) give alpha = 2 exactly."""
+    from test_support.microcosm_build.transport_nz_toy import TOY_EARNINGS_FACTOR
+
+    manifest = toy[1][0]
+    receipt = manifest.nodes["nz.transport.qmap.employment_income"].receipt
+    fit = receipt["tail_estimator"]
+    assert fit["alpha_decimal"] == "2"
+    assert fit["top_band_lower"] == "500" == str(int(400 * TOY_EARNINGS_FACTOR))
+    assert [anchor["count"] for anchor in fit["anchors"]] == [3.0, 1.0]

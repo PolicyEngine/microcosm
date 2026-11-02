@@ -523,6 +523,60 @@ def _reporting(population, prefix, scenario):
     return [income, receipt]
 
 
+#: Invented P1-style factor for the toy's scaled wage edges (G8-r2c E).
+TOY_EARNINGS_FACTOR = Fraction(5, 4)
+#: The toy wage cuts before scaling, in currency units; the last band is open.
+TOY_EARNINGS_CUTS = (100, 200, 400, None)
+#: Exact anchor counts: (200, 400] holds 3 and the open top 1, so the grouped
+#: Pareto MLE solves 2^-alpha = 1/4, alpha = 2.
+TOY_TOP_BAND_COUNT = 1.0
+TOY_EARNINGS_TOP = "toy_person_top_band"
+
+
+def toy_earnings_bands():
+    """The toy counterpart of earnings_bands.json: cut × factor, one open top."""
+    edges = [
+        None if cut is None else float(Fraction(cut) * TOY_EARNINGS_FACTOR)
+        for cut in TOY_EARNINGS_CUTS
+    ]
+    references = ("toy_person_lower_band", "toy_person_upper_band", TOY_EARNINGS_TOP)
+    return {
+        "map_bands": {
+            "bands": [
+                {"lower": edges[i], "upper": edges[i + 1], "reference": reference}
+                for i, reference in enumerate(references)
+            ]
+        },
+        "tail": {
+            "method": "pareto",
+            "estimator": {
+                "id": "grouped_pareto_mle@1",
+                "anchor_references": list(references[1:]),
+                "bracket": ["1.00000095367431640625", "64"],
+                "iterations": 64,
+            },
+        },
+    }
+
+
+def _earnings_map_v2(resources, rows, facts):
+    """Map toy wages with ``transport.quantile_map@2``, as NZ's nz.earnings.map does."""
+    resources["toy_earnings_bands"] = toy_earnings_bands()
+    resources["precal_references"]["target_references"].append(
+        reference_row(TOY_EARNINGS_TOP, entity="person", measure="toy_person_count")
+    )
+    facts.append(_fact(TOY_EARNINGS_TOP, TOY_TOP_BAND_COUNT))
+    mapper = next(
+        row for row in rows if row["id"] == "nz.transport.qmap.employment_income"
+    )
+    mapper["kernel"] = "transport.quantile_map@2"
+    mapper["params"].update(
+        bands=_select("toy_earnings_bands", "json", "map_bands"),
+        bands_sha256=_select("toy_earnings_bands", "sha256"),
+        interpolation=_select("toy_earnings_bands", "json", "tail"),
+    )
+
+
 def make_nz_toy_fixture(root):
     """Prepare forty synthetic households and the complete transport declaration."""
     base = make_entitlement_fixture(root, variants=False)
@@ -672,6 +726,7 @@ def make_nz_toy_fixture(root):
         ),
         _boundary("nz.central", "nz.open"),
     )
+    _earnings_map_v2(r, rows, facts)
     central_members = {
         "nz.encode.person",
         "nz.rules.main_benefits",

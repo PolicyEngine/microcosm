@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Generate NZ transport declarations without reading donor records.
 
-The graph leaves the three money quantile producers unresolved and names
-them as pending. It declares the executable wiring the shared kernels support.
+The graph maps P1 wages with ``transport.quantile_map@2`` on scaled band
+edges and names the two remaining money quantile producers as pending. It declares the executable wiring the shared kernels support.
 """
 
 from __future__ import annotations
@@ -11,6 +11,7 @@ import argparse
 import copy
 import hashlib
 import json
+from fractions import Fraction
 from functools import cache
 from pathlib import Path
 
@@ -265,8 +266,190 @@ def encoder_outputs(paths, entity):
     return [owned(frame_entity, name, dtype) for name, dtype in sorted(dtypes.items())]
 
 
+WAGE_TABLE = "ird_wage_salary_national_ty2026"
+WAGE_REFERENCE = "ird_wage_salary_people_by_band__{}"
+P1_FACTOR = "p1_ty2026_to_ty2027_{}"
+AGING_PROFILES = ("low", "central", "high")
+#: R2C-9: central anchors on the ten $50,000 bands from $500,000 plus the
+#: open top (rows 231-241); VPT re-anchors at $300,000 (rows 227-241).
+TAIL_ANCHORS = {"central": 500_000, "vpt": 300_000}
+TAIL_BRACKET = ["1.00000095367431640625", "64"]
+TAIL_ITERATIONS = 64
+EARNINGS_CENTS = {
+    "columns": [
+        {
+            "output_column": "employment_income_cents",
+            "quantum": "0.01",
+            "rounding": "half_even",
+            "source_column": "employment_income",
+        }
+    ],
+    "entity": "person",
+}
+
+
+def _sha256_json(document):
+    """SHA-256 of canonical JSON (sorted keys, no whitespace)."""
+    return hashlib.sha256(
+        json.dumps(document, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+
+
+def scaled_edge(cut_cents, factor):
+    """cut_cents × factor / 100 dollars, exact in Fraction, rounded once."""
+    return float(Fraction(cut_cents) * factor / 100)
+
+
+def earnings_bands_document(intervals=None, aging=None):
+    """Scale each wage cut by each profile's P1 factor (design 80, section 2).
+
+    Reads the wage interval table and the P1 factors; writes, for each
+    ``aging_index`` profile, the bare band list ``transport.quantile_map@2``
+    reads, plus the two declared open-top tails.
+    """
+    intervals = read("reference_intervals") if intervals is None else intervals
+    aging = read("reference_aging") if aging is None else aging
+    (table,) = [row for row in intervals["tables"] if row["id"] == WAGE_TABLE]
+    factors = {entry["receipt"]["factor_id"]: entry for entry in aging["factors"]}
+    cuts = [table["first_lower_cut_cents"]] + [
+        band["upper_cent"] for band in table["bands"]
+    ]
+    profiles = {}
+    for profile in AGING_PROFILES:
+        entry = factors[P1_FACTOR.format(profile)]
+        operational = entry["operational_factor"]
+        factor = Fraction(operational["numerator"], operational["denominator"])
+        edges = [None if cut is None else scaled_edge(cut, factor) for cut in cuts]
+        profiles[profile] = {
+            "factor_id": P1_FACTOR.format(profile),
+            "operational_factor": operational,
+            "factor_receipt_sha256": entry["receipt"]["receipt_sha256"],
+            "map_bands": {
+                "bands": [
+                    {
+                        "lower": edges[index],
+                        "upper": edges[index + 1],
+                        "reference": WAGE_REFERENCE.format(band["id"]),
+                    }
+                    for index, band in enumerate(table["bands"])
+                ]
+            },
+        }
+    tails = {}
+    for name, anchor in TAIL_ANCHORS.items():
+        start = next(
+            index
+            for index, cut in enumerate(cuts)
+            if cut is not None and cut == anchor * 100
+        )
+        tails[name] = {
+            "method": "pareto",
+            "estimator": {
+                "id": "grouped_pareto_mle@1",
+                "anchor_references": [
+                    WAGE_REFERENCE.format(band["id"]) for band in table["bands"][start:]
+                ],
+                "bracket": list(TAIL_BRACKET),
+                "iterations": TAIL_ITERATIONS,
+            },
+        }
+    return {
+        "schema_version": 1,
+        "country": "nz",
+        "generator": "tools/build_nz_transport_graph.py",
+        "description": (
+            "Effective TY2027 wage band edges in dollars for transport.quantile_map@2. "
+            "Each edge is the wage table's TY2026 cut in cents times the selected "
+            "profile's P1 factor over 100, computed exactly and rounded once to "
+            "binary64. Band counts stay the TY2026 IRD facts the references pin: "
+            "scaling the edges, not the mapped values, keeps one producer of "
+            "person.employment_income (design 80, section 2). The generator's "
+            "--check recomputes every edge from reference_intervals.json and "
+            "reference_aging.json."
+        ),
+        "interval_table_id": WAGE_TABLE,
+        "interval_table_sha256": _sha256_json(table),
+        "profiles": profiles,
+        "tails": tails,
+        "tail_disclosure": (
+            "R2C-9: the central tail fits grouped_pareto_mle@1 to the ten $50,000 "
+            "bands from $500,000 plus the open top; VPT re-anchors at $300,000 over "
+            "all fourteen $50,000 bands plus the top. The two-point closed form is a "
+            "G8-x diagnostic and is not declared here."
+        ),
+    }
+
+
+def validate_earnings_bands(document, intervals=None, aging=None):
+    """Refuse any edge, factor or table identity the sources don't reproduce.
+
+    Recomputes every profile's edges as cut_cents × P1 factor / 100 from the
+    wage interval table and reference_aging.json, and compares the factor
+    receipts and the table digest. Returns nothing; raises on the first
+    difference, naming it.
+    """
+    expected = earnings_bands_document(intervals, aging)
+    if document.get("interval_table_sha256") != expected["interval_table_sha256"]:
+        raise ValueError("earnings_bands.json names a stale wage interval table")
+    for profile, want in expected["profiles"].items():
+        have = document.get("profiles", {}).get(profile)
+        if have is None:
+            raise ValueError(f"earnings_bands.json lacks profile {profile!r}")
+        for field in ("factor_id", "operational_factor", "factor_receipt_sha256"):
+            if have.get(field) != want[field]:
+                raise ValueError(
+                    f"earnings_bands.json profile {profile!r} has a stale {field}"
+                )
+        if have.get("map_bands") != want["map_bands"]:
+            raise ValueError(
+                f"earnings_bands.json profile {profile!r} edges differ from "
+                "cut × factor"
+            )
+    if document.get("tails") != expected["tails"]:
+        raise ValueError("earnings_bands.json tails differ from the declared anchors")
+
+
+def earnings_nodes(population, prefix, profile="central", tail="central"):
+    """The P1 wage map and its cents node, upstream of the person encoder."""
+    return [
+        node(
+            f"{prefix}.earnings.map",
+            "transport.quantile_map@2",
+            population=population,
+            inputs=[slice_("person", ["employment_income"])],
+            outputs=[owned("person", "employment_income", "float64", rewrite=True)],
+            params={
+                "entity": "person",
+                "column": "employment_income",
+                "bands": select(
+                    "earnings_bands", "json", "profiles", profile, "map_bands"
+                ),
+                "bands_sha256": select("earnings_bands", "sha256"),
+                "interpolation": select("earnings_bands", "json", "tails", tail),
+            },
+            artifact_inputs=[edge("surface", "nz.facts.precal")],
+        ),
+        node(
+            f"{prefix}.earnings.cents",
+            "money.minor_units@1",
+            population=population,
+            inputs=[slice_("person", ["employment_income"])],
+            outputs=[owned("person", "employment_income_cents", "int64")],
+            params={
+                "declaration": json.dumps(
+                    EARNINGS_CENTS, sort_keys=True, separators=(",", ":")
+                )
+            },
+        ),
+    ]
+
+
 def calibration_nodes(
-    population="nz.central", prefix="nz", money_resource="money_normalization"
+    population="nz.central",
+    prefix="nz",
+    money_resource="money_normalization",
+    earnings_profile="central",
+    earnings_tail="central",
 ):
     """Build one complete money/engine/receipt/calibration branch."""
     resources = read("money_normalization")
@@ -302,6 +485,7 @@ def calibration_nodes(
                 ),
             },
         ),
+        *earnings_nodes(population, prefix, earnings_profile, earnings_tail),
         node(
             f"{prefix}.encode.person",
             "concepts.encode@1",
@@ -740,12 +924,18 @@ def documents():
     for row in rows:
         if row["kernel"] in {
             "money.normalize@1",
+            "transport.quantile_map@2",
             "concepts.encode@1",
             "concepts.encode_groups@1",
             "takeup.assign@1",
         }:
+            # R2C-6: the wage map's rewrite joins the roster beside the
+            # normalized donor money, so the support gate range-checks it.
             for output in row.get("outputs", ()):
-                if row["kernel"] != "money.normalize@1" or output.get("rewrite"):
+                if row["kernel"] not in {
+                    "money.normalize@1",
+                    "transport.quantile_map@2",
+                } or output.get("rewrite"):
                     roster[output["entity"]].append(output["column"])
     roster = {
         entity: sorted(set(names) - automatic_columns()[entity])
@@ -863,7 +1053,7 @@ def documents():
         },
         "pending_outputs": [
             "r2c income stand-in and reconciliation",
-            "P1 earnings, Census rent and liquid-assets quantile producers",
+            "Census rent and liquid-assets quantile producers",
         ],
     }
     add_evidence(graph)
@@ -891,6 +1081,7 @@ def documents():
         "money_normalization_hold_fixed.json": hold,
         "export_contract.json": export,
         "transport_graph.json": graph,
+        "earnings_bands.json": earnings_bands_document(),
     }
 
 
@@ -1042,6 +1233,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--check", action="store_true")
     args = parser.parse_args()
+    if args.check:
+        validate_earnings_bands(read("earnings_bands"))
     for name, value in documents().items():
         target = NZ / name
         rendered = json.dumps(value, indent=2, ensure_ascii=False) + "\n"

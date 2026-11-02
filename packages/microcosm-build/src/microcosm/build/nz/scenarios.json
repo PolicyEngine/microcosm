@@ -4690,6 +4690,83 @@
           }
         },
         {
+          "id": "nz.v.V1.earnings.map",
+          "kernel": "transport.quantile_map@2",
+          "population": "nz.v.V1",
+          "inputs": [
+            {
+              "entity": "person",
+              "columns": [
+                "employment_income"
+              ]
+            }
+          ],
+          "outputs": [
+            {
+              "entity": "person",
+              "column": "employment_income",
+              "dtype": "float64",
+              "rewrite": true
+            }
+          ],
+          "params": {
+            "entity": "person",
+            "column": "employment_income",
+            "bands": {
+              "resource": "earnings_bands",
+              "path": [
+                "profiles",
+                "low",
+                "map_bands"
+              ],
+              "encoding": "json"
+            },
+            "bands_sha256": {
+              "resource": "earnings_bands",
+              "path": [],
+              "encoding": "sha256"
+            },
+            "interpolation": {
+              "resource": "earnings_bands",
+              "path": [
+                "tails",
+                "central"
+              ],
+              "encoding": "json"
+            }
+          },
+          "artifact_inputs": [
+            {
+              "name": "surface",
+              "producer": "nz.facts.precal",
+              "artifact": "surface"
+            }
+          ]
+        },
+        {
+          "id": "nz.v.V1.earnings.cents",
+          "kernel": "money.minor_units@1",
+          "population": "nz.v.V1",
+          "inputs": [
+            {
+              "entity": "person",
+              "columns": [
+                "employment_income"
+              ]
+            }
+          ],
+          "outputs": [
+            {
+              "entity": "person",
+              "column": "employment_income_cents",
+              "dtype": "int64"
+            }
+          ],
+          "params": {
+            "declaration": "{\"columns\":[{\"output_column\":\"employment_income_cents\",\"quantum\":\"0.01\",\"rounding\":\"half_even\",\"source_column\":\"employment_income\"}],\"entity\":\"person\"}"
+          }
+        },
+        {
           "id": "nz.v.V1.encode.person",
           "kernel": "concepts.encode@1",
           "population": "nz.v.V1",
@@ -9065,6 +9142,83 @@
               "scenario": "knobs",
               "encoding": "json"
             }
+          }
+        },
+        {
+          "id": "nz.v.V2.earnings.map",
+          "kernel": "transport.quantile_map@2",
+          "population": "nz.v.V2",
+          "inputs": [
+            {
+              "entity": "person",
+              "columns": [
+                "employment_income"
+              ]
+            }
+          ],
+          "outputs": [
+            {
+              "entity": "person",
+              "column": "employment_income",
+              "dtype": "float64",
+              "rewrite": true
+            }
+          ],
+          "params": {
+            "entity": "person",
+            "column": "employment_income",
+            "bands": {
+              "resource": "earnings_bands",
+              "path": [
+                "profiles",
+                "high",
+                "map_bands"
+              ],
+              "encoding": "json"
+            },
+            "bands_sha256": {
+              "resource": "earnings_bands",
+              "path": [],
+              "encoding": "sha256"
+            },
+            "interpolation": {
+              "resource": "earnings_bands",
+              "path": [
+                "tails",
+                "central"
+              ],
+              "encoding": "json"
+            }
+          },
+          "artifact_inputs": [
+            {
+              "name": "surface",
+              "producer": "nz.facts.precal",
+              "artifact": "surface"
+            }
+          ]
+        },
+        {
+          "id": "nz.v.V2.earnings.cents",
+          "kernel": "money.minor_units@1",
+          "population": "nz.v.V2",
+          "inputs": [
+            {
+              "entity": "person",
+              "columns": [
+                "employment_income"
+              ]
+            }
+          ],
+          "outputs": [
+            {
+              "entity": "person",
+              "column": "employment_income_cents",
+              "dtype": "int64"
+            }
+          ],
+          "params": {
+            "declaration": "{\"columns\":[{\"output_column\":\"employment_income_cents\",\"quantum\":\"0.01\",\"rounding\":\"half_even\",\"source_column\":\"employment_income\"}],\"entity\":\"person\"}"
           }
         },
         {
@@ -13446,6 +13600,83 @@
           }
         },
         {
+          "id": "nz.v.V3.earnings.map",
+          "kernel": "transport.quantile_map@2",
+          "population": "nz.v.V3",
+          "inputs": [
+            {
+              "entity": "person",
+              "columns": [
+                "employment_income"
+              ]
+            }
+          ],
+          "outputs": [
+            {
+              "entity": "person",
+              "column": "employment_income",
+              "dtype": "float64",
+              "rewrite": true
+            }
+          ],
+          "params": {
+            "entity": "person",
+            "column": "employment_income",
+            "bands": {
+              "resource": "earnings_bands",
+              "path": [
+                "profiles",
+                "central",
+                "map_bands"
+              ],
+              "encoding": "json"
+            },
+            "bands_sha256": {
+              "resource": "earnings_bands",
+              "path": [],
+              "encoding": "sha256"
+            },
+            "interpolation": {
+              "resource": "earnings_bands",
+              "path": [
+                "tails",
+                "central"
+              ],
+              "encoding": "json"
+            }
+          },
+          "artifact_inputs": [
+            {
+              "name": "surface",
+              "producer": "nz.facts.precal",
+              "artifact": "surface"
+            }
+          ]
+        },
+        {
+          "id": "nz.v.V3.earnings.cents",
+          "kernel": "money.minor_units@1",
+          "population": "nz.v.V3",
+          "inputs": [
+            {
+              "entity": "person",
+              "columns": [
+                "employment_income"
+              ]
+            }
+          ],
+          "outputs": [
+            {
+              "entity": "person",
+              "column": "employment_income_cents",
+              "dtype": "int64"
+            }
+          ],
+          "params": {
+            "declaration": "{\"columns\":[{\"output_column\":\"employment_income_cents\",\"quantum\":\"0.01\",\"rounding\":\"half_even\",\"source_column\":\"employment_income\"}],\"entity\":\"person\"}"
+          }
+        },
+        {
           "id": "nz.v.V3.encode.person",
           "kernel": "concepts.encode@1",
           "population": "nz.v.V3",
@@ -17824,6 +18055,83 @@
           }
         },
         {
+          "id": "nz.v.V4.earnings.map",
+          "kernel": "transport.quantile_map@2",
+          "population": "nz.v.V4",
+          "inputs": [
+            {
+              "entity": "person",
+              "columns": [
+                "employment_income"
+              ]
+            }
+          ],
+          "outputs": [
+            {
+              "entity": "person",
+              "column": "employment_income",
+              "dtype": "float64",
+              "rewrite": true
+            }
+          ],
+          "params": {
+            "entity": "person",
+            "column": "employment_income",
+            "bands": {
+              "resource": "earnings_bands",
+              "path": [
+                "profiles",
+                "central",
+                "map_bands"
+              ],
+              "encoding": "json"
+            },
+            "bands_sha256": {
+              "resource": "earnings_bands",
+              "path": [],
+              "encoding": "sha256"
+            },
+            "interpolation": {
+              "resource": "earnings_bands",
+              "path": [
+                "tails",
+                "central"
+              ],
+              "encoding": "json"
+            }
+          },
+          "artifact_inputs": [
+            {
+              "name": "surface",
+              "producer": "nz.facts.precal",
+              "artifact": "surface"
+            }
+          ]
+        },
+        {
+          "id": "nz.v.V4.earnings.cents",
+          "kernel": "money.minor_units@1",
+          "population": "nz.v.V4",
+          "inputs": [
+            {
+              "entity": "person",
+              "columns": [
+                "employment_income"
+              ]
+            }
+          ],
+          "outputs": [
+            {
+              "entity": "person",
+              "column": "employment_income_cents",
+              "dtype": "int64"
+            }
+          ],
+          "params": {
+            "declaration": "{\"columns\":[{\"output_column\":\"employment_income_cents\",\"quantum\":\"0.01\",\"rounding\":\"half_even\",\"source_column\":\"employment_income\"}],\"entity\":\"person\"}"
+          }
+        },
+        {
           "id": "nz.v.V4.encode.person",
           "kernel": "concepts.encode@1",
           "population": "nz.v.V4",
@@ -22199,6 +22507,83 @@
               "scenario": "knobs",
               "encoding": "json"
             }
+          }
+        },
+        {
+          "id": "nz.v.VHF.earnings.map",
+          "kernel": "transport.quantile_map@2",
+          "population": "nz.v.VHF",
+          "inputs": [
+            {
+              "entity": "person",
+              "columns": [
+                "employment_income"
+              ]
+            }
+          ],
+          "outputs": [
+            {
+              "entity": "person",
+              "column": "employment_income",
+              "dtype": "float64",
+              "rewrite": true
+            }
+          ],
+          "params": {
+            "entity": "person",
+            "column": "employment_income",
+            "bands": {
+              "resource": "earnings_bands",
+              "path": [
+                "profiles",
+                "central",
+                "map_bands"
+              ],
+              "encoding": "json"
+            },
+            "bands_sha256": {
+              "resource": "earnings_bands",
+              "path": [],
+              "encoding": "sha256"
+            },
+            "interpolation": {
+              "resource": "earnings_bands",
+              "path": [
+                "tails",
+                "central"
+              ],
+              "encoding": "json"
+            }
+          },
+          "artifact_inputs": [
+            {
+              "name": "surface",
+              "producer": "nz.facts.precal",
+              "artifact": "surface"
+            }
+          ]
+        },
+        {
+          "id": "nz.v.VHF.earnings.cents",
+          "kernel": "money.minor_units@1",
+          "population": "nz.v.VHF",
+          "inputs": [
+            {
+              "entity": "person",
+              "columns": [
+                "employment_income"
+              ]
+            }
+          ],
+          "outputs": [
+            {
+              "entity": "person",
+              "column": "employment_income_cents",
+              "dtype": "int64"
+            }
+          ],
+          "params": {
+            "declaration": "{\"columns\":[{\"output_column\":\"employment_income_cents\",\"quantum\":\"0.01\",\"rounding\":\"half_even\",\"source_column\":\"employment_income\"}],\"entity\":\"person\"}"
           }
         },
         {
