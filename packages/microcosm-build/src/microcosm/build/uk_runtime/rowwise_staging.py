@@ -35,6 +35,8 @@ from microcosm.build.run_outcome import (
     classify_failure,
 )
 from microcosm.build.staging_dataset import (
+    RETRYING_ERROR_CODES,
+    BundleEmitter,
     StagedBundleHandOver,
     StagedDatasetBundle,
     disabled_staged_dataset,
@@ -116,13 +118,19 @@ def _run_file_emitter() -> Any:
     return None if _ACTIVE_EMITTER is None else _ACTIVE_EMITTER.client
 
 
-def bundle_emitter() -> Any:
+def bundle_emitter() -> BundleEmitter | None:
     """The client of this build attempt's running emitter, which takes its
     staged bundles, or None."""
 
     if _ACTIVE_EMITTER is None or not _ACTIVE_EMITTER.available:
         return None
     return _ACTIVE_EMITTER.client
+
+
+def _build_emitter_client() -> Any:
+    """This build attempt's emitter client, running or not, for its refusals."""
+
+    return None if _ACTIVE_EMITTER is None else _ACTIVE_EMITTER.client
 
 
 def _requested_staged_dataset_mode(args: argparse.Namespace) -> str:
@@ -181,7 +189,7 @@ def preflight_staged_dataset(args: argparse.Namespace) -> None:
         return
     repo_id = str(args.staged_dataset_repo_id).strip()
     hint = "pass --staging-local-only or --no-staged-dataset to keep the bundle local"
-    problem = write_access_problem(bundle_emitter(), repo_id)
+    problem = write_access_problem(_build_emitter_client(), repo_id)
     if problem is not None:
         raise ValueError(f"{problem}; {hint}.")
 
@@ -729,10 +737,23 @@ def _staged_dataset_line(delivery: Mapping[str, Any]) -> str:
             f"{delivery['prefix']} (revision {delivery['revision']})"
         )
     if status == "failed":
+        code = delivery["error_code"]
+        if code in RETRYING_ERROR_CODES:
+            return (
+                f"staged dataset: not uploaded yet ({code}); the emitter keeps the "
+                "bundle queued and the next emitter on this machine retries it. "
+                "Leave the run directory unchanged, and record the outcome with "
+                "tools/stage_uk_rowwise_candidate.py"
+            )
+        if code == "REMOTE_DIFFERS":
+            return (
+                f"staged dataset: failed ({code}); {delivery['prefix']} already "
+                "holds a different bundle. Stage this one under another run id "
+                "(tools/stage_uk_rowwise_candidate.py --run-id) if that is intended"
+            )
         return (
-            f"staged dataset: failed ({delivery['error_code']}); the bundle and "
-            "its sidecars stay local and can be re-staged with "
-            "tools/stage_uk_rowwise_candidate.py"
+            f"staged dataset: failed ({code}); the bundle and its sidecars stay "
+            "local and can be re-staged with tools/stage_uk_rowwise_candidate.py"
         )
     return (
         f"staged dataset: skipped ({delivery['mode']}); sidecars written beside "

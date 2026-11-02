@@ -7,6 +7,7 @@ import signal
 from types import SimpleNamespace
 
 import test_support.microcosm_build.uk_full_build_cli as support  # noqa: E402
+from microcosm.build import staging_dataset
 from test_support.microcosm_build.uk_full_build_cli import *
 
 
@@ -1565,6 +1566,12 @@ def test_remote_staging_uploads_telemetry_and_the_bundle_in_one_commit(
     # The files the build rewrote after staging were all copied at hand-over.
     copied = set(next(iter(client.copied_bundle_files.values())))
     assert {cli.MANIFEST_FILENAME, "sha256sums.txt"} <= copied
+    # The manifest names the hand-over, so a re-stage can ask for its outcome.
+    assert manifest["staged_dataset_handover"] == {
+        "handover_id": request.handover_id(),
+        "repository": "policyengine/populace-uk-private",
+        "run_id": run_id,
+    }
 
     def sums_verify() -> None:
         for line in (out / "sha256sums.txt").read_text().splitlines():
@@ -1720,6 +1727,35 @@ def test_a_build_with_the_hub_switched_off_hands_its_emitter_no_bundle(
     assert "HF_HUB_OFFLINE" in capsys.readouterr().err
 
 
+@pytest.mark.parametrize(
+    ("error_code", "says", "never_says"),
+    [
+        ("UPLOAD_PENDING", "keeps the bundle queued", "stay local"),
+        ("CREDENTIAL_MISSING", "keeps the bundle queued", "stay local"),
+        ("REMOTE_DIFFERS", "another run id", "can be re-staged"),
+        ("EMITTER_UNAVAILABLE", "stay local", "queued"),
+    ],
+)
+def test_the_staged_dataset_status_says_where_a_failed_bundle_is(
+    error_code, says, never_says
+):
+    from microcosm.build.uk_runtime import rowwise_staging
+
+    line = rowwise_staging._staged_dataset_line(
+        {
+            "status": "failed",
+            "error_code": error_code,
+            "repository": "policyengine/populace-uk-private",
+            "prefix": "staged/uk-attempt",
+            "mode": "local_and_remote",
+            "revision": None,
+        }
+    )
+    assert error_code in line
+    assert says in line
+    assert never_says not in line
+
+
 def test_the_restage_tool_hands_the_bundle_to_its_own_emitter(
     tmp_path, monkeypatch, capsys
 ):
@@ -1778,8 +1814,18 @@ def test_the_restage_tool_hands_the_bundle_to_its_own_emitter(
     monkeypatch.setattr(
         stager, "_start_bundle_emitter", emitter(hub_files=hub.files, hub_api=hub)
     )
+    waits: list[float] = []
+    real_stage_bundle = stager.stage_bundle
+
+    def stage_bundle(*args, **options):
+        waits.append(options["wait_seconds"])
+        return real_stage_bundle(*args, **options)
+
+    monkeypatch.setattr(stager, "stage_bundle", stage_bundle)
     capsys.readouterr()
     assert stager.main(argv) == 0
+    # The command waits longer than a build: finishing the upload is its job.
+    assert waits == [staging_dataset.RESTAGE_WAIT_SECONDS]
     assert started[-1].closed
     (request,) = started[-1].bundle_requests
     assert {item.name: item.role for item in request.files}[dataset.name] == "dataset"
@@ -1789,6 +1835,19 @@ def test_the_restage_tool_hands_the_bundle_to_its_own_emitter(
     for line in (run_dir / "sha256sums.txt").read_text().splitlines():
         digest, name = line.split("  ")
         assert hashlib.sha256((run_dir / name).read_bytes()).hexdigest() == digest
+
+
+def test_the_restage_tool_waits_three_hours_unless_told_otherwise():
+    """At 2 Mbit/s a 2.4 GB bundle takes about 2 hours 40 minutes."""
+    stager = load_tool("stage_uk_rowwise_candidate")
+    assert staging_dataset.RESTAGE_WAIT_SECONDS == 10_800.0
+    assert staging_dataset.RESTAGE_WAIT_SECONDS > (2.4e9 * 8 / 2e6)
+    parse = stager._parse_args
+    assert parse(["--run-dir", "run"]).wait_seconds == 10_800.0
+    assert parse(["--run-dir", "run", "--wait-seconds", "60"]).wait_seconds == 60.0
+    for value in ("-1", "nan", "soon"):
+        with pytest.raises(SystemExit):
+            parse(["--run-dir", "run", "--wait-seconds", value])
 
 
 def test_a_failed_refresh_after_a_passed_read_back_still_records_the_attempt(

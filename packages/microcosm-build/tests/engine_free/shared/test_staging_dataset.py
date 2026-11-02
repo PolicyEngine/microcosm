@@ -25,7 +25,7 @@ from microcosm.build.staging_dataset import (
     write_sidecars,
 )
 from microcosm.build.staging_storage import HuggingFaceDatasetStorage
-from test_support.microcosm_build.emitter import FakeEmitterClient
+from test_support.microcosm_build.emitter import FakeEmitterClient, FakeHandoverQueue
 
 MANIFEST = "rowwise_candidate_manifest.json"
 RUN_ID = "uk-local-candidate-f100-s7-20260917T180000Z-0badcafe"
@@ -590,6 +590,66 @@ def test_hub_offline_reads_the_variable_huggingface_hub_reads(environment, offli
     assert staging_dataset.hub_offline(environment) is offline
 
 
+def _emitter_that_never_started(reason: str) -> FakeEmitterClient:
+    from microcosm_emitter_interface import EmitterStartupError
+
+    client = FakeEmitterClient(modules=())
+    client.startup_error = EmitterStartupError(reason)
+    return client
+
+
+def _emitter_that_timed_out() -> FakeEmitterClient:
+    from microcosm_emitter_interface import RequestFailure
+    from microcosm_emitter_interface.bundles import unavailable_write_access
+
+    client = FakeEmitterClient(write_access=unavailable_write_access())
+    client.last_failure = RequestFailure("staging", "not_accepted", "TimeoutError")
+    return client
+
+
+def _outdated_emitter() -> object:
+    from microcosm.build import telemetry_emitter
+
+    return telemetry_emitter.OutdatedEmitterClient("0.5.1")
+
+
+def test_a_refused_remote_stage_says_why_and_how_to_fix_it():
+    from microcosm.build.telemetry_emitter import MINIMUM_EMITTER_VERSION
+
+    # Each cause has its own reason and its own remedy.
+    missing = staging_dataset.write_access_problem(
+        _emitter_that_never_started("command_not_found"), REPOSITORY
+    )
+    assert "no microcosm-emitter command" in missing
+    assert "`uv tool install microcosm-emitter`" in missing
+    outdated = staging_dataset.write_access_problem(_outdated_emitter(), REPOSITORY)
+    assert "0.5.1" in outdated and MINIMUM_EMITTER_VERSION in outdated
+    upgrade = (
+        f"uv tool install --upgrade 'microcosm-emitter>={MINIMUM_EMITTER_VERSION}'"
+    )
+    assert upgrade in outdated
+    failed = staging_dataset.write_access_problem(
+        _emitter_that_never_started("readiness_timeout"), REPOSITORY
+    )
+    assert "readiness_timeout" in failed and "upgrade" not in failed
+    timed_out = staging_dataset.write_access_problem(
+        _emitter_that_timed_out(), REPOSITORY
+    )
+    assert "did not answer" in timed_out and "TimeoutError" in timed_out
+    assert "install" not in timed_out
+    malformed = staging_dataset.write_access_problem(
+        FakeEmitterClient(), "not a repository"
+    )
+    assert "owner/name" in malformed and "install" not in malformed
+    module = staging_dataset.write_access_problem(
+        FakeEmitterClient(modules={"telemetry", "orrery"}), REPOSITORY
+    )
+    assert "Hugging Face module" in module
+    # Without an emitter a build can still keep its bundle local.
+    for problem in (missing, outdated, failed, timed_out, module):
+        assert "uploads the bundle" in problem
+
+
 @pytest.mark.parametrize(
     ("emitter", "message"),
     [
@@ -652,6 +712,85 @@ def test_an_unread_write_scope_is_a_warning_not_a_refusal(capsys):
     assert "write scope could not be read" in capsys.readouterr().err
     assert staging_dataset.write_access_problem(FakeEmitterClient(), REPOSITORY) is None
     assert capsys.readouterr().err == ""
+
+
+def test_a_remote_bundle_that_differs_is_left_for_another_run_id(tmp_path, capsys):
+    bundle = _bundle(tmp_path)
+    emitter = FakeEmitterClient(
+        bundle_receipts=[QUEUED, _receipt("failed", error_code="REMOTE_DIFFERS")]
+    )
+    assert _stage(bundle, emitter).delivery["error_code"] == "REMOTE_DIFFERS"
+    err = capsys.readouterr().err
+    assert "already holds a different bundle" in err
+    assert "another run id" in err and "can be re-staged" not in err
+
+
+def test_a_bundle_staged_again_resumes_the_earlier_hand_over(tmp_path):
+    """The emitter still holds the earlier hand-over: its outcome is the
+    record, and nothing is handed over again."""
+    bundle = _bundle(tmp_path)
+    hub = FakeHub(tmp_path)
+    queue = FakeHandoverQueue()
+    # The build's emitter took the hand-over and stopped.
+    first = _stage(
+        bundle,
+        FakeEmitterClient(
+            hub_api=hub, queue=queue, deliver=False, answer_receipts=False
+        ),
+    )
+    assert first.delivery["error_code"] == "UPLOAD_PENDING"
+    assert first.handover_id in queue.jobs
+    assert staging_dataset.handover_record(first) == {
+        "handover_id": first.handover_id,
+        "repository": REPOSITORY,
+        "run_id": RUN_ID,
+    }
+
+    later = FakeEmitterClient(hub_api=hub, queue=queue)
+    clock = Clock()
+    resumed = staging_dataset.resume_hand_over(
+        bundle,
+        emitter=later,
+        handover_id=first.handover_id,
+        repository=REPOSITORY,
+        clock=clock,
+        sleep=clock.sleep,
+    )
+    assert resumed is not None
+    assert later.bundle_requests == []
+    assert (resumed.delivery["status"], resumed.delivery["revision"]) == (
+        "already_staged",
+        hub.sha,
+    )
+    assert resumed.delivery["files"] == bundle.digests()
+    assert resumed.handover_id == first.handover_id
+    # The manifest was copied when the bundle was handed over.
+    assert resumed.may_rewrite(MANIFEST)
+
+    # An emitter that never had the hand-over cannot resume it.
+    assert (
+        staging_dataset.resume_hand_over(
+            bundle,
+            emitter=FakeEmitterClient(hub_api=hub),
+            handover_id=first.handover_id,
+            repository=REPOSITORY,
+        )
+        is None
+    )
+    manifest = {"staged_dataset_handover": staging_dataset.handover_record(first)}
+    assert (
+        staging_dataset.recorded_handover_id(
+            manifest, repository=REPOSITORY, run_id=RUN_ID
+        )
+        == first.handover_id
+    )
+    for repository, run_id in (("other/repo", RUN_ID), (REPOSITORY, "other-run")):
+        assert (
+            staging_dataset.recorded_handover_id(
+                manifest, repository=repository, run_id=run_id
+            )
+            is None
+        )
 
 
 def test_fetch_bundle_verifies_every_digest_and_copies_out_of_the_cache(tmp_path):

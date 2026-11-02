@@ -46,6 +46,7 @@ from microcosm_emitter_interface.orrery import (
     publication_id_of,
     unavailable_receipt,
 )
+from microcosm_emitter_interface.protocol import HUGGING_FACE_MODULE
 from microcosm_emitter_interface.telemetry import (
     DEFAULT_FAILURE_CLASS,
     DEFAULT_HEARTBEAT_SECONDS,
@@ -60,7 +61,9 @@ __all__ = [
     "MINIMUM_EMITTER_VERSION",
     "EmitterClient",
     "LocalTelemetryEmitter",
+    "OutdatedEmitterClient",
     "TelemetryRun",
+    "emitter_problem",
     "publication_inventory",
     "publish_graph",
     "start_bundle_emitter",
@@ -81,11 +84,17 @@ STARTUP_TIMEOUT_SECONDS = 15.0
 #: 0.5.1 accept the same protocol version but start without that module;
 #: 0.7.0 added only release publication, which builds do not use.
 MINIMUM_EMITTER_VERSION = "0.6.0"
+UPGRADE_EMITTER_COMMAND = (
+    f"uv tool install --upgrade 'microcosm-emitter>={MINIMUM_EMITTER_VERSION}'"
+)
+INSTALL_EMITTER_COMMAND = "uv tool install microcosm-emitter"
 OUTDATED_EMITTER_WARNING = (
     "The installed microcosm-emitter {reported}; this build needs {required} "
-    "or later, so it did not start that emitter and will continue without it. "
-    "Upgrade it with `uv tool install --upgrade 'microcosm-emitter>={required}'`, "
-    "or point MICROCOSM_EMITTER_COMMAND at a newer one."
+    "or later, so it did not start that emitter. The build runs on without "
+    "hosted telemetry, graph publication or remote staging run files, and a "
+    "build that asks for remote staging of its dataset bundle is refused. "
+    "Upgrade it with `{upgrade}`, or point MICROCOSM_EMITTER_COMMAND at a "
+    "newer one."
 )
 _RELEASE_NUMBER = re.compile(r"(\d+)\.(\d+)\.(\d+)")
 _MINIMUM_RELEASE = tuple(int(part) for part in MINIMUM_EMITTER_VERSION.split("."))
@@ -145,11 +154,62 @@ def _start_emitter(**options: Any) -> EmitterClient:
     reported = "reports no version" if version is None else f"reports version {version}"
     print(
         OUTDATED_EMITTER_WARNING.format(
-            reported=reported, required=MINIMUM_EMITTER_VERSION
+            reported=reported,
+            required=MINIMUM_EMITTER_VERSION,
+            upgrade=UPGRADE_EMITTER_COMMAND,
         ),
         file=sys.stderr,
     )
-    return EmitterClient()
+    return OutdatedEmitterClient(reported)
+
+
+class OutdatedEmitterClient(EmitterClient):
+    """The client for an installed emitter too old to start: never available.
+
+    ``reported`` is what its ``version`` command answered (for example
+    ``reports version 0.5.1``), so a refusal can name it.
+    """
+
+    def __init__(self, reported: str) -> None:
+        super().__init__()
+        self.reported = reported
+
+
+def emitter_problem(client: Any) -> str | None:
+    """Why ``client`` cannot take a Hugging Face hand-over, and what fixes it.
+
+    ``None`` when it is running with its Hugging Face module.
+    """
+
+    if isinstance(client, OutdatedEmitterClient):
+        return (
+            f"the installed microcosm-emitter {client.reported}, and builds need "
+            f"{MINIMUM_EMITTER_VERSION} or later, so the build did not start it; "
+            f"upgrade it with `{UPGRADE_EMITTER_COMMAND}`, or point "
+            "MICROCOSM_EMITTER_COMMAND at a newer one"
+        )
+    if client is None:
+        return "the build could not prepare its emitter (see the warning above)"
+    if not client.available:
+        failure = getattr(client, "startup_error", None)
+        reason = getattr(failure, "reason", None)
+        if reason == "command_not_found":
+            return (
+                "no microcosm-emitter command was found (MICROCOSM_EMITTER_COMMAND, "
+                f"then PATH); install it with `{INSTALL_EMITTER_COMMAND}`"
+            )
+        if reason is not None:
+            return (
+                f"the emitter did not start ({reason}); check that "
+                "`microcosm-emitter version` runs, then try again"
+            )
+        return "the build's emitter is not running"
+    if HUGGING_FACE_MODULE not in client.modules:
+        return (
+            "the running emitter has no Hugging Face module; upgrade it with "
+            f"`{UPGRADE_EMITTER_COMMAND}`"
+        )
+    return None
 
 
 class LocalTelemetryEmitter:
