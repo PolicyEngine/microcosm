@@ -206,6 +206,17 @@ def test_the_receipt_weights_each_record_by_its_frame_weight() -> None:
     assert receipt["at_zero"]["weighted"] == 3.75
 
 
+def test_the_receipt_masses_count_resolved_records_only() -> None:
+    """An unresolved record joins neither ``below_zero`` nor ``at_zero``."""
+
+    out, receipt = _run({WAGES: [0, None, -5, None, 7]}, _declaration([(WAGES, 1)]))
+    assert _measure(out) == [0, None, -5, None, 7]
+    # _frame weights the five records 1, 1.25, 1.5, 1.75 and 2. Records 1 and 3
+    # are unresolved, so x < 0 is record 2 alone and x = 0 is record 0 alone.
+    assert receipt["below_zero"] == {"n": 1, "weighted": 1.5}
+    assert receipt["at_zero"] == {"n": 1, "weighted": 1.0}
+
+
 def test_an_int64_overflow_is_refused_by_name() -> None:
     with pytest.raises(ValueError, match="int64_overflow"):
         _run(
