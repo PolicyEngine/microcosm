@@ -310,12 +310,26 @@ def test_an_emitter_older_than_0_11_9_is_never_started_and_the_build_continues(
     warning = capsys.readouterr().err
     assert f"The installed microcosm-emitter {reported};" in warning
     assert "this build needs 0.11.9 or later" in warning
+    # The warning says what the build loses without the emitter, including
+    # the one option that then fails the build.
+    assert (
+        "The build continues without hosted telemetry or staging hand-overs "
+        "and queues no Orrery graph publication; a UK build given "
+        "--staging-read-back will fail at the read-back." in warning
+    )
     assert "uv tool install --upgrade 'microcosm-emitter>=0.11.9'" in warning
     # Nothing reaches an emitter, and nothing raises.
     emitter.transition_stage("solve")
     emitter.complete()
     emitter.close()
     assert client.calls == []
+
+
+def test_the_fake_client_reports_a_release_builds_start():
+    """The in-memory client stands for an emitter a build would start."""
+    reported = adapter._release_number(FakeEmitterClient.emitter_version)
+    assert reported is not None
+    assert reported >= adapter._release_number(adapter.MINIMUM_EMITTER_VERSION)
 
 
 @pytest.mark.parametrize(

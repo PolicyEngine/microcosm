@@ -392,8 +392,12 @@ def test_the_image_installs_no_emitter_older_than_a_build_starts() -> None:
     """The image's emitter floor is the build adapter's minimum release.
 
     ``tools/modal_us_stage_plan.py`` imports nothing from the workspace, so it
-    repeats the version. A lower floor would let the image build with an
-    emitter release that its own builds then refuse to start.
+    repeats the version. This compares the two values of one checkout only.
+    At launch they can come from two trees: the install step from the
+    checkout that launches the app, and the minimum from the commit the plan
+    pins. So a launch can still combine an older checkout's floor with a
+    newer commit's minimum; that floor has no upper bound, so it resolves to
+    the newest release when the image is built.
     """
 
     from microcosm.build.telemetry_emitter import MINIMUM_EMITTER_VERSION
@@ -419,7 +423,7 @@ def test_the_app_never_runs_an_emitter_installed_where_the_image_puts_it(
     # Path.exists() raises PermissionError, so point it at an empty folder.
     monkeypatch.setattr(plan_lib, "IMAGE_REPO_ROOT", str(tmp_path / "repo"))
 
-    recorded = {"emitter_version": "0.7.0", "protocol_versions": [1]}
+    recorded = {"emitter_version": "0.11.9", "protocol_versions": [1]}
     assert app._emitter_version() == recorded
     assert app._runner_identity()["microcosm_emitter"] == recorded
     assert not ran.exists()
