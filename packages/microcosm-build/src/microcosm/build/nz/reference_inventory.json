@@ -20,14 +20,14 @@
   },
   "reference_counts": {
     "target_references.json": {
-      "total": 773,
+      "total": 323,
       "by_contract": {
         "stats_nz_population_by_age_region": 64,
         "stats_nz_census_households_by_size_region": 136,
         "stats_nz_census_families_by_type_region": 51,
         "stats_nz_census_households_by_tenure_region": 34,
-        "ird_taxable_income_people_by_band": 237,
-        "ird_taxable_income_total_by_band": 237,
+        "ird_taxable_income_standin_people_by_band": 12,
+        "ird_taxable_income_standin_total_by_band": 12,
         "msd_main_benefit_recipients_by_program_age": 12,
         "msd_nz_super_recipients": 1,
         "msd_veterans_pension_recipients": 1
@@ -38,7 +38,7 @@
         "requires_census_family_nucleus_standard": 51,
         "requires_reference_profile_resolution": 32,
         "requires_region_99_release_evidence": 2,
-        "requires_prerequisites": 474,
+        "requires_prerequisites": 24,
         "requires_unsupported_veterans_pension": 1
       }
     },
@@ -84,6 +84,16 @@
       },
       "by_activation_status": {
         "active": 1
+      }
+    },
+    "income_diagnostic_references.json": {
+      "total": 474,
+      "by_contract": {
+        "ird_taxable_income_people_by_band": 237,
+        "ird_taxable_income_total_by_band": 237
+      },
+      "by_activation_status": {
+        "diagnostic_only": 474
       }
     }
   },
@@ -21254,6 +21264,10 @@
     "ta_999": "absent ERP; crosswalk Census population 33 remains explicit"
   },
   "exclusions": [
+    {
+      "id": "ird_taxable_income_native_bands",
+      "reason": "R2C-4: the 474 native rows are diagnostic selectors only; 24 coarse stand-in rows (sums of native rows 50-244) replace them in calibration."
+    },
     {
       "id": "regional_all_age_erp",
       "reason": "Bridge operands only; selecting totals together with age leaves duplicates the fit partition."

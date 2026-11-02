@@ -1226,6 +1226,7 @@ class TestReferenceSets:
                 "rolled_forward_by_ratio",
                 "allocated_residual_by_ratio",
                 "linear_combination",
+                "sum",
             ]
             if reference_set == "calibration"
             else ["identity"]
@@ -1243,7 +1244,8 @@ class TestReferenceSets:
         # reads comes through its own selector or identifiers.
         for reference in _references(reference_set):
             assert reference.value_operation in expected_operations
-            if reference.value_operation == "identity":
+            # R2C-17: a summed count row sums its pinned members, no operands.
+            if reference.value_operation in {"identity", "sum"}:
                 assert reference.value_operands == ()
             else:
                 assert {operand["role"] for operand in reference.value_operands} == {
@@ -1293,13 +1295,14 @@ class TestReferenceSets:
             "stats_nz_census_households_by_size_region",
             "stats_nz_census_families_by_type_region",
             "stats_nz_census_households_by_tenure_region",
-            "ird_taxable_income_people_by_band",
-            "ird_taxable_income_total_by_band",
+            "ird_taxable_income_standin_people_by_band",
+            "ird_taxable_income_standin_total_by_band",
             "msd_main_benefit_recipients_by_program_age",
             "msd_nz_super_recipients",
             "msd_veterans_pension_recipients",
         }
-        assert len(references) == 773
+        # R2C-4: 24 coarse stand-in rows replace the 474 native IRD rows.
+        assert len(references) == 323
         assert {reference.metadata["target_role"] for reference in references} == {
             "calibration"
         }
