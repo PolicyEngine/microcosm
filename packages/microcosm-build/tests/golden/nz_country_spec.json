@@ -1,6 +1,6 @@
 {
   "country": "nz",
-  "fingerprint": "303ef116efda1703891ce984a2487bf71b413935dc53a7f7b25473a7adc18317",
+  "fingerprint": "18367e001a76c30d7aa2b94a6fe65b786fe07f40c84ec9fd32203f31c959d364",
   "gate_ids": [
     "calibration_per_family_fit",
     "demography_per_family_fit",
@@ -57,7 +57,7 @@
     "export_replay_bindings.json": "14d4eed4edfb72f0e17d225e9f5744278e097eaa154efcc7dd0ec31c44b5c040",
     "family_reconciliation.json": "20e3f9f3ce6266d57828d721c99d15bd3642e6c6314a7076ec38972de02bc69e",
     "gap_annualisation.json": "54762c18c549d2f1f35a630358080e3d581abab901b52a62b4f279830f3f8536",
-    "gates.json": "847678cfdacd5156239290b7406f10ecc824131921e9c1ad207fc5f678a5b94c",
+    "gates.json": "b0d48247029af7d9ddc5c996b9f302f9269b122a75163adbba09aa9dad753cc9",
     "geography_assignment.json": "e25c687e061dc0eac863570d233236329c62e253585bea194af2d7213b1ac088",
     "geography_spine.json": "5f2b1bdd9f8768249912ffd0fbcb2f7d4ed493b51c74306f793ec12441fd383f",
     "holdout_comparator_bindings.json": "bee86794af30953c4f7f922edd07900dbcad38f17ecb398be10bdd8b2d43297c",

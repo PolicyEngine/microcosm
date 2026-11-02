@@ -88,6 +88,19 @@ __all__ = [
     "EVIDENCE_TYPES",
     "EvidenceDocument",
     "FIT_WEIGHT_RECORDS",
+    "DONOR_RANGES",
+    "DONOR_RANGES_REF",
+    "DONOR_RANGES_TYPE",
+    "DONOR_SUPPORT_BOUNDS",
+    "SUPPORT_BOUNDS_REF",
+    "SUPPORT_BOUNDS_TYPE",
+    "SUPPORT_ROW_KEYS",
+    "decode_donor_ranges",
+    "decode_support_bounds",
+    "inside_quantile_support",
+    "quantile_bounds",
+    "QuantileSupport",
+    "quantile_support",
     "WEIGHTS_AUDIT_REF",
     "WEIGHTS_AUDIT_TYPE",
     "decode_weights_audit",
@@ -122,14 +135,22 @@ FIT_WEIGHT_RECORDS = "fit_weight_records"
 DONOR_RECEIPT_REF = "transport.donor_receipt@1"
 INPUT_CLOSURE_REF = "transport.input_closure@1"
 WEIGHTS_AUDIT_REF = "transport.weights_audit@1"
+DONOR_RANGES_REF = "transport.donor_ranges@1"
+SUPPORT_BOUNDS_REF = "transport.support_bounds@1"
+DONOR_RANGES = "donor_ranges"
+DONOR_SUPPORT_BOUNDS = "donor_support_bounds"
 
 DONOR_RECEIPT_TYPE = ArtifactType("microcosm.transport.donor-artifact-receipt", 1)
 INPUT_CLOSURE_TYPE = ArtifactType("microcosm.transport.axiom-input-closure", 1)
 WEIGHTS_AUDIT_TYPE = ArtifactType("microcosm.transport.weights-audit", 1)
+DONOR_RANGES_TYPE = ArtifactType("microcosm.transport.donor-ranges", 1)
+SUPPORT_BOUNDS_TYPE = ArtifactType("microcosm.transport.donor-support-bounds", 1)
 
 _DONOR_RECEIPT_KIND = "transport_donor_artifact_receipt"
 _INPUT_CLOSURE_KIND = "transport_axiom_input_closure"
 _WEIGHTS_AUDIT_KIND = "transport_weights_audit"
+_DONOR_RANGES_KIND = "transport_donor_ranges"
+_SUPPORT_BOUNDS_KIND = "transport_donor_support_bounds"
 
 _KERNELS = "microcosm.build.transport.evidence_kernels"
 _LEAF = __name__
@@ -161,6 +182,23 @@ EVIDENCE_KERNEL_MODULES: Mapping[str, tuple[str, ...]] = MappingProxyType(
             "microcosm.calibrate.target",
             "microcosm.frame.schema",
             "microcosm.frame.weights",
+            _CANONICAL,
+            _LEAF,
+        ),
+        DONOR_RANGES_REF: (_KERNELS, _CANONICAL, _LEAF),
+        SUPPORT_BOUNDS_REF: (
+            _KERNELS,
+            "microcosm.build.transport.money_kernels",
+            "microcosm.build.money_normalization",
+            "microcosm.build.reference_factors",
+            "microcosm.build.ledger_artifact",
+            "microcosm.build.ledger_targets",
+            "microcosm.build.chronicle_epoch",
+            "microcosm.build.transport.graph_inputs",
+            "microcosm.frame.concepts",
+            "microcosm.frame.exact_money",
+            "microcosm.frame.transport",
+            "microcosm.frame.scaling",
             _CANONICAL,
             _LEAF,
         ),
@@ -462,12 +500,59 @@ def decode_weights_audit(payload: bytes) -> EvidenceDocument:
     return decoded
 
 
+def decode_donor_ranges(payload: bytes) -> EvidenceDocument:
+    """Decode the donor's realized ranges; its rows are checked by the gate."""
+
+    decoded = _decode(payload, kind=_DONOR_RANGES_KIND, body=frozenset({"columns"}))
+    if not isinstance(decoded.document["columns"], list):
+        raise ValueError("A donor-ranges artifact's rows are malformed.")
+    return decoded
+
+
+#: Support rows hold exactly these fields.
+SUPPORT_ROW_KEYS = frozenset(
+    {
+        "entity",
+        "column",
+        "class",
+        "owner",
+        "realized_min",
+        "realized_max",
+        "expected_min",
+        "expected_max",
+        "expected_categories",
+        "records_outside",
+        "weighted_outside",
+        "sources",
+        "reason",
+    }
+)
+
+
+def decode_support_bounds(payload: bytes) -> EvidenceDocument:
+    """Decode a ``donor_support_bounds`` artifact; the gate checks its rows."""
+
+    decoded = _decode(
+        payload,
+        kind=_SUPPORT_BOUNDS_KIND,
+        body=frozenset({"rate", "structural_columns", "columns"}),
+    )
+    rows = decoded.document["columns"]
+    if not isinstance(rows, list) or not all(
+        isinstance(row, dict) and set(row) == SUPPORT_ROW_KEYS for row in rows
+    ):
+        raise ValueError("A donor-support artifact's rows are malformed.")
+    return decoded
+
+
 #: Artifact type -> decoder, for ``gates.battery@1``.
 EVIDENCE_TYPES: Mapping[ArtifactType, object] = MappingProxyType(
     {
         DONOR_RECEIPT_TYPE: decode_donor_receipt,
         INPUT_CLOSURE_TYPE: decode_input_closure,
         WEIGHTS_AUDIT_TYPE: decode_weights_audit,
+        DONOR_RANGES_TYPE: decode_donor_ranges,
+        SUPPORT_BOUNDS_TYPE: decode_support_bounds,
     }
 )
 
@@ -475,7 +560,143 @@ _KINDS = {
     DONOR_RECEIPT_REF: (_DONOR_RECEIPT_KIND, DONOR_RECEIPT_TYPE),
     INPUT_CLOSURE_REF: (_INPUT_CLOSURE_KIND, INPUT_CLOSURE_TYPE),
     WEIGHTS_AUDIT_REF: (_WEIGHTS_AUDIT_KIND, WEIGHTS_AUDIT_TYPE),
+    DONOR_RANGES_REF: (_DONOR_RANGES_KIND, DONOR_RANGES_TYPE),
+    SUPPORT_BOUNDS_REF: (_SUPPORT_BOUNDS_KIND, SUPPORT_BOUNDS_TYPE),
 }
+
+
+@dataclass(frozen=True)
+class QuantileSupport:
+    """The magnitude intervals a quantile map can write, by sign.
+
+    ``positive`` and ``negative`` are the union over components, which sets
+    ``expected_min`` and ``expected_max``. ``components`` maps each declared
+    component code to its own ``(positive, negative)`` intervals, or is
+    ``None`` when the bands declare no components; a value is checked
+    against its own component's intervals only.
+    """
+
+    positive: tuple[tuple[float, float | None], ...]
+    negative: tuple[tuple[float, float | None], ...]
+    components: Mapping[object, tuple[tuple, tuple]] | None = None
+
+    def intervals(self, component: object = None) -> tuple[tuple, tuple] | None:
+        """``(positive, negative)`` for one component, or ``None`` if undeclared."""
+
+        if self.components is None:
+            return self.positive, self.negative
+        return self.components.get(component)
+
+
+def quantile_support(bands: object, interpolation: object) -> QuantileSupport:
+    """The intervals a quantile map can write, read as ``quantile_map`` reads bands.
+
+    ``bands`` is the declared band document: rows ``{lower, upper,
+    reference}`` over positive magnitudes, as a bare list, under ``bands``,
+    as ``{positive, negative}``, or per component as ``{components:
+    [{value, bands}]}``. A bare row list applies to both signs, as
+    ``quantile_map`` applies it (``sign_bands = {"positive": bands,
+    "negative": bands}``), wherever it appears; ``{positive, negative}``
+    keeps each sign's rows. ``uniform`` needs finite uppers; a ``pareto``
+    top band may have no upper bound, recorded as ``None``. Any other mode,
+    or any other shape, is refused by name. Zero always maps to zero.
+    """
+
+    method = (
+        interpolation.get("method")
+        if isinstance(interpolation, Mapping)
+        else interpolation
+    )
+    if method not in {"uniform", "pareto"}:
+        raise ValueError(
+            f"Support handles uniform and top-band pareto quantile maps only; "
+            f"{method!r} lands with its own producer."
+        )
+
+    def rows(value) -> tuple[tuple[float, float | None], ...]:
+        if not isinstance(value, list) or not value:
+            raise ValueError("Quantile support needs a nonempty band list.")
+        out = []
+        for index, row in enumerate(value):
+            if not isinstance(row, Mapping):
+                raise ValueError("Each quantile band is an object.")
+            upper = row.get("upper")
+            if upper is None and (method != "pareto" or index != len(value) - 1):
+                raise ValueError("Only a pareto top band may have no upper bound.")
+            out.append((float(row["lower"]), None if upper is None else float(upper)))
+        return tuple(out)
+
+    def signs(document) -> tuple[tuple, tuple]:
+        if isinstance(document, Mapping) and set(document) == {"bands"}:
+            document = document["bands"]
+        if isinstance(document, list):
+            both = rows(document)
+            return both, both
+        if isinstance(document, Mapping) and set(document) == {"positive", "negative"}:
+            return rows(document["positive"]), rows(document["negative"])
+        raise ValueError(
+            "Quantile bands declare a band list, bands, positive and negative "
+            "rows, or components."
+        )
+
+    if isinstance(bands, Mapping) and set(bands) == {"components"}:
+        declared = bands["components"]
+        if isinstance(declared, Mapping):
+            items = list(declared.items())
+        elif isinstance(declared, list) and all(
+            isinstance(item, Mapping) and set(item) == {"value", "bands"}
+            for item in declared
+        ):
+            items = [(item["value"], item["bands"]) for item in declared]
+        else:
+            raise ValueError("Component bands declare value and bands per component.")
+        if not items or len({code for code, _ in items}) != len(items):
+            raise ValueError("Component bands need distinct component codes.")
+        components = {code: signs(document) for code, document in items}
+        return QuantileSupport(
+            positive=tuple(i for pos, _ in components.values() for i in pos),
+            negative=tuple(i for _, neg in components.values() for i in neg),
+            components=MappingProxyType(components),
+        )
+    positive, negative = signs(bands)
+    return QuantileSupport(positive, negative)
+
+
+def quantile_bounds(
+    positive: Sequence[tuple[float, float | None]],
+    negative: Sequence[tuple[float, float | None]],
+) -> tuple[float | None, float | None]:
+    """``[expected_min, expected_max]`` of a quantile map's support; ``None`` is open."""
+
+    def top(intervals):
+        return (
+            None
+            if any(u is None for _, u in intervals)
+            else max(u for _, u in intervals)
+        )
+
+    maximum = top(positive) if positive else float(0)
+    minimum = (
+        (None if top(negative) is None else -top(negative)) if negative else float(0)
+    )
+    return minimum, maximum
+
+
+def inside_quantile_support(
+    value: float,
+    positive: Sequence[tuple[float, float | None]],
+    negative: Sequence[tuple[float, float | None]],
+) -> bool:
+    """Whether one mapped value lies in the declared bands or is zero."""
+
+    if value == 0:
+        return True
+    intervals = positive if value > 0 else negative
+    magnitude = abs(value)
+    return any(
+        lower <= magnitude and (upper is None or magnitude <= upper)
+        for lower, upper in intervals
+    )
 
 
 def checked_header(

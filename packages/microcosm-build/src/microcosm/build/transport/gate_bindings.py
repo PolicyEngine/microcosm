@@ -53,13 +53,13 @@ producer kernel and its implementation hash, and the digests of the bytes
 and frame columns the battery also holds
 (:func:`~microcosm.build.transport.evidence_contract.checked_header`); the
 gate then reports every bound module, never stopping at the first failure.
-One frozen binding remains pending: ``support`` requires
-``donor_support_bounds`` (realized donor-support bounds of transported
-columns). Missing artifacts resolve to registered ``evidence_absent``;
-supplied artifacts still fail until the checks are implemented. New Zealand
-keeps the entry applicable with ``evidence_absent_blocks``. Only
-``macro_realism`` has no transport binding and remains ``not_applicable``
-pending national-accounts evidence and reviewed bands. ``weights_audit`` overrides the
+``support`` reads ``donor_support_bounds`` (``transport.support_bounds@1``,
+which reads ``donor_ranges``) with ``graph_evidence`` and the frame, and
+requires ``structural_columns`` from ``gates.json``; it reports every roster
+column by its producer class. Missing artifacts resolve to registered
+``evidence_absent``. Only ``macro_realism`` has no transport binding and
+remains ``not_applicable`` pending national-accounts evidence and reviewed
+bands. ``weights_audit`` overrides the
 ``DEFAULT_REGISTRY`` binding for transport countries only: it reads
 ``fit_weight_records`` from ``transport.weights_audit@1``, runs
 ``weights_audit_gate`` unchanged over its fit records, then checks the
@@ -116,10 +116,13 @@ from .evidence_contract import (
     AXIOM_INPUT_CLOSURE,
     CLOSURE_CLASSES,
     DONOR_ARTIFACT_RECEIPT,
+    DONOR_RANGES,
     DONOR_RECEIPT_REF,
+    DONOR_SUPPORT_BOUNDS,
     FIT_WEIGHT_RECORDS,
     GRAPH_EVIDENCE,
     INPUT_CLOSURE_REF,
+    SUPPORT_BOUNDS_REF,
     WEIGHTS_AUDIT_REF,
     EvidenceDocument,
     checked_header,
@@ -1215,15 +1218,148 @@ def _cell_support_target(
     )
 
 
-def _pending_support(*, donor_support_bounds: object) -> GateResult:
-    """Fail even with supplied evidence until donor-support checks exist."""
+#: The support classes a derived row may rest on.
+_SUPPORT_COVERED = frozenset(
+    {
+        "copied",
+        "normalized",
+        "quantile_mapped",
+        "currency",
+        "structural",
+        "closure_default",
+    }
+)
+#: Classes whose rows carry realized and expected bounds.
+_SUPPORT_BOUNDED = frozenset({"copied", "normalized", "quantile_mapped", "currency"})
+_RANK_ONLY = (
+    "{entity}.{column}: lineage class 'rank_only' is reserved for the declared "
+    "rank-only input (BE d1902); no producer implements it yet."
+)
 
-    return GateResult(
-        name="support",
-        passed=False,
-        failures=("Transport donor-support evidence checks are not implemented.",),
-        details={},
+
+def _support(
+    *,
+    donor_support_bounds: object,
+    graph_evidence: object,
+    frame: Frame,
+    structural_columns: Sequence[Mapping[str, str]],
+) -> GateResult:
+    """Every roster column's realized support against its producer's support.
+
+    The header is checked first, including the ``donor_ranges`` digest
+    against the battery's own edge. Every row the artifact classes structural
+    must be one of the ``structural_columns`` declared here, and its roster
+    must name every
+    data column the battery's frame slices. Then every row is reported, in
+    roster order: a bounded row (copied, normalized, quantile-mapped or
+    currency-bridged) passes only with no record and no weight outside its
+    expected bounds, where ``None`` is an open bound; a derived row passes
+    only when every walked source is covered; ``pending``, ``uncovered`` and
+    ``rank_only`` rows fail with their reasons.
+    """
+
+    if isinstance(structural_columns, str | bytes) or not isinstance(
+        structural_columns, Sequence
+    ):
+        raise TypeError("structural_columns must be a list of rows.")
+    declared = [(row["entity"], row["column"]) for row in structural_columns]
+    failures = checked_header(
+        DONOR_SUPPORT_BOUNDS,
+        donor_support_bounds,
+        graph_evidence,
+        frame,
+        kernel=SUPPORT_BOUNDS_REF,
     )
+    details: dict[str, object] = {"structural_columns": [".".join(k) for k in declared]}
+    document = _decoded_document(donor_support_bounds, "transport_donor_support_bounds")
+    if document is None:
+        return GateResult("support", False, tuple(failures), details)
+    rows = document["columns"]
+    recorded = {
+        (row["entity"], row["column"]) for row in document["structural_columns"]
+    }
+    recorded |= {
+        (row["entity"], row["column"]) for row in rows if row["class"] == "structural"
+    }
+    for entity, column in sorted(recorded - set(declared)):
+        failures.append(
+            f"{entity}.{column}: classed structural, but gates.json's "
+            "structural_columns does not declare it."
+        )
+    # A declared row excuses a column only when the roster reaches it (H46);
+    # the rows it never reaches are listed, and do not fail the gate.
+    details["declared_unreached"] = [
+        ".".join(key) for key in declared if key not in recorded
+    ]
+    named = {(row["entity"], row["column"]) for row in rows}
+    if frame is not None:
+        skip = set(_structural_columns(frame))
+        for entity in frame.entities:
+            for column in frame.table(entity).columns:
+                if column in skip:
+                    continue
+                if (entity, str(column)) not in named:
+                    failures.append(
+                        f"{entity}.{column}: the battery slices it, but the support "
+                        "roster does not name it."
+                    )
+    counts: Counter = Counter()
+    report = []
+    for row in rows:
+        label = f"{row['entity']}.{row['column']}"
+        cls = row["class"]
+        counts[cls] += 1
+        if cls == "rank_only":
+            failures.append(
+                _RANK_ONLY.format(entity=row["entity"], column=row["column"])
+            )
+        elif cls in _SUPPORT_BOUNDED:
+            if row["records_outside"] != 0 or row["weighted_outside"] != 0:
+                failures.append(
+                    f"{label} ({cls}): {row['records_outside']} records and "
+                    f"{row['weighted_outside']!r} weight lie outside "
+                    f"[{row['expected_min']!r}, {row['expected_max']!r}]"
+                    + (
+                        " or the donor's categories"
+                        if row["expected_categories"] is not None
+                        else ""
+                    )
+                    + "."
+                )
+        elif cls == "derived":
+            missing = [
+                f"{source['entity']}.{source['column']} ({source['class']})"
+                for source in row["sources"]
+                if source["class"] not in _SUPPORT_COVERED
+            ]
+            if not row["sources"]:
+                failures.append(
+                    f"{label} (derived): the walk reached no source, so nothing "
+                    "covers it."
+                )
+            if missing:
+                failures.append(
+                    f"{label} (derived): sources without coverage: "
+                    + ", ".join(missing)
+                    + ". "
+                    + (row["reason"] or "")
+                )
+        elif cls in {"pending", "uncovered"}:
+            failures.append(f"{label} ({cls}): {row['reason']}.")
+        elif cls not in _SUPPORT_COVERED:
+            failures.append(f"{label}: unknown support class {cls!r}.")
+        report.append(
+            {
+                "column": label,
+                "class": cls,
+                "realized": [row["realized_min"], row["realized_max"]],
+                "expected": [row["expected_min"], row["expected_max"]],
+                "records_outside": row["records_outside"],
+                "weighted_outside": row["weighted_outside"],
+            }
+        )
+    details.update({"counts": dict(sorted(counts.items())), "columns": report})
+    return GateResult("support", not failures, tuple(failures), details)
 
 
 def _decoded_document(value: object, kind: str) -> Mapping[str, Any] | None:
@@ -1537,6 +1673,16 @@ def _release_input_coverage_evidence(
     }
 
 
+def _support_evidence(
+    context: EvidenceContext, parameters: Mapping[str, Any]
+) -> object:
+    return {
+        DONOR_SUPPORT_BOUNDS: getattr(
+            context.artifacts[DONOR_SUPPORT_BOUNDS], "sha256", None
+        )
+    }
+
+
 def _weights_audit_evidence(
     context: EvidenceContext, parameters: Mapping[str, Any]
 ) -> object:
@@ -1570,7 +1716,8 @@ def _parameters(gate: object) -> frozenset[str]:
         GRAPH_EVIDENCE,
         DONOR_ARTIFACT_RECEIPT,
         AXIOM_INPUT_CLOSURE,
-        "donor_support_bounds",
+        DONOR_SUPPORT_BOUNDS,
+        DONOR_RANGES,
         FIT_WEIGHT_RECORDS,
     }
     return frozenset(
@@ -1673,10 +1820,16 @@ TRANSPORT_GATE_REGISTRY: Mapping[str, GateBinding] = MappingProxyType(
         ),
         "support": FunctionBinding(
             name="support",
-            gate=_pending_support,
+            gate=_support,
+            parameter_keys=_parameters(_support),
             artifact_arguments=MappingProxyType(
-                {"donor_support_bounds": "donor_support_bounds"}
+                {
+                    DONOR_SUPPORT_BOUNDS: DONOR_SUPPORT_BOUNDS,
+                    GRAPH_EVIDENCE: GRAPH_EVIDENCE,
+                }
             ),
+            frame_argument="frame",
+            evidence=_support_evidence,
         ),
         "release_input_coverage": FunctionBinding(
             name="release_input_coverage",
