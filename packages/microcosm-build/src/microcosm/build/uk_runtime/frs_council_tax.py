@@ -68,8 +68,8 @@ def frs_council_tax_operation_parameters() -> dict[str, Any]:
         "value": (
             "council tax before council tax reduction: CTANNUAL net of the "
             "Scottish water and sewerage charges ((CWATAMT1 + CSEWAMT1) x "
-            "365.25/7, at 0.65 where CTREB is 1; CWATAMTD where CWATAMT1 is not "
-            "positive), plus CTREBAMT x 365.25/7 where CTREB is 1 and CTREBAMT "
+            "52, at 0.65 where CTREB is 1; CWATAMTD where CWATAMT1 is not "
+            "positive), plus CTREBAMT x 52 where CTREB is 1 and CTREBAMT "
             "> 0; a CTREB 1 household without a positive CTREBAMT takes the "
             "larger of its netted CTANNUAL and its cell mean"
         ),

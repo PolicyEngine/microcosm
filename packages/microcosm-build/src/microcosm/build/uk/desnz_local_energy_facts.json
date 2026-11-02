@@ -3,7 +3,7 @@
   "country": "uk",
   "kind": "uk_vendored_ledger_facts",
   "resource": "desnz_local_energy_facts.json",
-  "purpose": "The DESNZ sub-national domestic electricity and gas meter counts for every Great Britain local authority, 2024 (gas meters over electricity meters give the share of each authority's census households bound as gas-connected), and Northern Ireland's sub-national domestic electricity and gas consumption, 2024 (the N92000002 row, all domestic meters: Great Britain's part of the Energy Trends UK level the authority kWh rows are levelled to is its share of the sub-national total with this row added, microcosm#1278). Consumed by the local energy appliers (uk_runtime.domestic_energy_targets, microcosm#1207).",
+  "purpose": "The DESNZ sub-national domestic electricity and gas meter counts for every Great Britain local authority, 2024 (gas meters over electricity meters give the share of each authority's census households bound as gas-connected), and Northern Ireland's sub-national domestic electricity and gas consumption, 2024 (the N92000002 row, all domestic meters: Great Britain's part of the stage's UK level the authority kWh rows are levelled to, Energy Trends or for electricity the kWh ONS household spending buys (microcosm#1418), is its share of the sub-national total with this row added, microcosm#1278). Consumed by the local energy appliers (uk_runtime.domestic_energy_targets, microcosm#1207).",
   "consumers": [
     "uk_runtime.domestic_energy_targets"
   ],
@@ -21,12 +21,12 @@
   },
   "source_fact_feed": {
     "source_repo": "PolicyEngine/chronicle",
-    "source_commit": "abf0921b896d29ee0745ed2aefde8d6337ed7164",
+    "source_commit": "08962f1b893fc1ba3b7bdd3d800c7e867318951a",
     "build": "build-bundle --suite uk -> build-consumer-artifact",
     "artifact_schema_version": "policyengine_ledger.consumer_artifact.v2",
-    "fact_row_count": 1499301,
-    "facts_sha256": "2b64fecfe746164203dac1726aae6ffdb3e5d8e478bd3d64d118ac76cb00780b",
-    "manifest_sha256": "b90fb1b8f1a910458fac41425360209d101796e6de0b134f952ad93323ca6e21"
+    "fact_row_count": 1512256,
+    "facts_sha256": "11b20b4333270e269a5cbfe6302eb4986851990b340ef02d948eb71d62c12d5c",
+    "manifest_sha256": "96faf0e33686682cf37e8fa9511727571b3f8221f15bbc21591b799af87de722"
   },
   "selections": [
     {

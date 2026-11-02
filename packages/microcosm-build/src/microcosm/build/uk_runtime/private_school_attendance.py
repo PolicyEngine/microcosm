@@ -120,7 +120,7 @@ def store_private_school_attendance(
     if PRIVATE_SCHOOL_ATTENDANCE_OUTPUT in person.columns:
         raise ValueError(
             f"{PRIVATE_SCHOOL_ATTENDANCE_OUTPUT!r} is already stored: this stage "
-            "is its only writer and runs last."
+            "is its only writer."
         )
     period = uk_time_period(frame)
     year = (

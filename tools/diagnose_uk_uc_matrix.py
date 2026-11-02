@@ -30,14 +30,13 @@ from microcosm.build.ledger_artifact import load_ledger_consumer_artifact
 from microcosm.build.ledger_targets import (
     LedgerTargetReference,
     compile_ledger_target_references,
+    restamp_reference_period,
 )
 from microcosm.build.target_materialization import (
     materialize_target_bindings,
     resolve_target_measures,
 )
-from microcosm.build.uk_runtime.high_value_homes import (
-    load_uk_high_value_home_stock_facts,
-)
+from microcosm.build.uk_runtime.derived_facts import uk_derived_fact_rows
 from microcosm.build.uk_runtime.ledger_targets import (
     _candidate_facts_for_reference,
     _uk_baseline_flag_crosstab,
@@ -388,7 +387,7 @@ def compile_explicit_references(facts, path, year):
     fact_rows = tuple(facts)
     specs = []
     for row in payload["target_references"]:
-        reference = LedgerTargetReference(**{**row, "period": year})
+        reference = restamp_reference_period(LedgerTargetReference(**row), year)
         candidates = _candidate_facts_for_reference(fact_rows, reference)
         registry = compile_ledger_target_references(
             candidates, [reference], country="uk"
@@ -565,7 +564,7 @@ def main():
         # compiles it: every reference on the feed and the derived facts, less
         # the rows that bind on the local line only (microcosm#1301).
         compilation = compile_uk_target_registry(
-            (*artifact.facts, *load_uk_high_value_home_stock_facts().rows),
+            (*artifact.facts, *uk_derived_fact_rows()),
             target_period=receipt["model_year"],
         )
         assert not compilation.unsupported, compilation.unsupported
