@@ -53,6 +53,7 @@ from .geography_kernels import register_geography_kernels
 from .money_kernels import register_money_kernels
 from .person_location_kernels import register_person_location_kernels
 from .population_kernels import register_population_kernels
+from .quantile_kernels import register_quantile_kernels
 from .reporting_kernels import register_reporting_kernels
 from .takeup_kernels import register_takeup_kernels
 from .target_kernels import register_target_kernels
@@ -531,13 +532,14 @@ def build_transport_registry(
 
 
 def register_transport_population_kernels(registry: KernelRegistry) -> KernelRegistry:
-    """Install the thirteen population kernels without import-time side effects.
+    """Install the fourteen population kernels without import-time side effects.
 
     Source codecs are separately installed with ``register_transport_codecs``;
     target, solver and terminal kernels keep their own registration functions.
     Repeating registration with the same kernel objects is idempotent.
     """
     register_population_kernels(registry)
+    register_quantile_kernels(registry)
     register_column_kernels(registry)
     register_geography_kernels(registry)
     register_money_kernels(registry)
