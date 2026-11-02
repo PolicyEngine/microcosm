@@ -229,15 +229,21 @@ release directory onto the runs volume. Publication stays the human step in
      (15 or 30 minutes), less about 106 s, after the token was obtained,
      after a queue or a preemption restart, is refused; launch again for a
      new token. Every refusal, at launch and here, names the
-     `MICROCOSM_TELEMETRY_REQUIRED=0` opt-out.
+     `MICROCOSM_TELEMETRY_REQUIRED=0` opt-out; a refusal here names it right
+     after its first clause, so the attempt record's note, which keeps the
+     first 500 characters, always holds it.
    - **An image built before emitter 0.11.0.** The image installs the
      newest emitter release when Modal builds it, and Modal reuses the image
      it built for a commit. So a commit whose image was built before 0.11.0
      (released 2026-10-29) is refused at every launch, with a message that
-     says so, until the image is built again: launch with
-     `MODAL_FORCE_BUILD=1` set, which rebuilds every layer, or wait for
-     #1455, whose new install command (`microcosm-emitter>=0.11.9`) changes
-     that build step and so rebuilds it.
+     says so, until the image is built again. Set `MODAL_FORCE_BUILD=1` for
+     one launch only (`MODAL_FORCE_BUILD=1 MICROCOSM_MODAL_PLAN=plan.json
+     modal run …`), not exported. It rebuilds every layer, including the
+     layers every commit's image shares, so each other commit's image
+     rebuilds once at its next launch too; left set, it rebuilds every layer
+     at every launch. Or wait for #1455, whose new install command
+     (`microcosm-emitter>=0.11.9`) changes only each commit's own build step,
+     so only that step rebuilds.
    - **The check** (without `--run`) asks for no token. It reports the
      collector origin the image's emitter would send to, and the lifetime a
      launch would ask for. It fails when the image's emitter reports no

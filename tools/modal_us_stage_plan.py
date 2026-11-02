@@ -192,9 +192,11 @@ RUNNER_TOKEN_SECRET_ENV = {
     RUNNER_TOKEN_ORIGIN_ENV: EMITTER_TOKEN_ORIGIN_ENV,
 }
 _TOKEN_ENV_NAMES = frozenset(COLLECTOR_TOKEN_ENV) | frozenset(RUNNER_TOKEN_SECRET_ENV)
-#: Where the build's interface finds the emitter command. The image sets it
-#: (IMAGE_ENVIRONMENT) to the emitter whose ``version`` the check and the run
-#: ask, so a plan may not point the build at another one.
+#: Where the build's interface finds the emitter command, and where the
+#: launch looks first for the operator's emitter on the operator's machine
+#: (then ``PATH``). In the container the image sets it (IMAGE_ENVIRONMENT) to
+#: the emitter whose ``version`` the check and the run ask, so a plan may not
+#: point the build at another one.
 EMITTER_COMMAND_ENV = "MICROCOSM_EMITTER_COMMAND"
 
 
@@ -1717,9 +1719,10 @@ TELEMETRY_TOKEN_EXTRA_SECONDS = 3600
 #: class's timeout plus TELEMETRY_TOKEN_EXTRA_SECONDS stays within it (a
 #: test holds this); the longest class, ACS staging at 17 hours, asks for 18.
 COLLECTOR_TOKEN_LIFETIME_CAP_SECONDS = 86_400
-#: How long after its build exits the emitter notices: its host checks its
-#: parent every 0.25 s, and its threads take up to 0.25 s more to stop
-#: (microcosm-emitter's host, 0.11.0 to 0.11.11).
+#: How long after its build exits the emitter notices, with room to spare:
+#: its host checks its parent every 0.25 s (microcosm-emitter's host, 0.11.0
+#: to 0.11.11). The other 0.25 s matches its threads' time to stop, which
+#: comes after its final delivery, so the total is an upper bound.
 EMITTER_EXIT_NOTICE_SECONDS = 0.5
 #: After that, the emitter keeps delivering for up to this long
 #: (``DRAIN_SECONDS`` in microcosm-emitter's host).
@@ -1972,7 +1975,7 @@ def request_telemetry_token(
     return token
 
 
-def _image_emitter_origin(image_emitter: Mapping | None) -> str | None:
+def _image_emitter_origin(image_emitter: EmitterVersionAnswer | None) -> str | None:
     origin = (
         image_emitter.get("collector_origin")
         if isinstance(image_emitter, Mapping)
@@ -1981,10 +1984,20 @@ def _image_emitter_origin(image_emitter: Mapping | None) -> str | None:
     return origin if isinstance(origin, str) and origin else None
 
 
+def _container_refusal(headline: str, details: str = "") -> str:
+    """A refusal before staging: its headline, the opt-out, then its details.
+
+    The opt-out comes second, so it stays within the attempt record's first
+    ATTEMPT_NOTE_MAX_CHARS characters, whatever the details quote.
+    """
+
+    return f"{headline}; {_TELEMETRY_OPT_OUT}." + (f" {details}" if details else "")
+
+
 def _silent_image_emitter() -> str:
-    return (
+    return _container_refusal(
         f"the image's emitter ({IMAGE_EMITTER_COMMAND}) did not answer `version`, "
-        f"so the collector it sends to is unknown; {_TELEMETRY_OPT_OUT}"
+        "so the collector it sends to is unknown"
     )
 
 
@@ -1996,20 +2009,20 @@ def _old_image_emitter() -> str:
     launch until its image is built again.
     """
 
-    return (
-        f"the image's emitter ({IMAGE_EMITTER_COMMAND}) reports no collector origin "
-        "from `version`, so it predates collector tokens, which emitter 0.11.0 and "
-        "later take. Modal reuses the image it built for this commit, with the "
-        "emitter release that was newest then, until the image is built again: "
-        "launch with MODAL_FORCE_BUILD=1 set, which rebuilds every layer of the "
-        f"image; {_TELEMETRY_OPT_OUT}"
+    return _container_refusal(
+        f"the image's emitter ({IMAGE_EMITTER_COMMAND}) reports no collector "
+        "origin, so it predates collector tokens (emitter 0.11.0 and later)",
+        "Modal reuses the image it built for this commit. Set MODAL_FORCE_BUILD=1 "
+        "for one launch to rebuild it: that rebuilds every layer, so other "
+        "commits' images rebuild once at their next launch, and left set it "
+        "rebuilds every layer at every launch.",
     )
 
 
 def telemetry_record(
     plan: Plan,
     *,
-    image_emitter: Mapping | None = None,
+    image_emitter: EmitterVersionAnswer | None = None,
     token: CollectorTokenRecord | None = None,
     needed_until: float | None = None,
 ) -> TelemetryRecord:
@@ -2055,7 +2068,7 @@ def token_needed_until(plan: Plan, container_started: float) -> int:
 
 
 def telemetry_check_report(
-    plan: Plan, image_emitter: Mapping | None
+    plan: Plan, image_emitter: EmitterVersionAnswer | None
 ) -> tuple[TelemetryRecord, str | None]:
     """The check's telemetry record, and a problem the paid run would refuse on.
 
@@ -2076,7 +2089,7 @@ def telemetry_check_report(
 def telemetry_check(
     plan: Plan,
     environ: Mapping[str, str],
-    image_emitter: Mapping | None,
+    image_emitter: EmitterVersionAnswer | None,
     *,
     container_started: float,
 ) -> tuple[TelemetryRecord, str | None]:
@@ -2097,10 +2110,10 @@ def telemetry_check(
     if values is None:
         return telemetry_record(
             plan, image_emitter=image_emitter, needed_until=needed_until
-        ), (
-            "no collector token reached the container: the secret a launch with "
-            "--run makes for it is missing or incomplete. Launch with "
-            f"`modal run ... --run`, which asks for one; {_TELEMETRY_OPT_OUT}"
+        ), _container_refusal(
+            "no collector token reached the container (the secret a launch with "
+            "--run makes for it is missing or incomplete)",
+            "Launch with `modal run ... --run`, which asks for one.",
         )
     expires_at = values[RUNNER_TOKEN_EXPIRES_AT_ENV]
     origin = values[RUNNER_TOKEN_ORIGIN_ENV]
@@ -2108,9 +2121,9 @@ def telemetry_check(
     if expires is None:
         return telemetry_record(
             plan, image_emitter=image_emitter, needed_until=needed_until
-        ), (
-            "the collector token's expiry is not an ISO 8601 time with a time "
-            f"zone; launch again for a new token; {_TELEMETRY_OPT_OUT}"
+        ), _container_refusal(
+            "the collector token's expiry is not an ISO 8601 time with a time zone",
+            "Launch again for a new token.",
         )
     record = telemetry_record(
         plan,
@@ -2124,24 +2137,22 @@ def telemetry_check(
     if image_origin is None:
         return record, _old_image_emitter()
     if origin.rstrip("/") != image_origin.rstrip("/"):
-        return record, (
+        return record, _container_refusal(
             f"the collector token was obtained from another collector ({origin}) "
-            f"than the image's emitter sends to ({image_origin}); launch again "
-            "with an emitter on this machine that sends where the image's does; "
-            f"{_TELEMETRY_OPT_OUT}"
+            f"than the image's emitter sends to ({image_origin})",
+            "Launch again with an emitter on this machine that sends where the "
+            "image's does.",
         )
     if expires.timestamp() < needed_until:
-        return record, (
+        return record, _container_refusal(
             f"the collector token expires at {expires_at}, before "
-            f"{record['token_needed_until']}, the latest the emitter may still be "
-            "sending it: the runner's SIGKILL of the tool, "
-            f"{STOP_GRACE_SECONDS} s after its SIGTERM at the class timeout less "
-            "the stage's reserve, then the emitter's "
-            f"{EMITTER_EXIT_NOTICE_SECONDS:g} s to notice the build exited, its "
-            f"{EMITTER_DRAIN_SECONDS} s of delivery and the "
-            f"{EMITTER_TOKEN_MARGIN_SECONDS} s before expiry at which it stops "
-            "sending the token. The container started too long after its launch; "
-            f"launch again for a new token; {_TELEMETRY_OPT_OUT}"
+            f"{record['token_needed_until']}, the latest the emitter may send it",
+            f"That is the tool's SIGKILL, {STOP_GRACE_SECONDS} s after its SIGTERM "
+            "at the class timeout less the stage's reserve, plus the emitter's "
+            f"{EMITTER_EXIT_NOTICE_SECONDS:g} s, {EMITTER_DRAIN_SECONDS} s drain and "
+            f"{EMITTER_TOKEN_MARGIN_SECONDS} s margin (runbook, item 6). The "
+            "container started too long after its launch; launch again for a new "
+            "token.",
         )
     return record, None
 
@@ -3053,6 +3064,9 @@ OUTCOME_RECEIPT = "receipt"  # the tool ran and a receipt was written
 # A check before staging stopped it: the lock, the budget, the disk, the hash
 # seed or the collector token.
 OUTCOME_REFUSED = "refused"
+#: How much of a refusal's or an error's message an attempt record keeps as
+#: its note. A refusal names its remedy within it.
+ATTEMPT_NOTE_MAX_CHARS = 500
 OUTCOME_ERROR = "error"  # an exception after its first record
 
 

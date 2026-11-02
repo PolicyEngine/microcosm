@@ -230,7 +230,7 @@ def _cpu_visibility() -> dict[str, object]:
     }
 
 
-def _emitter_version() -> dict[str, object] | None:
+def _emitter_version() -> plan_lib.EmitterVersionAnswer | None:
     """The installed emitter's ``version`` answer, or None if it does not run.
 
     It runs without the runner's credentials or the collector token, which
@@ -812,14 +812,20 @@ def _run_stage(plan_data: dict) -> dict:
     try:
         return _attempt_stage(plan, plan_data, plan_sha256, attempt, git)
     except _Refusal as refusal:
-        attempt.end(plan_lib.OUTCOME_REFUSED, finished=True, note=str(refusal)[:500])
+        attempt.end(
+            plan_lib.OUTCOME_REFUSED,
+            finished=True,
+            note=str(refusal)[: plan_lib.ATTEMPT_NOTE_MAX_CHARS],
+        )
         raise
     except BaseException as error:
         try:
             attempt.end(
                 plan_lib.OUTCOME_ERROR,
                 finished=False,
-                note=f"{type(error).__name__}: {error}"[:500],
+                note=f"{type(error).__name__}: {error}"[
+                    : plan_lib.ATTEMPT_NOTE_MAX_CHARS
+                ],
             )
         except Exception as record_error:  # noqa: BLE001 - keep the first error
             print(f"attempt record failed: {record_error}", flush=True)
