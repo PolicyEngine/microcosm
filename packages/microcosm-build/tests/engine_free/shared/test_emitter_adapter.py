@@ -269,7 +269,7 @@ def _start_build_emitter(monkeypatch, tmp_path):
     ("version_answer", "reported"),
     [
         # The release just before the minimum.
-        (_version_answer("0.11.7"), "reports version 0.11.7"),
+        (_version_answer("0.11.8"), "reports version 0.11.8"),
         # Releases before 0.10.0 send telemetry to the collector's Cloud Run
         # address, which changes when the collector moves to another project.
         (_version_answer("0.9.0"), "reports version 0.9.0"),
@@ -282,7 +282,7 @@ def _start_build_emitter(monkeypatch, tmp_path):
         ("not JSON", "reports no version"),
     ],
     ids=[
-        "0.11.7",
+        "0.11.8",
         "0.9.0",
         "0.6.0",
         "0.5.1",
@@ -292,7 +292,7 @@ def _start_build_emitter(monkeypatch, tmp_path):
         "not-json",
     ],
 )
-def test_an_emitter_older_than_0_11_8_is_never_started_and_the_build_continues(
+def test_an_emitter_older_than_0_11_9_is_never_started_and_the_build_continues(
     monkeypatch, capsys, tmp_path, version_answer, reported
 ):
     # The emitter's telemetry module records the run's start as soon as the
@@ -309,8 +309,8 @@ def test_an_emitter_older_than_0_11_8_is_never_started_and_the_build_continues(
     assert not emitter.available
     warning = capsys.readouterr().err
     assert f"The installed microcosm-emitter {reported};" in warning
-    assert "this build needs 0.11.8 or later" in warning
-    assert "uv tool install --upgrade 'microcosm-emitter>=0.11.8'" in warning
+    assert "this build needs 0.11.9 or later" in warning
+    assert "uv tool install --upgrade 'microcosm-emitter>=0.11.9'" in warning
     # Nothing reaches an emitter, and nothing raises.
     emitter.transition_stage("solve")
     emitter.complete()
@@ -320,10 +320,10 @@ def test_an_emitter_older_than_0_11_8_is_never_started_and_the_build_continues(
 
 @pytest.mark.parametrize(
     "installed_version",
-    # 0.11.10 is compared by number, not as text, where it sorts before 0.11.8.
-    ["0.11.8", "0.11.10", "0.12.0", "1.0.0"],
+    # 0.11.10 is compared by number, not as text, where it sorts before 0.11.9.
+    ["0.11.9", "0.11.10", "0.12.0", "1.0.0"],
 )
-def test_an_emitter_from_0_11_8_on_starts(
+def test_an_emitter_from_0_11_9_on_starts(
     monkeypatch, capsys, tmp_path, installed_version
 ):
     client = FakeEmitterClient()
@@ -341,7 +341,7 @@ def test_an_emitter_from_0_11_8_on_starts(
 
 
 @pytest.mark.parametrize("operation", ["inventory", "publish"])
-def test_a_short_lived_graph_emitter_older_than_0_11_8_is_never_started(
+def test_a_short_lived_graph_emitter_older_than_0_11_9_is_never_started(
     monkeypatch, capsys, tmp_path, operation
 ):
     client = FakeEmitterClient(modules={"orrery"})
@@ -360,7 +360,7 @@ def test_a_short_lived_graph_emitter_older_than_0_11_8_is_never_started(
     assert starts == []
     assert not started.exists()
     assert client.calls == []
-    assert "this build needs 0.11.8 or later" in capsys.readouterr().err
+    assert "this build needs 0.11.9 or later" in capsys.readouterr().err
 
 
 @pytest.mark.parametrize("failure", ["default_spool_path", "runtime_identity"])

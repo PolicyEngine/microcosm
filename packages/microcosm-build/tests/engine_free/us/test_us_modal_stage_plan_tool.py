@@ -367,7 +367,7 @@ def test_image_installs_the_emitter_command_on_its_own(app) -> None:
     commands = plan_lib.image_build_commands(plan)
     sync = next(index for index, command in enumerate(commands) if "uv sync" in command)
     install = commands.index(
-        "UV_TOOL_BIN_DIR=/usr/local/bin uv tool install 'microcosm-emitter>=0.11.8'"
+        "UV_TOOL_BIN_DIR=/usr/local/bin uv tool install 'microcosm-emitter>=0.11.9'"
     )
     # Outside the build's environment, after it is synced and before the
     # clean-tree check. The image does not build unless the command runs.
@@ -398,7 +398,7 @@ def test_the_image_installs_no_emitter_older_than_a_build_starts() -> None:
 
     from microcosm.build.telemetry_emitter import MINIMUM_EMITTER_VERSION
 
-    assert MINIMUM_EMITTER_VERSION == "0.11.8"
+    assert MINIMUM_EMITTER_VERSION == "0.11.9"
     assert plan_lib.IMAGE_EMITTER_REQUIREMENT == (
         f"microcosm-emitter>={MINIMUM_EMITTER_VERSION}"
     )
