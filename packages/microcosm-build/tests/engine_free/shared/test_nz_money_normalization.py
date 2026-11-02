@@ -378,9 +378,16 @@ def test_the_rate_has_one_source_and_the_bridge_points_to_it():
     assert rate == Fraction(827, 500)
     assert evidence["citation"]["url"].startswith("https://www.irs.gov/")
     assert evidence["citation"]["column"] == "2024"
+    # The VHF sibling declaration copies the central rate; only its four
+    # index families differ (tools/build_nz_transport_graph.py).
     assert _spec_rate_locations(rate) == [
-        ("money_normalization.json", ("rate", "text"))
+        ("money_normalization.json", ("rate", "text")),
+        ("money_normalization_hold_fixed.json", ("rate", "text")),
     ]
+    assert (
+        _load("money_normalization_hold_fixed.json")["rate"]
+        == _load("money_normalization.json")["rate"]
+    )
     assert _load("money_normalization.json")["rate"]["text"] == "1.654"
     bridge = _load("currency_bridge.json")
     assert bridge["rate"] == {"resource": "money_normalization.json", "path": ["rate"]}
@@ -490,6 +497,15 @@ def test_a_tax_year_factor_is_refused_on_donor_money(profile):
         check_money_factor(relabelled, _declaration())
 
 
-def test_no_graph_reads_it_yet_so_preflight_names_no_money_gap():
+def test_preflight_names_exactly_the_three_pending_quantile_maps():
+    """The packaged graph now reads donor money; only quantile maps remain."""
     spec = compose_module.load_transport_spec("nz")
-    assert compose_module._money_producer_gaps(spec) == []
+    gaps = compose_module._money_producer_gaps(spec)
+    assert [gap.split(" <- ")[0] for gap in gaps] == [
+        f"money column {name} awaits quantile map"
+        for name in (
+            "household.rent",
+            "person.employment_income",
+            "person.liquid_financial_assets",
+        )
+    ]

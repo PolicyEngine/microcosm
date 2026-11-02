@@ -818,7 +818,7 @@ def test_h1_count_and_h2_historical_annual_dollars_pin_distinct_source_cells(art
     h1, h2 = rows
     assert h1["measure"] == "accommodation_supplement_positive_payment_indicator"
     assert h1["metadata"]["indicator_input_column"] == (
-        "accommodation_supplement_rounded_weekly_payment"
+        "accommodation_supplement_entitled_weekly_payment"
     )
     assert h1["metadata"]["indicator_operator"] == "positive"
     assert h1["metadata"]["indicator_threshold"] == "0"
@@ -826,7 +826,7 @@ def test_h1_count_and_h2_historical_annual_dollars_pin_distinct_source_cells(art
     assert h1["ledger_selector"]["geography_level"] == "country"
     assert h1["ledger_selector"]["geography_id"] == "NZ"
     assert h1["period"] == "2026-06"
-    assert h2["measure"] == "accommodation_supplement_rounded_weekly_payment"
+    assert h2["measure"] == "accommodation_supplement_entitled_weekly_payment"
     assert h2["metadata"]["annualisation_factor"] == "52"
     assert h2["ledger_selector"]["record_set_id"] == "msd.benefit_expenses.fy2024"
     assert h2["ledger_selector"]["dimension_values"] == {
