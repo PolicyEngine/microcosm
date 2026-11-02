@@ -12,7 +12,11 @@ user, so it finds the build's Hugging Face credential (``HF_TOKEN``, then
 ``HUGGINGFACE_TOKEN``, then the token saved by ``hf auth login``). Its module
 settings travel on its standard input, never in environment variables or
 process arguments. No call raises into the build: a missing, slow,
-refusing or outdated emitter leaves the build running without it.
+refusing or outdated emitter leaves the build running without it. The one
+exception is a build that must send telemetry: with
+``MICROCOSM_TELEMETRY_REQUIRED=1``, starting the adapter raises
+``TelemetryRequiredError`` when the emitter cannot be used, so the build
+stops before doing any work.
 
 The adapter never starts an emitter older than ``MINIMUM_EMITTER_VERSION``.
 It reads the version from ``microcosm-emitter version`` first, because the
@@ -23,6 +27,7 @@ starts, before its ``hello`` answer can name its release.
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
 import sys
@@ -32,6 +37,7 @@ from typing import Any
 
 from microcosm_emitter_interface import (
     EmitterClient,
+    EmitterStartupError,
     HuggingFaceSettings,
     OrrerySettings,
     TelemetryRun,
@@ -46,6 +52,7 @@ from microcosm_emitter_interface.orrery import (
     publication_id_of,
     unavailable_receipt,
 )
+from microcosm_emitter_interface.protocol import TELEMETRY_MODULE
 from microcosm_emitter_interface.telemetry import (
     DEFAULT_FAILURE_CLASS,
     DEFAULT_HEARTBEAT_SECONDS,
@@ -58,8 +65,10 @@ from microcosm.build.telemetry_identity import runtime_identity
 __all__ = [
     "DEFAULT_HEARTBEAT_SECONDS",
     "MINIMUM_EMITTER_VERSION",
+    "TELEMETRY_REQUIRED_VARIABLE",
     "EmitterClient",
     "LocalTelemetryEmitter",
+    "TelemetryRequiredError",
     "TelemetryRun",
     "publication_inventory",
     "publish_graph",
@@ -86,6 +95,104 @@ OUTDATED_EMITTER_WARNING = (
 )
 _RELEASE_NUMBER = re.compile(r"(\d+)\.(\d+)\.(\d+)")
 _MINIMUM_RELEASE = tuple(int(part) for part in MINIMUM_EMITTER_VERSION.split("."))
+
+#: ``1``: this build must send telemetry, so it stops when its emitter cannot
+#: be used. Unset or ``0``: it continues without one. Whoever starts the
+#: build sets it; the adapter reads it each time it starts.
+TELEMETRY_REQUIRED_VARIABLE = "MICROCOSM_TELEMETRY_REQUIRED"
+REQUIRED_TELEMETRY_ERROR = (
+    "MICROCOSM_TELEMETRY_REQUIRED=1, so this build must send telemetry, but "
+    "{problem} The build stops before doing any work."
+)
+OUTDATED_EMITTER_PROBLEM = (
+    "the installed microcosm-emitter {reported}, and this build needs "
+    "{required} or later. Upgrade it with "
+    "`uv tool install --upgrade 'microcosm-emitter>={required}'`, or point "
+    "MICROCOSM_EMITTER_COMMAND at a newer one."
+)
+#: What each startup failure the interface reports means, in the error of a
+#: build that must send telemetry. The interface names a fixed reason and,
+#: for an emitter that exited, its exit code; never the emitter's output.
+_STARTUP_PROBLEMS = {
+    "command_not_found": (
+        "the microcosm-emitter command was found neither through "
+        "MICROCOSM_EMITTER_COMMAND nor on PATH. Install it with "
+        "`uv tool install microcosm-emitter`, or point MICROCOSM_EMITTER_COMMAND "
+        "at it."
+    ),
+    "unsupported_protocol_version": (
+        "the installed emitter does not accept protocol version 1 "
+        "(unsupported_protocol_version)."
+    ),
+    "child_exit": (
+        "its emitter exited before it was ready (child_exit{exit_detail}). The "
+        "emitter's own message above says why. Emitter 0.11.0 and later exit "
+        "there when MICROCOSM_COLLECTOR_TOKEN, "
+        "MICROCOSM_COLLECTOR_TOKEN_EXPIRES_AT and MICROCOSM_COLLECTOR_ORIGIN are "
+        "not all set, cannot be read, or name another collector."
+    ),
+    "readiness_timeout": (
+        "its emitter was not ready within its startup time limit (readiness_timeout)."
+    ),
+    "configuration_timeout": (
+        "its emitter did not take its module settings within its startup time "
+        "limit (configuration_timeout)."
+    ),
+    "invalid_configuration": (
+        "its emitter's module settings are invalid or too large "
+        "(invalid_configuration)."
+    ),
+    "startup_failure": "its emitter could not be started (startup_failure).",
+}
+
+
+class TelemetryRequiredError(RuntimeError):
+    """A build that must send telemetry has no emitter it can use.
+
+    ``LocalTelemetryEmitter.start`` raises it only with
+    ``MICROCOSM_TELEMETRY_REQUIRED=1``. ``reason`` is a fixed code:
+    ``setup_failure``, ``outdated_emitter``, ``telemetry_module_not_loaded``,
+    or the startup reason the interface reported (``command_not_found``,
+    ``child_exit``, ``readiness_timeout``, ``unsupported_protocol_version``
+    and the others ``EmitterStartupError`` names). ``exit_code`` is the
+    emitter's exit code when it exited before it was ready. The message holds
+    no setting's or credential's value.
+    """
+
+    def __init__(
+        self, reason: str, problem: str, *, exit_code: int | None = None
+    ) -> None:
+        self.reason = reason
+        self.exit_code = exit_code
+        super().__init__(REQUIRED_TELEMETRY_ERROR.format(problem=problem))
+
+
+def _startup_refusal(error: EmitterStartupError | None) -> TelemetryRequiredError:
+    """The error of a build that must send telemetry, for a startup failure."""
+    reason = "startup_failure" if error is None else error.reason
+    exit_code = None if error is None else error.exit_code
+    problem = _STARTUP_PROBLEMS.get(reason, _STARTUP_PROBLEMS["startup_failure"])
+    exit_detail = "" if exit_code is None else f", exit code {exit_code}"
+    return TelemetryRequiredError(
+        reason, problem.format(exit_detail=exit_detail), exit_code=exit_code
+    )
+
+
+def _telemetry_required() -> bool:
+    """Whether this build must send telemetry (``MICROCOSM_TELEMETRY_REQUIRED``).
+
+    ``1``: it must. Unset or ``0``: it continues without an emitter. Any other
+    value raises ``ValueError``, so a mistyped setting never turns the
+    requirement off.
+    """
+    setting = os.environ.get(TELEMETRY_REQUIRED_VARIABLE)
+    if setting is None or setting == "0":
+        return False
+    if setting == "1":
+        return True
+    raise ValueError(
+        f"{TELEMETRY_REQUIRED_VARIABLE} must be 1 or 0, or unset; it is {setting!r}."
+    )
 
 
 def _release_number(version: object) -> tuple[int, ...] | None:
@@ -119,7 +226,7 @@ def _installed_emitter_version(command: str, timeout: float) -> str | None:
     return version if isinstance(version, str) else None
 
 
-def _start_emitter(**options: Any) -> EmitterClient:
+def _start_emitter(*, required: bool = False, **options: Any) -> EmitterClient:
     """Start the installed emitter, unless it is older than the minimum.
 
     The emitter's telemetry module records the run's start as soon as the
@@ -129,17 +236,41 @@ def _start_emitter(**options: Any) -> EmitterClient:
     finished. An outdated emitter is never started: the client returned is
     unavailable, so every call reports that. A missing command is left to
     ``EmitterClient.start``, which reports it.
+
+    With ``required`` (a build that must send telemetry), each of these
+    failures, and every other one ``EmitterClient.start`` reports, raises
+    ``TelemetryRequiredError`` instead. The adapter then prints no warning
+    that the build continues: it finds a missing command before
+    ``EmitterClient.start`` would print one.
     """
+    command: str | None = None
+    missing: EmitterStartupError | None = None
     try:
         command = resolve_command()
+    except EmitterStartupError as error:
+        missing = error
     except Exception:
+        missing = EmitterStartupError("startup_failure")
+    if command is None:
+        if required:
+            raise _startup_refusal(missing)
         return EmitterClient.start(**options)
     timeout = options.get("startup_timeout", STARTUP_TIMEOUT_SECONDS)
     version = _installed_emitter_version(command, timeout)
     installed = _release_number(version)
     if installed is not None and installed >= _MINIMUM_RELEASE:
-        return EmitterClient.start(command=command, **options)
+        client = EmitterClient.start(command=command, **options)
+        if required and not client.available:
+            raise _startup_refusal(client.startup_error)
+        return client
     reported = "reports no version" if version is None else f"reports version {version}"
+    if required:
+        raise TelemetryRequiredError(
+            "outdated_emitter",
+            OUTDATED_EMITTER_PROBLEM.format(
+                reported=reported, required=MINIMUM_EMITTER_VERSION
+            ),
+        )
     print(
         OUTDATED_EMITTER_WARNING.format(
             reported=reported, required=MINIMUM_EMITTER_VERSION
@@ -189,7 +320,21 @@ class LocalTelemetryEmitter:
         spool_path: Path | str | None = None,
         close_service_on_finish: bool = True,
     ) -> LocalTelemetryEmitter:
-        """Start the installed emitter; a failure leaves an unavailable adapter."""
+        """Start the installed emitter; a failure leaves an unavailable adapter.
+
+        With ``MICROCOSM_TELEMETRY_REQUIRED=1`` a failure raises
+        ``TelemetryRequiredError`` instead, before the build does any work:
+        the emitter could not be prepared, was not found, is older than
+        ``MINIMUM_EMITTER_VERSION``, does not accept protocol version 1,
+        exited or timed out before it was ready, or started without its
+        telemetry module. The version check and the start each wait at most
+        ``startup_timeout_seconds``. An emitter that cannot use the
+        collector-token variables it inherits exits before it is ready, so it
+        is refused too. Whether the emitter later authenticates to the
+        collector is not visible here: the interface has no call that reports
+        it. Any value other than ``1``, ``0`` or unset raises ``ValueError``.
+        """
+        required = _telemetry_required()
         run = TelemetryRun(
             run_id=run_id,
             country_code=country_code,
@@ -198,18 +343,25 @@ class LocalTelemetryEmitter:
             release_id=release_id,
             run_kind=run_kind,
         )
+        setup_error: str | None = None
         try:
             path = Path(spool_path) if spool_path else default_spool_path()
             identity = runtime_identity()
         except Exception as error:
-            print(
-                SETUP_WARNING.format(error_type=type(error).__name__),
-                file=sys.stderr,
-            )
+            # Only the type: the message can name private paths.
+            setup_error = type(error).__name__
+        if setup_error is not None:
+            if required:
+                raise TelemetryRequiredError(
+                    "setup_failure",
+                    f"its emitter could not be prepared ({setup_error}).",
+                )
+            print(SETUP_WARNING.format(error_type=setup_error), file=sys.stderr)
             return cls(
                 run=run, client=None, close_service_on_finish=close_service_on_finish
             )
         client = _start_emitter(
+            required=required,
             telemetry=TelemetrySettings(
                 run=run,
                 identity=identity,
@@ -224,6 +376,13 @@ class LocalTelemetryEmitter:
             spool_path=path,
             startup_timeout=startup_timeout_seconds,
         )
+        if required and TELEMETRY_MODULE not in client.modules:
+            # It started without telemetry, so it recorded no run; stop it.
+            client.close()
+            raise TelemetryRequiredError(
+                "telemetry_module_not_loaded",
+                "its emitter started without its telemetry module.",
+            )
         return cls(
             run=run, client=client, close_service_on_finish=close_service_on_finish
         )

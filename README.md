@@ -79,6 +79,19 @@ operator's Hugging Face login is accepted; otherwise it retains the events
 locally and the build continues. This live event path is independent of the
 staging run files described below.
 
+A build that must send telemetry runs with `MICROCOSM_TELEMETRY_REQUIRED=1`.
+It then stops with `TelemetryRequiredError` when it starts its emitter,
+before doing any work, if the emitter cannot be prepared, is missing or
+older than the minimum, does not accept protocol version 1, exits or times
+out before it is ready, or starts without its telemetry module. Emitter
+0.11.0 and later exit at that point when the collector-token variables they
+inherit (`MICROCOSM_COLLECTOR_TOKEN`, `MICROCOSM_COLLECTOR_TOKEN_EXPIRES_AT`,
+`MICROCOSM_COLLECTOR_ORIGIN`) are not all set, cannot be read, or name
+another collector. Whether the collector later accepts the credential is not
+visible to the build. Unset or `0`, a build continues without the emitter as
+above; any other value stops it with a `ValueError`. Nothing in Microcosm
+sets the variable yet.
+
 US fiscal refresh builds also write pre-release staging run files **by
 default**. The build hands its progress JSON to the emitter, which commits it
 to `policyengine/populace-us-staging` while the build runs, one commit per

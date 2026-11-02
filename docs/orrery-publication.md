@@ -52,6 +52,7 @@ aggregate summaries can be published publicly.
 | Collector origin | Built into the installed emitter; the build sends no address unless a caller passes a loopback development address in the module settings | No producer variable or destination override |
 | Runs origin | Tracked `DEFAULT_GRAPH_PUBLICATION_ORIGIN` | No new producer variable |
 | `XDG_CACHE_HOME` | Optional existing cache-location setting, read by the interface in the build; the build passes the spool path (`microcosm/telemetry/events.sqlite3`) and the hand-over database beside it (`events.handovers.sqlite3`) to the emitter on its standard input | Defaults to the user's cache directory |
+| `MICROCOSM_TELEMETRY_REQUIRED` | Optional, read by the build adapter (`microcosm.build.telemetry_emitter`) each time a build starts its emitter. `1`: the build stops with `TelemetryRequiredError` if the emitter cannot start, does not accept protocol version 1 or starts without its telemetry module; unset or `0`: it continues without the emitter; any other value: `ValueError` | Whoever starts the build; nothing in Microcosm sets it yet. Not a credential |
 
 The separately deployed runs application retains its Vercel Blob configuration.
 Authenticated production publication also requires
