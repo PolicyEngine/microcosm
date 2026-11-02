@@ -26,6 +26,7 @@ from microcosm.frame import EntitySchema
 from microcosm.frame.adapters.axiom import (
     AxiomEngine,
     AxiomPeriod,
+    AxiomRelation,
     assert_no_relations,
     axiom_engine_ref,
     rulespec_tree_digest,
@@ -36,7 +37,7 @@ from microcosm.frame.rules_kernels import (
     SimulateRulesByRefKernel,
     SimulateSolveZeroKernel,
 )
-from microcosm.frame.unit_construction import BenefitUnitRule
+from microcosm.frame.unit_construction import BenefitUnitRule, MultiUnitRule
 from microcosm.graph import KernelRegistry
 from microcosm.graph.canonical import canonical_json
 from microcosm.graph.codecs import SourceCodecRegistry
@@ -56,6 +57,7 @@ from .terminal_kernels import register_terminal_kernels
 __all__ = [
     "PYTHON_ENGINE_REF_FORMAT",
     "TransportRegistry",
+    "binding_relation_dependencies",
     "build_transport_registry",
     "register_transport_population_kernels",
     "transport_entity_schema",
@@ -86,18 +88,21 @@ class TransportRegistry:
 
 
 def transport_entity_schema(
-    rule: BenefitUnitRule,
+    rule: BenefitUnitRule | MultiUnitRule,
 ) -> tuple[EntitySchema, Mapping[str, str]]:
-    """The persons, their households and the rule's benefit units.
+    """The persons, households and declared partitions CREATE builds.
 
-    This is the schema ``transport.create@1`` gives its frame. Each unit is
-    built inside one household (``build_benefit_units`` returns
-    ``<unit>_household_id``), so the unit nests in the household.
+    Both CREATE versions derive their physical schema from the shared unit
+    declarations. Every constructed unit nests inside one household; the
+    legacy benefit-unit interface lifts to a one-element declaration list.
     """
-    if not isinstance(rule, BenefitUnitRule):
-        raise TypeError("transport_entity_schema requires a BenefitUnitRule.")
-    schema = EntitySchema(group_entities=("household", rule.entity))
-    return schema, MappingProxyType({rule.entity: "household"})
+    if isinstance(rule, BenefitUnitRule):
+        rule = MultiUnitRule.from_benefit_unit(rule)
+    if not isinstance(rule, MultiUnitRule):
+        raise TypeError(
+            "transport_entity_schema requires a BenefitUnitRule or MultiUnitRule."
+        )
+    return rule.entity_schema()
 
 
 def _mapping(value: object, label: str) -> Mapping:
@@ -165,7 +170,7 @@ def _binding_semantics(
     if not variables or len(variables) != len(set(variables)):
         raise ValueError(f"{label}.variables must be non-empty and distinct.")
     # Metadata prose and declarations do not decide engine outputs.
-    return {
+    semantics = {
         "id": row["id"],
         "rulespec_path": relative,
         "sha256": digest,
@@ -174,6 +179,120 @@ def _binding_semantics(
         "period": period,
         "variables": variables,
     }
+    if "views" in row:
+        raise NotImplementedError(f"{label}.views are not supported.")
+    if "relations" in row:
+        semantics["relations"] = tuple(
+            relation.to_dict()
+            for relation in _binding_relations(row, entity_names, schema)
+        )
+    return semantics
+
+
+def _binding_relations(
+    row: Mapping,
+    entity_names: Mapping[str, str],
+    schema: EntitySchema,
+) -> tuple[AxiomRelation, ...]:
+    """Parse explicit partition relations without inventing absent declarations.
+
+    These are person members of a declared group partition. Arbitrary links
+    and binding-local logical views require a separate declaration contract.
+    Compiled key, slot orientation and input surfaces are checked after the
+    adapter is pinned to its RuleSpec bytes.
+    """
+    label = f"rules binding {row['id']!r}.relations"
+    values = row["relations"]
+    if isinstance(values, str | bytes) or not isinstance(values, Sequence):
+        raise TypeError(f"{label} must be a list of relation manifests.")
+    required = {
+        "predicate",
+        "key",
+        "current_slot",
+        "related_slot",
+        "arguments",
+        "root_entity",
+        "related_entity",
+        "membership_column",
+        "related_inputs",
+        "cardinality",
+        "period",
+    }
+    optional = {"role_column", "roles"}
+    relations = []
+    for value in values:
+        manifest = _mapping(value, f"{label} manifest")
+        if not required <= set(manifest) or set(manifest) - required - optional:
+            raise ValueError(
+                f"{label} manifests require exactly {sorted(required)} and "
+                "optional role_column and roles."
+            )
+        data = dict(manifest)
+        for name in ("arguments", "roles"):
+            if name not in data:
+                continue
+            items = data[name]
+            if isinstance(items, str | bytes) or not isinstance(items, Sequence):
+                raise TypeError(f"{label}.{name} must be a list of strings.")
+            data[name] = tuple(items)
+        data["related_inputs"] = dict(
+            _mapping(data["related_inputs"], f"{label}.related_inputs")
+        )
+        relation = AxiomRelation(**data)
+        if relation.root_entity != row["entity"]:
+            raise ValueError(f"{label}.root_entity must equal the binding entity.")
+        if (
+            relation.root_entity not in schema.group_entities
+            or relation.related_entity != schema.person_entity
+        ):
+            raise ValueError(
+                f"{label} supports a declared group partition with related persons."
+            )
+        if relation.membership_column != schema.membership_column(relation.root_entity):
+            raise ValueError(
+                f"{label}.membership_column must name the declared partition membership."
+            )
+        if relation.period != row["period"]:
+            raise ValueError(f"{label}.period must equal the binding period.")
+        if (
+            relation.arguments[relation.current_slot]
+            != entity_names[relation.root_entity]
+            or relation.arguments[relation.related_slot]
+            != entity_names[relation.related_entity]
+        ):
+            raise ValueError(
+                f"{label}.arguments disagree with the declared entity names and slots."
+            )
+        relations.append(relation)
+    keys = [relation.key for relation in relations]
+    if len(keys) != len(set(keys)):
+        raise ValueError(f"{label} repeats a compiled relation key.")
+    return tuple(relations)
+
+
+def binding_relation_dependencies(
+    binding: Mapping,
+    *,
+    entity_names: Mapping[str, str],
+    schema: EntitySchema,
+) -> tuple[tuple[str, str], ...]:
+    """The physical graph slices an explicit relation declaration reads.
+
+    Composition uses the same parser and physical dependency implementation
+    as preparation and native batching. No declaration contributes no extra
+    columns; identifiers, memberships and role selectors enter when present.
+    """
+    if "relations" not in binding:
+        return ()
+    return tuple(
+        sorted(
+            {
+                column
+                for relation in _binding_relations(binding, entity_names, schema)
+                for column in relation.input_dependencies(schema)
+            }
+        )
+    )
 
 
 def _check_engine(
@@ -207,6 +326,13 @@ def _check_engine(
             raise ValueError(
                 f"{label} engine must use declared periods, unit nesting and graph dtypes."
             )
+        expected_relations = (
+            None
+            if "relations" not in semantics
+            else _binding_relations(semantics, entity_names, schema)
+        )
+        if engine._relations != expected_relations:
+            raise ValueError(f"{label} engine relations do not match the binding.")
     else:
         declared_root = getattr(engine, "rulespec_root", None)
         if (
@@ -222,13 +348,15 @@ def _check_engine(
             )
         if not callable(getattr(engine, "cache_identity", None)):
             raise TypeError(f"{label} injected engine must expose cache_identity().")
+        if "relations" in semantics:
+            raise TypeError(f"{label} relation manifests require an AxiomEngine.")
 
 
 def build_transport_registry(
     rules_bindings: Mapping,
     rulespec_root: str | Path,
     *,
-    unit_rule: BenefitUnitRule,
+    unit_rule: BenefitUnitRule | MultiUnitRule,
     engines_by_binding: Mapping[str, RulesEngine] | None = None,
     dependencies: tuple[str, ...] = (),
 ) -> TransportRegistry:
@@ -325,6 +453,11 @@ def build_transport_registry(
                 entity_names=entity_names,
                 nesting=nesting,
                 output_dtypes="graph",
+                **(
+                    {"relations": _binding_relations(semantics, entity_names, schema)}
+                    if "relations" in semantics
+                    else {}
+                ),
             )
             if engines_by_binding is None
             else engines_by_binding[row["id"]]
@@ -334,7 +467,10 @@ def build_transport_registry(
         )
         if isinstance(engine, AxiomEngine):
             reference = axiom_engine_ref(engine, rulespec_root=root, **pins)
-            assert_no_relations(engine, semantics["entity"])
+            if "relations" in semantics:
+                engine.assert_declared_relations(semantics["entity"])
+            else:
+                assert_no_relations(engine, semantics["entity"])
         else:
             identity = _mapping(
                 engine.cache_identity(),

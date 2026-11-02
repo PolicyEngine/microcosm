@@ -86,6 +86,7 @@ from microcosm.build.money_normalization import (
 )
 from microcosm.build.reference_profiles import resolve_reference_profiles
 from microcosm.calibrate.ordered_kernels import OUTPUT_TYPES
+from microcosm.frame.kernels import missing_relation_inputs
 from microcosm.graph import (
     ROWS_ALL,
     ArtifactInput,
@@ -117,7 +118,14 @@ from .money_kernels import (
     MONEY_NORMALIZE_REF,
 )
 from .reference_selection import selection_resources, validate_exemptions
+from .registry import binding_relation_dependencies
 from .target_kernels import TARGET_COMPILATION_KERNELS
+from .unit_declarations import (
+    CREATE_REFS,
+    CREATE_V1_REF,
+    CREATE_V2_REF,
+    create_unit_declaration,
+)
 
 __all__ = [
     "GRAPH_RESOURCE",
@@ -146,9 +154,8 @@ GRAPH_RESOURCE = "transport_graph"
 RULES_ROUTER = "simulate.rules_by_ref@1"
 #: The kernels a skeleton declaration may use. A kernel outside this set
 #: (for example an entitlement bridge) enters only through an extension.
-SKELETON_KERNELS = frozenset(
+SKELETON_KERNELS = CREATE_REFS | frozenset(
     {
-        "transport.create@1",
         "transport.boundary@1",
         "transport.currency@1",
         "transport.quantile_map@1",
@@ -1073,11 +1080,12 @@ def validate_transport_activation(spec: Mapping[str, object]) -> None:
         if _has_resource(spec, "reference_selection")
         else {}
     )
-    selections = (
-        tuple(_declared_resource_selections(transport_resource(spec, GRAPH_RESOURCE)))
+    graph_document = (
+        transport_resource(spec, GRAPH_RESOURCE)
         if _has_resource(spec, GRAPH_RESOURCE)
-        else ()
+        else {}
     )
+    selections = tuple(_declared_resource_selections(graph_document))
     selections = [(selection, False, None) for selection in selections]
     if _has_resource(spec, "entitlement_graph") and _has_resource(spec, "scenarios"):
         from .entitlement import _rows
@@ -1116,10 +1124,22 @@ def validate_transport_activation(spec: Mapping[str, object]) -> None:
                 f"Resource {selection['resource']!r} path {selection.get('path', [])!r}: "
                 f"{error}"
             )
-    for name in ("benefit_unit_rule", "axiom_rules_bindings", "scenarios"):
+    versioned_create = any(
+        isinstance(row, Mapping) and row.get("kernel") == CREATE_V2_REF
+        for row in graph_document.get("nodes", ())
+    )
+    required_resources = ("axiom_rules_bindings", "scenarios")
+    if not versioned_create:
+        required_resources += ("benefit_unit_rule",)
+    for name in required_resources:
         if not _has_resource(spec, name):
             missing.append(f"{name}.json")
-    if _has_resource(spec, "benefit_unit_rule"):
+    if versioned_create:
+        try:
+            _versioned_create_units(spec)
+        except (ValueError, TypeError, KeyError) as error:
+            missing.append(f"unit declarations: {error}")
+    elif _has_resource(spec, "benefit_unit_rule"):
         unit = transport_resource(spec, "benefit_unit_rule")
         child = _mapping(
             unit.get("dependent_child", {}), "benefit_unit_rule.dependent_child"
@@ -1337,8 +1357,29 @@ def _embeds_engine_ref(
 
 
 def _unit_entities(spec: Mapping[str, object]) -> tuple[object, ...]:
-    """The declared benefit-unit entities (S2-d PR 1 adds every unit kind)."""
+    """Every declared partition, including the legacy benefit-unit alias."""
+    declaration = _versioned_create_units(spec)
+    if declaration is not None:
+        return tuple(item.entity for item in declaration.units)
     return (transport_resource(spec, "benefit_unit_rule").get("entity"),)
+
+
+def _versioned_create_units(spec: Mapping[str, object]):
+    if not _has_resource(spec, GRAPH_RESOURCE):
+        return None
+    rows = [
+        row
+        for row in transport_graph_document(spec).get("nodes", ())
+        if isinstance(row, Mapping) and row.get("kernel") == CREATE_V2_REF
+    ]
+    if not rows:
+        return None
+    if len(rows) != 1:
+        raise ValueError("A transport skeleton declares exactly one CREATE.")
+    document = _param(spec, rows[0].get("params", {}).get("unit_rule"), None)
+    if not isinstance(document, str):
+        raise ValueError("Declared CREATE requires a canonical JSON unit_rule.")
+    return create_unit_declaration(CREATE_V2_REF, json.loads(document))
 
 
 def _is_unit_entity(entity: object, unit_entities: tuple[object, ...]) -> bool:
@@ -2761,6 +2802,7 @@ def transport_rules_node(
     if not isinstance(node, Node):
         raise TypeError("A transport rules node must be a Node.")
     _safe_node_id(node.id)
+    _require_relation_inputs(spec, binding_id, node.inputs)
     declaration = {
         "id": node.id,
         "kernel": node.kernel,
@@ -2771,6 +2813,29 @@ def transport_rules_node(
         node,
         params=_rules_params(spec, declaration, dict(node.params), config),
     )
+
+
+def _require_relation_inputs(spec, binding_id, inputs) -> None:
+    document = transport_resource(spec, "axiom_rules_bindings")
+    bindings = [
+        row for row in document.get("bindings", ()) if row.get("id") == binding_id
+    ]
+    if len(bindings) != 1 or "relations" not in bindings[0]:
+        return
+    declaration = _versioned_create_units(spec)
+    if declaration is None:
+        declaration = create_unit_declaration(
+            CREATE_V1_REF, transport_resource(spec, "benefit_unit_rule")
+        )
+    schema = declaration.entity_schema()[0]
+    dependencies = binding_relation_dependencies(
+        bindings[0], schema=schema, entity_names=document["entity_names"]
+    )
+    missing = missing_relation_inputs(dependencies, inputs, schema)
+    if missing:
+        raise ValueError(
+            f"Rules binding {binding_id!r} needs whole-table relation inputs {missing}."
+        )
 
 
 def _check_extension_checkpoints(spec, config, graph, compiled) -> None:
@@ -2915,6 +2980,8 @@ def _node(
         Slice(**{**value, "columns": tuple(value["columns"])})
         for value in _sequence(row.get("inputs", ()), "input slices")
     )
+    if "rules_binding" in row:
+        _require_relation_inputs(spec, row["rules_binding"], inputs)
     artifacts = []
     for value in _sequence(row.get("artifact_inputs", ()), "artifact inputs"):
         edge = _mapping(value, "artifact input")
@@ -2977,9 +3044,9 @@ def skeleton_create_declaration(spec: Mapping[str, object]) -> CreateDeclaration
         )
         if isinstance(row, Mapping) and row.get("structural") == "create"
     ]
-    if len(rows) != 1 or rows[0].get("kernel") != "transport.create@1":
+    if len(rows) != 1 or rows[0].get("kernel") not in CREATE_REFS:
         raise ValueError(
-            "A transport skeleton declares exactly one transport.create@1."
+            "A transport skeleton declares exactly one transport.create@1 or @2."
         )
     row = rows[0]
     return CreateDeclaration(
