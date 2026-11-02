@@ -7,6 +7,7 @@ import signal
 from types import SimpleNamespace
 
 import test_support.microcosm_build.uk_full_build_cli as support  # noqa: E402
+from microcosm.build import staging_dataset
 from test_support.microcosm_build.uk_full_build_cli import *
 
 
@@ -1813,8 +1814,18 @@ def test_the_restage_tool_hands_the_bundle_to_its_own_emitter(
     monkeypatch.setattr(
         stager, "_start_bundle_emitter", emitter(hub_files=hub.files, hub_api=hub)
     )
+    waits: list[float] = []
+    real_stage_bundle = stager.stage_bundle
+
+    def stage_bundle(*args, **options):
+        waits.append(options["wait_seconds"])
+        return real_stage_bundle(*args, **options)
+
+    monkeypatch.setattr(stager, "stage_bundle", stage_bundle)
     capsys.readouterr()
     assert stager.main(argv) == 0
+    # The command waits longer than a build: finishing the upload is its job.
+    assert waits == [staging_dataset.RESTAGE_WAIT_SECONDS]
     assert started[-1].closed
     (request,) = started[-1].bundle_requests
     assert {item.name: item.role for item in request.files}[dataset.name] == "dataset"
@@ -1824,6 +1835,19 @@ def test_the_restage_tool_hands_the_bundle_to_its_own_emitter(
     for line in (run_dir / "sha256sums.txt").read_text().splitlines():
         digest, name = line.split("  ")
         assert hashlib.sha256((run_dir / name).read_bytes()).hexdigest() == digest
+
+
+def test_the_restage_tool_waits_three_hours_unless_told_otherwise():
+    """At 2 Mbit/s a 2.4 GB bundle takes about 2 hours 40 minutes."""
+    stager = load_tool("stage_uk_rowwise_candidate")
+    assert staging_dataset.RESTAGE_WAIT_SECONDS == 10_800.0
+    assert staging_dataset.RESTAGE_WAIT_SECONDS > (2.4e9 * 8 / 2e6)
+    parse = stager._parse_args
+    assert parse(["--run-dir", "run"]).wait_seconds == 10_800.0
+    assert parse(["--run-dir", "run", "--wait-seconds", "60"]).wait_seconds == 60.0
+    for value in ("-1", "nan", "soon"):
+        with pytest.raises(SystemExit):
+            parse(["--run-dir", "run", "--wait-seconds", value])
 
 
 def test_a_failed_refresh_after_a_passed_read_back_still_records_the_attempt(

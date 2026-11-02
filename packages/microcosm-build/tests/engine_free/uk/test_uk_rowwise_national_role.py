@@ -760,6 +760,7 @@ def test_restaging_a_national_build_records_the_bundle_its_emitter_delivered(
     )
     capsys.readouterr()
     status = stager.main(["--run-dir", str(out)])
+    captured = capsys.readouterr()
     restaged = json.loads(manifest_path.read_text())["staged_dataset"]
     assert (restaged["status"], restaged["error_code"], status) == (
         "already_staged",
@@ -778,7 +779,11 @@ def test_restaging_a_national_build_records_the_bundle_its_emitter_delivered(
     assert list(queue.jobs) == [handed_over]
     assert restaged["revision"] == hub.sha
     assert restaged["files"] == staged["files"]
-    assert json.loads(capsys.readouterr().out) == restaged
+    assert json.loads(captured.out) == restaged
+    # The command updates the manifest; it says which records it cannot
+    # change: the build's completed staging run and its Logbook row.
+    assert "staging run" in captured.err and "Logbook row" in captured.err
+    assert "still record UPLOAD_PENDING" in captured.err
     assert json.loads(manifest_path.read_text())["staged_dataset_handover"] == {
         "handover_id": handed_over,
         "repository": "policyengine/populace-uk-private",
