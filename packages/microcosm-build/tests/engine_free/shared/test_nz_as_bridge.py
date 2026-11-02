@@ -767,7 +767,7 @@ def test_bridge_scratch_columns_stay_out_of_the_export_contract():
     assert not persisted & (scratch | {_GROSS})
 
 
-def test_every_as_population_runs_its_own_bridge_and_every_branch_its_base_rate():
+def test_each_bridge_population_runs_the_bridge_and_every_branch_its_base_rate():
     rows = {row["id"]: row for row, _ in _rows(_SPEC)[0]}
     scenarios = _SPEC["resources"]["scenarios"]["scenarios"]
     for node_id in ("masks", "sole_parent_gross_rate", "cutout"):

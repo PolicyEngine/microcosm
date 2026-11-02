@@ -1,6 +1,6 @@
 {
   "country": "nz",
-  "fingerprint": "fc9e3f65841862016207a1baa368e8ecf0476d194675ad8ec771811a5ea54f4f",
+  "fingerprint": "0f80d7e36814b8e68e651275223559cfd284049b4bb8e56e3581c71644285338",
   "gate_ids": [
     "calibration_per_family_fit",
     "demography_per_family_fit",
@@ -40,7 +40,7 @@
   "resource_hashes": {
     "as_area_crosswalk.json": "56eeb638d77c73fd92ca541d9d2f249fd3062bece0503470e0e85dde70c4c05b",
     "as_encoding.json": "91e0e9972abfaaa202a13ede6e2dbc815a4c6c9514726c970928a47adfef0e32",
-    "as_rate_bridge.json": "25fa43210fd91655988933fe23ac6411bc30ddeb73c480c24da19999ffa2da22",
+    "as_rate_bridge.json": "1399321cc7ef44486f7ab407968b036930ff6ae8fbab4c30ce710ea0fff7301c",
     "atomic_geography_support.json": "6efd09d5cde2f16d4d01e522a721191a829a754d2ce019d75bb0407085ecb4b7",
     "axiom_input_closure.json": "1c237a316eecffd8d8eb9258a451b992373b804d72b411895337647c272731aa",
     "axiom_rules_bindings.json": "fb163e4842c8a910d63bd0ecf0fc81e5a55a2dddaa9cde66a52d9f4ff2c791f3",
