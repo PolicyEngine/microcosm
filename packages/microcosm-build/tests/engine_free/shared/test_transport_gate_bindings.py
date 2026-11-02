@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import ast
 import base64
+import hashlib
 import inspect
 import json
 import math
@@ -63,6 +64,7 @@ from microcosm.build.gate_battery import (
 )
 from microcosm.build.gates import GateResult
 from microcosm.build.transport import gate_bindings
+from microcosm.build.transport.evidence_contract import GRAPH_EVIDENCE
 from microcosm.build.transport.gate_bindings import (
     DIAGNOSTICS,
     PROBLEM,
@@ -131,10 +133,19 @@ BOUND = (
     "weight_ratio",
 )
 #: Registered fail-closed bindings awaiting producers and comparisons.
-PENDING = ("release_input_coverage", "support")
+PENDING = ("support",)
 PENDING_ARTIFACTS = {
     "support": ("donor_support_bounds",),
-    "release_input_coverage": ("donor_artifact_receipt", "axiom_input_closure"),
+}
+#: Bindings that check producer evidence against the battery's graph
+#: (``graph_evidence``) before they compare anything, with the artifacts
+#: their producers emit and their required ``gates.json`` parameters.
+EVIDENCE = ("release_input_coverage",)
+EVIDENCE_ARTIFACTS = {
+    "release_input_coverage": ("axiom_input_closure", "donor_artifact_receipt"),
+}
+EVIDENCE_PARAMETERS = {
+    "release_input_coverage": {"allow_engine_optional": False},
 }
 #: Gates deliberately deferred by country policy.
 UNBOUND = ("macro_realism",)
@@ -505,6 +516,7 @@ class TestRegistry:
             set(DEFAULT_REGISTRY)
             | set(BOUND)
             | set(PENDING)
+            | set(EVIDENCE)
             | {"cell_support", "cell_support_target"}
         )
         for name in DEFAULT_REGISTRY:
@@ -533,6 +545,24 @@ class TestRegistry:
             assert any("not implemented" in line for line in outcome.result.failures)
         else:
             assert outcome.reason == "missing evidence: " + ", ".join(sorted(artifacts))
+
+    @pytest.mark.parametrize("gate", EVIDENCE)
+    def test_evidence_bindings_route_their_artifacts_and_parameters(self, gate) -> None:
+        binding = TRANSPORT_GATE_REGISTRY[gate]
+        assert isinstance(binding, FunctionBinding)
+        assert binding.__dataclass_params__.frozen
+        assert binding.required_artifacts({}) == {
+            *EVIDENCE_ARTIFACTS[gate],
+            GRAPH_EVIDENCE,
+        }
+        assert binding.frame_argument == "frame"
+        assert binding.parameter_keys == required_gate_parameters(binding)
+        assert binding.parameter_keys == set(EVIDENCE_PARAMETERS[gate])
+        absent = _outcome(_entry(gate, EVIDENCE_PARAMETERS[gate]), frame=toy_frame())
+        assert absent.status is GateStatus.EVIDENCE_ABSENT
+        assert absent.reason == "missing evidence: " + ", ".join(
+            sorted({*EVIDENCE_ARTIFACTS[gate], GRAPH_EVIDENCE})
+        )
 
     def test_the_gate_kernel_accepts_and_describes_the_registry(self) -> None:
         kernel = GateBatteryKernel(TRANSPORT_GATE_REGISTRY)
@@ -612,6 +642,12 @@ class TestNewZealandManifest:
             assert entry.evidence_absent_blocks
             raw = next(row for row in document["gates"] if row["gate"] == gate)
             assert raw["parameters"] == {}
+        for gate in EVIDENCE:
+            entry = by_gate[gate]
+            assert entry.not_applicable is None
+            assert entry.evidence_absent_blocks
+            raw = next(row for row in document["gates"] if row["gate"] == gate)
+            assert raw["parameters"] == EVIDENCE_PARAMETERS[gate]
 
     @pytest.mark.parametrize("supplied", (False, True))
     def test_pending_gates_block_candidates_with_every_other_gate_passing(
@@ -622,7 +658,7 @@ class TestNewZealandManifest:
         )
         artifacts = {
             name: {"passed": True}
-            for names in PENDING_ARTIFACTS.values()
+            for names in (*PENDING_ARTIFACTS.values(), *EVIDENCE_ARTIFACTS.values())
             for name in names
         }
         evaluated = evaluate_phase(
@@ -635,7 +671,7 @@ class TestNewZealandManifest:
             phase="terminal",
             outcomes=tuple(
                 outcome
-                if outcome.entry.gate in PENDING
+                if outcome.entry.gate in (*PENDING, *EVIDENCE)
                 else GateOutcome(
                     entry=replace(outcome.entry, not_applicable=None),
                     status=GateStatus.PASSED,
@@ -665,11 +701,20 @@ class TestNewZealandManifest:
         assert run.report_payload()["shippable"] is False
         assert graph.artifact_permitted is False
         assert set(graph.blocking) == {
-            entry.id for entry in gates.gates if entry.gate in PENDING
+            entry.id for entry in gates.gates if entry.gate in (*PENDING, *EVIDENCE)
         }
         expected = GateStatus.FAILED if supplied else GateStatus.EVIDENCE_ABSENT
+        # An evidence binding also needs the battery's graph_evidence and its
+        # frame, which this context lacks: it stays evidence_absent.
         assert all(
-            o.status is (expected if o.entry.gate in PENDING else GateStatus.PASSED)
+            o.status
+            is (
+                expected
+                if o.entry.gate in PENDING
+                else GateStatus.EVIDENCE_ABSENT
+                if o.entry.gate in EVIDENCE
+                else GateStatus.PASSED
+            )
             for o in report.outcomes
         )
 
@@ -743,7 +788,7 @@ class TestModuleBoundaries:
         assert not [value for value in numbers if isinstance(value, float)]
         assert set(numbers) <= {0, 1}
 
-    @pytest.mark.parametrize("gate", (*BOUND, *PENDING))
+    @pytest.mark.parametrize("gate", (*BOUND, *PENDING, *EVIDENCE))
     def test_bound_evaluators_default_nothing_but_none(self, gate) -> None:
         binding = TRANSPORT_GATE_REGISTRY[gate]
         defaults = [
@@ -1991,3 +2036,117 @@ def test_module_exports_its_documented_surface() -> None:
         "weight_ratio_gate",
         "weight_summary",
     }
+
+
+# ---------------------------------------------------------------------------
+# No registered evidence binding passes without checked evidence
+# ---------------------------------------------------------------------------
+
+
+def _unchecked_evidence(gate: str) -> dict[str, dict]:
+    """Evidence a binding must refuse, by kind of forgery.
+
+    ``pending_stub`` supplies the shape a pending stub accepted (any object
+    under each alias); ``wrong_kind`` supplies a decoded artifact of another
+    kind under each alias; ``forged_hash`` supplies correctly decoded
+    artifacts whose headers name an implementation hash no build computes,
+    with a battery edge map that agrees with their bytes.
+    """
+
+    from microcosm.build.transport import evidence_contract as contract
+
+    def payload(kind, ref, node, body):
+        header = contract.evidence_header(
+            kind, kernel=ref, node=node, artifacts={}, frame={}, params={}
+        )
+        header["producer"]["implementation_hash"] = "0" * 64
+        return canonical_json({**header, **body})
+
+    documents = {
+        "donor_artifact_receipt": (
+            contract.DONOR_RECEIPT_TYPE,
+            contract.decode_donor_receipt,
+            payload(
+                "transport_donor_artifact_receipt",
+                contract.DONOR_RECEIPT_REF,
+                "x.evidence.donor",
+                {
+                    "donor": {
+                        "sha256": "a" * 64,
+                        "size_bytes": 1,
+                        "locator": "donor.h5",
+                        "revision": "r",
+                    },
+                    "pin": {
+                        "stage": "s",
+                        "artifact_index": 0,
+                        "sha256": "a" * 64,
+                        "size_bytes": 1,
+                    },
+                    "content_basis": "transport",
+                    "donor_time_period": 2024,
+                },
+            ),
+        ),
+        "axiom_input_closure": (
+            contract.INPUT_CLOSURE_TYPE,
+            contract.decode_input_closure,
+            payload(
+                "transport_axiom_input_closure",
+                contract.INPUT_CLOSURE_REF,
+                "x.evidence.input_closure",
+                {
+                    "closure_sha256": "b" * 64,
+                    "mapping_sha256": "c" * 64,
+                    "engine": {
+                        "declared_commit": "d" * 40,
+                        "closure_surface_commit": "d" * 40,
+                    },
+                    "check": [],
+                    "modules": [],
+                },
+            ),
+        ),
+    }
+    aliases = EVIDENCE_ARTIFACTS[gate]
+    decoded = {alias: documents[alias][1](documents[alias][2]) for alias in aliases}
+    edges = {
+        alias: {
+            "producer": json.loads(documents[alias][2])["producer"]["node"],
+            "artifact": alias,
+            "type": [documents[alias][0].name, documents[alias][0].schema_version],
+            "sha256": hashlib.sha256(documents[alias][2]).hexdigest(),
+            "producer_key": "e" * 64,
+        }
+        for alias in aliases
+    }
+    other = {
+        alias: decoded[aliases[(i + 1) % len(aliases)]]
+        for i, alias in enumerate(aliases)
+    }
+    return {
+        "pending_stub": {
+            **{alias: {"passed": True} for alias in aliases},
+            GRAPH_EVIDENCE: {},
+        },
+        "wrong_kind": {**other, GRAPH_EVIDENCE: edges},
+        "forged_hash": {**decoded, GRAPH_EVIDENCE: edges},
+    }
+
+
+#: Gates this test covers at this head: each one's evidence binding is
+#: implemented. w4b adds weights_audit and w4c adds support.
+CHECKED_EVIDENCE_GATES = ("release_input_coverage",)
+
+
+@pytest.mark.parametrize("gate", CHECKED_EVIDENCE_GATES)
+def test_no_registered_binding_passes_without_checked_evidence(gate) -> None:
+    # Replacing the binding with an always-pass stub (design §6) makes every
+    # forged case below pass, so this test goes red.
+    parameters = EVIDENCE_PARAMETERS[gate]
+    absent = _outcome(_entry(gate, parameters), frame=toy_frame())
+    assert absent.status is GateStatus.EVIDENCE_ABSENT
+    for label, artifacts in _unchecked_evidence(gate).items():
+        outcome = _outcome(_entry(gate, parameters), frame=toy_frame(), **artifacts)
+        assert outcome.status is GateStatus.FAILED, label
+        assert outcome.result.failures, label
