@@ -300,6 +300,28 @@ def test_declaration_generators_round_trip_through_check(generator):
     assert result.returncode == 0, result.stdout + result.stderr
 
 
+@pytest.mark.parametrize(
+    "builder",
+    [
+        "build_nz_benefit_gross_up.py",
+        "build_nz_entitlement_graph.py",
+        "build_nz_transport_graph.py",
+    ],
+)
+def test_packaged_graph_resources_match_their_builders(builder):
+    # The transport builder reads the adapter's nz.json, so this also keeps the
+    # transport kernels and the Axiom adapter on one concept mapping.
+    root = paths_for("microcosm-build").repository
+    result = subprocess.run(
+        [sys.executable, str(root / "tools" / builder), "--check"],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
 def _instantiated_nz_rows(spec):
     from microcosm.build.transport.entitlement import _rows
 
