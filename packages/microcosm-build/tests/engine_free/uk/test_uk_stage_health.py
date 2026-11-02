@@ -2322,7 +2322,8 @@ def test_uc_take_up_gate_holds_each_family_type_to_dwp() -> None:
             "reachable_pools_caseload_after": realized,
         }
 
-    # 0.05 until microcosm#1418.
+    # 0.05 until microcosm#1418; the savings follow-up (microcosm#1428) joins
+    # unmet pools instead of widening it.
     parameters = {
         "stage": "uc_take_up",
         "check": "uc_take_up",

@@ -63,6 +63,7 @@ from microcosm.calibrate import TargetRegistry, calibrate
 from microcosm.frame import WeightKind
 from test_support.microcosm_build import uk_calibration_run as seam
 from test_support.microcosm_build import uk_rowwise_candidate as candidate
+from test_support.microcosm_build.telemetry import share_fake_hub
 from test_support.microcosm_build.uk_calibration_run import (  # noqa: F401
     _cgt_projection,
     _signing_key,
@@ -615,6 +616,7 @@ def test_uk_national_role_publishes_telemetry_and_the_bundle_to_the_hub(
     hub = candidate._FakeHub()
     monkeypatch.setattr(rowwise_staging, "_hub_api", lambda: hub)
     monkeypatch.setattr(rowwise_staging, "_hub_token", lambda: "hf_test_token")
+    share_fake_hub(monkeypatch, hub)
     out = tmp_path / "national"
 
     assert (
@@ -629,6 +631,8 @@ def test_uk_national_role_publishes_telemetry_and_the_bundle_to_the_hub(
     manifest = json.loads((out / builder.MANIFEST_FILENAME).read_text())
     run_id = manifest["build_id"]
     assert run_id.startswith("uk-frs-calibration-attempt-")
+    # The build's emitter committed the run files; the build uploaded nothing.
+    assert hub.uploads == []
     telemetry_paths = hub.paths("policyengine/populace-uk-staging")
     assert telemetry_paths == sorted(
         f"runs/{run_id}/{name}"
