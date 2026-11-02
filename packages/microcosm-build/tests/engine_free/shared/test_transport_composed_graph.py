@@ -56,7 +56,6 @@ import pytest
 from hypothesis import HealthCheck, example, given, settings
 from hypothesis import strategies as st
 
-from microcosm.build.reference_profiles import reference_document_sha256
 from microcosm.build.transport import cli as cli_module
 from microcosm.build.transport import compose as compose_module
 from microcosm.build.transport import target_kernels as target_kernels_module
@@ -114,6 +113,7 @@ from microcosm.graph.keys import node_key, source_content_key
 from test_support.microcosm_build.chronicle_feed import write_pinned_artifact
 from test_support.microcosm_build.money_normalization import graph_declaration
 from test_support.microcosm_build.reference_factor_transport import (
+    REVIEWED_MEASUREMENT_PROOF,
     factor_transport_fixture,
 )
 from test_support.microcosm_build.reference_intervals import (
@@ -3207,19 +3207,21 @@ def test_cli_require_replays_a_warm_store_after_selected_factors_expire(
     )
     profile_view = compose_module.reference_profile_view
 
+    proofs = compose_module.measurement_proofs
+
     def measured_view(spec, selection=None):
         # As in factor_transport_fixture(activate=True), supply a synthetic
-        # reviewed measurement closure. The real resolver still selects and
-        # binds the factors; composition must attach its rehashed receipt.
-        # Copies, so the resolver's own return values are never edited.
-        references, intervals, receipt = profile_view(spec, selection)
-        references, receipt = copy.deepcopy(references), copy.deepcopy(receipt)
-        for row in references["target_references"]:
-            row["metadata"]["activation_status"] = "active"
-        receipt["effective_references_sha256"] = reference_document_sha256(references)
-        receipt.pop("receipt_sha256")
-        receipt["receipt_sha256"] = reference_document_sha256(receipt)
-        return references, intervals, receipt
+        # proof of the reviewed measurement, only while the view resolves.
+        # The real resolver still selects and binds the factors and activates
+        # the proved rows; composition must attach its receipt.
+        compose_module.measurement_proofs = lambda spec: (
+            REVIEWED_MEASUREMENT_PROOF,
+            {},
+        )
+        try:
+            return profile_view(spec, selection)
+        finally:
+            compose_module.measurement_proofs = proofs
 
     monkeypatch.setattr(compose_module, "reference_profile_view", measured_view)
     declaration = spec["resources"]["transport_graph"]

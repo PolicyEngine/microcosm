@@ -590,7 +590,7 @@ def measurement_proofs(
     if not wanted:
         return {}, {}
     if _has_resource(spec, GRAPH_RESOURCE):
-        document = transport_graph_document(spec)
+        document = _raw_transport_resource(spec, GRAPH_RESOURCE)
         rows = _precalibration_rows(document)
     else:
         document, rows = {}, {}
