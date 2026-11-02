@@ -11,6 +11,7 @@ from __future__ import annotations
 import copy
 import json
 import math
+from decimal import Decimal
 from fractions import Fraction
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -25,6 +26,7 @@ from microcosm.build.tail_estimators import (
     GROUPED_PARETO_MLE_REF,
     TailEstimatorRefusalError,
     _anchors,
+    _round_half_even,
     grouped_pareto_mle,
     grouped_pareto_score,
     parse_grouped_pareto_declaration,
@@ -251,6 +253,19 @@ def test_belgium_rsz_counts_give_the_closed_form_alpha() -> None:
     fit = _fit([("rsz_200_300", 200, 300, n_band), ("rsz_over_300", 300, None, n_top)])
     assert fit.receipt()["alpha_decimal"] == "3.348955"
     assert f"{_closed_form(n_band, n_top, 200, 300):.6f}" == "3.348955"
+
+
+def test_six_decimal_rounding_is_half_even_at_an_exact_tie() -> None:
+    """A tie goes to the even sixth decimal; half-up would differ on the first."""
+
+    # 1.0078125 is a binary64 value lying exactly halfway between 1.007812
+    # and 1.007813: the even neighbour is 1.007812.
+    assert _round_half_even(Fraction("1.0078125"), 6) == Decimal("1.007812")
+    # Halfway between 1.007813 and 1.007814: the even neighbour is 1.007814.
+    assert _round_half_even(Fraction("1.0078135"), 6) == Decimal("1.007814")
+    # Off a tie, the nearer neighbour wins either way.
+    assert _round_half_even(Fraction("1.00781249"), 6) == Decimal("1.007812")
+    assert _round_half_even(Fraction("1.00781251"), 6) == Decimal("1.007813")
 
 
 @PROPERTY
