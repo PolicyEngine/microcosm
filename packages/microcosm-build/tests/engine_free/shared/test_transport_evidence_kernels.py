@@ -393,6 +393,10 @@ class TestImplementationHashes:
                 "microcosm.calibrate.matrix",
                 "microcosm.calibrate.registry",
                 "microcosm.calibrate.solve",
+                # S2: the trace finds these in run(); the list missed them.
+                "microcosm.calibrate.target",
+                "microcosm.frame.schema",
+                "microcosm.frame.weights",
                 "microcosm.graph.canonical",
                 "microcosm.build.transport.evidence_contract",
             ),
@@ -512,7 +516,8 @@ TRACE_EXCLUSIONS: dict[str, dict[str, str]] = {
             "kernel; an edit there re-keys every node through the executor."
         ),
     }
-    for ref in (DONOR_RECEIPT_REF, INPUT_CLOSURE_REF)
+    # Every evidence kernel the leaf lists, so a new kernel needs a trace.
+    for ref in EVIDENCE_KERNEL_MODULES
 }
 
 
@@ -572,11 +577,21 @@ def kernel_traces(toy, donor, tmp_path_factory):
     context = _relation_context(_relation_frame({"member_income": np.ones(3)}), node)
     closure |= _traced(lambda: kernel.run(context))
     traces[INPUT_CLOSURE_REF] = closure
+    weights = _project_context(
+        _weights_node(),
+        Population.from_frame(_units_frame(), "toy.terminal"),
+        key="0" * 64,
+        sources={},
+        tolerances={},
+        numerics={},
+        artifacts=_artifact_values(_calibration()),
+    )
+    traces[WEIGHTS_AUDIT_REF] = _traced(lambda: TRANSPORT_WEIGHTS_AUDIT.run(weights))
     return traces
 
 
 class TestModuleListsAreComplete:
-    @pytest.mark.parametrize("ref", (DONOR_RECEIPT_REF, INPUT_CLOSURE_REF))
+    @pytest.mark.parametrize("ref", sorted(EVIDENCE_KERNEL_MODULES))
     def test_every_module_a_kernel_runs_is_listed(self, kernel_traces, ref) -> None:
         # Under-listing serves stale results: an edit to an unlisted module
         # leaves implementation_hash() unchanged.
