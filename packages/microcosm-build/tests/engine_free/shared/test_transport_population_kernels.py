@@ -25,6 +25,7 @@ from microcosm.build.ledger_artifact import ChronicleFeedPinMismatchError
 from microcosm.build.transport.population_kernels import (
     TRANSPORT_BOUNDARY,
     TRANSPORT_CREATE,
+    TRANSPORT_CREATE_DECLARED,
     TRANSPORT_CURRENCY,
     TRANSPORT_QUANTILE_MAP,
     register_population_kernels,
@@ -121,6 +122,7 @@ def test_kernel_registration_is_explicit_idempotent_and_country_neutral():
     assert register_population_kernels(registry) is registry
     kernels = (
         TRANSPORT_CREATE,
+        TRANSPORT_CREATE_DECLARED,
         TRANSPORT_BOUNDARY,
         TRANSPORT_CURRENCY,
         TRANSPORT_QUANTILE_MAP,
@@ -132,11 +134,13 @@ def test_kernel_registration_is_explicit_idempotent_and_country_neutral():
         assert kernel.capabilities.consumes_se is False
         assert kernel.implementation_hash() == kernel.implementation_hash()
         assert kernel.capabilities.seed_source is (
-            SeedSource.KEYED if kernel is TRANSPORT_CREATE else SeedSource.NONE
+            SeedSource.KEYED
+            if kernel in (TRANSPORT_CREATE, TRANSPORT_CREATE_DECLARED)
+            else SeedSource.NONE
         )
 
 
-def test_aggregate_population_registration_installs_exactly_thirteen_kernels():
+def test_aggregate_population_registration_installs_exactly_fourteen_kernels():
     registry = KernelRegistry()
     assert register_transport_population_kernels(registry) is registry
     assert register_transport_population_kernels(registry) is registry
@@ -145,6 +149,7 @@ def test_aggregate_population_registration_installs_exactly_thirteen_kernels():
         "money.minor_units@1",
         "money.annual_transfers@1",
         "transport.create@1",
+        "transport.create@2",
         "transport.boundary@1",
         "transport.currency@1",
         "transport.quantile_map@1",

@@ -1073,6 +1073,7 @@ class TestUKCountryPackage:
             "hmrc_property_rental_income_facts.json",
             "hmrc_stamp_tax_facts.json",
             "hmrc_isa_statistics_facts.json",
+            "hmrc_benefits_in_kind_facts.json",
             "dwp_move_to_uc_facts.json",
             "dwp_uc_award_band_facts.json",
             "obr_hvcts_costing_facts.json",
@@ -1191,8 +1192,10 @@ class TestUKCountryPackage:
         # uc_capital_coherence; microcosm#1319 carers_allowance_take_up after
         # child_benefit_take_up; childcare_copy_take_up last, after every copy
         # stage; microcosm#1334 uc_take_up after uc_capital_coherence and
-        # frs_annual_income_spells after frs_hmrc_spine_leaves.
-        assert len(spec.sources.stages) == 50
+        # frs_annual_income_spells after frs_hmrc_spine_leaves; microcosm#1415
+        # isa_subscriptions last; company_cars right after
+        # hmrc_spi_income_spine (PolicyEngine/uk-autumn-budget-dashboard-2026#316).
+        assert len(spec.sources.stages) == 51
         assert not {"frs_hmrc_retained_leaves", "hmrc_spi_income"}.intersection(
             stage.stage for stage in spec.sources.stages
         )
@@ -1236,6 +1239,7 @@ class TestExistingPackagesGeneralize:
             "hmrc_property_rental_income_facts.json",
             "hmrc_stamp_tax_facts.json",
             "hmrc_isa_statistics_facts.json",
+            "hmrc_benefits_in_kind_facts.json",
             "dwp_move_to_uc_facts.json",
             "dwp_uc_award_band_facts.json",
             "obr_hvcts_costing_facts.json",
@@ -1628,6 +1632,7 @@ class TestUKGatesManifest:
             "uk_stage_childcare_copy_take_up_signal",
             "uk_stage_isa_subscriptions_invariants",
             "uk_stage_isa_subscriptions",
+            "uk_stage_company_cars_invariants",
             "uk_release_input_coverage",
             "uk_degenerate_release_surface",
             "uk_zero_weight_strata",
@@ -1766,6 +1771,7 @@ class TestUKGatesManifest:
             "uk_stage_childcare_copy_take_up_signal",
             "uk_stage_isa_subscriptions_invariants",
             "uk_stage_isa_subscriptions",
+            "uk_stage_company_cars_invariants",
             "uk_weights_audit",
             # The #970 projection fence: a seam that cannot project cannot
             # certify the candidate's sub-exempt gainers.

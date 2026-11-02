@@ -501,6 +501,20 @@ def test_compile_emits_a_traced_surface_bound_to_facts_not_paths(tmp_path) -> No
     assert again.artifacts["surface"] == payload
 
 
+def test_calibration_preparation_attests_the_framework_roster_source(
+    tmp_path, monkeypatch
+):
+    import microcosm.frame.unit_construction as units
+
+    before = CALIBRATION_PREPARE.implementation_hash()
+    changed = tmp_path / "unit_construction.py"
+    changed.write_bytes(
+        Path(units.__file__).read_bytes() + b"\n# changed roster implementation\n"
+    )
+    monkeypatch.setattr(units, "__file__", str(changed))
+    assert CALIBRATION_PREPARE.implementation_hash() != before
+
+
 def test_compile_values_are_the_fact_values(tmp_path) -> None:
     surface = decode_target_surface(_surface(tmp_path))
     facts = {fact["label"]: fact["value"] for fact in toy_facts(CALIBRATION_TARGETS)}
