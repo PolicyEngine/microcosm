@@ -39,6 +39,7 @@ __all__ = [
     "ASEC_PUF_SPINE",
     "DEFAULT_ACS_POOL_PEAK_LIMIT_BYTES",
     "DONOR_ASSIGNED_GEOGRAPHY_COLUMNS",
+    "acs_pool_local_jurisdiction_rungs",
     "donor_assigned_geography_complete",
     "estimate_optional_acs_pool_peak_bytes",
     "preflight_pooled_ladder_geography",
@@ -67,6 +68,19 @@ DEFAULT_ACS_POOL_PEAK_LIMIT_BYTES = int(
 _PEAK_ESTIMATE_FIXED_OVERHEAD_BYTES = 256 * 1024**2
 _ID_OVERLAP_CHUNK_ROWS = 65_536
 _PUMA_LADDER_ANCHOR_COLUMN = "__microcosm_puma_ladder_anchor"
+
+
+def acs_pool_local_jurisdiction_rungs(
+    puma_ladder: UsPumaLadder | None,
+) -> tuple[str, ...]:
+    """The local-jurisdiction rungs :func:`with_optional_acs_spine` supplies.
+
+    With a PUMA ladder every row has a final county, so the county-rule
+    flags are derived; without one the ACS rows have no county and no flag
+    is. A caller records the pool's receipt with these rungs.
+    """
+
+    return PUMA_GEOGRAPHY_RUNGS if puma_ladder is not None else ()
 
 
 def spine_column(entity: str) -> str:
@@ -115,7 +129,9 @@ def with_optional_acs_spine(
     from the final county and the place-rule flags are removed (ACS rows have
     no place); without it every flag is removed, since ACS rows then have no
     county either. A flag column is never left half-null for the engine
-    default to fill.
+    default to fill. :func:`acs_pool_local_jurisdiction_rungs` names the rungs
+    used, so a caller can record which flags were derived and which were
+    left unavailable.
 
     ``max_peak_bytes`` is a fail-fast bound on estimated frame-resident peak
     memory. Pass ``None`` to disable the preflight. The estimate includes both
@@ -202,8 +218,7 @@ def with_optional_acs_spine(
         )
     tables.update(
         apply_us_local_jurisdiction_flags(
-            tables,
-            rungs=PUMA_GEOGRAPHY_RUNGS if puma_ladder is not None else (),
+            tables, rungs=acs_pool_local_jurisdiction_rungs(puma_ladder)
         )[0]
     )
     if household_order is not None:

@@ -584,9 +584,14 @@ def us_geography_ladder_gate(
             f"{cd_column}: {int(cd_mismatch.sum())}/{len(block)} row(s) "
             "have a state prefix disagreeing with block_geoid"
         )
-    # A flag column is optional here (base H5s built before the flags carry
-    # none), but one that is present must match its county or place rule.
-    failures.extend(us_local_jurisdiction_flag_failures(household))
+    # The block decides every household flag, so each must be present and
+    # match its county or place rule. A base H5 built before the flags
+    # existed fails here; rederive_us_local_jurisdiction_flags repairs it.
+    failures.extend(
+        us_local_jurisdiction_flag_failures(
+            household, required_rungs=BLOCK_GEOGRAPHY_RUNGS
+        )
+    )
 
     total = float(weights.sum())
     if total <= 0:

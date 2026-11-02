@@ -2559,6 +2559,22 @@ def test_legacy_cli_result_is_origin_main_three_key_fixture(
     assert builder.main.__annotations__["return"] in {None, "None"}
 
 
+def test_builder_derives_local_jurisdiction_flags_before_selection_and_export() -> None:
+    import inspect
+
+    builder = _load_builder_module()
+    source = inspect.getsource(builder._main)
+    base_load = source.index("base_frame = pool_frame")
+    derive = source.index(
+        "base_frame, local_jurisdiction_flags = rederive_us_local_jurisdiction_flags("
+    )
+    selection = source.index("base_frame, selection_report = select_frozen_support(")
+    export = source.index("release_engine.write_dataset(")
+
+    assert base_load < derive < selection < export
+    assert source.count("rederive_us_local_jurisdiction_flags(") == 1
+
+
 def test_frozen_support_selection_is_followed_by_weeks_unemployed_regate() -> None:
     builder = _load_builder_module()
     source = Path(builder.__file__).read_text(encoding="utf-8")
@@ -7363,6 +7379,26 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         return FakeFrame()
 
     monkeypatch.setattr(builder, "_load_frame", fake_load_frame)
+    # The household-only FakeFrame has no person table or geography; the
+    # flag derivation itself is covered in test_us_local_jurisdictions.
+    local_jurisdiction_receipt = {
+        "rungs": ["county", "place"],
+        "carried_flags": [],
+        "flags": {"in_yonkers": {"status": "derived"}},
+    }
+
+    def fake_rederive_local_jurisdiction_flags(frame):
+        captured["local_jurisdiction_frames"] = [
+            *captured.get("local_jurisdiction_frames", []),
+            frame,
+        ]
+        return frame, local_jurisdiction_receipt
+
+    monkeypatch.setattr(
+        builder,
+        "rederive_us_local_jurisdiction_flags",
+        fake_rederive_local_jurisdiction_flags,
+    )
     if prepared_pool:
 
         def fake_load_pool(path, *, expected_manifest_sha256):
@@ -9252,7 +9288,10 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     assert captured["diagnostics"]["support_value_repairs"] == {
         "social_security_components": ss_repair_payload,
         "non_sch_d_capital_gains": cgd_repair_payload,
+        "local_jurisdiction_flags": local_jurisdiction_receipt,
     }
+    # The flags are derived once, on the loaded base (or prepared pool).
+    assert len(captured["local_jurisdiction_frames"]) == 1
     # The diagnostics carry a complete post-export scoring plan, never an
     # error record, so no plan line joins the terminal batch (#956).
     post_export_scoring = captured["diagnostics"]["post_export_scoring"]

@@ -617,9 +617,14 @@ def us_puma_ladder_gate(
                 f"{label}: {int(mismatched.sum())}/{len(values)} row(s) "
                 "disagree with the expected state/county prefix"
             )
-    # A present flag must match its rule; a place-rule flag fails here unless
-    # the table carries a complete place rung to decide it.
-    failures.extend(us_local_jurisdiction_flag_failures(household))
+    # The drawn county decides the county-rule flags, so each must be present
+    # and match. A place-rule flag fails here unless the table carries a
+    # complete place rung to decide it.
+    failures.extend(
+        us_local_jurisdiction_flag_failures(
+            household, required_rungs=PUMA_GEOGRAPHY_RUNGS
+        )
+    )
 
     total = float(weights.sum())
     if total <= 0:

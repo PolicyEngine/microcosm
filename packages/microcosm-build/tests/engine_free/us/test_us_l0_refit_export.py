@@ -1157,3 +1157,113 @@ def test_export_us_l0_refit_h5_records_geography_ladder_gate_when_allowed(
         "household_vehicles_value",
         "tenure_type",
     ]
+
+
+def _frame_with_yonkers_household(**household_extra: object) -> Frame:
+    """The fixture frame with household 20 moved onto a Yonkers block."""
+
+    frame = _us_frame()
+    household = frame.table("household").copy()
+    yonkers = {
+        "state_fips": 36,
+        "congressional_district_geoid": 3616,
+        "block_geoid": "361190001001000",
+        "tract_geoid": "36119000100",
+        "county_fips": "36119",
+        "county_fips_2023": "36119",
+        "place_fips": "84000",
+    }
+    for column, value in yonkers.items():
+        household.loc[1, column] = value
+    for column, values in household_extra.items():
+        household[column] = values
+    tables = {entity: frame.table(entity) for entity in frame.entities}
+    tables["household"] = household
+    return Frame(tables, frame.schema, {"household": frame.weights_for("household")})
+
+
+def test_export_derives_local_jurisdiction_flags_a_pre_flag_base_lacks(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    base_h5 = tmp_path / "base.h5"
+    base_h5.write_text("base")
+    output = tmp_path / "populace_us_2024.h5"
+    written: dict[str, Frame] = {}
+
+    monkeypatch.setattr(
+        l0_refit_export, "load_us_frame", lambda path: _frame_with_yonkers_household()
+    )
+    monkeypatch.setattr(
+        l0_refit_export, "copy_microcosm_root_attrs", lambda source, destination: ()
+    )
+
+    class FakeEngine:
+        def write_dataset(self, bundle, path, period):
+            written["bundle"] = bundle
+            Path(path).write_text("sentinel")
+
+    monkeypatch.setattr(l0_refit_export, "PolicyEngineUSEngine", FakeEngine)
+
+    summary = export_us_l0_refit_h5(
+        base_h5=base_h5,
+        weights_npz=_l0_refit_npz(tmp_path),
+        output_h5=output,
+        input_mass_relative_tolerance=1.0,
+        # A single kept household cannot satisfy national NYC-share bounds.
+        require_geography_ladder=False,
+    )
+
+    household = written["bundle"].table("household")
+    person = written["bundle"].table("person")
+    assert household["household_id"].tolist() == [20]
+    assert household["in_yonkers"].tolist() == [True]
+    assert household["in_wilmington"].tolist() == [False]
+    assert household["in_denver"].tolist() == [False]
+    assert person["pa_philadelphia_wage_tax_resident"].tolist() == [False, False]
+    receipt = summary["local_jurisdiction_flags"]
+    assert receipt["carried_flags"] == []
+    assert receipt["rungs"] == ["county", "place"]
+    assert receipt["flags"]["in_yonkers"]["status"] == "derived"
+    assert receipt["flags"]["in_yonkers"]["weighted_households_in_jurisdiction"] == (
+        pytest.approx(333.0)
+    )
+    # The gate ran on the derived flags: no flag failure is recorded.
+    assert not any(
+        failure.startswith(("in_", "pa_"))
+        for failure in summary["geography_ladder_gate"]["failures"]
+    )
+    manifest = json.loads(
+        output.with_suffix(".l0_refit_export_summary.json").read_text()
+    )
+    assert manifest["local_jurisdiction_flags"] == receipt
+
+
+def test_export_refuses_a_base_whose_carried_flag_disagrees_with_its_geography(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    base_h5 = tmp_path / "base.h5"
+    base_h5.write_text("base")
+    output = tmp_path / "populace_us_2024.h5"
+
+    monkeypatch.setattr(
+        l0_refit_export,
+        "load_us_frame",
+        lambda path: _frame_with_yonkers_household(in_yonkers=[False, False]),
+    )
+    monkeypatch.setattr(
+        l0_refit_export,
+        "PolicyEngineUSEngine",
+        lambda: pytest.fail("a corrupt base must not reach the writer"),
+    )
+
+    with pytest.raises(ValueError, match="disagree with its own geography: in_yonkers"):
+        export_us_l0_refit_h5(
+            base_h5=base_h5,
+            weights_npz=_l0_refit_npz(tmp_path),
+            output_h5=output,
+            input_mass_relative_tolerance=1.0,
+            require_geography_ladder=False,
+        )
+    assert not output.exists()

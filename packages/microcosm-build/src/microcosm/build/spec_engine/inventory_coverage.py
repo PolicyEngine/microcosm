@@ -380,8 +380,8 @@ EXPECTED_HASHES = {
     # microcosm#1259's recipient-share bound in puf_support moves both again.
     # microcosm#1261 moves both again: the PUF donor carries partnership and
     # S-corp line-32 shares as separate leaves.
-    "seed_map": '6bbf3ec845a090db560539f63ccad777e201de749b9b27f708fd04ecdc6b6536',
-    "seed_protocol": '898b8ddab801f305ba2e18a8b474e2019bc6b958ea480bcdc6ebdb7f51440c59',
+    "seed_map": '42c141d97283222723e0e96822f62f49829d3c5a1904fac950b1110af85028da',
+    "seed_protocol": 'cf465029597523a6efc4fd411601180ff811d26614f3af85ef0e0610f8b8f24d',
     "source_manifest": "608c3621b1e4a108e57c8f83d16a184acdb3d05e16a81b895f7f72dbf5d0685c",
     "take_up": "9522ce40f7dea569312dd7a7beb474e5a5afadd2f1e10cb5876534c3ef623d35",
     "tail": "071d418bb49976f4682c320d2ad07097c177de3a645d2524f235e1ff33ac83f9",

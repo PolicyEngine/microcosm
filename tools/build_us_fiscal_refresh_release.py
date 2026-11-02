@@ -271,6 +271,9 @@ from microcosm.build.us_runtime.l0_refit_export import (
     attach_l0_refit_entity_weights,
     load_us_frame,
 )
+from microcosm.build.us_runtime.local_jurisdictions import (
+    rederive_us_local_jurisdiction_flags,
+)
 from microcosm.build.us_runtime.medicare_irmaa_holdout import (
     medicare_irmaa_holdout_from_sim,
     medicare_irmaa_holdout_unavailable,
@@ -12933,6 +12936,24 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         base_frame = _load_frame(base_h5, expected_sha256=base_dataset_sha256)
     else:
         base_frame = pool_frame
+    # A base built before the local-jurisdiction flags existed carries none,
+    # and the engine would then default every Yonkers, Wilmington, Denver
+    # and Philadelphia resident to False. Derive them from the base's own
+    # geography; a carried flag that disagrees with it is refused.
+    base_frame, local_jurisdiction_flags = rederive_us_local_jurisdiction_flags(
+        base_frame
+    )
+    if telemetry is not None:
+        telemetry.stage(
+            "local_jurisdiction_flags",
+            message="Derived local-jurisdiction flags from the base geography.",
+            rungs=local_jurisdiction_flags["rungs"],
+            carried_flags=local_jurisdiction_flags["carried_flags"],
+            flag_status={
+                flag: entry["status"]
+                for flag, entry in local_jurisdiction_flags["flags"].items()
+            },
+        )
     capital_gains_tail_presence = assert_puf_capital_gains_tail_survives_selection(
         base_frame,
         base_frame,
@@ -15448,6 +15469,7 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         support_value_repairs={
             "social_security_components": social_security_component_repair,
             "non_sch_d_capital_gains": non_sch_d_cgd_repair,
+            "local_jurisdiction_flags": local_jurisdiction_flags,
         },
         warm_start_calibration=warm_start_calibration,
         selection_source=selection_source_payload,

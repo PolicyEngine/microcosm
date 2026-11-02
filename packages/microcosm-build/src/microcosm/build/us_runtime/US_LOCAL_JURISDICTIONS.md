@@ -56,12 +56,46 @@ the new SHA-256 to pin.
   block-line flags and ACS rows without. The pool re-derives the county-rule
   flags for every row from the final county and removes the place-rule flags.
   Without a PUMA ladder it removes every flag, because ACS rows then have no
-  county.
+  county. `build_optional_acs_multispine` records the pool's receipt as
+  `provenance["local_jurisdiction_flags"]` on both paths.
 
 Missing, null or malformed geography raises; no line writes `False` for a
-household whose county or place it does not know. Both ladder gates fail a
-flag column that disagrees with its rule, or a place-rule flag on a table with
-no complete `place_fips`.
+household whose county or place it does not know.
+
+## Existing artifacts
+
+A base H5 built before this registry carries no flags. Two steps start from
+an existing artifact rather than a geography line, and both call
+`rederive_us_local_jurisdiction_flags` first:
+
+- the L0/refit export (`export_us_l0_refit_h5`), which records the receipt as
+  `local_jurisdiction_flags` in its summary; and
+- the fiscal refresh release builder, on the loaded base or prepared pool,
+  which records the receipt under `support_value_repairs` in the calibration
+  diagnostics.
+
+The helper reads the rungs from the artifact's own geography
+(`us_local_jurisdiction_rungs_present`): the county rung when `county_fips` is
+on every row, and the place rung only when every row also has `place_fips` and
+a 15-digit `block_geoid`. A pooled artifact whose ACS rows have no block
+therefore gets the county-rule flags only. A flag the artifact already carries
+must agree with its geography (household and person flags both), or the step
+fails.
+
+## Gates
+
+Both ladder gates fail:
+
+- a flag column that disagrees with its rule;
+- a null or non-boolean flag;
+- a place-rule flag on a table with no complete `place_fips`; and
+- a missing flag that the line's own rung decides. The block-ladder gate
+  requires `in_denver`, `in_yonkers` and `in_wilmington`; the PUMA-ladder gate
+  requires `in_denver`.
+
+The gates see only the household table, so they check the household flags.
+`us_local_jurisdiction_flag_failures(household, person=...)` also checks that
+each person carries its household's value.
 
 The Philadelphia flag records residence only. `pa_philadelphia_wage_tax` also
 needs `pa_philadelphia_wage_tax_taxable_wages`, which no line supplies yet, so

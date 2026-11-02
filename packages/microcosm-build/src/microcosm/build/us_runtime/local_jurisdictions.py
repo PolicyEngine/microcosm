@@ -31,6 +31,13 @@ block, so every flag is derived. The PUMA ladder writes a county but no
 place, so the place-rule flags are *unavailable* there: the line never writes
 them (any stale column is removed) and its receipt records them as
 unavailable with the reason, rather than writing ``False``.
+
+An artifact built before the flags existed carries none, so a step that
+exports or recalibrates an existing artifact instead of running a geography
+line calls :func:`rederive_us_local_jurisdiction_flags`. It derives every
+flag the artifact's own geography decides and refuses a carried flag that
+disagrees with that geography. Both ladder gates fail a table that lacks a
+flag its geography decides.
 """
 
 from __future__ import annotations
@@ -333,6 +340,41 @@ def _text_codes(
     return series
 
 
+def _holds_text_codes(
+    values: pd.Series, *, column: str, widths: tuple[int, ...]
+) -> bool:
+    try:
+        _text_codes(values, column=column, widths=widths)
+    except ValueError:
+        return False
+    return True
+
+
+def us_local_jurisdiction_rungs_present(household: pd.DataFrame) -> tuple[str, ...]:
+    """The rungs a finished household table's own geography supplies.
+
+    For a step that starts from an artifact rather than a geography line. The
+    county rung needs ``county_fips`` on every row. The place rung also needs
+    every row to sit on a block: ``place_fips`` with no null row and a
+    15-digit ``block_geoid`` on every row. A pooled table whose ACS rows have
+    no block therefore supplies only the county rung, even where a writer has
+    stored their missing place as an empty string. A malformed
+    ``county_fips`` is not judged here; deriving the flags raises on it.
+    """
+
+    if "county_fips" not in household or household["county_fips"].isna().any():
+        return ()
+    block_anchored = (
+        "place_fips" in household
+        and not household["place_fips"].isna().any()
+        and "block_geoid" in household
+        and _holds_text_codes(
+            household["block_geoid"], column="block_geoid", widths=(15,)
+        )
+    )
+    return BLOCK_GEOGRAPHY_RUNGS if block_anchored else PUMA_GEOGRAPHY_RUNGS
+
+
 def us_local_jurisdiction_flag_values(
     household: pd.DataFrame,
     *,
@@ -476,6 +518,48 @@ def with_us_local_jurisdiction_flags(
     )
 
 
+def rederive_us_local_jurisdiction_flags(
+    frame: Frame,
+    *,
+    registry: UsLocalJurisdictionRegistry | None = None,
+) -> tuple[Frame, dict[str, Any]]:
+    """Derive an existing artifact's flags from the geography it carries.
+
+    For a step that exports or recalibrates an artifact rather than running a
+    geography line. A base H5 built before the flags existed carries none,
+    and exporting it as-is would leave the engine default (``False``) on
+    every resident. The rungs come from the artifact's own geography
+    (:func:`us_local_jurisdiction_rungs_present`). A flag the artifact
+    already carries must agree with that geography, or this raises:
+    re-deriving it would hide a corrupt artifact.
+
+    The receipt adds ``carried_flags``, the flags the artifact already held.
+    """
+
+    resolved = registry or packaged_us_local_jurisdiction_registry()
+    household = frame.table("household")
+    failures = us_local_jurisdiction_flag_failures(
+        household, person=frame.table("person"), registry=resolved
+    )
+    if failures:
+        raise ValueError(
+            "The artifact carries local-jurisdiction flags that disagree with "
+            "its own geography: " + "; ".join(failures)
+        )
+    carried = sorted(
+        item.flag
+        for item in resolved.jurisdictions
+        if item.flag in frame.table(item.entity)
+    )
+    derived, receipt = with_us_local_jurisdiction_flags(
+        frame,
+        rungs=us_local_jurisdiction_rungs_present(household),
+        registry=resolved,
+    )
+    receipt["carried_flags"] = carried
+    return derived, receipt
+
+
 def _person_household_positions(
     household: pd.DataFrame, person: pd.DataFrame
 ) -> np.ndarray:
@@ -551,31 +635,51 @@ def us_local_jurisdiction_flag_receipt(
 def us_local_jurisdiction_flag_failures(
     household: pd.DataFrame,
     *,
+    person: pd.DataFrame | None = None,
+    required_rungs: Collection[str] = (),
     registry: UsLocalJurisdictionRegistry | None = None,
 ) -> list[str]:
-    """Gate check: every household flag column present agrees with geography.
+    """Gate check: every flag column present agrees with the table's geography.
 
-    A flag column is optional (an artifact built before the flags existed
-    carries none), but one that is present must equal its rule applied to the
-    table's own ``county_fips``/``place_fips``. A place-rule flag on a table
-    with no complete ``place_fips`` fails: nothing could have decided it.
+    A flag present must equal its rule applied to the table's own
+    ``county_fips``/``place_fips``. A place-rule flag on a table with no
+    complete ``place_fips`` fails: nothing could have decided it. A flag
+    whose rule is in ``required_rungs`` must also be present: a gate whose
+    line supplies that rung passes ``required_rungs``, so an artifact built
+    before the flags existed fails rather than leaving the engine default on
+    every resident.
+
+    Person flags are checked only when ``person`` is given; each person must
+    carry its household's value.
     """
 
     resolved = registry or packaged_us_local_jurisdiction_registry()
+    required = set(_normalized_rungs(required_rungs))
+    tables = {"household": household, "person": person}
     failures: list[str] = []
-    for item in resolved.for_entity("household"):
-        if item.flag not in household:
+    for item in resolved.jurisdictions:
+        table = tables[item.entity]
+        if table is None:
+            continue
+        if item.flag not in table:
+            if item.rule in required:
+                failures.append(
+                    f"{item.flag}: absent, but this table's {item.rule} rung "
+                    "decides it; the engine would default every row to False"
+                )
             continue
         try:
             expected = us_local_jurisdiction_flag_values(
                 household, rungs=(item.rule,), registry=resolved
             )[item.flag]
+            if item.entity == "person":
+                expected = expected[_person_household_positions(household, table)]
         except ValueError as error:
             failures.append(
                 f"{item.flag}: present but its {item.rule} rung cannot decide it ({error})"
             )
             continue
-        observed = household[item.flag]
+        observed = table[item.flag]
         if observed.isna().any():
             failures.append(f"{item.flag}: {int(observed.isna().sum())} null row(s)")
             continue
@@ -588,8 +692,8 @@ def us_local_jurisdiction_flag_failures(
         disagree = observed.astype(bool).to_numpy() != expected
         if disagree.any():
             failures.append(
-                f"{item.flag}: {int(disagree.sum())}/{len(household)} row(s) "
-                f"disagree with the {item.rule} rule for {item.geoid}"
+                f"{item.flag}: {int(disagree.sum())}/{len(table)} {item.entity} "
+                f"row(s) disagree with the {item.rule} rule for {item.geoid}"
             )
     return failures
 
@@ -687,8 +791,10 @@ __all__ = [
     "check_us_local_jurisdictions_against_block_ladder",
     "load_us_local_jurisdiction_registry",
     "packaged_us_local_jurisdiction_registry",
+    "rederive_us_local_jurisdiction_flags",
     "us_local_jurisdiction_flag_failures",
     "us_local_jurisdiction_flag_receipt",
     "us_local_jurisdiction_flag_values",
+    "us_local_jurisdiction_rungs_present",
     "with_us_local_jurisdiction_flags",
 ]

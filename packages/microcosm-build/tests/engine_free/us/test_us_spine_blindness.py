@@ -283,6 +283,9 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "input_mass.py",
         "l0_refit_export.py",
         "late_producer_dag.py",  # Pure contract/schedule derivation; no treatment.
+        # Local-jurisdiction flags as a pure function of county/place codes;
+        # no population treatment.
+        "local_jurisdictions.py",
         "medicaid_take_up.py",
         # Reviewed held-out Medicare IRMAA diagnostic; no population treatment.
         "medicare_irmaa_holdout.py",
@@ -3522,9 +3525,11 @@ def test_pool_build_tool_import_graph_is_source_spine_blind() -> None:
         # block_ladder_sources.py, whose CT_STATE_FIPS they import (#1376). All
         # are classified by the runtime registries and scanned below like every
         # reached module. 81 adds puf_source_schedule_e.py, the PUF donor's
-        # Schedule E line-32 and passive supplement (#1239).
-        assert len(runtime_graph) == 81, (
-            f"{tool.name} must reach the pinned 81-module runtime graph; "
+        # Schedule E line-32 and passive supplement (#1239). 82 adds
+        # local_jurisdictions.py, which the PUMA ladder calls to write the
+        # county-rule local-jurisdiction flags.
+        assert len(runtime_graph) == 82, (
+            f"{tool.name} must reach the pinned 82-module runtime graph; "
             f"reached {len(runtime_graph)}"
         )
         assert not missing_modules, (

@@ -42,8 +42,10 @@ from microcosm.build.us_runtime.local_jurisdictions import (
     check_us_local_jurisdictions_against_block_ladder,
     load_us_local_jurisdiction_registry,
     packaged_us_local_jurisdiction_registry,
+    rederive_us_local_jurisdiction_flags,
     us_local_jurisdiction_flag_failures,
     us_local_jurisdiction_flag_values,
+    us_local_jurisdiction_rungs_present,
     with_us_local_jurisdiction_flags,
 )
 from microcosm.build.us_runtime.puma_ladder import (
@@ -754,8 +756,8 @@ def test_gate_fails_a_flag_that_disagrees_with_its_rule(flag: str) -> None:
     block_gate = us_geography_ladder_gate(household, np.ones(len(household)))
 
     assert failures == [
-        f"{flag}: {len(household)}/{len(household)} row(s) disagree with the "
-        f"{REGISTRY_RULES[flag]} rule for {REGISTRY_GEOIDS[flag]}"
+        f"{flag}: {len(household)}/{len(household)} household row(s) disagree "
+        f"with the {REGISTRY_RULES[flag]} rule for {REGISTRY_GEOIDS[flag]}"
     ]
     assert failures[0] in block_gate.failures
 
@@ -806,3 +808,190 @@ def test_person_flag_column_requires_resolvable_households() -> None:
             {"household": household, "person": person}, rungs=BLOCK_GEOGRAPHY_RUNGS
         )
     assert US_SCHEMA.membership_column("household") == "person_household_id"
+
+
+def _assigned_block_frame():
+    frame = us_frame(
+        households_on_blocks(_NAMES), person_inputs=[[{}, {}] for _ in _NAMES]
+    )
+    return with_household_us_geography_ladder(frame, block_ladder(), seed=3)
+
+
+def test_gate_requires_every_flag_its_rungs_decide() -> None:
+    assigned = _assigned_block_frame()
+    household = assigned.table("household").drop(columns=list(HOUSEHOLD_FLAGS))
+    person = assigned.table("person").drop(columns=list(PERSON_FLAGS))
+
+    block = us_local_jurisdiction_flag_failures(
+        household, person=person, required_rungs=BLOCK_GEOGRAPHY_RUNGS
+    )
+    puma = us_local_jurisdiction_flag_failures(
+        household, person=person, required_rungs=PUMA_GEOGRAPHY_RUNGS
+    )
+
+    assert sorted(failure.split(":")[0] for failure in block) == sorted(EXPECTED_RULES)
+    assert all("absent" in failure for failure in block)
+    assert sorted(failure.split(":")[0] for failure in puma) == [
+        "in_denver",
+        "pa_philadelphia_wage_tax_resident",
+    ]
+    # Without required rungs an absent flag passes (pre-flag artifacts).
+    assert us_local_jurisdiction_flag_failures(household, person=person) == []
+
+
+def test_gate_checks_each_person_flag_against_its_household() -> None:
+    assigned = _assigned_block_frame()
+    household = assigned.table("household")
+    person = assigned.table("person").copy()
+    flag = PERSON_FLAGS[0]
+
+    assert us_local_jurisdiction_flag_failures(household, person=person) == []
+    person.loc[person.index[0], flag] = not person.loc[person.index[0], flag]
+
+    assert us_local_jurisdiction_flag_failures(household, person=person) == [
+        f"{flag}: 1/{len(person)} person row(s) disagree with the county rule for 42101"
+    ]
+    # The household-only gate cannot see person flags.
+    assert us_local_jurisdiction_flag_failures(household) == []
+
+
+# --------------------------------------------------------------------------- #
+# Re-deriving an existing artifact (exports, release builder)
+# --------------------------------------------------------------------------- #
+
+
+def _block_table(**columns: list[object]) -> pd.DataFrame:
+    table = {
+        "household_id": [1, 2],
+        "county_fips": ["36119", "08031"],
+        "place_fips": ["84000", "20000"],
+        "block_geoid": ["361190001001000", "080310001001000"],
+    }
+    table.update(columns)
+    return pd.DataFrame(table)
+
+
+@pytest.mark.parametrize(
+    ("columns", "expected"),
+    [
+        ({}, BLOCK_GEOGRAPHY_RUNGS),
+        # A pooled table: ACS rows carry no place and no block.
+        ({"place_fips": ["84000", None]}, PUMA_GEOGRAPHY_RUNGS),
+        (
+            {"place_fips": ["84000", ""], "block_geoid": ["361190001001000", ""]},
+            PUMA_GEOGRAPHY_RUNGS,
+        ),
+        (
+            {"block_geoid": ["361190001001000", None]},
+            PUMA_GEOGRAPHY_RUNGS,
+        ),
+        ({"county_fips": ["36119", None]}, ()),
+    ],
+)
+def test_rungs_present_reads_the_artifacts_own_geography(columns, expected) -> None:
+    assert us_local_jurisdiction_rungs_present(_block_table(**columns)) == expected
+
+
+def test_rungs_present_needs_the_columns_themselves() -> None:
+    table = _block_table()
+
+    assert us_local_jurisdiction_rungs_present(table.drop(columns=["block_geoid"])) == (
+        PUMA_GEOGRAPHY_RUNGS
+    )
+    assert us_local_jurisdiction_rungs_present(table.drop(columns=["place_fips"])) == (
+        PUMA_GEOGRAPHY_RUNGS
+    )
+    assert (
+        us_local_jurisdiction_rungs_present(table.drop(columns=["county_fips"])) == ()
+    )
+
+
+def _without_flags(frame):
+    tables = {entity: frame.table(entity) for entity in frame.entities}
+    tables["household"] = tables["household"].drop(columns=list(HOUSEHOLD_FLAGS))
+    tables["person"] = tables["person"].drop(columns=list(PERSON_FLAGS))
+    return type(frame)(
+        tables, frame.schema, {"household": frame.weights_for("household")}
+    )
+
+
+@settings(max_examples=40, deadline=None)
+@given(st.lists(st.sampled_from(_NAMES), min_size=1, max_size=12))
+def test_rederiving_a_pre_flag_artifact_restores_the_block_line_flags(names) -> None:
+    frame = us_frame(households_on_blocks(names), person_inputs=[[{}] for _ in names])
+    assigned = with_household_us_geography_ladder(frame, block_ladder(), seed=1)
+
+    rederived, receipt = rederive_us_local_jurisdiction_flags(_without_flags(assigned))
+    again, again_receipt = rederive_us_local_jurisdiction_flags(rederived)
+
+    for entity in ("household", "person"):
+        pd.testing.assert_frame_equal(
+            rederived.table(entity), assigned.table(entity), check_like=True
+        )
+        pd.testing.assert_frame_equal(again.table(entity), rederived.table(entity))
+    assert receipt["rungs"] == ["county", "place"]
+    assert receipt["carried_flags"] == []
+    assert again_receipt["carried_flags"] == sorted(EXPECTED_RULES)
+    assert {entry["status"] for entry in receipt["flags"].values()} == {
+        JURISDICTION_FLAG_DERIVED
+    }
+
+
+@pytest.mark.parametrize("flag", sorted(EXPECTED_RULES))
+def test_rederiving_refuses_a_carried_flag_that_disagrees(flag: str) -> None:
+    assigned = _assigned_block_frame()
+    tables = {entity: assigned.table(entity) for entity in assigned.entities}
+    entity = "person" if flag in PERSON_FLAGS else "household"
+    tables[entity] = tables[entity].assign(**{flag: ~tables[entity][flag]})
+    corrupt = type(assigned)(
+        tables, assigned.schema, {"household": assigned.weights_for("household")}
+    )
+
+    with pytest.raises(ValueError, match=f"disagree with its own geography: {flag}"):
+        rederive_us_local_jurisdiction_flags(corrupt)
+
+
+def test_rederiving_a_pooled_artifact_leaves_place_flags_unavailable() -> None:
+    # A donor row on the Yonkers block and an ACS row in Denver with no block
+    # or place: the place rule cannot be decided for the ACS row.
+    households = [
+        {
+            "state_fips": 36,
+            "county_fips": "36119",
+            "place_fips": "84000",
+            "block_geoid": "361190001001000",
+        },
+        {
+            "state_fips": 8,
+            "county_fips": "08031",
+            "place_fips": None,
+            "block_geoid": None,
+        },
+    ]
+    frame = us_frame(households, person_inputs=[[{}], [{}]])
+
+    rederived, receipt = rederive_us_local_jurisdiction_flags(frame)
+
+    household = rederived.table("household")
+    assert "in_yonkers" not in household and "in_wilmington" not in household
+    assert household["in_denver"].tolist() == [False, True]
+    assert receipt["rungs"] == ["county"]
+    assert receipt["flags"]["in_yonkers"]["status"] == JURISDICTION_FLAG_UNAVAILABLE
+    assert receipt["carried_flags"] == []
+
+
+def test_rederiving_without_a_county_writes_no_flag() -> None:
+    rederived, receipt = rederive_us_local_jurisdiction_flags(
+        us_frame([{"state_fips": 36}])
+    )
+
+    assert receipt["rungs"] == []
+    assert not set(EXPECTED_RULES) & set(rederived.table("household"))
+    assert {entry["status"] for entry in receipt["flags"].values()} == {
+        JURISDICTION_FLAG_UNAVAILABLE
+    }
+    # A carried flag that no county could have decided is refused.
+    with pytest.raises(ValueError, match="in_denver: present but its county rung"):
+        rederive_us_local_jurisdiction_flags(
+            us_frame([{"state_fips": 36, "in_denver": False}])
+        )

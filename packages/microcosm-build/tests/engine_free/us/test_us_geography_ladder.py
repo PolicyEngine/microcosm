@@ -397,10 +397,25 @@ def _gated_household() -> tuple[pd.DataFrame, np.ndarray]:
             "sldu": ["027", "046", "024", "001"],
             "sldl": ["075", "109", "051", "001"],
             "cbsa_code": ["35620", "10580", "31080", ""],
+            # The block decides every household local-jurisdiction flag; none
+            # of these blocks is in Denver, Yonkers or Wilmington.
+            "in_denver": [False] * 4,
+            "in_wilmington": [False] * 4,
+            "in_yonkers": [False] * 4,
         }
     )
     weights = np.asarray([2.6, 3.6, 73.8, 20.0])
     return household, weights
+
+
+@pytest.mark.parametrize("flag", ["in_denver", "in_wilmington", "in_yonkers"])
+def test_gate_fails_when_a_block_decided_flag_is_absent(flag: str) -> None:
+    household, weights = _gated_household()
+
+    result = us_geography_ladder_gate(household.drop(columns=[flag]), weights)
+
+    assert not result.passed
+    assert any(failure.startswith(f"{flag}: absent") for failure in result.failures)
 
 
 def _minimal_us_frame() -> Frame:
