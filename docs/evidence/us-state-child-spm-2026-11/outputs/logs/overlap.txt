@@ -1,0 +1,35 @@
+raw ASEC against Table 18
+  2023-25, Table 18's window: corr 0.996, gap sd 0.32, mean abs gap 0.24
+  2022-24, the pool's window: corr 0.962, gap sd 1.02, mean abs gap 0.90
+  2022 against 2025, no shared income year: corr 0.68, difference sd 3.07
+   file   weights rows  mean_cov  median_rho      Q  tau  tau_lo  tau_hi  Q_adj  tau_adj  tau_adj_lo  tau_adj_hi
+  dense   initial  all      0.60        0.38  94.42 1.50    0.88    2.31 170.54     1.88        1.41        2.59
+  dense   initial asec      0.85        0.43  76.22 1.28    0.36    1.79 152.63     1.82        1.14        2.16
+  dense   initial  puf      0.34        0.21 158.53 2.43    1.95    3.58 203.68     2.54        2.12        3.67
+  dense published  all      0.66        0.25 147.89 3.07    2.33    4.34 188.43     3.20        2.57        4.48
+  dense published asec      0.96        0.25 191.65 4.56    3.41    6.01 244.76     4.72        3.65        6.17
+  dense published  puf      0.40        0.11 118.41 2.82    2.00    4.13 131.95     2.91        2.16        4.22
+default   initial  all      0.77        0.25 109.67 2.74    1.91    4.11 139.50     2.95        2.28        4.31
+default   initial asec      1.03        0.21 138.62 4.55    3.50    6.63 167.16     4.75        3.82        6.81
+default   initial  puf      0.57        0.13  76.51 1.98    0.69    3.17  85.84     2.14        1.12        3.31
+default published  all      0.72        0.11  71.74 2.74    0.22    4.15  76.02     2.90        0.83        4.29
+default published asec      0.84        0.09 142.57 6.29    3.32    7.76 147.05     6.33        3.43        7.84
+default published  puf      0.61        0.05  77.91 3.17    0.79    4.56  79.41     3.22        0.89        4.64
+benchmark 2024-25 against Table 18: corr 0.969
+rows   weights  records  mean_gap   sd  mad  mad_demeaned  corr  median_se  beyond_2se
+ all   initial    40692      0.79 3.25 2.47          2.33  0.67       1.78           8
+ all published    40692      5.41 5.47 6.08          4.36  0.58       3.13          18
+asec   initial    19205      3.05 3.08 3.44          2.40  0.80       2.32          11
+asec published    19205      9.00 7.01 9.44          5.63  0.60       4.40          22
+ puf   initial    21487     -1.47 4.17 3.13          2.95  0.41       1.96           9
+ puf published    21487      2.57 5.89 4.72          4.41  0.42       3.70           8
+gap corr dense initial, ACS rows 0.30; p 0.031
+shared Census noise alone would give about 0.24
+gap corr dense published, ACS rows 0.42; shared Census noise alone would give about 0.15
+|z|>1.28: 6 states ['DE', 'IL', 'LA', 'MS', 'OH', 'WA'], permutation mean 3.03, p 0.049
+|z|>1.645: 2 states ['DE', 'LA'], permutation mean 1.37, p 0.412
+|z|>1.96: 1 states ['LA'], permutation mean 0.68, p 0.533
+    dense_initial  acs_rows  z_dense  z_acs
+DE           5.35      6.26     2.28   1.91
+LA          -6.95     -6.40    -3.39  -2.80
+MS          -5.19     -3.18    -2.72  -1.38

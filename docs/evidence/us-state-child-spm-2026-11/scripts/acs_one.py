@@ -27,8 +27,7 @@ for c in frame.columns:
     if c.startswith("parent_") and c.endswith("_id__2024"):
         frame[c] = frame[c].fillna(-1).astype(np.int64)
 if "spm_unit_spm_universe_status__2024" not in frame:
-    # Declared per docs/us-spm-measurement-universe.md: ACS group quarters OUTSIDE, everything else INCLUDED.
-    gq = frame.get("TYPEHUGQ__2024")
+    # policyengine-us 2.90.2 ignores this column, so every SPM unit stays in the run.
     frame["spm_unit_spm_universe_status__2024"] = "INCLUDED"
 d = "2025-01-01.2025-12-31"
 ref = Reform.from_dict(
