@@ -1565,6 +1565,12 @@ def test_remote_staging_uploads_telemetry_and_the_bundle_in_one_commit(
     # The files the build rewrote after staging were all copied at hand-over.
     copied = set(next(iter(client.copied_bundle_files.values())))
     assert {cli.MANIFEST_FILENAME, "sha256sums.txt"} <= copied
+    # The manifest names the hand-over, so a re-stage can ask for its outcome.
+    assert manifest["staged_dataset_handover"] == {
+        "handover_id": request.handover_id(),
+        "repository": "policyengine/populace-uk-private",
+        "run_id": run_id,
+    }
 
     def sums_verify() -> None:
         for line in (out / "sha256sums.txt").read_text().splitlines():
@@ -1718,6 +1724,35 @@ def test_a_build_with_the_hub_switched_off_hands_its_emitter_no_bundle(
     assert (out / "staged_manifest.json").is_file()
     assert (out / "sha256sums.txt").is_file()
     assert "HF_HUB_OFFLINE" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    ("error_code", "says", "never_says"),
+    [
+        ("UPLOAD_PENDING", "keeps the bundle queued", "stay local"),
+        ("CREDENTIAL_MISSING", "keeps the bundle queued", "stay local"),
+        ("REMOTE_DIFFERS", "another run id", "can be re-staged"),
+        ("EMITTER_UNAVAILABLE", "stay local", "queued"),
+    ],
+)
+def test_the_staged_dataset_status_says_where_a_failed_bundle_is(
+    error_code, says, never_says
+):
+    from microcosm.build.uk_runtime import rowwise_staging
+
+    line = rowwise_staging._staged_dataset_line(
+        {
+            "status": "failed",
+            "error_code": error_code,
+            "repository": "policyengine/populace-uk-private",
+            "prefix": "staged/uk-attempt",
+            "mode": "local_and_remote",
+            "revision": None,
+        }
+    )
+    assert error_code in line
+    assert says in line
+    assert never_says not in line
 
 
 def test_the_restage_tool_hands_the_bundle_to_its_own_emitter(

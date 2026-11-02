@@ -13,12 +13,18 @@ database or network request:
 - Orrery inventories measure the named files, and hand-overs answer
   ``pending``;
 - a staged dataset bundle is checked and its small files copied as the
-  emitter does before it answers; the answer is ``pending``, and the
-  receipt asked for next holds the outcome of one upload attempt, made at
-  hand-over through ``hub_api``, an ``HfApi``-like fake Hub (without one,
-  the bundle stays pending with ``CREDENTIAL_MISSING``, as on an emitter
-  that finds no credential). ``bundle_receipts`` scripts the answers
-  instead, and ``never_copy`` names files the emitter leaves on disk.
+  emitter does before it answers ``pending``. It becomes a job in a
+  ``FakeHandoverQueue``, which several clients can share as emitters on one
+  machine share their hand-over database: a hand-over identical to a queued
+  one returns that job's receipt, and a client that delivers makes one
+  upload attempt for each pending job, oldest first, whenever it takes a
+  hand-over or answers for a receipt. An attempt goes through ``hub_api``,
+  an ``HfApi``-like fake Hub (without one, the job stays pending with
+  ``CREDENTIAL_MISSING``, as on an emitter that finds no credential).
+  ``deliver=False`` and ``answer_receipts=False`` stand for an emitter that
+  took the hand-over and then stopped; ``bundle_receipts`` scripts the
+  answers instead, and ``never_copy`` names files the emitter leaves on
+  disk.
 
 The emitter's own tests cover the process, its queues and the Hub.
 """
@@ -84,6 +90,18 @@ class _BundleRefusedError(Exception):
         self.code = code
 
 
+class FakeHandoverQueue:
+    """Bundle jobs by hand-over ID, in the order they were handed over."""
+
+    def __init__(self) -> None:
+        #: Each job's request, copied bytes and latest receipt.
+        self.jobs: dict[str, dict[str, Any]] = {}
+
+    def receipt(self, handover_id: str) -> dict[str, Any] | None:
+        job = self.jobs.get(handover_id)
+        return None if job is None else dict(job["receipt"])
+
+
 def fake_publication_inventory(
     directory: Path,
     roles: Mapping[str, PublicationFileRole],
@@ -127,6 +145,9 @@ class FakeEmitterClient:
         bundle_receipts: Sequence[Mapping[str, Any]] | None = None,
         never_copy: Iterable[str] = (),
         write_access: Mapping[str, Any] | None = None,
+        queue: FakeHandoverQueue | None = None,
+        deliver: bool = True,
+        answer_receipts: bool = True,
     ) -> None:
         self._modules = frozenset(modules)
         self.accept_run_files = accept_run_files
@@ -144,6 +165,11 @@ class FakeEmitterClient:
         #: Each hand-over's copied bytes, by hand-over ID and file name.
         self.copied_bundle_files: dict[str, dict[str, bytes]] = {}
         self._bundle_answers: dict[str, list[dict[str, Any]]] = {}
+        #: The bundle jobs this emitter shares with others on the machine.
+        self.queue = queue if queue is not None else FakeHandoverQueue()
+        #: Whether this emitter makes upload attempts and answers receipts.
+        self.deliver = deliver
+        self.answer_receipts = answer_receipts
         self.closed = False
         self.startup_error = None
         self.last_failure = None
@@ -373,7 +399,10 @@ class FakeEmitterClient:
                 "copied_files": [],
             }
         self.copied_bundle_files[handover_id] = copied
-        status, error_code, revision = self._upload_bundle(request, copied)
+        known = self.queue.receipt(handover_id)
+        if known is not None:
+            # The emitter applies a repeated hand-over once.
+            return known  # type: ignore[return-value]
         queued: dict[str, Any] = {
             "handover_id": handover_id,
             "status": "pending",
@@ -384,25 +413,41 @@ class FakeEmitterClient:
             "prefix": request.remote_prefix,
             "copied_files": sorted(copied),
         }
-        self._bundle_answers[handover_id] = [
-            {
-                **queued,
-                "status": status,
-                "error_code": error_code,
-                "revision": revision,
-                "attempts": 1,
-            }
-        ]
+        self.queue.jobs[handover_id] = {
+            "request": request,
+            "copied": copied,
+            "receipt": dict(queued),
+        }
+        self._deliver_pending_jobs()
         return queued  # type: ignore[return-value]
 
     def dataset_bundle_receipt(self, handover_id: str) -> DatasetBundleReceipt | None:
         self.calls.append("dataset_bundle_receipt")
-        if "huggingface" not in self.modules:
+        if "huggingface" not in self.modules or not self.answer_receipts:
             return None
         answers = self._bundle_answers.get(handover_id)
-        if not answers:
-            return None
-        return dict(answers.pop(0) if len(answers) > 1 else answers[0])  # type: ignore[return-value]
+        if answers:
+            return dict(answers.pop(0) if len(answers) > 1 else answers[0])  # type: ignore[return-value]
+        self._deliver_pending_jobs()
+        return self.queue.receipt(handover_id)  # type: ignore[return-value]
+
+    def _deliver_pending_jobs(self) -> None:
+        """One upload attempt for each pending job, oldest first."""
+        if not self.deliver:
+            return
+        for job in self.queue.jobs.values():
+            receipt = job["receipt"]
+            if receipt["status"] != "pending":
+                continue
+            status, error_code, revision = self._upload_bundle(
+                job["request"], job["copied"]
+            )
+            receipt.update(
+                status=status,
+                error_code=error_code,
+                revision=revision,
+                attempts=receipt["attempts"] + 1,
+            )
 
     def check_write_access(self, repository: str) -> WriteAccess:
         self.calls.append("check_write_access")
