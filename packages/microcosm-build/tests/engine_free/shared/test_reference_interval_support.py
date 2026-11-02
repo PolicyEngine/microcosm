@@ -127,7 +127,12 @@ def test_a_table_without_support_fields_parses_and_reports_as_before():
         )
 
 
-def _tax_unit_frame(household_of_unit=(0, 0, 1), sources=("s0", "s1")):
+def _tax_unit_frame(
+    household_of_unit=(0, 0, 1),
+    sources=("s0", "s1"),
+    weights=(4.0, 6.0),
+    incomes=(50_000, 60_000, 70_000),
+):
     persons = []
     for unit, household in enumerate(household_of_unit):
         persons.append((len(persons), household, unit))
@@ -141,18 +146,21 @@ def _tax_unit_frame(household_of_unit=(0, 0, 1), sources=("s0", "s1")):
                 }
             ),
             "household": pd.DataFrame(
-                {"household_id": [0, 1], "source_household_id": list(sources)}
+                {
+                    "household_id": list(range(len(sources))),
+                    "source_household_id": list(sources),
+                }
             ),
             "tax_unit": pd.DataFrame(
                 {
                     "tax_unit_id": list(range(len(household_of_unit))),
-                    "unit_income": [50_000, 60_000, 70_000],
-                    "unit_in": ["included"] * 3,
+                    "unit_income": list(incomes),
+                    "unit_in": ["included"] * len(household_of_unit),
                 }
             ),
         },
         EntitySchema(group_entities=("household", "tax_unit")),
-        {"household": Weights(np.asarray([4.0, 6.0]), WeightKind.DESIGN)},
+        {"household": Weights(np.asarray(weights), WeightKind.DESIGN)},
     )
 
 
@@ -177,6 +185,23 @@ def test_two_tax_units_in_one_household_count_once_with_source_household_ess():
         "amount": "toy_money_b0",
     }
     assert report["support"]["household_entity"] == "household"
+
+
+def test_a_zero_weight_household_is_not_counted():
+    """The hand case plus household 2 at weight 0: support is unchanged."""
+    frame = _tax_unit_frame(
+        household_of_unit=(0, 0, 1, 2),
+        sources=("s0", "s1", "s2"),
+        weights=(4.0, 6.0, 0.0),
+        incomes=(50_000, 60_000, 70_000, 70_000),
+    )
+    report = frame_boundary_diagnostics(_tax_unit_table(), frame)
+    support = {row["band"]: row for row in report["bands"]}["b0"]["support"]
+    assert support["count"]["source_households"] == 2
+    assert _rational(support["count"]["kish_ess"]) == Fraction(14 * 14, 64 + 36)
+    assert support["amount"]["source_households"] == 2
+    amount = [Fraction(4 * 50_000 + 4 * 60_000), Fraction(6 * 70_000)]
+    assert _rational(support["amount"]["kish_ess"]) == kish_ess(amount)
 
 
 def test_clone_households_share_one_source_household():
