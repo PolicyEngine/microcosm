@@ -100,7 +100,12 @@ def test__given_source__then_stages_run_in_order_and_provenance_is_json_ready(
     # The post-transfer adult-care gate probes the transferred frame's person
     # table; an empty table means "columns absent", so the gate scopes out.
     transferred_acs = SimpleNamespace(table=lambda entity: pd.DataFrame())
-    pooled = object()
+    # Without a PUMA ladder the pool decides no local-jurisdiction flag, so
+    # its receipt reads no geography.
+    pooled = SimpleNamespace(
+        table=lambda entity: pd.DataFrame(),
+        weights_for=lambda entity: SimpleNamespace(values=np.ones(0)),
+    )
     source = AcsPumsSource(
         tmp_path / "csv_hus.zip",
         tmp_path / "csv_pus.zip",
@@ -189,7 +194,41 @@ def test__given_source__then_stages_run_in_order_and_provenance_is_json_ready(
     ]
     assert result.frame is pooled
     assert result.fit_records == (fit_record,)
-    assert result.provenance == {
+    provenance = dict(result.provenance)
+    local_jurisdiction_flags = provenance.pop("local_jurisdiction_flags")
+    assert local_jurisdiction_flags["rungs"] == []
+    assert {
+        flag: (entry["status"], entry["reason"].split(";")[0])
+        for flag, entry in local_jurisdiction_flags["flags"].items()
+    } == {
+        "in_denver": ("unavailable", "the line supplies no county rung"),
+        "in_wilmington": ("unavailable", "the line supplies no place rung"),
+        "in_yonkers": ("unavailable", "the line supplies no place rung"),
+        "pa_philadelphia_wage_tax_resident": (
+            "unavailable",
+            "the line supplies no county rung",
+        ),
+    }
+    # Without the residence flag nothing decides the Philadelphia taxable
+    # wages, and the four work-location or refund inputs have no source.
+    local_tax_inputs = provenance.pop("local_tax_inputs")
+    assert {
+        variable: (entry["provision"], entry["status"])
+        for variable, entry in local_tax_inputs["inputs"].items()
+    } == {
+        "co_denver_employee_occupational_privilege_tax_months": (
+            "unavailable",
+            "unavailable",
+        ),
+        "de_wilmington_nonresident_earnings": ("unavailable", "unavailable"),
+        "ny_yonkers_nonresident_earnings": ("unavailable", "unavailable"),
+        "pa_philadelphia_wage_tax_reduced_rate_eligible": (
+            "unavailable",
+            "unavailable",
+        ),
+        "pa_philadelphia_wage_tax_taxable_wages": ("resident_wages", "unavailable"),
+    }
+    assert provenance == {
         "enabled": True,
         "acs_share": 0.4,
         "loader": {
@@ -627,6 +666,28 @@ def test__given_ladder__then_multispine_records_geography_assignment(
         "block_geoid",
         "tract_geoid",
     ]
+    # With the ladder every row has a county: the county-rule flags are
+    # derived, the place-rule flags recorded unavailable.
+    statuses = {
+        flag: entry["status"]
+        for flag, entry in result.provenance["local_jurisdiction_flags"][
+            "flags"
+        ].items()
+    }
+    assert statuses == {
+        "in_denver": "derived",
+        "in_wilmington": "unavailable",
+        "in_yonkers": "unavailable",
+        "pa_philadelphia_wage_tax_resident": "derived",
+    }
+    assert result.provenance["local_jurisdiction_flags"]["rungs"] == ["county"]
+    # The county rung decides Philadelphia residence, so the taxable wages
+    # are derived for the pooled rows.
+    taxable = result.provenance["local_tax_inputs"]["inputs"][
+        "pa_philadelphia_wage_tax_taxable_wages"
+    ]
+    assert taxable["status"] == "derived"
+    assert taxable["null_wages"] == "propagate"
 
 
 def _test_puma_ladder() -> UsPumaLadder:

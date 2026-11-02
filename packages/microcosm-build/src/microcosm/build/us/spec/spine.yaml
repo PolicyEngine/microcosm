@@ -43,6 +43,7 @@ pipeline_contract:
   - with_us_education_inputs
   derive_operator_order:
   - _complete_schedule_d_input
+  - with_us_local_tax_inputs
   - with_us_qbi_input_reconciliation
   auxiliary_operations:
   - calibrate

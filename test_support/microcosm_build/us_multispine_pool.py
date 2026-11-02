@@ -187,6 +187,7 @@ def _overlap_person_table() -> pd.DataFrame:
 
 _EXPECTED_SOURCE_OPERATOR_WRAPPERS = {
     "with_us_hours_worked_inputs": "_with_gated_us_hours_worked_inputs",
+    "with_us_local_tax_inputs": "local_tax_inputs_with_receipt",
     "with_us_qbi_input_reconciliation": "reconcile_qbi_with_receipt",
 }
 

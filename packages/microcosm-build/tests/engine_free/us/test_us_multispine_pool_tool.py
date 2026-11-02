@@ -1047,7 +1047,10 @@ def test_legacy_entrypoint_publication_matches_origin_main_golden(
         # microcosm#1258 moves the identity again (the late schedule and the
         # remaining-stage manifest gain the S-corp transfer target); pool_h5
         # and agreement stay unchanged.
-        "manifest": "bfaa7ffc709b68dbb7d05ee8f4c7e0600612f22ef21f3329784b782a9f59e812",
+        # The local-tax derive operator moves it once more (the derive order
+        # and the remaining-stage manifest gain with_us_local_tax_inputs);
+        # pool_h5 and agreement stay unchanged.
+        "manifest": "0d9e05705a511dd28ca78913af2a311c3bc902c8e88d71e90efccd0dc7d8844d",
     }
 
 

@@ -1,6 +1,9 @@
 """Tests split from packages/microcosm-build/tests/test_us_multispine_pool.py."""
 
 # ruff: noqa: F403, F405
+from microcosm.build.us_runtime.local_jurisdictions import (
+    packaged_us_local_tax_input_registry,
+)
 from test_support.microcosm_build.us_multispine_pool import *
 
 
@@ -864,6 +867,14 @@ def test_remaining_stage_manifest_covers_every_derive_read() -> None:
             ("person", "schedule_d_capital_gain_distributions"),
             ("tax_unit", "tax_unit_id"),
         },
+        # Runs before QBI, whose live-output check binds the person columns.
+        "with_us_local_tax_inputs": {
+            ("person", "pa_philadelphia_wage_tax_resident"),
+            ("person", "employment_income_before_lsr"),
+            ("person", "person_household_id"),
+            ("household", "household_id"),
+            ("household", "<resolved_weight>"),
+        },
         "with_us_qbi_input_reconciliation": {
             *{("person", variable) for variable in US_QBI_OUTPUT_COLUMNS},
             ("person", "self_employment_income_before_lsr"),
@@ -1036,9 +1047,14 @@ def test_remaining_stage_manifest_enumerates_every_simulation_projection_input()
             "declared_deferred_null_input": 3,
             "assembled_native_engine_input": 5,
             "frame_structural_engine_input": 10,
-            "preserved_stacked_engine_input": 4,
+            "preserved_stacked_engine_input": 6,
+            "geography_derived_jurisdiction_input": 2,
+            "unavailable_place_jurisdiction_input": 2,
             "derived_schedule_d_input": 1,
-            "declared_absent_engine_input": 762,
+            "derived_resident_wage_tax_input": 1,
+            "unavailable_work_location_input": 3,
+            "unavailable_refund_claim_input": 1,
+            "declared_absent_engine_input": 751,
             "unprovisioned_source_input": 1,
         }
     )
@@ -1048,6 +1064,16 @@ def test_remaining_stage_manifest_enumerates_every_simulation_projection_input()
         if entry.provision == "preserved_stacked_engine_input"
     }
     assert preserved == {
+        (
+            "household",
+            "congressional_district_geoid",
+            "ephemeral_simulation_projection_engine_default_if_present_null",
+        ),
+        (
+            "household",
+            "county_fips",
+            "ephemeral_simulation_projection_engine_default_if_present_null",
+        ),
         (
             "person",
             "is_related_to_head_or_spouse",
@@ -1069,15 +1095,81 @@ def test_remaining_stage_manifest_enumerates_every_simulation_projection_input()
             "ephemeral_simulation_projection_engine_default_if_present_null",
         ),
     }
+    # The stacked pool draws county from the PUMA ladder but no place: the
+    # county-rule jurisdiction flags are derived with it at assembly, the
+    # place-rule ones are never written (local_jurisdictions).
+    jurisdiction = {
+        (entry.entity, entry.variable): (
+            entry.provision,
+            entry.available_by,
+            entry.fallback,
+        )
+        for entry in projection
+        if entry.provision
+        in {
+            "geography_derived_jurisdiction_input",
+            "unavailable_place_jurisdiction_input",
+        }
+    }
+    assert jurisdiction == {
+        ("household", "in_denver"): (
+            "geography_derived_jurisdiction_input",
+            "assembled",
+            "ephemeral_simulation_projection_engine_default_if_present_null",
+        ),
+        ("person", "pa_philadelphia_wage_tax_resident"): (
+            "geography_derived_jurisdiction_input",
+            "assembled",
+            "ephemeral_simulation_projection_engine_default_if_present_null",
+        ),
+        ("household", "in_wilmington"): (
+            "unavailable_place_jurisdiction_input",
+            "simulate",
+            "policyengine_default_no_place_rung",
+        ),
+        ("household", "in_yonkers"): (
+            "unavailable_place_jurisdiction_input",
+            "simulate",
+            "policyengine_default_no_place_rung",
+        ),
+    }
+    # Residents' taxable wages are derived from the assembled flag and the
+    # transferred wages; the work-location and refund-claim inputs have no
+    # source, so the engine default applies (us_local_tax_inputs.json).
+    local_tax = {
+        entry.variable: (entry.provision, entry.available_by, entry.fallback)
+        for entry in projection
+        if entry.variable in packaged_us_local_tax_input_registry().variables
+    }
+    work_location = (
+        "unavailable_work_location_input",
+        "simulate",
+        "policyengine_default_no_work_location_source",
+    )
+    assert local_tax == {
+        "pa_philadelphia_wage_tax_taxable_wages": (
+            "derived_resident_wage_tax_input",
+            "derived",
+            "nonresident_work_location_unavailable_engine_default",
+        ),
+        "pa_philadelphia_wage_tax_reduced_rate_eligible": (
+            "unavailable_refund_claim_input",
+            "simulate",
+            "policyengine_default_no_refund_claim_source",
+        ),
+        "co_denver_employee_occupational_privilege_tax_months": work_location,
+        "de_wilmington_nonresident_earnings": work_location,
+        "ny_yonkers_nonresident_earnings": work_location,
+    }
     assert all(entry.fallback is not None for entry in projection)
 
 
 def test_remaining_stage_manifest_is_unique_complete_and_stable() -> None:
     manifest = pool_remaining_stage_input_manifest(_installed_variable_metadata_index())
 
-    assert len(manifest) == 1059
+    assert len(manifest) == 1064
     assert Counter(entry.stage for entry in manifest) == Counter(
-        {"derive": 34, "seed": 33, "simulate": 992}
+        {"derive": 39, "seed": 33, "simulate": 992}
     )
     assert len(
         {
@@ -1090,9 +1182,9 @@ def test_remaining_stage_manifest_is_unique_complete_and_stable() -> None:
     receipt = pool_remaining_stage_input_manifest_receipt(
         _installed_variable_metadata_index()
     )
-    assert receipt["entry_count"] == 1059
+    assert receipt["entry_count"] == 1064
     assert receipt["stage_counts"] == {
-        "derive": 34,
+        "derive": 39,
         "seed": 33,
         "simulate": 992,
     }

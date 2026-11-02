@@ -45,11 +45,18 @@ from microcosm.build.us_runtime.acs_transfer import (
     transfer_acs_inputs,
 )
 from microcosm.build.us_runtime.base_pool import (
+    acs_pool_local_jurisdiction_rungs,
     preflight_pooled_ladder_geography,
     with_optional_acs_spine,
 )
 from microcosm.build.us_runtime.congressional_district_vintage import (
     CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE,
+)
+from microcosm.build.us_runtime.local_jurisdictions import (
+    NULL_WAGES_PROPAGATE,
+    apply_us_local_tax_inputs,
+    us_local_jurisdiction_flag_receipt,
+    us_local_jurisdiction_flag_values,
 )
 from microcosm.build.us_runtime.puma_ladder import (
     UsPumaLadder,
@@ -74,6 +81,9 @@ class AcsMultispineResult:
     ``None`` when the base carries no role for the ACS spine to match.
     ``provenance["acs_group_quarters_children"]`` is the interim drop's
     receipt, or ``None`` when the caller kept those records.
+    ``provenance["local_jurisdiction_flags"]`` records which local-jurisdiction
+    flags the pool derived and which it left unavailable; without a PUMA
+    ladder that is every flag.
     """
 
     frame: Frame
@@ -251,6 +261,23 @@ def build_optional_acs_multispine(
         )
     pooled = with_optional_acs_spine(base, transferred_frame, **pool_options)
     del transferred_frame
+    # The pool writes the flags its rungs decide and removes the rest; the
+    # receipt records both, with or without a PUMA ladder.
+    jurisdiction_rungs = acs_pool_local_jurisdiction_rungs(puma_ladder)
+    local_jurisdiction_flags = us_local_jurisdiction_flag_receipt(
+        us_local_jurisdiction_flag_values(
+            pooled.table("household"), rungs=jurisdiction_rungs
+        ),
+        rungs=jurisdiction_rungs,
+        household_weights=pooled.weights_for("household").values,
+    )
+    # The pool also derived the local-tax inputs from those flags; this
+    # re-derivation only produces their receipt.
+    _, local_tax_inputs = apply_us_local_tax_inputs(
+        {entity: pooled.table(entity) for entity in ("household", "person")},
+        household_weights=pooled.weights_for("household").values,
+        null_wages=NULL_WAGES_PROPAGATE,
+    )
 
     provenance = {
         "enabled": True,
@@ -273,6 +300,8 @@ def build_optional_acs_multispine(
             "n_estimators": n_estimators,
             "max_targets_per_fit": max_targets_per_fit,
         },
+        "local_jurisdiction_flags": _json_ready_mapping(local_jurisdiction_flags),
+        "local_tax_inputs": _json_ready_mapping(local_tax_inputs),
     }
     if hours_donor is not None or hours_donor_factory is not None:
         provenance["fit_configuration"]["hours_donor_channel"] = hours_donor_channel

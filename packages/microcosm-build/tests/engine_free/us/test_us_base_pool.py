@@ -55,6 +55,7 @@ def _base_frame(
                 "person_family_id": [1_000, 1_000, 2_000],
                 "person_marital_unit_id": [10_000, 10_000, 20_000],
                 "base_only_income": [10.0, 20.0, 30.0],
+                "employment_income_before_lsr": [0.0, 0.0, 0.0],
             }
         ),
         "household": pd.DataFrame({"household_id": [1, 2], "state_fips": [1, 1]}),
@@ -96,6 +97,7 @@ def _acs_frame(
                 "person_family_id": [1_000, 1_000],
                 "person_marital_unit_id": [10_000, 10_000],
                 "acs_only_income": [40.0, 50.0],
+                "employment_income_before_lsr": [0.0, 0.0],
             }
         ),
         "household": pd.DataFrame(
@@ -938,3 +940,135 @@ def test__preflight_validates_geography_before_transfer() -> None:
     unknown_puma["puma"] = ["0999901"]
     with pytest.raises(ValueError, match="absent from the ladder"):
         preflight_pooled_ladder_geography(good_base, unknown_puma, ladder)
+
+
+def _block_line_donor_base() -> Frame:
+    """Donors placed by the block line: Denver and Arapahoe, with flags."""
+
+    base = _assigned_geography_base_frame(
+        state_fips=8,
+        tracts=["08031000100", "08005000100"],
+        congressional_districts=[801, 801],
+        counties=["08031", "08005"],
+    )
+    tables = {entity: base.table(entity).copy() for entity in base.entities}
+    household = tables["household"]
+    household["place_fips"] = ["20000", "04000"]
+    household["in_denver"] = [True, False]
+    household["in_yonkers"] = [False, False]
+    household["in_wilmington"] = [False, False]
+    tables["person"]["pa_philadelphia_wage_tax_resident"] = False
+    return Frame(
+        tables,
+        US_SCHEMA,
+        {entity: base.weights_for(entity) for entity in base.weighted_entities},
+        base.strata,
+    )
+
+
+def test__given_block_line_flags__then_pool_rederives_county_flags_for_every_row() -> (
+    None
+):
+    # Given: the ACS row draws its county from a PUMA spanning Denver and
+    # Arapahoe, and has no place; the donors carry block-line flags.
+    tracts = ["08031000100", "08005000100"]
+    ladder = _single_puma_ladder("0800101", tracts, ["08031", "08005"], 801)
+    acs = _acs_frame(state_fips=8, puma="0800101")
+
+    # When
+    result = with_optional_acs_spine(
+        _block_line_donor_base(),
+        acs,
+        puma_ladder=ladder,
+        geography_seed=4,
+        expected_congressional_district_vintage="119th_congress",
+    )
+
+    # Then: county flags cover every row from the final county, place flags
+    # are gone rather than half-null, and persons follow their household.
+    household = result.table("household")
+    person = result.table("person")
+    assert "in_yonkers" not in household
+    assert "in_wilmington" not in household
+    assert household["in_denver"].dtype == bool
+    assert (
+        household["in_denver"].tolist() == household["county_fips"].eq("08031").tolist()
+    )
+    assert person["pa_philadelphia_wage_tax_resident"].dtype == bool
+    assert not person["pa_philadelphia_wage_tax_resident"].any()
+    assert len(person) == 5
+
+
+def test__given_block_line_flags_and_no_ladder__then_pool_drops_every_flag() -> None:
+    result = with_optional_acs_spine(_block_line_donor_base(), _acs_frame(state_fips=8))
+
+    for flag in ("in_denver", "in_yonkers", "in_wilmington"):
+        assert flag not in result.table("household")
+    assert "pa_philadelphia_wage_tax_resident" not in result.table("person")
+
+
+def _philadelphia_pool_inputs() -> tuple[Frame, Frame]:
+    """Donors in Philadelphia and Delaware County, and an ACS household whose
+    PUMA spans both, one of its people under 15 with the PUMS blank wage."""
+
+    base = _assigned_geography_base_frame(
+        state_fips=42,
+        tracts=["42101000100", "42045000100"],
+        congressional_districts=[4203, 4203],
+        counties=["42101", "42045"],
+    )
+    base_tables = {entity: base.table(entity).copy() for entity in base.entities}
+    base_tables["person"]["employment_income_before_lsr"] = [50_000.0, -1_000.0, 0.0]
+    base_tables["person"]["pa_philadelphia_wage_tax_resident"] = [True, True, False]
+    # A stale value the pool must re-derive, not carry.
+    base_tables["person"]["pa_philadelphia_wage_tax_taxable_wages"] = 1.0
+    acs = _acs_frame(state_fips=42, puma="4203201")
+    acs_tables = {entity: acs.table(entity).copy() for entity in acs.entities}
+    acs_tables["person"]["employment_income_before_lsr"] = [np.nan, 30_000.0]
+    return (
+        Frame(
+            base_tables,
+            US_SCHEMA,
+            {entity: base.weights_for(entity) for entity in base.weighted_entities},
+            base.strata,
+        ),
+        Frame(
+            acs_tables,
+            US_SCHEMA,
+            {entity: acs.weights_for(entity) for entity in acs.weighted_entities},
+        ),
+    )
+
+
+@pytest.mark.parametrize("geography_seed", range(6))
+def test__given_philadelphia_rows__then_pool_rederives_taxable_wages(
+    geography_seed: int,
+) -> None:
+    # Given
+    base, acs = _philadelphia_pool_inputs()
+    tracts = ["42101000100", "42045000100"]
+    ladder = _single_puma_ladder("4203201", tracts, ["42101", "42045"], 4203)
+
+    # When
+    result = with_optional_acs_spine(
+        base,
+        acs,
+        puma_ladder=ladder,
+        geography_seed=geography_seed,
+        expected_congressional_district_vintage="119th_congress",
+    )
+
+    # Then: every row holds max(wages, 0) when resident and 0 otherwise; a
+    # resident's blank wage leaves a null input for the release to fill.
+    # Seeds 0 and 2 draw Philadelphia for the ACS household, the rest
+    # Delaware County, so both cases run.
+    person = result.table("person")
+    resident = person["pa_philadelphia_wage_tax_resident"].to_numpy()
+    wages = person["employment_income_before_lsr"].to_numpy(dtype=float)
+    taxable = person["pa_philadelphia_wage_tax_taxable_wages"].to_numpy(dtype=float)
+    np.testing.assert_array_equal(
+        taxable, np.where(resident, np.maximum(wages, 0.0), 0.0)
+    )
+    assert sorted(taxable[~np.isnan(taxable)])[-1] == 50_000.0
+    assert np.isnan(taxable).sum() == (resident & np.isnan(wages)).sum()
+    assert 1.0 not in taxable
