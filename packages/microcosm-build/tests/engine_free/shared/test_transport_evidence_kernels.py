@@ -98,6 +98,34 @@ FTC = "nz/statutes/income_tax/family_scheme/tax_credits.yaml"
 PROPERTY = settings(max_examples=60, deadline=None, derandomize=True)
 SCHEMA = EntitySchema(group_entities=("household", "family"))
 GATE = "release_input_coverage"
+#: What the leaf adds to the battery's binding identity (H42).
+LEAF_ADDED_MODULES = frozenset(
+    [
+        "microcosm.build.transport.evidence_contract",
+        "microcosm.frame.adapters.axiom_input_surface",
+        "microcosm.frame.input_closure",
+        "microcosm.graph",
+        "microcosm.graph.artifact_edges",
+        "microcosm.graph.availability",
+        "microcosm.graph.canonical",
+        "microcosm.graph.decl",
+        "microcosm.graph.errors",
+        "microcosm.graph.evidence",
+        "microcosm.graph.execution_overlay",
+        "microcosm.graph.expansion",
+        "microcosm.graph.kernel",
+        "microcosm.graph.keys",
+        "microcosm.graph.manifest",
+        "microcosm.graph.orrery",
+        "microcosm.graph.orrery_evidence",
+        "microcosm.graph.population",
+        "microcosm.graph.presentation",
+        "microcosm.graph.schema",
+        "microcosm.graph.serialize",
+        "microcosm.graph.store",
+        "microcosm.graph.weight_update",
+    ]
+)
 BATTERY = "toy.gates.terminal"
 
 
@@ -487,30 +515,20 @@ class TestImplementationHashes:
     def test_the_batterys_binding_identity_adds_only_the_leaf_and_its_imports(
         self,
     ) -> None:
+        # At base 25c8cc14 the battery's binding identity held 197 modules;
+        # w4 adds the leaf and exactly the modules it imports that the
+        # bindings did not already reach (the graph package among them).
         modules = set()
         for name, binding in TRANSPORT_GATE_REGISTRY.items():
             _, digests = binding_identity.describe(binding, path=name)
             modules |= set(digests)
-        leaf = set(binding_identity.source_closure([evidence_contract.__name__]))
-        without = modules - leaf
-        assert evidence_contract.__name__ in modules
-        assert not {
-            name
-            for name in modules
-            if name.startswith("microcosm.build.transport.")
-            and name
-            not in {
-                "microcosm.build.transport.gate_bindings",
-                "microcosm.build.transport.weight_quality",
-                "microcosm.build.transport.evidence_contract",
-            }
-        }
+        assert len(modules) == 197 + len(LEAF_ADDED_MODULES)
+        assert LEAF_ADDED_MODULES <= modules
+        assert LEAF_ADDED_MODULES <= set(
+            binding_identity.source_closure([evidence_contract.__name__])
+        )
         assert "microcosm.build.transport.registry" not in modules
         assert "microcosm.build.transport.evidence_kernels" not in modules
-        # Today's 197 modules, plus the leaf and what it imports that the
-        # bindings did not already reach.
-        assert len(without | (leaf & without)) <= 197
-        assert len(modules) == len(without) + len(leaf - without) + len(leaf & without)
 
 
 # ---------------------------------------------------------------------------

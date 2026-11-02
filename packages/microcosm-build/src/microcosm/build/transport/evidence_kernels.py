@@ -680,17 +680,6 @@ class TransportWeightsAuditKernel(_EvidenceKernel):
 
 #: Roster classes whose expected support starts from the donor's range.
 _DONOR_RANGED = frozenset({"copied", "normalized", "currency"})
-#: Classes the support gate counts as covered sources of a derived row.
-_COVERED = frozenset(
-    {
-        "copied",
-        "normalized",
-        "quantile_mapped",
-        "currency",
-        "structural",
-        "closure_default",
-    }
-)
 _MONEY_PARAMS = frozenset(
     {
         "declaration",
