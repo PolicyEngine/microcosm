@@ -2835,3 +2835,9 @@ def test_check_stage_reports_whether_the_image_s_emitter_can_take_a_token(
     assert [item for item in report["problems"] if "0.11.0" in item]
     report = app.check_stage(_fake_plan(env={"MICROCOSM_TELEMETRY_REQUIRED": "0"}))
     assert not [item for item in report["problems"] if "0.11.0" in item]
+
+
+def test_the_shell_s_runner_token_names_never_reach_a_test() -> None:
+    # Outside the stub container (load_app), which sets them itself, a shell
+    # that exports the runner's token names must not reach a test.
+    assert not set(RUNNER_TOKEN_SECRET) & set(os.environ)
