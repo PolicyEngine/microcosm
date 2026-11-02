@@ -18,9 +18,6 @@ from microcosm.build.us_runtime.acs_local_receipt_anchors import (
     require_acs_receipt_anchor_sources,
     with_acs_local_snap_receipt_anchor,
 )
-from microcosm.build.us_runtime.acs_local_spm_units import (
-    split_acs_adult_nonrelative_spm_units,
-)
 from microcosm.build.us_runtime.acs_pums import (
     ACS_2024_1YR_SPINE,
     AcsPumsSource,
@@ -115,9 +112,29 @@ _PERSONS = [
     _person("G", 1, 20),
     _person("G", 2, 34, AGEP=33),
 ]
-#: Split units, in id order: A reference (+ child), A roommate, B reference,
-#: B roommate, C, D family, E, F reference, F roommate, G reference,
-#: G roommate.
+#: Hand-built SPM units by (household id, SPORDER). The loader makes each
+#: ACS housing unit one SPM unit; these fixtures set explicit ids instead,
+#: so the several-unit rule is tested on a multi-unit frame: each roommate
+#: has a unit of their own, everyone else shares the reference person's. In
+#: id order: A reference (+ child), A roommate, B reference, B roommate, C,
+#: D family, E, F reference, F roommate, G reference, G roommate.
+_SPM_UNIT_IDS = {
+    (1, 1): 1,
+    (1, 2): 2,
+    (1, 3): 1,
+    (2, 1): 3,
+    (2, 2): 4,
+    (3, 1): 5,
+    (4, 1): 6,
+    (4, 2): 6,
+    (4, 3): 6,
+    (5, 1): 7,
+    (6, 1): 8,
+    (6, 2): 9,
+    (7, 1): 10,
+    (7, 2): 11,
+}
+#: The rule's receives_snap on each hand-built unit.
 _RULE = [True, False, False, False, False, True, False, False, True, True, False]
 #: What the QRF transfer is made to have written.
 _TRANSFERRED_SNAP = [
@@ -167,14 +184,31 @@ def _with_tables(frame: Frame, **tables: pd.DataFrame) -> Frame:
     )
 
 
-def _transferred(split: Frame, snap=None, tanf=None) -> Frame:
-    """The split ACS frame with the QRF transfer's SPM-unit receipt leaves."""
+def _with_spm_units(frame: Frame, unit_ids: dict[tuple[int, int], int]) -> Frame:
+    """``frame`` with the given SPM units, keyed by (household id, SPORDER)."""
 
-    spm_unit = split.table("spm_unit").assign(
+    person = frame.table("person")
+    keys = zip(
+        person["person_household_id"].astype(int),
+        person["SPORDER"].astype(int),
+        strict=True,
+    )
+    membership = np.asarray([unit_ids[key] for key in keys], dtype=np.int64)
+    return _with_tables(
+        frame,
+        person=person.assign(person_spm_unit_id=membership),
+        spm_unit=pd.DataFrame({"spm_unit_id": np.unique(membership)}),
+    )
+
+
+def _transferred(frame: Frame, snap=None, tanf=None) -> Frame:
+    """The ACS frame with the QRF transfer's SPM-unit receipt leaves."""
+
+    spm_unit = frame.table("spm_unit").assign(
         receives_snap=np.asarray(snap or _TRANSFERRED_SNAP, dtype=bool),
         receives_tanf=np.asarray(tanf or _TRANSFERRED_TANF, dtype=bool),
     )
-    return _with_tables(split, spm_unit=spm_unit)
+    return _with_tables(frame, spm_unit=spm_unit)
 
 
 @pytest.fixture(scope="module")
@@ -187,8 +221,7 @@ def loader_frame(tmp_path_factory) -> Frame:
 
 @pytest.fixture(scope="module")
 def transferred(loader_frame) -> Frame:
-    split, _receipt = split_acs_adult_nonrelative_spm_units(loader_frame)
-    return _transferred(split)
+    return _transferred(_with_spm_units(loader_frame, _SPM_UNIT_IDS))
 
 
 @pytest.fixture(scope="module")
@@ -210,6 +243,40 @@ def test_loader_carries_fs_on_households_and_pap_on_persons(loader_frame) -> Non
 
 
 # --- the rule ----------------------------------------------------------------
+
+
+def test_on_the_loader_partition_fs_decides_each_housing_unit(
+    loader_frame,
+) -> None:
+    """The loader makes each ACS housing unit one SPM unit, roommates
+    included, so FS alone decides every unit: none is left to the QRF or
+    forced."""
+
+    # One unit per household, A-G; the transfer said True on B, C and E.
+    frame, receipt = with_acs_local_snap_receipt_anchor(
+        _transferred(
+            loader_frame,
+            snap=[False, True, True, False, True, False, False],
+            tanf=[False] * 7,
+        )
+    )
+    assert frame.n("spm_unit") == frame.n("household") == 7
+    assert frame.table("spm_unit")["receives_snap"].tolist() == [
+        True,
+        False,
+        False,
+        True,
+        False,
+        True,
+        True,
+    ]
+    snap = receipt["snap"]
+    assert snap["fs_yes_households_with_several_units"] == 0
+    assert snap["non_reference_units_anchored"] == 0
+    assert snap["resolution"]["single_unit_households"] == 4
+    assert snap["resolution"]["several_unit_households_reference_forced"] == 0
+    gate = acs_local_receipt_anchor_signal_gate(_pooled(frame), receipt=receipt)
+    assert gate.passed, gate.failures
 
 
 def test_fs_constrains_the_housing_unit_and_the_qrf_names_the_recipient(
