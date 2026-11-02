@@ -582,3 +582,129 @@ def test_export_refuses_when_one_producers_evidence_mutates(toy, tmp_path):
     assert report["enforcement"]["blocking"] == ["toy_release_input_coverage"]
     with pytest.raises(NodeRejectedError, match="blocking gate report"):
         run_entitlement_graph(tmp_path / "blocked", forged, store=store, graph=graph)
+
+
+def _relation_axiom(engine, binding, entity_names, schema):
+    """A fake ``AxiomEngine`` that reads ``engine``'s roots on its binding's entity.
+
+    Its program keeps relation inputs out of ``root_inputs``, as the engine
+    does; the producer adds them from the binding's manifests.
+    """
+    from types import SimpleNamespace
+
+    from microcosm.frame.adapters.axiom import AxiomEngine
+
+    fake = object.__new__(AxiomEngine)
+    fake._schema = schema
+    fake._entity_names = dict(entity_names)
+    fake._module = Path(engine.rulespec_root) / binding["rulespec_path"]
+    frame_entity = {v: k for k, v in entity_names.items()}[binding["engine_entity"]]
+    fake._programs = {
+        entity: (
+            SimpleNamespace(root_inputs=tuple(engine.variables()))
+            if entity == frame_entity
+            else None
+        )
+        for entity in schema.entities
+    }
+    return fake
+
+
+def test_a_relation_reaches_the_closure_producer_through_the_executor(toy):
+    # S5: the toy declares the closure node's person slice from the bindings,
+    # so a binding with one relation composes with both its columns sliced,
+    # and the producer, on the executor's own projection of the toy's nz.as
+    # population, reports a relation row.
+    from microcosm.build.transport.evidence_contract import decode_input_closure
+    from microcosm.build.transport.evidence_kernels import (
+        TransportInputClosureKernel,
+    )
+    from microcosm.graph.executor import Population, _project_context
+    from test_support.microcosm_build.transport_nz_toy import closure_slices
+
+    fixture, run = toy
+    manifest = run[0]
+    spec = copy.deepcopy(fixture.spec)
+    resources = spec["resources"]
+    bindings = resources["axiom_rules_bindings"]
+    binding = next(
+        row for row in bindings["bindings"] if row["engine_entity"] == "Family"
+    )
+    binding["relations"] = [
+        {
+            "predicate": "toy_member",
+            "key": "toy_member:0:1",
+            "current_slot": 0,
+            "related_slot": 1,
+            "arguments": ["Family", "Person"],
+            "root_entity": "family",
+            "related_entity": "person",
+            "membership_column": "person_family_id",
+            "related_inputs": {"toy_member_input_age": "input_age"},
+            "cardinality": "many",
+            "period": binding.get("period", "2026-27"),
+            "role_column": "age",
+            "roles": ["member"],
+        }
+    ]
+    row = next(
+        item
+        for item in resources["transport_graph"]["nodes"]
+        if item["id"] == "nz.evidence.input_closure"
+    )
+    stale = copy.deepcopy(row["inputs"])
+    row["inputs"] = closure_slices(resources)
+    person = next(item for item in row["inputs"] if item["entity"] == "person")
+    assert {"input_age", "age"} <= set(person["columns"])
+    graph = compose_transport_graph(spec, fixture.config)
+    # Mutant: the slice the toy declared before the relation omits "age".
+    row["inputs"] = [
+        {**item, "columns": [c for c in item["columns"] if c != "age"]}
+        for item in stale
+    ]
+    with pytest.raises(ValueError, match=r"relation columns \['age'\]"):
+        compose_transport_graph(spec, fixture.config)
+
+    node = next(n for n in graph.nodes if n.id == "nz.evidence.input_closure")
+    population = Population.from_frame(
+        manifest.populations[node.population], node.population
+    )
+    context = _project_context(
+        node,
+        population,
+        key="0" * 64,
+        sources={},
+        tolerances={},
+        numerics={},
+        artifacts={},
+    )
+    assert {"input_age", "age"} <= set(context.tables["person"].columns)
+    refs = fixture.registry.engine_refs
+    schema = fixture.registry.schema
+    engines = {
+        refs[item["id"]]: _relation_axiom(
+            fixture.registry.engines[refs[item["id"]]],
+            item,
+            bindings["entity_names"],
+            schema,
+        )
+        for item in bindings["bindings"]
+    }
+    payload = (
+        TransportInputClosureKernel(engines)
+        .run(context)
+        .artifacts["axiom_input_closure"]
+    )
+    rows = {
+        item["binding"]: item
+        for item in decode_input_closure(payload).document["modules"]
+    }
+    assert rows[binding["id"]]["relation"] == [
+        {
+            "input": "Family.toy_member_input_age",
+            "column": "input_age",
+            "role_column": "age",
+        }
+    ]
+    assert rows[binding["id"]]["gap"] == []
+    assert rows[binding["id"]]["relation_missing"] == []

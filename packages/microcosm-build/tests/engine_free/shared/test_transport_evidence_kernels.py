@@ -3680,3 +3680,29 @@ class TestNormalizedSupport:
             # Signs and zeros carry through the normalization.
             raw_values = np.asarray(raw[row["column"]])
             assert np.array_equal(np.sign(values), np.sign(raw_values))
+
+
+def test_a_component_column_joins_its_entitys_support_slice(monkeypatch) -> None:
+    # E2 (w4d): the support producer reads a quantile_mapped row's
+    # component_column, so the generators' slices carry it.
+    roster = {
+        "columns": [
+            {
+                "entity": "person",
+                "column": "wage",
+                "class": "quantile_mapped",
+                "producer_params": {"component_column": "wage_code"},
+            },
+            {"entity": "person", "column": "age", "class": "copied"},
+            {"entity": "household", "column": "rent", "class": "derived"},
+        ]
+    }
+    monkeypatch.setattr(compose, "_support_roster", lambda spec: roster)
+    bounded = {"copied", "normalized", "currency", "quantile_mapped"}
+    assert compose.support_roster_slices({}, bounded) == [
+        {"entity": "person", "columns": ["age", "wage", "wage_code"]}
+    ]
+    ranged = {"copied", "normalized", "currency"}
+    assert compose.support_roster_slices({}, ranged) == [
+        {"entity": "person", "columns": ["age"]}
+    ]

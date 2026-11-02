@@ -2008,15 +2008,21 @@ def support_roster_slices(
     """Entity slices of the support roster's columns in ``classes``, sorted.
 
     Country generators and test fixtures declare the support producers' inputs
-    from this, so a producer slices exactly the columns its roster names.
+    from this, so a producer slices exactly the columns its roster names. A
+    ``quantile_mapped`` row's ``component_column`` joins its entity's slice,
+    because the support producer checks each value against its own
+    component's bands.
     """
 
     columns: dict[str, list[str]] = {}
     for row in _support_roster(spec)["columns"]:
         if row["class"] in classes:
             columns.setdefault(row["entity"], []).append(row["column"])
+            component = (row.get("producer_params") or {}).get("component_column")
+            if row["class"] == "quantile_mapped" and isinstance(component, str):
+                columns[row["entity"]].append(component)
     return [
-        {"entity": entity, "columns": sorted(names)}
+        {"entity": entity, "columns": sorted(set(names))}
         for entity, names in sorted(columns.items())
     ]
 
