@@ -188,6 +188,321 @@ def test_stage_declares_the_unmapped_code_refusal() -> None:
         )
 
 
+TOBACCO_SHARE = "tobacco_share_of_alcohol_and_tobacco"
+ON_TRADE_SHARE = "on_trade_alcohol_share_of_restaurants_and_hotels"
+GAMBLING_SHARE = "gambling_stakes_share_of_recreation"
+LOTTERY_SHARE = "national_lottery_share_of_gambling_stakes"
+BETTING_SHARE = "betting_and_gaming_share_of_other_gambling_stakes"
+
+
+def _excise_household() -> pd.DataFrame:
+    """The four-donor tab with alcohol and tobacco lines (microcosm#1359).
+
+    P602 and P611 are 1, 2, 3 and 4 a week. The first donor splits P602 a
+    quarter tobacco and has half its P611 in drinks; the second's tobacco is a
+    refund and its drinks pass P611 by three pence; the third has no lines
+    under its P602; the fourth's P602 is all tobacco. The first stakes three
+    quarters on the National Lottery and the rest on bingo, the second
+    bets two thirds of its stakes and puts the rest on a society lottery, the
+    third stakes nothing and the fourth only on the Irish Lottery.
+    """
+
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        UK_LCFS_GAMBLING_STAKE_CODES,
+        UK_LCFS_OFF_TRADE_ALCOHOL_CODES,
+        UK_LCFS_ON_TRADE_ALCOHOL_CODES,
+        UK_LCFS_TOBACCO_CODES,
+    )
+
+    household = _household()
+    for code in (
+        *UK_LCFS_OFF_TRADE_ALCOHOL_CODES,
+        *UK_LCFS_TOBACCO_CODES,
+        *UK_LCFS_ON_TRADE_ALCOHOL_CODES,
+    ):
+        household[code] = 0.0
+    household["c22111"] = [0.25, -1.0, 0.0, 0.0]
+    household["c22131"] = [0.0, 0.0, 0.0, 4.0]
+    household["c21311"] = [0.75, 0.0, 0.0, 0.0]
+    household["c21211"] = [0.0, 2.0, 0.0, 0.0]
+    household["cb111i"] = [0.5, 0.0, 0.0, 0.0]
+    household["cb111d"] = [0.0, 2.03, 0.0, 0.0]
+    for code in UK_LCFS_GAMBLING_STAKE_CODES:
+        household[code] = 0.0
+    household["c94319"] = [0.5, 0.0, 0.0, 0.0]
+    household["c94316"] = [0.25, 0.0, 0.0, 0.0]
+    household["c94312"] = [0.25, 0.0, 0.0, 0.0]
+    household["c94314"] = [0.0, 1.0, 0.0, 0.0]
+    household["c94313"] = [0.0, 0.5, 0.0, 0.0]
+    household["c94315"] = [0.0, 0.0, 0.0, 1.0]
+    return household
+
+
+def test_donor_excise_shares_read_the_diary_lines() -> None:
+    from microcosm.build.uk_runtime.lcfs_consumption import UK_LCFS_EXCISE_SHARES
+
+    donor = clean_lcfs_consumption_table(
+        _person(), _excise_household(), shares=UK_LCFS_EXCISE_SHARES
+    )
+
+    # Refunds read as zero, a donor with no lines has no share, and the
+    # drinks past P611's rounding are held at one.
+    assert donor[TOBACCO_SHARE].tolist() == [0.25, 0.0, 0.0, 1.0]
+    assert donor[ON_TRADE_SHARE].tolist() == [0.5, 1.0, 0.0, 0.0]
+    # The stakes split by their own lines: the National Lottery's share of all
+    # seven, then the betting and gaming share of the other five, which the
+    # Irish-Lottery-only donor holds none of.
+    assert donor[GAMBLING_SHARE].tolist() == [1.0, 0.75, 0.0, 0.25]
+    assert donor[LOTTERY_SHARE].tolist() == [0.75, 0.0, 0.0, 0.0]
+    assert donor[BETTING_SHARE].tolist() == pytest.approx([1.0, 2.0 / 3.0, 0.0, 0.0])
+    # A ratio carries no price: uprating the totals leaves the shares alone.
+    uprated = clean_lcfs_consumption_table(
+        _person(),
+        _excise_household(),
+        shares=UK_LCFS_EXCISE_SHARES,
+        uprating={
+            "alcohol_and_tobacco_consumption": 1.5,
+            "restaurants_and_hotels_consumption": 0.5,
+        },
+    )
+    shares = list(UK_LCFS_EXCISE_SHARES)
+    pd.testing.assert_frame_equal(uprated[shares], donor[shares])
+    receipt = donor.attrs["excise_shares"]
+    tobacco = receipt[TOBACCO_SHARE]
+    weights = np.array([1.5, 2.0, 2.5, 3.0])
+    assert tobacco["share_of_denominator"] == pytest.approx(
+        weights @ [0.25, 0.0, 0.0, 4.0] / (weights @ [1.0, 2.0, 0.0, 4.0])
+    )
+    assert tobacco["positive_share"] == pytest.approx((1.5 + 3.0) / weights.sum())
+    # Two donors carry tobacco and one P602 sits beside its lines: bands, and
+    # the withheld share, never the counts.
+    assert tobacco["positive_support"] == "<3"
+    assert tobacco["clipped_at_one"] == 0
+    assert tobacco["total_beside_lines"] == "<3"
+    on_trade = receipt[ON_TRADE_SHARE]
+    assert on_trade["clipped_at_one"] == "<3"
+    assert "total_beside_lines" not in on_trade
+    # A share of the stakes has no published total to sit beside.
+    lottery = receipt[LOTTERY_SHARE]
+    assert lottery["total"] == "gambling_stakes"
+    assert lottery["positive_support"] == "<3"
+    assert "total_beside_lines" not in lottery
+    assert receipt[BETTING_SHARE]["share_of_denominator"] == pytest.approx(
+        (1.5 * 0.25 + 2.0 * 1.0) / (1.5 * 0.25 + 2.0 * 1.5 + 3.0 * 1.0)
+    )
+    # Undeclared, the donor carries no share and no receipt.
+    plain = clean_lcfs_consumption_table(_person(), _excise_household())
+    assert not set(UK_LCFS_EXCISE_SHARES) & set(plain.columns)
+    assert "excise_shares" not in plain.attrs
+
+
+def test_stage_draws_the_declared_excise_shares_after_its_spend_targets() -> None:
+    from microcosm.build.country_spec import load_country_spec
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        UK_LCFS_EXCISE_SHARES,
+        lcfs_chain_targets,
+        lcfs_donor_shares,
+    )
+
+    stage = load_country_spec("uk").sources.stage_map()["lcfs_consumption"]
+    shares = lcfs_donor_shares(stage)
+
+    assert shares == dict(UK_LCFS_EXCISE_SHARES)
+    assert lcfs_chain_targets(stage, shares) == (
+        *UK_LCFS_CONSUMPTION_TARGET_COLUMNS,
+        TOBACCO_SHARE,
+        ON_TRADE_SHARE,
+        GAMBLING_SHARE,
+        LOTTERY_SHARE,
+        BETTING_SHARE,
+    )
+
+
+def _with_operation(stage, kind: str, **changes):
+    import dataclasses
+
+    return dataclasses.replace(
+        stage,
+        operations=tuple(
+            dataclasses.replace(
+                operation, parameters={**operation.parameters, **changes}
+            )
+            if operation.kind == kind
+            else operation
+            for operation in stage.operations
+        ),
+    )
+
+
+@pytest.mark.parametrize(
+    "change", ["drop_share", "extra_share", "numerator", "denominator", "total"]
+)
+def test_excise_share_declaration_is_held_to_the_module(change) -> None:
+    from microcosm.build.country_spec import load_country_spec
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        UK_LCFS_EXCISE_SHARES,
+        UK_LCFS_ON_TRADE_ALCOHOL_CODES,
+        lcfs_donor_shares,
+    )
+
+    stage = load_country_spec("uk").sources.stage_map()["lcfs_consumption"]
+    declared = {
+        name: {
+            "total": total,
+            "numerator": list(numerator),
+            "denominator": list(denominator),
+        }
+        for name, (total, numerator, denominator) in UK_LCFS_EXCISE_SHARES.items()
+    }
+    if change == "drop_share":
+        declared.pop(ON_TRADE_SHARE)
+    elif change == "extra_share":
+        declared["gambling_share_of_recreation"] = {
+            "total": "recreation_consumption",
+            "numerator": ["c94311"],
+            "denominator": ["p609"],
+        }
+    elif change == "numerator":
+        declared[TOBACCO_SHARE]["numerator"] = ["c22111"]
+    elif change == "denominator":
+        declared[ON_TRADE_SHARE]["denominator"] = list(UK_LCFS_ON_TRADE_ALCOHOL_CODES)
+    else:
+        declared[TOBACCO_SHARE]["total"] = "recreation_consumption"
+
+    with pytest.raises(ValueError, match="declares shares"):
+        lcfs_donor_shares(_with_operation(stage, "derive", shares=declared))
+
+
+def test_chain_draws_the_spend_targets_before_the_shares() -> None:
+    from microcosm.build.country_spec import load_country_spec
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        lcfs_chain_targets,
+        lcfs_donor_shares,
+    )
+
+    stage = load_country_spec("uk").sources.stage_map()["lcfs_consumption"]
+    shares = lcfs_donor_shares(stage)
+    reordered = _with_operation(
+        stage,
+        "fit_weighted_qrf_chain",
+        targets=[*UK_LCFS_CONSUMPTION_TARGET_COLUMNS, ON_TRADE_SHARE, TOBACCO_SHARE],
+    )
+    with pytest.raises(ValueError, match="followed by the declared shares"):
+        lcfs_chain_targets(reordered, shares)
+    with pytest.raises(ValueError, match="spend targets first"):
+        impute_lcfs_consumption(
+            pd.DataFrame(),
+            pd.DataFrame(),
+            seed=0,
+            n_estimators=2,
+            record_ids=[],
+            targets=(TOBACCO_SHARE, *UK_LCFS_CONSUMPTION_TARGET_COLUMNS),
+        )
+
+
+def test_appending_the_excise_shares_moves_no_spend_draw() -> None:
+    """The chain with the shares draws the spend targets the chain without them did."""
+
+    from microcosm.build.uk_runtime.lcfs_consumption import UK_LCFS_EXCISE_SHARES
+
+    person, household = _synthetic_lcfs_donor()
+    plain = clean_lcfs_consumption_table(person, household)
+    donor = clean_lcfs_consumption_table(
+        person, household, shares=UK_LCFS_EXCISE_SHARES
+    )
+    recipient = plain.iloc[:40].loc[:, list(UK_LCFS_CONSUMPTION_PREDICTORS)]
+    ids = np.arange(1, 41)
+
+    before = impute_lcfs_consumption(
+        plain, recipient, seed=0, n_estimators=5, record_ids=ids
+    )
+    after = impute_lcfs_consumption(
+        donor,
+        recipient,
+        seed=0,
+        n_estimators=5,
+        record_ids=ids,
+        targets=(*UK_LCFS_CONSUMPTION_TARGET_COLUMNS, *UK_LCFS_EXCISE_SHARES),
+    )
+
+    pd.testing.assert_frame_equal(
+        after.draws[list(UK_LCFS_CONSUMPTION_TARGET_COLUMNS)], before.draws
+    )
+    assert (
+        after.fit_weight_records[: len(UK_LCFS_CONSUMPTION_TARGET_COLUMNS)]
+        == before.fit_weight_records
+    )
+    shares = after.draws[list(UK_LCFS_EXCISE_SHARES)].to_numpy()
+    assert ((shares >= 0.0) & (shares <= 1.0)).all()
+
+
+def test_excise_spending_splits_each_drawn_total() -> None:
+    from microcosm.build.uk_runtime.lcfs_consumption import excise_spending
+
+    draws = pd.DataFrame(
+        {
+            "alcohol_and_tobacco_consumption": [100.0, 50.0, 0.0],
+            "restaurants_and_hotels_consumption": [200.0, 0.0, 30.0],
+            "recreation_consumption": [400.0, 80.0, 0.0],
+            TOBACCO_SHARE: [0.25, 1.0, 0.4],
+            ON_TRADE_SHARE: [0.1, 0.5, 1.0],
+            GAMBLING_SHARE: [0.05, 0.0, 0.3],
+            LOTTERY_SHARE: [0.25, 1.0, 0.5],
+            BETTING_SHARE: [0.6, 0.2, 1.0],
+        }
+    )
+
+    spending = excise_spending(draws)
+
+    assert spending["tobacco_spending"].tolist() == [25.0, 50.0, 0.0]
+    assert spending["off_trade_alcohol_spending"].tolist() == [75.0, 0.0, 0.0]
+    assert spending["on_trade_alcohol_spending"].tolist() == [20.0, 0.0, 30.0]
+    assert spending["gambling_stakes"].tolist() == [20.0, 0.0, 0.0]
+    # The stakes split in turn: the National Lottery's share, then the betting
+    # and gaming share of the rest, which leaves the society and Irish
+    # lotteries the remainder.
+    assert spending["national_lottery_stakes"].tolist() == [5.0, 0.0, 0.0]
+    assert spending["other_gambling_stakes"].tolist() == [15.0, 0.0, 0.0]
+    assert spending["betting_and_gaming_stakes"].tolist() == [9.0, 0.0, 0.0]
+    np.testing.assert_allclose(
+        spending["tobacco_spending"] + spending["off_trade_alcohol_spending"],
+        draws["alcohol_and_tobacco_consumption"],
+    )
+    np.testing.assert_allclose(
+        spending["national_lottery_stakes"] + spending["other_gambling_stakes"],
+        spending["gambling_stakes"],
+    )
+
+
+def test_clip_holds_drawn_shares_to_the_unit_interval() -> None:
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        UK_LCFS_EXCISE_SHARES,
+        clip_excise_shares,
+    )
+
+    draws = pd.DataFrame(
+        {
+            TOBACCO_SHARE: [0.2, 1.2, -0.1],
+            ON_TRADE_SHARE: [0.5] * 3,
+            GAMBLING_SHARE: [0.1] * 3,
+            LOTTERY_SHARE: [0.4] * 3,
+            BETTING_SHARE: [1.0] * 3,
+        }
+    )
+
+    held, outside = clip_excise_shares(draws, UK_LCFS_EXCISE_SHARES)
+
+    assert held[TOBACCO_SHARE].tolist() == [0.2, 1.0, 0.0]
+    assert held[ON_TRADE_SHARE].tolist() == [0.5] * 3
+    assert outside == {
+        TOBACCO_SHARE: "<3",
+        ON_TRADE_SHARE: 0,
+        GAMBLING_SHARE: 0,
+        LOTTERY_SHARE: 0,
+        BETTING_SHARE: 0,
+    }
+
+
 def test_energy_split_sums_each_fuels_labelled_parts() -> None:
     # microcosm#1164: b226 is the gas component of a combined bill and b227 the
     # electricity one; b489 is the electricity account less its rebate (b175
@@ -338,8 +653,8 @@ def test_split_receipt_separates_refunds_read_as_zero_from_other_gaps() -> None:
     )
     # Two donors differ: a small cell, so no share.
     assert receipt["share_of_donors_whose_unclipped_parts_differ_from_p537"] == {
-        "by_over_a_penny_a_week": "<10",
-        "by_over_50p_a_week": "<10",
+        "by_over_a_penny_a_week": "<3",
+        "by_over_50p_a_week": "<3",
     }
 
 
@@ -482,13 +797,14 @@ def test_negative_donor_consumption_is_floored_with_a_receipt() -> None:
         if column not in raised:
             assert floored[column].tolist() == [10.0, 20.0, 30.0]
     assert receipt["floor"] == 0.0
-    # Counts of rows picked out by a negative spend are banded (microcosm#1164).
-    assert receipt["rows_raised"] == "<10"
+    # Counts of rows picked out by a negative spend are banded (microcosm#1164):
+    # three rows in all, two of housing and one of bus fares.
+    assert receipt["rows_raised"] == "3-9"
     assert receipt["remaining_negative_rows"] == 0
     housing = receipt["columns"]["housing_water_and_electricity_consumption"]
     # Counts only: no donor value or statistic of the raised rows.
-    assert housing == {"rows_raised": "<10"}
-    assert receipt["columns"]["bus_fare_spending"] == {"rows_raised": "<10"}
+    assert housing == {"rows_raised": "<3"}
+    assert receipt["columns"]["bus_fare_spending"] == {"rows_raised": "<3"}
     assert receipt["columns"]["food_and_non_alcoholic_beverages_consumption"] == {
         "rows_raised": 0
     }
@@ -809,32 +1125,34 @@ def test_fuel_flag_evidence_withholds_every_share_beside_a_thin_group() -> None:
             "diesel_spending": [0.0, 0.0, 0.0],
         }
     )
-    # Twenty buyers and ten households without a vehicle, but three
+    # Twenty buyers and ten households without a vehicle, but two
     # fuel-free vehicle households.
     recipient = pd.DataFrame(
         {
-            "num_vehicles": [0] * 10 + [1] * 23,
-            "has_fuel_consumption": [False] * 10 + [True] * 20 + [False] * 3,
+            "num_vehicles": [0] * 10 + [1] * 22,
+            "has_fuel_consumption": [False] * 10 + [True] * 20 + [False] * 2,
         }
     )
     evidence = fuel_flag_evidence(
         donor,
         recipient,
-        recipient_weights=np.ones(33),
+        recipient_weights=np.ones(32),
         ice_share_receipt={"rate": 0.9},
     )
+    # Three donors read "3-9", the band from the floor of three; each of their
+    # groups rests on one, so every share beside them is withheld.
     assert evidence["donor"] == {
-        "households": "<10",
-        "with_vehicles_share": "<10",
-        "positive_fuel_share": "<10",
-        "positive_fuel_share_among_vehicle_households": "<10",
+        "households": "3-9",
+        "with_vehicles_share": "<3",
+        "positive_fuel_share": "<3",
+        "positive_fuel_share_among_vehicle_households": "<3",
     }
     assert evidence["recipient"] == {
-        "households": 33,
-        "with_vehicles_share": "<10",
-        "flagged_share": "<10",
-        "flagged_share_among_vehicle_households": "<10",
-        "fuel_free_share_of_vehicles": "<10",
+        "households": 32,
+        "with_vehicles_share": "<3",
+        "flagged_share": "<3",
+        "flagged_share_among_vehicle_households": "<3",
+        "fuel_free_share_of_vehicles": "<3",
     }
 
 
@@ -869,8 +1187,8 @@ def test_fuel_flag_evidence_counts_the_cars_in_fuel_free_households() -> None:
     # Forty-two vehicles, ten of them in the ten fuel-free households.
     assert evidence["fuel_free_share_of_vehicles"] == pytest.approx(10 / 42)
     # Copies of one source household count once: the ten fuel-free rows are
-    # copies of three sources, so every share is withheld.
-    sources = list(range(22)) + [100, 100, 100, 100, 101, 101, 101, 102, 102, 102]
+    # copies of two sources, so every share is withheld.
+    sources = list(range(22)) + [100, 100, 100, 100, 100, 101, 101, 101, 101, 101]
     sources += list(range(200, 212))
     withheld = fuel_flag_evidence(
         donor,
@@ -879,8 +1197,8 @@ def test_fuel_flag_evidence_counts_the_cars_in_fuel_free_households() -> None:
         ice_share_receipt={"rate": 0.96},
         sources=sources,
     )["recipient"]
-    assert withheld["fuel_free_share_of_vehicles"] == "<10"
-    assert withheld["flagged_share"] == "<10"
+    assert withheld["fuel_free_share_of_vehicles"] == "<3"
+    assert withheld["flagged_share"] == "<3"
 
 
 def test_post_imputation_rake_fits_all_four_need_margins_in_kwh() -> None:
@@ -1076,6 +1394,58 @@ def test_post_imputation_rake_fits_all_four_need_margins_in_kwh() -> None:
     assert receipt["gas_connected_rows"] == int((gas > 0).sum())
 
 
+def _excise_lines(
+    rows: np.ndarray, p602: np.ndarray, p611: np.ndarray, p609: np.ndarray
+) -> dict[str, np.ndarray]:
+    """The excise diary lines inside P602, P611 and P609 (microcosm#1359).
+
+    Deterministic, so a donor's random draws keep their stream: tobacco on one
+    donor in four, all of P602 on one in twelve, the rest alcohol brought
+    home; drinks away from home on one donor in three, a few pennies past
+    P611 on one in thirty-seven, as the tab's rounding of P611 allows; and
+    gambling stakes, a twentieth of P609, on one donor in five.
+    """
+
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        UK_LCFS_GAMBLING_STAKE_CODES,
+        UK_LCFS_OFF_TRADE_ALCOHOL_CODES,
+        UK_LCFS_ON_TRADE_ALCOHOL_CODES,
+    )
+
+    p602 = np.asarray(p602, dtype=float)
+    p611 = np.asarray(p611, dtype=float)
+    tobacco = np.where(rows % 12 == 0, p602, np.where(rows % 4 == 0, 0.3 * p602, 0.0))
+    lines = {
+        "c22111": 0.7 * tobacco,
+        "c22121": np.zeros(len(rows)),
+        "c22131": 0.3 * tobacco,
+    }
+    mix = (0.2, 0.3, 0.05, 0.1, 0.05, 0.1, 0.2)
+    lines.update(
+        {
+            code: share * (p602 - tobacco)
+            for code, share in zip(UK_LCFS_OFF_TRADE_ALCOHOL_CODES, mix, strict=True)
+        }
+    )
+    on_trade = np.where(
+        rows % 37 == 5, p611 + 0.03, np.where(rows % 3 == 0, 0.25 * p611, 0.0)
+    )
+    lines.update(
+        {
+            code: on_trade / len(UK_LCFS_ON_TRADE_ALCOHOL_CODES)
+            for code in UK_LCFS_ON_TRADE_ALCOHOL_CODES
+        }
+    )
+    stakes = np.where(rows % 5 == 0, 0.05 * np.asarray(p609, dtype=float), 0.0)
+    lines.update(
+        {
+            code: stakes / len(UK_LCFS_GAMBLING_STAKE_CODES)
+            for code in UK_LCFS_GAMBLING_STAKE_CODES
+        }
+    )
+    return lines
+
+
 def _synthetic_lcfs_donor(
     n: int = 240, seed: int = 4
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
@@ -1136,6 +1506,9 @@ def _synthetic_lcfs_donor(
             b017=np.where(rows % 20 == 3, 5.0, 0.0),
         )
     )
+    household.update(
+        _excise_lines(rows, household["p602"], household["p611"], household["p609"])
+    )
     person = pd.DataFrame(
         {
             "case": rows + 1,
@@ -1147,11 +1520,14 @@ def _synthetic_lcfs_donor(
     return person, pd.DataFrame(household)
 
 
-def _synthetic_lcfs_stage(household_columns=None):
+def _synthetic_lcfs_stage(household_columns=None, *, excise=True, gambling=True):
     """The committed lcfs_consumption stage on synthetic inputs, minus the engine.
 
-    The uprating step needs the installed engine and is dropped; the QRF is
-    shrunk to four trees. ``household_columns(n)`` adds frame columns.
+    The uprating step needs the installed engine and is dropped; the QRF and
+    the gambling top-up's stake forest are shrunk to four trees.
+    ``household_columns(n)`` adds frame columns; with ``excise=False`` the
+    excise step is dropped, and with it the top-up that re-keys it; with
+    ``gambling=False`` the top-up alone.
     """
 
     import dataclasses
@@ -1165,6 +1541,15 @@ def _synthetic_lcfs_stage(household_columns=None):
     for operation in committed.operations:
         if operation.kind == "uprate_donor_columns":
             continue
+        if not excise and operation.kind == "level_excise_quantities":
+            continue
+        if operation.kind == "top_up_gambling_participation":
+            if not (excise and gambling):
+                continue
+            operation = SourceOperationSpec(
+                kind=operation.kind,
+                parameters={**operation.parameters, "n_estimators": 4},
+            )
         if operation.kind == "fit_weighted_qrf_chain":
             operation = SourceOperationSpec(
                 kind=operation.kind,
@@ -1203,6 +1588,8 @@ def _synthetic_lcfs_stage(household_columns=None):
             "person_benunit_id": np.repeat(np.arange(1, n + 1), 2),
             "person_household_id": np.repeat(np.arange(1, n + 1), 2),
             "age": ages,
+            # As the spine spells it; the gambling top-up reads it.
+            "gender": np.where(np.arange(2 * n) % 2 == 0, "MALE", "FEMALE"),
             # The nts_bus_travel stage's cells: journeys per series and the
             # statutory concessionary eligibility (here, 66 and over).
             "bus_in_london_trips": np.where(
@@ -1289,18 +1676,38 @@ def test_stage_transform_prices_bus_fares_from_journeys() -> None:
 
     out = result.table("household")
     assert set(UK_LCFS_CONSUMPTION_OUTPUT_COLUMNS) <= set(out.columns)
-    # The 18 chain targets, the road-fuel redraw's total and petrol share,
-    # the prepayment-meter flag (microcosm#1110), then the gas-payer
-    # classifier and amount model the connection walk reads (microcosm#1164).
-    assert len(transform.fit_weight_records) == 23
-    assert transform.fit_weight_records[-4].fit_name.endswith(
-        ":petrol_share_of_road_fuel"
-    )
-    assert transform.fit_weight_records[-3].fit_name.endswith(
-        ":uses_energy_prepayment_meter"
-    )
-    assert transform.fit_weight_records[-2].fit_name.endswith(":gas_payer")
-    assert transform.fit_weight_records[-1].fit_name.endswith(":gas_payer_amount")
+    # The 20 chain targets (the heating fuels after the spend targets,
+    # pe-uk#2572) and the five excise shares (microcosm#1359), the road-fuel
+    # redraw's total and petrol share, the prepayment-meter flag
+    # (microcosm#1110), the gas-payer classifier and amount model the
+    # connection walk reads (microcosm#1164), then each gambling key's
+    # propensity and stake model the participation walk reads (microcosm#1359).
+    assert len(transform.fit_weight_records) == 34
+    assert [
+        record.fit_name.rsplit(":", 1)[1]
+        for record in transform.fit_weight_records[18:25]
+    ] == [
+        "liquid_fuel_consumption",
+        "solid_fuel_consumption",
+        "tobacco_share_of_alcohol_and_tobacco",
+        "on_trade_alcohol_share_of_restaurants_and_hotels",
+        "gambling_stakes_share_of_recreation",
+        "national_lottery_share_of_gambling_stakes",
+        "betting_and_gaming_share_of_other_gambling_stakes",
+    ]
+    assert [
+        record.fit_name.rsplit(":", 1)[1]
+        for record in transform.fit_weight_records[-8:]
+    ] == [
+        "petrol_share_of_road_fuel",
+        "uses_energy_prepayment_meter",
+        "gas_payer",
+        "gas_payer_amount",
+        "national_lottery_participation",
+        "national_lottery_participation_stake",
+        "betting_and_gaming_participation",
+        "betting_and_gaming_participation_stake",
+    ]
     assert out["uses_energy_prepayment_meter"].dtype == bool
     from microcosm.build.uk_runtime.lcfs_consumption import (
         UK_LCFS_CONSUMPTION_MASS_CONSERVATION_REASON,
@@ -1327,6 +1734,41 @@ def test_stage_transform_prices_bus_fares_from_journeys() -> None:
         "energy_pricing",
         "energy_rake",
     } <= set(evidence)
+    # The excise shares are scratch: neither they nor the spending they give
+    # reach the frame (microcosm#1359), and the receipt sets the frame's part
+    # of each total beside the donor's.
+    from microcosm.build.uk_runtime.lcfs_consumption import UK_LCFS_EXCISE_SHARES
+
+    scratch = {
+        *UK_LCFS_EXCISE_SHARES,
+        "tobacco_spending",
+        "off_trade_alcohol_spending",
+        "on_trade_alcohol_spending",
+        "gambling_stakes",
+    }
+    assert not scratch & set(out.columns)
+    assert not scratch & set(evidence["support_clip"]["columns"])
+    shares = evidence["excise_shares"]
+    assert set(shares) == set(UK_LCFS_EXCISE_SHARES)
+    tobacco = shares["tobacco_share_of_alcohol_and_tobacco"]
+    assert tobacco["total"] == "alcohol_and_tobacco_consumption"
+    assert tobacco["frame"]["draws_outside_unit_interval"] == 0
+    assert 0.0 < tobacco["frame"]["share_of_total"] < 1.0
+    assert 0.0 < tobacco["frame"]["positive_share"] < 1.0
+    assert tobacco["donor"]["positive_support"] == "30+"
+    assert tobacco["donor"]["clipped_at_one"] == 0
+    # The synthetic P602 is its ten lines, so no donor's total sits beside them.
+    assert tobacco["donor"]["total_beside_lines"] == 0.0
+    on_trade = shares["on_trade_alcohol_share_of_restaurants_and_hotels"]
+    assert on_trade["total"] == "restaurants_and_hotels_consumption"
+    assert on_trade["frame"]["draws_outside_unit_interval"] == 0
+    # Seven donors' drinks pass P611 by pennies and are held at one.
+    assert on_trade["donor"]["clipped_at_one"] == "3-9"
+    assert "total_beside_lines" not in on_trade["donor"]
+    gambling = shares["gambling_stakes_share_of_recreation"]
+    assert gambling["total"] == "recreation_consumption"
+    assert gambling["frame"]["draws_outside_unit_interval"] == 0
+    assert gambling["donor"]["positive_support"] == "30+"
     assert evidence["energy_pricing"]["payment_method"] == "all"
     assert evidence["energy_pricing"]["vat_treatment"] == "including_vat"
     assert evidence["energy_pricing"]["gas_connection"]["rule"] == (
@@ -1648,9 +2090,9 @@ def test_division_capture_reads_each_division_against_its_donor() -> None:
     )
 
 
-def test_weighted_top_share_withholds_fewer_than_ten_households() -> None:
+def test_weighted_top_share_withholds_fewer_than_three_households() -> None:
     """The top spenders' share of a weighted total (microcosm#1278); a share
-    resting on one to nine households is "<10", as every receipt count."""
+    resting on one or two households is "<3", as every receipt count."""
 
     from microcosm.build.uk_runtime.lcfs_consumption import weighted_top_share
 
@@ -1659,7 +2101,8 @@ def test_weighted_top_share_withholds_fewer_than_ten_households() -> None:
     assert weighted_top_share(values, weights, fraction=0.10) == pytest.approx(
         2_000.0 / 2_180.0
     )
-    assert weighted_top_share(values, weights, fraction=0.01) == "<10"
+    # The top 1% of two hundred is two households.
+    assert weighted_top_share(values, weights, fraction=0.01) == "<3"
     # Weight, not row count, sets the group: at double weight, eleven of the
     # top twenty households carry exactly a tenth of the 220 weight.
     heavy = np.where(values > 1.0, 2.0, 1.0)
@@ -1689,22 +2132,22 @@ def test_weighted_top_shares_count_distinct_source_households() -> None:
     as_sources = weighted_top_shares(
         values, weights, fractions=(0.06,), sources=sources
     )
-    assert as_sources[0.06] == "<10"
+    assert as_sources[0.06] == "<3"
     tail = division_tail(values, weights, values, weights, frame_sources=sources)
     # Each top 10% is twenty rows, the twelve leaders and eight more: ten
     # sources on the frame and twenty on the donor (one row per household),
     # so both ship. The frame's top 1% is two copies of one source.
     assert tail["top_10_percent"]["donor"] == pytest.approx(1_208.0 / 1_388.0)
     assert tail["top_10_percent"]["frame"] == pytest.approx(1_208.0 / 1_388.0)
-    assert tail["top_1_percent"]["frame"] == "<10"
+    assert tail["top_1_percent"]["frame"] == "<3"
     with pytest.raises(ValueError, match="align"):
         weighted_top_shares(values, weights, fractions=(0.1,), sources=sources[:5])
 
 
-def test_weighted_top_shares_withhold_a_difference_of_one_to_nine() -> None:
+def test_weighted_top_shares_withhold_a_difference_of_one_or_two() -> None:
     """The top 1% leads the top 10%, so the two shares' difference is the
-    spend of the households between them: a larger fraction adding one to
-    nine sources to a shipped smaller one is withheld (microcosm#1306 review)."""
+    spend of the households between them: a larger fraction adding one or
+    two sources to a shipped smaller one is withheld (microcosm#1306 review)."""
 
     from microcosm.build.uk_runtime.lcfs_consumption import weighted_top_shares
 
@@ -1713,36 +2156,36 @@ def test_weighted_top_shares_withhold_a_difference_of_one_to_nine() -> None:
         weights = np.array([10.0] * 10 + [next_weight] * next_rows + [90.0] * 100)
         return weighted_top_shares(values, weights, fractions=(0.01, 0.10))
 
-    # Ten households carry the top 1% and five more the rest of the top 10%.
-    five_more = shares(5, 180.0)
-    assert five_more[0.01] == pytest.approx(10_000.0 / 64_000.0)
-    assert five_more[0.10] == "<10"
-    # Ten more is enough.
-    ten_more = shares(10, 90.0)
-    assert ten_more[0.01] == pytest.approx(10_000.0 / 64_000.0)
-    assert ten_more[0.10] == pytest.approx(55_000.0 / 64_000.0)
+    # Ten households carry the top 1% and two more the rest of the top 10%.
+    two_more = shares(2, 450.0)
+    assert two_more[0.01] == pytest.approx(10_000.0 / 64_000.0)
+    assert two_more[0.10] == "<3"
+    # Three more is enough.
+    three_more = shares(3, 300.0)
+    assert three_more[0.01] == pytest.approx(10_000.0 / 64_000.0)
+    assert three_more[0.10] == pytest.approx(55_000.0 / 64_000.0)
 
 
 def test_weighted_top_shares_withhold_a_thin_rest_and_count_spenders() -> None:
     """The receipt's total ships beside the shares, so total x (1 - share) is
-    the spend outside the top group: a share is withheld when one to nine
+    the spend outside the top group: a share is withheld when one or two
     sources spend anything outside it. The floors count spenders, so zero
     rows in a group lend it nothing (microcosm#1306 review)."""
 
     from microcosm.build.uk_runtime.lcfs_consumption import weighted_top_shares
 
-    # Twenty leaders carry the top 10%; five others spend; 175 spend nothing.
-    values = np.array([100.0] * 20 + [7.0] * 5 + [0.0] * 175)
+    # Twenty leaders carry the top 10%; two others spend; 178 spend nothing.
+    values = np.array([100.0] * 20 + [7.0] * 2 + [0.0] * 178)
     shares = weighted_top_shares(values, np.ones(200), fractions=(0.10,))
-    assert shares[0.10] == "<10"
-    # With ten spenders outside it, the share ships.
-    values = np.array([100.0] * 20 + [7.0] * 10 + [0.0] * 170)
+    assert shares[0.10] == "<3"
+    # With three spenders outside it, the share ships.
+    values = np.array([100.0] * 20 + [7.0] * 3 + [0.0] * 177)
     shares = weighted_top_shares(values, np.ones(200), fractions=(0.10,))
-    assert shares[0.10] == pytest.approx(2_000.0 / 2_070.0)
-    # A top group of twenty rows of which four spend rests on four spenders.
-    values = np.array([100.0] * 4 + [0.0] * 196)
+    assert shares[0.10] == pytest.approx(2_000.0 / 2_021.0)
+    # A top group of twenty rows of which two spend rests on two spenders.
+    values = np.array([100.0] * 2 + [0.0] * 198)
     shares = weighted_top_shares(values, np.ones(200), fractions=(0.10,))
-    assert shares[0.10] == "<10"
+    assert shares[0.10] == "<3"
 
 
 def test_division_capture_counts_source_households_not_copies() -> None:
@@ -1751,9 +2194,9 @@ def test_division_capture_counts_source_households_not_copies() -> None:
         division_capture,
     )
 
-    # The twenty leaders are copies of four source households.
+    # The twenty leaders are copies of two source households.
     frame_values = [100.0] * 20 + [1.0] * 180
-    sources = [index // 5 for index in range(20)] + list(range(100, 280))
+    sources = [index // 10 for index in range(20)] + list(range(100, 280))
     draws = pd.DataFrame(
         {column: frame_values for column in UK_LCFS_COICOP_DIVISION_COLUMNS}
     )
@@ -1769,7 +2212,7 @@ def test_division_capture_counts_source_households_not_copies() -> None:
     as_sources = division_capture(
         draws, weights=np.ones(200), period_value=2024, donor=donor, sources=sources
     )["divisions"][column]["tail"]["top_10_percent"]
-    assert as_sources["frame"] == "<10"
+    assert as_sources["frame"] == "<3"
     assert as_sources["donor"] == pytest.approx(0.10)
 
 
@@ -1853,27 +2296,83 @@ def test_division_capture_places_an_over_draw_in_the_tail() -> None:
     assert top_ten["frame_over_donor"] == pytest.approx(2_000.0 / 2_180.0 / 0.10)
     # Two households are the top 1% of two hundred: withheld on both sides.
     assert tail["top_1_percent"] == {
-        "frame": "<10",
-        "donor": "<10",
+        "frame": "<3",
+        "donor": "<3",
         "frame_over_donor": None,
     }
     assert "tail" not in capture["total"]
 
 
-def test_uncarried_spend_sits_beside_the_donors_other_fuels() -> None:
-    from microcosm.build.uk_runtime.lcfs_consumption import uncarried_beside_donor
-
-    uncarried = {"resource": "r", "classes": [], "total": 2.0e9}
-    beside = uncarried_beside_donor(uncarried, {"other_fuels": 1.5e9})
-    assert beside["donor_other_fuels_at_diary_prices"] == 1.5e9
-    assert beside["donor_over_published"] == pytest.approx(0.75)
-    assert {key: beside[key] for key in uncarried} == uncarried
-    assert (
-        uncarried_beside_donor({**uncarried, "total": 0.0}, {"other_fuels": 1.0})[
-            "donor_over_published"
-        ]
-        is None
+def test_published_fuels_sit_beside_the_donors_and_the_frames_draws() -> None:
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        published_fuels_beside_draws,
     )
+
+    published = {
+        "resource": "r",
+        "classes": [
+            {"coicop": "04.5.3", "column": "liquid_fuel_consumption", "value": 2.0e9},
+            {"coicop": "04.5.4", "column": "solid_fuel_consumption", "value": 0.0},
+        ],
+        "total": 2.0e9,
+    }
+    beside = published_fuels_beside_draws(
+        published,
+        {"liquid_fuel_consumption": 1.5e9, "solid_fuel_consumption": 1.0e8},
+        {"liquid_fuel_consumption": 1.8e9, "solid_fuel_consumption": 2.0e8},
+    )
+    liquid, solid = beside["classes"]
+    assert liquid["donor_at_diary_prices"] == 1.5e9
+    assert liquid["donor_over_published"] == pytest.approx(0.75)
+    assert liquid["frame"] == 1.8e9
+    assert liquid["frame_over_published"] == pytest.approx(0.9)
+    # A published zero gives no ratio.
+    assert solid["donor_over_published"] is None
+    assert solid["frame_over_published"] is None
+    assert beside["total"] == published["total"]
+    # ONS's 04.5.3 leaves out the bottled gas the liquid column holds, so the
+    # donor's figure is also given without it (Vahid's review of #1383, 8).
+    assert "donor_bottled_gas_at_diary_prices" not in liquid
+    with_gas = published_fuels_beside_draws(
+        published,
+        {
+            "liquid_fuel_consumption": 1.5e9,
+            "solid_fuel_consumption": 1.0e8,
+            "bottled_gas": 5.0e8,
+        },
+        {"liquid_fuel_consumption": 1.8e9, "solid_fuel_consumption": 2.0e8},
+    )
+    liquid, solid = with_gas["classes"]
+    assert liquid["donor_bottled_gas_at_diary_prices"] == 5.0e8
+    assert liquid["donor_without_bottled_gas_over_published"] == pytest.approx(0.5)
+    assert "04.5.2" in liquid["concept_note"]
+    assert "donor_bottled_gas_at_diary_prices" not in solid
+
+
+def test_the_heating_fuels_are_the_declared_diary_parts() -> None:
+    """Each fuel column's parts, pinned (Vahid's review of #1383, nit 20).
+
+    Liquid holds oil and paraffin with bottled gas (María's ruling of
+    2026-10-22); solid holds coal, coke, wood and peat; hot water, steam and
+    ice (c45511) stays in the housing remainder.
+    """
+
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        UK_LCFS_BOTTLED_GAS_PARTS,
+        UK_LCFS_FUEL_PARTS,
+        UK_LCFS_OTHER_FUEL_PARTS,
+    )
+
+    assert dict(UK_LCFS_FUEL_PARTS) == {
+        "liquid_fuel_consumption": ("b017", "c45312", "b018", "c45222"),
+        "solid_fuel_consumption": ("c45411", "c45412"),
+    }
+    assert UK_LCFS_BOTTLED_GAS_PARTS == ("b018", "c45222")
+    assert set(UK_LCFS_BOTTLED_GAS_PARTS) <= set(
+        UK_LCFS_FUEL_PARTS["liquid_fuel_consumption"]
+    )
+    drawn = {code for codes in UK_LCFS_FUEL_PARTS.values() for code in codes}
+    assert set(UK_LCFS_OTHER_FUEL_PARTS) - drawn == {"c45511"}
 
 
 def test_report_only_diagnostics_fail_closed_on_ambiguous_rows(monkeypatch) -> None:
@@ -2337,7 +2836,9 @@ _WIDE_RECOMPOSE_SUPPORT = {
 }
 
 
-def _recompose_declaration() -> dict:
+def _recompose_declaration(*, levelled: bool = False) -> dict:
+    """The packaged declaration; without its division levelling unless asked."""
+
     from microcosm.build.country_spec import load_country_spec
     from microcosm.build.uk_runtime.lcfs_consumption import (
         recompose_from_remainder_operation,
@@ -2347,7 +2848,132 @@ def _recompose_declaration() -> dict:
         load_country_spec("uk").sources.stage_map()["lcfs_consumption"]
     )
     assert declared is not None
+    assert "level_division_excess" in declared
+    if not levelled:
+        declared = {
+            key: value
+            for key, value in declared.items()
+            if key != "level_division_excess"
+        }
     return declared
+
+
+def test_division_excess_factors_bring_only_the_over_drawn_to_the_shared_ratio() -> (
+    None
+):
+    """María's rulings of 2026-10-23 and 2026-10-24 (microcosm#1278).
+
+    A division above the shared ratio of the drawn spend comes down to it;
+    none other moves, and the shared ratio is measured once. Housing's
+    levelled parts are no over-draw (Vahid's review of #1383, item 9): its
+    remainder is set against the donor's remainder, so it keeps its draw.
+    """
+
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        UK_LCFS_COICOP_DIVISION_COLUMNS,
+        division_excess_factors,
+    )
+
+    food = UK_LCFS_COICOP_DIVISION_COLUMNS[0]
+    # Ten households; every donor drawn mean is 10, so each division expects
+    # 100 of drawn spend. Housing's remainder is 120 whatever its levelled
+    # parts add to its total.
+    means = dict.fromkeys(UK_LCFS_COICOP_DIVISION_COLUMNS, 10.0)
+    drawn = dict.fromkeys(UK_LCFS_COICOP_DIVISION_COLUMNS, 120.0)
+    drawn[food] = 240.0
+    result = division_excess_factors(drawn, means, households=10.0)
+    shared = (240.0 + 120.0 * 11) / 1200.0
+    assert result["shared_ratio"] == pytest.approx(shared)
+    divisions = result["divisions"]
+    assert divisions[food]["ratio"] == pytest.approx(2.4)
+    assert divisions[food]["factor"] == pytest.approx(shared * 100.0 / 240.0)
+    for division in UK_LCFS_COICOP_DIVISION_COLUMNS[1:]:
+        assert divisions[division]["ratio"] == pytest.approx(1.2)
+        assert divisions[division]["factor"] == 1.0
+    # One pass: the levelled food leaves the shared ratio below the others'
+    # 1.2, and they keep their draws all the same.
+    assert "passes" not in result
+
+
+def test_recompose_levels_the_divisions_excess_before_the_hold() -> None:
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        UK_LCFS_COICOP_DIVISION_COLUMNS,
+        recompose_parent_totals,
+    )
+
+    housing = "housing_water_and_electricity_consumption"
+    food = "food_and_non_alcoholic_beverages_consumption"
+    draws = pd.DataFrame(
+        {column: [100.0, 100.0] for column in UK_LCFS_COICOP_DIVISION_COLUMNS}
+    )
+    draws[food] = [300.0, 300.0]
+    for column in (
+        "electricity_consumption",
+        "gas_consumption",
+        "liquid_fuel_consumption",
+        "solid_fuel_consumption",
+        "petrol_spending",
+        "diesel_spending",
+        "bus_fare_spending",
+    ):
+        draws[column] = 0.0
+    draws["electricity_consumption"] = [20.0, 20.0]
+    # The chain's draws of the parts: housing nets 20 of drawn energy.
+    drawn = pd.DataFrame(
+        {
+            "domestic_energy_consumption": [20.0, 20.0],
+            "liquid_fuel_consumption": [0.0, 0.0],
+            "solid_fuel_consumption": [0.0, 0.0],
+            "petrol_spending": [0.0, 0.0],
+            "diesel_spending": [0.0, 0.0],
+            "bus_fare_spending": [0.0, 0.0],
+        }
+    )
+    # The donor's drawn spend per household: housing's is its total less the
+    # parts the stage levels.
+    means = dict.fromkeys(UK_LCFS_COICOP_DIVISION_COLUMNS, 100.0)
+    means[housing] = 80.0
+    out, receipt = recompose_parent_totals(
+        draws,
+        drawn=drawn,
+        parameters=_recompose_declaration(levelled=True),
+        weights=np.array([1.0, 1.0]),
+        donor_support=_WIDE_RECOMPOSE_SUPPORT,
+        donor_division_means=means,
+    )
+    levelling = receipt["division_levelling"]
+    shared = levelling["shared_ratio"]
+    # Food alone stands above the shared ratio and comes down to it.
+    assert levelling["divisions"][food]["factor"] < 1.0
+    assert out[food].tolist() == pytest.approx([shared * 100.0, shared * 100.0])
+    # Housing's 80 remainder against the donor's 80 sits below it, and keeps
+    # its draw beside its 20 of electricity.
+    assert receipt["parents"][housing]["levelling_factor"] == 1.0
+    assert out[housing].tolist() == [100.0, 100.0]
+    with pytest.raises(ValueError, match="division means"):
+        recompose_parent_totals(
+            draws,
+            drawn=drawn,
+            parameters=_recompose_declaration(levelled=True),
+            weights=np.array([1.0, 1.0]),
+            donor_support=_WIDE_RECOMPOSE_SUPPORT,
+        )
+
+
+def test_recompose_refuses_a_drifted_levelling_declaration() -> None:
+    from microcosm.build.uk_runtime.lcfs_consumption import check_recomposed_parents
+
+    declared = _recompose_declaration(levelled=True)
+    check_recomposed_parents(declared)
+    drifted = {
+        **declared,
+        "level_division_excess": {
+            **declared["level_division_excess"],
+            "rule": "to_donor_totals",
+        },
+    }
+    with pytest.raises(ValueError, match="not the rule the stage applies"):
+        check_recomposed_parents(drifted)
 
 
 def test_recompose_writes_each_total_around_its_levelled_parts() -> None:
@@ -2360,17 +2986,22 @@ def test_recompose_writes_each_total_around_its_levelled_parts() -> None:
     drawn = pd.DataFrame(
         {
             "domestic_energy_consumption": [2000.0, 900.0, 0.0],
+            "liquid_fuel_consumption": [300.0, 0.0, 0.0],
+            "solid_fuel_consumption": [0.0, 50.0, 0.0],
             "petrol_spending": [800.0, 0.0, 0.0],
             "diesel_spending": [0.0, 700.0, 0.0],
             "bus_fare_spending": [100.0, 0.0, 50.0],
         }
     )
-    # The levelled parts, beside the totals as the chain drew them.
+    # The levelled parts, beside the totals as the chain drew them; the
+    # heating fuels are drawn parts, added back unchanged.
     draws = pd.DataFrame(
         {
             "housing_water_and_electricity_consumption": [7000.0, 600.0, 800.0],
             "electricity_consumption": [900.0, 600.0, 0.0],
             "gas_consumption": [700.0, 0.0, 0.0],
+            "liquid_fuel_consumption": [300.0, 0.0, 0.0],
+            "solid_fuel_consumption": [0.0, 50.0, 0.0],
             "transport_consumption": [2000.0, 1000.0, 0.0],
             "petrol_spending": [1500.0, 0.0, 0.0],
             "diesel_spending": [0.0, 900.0, 0.0],
@@ -2389,10 +3020,11 @@ def test_recompose_writes_each_total_around_its_levelled_parts() -> None:
         donor_support=_WIDE_RECOMPOSE_SUPPORT,
     )
 
-    # Housing: 7000 - 2000 + 1600; 600 - 900 floors at 0, + 600; 800 + 0.
+    # Housing: 7000 - 2300 + 1900; 600 - 950 floors at 0, + 650, so the total
+    # holds its solid fuel as well as its electricity; 800 + 0.
     assert out["housing_water_and_electricity_consumption"].tolist() == [
         6600.0,
-        600.0,
+        650.0,
         800.0,
     ]
     # Transport nets the drawn fuel and bus and adds the levelled fuel and the
@@ -2409,7 +3041,7 @@ def test_recompose_writes_each_total_around_its_levelled_parts() -> None:
 
     # With the parent on a 1.02 bridge, drawn energy and bus left at 1.0 and
     # petrol at 0.9, the remainders keep the gap between the factors: housing
-    # (2 x 2000 + 900) x 0.02; transport 1600 x (1.02 / 0.9 - 1) + 700 x 0.02
+    # (2 x 2300 + 950) x 0.02; transport 1600 x (1.02 / 0.9 - 1) + 700 x 0.02
     # + 350 x 0.02 (the #1167 re-review's item 2, recorded not corrected).
     _, with_factors = recompose_parent_totals(
         draws,
@@ -2425,16 +3057,20 @@ def test_recompose_writes_each_total_around_its_levelled_parts() -> None:
     )
     housing = with_factors["parents"]["housing_water_and_electricity_consumption"]
     transport = with_factors["parents"]["transport_consumption"]
-    assert housing["uprating_residue"]["weighted_residue_gbp"] == pytest.approx(98.0)
+    assert housing["uprating_residue"]["weighted_residue_gbp"] == pytest.approx(111.0)
     assert transport["uprating_residue"]["weighted_residue_gbp"] == pytest.approx(
         1600.0 * (1.02 / 0.9 - 1.0) + 700.0 * 0.02 + 350.0 * 0.02
     )
     assert transport["uprating_residue"]["part_factors"]["petrol_spending"] == 0.9
     housing = receipt["parents"]["housing_water_and_electricity_consumption"]
-    assert housing["drawn_subtracts"] == ["domestic_energy_consumption"]
+    assert housing["drawn_subtracts"] == [
+        "domestic_energy_consumption",
+        "liquid_fuel_consumption",
+        "solid_fuel_consumption",
+    ]
     assert housing["weighted_drawn_total"] == 2.0 * 7000.0 + 600.0 + 3.0 * 800.0
     assert housing["rows_floored"] == 1
-    assert housing["weighted_floored_mass"] == 300.0
+    assert housing["weighted_floored_mass"] == 350.0
     assert housing["weighted_remainder"] == pytest.approx(
         housing["weighted_drawn_total"]
         - housing["weighted_drawn_subtracts"]
@@ -2453,7 +3089,7 @@ def test_recompose_writes_each_total_around_its_levelled_parts() -> None:
     assert transport["weighted_total"] == 2.0 * 2600.0 + 1450.0 + 3.0 * 400.0
     assert transport["weighted_components"] == 2.0 * 1500.0 + 1150.0 + 3.0 * 400.0
     assert transport["rows_floored"] == 1
-    uncarried = receipt["uncarried"]
+    published = receipt["published_fuels"]
     expected = [
         float(
             vendored_rows(
@@ -2470,8 +3106,12 @@ def test_recompose_writes_each_total_around_its_levelled_parts() -> None:
             ("04.5.4", "ons.household_expenditure.solid_fuels"),
         )
     ]
-    assert [entry["value"] for entry in uncarried["classes"]] == expected
-    assert uncarried["total"] == pytest.approx(sum(expected))
+    assert [entry["value"] for entry in published["classes"]] == expected
+    assert [entry["column"] for entry in published["classes"]] == [
+        "liquid_fuel_consumption",
+        "solid_fuel_consumption",
+    ]
+    assert published["total"] == pytest.approx(sum(expected))
 
 
 @pytest.mark.parametrize(
@@ -2491,12 +3131,20 @@ def test_recompose_writes_each_total_around_its_levelled_parts() -> None:
         ),
         (lambda d: d["parents"].pop("transport_consumption"), "must declare"),
         (
-            lambda d: d["uncarried"].update(resource="family_resources.json"),
+            lambda d: d["published_fuels"].update(resource="family_resources.json"),
             "not a vendored",
         ),
         (
-            lambda d: d["uncarried"]["classes"][0].update(concept="ons.other"),
+            lambda d: d["published_fuels"]["classes"][0].update(concept="ons.other"),
             "expected one",
+        ),
+        (
+            lambda d: d["published_fuels"]["classes"][0].update(column="gas"),
+            "not a heating-fuel column",
+        ),
+        (
+            lambda d: d["published_fuels"]["classes"].pop(),
+            "once each",
         ),
         (lambda d: d.pop("maximum_total"), "maximum_total"),
     ],
@@ -2513,6 +3161,8 @@ def test_recompose_refuses_a_declaration_it_does_not_apply(change, match) -> Non
         "domestic_energy_consumption",
         "electricity_consumption",
         "gas_consumption",
+        "liquid_fuel_consumption",
+        "solid_fuel_consumption",
         "transport_consumption",
         "petrol_spending",
         "diesel_spending",
@@ -2537,6 +3187,8 @@ def test_recompose_holds_each_total_to_the_donor_maximum() -> None:
     drawn = pd.DataFrame(
         {
             "domestic_energy_consumption": [2000.0, 100.0, 0.0],
+            "liquid_fuel_consumption": [0.0, 0.0, 0.0],
+            "solid_fuel_consumption": [0.0, 0.0, 0.0],
             "petrol_spending": [0.0, 0.0, 0.0],
             "diesel_spending": [0.0, 0.0, 0.0],
             "bus_fare_spending": [0.0, 0.0, 0.0],
@@ -2548,6 +3200,8 @@ def test_recompose_holds_each_total_to_the_donor_maximum() -> None:
             "housing_water_and_electricity_consumption": [7800.0, 5000.0, 3000.0],
             "electricity_consumption": [2500.0, 700.0, 4000.0],
             "gas_consumption": [1500.0, 200.0, 3000.0],
+            "liquid_fuel_consumption": [0.0, 0.0, 0.0],
+            "solid_fuel_consumption": [0.0, 0.0, 0.0],
             "transport_consumption": [10.0, 10.0, 10.0],
             "petrol_spending": [0.0, 0.0, 0.0],
             "diesel_spending": [0.0, 0.0, 0.0],
@@ -2948,3 +3602,616 @@ def test_lcfs_draws_move_only_for_the_households_whose_inputs_move() -> None:
         perturbed_column="hbai_household_net_income",
         perturbed_value=777.0,
     )
+
+
+def test_excise_share_draws_move_only_for_the_households_whose_inputs_move() -> None:
+    """The shares are keyed on household ids too (microcosm#1359)."""
+
+    from microcosm.build.uk_runtime.lcfs_consumption import UK_LCFS_EXCISE_SHARES
+    from test_support.microcosm_build.uk_keyed_draws import (
+        assert_draws_are_keyed_on_ids,
+    )
+
+    donor = clean_lcfs_consumption_table(
+        *_synthetic_lcfs_donor(), shares=UK_LCFS_EXCISE_SHARES
+    )
+    recipient = donor.iloc[:10].loc[:, list(UK_LCFS_CONSUMPTION_PREDICTORS)]
+
+    def draw(rows: pd.DataFrame, ids: np.ndarray) -> pd.DataFrame:
+        return impute_lcfs_consumption(
+            donor,
+            rows,
+            seed=0,
+            n_estimators=5,
+            record_ids=ids,
+            targets=(*UK_LCFS_CONSUMPTION_TARGET_COLUMNS, *UK_LCFS_EXCISE_SHARES),
+        ).draws.reset_index(drop=True)
+
+    assert_draws_are_keyed_on_ids(
+        draw,
+        recipient,
+        np.arange(1, len(recipient) + 1),
+        perturbed_column="hbai_household_net_income",
+        perturbed_value=777.0,
+    )
+
+
+def _excise_draws() -> tuple[pd.DataFrame, np.ndarray]:
+    """Drawn totals and excise shares of four households (microcosm#1359).
+
+    Tobacco spending is 250, 500, 0 and 0; off-trade alcohol 750, 0, 0 and
+    800; on-trade alcohol 200, 0, 300 and 0; gambling stakes 60, 0, 0 and
+    100, of which the National Lottery's are 30, 0, 0 and 0 and the betting
+    and gaming stakes 0, 0, 0 and 75 (the first household's other 30 are
+    society lotteries).
+    """
+
+    draws = pd.DataFrame(
+        {
+            "alcohol_and_tobacco_consumption": [1000.0, 500.0, 0.0, 800.0],
+            "restaurants_and_hotels_consumption": [2000.0, 0.0, 600.0, 400.0],
+            "recreation_consumption": [3000.0, 1000.0, 0.0, 2000.0],
+            TOBACCO_SHARE: [0.25, 1.0, 0.0, 0.0],
+            ON_TRADE_SHARE: [0.1, 0.0, 0.5, 0.0],
+            GAMBLING_SHARE: [0.02, 0.0, 0.0, 0.05],
+            LOTTERY_SHARE: [0.5, 0.0, 0.0, 0.0],
+            BETTING_SHARE: [0.0, 0.0, 0.0, 0.75],
+        }
+    )
+    return draws, np.array([1.0e3, 2.0e3, 3.0e3, 4.0e3])
+
+
+def test_excise_levels_turn_published_rows_into_engine_units(monkeypatch) -> None:
+    from microcosm.build.uk_runtime.lcfs_consumption import excise_levels
+    from test_support.microcosm_build.uk_excise_facts import (
+        excise_declaration,
+        patch_excise_facts,
+    )
+
+    patch_excise_facts(monkeypatch)
+    resolved = excise_levels(excise_declaration())
+    levels, volume = resolved.quantities, resolved.volume
+
+    # Litres of pure alcohol over the strength are litres of the product;
+    # sticks are cigarettes and kilograms a thousand grams each.
+    assert levels["beer_litres"].annual == pytest.approx(2.0e5 / 0.04)
+    assert levels["spirits_litres"].annual == pytest.approx(0.5e5 / 0.40)
+    assert levels["cigarettes_per_week"].annual == pytest.approx(100.0e6)
+    assert levels["hand_rolling_tobacco_grams_per_week"].annual == pytest.approx(0.5e6)
+    assert levels["beer_litres"].receipt["source_record_id"] == (
+        "synthetic.alcohol_clearances.beer_and_cider.fy2024"
+    )
+    assert volume.rule == "spending" and volume.on_trade_share is None
+    # Two inputs may split one row between them, if they take all of it.
+    split = excise_declaration()
+    beer = split["outputs"]["beer_litres"]
+    split["outputs"]["cider_litres"] = {
+        **beer,
+        "share": 0.2,
+        "strength": {
+            "value": 0.045,
+            "parameter_path": "household.consumption.alcohol.cider_abv",
+        },
+    }
+    beer["share"] = 0.8
+    levels = excise_levels(split).quantities
+    assert levels["beer_litres"].annual == pytest.approx(0.8 * 2.0e5 / 0.04)
+    assert levels["cider_litres"].annual == pytest.approx(0.2 * 2.0e5 / 0.045)
+
+
+@pytest.mark.parametrize(
+    ("change", "match"),
+    [
+        (lambda d: d.update(resource="other.json"), "must read"),
+        (lambda d: d.update(period_type="calendar_year"), "fiscal-year"),
+        (lambda d: d.update(weeks_per_year=52.18), "weeks_per_year"),
+        (lambda d: d.update(fiscal_start=None), "fiscal_start"),
+        (
+            lambda d: d["outputs"].update(vape_litres=d["outputs"]["beer_litres"]),
+            "cannot write",
+        ),
+        (
+            lambda d: d["outputs"]["cigarettes_per_week"].update(unit="kilogram"),
+            "declared in",
+        ),
+        # A row stored in another unit than the declared one is refused: read
+        # as litres of the product, litres of pure alcohol would skip the
+        # strength.
+        (
+            lambda d: (
+                d["outputs"]["wine_litres"].update(unit="litre"),
+                d["outputs"]["wine_litres"].pop("strength"),
+            ),
+            "is stored in",
+        ),
+        (lambda d: d["outputs"]["wine_litres"].pop("strength"), "needs a strength"),
+        (
+            lambda d: d["outputs"]["cigarettes_per_week"].update(
+                strength={"value": 1.0, "parameter_path": "x"}
+            ),
+            "needs a strength",
+        ),
+        (
+            lambda d: d["outputs"]["wine_litres"]["strength"].pop("parameter_path"),
+            "engine parameter",
+        ),
+        (
+            lambda d: d["outputs"]["wine_litres"]["strength"].update(value=12.0),
+            r"outside \(0, 1\]",
+        ),
+        (lambda d: d["outputs"]["beer_litres"].update(share=0.5), "not all of each"),
+        (
+            lambda d: d["outputs"]["beer_litres"]["dimensions"].update(product="lager"),
+            "expected one",
+        ),
+        (lambda d: d.update(alcohol_volume_weights={"rule": "price"}), "unsupported"),
+    ],
+)
+def test_excise_levels_refuse_a_declaration_they_cannot_apply(
+    monkeypatch, change, match
+) -> None:
+    from microcosm.build.uk_runtime.lcfs_consumption import excise_levels
+    from test_support.microcosm_build.uk_excise_facts import (
+        excise_declaration,
+        patch_excise_facts,
+    )
+
+    patch_excise_facts(monkeypatch)
+    declaration = excise_declaration()
+    change(declaration)
+
+    with pytest.raises(ValueError, match=match):
+        excise_levels(declaration)
+
+
+def test_level_excise_quantities_gives_each_household_its_part(monkeypatch) -> None:
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        excise_levels,
+        level_excise_quantities,
+    )
+    from test_support.microcosm_build.uk_excise_facts import (
+        excise_declaration,
+        patch_excise_facts,
+    )
+
+    patch_excise_facts(monkeypatch)
+    resolved = excise_levels(excise_declaration())
+    levels = resolved.quantities
+    draws, weights = _excise_draws()
+
+    quantities, receipt = level_excise_quantities(
+        draws, levels=resolved, weights=weights
+    )
+
+    alcohol = np.array([950.0, 0.0, 300.0, 800.0])
+    tobacco = np.array([250.0, 500.0, 0.0, 0.0])
+    np.testing.assert_allclose(
+        quantities["beer_litres"],
+        levels["beer_litres"].annual * alcohol / (weights @ alcohol),
+    )
+    # The weekly inputs are the annual quantity over the engine's 52 weeks.
+    np.testing.assert_allclose(
+        quantities["cigarettes_per_week"] * 52,
+        levels["cigarettes_per_week"].annual * tobacco / (weights @ tobacco),
+    )
+    for column, level in levels.items():
+        entry = receipt["outputs"][column]
+        assert entry["frame_annual_total"] == pytest.approx(level.annual)
+        assert entry["factor"] * entry["key_total"] == pytest.approx(level.annual)
+        assert (
+            entry["positive_share"] == receipt["keys"][entry["key"]]["positive_share"]
+        )
+    assert receipt["outputs"]["cigarettes_per_week"]["stored_per"] == "week"
+    assert receipt["outputs"]["wine_litres"]["stored_per"] == "year"
+    assert receipt["keys"]["tobacco"]["positive_share"] == pytest.approx(0.3)
+    assert receipt["components"]["off_trade_alcohol_spending"]["weighted_total"] == (
+        pytest.approx(weights @ np.array([750.0, 0.0, 0.0, 800.0]))
+    )
+    # The step writes only the engine's inputs: no spending, no total.
+    assert list(quantities.columns) == [*levels, *resolved.draught]
+    # Lottery Duty's base follows the National Lottery's stakes and every other
+    # gambling base the betting and gaming stakes, so the household whose
+    # other stakes are society lotteries carries none of them; the draught
+    # share is the published one.
+    lottery = np.array([30.0, 0.0, 0.0, 0.0])
+    betting = np.array([0.0, 0.0, 0.0, 75.0])
+    np.testing.assert_allclose(
+        quantities["national_lottery_ticket_spending"],
+        levels["national_lottery_ticket_spending"].annual
+        * lottery
+        / (weights @ lottery),
+    )
+    for column in (
+        "remote_gaming_net_losses",
+        "land_based_fixed_odds_betting_net_losses",
+    ):
+        np.testing.assert_allclose(
+            quantities[column], levels[column].annual * betting / (weights @ betting)
+        )
+    assert receipt["keys"]["national_lottery"]["positive_share"] == pytest.approx(0.1)
+    assert receipt["keys"]["betting_and_gaming"]["positive_share"] == pytest.approx(0.4)
+    assert receipt["components"]["gambling_stakes"]["weighted_total"] == (
+        pytest.approx(weights @ np.array([60.0, 0.0, 0.0, 100.0]))
+    )
+    assert (quantities["beer_draught_share"] == 0.25).all()
+    assert receipt["draught_shares"]["beer_draught_share"]["share"] == 0.25
+
+
+def test_published_on_trade_share_gives_each_channel_its_volume(monkeypatch) -> None:
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        excise_levels,
+        level_excise_quantities,
+    )
+    from test_support.microcosm_build.uk_excise_facts import (
+        ON_TRADE_VOLUME_WEIGHTS,
+        excise_declaration,
+        patch_excise_facts,
+    )
+
+    patch_excise_facts(monkeypatch)
+    resolved = excise_levels(
+        excise_declaration(alcohol_volume_weights=ON_TRADE_VOLUME_WEIGHTS)
+    )
+    levels, volume = resolved.quantities, resolved.volume
+    draws, weights = _excise_draws()
+
+    quantities, receipt = level_excise_quantities(
+        draws, levels=resolved, weights=weights
+    )
+
+    assert volume.on_trade_share == 0.25
+    off = np.array([750.0, 0.0, 0.0, 800.0])
+    on = np.array([200.0, 0.0, 300.0, 0.0])
+    np.testing.assert_allclose(
+        quantities["wine_litres"],
+        levels["wine_litres"].annual
+        * (0.75 * off / (weights @ off) + 0.25 * on / (weights @ on)),
+    )
+    assert receipt["alcohol_volume_weights"]["source_record_id"] == (
+        "synthetic.alcohol_on_trade_share.all_alcohol.fy2024"
+    )
+
+
+def test_excise_quantities_step_is_a_no_op_when_undeclared() -> None:
+    import dataclasses
+
+    from microcosm.build.country_spec import load_country_spec
+    from microcosm.build.uk_runtime.lcfs_consumption import lcfs_excise_quantities
+
+    committed = load_country_spec("uk").sources.stage_map()["lcfs_consumption"]
+    stage = dataclasses.replace(
+        committed,
+        operations=tuple(
+            operation
+            for operation in committed.operations
+            if operation.kind != "level_excise_quantities"
+        ),
+    )
+
+    assert lcfs_excise_quantities(stage, pd.DataFrame(), weights=[], shares={}) == (
+        None,
+        None,
+    )
+
+
+def test_excise_quantities_step_needs_the_excise_shares(monkeypatch) -> None:
+    from microcosm.build.country_spec import load_country_spec
+    from microcosm.build.uk_runtime.lcfs_consumption import lcfs_excise_quantities
+    from test_support.microcosm_build.uk_excise_facts import (
+        excise_declaration,
+        patch_excise_facts,
+    )
+
+    patch_excise_facts(monkeypatch, excise_declaration())
+    stage = load_country_spec("uk").sources.stage_map()["lcfs_consumption"]
+
+    with pytest.raises(ValueError, match="excise shares"):
+        lcfs_excise_quantities(stage, pd.DataFrame(), weights=[], shares={})
+
+
+def test_stage_writes_the_engines_excise_inputs_when_declared(monkeypatch) -> None:
+    """End to end: the step adds the engine's inputs and moves nothing else."""
+
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        UK_LCFS_CONSUMPTION_OUTPUT_COLUMNS,
+        UK_LCFS_EXCISE_DECLARED_OUTPUTS,
+        UK_LCFS_EXCISE_GAMBLING_OUTPUTS,
+    )
+    from microcosm.build.uk_runtime.stage_health import uk_stage_health_gate
+    from test_support.microcosm_build.uk_excise_facts import (
+        EXCISE_DECLARATION,
+        excise_declaration,
+        patch_excise_facts,
+    )
+
+    plain = _synthetic_lcfs_stage(excise=False)
+    before = plain.transform(plain.frame).table("household")
+    assert not set(UK_LCFS_EXCISE_DECLARED_OUTPUTS) & set(before.columns)
+    patch_excise_facts(monkeypatch, excise_declaration())
+    synthetic = _synthetic_lcfs_stage()
+    result = synthetic.transform(synthetic.frame)
+
+    out = result.table("household")
+    weights = result.weights_for("household").values
+    columns = [
+        column
+        for column in UK_LCFS_CONSUMPTION_OUTPUT_COLUMNS
+        if column not in UK_LCFS_EXCISE_DECLARED_OUTPUTS
+    ]
+    pd.testing.assert_frame_equal(out[columns], before[columns])
+    evidence = synthetic.transform.checkpoint_metadata()["evidence"]
+    receipt = evidence["excise_quantities"]
+    assert set(receipt["outputs"]) == {
+        *EXCISE_DECLARATION["outputs"],
+        *UK_LCFS_EXCISE_GAMBLING_OUTPUTS,
+    }
+    assert (out["beer_draught_share"] == 0.25).all()
+    for column, entry in receipt["outputs"].items():
+        per = 52 if entry["stored_per"] == "week" else 1
+        assert weights @ out[column].to_numpy() * per == pytest.approx(
+            entry["annual_level"]
+        )
+    assert receipt["period_type"] == "fiscal_year"
+    assert receipt["weeks_per_year"] == 52
+    gate = uk_stage_health_gate(
+        evidence=evidence,
+        stage="lcfs_consumption",
+        check="excise_quantities",
+        parameters={
+            "stage": "lcfs_consumption",
+            "check": "excise_quantities",
+            "maximum_relative_deviation": 1e-9,
+            "maximum_parent_residual_share": 0.01,
+            "required_support_band": "30+",
+        },
+    )
+    assert gate.passed, gate.failures
+
+
+def test_stage_tops_up_the_gambling_keys_when_declared(monkeypatch) -> None:
+    """End to end: the top-up re-keys the gambling bases and moves nothing else."""
+
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        UK_LCFS_CONSUMPTION_OUTPUT_COLUMNS,
+        UK_LCFS_EXCISE_GAMBLING_OUTPUTS,
+    )
+    from microcosm.build.uk_runtime.stage_health import uk_stage_health_gate
+    from test_support.microcosm_build.uk_excise_facts import (
+        excise_declaration,
+        patch_excise_facts,
+    )
+    from test_support.microcosm_build.uk_gambling_participation_facts import (
+        participation_declaration,
+        patch_gambling_participation_facts,
+    )
+
+    patch_excise_facts(monkeypatch, excise_declaration())
+    plain = _synthetic_lcfs_stage(gambling=False)
+    before = plain.transform(plain.frame).table("household")
+    patch_gambling_participation_facts(monkeypatch, participation_declaration())
+    synthetic = _synthetic_lcfs_stage()
+    result = synthetic.transform(synthetic.frame)
+
+    out = result.table("household")
+    weights = result.weights_for("household").values
+    assert list(out.columns) == list(before.columns)
+    unchanged = [
+        column
+        for column in before.columns
+        if column not in UK_LCFS_EXCISE_GAMBLING_OUTPUTS
+    ]
+    # The spend columns and the alcohol and tobacco inputs among them.
+    assert set(UK_LCFS_CONSUMPTION_OUTPUT_COLUMNS) & set(unchanged)
+    pd.testing.assert_frame_equal(out[unchanged], before[unchanged])
+    evidence = synthetic.transform.checkpoint_metadata()["evidence"]
+    for column in UK_LCFS_EXCISE_GAMBLING_OUTPUTS:
+        level = evidence["excise_quantities"]["outputs"][column]["annual_level"]
+        assert weights @ out[column].to_numpy() == pytest.approx(level)
+        assert (out[column] > 0).mean() > (before[column] > 0).mean()
+    # The two gambling classifiers and stake models follow the gas payer's.
+    assert len(synthetic.transform.fit_weight_records) == 34
+    assert synthetic.transform.fit_weight_records[-1].fit_name.endswith(
+        ":betting_and_gaming_participation_stake"
+    )
+    for check, parameters in (
+        (
+            "gambling_participation",
+            {
+                "maximum_stratum_shortfall": 0.01,
+                "amount_scale_bounds": [0.5, 2.5],
+                "required_support_band": "30+",
+            },
+        ),
+        (
+            "excise_quantities",
+            {"maximum_parent_residual_share": 0.01, "required_support_band": "30+"},
+        ),
+    ):
+        gate = uk_stage_health_gate(
+            evidence=evidence,
+            stage="lcfs_consumption",
+            check=check,
+            parameters={
+                "stage": "lcfs_consumption",
+                "check": check,
+                "maximum_relative_deviation": 1e-9,
+                **parameters,
+            },
+        )
+        assert gate.passed, gate.failures
+
+
+def test_gambling_participation_needs_the_excise_levelling(monkeypatch) -> None:
+    from test_support.microcosm_build.uk_gambling_participation_facts import (
+        participation_declaration,
+        patch_gambling_participation_facts,
+    )
+
+    patch_gambling_participation_facts(monkeypatch, participation_declaration())
+    synthetic = _synthetic_lcfs_stage(excise=False)
+    with pytest.raises(ValueError, match="re-keys level_excise_quantities"):
+        synthetic.transform(synthetic.frame)
+
+
+def test_gambling_features_take_the_stakes_out_of_recreation() -> None:
+    # P609 holds the stakes, so a recorded stake would raise the recreation
+    # that predicts it (Vahid's review of microcosm#1381, round 4).
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        UK_LCFS_GAMBLING_SHARE,
+        UK_LCFS_GAMBLING_SPENDING,
+        UK_LCFS_RECREATION_NET_OF_STAKES,
+        gambling_participation_features,
+    )
+
+    targets = UK_LCFS_CONSUMPTION_TARGET_COLUMNS
+    donor_encoded = pd.DataFrame(
+        {
+            "age": [30.0, 60.0],
+            "region": [1.0, 2.0],
+            **{c: [10.0 * (i + 1), 20.0 * (i + 1)] for i, c in enumerate(targets)},
+        },
+        index=[7, 9],
+    )
+    donor_spending = pd.DataFrame({UK_LCFS_GAMBLING_SPENDING: [5.0, 0.0]}, index=[7, 9])
+    recipient_encoded = pd.DataFrame(
+        {"age": [40.0, 50.0, 70.0], "region": [3.0, 1.0, 2.0]}
+    )
+    drawn = pd.DataFrame(
+        {
+            **{c: [1.0, 2.0, 3.0] for c in targets},
+            "recreation_consumption": [40.0, 8.0, 12.0],
+            UK_LCFS_GAMBLING_SHARE: [0.25, 0.0, 1.5],
+        }
+    )
+
+    donor, recipient = gambling_participation_features(
+        donor_encoded,
+        donor_spending,
+        recipient_encoded,
+        drawn,
+        predictors=["age", "region"],
+    )
+
+    # The fits read the columns by position, so both sides list them alike.
+    assert list(donor.columns) == list(recipient.columns)
+    assert "recreation_consumption" not in donor.columns
+    np.testing.assert_allclose(
+        donor[UK_LCFS_RECREATION_NET_OF_STAKES],
+        donor_encoded["recreation_consumption"].to_numpy() - [5.0, 0.0],
+    )
+    # The frame's stakes are its drawn share of its drawn recreation, the
+    # share held to [0, 1].
+    np.testing.assert_allclose(
+        recipient[UK_LCFS_RECREATION_NET_OF_STAKES], [30.0, 8.0, 0.0]
+    )
+    np.testing.assert_allclose(recipient[targets[0]], [1.0, 2.0, 3.0])
+    np.testing.assert_allclose(recipient["age"], [40.0, 50.0, 70.0])
+
+
+def test_gambling_bases_are_receipts_over_rates_with_betting_split_by_yield(
+    monkeypatch,
+) -> None:
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        UK_LCFS_EXCISE_GAMBLING_OUTPUTS,
+        UK_LCFS_GENERAL_BETTING_OUTPUTS,
+        excise_levels,
+    )
+    from test_support.microcosm_build.uk_excise_facts import (
+        excise_declaration,
+        patch_excise_facts,
+    )
+
+    patch_excise_facts(monkeypatch)
+    resolved = excise_levels(excise_declaration())
+    levels = resolved.quantities
+
+    # A single-duty base is the duty's receipts over its rate; Machine Games
+    # Duty's bands come from their liabilities; Gaming Duty's from the
+    # engine's effective-rate proxy.
+    assert levels["remote_gaming_net_losses"].annual == pytest.approx(2.1e6 / 0.21)
+    assert levels["national_lottery_ticket_spending"].annual == pytest.approx(
+        1.2e6 / 0.12
+    )
+    assert levels["machine_games_standard_rate_net_takings"].annual == pytest.approx(
+        6.0e5 / 0.20
+    )
+    assert levels["land_based_casino_net_losses"].annual == pytest.approx(
+        2.0e5 / 0.235487
+    )
+    # General Betting Duty's base, its receipts over the fixed-odds rate, is
+    # split by yield: over the counter 4, remote fixed odds 4 (a quarter of
+    # remote betting yield is horse racing), exchange 1 and pools 0.6 + 0.4.
+    base = 1.5e6 / 0.15
+    assert [levels[column].annual for column in UK_LCFS_GENERAL_BETTING_OUTPUTS] == (
+        pytest.approx([0.4 * base, 0.1 * base, 0.3 * base, 0.1 * base, 0.1 * base])
+    )
+    horse = levels["remote_uk_horseracing_betting_net_losses"].receipt
+    assert horse["remote_horse_racing_share"] == pytest.approx(0.25)
+    assert horse["split_by"]["remote_horses"]["geography_id"] == "K03000001"
+    # Lottery Duty's base is shared by the National Lottery's stakes, every
+    # other base by the betting and gaming stakes.
+    assert {
+        column: levels[column].key
+        for column in UK_LCFS_EXCISE_GAMBLING_OUTPUTS
+        if levels[column].key != "betting_and_gaming"
+    } == {"national_lottery_ticket_spending": "national_lottery"}
+    # Spread betting has no published base and stays at the engine's zero.
+    assert "financial_spread_betting_net_losses" not in levels
+    assert "other_spread_betting_net_losses" not in levels
+    # Draught relief: the draught-only and the draught-and-small-producer rows
+    # over all of the product's clearances.
+    assert resolved.draught["beer_draught_share"]["share"] == pytest.approx(0.25)
+
+
+@pytest.mark.parametrize(
+    ("change", "match"),
+    [
+        (lambda d: d["gambling"]["rates"].pop("casino"), "gambling rates must be"),
+        (lambda d: d["gambling"].pop("yield"), "gambling must declare"),
+        (lambda d: d["gambling"].update(receipts=["x"]), "receipts is not a mapping"),
+        # A series' own dimensions narrow its rows: there is no accrued series.
+        (
+            lambda d: d["gambling"]["receipts"].update(
+                dimensions={"accounting_basis": "accrual"}
+            ),
+            "expected one",
+        ),
+        (
+            lambda d: d["gambling"]["rates"]["lottery"].update(value=12.0),
+            r"outside \(0, 1\]",
+        ),
+        (
+            lambda d: d["gambling"]["rates"]["bingo"].pop("parameter_path"),
+            "engine parameter",
+        ),
+        (
+            lambda d: d["draught_shares"].update(
+                wine_draught_share=d["draught_shares"]["beer_draught_share"]
+            ),
+            "cannot write",
+        ),
+        (
+            lambda d: d["draught_shares"]["beer_draught_share"].update(unit="litre"),
+            "must be declared in",
+        ),
+        (
+            lambda d: d["draught_shares"]["beer_draught_share"].update(numerator=[]),
+            "declares no numerator",
+        ),
+    ],
+)
+def test_gambling_and_draught_declarations_are_held_to_the_step(
+    monkeypatch, change, match
+) -> None:
+    from microcosm.build.uk_runtime.lcfs_consumption import excise_levels
+    from test_support.microcosm_build.uk_excise_facts import (
+        excise_declaration,
+        patch_excise_facts,
+    )
+
+    patch_excise_facts(monkeypatch)
+    declaration = excise_declaration()
+    change(declaration)
+
+    with pytest.raises(ValueError, match=match):
+        excise_levels(declaration)

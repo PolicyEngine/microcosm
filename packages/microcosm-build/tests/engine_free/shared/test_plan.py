@@ -118,6 +118,43 @@ class TestExecution:
         assert len(lines) == 2 and "Fed SCF 2022" in lines[0]
         assert plan.donors() == (("wealth", SCF),)
 
+    def test_a_rewrite_records_the_last_writer_and_its_share(self, small_frame) -> None:
+        """A rewriting stage names the column and its share after it (#721)."""
+
+        plan = StagePlan(
+            [
+                Stage(
+                    name="wealth",
+                    transform=_add_column(
+                        "net_worth", np.asarray([1e5, 0.0, 2e5, 0.0])
+                    ),
+                    produces=("net_worth",),
+                ),
+                Stage(
+                    name="split",
+                    transform=_add_column(
+                        "net_worth", np.asarray([1e5, 3e4, 2e5, 0.0])
+                    ),
+                    rewrites=("net_worth",),
+                ),
+            ]
+        )
+        _, records = plan.run(small_frame)
+        assert records[0].rewrote == ()
+        assert records[0].nonzero_share == {"net_worth": pytest.approx(0.5)}
+        assert records[1].produced == ()
+        assert records[1].rewrote == ("net_worth",)
+        assert records[1].nonzero_share == {"net_worth": pytest.approx(0.75)}
+
+    def test_a_declared_rewrite_absent_after_the_stage_is_refused(
+        self, small_frame
+    ) -> None:
+        plan = StagePlan(
+            [Stage(name="split", transform=lambda frame: frame, rewrites=("gone",))]
+        )
+        with pytest.raises(ValueError, match="declared it rewrites 'gone'"):
+            plan.run(small_frame)
+
     def test_observer_reports_ordered_aggregate_stage_lifecycle(
         self, small_frame
     ) -> None:

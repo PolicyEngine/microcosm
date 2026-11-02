@@ -29,6 +29,7 @@ from microcosm.build.ledger_targets import (
     _source_name,
     compile_ledger_target_references,
     reference_fact_selectors,
+    restamp_reference_period,
 )
 from microcosm.build.target_materialization import (
     ENGINE_PERIOD_COLUMN_PREFIX,
@@ -476,6 +477,19 @@ def _uk_local_metric_target_ids() -> dict[str, str | dict[str, str]]:
     return mapping
 
 
+#: The target period the committed UK references are authored at: the
+#: generators' default ``--period``.
+UK_TARGET_REFERENCE_PERIOD = 2025
+
+#: The model year the contract's observation periods are written for: the DfE
+#: rows read January 2026, the spring term after model year 2025 (microcosm#1095
+#: D5). It belongs to the contract, not to the references: authoring them at
+#: another period moves their observation periods from it and leaves it alone,
+#: and it moves only with the contract's own periods (the fourth review of
+#: microcosm#1422).
+UK_OBSERVATION_PERIOD_BASE = 2025
+
+
 def compile_uk_target_registry(
     facts: Iterable[Mapping[str, Any]],
     *,
@@ -490,9 +504,16 @@ def compile_uk_target_registry(
     compiled = []
     unsupported: list[dict[str, str]] = []
     for reference in spec.target_references:
-        restamped = LedgerTargetReference(
-            **{**reference.__dict__, "period": target_period}
-        )
+        try:
+            restamped = restamp_reference_period(reference, target_period)
+        except ValueError as error:
+            # An observation period that cannot move is a contract error, not
+            # a fact gap: refuse the whole compile, naming the row (the third
+            # review of microcosm#1422).
+            raise ValueError(
+                f"UK target reference {reference.name!r} cannot be restamped to "
+                f"{target_period!r}: {error}"
+            ) from error
         candidate_facts = _candidate_facts_for_reference(
             fact_rows, restamped, fact_indices_by_source=fact_indices_by_source
         )
@@ -1138,7 +1159,10 @@ def _uk_small_cell_rules() -> tuple[Mapping[str, Any], ...]:
 def uk_small_cell_deferred_cells(
     membership: Mapping[str, Any],
 ) -> tuple[dict[str, Any], ...]:
-    """The cells the small-cell rule deferred, with their compiled values.
+    """The cells the small-cell rule deferred, with their published values.
+
+    A deferral keeps the value before any index; the surface grows it by its
+    target's bound cells' own index before it joins the reconciliation.
 
     The joint surface adds them to the reconciliation frame only: they take
     their share of their leg's control and never reach the solve, so deferring
@@ -1425,9 +1449,16 @@ def compile_uk_local_target_registry(
     compiled = []
     unsupported: list[dict[str, str]] = []
     for reference in spec.local_target_references:
-        restamped = LedgerTargetReference(
-            **{**reference.__dict__, "period": target_period}
-        )
+        try:
+            restamped = restamp_reference_period(reference, target_period)
+        except ValueError as error:
+            # An observation period that cannot move is a contract error, not
+            # a fact gap: refuse the whole compile, naming the row (the third
+            # review of microcosm#1422).
+            raise ValueError(
+                f"UK local reference {reference.name!r} cannot be restamped to "
+                f"{target_period!r}: {error}"
+            ) from error
         _assert_local_reference_in_crosswalk(restamped, rosters)
         candidate_facts = _candidate_facts_for_reference(
             _local_candidate_fact_pool(
@@ -3098,18 +3129,40 @@ def uk_local_target_surface(
                 deferrals_outside_the_ladder.add(str(cell["geography_id"]))
                 continue
         placed_deferrals.append(cell)
-    reconciliation_rows.extend(
-        {
-            "grain": "la"
+    # A deferral keeps its published value, before any index, so it is grown
+    # by its target's bound cells' own index at its grain and takes its share
+    # of the leg at the surface's period, as an off-surface cell does
+    # (microcosm#1420: the pension income cells grow by ITL Table 2.5). A
+    # target no index moves grows by exactly one.
+    bound_growth: dict[tuple[str, str], list[float]] = {}
+    for position, row in enumerate(output_rows):
+        totals = bound_growth.setdefault(
+            (str(row["contract_target_id"]), str(row["area_type"])), [0.0, 0.0]
+        )
+        totals[0] += float(row["value"])
+        totals[1] += float(published_values[position])
+    deferral_growth: dict[str, float] = {}
+    for cell in placed_deferrals:
+        grain = (
+            "la"
             if cell["geography_level"] == "local_authority"
-            else str(cell["geography_level"]),
-            "geography_id": str(cell["geography_id"]),
-            "target_id": f"contract:{cell['target_id']}",
-            "value": float(cell["value"]),
-            "_output_position": None,
-        }
-        for cell in placed_deferrals
-    )
+            else str(cell["geography_level"])
+        )
+        frame_total, published_total = bound_growth.get(
+            (str(cell["target_id"]), grain), (0.0, 0.0)
+        )
+        growth = frame_total / published_total if published_total else 1.0
+        if growth != 1.0:
+            deferral_growth[f"{cell['target_id']}@{grain}"] = growth
+        reconciliation_rows.append(
+            {
+                "grain": grain,
+                "geography_id": str(cell["geography_id"]),
+                "target_id": f"contract:{cell['target_id']}",
+                "value": float(cell["value"]) * growth,
+                "_output_position": None,
+            }
+        )
     bound_control_ids = (
         *bound_control_ids,
         *(bridge.higher_target_ids[0] for bridge in fanout_bridges),
@@ -3240,9 +3293,13 @@ def uk_local_target_surface(
     receipt["small_cell_deferrals"] = {
         "rows_added": len(placed_deferrals),
         "areas_outside_the_ladder": sorted(deferrals_outside_the_ladder),
+        "grown_by_bound_index": dict(sorted(deferral_growth.items())),
     }
     receipt["fanout_sum_bridges"] = _assert_uk_fanout_sum_agreement(
-        local_registry, fanout_sum_controls, off_surface_rows=off_surface_rows
+        local_registry,
+        fanout_sum_controls,
+        off_surface_rows=off_surface_rows,
+        deferred_cells=placed_deferrals,
     )
     reconciled, partition_receipt = apply_cross_grain_partitions(
         raw_surface, reconciled, UK_CROSS_GRAIN_PARTITIONS
@@ -3363,6 +3420,7 @@ def _assert_uk_fanout_sum_agreement(
     fanout_sum_controls: Mapping[str, Mapping[str, Any]] | None,
     *,
     off_surface_rows: Sequence[Mapping[str, Any]] = (),
+    deferred_cells: Sequence[Mapping[str, Any]] = (),
 ) -> list[dict[str, Any]]:
     """Bound both parts of the factor a fan-out sum bridge applies, per grain.
 
@@ -3387,8 +3445,19 @@ def _assert_uk_fanout_sum_agreement(
     that are not bound (``uk_runtime.off_surface_cells``). The national bands
     cover those areas too, so each grain's totals count them: without them a
     grain that lacks a few authorities would read as a source disagreement.
+    ``deferred_cells`` are the small-cell rule's deferrals the surface placed
+    (``uk_small_cell_deferred_cells``), at their published values. The
+    national bands cover them too, so each grain's totals count them, grown by
+    the grain's bound cells' own index: they move the source factor only
+    (microcosm#1420, the pension income cells HMRC counts under 5,500).
     """
 
+    deferred: dict[tuple[str, str], list[float]] = {}
+    for cell in deferred_cells:
+        key = (str(cell["target_id"]), str(cell["geography_level"]))
+        totals = deferred.setdefault(key, [0.0, 0])
+        totals[0] += float(cell["value"])
+        totals[1] += 1
     off_surface: dict[tuple[str, str], list[float]] = {}
     for row in off_surface_rows:
         level = AREA_TYPE_TO_LEDGER_GEOGRAPHY_LEVEL.get(str(row["grain"]))
@@ -3423,22 +3492,25 @@ def _assert_uk_fanout_sum_agreement(
             extra, extra_before, extra_cells = off_surface.get(
                 (bridge.lower_target_id, level), (0.0, 0.0, 0)
             )
-            total = math.fsum(float(spec.value) for spec in cells) + extra
-            total_before = (
-                math.fsum(uk_value_before_uprating(s) for s in cells) + extra_before
-            )
-            if total <= 0.0 or total_before <= 0.0:
+            bound_total = math.fsum(float(spec.value) for spec in cells)
+            bound_before = math.fsum(uk_value_before_uprating(s) for s in cells)
+            if bound_total <= 0.0 or bound_before <= 0.0:
                 raise ValueError(
                     f"UK fan-out sum bridge {bridge.bridge_id!r} has a "
                     f"non-positive {level} cell total."
                 )
+            held, held_cells = deferred.get((bridge.lower_target_id, level), (0.0, 0))
+            total = bound_total + extra + held * bound_total / bound_before
+            total_before = bound_before + extra_before + held
             applied = control_value / total
             source = control_before / total_before
-            if abs(source - 1.0) > bridge.max_factor_shift:
+            lowest, highest = bridge.source_factor_bounds
+            if not lowest <= source <= highest:
                 raise ValueError(
                     f"UK fan-out sum bridge {bridge.bridge_id!r}: at source its "
                     f"{level} cells sum to the national bands by {source!r}, "
-                    f"beyond the declared {bridge.max_factor_shift!r}: the area "
+                    f"outside the declared [{lowest!r}, {highest!r}] "
+                    f"(max_factor_shift {bridge.max_factor_shift!r}): the area "
                     "cells and the national bands no longer measure one "
                     "quantity (microcosm#1123)."
                 )
@@ -3459,6 +3531,7 @@ def _assert_uk_fanout_sum_agreement(
                     "geography_level": level,
                     "cells": len(cells),
                     "off_surface_cells": extra_cells,
+                    "small_cell_deferrals": held_cells,
                     "control": control_value,
                     "control_before_alignment": control_before,
                     "cell_total": total,
@@ -3467,6 +3540,7 @@ def _assert_uk_fanout_sum_agreement(
                     "source_factor": source,
                     "index_factor": index,
                     "max_factor_shift": bridge.max_factor_shift,
+                    "min_factor_shift": bridge.min_factor_shift,
                     "max_index_shift": bridge.max_index_shift,
                 }
             )

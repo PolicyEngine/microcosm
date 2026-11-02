@@ -1,8 +1,9 @@
 """The New Zealand input closure, against the committed engine surface.
 
-``build/nz/axiom_input_closure.json`` decides how every root input of the four
+``build/nz/axiom_input_closure.json`` decides how every root input of the five
 Axiom modules the NZ v0 graph binds is fed: the main-benefit entitlement and
-rates modules, New Zealand Superannuation and the Accommodation Supplement.
+rates modules, New Zealand Superannuation, the Accommodation Supplement and
+the benefit gross-up's solver-owned Schedule 1 input.
 These tests hold it to the engine-generated input surface and the ``axiom:nz``
 concept mapping, show that encoding plus the closure's defaults supplies every
 input a run needs, and replay the Axiom oracle's golden-08 household: the
@@ -56,6 +57,7 @@ ENTITLEMENT = "nz/statutes/social_security/main_benefits/entitlement.yaml"
 RATES = "nz/statutes/social_security/main_benefits/rates.yaml"
 NZS = "nz/statutes/new_zealand_superannuation/core.yaml"
 AS = "nz/statutes/social_security/accommodation_supplement/core.yaml"
+TAX = "nz/statutes/income_tax/schedule_1/individual_income_tax.yaml"
 PERSON_MODULES = (ENTITLEMENT, RATES, NZS)
 
 CLOSURE = InputClosure.from_dict(json.loads(CLOSURE_PATH.read_text(encoding="utf-8")))
@@ -141,9 +143,9 @@ class TestClosure:
             assert entry.closure_class is ClosureClass.DEFAULTED
             assert "receipt_requirements" in entry.reason
 
-    def test_the_four_modules_are_closed_at_their_surface_sizes(self) -> None:
+    def test_the_five_modules_are_closed_at_their_surface_sizes(self) -> None:
         sizes = {path: len(SURFACE.modules[path].refs()) for path in CLOSURE.modules}
-        assert sizes == {ENTITLEMENT: 60, RATES: 28, NZS: 13, AS: 39}
+        assert sizes == {ENTITLEMENT: 60, RATES: 28, NZS: 13, AS: 39, TAX: 1}
         for path, size in sizes.items():
             assert len(CLOSURE.entries_for(path)) == size
 
@@ -210,10 +212,13 @@ class TestClosure:
         assert {
             ref.name: node for ref, node in CLOSURE.graph_node_inputs().items()
         } == {
-            "accommodation_supplement_base_rate_weekly_amount": "nz.as.bridge.base_rate",
+            "accommodation_supplement_base_rate_weekly_amount": (
+                "nz.scn.S0.bridge.base_rate"
+            ),
             "accommodation_supplement_non_beneficiary_income_cutout_weekly_amount": (
                 "nz.as.bridge.cutout"
             ),
+            "taxable_income": "nz.gross_up",
         }
 
     def test_central_knobs_are_the_central_encoding(self) -> None:
@@ -260,13 +265,19 @@ def _with_state(tables, data) -> dict[str, pd.DataFrame]:
             dtype=bool,
         )
     for column in ("as_area", "as_area_alt"):
-        household[column] = np.asarray(
-            data.draw(
-                st.lists(
-                    st.integers(1, 4), min_size=len(household), max_size=len(household)
+        # The state bindings compare the declared string geography codes.
+        household[column] = pd.array(
+            [
+                str(code)
+                for code in data.draw(
+                    st.lists(
+                        st.integers(1, 4),
+                        min_size=len(household),
+                        max_size=len(household),
+                    )
                 )
-            ),
-            dtype=np.int64,
+            ],
+            dtype="string",
         )
     return {"person": person, "household": household}
 
@@ -404,7 +415,7 @@ def _golden_frame() -> dict[str, pd.DataFrame]:
             "mortgage_interest": [0.0],
             "mortgage_principal": [0.0],
             "property_tax": [0.0],
-            "as_area": np.asarray([1], dtype=np.int64),
+            "as_area": pd.array(["1"], dtype="string"),
         }
     )
     return {"person": person, "household": household}
@@ -413,6 +424,8 @@ def _golden_frame() -> dict[str, pd.DataFrame]:
 def _golden_inputs() -> pd.DataFrame:
     family = _family_inputs(_golden_frame())
     for ref, _ in CLOSURE.graph_node_inputs().items():
+        if ref.module != AS:
+            continue
         # The bridge nodes' outputs: golden-08's engine-computed values.
         family[ref.name] = float(GOLDEN["inputs"][ref.name]["value"])
     return family

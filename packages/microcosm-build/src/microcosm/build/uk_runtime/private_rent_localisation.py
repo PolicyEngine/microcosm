@@ -62,14 +62,18 @@ STREAM_EXPERIMENT = "uk-post-clone-private-rent-v1"
 #: private-rented households by region, BRMA and bedrooms (microcosm#1087).
 QUANTILES_SOURCE = "uk_brma_rent_quantiles"
 COUNTS_SOURCE = "uk_brma_private_renters"
-#: The spine's annualisation of weekly amounts (``frs_spine.WEEKS_IN_YEAR``).
-WEEKS_IN_YEAR = 365.25 / 7
+#: The spine's annualisation of weekly amounts (``frs_spine.WEEKS_IN_YEAR``),
+#: 52 weeks since María's ruling of 2026-10-23: the engine reads a rent back to
+#: a weekly one at 52. Kept here so the module imports nothing of the build;
+#: a test holds the two equal.
+WEEKS_IN_YEAR = 52
 #: A region's scale outside this band means a resource or the frame is wrong.
 SCALE_BAND = (0.25, 4.0)
 #: Below full scale, a region whose sample holds fewer FRS renters than this
 #: ranks against, and is scaled on, Great Britain's: a handful of renters is
 #: sampling noise, and its own scale could leave ``SCALE_BAND`` and refuse
-#: (microcosm#1305 re-review). A full-scale build never falls back.
+#: (microcosm#1305 re-review). A full-scale build never falls back. A
+#: statistical floor, not the disclosure floor.
 MIN_SAMPLED_REGION_RENTERS = 10
 PRIVATE_TENURE = "RENT_PRIVATELY"
 NORTHERN_IRELAND = "NORTHERN_IRELAND"
