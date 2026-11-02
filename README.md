@@ -80,17 +80,28 @@ locally and the build continues. This live event path is independent of the
 staging run files described below.
 
 A build that must send telemetry runs with `MICROCOSM_TELEMETRY_REQUIRED=1`.
-It then stops with `TelemetryRequiredError` when it starts its emitter,
-before doing any work, if the emitter cannot be prepared, is missing or
-older than the minimum, does not accept protocol version 1, exits or times
-out before it is ready, or starts without its telemetry module. Emitter
-0.11.0 and later exit at that point when the collector-token variables they
-inherit (`MICROCOSM_COLLECTOR_TOKEN`, `MICROCOSM_COLLECTOR_TOKEN_EXPIRES_AT`,
-`MICROCOSM_COLLECTOR_ORIGIN`) are not all set, cannot be read, or name
-another collector. Whether the collector later accepts the credential is not
-visible to the build. Unset or `0`, a build continues without the emitter as
-above; any other value stops it with a `ValueError`. Nothing in Microcosm
-sets the variable yet.
+Only builds that start the emitter adapter read it: the UK full build, the
+UK spine build and the US fiscal refresh build. Every other build ignores
+it, including the three registered US Modal programs
+(`build_us_acs_local_release.py`, `build_us_puf_support_base.py`,
+`build_us_acs_multispine_base.py`), which do not start the adapter yet and
+run without telemetry. A build that reads it stops with
+`TelemetryRequiredError` when it starts its emitter, before doing any work,
+if the emitter cannot be prepared or is missing, its
+`microcosm-emitter version` times out or fails, it is older than the
+minimum, it lists no protocol version 1, its `hello` fails, it exits or
+times out before it is ready, or it starts without its telemetry module.
+Emitter 0.11.0 and later exit at that point when the collector-token
+variables they inherit (`MICROCOSM_COLLECTOR_TOKEN`,
+`MICROCOSM_COLLECTOR_TOKEN_EXPIRES_AT`, `MICROCOSM_COLLECTOR_ORIGIN`) are set
+only in part, cannot be read, or name another collector; with none of them
+set, the emitter uses the Hugging Face credential. Whether the collector
+later accepts the credential is not visible to the build. For a failure the
+interface reports itself, interface 0.7.0 first prints its own line saying
+the build will continue; the error that follows says that line does not
+apply. Unset or `0`, a build continues without the emitter as above; any
+other value stops it with a `ValueError`. Nothing in Microcosm sets the
+variable yet.
 
 US fiscal refresh builds also write pre-release staging run files **by
 default**. The build hands its progress JSON to the emitter, which commits it
