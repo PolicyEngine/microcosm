@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
   "issue": "PolicyEngine/microcosm#1073",
-  "generated_at": "2026-10-23",
+  "generated_at": "2026-11-02",
   "provenance": {
-    "commit": "60255dd9808ff1a0918e8c781b8818ce3376c32c",
-    "run": "20261023T152015Z-60255dd98"
+    "commit": "3297aefd8998d6c8f968d84f0110c40c77a54833",
+    "run": "20261102T172355Z-3297aefd8"
   },
   "scf_files": {
     "rscfp2025.dta": {
@@ -138,16 +138,16 @@
       },
       "build": {
         "parent_plus_share_of_federal": 0.09068330207742185,
-        "child_own_share_of_federal": 0.04681745099647159,
+        "child_own_share_of_federal": 0.046817450996471596,
         "parent_plus_dollars": 91217190242.59724,
         "borrowers": 27237098.83004764,
         "parent_plus_holders": 2116082.8804507507,
         "child_borrowers": 2347267.516216494
       },
       "within_limit_parent_plus": {
-        "parent_plus_share_of_federal": 0.11789995879009203,
+        "parent_plus_share_of_federal": 0.11789995879009205,
         "child_own_share_of_federal": 0.019600794283801418,
-        "parent_plus_dollars": 118594082087.66402,
+        "parent_plus_dollars": 118594082087.66403,
         "borrowers": 27076002.732565746,
         "parent_plus_holders": 4144863.2081744918,
         "child_borrowers": 388291.15397783055
@@ -472,7 +472,7 @@
         "50_to_61": 0.1615926964748789,
         "62_and_older": 0.06902425352362417
       },
-      "graduate_share_of_own_original_principal": 0.47738241507384116,
+      "graduate_share_of_own_original_principal": 0.4773824150738412,
       "ibr_new_borrower_share": 0.5915143468879298
     }
   },
@@ -500,7 +500,7 @@
             "median_among_borrowers": 24000.0,
             "total_household_weight": 134963690.69015205,
             "federal_education_debt_total": 975115394166.3627,
-            "parent_plus_share_of_total": 0.06206739011401023
+            "parent_plus_share_of_total": 0.06206739011401021
           },
           "household_balance_bands": {
             "under_5k": 0.10118107773912553,
@@ -625,7 +625,7 @@
               "50_to_61": 0.17835091169774608,
               "62_and_older": 0.09653326586194358
             },
-            "graduate_share_of_own_original_principal": 0.4503453183190178,
+            "graduate_share_of_own_original_principal": 0.4503453183190179,
             "ibr_new_borrower_share": 0.5833971357123033
           }
         },
@@ -825,7 +825,7 @@
             "median_among_borrowers": 23000.0,
             "total_household_weight": 134963690.69015205,
             "federal_education_debt_total": 915580080877.1456,
-            "parent_plus_share_of_total": 0.059940399569770764
+            "parent_plus_share_of_total": 0.05994039956977076
           },
           "household_balance_bands": {
             "under_5k": 0.08974701999643789,
@@ -950,7 +950,7 @@
               "50_to_61": 0.10788831666800004,
               "62_and_older": 0.057021566317070796
             },
-            "graduate_share_of_own_original_principal": 0.4592646793399742,
+            "graduate_share_of_own_original_principal": 0.4592646793399743,
             "ibr_new_borrower_share": 0.5760474012257303
           }
         },
@@ -989,7 +989,7 @@
             "median_among_borrowers": 23796.0,
             "total_household_weight": 134963690.69015205,
             "federal_education_debt_total": 872611659274.6003,
-            "parent_plus_share_of_total": 0.07414637298387526
+            "parent_plus_share_of_total": 0.07414637298387527
           },
           "household_balance_bands": {
             "under_5k": 0.08808431892789516,
@@ -1114,7 +1114,7 @@
               "50_to_61": 0.11573428915655427,
               "62_and_older": 0.05799112366757967
             },
-            "graduate_share_of_own_original_principal": 0.421014411591174,
+            "graduate_share_of_own_original_principal": 0.42101441159117403,
             "ibr_new_borrower_share": 0.564984415474899
           }
         },
@@ -1149,7 +1149,7 @@
             "mean_among_borrowers": 38156.40076634909,
             "median_among_borrowers": 23000.0,
             "total_household_weight": 134963690.69015205,
-            "federal_education_debt_total": 919295632615.8619,
+            "federal_education_debt_total": 919295632615.862,
             "parent_plus_share_of_total": 0.06816282381081624
           },
           "household_balance_bands": {
@@ -1610,7 +1610,7 @@
             "50_to_61": 0.13909573807362918,
             "62_and_older": 0.06827028384710118
           },
-          "graduate_share_of_own_original_principal": 0.5079846787675676,
+          "graduate_share_of_own_original_principal": 0.5079846787675674,
           "ibr_new_borrower_share": 0.5790424319437123
         }
       },
@@ -1944,7 +1944,7 @@
             "50_to_61": 0.13719732675785898,
             "62_and_older": 0.05802162569290144
           },
-          "graduate_share_of_own_original_principal": 0.4995084468534534,
+          "graduate_share_of_own_original_principal": 0.49950844685345347,
           "ibr_new_borrower_share": 0.6132625665271612
         }
       },
@@ -2132,7 +2132,7 @@
           "50_to_61": 0.13719732675785898,
           "62_and_older": 0.05802162569290144
         },
-        "graduate_share_of_own_original_principal": 0.4995084468534534,
+        "graduate_share_of_own_original_principal": 0.49950844685345347,
         "ibr_new_borrower_share": 0.6132625665271612
       }
     },
