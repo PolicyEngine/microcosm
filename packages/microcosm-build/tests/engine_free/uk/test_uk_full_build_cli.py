@@ -1540,13 +1540,19 @@ def test_remote_staging_uploads_telemetry_and_the_bundle_in_one_commit(
         run_id,
         "staged",
     )
+    from microcosm.build.staging_dataset import output_role
+
     roles = {item.name: item.role for item in request.files}
+    assert roles == {
+        **{
+            Path(entry["path"]).name: output_role(key)
+            for key, entry in manifest["outputs"].items()
+        },
+        cli.MANIFEST_FILENAME: "build_manifest",
+        "staged_manifest.json": "staged_manifest",
+        "sha256sums.txt": "checksums",
+    }
     assert roles[dataset_name] == "dataset"
-    assert roles["calibration_diagnostics.json"] == "calibration_diagnostics"
-    assert roles[cli.MANIFEST_FILENAME] == "build_manifest"
-    assert roles["staged_manifest.json"] == "staged_manifest"
-    assert roles["sha256sums.txt"] == "checksums"
-    assert set(roles) == expected
     for item in request.files:
         assert Path(item.local_path) == out / item.name
         committed = hub.files[
@@ -1712,6 +1718,77 @@ def test_a_build_with_the_hub_switched_off_hands_its_emitter_no_bundle(
     assert (out / "staged_manifest.json").is_file()
     assert (out / "sha256sums.txt").is_file()
     assert "HF_HUB_OFFLINE" in capsys.readouterr().err
+
+
+def test_the_restage_tool_hands_the_bundle_to_its_own_emitter(
+    tmp_path, monkeypatch, capsys
+):
+    """The re-stage command starts a short-lived emitter, refuses a stage
+    that emitter could not complete, and always closes it."""
+    from test_support.microcosm_build.emitter import FakeEmitterClient
+    from test_support.microcosm_build.uk_rowwise_candidate import _FakeHub
+
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    dataset = run_dir / "microcosm_uk_2024_25_local.h5"
+    dataset.write_bytes(b"synthetic rows")
+    manifest = {
+        "outputs": {
+            "dataset": {
+                "path": str(dataset),
+                "sha256": hashlib.sha256(dataset.read_bytes()).hexdigest(),
+                "bytes": dataset.stat().st_size,
+            }
+        }
+    }
+    (run_dir / cli.MANIFEST_FILENAME).write_text(json.dumps(manifest))
+    stager = load_tool("stage_uk_rowwise_candidate")
+    argv = ["--run-dir", str(run_dir), "--run-id", "uk-attempt"]
+    started: list[FakeEmitterClient] = []
+
+    def emitter(**options):
+        def start():
+            started.append(FakeEmitterClient(**options))
+            return started[-1]
+
+        return start
+
+    monkeypatch.setenv("HF_HUB_OFFLINE", "1")
+    monkeypatch.setattr(stager, "_start_bundle_emitter", emitter())
+    with pytest.raises(SystemExit, match="HF_HUB_OFFLINE"):
+        stager.main(argv)
+    assert started == []
+    monkeypatch.delenv("HF_HUB_OFFLINE")
+
+    read_only = {
+        "status": "checked",
+        "credential": "present",
+        "reachable": True,
+        "can_write": False,
+        "error_type": None,
+    }
+    monkeypatch.setattr(
+        stager, "_start_bundle_emitter", emitter(write_access=read_only)
+    )
+    with pytest.raises(SystemExit, match="read-only"):
+        stager.main(argv)
+    assert started[-1].closed and started[-1].bundle_requests == []
+
+    hub = _FakeHub()
+    monkeypatch.setattr(
+        stager, "_start_bundle_emitter", emitter(hub_files=hub.files, hub_api=hub)
+    )
+    capsys.readouterr()
+    assert stager.main(argv) == 0
+    assert started[-1].closed
+    (request,) = started[-1].bundle_requests
+    assert {item.name: item.role for item in request.files}[dataset.name] == "dataset"
+    staged = json.loads((run_dir / cli.MANIFEST_FILENAME).read_text())["staged_dataset"]
+    assert staged["status"] == "uploaded" and staged["revision"] == hub.sha
+    assert json.loads(capsys.readouterr().out) == staged
+    for line in (run_dir / "sha256sums.txt").read_text().splitlines():
+        digest, name = line.split("  ")
+        assert hashlib.sha256((run_dir / name).read_bytes()).hexdigest() == digest
 
 
 def test_a_failed_refresh_after_a_passed_read_back_still_records_the_attempt(

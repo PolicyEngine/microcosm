@@ -683,9 +683,9 @@ def test_uk_national_role_leaves_a_build_record_the_emitter_did_not_copy(
     monkeypatch, tmp_path, capsys
 ):
     """The build record is a bundle file: when the emitter will upload it
-    from disk, it keeps its handed-over bytes and no staging receipt, and the
-    manifest keeps the digest of those bytes; the manifest, which the emitter
-    copied, still gains the delivery records."""
+    from disk, it keeps its handed-over bytes, without the final staging
+    receipt, and the manifest keeps the digest of those bytes; the manifest,
+    which the emitter copied, still gains the delivery records."""
     pytest.importorskip("tables")
     builder = candidate._load_builder_module()
     input_h5, _registry, _artifact, _pin = _national_inputs(monkeypatch, tmp_path)
@@ -706,7 +706,6 @@ def test_uk_national_role_leaves_a_build_record_the_emitter_did_not_copy(
             ("policyengine/populace-uk-private", f"staged/{run_id}/build_record.json")
         ]
     )
-    assert "staging_delivery" not in json.loads(record_bytes)
     assert manifest["outputs"]["build_record"]["sha256"] == (
         hashlib.sha256(record_bytes).hexdigest()
     )

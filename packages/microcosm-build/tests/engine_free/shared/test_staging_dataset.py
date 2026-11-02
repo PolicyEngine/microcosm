@@ -263,6 +263,12 @@ def test_sidecars_list_every_file_and_verify_themselves(tmp_path):
         ("calibration_diagnostics", "calibration_diagnostics"),
         ("local_registry", "local_registry"),
         ("orrery/graph.schema.json", "orrery_graph_schema_json"),
+        (
+            "orrery/evidence-0e07dea6cca04063a47a8166793d9a0c-6f8356b6990586505573"
+            "13f43b8875214a46246d990ce7e3f574d8af6dd52e9f-binding.json",
+            "orrery_evidence_binding_json",
+        ),
+        ("dense_reference_deadbeef", "dense_reference_deadbeef"),
         ("Score-Receipt", "score_receipt"),
         ("2024_weights", "output_2024_weights"),
         ("checksums", "output_checksums"),
