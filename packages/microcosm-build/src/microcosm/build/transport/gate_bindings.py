@@ -59,10 +59,14 @@ columns). Missing artifacts resolve to registered ``evidence_absent``;
 supplied artifacts still fail until the checks are implemented. New Zealand
 keeps the entry applicable with ``evidence_absent_blocks``. Only
 ``macro_realism`` has no transport binding and remains ``not_applicable``
-pending national-accounts evidence and reviewed bands. ``weights_audit`` keeps its
-``DEFAULT_REGISTRY`` binding, but no transport kernel emits its
-``fit_weight_records`` evidence yet, so it resolves to a named
-``evidence_absent``.
+pending national-accounts evidence and reviewed bands. ``weights_audit`` overrides the
+``DEFAULT_REGISTRY`` binding for transport countries only: it reads
+``fit_weight_records`` from ``transport.weights_audit@1``, runs
+``weights_audit_gate`` unchanged over its fit records, then checks the
+design-to-calibrated transition, the destination-mass change against the
+required ``maximum_relative_mass_change`` and the one-vector rule over every
+declared partition. ``DEFAULT_REGISTRY``, ``gates.py`` and the UK registry
+keep their binding.
 
 Every binding is a frozen dataclass over top-level functions, so
 ``gates.battery@1`` can describe it exactly
@@ -93,6 +97,7 @@ from microcosm.build.gate_battery import (
     GateBinding,
 )
 from microcosm.build.gates import (
+    FitWeightRecord,
     GateResult,
     TargetCoverageRequirement,
     aggregate_admin_gate,
@@ -101,6 +106,7 @@ from microcosm.build.gates import (
     nonnegative_columns_gate,
     per_family_fit_gate,
     target_profile_coverage_gate,
+    weights_audit_gate,
 )
 from microcosm.build.plan import _nonzero_share
 from microcosm.calibrate.solve import effective_sample_size
@@ -111,8 +117,10 @@ from .evidence_contract import (
     CLOSURE_CLASSES,
     DONOR_ARTIFACT_RECEIPT,
     DONOR_RECEIPT_REF,
+    FIT_WEIGHT_RECORDS,
     GRAPH_EVIDENCE,
     INPUT_CLOSURE_REF,
+    WEIGHTS_AUDIT_REF,
     EvidenceDocument,
     checked_header,
     partition_counts,
@@ -1379,6 +1387,112 @@ def _release_input_coverage(
     )
 
 
+#: H38: the battery's weights evidence covers the central branch only.
+_VARIANT_WEIGHTS_NOTE = (
+    "This audit covers the central calibration only. Uncertainty bands read "
+    "variant calibrations' weights, which no gate audits yet; per-variant "
+    "audits come due before the bands take release status (G8-y)."
+)
+
+
+def _transport_weights_audit(
+    *,
+    fit_weight_records: object,
+    graph_evidence: object,
+    frame: Frame,
+    maximum_relative_mass_change: float,
+    allowed_unweighted: Mapping[str, str] | None = None,
+) -> GateResult:
+    """The fit-kind audit plus the transport weight transition, both checked.
+
+    Runs :func:`~microcosm.build.gates.weights_audit_gate` unchanged over the
+    records' ``fit_records``, then, all reported in a fixed order: the
+    header; a ``design`` to ``calibrated`` transition; the battery frame's
+    weights and ids equal to the recorded calibrated weights; the binding of
+    the solution and result to the problem; the person-mass change within
+    ``maximum_relative_mass_change`` of the destination mass; and, for the
+    person entity and every declared partition, effective weights that are
+    exactly the inherited household vector with no persisted weight column.
+    """
+
+    limit = _number("maximum_relative_mass_change", maximum_relative_mass_change)
+    if limit < 0:
+        raise ValueError("maximum_relative_mass_change must be non-negative.")
+    failures = checked_header(
+        FIT_WEIGHT_RECORDS,
+        fit_weight_records,
+        graph_evidence,
+        frame,
+        kernel=WEIGHTS_AUDIT_REF,
+    )
+    details: dict[str, object] = {
+        "maximum_relative_mass_change": limit,
+        "variant_weights": _VARIANT_WEIGHTS_NOTE,
+    }
+    audit = _decoded_document(fit_weight_records, "transport_weights_audit")
+    if audit is None:
+        return GateResult("weights_audit", False, tuple(failures), details)
+    records = [
+        FitWeightRecord(row["fit_name"], row["weight_kind"])
+        for row in audit["fit_records"]
+    ]
+    result = weights_audit_gate(records, allowed_unweighted=allowed_unweighted)
+    transition = audit["transition"]
+    if (transition["from_kind"], transition["to_kind"]) != ("design", "calibrated"):
+        failures.append(
+            f"The transition runs {transition['from_kind']!r} to "
+            f"{transition['to_kind']!r}, not design to calibrated."
+        )
+    entity = audit["weight_entity"]
+    if frame is not None and entity in frame.entities:
+        table = frame.table(entity)
+        ids = table[frame.schema.entity_id_column(entity)].tolist()
+        weights = frame.resolve_weights(entity).values.tolist()
+        if ids != list(transition["household_id"]):
+            failures.append(f"The battery's {entity} ids differ from the audit's.")
+        elif weights != list(transition["calibrated_weight"]):
+            failures.append(
+                f"The battery's {entity} weights differ from the audited calibrated "
+                "weights."
+            )
+    binding = audit["binding"]
+    if not (
+        binding["problem_sha256"]
+        == binding["solution_problem_sha256"]
+        == binding["result_problem_sha256"]
+    ):
+        failures.append("The solution or result belongs to another problem.")
+    mass = audit["mass"]
+    change = mass["relative_change"]
+    if change is None or not abs(change) <= limit:
+        failures.append(
+            f"The calibrated person mass {mass['calibrated_person_mass']!r} moves "
+            f"{change!r} relative to the destination mass "
+            f"{mass['destination_person_mass']!r}; the declared limit is {limit!r}."
+        )
+    for row in audit["partitions"]:
+        if not row["inherited"]:
+            failures.append(
+                f"{row['entity']}: its effective weights are not the inherited "
+                f"{entity} vector; a unit may not persist a second weight vector."
+            )
+        if row["weight_columns"]:
+            failures.append(
+                f"{row['entity']}: persisted weight columns {row['weight_columns']}."
+            )
+    details.update(
+        {
+            "weight_entity": entity,
+            "transition": [transition["from_kind"], transition["to_kind"]],
+            "n_records": len(transition["household_id"]),
+            "mass": dict(mass),
+            "source_households": dict(audit["source_households"]),
+            "partitions": [dict(row) for row in audit["partitions"]],
+        }
+    )
+    return _with_failures(result, failures=failures, details=details)
+
+
 # ---------------------------------------------------------------------------
 # Evidence payloads (the report's evidence_sha256 lines)
 # ---------------------------------------------------------------------------
@@ -1423,6 +1537,16 @@ def _release_input_coverage_evidence(
     }
 
 
+def _weights_audit_evidence(
+    context: EvidenceContext, parameters: Mapping[str, Any]
+) -> object:
+    return {
+        FIT_WEIGHT_RECORDS: getattr(
+            context.artifacts[FIT_WEIGHT_RECORDS], "sha256", None
+        )
+    }
+
+
 def _cell_diagnostics_evidence(
     context: EvidenceContext, parameters: Mapping[str, Any]
 ) -> object:
@@ -1447,6 +1571,7 @@ def _parameters(gate: object) -> frozenset[str]:
         DONOR_ARTIFACT_RECEIPT,
         AXIOM_INPUT_CLOSURE,
         "donor_support_bounds",
+        FIT_WEIGHT_RECORDS,
     }
     return frozenset(
         name for name in inspect.signature(gate).parameters if name not in supplied
@@ -1532,6 +1657,19 @@ TRANSPORT_GATE_REGISTRY: Mapping[str, GateBinding] = MappingProxyType(
             parameter_keys=_parameters(_cell_support_target),
             artifact_arguments=MappingProxyType({CELL_DIAGNOSTICS: CELL_DIAGNOSTICS}),
             evidence=_cell_diagnostics_evidence,
+        ),
+        "weights_audit": FunctionBinding(
+            name="weights_audit",
+            gate=_transport_weights_audit,
+            parameter_keys=_parameters(_transport_weights_audit),
+            artifact_arguments=MappingProxyType(
+                {
+                    FIT_WEIGHT_RECORDS: FIT_WEIGHT_RECORDS,
+                    GRAPH_EVIDENCE: GRAPH_EVIDENCE,
+                }
+            ),
+            frame_argument="frame",
+            evidence=_weights_audit_evidence,
         ),
         "support": FunctionBinding(
             name="support",

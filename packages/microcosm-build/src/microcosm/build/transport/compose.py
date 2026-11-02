@@ -15,6 +15,9 @@ explicit selection:
   bytes, so the node's key moves with that one resource only).
 - ``{"prepared": "engine_refs"}`` is the canonical JSON of the prepared
   binding-id -> engine reference map that preparation built.
+- ``{"prepared": "unit_entities"}`` is the canonical JSON of every declared
+  partition entity, read from the declared CREATE with the legacy
+  benefit-unit fallback.
 - ``{"binding": name, "field": field}`` selects exactly ``engine_ref`` or
   ``period`` from one declared, prepared rules binding.
 
@@ -118,6 +121,8 @@ from .evidence_contract import (
     DONOR_RECEIPT_TYPE,
     INPUT_CLOSURE_REF,
     INPUT_CLOSURE_TYPE,
+    WEIGHTS_AUDIT_REF,
+    WEIGHTS_AUDIT_TYPE,
     binding_relation_inputs,
 )
 from .money_kernels import (
@@ -189,6 +194,7 @@ SKELETON_KERNELS = CREATE_REFS | frozenset(
         "gates.battery@1",
         DONOR_RECEIPT_REF,
         INPUT_CLOSURE_REF,
+        WEIGHTS_AUDIT_REF,
         "export.prepare@1",
         "export.readback@1",
         "transport.package@1",
@@ -240,7 +246,7 @@ _NODE_FIELDS = frozenset(
     }
 )
 _ENCODINGS = frozenset({"value", "json", "sha256"})
-_PREPARED = frozenset({"engine_refs"})
+_PREPARED = frozenset({"engine_refs", "unit_entities"})
 _PRECALIBRATION_SCHEMA_VERSION = 1
 _PRECALIBRATION_PURPOSES = frozenset({"calibration_measure", "classification"})
 _PRECALIBRATION_STAGE_FIELDS = frozenset(
@@ -256,6 +262,7 @@ _OUTPUT_TYPES: Mapping[str, Mapping[str, ArtifactType]] = MappingProxyType(
         "geography.gate@1": {"validation": ATOMIC_GEOGRAPHY_VALIDATION_TYPE},
         DONOR_RECEIPT_REF: {"donor_artifact_receipt": DONOR_RECEIPT_TYPE},
         INPUT_CLOSURE_REF: {"axiom_input_closure": INPUT_CLOSURE_TYPE},
+        WEIGHTS_AUDIT_REF: {"fit_weight_records": WEIGHTS_AUDIT_TYPE},
     }
 )
 
@@ -1560,6 +1567,31 @@ def _check_donor_receipts(graph: Graph) -> None:
             raise ValueError(
                 f"Donor-receipt node {node.id!r} selects a different donor from "
                 f"CREATE {create.id!r}: {differing or ['sources']}."
+            )
+
+
+def _check_weights_audit_entity(spec: Mapping[str, object], graph: Graph) -> None:
+    """Every declared weight transition is on the audited weight entity.
+
+    ``transport.weights_audit@1`` audits one weight vector; a declared row
+    whose ``weights.entity`` names another entity would persist a second
+    vector the audit never sees.
+    """
+
+    audits = [node for node in graph.nodes if node.kernel == WEIGHTS_AUDIT_REF]
+    if not audits:
+        return
+    entities = {node.params.get("weight_entity") for node in audits}
+    if len(entities) != 1:
+        raise ValueError("Weights-audit nodes must declare one weight_entity.")
+    (entity,) = entities
+    for row in _declared_rows(spec):
+        weights = row.get("weights")
+        if isinstance(weights, Mapping) and weights.get("entity") != entity:
+            raise ValueError(
+                f"Node {row.get('id')!r} declares weights on "
+                f"{weights.get('entity')!r}, but the weights audit reads "
+                f"{entity!r}; a unit may not persist a second weight vector."
             )
 
 
@@ -3117,6 +3149,10 @@ def _param(
             raise ValueError("The whole-spec fingerprint cannot enter node parameters.")
         if value["prepared"] not in _PREPARED:
             raise ValueError(f"Unknown prepared parameter {value['prepared']!r}.")
+        if value["prepared"] == "unit_entities":
+            return canonical_json(
+                {"unit_entities": [str(entity) for entity in _unit_entities(spec)]}
+            ).decode("utf-8")
         if engine_refs is None:
             raise ValueError("Prepared engine references are not available here.")
         return canonical_json(
@@ -3639,6 +3675,7 @@ def compose_transport_graph(
         _check_donor_receipts(skeleton)
         _check_closure_relation_slices(spec, skeleton)
         _check_graph_node_entries(spec, config, skeleton, extended=False)
+        _check_weights_audit_entity(spec, skeleton)
         return skeleton
     skeleton_nodes = []
     for node in skeleton.nodes:
@@ -3672,6 +3709,7 @@ def compose_transport_graph(
     _check_donor_receipts(graph)
     _check_closure_relation_slices(spec, graph)
     _check_graph_node_entries(spec, config, graph, extended=True)
+    _check_weights_audit_entity(spec, graph)
     for node in skeleton.nodes:
         expected = (
             set(compiled.predecessors[node.id])

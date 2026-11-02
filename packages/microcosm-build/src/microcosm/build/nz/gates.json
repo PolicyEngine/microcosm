@@ -122,9 +122,11 @@
       "gate": "weights_audit",
       "phase": "terminal",
       "criticality": "release_blocking",
-      "parameters": {},
+      "parameters": {
+        "maximum_relative_mass_change": 0.02
+      },
       "evidence_absent_blocks": true,
-      "notes": "Household weights must receipt their design-to-calibrated transition and destination-population mass change. Family scoring resolves those weights through Frame; it may not persist a second ambiguous vector."
+      "notes": "Household weights must receipt their design-to-calibrated transition and destination-population mass change. Family scoring resolves those weights through Frame; it may not persist a second ambiguous vector. The NZ hub set maximum_relative_mass_change to 0.02 (ruling H33): d1376 holds each of the 64 demography cells within 2% (demography_per_family_fit, within 0.02), and those cells split the population by 16 regions and four age bands from the same Stats NZ June 2025 estimates that set CREATE's mass. Region 99 (Chatham Islands) sits outside every cell: the national figure reads 5,324,700 and the 16 regions sum to 5,324,100 (reference_inventory.json erp_bridges), so cells within 2% bound the total within about 2.01%. This gate can therefore fail when every cell passes, but only when every cell sits at the limit and region 99 moves too. G8-x reports the measured change, and any later edit goes through review like the solver settings."
     },
     {
       "id": "exported_nonzero",

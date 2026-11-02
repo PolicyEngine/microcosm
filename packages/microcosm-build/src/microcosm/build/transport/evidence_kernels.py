@@ -10,6 +10,13 @@ battery's gate bindings check that identity before they compare anything.
   ``source_stages`` artifact that pins the same donor, and records the
   frame's ``content_basis`` and ``donor_time_period``. Composition requires
   its donor selections to equal CREATE's.
+- ``transport.weights_audit@1`` reads the calibration's problem, solution
+  and result artifacts with the calibrated frame, and records the one
+  reweight step's resolved kind, the household design-to-calibrated
+  transition with each household's source household, the destination-mass
+  change, source-household concentration, and, for the person entity and
+  every declared partition, whether its effective weights are exactly the
+  household vector broadcast through membership (no second vector).
 - ``transport.input_closure@1`` reads each bound module's root inputs per
   engine entity from the prepared engines, partitions them against the
   reviewed closure (:func:`~.evidence_contract.closure_partition`), and runs
@@ -27,10 +34,21 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from collections.abc import Mapping
 from pathlib import Path
 from types import MappingProxyType
 
+import numpy as np
+
+import microcosm.calibrate.artifacts as calibrate_artifacts
+from microcosm.calibrate.artifacts import (
+    RESULT_TYPE,
+    decode_problem,
+    decode_solution,
+)
+from microcosm.calibrate.solve import effective_sample_size
+from microcosm.frame import EntitySchema
 from microcosm.frame.adapters.axiom import AxiomEngine
 from microcosm.frame.concept_mapping import ConceptMapping
 from microcosm.frame.input_closure import InputClosure
@@ -50,7 +68,9 @@ from microcosm.graph.canonical import canonical_json
 from .evidence_contract import (
     DONOR_RECEIPT_REF,
     EVIDENCE_KERNEL_DEPENDENCIES,
+    FIT_WEIGHT_RECORDS,
     INPUT_CLOSURE_REF,
+    WEIGHTS_AUDIT_REF,
     binding_relation_inputs,
     closure_partition,
     evidence_header,
@@ -59,10 +79,12 @@ from .evidence_contract import (
     module_declares_imports,
     payload_sha256,
 )
+from .weight_quality import aggregate_source_weights
 
 __all__ = [
     "TransportDonorReceiptKernel",
     "TransportInputClosureKernel",
+    "TransportWeightsAuditKernel",
     "engine_root_inputs",
     "register_evidence_kernels",
 ]
@@ -435,8 +457,219 @@ class TransportInputClosureKernel(_EvidenceKernel):
         )
 
 
+# ---------------------------------------------------------------------------
+# transport.weights_audit@1
+# ---------------------------------------------------------------------------
+
+
+_RESULT_MEMBERS = {
+    "weights",
+    "initial_weights",
+    "loss_trajectory",
+    "target_loss_weights",
+    "target_loss_scales",
+    "probabilities",
+}
+
+
+def _concentration(weights: np.ndarray, source_ids: np.ndarray) -> dict:
+    """ESS and max/median by source household, as the weight gates read them."""
+
+    values = aggregate_source_weights(weights, source_ids)
+    positive = values[values > 0]
+    maximum = float(values.max()) if values.size else 0
+    scaled = values / maximum if maximum > 0 else values
+    median = float(np.median(scaled[scaled > 0])) if positive.size else None
+    return {
+        "n_source_households": int(values.size),
+        "effective_sample_size": float(effective_sample_size(scaled)),
+        "max_to_median_positive_weight": None if not median else 1 / median,
+    }
+
+
+def _as_list(values: np.ndarray) -> list:
+    return [item.item() if isinstance(item, np.generic) else item for item in values]
+
+
+class TransportWeightsAuditKernel(_EvidenceKernel):
+    """Audit the one reweight step and the one weight vector it leaves."""
+
+    ref = WEIGHTS_AUDIT_REF
+    artifact = FIT_WEIGHT_RECORDS
+    _required = frozenset({"weight_entity", "unit_entities"})
+    _aliases = ("problem", "solution", "result")
+
+    def run(self, context: KernelContext) -> KernelResult:
+        ref = self.ref
+        _params(context, ref, self._required)
+        _no_outputs(context, ref, self.artifact)
+        weight_entity = _text(context, ref, "weight_entity")
+        units = _document(context, ref, "unit_entities").get("unit_entities")
+        if not isinstance(units, list) or not all(isinstance(u, str) for u in units):
+            raise ValueError(f"{ref} unit_entities must list the declared partitions.")
+        edges = {edge.name: edge for edge in context.node.artifact_inputs}
+        if set(edges) != set(self._aliases) or set(context.artifacts) != set(
+            self._aliases
+        ):
+            raise ValueError(f"{ref} reads exactly {list(self._aliases)} artifacts.")
+        payloads = {alias: context.artifacts[alias].payload for alias in self._aliases}
+        problem = decode_problem(payloads["problem"])
+        solution = decode_solution(
+            payloads["solution"],
+            problem_sha256=problem.sha256,
+            entity_ids=problem.entity_ids,
+        )
+        metadata, arrays = calibrate_artifacts._unpack(
+            payloads["result"], schema=RESULT_TYPE.name + ".v1", members=_RESULT_MEMBERS
+        )
+        if metadata["problem_sha256"] != problem.sha256 or tuple(
+            metadata["entity_ids"]
+        ) != tuple(problem.entity_ids):
+            raise ValueError(f"{ref} result belongs to another problem or axis.")
+        design = np.asarray(problem.problem.initial_weights.values, dtype=np.float64)
+        calibrated = np.asarray(solution.weights, dtype=np.float64)
+        if not np.array_equal(arrays["weights"], calibrated) or not np.array_equal(
+            arrays["initial_weights"], design
+        ):
+            raise ValueError(
+                f"{ref} result weights differ from the solution or the problem's "
+                "initial weights."
+            )
+        if problem.problem.weight_entity != weight_entity:
+            raise ValueError(
+                f"{ref} audits {weight_entity!r}, but the problem calibrates "
+                f"{problem.problem.weight_entity!r}."
+            )
+        tables = context.tables
+        schema = EntitySchema(group_entities=(weight_entity, *units))
+        schema_person = schema.person_entity
+        person = tables.get(schema_person)
+        households = tables.get(weight_entity)
+        if person is None or households is None:
+            raise ValueError(f"{ref} slices the person and {weight_entity} tables.")
+        ids = households[schema.id_column(weight_entity)].to_numpy()
+        if tuple(_as_list(ids)) != tuple(problem.entity_ids):
+            raise ValueError(
+                f"{ref} frame {weight_entity} ids differ from the problem."
+            )
+        frame_weights = context.weights.get(weight_entity)
+        if frame_weights is None or not np.array_equal(
+            np.asarray(frame_weights.values, dtype=np.float64), calibrated
+        ):
+            raise ValueError(
+                f"{ref} frame {weight_entity} weights differ from the calibration "
+                "solution."
+            )
+        if "source_household_id" not in households.columns:
+            raise ValueError(f"{ref} slices {weight_entity}.source_household_id.")
+        source = households["source_household_id"].to_numpy()
+        membership = person[schema.membership_column(weight_entity)].to_numpy()
+        positions = {value: index for index, value in enumerate(_as_list(ids))}
+        person_positions = np.asarray([positions[v] for v in _as_list(membership)])
+        person_design = design[person_positions]
+        person_calibrated = calibrated[person_positions]
+        destination = math.fsum(person_design.tolist())
+        achieved = math.fsum(person_calibrated.tolist())
+        partitions = []
+        for entity in (schema_person, *units):
+            table = tables.get(entity)
+            if table is None:
+                raise ValueError(
+                    f"{ref} slices every declared partition; {entity!r} is absent."
+                )
+            weight_columns = sorted(
+                str(column)
+                for column in table.columns
+                if str(column).endswith("_weight")
+            )
+            if entity == schema_person:
+                expected = person_calibrated
+            else:
+                unit_ids = table[schema.id_column(entity)].to_numpy()
+                members = person[schema.membership_column(entity)].to_numpy()
+                first = {}
+                for member, value in zip(
+                    _as_list(members), person_calibrated, strict=True
+                ):
+                    first.setdefault(member, value)
+                expected = np.asarray(
+                    [first.get(u, np.nan) for u in _as_list(unit_ids)]
+                )
+            effective = context.weights.get(entity)
+            inherited = effective is not None and np.array_equal(
+                np.asarray(effective.values, dtype=np.float64), expected
+            )
+            partitions.append(
+                {
+                    "entity": entity,
+                    "inherited": bool(inherited),
+                    "weight_columns": weight_columns,
+                }
+            )
+        relative = (achieved - destination) / destination if destination else None
+        document = {
+            **evidence_header(
+                "transport_weights_audit",
+                kernel=ref,
+                node=context.node.id,
+                artifacts=payloads,
+                frame=_frame_digests(
+                    context,
+                    {
+                        entity: schema.entity_id_column(entity)
+                        for entity in schema.entities
+                    },
+                ),
+                params={name: context.params[name] for name in sorted(self._required)},
+            ),
+            "weight_entity": weight_entity,
+            "fit_records": [
+                {
+                    "fit_name": edges["solution"].producer,
+                    "weight_kind": frame_weights.kind.value,
+                }
+            ],
+            "transition": {
+                "from_kind": problem.problem.initial_weights.kind.value,
+                "to_kind": frame_weights.kind.value,
+                "household_id": _as_list(ids),
+                "source_household_id": [str(item) for item in _as_list(source)],
+                "design_weight": design.tolist(),
+                "calibrated_weight": calibrated.tolist(),
+            },
+            "binding": {
+                "problem_sha256": problem.sha256,
+                "solution_problem_sha256": solution.problem_sha256,
+                "result_problem_sha256": metadata["problem_sha256"],
+            },
+            "mass": {
+                "destination_person_mass": destination,
+                "calibrated_person_mass": achieved,
+                "design_household_mass": math.fsum(design.tolist()),
+                "calibrated_household_mass": math.fsum(calibrated.tolist()),
+                "absolute_change": achieved - destination,
+                "relative_change": relative,
+            },
+            "source_households": {
+                "design": _concentration(design, source),
+                "calibrated": _concentration(calibrated, source),
+            },
+            "partitions": partitions,
+        }
+        payload = canonical_json(document)
+        return KernelResult(
+            artifacts={self.artifact: payload},
+            receipt={
+                "relative_mass_change": relative,
+                "partitions": {row["entity"]: row["inherited"] for row in partitions},
+                "artifact_sha256": payload_sha256(payload),
+            },
+        )
+
+
 #: The engine-free evidence kernel, shared across registries.
 TRANSPORT_DONOR_RECEIPT = TransportDonorReceiptKernel()
+TRANSPORT_WEIGHTS_AUDIT = TransportWeightsAuditKernel()
 
 
 def register_evidence_kernels(
@@ -445,5 +678,6 @@ def register_evidence_kernels(
     """Install the evidence producers; ``engines`` is the prepared mapping."""
 
     registry.register(TRANSPORT_DONOR_RECEIPT)
+    registry.register(TRANSPORT_WEIGHTS_AUDIT)
     registry.register(TransportInputClosureKernel(engines))
     return registry

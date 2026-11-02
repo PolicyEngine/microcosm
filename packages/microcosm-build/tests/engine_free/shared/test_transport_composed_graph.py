@@ -7744,3 +7744,24 @@ def test_cold_build_executes_create_for_inventory_and_graph(
         resume="forbid",
     )
     assert calls == ["nz.create", "nz.create"]
+
+
+@pytest.mark.parametrize("keep_legacy_rule", [False, True])
+def test_the_weights_audit_reads_every_declared_partition(composed, keep_legacy_rule):
+    # A two-partition create@2 spec, with and without a stale legacy
+    # benefit_unit_rule.json beside the declaration: the prepared
+    # unit_entities parameter names both declared partitions either way.
+    from microcosm.build.transport import compose as compose_module
+
+    units = MultiUnitRule(
+        units=(
+            UnitDeclaration(kind="benefit_unit", rule=UNIT_RULE),
+            UnitDeclaration(
+                kind="benefit_unit", rule=replace(UNIT_RULE, entity="assessment")
+            ),
+        )
+    )
+    spec = _closed_export_on_create2(composed, units, keep_legacy_rule=keep_legacy_rule)
+    resolved = compose_module._param(spec, {"prepared": "unit_entities"}, None)
+    assert json.loads(resolved) == {"unit_entities": [UNIT_RULE.entity, "assessment"]}
+    assert compose_module._unit_entities(spec) == (UNIT_RULE.entity, "assessment")

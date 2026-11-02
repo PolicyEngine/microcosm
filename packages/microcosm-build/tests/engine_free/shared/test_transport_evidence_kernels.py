@@ -354,11 +354,7 @@ def _forged(payload: bytes, edit) -> bytes:
 class TestImplementationHashes:
     @pytest.mark.parametrize("ref", sorted(EVIDENCE_KERNEL_MODULES))
     def test_the_leaf_hash_is_each_kernels_hash(self, toy, ref) -> None:
-        kernel = (
-            TRANSPORT_DONOR_RECEIPT
-            if ref == DONOR_RECEIPT_REF
-            else _closure_kernel(toy)
-        )
+        kernel = toy.registry.kernels.get(ref)
         assert kernel.ref == ref
         assert evidence_implementation_hash(ref) == kernel.implementation_hash()
 
@@ -387,6 +383,20 @@ class TestImplementationHashes:
                 "microcosm.frame.adapters.axiom",
                 # S2: the producer calls schema.entity_id_column.
                 "microcosm.frame.schema",
+                "microcosm.graph.canonical",
+                "microcosm.build.transport.evidence_contract",
+            ),
+            "transport.weights_audit@1": (
+                "microcosm.build.transport.evidence_kernels",
+                "microcosm.build.transport.weight_quality",
+                "microcosm.calibrate.artifacts",
+                "microcosm.calibrate.matrix",
+                "microcosm.calibrate.registry",
+                "microcosm.calibrate.solve",
+                # S2: the trace finds these in run(); the list missed them.
+                "microcosm.calibrate.target",
+                "microcosm.frame.schema",
+                "microcosm.frame.weights",
                 "microcosm.graph.canonical",
                 "microcosm.build.transport.evidence_contract",
             ),
@@ -506,7 +516,8 @@ TRACE_EXCLUSIONS: dict[str, dict[str, str]] = {
             "kernel; an edit there re-keys every node through the executor."
         ),
     }
-    for ref in (DONOR_RECEIPT_REF, INPUT_CLOSURE_REF)
+    # Every evidence kernel the leaf lists, so a new kernel needs a trace.
+    for ref in EVIDENCE_KERNEL_MODULES
 }
 
 
@@ -566,11 +577,21 @@ def kernel_traces(toy, donor, tmp_path_factory):
     context = _relation_context(_relation_frame({"member_income": np.ones(3)}), node)
     closure |= _traced(lambda: kernel.run(context))
     traces[INPUT_CLOSURE_REF] = closure
+    weights = _project_context(
+        _weights_node(),
+        Population.from_frame(_units_frame(), "toy.terminal"),
+        key="0" * 64,
+        sources={},
+        tolerances={},
+        numerics={},
+        artifacts=_artifact_values(_calibration()),
+    )
+    traces[WEIGHTS_AUDIT_REF] = _traced(lambda: TRANSPORT_WEIGHTS_AUDIT.run(weights))
     return traces
 
 
 class TestModuleListsAreComplete:
-    @pytest.mark.parametrize("ref", (DONOR_RECEIPT_REF, INPUT_CLOSURE_REF))
+    @pytest.mark.parametrize("ref", sorted(EVIDENCE_KERNEL_MODULES))
     def test_every_module_a_kernel_runs_is_listed(self, kernel_traces, ref) -> None:
         # Under-listing serves stale results: an edit to an unlisted module
         # leaves implementation_hash() unchanged.
@@ -2008,3 +2029,510 @@ def passing_stub_world(toy, donor):
     spec = _with_commit(toy, "a" * 40)
     frame = _frame(spec["resources"]["axiom_input_closure"])
     return frame, _run_receipt(donor, frame), _run_closure(toy, spec=spec, frame=frame)
+
+
+# ---------------------------------------------------------------------------
+# transport.weights_audit@1 and the transport weights_audit gate (H30, H44 B)
+# ---------------------------------------------------------------------------
+
+from types import SimpleNamespace  # noqa: E402
+
+from scipy import sparse  # noqa: E402
+
+from microcosm.build.transport.evidence_contract import (  # noqa: E402
+    FIT_WEIGHT_RECORDS,
+    WEIGHTS_AUDIT_REF,
+    WEIGHTS_AUDIT_TYPE,
+    decode_weights_audit,
+)
+from microcosm.build.transport.evidence_kernels import (  # noqa: E402
+    TRANSPORT_WEIGHTS_AUDIT,
+)
+from microcosm.calibrate import CalibrationProblem, Target  # noqa: E402
+from microcosm.calibrate.artifacts import (  # noqa: E402
+    PROBLEM_TYPE,
+    RESULT_TYPE,
+    SOLUTION_TYPE,
+    decode_problem,
+    encode_calibration_result,
+    encode_problem,
+    encode_solution,
+)
+from microcosm.graph.executor import Population, _project_context  # noqa: E402
+from microcosm.graph.kernel import NumericScope  # noqa: E402
+
+UNITS_SCHEMA = EntitySchema(group_entities=("household", "tax_unit", "family"))
+HOUSEHOLD_IDS = [10, 20, 30]
+PERSON_HOUSEHOLD = [10, 10, 10, 20, 20, 30]
+PERSON_TAX_UNIT = [1, 1, 2, 3, 3, 4]
+PERSON_FAMILY = [100, 100, 101, 102, 102, 103]
+DESIGN = np.array([2.0, 3.0, 5.0])
+CALIBRATED = np.array([2.2, 2.7, 5.0])
+
+
+def _units_frame(
+    stored: dict | None = None,
+    *,
+    calibrated=CALIBRATED,
+    households=HOUSEHOLD_IDS,
+    person_household=PERSON_HOUSEHOLD,
+    person_tax_unit=PERSON_TAX_UNIT,
+    person_family=PERSON_FAMILY,
+    sources=("s1", "s1", "s2"),
+) -> Frame:
+    count = len(person_household)
+    person = pd.DataFrame(
+        {
+            "person_id": np.arange(1, count + 1, dtype=np.int64),
+            "person_household_id": np.array(person_household, dtype=np.int64),
+            "person_tax_unit_id": np.array(person_tax_unit, dtype=np.int64),
+            "person_family_id": np.array(person_family, dtype=np.int64),
+            "age": np.arange(30, 30 + count, dtype=np.int64),
+        }
+    )
+    household = pd.DataFrame(
+        {
+            "household_id": np.array(households, dtype=np.int64),
+            "source_household_id": pd.array(list(sources), dtype="string"),
+        }
+    )
+    tax_units = sorted(set(person_tax_unit))
+    families = sorted(set(person_family))
+    tax_unit = pd.DataFrame(
+        {
+            "tax_unit_id": np.array(tax_units, dtype=np.int64),
+            "tax_unit_flag": [index % 2 for index in range(len(tax_units))],
+        }
+    )
+    family = pd.DataFrame(
+        {
+            "family_id": np.array(families, dtype=np.int64),
+            "family_flag": [(index + 1) % 2 for index in range(len(families))],
+        }
+    )
+    weights = {"household": Weights(np.asarray(calibrated), WeightKind.CALIBRATED)}
+    for entity, values in (stored or {}).items():
+        weights[entity] = Weights(
+            np.asarray(values, dtype=np.float64), WeightKind.CALIBRATED
+        )
+    return Frame(
+        {
+            "person": person,
+            "household": household,
+            "tax_unit": tax_unit,
+            "family": family,
+        },
+        UNITS_SCHEMA,
+        weights,
+    )
+
+
+def _calibration(
+    design=DESIGN, calibrated=CALIBRATED, households=HOUSEHOLD_IDS
+) -> dict[str, bytes]:
+    target = Target(
+        "count",
+        "household",
+        lambda f: np.ones(len(households)),
+        value=10,
+        period=2026,
+    )
+    problem = CalibrationProblem(
+        sparse.csr_array([[1.0] * len(households)]),
+        np.array([10.0]),
+        (target.row_name,),
+        Weights(np.asarray(design, dtype=np.float64), WeightKind.DESIGN),
+        "household",
+        (target,),
+    )
+    problem_payload = encode_problem(problem, entity_ids=households)
+    sha = decode_problem(problem_payload).sha256
+    result = SimpleNamespace(
+        weights=np.asarray(calibrated, dtype=np.float64),
+        initial_weights=np.asarray(design, dtype=np.float64),
+        options={},
+        gate_open_probabilities=None,
+        l0_lambda=0.0,
+        n_nonzero=len(households),
+        target_loss_cap=1.0,
+        final_loss=0.0,
+        loss_trajectory=np.zeros(1),
+        target_loss_weights=np.ones(1),
+        target_loss_scales=np.ones(1),
+    )
+    return {
+        "problem": problem_payload,
+        "solution": encode_solution(
+            calibrated, entity_ids=households, problem_sha256=sha
+        ),
+        "result": encode_calibration_result(
+            result, entity_ids=households, problem_sha256=sha
+        ),
+    }
+
+
+_CALIBRATION_TYPES = {
+    "problem": PROBLEM_TYPE,
+    "solution": SOLUTION_TYPE,
+    "result": RESULT_TYPE,
+}
+_CALIBRATION_PRODUCERS = {
+    "problem": "toy.targets.problem",
+    "solution": "toy.calibrate",
+    "result": "toy.calibrate",
+}
+
+
+def _weights_node(units=("tax_unit", "family")) -> Node:
+    return Node(
+        "toy.evidence.weights",
+        WEIGHTS_AUDIT_REF,
+        inputs=(
+            Slice("household", ("source_household_id",)),
+            Slice("person", ("age",)),
+            *(Slice(unit, (f"{unit}_flag",)) for unit in units),
+        ),
+        params={
+            "weight_entity": "household",
+            "unit_entities": _text({"unit_entities": list(units)}),
+        },
+        artifact_inputs=tuple(
+            ArtifactInput(alias, _CALIBRATION_PRODUCERS[alias], alias, kind)
+            for alias, kind in _CALIBRATION_TYPES.items()
+        ),
+        artifact_outputs=(ArtifactOutput(FIT_WEIGHT_RECORDS, WEIGHTS_AUDIT_TYPE),),
+    )
+
+
+def _artifact_values(payloads):
+    return {
+        alias: ArtifactValue(
+            payload,
+            _CALIBRATION_TYPES[alias],
+            _sha(alias.encode()),
+            _sha(payload),
+            NumericScope(),
+        )
+        for alias, payload in payloads.items()
+    }
+
+
+def _run_weights(frame: Frame, payloads=None, units=("tax_unit", "family")) -> bytes:
+    payloads = payloads or _calibration()
+    node = _weights_node(units)
+    context = _project_context(
+        node,
+        Population.from_frame(frame, "toy.terminal"),
+        key="0" * 64,
+        sources={},
+        tolerances={},
+        numerics={},
+        artifacts=_artifact_values(payloads),
+    )
+    return TRANSPORT_WEIGHTS_AUDIT.run(context).artifacts[FIT_WEIGHT_RECORDS]
+
+
+def _weights_edges(audit: bytes, payloads) -> dict:
+    edges = {
+        FIT_WEIGHT_RECORDS: {
+            "producer": "toy.evidence.weights",
+            "artifact": FIT_WEIGHT_RECORDS,
+            "type": [WEIGHTS_AUDIT_TYPE.name, WEIGHTS_AUDIT_TYPE.schema_version],
+            "sha256": _sha(audit),
+            "producer_key": "c" * 64,
+        }
+    }
+    for alias, payload in payloads.items():
+        edges[alias] = {
+            "producer": _CALIBRATION_PRODUCERS[alias],
+            "artifact": alias,
+            "type": [
+                _CALIBRATION_TYPES[alias].name,
+                _CALIBRATION_TYPES[alias].schema_version,
+            ],
+            "sha256": _sha(payload),
+            "producer_key": "d" * 64,
+        }
+    return edges
+
+
+def _weights_entry(limit=0.02):
+    return GatesManifest.from_mapping(
+        {
+            "country": "xx",
+            "version": 1,
+            "policy": "Synthetic weights audit.",
+            "phases": ["terminal"],
+            "gates": [
+                {
+                    "id": "toy_weights_audit",
+                    "gate": "weights_audit",
+                    "phase": "terminal",
+                    "criticality": "release_blocking",
+                    "parameters": {"maximum_relative_mass_change": limit},
+                }
+            ],
+        },
+        country="xx",
+    )
+
+
+def _weights_outcome(
+    audit, payloads, frame, *, limit=0.02, registry=TRANSPORT_GATE_REGISTRY, edges=None
+):
+    report = evaluate_phase(
+        _weights_entry(limit),
+        "terminal",
+        EvidenceContext(
+            frame=frame,
+            artifacts={
+                FIT_WEIGHT_RECORDS: decode_weights_audit(audit),
+                GRAPH_EVIDENCE: MappingProxyType(
+                    edges or _weights_edges(audit, payloads)
+                ),
+            },
+        ),
+        registry=registry,
+    )
+    (outcome,) = report.outcomes
+    return outcome
+
+
+def _broadcast(values, membership=PERSON_HOUSEHOLD, households=HOUSEHOLD_IDS):
+    lookup = dict(zip(households, values, strict=True))
+    return np.array([lookup[h] for h in membership])
+
+
+#: H44 B's seven frames: stored weights, and whether the audit passes.
+SEVEN_FRAMES = {
+    "household_only": ({}, True),
+    "person_byte_equal_to_inherited": ({"person": _broadcast(CALIBRATED)}, True),
+    "tax_unit_differing": ({"tax_unit": [1.0, 2.0, 3.0, 4.0]}, False),
+    "tax_unit_equal_to_inherited": ({"tax_unit": [2.2, 2.2, 2.7, 5.0]}, False),
+    "family_vector": ({"family": [2.2, 2.2, 2.7, 5.0]}, False),
+    "person_constant_within_units": ({"person": _broadcast(CALIBRATED) * 2}, False),
+    "person_varying_within_a_unit": (
+        {"person": [2.2, 2.3, 2.2, 2.7, 2.7, 5.0]},
+        False,
+    ),
+}
+
+
+class TestWeightsAudit:
+    @pytest.mark.parametrize("name", sorted(SEVEN_FRAMES))
+    def test_the_seven_frames(self, name) -> None:
+        stored, passes = SEVEN_FRAMES[name]
+        frame = _units_frame(stored)
+        payloads = _calibration()
+        audit = _run_weights(frame, payloads)
+        document = decode_weights_audit(audit).document
+        assert [row["entity"] for row in document["partitions"]] == [
+            "person",
+            "tax_unit",
+            "family",
+        ]
+        outcome = _weights_outcome(audit, payloads, frame)
+        assert (outcome.status is GateStatus.PASSED) is passes, outcome.result.failures
+        if not passes:
+            assert any("second weight vector" in f for f in outcome.result.failures)
+        if name == "person_byte_equal_to_inherited":
+            # The rule's limit: a node cannot see this vector, and it carries
+            # no second value.
+            assert all(row["inherited"] for row in document["partitions"])
+
+    def test_the_audit_records_the_transition_and_mass(self) -> None:
+        frame = _units_frame()
+        audit = _run_weights(frame)
+        document = decode_weights_audit(audit).document
+        assert document["fit_records"] == [
+            {"fit_name": "toy.calibrate", "weight_kind": "calibrated"}
+        ]
+        transition = document["transition"]
+        assert (transition["from_kind"], transition["to_kind"]) == (
+            "design",
+            "calibrated",
+        )
+        assert transition["household_id"] == HOUSEHOLD_IDS
+        assert transition["source_household_id"] == ["s1", "s1", "s2"]
+        mass = document["mass"]
+        persons = _broadcast(DESIGN)
+        assert mass["destination_person_mass"] == math.fsum(persons.tolist())
+        assert mass["calibrated_person_mass"] == math.fsum(
+            _broadcast(CALIBRATED).tolist()
+        )
+
+    def test_a_result_from_another_solution_is_refused(self) -> None:
+        payloads = _calibration()
+        payloads["result"] = _calibration(calibrated=np.array([1.0, 1.0, 1.0]))[
+            "result"
+        ]
+        with pytest.raises(ValueError):
+            _run_weights(_units_frame(), payloads)
+
+    def test_frame_weights_differing_from_the_solution_are_refused(self) -> None:
+        with pytest.raises(ValueError, match="differ from the calibration"):
+            _run_weights(_units_frame(calibrated=np.array([1.0, 2.0, 3.0])))
+
+    @PROPERTY
+    @given(data=st.data(), limit=st.floats(0.0, 0.5))
+    def test_property_the_gate_passes_iff_the_mass_change_is_within_the_limit(
+        self, data, limit
+    ) -> None:
+        # Draws the membership (households, the tax units and families over
+        # them, source households split across them), zero design and
+        # calibrated weights, and a stored second partition vector.
+        sizes = data.draw(st.lists(st.integers(1, 3), min_size=1, max_size=4))
+        households = [10 * (index + 1) for index in range(len(sizes))]
+        person_household, person_tax_unit, person_family = [], [], []
+        for household, size in zip(households, sizes, strict=True):
+            units = data.draw(st.lists(st.integers(0, 2), min_size=size, max_size=size))
+            families = data.draw(
+                st.lists(st.integers(0, 2), min_size=size, max_size=size)
+            )
+            person_household += [household] * size
+            person_tax_unit += [household + unit for unit in units]
+            person_family += [100 * household + family for family in families]
+        sources = data.draw(
+            st.lists(
+                st.sampled_from(("s1", "s2", "s3")),
+                min_size=len(households),
+                max_size=len(households),
+            )
+        )
+        weight = st.one_of(st.just(0.0), st.floats(0.5, 50.0))
+        design = np.asarray(
+            data.draw(
+                st.lists(weight, min_size=len(households), max_size=len(households))
+            )
+        )
+        calibrated = np.asarray(
+            data.draw(
+                st.lists(weight, min_size=len(households), max_size=len(households))
+            )
+        )
+        # Weights refuses an all-zero vector.
+        if not (design > 0).any():
+            design[0] = 1.0
+        if not (calibrated > 0).any():
+            calibrated[-1] = 1.0
+        stored = data.draw(st.booleans(), label="stored tax_unit vector")
+        membership = {
+            "households": households,
+            "person_household": person_household,
+            "person_tax_unit": person_tax_unit,
+            "person_family": person_family,
+            "sources": sources,
+        }
+        frame = _units_frame(
+            {"tax_unit": np.ones(len(set(person_tax_unit)))} if stored else None,
+            calibrated=calibrated,
+            **membership,
+        )
+        payloads = _calibration(design, calibrated, households)
+        audit = _run_weights(frame, payloads)
+        mass = decode_weights_audit(audit).document["mass"]
+        destination = math.fsum(
+            _broadcast(design, person_household, households).tolist()
+        )
+        assert mass["destination_person_mass"] == destination
+        change = (
+            math.fsum(_broadcast(calibrated, person_household, households).tolist())
+            - destination
+        ) / destination
+        outcome = _weights_outcome(audit, payloads, frame, limit=limit)
+        passes = abs(change) <= limit and not stored
+        assert (outcome.status is GateStatus.PASSED) is passes, outcome.result.failures
+        if stored:
+            assert any(
+                "second weight vector" in line for line in outcome.result.failures
+            )
+
+    def test_zero_weights_fail_on_the_mass_line_only(self) -> None:
+        design, calibrated = np.array([2.0, 0.0, 5.0]), np.array([0.0, 0.0, 5.5])
+        payloads = _calibration(design, calibrated)
+        frame = _units_frame(calibrated=calibrated)
+        audit = _run_weights(frame, payloads)
+        mass = decode_weights_audit(audit).document["mass"]
+        assert mass["relative_change"] == pytest.approx(-0.5)
+        outcome = _weights_outcome(audit, payloads, frame)
+        assert outcome.status is GateStatus.FAILED
+        (line,) = outcome.result.failures
+        assert "declared limit" in line or "mass" in line
+
+    def test_source_household_concentration_equals_the_weight_gates(self) -> None:
+        from microcosm.build.transport.gate_bindings import weight_summary
+
+        frame = _units_frame()
+        document = decode_weights_audit(_run_weights(frame)).document
+        expected = weight_summary(CALIBRATED, source_household_ids=["s1", "s1", "s2"])
+        row = document["source_households"]["calibrated"]
+        assert row["effective_sample_size"] == pytest.approx(
+            expected["effective_sample_size"], rel=1e-12
+        )
+        assert row["max_to_median_positive_weight"] == pytest.approx(
+            expected["max_to_median_positive_weight"], rel=1e-12
+        )
+
+    @pytest.mark.parametrize(
+        ("edit", "match"),
+        [
+            (
+                lambda d: d["producer"].update(implementation_hash="0" * 64),
+                "implementation hash",
+            ),
+            (
+                lambda d: d["inputs"]["artifacts"].update(solution="0" * 64),
+                "input artifact 'solution'",
+            ),
+            (
+                lambda d: d["transition"].update(from_kind="calibrated"),
+                "not design to calibrated",
+            ),
+            (lambda d: d["mass"].update(relative_change=0.5), "declared limit"),
+            (lambda d: d["fit_records"][0].update(weight_kind="none"), "unweighted"),
+        ],
+    )
+    def test_forged_or_edited_audits_fail(self, edit, match) -> None:
+        frame = _units_frame()
+        payloads = _calibration()
+        audit = _forged(_run_weights(frame, payloads), edit)
+        outcome = _weights_outcome(audit, payloads, frame)
+        assert outcome.status is GateStatus.FAILED
+        assert any(match in line for line in outcome.result.failures), (
+            outcome.result.failures
+        )
+
+    def test_the_default_and_uk_bindings_are_untouched(self) -> None:
+        from microcosm.build.gate_battery import DEFAULT_REGISTRY
+        from microcosm.build.gates import weights_audit_gate
+
+        default = DEFAULT_REGISTRY["weights_audit"]
+        assert default.gate is weights_audit_gate
+        assert default.parameter_keys == {"allowed_unweighted"}
+        assert dict(default.artifact_arguments) == {"fit_records": "fit_weight_records"}
+        transport = TRANSPORT_GATE_REGISTRY["weights_audit"]
+        assert transport is not default
+        assert dict(transport.artifact_arguments) == {
+            FIT_WEIGHT_RECORDS: FIT_WEIGHT_RECORDS,
+            GRAPH_EVIDENCE: GRAPH_EVIDENCE,
+        }
+
+    def test_a_weights_row_on_another_entity_is_refused(self, toy) -> None:
+        audit = Node(
+            "toy.evidence.weights",
+            WEIGHTS_AUDIT_REF,
+            params={"weight_entity": "household"},
+        )
+        compose._check_weights_audit_entity(toy.spec, _Graph([audit]))
+        mutant = copy.deepcopy(toy.spec)
+        row = next(
+            row
+            for row in mutant["resources"]["transport_graph"]["nodes"]
+            if isinstance(row.get("weights"), dict)
+        )
+        row["weights"]["entity"] = "family"
+        with pytest.raises(ValueError, match="second weight vector"):
+            compose._check_weights_audit_entity(mutant, _Graph([audit]))
+
+
+import math  # noqa: E402
