@@ -1,0 +1,8 @@
+dense ['partnership_income', 's_corp_income'] {'partnership_income': 1.7, 's_corp_income': 0.0}
+  check identity 1.0 share child units with nonzero 0.0881
+  child rate was 16.62 with income added 15.29
+  by channel {'asec': (np.float64(20.52), np.float64(20.52)), 'puf_tax_detail': (np.float64(13.63), np.float64(11.27))}
+default ['partnership_income', 's_corp_income'] {'partnership_income': 0.7, 's_corp_income': 0.0}
+  check identity 1.0 share child units with nonzero 0.111
+  child rate was 15.69 with income added 14.65
+  by channel {'asec': (np.float64(19.84), np.float64(19.84)), 'puf_tax_detail': (np.float64(12.76), np.float64(10.99))}

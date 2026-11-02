@@ -12,23 +12,138 @@
       "repo": "policyengine/populace-us",
       "revision": "9a814a3b3b53c0ecd6e1737b6ec862c31300ef6f",
       "file": "populace_us_2024.h5",
-      "sha256": "62b51ad7f37d5fcc3a7393a0ce284eee5972033885af1c823dcef05d3d947c6e",
+      "sha256": "6496cc4393d4d3c6574f76eca231de5898c803b9067645591fd5c4d3e65aee84",
       "bytes": 826917837
     },
     "dense": {
       "repo": "policyengine/populace-us",
       "revision": "15cefac484174ae0ee11a82b164f58023ad05c84",
       "file": "populace_us_2024.h5",
-      "sha256": "a7cca5d157ac11f451629d81e2e638ac0e1dd464f59264bbdb3c8f64e6c76f31",
+      "sha256": "2d9c8586c45c32e5ca27357317f4de93b526cc51dd28b15b71ed43e47e142e79",
       "bytes": 2509287855
     },
     "acs_local": {
       "repo": "policyengine/populace-us",
       "revision": "725d89993f6b2dc4821fd5c3620f0f3d4d630102",
       "file": "populace_us_2024_acs_local.h5",
-      "sha256": "f6e23235d4fd233bd69bcf8875ccaa1144abfde58e769cee930658535092237a",
+      "sha256": "3ce781c440a7f933b1d952ff4e9d9f65f4698c64b94d2fad165af0c662838d6c",
       "bytes": 9819603807
     }
+  },
+  "external_inputs": {
+    "_build_artifacts/acs-local-l2-basis-20260928/runs/dup_release_repro/weights.npz": "e4210a98d415bcff95d57741730af5b657e7f280cea29f88fa50276927516ee6",
+    "_build_artifacts/acs-local-l2-basis-20260928/runs/proj_chi_s050_0.03/weights.npz": "afb966f4fc16d5c14f70d2ba3c643c63a675f6e6be89b5a07a0028d01b62dc45",
+    "_build_artifacts/acs-local-l2-basis-20260928/runs/soft_chi_s050_0.1/weights.npz": "b1d7b52a0ab9bbfedf309ca2972bb6b1ceba712da17b237c79983d73a63ce170",
+    "_build_artifacts/acs-local-l2-basis-20260928/runs/soft_chi_s700_0/weights.npz": "4bc4a1cdd751e24da32ceee757f1ee0e3c64cf3545f93f13e9a1b8a09e634e8a",
+    "_build_artifacts/acs-local-l2-basis-20260928/runs/soft_chi_s700_0.03/weights.npz": "25a3ecbd5f6ac31415974048350a48319f9f263a572a9e74243837e66c9cf419",
+    "_build_artifacts/acs-local-l2-basis-20260928/runs/soft_chi_s700_0.1/weights.npz": "4499a1cdf3da9778e1b0db990b0b7c32fd9ff9872517360a01d42e63c9b44936",
+    "_build_artifacts/acs-local-l2-basis-20260928/runs/soft_chi_s900_0/weights.npz": "1174bb737c327ced6dd07650cab9d6d437a9e2e076ea34c278d385c0b34dd4b2",
+    "_build_artifacts/acs-local-l2-basis-20260928/runs/soft_chi_s900_0.03/weights.npz": "f8e35eca816fa2e07edb217d78c05f9ad753543441de3d24d7e3a61756b0b8bf",
+    "_build_artifacts/acs-local-l2-basis-20260928/runs/soft_chi_s900_0.1/weights.npz": "d27fd2a230ae287b3c646c3341ec9a87afb703af2e2c3fef248f68eb62550ac4",
+    "_build_artifacts/acs-local-l2-basis-20260928/runs/soft_chi_s964_0/weights.npz": "77ae091001843f1d763131ea736d25736ded79fe35a4c44457bb8309222775cf",
+    "_build_artifacts/acs-local-l2-basis-20260928/runs/soft_chi_s964_0.03/weights.npz": "e22df339370b2e1d22876067542bba58fb4b1573456ebc2c6f80ddab8f15594e",
+    "reviews/pe30-population-2026-09-27/out/calib_resolve/R0_full.json": "24fe95ad9d0c6b9b8eac080b251411d50f35487ba816e89a12f8a85237e97e09",
+    "reviews/pe30-population-2026-09-27/out/calib_resolve/R0_full.npz": "de2f96125eae75a5a626351f4ff85390091dfda64226a32b9448975c70014371",
+    "reviews/pe30-population-2026-09-27/out/calib_resolve/drop_aca.json": "89b7a5e4955bcbe44ab1a5b037244c932f906c8e7afdccfb23063fca66834869",
+    "reviews/pe30-population-2026-09-27/out/calib_resolve/drop_aca.npz": "0018aa85295524055b85c2ea64c66b1fbc8e455fff879389849e7430111d075b",
+    "reviews/pe30-population-2026-09-27/out/calib_resolve/drop_all_eitc.json": "f1a73d69bfd3fd3836b57ebffe2fb6f7f801ed0246a18da4a73898d9a3f4876e",
+    "reviews/pe30-population-2026-09-27/out/calib_resolve/drop_all_eitc.npz": "0916eebc15b21b43b373bdbdfa5c1dca887aa9e4279a8d3959fd3f40df389dfb",
+    "reviews/pe30-population-2026-09-27/out/calib_resolve/drop_all_eitc_ctc_actc.json": "a93cc6e919f602cc6e676a0655e7d0e6b7e179ecc306db18e1b885f839bbae81",
+    "reviews/pe30-population-2026-09-27/out/calib_resolve/drop_all_eitc_ctc_actc.npz": "c8b6d18740bbdab373b5927e20403bd85e897527eb5a03049c0f90acac81ec48",
+    "reviews/pe30-population-2026-09-27/out/calib_resolve/drop_count_eitc_ctc_actc.json": "bb3f72c1fd53d21af1bec2fd03d60713dd0cb8a07374acfe2d2918bbb261c49a",
+    "reviews/pe30-population-2026-09-27/out/calib_resolve/drop_count_eitc_ctc_actc.npz": "cc8198bea293e0e65d2d87de0cb048c54dc37d4737471dcd25ac4ff62ba59416",
+    "reviews/pe30-population-2026-09-27/out/calib_resolve/drop_ctc_actc.json": "e8dafa308ac214e828f71bf41cc66df8f4de10734a4c3b8ffedc7bbe094c915e",
+    "reviews/pe30-population-2026-09-27/out/calib_resolve/drop_ctc_actc.npz": "1b77dedd2da04810530f71ecf6ebf24d40f24fce62778e2fd9c1b2f46053592d",
+    "reviews/pe30-population-2026-09-27/out/calib_resolve/drop_ctc_actc_tax.json": "d97c75780bb30402a9cc5a151957e57d2924c1bf6b55cfa0f0e231e6c6094419",
+    "reviews/pe30-population-2026-09-27/out/calib_resolve/drop_ctc_actc_tax.npz": "c26a54916896e654b44b624743eb066ad2928597d1c549ee928ee13c0dd94b31",
+    "reviews/pe30-population-2026-09-27/out/calib_resolve/drop_ctc_actc_tax_count.json": "0f8e8d9772a21886a8cca7d6c73599d4a02281748a195411129ffbcc8c9b6ee2",
+    "reviews/pe30-population-2026-09-27/out/calib_resolve/drop_ctc_actc_tax_count.npz": "ab5f3fda5b7ded14072727fd50a8f0cd9fd5a7ec3da4b245bd8263414e078f64",
+    "reviews/pe30-population-2026-09-27/out/calib_resolve/drop_medicaid_chip.json": "3fd9b0b281ca9dd672b5312091f9b810148a5a7f5932a75c635509f517a43c2d",
+    "reviews/pe30-population-2026-09-27/out/calib_resolve/drop_medicaid_chip.npz": "1d838b78aa9cde081ffc67c0249e2ff81a9f6a9e6aa93de9c5479442e1ece4f5",
+    "reviews/pe30-population-2026-09-27/out/calib_resolve/drop_other_bea.json": "00b71dfbdd8544de40c45c2576aa3283f2c8dbe6cf4f8aa4770c07929da91bd3",
+    "reviews/pe30-population-2026-09-27/out/calib_resolve/drop_other_bea.npz": "2e5381b889101eb1c9a2ec3f74c07cd9ea303c470a569f1105ed5a39860f0d40",
+    "reviews/pe30-population-2026-09-27/out/calib_resolve/drop_other_cbo.json": "8dde58824fb4a179dec25a4b971209f876e73c461bea11330c77f446046f67b8",
+    "reviews/pe30-population-2026-09-27/out/calib_resolve/drop_other_cbo.npz": "6adf64d7bf8b5677293bf0530aa12bbff7ebd9f93a4016a259973c036b581c8a",
+    "reviews/pe30-population-2026-09-27/out/calib_resolve/drop_other_federal_reserve.json": "abf902b1b932aa3026c6bf10d5cbd1b62ae0ba4b7d4b487a82c0d2068bbf44bc",
+    "reviews/pe30-population-2026-09-27/out/calib_resolve/drop_other_federal_reserve.npz": "c9fd8567900d4ae4dbda77575d4ca8ba98f804456ee8e2980474b5cd197ce7c3",
+    "reviews/pe30-population-2026-09-27/out/calib_resolve/drop_other_hhs_acf_tanf.json": "5fdbb2847dd04caac539ac9aab3f087e4dd9683069e785e6e35e8bf618b74399",
+    "reviews/pe30-population-2026-09-27/out/calib_resolve/drop_other_hhs_acf_tanf.npz": "cc3d615565bfa808d911ad88effba3a7c6cdd79cd617107b06759a08f876b3f2",
+    "reviews/pe30-population-2026-09-27/out/calib_resolve/drop_other_ssa.json": "abbf4190d36bc435f0e67a34a57ed5e95de56d0e3c759ed2d0b5ae1942a4fb1c",
+    "reviews/pe30-population-2026-09-27/out/calib_resolve/drop_other_ssa.npz": "17c9e9601eec8d36319ec7221e9a65b23355810ea1f30b0d4552f44ecf125d76",
+    "reviews/pe30-population-2026-09-27/out/calib_resolve/drop_other_state_income_tax.json": "29b28acfa8d606af9ca4c53f972828a6ac7df1e21bb61fc062aa34cacb9479b0",
+    "reviews/pe30-population-2026-09-27/out/calib_resolve/drop_other_state_income_tax.npz": "b9e38cbc14b98b5326970203746b257b65b44c74612e5510aa088d997f58b825",
+    "reviews/pe30-population-2026-09-27/out/calib_resolve/drop_pep_national.json": "c2ff723358be09dc6a3ed607ecdc3a470c66af56f5fb0e6700a94a6803d02d74",
+    "reviews/pe30-population-2026-09-27/out/calib_resolve/drop_pep_national.npz": "35fb8905dc676a6b63449223f4602d13acbced390aefcaca25085b2a4d66e09b",
+    "reviews/pe30-population-2026-09-27/out/calib_resolve/drop_pep_state.json": "02ee16eebd0de24a178c04c3e1090397d992838dcbc4038a176e5b075878a24f",
+    "reviews/pe30-population-2026-09-27/out/calib_resolve/drop_pep_state.npz": "de4f5c80e4c34c41b93035d69cf5bc81621681381885e2a0b2f07a3bc1fdc727",
+    "reviews/pe30-population-2026-09-27/out/calib_resolve/drop_snap.json": "9f0236697cbc6844691ed9edcd39bc460652b6a11868e6ca4b90ac70261e2a13",
+    "reviews/pe30-population-2026-09-27/out/calib_resolve/drop_snap.npz": "16dddaf7b493144e0545babe9bc05be151340da9e434a3b6f70410c1ef4a9d14",
+    "reviews/pe30-population-2026-09-27/out/calib_resolve/drop_soi_actc.json": "f8c4ead73d8725d3b597c6ab28feb11b4ef9641f8ff591008a4389a3fcf10007",
+    "reviews/pe30-population-2026-09-27/out/calib_resolve/drop_soi_actc.npz": "feec98b64b38cdc38e1041d83c7f9231b9f7bb3ca06921b433fc66c9fbc1fdc7",
+    "reviews/pe30-population-2026-09-27/out/calib_resolve/drop_soi_ctc.json": "feac6d11c081d2abb51190d59f00a588f38094a9b3b0dc20fa26241931fb1969",
+    "reviews/pe30-population-2026-09-27/out/calib_resolve/drop_soi_ctc.npz": "cd0d39f562e931f379df9ebfcc550bd372708bb17b9174016acc596f78d15ea1",
+    "reviews/pe30-population-2026-09-27/out/calib_resolve/drop_soi_eitc_other.json": "939bdbffef7eeaf87fea9f2c5cb4b0d3db57d05c4b2b8fc494c296b9b7894437",
+    "reviews/pe30-population-2026-09-27/out/calib_resolve/drop_soi_eitc_other.npz": "9841c6b7aab3a0abb28a3038f16911f29bf8775680912d33757e5cff6495772e",
+    "reviews/pe30-population-2026-09-27/out/calib_resolve/drop_soi_eitc_state.json": "d3d6ef6ee268f121437039d4963b13586819704dfa4cddf1ac42bca342977add",
+    "reviews/pe30-population-2026-09-27/out/calib_resolve/drop_soi_eitc_state.npz": "9b7a8794b415a0cdd0149b1ee8ba878994d85d048a1c9ee3144ee5c35dd8e02b",
+    "reviews/pe30-population-2026-09-27/out/calib_resolve/drop_soi_eitc_t25_by_agi_children.json": "1ae4eac907bcc7998cf35fbc60bff6345400aa733d99eacd6fd65ec62e379c6b",
+    "reviews/pe30-population-2026-09-27/out/calib_resolve/drop_soi_eitc_t25_by_agi_children.npz": "db635aa7ec3279e3631c4d8e1451e148c28571540b686a1e856d4b055b2a154b",
+    "reviews/pe30-population-2026-09-27/out/calib_resolve/drop_soi_eitc_t25_child_totals.json": "8117dd24ca92c36311d374bd6bcbd26c50c0cfc8fad8beb45d430e01c281ec72",
+    "reviews/pe30-population-2026-09-27/out/calib_resolve/drop_soi_eitc_t25_child_totals.npz": "c7622fcf49a5cfa8fa481e320e207b9ee69dbb43b2fdd5b7931f493a1b6e1100",
+    "reviews/pe30-population-2026-09-27/out/calib_resolve/drop_soi_other.json": "3bebad5f488738ab9ec5069155d33f6cfeee6414bdc44da7210b7f6b48ddebe1",
+    "reviews/pe30-population-2026-09-27/out/calib_resolve/drop_soi_other.npz": "2b394b4fb40930758e6442774bee98dc7067ddbbbae98511797006343112d1db",
+    "reviews/pe30-population-2026-09-27/out/calib_resolve/drop_soi_return_count.json": "d081062b07ee49af7714dc612979a643b1cf8087acfe6a1dc97e087921e52ba7",
+    "reviews/pe30-population-2026-09-27/out/calib_resolve/drop_soi_return_count.npz": "a98c39ec62a5087e624152645321d1a5da84f17aecdceb9bc95502995585fafd",
+    "reviews/pe30-population-2026-09-27/out/calib_resolve/drop_ssi.json": "b54ede42553a6ca111ae7143e3e3b2035a5a32dfc061cfe8204ee019ee146ee1",
+    "reviews/pe30-population-2026-09-27/out/calib_resolve/drop_ssi.npz": "335bfc687cdd51d18bb3481da59cf1ca531fd09528b10d52086823b32d36864f",
+    "reviews/pe30-population-2026-09-27/out/calib_resolve/keep_pep.json": "14e27888cb93fb3bd75b8bb045d2f9967b235c85374e40da87b3f1ae71180207",
+    "reviews/pe30-population-2026-09-27/out/calib_resolve/keep_pep.npz": "1e91de4b77f39eeac23260dec08215ff64701c3e7eea60556225d54f94fd6e09",
+    "reviews/pe30-population-2026-09-27/out/calib_resolve/keep_pep_actc_only.json": "165dc7a80379833e4041986557142b13147599a28963d79370c9e48f23ff8c7e",
+    "reviews/pe30-population-2026-09-27/out/calib_resolve/keep_pep_actc_only.npz": "6cb5b3a253fd543ec85926af4dc68a728aaeb131d0455f5eb3f1e9778e03c5bf",
+    "reviews/pe30-population-2026-09-27/out/calib_resolve/keep_pep_all_soi.json": "c8f45a7a2d0d536b54a9cc61aa930b5e3f0782754851ea4368e3318f38a7c6b4",
+    "reviews/pe30-population-2026-09-27/out/calib_resolve/keep_pep_all_soi.npz": "7b2084d2b467a5c7a3d2e35420f76f507f143299573b35739450950b5a80f3b6",
+    "reviews/pe30-population-2026-09-27/out/calib_resolve/keep_pep_count.json": "535a4c1366142a0c8e7587b7c609861d1d7019143349e26b7a8ce91c759d9b01",
+    "reviews/pe30-population-2026-09-27/out/calib_resolve/keep_pep_count.npz": "1be310e9f9f6881a33548718e4454e9f7853df014d519ccefd7df7e4325350c9",
+    "reviews/pe30-population-2026-09-27/out/calib_resolve/keep_pep_ctc_actc.json": "f9818a50362999dec718b93c90c874bf5a6f75c6721608922c5e728f080be1b3",
+    "reviews/pe30-population-2026-09-27/out/calib_resolve/keep_pep_ctc_actc.npz": "b8c25d6ba70873c09d09e32d807ff8f3ee2a7796e4d188ea8569155471cf6a07",
+    "reviews/pe30-population-2026-09-27/out/calib_resolve/keep_pep_ctc_actc_count.json": "56949015d782465f54f9982907477b9dbe8523cce523c7621937a682f29b5eec",
+    "reviews/pe30-population-2026-09-27/out/calib_resolve/keep_pep_ctc_actc_count.npz": "322bc476a1edf0f70e83f027591bf29cd1fcce004e6af2ace3ca513215c277bc",
+    "reviews/pe30-population-2026-09-27/out/calib_resolve/keep_pep_ctc_only.json": "c6ae3073339761e1c5dc3c7b56b47683edc738ea8db0d4e7431af334d330dcf1",
+    "reviews/pe30-population-2026-09-27/out/calib_resolve/keep_pep_ctc_only.npz": "9fb0b43917477a0bd562512111003999a0bbd953fc6027a57665043612f30705",
+    "reviews/pe30-population-2026-09-27/out/calib_resolve/keep_pep_eitc.json": "43ea9e7656dfde865ccdc9fee22d4927a6f209fc47f97b09aadc8c12f64dac3d",
+    "reviews/pe30-population-2026-09-27/out/calib_resolve/keep_pep_eitc.npz": "aaba08d6c09cbb7e81899b2e3b2f382f789a1443372b4ada0ad986a937a31fe9",
+    "reviews/pe30-population-2026-09-27/out/calib_resolve/keep_pep_medicaid.json": "42670755ddb575b52d7be4c4b34a76f81e78fa6715bbee68f99cc3b72e341b44",
+    "reviews/pe30-population-2026-09-27/out/calib_resolve/keep_pep_medicaid.npz": "92707af23b8205ef1c769c514420928816d3c1f72e7caf9a195f09a403e6d028",
+    "reviews/pe30-population-2026-09-27/out/calib_resolve/keep_pep_snap_ssi_aca.json": "c1e65dd64b36001fe190dd52fa303b1bdd9fbd4e2d78961a19ac4c97c4e96a2e",
+    "reviews/pe30-population-2026-09-27/out/calib_resolve/keep_pep_snap_ssi_aca.npz": "f170c0cf3266cb79a69dcf1c351e485932cc1f9b03a55f9893128b1de3692d5a",
+    "reviews/pe30-population-2026-09-27/out/calib_resolve/keep_pep_soi_adjusted_gross_income.json": "eed984724ccd08ad4233a875a9d2ff8208f9d8a33da7c4e3d89d7bff69134100",
+    "reviews/pe30-population-2026-09-27/out/calib_resolve/keep_pep_soi_adjusted_gross_income.npz": "26b61a6d9eab7f6d626574f49f052741a09fdbde4671aa03b5e839a82ba3edcc",
+    "reviews/pe30-population-2026-09-27/out/calib_resolve/keep_pep_soi_employment_income.json": "cdc8c0c205e36c2bbe20f208e411d21705c9609413e0fefc29cd9796537bb243",
+    "reviews/pe30-population-2026-09-27/out/calib_resolve/keep_pep_soi_employment_income.npz": "05fa2efe44ed6d7044dd488bdc7a93f8da93a8bc205d8a5c5ca729e1678e80c9",
+    "reviews/pe30-population-2026-09-27/out/calib_resolve/keep_pep_soi_income_tax.json": "14d08274a006e31ff393184dda332a8eb48b6226899f5fddf60b1d6b9fde0c84",
+    "reviews/pe30-population-2026-09-27/out/calib_resolve/keep_pep_soi_income_tax.npz": "63620a78a4281769670e94d8087cb65b509c8851df027323fa1e04e2762c3c09",
+    "reviews/pe30-population-2026-09-27/out/calib_resolve/keep_pep_soi_income_tax_before_credits.json": "a20c14780f1099f7af2c112ef4ae292000558c15558c3e2dac934ad804de0fca",
+    "reviews/pe30-population-2026-09-27/out/calib_resolve/keep_pep_soi_income_tax_before_credits.npz": "53206d68ee3cb1742cd0f37d94f9d1ce149b7db2fed0f2083a0a32b0a35c98d2",
+    "reviews/pe30-population-2026-09-27/out/calib_resolve/keep_pep_soi_other.json": "d604ad711f2747146f25e7675447a53780f5d8e95859efffb0a47c1b05f73643",
+    "reviews/pe30-population-2026-09-27/out/calib_resolve/keep_pep_soi_other.npz": "01d3d6925eaa4d4353126a0bbbee2eceb2af7a5cd99f4247900ebe0741a2a84e",
+    "reviews/pe30-population-2026-09-27/out/calib_resolve/keep_pep_soi_tax_all.json": "432e579500f37a7c807b6c73f5c2de75649d7fdfdad35f0c4488b917e236b119",
+    "reviews/pe30-population-2026-09-27/out/calib_resolve/keep_pep_soi_tax_all.npz": "a37417a7e440188e4668729fda35d8e1a10f9ecf4d64cb2b8c526f301a0c97e8",
+    "reviews/pe30-population-2026-09-27/out/calib_resolve/keep_pep_soi_taxable_income.json": "b8a23a759914c50677cf899a9dae420af8c9aa5465f2a4510ef8d14681723699",
+    "reviews/pe30-population-2026-09-27/out/calib_resolve/keep_pep_soi_taxable_income.npz": "11ab6191cb879d2c75f012d6aa09f983595d89e186443cb3d216ca355b49f433",
+    "reviews/pe30-population-2026-09-27/out/calib_resolve/keep_pep_soi_taxable_interest_income.json": "196093441333cd5bb3ce1748ab540099c453195c959796c3b738f0d53f2bd727",
+    "reviews/pe30-population-2026-09-27/out/calib_resolve/keep_pep_soi_taxable_interest_income.npz": "3866f4de1dcf5597140989fe28d61b383d711f3f210346f1839d04f1777ed701",
+    "reviews/pe30-population-2026-09-27/out/calib_resolve/keep_pep_soi_taxable_pension_income.json": "acdd5f1e5c248f57a155dbd10f86b9998f08be5112ac0cfa9fd38b5c4645d297",
+    "reviews/pe30-population-2026-09-27/out/calib_resolve/keep_pep_soi_taxable_pension_income.npz": "bfb662608e900dc29859a331185290733978843c3b0065a8b940bd14b019514f",
+    "reviews/pe30-population-2026-09-27/out/calib_resolve/keep_pep_soi_taxable_social_security.json": "d90b581be96859e5efbd13daf805d9ee4585a4d0f42d3f26055a8d9d02e2acfb",
+    "reviews/pe30-population-2026-09-27/out/calib_resolve/keep_pep_soi_taxable_social_security.npz": "b70a4c67f53162fb0aa9ad0f25a2c1fe51196489559111f8b1b38318bfd36837",
+    "asec/raw_asec_2022_2025.parquet": "f6e2fc00990825c8e76c406877053971eb22198f88c741e18b448be9318fa209",
+    "dash/state_audit_buildp_v2_2024_raw.json": "6a33e0d744f416c97866f54c5c4bd65806cf490cbc0bc7b6c7a4c09323469327",
+    "dash/state_audit_buildp_v2_y25_2025_raw.json": "3e5cad7d417c29e0b443529d40f6a5c49dc346b45f4654e6ae5fc70ac743db0f",
+    "dash/state_audit_o1017_18252_2025_raw.json": "5ead79b6b35fae9eef8705982cd5475e44fd5ec8a3062ffb14e05522f34834e4",
+    "dash/state_audit_o1017_221_2024_raw.json": "4741ebee91556fb2f58f8e33db7f2b98042bbc2a0b95802e1b2f90a48f2dfd1d",
+    "dash/state_audit_o1017_2301_2024_raw.json": "0fd5b543c5464c6d4d60fb1170fdf31caaa381312b9efa3acc550f8cd87476eb",
+    "dash/state_audit_o1017_2301_y25_2025_raw.json": "aeabb5352dca1fe73c6870a7c880a6611b993e029be2db8c37c95d26b2d781d2",
+    "populace_us_2024_calibration.npz, revision 15cefac4": "bf4ce57ed14c6b7f47a601a9a35dc9ba85f52045b95ad1ef1ee2925f64bb272f"
   },
   "note": "Poverty rates stay holdouts: nothing here entered a calibration target.",
   "files": {
@@ -37,20 +152,32 @@
       "bytes": 10183
     },
     "outputs/acs_eval.csv": {
-      "sha256": "5e63003e507b7c3c39303dc2d95bbda805ef39c4b50d539cc61430dc0ac6a2bc",
-      "bytes": 12176
+      "sha256": "376c147a3eda66adf5c5c91750f0e64845af8d628f5f22bbd49f755d7e04397e",
+      "bytes": 12153
     },
     "outputs/acs_solves.csv": {
-      "sha256": "ec5de235e8542d8e1cc7757864550eff8079664e5e65205de23981eb3fe7dcca",
-      "bytes": 3421
+      "sha256": "52274cf8655c6958fbc0e3485b4d806b7e6f8a3bfa7a38a3e1c42cdab74e3a5c",
+      "bytes": 3427
     },
     "outputs/acs_stored.csv": {
       "sha256": "f0ae96174457e002a14d0108ffa33483d7557c539ccefb467bba58a559fe9b61",
       "bytes": 9218
     },
+    "outputs/acsrent_eval.csv": {
+      "sha256": "ea8ddcf88d88d70e7b4ac54f8dbfbe99c3b16a5febc09b4eaed5fa16ea0be3c7",
+      "bytes": 10679
+    },
+    "outputs/acsrent_solves.csv": {
+      "sha256": "6c6c991852c1259947339c85ab414a6687e37e6d1264218f1342975382b13d3f",
+      "bytes": 3090
+    },
     "outputs/asec_state_raw.csv": {
       "sha256": "5e28ec94ce143145bd3d8335d2820a90aab8ca9ecb9ebf43e996690a3eab5a5c",
       "bytes": 8183
+    },
+    "outputs/calibration_step.csv": {
+      "sha256": "6b032159cfba7d90721ccb049b152a599c75e09b8b8d3c480b1f4c266ba9ab5e",
+      "bytes": 889
     },
     "outputs/census_child_spm.json": {
       "sha256": "8ad84ee50d588e94b904e057b684b43e3ddbb543998ebe6988e9d9a3985632e7",
@@ -69,8 +196,8 @@
       "bytes": 1399
     },
     "outputs/dash_swing.csv": {
-      "sha256": "40ba1f728b3ab518c3d636a60db34840739b08f0151370f7ab930a9ca6bd4d7d",
-      "bytes": 4135
+      "sha256": "97dbc88024fa207f93df893057beb84dd356ad1f705e3bf1144afc6d1d49fb7a",
+      "bytes": 6129
     },
     "outputs/default_noise.csv": {
       "sha256": "97aee00d5f5cae2d2012dbebffcc9f4f1af86cb6d088b642b40386a497633621",
@@ -132,6 +259,66 @@
       "sha256": "6e1d4a6f7b8aee03362d9c023a4e35943a8f5264472e739aaf64deb0db1bafbb",
       "bytes": 14122
     },
+    "outputs/initial_fit.csv": {
+      "sha256": "120ce86c3602dbf68c32561bb544162f842ae123bda2ce74970e8e186becbd7d",
+      "bytes": 2578
+    },
+    "outputs/initial_fit_states.csv": {
+      "sha256": "403be3385bd260e3eb80c68e257e472188214e6199e02b3f85f15d1573b56180",
+      "bytes": 7856
+    },
+    "outputs/kish.csv": {
+      "sha256": "24c215d51c94d52fc8f9583ecd4b8da90da365a689b5f578fbc645697b99abb3",
+      "bytes": 2970
+    },
+    "outputs/logs/acs_eval.txt": {
+      "sha256": "b6f09dc0999a9c007574daeedb64bda4df33180278801af9c1c19f803ce58659",
+      "bytes": 9939
+    },
+    "outputs/logs/acsrent_eval.txt": {
+      "sha256": "c53150b7ba0842d0aeb6aa354d5a3c87491d9168e0532998c68bf882d0c3c901",
+      "bytes": 9933
+    },
+    "outputs/logs/ctc_ssn.txt": {
+      "sha256": "1d81a564a70fd2ad43424f5ff20d3d974e023ad4fc91ee56ebdfc6c2350142a3",
+      "bytes": 480
+    },
+    "outputs/logs/dmiss.txt": {
+      "sha256": "9349ae893019dd6700f544b1286479b2d01ac9b3b93392df807d61a2cc1b2d1b",
+      "bytes": 1632
+    },
+    "outputs/logs/house.txt": {
+      "sha256": "6ffde97ab4ad0fd8d62f08bd0aa64025f72af56b3ecc897ccb46164f33f29cab",
+      "bytes": 591
+    },
+    "outputs/logs/noise_ci.txt": {
+      "sha256": "171066f6260c026dc9e5e9a610facc65848187b77299a46557ac6a8e5768a307",
+      "bytes": 3024
+    },
+    "outputs/logs/part.txt": {
+      "sha256": "64776b5b610f49772f79f0fe31ae0fb75b1a6554458ba890f0da0af6cad03863",
+      "bytes": 645
+    },
+    "outputs/logs/puf_house.txt": {
+      "sha256": "3d321f44554801a3313860bbc8e81d02d713084d575618defb374af01d4021ff",
+      "bytes": 397
+    },
+    "outputs/logs/rent4.txt": {
+      "sha256": "ee426a0ad9721ec089320ff323f4923a227e6508dad3a9cf45135673f5fbeb4a",
+      "bytes": 1142
+    },
+    "outputs/logs/rent5.txt": {
+      "sha256": "2ff11104da0be2f826d2d72c7ad053e86c3d49c3c60f718b4cc489e84a18654e",
+      "bytes": 1665
+    },
+    "outputs/noise_ci.json": {
+      "sha256": "a378e76bf685a86e01e2071c8b4bbfc184e66d8c53dc2bfc309dddff94a612e6",
+      "bytes": 3587
+    },
+    "outputs/resource_growth.csv": {
+      "sha256": "49a62d42fe888a60d091730fe1fe13f0eaec754fe5504cae6e0885bf78d68b16",
+      "bytes": 919
+    },
     "outputs/state_baseline.json": {
       "sha256": "9568c0a09d19eba4a61115f37237200fb76abe960264894931722a2f45f7bf95",
       "bytes": 9894
@@ -149,8 +336,8 @@
       "bytes": 4093
     },
     "scripts/acs_eval.py": {
-      "sha256": "c4da02e2d95e757227152b599020abe38dfea0662697dfd1cfae1217136266f1",
-      "bytes": 6719
+      "sha256": "6336b8e205359e0baffb2a90f34c6fbd0889715554e513bebc6246b648b9b0a7",
+      "bytes": 6829
     },
     "scripts/acs_hh.py": {
       "sha256": "bf827c705569556dcda37ed1e5f7902da82ae716378059396ea84618cc0978f6",
@@ -217,8 +404,8 @@
       "bytes": 3517
     },
     "scripts/dash_swing.py": {
-      "sha256": "0e1aa5ab23a673d0053e22705909237bbd953edd9dc5ce496f587c896b85a6c2",
-      "bytes": 1772
+      "sha256": "a52f2e2b1f09ec7c2f2e6a9408e84e4659a9c7559acbed61beffa78f5127cc56",
+      "bytes": 2487
     },
     "scripts/decomp.py": {
       "sha256": "4102acc5cffd7549374f16aaa6af8fe9b8a7f9d12e5316eb7965478ce704d717",
@@ -268,9 +455,13 @@
       "sha256": "adf41abfc238dc4759eb93b76079f24a4232cd099c26394076392ee886667124",
       "bytes": 1336
     },
+    "scripts/initial_fit.py": {
+      "sha256": "0592b83b45449d697dc567ea1928c9c71a72fa734dc99477c904f54eb438009d",
+      "bytes": 5619
+    },
     "scripts/kish.py": {
-      "sha256": "b51daf44b5b1d5b4429142cf4b61c5bd7b644242fe7f6684e5c1f8e2a530af54",
-      "bytes": 982
+      "sha256": "bb2560c9c83d002cd2eb576d71fc39ca100ae86646fd7590376bd98952b92697",
+      "bytes": 1026
     },
     "scripts/national_cf.py": {
       "sha256": "3512de45b6642176ce0949a2f51810903893c2a26355b13737bd937a312c2588",
@@ -279,6 +470,10 @@
     "scripts/noise.py": {
       "sha256": "9da43627c8426549b002267d22793f1df10f805bfade5d78f037a840c31ee2d7",
       "bytes": 2253
+    },
+    "scripts/noise_ci.py": {
+      "sha256": "46dc322a34136e6714033a8db94273998649d9ed4656d4a944dcf30e62737360",
+      "bytes": 4119
     },
     "scripts/paired.py": {
       "sha256": "a4461b5e7b31e37386daa9c14d67dda7607e2b93ddda04e09d2c513e6bb9ca77",
@@ -323,6 +518,10 @@
     "scripts/rep_eval.py": {
       "sha256": "20f56043fcc618b04951b08f6e0850a73441326027a87650bae1bee033a7a603",
       "bytes": 7266
+    },
+    "scripts/resource_growth.py": {
+      "sha256": "e5c0995cdd85a905865ef92bc9fa1cda2fe52a2541c058c209cbfd2cf219e5f9",
+      "bytes": 2339
     },
     "scripts/runcuts.py": {
       "sha256": "4154018a33e122496edaf0dc74bc6947f5b1ccf3d867c7678fbb819d2a3b88d1",

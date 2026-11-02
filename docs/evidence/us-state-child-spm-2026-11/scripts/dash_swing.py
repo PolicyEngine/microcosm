@@ -14,6 +14,8 @@ for tag, f in (
     ("p25", "state_audit_buildp_v2_y25_2025_raw.json"),
     ("o24", "state_audit_o1017_2301_2024_raw.json"),
     ("o25", "state_audit_o1017_2301_y25_2025_raw.json"),
+    ("o25_18252", "state_audit_o1017_18252_2025_raw.json"),
+    ("o24_221", "state_audit_o1017_221_2024_raw.json"),
 ):
     x = json.load(open(f"{SP}/dash/{f}"))
     if tag == "p24":
@@ -56,4 +58,27 @@ print(
     "rms delta se",
     round(np.sqrt((a.delta_se**2).mean()), 2),
 )
+same = (t.p25 - t.o25_18252).dropna()
+print(
+    "same model 1.825.2, Build P against Build O, 2025: mean abs",
+    round(same.abs().mean(), 2),
+    "sd",
+    round(same.std(), 2),
+    "per build",
+    round(same.std() / np.sqrt(2), 2),
+    "max",
+    round(same.abs().max(), 2),
+    same.abs().idxmax(),
+)
+ver = (t.o25 - t.o25_18252).dropna()
+print(
+    "same file across 1.825.2 and 2.30.1, 2025: mean abs",
+    round(ver.abs().mean(), 2),
+    "sd",
+    round(ver.std(), 2),
+    "max",
+    round(ver.abs().max(), 2),
+    ver.abs().idxmax(),
+)
+print(t.loc[["AZ", "DC", "NC"]].round(2).to_string())
 t.to_csv(f"{SP}/run/dash_swing.csv")

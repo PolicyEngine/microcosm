@@ -93,11 +93,10 @@ u = (
     .merge(h, left_on="person_household_id", right_on="household_id")
 )
 u["state"] = u.state_fips.map(INV)
-u["src"] = (
-    u.household_support_channel.astype(str).str[:4]
-    + ":"
-    + u.household_source_id.astype(str)
-)
+# An ASEC donor and its PUF clone share one source household, so they form one cluster.
+u["src"] = np.where(
+    u.household_support_channel.astype(str) == "acs_2024_1yr", "acs:", "donor:"
+) + u.household_source_id.astype(str)
 
 
 def lin(g, w, f):
