@@ -322,3 +322,81 @@ national and local reference files are byte-identical, the membership moves only
 and both compile-parity receipts are unchanged. Both surfaces were regenerated from the national
 and local cuts, as for `200bf6d`. No reference moves, so the national register version does not
 either. The high-value home stock still names `735820c`: the addition touches none of its inputs.
+
+The `53815b2` re-pin (microcosm#1418 PR C, the merge of PolicyEngine/chronicle#394, on top of the
+`0b721a4` merge of PolicyEngine/chronicle#392) brought SPI 2023-24 Table 3.10 and the OBR's October
+2026 EFO beside March's, with #392's HMRC ISA statistics (1,511,063 rows; the schema digest is
+unchanged). The merge commit's tree is the pull request head's (`2ba21f3`), merged onto an unmoved
+base, so the artifact was built from that head's bundle and carries the merge commit's identity.
+
+A new vendored resource, `obr_savings_income_growth_facts.json`, carries the eight October 2026 EFO
+Table 4.5 savings income growth rates the SPI Table 3.7 interest and other-income rows now grow by.
+The other vendored resources, and the constituency energy resource rebuilt beside them, carry the
+same rows under the new feed identity. On the national surface only the intended values move: the
+13 interest rows (up 13.4%), 13 other-income rows and 16 Table 3.10 rows, whose zero band and bands
+from £10,000 are signed out row by row. October's edition starts the OBR lines at FY2025-26, so the
+targets that window FY2024-25 and FY2025-26 into calendar 2025 still resolve to March's facts;
+`obr.winter_fuel_allowance`, which reads FY2025-26 alone, matched both editions and is pinned to
+March's expenditure table (`source_table`). On the local surface the statuses and the reference
+file are unchanged, and the membership moves its feed label and the DESNZ gas cells, which return
+to the Energy Trends level in the same PR.
+
+The national register version moves with the new references, so the uk-candidate-eval scoring
+register is re-frozen before the next national solve. The high-value home stock still names
+`735820c`: its inputs are the same on `53815b2` (the feed-gated fingerprint check passes), so it
+was not rebuilt.
+
+The ISA subscriptions (microcosm#1415, PolicyEngine/microcosm#1421) then vendored a new resource
+from the same `53815b2` artifact: `hmrc_isa_statistics_facts.json`, the 1,074 rows of #392's ISA
+statistics the ISA subscriptions stage and the Lifetime ISA anchor read. None is a calibration
+target, so no reference moves for it. That pull request first pinned #392's head (`e56af9a`) and
+then its merge (`0b721a4`), and took `53815b2` when PR C merged first.
+
+The `08962f1` re-pin (PolicyEngine/microcosm#1430, the merge of PolicyEngine/chronicle#399 on top
+of the `7d5d627` merge of PolicyEngine/chronicle#396) brought HMRC's benefits in kind statistics of
+July 2026 (544 facts) and the UK facts of PolicyEngine/chronicle#395 (1,076). It also carries
+PolicyEngine/chronicle#397, María's rule of 30 October that of two EFO editions' numbers for one
+line and year Chronicle keeps the later, so the March 2026 edition drops the 427 record sets the
+October 2026 edition also publishes (1,512,256 rows; the schema digest is unchanged). The merge
+commit's tree is the pull request head's (`ac9d7bb`), so the artifact was built from that head's
+bundle and carries the merge commit's identity.
+
+A new vendored resource, `hmrc_benefits_in_kind_facts.json`, carries the 96 2024-25 rows the
+company cars stage reads. The other vendored resources, and the constituency energy resource
+rebuilt beside them, carry the same rows under the new feed identity.
+
+After #397 no EFO edition carries both years of a calendar-2025 window: March keeps each line's
+FY2024-25 outturn and October carries FY2025-26 on. The 19 OBR rows that window the two years
+declare `source_table_by_opening_year`, which takes each year from the table that carries it
+(María's ruling of 2026-10-31; `docs/uk-income-anchors-280.md`), as do the three council tax nation
+rows of PolicyEngine/microcosm#1422 and the fuel duties row, which is signed out of the references:
+23 in all. The 19's values move with October's outturns: fifteen by under 1%, with domestic rates +3.2%, Pension Credit +2.3%, Jobseeker's
+Allowance −2.5% and SDLT −1.2%. `obr.winter_fuel_allowance` drops its pin to March's expenditure
+table and reads October's FY2025-26 outturn (+0.02%). Three report-only diagnostics pinned March's
+FY2025-26 forecasts by fact key: `obr.capital_gains_tax`, `obr.state_pension` and the `obr.ni`
+total. They now pin October's outturns (`required_assertion: observation`). The test feed
+fixture's three captured March FY2025-26 rows (income tax, incapacity benefits and capital gains
+tax) give way to October's.
+
+The national membership also catches up with policyengine-uk 2.164.1's October-EFO economic
+assumptions. PolicyEngine/microcosm#1421 locked them after PolicyEngine/microcosm#1420 had
+generated the membership, so the 21 SPI rows grown by an OBR per-head index still carried the
+old factors there: the eight Table 3.10 self-employment bands move −0.55% (mixed income per
+head), and the thirteen dividend bands by under 0.001% (GDP per head). The national compile-parity
+receipt already carried their new values. No other national value moves. The receipt moves the 19
+windowed values and gains two drift rows, domestic rates and Winter Fuel, which had equalled the
+frozen incumbent. The OBR rationales of the parity tool name the two editions, and Winter Fuel has
+a rationale of its own.
+
+On the local surface the reference file and the compile-parity receipt are byte-identical. The
+membership moves only its feed label and the 1,263 DESNZ keys, and the census restates the pin.
+Both surfaces were regenerated from cuts of the pinned artifact, as for `200bf6d` (national
+940,989 rows, local 885,543).
+
+The national register version moves with the OBR values (the SPI rows already compiled at their
+new values), so the uk-candidate-eval scoring register is re-frozen before the next national
+solve. The 23 maps name
+EFO editions, so a later EFO moves them: once Chronicle keeps a newer edition's FY2025-26,
+October's number leaves the feed and the windows refuse until their maps name the new table. The
+high-value home stock still names `735820c`: its inputs are the same on `08962f1` (the feed-gated
+fingerprint check passes), so it was not rebuilt.

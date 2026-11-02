@@ -149,30 +149,30 @@ def test_no_eligible_employee_flags_nobody() -> None:
     assert draw.receipt["cap_bound"] is True
 
 
-def test_receipt_withholds_a_flagged_weight_on_fewer_than_ten_households() -> None:
+def test_receipt_withholds_a_flagged_weight_on_fewer_than_three_households() -> None:
     person = _small([22] * 20, ["FT_EMPLOYED"] * 20)
 
-    draw = derive_is_apprentice(person, rate=0.25)
+    draw = derive_is_apprentice(person, rate=0.1)
 
-    assert int(draw.flags.sum()) == 5
-    assert draw.receipt["flagged_support"] == "<10"
-    assert draw.receipt["realized_mass"] == "<10"
-    assert draw.receipt["realization_deviation"] == "<10"
+    assert int(draw.flags.sum()) == 2
+    assert draw.receipt["flagged_support"] == "<3"
+    assert draw.receipt["realized_mass"] == "<3"
+    assert draw.receipt["realization_deviation"] == "<3"
     assert draw.receipt["population_mass"] == 20.0
 
 
-def test_receipt_withholds_a_population_on_fewer_than_ten_households() -> None:
-    # Six people aged 21 to 24 in three households, with a one-person target.
+def test_receipt_withholds_a_population_on_fewer_than_three_households() -> None:
+    # Six people aged 21 to 24 in two households, with a one-person target.
     person = _small(
         [22, 23, 21, 24, 22, 23],
         ["FT_EMPLOYED"] * 6,
-        households=[1, 1, 2, 2, 3, 3],
+        households=[1, 1, 1, 2, 2, 2],
     )
 
     draw = derive_is_apprentice(person, rate=1 / 6)
 
     receipt = draw.receipt
-    assert receipt["population_support"] == "<10"
+    assert receipt["population_support"] == "<3"
     for key in (
         "population_mass",
         "eligible_mass",
@@ -180,7 +180,7 @@ def test_receipt_withholds_a_population_on_fewer_than_ten_households() -> None:
         "realized_mass",
         "realization_deviation",
     ):
-        assert receipt[key] == "<10", key
+        assert receipt[key] == "<3", key
 
 
 def test_refuses_a_frame_without_employment_status() -> None:
@@ -243,9 +243,9 @@ def test_stage_realizes_the_target_at_the_frame_household_weights(no_engine) -> 
     assert apprentices["build_year"] == 2024
     assert apprentices["rate"] == 0.06
     # Two households carry everyone, so the receipt withholds the weights.
-    assert apprentices["population_support"] == "<10"
-    assert apprentices["target"] == "<10"
-    assert apprentices["flagged_support"] == "<10"
+    assert apprentices["population_support"] == "<3"
+    assert apprentices["target"] == "<3"
+    assert apprentices["flagged_support"] == "<3"
 
 
 def test_stage_has_no_receipt_before_it_runs() -> None:
@@ -283,12 +283,12 @@ def test_receipt_records_the_relief_the_flags_imply() -> None:
     assert draw.receipt["relief_schedule"] == _SCHEDULE
 
 
-def test_receipt_withholds_a_relief_on_fewer_than_ten_households() -> None:
-    person = _small([22] * 5, ["FT_EMPLOYED"] * 5).assign(employment_income=20_000.0)
+def test_receipt_withholds_a_relief_on_fewer_than_three_households() -> None:
+    person = _small([22] * 2, ["FT_EMPLOYED"] * 2).assign(employment_income=20_000.0)
 
     draw = derive_is_apprentice(person, rate=1.0, relief_schedule=_SCHEDULE)
 
-    assert draw.receipt["implied_relief"] == "<10"
+    assert draw.receipt["implied_relief"] == "<3"
 
 
 def test_receipt_records_no_relief_without_a_schedule() -> None:

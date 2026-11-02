@@ -599,6 +599,10 @@ from microcosm.build.us_runtime.puf_source_agi import (
     PUF_SYNTHETIC_RECID_START,
     source_year_puf_adjusted_gross_income,
 )
+from microcosm.build.us_runtime.puf_source_schedule_e import (
+    processed_puf_tax_unit_partnership_s_corp_income,
+    source_year_puf_partnership_s_corp_income,
+)
 from microcosm.build.us_runtime.puf_support import (
     BASE_ASEC_SUPPORT_CHANNEL,
     PUF_DONOR_SOURCE_ADJUSTED_GROSS_INCOME_COLUMN,
@@ -1944,6 +1948,7 @@ __all__ = [
     "puf_capital_gains_tail_concentration_gate",
     "puf_capital_gains_tail_support_contract_identity",
     "puf_capital_gains_tail_terminal_support_receipt",
+    "processed_puf_tax_unit_partnership_s_corp_income",
     "puf_tax_unit_donor_from_arrays",
     "pool_asec_sources",
     "prepare_us_puf_tax_detail_chain_inputs",
@@ -1951,6 +1956,7 @@ __all__ = [
     "source_gap_family_ids",
     "split_us_puf_e19200_by_agi_band",
     "source_year_puf_adjusted_gross_income",
+    "source_year_puf_partnership_s_corp_income",
     "select_puf_capital_gains_tail_donors",
     "ECPS_PARITY_KNOWN_GAPS_RESOURCE",
     "ECPS_PARITY_REFERENCE_RESOURCE",

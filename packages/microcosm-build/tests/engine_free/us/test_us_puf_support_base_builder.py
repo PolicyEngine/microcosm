@@ -423,6 +423,7 @@ class TestBaseBuildWeightsAudit:
         _imputed, weights_audit = builder.impute_and_audit_us_puf_support(
             clone_us_frame_for_puf_support(_minimal_us_puf_support_frame()),
             _support_donor(),
+            tail_bound_diagnostics=[],
             **_SUPPORT_FIT_KWARGS,
         )
 
@@ -439,6 +440,7 @@ class TestBaseBuildWeightsAudit:
         _imputed, weights_audit = builder.impute_and_audit_us_puf_support(
             clone_us_frame_for_puf_support(_minimal_us_puf_support_frame()),
             _support_donor(),
+            tail_bound_diagnostics=[],
             **_SUPPORT_FIT_KWARGS,
         )
         round_tripped = json.loads(json.dumps({"weights_audit": weights_audit}))
@@ -455,6 +457,7 @@ class TestBaseBuildWeightsAudit:
         builder = _load_support_builder_module()
         record = {
             "output": "non_sch_d_capital_gains",
+            "rule": "weighted_positive_donor_quantile",
             "quantile": 0.999,
             "bound_value": 100.0,
             "clipped_row_count": 2,
@@ -1320,19 +1323,35 @@ def test_puf_donor_builder_threads_explicit_source_year_agi(
         captured["processed_tax_unit_weights"] = processed_tax_unit_weights
         return adjusted_gross_income
 
+    schedule_e = {
+        "partnership_income": np.asarray([10.0, 20.0]),
+        "passive_partnership_s_corp_income": np.asarray([1.0, 0.0]),
+    }
+
+    def fake_schedule_e(actual_source_path: Path, actual_arrays, *, receipt):
+        captured["schedule_e_source_path"] = actual_source_path
+        captured["schedule_e_arrays"] = actual_arrays
+        receipt["weighted_line_32"] = 30.0
+        return schedule_e
+
     def fake_donor(
         actual_arrays,
         *,
         adjusted_gross_income,
+        schedule_e_partnership_s_corp,
         donor_build_summary,
     ):
         captured["arrays"] = actual_arrays
         captured["adjusted_gross_income"] = adjusted_gross_income
+        captured["schedule_e"] = schedule_e_partnership_s_corp
         captured["donor_build_summary"] = donor_build_summary
         donor_build_summary["mortgage_field_quarantine"] = {"screened_record_count": 2}
         return "donor"
 
     monkeypatch.setattr(builder, "_source_year_puf_adjusted_gross_income", fake_agi)
+    monkeypatch.setattr(
+        builder, "_source_year_puf_partnership_s_corp_income", fake_schedule_e
+    )
     monkeypatch.setattr(builder, "puf_tax_unit_donor_from_arrays", fake_donor)
 
     donor_build_summary: dict[str, object] = {}
@@ -1349,9 +1368,13 @@ def test_puf_donor_builder_threads_explicit_source_year_agi(
     assert captured["processed_tax_unit_weights"] is arrays["household_weight"]
     assert captured["arrays"] is arrays
     assert captured["adjusted_gross_income"] is adjusted_gross_income
+    assert captured["schedule_e_source_path"] == source_path
+    assert captured["schedule_e_arrays"] is arrays
+    assert captured["schedule_e"] is schedule_e
     assert captured["donor_build_summary"] is donor_build_summary
     assert donor_build_summary == {
-        "mortgage_field_quarantine": {"screened_record_count": 2}
+        "mortgage_field_quarantine": {"screened_record_count": 2},
+        "schedule_e_line_32": {"weighted_line_32": 30.0},
     }
 
 
