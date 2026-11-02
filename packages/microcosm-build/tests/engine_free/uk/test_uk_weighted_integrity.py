@@ -557,17 +557,22 @@ def test_committed_exclusion_registers_load() -> None:
     # microcosm#1106 (signed 2026-10-11): the release leaves it to the engine,
     # so the reference carries a column the candidate no longer ships. The
     # QRF tail register went with its gate (microcosm#1276).
+    # tax_free_savings_income joins with microcosm#1360 (signed 2026-10-28):
+    # under the additive ISA income contract the candidate stores ISA interest
+    # apart, and the engine sums it into the column the reference stores.
     assert set(input_mass["efrs-post-calibration"]) == {
         "dfe_education_spending",
         "property_wealth",
+        "tax_free_savings_income",
     }
     for record in input_mass["efrs-post-calibration"].values():
         assert record.approved_by == "juaristi22"
-        assert record.approved_on in {"2026-10-02", "2026-10-11"}
-        assert record.expires_on in {"2027-04-02", "2027-04-11"}
+        assert record.approved_on in {"2026-10-02", "2026-10-11", "2026-10-28"}
+        assert record.expires_on in {"2027-04-02", "2027-04-11", "2027-04-28"}
         assert (
             "microcosm#1063" in record.adjudication
             or "microcosm#1106" in record.adjudication
+            or "microcosm#1360" in record.adjudication
         )
     assert uk_default_input_mass_reviewed_exclusions() is (
         uk_default_input_mass_reviewed_exclusions()

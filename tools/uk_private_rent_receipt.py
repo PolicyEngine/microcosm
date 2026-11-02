@@ -10,7 +10,7 @@ entries rest on measured figures rather than on a gate:
   ``ons.rent.private_rent_brma`` (Scottish BRMA) rows at the problem's design
   weights, the dense solution and the size refit: how many are within 10% of
   their target, how many are more than 25% out, and the median error. A row
-  enters a summary only when ten distinct source households of positive
+  enters a summary only when three distinct source households of positive
   weight carry it at that weighting, as the build's BRMA rule counts them;
   the others are counted, never summarised, and a group is summarised only
   over ten or more published rows. A weighting whose households have no
@@ -40,13 +40,13 @@ the licensed run outside the repository:
   and BRMA-level model figures, for review on this machine only;
 - ``private_rent_summary.json`` keeps only aggregates that pass UKDS
   disclosure control (End User Licence CD137 clause 8, CD171 section 5.2.1).
-  Every model cell is carried by at least ten distinct source households, or
-  reads "<10" with a complementary cell in its region withheld too; a cell
+  Every model cell is carried by at least three distinct source households, or
+  reads "<3" with a complementary cell in its region withheld too; a cell
   of spine values counts its FRS-channel households only, since an
   SPI-channel row's spine rent is drawn from FRS donors. A district or BRMA
   group is summarised only over at least ten cells, the top 1%'s weight
-  share only over at least ten rows and households, and an unweighted share
-  only where both sides rest on at least ten households. Record counts are
+  share only over at least three rows and households, and an unweighted share
+  only where both sides rest on at least three households. Record counts are
   rounded (``receipt_counts.rounded_count``), no figure describes a single
   district or BRMA, and no unit-record value appears. Only this file's
   figures may be quoted in a PR or a committed receipt.
@@ -91,6 +91,8 @@ from microcosm.build.uk_runtime.private_rent_localisation import (
     rent_categories,
 )
 from microcosm.build.uk_runtime.receipt_counts import (
+    UK_DISCLOSURE_FLOOR,
+    UK_WITHHELD,
     distinct_carriers,
     outside_work_trees,
     rounded_count,
@@ -98,8 +100,9 @@ from microcosm.build.uk_runtime.receipt_counts import (
 
 SUMMARY_SCHEMA_VERSION = 1
 
-#: A model cell needs this many distinct source households to be reported.
-MIN_SOURCE_HOUSEHOLDS = 10
+#: A model cell needs this many distinct source households to be reported:
+#: the build's disclosure floor (``receipt_counts.UK_DISCLOSURE_FLOOR``).
+MIN_SOURCE_HOUSEHOLDS = UK_DISCLOSURE_FLOOR
 #: A district or BRMA group's statistics need this many cells, so that no
 #: summary describes one district (a one-cell median ratio times PIPR's
 #: published mean gives the model's district mean back).
@@ -163,8 +166,8 @@ ALL_WITH_A_GROUP_WITHHELD = "a group it covers reads withheld"
 def floored_share(numerator: int, denominator: int) -> float | str | None:
     """An unweighted share of records, floored to two decimals.
 
-    An exact unweighted share gives back its count; a share of one to nine
-    records, or one that leaves out one to nine, reads "<10"
+    An exact unweighted share gives back its count; a share of one or two
+    records, or one that leaves out one or two, reads "<3"
     (``receipt_counts``).
     """
 
@@ -172,7 +175,7 @@ def floored_share(numerator: int, denominator: int) -> float | str | None:
         return None
     for count in (numerator, denominator - numerator):
         if 0 < count < MIN_SOURCE_HOUSEHOLDS:
-            return "<10"
+            return UK_WITHHELD
     return math.floor(100 * numerator / denominator) / 100
 
 
@@ -207,7 +210,7 @@ def with_carriers(frame: pd.DataFrame, *, frs_only: bool = False) -> pd.DataFram
 def weighted_share(
     mask: np.ndarray, weight: np.ndarray, carrier: np.ndarray
 ) -> float | str | None:
-    """A weighted share, or "<10" where fewer than ten source households carry it.
+    """A weighted share, or "<3" where fewer than three source households carry it.
 
     The complement is checked too: a share just short of one would otherwise
     describe the few households outside it. A side holding rows counts even
@@ -219,23 +222,23 @@ def weighted_share(
         return None
     for side in (mask, ~mask):
         if side.any() and _carriers(carrier[side]) < MIN_SOURCE_HOUSEHOLDS:
-            return "<10"
+            return UK_WITHHELD
     return round(float(weight[mask].sum()) / total, 4)
 
 
 def unweighted_share(mask: np.ndarray, carrier: np.ndarray) -> float | str | None:
-    """A floored share of rows whose two sides each rest on ten households.
+    """A floored share of rows whose two sides each rest on three households.
 
     Clone rows are not households: 8 households with 25 clones each are 200
-    rows but 8 carriers, so either side resting on one to nine distinct
-    source households reads "<10".
+    rows but 8 carriers, so either side resting on one or two distinct
+    source households reads "<3".
     """
 
     mask = np.asarray(mask, dtype=bool)
     carrier = np.asarray(carrier, dtype=object)
     for side in (mask, ~mask):
         if side.any() and _carriers(carrier[side]) < MIN_SOURCE_HOUSEHOLDS:
-            return "<10"
+            return UK_WITHHELD
     return floored_share(int(mask.sum()), int(mask.size))
 
 
@@ -244,11 +247,11 @@ def suppress_cells(
 ) -> dict[str, dict[str, Any]]:
     """Withhold cells under the threshold, and complements beside them.
 
-    A cell carried by fewer than ten distinct source households, none
-    included, reads "<10". Where a parent's figure is also reported, the
+    A cell carried by fewer than three distinct source households, none
+    included, reads "<3". Where a parent's figure is also reported, the
     withheld cells could be recovered together by difference, so the
     smallest reportable cells under the same parent are withheld too until
-    the withheld cells together rest on ten households. The cells partition
+    the withheld cells together rest on three households. The cells partition
     their parent's households, so their carriers add.
     """
 
@@ -260,7 +263,7 @@ def suppress_cells(
     ]
     hidden = sum(int(out[name][carriers_key]) for name in small)
     for name in small:
-        out[name] = {"withheld": "<10"}
+        out[name] = {"withheld": UK_WITHHELD}
     rest = sorted(
         (int(cell[carriers_key]), name)
         for name, cell in out.items()
@@ -411,8 +414,9 @@ def rent_row_fit(weighting: Weighting) -> tuple[dict[str, Any], list[dict[str, A
 
     A row rests on the distinct source households of positive weight with an
     entry in it (the build's BRMA rule, microcosm#1262). One resting on fewer
-    than ten stays out of every group of the summary, which counts it; the
-    audit keeps every row.
+    than three (``MIN_SOURCE_HOUSEHOLDS``, the build's disclosure floor) stays
+    out of every group of the summary, which counts it; the audit keeps every
+    row.
     """
 
     rows = [
@@ -702,13 +706,13 @@ def pipr_comparison(
         if model.size < MIN_GROUP_CELLS:
             summary[label] = {
                 "withheld": f"fewer than {MIN_GROUP_CELLS} cells",
-                "cells_under_10_source_households": withheld.get(label, 0),
+                "cells_under_floor_source_households": withheld.get(label, 0),
             }
             continue
         ratio = model / published
         summary[label] = {
             "cells": int(model.size),
-            "cells_under_10_source_households": withheld.get(label, 0),
+            "cells_under_floor_source_households": withheld.get(label, 0),
             "rank_correlation": _spearman(model, published),
             "share_within_10pct": round(float(np.mean(np.abs(ratio - 1) <= 0.10)), 3),
             "share_within_25pct": round(float(np.mean(np.abs(ratio - 1) <= 0.25)), 3),
@@ -778,14 +782,15 @@ def weight_concentration(renters: pd.DataFrame) -> dict[str, Any]:
     if total <= 0:
         return {}
     if _carriers(renters["carrier"]) < MIN_SOURCE_HOUSEHOLDS:
-        return {"withheld": "<10"}
+        return {"withheld": UK_WITHHELD}
     top = max(1, math.ceil(0.01 * weight.size))
     top_carriers = _carriers(renters["carrier"].to_numpy(dtype=object)[order][:top])
-    # The slice must span ten rows and ten households, or it describes a few.
+    # The slice must span three rows and three households, or it describes one
+    # or two.
     share = (
         round(float(weight[:top].sum()) / total, 4)
         if top >= MIN_SOURCE_HOUSEHOLDS and top_carriers >= MIN_SOURCE_HOUSEHOLDS
-        else "<10"
+        else UK_WITHHELD
     )
     return {
         "renter_rows": rounded_count(int(weight.size)),
@@ -959,7 +964,7 @@ def matched_change(frame: pd.DataFrame) -> dict[str, Any]:
     renters = with_carriers(gb.loc[redrawn], frs_only=True)
     for region, rows in renters.groupby("region", sort=True):
         if _carriers(rows["carrier"]) < MIN_SOURCE_HOUSEHOLDS:
-            out["region_level_at_design_weights"][region] = "<10"
+            out["region_level_at_design_weights"][region] = UK_WITHHELD
             continue
         w = rows["weight"].to_numpy(dtype=float)
         after = float((w * rows["rent"].to_numpy(dtype=float)).sum())

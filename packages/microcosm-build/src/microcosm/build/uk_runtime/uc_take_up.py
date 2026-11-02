@@ -90,6 +90,8 @@ from microcosm.build.uk_runtime.national_frame import (
     validate_uk_national_frame,
 )
 from microcosm.build.uk_runtime.receipt_counts import (
+    UK_DISCLOSURE_FLOOR,
+    UK_WITHHELD,
     distinct_count,
     extreme_count,
     rounded_count,
@@ -519,10 +521,12 @@ def assign_award_band_take_up(
                     "support": support_band(supported),
                     "drawn_support": support_band(sources(solve & drawable)),
                     # One bit on which side of DWP's count the pool's undrawn
-                    # claims lie, given only where ten or more sources carry
-                    # the pool (UKDS disclosure control).
+                    # claims lie, given only where three or more sources
+                    # carry the pool (UKDS disclosure control).
                     "target_unreachable": (
-                        pool["unreachable"] if supported >= 10 else "<10"
+                        pool["unreachable"]
+                        if supported >= UK_DISCLOSURE_FLOOR
+                        else UK_WITHHELD
                     ),
                 }
             )
@@ -827,7 +831,7 @@ def working_age_housing_benefit_receipt(
     engine does not move, and how many of them keep the award before and after
     the redraw, so the stage's effect on working-age Housing Benefit can be set
     beside DWP's 2025 caseload (Vahid's review of #1344, item 7). Weighted
-    figures only where ten or more source households carry them.
+    figures only where three or more source households carry them.
     """
 
     column = "housing_benefit_reported"

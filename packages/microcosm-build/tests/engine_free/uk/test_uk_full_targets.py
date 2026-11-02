@@ -206,7 +206,15 @@ def test_wrong_fact_count_refuses_before_either_compiler(prepared):
 def test_current_national_and_local_pins_share_one_reviewed_identity():
     # main (#904) reads one committed pin, ``uk/chronicle_feed.json``, for the
     # national feed and the local census; the full build checks they agree.
-    # The identity is the 272c987 feed re-pinned by microcosm#1359
+    # The identity is the 08962f1 merge of PolicyEngine/chronicle#399
+    # (PolicyEngine/uk-autumn-budget-dashboard-2026#316: HMRC's benefits in
+    # kind statistics, with one OBR EFO number per line and year), on top of
+    # the 7d5d627 merge of PolicyEngine/chronicle#396 (the UK facts of
+    # PolicyEngine/chronicle#395) and the 53815b2 merge of
+    # PolicyEngine/chronicle#394 (microcosm#1418: SPI 2023-24 Table 3.10 and
+    # the OBR's October 2026 EFO), on top of the 0b721a4 merge of
+    # PolicyEngine/chronicle#392
+    # (HMRC's ISA statistics) and the 272c987 feed of microcosm#1359
     # (PolicyEngine/chronicle#391: the Gambling Commission's Gambling Survey
     # for Great Britain 2025 participation tables), on top of the 200bf6d feed
     # of microcosm#1359 (PolicyEngine/chronicle#384: HMRC alcohol and tobacco clearances,
@@ -222,19 +230,19 @@ def test_current_national_and_local_pins_share_one_reviewed_identity():
     assert (
         national.facts_sha256
         == local["facts_sha256"]
-        == ("084ddf46fa34b1e03b5f0a7287617aeafaf7f614e3619d87a6565409e4adac85")
+        == ("11b20b4333270e269a5cbfe6302eb4986851990b340ef02d948eb71d62c12d5c")
     )
     assert (
         national.manifest_sha256
         == local["manifest_sha256"]
-        == ("229afc18d8201bbd59a41777453f487ad750be2802425240ac26ee54849bfafd")
+        == ("96faf0e33686682cf37e8fa9511727571b3f8221f15bbc21591b799af87de722")
     )
     assert (
         national.source_commit
         == local["source_commit"]
-        == "272c987af175687aca21f82851ef349521802b12"
+        == "08962f1b893fc1ba3b7bdd3d800c7e867318951a"
     )
-    assert national.fact_row_count == local["fact_row_count"] == 1503315
+    assert national.fact_row_count == local["fact_row_count"] == 1512256
 
 
 def test_chronicle_source_codec_validates_directory_manifest(tmp_path):

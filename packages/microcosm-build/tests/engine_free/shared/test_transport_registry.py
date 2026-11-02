@@ -21,7 +21,11 @@ from microcosm.build.transport.codecs import (
     RULESPEC_SOURCE_CODEC,
 )
 from microcosm.build.transport.gate_bindings import TRANSPORT_GATE_REGISTRY
-from microcosm.build.transport.registry import build_transport_registry
+from microcosm.build.transport.registry import (
+    binding_relation_dependencies,
+    build_transport_registry,
+    transport_entity_schema,
+)
 from microcosm.build.transport.terminal_kernels import EXPORT_SOURCE_CODEC
 from microcosm.frame import (
     EntitySchema,
@@ -34,6 +38,11 @@ from microcosm.frame import (
 from microcosm.frame.adapters.axiom import NZ_SCHEMA, AxiomEngine, AxiomPeriod
 from microcosm.frame.kernels import SimulateRulesKernel
 from microcosm.frame.rules_kernels import SimulateRulesByRefKernel
+from microcosm.frame.unit_construction import (
+    MultiUnitRule,
+    TaxUnitRule,
+    UnitDeclaration,
+)
 from microcosm.graph import (
     Capabilities,
     ContentStore,
@@ -334,6 +343,291 @@ def test_native_engines_use_pinned_refs_before_relation_compilation(
         assert ref["module_sha256"] == row["sha256"]
         assert ref["module"] == row["rulespec_path"]
         assert ref["periods"] == {row["period"]: document["periods"][row["period"]]}
+
+
+def _relation_manifest():
+    return {
+        "predicate": "family_member",
+        "key": "family_member:0:1",
+        "current_slot": 0,
+        "related_slot": 1,
+        "arguments": ["Family", "Person"],
+        "root_entity": "family",
+        "related_entity": "person",
+        "membership_column": "person_family_id",
+        "related_inputs": {"member_income": "income"},
+        "cardinality": "many",
+        "period": "2026-27",
+        "role_column": "person_family_role",
+        "roles": ["head", "partner"],
+    }
+
+
+def _native_relation_fixture(tmp_path, monkeypatch):
+    root, document, _ = _fixture(tmp_path)
+    document["bindings"] = [document["bindings"][-1]]
+    row = document["bindings"][0]
+    row["relations"] = [_relation_manifest()]
+    checks = []
+
+    def check(engine, entity):
+        assert engine._pinned_tree_sha256 is not None
+        checks.append((entity, tuple(item.to_dict() for item in engine._relations)))
+
+    monkeypatch.setattr(AxiomEngine, "assert_declared_relations", check)
+    monkeypatch.setattr(registry_module, "assert_no_relations", lambda *args: None)
+    monkeypatch.setattr(
+        AxiomEngine,
+        "variable_metadata",
+        lambda engine, name: VariableMetadata(name, "family", "float", "year"),
+    )
+    monkeypatch.setattr(AxiomEngine, "graph_dtype", lambda engine, name: "float64")
+    return root, document, checks
+
+
+def test_explicit_relation_is_pinned_and_checked_before_preparation_returns(
+    tmp_path, monkeypatch
+):
+    root, document, checks = _native_relation_fixture(tmp_path, monkeypatch)
+    prepared = build_transport_registry(document, root, unit_rule=UNIT_RULE)
+    reference = json.loads(prepared.engine_refs["housing"])
+    assert reference["relations"] == document["bindings"][0]["relations"]
+    assert checks == [("family", tuple(reference["relations"]))]
+    engine = prepared.engines[prepared.engine_refs["housing"]]
+    # Preparation keeps declarations, never data-derived offsets or arrays.
+    assert len(engine._relations) == 1
+    assert engine._relations[0].related_inputs == {"member_income": "income"}
+
+
+@settings(
+    max_examples=12,
+    deadline=None,
+    suppress_health_check=[HealthCheck.function_scoped_fixture],
+)
+@given(st.integers(min_value=1, max_value=30))
+def test_relation_input_and_selector_semantics_change_only_own_reference(
+    tmp_path, monkeypatch, suffix
+):
+    root, document, _ = _native_relation_fixture(tmp_path, monkeypatch)
+    document["bindings"].append(_fixture(tmp_path)[1]["bindings"][0])
+    monkeypatch.setattr(
+        AxiomEngine,
+        "variable_metadata",
+        lambda engine, name: VariableMetadata(
+            name,
+            next(
+                row["entity"]
+                for row in document["bindings"]
+                if name in row["variables"]
+            ),
+            "float",
+            "year",
+        ),
+    )
+    first = build_transport_registry(document, root, unit_rule=UNIT_RULE)
+    row = document["bindings"][0]
+    row["relations"][0]["related_inputs"]["member_income"] = f"income_{suffix}"
+    second = build_transport_registry(document, root, unit_rule=UNIT_RULE)
+    assert first.engine_refs["housing"] != second.engine_refs["housing"]
+    row["relations"][0]["roles"] = [f"role_{suffix}"]
+    third = build_transport_registry(document, root, unit_rule=UNIT_RULE)
+    assert second.engine_refs["housing"] != third.engine_refs["housing"]
+    assert (
+        first.engine_refs["main_benefit"]
+        == second.engine_refs["main_benefit"]
+        == third.engine_refs["main_benefit"]
+    )
+    assert first.kernels.implementation_hash(
+        "simulate.rules_by_ref@1"
+    ) == third.kernels.implementation_hash("simulate.rules_by_ref@1")
+
+
+def test_absent_relation_declaration_stays_absent(tmp_path, monkeypatch):
+    root, document, _ = _native_relation_fixture(tmp_path, monkeypatch)
+    document["bindings"][0].pop("relations")
+    prepared = build_transport_registry(document, root, unit_rule=UNIT_RULE)
+    reference = json.loads(prepared.engine_refs["housing"])
+    assert "relations" not in reference
+    assert "views" not in reference
+    engine = prepared.engines[prepared.engine_refs["housing"]]
+    assert engine._relations is None
+
+
+def test_relation_dependencies_share_physical_native_inputs(tmp_path, monkeypatch):
+    root, document, _ = _native_relation_fixture(tmp_path, monkeypatch)
+    binding = document["bindings"][0]
+    prepared = build_transport_registry(document, root, unit_rule=UNIT_RULE)
+    engine = prepared.engines[prepared.engine_refs["housing"]]
+    expected = (
+        ("family", "family_id"),
+        ("person", "income"),
+        ("person", "person_family_id"),
+        ("person", "person_family_role"),
+        ("person", "person_id"),
+    )
+    assert (
+        binding_relation_dependencies(
+            binding, entity_names=document["entity_names"], schema=prepared.schema
+        )
+        == expected
+    )
+    assert engine.relation_dependencies("family") == expected
+    binding.pop("relations")
+    assert (
+        binding_relation_dependencies(
+            binding, entity_names=document["entity_names"], schema=prepared.schema
+        )
+        == ()
+    )
+
+
+def test_relation_dependencies_refuse_a_binding_period_mismatch(tmp_path, monkeypatch):
+    _, document, _ = _native_relation_fixture(tmp_path, monkeypatch)
+    binding = document["bindings"][0]
+    binding["relations"][0]["period"] = "2027-28"
+    with pytest.raises(ValueError, match="period must equal the binding period"):
+        binding_relation_dependencies(
+            binding, entity_names=document["entity_names"], schema=NZ_SCHEMA
+        )
+
+
+def test_declared_units_derive_the_same_registry_schema_as_create():
+    declaration = MultiUnitRule(
+        units=(
+            UnitDeclaration(kind="benefit_unit", rule=UNIT_RULE),
+            UnitDeclaration(
+                kind="tax_unit",
+                rule=TaxUnitRule(
+                    entity="tax_unit",
+                    pairing_eligibility_column="joint_assessment_eligible",
+                    provenance={"method": "pinned classification input"},
+                ),
+            ),
+        )
+    )
+    schema, nesting = transport_entity_schema(declaration)
+    assert (schema, nesting) == declaration.entity_schema()
+    assert schema.group_entities == ("household", "family", "tax_unit")
+    assert nesting == {"family": "household", "tax_unit": "household"}
+    assert transport_entity_schema(UNIT_RULE) == transport_entity_schema(
+        MultiUnitRule.from_benefit_unit(UNIT_RULE)
+    )
+    with pytest.raises(TypeError, match="BenefitUnitRule or MultiUnitRule"):
+        transport_entity_schema(object())
+
+
+def test_declared_tax_unit_relation_uses_the_shared_partition_schema(
+    tmp_path, monkeypatch
+):
+    root, document, _ = _native_relation_fixture(tmp_path, monkeypatch)
+    declaration = MultiUnitRule(
+        units=(
+            UnitDeclaration(kind="benefit_unit", rule=UNIT_RULE),
+            UnitDeclaration(
+                kind="tax_unit",
+                rule=TaxUnitRule(
+                    entity="tax_unit",
+                    pairing_eligibility_column="joint_assessment_eligible",
+                    provenance={"method": "pinned classification input"},
+                ),
+            ),
+        )
+    )
+    document["entity_names"]["tax_unit"] = "TaxUnit"
+    binding = document["bindings"][0]
+    binding["entity"] = "tax_unit"
+    binding["engine_entity"] = "TaxUnit"
+    relation = binding["relations"][0]
+    relation["root_entity"] = "tax_unit"
+    relation["arguments"] = ["TaxUnit", "Person"]
+    relation["membership_column"] = "person_tax_unit_id"
+    relation["role_column"] = "person_tax_unit_role"
+    monkeypatch.setattr(
+        AxiomEngine,
+        "variable_metadata",
+        lambda engine, name: VariableMetadata(name, "tax_unit", "float", "year"),
+    )
+    prepared = build_transport_registry(document, root, unit_rule=declaration)
+    assert (prepared.schema, prepared.nesting) == declaration.entity_schema()
+    engine = prepared.engines[prepared.engine_refs["housing"]]
+    assert engine._nesting == {"family": "household", "tax_unit": "household"}
+    assert ("person", "person_tax_unit_id") in engine.relation_dependencies("tax_unit")
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "match"),
+    [
+        ("root_entity", "household", "root_entity"),
+        ("related_entity", "household", "related persons"),
+        ("membership_column", "person_household_id", "partition membership"),
+        ("period", "2027-28", "period"),
+        ("arguments", ["Person", "Family"], "arguments"),
+        ("cardinality", "maybe", "cardinality"),
+        ("current_slot", True, "slot"),
+        ("current_slot", 1, "slot"),
+        ("key", "family_member:1:0", "key"),
+        ("arguments", "Family,Person", "list"),
+        ("related_inputs", [], "mapping"),
+        ("roles", "head", "list"),
+        ("roles", ["head", "head"], "roles"),
+        ("role_column", None, "role"),
+        ("undocumented", "value", "exactly"),
+    ],
+)
+def test_relation_manifest_validation(tmp_path, monkeypatch, field, value, match):
+    root, document, _ = _native_relation_fixture(tmp_path, monkeypatch)
+    document["bindings"][0]["relations"][0][field] = value
+    with pytest.raises((TypeError, ValueError), match=match):
+        build_transport_registry(document, root, unit_rule=UNIT_RULE)
+
+
+@pytest.mark.parametrize(
+    ("problem", "error", "match"),
+    [
+        ("scalar", TypeError, "list of relation manifests"),
+        ("duplicate", ValueError, "repeats a compiled relation key"),
+        ("missing", ValueError, "manifests require exactly"),
+        ("views", NotImplementedError, "views are not supported"),
+    ],
+)
+def test_relation_declaration_refuses_ambiguous_or_future_shapes(
+    tmp_path, monkeypatch, problem, error, match
+):
+    root, document, _ = _native_relation_fixture(tmp_path, monkeypatch)
+    row = document["bindings"][0]
+    if problem == "scalar":
+        row["relations"] = None
+    elif problem == "duplicate":
+        row["relations"].append(copy.deepcopy(row["relations"][0]))
+    elif problem == "missing":
+        row["relations"][0].pop("related_inputs")
+    else:
+        row["views"] = []
+    with pytest.raises(error, match=match):
+        build_transport_registry(document, root, unit_rule=UNIT_RULE)
+
+
+def test_injected_axiom_relation_configuration_must_match(tmp_path, monkeypatch):
+    root, document, _ = _native_relation_fixture(tmp_path, monkeypatch)
+    prepared = build_transport_registry(document, root, unit_rule=UNIT_RULE)
+    engine = prepared.engines[prepared.engine_refs["housing"]]
+    engine._relations = None
+    with pytest.raises(ValueError, match="relations do not match"):
+        build_transport_registry(
+            document,
+            root,
+            unit_rule=UNIT_RULE,
+            engines_by_binding={"housing": engine},
+        )
+
+
+def test_python_adapter_does_not_claim_native_relation_execution(tmp_path):
+    root, document, engines = _fixture(tmp_path)
+    document["bindings"][-1]["relations"] = [_relation_manifest()]
+    with pytest.raises(TypeError, match="relation manifests require an AxiomEngine"):
+        build_transport_registry(
+            document, root, unit_rule=UNIT_RULE, engines_by_binding=engines
+        )
 
 
 @pytest.mark.parametrize(

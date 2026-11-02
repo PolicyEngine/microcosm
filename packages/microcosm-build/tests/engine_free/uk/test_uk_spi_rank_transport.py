@@ -7,6 +7,7 @@ import pandas as pd
 import pytest
 
 from microcosm.build.uk_runtime import spi_rank_transport as transport
+from microcosm.build.uk_runtime.receipt_counts import rounded_count
 from microcosm.build.uk_runtime.spi_rank_transport import (
     SPI_STAGE1_ANALOGUE_COLUMNS,
     analogue_source_columns,
@@ -41,8 +42,8 @@ def test_observed_analogues_read_the_twin_and_derive_taxable_interest() -> None:
         {column: [0.0, 5.0] for column in analogue_source_columns()},
         index=[10, 11],
     )
-    person["savings_interest_income"] = [100.0, 20.0]
-    person["tax_free_savings_income"] = [30.0, 50.0]
+    # Interest outside ISAs, floored at zero (microcosm#1360).
+    person["savings_interest_income"] = [70.0, -30.0]
     person["dividend_income"] = [7.0, 0.0]
     observed = observed_analogues(person)
     assert list(observed.columns) == list(analogue_targets())
@@ -168,7 +169,8 @@ def test_transport_locates_twins_and_keys_the_rest_on_identity(reference) -> Non
     # under ten rows.
     kolmogorov = result.receipt["targets"]["hmrc_spi_pay"]["kolmogorov"]
     assert 0.0 <= kolmogorov["sign"] <= 1.0 and 0.0 <= kolmogorov["quantile"] <= 1.0
-    assert kolmogorov["positive_rows"] == int((pay > 0).sum())
+    # The count is rounded as every receipt count is (receipt_counts).
+    assert kolmogorov["positive_rows"] == rounded_count(int((pay > 0).sum()))
     by_group = result.receipt["targets"]["hmrc_spi_pay"]["by_group"]
     assert by_group["trade"] is None
     assert by_group["pay"]["rows"] == int((groups == "pay").sum())
@@ -450,13 +452,11 @@ def test_cross_fit_locates_a_copy_on_a_forest_that_never_saw_its_twin() -> None:
         cross_fit_transport(fit_reference, **one_cell_call)
     single = cross_fit_transport(fit_reference, allow_in_sample=True, **one_cell_call)
     assert single.receipt["folds"] == 1 and single.receipt["cross_fitted"] is False
-    # A positive-row count under the group floor is withheld.
+    # A positive-row count is rounded as every receipt count is: one or two
+    # rows read "<3", three to nine "3-9".
     assert single.receipt["targets"]["dividend_income"]["kolmogorov"][
         "positive_rows"
-    ] in (
-        None,
-        *range(10, 11),
-    )
+    ] in (0, "<3", "3-9", 10)
 
 
 class _ClassReference:

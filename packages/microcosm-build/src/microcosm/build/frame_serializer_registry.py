@@ -236,8 +236,8 @@ HDF_WRITE_EXCLUSIONS = (
             "_write_isa_income_contract",
         ),
         reason=(
-            "Adds the ISA income contract root attribute only "
-            "(policyengine-uk 2.162.2; microcosm#1095)."
+            "Adds the frame's ISA income contract root attribute only "
+            "(policyengine-uk 2.162.2; microcosm#1095, microcosm#1360)."
         ),
     ),
     HdfWriteExclusion(
