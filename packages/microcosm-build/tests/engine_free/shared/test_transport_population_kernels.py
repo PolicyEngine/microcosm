@@ -586,11 +586,9 @@ def test_quantile_map_refuses_absent_facts_and_mismatched_component_coverage(
 
 
 def _one_sex_per_household(tables):
-    """Give every member the donor sex flag of its household's first member."""
+    """Give each household one sex flag, with both flags across the donor."""
     person = tables["person"]
-    person["is_female"] = person.groupby("person_household_id")["is_female"].transform(
-        "first"
-    )
+    person["is_female"] = person.groupby("person_household_id").ngroup() % 2 == 0
 
 
 @pytest.mark.parametrize("shape", ["bare", "component"])
@@ -612,6 +610,7 @@ def test_aggregate_map_refuses_members_with_two_component_codes(tmp_path, mixed,
     person = direct.table("person")
     codes = person.groupby("person_household_id")["sex"].nunique()
     assert bool((codes > 1).any()) == mixed
+    assert person["sex"].nunique() == 2
     graph = population_graph(
         sources, qmap_column="liquid_financial_assets", aggregate_entity="household"
     )
